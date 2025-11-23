@@ -55,7 +55,12 @@ async function loadLogoAsDataURL(): Promise<string | null> {
 // --------------------------------------------------------
 // 🔴🟠🟢 Pallini priorità
 // --------------------------------------------------------
-function drawPriorityDot(doc: jsPDF, urgency: string | undefined, x: number, y: number) {
+function drawPriorityDot(
+  doc: jsPDF,
+  urgency: string | undefined,
+  x: number,
+  y: number
+) {
   const r = 3;
 
   if (urgency === "alta") doc.setFillColor(217, 72, 62); // rosso
@@ -67,12 +72,12 @@ function drawPriorityDot(doc: jsPDF, urgency: string | undefined, x: number, y: 
 }
 
 // --------------------------------------------------------
-// 🧩 Tipi "intelligenti"
+// 🧩 Tipi "intelligenti" base
 // --------------------------------------------------------
 export interface LavoroLike {
   descrizione?: string;
   dataInserimento?: string; // ISO
-  data?: string;            // alternativa
+  data?: string; // alternativa
   urgenza?: "bassa" | "media" | "alta" | string | undefined;
   [key: string]: any;
 }
@@ -104,27 +109,33 @@ export interface DomandaLike {
   [key: string]: any;
 }
 
+// Opzioni IA comuni a tutti i PDF
+interface BasePdfOptions {
+  aiEnhance?: boolean; // se true prova a far passare i dati dall’IA
+  aiPrompt?: string; // prompt opzionale da mandare alla API IA
+}
+
 // Config universale
 export type PdfInput =
-  | {
+  | ({
       kind: "lavori";
       title?: string;
       groupLabel?: string;
       lavori: LavoroLike[];
-    }
-  | {
+    } & BasePdfOptions)
+  | ({
       kind: "mezzo";
       title?: string;
       mezzo: MezzoLike;
       domande?: DomandaLike[];
-    }
-  | {
+    } & BasePdfOptions)
+  | ({
       kind: "table";
       title: string;
       columns?: string[];
       rows: any[];
-    }
-  | any; // per la modalità auto (smart)
+    } & BasePdfOptions)
+  | (BasePdfOptions & any); // per modalità auto (smart)
 
 // --------------------------------------------------------
 // 🧠 Rilevamento automatico tipo PDF
@@ -150,10 +161,7 @@ function detectKind(input: any): "lavori" | "mezzo" | "table" {
 // --------------------------------------------------------
 // 🧾 Header universale con logo grande centrato
 // --------------------------------------------------------
-async function drawHeader(
-  doc: jsPDF,
-  title: string
-): Promise<number> {
+async function drawHeader(doc: jsPDF, title: string): Promise<number> {
   const pageWidth = doc.internal.pageSize.getWidth();
 
   // Logo grande centrato
@@ -198,7 +206,6 @@ async function generateLavoriPdf(
 
   const startY = await drawHeader(doc, titoloBase);
 
-  // prepara righe tabella
   const dataRows = lavori.map((l: LavoroLike) => {
     const descrizione = l.descrizione ?? l.titolo ?? "";
     const rawDate = l.dataInserimento ?? l.data ?? "";
@@ -248,7 +255,11 @@ async function generateTablePdf(
   doc: jsPDF,
   input: Extract<PdfInput, { kind: "table" }> | any
 ) {
-  const rows: any[] = Array.isArray(input.rows) ? input.rows : Array.isArray(input) ? input : [];
+  const rows: any[] = Array.isArray(input.rows)
+    ? input.rows
+    : Array.isArray(input)
+    ? input
+    : [];
   const title: string = input.title || "Report";
 
   const startY = await drawHeader(doc, title);
@@ -274,10 +285,7 @@ async function generateTablePdf(
       if (val === null || val === undefined) return "";
 
       // formattazione automatica per date ISO
-      if (
-        typeof val === "string" &&
-        /^\d{4}-\d{2}-\d{2}/.test(val)
-      ) {
+      if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val)) {
         return formatGGMMYYYY(val);
       }
 
@@ -309,21 +317,19 @@ async function generateTablePdf(
 }
 
 // --------------------------------------------------------
-// 🚚 PDF Mezzo + Domande (versione web del tuo pdfExporter TSX)
+// 🚚 PDF Mezzo + Domande (versione web del pdfExporter)
 // --------------------------------------------------------
 async function generateMezzoPdf(
   doc: jsPDF,
   input: Extract<PdfInput, { kind: "mezzo" }> | any
 ) {
-  const mezzo: MezzoLike =
-    input.mezzo || input || {};
+  const mezzo: MezzoLike = input.mezzo || input || {};
   const domande: DomandaLike[] = input.domande || [];
 
   const titolo = input.title || "Rapporto di Controllo Mezzo";
 
   let currentY = await drawHeader(doc, titolo);
 
-  // Box mezzo
   const leftX = 14;
   const rightX = 196;
   const boxWidth = rightX - leftX;
@@ -353,10 +359,7 @@ async function generateMezzoPdf(
   fields.forEach(([label, value]) => {
     if (!value) return;
     let v = value;
-    if (
-      label === "Ultimo Collaudo" ||
-      label === "Ultimo Controllo"
-    ) {
+    if (label === "Ultimo Collaudo" || label === "Ultimo Controllo") {
       v = formatGGMMYYYY(value);
     }
 
@@ -436,7 +439,6 @@ async function generateMezzoPdf(
     });
   }
 
-  // Firma finale
   const pageHeight = doc.internal.pageSize.getHeight();
   doc.setFont("helvetica", "italic");
   doc.setFontSize(10);
@@ -449,59 +451,162 @@ async function generateMezzoPdf(
 }
 
 // --------------------------------------------------------
+// 🧠 IA universale per tutti i PDF (opzionale)
+// --------------------------------------------------------
+async function enhancePdfInputWithAI(input: PdfInput): Promise<PdfInput> {
+  const anyInput = input as any;
+  if (!anyInput.aiEnhance) return input;
+
+  try {
+    const kind = detectKind(input);
+    const res = await fetch("/api/pdf-ai-enhance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind,
+        input,
+        prompt: anyInput.aiPrompt || undefined,
+      }),
+    });
+
+    if (!res.ok) return input;
+
+    const enhanced = await res.json();
+    return { ...input, ...enhanced };
+  } catch {
+    return input;
+  }
+}
+
+// --------------------------------------------------------
 // 🧠 Funzione UNIVERSALE "intelligente"
 // --------------------------------------------------------
 export async function generateSmartPDF(input: PdfInput): Promise<void> {
-  const kind = detectKind(input);
   const doc = new jsPDF();
 
+  // IA opzionale
+  const effectiveInput = await enhancePdfInputWithAI(input);
+  const kind = detectKind(effectiveInput);
+
   if (kind === "lavori") {
-    await generateLavoriPdf(doc, input);
+    await generateLavoriPdf(doc, effectiveInput);
   } else if (kind === "mezzo") {
-    await generateMezzoPdf(doc, input);
+    await generateMezzoPdf(doc, effectiveInput);
   } else {
-    await generateTablePdf(doc, input);
+    await generateTablePdf(doc, effectiveInput);
   }
 
-  // nome file
   const now = new Date();
   const datePart = formatGGMMYYYY(now.toISOString());
   const baseName =
-    (input as any).title ||
-    (input as any).groupLabel ||
-    (kind === "lavori"
-      ? "Lavori"
-      : kind === "mezzo"
-      ? "Mezzo"
-      : "Report");
+    (effectiveInput as any).title ||
+    (effectiveInput as any).groupLabel ||
+    (kind === "lavori" ? "Lavori" : kind === "mezzo" ? "Mezzo" : "Report");
 
   doc.save(`${baseName}_${datePart}.pdf`);
 }
 
 // --------------------------------------------------------
-// 🔌 Helper specifici se vuoi chiamarli direttamente
+// 🔌 Helper specifici (compatibili + IA opzionale)
 // --------------------------------------------------------
-
 export async function generateLavoriPDF(
   title: string,
   lavori: LavoroLike[],
-  groupLabel?: string
+  groupLabel?: string,
+  options?: { aiEnhance?: boolean; aiPrompt?: string }
 ) {
-  await generateSmartPDF({ kind: "lavori", title, lavori, groupLabel });
+  await generateSmartPDF({
+    kind: "lavori",
+    title,
+    lavori,
+    groupLabel,
+    aiEnhance: options?.aiEnhance,
+    aiPrompt: options?.aiPrompt,
+  });
 }
 
 export async function generateTablePDF(
   title: string,
   rows: any[],
-  columns?: string[]
+  columns?: string[],
+  options?: { aiEnhance?: boolean; aiPrompt?: string }
 ) {
-  await generateSmartPDF({ kind: "table", title, rows, columns });
+  await generateSmartPDF({
+    kind: "table",
+    title,
+    rows,
+    columns,
+    aiEnhance: options?.aiEnhance,
+    aiPrompt: options?.aiPrompt,
+  });
 }
 
+// --------------------------------------------------------
+// 🟦 generateMezzoPDF – overload compatibile + IA
+// --------------------------------------------------------
+
+// Overload compatibile: vecchio stile → generateMezzoPDF(mezzo)
+export async function generateMezzoPDF(mezzo: MezzoLike): Promise<void>;
+
+// Overload esteso: generateMezzoPDF(title, mezzo, domande?, options?)
 export async function generateMezzoPDF(
   title: string,
   mezzo: MezzoLike,
-  domande?: DomandaLike[]
+  domande?: DomandaLike[],
+  options?: { aiEnhance?: boolean; aiPrompt?: string }
+): Promise<void>;
+
+// Implementazione unica
+export async function generateMezzoPDF(
+  p1: any,
+  p2?: any,
+  p3?: any,
+  p4?: any
+): Promise<void> {
+  let title: string;
+  let mezzo: MezzoLike;
+  let domande: DomandaLike[] | undefined;
+  let options: { aiEnhance?: boolean; aiPrompt?: string } | undefined;
+
+  // Caso generateMezzoPDF(mezzo)
+  if (p2 === undefined) {
+    title = "Dossier Mezzo";
+    mezzo = p1;
+    domande = undefined;
+    options = undefined;
+  } else {
+    // Caso generateMezzoPDF(title, mezzo, domande?, options?)
+    title = p1 || "Dossier Mezzo";
+    mezzo = p2;
+    domande = p3;
+    options = p4;
+  }
+
+  await generateSmartPDF({
+    kind: "mezzo",
+    title,
+    mezzo,
+    domande,
+    aiEnhance: options?.aiEnhance ?? (mezzo as any).aiEnhance,
+    aiPrompt: options?.aiPrompt,
+  });
+}
+
+/**
+ * Versione comoda: genera PDF Mezzo con IA sempre attiva.
+ */
+export async function generateMezzoPDF_AI(
+  title: string,
+  mezzo: MezzoLike,
+  domande?: DomandaLike[],
+  aiPrompt?: string
 ) {
-  await generateSmartPDF({ kind: "mezzo", title, mezzo, domande });
+  await generateSmartPDF({
+    kind: "mezzo",
+    title,
+    mezzo,
+    domande,
+    aiEnhance: true,
+    aiPrompt,
+  });
 }
