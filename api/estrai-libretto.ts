@@ -1,9 +1,11 @@
 // api/estrai-libretto.ts
-// IA Libretto – Versione ULTRA VELOCE
-// - Compress WebP
-// - gpt-4o
+// IA Libretto – Versione ULTRA VELOCE COMPATIBILE NODE
+// - Compress WebP (Sharp)
+// - gpt-4o (OCR molto veloce)
 // - CORS completo
-// - Runtime Node (veloce per immagini pesanti)
+// - Runtime Node (corretto per immagini pesanti)
+
+import sharp from "sharp";
 
 export const config = {
   runtime: "nodejs",
@@ -48,39 +50,23 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     // -------------------------------------------------
-    // CONVERSIONE IN BLOB PER COMPRESSIONE WEBP
+    // BASE64 → BINARY BUFFER
     // -------------------------------------------------
-    const binary = Uint8Array.from(
-      atob(imageBase64.split(",").pop() as string),
-      (c) => c.charCodeAt(0)
-    );
-
-    const originalBlob = new Blob([binary], { type: "image/jpeg" });
+    const base64data = imageBase64.split(",").pop()!;
+    const buffer = Buffer.from(base64data, "base64");
 
     // -------------------------------------------------
-    // COMPRESS WEBP (85% qualità, ultra veloce)
+    // COMPRESS WEBP (SHARP - PERFETTO PER NODE)
     // -------------------------------------------------
-    const webpBlob = await new Promise<Blob>((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = new OffscreenCanvas(img.width, img.height);
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(img, 0, 0);
+    const compressedBuffer = await sharp(buffer)
+      .webp({ quality: 80 })
+      .toBuffer();
 
-        canvas.convertToBlob({ type: "image/webp", quality: 0.85 }).then(resolve);
-      };
-      img.src = URL.createObjectURL(originalBlob);
-    });
-
-    // Blob → Base64 WebP
-    const compressedBase64 = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(webpBlob);
-    });
+    const compressedBase64 =
+      "data:image/webp;base64," + compressedBuffer.toString("base64");
 
     // -------------------------------------------------
-    // IA (gpt-4o) — velocissimo e molto più preciso
+    // IA (GPT-4O) – VELOCISSIMA
     // -------------------------------------------------
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -94,7 +80,7 @@ export default async function handler(req: Request): Promise<Response> {
         messages: [
           {
             role: "system",
-            content: `Estrai dal libretto SOLO questi campi in JSON pulito:
+            content: `Estrai SOLO questi campi in JSON:
 - targa
 - marca
 - modello
@@ -107,14 +93,12 @@ export default async function handler(req: Request): Promise<Response> {
 - assicurazione
 - proprietario
 
-Se un valore non esiste → restituisci stringa vuota "".
-
-Rispondi SOLO in JSON puro.`,
+Se non c’è, restituisci "".`,
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Ecco la foto del libretto da analizzare." },
+              { type: "text", text: "Analizza questo libretto svizzero." },
               {
                 type: "image_url",
                 image_url: compressedBase64,
@@ -144,9 +128,6 @@ Rispondi SOLO in JSON puro.`,
       );
     }
 
-    // -------------------------------------------------
-    // RESPONSE OK
-    // -------------------------------------------------
     return new Response(JSON.stringify(out), {
       status: 200,
       headers: {
