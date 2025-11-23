@@ -493,7 +493,7 @@ const Mezzi: React.FC = () => {
 
   const handleExportPdf = async (mezzo: Mezzo) => {
     try {
-      await generateMezzoPDF(mezzo);
+      await generateMezzoPDF("Scheda Mezzo", mezzo);
     } catch (err) {
       console.error(err);
       alert("Errore durante la generazione del PDF.");
