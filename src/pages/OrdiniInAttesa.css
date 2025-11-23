@@ -1,0 +1,151 @@
+/* Pagina generale */
+.ordini-attesa-page {
+  min-height: 100vh;
+  background: #f3f1eb;
+  padding: 22px 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Header */
+.ordini-attesa-header {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.ordini-attesa-logo {
+  height: 55px;
+  width: auto;
+  object-fit: contain;
+}
+
+.ordini-attesa-header h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1e3a34;
+}
+
+/* Wrapper card */
+.ordini-attesa-wrapper {
+  width: 100%;
+  max-width: 900px;
+}
+
+.error-alert {
+  padding: 10px 12px;
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+/* No orders */
+.no-orders-card {
+  background: #f7f2e7;
+  padding: 22px;
+  border-radius: 16px;
+  text-align: center;
+  border: 1px solid #e5d7c2;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+/* List ordini */
+.orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Card ordine */
+.order-card {
+  background: #fdf7ec;
+  border-radius: 16px;
+  padding: 16px 18px;
+  border: 1px solid #e5d7c2;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.08);
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.order-info {
+  flex: 1;
+}
+
+.order-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e3a34;
+}
+
+.order-date {
+  font-size: 14px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+/* Statistiche materiali */
+.order-stats {
+  margin-top: 10px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.order-stat {
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.order-stat.green strong {
+  color: #166534;
+}
+
+.order-stat.red strong {
+  color: #b91c1c;
+}
+
+/* Pulsante dettaglio */
+.order-actions {
+  display: flex;
+  align-items: center;
+}
+
+.btn-primary {
+  background: #166534;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(22, 101, 52, 0.4);
+  transition: 0.1s ease;
+}
+
+.btn-primary:hover {
+  background: #14532d;
+  transform: translateY(-1px);
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+  .order-card {
+    flex-direction: column;
+    text-align: left;
+  }
+
+  .order-actions {
+    justify-content: flex-start;
+  }
+}

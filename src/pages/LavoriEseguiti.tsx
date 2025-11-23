@@ -1,0 +1,216 @@
+// src/pages/LavoriEseguiti.tsx
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { setItemSync, getItemSync } from "../utils/storageSync";
+import { generateTablePDF } from "../utils/pdfEngine";     // <── PDF ENGINE
+import "./LavoriEseguiti.css";
+
+interface SottoElemento {
+  id: string;
+  descrizione: string;
+  quantita?: number;
+  eseguito: boolean;
+}
+
+interface Lavoro {
+  id: string;
+  gruppoId: string;
+  tipo: "targa" | "magazzino";
+  descrizione: string;
+  targa?: string;
+  segnalatoDa?: string;
+  dataInserimento: string;
+  eseguito: boolean;
+  chiHaEseguito?: string;
+  dataEsecuzione?: string;
+  sottoElementi: SottoElemento[];
+}
+
+interface LavoroGroup {
+  title: string;
+  data: Lavoro[];
+}
+
+const formatDate = (iso?: string) => {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "-";
+  return `${String(d.getDate()).padStart(2, "0")}/${String(
+    d.getMonth() + 1
+  ).padStart(2, "0")}/${d.getFullYear()}`;
+};
+
+const formatDateGGMMYYYY = (iso?: string) => {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "-";
+  return `${String(d.getDate()).padStart(2, "0")} ${String(
+    d.getMonth() + 1
+  ).padStart(2, "0")} ${d.getFullYear()}`;
+};
+
+const getWeekRange = (iso?: string) => {
+  if (!iso) return "Sconosciuto";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return "Sconosciuto";
+
+  const day = date.getDay() === 0 ? 7 : date.getDay();
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - (day - 1));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const fmt = (d: Date) =>
+    `${String(d.getDate()).padStart(2, "0")}/${String(
+      d.getMonth() + 1
+    ).padStart(2, "0")}/${d.getFullYear()}`;
+
+  return `${fmt(monday)} - ${fmt(sunday)}`;
+};
+
+const LavoriEseguiti: React.FC = () => {
+  const navigate = useNavigate();
+  const [sections, setSections] = useState<LavoroGroup[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const loadLavori = async () => {
+    const json = await getItemSync("@lavori");
+    const data: Lavoro[] = json ? json : [];
+
+    const eseguiti = data
+      .filter((l) => l.eseguito)
+      .sort(
+        (a, b) =>
+          new Date(a.dataEsecuzione || "").getTime() -
+          new Date(b.dataEsecuzione || "").getTime()
+      );
+
+    const grouped: Record<string, Lavoro[]> = {};
+    eseguiti.forEach((l) => {
+      const key = getWeekRange(l.dataEsecuzione);
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(l);
+    });
+
+    const arr: LavoroGroup[] = Object.keys(grouped).map((key) => ({
+      title: key,
+      data: grouped[key],
+    }));
+
+    setSections(arr);
+  };
+
+  useEffect(() => {
+    loadLavori();
+  }, []);
+
+  // 🔥 INTEGRAZIONE PDF ENGINE UFFICIALE
+  const handleExportPDF = async (lavori: Lavoro[], titolo: string) => {
+    if (lavori.length === 0) return;
+
+    const rows = lavori.map((l) => ({
+  Descrizione: l.descrizione,
+  Targa: l.targa || "-",
+  Inserimento: formatDateGGMMYYYY(l.dataInserimento),
+  Esecuzione: formatDateGGMMYYYY(l.dataEsecuzione),
+}));
+
+
+    // colonne opzionali
+    const columns = ["Descrizione", "Targa", "Inserimento", "Esecuzione"];
+
+    await generateTablePDF(titolo, rows, columns);
+  };
+
+  const handleDelete = async (id: string) => {
+    const json = await getItemSync("@lavori");
+    let all: Lavoro[] = json ? json : [];
+
+    all = all.filter((l) => l.id !== id);
+    await setItemSync("@lavori", all);
+
+    setSections((prev) =>
+      prev
+        .map((sec) => ({
+          ...sec,
+          data: sec.data.filter((l) => l.id !== id),
+        }))
+        .filter((sec) => sec.data.length > 0)
+    );
+  };
+
+  return (
+    <div className="le-container">
+
+      <div className="le-header">
+        <div className="le-icon">🚚</div>
+        <div className="le-title">LAVORI ESEGUITI</div>
+      </div>
+
+      {sections.map((sec) => {
+        const isOpen = expanded[sec.title];
+
+        return (
+          <div key={sec.title} className="le-section">
+            <div
+              className="le-week-row"
+              onClick={() =>
+                setExpanded((p) => ({ ...p, [sec.title]: !isOpen }))
+              }
+            >
+              <span className="le-week-text">Settimana {sec.title}</span>
+
+              <button
+                className="le-pdf-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExportPDF(sec.data, sec.title);
+                }}
+              >
+                📄 PDF
+              </button>
+
+              <span className="le-arrow">{isOpen ? "▲" : "▼"}</span>
+            </div>
+
+            {isOpen && (
+              <div className="le-work-list">
+                {sec.data.map((lavoro) => (
+                  <div key={lavoro.id} className="le-work-item">
+                    <div
+                      className="le-work-left"
+                      onClick={() =>
+                        navigate(`/dettagliolavori?lavoroId=${lavoro.id}`)
+                      }
+                    >
+                      <div className="le-work-title">{lavoro.descrizione}</div>
+                      <div className="le-work-date">
+                        Inserito: {formatDate(lavoro.dataInserimento)}
+                      </div>
+                      <div className="le-work-date">
+                        Eseguito: {formatDate(lavoro.dataEsecuzione)}
+                      </div>
+                    </div>
+
+                    <button
+                      className="le-delete-btn"
+                      onClick={() => handleDelete(lavoro.id)}
+                    >
+                      Elimina
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <button className="le-back-btn" onClick={() => navigate(-1)}>
+        TORNA INDIETRO
+      </button>
+    </div>
+  );
+};
+
+export default LavoriEseguiti;

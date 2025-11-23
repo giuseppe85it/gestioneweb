@@ -1,0 +1,303 @@
+.lia-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #d5ddcf;
+  padding: 16px;
+}
+
+/* CARD PRINCIPALE */
+.lia-card {
+  width: 420px;
+  max-width: 100%;
+  max-height: 90vh;
+  background: #f6f1e7;
+  border-radius: 32px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.16);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* HEADER */
+.lia-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.lia-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lia-header-icon {
+  width: 56px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2d8b3a, #3f9a48);
+}
+
+.lia-header-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #26462c;
+}
+
+.lia-header-right {
+  font-size: 18px;
+  font-weight: 700;
+  color: #26462c;
+}
+
+/* BARRA FILTRO (SELECT) */
+.lia-filter-bar {
+  margin-bottom: 12px;
+}
+
+.lia-filter-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #6a7c6f;
+  margin-bottom: 6px;
+}
+
+.lia-select-wrapper {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+}
+
+.lia-select {
+  width: 100%;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 10px 40px 10px 14px;
+  border-radius: 16px;
+  border: 1px solid #c4c9b8;
+  background: #ffffff;
+  color: #27422c;
+  outline: none;
+  appearance: none;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+
+.lia-select:focus {
+  border-color: #2d8b3a;
+  box-shadow: 0 0 0 2px rgba(45, 139, 58, 0.2);
+}
+
+.lia-select-arrow {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  pointer-events: none;
+  color: #3a7a23;
+}
+
+/* CONTENUTO SCORREVOLE */
+.lia-content {
+  flex: 1;
+  margin-top: 4px;
+  padding-right: 4px;
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+/* scrollbar stilizzata (browser moderni) */
+.lia-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lia-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lia-content::-webkit-scrollbar-thumb {
+  background: #c7cdbf;
+  border-radius: 6px;
+}
+
+/* SEZIONI GRUPPI */
+.lia-section {
+  background: #f3edde;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  border: 1px solid #d9d0bf;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lia-section--open {
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14);
+}
+
+.lia-section--closed {
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+/* HEADER GRUPPO */
+.lia-section-header {
+  background: #3a7a23;
+  color: white;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.lia-section-title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.lia-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* chevron animato */
+.lia-section-chevron {
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.lia-section-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* CORPO GRUPPO CON ANIMAZIONE COLLASSO */
+.lia-section-body {
+  padding: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
+}
+
+.lia-section-body--open {
+  max-height: 800px; /* valore alto per contenere più card */
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lia-section-body--closed {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* CARD LAVORO */
+.lia-job-card {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  background: #ffffff;
+  border-bottom: 1px solid #e5dcc8;
+  cursor: pointer;
+  border-radius: 14px;
+  margin: 10px 10px 12px 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.1s ease;
+}
+
+.lia-job-card:hover {
+  background: #fff7e6;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.16);
+}
+
+.lia-job-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lia-job-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #26462c;
+}
+
+.lia-job-date {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a4a4a;
+}
+
+/* Badge Priorità */
+.lia-job-right {
+  display: flex;
+  align-items: center;
+}
+
+.lia-urgency {
+  min-width: 80px;
+  text-align: center;
+  border-radius: 16px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  color: white;
+  margin-top: 4px;
+}
+
+.lia-urgency--alta {
+  background: #d9483e;
+}
+
+.lia-urgency--media {
+  background: #f29b22;
+}
+
+.lia-urgency--bassa {
+  background: #f2d45b;
+  color: #4e430d;
+}
+
+.lia-urgency--default {
+  background: #f29b22;
+}
+
+/* Footer */
+.lia-footer {
+  margin-top: 16px;
+}
+
+.lia-back-button {
+  width: 100%;
+  padding: 12px 16px;
+  background: #3a7a23;
+  color: white;
+  border-radius: 20px;
+  font-size: 18px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+}
+
+.lia-back-button:hover {
+  background: #2f661c;
+}
+
+/* BOTTONE PDF INLINE */
+.lia-pdf-inline {
+  background: white;
+  border: 1px solid #d3cdc0;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.lia-pdf-inline:hover {
+  background: #f0e9dd;
+}

@@ -1,0 +1,117 @@
+/* Container generale */
+.le-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 18px;
+  background: #f7f7ef;
+  border-radius: 22px;
+}
+
+/* Header */
+.le-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.le-icon {
+  font-size: 42px;
+  margin-bottom: 6px;
+}
+
+.le-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #1d3b1a;
+}
+
+/* RIGA SETTIMANA */
+.le-section {
+  margin-bottom: 18px;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e5e5d8;
+}
+
+.le-week-row {
+  padding: 14px;
+  background: #e8f2e3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.le-week-text {
+  font-size: 18px;
+  color: #2b6022;
+  font-weight: bold;
+}
+
+/* pdf button */
+.le-pdf-btn {
+  background: white;
+  border: 1px solid #2b6022;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-right: 8px;
+  font-size: 14px;
+  color: #2b6022;
+}
+
+/* Arrow */
+.le-arrow {
+  font-size: 18px;
+  color: #2b6022;
+  font-weight: bold;
+}
+
+/* LISTA LAVORI */
+.le-work-list {
+  padding: 10px 14px;
+}
+
+.le-work-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+}
+
+.le-work-left {
+  cursor: pointer;
+}
+
+.le-work-title {
+  font-size: 17px;
+  font-weight: bold;
+  color: #333;
+}
+
+.le-work-date {
+  font-size: 14px;
+  color: #666;
+}
+
+/* elimina */
+.le-delete-btn {
+  background: transparent;
+  border: none;
+  color: red;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* back */
+.le-back-btn {
+  margin-top: 20px;
+  width: 100%;
+  padding: 14px;
+  background: #2b6022;
+  color: white;
+  font-size: 20px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+}

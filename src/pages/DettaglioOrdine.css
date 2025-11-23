@@ -1,0 +1,350 @@
+/* ================
+   LAYOUT PRINCIPALE
+   ================ */
+
+.mdo-page {
+  background: #c9d1c2;          /* sfondo verde identico */
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding-top: 15px;
+}
+
+.mdo-card {
+  background: #f5efe0;          /* beige identico */
+  width: 430px;                 /* stessa larghezza di MaterialiDaOrdinare */
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 0 8px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* ================
+   HEADER IDENTICO
+   ================ */
+
+.dord-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dord-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dord-logo {
+  height: 42px;
+}
+
+.dord-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #2d3328;
+}
+
+.dord-header-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+/* ================
+   BUTTONS
+   ================ */
+
+.btn-primary {
+  background: #2c5530;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: #234626;
+}
+
+.btn-secondary {
+  background: #f7fff3;
+  color: #1f3d23;
+  border: 1px solid #9dc39f;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0,0,0,0.15);
+  transition: 0.15s;
+}
+
+.btn-secondary:hover {
+  background: #e3ffe0;
+  border-color: #7bbd7a;
+}
+
+
+.btn-toggle {
+  background: #d9902f;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-toggle:hover {
+  background: #b4741f;
+}
+
+.btn-add {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-danger {
+  background: #b91c1c;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ================
+   STATO ORDINE
+   ================ */
+
+.dord-status {
+  display: flex;
+  justify-content: center;
+}
+
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge-red    { background: #fee2e2; color: #b91c1c; }
+.badge-yellow { background: #fef3c7; color: #b45309; }
+.badge-green  { background: #dcfce7; color: #166534; }
+
+/* ================
+   BOX INFO ORDINE (VERSIONE C)
+   ================ */
+.dord-info-box {
+  background: #fffdf5;
+  border: 2px solid #c8b892;
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  font-size: 15px;
+  font-weight: 700;
+  color: #2b2b2b;
+
+  width: fit-content;          /* larghezza solo quanto serve */
+  max-width: 280px;            /* limite massimo elegante */
+  margin: 0 auto;              /* centrato */
+  text-align: left;
+
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+
+.dord-info-box span {
+  display: block;
+  line-height: 1.2;
+}
+.dord-title {
+  font-size: 21px;
+  font-weight: 800;
+  color: #1f2b1c;
+  letter-spacing: 0.3px;
+}
+
+
+/* ================
+   AGGIUNGI MATERIALE
+   ================ */
+
+.add-box {
+  background: #fffdf6;
+  border: 1px solid #d6ccb6;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-input {
+  border: 1px solid #c8bea6;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
+.add-row {
+  display: flex;
+  gap: 10px;
+}
+
+.add-qty {
+  width: 70px;
+}
+
+.add-unit {
+  width: 75px;
+}
+
+/* ================
+   LISTA MATERIALI (SCROLL)
+   ================ */
+
+.materials-list {
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 6px;
+}
+
+/* scrollbar elegante */
+.materials-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.materials-list::-webkit-scrollbar-thumb {
+  background: #b7b7ac;
+  border-radius: 6px;
+}
+
+/* ================
+   MATERIAL CARD
+   ================ */
+
+.material-card {
+  display: flex;
+  gap: 10px;
+  background: #fdf7ec;
+  border: 1px solid #e5d7c2;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.photo-box {
+  width: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.photo {
+  width: 130px;
+  height: 95px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid #d1c4a8;
+}
+
+.photo-placeholder {
+  width: 130px;
+  height: 95px;
+  border-radius: 10px;
+  border: 1px solid #d1c4a8;
+  background: #fffdf7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #777;
+}
+
+.mat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mat-desc {
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* QTA / UNITA */
+.mat-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.input-qty {
+  width: 70px;
+  border: 1px solid #c8bea6;
+  border-radius: 8px;
+  padding: 5px;
+  text-align: center;
+}
+
+.input-unit {
+  width: 75px;
+  border: 1px solid #c8bea6;
+  border-radius: 8px;
+  padding: 5px;
+}
+
+/* ARRIVATO */
+.mat-arr {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.arr-green {
+  color: #166534;
+  font-weight: 700;
+}
+
+.arr-red {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.arr-date {
+  font-size: 12px;
+  color: #666;
+}
+
+.input-date {
+  width: 120px;
+  border: 1px solid #c8bea6;
+  border-radius: 8px;
+  padding: 5px;
+}
+
+/* ELIMINA */
+.btn-elimina {
+  margin-top: 4px;
+  width: 100px;
+}

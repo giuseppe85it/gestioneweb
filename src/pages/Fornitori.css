@@ -1,0 +1,216 @@
+/* --- Layout Generale --- */
+.forn-page {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.forn-card {
+  width: 430px;
+  background: #fffdf5;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  border: 2px solid #d8c8a5;
+}
+
+/* --- Header --- */
+.forn-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.forn-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.forn-logo {
+  width: 45px;
+  height: 45px;
+}
+
+.forn-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #2b2b2b;
+}
+
+/* --- Errori --- */
+.forn-error {
+  background: #ffdfdf;
+  color: #8a1c1c;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+/* --- Form --- */
+.forn-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.forn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forn-field label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.forn-field input,
+.forn-field textarea {
+  padding: 8px 10px;
+  border: 2px solid #c8b892;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 14px;
+  outline: none;
+}
+
+.forn-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+/* FIX campo CODICE che usciva dal riquadro */
+.forn-grid input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.forn-grid div {
+  min-width: 0;
+}
+
+
+/* --- Pulsanti --- */
+.forn-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-primary {
+  flex: 1;
+  padding: 10px;
+  background: #2d8b3a;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: #24702f;
+}
+
+.btn-secondary {
+  flex: 1;
+  padding: 10px;
+  background: #345f8a;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #284a6a;
+}
+
+.btn-danger {
+  flex: 1;
+  padding: 10px;
+  background: #a63030;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #8b2626;
+}
+
+/* --- Lista Fornitori --- */
+.forn-list {
+  background: #fffaf0;
+  border-radius: 14px;
+  border: 2px solid #d8c8a5;
+  padding: 12px;
+}
+
+.forn-list-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+
+.forn-empty {
+  padding: 12px;
+  font-size: 14px;
+  font-style: italic;
+  text-align: center;
+}
+
+.forn-list-scroll {
+  max-height: 350px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.forn-item {
+  background: #ffffff;
+  border: 2px solid #d8c8a5;
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.forn-item-name {
+  font-weight: 800;
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+
+.forn-item-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.forn-tag {
+  background: #ece4d1;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.forn-item-desc {
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+/* --- Azioni --- */
+.forn-item-actions {
+  display: flex;
+  gap: 8px;
+}

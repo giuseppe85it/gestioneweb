@@ -1,0 +1,216 @@
+/* --- Layout Generale --- */
+.coll-page {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.coll-card {
+  width: 430px;
+  background: #fffdf5;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  border: 2px solid #d8c8a5;
+}
+
+/* --- Header --- */
+.coll-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.coll-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.coll-logo {
+  width: 45px;
+  height: 45px;
+}
+
+.coll-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #2b2b2b;
+}
+
+/* --- Errori --- */
+.coll-error {
+  background: #ffdfdf;
+  color: #8a1c1c;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+/* --- Form --- */
+.coll-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.coll-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coll-field label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.coll-field input,
+.coll-field textarea {
+  padding: 8px 10px;
+  border: 2px solid #c8b892;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 14px;
+  outline: none;
+}
+
+.coll-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+/* --- Pulsanti --- */
+.coll-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-primary {
+  flex: 1;
+  padding: 10px;
+  background: #2d8b3a;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: #24702f;
+}
+
+.btn-secondary {
+  flex: 1;
+  padding: 10px;
+  background: #345f8a;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #284a6a;
+}
+
+.btn-danger {
+  flex: 1;
+  padding: 10px;
+  background: #a63030;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #8b2626;
+}
+
+/* --- Lista Colleghi --- */
+.coll-list {
+  background: #fffaf0;
+  border-radius: 14px;
+  border: 2px solid #d8c8a5;
+  padding: 12px;
+}
+
+.coll-list-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+
+.coll-empty {
+  padding: 12px;
+  font-size: 14px;
+  font-style: italic;
+  text-align: center;
+}
+
+.coll-list-scroll {
+  max-height: 350px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.coll-item {
+  background: #ffffff;
+  border: 2px solid #d8c8a5;
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.coll-item-name {
+  font-weight: 800;
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+
+.coll-item-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.coll-tag {
+  background: #ece4d1;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.coll-item-desc {
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+/* --- Azioni --- */
+.coll-item-actions {
+  display: flex;
+  gap: 8px;
+}
+/* FIX campi della griglia che uscivano fuori dal riquadro */
+.coll-grid input,
+.coll-grid textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.coll-grid > div {
+  min-width: 0;
+}

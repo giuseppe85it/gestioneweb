@@ -1,0 +1,294 @@
+/* SFONDO ESTERNO */
+.lde-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #d1d3cc;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+/* TELEFONO / CARD GRANDE */
+.lde-phone {
+  width: 380px;
+  max-width: 100%;
+  background: #f1efe9;
+  border-radius: 36px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
+  padding: 22px 18px 26px;
+  box-sizing: border-box;
+}
+
+/* HEADER SUPERIORE */
+.lde-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.lde-truck-wrap {
+  width: 70px;
+  height: 38px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.lde-truck-img {
+  width: 64px;
+  height: auto;
+}
+
+.lde-header-right {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: #294f2a;
+}
+
+/* TITOLO PRINCIPALE */
+.lde-title {
+  margin: 0 0 16px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #2c5c30;
+}
+
+/* TABS */
+.lde-tabs {
+  display: flex;
+  background: #deddd7;
+  border-radius: 18px;
+  padding: 3px;
+  margin-bottom: 18px;
+}
+
+.lde-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  padding: 8px 4px;
+  border-radius: 14px;
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #616a64;
+  background: transparent;
+}
+
+.lde-tab-active {
+  background: #f3f1eb;
+  color: #214827;
+}
+
+/* BOX SEZIONI */
+.lde-section {
+  background: #f6f4ee;
+  border-radius: 22px;
+  padding: 16px 14px 18px;
+  border: 1px solid #d2d0c8;
+  box-sizing: border-box;
+}
+
+.lde-section + .lde-section {
+  margin-top: 14px;
+}
+
+.lde-section-title {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #285c30;
+}
+
+/* SWITCH MAGAZZINO/TARGA */
+.lde-switch {
+  display: flex;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #e1dfd9;
+  margin-bottom: 12px;
+}
+
+.lde-switch-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 10px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #33503a;
+  cursor: pointer;
+}
+
+.lde-switch-active {
+  background: #3e8b35;
+  color: #ffffff;
+}
+
+/* INPUTS */
+.lde-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #d4d2c9;
+  background: #f0eee7;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #2a4130;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.lde-input-date {
+  font-weight: 600;
+}
+
+.lde-input:focus {
+  outline: none;
+  border-color: #3e8b35;
+  box-shadow: 0 0 0 1px rgba(62, 139, 53, 0.18);
+}
+
+/* PRIORITÀ */
+.lde-priority-row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.lde-priority {
+  flex: 1;
+  border-radius: 18px;
+  border: none;
+  padding: 9px 4px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.lde-priority.active {
+  opacity: 1;
+}
+
+.lde-priority-low {
+  background: #3e8b35;
+}
+
+.lde-priority-medium {
+  background: #f0a62f;
+}
+
+.lde-priority-high {
+  background: #d6523f;
+}
+
+/* BOTTONE PRINCIPALE (AGGIUNGI + SALVA GRUPPO) */
+.lde-main-btn {
+  width: 100%;
+  border-radius: 20px;
+  border: none;
+  padding: 11px 8px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  background: #3e8b35;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.lde-save-btn {
+  margin-top: 12px;
+}
+
+/* LISTA LAVORI TEMPORANEI */
+.lde-list {
+  margin: 4px 0 10px;
+}
+
+.lde-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px;
+}
+
+.lde-list-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lde-list-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #254130;
+}
+
+.lde-list-subline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lde-list-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.lde-list-icon-img {
+  width: 100%;
+  height: auto;
+}
+
+.lde-list-subtext {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #274734;
+}
+
+/* BADGE URGENZA NELLA LISTA */
+.lde-badge {
+  min-width: 60px;
+  padding: 6px 10px;
+  border-radius: 18px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+}
+
+.lde-badge.low {
+  background: #3e8b35;
+}
+
+.lde-badge.medium {
+  background: #f0a62f;
+}
+
+.lde-badge.high {
+  background: #d6523f;
+}
+
+/* STATO VUOTO */
+.lde-empty {
+  font-size: 12px;
+  color: #75766f;
+  text-align: center;
+  padding: 8px 0;
+}
