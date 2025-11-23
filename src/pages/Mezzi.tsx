@@ -307,11 +307,14 @@ const Mezzi: React.FC = () => {
 
       const imageBase64 = extractBase64FromDataURL(dataUrl);
 
-      const res = await fetch("/api/estrai-libretto", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64 }),
-      });
+     const res = await fetch(
+  "https://gestioneweb-is45.vercel.app/api/estrai-libretto",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64 }),
+  }
+);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
