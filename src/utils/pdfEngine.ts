@@ -129,34 +129,14 @@ function detectKind(input: any): "lavori" | "mezzo" | "table" {
 }
 // --------------------------------------------------------
 // 🧠 IA PDF – Modalità disponibili
-// --------------------------------------------------------
-type PdfIAMode = "none" | "enhance" | "summary" | "pro";
+
 type PdfKind = "lavori" | "mezzo" | "table";
 
 /**
  * Modalità scelta dall’utente.
  * (Lasciata per compatibilità — ma la IA FULL MODE la attiveremo automaticamente)
  */
-async function askPdfIAMode(): Promise<PdfIAMode> {
-  if (typeof window === "undefined") return "none"; // SSR safety
 
-  const answer = window.prompt(
-    "Seleziona tipo PDF:\n" +
-      "1 = PDF normale\n" +
-      "2 = PDF migliorato con IA\n" +
-      "3 = Riassunto breve con IA\n" +
-      "4 = Riassunto professionale con IA",
-    "1"
-  );
-
-  const choice = (answer || "1").trim();
-
-  if (choice === "2") return "enhance";
-  if (choice === "3") return "summary";
-  if (choice === "4") return "pro";
-
-  return "none";
-}
 
 /**
  * Costruisce il testo grezzo da dare alla IA
