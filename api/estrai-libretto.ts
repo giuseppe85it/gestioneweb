@@ -6,7 +6,7 @@
 // - Runtime Node (veloce per immagini pesanti)
 
 export const config = {
-  runtime: "nodejs" as const,
+  runtime: "nodejs",
 };
 
 export default async function handler(req: Request): Promise<Response> {
