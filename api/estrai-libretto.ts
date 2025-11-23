@@ -1,9 +1,10 @@
 // api/estrai-libretto.ts
-// IA Libretto – Versione ULTRA VELOCE COMPATIBILE NODE
-// - Compress WebP (Sharp)
-// - gpt-4o (OCR molto veloce)
-// - CORS completo
-// - Runtime Node (corretto per immagini pesanti)
+// Versione UltraFast compatibile con Vercel Free (≤10s)
+// - Resize immagine max 1024px
+// - Compress WebP qualità 70
+// - gpt-4o-mini (molto più veloce sulle immagini)
+// - Timeout interno a 8.5 secondi
+// - Runtime Node stable
 
 import sharp from "sharp";
 
@@ -11,10 +12,14 @@ export const config = {
   runtime: "nodejs",
 };
 
+function abortAfter(ms: number): Promise<never> {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("TIMEOUT_8500MS")), ms)
+  );
+}
+
 export default async function handler(req: Request): Promise<Response> {
-  // -------------------------------------------------
-  // CORS
-  // -------------------------------------------------
+  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -49,38 +54,42 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    // -------------------------------------------------
-    // BASE64 → BINARY BUFFER
-    // -------------------------------------------------
+    // -------------------------------------------------------------
+    // BASE64 → BUFFER
+    // -------------------------------------------------------------
     const base64data = imageBase64.split(",").pop()!;
     const buffer = Buffer.from(base64data, "base64");
 
-    // -------------------------------------------------
-    // COMPRESS WEBP (SHARP - PERFETTO PER NODE)
-    // -------------------------------------------------
+    // -------------------------------------------------------------
+    // RESIZE + COMPRESS WEBP ULTRA FAST
+    // - max 1024px
+    // - qualità 70
+    // - output leggero
+    // -------------------------------------------------------------
     const compressedBuffer = await sharp(buffer)
-      .webp({ quality: 80 })
+      .resize({ width: 1024, height: 1024, fit: "inside" })
+      .webp({ quality: 70 })
       .toBuffer();
 
     const compressedBase64 =
       "data:image/webp;base64," + compressedBuffer.toString("base64");
 
-    // -------------------------------------------------
-    // IA (GPT-4O) – VELOCISSIMA
-    // -------------------------------------------------
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    // -------------------------------------------------------------
+    // CHIAMATA IA CON TIMEOUT 8500ms (8.5 secondi)
+    // -------------------------------------------------------------
+    const aiCall = fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 400,
+        model: "gpt-4o-mini",
+        max_tokens: 350,
         messages: [
           {
             role: "system",
-            content: `Estrai SOLO questi campi in JSON:
+            content: `Estrai SOLO questi campi del libretto, in JSON:
 - targa
 - marca
 - modello
@@ -93,12 +102,14 @@ export default async function handler(req: Request): Promise<Response> {
 - assicurazione
 - proprietario
 
-Se non c’è, restituisci "".`,
+Se non presente → restituisci "".
+
+Rispondi SOLO con JSON.`,
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Analizza questo libretto svizzero." },
+              { type: "text", text: "Analizza questa immagine del libretto." },
               {
                 type: "image_url",
                 image_url: compressedBase64,
@@ -109,14 +120,34 @@ Se non c’è, restituisci "".`,
       }),
     });
 
-    const out = await aiRes.json();
+    // Race: AI vs Timeout
+    const aiRes = await Promise.race([aiCall, abortAfter(8500)]);
 
+    const json = await aiRes.json();
+
+    // Timeout interno
+    if (json?.message === "TIMEOUT_8500MS") {
+      return new Response(
+        JSON.stringify({
+          error: "IA timeout (8.5s). Riprova con una foto più vicina.",
+        }),
+        {
+          status: 504,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+
+    // OpenAI error
     if (!aiRes.ok) {
       return new Response(
         JSON.stringify({
           error: "OpenAI error",
           status: aiRes.status,
-          details: out,
+          details: json,
         }),
         {
           status: 500,
@@ -128,7 +159,8 @@ Se non c’è, restituisci "".`,
       );
     }
 
-    return new Response(JSON.stringify(out), {
+    // OK
+    return new Response(JSON.stringify(json), {
       status: 200,
       headers: {
         "Content-Type": "application/json",
