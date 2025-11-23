@@ -1,1 +1,21 @@
+# Ignora node_modules
+node_modules/
+
+# Ignora build Vite
+dist/
+
+# Ignora file ambiente
 .env
+.env.local
+.env.production
+.env.development
+
+# Ignora log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignora sistema
+.DS_Store
+Thumbs.db
+
