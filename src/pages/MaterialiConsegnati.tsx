@@ -1,5 +1,5 @@
 // src/pages/MaterialiConsegnati.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import  { useEffect, useMemo, useState } from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import type { InventarioItem } from "./Inventario";

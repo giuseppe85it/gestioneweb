@@ -1,6 +1,6 @@
 // src/pages/Fornitori.tsx
 
-import React, { useEffect, useState } from "react";
+import  { useEffect, useState } from "react";
 import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateSmartPDF } from "../utils/pdfEngine";

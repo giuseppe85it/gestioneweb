@@ -1,6 +1,6 @@
 // src/pages/OrdiniInAttesa.tsx
 
-import React, { useEffect, useState } from "react";
+import  { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import type { Ordine } from "../types/ordini";

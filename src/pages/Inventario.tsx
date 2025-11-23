@@ -1,5 +1,5 @@
 // src/pages/Inventario.tsx
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import "./Inventario.css";
