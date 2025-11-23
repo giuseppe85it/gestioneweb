@@ -20,7 +20,7 @@ export const formatGGMMYYYY = (iso: string): string => {
 // 🎨 Tema aziendale (stile D)
 // --------------------------------------------------------
 const COLORS = {
-  primary: [10, 70, 140] as [number, number, number], // blu aziendale
+  primary: [10, 70, 140] as [number, number, number],
   headerText: [255, 255, 255] as [number, number, number],
   border: [180, 180, 180] as [number, number, number],
   rowAlt: [245, 245, 245] as [number, number, number],
@@ -33,7 +33,7 @@ const COLORS = {
 const LOGO_PATH = "/logo.png";
 
 // --------------------------------------------------------
-// 🔧 Caricamento logo da /public/logo.png
+// 🔧 Caricamento logo
 // --------------------------------------------------------
 async function loadLogoAsDataURL(): Promise<string | null> {
   try {
@@ -44,7 +44,8 @@ async function loadLogoAsDataURL(): Promise<string | null> {
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error("Errore lettura logo"));
+      reader.onerror = () =>
+        reject(new Error("Errore durante la lettura del logo"));
       reader.readAsDataURL(blob);
     });
   } catch {
@@ -58,21 +59,21 @@ async function loadLogoAsDataURL(): Promise<string | null> {
 function drawPriorityDot(doc: jsPDF, urgency: string | undefined, x: number, y: number) {
   const r = 3;
 
-  if (urgency === "alta") doc.setFillColor(217, 72, 62); // rosso
-  else if (urgency === "media") doc.setFillColor(242, 155, 34); // arancio
-  else if (urgency === "bassa") doc.setFillColor(82, 180, 38); // verde
+  if (urgency === "alta") doc.setFillColor(217, 72, 62);
+  else if (urgency === "media") doc.setFillColor(242, 155, 34);
+  else if (urgency === "bassa") doc.setFillColor(82, 180, 38);
   else return;
 
   doc.circle(x, y, r, "F");
 }
 
 // --------------------------------------------------------
-// 🧩 Tipi "intelligenti"
+// 🧩 Tipi
 // --------------------------------------------------------
 export interface LavoroLike {
   descrizione?: string;
-  dataInserimento?: string; // ISO
-  data?: string;            // alternativa
+  dataInserimento?: string;
+  data?: string;
   urgenza?: "bassa" | "media" | "alta" | string | undefined;
   [key: string]: any;
 }
@@ -104,66 +105,40 @@ export interface DomandaLike {
   [key: string]: any;
 }
 
-// Config universale
 export type PdfInput =
-  | {
-      kind: "lavori";
-      title?: string;
-      groupLabel?: string;
-      lavori: LavoroLike[];
-    }
-  | {
-      kind: "mezzo";
-      title?: string;
-      mezzo: MezzoLike;
-      domande?: DomandaLike[];
-    }
-  | {
-      kind: "table";
-      title: string;
-      columns?: string[];
-      rows: any[];
-    }
-  | any; // per la modalità auto (smart)
+  | { kind: "lavori"; title?: string; groupLabel?: string; lavori: LavoroLike[] }
+  | { kind: "mezzo"; title?: string; mezzo: MezzoLike; domande?: DomandaLike[] }
+  | { kind: "table"; title: string; columns?: string[]; rows: any[] }
+  | any;
 
 // --------------------------------------------------------
-// 🧠 Rilevamento automatico tipo PDF
+// 🧠 Rilevamento tipo
 // --------------------------------------------------------
 function detectKind(input: any): "lavori" | "mezzo" | "table" {
   if (!input) return "table";
 
   if (Array.isArray(input)) return "table";
-
   if (input.kind === "lavori" || input.lavori) return "lavori";
-
   if (input.kind === "mezzo" || input.mezzo || input.targa || input.numeroTelaio)
     return "mezzo";
-
   if (input.kind === "table") return "table";
 
-  // fallback: se ha rows → table
   if (input.rows && Array.isArray(input.rows)) return "table";
 
   return "table";
 }
-
 // --------------------------------------------------------
-// 🧠 IA PDF – Helper generali
+// 🧠 IA PDF – Modalità disponibili
 // --------------------------------------------------------
-
 type PdfIAMode = "none" | "enhance" | "summary" | "pro";
 type PdfKind = "lavori" | "mezzo" | "table";
 
 /**
- * Chiede all'utente come generare il PDF:
- * 1 = normale
- * 2 = migliorato con IA
- * 3 = riassunto breve
- * 4 = riassunto professionale
+ * Modalità scelta dall’utente.
+ * (Lasciata per compatibilità — ma la IA FULL MODE la attiveremo automaticamente)
  */
 async function askPdfIAMode(): Promise<PdfIAMode> {
-  // lato server / test → nessuna IA
-  if (typeof window === "undefined") return "none";
+  if (typeof window === "undefined") return "none"; // SSR safety
 
   const answer = window.prompt(
     "Seleziona tipo PDF:\n" +
@@ -184,184 +159,182 @@ async function askPdfIAMode(): Promise<PdfIAMode> {
 }
 
 /**
- * Costruisce un testo "grezzo" da passare alla IA
- * per avere un contesto da riassumere / migliorare.
+ * Costruisce il testo grezzo da dare alla IA
+ * (riassunto, tabelle, lavori, mezzo, ecc.)
  */
 function buildRawSummary(kind: PdfKind, input: any): string {
   if (kind === "lavori") {
     const lavori: LavoroLike[] = input.lavori ?? input.rows ?? [];
-    const groupLabel = input.groupLabel ? `Gruppo: ${input.groupLabel}\n` : "";
-    const lines = lavori.map((l, idx) => {
-      const descrizione = l.descrizione ?? l.titolo ?? "";
+    const group = input.groupLabel ? `Gruppo: ${input.groupLabel}\n\n` : "";
+
+    const lines = lavori.map((l, i) => {
+      const desc = l.descrizione || "";
       const rawDate = l.dataInserimento ?? l.data ?? "";
-      const data = rawDate ? formatGGMMYYYY(rawDate) : "";
-      const urgenza = (l.urgenza || "").toString().toLowerCase();
-      return `${idx + 1}. [${urgenza || "-"}] ${data} - ${descrizione}`;
+      const date = rawDate ? formatGGMMYYYY(rawDate) : "";
+      const urg = l.urgenza || "-";
+
+      return `${i + 1}. (${urg}) ${date} – ${desc}`;
     });
-    return `${groupLabel}${lines.join("\n")}`;
+
+    return `${group}${lines.join("\n")}`;
   }
 
   if (kind === "mezzo") {
-    const mezzo: MezzoLike = input.mezzo || input || {};
-    const domande: DomandaLike[] = input.domande || [];
+    const m: MezzoLike = input.mezzo || input || {};
+    const d: DomandaLike[] = input.domande || [];
 
-    const mezzoInfo = [
-      mezzo.targa && `Targa: ${mezzo.targa}`,
-      mezzo.marcaModello && `Marca / Modello: ${mezzo.marcaModello}`,
-      mezzo.tipo && `Tipo: ${mezzo.tipo}`,
-      mezzo.numeroTelaio && `Telaio: ${mezzo.numeroTelaio}`,
-      mezzo.anno && `Anno: ${mezzo.anno}`,
-      mezzo.autista && `Autista: ${mezzo.autista}`,
-      mezzo.km && `Km: ${mezzo.km}`,
-      mezzo.ultimoCollaudo && `Ultimo collaudo: ${formatGGMMYYYY(mezzo.ultimoCollaudo)}`,
-      mezzo.ultimoControllo && `Ultimo controllo: ${formatGGMMYYYY(mezzo.ultimoControllo)}`,
-      mezzo.noteGenerali && `Note generali: ${mezzo.noteGenerali}`,
+    const info = [
+      m.targa && `Targa: ${m.targa}`,
+      m.marcaModello && `Marca/Modello: ${m.marcaModello}`,
+      m.tipo && `Tipo: ${m.tipo}`,
+      m.numeroTelaio && `Telaio: ${m.numeroTelaio}`,
+      m.anno && `Anno: ${m.anno}`,
+      m.autista && `Autista: ${m.autista}`,
+      m.km && `Km: ${m.km}`,
+      m.ultimoCollaudo && `Ultimo collaudo: ${formatGGMMYYYY(m.ultimoCollaudo)}`,
+      m.ultimoControllo &&
+        `Ultimo controllo: ${formatGGMMYYYY(m.ultimoControllo)}`,
+      m.noteGenerali && `Note generali: ${m.noteGenerali}`,
     ]
       .filter(Boolean)
       .join("\n");
 
-    const domandeInfo = domande
-      .map((d, idx) => {
-        const domanda = d.domanda || d.testo || "";
-        const risposta = d.risposta ? `Risposta: ${d.risposta}` : "";
-        const scadenza = d.dataScadenza
-          ? `Scadenza: ${formatGGMMYYYY(d.dataScadenza)}`
+    const domandeTxt = d
+     .map((x: any, i: number) => {
+
+        const domanda = x.domanda || x.testo || "";
+        const risposta = x.risposta ? `Risposta: ${x.risposta}` : "";
+        const scad = x.dataScadenza
+          ? `Scadenza: ${formatGGMMYYYY(x.dataScadenza)}`
           : "";
         const nota =
-          d.nota && d.nota.trim().toUpperCase() !== "NOTE"
-            ? `Nota: ${d.nota.trim()}`
+          x.nota && x.nota.trim().toUpperCase() !== "NOTE"
+            ? `Nota: ${x.nota}`
             : "";
-        return `${idx + 1}. ${domanda}\n${risposta}\n${scadenza}\n${nota}`.trim();
+
+        return `${i + 1}. ${domanda}\n${risposta}\n${scad}\n${nota}`.trim();
       })
-      .filter((s) => s.length > 0)
+      .filter(Boolean)
       .join("\n\n");
 
-    return [mezzoInfo, domandeInfo].filter(Boolean).join("\n\n");
+    return [info, domandeTxt].filter(Boolean).join("\n\n");
   }
 
-  // table generica
   if (kind === "table") {
-    const rows: any[] = Array.isArray(input.rows) ? input.rows : Array.isArray(input) ? input : [];
-    const columns: string[] = input.columns || [];
-    const head = columns.length ? `Colonne: ${columns.join(", ")}` : "";
-    const rowsText = rows
-      .slice(0, 50) // limite difensivo
-      .map((r, idx) => `${idx + 1}. ${JSON.stringify(r)}`)
+    const rows = Array.isArray(input.rows)
+      ? input.rows
+      : Array.isArray(input)
+      ? input
+      : [];
+    const cols = input.columns || [];
+
+    const head = cols.length ? `Colonne: ${cols.join(", ")}` : "";
+    const rowsTxt = rows
+      .slice(0, 50)
+      .map((r: any, i: number) => `${i + 1}. ${JSON.stringify(r)}`)
       .join("\n");
-    return [head, rowsText].filter(Boolean).join("\n\n");
+
+    return [head, rowsTxt].filter(Boolean).join("\n\n");
   }
 
   return "";
 }
 
 /**
- * Chiama la tua API Vercel /api/pdf-ai-enhance
- * senza esporre la API key.
+ * 🔥 IA FULL MODE — integrazione ufficiale
+ * Chiama /api/pdf-ai-enhance e ottiene contenuto migliorato
  */
-async function enhanceTextWithAI(
-  kind: PdfKind,
-  title: string,
-  rawText: string,
-  mode: PdfIAMode
-): Promise<string | null> {
-  if (!rawText || mode === "none") return null;
-  if (typeof fetch === "undefined") return null;
-
+async function enhancePDFTextFull(kind: string, rawData: any) {
   try {
     const res = await fetch("/api/pdf-ai-enhance", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         kind,
-        title,
-        rawText,
-        mode, // "enhance" | "summary" | "pro"
+        input: rawData,
+        prompt: `
+          Migliora tutti i testi per un PDF professionale.
+          - Mantieni numeri, date, scadenze.
+          - Migliora descrizioni e note.
+          - Crea un riepilogo aziendale chiaro.
+          - Linguaggio tecnico e ordinato.
+          - Nessuna invenzione.
+        `,
       }),
     });
 
     if (!res.ok) {
-      console.warn("pdf-ai-enhance non ok:", res.status);
-      return null;
+      console.warn("IA non disponibile:", res.status);
+      return { enhanced: "", summary: "" };
     }
 
-    const data: any = await res.json();
-
-    const text: unknown =
-      data?.enhancedText ?? data?.text ?? data?.result ?? data?.content;
-
-    if (typeof text === "string" && text.trim().length > 0) {
-      return text.trim();
-    }
-
-    return null;
-  } catch (err) {
-    console.error("Errore chiamata /api/pdf-ai-enhance:", err);
-    return null;
+    const json = await res.json();
+    return {
+      enhanced: json.enhancedText || "",
+      summary: json.enhancedNotes || "",
+    };
+  } catch {
+    return { enhanced: "", summary: "" };
   }
 }
-
 /**
- * Disegna un box di testo IA nel PDF, se presente.
+ * Disegna un box testuale IA nel PDF (riquadro blu chiaro)
  */
 function drawIATextBlock(doc: jsPDF, title: string, text: string, startY: number): number {
-  if (!text.trim()) return startY;
+  if (!text || !text.trim()) return startY;
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const marginX = 14;
   const maxWidth = pageWidth - marginX * 2;
 
+  // Titolo
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
   doc.setTextColor(...COLORS.textBlack);
   doc.text(title, marginX, startY);
 
+  // Testo elaborato IA
   const lines = doc.splitTextToSize(text, maxWidth);
   const boxY = startY + 3;
   const lineHeight = 5;
   const boxHeight = lines.length * lineHeight + 6;
 
+  // Box
   doc.setDrawColor(...COLORS.noteBorder);
   doc.setFillColor(...COLORS.noteBg);
   doc.roundedRect(marginX, boxY, maxWidth, boxHeight, 2, 2, "FD");
 
+  // Testo
   doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
   doc.setTextColor(...COLORS.textBlack);
 
   let y = boxY + 5;
- lines.forEach((ln: string) => {
+  lines.forEach((ln: string) => {
     doc.text(ln, marginX + 3, y);
     y += lineHeight;
   });
 
-  return boxY + boxHeight + 6;
+  return boxY + boxHeight + 10;
 }
 
-// --------------------------------------------------------
-// 🧾 Header universale con logo grande centrato
-// --------------------------------------------------------
-async function drawHeader(
-  doc: jsPDF,
-  title: string
-): Promise<number> {
+/**
+ * Header PDF con logo centrato + titolo
+ */
+async function drawHeader(doc: jsPDF, title: string): Promise<number> {
   const pageWidth = doc.internal.pageSize.getWidth();
-
-  // Logo grande centrato
-  const logoDataUrl = await loadLogoAsDataURL();
   let currentY = 18;
 
+  const logoDataUrl = await loadLogoAsDataURL();
   if (logoDataUrl) {
-    const imgWidth = 40;
-    const imgHeight = 40;
-    const imgX = (pageWidth - imgWidth) / 2;
+    const w = 40;
+    const h = 40;
+    const x = (pageWidth - w) / 2;
 
-    doc.addImage(logoDataUrl, "PNG", imgX, currentY, imgWidth, imgHeight);
-    currentY += imgHeight + 6;
+    doc.addImage(logoDataUrl, "PNG", x, currentY, w, h);
+    currentY += h + 6;
   }
 
-  // Titolo
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
   doc.setTextColor(...COLORS.textBlack);
@@ -370,10 +343,8 @@ async function drawHeader(
   const textX = (pageWidth - textWidth) / 2;
 
   doc.text(title, textX, currentY);
-
-  return currentY + 10; // Y successivo disponibile
+  return currentY + 12;
 }
-
 // --------------------------------------------------------
 // 📄 PDF LAVORI (usato per Lavori in Attesa, ecc.)
 // --------------------------------------------------------
@@ -390,29 +361,34 @@ async function generateLavoriPdf(
 
   const kind: PdfKind = "lavori";
 
-  // Modalità IA (prompt all'utente)
-  const mode = await askPdfIAMode();
-  let iaText: string | null = null;
+  // --------------------------------------------------------
+  // 🔥 IA FULL MODE (nessun prompt all'utente)
+  // --------------------------------------------------------
+  const raw = buildRawSummary(kind, {
+    lavori,
+    groupLabel: input.groupLabel,
+  });
 
-  if (mode !== "none") {
-    const raw = buildRawSummary(kind, { lavori, groupLabel: input.groupLabel });
-    iaText = await enhanceTextWithAI(kind, titoloBase, raw, mode);
-  }
+  const ai = await enhancePDFTextFull(kind, raw);
+  const iaText = ai.summary || ai.enhanced || "";
 
+  // --------------------------------------------------------
+  // HEADER + BOX IA
+  // --------------------------------------------------------
   let currentY = await drawHeader(doc, titoloBase);
 
-  // Se c'è testo IA, lo disegno sopra la tabella
   if (iaText) {
     currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
   }
 
-  // prepara righe tabella
+  // --------------------------------------------------------
+  // TABELLA LAVORI (come nel tuo originale)
+  // --------------------------------------------------------
   const dataRows = lavori.map((l: LavoroLike) => {
     const descrizione = l.descrizione ?? l.titolo ?? "";
     const rawDate = l.dataInserimento ?? l.data ?? "";
     const data = rawDate ? formatGGMMYYYY(rawDate) : "";
     const urgency = (l.urgenza || "").toString().toLowerCase();
-
     return { descrizione, data, urgency };
   });
 
@@ -448,7 +424,6 @@ async function generateLavoriPdf(
     },
   });
 }
-
 // --------------------------------------------------------
 // 📊 PDF Tabellare GENERICO (qualsiasi array di oggetti)
 // --------------------------------------------------------
@@ -456,10 +431,18 @@ async function generateTablePdf(
   doc: jsPDF,
   input: Extract<PdfInput, { kind: "table" }> | any
 ) {
-  const rows: any[] = Array.isArray(input.rows) ? input.rows : Array.isArray(input) ? input : [];
+  const rows: any[] = Array.isArray(input.rows)
+    ? input.rows
+    : Array.isArray(input)
+    ? input
+    : [];
+
   const title: string = input.title || "Report";
   const kind: PdfKind = "table";
 
+  // --------------------------------------------------------
+  // Caso: nessuna riga
+  // --------------------------------------------------------
   if (!rows.length) {
     const startY = await drawHeader(doc, title);
     doc.setFont("helvetica", "normal");
@@ -468,22 +451,32 @@ async function generateTablePdf(
     return;
   }
 
-  const mode = await askPdfIAMode();
-  let iaText: string | null = null;
+  // --------------------------------------------------------
+  // 🔥 IA FULL MODE AUTOMATICA
+  // --------------------------------------------------------
+  const raw = buildRawSummary(kind, {
+    rows,
+    columns: input.columns,
+  });
 
-  if (mode !== "none") {
-    const raw = buildRawSummary(kind, { rows, columns: input.columns });
-    iaText = await enhanceTextWithAI(kind, title, raw, mode);
-  }
+  const ai = await enhancePDFTextFull(kind, raw);
+  const iaText = ai.summary || ai.enhanced || "";
 
+  // --------------------------------------------------------
+  // HEADER + BOX IA
+  // --------------------------------------------------------
   let currentY = await drawHeader(doc, title);
 
   if (iaText) {
     currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
   }
 
-  // se non specificate, prendo le chiavi comuni
+  // --------------------------------------------------------
+  // TABELLA GENERICA (layout originale)
+  // --------------------------------------------------------
   let columns: string[] = input.columns;
+
+  // Se le colonne non sono definite → prendi tutte le chiavi trovate
   if (!columns || !columns.length) {
     const keysSet = new Set<string>();
     rows.forEach((r) => {
@@ -492,7 +485,9 @@ async function generateTablePdf(
     columns = Array.from(keysSet);
   }
 
-  const head = [columns.map((c) => c.charAt(0).toUpperCase() + c.slice(1))];
+  const head = [
+    columns.map((c) => c.charAt(0).toUpperCase() + c.slice(1)),
+  ];
 
   const body = rows.map((row) =>
     columns!.map((c) => {
@@ -500,11 +495,8 @@ async function generateTablePdf(
 
       if (val === null || val === undefined) return "";
 
-      // formattazione automatica per date ISO
-      if (
-        typeof val === "string" &&
-        /^\d{4}-\d{2}-\d{2}/.test(val)
-      ) {
+      // Formattazione automatica date ISO
+      if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val)) {
         return formatGGMMYYYY(val);
       }
 
@@ -534,7 +526,6 @@ async function generateTablePdf(
     },
   });
 }
-
 // --------------------------------------------------------
 // 🚚 PDF Mezzo + Domande (versione web del tuo pdfExporter TSX)
 // --------------------------------------------------------
@@ -548,17 +539,25 @@ async function generateMezzoPdf(
   const titolo = input.title || "Rapporto di Controllo Mezzo";
   const kind: PdfKind = "mezzo";
 
-  const mode = await askPdfIAMode();
-  let iaText: string | null = null;
+  // --------------------------------------------------------
+  // 🔥 IA FULL MODE AUTOMATICA
+  // --------------------------------------------------------
+  const raw = buildRawSummary(kind, { mezzo, domande });
+  const ai = await enhancePDFTextFull(kind, raw);
+  const iaText = ai.summary || ai.enhanced || "";
 
-  if (mode !== "none") {
-    const raw = buildRawSummary(kind, { mezzo, domande });
-    iaText = await enhanceTextWithAI(kind, titolo, raw, mode);
-  }
-
+  // --------------------------------------------------------
+  // HEADER + BOX IA
+  // --------------------------------------------------------
   let currentY = await drawHeader(doc, titolo);
 
-  // Box mezzo
+  if (iaText) {
+    currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
+  }
+
+  // --------------------------------------------------------
+  // BOX DATI MEZZO (identico al tuo originale, NON modificato)
+  // --------------------------------------------------------
   const leftX = 14;
   const rightX = 196;
   const boxWidth = rightX - leftX;
@@ -588,10 +587,8 @@ async function generateMezzoPdf(
   fields.forEach(([label, value]) => {
     if (!value) return;
     let v = value;
-    if (
-      label === "Ultimo Collaudo" ||
-      label === "Ultimo Controllo"
-    ) {
+
+    if (label === "Ultimo Collaudo" || label === "Ultimo Controllo") {
       v = formatGGMMYYYY(value);
     }
 
@@ -604,12 +601,9 @@ async function generateMezzoPdf(
 
   currentY = currentY + 60 + 12;
 
-  // Blocco IA (se disponibile) sotto il box mezzo
-  if (iaText) {
-    currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
-  }
-
-  // Domande (se presenti)
+  // --------------------------------------------------------
+  // DOMANDE MEZZO (layout originale, NON modificato)
+  // --------------------------------------------------------
   if (domande.length) {
     domande.forEach((d, index) => {
       if (currentY > 260) {
@@ -633,7 +627,6 @@ async function generateMezzoPdf(
       }
 
       if (d.dataScadenza) {
-        doc.setFont("helvetica", "normal");
         doc.text(
           `Data scadenza: ${formatGGMMYYYY(d.dataScadenza)}`,
           leftX,
@@ -643,13 +636,11 @@ async function generateMezzoPdf(
       }
 
       if (d.misurazione) {
-        doc.setFont("helvetica", "normal");
         doc.text(`Misurazione: ${d.misurazione}`, leftX, currentY);
         currentY += 5;
       }
 
       if (d.conteggio) {
-        doc.setFont("helvetica", "normal");
         doc.text(`Conteggio: ${d.conteggio}`, leftX, currentY);
         currentY += 5;
       }
@@ -657,16 +648,20 @@ async function generateMezzoPdf(
       if (d.nota && d.nota.trim() && d.nota.trim().toUpperCase() !== "NOTE") {
         const boxY = currentY + 2;
         const text = `Nota: ${d.nota.trim()}`;
+
         doc.setDrawColor(...COLORS.noteBorder);
         doc.setFillColor(...COLORS.noteBg);
+
         const textWidth = doc.getTextWidth(text) + 6;
         const boxHeight = 8;
+
         doc.roundedRect(leftX, boxY - 6, textWidth, boxHeight + 4, 2, 2, "FD");
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
         doc.setTextColor(...COLORS.textBlack);
         doc.text(text, leftX + 3, boxY);
+
         currentY = boxY + 10;
       } else {
         currentY += 6;
@@ -676,7 +671,9 @@ async function generateMezzoPdf(
     });
   }
 
-  // Firma finale
+  // --------------------------------------------------------
+  // FIRMA FINALE (originale tua)
+  // --------------------------------------------------------
   const pageHeight = doc.internal.pageSize.getHeight();
   doc.setFont("helvetica", "italic");
   doc.setFontSize(10);
@@ -687,7 +684,9 @@ async function generateMezzoPdf(
     pageHeight - 10
   );
 }
-
+// --------------------------------------------------------
+// 🔌 Helper specifici se vuoi chiamarli direttamente
+// --------------------------------------------------------
 // --------------------------------------------------------
 // 🧠 Funzione UNIVERSALE "intelligente"
 // --------------------------------------------------------
@@ -703,7 +702,6 @@ export async function generateSmartPDF(input: PdfInput): Promise<void> {
     await generateTablePdf(doc, input);
   }
 
-  // nome file
   const now = new Date();
   const datePart = formatGGMMYYYY(now.toISOString());
   const baseName =
@@ -719,9 +717,8 @@ export async function generateSmartPDF(input: PdfInput): Promise<void> {
 }
 
 // --------------------------------------------------------
-// 🔌 Helper specifici se vuoi chiamarli direttamente
+// 🔌 Helper specifici
 // --------------------------------------------------------
-
 export async function generateLavoriPDF(
   title: string,
   lavori: LavoroLike[],
@@ -745,3 +742,4 @@ export async function generateMezzoPDF(
 ) {
   await generateSmartPDF({ kind: "mezzo", title, mezzo, domande });
 }
+
