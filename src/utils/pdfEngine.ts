@@ -1,5 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { generaPDFconIA } from "./aiCore";
+
 
 /**
  * Formato data ufficiale: gg mm aaaa
@@ -16,32 +18,108 @@ export const formatGGMMYYYY = (iso: string): string => {
   return `${gg} ${mm} ${yyyy}`;
 };
 
-// --------------------------------------------------------
-// 🎨 Tema aziendale (stile D)
-// --------------------------------------------------------
-const COLORS = {
-  primary: [10, 70, 140] as [number, number, number],
-  headerText: [255, 255, 255] as [number, number, number],
-  border: [180, 180, 180] as [number, number, number],
-  rowAlt: [245, 245, 245] as [number, number, number],
-  rowWhite: [255, 255, 255] as [number, number, number],
-  textBlack: [0, 0, 0] as [number, number, number],
-  noteBg: [230, 238, 255] as [number, number, number],
-  noteBorder: [10, 70, 140] as [number, number, number],
+/**
+ * Formato data + ora (gg mm aaaa – HH:MM)
+ */
+export const formatGGMMYYYY_HHMM = (iso: string): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+
+  const ggmm = formatGGMMYYYY(iso);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+
+  return `${ggmm} – ${hh}:${mi}`;
 };
 
-const LOGO_PATH = "/logo.png";
+// --------------------------------------------------------
+// Tipi base per i PDF
+// --------------------------------------------------------
+
+export interface LavoroLike {
+  id?: string;
+  descrizione: string;
+  dataInserimento?: string;
+  data?: string;
+  urgenza?: string;
+  targa?: string;
+  magazzino?: string;
+  gruppoId?: string;
+  note?: string;
+}
+
+export interface MezzoLike {
+  targa?: string;
+  numeroTelaio?: string;
+  modello?: string;
+  marca?: string;
+  tipo?: string;
+  annoImmatricolazione?: string;
+  dataUltimaRevisione?: string;
+  dataScadenzaRevisione?: string;
+  kmAttuali?: number;
+  [key: string]: any;
+}
+
+export interface DomandaLike {
+  domanda: string;
+  risposta?: string;
+  scadenza?: string;
+  note?: string;
+}
+
+export type PdfInput =
+  | {
+      kind: "lavori";
+      title?: string;
+      lavori: LavoroLike[];
+      groupLabel?: string;
+    }
+  | {
+      kind: "mezzo";
+      title?: string;
+      mezzo: MezzoLike;
+      domande?: DomandaLike[];
+    }
+  | {
+      kind: "table";
+      title?: string;
+      rows: any[];
+      columns?: string[];
+    }
+  | any;
 
 // --------------------------------------------------------
-// 🔧 Caricamento logo
+// Palette aziendale (stile D)
 // --------------------------------------------------------
-async function loadLogoAsDataURL(): Promise<string | null> {
+const COLORS = {
+  bg: [248, 244, 232] as [number, number, number],
+  headerBg: [230, 220, 200] as [number, number, number],
+  headerLine: [180, 160, 120] as [number, number, number],
+  textBlack: [40, 40, 40] as [number, number, number],
+  accent: [120, 90, 50] as [number, number, number],
+  tableHeaderBg: [230, 220, 200] as [number, number, number],
+  tableHeaderText: [40, 40, 40] as [number, number, number],
+  rowAlt: [252, 249, 240] as [number, number, number],
+  rowEven: [255, 255, 255] as [number, number, number],
+  noteBg: [227, 242, 253] as [number, number, number],
+  noteBorder: [100, 149, 237] as [number, number, number],
+  urgentRed: [211, 47, 47] as [number, number, number],
+  mediumOrange: [249, 168, 37] as [number, number, number],
+  lowGreen: [56, 142, 60] as [number, number, number],
+};
+
+// --------------------------------------------------------
+// Logo aziendale
+// --------------------------------------------------------
+async function loadLogoBase64(): Promise<string | null> {
   try {
-    const res = await fetch(LOGO_PATH);
+    const res = await fetch("/logo.png");
     if (!res.ok) return null;
-    const blob = await res.blob();
 
-    return await new Promise<string>((resolve, reject) => {
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
       reader.onerror = () =>
@@ -56,65 +134,69 @@ async function loadLogoAsDataURL(): Promise<string | null> {
 // --------------------------------------------------------
 // 🔴🟠🟢 Pallini priorità
 // --------------------------------------------------------
-function drawPriorityDot(doc: jsPDF, urgency: string | undefined, x: number, y: number) {
+function drawPriorityDot(
+  doc: jsPDF,
+  urgency: string | undefined,
+  x: number,
+  y: number
+) {
   const r = 3;
 
-  if (urgency === "alta") doc.setFillColor(217, 72, 62);
-  else if (urgency === "media") doc.setFillColor(242, 155, 34);
-  else if (urgency === "bassa") doc.setFillColor(82, 180, 38);
-  else return;
+  if (urgency === "Alta") {
+    doc.setFillColor(...COLORS.urgentRed);
+  } else if (urgency === "Media") {
+    doc.setFillColor(...COLORS.mediumOrange);
+  } else if (urgency === "Bassa") {
+    doc.setFillColor(...COLORS.lowGreen);
+  } else {
+    doc.setFillColor(180, 180, 180);
+  }
 
   doc.circle(x, y, r, "F");
 }
 
 // --------------------------------------------------------
-// 🧩 Tipi
+// Header comune
 // --------------------------------------------------------
-export interface LavoroLike {
-  descrizione?: string;
-  dataInserimento?: string;
-  data?: string;
-  urgenza?: "bassa" | "media" | "alta" | string | undefined;
-  [key: string]: any;
+async function drawHeader(doc: jsPDF, title: string): Promise<number> {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 14;
+
+  doc.setFillColor(...COLORS.bg);
+  doc.rect(0, 0, pageWidth, 297, "F");
+
+  doc.setFillColor(...COLORS.headerBg);
+  doc.rect(0, 0, pageWidth, 26, "F");
+  doc.setDrawColor(...COLORS.headerLine);
+  doc.line(margin, 26, pageWidth - margin, 26);
+
+  const logoBase64 = await loadLogoBase64();
+  if (logoBase64) {
+    doc.addImage(logoBase64, "PNG", margin, 4, 20, 18);
+  }
+
+  doc.setTextColor(...COLORS.textBlack);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("GHIELMI CEMENTI SA", margin + 26, 12);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("Sistema Gestione Manutenzione", margin + 26, 18);
+
+  const now = new Date();
+  const dateStr = formatGGMMYYYY_HHMM(now.toISOString());
+  doc.setFontSize(9);
+  doc.text(dateStr, pageWidth - margin, 10, { align: "right" });
+  doc.text(title, pageWidth - margin, 18, { align: "right" });
+
+  return 36;
 }
 
-export interface MezzoLike {
-  targa?: string;
-  marcaModello?: string;
-  tipo?: string;
-  numeroTelaio?: string;
-  anno?: string;
-  autista?: string;
-  km?: string;
-  ultimoCollaudo?: string;
-  ultimoControllo?: string;
-  noteGenerali?: string;
-  [key: string]: any;
-}
-
-export interface DomandaLike {
-  sezione?: string;
-  testo?: string;
-  domanda?: string;
-  risposta?: string;
-  nota?: string;
-  dataScadenza?: string;
-  misurazione?: string;
-  conteggio?: string;
-  foto?: string[];
-  [key: string]: any;
-}
-
-export type PdfInput =
-  | { kind: "lavori"; title?: string; groupLabel?: string; lavori: LavoroLike[] }
-  | { kind: "mezzo"; title?: string; mezzo: MezzoLike; domande?: DomandaLike[] }
-  | { kind: "table"; title: string; columns?: string[]; rows: any[] }
-  | any;
-
 // --------------------------------------------------------
-// 🧠 Rilevamento tipo
+// Rilevamento tipo PDF
 // --------------------------------------------------------
-function detectKind(input: any): "lavori" | "mezzo" | "table" {
+function detectKind(input: PdfInput): "lavori" | "mezzo" | "table" {
   if (!input) return "table";
 
   if (Array.isArray(input)) return "table";
@@ -127,16 +209,12 @@ function detectKind(input: any): "lavori" | "mezzo" | "table" {
 
   return "table";
 }
+
 // --------------------------------------------------------
 // 🧠 IA PDF – Modalità disponibili
+// --------------------------------------------------------
 
 type PdfKind = "lavori" | "mezzo" | "table";
-
-/**
- * Modalità scelta dall’utente.
- * (Lasciata per compatibilità — ma la IA FULL MODE la attiveremo automaticamente)
- */
-
 
 /**
  * Costruisce il testo grezzo da dare alla IA
@@ -152,52 +230,51 @@ function buildRawSummary(kind: PdfKind, input: any): string {
       const rawDate = l.dataInserimento ?? l.data ?? "";
       const date = rawDate ? formatGGMMYYYY(rawDate) : "";
       const urg = l.urgenza || "-";
+      const targa = l.targa || "";
+      const mag = l.magazzino || "";
+      const note = l.note || "";
 
-      return `${i + 1}. (${urg}) ${date} – ${desc}`;
+      const head = `${i + 1}. (${urg}) ${date}`;
+      const info = [targa, mag].filter(Boolean).join(" – ");
+
+      return [head, info, desc, note].filter(Boolean).join("\n");
     });
 
-    return `${group}${lines.join("\n")}`;
+    return [group, ...lines].filter(Boolean).join("\n\n");
   }
 
   if (kind === "mezzo") {
-    const m: MezzoLike = input.mezzo || input || {};
-    const d: DomandaLike[] = input.domande || [];
+    const mezzo: MezzoLike = input.mezzo || {};
+    const domande: DomandaLike[] = input.domande || [];
 
-    const info = [
-      m.targa && `Targa: ${m.targa}`,
-      m.marcaModello && `Marca/Modello: ${m.marcaModello}`,
-      m.tipo && `Tipo: ${m.tipo}`,
-      m.numeroTelaio && `Telaio: ${m.numeroTelaio}`,
-      m.anno && `Anno: ${m.anno}`,
-      m.autista && `Autista: ${m.autista}`,
-      m.km && `Km: ${m.km}`,
-      m.ultimoCollaudo && `Ultimo collaudo: ${formatGGMMYYYY(m.ultimoCollaudo)}`,
-      m.ultimoControllo &&
-        `Ultimo controllo: ${formatGGMMYYYY(m.ultimoControllo)}`,
-      m.noteGenerali && `Note generali: ${m.noteGenerali}`,
+    const infoMezzo = [
+      mezzo.targa && `Targa: ${mezzo.targa}`,
+      mezzo.numeroTelaio && `Telaio: ${mezzo.numeroTelaio}`,
+      mezzo.modello && `Modello: ${mezzo.modello}`,
+      mezzo.marca && `Marca: ${mezzo.marca}`,
+      mezzo.annoImmatricolazione &&
+        `Anno immatricolazione: ${mezzo.annoImmatricolazione}`,
+      mezzo.dataUltimaRevisione &&
+        `Ultima revisione: ${formatGGMMYYYY(mezzo.dataUltimaRevisione)}`,
+      mezzo.dataScadenzaRevisione &&
+        `Scadenza revisione: ${formatGGMMYYYY(mezzo.dataScadenzaRevisione)}`,
+      mezzo.kmAttuali && `Km attuali: ${mezzo.kmAttuali}`,
     ]
       .filter(Boolean)
       .join("\n");
 
-    const domandeTxt = d
-     .map((x: any, i: number) => {
-
-        const domanda = x.domanda || x.testo || "";
-        const risposta = x.risposta ? `Risposta: ${x.risposta}` : "";
-        const scad = x.dataScadenza
-          ? `Scadenza: ${formatGGMMYYYY(x.dataScadenza)}`
-          : "";
-        const nota =
-          x.nota && x.nota.trim().toUpperCase() !== "NOTE"
-            ? `Nota: ${x.nota}`
-            : "";
-
+    const domandeTxt = domande
+      .map((d, i) => {
+        const domanda = d.domanda || "";
+        const risposta = d.risposta || "";
+        const scad = d.scadenza ? `Scadenza: ${formatGGMMYYYY(d.scadenza)}` : "";
+        const nota = d.note || "";
         return `${i + 1}. ${domanda}\n${risposta}\n${scad}\n${nota}`.trim();
       })
       .filter(Boolean)
       .join("\n\n");
 
-    return [info, domandeTxt].filter(Boolean).join("\n\n");
+    return [infoMezzo, domandeTxt].filter(Boolean).join("\n\n");
   }
 
   if (kind === "table") {
@@ -208,11 +285,15 @@ function buildRawSummary(kind: PdfKind, input: any): string {
       : [];
     const cols = input.columns || [];
 
-    const head = cols.length ? `Colonne: ${cols.join(", ")}` : "";
+    const head =
+      cols && cols.length
+        ? `Colonne: ${cols.join(", ")}`
+        : "Tabella generica";
+
     const rowsTxt = rows
-      .slice(0, 50)
-      .map((r: any, i: number) => `${i + 1}. ${JSON.stringify(r)}`)
-      .join("\n");
+  .map((r: any, i: number) => `${i + 1}. ${JSON.stringify(r)}`)
+  .join("\n");
+
 
     return [head, rowsTxt].filter(Boolean).join("\n\n");
   }
@@ -222,45 +303,59 @@ function buildRawSummary(kind: PdfKind, input: any): string {
 
 /**
  * 🔥 IA FULL MODE — integrazione ufficiale
- * Chiama /api/pdf-ai-enhance e ottiene contenuto migliorato
+ * Usa la IA centrale (Cloud Functions aiCore, task "pdf_ia") per ottenere contenuto migliorato
  */
 async function enhancePDFTextFull(kind: string, rawData: any) {
   try {
-    const res = await fetch("/api/pdf-ai-enhance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        kind,
-        input: rawData,
-        prompt: `
-          Migliora tutti i testi per un PDF professionale.
-          - Mantieni numeri, date, scadenze.
-          - Migliora descrizioni e note.
-          - Crea un riepilogo aziendale chiaro.
-          - Linguaggio tecnico e ordinato.
-          - Nessuna invenzione.
-        `,
-      }),
-    });
+    // Usa la IA centrale tramite Firebase Functions (aiCore)
+    // kind: "lavori" | "mezzo" | "table"
+    // rawData: stringa già pronta con il contenuto riassunto
+    const iaResult: any = await generaPDFconIA(kind, { raw: rawData });
 
-    if (!res.ok) {
-      console.warn("IA non disponibile:", res.status);
+    if (!iaResult) {
       return { enhanced: "", summary: "" };
     }
 
-    const json = await res.json();
+    // Mappiamo la struttura universale della IA in due campi:
+    // - enhanced: testo principale migliorato
+    // - summary: sintesi finale da mostrare nel box IA
+    const sections = Array.isArray(iaResult.sezioni)
+      ? iaResult.sezioni
+          .map((s: any) => {
+            const titolo = s?.titolo ? `${s.titolo}:\n` : "";
+            const contenuto = s?.contenuto ?? "";
+            return `${titolo}${contenuto}`.trim();
+          })
+          .filter(Boolean)
+          .join("\n\n")
+      : "";
+
+    const enhanced = sections || iaResult.descrizione || "";
+    const summary =
+      iaResult.riassunto_finale ||
+      iaResult.sottotitolo ||
+      iaResult.titolo ||
+      "";
+
     return {
-      enhanced: json.enhancedText || "",
-      summary: json.enhancedNotes || "",
+      enhanced,
+      summary,
     };
-  } catch {
+  } catch (e) {
+    console.warn("IA pdf_ia non disponibile o in errore:", e);
     return { enhanced: "", summary: "" };
   }
 }
+
 /**
  * Disegna un box testuale IA nel PDF (riquadro blu chiaro)
  */
-function drawIATextBlock(doc: jsPDF, title: string, text: string, startY: number): number {
+function drawIATextBlock(
+  doc: jsPDF,
+  title: string,
+  text: string,
+  startY: number
+): number {
   if (!text || !text.trim()) return startY;
 
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -284,49 +379,16 @@ function drawIATextBlock(doc: jsPDF, title: string, text: string, startY: number
   doc.setFillColor(...COLORS.noteBg);
   doc.roundedRect(marginX, boxY, maxWidth, boxHeight, 2, 2, "FD");
 
-  // Testo
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(...COLORS.textBlack);
+  doc.setFontSize(10);
+  doc.setTextColor(30, 30, 30);
+  doc.text(lines, marginX + 2, boxY + 5);
 
-  let y = boxY + 5;
-  lines.forEach((ln: string) => {
-    doc.text(ln, marginX + 3, y);
-    y += lineHeight;
-  });
-
-  return boxY + boxHeight + 10;
+  return boxY + boxHeight + 8;
 }
 
-/**
- * Header PDF con logo centrato + titolo
- */
-async function drawHeader(doc: jsPDF, title: string): Promise<number> {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  let currentY = 18;
-
-  const logoDataUrl = await loadLogoAsDataURL();
-  if (logoDataUrl) {
-    const w = 40;
-    const h = 40;
-    const x = (pageWidth - w) / 2;
-
-    doc.addImage(logoDataUrl, "PNG", x, currentY, w, h);
-    currentY += h + 6;
-  }
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.setTextColor(...COLORS.textBlack);
-
-  const textWidth = doc.getTextWidth(title);
-  const textX = (pageWidth - textWidth) / 2;
-
-  doc.text(title, textX, currentY);
-  return currentY + 12;
-}
 // --------------------------------------------------------
-// 📄 PDF LAVORI (usato per Lavori in Attesa, ecc.)
+// LAYOUT LAVORI
 // --------------------------------------------------------
 async function generateLavoriPdf(
   doc: jsPDF,
@@ -341,9 +403,7 @@ async function generateLavoriPdf(
 
   const kind: PdfKind = "lavori";
 
-  // --------------------------------------------------------
-  // 🔥 IA FULL MODE (nessun prompt all'utente)
-  // --------------------------------------------------------
+  // 🔥 IA FULL MODE
   const raw = buildRawSummary(kind, {
     lavori,
     groupLabel: input.groupLabel,
@@ -352,41 +412,37 @@ async function generateLavoriPdf(
   const ai = await enhancePDFTextFull(kind, raw);
   const iaText = ai.summary || ai.enhanced || "";
 
-  // --------------------------------------------------------
   // HEADER + BOX IA
-  // --------------------------------------------------------
   let currentY = await drawHeader(doc, titoloBase);
 
   if (iaText) {
     currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
   }
 
-  // --------------------------------------------------------
-  // TABELLA LAVORI (come nel tuo originale)
-  // --------------------------------------------------------
-  const dataRows = lavori.map((l: LavoroLike) => {
-    const descrizione = l.descrizione ?? l.titolo ?? "";
-    const rawDate = l.dataInserimento ?? l.data ?? "";
-    const data = rawDate ? formatGGMMYYYY(rawDate) : "";
-    const urgency = (l.urgenza || "").toString().toLowerCase();
-    return { descrizione, data, urgency };
-  });
-
+  // TABELLA LAVORI (layout originale)
   autoTable(doc, {
     startY: currentY,
-    head: [["Descrizione", "Data", ""]],
-    body: dataRows.map((r) => [r.descrizione, r.data, r.urgency]),
+    margin: { left: 14, right: 14 },
+    head: [["Data", "Descrizione", "Urgenza", "Targa/Magazzino"]],
+    body: lavori.map((l) => {
+      const rawDate = l.dataInserimento ?? l.data ?? "";
+      const date = rawDate ? formatGGMMYYYY(rawDate) : "";
+      const desc = l.descrizione || "";
+      const urg = l.urgenza || "";
+      const mag = l.magazzino || "";
+      const targa = l.targa || "";
+      const info = [targa, mag].filter(Boolean).join(" / ");
+
+      return [date, desc, urg, info];
+    }),
     styles: {
-      fontSize: 12,
-      lineColor: COLORS.border,
-      lineWidth: 0.15,
-      textColor: COLORS.textBlack,
-      valign: "middle",
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 3,
     },
     headStyles: {
-      fillColor: COLORS.primary,
-      textColor: COLORS.headerText,
-      fontSize: 13,
+      fillColor: COLORS.tableHeaderBg,
+      textColor: COLORS.tableHeaderText,
       fontStyle: "bold",
     },
     alternateRowStyles: {
@@ -404,36 +460,20 @@ async function generateLavoriPdf(
     },
   });
 }
+
 // --------------------------------------------------------
-// 📊 PDF Tabellare GENERICO (qualsiasi array di oggetti)
+// LAYOUT TABELLA GENERICA
 // --------------------------------------------------------
 async function generateTablePdf(
   doc: jsPDF,
   input: Extract<PdfInput, { kind: "table" }> | any
 ) {
-  const rows: any[] = Array.isArray(input.rows)
-    ? input.rows
-    : Array.isArray(input)
-    ? input
-    : [];
+  const rows: any[] = input.rows ?? [];
+  const title: string = input.title ?? "Report";
 
-  const title: string = input.title || "Report";
   const kind: PdfKind = "table";
 
-  // --------------------------------------------------------
-  // Caso: nessuna riga
-  // --------------------------------------------------------
-  if (!rows.length) {
-    const startY = await drawHeader(doc, title);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.text("Nessun dato disponibile.", 14, startY + 10);
-    return;
-  }
-
-  // --------------------------------------------------------
-  // 🔥 IA FULL MODE AUTOMATICA
-  // --------------------------------------------------------
+  // 🔥 IA FULL MODE
   const raw = buildRawSummary(kind, {
     rows,
     columns: input.columns,
@@ -442,63 +482,33 @@ async function generateTablePdf(
   const ai = await enhancePDFTextFull(kind, raw);
   const iaText = ai.summary || ai.enhanced || "";
 
-  // --------------------------------------------------------
   // HEADER + BOX IA
-  // --------------------------------------------------------
   let currentY = await drawHeader(doc, title);
 
   if (iaText) {
     currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
   }
 
-  // --------------------------------------------------------
-  // TABELLA GENERICA (layout originale)
-  // --------------------------------------------------------
   let columns: string[] = input.columns;
 
-  // Se le colonne non sono definite → prendi tutte le chiavi trovate
   if (!columns || !columns.length) {
-    const keysSet = new Set<string>();
-    rows.forEach((r) => {
-      Object.keys(r || {}).forEach((k) => keysSet.add(k));
-    });
-    columns = Array.from(keysSet);
+    const firstRow = rows[0] || {};
+    columns = Object.keys(firstRow);
   }
-
-  const head = [
-    columns.map((c) => c.charAt(0).toUpperCase() + c.slice(1)),
-  ];
-
-  const body = rows.map((row) =>
-    columns!.map((c) => {
-      const val = row[c];
-
-      if (val === null || val === undefined) return "";
-
-      // Formattazione automatica date ISO
-      if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val)) {
-        return formatGGMMYYYY(val);
-      }
-
-      return String(val);
-    })
-  );
 
   autoTable(doc, {
     startY: currentY,
-    head,
-    body,
+    margin: { left: 14, right: 14 },
+    head: [columns],
+    body: rows.map((row) => columns.map((c) => String(row[c] ?? ""))),
     styles: {
-      fontSize: 11,
-      lineColor: COLORS.border,
-      lineWidth: 0.15,
-      textColor: COLORS.textBlack,
-      valign: "middle",
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 3,
     },
     headStyles: {
-      fillColor: COLORS.primary,
-      textColor: COLORS.headerText,
-      fontSize: 12,
+      fillColor: COLORS.tableHeaderBg,
+      textColor: COLORS.tableHeaderText,
       fontStyle: "bold",
     },
     alternateRowStyles: {
@@ -506,169 +516,104 @@ async function generateTablePdf(
     },
   });
 }
+
 // --------------------------------------------------------
-// 🚚 PDF Mezzo + Domande (versione web del tuo pdfExporter TSX)
+// LAYOUT MEZZO (DOSSIER/CONTROLLO)
 // --------------------------------------------------------
 async function generateMezzoPdf(
   doc: jsPDF,
   input: Extract<PdfInput, { kind: "mezzo" }> | any
 ) {
-  const mezzo: MezzoLike = input.mezzo || input || {};
+  const mezzo: MezzoLike = input.mezzo || {};
   const domande: DomandaLike[] = input.domande || [];
 
   const titolo = input.title || "Rapporto di Controllo Mezzo";
   const kind: PdfKind = "mezzo";
 
-  // --------------------------------------------------------
-  // 🔥 IA FULL MODE AUTOMATICA
-  // --------------------------------------------------------
+  // 🔥 IA FULL MODE
   const raw = buildRawSummary(kind, { mezzo, domande });
   const ai = await enhancePDFTextFull(kind, raw);
   const iaText = ai.summary || ai.enhanced || "";
 
-  // --------------------------------------------------------
   // HEADER + BOX IA
-  // --------------------------------------------------------
   let currentY = await drawHeader(doc, titolo);
 
   if (iaText) {
     currentY = drawIATextBlock(doc, "Sintesi IA", iaText, currentY);
   }
 
-  // --------------------------------------------------------
-  // BOX DATI MEZZO (identico al tuo originale, NON modificato)
-  // --------------------------------------------------------
-  const leftX = 14;
-  const rightX = 196;
-  const boxWidth = rightX - leftX;
-
-  doc.setDrawColor(...COLORS.border);
-  doc.setLineWidth(0.4);
-  doc.roundedRect(leftX, currentY, boxWidth, 60, 3, 3);
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const marginX = 14;
+  const maxWidth = pageWidth - marginX * 2;
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(12);
+  doc.text("Dati Mezzo", marginX, currentY);
 
-  const fields: [string, string | undefined][] = [
-    ["Targa", mezzo.targa],
-    ["Marca / Modello", mezzo.marcaModello],
-    ["Tipo", mezzo.tipo],
-    ["Telaio", mezzo.numeroTelaio],
-    ["Anno", mezzo.anno],
-    ["Autista", mezzo.autista],
-    ["Km", mezzo.km],
-    ["Ultimo Collaudo", mezzo.ultimoCollaudo],
-    ["Ultimo Controllo", mezzo.ultimoControllo],
-  ];
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  currentY += 6;
 
-  let lineY = currentY + 8;
-  const labelWidth = 35;
+  const infoLines: string[] = [];
 
-  fields.forEach(([label, value]) => {
-    if (!value) return;
-    let v = value;
+  if (mezzo.targa) infoLines.push(`Targa: ${mezzo.targa}`);
+  if (mezzo.numeroTelaio) infoLines.push(`Telaio: ${mezzo.numeroTelaio}`);
+  if (mezzo.modello) infoLines.push(`Modello: ${mezzo.modello}`);
+  if (mezzo.marca) infoLines.push(`Marca: ${mezzo.marca}`);
+  if (mezzo.annoImmatricolazione)
+    infoLines.push(`Anno immatricolazione: ${mezzo.annoImmatricolazione}`);
+  if (mezzo.dataUltimaRevisione)
+    infoLines.push(
+      `Ultima revisione: ${formatGGMMYYYY(mezzo.dataUltimaRevisione)}`
+    );
+  if (mezzo.dataScadenzaRevisione)
+    infoLines.push(
+      `Scadenza revisione: ${formatGGMMYYYY(mezzo.dataScadenzaRevisione)}`
+    );
+  if (mezzo.kmAttuali) infoLines.push(`Km attuali: ${mezzo.kmAttuali}`);
 
-    if (label === "Ultimo Collaudo" || label === "Ultimo Controllo") {
-      v = formatGGMMYYYY(value);
-    }
+  const infoTextLines = doc.splitTextToSize(infoLines.join("\n"), maxWidth);
+  doc.text(infoTextLines, marginX, currentY);
+  currentY += infoTextLines.length * 5 + 8;
 
-    doc.text(`${label}:`, leftX + 4, lineY);
-    doc.setFont("helvetica", "normal");
-    doc.text(String(v), leftX + 4 + labelWidth, lineY);
+  if (domande && domande.length) {
     doc.setFont("helvetica", "bold");
-    lineY += 6;
-  });
+    doc.setFontSize(12);
+    doc.text("Controlli / Domande", marginX, currentY);
+    currentY += 6;
 
-  currentY = currentY + 60 + 12;
+    const rows = domande.map((d, i) => [
+      `${i + 1}`,
+      d.domanda || "",
+      d.risposta || "",
+      d.scadenza ? formatGGMMYYYY(d.scadenza) : "",
+      d.note || "",
+    ]);
 
-  // --------------------------------------------------------
-  // DOMANDE MEZZO (layout originale, NON modificato)
-  // --------------------------------------------------------
-  if (domande.length) {
-    domande.forEach((d, index) => {
-      if (currentY > 260) {
-        doc.addPage();
-        currentY = 20;
-      }
-
-      const domandaTesto = d.domanda || d.testo || "";
-      if (!domandaTesto) return;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text(`${index + 1}. ${domandaTesto}`, leftX, currentY);
-      currentY += 6;
-
-      if (d.risposta) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(11);
-        doc.text(`Risposta: ${d.risposta}`, leftX, currentY);
-        currentY += 5;
-      }
-
-      if (d.dataScadenza) {
-        doc.text(
-          `Data scadenza: ${formatGGMMYYYY(d.dataScadenza)}`,
-          leftX,
-          currentY
-        );
-        currentY += 5;
-      }
-
-      if (d.misurazione) {
-        doc.text(`Misurazione: ${d.misurazione}`, leftX, currentY);
-        currentY += 5;
-      }
-
-      if (d.conteggio) {
-        doc.text(`Conteggio: ${d.conteggio}`, leftX, currentY);
-        currentY += 5;
-      }
-
-      if (d.nota && d.nota.trim() && d.nota.trim().toUpperCase() !== "NOTE") {
-        const boxY = currentY + 2;
-        const text = `Nota: ${d.nota.trim()}`;
-
-        doc.setDrawColor(...COLORS.noteBorder);
-        doc.setFillColor(...COLORS.noteBg);
-
-        const textWidth = doc.getTextWidth(text) + 6;
-        const boxHeight = 8;
-
-        doc.roundedRect(leftX, boxY - 6, textWidth, boxHeight + 4, 2, 2, "FD");
-
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(...COLORS.textBlack);
-        doc.text(text, leftX + 3, boxY);
-
-        currentY = boxY + 10;
-      } else {
-        currentY += 6;
-      }
-
-      currentY += 4;
+    autoTable(doc, {
+      startY: currentY,
+      margin: { left: 14, right: 14 },
+      head: [["#", "Domanda", "Risposta", "Scadenza", "Note"]],
+      body: rows,
+      styles: {
+        font: "helvetica",
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: COLORS.tableHeaderBg,
+        textColor: COLORS.tableHeaderText,
+        fontStyle: "bold",
+      },
+      alternateRowStyles: {
+        fillColor: COLORS.rowAlt,
+      },
     });
   }
-
-  // --------------------------------------------------------
-  // FIRMA FINALE (originale tua)
-  // --------------------------------------------------------
-  const pageHeight = doc.internal.pageSize.getHeight();
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(10);
-  doc.setTextColor(85, 85, 85);
-  doc.text(
-    "Pensato, Ideato e Creato da Giuseppe Milio",
-    leftX,
-    pageHeight - 10
-  );
 }
+
 // --------------------------------------------------------
-// 🔌 Helper specifici se vuoi chiamarli direttamente
-// --------------------------------------------------------
-// --------------------------------------------------------
-// 🧠 Funzione UNIVERSALE "intelligente"
+// ENTRYPOINT GENERALE
 // --------------------------------------------------------
 export async function generateSmartPDF(input: PdfInput): Promise<void> {
   const kind = detectKind(input);
@@ -697,7 +642,7 @@ export async function generateSmartPDF(input: PdfInput): Promise<void> {
 }
 
 // --------------------------------------------------------
-// 🔌 Helper specifici
+// Helper specifici
 // --------------------------------------------------------
 export async function generateLavoriPDF(
   title: string,
@@ -722,4 +667,3 @@ export async function generateMezzoPDF(
 ) {
   await generateSmartPDF({ kind: "mezzo", title, mezzo, domande });
 }
-

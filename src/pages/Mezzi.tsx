@@ -6,6 +6,7 @@ import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateMezzoPDF } from "../utils/pdfEngine";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
+import { callAICore } from "../utils/aiCore";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const LAVORI_KEY = "@lavori";
@@ -300,71 +301,61 @@ const Mezzi: React.FC = () => {
   // ---------------------------------------------
   // IA – Scansiona Libretto (camera + galleria)
   // ---------------------------------------------
-  const processLibrettoDataUrl = async (dataUrl: string) => {
-    try {
-      setLibrettoLoading(true);
-      setLibrettoError(null);
+const processLibrettoDataUrl = async (dataUrl: string) => {
+  try {
+    setLibrettoLoading(true);
+    setLibrettoError(null);
 
-      const imageBase64 = extractBase64FromDataURL(dataUrl);
+    const imageBase64 = extractBase64FromDataURL(dataUrl);
 
-     const res = await fetch(
-  "https://gestioneweb-is45.vercel.app/api/estrai-libretto",
-  {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64 }),
-  }
-);
+    // NEW: chiamata alla IA centrale (Cloud Function aiCore)
+    const result = await callAICore("estrazione_libretto", { imageBase64 });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+    const data = (result?.data || {}) as EstrattoLibrettoResponse;
 
-      const data: EstrattoLibrettoResponse = await res.json();
-
-      if (!data) {
-        setLibrettoError(
-          "Impossibile estrarre i dati dal libretto. Compila i campi manualmente."
-        );
-        return;
-      }
-
-      if (data.targa) setTarga(data.targa.toUpperCase());
-      if (data.marca) setMarca(data.marca);
-      if (data.modello) setModello(data.modello);
-      if (data.telaio) setTelaio(data.telaio);
-      if (data.colore) setColore(data.colore);
-      if (data.cilindrata) setCilindrata(data.cilindrata);
-      if (data.potenza) setPotenza(data.potenza);
-      if (data.massaComplessiva || data.massa_complessiva) {
-        setMassaComplessiva(
-          data.massaComplessiva || data.massa_complessiva || ""
-        );
-      }
-      if (data.proprietario) setProprietario(data.proprietario);
-      if (data.assicurazione) setAssicurazione(data.assicurazione);
-
-      const rawImm =
-        data.dataImmatricolazione || data.data_immatricolazione || "";
-      if (rawImm) {
-        const year = extractYear(rawImm);
-        const parsed = formatDateForInput(rawImm);
-        if (parsed) {
-          setDataImmatricolazione(parsed);
-        } else if (year) {
-          // fallback: solo anno
-          setDataImmatricolazione(`${year}-01-01`);
-        }
-      }
-    } catch (err) {
-      console.error("Errore IA libretto:", err);
+    if (!data || Object.keys(data).length === 0) {
       setLibrettoError(
-        "Errore durante l'analisi del libretto. Riprova o inserisci i dati manualmente."
+        "Impossibile estrarre i dati dal libretto. Compila i campi manualmente."
       );
-    } finally {
-      setLibrettoLoading(false);
+      return;
     }
-  };
+
+    if (data.targa) setTarga(data.targa.toUpperCase());
+    if (data.marca) setMarca(data.marca);
+    if (data.modello) setModello(data.modello);
+    if (data.telaio) setTelaio(data.telaio);
+    if (data.colore) setColore(data.colore);
+    if (data.cilindrata) setCilindrata(data.cilindrata);
+    if (data.potenza) setPotenza(data.potenza);
+    if (data.massaComplessiva || data.massa_complessiva) {
+      setMassaComplessiva(
+        data.massaComplessiva || data.massa_complessiva || ""
+      );
+    }
+    if (data.proprietario) setProprietario(data.proprietario);
+    if (data.assicurazione) setAssicurazione(data.assicurazione);
+
+    const rawImm =
+      data.dataImmatricolazione || data.data_immatricolazione || "";
+    if (rawImm) {
+      const year = extractYear(rawImm);
+      const parsed = formatDateForInput(rawImm);
+      if (parsed) {
+        setDataImmatricolazione(parsed);
+      } else if (year) {
+        // fallback: solo anno
+        setDataImmatricolazione(`${year}-01-01`);
+      }
+    }
+  } catch (err) {
+    console.error("Errore IA libretto:", err);
+    setLibrettoError(
+      "Errore durante l'analisi del libretto. Riprova o inserisci i dati manualmente."
+    );
+  } finally {
+    setLibrettoLoading(false);
+  }
+};
 
   const handleLibrettoFileChange: React.ChangeEventHandler<HTMLInputElement> = (
     e
