@@ -27,4 +27,5 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
 // STORAGE (serve per foto materiali + PDF + allegati)
-export const storage = getStorage(app);
+export const storage = getStorage(app, "gestionemanutenzione-934ef.firebasestorage.app");
+

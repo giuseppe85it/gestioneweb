@@ -262,6 +262,22 @@
   object-fit: cover;
 }
 
+.mezzo-foto-preview {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #ddd0b5;
+  overflow: hidden;
+  background: #faf7ee;
+  margin-top: 8px;
+}
+
+.mezzo-foto-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+}
+
 /* ------------------------------
    FORM DATI MEZZO
 ------------------------------ */

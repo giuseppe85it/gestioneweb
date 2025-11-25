@@ -17,6 +17,8 @@ interface Mezzo {
   id: string;
   fotoUrl?: string;
 
+  tipo?: "motrice" | "cisterna";
+
   targa: string;
   marca: string;
   modello: string;
@@ -71,10 +73,8 @@ function giorniDaOggi(isoDate: string): number {
 
 function formatDateForInput(value: string | undefined): string {
   if (!value) return "";
-  // Se è già un ISO valido, lo ritorna così com'è
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 
-  // Se arriva “gg mm aaaa” o simili, provo un parse best-effort
   const match = value.match(/(\d{1,2}).(\d{1,2}).(\d{4})/);
   if (!match) return "";
   const [_, gg, mm, aaaa] = match;
@@ -103,7 +103,6 @@ async function ensureLavoroRevisione(targa: string, dataScadenzaRevisione: strin
 
   const giorni = giorniDaOggi(dataScadenzaRevisione);
   if (Number.isNaN(giorni) || giorni > 30) {
-    // fuori finestra 30 giorni → nessun lavoro
     return;
   }
 
@@ -177,6 +176,9 @@ const Mezzi: React.FC = () => {
 
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Tipo mezzo (motrice / cisterna)
+  const [tipoMezzo, setTipoMezzo] = useState<"motrice" | "cisterna">("motrice");
+
   // Form campi
   const [targa, setTarga] = useState("");
   const [marca, setMarca] = useState("");
@@ -225,6 +227,7 @@ const Mezzi: React.FC = () => {
 
   const resetForm = () => {
     setEditingId(null);
+    setTipoMezzo("motrice");
     setTarga("");
     setMarca("");
     setModello("");
@@ -250,6 +253,7 @@ const Mezzi: React.FC = () => {
 
   const loadMezzoInForm = (m: Mezzo) => {
     setEditingId(m.id);
+    setTipoMezzo(m.tipo ?? "motrice");
     setTarga(m.targa);
     setMarca(m.marca || m.marcaModello?.split(" ")[0] || "");
     setModello(
@@ -301,61 +305,59 @@ const Mezzi: React.FC = () => {
   // ---------------------------------------------
   // IA – Scansiona Libretto (camera + galleria)
   // ---------------------------------------------
-const processLibrettoDataUrl = async (dataUrl: string) => {
-  try {
-    setLibrettoLoading(true);
-    setLibrettoError(null);
+  const processLibrettoDataUrl = async (dataUrl: string) => {
+    try {
+      setLibrettoLoading(true);
+      setLibrettoError(null);
 
-    const imageBase64 = extractBase64FromDataURL(dataUrl);
+      const imageBase64 = extractBase64FromDataURL(dataUrl);
 
-    // NEW: chiamata alla IA centrale (Cloud Function aiCore)
-    const result = await callAICore("estrazione_libretto", { imageBase64 });
+      const result = await callAICore("estrazione_libretto", { imageBase64 });
 
-    const data = (result?.data || {}) as EstrattoLibrettoResponse;
+      const data = (result?.data || {}) as EstrattoLibrettoResponse;
 
-    if (!data || Object.keys(data).length === 0) {
-      setLibrettoError(
-        "Impossibile estrarre i dati dal libretto. Compila i campi manualmente."
-      );
-      return;
-    }
-
-    if (data.targa) setTarga(data.targa.toUpperCase());
-    if (data.marca) setMarca(data.marca);
-    if (data.modello) setModello(data.modello);
-    if (data.telaio) setTelaio(data.telaio);
-    if (data.colore) setColore(data.colore);
-    if (data.cilindrata) setCilindrata(data.cilindrata);
-    if (data.potenza) setPotenza(data.potenza);
-    if (data.massaComplessiva || data.massa_complessiva) {
-      setMassaComplessiva(
-        data.massaComplessiva || data.massa_complessiva || ""
-      );
-    }
-    if (data.proprietario) setProprietario(data.proprietario);
-    if (data.assicurazione) setAssicurazione(data.assicurazione);
-
-    const rawImm =
-      data.dataImmatricolazione || data.data_immatricolazione || "";
-    if (rawImm) {
-      const year = extractYear(rawImm);
-      const parsed = formatDateForInput(rawImm);
-      if (parsed) {
-        setDataImmatricolazione(parsed);
-      } else if (year) {
-        // fallback: solo anno
-        setDataImmatricolazione(`${year}-01-01`);
+      if (!data || Object.keys(data).length === 0) {
+        setLibrettoError(
+          "Impossibile estrarre i dati dal libretto. Compila i campi manualmente."
+        );
+        return;
       }
+
+      if (data.targa) setTarga(data.targa.toUpperCase());
+      if (data.marca) setMarca(data.marca);
+      if (data.modello) setModello(data.modello);
+      if (data.telaio) setTelaio(data.telaio);
+      if (data.colore) setColore(data.colore);
+      if (data.cilindrata && tipoMezzo === "motrice") setCilindrata(data.cilindrata);
+      if (data.potenza && tipoMezzo === "motrice") setPotenza(data.potenza);
+      if (data.massaComplessiva || data.massa_complessiva) {
+        setMassaComplessiva(
+          data.massaComplessiva || data.massa_complessiva || ""
+        );
+      }
+      if (data.proprietario) setProprietario(data.proprietario);
+      if (data.assicurazione) setAssicurazione(data.assicurazione);
+
+      const rawImm =
+        data.dataImmatricolazione || data.data_immatricolazione || "";
+      if (rawImm) {
+        const year = extractYear(rawImm);
+        const parsed = formatDateForInput(rawImm);
+        if (parsed) {
+          setDataImmatricolazione(parsed);
+        } else if (year) {
+          setDataImmatricolazione(`${year}-01-01`);
+        }
+      }
+    } catch (err) {
+      console.error("Errore IA libretto:", err);
+      setLibrettoError(
+        "Errore durante l'analisi del libretto. Riprova o inserisci i dati manualmente."
+      );
+    } finally {
+      setLibrettoLoading(false);
     }
-  } catch (err) {
-    console.error("Errore IA libretto:", err);
-    setLibrettoError(
-      "Errore durante l'analisi del libretto. Riprova o inserisci i dati manualmente."
-    );
-  } finally {
-    setLibrettoLoading(false);
-  }
-};
+  };
 
   const handleLibrettoFileChange: React.ChangeEventHandler<HTMLInputElement> = (
     e
@@ -408,7 +410,6 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
         (m) => m.id === mezzoId
       )?.fotoUrl;
 
-      // Upload foto su Firebase Storage (solo se modificata / nuova)
       if (fotoPreview && fotoDirty) {
         const storageRef = ref(storage, `mezzi/${mezzoId}/foto.jpg`);
         await uploadString(storageRef, fotoPreview, "data_url");
@@ -419,13 +420,15 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
         id: mezzoId,
         fotoUrl: fotoUrlToSave,
 
+        tipo: tipoMezzo,
+
         targa: tg,
         marca: marca.trim(),
         modello: modello.trim(),
         telaio: telaio.trim(),
         colore: colore.trim(),
-        cilindrata: cilindrata.trim(),
-        potenza: potenza.trim(),
+        cilindrata: tipoMezzo === "motrice" ? cilindrata.trim() : "",
+        potenza: tipoMezzo === "motrice" ? potenza.trim() : "",
         massaComplessiva: massaComplessiva.trim(),
         proprietario: proprietario.trim(),
         assicurazione: assicurazione.trim(),
@@ -434,9 +437,9 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
         manutenzioneProgrammata,
         note: note.trim(),
 
-        // legacy helper
         marcaModello: `${marca.trim()} ${modello.trim()}`.trim(),
-        anno: extractYear(dataImmatricolazione) ?? undefined,
+       anno: extractYear(dataImmatricolazione) || "",
+
       };
 
       const existingIndex = arr.findIndex((m) => m.id === mezzoId);
@@ -451,12 +454,10 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
       await setItemSync(MEZZI_KEY, updated);
       setMezzi(updated);
 
-      // Logica automatica revisione
       await ensureLavoroRevisione(tg, dataScadenzaRevisione);
 
-      // Reset form e apertura Dossier Mezzo
       resetForm();
-      navigate(`/dossier-mezzo/${mezzoId}`);
+      alert("Mezzo salvato correttamente.");
     } catch (err) {
       console.error(err);
       setError("Errore durante il salvataggio del mezzo.");
@@ -497,7 +498,6 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
   return (
     <div className="page-container mezzi-page">
       <div className="mezzi-card-wrapper">
-        {/* CARD FORM – 430px premium */}
         <div className="premium-card-430 mezzi-card">
           <div className="card-header">
             <div className="logo-wrapper">
@@ -517,7 +517,6 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
               <div className="alert alert-warning">{librettoError}</div>
             )}
 
-            {/* Sezione IA Libretto */}
             <div className="section-block libretto-section">
               <div className="section-header">
                 <h2>Scansione libretto (IA)</h2>
@@ -556,7 +555,6 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
                 </div>
               )}
 
-              {/* input nascosti per camera/galleria */}
               <input
                 ref={librettoCameraInputRef}
                 type="file"
@@ -574,7 +572,6 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
               />
             </div>
 
-            {/* Sezione Foto Mezzo */}
             <div className="section-block foto-section">
               <div className="section-header-inline">
                 <h2>Foto mezzo</h2>
@@ -603,9 +600,23 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
               />
             </div>
 
-            {/* Form dati mezzo */}
             <div className="section-block form-section">
               <h2>Dati generali</h2>
+
+              <div className="form-row">
+                <div className="form-field">
+                  <label>Tipo mezzo</label>
+                  <select
+                    value={tipoMezzo}
+                    onChange={(e) =>
+                      setTipoMezzo(e.target.value as "motrice" | "cisterna")
+                    }
+                  >
+                    <option value="motrice">Autocarro / Motrice</option>
+                    <option value="cisterna">Rimorchio / Cisterna</option>
+                  </select>
+                </div>
+              </div>
 
               <div className="form-row">
                 <div className="form-field">
@@ -666,24 +677,26 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Cilindrata</label>
-                  <input
-                    type="text"
-                    value={cilindrata}
-                    onChange={(e) => setCilindrata(e.target.value)}
-                  />
+              {tipoMezzo === "motrice" && (
+                <div className="form-row">
+                  <div className="form-field">
+                    <label>Cilindrata</label>
+                    <input
+                      type="text"
+                      value={cilindrata}
+                      onChange={(e) => setCilindrata(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label>Potenza</label>
+                    <input
+                      type="text"
+                      value={potenza}
+                      onChange={(e) => setPotenza(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="form-field">
-                  <label>Potenza</label>
-                  <input
-                    type="text"
-                    value={potenza}
-                    onChange={(e) => setPotenza(e.target.value)}
-                  />
-                </div>
-              </div>
+              )}
 
               <div className="form-row">
                 <div className="form-field">
@@ -749,6 +762,7 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
                   <label>Note</label>
                   <textarea
                     rows={3}
+                    className="mezzi-textarea"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
@@ -775,7 +789,6 @@ const processLibrettoDataUrl = async (dataUrl: string) => {
           </div>
         </div>
 
-        {/* LISTA MEZZI – card affiancata, scrollabile */}
         <div className="premium-card-430 mezzi-list-card">
           <div className="card-header">
             <h2 className="card-title">Elenco mezzi</h2>
