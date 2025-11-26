@@ -3,6 +3,12 @@ import { useEffect, useState } from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import "./Inventario.css";
+import { storage } from "../firebase";
+
+import { collection, doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase";
+
+import {  ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export interface InventarioItem {
   id: string;
@@ -25,15 +31,41 @@ const Inventario: React.FC = () => {
   const [fornitore, setFornitore] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // CARICA INVENTARIO
+  const [fornitoriList, setFornitoriList] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+
+  // ---------------------------------------------------
+  // CARICA inventario + fornitori
+  // ---------------------------------------------------
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       try {
+        // INVENTARIO
         const data = await getItemSync(INVENTARIO_KEY);
         if (Array.isArray(data)) setInventario(data as InventarioItem[]);
         else if (data?.value && Array.isArray(data.value))
           setInventario(data.value as InventarioItem[]);
+
+        // FORNITORI
+        try {
+          const refF = doc(collection(db, "storage"), "@fornitori");
+          const snap = await getDoc(refF);
+
+          if (snap.exists()) {
+            const raw = snap.data().value || [];
+            const nomi = raw.map((f: any) =>
+              (f.nome || f.ragioneSociale || "").toString().toUpperCase()
+            );
+            setFornitoriList(nomi);
+          } else {
+            setFornitoriList([]);
+          }
+        } catch (err) {
+          console.error("Errore caricamento fornitori:", err);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -42,13 +74,32 @@ const Inventario: React.FC = () => {
     void load();
   }, []);
 
+  // ---------------------------------------------------
   // SALVA
+  // ---------------------------------------------------
   const persist = async (items: InventarioItem[]) => {
     setInventario(items);
     await setItemSync(INVENTARIO_KEY, items);
   };
 
-  // AGGIUNGI MATERIALE MANUALE
+  // ---------------------------------------------------
+  // UPLOAD foto su Firebase Storage
+  // ---------------------------------------------------
+  const uploadFoto = async (materialeId: string) => {
+    if (!fotoFile) return { url: null, path: null };
+
+        const path = `inventario/${materialeId}/foto.jpg`;
+    const storageRef = ref(storage, path);
+
+    const snapshot = await uploadBytes(storageRef, fotoFile);
+    const url = await getDownloadURL(snapshot.ref);
+
+    return { url, path };
+  };
+
+  // ---------------------------------------------------
+  // AGGIUNGI nuovo materiale
+  // ---------------------------------------------------
   const handleAdd = async () => {
     if (!descrizione.trim() || !quantita.trim()) {
       alert("Inserisci descrizione e quantità.");
@@ -61,12 +112,25 @@ const Inventario: React.FC = () => {
       return;
     }
 
+    const nuovoId = generateId();
+
+    let fotoUrl = null;
+    let fotoStoragePath = null;
+
+    if (fotoFile) {
+      const foto = await uploadFoto(nuovoId);
+      fotoUrl = foto.url;
+      fotoStoragePath = foto.path;
+    }
+
     const nuovo: InventarioItem = {
-      id: generateId(),
+      id: nuovoId,
       descrizione: descrizione.trim(),
       quantita: q,
       unita,
       fornitore: fornitore.trim() || null,
+      fotoUrl,
+      fotoStoragePath,
     };
 
     const nuovi = [...inventario, nuovo];
@@ -76,9 +140,13 @@ const Inventario: React.FC = () => {
     setQuantita("");
     setUnita("pz");
     setFornitore("");
+    setFotoFile(null);
+    setSuggestions([]);
   };
 
-  // CAMBIA QUANTITÀ (+/-)
+  // ---------------------------------------------------
+  // CAMBIO QUANTITÀ (+/-)
+  // ---------------------------------------------------
   const changeQty = async (id: string, delta: number) => {
     const nuovi = inventario.map((i) =>
       i.id === id ? { ...i, quantita: Math.max(0, i.quantita + delta) } : i
@@ -86,7 +154,9 @@ const Inventario: React.FC = () => {
     await persist(nuovi);
   };
 
-  // CAMBIA QUANTITÀ DA INPUT
+  // ---------------------------------------------------
+  // CAMBIO QUANTITÀ manuale
+  // ---------------------------------------------------
   const inputQty = async (id: string, value: string) => {
     const num = Number(value.replace(",", "."));
     if (Number.isNaN(num) || num < 0) return;
@@ -97,13 +167,17 @@ const Inventario: React.FC = () => {
     await persist(nuovi);
   };
 
+  // ---------------------------------------------------
   // ELIMINA
+  // ---------------------------------------------------
   const handleDelete = async (id: string) => {
     if (!confirm("Vuoi veramente eliminare questo materiale?")) return;
     await persist(inventario.filter((i) => i.id !== id));
   };
 
-  // PDF (allineato a OrdiniArrivati / pdfEngine reale)
+  // ---------------------------------------------------
+  // PDF
+  // ---------------------------------------------------
   const exportPDF = async () => {
     if (inventario.length === 0) {
       alert("Inventario vuoto.");
@@ -126,6 +200,9 @@ const Inventario: React.FC = () => {
     });
   };
 
+  // ---------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------
   return (
     <div className="inventario-page">
       <div className="inventario-card">
@@ -157,16 +234,70 @@ const Inventario: React.FC = () => {
             />
           </label>
 
+          {/* FORNITORE */}
           <label className="inventario-label">
-            Fornitore (opzionale)
+            Fornitore (suggerimenti automatici)
             <input
               type="text"
               className="inventario-input"
               value={fornitore}
-              onChange={(e) => setFornitore(e.target.value)}
-              placeholder="Es. EdilCom SA"
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase();
+                setFornitore(val);
+
+                if (val.length === 0) {
+                  setSuggestions([]);
+                  return;
+                }
+
+                const filtered = fornitoriList.filter((f) =>
+                  f.toLowerCase().includes(val.toLowerCase())
+                );
+                setSuggestions(filtered.slice(0, 5));
+              }}
+              placeholder="Es. EDILCOM SA"
+            />
+
+            {suggestions.length > 0 && (
+              <div className="inventario-suggestions">
+                {suggestions.map((s) => (
+                  <div
+                    key={s}
+                    className="inventario-suggestion-item"
+                    onClick={() => {
+                      setFornitore(s);
+                      setSuggestions([]);
+                    }}
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
+          </label>
+
+          {/* FOTO */}
+          <label className="inventario-label">
+            Foto (opzionale)
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setFotoFile(file);
+              }}
             />
           </label>
+
+          {fotoFile && (
+            <div className="inventario-preview">
+              <img
+                src={URL.createObjectURL(fotoFile)}
+                className="inventario-thumb"
+                alt="preview"
+              />
+            </div>
+          )}
 
           <div className="inventario-inline">
             <label className="inventario-label flex1">
@@ -209,7 +340,6 @@ const Inventario: React.FC = () => {
             <div className="inventario-list">
               {inventario.map((item) => (
                 <div key={item.id} className="inventario-row">
-                  {/* FOTO */}
                   <div className="inventario-row-foto">
                     {item.fotoUrl ? (
                       <img src={item.fotoUrl} className="inventario-thumb" />
@@ -218,7 +348,6 @@ const Inventario: React.FC = () => {
                     )}
                   </div>
 
-                  {/* DESCRIZIONE + FORNITORE INLINE */}
                   <div className="inventario-row-details">
                     <span className="inventario-row-descrizione">
                       {item.descrizione}
@@ -229,7 +358,6 @@ const Inventario: React.FC = () => {
                       )}
                     </span>
 
-                    {/* QUANTITÀ */}
                     <div className="inventario-row-quantita-block">
                       <span className="inventario-row-quantita-label">
                         Quantità
@@ -264,7 +392,6 @@ const Inventario: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* ELIMINA */}
                   <div className="inventario-row-actions">
                     <button
                       className="inventario-delete-button"
@@ -278,6 +405,7 @@ const Inventario: React.FC = () => {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

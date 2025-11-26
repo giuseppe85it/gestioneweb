@@ -1,4 +1,4 @@
-/* SFONDO */
+/* SFONDO PIENO — la tua foto */
 .home-container {
   width: 100%;
   height: 100vh;
@@ -6,102 +6,68 @@
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  position: relative;
-}
-
-/* CERCHIO CENTRALE */
-.home-circle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 420px;
-  height: 420px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.9);
-}
-
-/* CARD CENTRALE */
-.home-center-card {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 180px;
-  height: 180px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.85);
   display: flex;
   justify-content: center;
   align-items: center;
-  text-align: center;
-  font-size: 22px;
-  box-shadow: 0 0 20px rgba(0,0,0,0.3);
 }
 
-/* ICONA BASE */
-.home-icon {
-  position: absolute;
-  width: 85px;
-  height: 85px;
+/* CONTENUTO CENTRALE */
+.home-content {
+  text-align: center;
+  background: rgba(255, 255, 255, 0.25); /* leggerissimo vetro */
+  backdrop-filter: blur(2px);
+  padding: 20px;
+  border-radius: 20px;
+}
+
+/* TITOLO */
+.home-title {
+  font-size: 34px;
+  margin-bottom: 25px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+
+/* GRIGLIA ICONE */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 90px);
+  gap: 20px;
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .home-grid {
+    grid-template-columns: repeat(3, 80px);
+    gap: 15px;
+  }
+}
+
+/* BOX ICONA */
+.home-box {
+  width: 90px;
+  height: 90px;
   background: rgba(255, 255, 255, 0.9);
-  border-radius: 50%;
+  border-radius: 18px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  text-align: center;
-  font-size: 26px;
   text-decoration: none;
   color: black;
-  box-shadow: 0 0 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  transition: 0.15s;
 }
 
-.home-icon p {
+.home-box:hover {
+  transform: scale(1.05);
+}
+
+/* TESTO SOTTO ICONA */
+.home-box p {
   margin: 0;
-  font-size: 10px;
+  margin-top: 4px;
+  font-size: 12px;
   font-weight: bold;
-  margin-top: 2px;
-}
-
-/* POSIZIONI */
-
-.icon-12 {
-  top: calc(50% - 250px);
-  left: calc(50% - 42px);
-}
-
-.icon-130 {
-  top: calc(50% - 180px);
-  left: calc(50% + 150px);
-}
-
-.icon-3 {
-  top: calc(50% - 42px);
-  left: calc(50% + 250px);
-}
-
-.icon-430 {
-  top: calc(50% + 120px);
-  left: calc(50% + 160px);
-}
-
-.icon-6 {
-  top: calc(50% + 240px);
-  left: calc(50% - 42px);
-}
-
-.icon-730 {
-  top: calc(50% + 120px);
-  left: calc(50% - 240px);
-}
-
-.icon-9 {
-  top: calc(50% - 42px);
-  left: calc(50% - 250px);
-}
-
-.icon-1030 {
-  top: calc(50% - 180px);
-  left: calc(50% - 240px);
 }

@@ -450,8 +450,15 @@ const Mezzi: React.FC = () => {
       } else {
         updated = [...arr, nuovoMezzo];
       }
+// FIX: Firestore non accetta undefined → convertiamo solo in quel momento
+const sanitized = updated.map(m => ({
+  ...m,
+  fotoUrl: m.fotoUrl ?? null,
+}));
 
-      await setItemSync(MEZZI_KEY, updated);
+await setItemSync(MEZZI_KEY, sanitized);
+
+      
       setMezzi(updated);
 
       await ensureLavoroRevisione(tg, dataScadenzaRevisione);

@@ -1,65 +1,58 @@
 import "./Home.css";
 import { Link } from "react-router-dom";
 
-
 function Home() {
   return (
     <div className="home-container">
-      
-      {/* Cerchio */}
-      <div className="home-circle"></div>
 
-      {/* 12 - Lavori da eseguire */}
-      <Link to="/lavori-da-eseguire" className="home-icon icon-12">
-        <span>🛠️</span>
-        <p>Lavori</p>
-      </Link>
+      <div className="home-content">
 
-      {/* 1:30 - Lavori in attesa */}
-      <Link to="/lavori-in-attesa" className="home-icon icon-130">
-        <span>⏳</span>
-        <p>Attesa</p>
-      </Link>
+        <h1 className="home-title">Gestione Mezzi</h1>
 
-      {/* 3 - Materiali da ordinare */}
-      <Link to="/materiali-da-ordinare" className="home-icon icon-3">
-        <span>📦</span>
-        <p>Da ordinare</p>
-      </Link>
+        <div className="home-grid">
+          
+          <Link to="/lavori-da-eseguire" className="home-box">
+            <span>🛠️</span>
+            <p>Lavori</p>
+          </Link>
 
-      {/* 4:30 - Materiali consegnati */}
-      <Link to="/materiali-consegnati" className="home-icon icon-430">
-        <span>✅</span>
-        <p>Consegnati</p>
-      </Link>
+          <Link to="/lavori-in-attesa" className="home-box">
+            <span>⏳</span>
+            <p>Attesa</p>
+          </Link>
 
-      {/* 6 - Inventario */}
-      <Link to="/inventario" className="home-icon icon-6">
-        <span>📚</span>
-        <p>Inventario</p>
-      </Link>
+          <Link to="/materiali-da-ordinare" className="home-box">
+            <span>📦</span>
+            <p>Da ordinare</p>
+          </Link>
 
-      {/* 7:30 - Mezzi */}
-      <Link to="/mezzi" className="home-icon icon-730">
-        <span>🚚</span>
-        <p>Mezzi</p>
-      </Link>
+          <Link to="/materiali-consegnati" className="home-box">
+            <span>✅</span>
+            <p>Consegnati</p>
+          </Link>
 
-      {/* 9 - Colleghi */}
-      <Link to="/colleghi" className="home-icon icon-9">
-        <span>👥</span>
-        <p>Colleghi</p>
-      </Link>
+          <Link to="/inventario" className="home-box">
+            <span>📚</span>
+            <p>Inventario</p>
+          </Link>
 
-      {/* 10:30 - Fornitori */}
-      <Link to="/fornitori" className="home-icon icon-1030">
-        <span>🏭</span>
-        <p>Fornitori</p>
-      </Link>
+          <Link to="/mezzi" className="home-box">
+            <span>🚚</span>
+            <p>Mezzi</p>
+          </Link>
 
-      {/* CARD CENTRALE */}
-      <div className="home-center-card">
-        <h1>Gestione Mezzi</h1>
+          <Link to="/colleghi" className="home-box">
+            <span>👥</span>
+            <p>Colleghi</p>
+          </Link>
+
+          <Link to="/fornitori" className="home-box">
+            <span>🏭</span>
+            <p>Fornitori</p>
+          </Link>
+
+        </div>
+
       </div>
     </div>
   );
