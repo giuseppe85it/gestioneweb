@@ -1,3 +1,5 @@
+// src/pages/Manutenzioni.tsx
+
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
@@ -14,7 +16,6 @@ interface MaterialeManutenzione {
   unita: string;
   fromInventario: boolean;
   refId?: string;
-  fornitoreLabel?: string;
 }
 
 interface VoceManutenzione {
@@ -25,9 +26,23 @@ interface VoceManutenzione {
   sottotipo?: SottoTipo | null;
   descrizione: string;
   eseguito?: string | null;
-  data: string;
+  data: string; // "gg mm aaaa"
   tipo: TipoVoce;
   materiali?: MaterialeManutenzione[];
+}
+
+interface MezzoBasic {
+  id: string;
+  targa: string;
+  label: string;
+}
+
+interface MaterialeInventario {
+  id: string;
+  label: string;
+  quantita: number;
+  unita: string;
+  fornitoreLabel?: string;
 }
 
 const KEY_MANUTENZIONI = "@manutenzioni";
@@ -35,30 +50,55 @@ const KEY_MEZZI = "@mezzi_aziendali";
 const KEY_INVENTARIO = "@inventario";
 const KEY_MOVIMENTI = "@materialiconsegnati";
 
-function parseData(d: string) {
-  if (!d) return 0;
-  const [gg, mm, yyyy] = d.split(" ");
-  return new Date(Number(yyyy), Number(mm) - 1, Number(gg)).getTime();
-}
-
+// Data in formato ufficiale: "gg mm aaaa"
 const oggi = () => {
   const n = new Date();
-  return `${String(n.getDate()).padStart(2, "0")} ${String(
-    n.getMonth() + 1
-  ).padStart(2, "0")} ${n.getFullYear()}`;
+  const gg = String(n.getDate()).padStart(2, "0");
+  const mm = String(n.getMonth() + 1).padStart(2, "0");
+  const yy = n.getFullYear();
+  return `${gg} ${mm} ${yy}`;
 };
 
-export default function Manutenzioni() {
+function parseGGMMYYYY(data: string): number {
+  if (!data) return 0;
+
+  let gg = "";
+  let mm = "";
+  let yyyy = "";
+
+  if (data.includes("/")) {
+    const [d, m, y] = data.split("/");
+    gg = d;
+    mm = m;
+    yyyy = y;
+  } else if (data.includes(" ")) {
+    const [d, m, y] = data.split(" ");
+    gg = d;
+    mm = m;
+    yyyy = y;
+  } else {
+    return 0;
+  }
+
+  const num = Date.parse(`${yyyy}-${mm}-${gg}T00:00:00`);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+const Manutenzioni: React.FC = () => {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
-  const [storico, setStorico] = useState<VoceManutenzione[]>([]);
-  const [mezzi, setMezzi] = useState<any[]>([]);
-  const [inventario, setInventario] = useState<any[]>([]);
 
-  const [filtroTarga, setFiltroTarga] = useState("");
+  // Dati principali
+  const [storico, setStorico] = useState<VoceManutenzione[]>([]);
+  const [mezzi, setMezzi] = useState<MezzoBasic[]>([]);
+  const [materialiInventario, setMaterialiInventario] = useState<MaterialeInventario[]>([]);
+
+  // Filtri lista
+  const [filtroTarga, setFiltroTarga] = useState<string>("");
   const [filtroTipo, setFiltroTipo] = useState<"tutti" | TipoVoce>("tutti");
 
+  // Form manutenzione
   const [targa, setTarga] = useState("");
   const [tipo, setTipo] = useState<TipoVoce>("mezzo");
   const [km, setKm] = useState("");
@@ -68,266 +108,397 @@ export default function Manutenzioni() {
   const [eseguito, setEseguito] = useState("");
   const [data, setData] = useState(oggi());
 
+  // Gestione materiali usati nella manutenzione
   const [materialeSearch, setMaterialeSearch] = useState("");
-  const [materialeSelezionato, setMaterialeSelezionato] = useState<any>(null);
+  const [materialiTemp, setMaterialiTemp] = useState<MaterialeManutenzione[]>([]);
   const [quantitaTemp, setQuantitaTemp] = useState("");
 
-  const [materialiUsati, setMaterialiUsati] = useState<MaterialeManutenzione[]>(
-    []
-  );
-
+  // Carica storico + mezzi + inventario
   useEffect(() => {
-    const load = async () => {
+    const loadAll = async () => {
       setLoading(true);
+      try {
+        const [storicoRaw, mezziRaw, inventarioRaw] = await Promise.all([
+          getItemSync(KEY_MANUTENZIONI),
+          getItemSync(KEY_MEZZI),
+          getItemSync(KEY_INVENTARIO),
+        ]);
 
-      const rawMan = await getItemSync(KEY_MANUTENZIONI);
-      const rawMezzi = await getItemSync(KEY_MEZZI);
-      const rawInv = await getItemSync(KEY_INVENTARIO);
+        // Manutenzioni
+        const storicoArr: VoceManutenzione[] = Array.isArray(storicoRaw)
+          ? (storicoRaw as VoceManutenzione[])
+          : storicoRaw?.value && Array.isArray(storicoRaw.value)
+          ? (storicoRaw.value as VoceManutenzione[])
+          : [];
 
-      const arrMan = Array.isArray(rawMan)
-        ? rawMan
-        : rawMan?.value || [];
+        // Mezzi
+        const mezziArr: any[] = Array.isArray(mezziRaw)
+          ? (mezziRaw as any[])
+          : mezziRaw?.value && Array.isArray(mezziRaw.value)
+          ? (mezziRaw.value as any[])
+          : [];
 
-      const arrMezzi = Array.isArray(rawMezzi)
-        ? rawMezzi
-        : rawMezzi?.value || [];
+        const mappedMezzi: MezzoBasic[] = mezziArr
+          .map((m) => {
+            const tg = (m.targa || "").toUpperCase().trim();
+            if (!tg) return null;
+            const labelBase =
+              m.marcaModello ||
+              `${m.marca || ""} ${m.modello || ""}`.trim() ||
+              tg;
+            return {
+              id: m.id || tg,
+              targa: tg,
+              label: `${tg} – ${labelBase}`,
+            };
+          })
+          .filter(Boolean) as MezzoBasic[];
 
-      const arrInv = Array.isArray(rawInv)
-        ? rawInv
-        : rawInv?.value || [];
+        // Inventario
+        const inventarioArr: any[] = Array.isArray(inventarioRaw)
+          ? (inventarioRaw as any[])
+          : inventarioRaw?.value && Array.isArray(inventarioRaw.value)
+          ? (inventarioRaw.value as any[])
+          : [];
 
-      const mappedMezzi = arrMezzi
-        .map((m: any) => ({
-          id: m.id,
-          targa: (m.targa || "").toUpperCase(),
-          label: `${(m.targa || "").toUpperCase()} – ${m.marca || ""} ${m.modello || ""
-            }`.trim(),
-        }))
-        .filter((m: any) => m.targa);
+        const mappedInv: MaterialeInventario[] = inventarioArr
+          .map((m) => {
+            const label =
+              m.label ||
+              m.descrizione ||
+              m.nome ||
+              "";
+            if (!label) return null;
+            return {
+              id: m.id || label,
+              label,
+              quantita: m.quantita || 0,
+              unita: m.unita || "pz",
+              fornitoreLabel: m.fornitoreLabel || m.fornitore || "",
+            };
+          })
+          .filter(Boolean) as MaterialeInventario[];
 
-      setStorico(
-        [...arrMan].sort((a, b) => parseData(b.data) - parseData(a.data))
-      );
-      setMezzi(mappedMezzi);
-      setInventario(arrInv);
+        // Ordina storico per data (più recente in alto)
+        const ordinato = [...storicoArr].sort(
+          (a, b) => parseGGMMYYYY(b.data) - parseGGMMYYYY(a.data)
+        );
 
-      setLoading(false);
+        setStorico(ordinato);
+        setMezzi(mappedMezzi);
+        setMaterialiInventario(mappedInv);
+      } catch (err) {
+        console.error("Errore caricamento manutenzioni/mezzi/inventario:", err);
+      } finally {
+        setLoading(false);
+      }
     };
-    load();
+
+    loadAll();
   }, []);
 
-  const persist = async (arr: VoceManutenzione[]) => {
-    setStorico(arr);
-    await setItemSync(KEY_MANUTENZIONI, arr);
+  // Normalizzazione per Firestore: niente undefined
+  const persistStorico = async (items: VoceManutenzione[]) => {
+    setStorico(items);
+
+    const sanitized = items.map((v) => ({
+      ...v,
+      km: v.km ?? null,
+      ore: v.ore ?? null,
+      sottotipo: v.sottotipo ?? null,
+      eseguito: v.eseguito ?? null,
+    }));
+
+    try {
+      await setItemSync(KEY_MANUTENZIONI, sanitized);
+    } catch (err) {
+      console.error("Errore salvataggio manutenzioni:", err);
+    }
   };
 
-  const materialiSuggeriti = useMemo(() => {
-    if (!materialeSearch.trim()) return [];
-    return inventario
-      .filter((m: any) =>
-        String(m.label || m.descrizione || "")
-          .toLowerCase()
-          .includes(materialeSearch.toLowerCase())
-      )
-      .slice(0, 6);
-  }, [materialeSearch, inventario]);
-
-  const handleAddMateriale = () => {
-    if (!materialeSelezionato) {
-      alert("Seleziona un materiale.");
-      return;
-    }
-    if (!quantitaTemp || Number(quantitaTemp) <= 0) {
-      alert("Inserisci una quantità valida.");
-      return;
-    }
-
-    const label = materialeSelezionato.label;
-    const quantita = Number(quantitaTemp);
-    const unita = materialeSelezionato.unita || "pz";
-    const refId = materialeSelezionato.id;
-
-    const esiste = materialiUsati.find(
-      (m) =>
-        m.label.toLowerCase() === label.toLowerCase() &&
-        m.fromInventario === true
-    );
-
-    if (esiste) {
-      setMaterialiUsati((prev) =>
-        prev.map((m) =>
-          m.label.toLowerCase() === label.toLowerCase()
-            ? { ...m, quantita: m.quantita + quantita }
-            : m
-        )
-      );
-    } else {
-      setMaterialiUsati((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          label,
-          quantita,
-          unita,
-          fromInventario: true,
-          refId,
-          fornitoreLabel: materialeSelezionato.fornitoreLabel || "",
-        },
-      ]);
-    }
-
-    setMaterialeSearch("");
-    setMaterialeSelezionato(null);
-    setQuantitaTemp("");
+  const resetForm = () => {
+    // mantengo la targa selezionata per inserire più voci sullo stesso mezzo
+    setTipo("mezzo");
+    setKm("");
+    setOre("");
+    setSottotipo("motrice");
+    setDescrizione("");
+    setEseguito("");
+    setData(oggi());
+    // non tocco targa
   };
 
-  const handleAddMaterialeLibero = () => {
-    if (!materialeSearch.trim()) {
-      alert("Inserisci il nome del materiale.");
+  const handleSelectTargaMezzo = (value: string) => {
+    setTarga(value);
+    if (!filtroTarga) {
+      setFiltroTarga(value);
+    }
+  };
+
+  const handleAddMateriale = (
+    label: string,
+    quantita: number,
+    unita: string,
+    fromInventario: boolean,
+    refId?: string
+  ) => {
+    if (!label || !quantita) {
+      alert("Inserisci almeno nome materiale e quantità.");
       return;
     }
-    if (!quantitaTemp || Number(quantitaTemp) <= 0) {
-      alert("Inserisci una quantità valida.");
-      return;
-    }
 
-    const label = materialeSearch.trim();
-    const unita = "pz";
-    const quantita = Number(quantitaTemp);
+    const nuovo: MaterialeManutenzione = {
+      id: Date.now().toString(),
+      label,
+      quantita,
+      unita,
+      fromInventario,
+      refId,
+    };
 
-    const esiste = materialiUsati.find(
-      (m) =>
-        m.label.toLowerCase() === label.toLowerCase() &&
-        m.fromInventario === false
-    );
-
-    if (esiste) {
-      setMaterialiUsati((prev) =>
-        prev.map((m) =>
-          m.label.toLowerCase() === label.toLowerCase()
-            ? { ...m, quantita: m.quantita + quantita }
-            : m
-        )
-      );
-    } else {
-      setMaterialiUsati((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          label,
-          quantita,
-          unita,
-          fromInventario: false,
-        },
-      ]);
-    }
-
+    setMaterialiTemp((prev) => [...prev, nuovo]);
     setMaterialeSearch("");
     setQuantitaTemp("");
   };
 
   const handleRemoveMateriale = (id: string) => {
-    setMaterialiUsati((prev) => prev.filter((m) => m.id !== id));
+    setMaterialiTemp((prev) => prev.filter((m) => m.id !== id));
   };
 
   const handleAdd = async () => {
-    if (!targa.trim() || !descrizione.trim()) {
-      alert("Compila almeno targa e descrizione.");
+    const t = targa.trim().toUpperCase();
+    const desc = descrizione.trim();
+    const d = data.trim();
+
+    if (!t || !desc || !d) {
+      alert("Compila almeno TARGA, DESCRIZIONE e DATA.");
       return;
     }
 
-    const nuova: VoceManutenzione = {
+    const nuovaVoce: VoceManutenzione = {
       id: Date.now().toString(),
-      targa: targa.toUpperCase(),
+      targa: t,
+      km:
+        tipo === "mezzo"
+          ? ((km || "").trim() || undefined)
+          : undefined,
+      ore:
+        tipo === "compressore"
+          ? ((ore || "").trim() || undefined)
+          : undefined,
+      sottotipo: tipo === "compressore" ? sottotipo : undefined,
+      descrizione: desc,
+      eseguito: eseguito.trim() || undefined,
+      data: d,
       tipo,
-      km: tipo === "mezzo" ? km || null : null,
-      ore: tipo === "compressore" ? ore || null : null,
-      sottotipo: tipo === "compressore" ? sottotipo : null,
-      descrizione,
-      eseguito: eseguito.trim() || null,
-      data,
-      materiali: materialiUsati,
+      materiali: materialiTemp.length ? materialiTemp : undefined,
     };
 
-    const arr = [...storico, nuova].sort(
-      (a, b) => parseData(b.data) - parseData(a.data)
-    );
+    // Aggiornamento inventario e movimenti OUT
+    try {
+      const inventarioRaw = await getItemSync(KEY_INVENTARIO);
+      const inventarioArr: any[] = Array.isArray(inventarioRaw)
+        ? (inventarioRaw as any[])
+        : inventarioRaw?.value && Array.isArray(inventarioRaw.value)
+        ? (inventarioRaw.value as any[])
+        : [];
 
-    const inv = [...inventario];
-    const mov = (await getItemSync(KEY_MOVIMENTI)) || [];
+      const movRaw = await getItemSync(KEY_MOVIMENTI);
+      const movArr: any[] = Array.isArray(movRaw)
+        ? (movRaw as any[])
+        : movRaw?.value && Array.isArray(movRaw.value)
+        ? (movRaw.value as any[])
+        : [];
 
-    for (const m of materialiUsati) {
-      if (m.fromInventario && m.refId) {
-        const idx = inv.findIndex((x) => x.id === m.refId);
-        if (idx !== -1) {
-          inv[idx].quantita = Math.max(
-            0,
-            inv[idx].quantita - m.quantita
-          );
+      let inventarioAgg = [...inventarioArr];
+      let movAgg = [...movArr];
+
+      for (const mat of materialiTemp) {
+        if (mat.fromInventario && mat.refId) {
+          const idx = inventarioAgg.findIndex((i: any) => i.id === mat.refId);
+          if (idx !== -1) {
+            const currentQty = Number(inventarioAgg[idx].quantita || 0);
+            const usedQty = Number(mat.quantita || 0);
+            const nuovaQuantita = currentQty - usedQty;
+            inventarioAgg[idx].quantita = nuovaQuantita >= 0 ? nuovaQuantita : 0;
+          }
+
+          movAgg.push({
+            id: `${Date.now().toString()}_${mat.id}`,
+            mezzoTarga: t,
+            descrizione: mat.label,
+            quantita: mat.quantita,
+            unita: mat.unita,
+            direzione: "OUT",
+            data: d,
+            destinatario: { type: "mezzo", refId: t, label: t },
+          });
         }
-
-        mov.push({
-          id: `${Date.now()}_${m.id}`,
-          mezzoTarga: targa,
-          descrizione: m.label,
-          quantita: m.quantita,
-          unita: m.unita,
-          direzione: "OUT",
-          data,
-          fornitoreLabel: m.fornitoreLabel || "",
-          destinatario: {
-            type: "mezzo",
-            refId: targa,
-            label: targa,
-          },
-        });
       }
+
+      await setItemSync(KEY_INVENTARIO, inventarioAgg);
+      await setItemSync(KEY_MOVIMENTI, movAgg);
+    } catch (err) {
+      console.error("Errore aggiornamento inventario/movimenti:", err);
     }
 
-    await setItemSync(KEY_INVENTARIO, inv);
-    await setItemSync(KEY_MOVIMENTI, mov);
+    const aggiornato = [...storico, nuovaVoce].sort(
+      (a, b) => parseGGMMYYYY(b.data) - parseGGMMYYYY(a.data)
+    );
+    await persistStorico(aggiornato);
 
-    await persist(arr);
-
-    setMaterialiUsati([]);
+    setMaterialiTemp([]);
     setMaterialeSearch("");
-    setMaterialeSelezionato(null);
     setQuantitaTemp("");
-    setDescrizione("");
-    setEseguito("");
-    setKm("");
-    setOre("");
+    resetForm();
   };
 
-  const filtrati = useMemo(() => {
-    return storico.filter((s) => {
-      const matchT =
-        !filtroTarga || s.targa.includes(filtroTarga.toUpperCase());
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Vuoi davvero eliminare questa manutenzione?")) {
+      return;
+    }
+    const filtrato = storico.filter((v) => v.id !== id);
+    await persistStorico(filtrato);
+  };
+
+  const handleApriDossier = () => {
+    const tg = (filtroTarga || targa).trim().toUpperCase();
+    if (!tg) {
+      alert("Seleziona o inserisci una targa per aprire il dossier.");
+      return;
+    }
+    navigate(`/dossier/${encodeURIComponent(tg)}`);
+  };
+
+  const storicoFiltrato = useMemo(() => {
+    return storico.filter((v) => {
+      const matchTarga = filtroTarga
+        ? v.targa.toUpperCase().includes(filtroTarga.toUpperCase().trim())
+        : true;
+
       const matchTipo =
-        filtroTipo === "tutti" || s.tipo === filtroTipo;
-      return matchT && matchTipo;
+        filtroTipo === "tutti" ? true : v.tipo === filtroTipo;
+
+      return matchTarga && matchTipo;
     });
   }, [storico, filtroTarga, filtroTipo]);
+
+  const handleExportPDF = async () => {
+    if (storicoFiltrato.length === 0) {
+      alert("Non ci sono manutenzioni da esportare con i filtri attuali.");
+      return;
+    }
+
+    const rows = storicoFiltrato.map((item) => {
+      const misura =
+        item.tipo === "mezzo"
+          ? `${item.km || "0"} km`
+          : `${item.ore || "0"} ore`;
+
+      return [
+        item.targa,
+        item.tipo === "mezzo" ? "MEZZO" : "COMPRESSORE",
+        misura,
+        item.sottotipo || "",
+        item.descrizione,
+        item.eseguito || "",
+        item.data,
+      ];
+    });
+
+    try {
+      await generateSmartPDF({
+        kind: "table",
+        title: "Storico manutenzioni",
+        columns: [
+          "Targa",
+          "Tipo",
+          "Km/Ore",
+          "Sottotipo",
+          "Descrizione",
+          "Eseguito da",
+          "Data",
+        ],
+        rows,
+      });
+    } catch (err) {
+      console.error("Errore generazione PDF manutenzioni:", err);
+      alert("Errore nella generazione del PDF.");
+    }
+  };
+
+  const materialiSuggeriti = useMemo(() => {
+    const term = materialeSearch.trim().toLowerCase();
+    if (!term) return [];
+    return materialiInventario
+      .filter((m) => m.label.toLowerCase().includes(term))
+      .slice(0, 5);
+  }, [materialeSearch, materialiInventario]);
 
   return (
     <div className="man-page">
       <div className="man-layout">
-        {/* FORM SINISTRA */}
+        {/* CARD SINISTRA – INSERIMENTO */}
         <div className="man-card man-card-form">
-          <h1 className="man-title">MANUTENZIONI</h1>
+          <div className="man-card-header">
+            <div className="man-logo-title">
+              <img src="/logo.png" alt="logo" className="man-logo" />
+              <div>
+                <h1 className="man-title">Manutenzioni</h1>
+                <p className="man-subtitle">
+                  Inserimento interventi su mezzi e compressori
+                </p>
+              </div>
+            </div>
 
-          {/* INFO MEZZO */}
+            <div className="man-header-actions">
+              <button
+                type="button"
+                className="man-header-btn"
+                onClick={handleExportPDF}
+                disabled={loading}
+              >
+                Esporta PDF
+              </button>
+              <button
+                type="button"
+                className="man-header-btn man-header-btn-outline"
+                onClick={handleApriDossier}
+              >
+                Apri dossier mezzo
+              </button>
+            </div>
+          </div>
+
+          {/* SEZIONE 1 – INFO MEZZO */}
           <div className="man-section">
-            <div className="man-section-title">Info Mezzo</div>
+            <div className="man-section-title">Info mezzo</div>
+
+            <label className="man-label-block">
+              <span className="man-label-text">
+                Seleziona mezzo (da elenco mezzi)
+              </span>
+              <select
+                className="man-input"
+                value={targa}
+                onChange={(e) => handleSelectTargaMezzo(e.target.value)}
+              >
+                <option value="">— Seleziona —</option>
+                {mezzi.map((m) => (
+                  <option key={m.id} value={m.targa}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <label className="man-label-block">
               <span className="man-label-text">Targa</span>
               <input
                 className="man-input"
                 value={targa}
-                onChange={(e) =>
-                  setTarga(e.target.value.toUpperCase())
-                }
+                onChange={(e) => setTarga(e.target.value.toUpperCase())}
+                placeholder="Es. TI315407"
               />
             </label>
 
@@ -351,33 +522,55 @@ export default function Manutenzioni() {
                     className="man-input"
                     value={km}
                     onChange={(e) => setKm(e.target.value)}
+                    placeholder="Es. 250000"
+                    inputMode="numeric"
                   />
                 </label>
               )}
 
-              {tipo === "compressore" && (
-                <label className="man-label-inline">
-                  <span className="man-label-text">Ore</span>
-                  <input
-                    className="man-input"
-                    value={ore}
-                    onChange={(e) => setOre(e.target.value)}
-                  />
-                </label>
-              )}
+{tipo === "compressore" && (
+  <label className="man-label-inline">
+    <span className="man-label-text">Ore</span>
+    <input
+      className="man-input"
+      value={ore}
+      onChange={(e) => setOre(e.target.value)}
+      placeholder="Es. 1200"
+      inputMode="numeric"
+    />
+  </label>
+)}
+              
             </div>
+
+            {tipo === "compressore" && (
+              <label className="man-label-block">
+                <span className="man-label-text">Sottotipo compressore</span>
+                <select
+                  className="man-input"
+                  value={sottotipo}
+                  onChange={(e) =>
+                    setSottotipo(e.target.value as SottoTipo)
+                  }
+                >
+                  <option value="motrice">Motrice</option>
+                  <option value="trattore">Trattore</option>
+                </select>
+              </label>
+            )}
           </div>
 
-          {/* DETTAGLI */}
+          {/* SEZIONE 2 – DETTAGLI MANUTENZIONE */}
           <div className="man-section">
-            <div className="man-section-title">Dettagli Manutenzione</div>
+            <div className="man-section-title">Dettagli manutenzione</div>
 
             <label className="man-label-block">
-              <span className="man-label-text">Descrizione</span>
+              <span className="man-label-text">Descrizione intervento</span>
               <textarea
-                className="man-input"
+                className="man-input man-textarea"
                 value={descrizione}
                 onChange={(e) => setDescrizione(e.target.value)}
+                placeholder="Es. Sostituzione pastiglie freno anteriori"
               />
             </label>
 
@@ -387,82 +580,95 @@ export default function Manutenzioni() {
                 className="man-input"
                 value={eseguito}
                 onChange={(e) => setEseguito(e.target.value)}
+                placeholder="Es. Officina Rossi"
               />
             </label>
           </div>
 
-          {/* MATERIALI */}
+          {/* SEZIONE 2B – MATERIALI UTILIZZATI */}
           <div className="man-section">
             <div className="man-section-title">Materiali utilizzati</div>
 
-            <input
-              className="man-input"
-              placeholder="Cerca materiale"
-              value={materialeSearch}
-              onChange={(e) => {
-                setMaterialeSearch(e.target.value);
-                setMaterialeSelezionato(null);
-              }}
-            />
+            <label className="man-label-block">
+              <span className="man-label-text">Cerca materiale</span>
+              <input
+                className="man-input"
+                value={materialeSearch}
+                onChange={(e) => setMaterialeSearch(e.target.value)}
+                placeholder="Es. pastiglie, olio, bulloni..."
+              />
+            </label>
 
             {materialeSearch.trim() !== "" && (
               <div className="man-autosuggest">
-                {materialiSuggeriti.map((m: any) => (
+                {materialiSuggeriti.map((m) => (
                   <div
                     key={m.id}
                     className="man-autosuggest-item"
-                    onClick={() => {
-                      setMaterialeSelezionato(m);
-                      setMaterialeSearch(m.label);
-                    }}
+onClick={() => {
+  if (!quantitaTemp || Number(quantitaTemp) <= 0) {
+    alert("Inserisci prima la quantità.");
+    return;
+  }
+
+  handleAddMateriale(
+    m.label,
+    Number(quantitaTemp),
+    m.unita || "pz",
+    true,
+    m.id
+  );
+}}
                   >
                     <strong>{m.label}</strong>
-                    <span>{m.quantita + " " + m.unita}</span>
+                    <span style={{ marginLeft: "8px", opacity: 0.7 }}>
+                      {m.quantita} {m.unita}
+                    </span>
                   </div>
                 ))}
 
                 <div
                   className="man-autosuggest-item man-autosuggest-free"
-                  onClick={() => {
-                    setMaterialeSelezionato(null);
-                  }}
+                  onClick={() =>
+                    handleAddMateriale(
+                      materialeSearch.trim(),
+                      Number(quantitaTemp || 1),
+                      "pz",
+                      false
+                    )
+                  }
                 >
-                  ➕ Aggiungi come materiale libero
+                  ➕ Aggiungi “{materialeSearch.trim()}” come materiale libero
                 </div>
               </div>
             )}
 
-            {materialeSearch.trim() !== "" && (
-              <div className="man-temp-inline">
-                <strong>{materialeSearch}</strong>
-                <span>— Q.tà:</span>
-                <input
-                  className="man-input-small"
-                  value={quantitaTemp}
-                  onChange={(e) => setQuantitaTemp(e.target.value)}
-                  inputMode="numeric"
-                />
-                <button
-                  type="button"
-                  className="man-add-btn"
-                  onClick={() => {
-                    if (materialeSelezionato) handleAddMateriale();
-                    else handleAddMaterialeLibero();
-                  }}
-                >
-                  Aggiungi
-                </button>
-              </div>
-            )}
+            <label className="man-label-block" style={{ marginTop: "10px" }}>
+              <span className="man-label-text">Quantità</span>
+              <input
+                className="man-input"
+                value={quantitaTemp}
+                onChange={(e) => setQuantitaTemp(e.target.value)}
+                placeholder="Es. 2"
+                inputMode="numeric"
+              />
+            </label>
 
-            {materialiUsati.length > 0 && (
+            {materialiTemp.length > 0 && (
               <div className="man-temp-list">
-                {materialiUsati.map((m) => (
+                <h4 style={{ marginTop: "15px" }}>Materiali aggiunti</h4>
+
+                {materialiTemp.map((m) => (
                   <div key={m.id} className="man-temp-item">
                     <span>
-                      {m.label} — {m.quantita} {m.unita}
+                      <strong>{m.label}</strong> — {m.quantita} {m.unita}
+                      {m.fromInventario && (
+                        <span style={{ opacity: 0.6 }}> (da inventario)</span>
+                      )}
                     </span>
+
                     <button
+                      type="button"
                       className="man-delete-btn"
                       onClick={() => handleRemoveMateriale(m.id)}
                     >
@@ -474,143 +680,182 @@ export default function Manutenzioni() {
             )}
           </div>
 
-          {/* DATA */}
-          <div className="man-section">
-            <label className="man-label-block">
-              <span className="man-label-text">Data</span>
-              <input
-                className="man-input"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-              />
-            </label>
+          {/* SEZIONE 3 – DATA + AZIONI */}
+          <div className="man-section man-section-last">
+            <div className="man-section-title">Data e conferma</div>
 
-            <div className="man-actions">
-              <button
-                className="man-secondary-btn"
-                onClick={() => {
-                  setDescrizione("");
-                  setEseguito("");
-                  setKm("");
-                  setOre("");
-                  setMaterialeSearch("");
-                  setMaterialeSelezionato(null);
-                  setQuantitaTemp("");
-                  setMaterialiUsati([]);
-                }}
-              >
-                Reset
-              </button>
-              <button className="man-primary-btn" onClick={handleAdd}>
-                Aggiungi
-              </button>
+            <div className="man-row">
+              <label className="man-label-inline">
+                <span className="man-label-text">Data (gg mm aaaa)</span>
+                <input
+                  className="man-input"
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                  placeholder="Es. 05 12 2025"
+                />
+              </label>
+
+              <div className="man-actions">
+                <button
+                  type="button"
+                  className="man-secondary-btn"
+                  onClick={resetForm}
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  className="man-primary-btn"
+                  onClick={handleAdd}
+                  disabled={loading}
+                >
+                  Aggiungi
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* LISTA DESTRA */}
+        {/* CARD DESTRA – STORICO */}
         <div className="man-card man-card-list">
-          <h2 className="man-title-small">Storico manutenzioni</h2>
+          <div className="man-card-header man-card-header-list">
+            <div>
+              <h2 className="man-title-small">Storico manutenzioni</h2>
+              <p className="man-subtitle">
+                Lista interventi filtrabile per targa e tipo
+              </p>
+            </div>
+          </div>
 
-          <div className="man-section">
+          {/* FILTRI LISTA */}
+          <div className="man-filters-list">
             <label className="man-label-block">
               <span className="man-label-text">Filtra per targa</span>
               <input
                 className="man-input"
                 value={filtroTarga}
                 onChange={(e) => setFiltroTarga(e.target.value)}
+                placeholder="Es. TI315407"
               />
             </label>
 
-            <div className="man-filter">
-              <button
-                className={
-                  filtroTipo === "tutti" ? "man-chip-active" : "man-chip"
-                }
-                onClick={() => setFiltroTipo("tutti")}
-              >
-                Tutti
-              </button>
-
-              <button
-                className={
-                  filtroTipo === "mezzo" ? "man-chip-active" : "man-chip"
-                }
-                onClick={() => setFiltroTipo("mezzo")}
-              >
-                Mezzi
-              </button>
-
-              <button
-                className={
-                  filtroTipo === "compressore"
-                    ? "man-chip-active"
-                    : "man-chip"
-                }
-                onClick={() => setFiltroTipo("compressore")}
-              >
-                Compressori
-              </button>
+            <div className="man-filter-tipo">
+              <span className="man-label-text">Tipo</span>
+              <div className="man-filter-chips">
+                <button
+                  type="button"
+                  className={
+                    filtroTipo === "tutti"
+                      ? "man-chip man-chip-active"
+                      : "man-chip"
+                  }
+                  onClick={() => setFiltroTipo("tutti")}
+                >
+                  Tutti
+                </button>
+                <button
+                  type="button"
+                  className={
+                    filtroTipo === "mezzo"
+                      ? "man-chip man-chip-active"
+                      : "man-chip"
+                  }
+                  onClick={() => setFiltroTipo("mezzo")}
+                >
+                  Mezzi
+                </button>
+                <button
+                  type="button"
+                  className={
+                    filtroTipo === "compressore"
+                      ? "man-chip man-chip-active"
+                      : "man-chip"
+                  }
+                  onClick={() => setFiltroTipo("compressore")}
+                >
+                  Compressori
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="man-list">
-            {filtrati.map((item) => (
-              <div key={item.id} className="man-row-item">
-                <div>
-                  <div className="man-row-line1">
-                    <span
-                      className={
-                        item.tipo === "mezzo"
-                          ? "man-tag mezzo-tag"
-                          : "man-tag comp-tag"
-                      }
-                    >
-                      {item.tipo.toUpperCase()}
-                    </span>
-                    <span className="man-targa">{item.targa}</span>
-                    {item.tipo === "mezzo" && (
-                      <span className="man-misura">{item.km} km</span>
-                    )}
-                    {item.tipo === "compressore" && (
-                      <span className="man-misura">{item.ore} ore</span>
-                    )}
-                    <span className="man-data">{item.data}</span>
-                  </div>
-
-                  <div className="man-row-line2">
-                    <span>{item.descrizione}</span>
-                    {item.eseguito && (
-                      <span> — Eseguito da: {item.eseguito}</span>
-                    )}
-
-                    {item.materiali && item.materiali.length > 0 && (
-                      <div className="man-materiali-usati">
-                        Materiali:{" "}
-                        {item.materiali
-                          .map(
-                            (m) =>
-                              `${m.label} (${m.quantita} ${m.unita})`
-                          )
-                          .join(", ")}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  className="man-delete-btn"
-                  onClick={() =>
-                    persist(storico.filter((x) => x.id !== item.id))
-                  }
-                >
-                  Elimina
-                </button>
+          {/* LISTA */}
+          <div className="man-list-wrapper">
+            {loading ? (
+              <div className="man-empty">Caricamento in corso…</div>
+            ) : storicoFiltrato.length === 0 ? (
+              <div className="man-empty">
+                Nessuna manutenzione registrata con i filtri attuali.
               </div>
-            ))}
+            ) : (
+              <div className="man-list">
+                {storicoFiltrato.map((item) => {
+                  const misura =
+                    item.tipo === "mezzo"
+                      ? `${item.km || "0"} km`
+                      : `${item.ore || "0"} ore`;
+
+                  return (
+                    <div key={item.id} className="man-row-item">
+                      <div className="man-row-main">
+                        <div className="man-row-line1">
+                          <span className="man-tag">
+                            {item.tipo === "mezzo"
+                              ? "MEZZO"
+                              : "COMPRESSORE"}
+                          </span>
+                          <span className="man-targa">
+                            {item.targa.toUpperCase()}
+                          </span>
+                          <span className="man-misura">{misura}</span>
+                          {item.sottotipo && (
+                            <span className="man-sottotipo">
+                              {item.sottotipo}
+                            </span>
+                          )}
+                          <span className="man-data">{item.data}</span>
+                        </div>
+                        <div className="man-row-line2">
+                          <span className="man-descrizione">
+                            {item.descrizione}
+                          </span>
+                          {item.eseguito && (
+                            <span className="man-eseguito">
+                              Eseguito da: {item.eseguito}
+                            </span>
+                          )}
+                          {item.materiali && item.materiali.length > 0 && (
+                            <span className="man-materiali-usati">
+                              Materiali:{" "}
+                              {item.materiali
+                                .map(
+                                  (m) =>
+                                    `${m.label} (${m.quantita} ${m.unita})`
+                                )
+                                .join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="man-row-actions">
+                        <button
+                          type="button"
+                          className="man-delete-btn"
+                          onClick={() => handleDelete(item.id)}
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default Manutenzioni;
