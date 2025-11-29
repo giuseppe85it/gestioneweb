@@ -1,62 +1,37 @@
-/* ------------------------------
-   STRUTTURA PAGINA
------------------------------- */
-.page-container.mezzi-page {
-  width: 100%;
-  min-height: 100vh;
-  background: #f8f4e8;
+/* ======================================================
+   MEZZI — LAYOUT PREMIUM 430px 
+   File riscritto da zero, senza duplicati
+   Compatibile con layout Generale + inventario + materiali
+   FIX PROG. UOMO ✔ (no wrap + flex stabile)
+====================================================== */
+
+/* ---------- STRUTTURA GENERALE PAGINA ---------- */
+
+.mezzi-page {
   display: flex;
+  flex-direction: row;
   justify-content: center;
-  padding: 24px 12px;
-  box-sizing: border-box;
+  gap: 20px;
+  padding: 20px;
 }
 
 .mezzi-card-wrapper {
-  width: 100%;
-  max-width: 960px;
   display: flex;
-  justify-content: center;
+  flex-direction: row;
+  gap: 20px;
 }
 
-/* card principale 430px stile premium */
-.premium-card-430.mezzi-card {
-  width: 100%;
-  max-width: 480px;
-  background: #ffffff;
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  padding: 20px 22px 26px;
+/* ---------- CARD PRINCIPALE ---------- */
+
+.premium-card-430 {
+  width: 430px;
+  background: #f8f4e8;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 0 12px rgba(0,0,0,0.16);
   box-sizing: border-box;
 }
 
-/* card lista mezzi a tutta larghezza */
-.premium-card-430.mezzi-list-card {
-  width: 100%;
-  max-width: 860px;
-  background: #ffffff;
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  padding: 18px 20px 20px;
-  box-sizing: border-box;
-  margin-left: 16px;
-}
-
-@media (max-width: 960px) {
-  .mezzi-card-wrapper {
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .premium-card-430.mezzi-list-card {
-    margin-left: 0;
-    max-width: 480px;
-  }
-}
-
-/* ------------------------------
-   HEADER CARD
------------------------------- */
 .card-header {
   display: flex;
   align-items: center;
@@ -64,385 +39,261 @@
   margin-bottom: 12px;
 }
 
-.logo-wrapper {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  background: #f4efe0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .card-logo {
-  max-width: 42px;
-  max-height: 42px;
-}
-
-.card-title-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  width: 48px;
+  height: 48px;
 }
 
 .card-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #2d2d2d;
   margin: 0;
+  font-size: 22px;
+  font-weight: 700;
 }
 
 .card-subtitle {
-  font-size: 13px;
-  color: #666;
   margin: 0;
-}
-
-/* ------------------------------
-   BODY CARD
------------------------------- */
-.card-body {
-  margin-top: 10px;
-}
-
-/* alert */
-.alert {
-  padding: 8px 10px;
-  border-radius: 8px;
   font-size: 13px;
-  margin-bottom: 10px;
+  color: #555;
 }
 
-.alert-error {
-  background: #fdecea;
-  color: #a93a3a;
-  border: 1px solid #f5c2c0;
-}
+/* ---------- SEZIONI ---------- */
 
-.alert-warning {
-  background: #fff7e6;
-  color: #8a6d1d;
-  border: 1px solid #ffe0a3;
-}
-
-/* ------------------------------
-   SEZIONI
------------------------------- */
 .section-block {
-  margin-top: 18px;
+  margin-top: 22px;
 }
 
 .section-header {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
-.section-header h2 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 4px;
-  color: #2d2d2d;
-}
-
-.section-header p {
-  margin: 0;
-  font-size: 13px;
-  color: #666;
-}
-
-/* ------------------------------
-   BOTTONI
------------------------------- */
-.btn {
-  border-radius: 999px;
-  padding: 7px 14px;
-  border: none;
-  font-size: 13px;
-  cursor: pointer;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.btn-primary {
-  background: #2d6a2d;
-  color: #fff;
-}
-
-.btn-primary-strong {
-  background: #215021;
-  color: #fff;
-}
-
-.btn-secondary {
-  background: #f0f0f0;
-  color: #333;
-}
-
-.btn-outline {
-  background: transparent;
-  border: 1px solid #2d6a2d;
-  color: #2d6a2d;
-}
-
-.btn-small {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-}
-
-.btn-danger {
-  background: #b32727;
-  color: #fff;
-}
-
-/* righe di bottoni */
-.libretto-buttons-row,
-.foto-buttons-row,
-.mezzo-actions-bar {
+.section-header-inline {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
+  justify-content: space-between;
+  align-items: center;
 }
 
-/* info piccole */
-.small-info-text {
-  font-size: 12px;
-  color: #666;
-  margin-top: 6px;
-}
-
-/* ------------------------------
-   LIBRETTO (IA)
------------------------------- */
-.libretto-section {
-  padding-top: 6px;
-  border-top: 1px dashed #e0d6c0;
-}
-
-.libretto-preview {
-  margin-top: 10px;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid #ddd0b5;
-}
-
-.libretto-preview img {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: cover;
-}
-
-/* ------------------------------
-   FOTO MEZZO
------------------------------- */
-.foto-section {
-  margin-top: 18px;
-}
-
-.foto-wrapper {
-  margin-top: 8px;
-}
-
-.foto-preview {
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid #ddd0b5;
-  overflow: hidden;
-  background: #faf7ee;
-}
-
-.foto-preview img {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: cover;
-}
-
-.mezzo-foto-preview {
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid #ddd0b5;
-  overflow: hidden;
-  background: #faf7ee;
-  margin-top: 8px;
-}
+/* ---------- FOTO ---------- */
 
 .mezzo-foto-preview img {
-  display: block;
   width: 100%;
-  height: auto;
+  max-height: 180px;
+  border-radius: 10px;
   object-fit: cover;
+  margin-top: 8px;
 }
 
-/* ------------------------------
-   FORM DATI MEZZO
------------------------------- */
-.form-section {
-  margin-top: 22px;
-  border-top: 1px dashed #e0d6c0;
-  padding-top: 14px;
-}
+/* ---------- FORM ---------- */
 
 .form-row {
   display: flex;
+  flex-direction: row;
   gap: 12px;
-  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 .form-field {
-  flex: 1;
-  min-width: 0;
   display: flex;
   flex-direction: column;
-  margin-bottom: 10px;
+  flex: 1;
+}
+
+.form-field.full-width {
+  flex: 1 0 100%;
 }
 
 .form-field label {
   font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 3px;
-  color: #444;
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 
 .form-field input,
-.form-field select {
-  border-radius: 10px;
-  border: 1px solid #d2c7aa;
-  padding: 6px 9px;
-  font-size: 13px;
-  outline: none;
-  background: #fffdfa;
-}
-
-.form-field input:focus,
-.form-field select:focus {
-  border-color: #2d6a2d;
-}
-
-/* note */
+.form-field select,
 .mezzi-textarea {
   width: 100%;
-  min-height: 70px;
-  border-radius: 10px;
-  border: 1px solid #d2c7aa;
-  padding: 6px 9px;
-  font-size: 13px;
-  background: #fffdfa;
-  resize: vertical;
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
 }
 
-.mezzi-textarea:focus {
-  border-color: #2d6a2d;
-  background: #ffffff;
+.mezzi-textarea {
+  resize: none;
+  padding: 10px;
 }
 
-/* checkbox manutenzione */
+/* ---------- CHECKBOX ---------- */
+
 .checkbox-field {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
 }
 
 .checkbox-inline {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.checkbox-inline input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-}
-
-/* barra azioni sotto il form */
-.mezzo-actions-bar {
-  justify-content: space-between;
-  margin-top: 10px;
-}
-
-/* ------------------------------
-   LISTA MEZZI
------------------------------- */
-.mezzi-list-wrapper {
-  margin-top: 10px;
-}
-
-.mezzo-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 8px;
-}
-
-.mezzo-list-header h2 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.mezzo-list-header span {
-  font-size: 12px;
-  color: #777;
-}
-
-.mezzo-list-items {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
 }
 
-.mezzo-list-item {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: #faf7ee;
-  border: 1px solid #e1d4b5;
+/* ---------- BOTTONI FORM ---------- */
+
+.form-actions {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+/* ---------- LISTA MEZZI ---------- */
+
+.mezzi-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 14px;
 }
 
-.mezzo-list-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* ITEM DELLA LISTA */
+.mezzo-list-item {
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 0 8px rgba(0,0,0,0.12);
+  box-sizing: border-box;
 }
 
-.mezzo-targa {
-  font-weight: 700;
-  font-size: 15px;
-  color: #2d2d2d;
+/* HEADER MARCA + MODELLO */
+.mezzo-list-header {
+  margin-bottom: 6px;
 }
 
 .mezzo-marca-modello {
-  font-size: 13px;
-  color: #555;
+  font-size: 16px;
+  font-weight: 700;
+  display: block;
+  word-break: break-word;
 }
 
+/* FIX DEFINITIVO PROG. UOMO */
 .mezzo-list-meta {
-  font-size: 12px;
-  color: #777;
+  display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  align-items: center;
+  gap: 10px;
 }
 
-.mezzo-row-proprietario {
-  font-size: 12px;
-  color: #555;
+/* TARGA */
+.mezzo-targa {
+  font-size: 14px;
+  font-weight: 700;
+  color: #222;
 }
+
+/* SCADENZE — una sola versione ✔ */
+.mezzo-scadenze {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+/* COLORI DEADLINE */
+.deadline-high {
+  color: #b10000;
+  font-weight: 700;
+}
+
+.deadline-medium {
+  color: #d97706;
+  font-weight: 700;
+}
+
+.deadline-low {
+  color: #166534;
+  font-weight: 700;
+}
+
+/* ---------- AZIONI ---------- */
 
 .mezzo-list-actions {
   display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
-/* vuoto */
-.mezzi-empty {
+.btn-small {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* COLORI BOTTONI */
+.btn-outline {
+  border: 1px solid #444;
+  background: transparent;
+}
+
+.btn-info {
+  background: #0074d9;
+  color: white;
+}
+
+.btn-danger {
+  background: #c0392b;
+  color: white;
+}
+
+.btn-primary {
+  background: #1f6feb;
+  color: white;
+}
+
+/* ---------- TEXT / ERROR ---------- */
+
+.alert-error {
+  background: #ffe5e5;
+  color: #b40000;
   padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.alert-warning {
+  background: #fff3cd;
+  color: #856404;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.empty-text {
   text-align: center;
+  color: #666;
   font-size: 14px;
-  color: #777;
+}
+
+/* ---------- RESPONSIVE ---------- */
+
+@media (max-width: 950px) {
+  .mezzi-card-wrapper {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+/* FIX FINALE PROG UOMO — impedisce deformazione numeri */
+.mezzo-marca-modello {
+  white-space: nowrap;        /* non va a capo */
+  overflow: hidden;           /* evita testo spezzato */
+  text-overflow: ellipsis;    /* se troppo lungo → ... */
+  font-variant-numeric: tabular-nums; /* numeri regolari */
+}
+/* FIX DEFINITIVO – blocca trasformazioni e ligature sui label delle scadenze */
+.mezzo-scadenze {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-variant-ligatures: none !important;
+  font-variant-numeric: normal !important;
+  font-feature-settings: "liga" 0, "kern" 0 !important;
 }

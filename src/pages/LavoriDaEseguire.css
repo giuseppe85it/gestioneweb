@@ -292,3 +292,47 @@
   text-align: center;
   padding: 8px 0;
 }
+
+/* ------------------------------- */
+/*   ★ AUTOSUGGEST TARGHE (NUOVO) */
+/* ------------------------------- */
+
+.autosuggest-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.autosuggest-box {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #d4d2c9;
+  border-top: none;
+  z-index: 30;
+  border-radius: 0 0 12px 12px;
+  max-height: 190px;
+  overflow-y: auto;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.autosuggest-item {
+  padding: 12px 10px;
+  font-size: 13px;
+  color: #2b4634;
+  cursor: pointer;
+  border-bottom: 1px solid #ecebe6;
+  background: #ffffff;
+}
+
+.autosuggest-item:hover {
+  background: #f5f4ef;
+}
+
+.autosuggest-empty {
+  font-size: 12px;
+  padding: 10px;
+  color: #807e77;
+  background: #faf9f4;
+}

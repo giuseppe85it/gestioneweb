@@ -1,0 +1,458 @@
+/* src/pages/Manutenzioni.css */
+
+.man-page {
+  min-height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  background: #f0eee8;
+}
+
+.man-layout {
+  width: 100%;
+  max-width: 1220px;
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+/* CARD BASE */
+
+.man-card {
+  background: #f8f4e8;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+  padding: 16px 18px 18px;
+  box-sizing: border-box;
+}
+
+.man-card-form {
+  flex: 1.1;
+  min-width: 0;
+}
+
+.man-card-list {
+  flex: 1.4;
+  min-width: 0;
+}
+
+/* HEADER */
+
+.man-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.man-card-header-list {
+  justify-content: space-between;
+}
+
+.man-logo-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.man-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
+.man-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.man-title-small {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.man-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: #555;
+}
+
+.man-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.man-header-btn {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: #2d8b3a;
+  color: #fff;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.1s ease,
+    box-shadow 0.15s ease;
+  box-shadow: 0 2px 6px rgba(45, 139, 58, 0.35);
+}
+
+.man-header-btn:hover {
+  background: #256f2f;
+  transform: translateY(-1px);
+}
+
+.man-header-btn-outline {
+  background: transparent;
+  color: #2d8b3a;
+  border: 1px solid #2d8b3a;
+}
+
+.man-header-btn-outline:hover {
+  background: rgba(45, 139, 58, 0.08);
+}
+
+/* SEZIONI FORM */
+
+.man-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.man-section:first-of-type {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 4px;
+}
+
+.man-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.man-section-last {
+  margin-bottom: 4px;
+}
+
+/* LABEL + INPUT */
+
+.man-label-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.man-label-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #555;
+}
+
+.man-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid #d5d0c4;
+  padding: 7px 9px;
+  font-size: 0.9rem;
+  background: #fdfbf5;
+  outline: none;
+  transition: border 0.15s ease, box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.man-input:focus {
+  border-color: #2d8b3a;
+  box-shadow: 0 0 0 2px rgba(45, 139, 58, 0.12);
+  background: #ffffff;
+}
+
+.man-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 6px;
+}
+
+.man-label-inline {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.man-textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+/* BOTTONI FORM */
+
+.man-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+}
+
+.man-primary-btn,
+.man-secondary-btn {
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.man-primary-btn {
+  background: #2d8b3a;
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(45, 139, 58, 0.35);
+}
+
+.man-primary-btn:hover {
+  background: #256f2f;
+}
+
+.man-secondary-btn {
+  background: #ebe4d6;
+  color: #555;
+}
+
+.man-secondary-btn:hover {
+  background: #e0d6c2;
+}
+
+/* AUTOSUGGEST MATERIALI */
+
+.man-autosuggest {
+  margin-top: 6px;
+  border: 1px solid #d8d1c0;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.man-autosuggest-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.man-autosuggest-item:hover {
+  background: #f3efe7;
+}
+
+.man-autosuggest-free {
+  background: #e8f3ea;
+  color: #2d8b3a;
+  font-weight: 600;
+}
+
+/* LISTA MATERIALI TEMPORANEI */
+
+.man-temp-list {
+  margin-top: 12px;
+}
+
+.man-temp-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+.man-temp-item:nth-child(2n) {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.man-temp-item strong {
+  color: #2d8b3a;
+}
+
+.man-delete-btn {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+  background: #ffe5e5;
+  color: #c53030;
+}
+
+.man-delete-btn:hover {
+  background: #ffd6d6;
+}
+
+/* LISTA MANUTENZIONI */
+
+.man-list-wrapper {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+.man-empty {
+  font-size: 0.85rem;
+  color: #777;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #d3caba;
+}
+
+.man-list {
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+  box-sizing: border-box;
+}
+
+.man-row-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  margin-bottom: 6px;
+}
+
+.man-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.man-row-line1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.man-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f3ea;
+  color: #2d8b3a;
+}
+
+.man-targa {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.man-misura {
+  font-size: 0.82rem;
+  color: #444;
+}
+
+.man-sottotipo {
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f0ebe0;
+  color: #555;
+}
+
+.man-data {
+  margin-left: auto;
+  font-weight: bold;
+  font-size: 0.8rem;
+  background: #eaeaea;
+  padding: 3px 8px;
+  border-radius: 8px;
+  color: #333;
+}
+
+.man-descrizione {
+  font-size: 0.82rem;
+}
+
+.man-materiali-usati {
+  font-size: 0.78rem;
+  background: #f0f7ff;
+  padding: 2px 8px;
+  border-radius: 8px;
+  color: #2a5c99;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 1100px) {
+  .man-layout {
+    flex-direction: column;
+  }
+
+  .man-card-form,
+  .man-card-list {
+    width: 100%;
+  }
+
+  .man-list {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .man-page {
+    padding: 14px;
+  }
+
+  .man-card {
+    padding: 14px 12px 16px;
+    border-radius: 16px;
+  }
+
+  .man-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .man-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .man-filters-list {
+    flex-direction: column;
+  }
+}

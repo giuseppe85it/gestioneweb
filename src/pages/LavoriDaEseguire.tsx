@@ -1,4 +1,4 @@
-import  { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { setItemSync, getItemSync } from "../utils/storageSync";
 import { v4 as uuidv4 } from "uuid";
@@ -19,6 +19,16 @@ interface Lavoro {
   sottoElementi: any[];
 }
 
+interface MezzoBasic {
+  id: string;
+  targa?: string;
+  marca?: string;
+  modello?: string;
+  descrizione?: string;
+}
+
+const KEY_MEZZI = "@mezzi_aziendali";
+
 const LavoriDaEseguire: React.FC = () => {
   const [tipo, setTipo] = useState<"magazzino" | "targa">("magazzino");
   const [targa, setTarga] = useState("");
@@ -28,9 +38,32 @@ const LavoriDaEseguire: React.FC = () => {
   );
   const [urgenza, setUrgenza] = useState<Urgenza>("bassa");
   const [listaTemporanei, setListaTemporanei] = useState<Lavoro[]>([]);
-  const [gruppoIdCorrente, setGruppoIdCorrente] = useState<string | null>(
-    null
-  );
+  const [gruppoIdCorrente, setGruppoIdCorrente] = useState<string | null>(null);
+
+  // MEZZI (lettura come MaterialiConsegnati)
+  const [mezzi, setMezzi] = useState<MezzoBasic[]>([]);
+  const [filtroTarga, setFiltroTarga] = useState("");
+
+  useEffect(() => {
+    const loadMezzi = async () => {
+      try {
+        const raw = await getItemSync(KEY_MEZZI);
+
+        const lista = Array.isArray(raw)
+          ? raw
+          : raw?.value && Array.isArray(raw.value)
+          ? raw.value
+          : [];
+
+        console.log("MEZZI CARICATI:", lista);
+        setMezzi(lista);
+      } catch (err) {
+        console.error("Errore caricamento mezzi:", err);
+      }
+    };
+
+    loadMezzi();
+  }, []);
 
   const aggiungiLavoro = () => {
     if (!descrizione.trim()) {
@@ -62,6 +95,7 @@ const LavoriDaEseguire: React.FC = () => {
     setListaTemporanei((prev) => [...prev, nuovo]);
     setDescrizione("");
     setTarga("");
+    setFiltroTarga("");
     setUrgenza("bassa");
   };
 
@@ -89,7 +123,6 @@ const LavoriDaEseguire: React.FC = () => {
         {/* HEADER */}
         <div className="lde-header">
           <div className="lde-truck-wrap">
-            {/* usa la tua immagine camion/cisterna */}
             <img src="/cisterna.png" alt="mezzo" className="lde-truck-img" />
           </div>
           <div className="lde-header-right">LAVORI</div>
@@ -107,7 +140,7 @@ const LavoriDaEseguire: React.FC = () => {
           </Link>
         </div>
 
-        {/* BOX AGGIUNGI LAVORO */}
+        {/* AGGIUNGI LAVORO */}
         <section className="lde-section">
           <h2 className="lde-section-title">AGGIUNGI LAVORO</h2>
 
@@ -124,8 +157,7 @@ const LavoriDaEseguire: React.FC = () => {
             </button>
             <button
               className={
-                "lde-switch-btn" +
-                (tipo === "targa" ? " lde-switch-active" : "")
+                "lde-switch-btn" + (tipo === "targa" ? " lde-switch-active" : "")
               }
               onClick={() => setTipo("targa")}
             >
@@ -133,7 +165,7 @@ const LavoriDaEseguire: React.FC = () => {
             </button>
           </div>
 
-          {/* data */}
+          {/* DATA */}
           <input
             type="date"
             className="lde-input lde-input-date"
@@ -141,18 +173,58 @@ const LavoriDaEseguire: React.FC = () => {
             onChange={(e) => setDataInserimento(e.target.value)}
           />
 
-          {/* targa solo se selezionata */}
+          {/* AUTOSUGGEST TARGA */}
           {tipo === "targa" && (
-            <input
-              type="text"
-              className="lde-input"
-              placeholder="Targa"
-              value={targa}
-              onChange={(e) => setTarga(e.target.value.toUpperCase())}
-            />
+            <div className="autosuggest-wrap">
+              <input
+                type="text"
+                className="lde-input"
+                placeholder="Targa"
+                value={targa}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase();
+                  setTarga(val);
+                  setFiltroTarga(val);
+                }}
+              />
+
+              {filtroTarga.length > 0 && (
+                <div className="autosuggest-box">
+                  {mezzi
+                    .filter((m) =>
+                      (m.targa || "")
+                        .toUpperCase()
+                        .includes(filtroTarga.toUpperCase())
+                    )
+                    .slice(0, 5)
+                    .map((m) => (
+                      <div
+                        key={m.id}
+                        className="autosuggest-item"
+                        onClick={() => {
+                          setTarga(m.targa || "");
+                          setFiltroTarga("");
+                        }}
+                      >
+                        {m.targa} – {m.marca} {m.modello}
+                      </div>
+                    ))}
+
+                  {mezzi.filter((m) =>
+                    (m.targa || "")
+                      .toUpperCase()
+                      .includes(filtroTarga.toUpperCase())
+                  ).length === 0 && (
+                    <div className="autosuggest-item autosuggest-empty">
+                      Nessuna targa trovata
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
-          {/* descrizione */}
+          {/* DESCRIZIONE */}
           <input
             type="text"
             className="lde-input"
@@ -197,7 +269,7 @@ const LavoriDaEseguire: React.FC = () => {
           </button>
         </section>
 
-        {/* BOX LISTA LAVORI TEMPORANEI */}
+        {/* LISTA LAVORI TEMPORANEI */}
         <section className="lde-section lde-section-bottom">
           <h2 className="lde-section-title">LISTA LAVORI TEMPORANEI</h2>
 
@@ -206,7 +278,9 @@ const LavoriDaEseguire: React.FC = () => {
               <div key={lavoro.id} className="lde-list-item">
                 <div className="lde-list-left">
                   <div className="lde-list-line">
-                    <span className="lde-list-title">{lavoro.descrizione}</span>
+                    <span className="lde-list-title">
+                      {lavoro.descrizione}
+                    </span>
                   </div>
                   <div className="lde-list-subline">
                     <span className="lde-list-icon">
