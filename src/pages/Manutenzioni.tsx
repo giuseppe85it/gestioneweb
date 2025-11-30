@@ -247,9 +247,11 @@ const Manutenzioni: React.FC = () => {
       return;
     }
 
+    const normalizedLabel = label.trim().toUpperCase();
+
     const nuovo: MaterialeManutenzione = {
       id: Date.now().toString(),
-      label,
+      label: normalizedLabel,
       quantita,
       unita,
       fromInventario,
@@ -326,11 +328,13 @@ const Manutenzioni: React.FC = () => {
           movAgg.push({
             id: `${Date.now().toString()}_${mat.id}`,
             mezzoTarga: t,
-            descrizione: mat.label,
+            descrizione: mat.label.toUpperCase(),
             quantita: mat.quantita,
             unita: mat.unita,
             direzione: "OUT",
             data: d,
+            fornitore: inventarioAgg[idx]?.fornitoreLabel || null,
+            motivo: desc,
             destinatario: { type: "mezzo", refId: t, label: t },
           });
         }

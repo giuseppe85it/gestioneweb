@@ -172,7 +172,10 @@ const DossierMezzo: React.FC = () => {
           []) as MovimentoMateriale[];
 
         const movimentiPerMezzo = movimentiArray.filter(
-          (m) => m.destinatario?.label === targa
+          (m) =>
+            m.destinatario?.refId?.toUpperCase() === targa.toUpperCase() ||
+            m.destinatario?.label?.toUpperCase() === targa.toUpperCase() ||
+            m.mezzoTarga?.toUpperCase() === targa.toUpperCase()
         );
 
         movimentiPerMezzo.sort((a, b) => {
