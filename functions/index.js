@@ -1,10 +1,9 @@
 // -------------------------------------------------------
 // IMPORT
 // -------------------------------------------------------
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const admin = require("firebase-admin");
 const { OpenAI } = require("openai");
 
 // -------------------------------------------------------
@@ -45,7 +44,7 @@ exports.aiCore = onCall(
 
     try {
       // ---------------------------------------------------
-      // 1) ESTRAZIONE LIBRETTO (VISION GPT-4o-mini)
+      // 1) ESTRAZIONE LIBRETTO (VISION GPT-4o)
       // ---------------------------------------------------
       if (task === "estrazione_libretto") {
         const base64 = payload?.imageBase64;
@@ -54,12 +53,10 @@ exports.aiCore = onCall(
           throw new HttpsError("invalid-argument", "imageBase64 mancante");
         }
 
-        const imageUrl = `data:image/jpeg;base64,${base64}`;
-
         const prompt = `
-Leggi attentamente il libretto del veicolo presente nell'immagine.
+Sei un sistema per l'estrazione dei dati dal libretto di circolazione.
 
-Estrai SOLO un JSON valido con queste chiavi:
+Restituisci SOLO un JSON valido con queste chiavi:
 
 {
   "proprietario": "",
@@ -81,15 +78,11 @@ Estrai SOLO un JSON valido con queste chiavi:
   "data_ultima_revisione": ""
 }
 
-Regole:
-- Nessun commento
-- Nessuna frase
-- Nessun markdown
-- Solo JSON puro
+Nessun testo fuori dal JSON.
 `.trim();
 
         const aiResponse = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: "gpt-4o",
           messages: [
             {
               role: "user",
@@ -97,36 +90,21 @@ Regole:
                 { type: "text", text: prompt },
                 {
                   type: "input_image",
-                  image_url: imageUrl
-                }
-              ]
-            }
-          ]
+                  image_url: `data:image/jpeg;base64,${base64}`,
+                },
+              ],
+            },
+          ],
+          temperature: 0.1,
         });
 
-        const message = aiResponse.choices?.[0]?.message;
-
-        let content = "";
-
-        // ------------ PARSER UNIVERSALE GPT-4o-MINI ---------------
-        if (Array.isArray(message?.content)) {
-          content = message.content
-            .map((part) => (part?.text ? part.text : ""))
-            .join("\n")
-            .trim();
-        } else if (typeof message?.content === "string") {
-          content = message.content.trim();
-        } else if (typeof message?.content === "object" && message?.content?.text) {
-          content = message.content.text.trim();
-        } else {
-          content = "";
-        }
+        const raw = aiResponse.choices?.[0]?.message?.content || "";
 
         let json;
         try {
-          json = JSON.parse(content);
-        } catch {
-          json = { raw: content };
+          json = JSON.parse(raw);
+        } catch (e) {
+          json = { raw };
         }
 
         return {
@@ -137,18 +115,25 @@ Regole:
       }
 
       // ---------------------------------------------------
-      // 2) PDF IA
+      // 2) PDF IA (VISION GPT-4o / TEXT GPT-4o)
       // ---------------------------------------------------
       if (task === "pdf_ia") {
-        const { tipo, dati } = payload || {};
+        const { tipo, dati, imageBase64 } = payload || {};
 
-        if (!tipo || !dati)
-          throw new HttpsError("invalid-argument", "tipo o dati mancanti");
+        if (!tipo) throw new HttpsError("invalid-argument", "tipo mancante");
+        if (!dati) throw new HttpsError("invalid-argument", "dati mancanti");
 
         const prompt = `
-Genera il contenuto in JSON per un PDF aziendale.
+Genera un JSON perfettamente formattato per creare un PDF aziendale.
 
-Il JSON deve avere questa forma:
+Il PDF deve contenere:
+- Titolo
+- Sottotitolo
+- Descrizione
+- Sezioni (lista di sezioni con titolo e contenuto)
+- Riassunto finale
+
+STRUTTURA OBBLIGATORIA DEL JSON:
 
 {
   "titolo": "",
@@ -165,30 +150,55 @@ Il JSON deve avere questa forma:
 
 Regole:
 - Nessun markdown
-- Nessun testo fuori dal JSON
+- Nessuna frase fuori dal JSON
+- Nessun commento
+- Nessuna spiegazione
+- Solo JSON puro
 - Adatta i contenuti al tipo: ${tipo}
 `.trim();
 
+        const messageContent = [
+          { type: "text", text: prompt },
+          {
+            type: "text",
+            text: `DATI DA USARE: ${JSON.stringify(dati)}`,
+          },
+        ];
+
+        if (imageBase64) {
+          messageContent.push({
+            type: "input_image",
+            image_url: imageBase64.startsWith("data:")
+              ? imageBase64
+              : `data:image/jpeg;base64,${imageBase64}`,
+          });
+        }
+
         const aiResponse = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: "gpt-4o",
           messages: [
             {
               role: "user",
-              content: [{ type: "text", text: prompt }]
-            }
-          ]
+              content: messageContent,
+            },
+          ],
+          temperature: 0.1,
         });
 
         const raw = aiResponse.choices?.[0]?.message?.content || "";
-        let json;
 
+        let json;
         try {
           json = JSON.parse(raw);
-        } catch {
+        } catch (e) {
           json = { raw };
         }
 
-        return { ok: true, type: "pdf_ia", data: json };
+        return {
+          ok: true,
+          type: "pdf_ia",
+          data: json,
+        };
       }
 
       // ---------------------------------------------------
@@ -216,9 +226,7 @@ Regole:
         return { ok: true, type: "alert", message: "Stub pronto." };
 
       throw new HttpsError("invalid-argument", `TASK_NON_SUPPORTATO: ${task}`);
-    }
-
-    catch (err) {
+    } catch (err) {
       console.error("Errore aiCore:", err);
       throw new HttpsError(
         "internal",

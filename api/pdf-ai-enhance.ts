@@ -1,87 +1,78 @@
-// /api/pdf-ai-enhance.ts
-// ======================================================
-// API universale IA → migliora contenuti dei PDF
-// Compatibile Vercel, senza @vercel/node
-// ======================================================
+// api/pdf-ai-enhance.ts
+import OpenAI from "openai";
 
 export const config = {
-  runtime: "edge", // VERCEL EDGE RUNTIME (veloce, leggero, zero dipendenze)
+  runtime: "edge", // funzione Edge su Vercel
 };
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-// ------------------------------------------
-// Utility: chiamata alla IA
-// ------------------------------------------
-async function callAI(prompt: string): Promise<string> {
-  if (!OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY non configurata nelle Environment Variables.");
+export default async function handler(req: Request): Promise<Response> {
+  if (req.method !== "POST") {
+    return new Response("Only POST allowed", { status: 405 });
   }
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini", // modello leggero, economico, perfetto per questo task
+  try {
+    const body = await req.json();
+
+    const inputText: string | undefined = body.inputText;
+    const imageBase64: string | undefined = body.imageBase64;
+
+    if (!inputText && !imageBase64) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Devi passare almeno inputText o imageBase64",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const content: any[] = [];
+
+    if (inputText) {
+      content.push({
+        type: "text",
+        text: inputText,
+      });
+    }
+
+    if (imageBase64) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          // se il frontend manda solo il base64 nudo, aggiungo il prefisso
+          url: imageBase64.startsWith("data:")
+            ? imageBase64
+            : `data:image/jpeg;base64,${imageBase64}`,
+        },
+      });
+    }
+
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o", // Vision, ottimo per libretti/fatture/preventivi
       messages: [
         {
           role: "system",
-          content: `Sei un assistente tecnico professionale. 
-Genera testi chiari, tecnici, professionali e perfetti per un PDF ufficiale aziendale.
-Non inventare dati numerici. Migliora solo ciò che ricevi. Formato breve e pulito.`,
+          content:
+            "Sei un assistente che legge documenti (preventivi, fatture, libretti di circolazione, documenti di officina) e restituisce SEMPRE un JSON ben formato, pronto per essere salvato su Firestore. Non aggiungere testo fuori dal JSON.",
         },
-        { role: "user", content: prompt },
+        {
+          role: "user",
+          content,
+        },
       ],
-      max_tokens: 600,
-    }),
-  });
+      temperature: 0.1,
+    });
 
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content ?? "";
-}
+    const result = completion.choices[0]?.message?.content ?? "";
 
-// ------------------------------------------
-// Handler API
-// ------------------------------------------
-export default async function handler(req: Request): Promise<Response> {
-  try {
-    const { kind, input, prompt } = await req.json();
-
-    // Prompt di base generico
-    let basePrompt = `
-Analizza e migliora i dati seguenti per inserirli in un PDF aziendale.
-
-Tipo PDF: ${kind}
-
-Dati:
-
-${JSON.stringify(input, null, 2)}
-
-Regole:
-- Mantieni significato e dati corretti
-- Migliora forma, ordine, chiarezza e linguaggio tecnico
-- NON cambiare date
-- NON modificare numeri di telaio, targa, quantità, scadenze
-- Non inventare nulla
-`;
-
-    // Prompt aggiuntivo opzionale
-    if (prompt) {
-      basePrompt += `\nIstruzioni aggiuntive:\n${prompt}\n`;
-    }
-
-    // Chiamata IA
-    const aiText = await callAI(basePrompt);
-
-    // Risposta: il PDF engine la riceve e la applica
     return new Response(
       JSON.stringify({
-        enhancedText: aiText,
-        enhancedNotes: aiText,
-        // Qui puoi aggiungere altre trasformazioni automatiche
+        ok: true,
+        result, // il JSON (come stringa) che poi la tua app potrà parsare
       }),
       {
         status: 200,
@@ -89,9 +80,17 @@ Regole:
       }
     );
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("AI error in pdf-ai-enhance:", err);
+
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: err?.message ?? "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }

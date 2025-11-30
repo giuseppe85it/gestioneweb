@@ -201,6 +201,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;  
 }
 
 .man-textarea {
@@ -360,10 +361,9 @@
 
 .man-row-line1 {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-bottom: 2px;
+  justify-content: space-between;
 }
 
 .man-tag {
@@ -401,6 +401,12 @@
   padding: 3px 8px;
   border-radius: 8px;
   color: #333;
+
+  display: inline-block;
+  min-width: 100px;
+  white-space: nowrap;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .man-descrizione {
@@ -455,4 +461,9 @@
   .man-filters-list {
     flex-direction: column;
   }
+}
+/* FIX DATA MANUTENZIONI */
+.man-input[type="date"] {
+  min-width: 160px;
+  padding: 7px 12px;
 }

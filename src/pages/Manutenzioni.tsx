@@ -227,6 +227,23 @@ const Manutenzioni: React.FC = () => {
     setData(oggi());
     // non tocco targa
   };
+const handleEdit = (item: VoceManutenzione) => {
+  setTarga(item.targa || "");
+  setTipo(item.tipo || "mezzo");
+  setKm(item.km || "");
+  setOre(item.ore || "");
+  setSottotipo((item.sottotipo as any) || "motrice");
+  setDescrizione(item.descrizione || "");
+  setEseguito(item.eseguito || "");
+  setData(item.data || oggi());
+
+  // Materiali
+  setMaterialiTemp(item.materiali || []);
+
+  // Rimuove la vecchia voce per riscriverla aggiornata
+  setStorico((prev) => prev.filter((v) => v.id !== item.id));
+};
+
 
   const handleSelectTargaMezzo = (value: string) => {
     setTarga(value);
@@ -247,14 +264,16 @@ const Manutenzioni: React.FC = () => {
       return;
     }
 
-    const nuovo: MaterialeManutenzione = {
-      id: Date.now().toString(),
-      label,
-      quantita,
-      unita,
-      fromInventario,
-      refId,
-    };
+const normalizedLabel = label.trim().toUpperCase();
+
+const nuovo: MaterialeManutenzione = {
+  id: Date.now().toString(),
+  label: normalizedLabel,
+  quantita,
+  unita,
+  fromInventario,
+  refId,
+};
 
     setMaterialiTemp((prev) => [...prev, nuovo]);
     setMaterialeSearch("");
@@ -326,16 +345,18 @@ const Manutenzioni: React.FC = () => {
           movAgg.push({
             id: `${Date.now().toString()}_${mat.id}`,
             mezzoTarga: t,
-            descrizione: mat.label,
-            quantita: mat.quantita,
-            unita: mat.unita,
-            direzione: "OUT",
-            data: d,
-            destinatario: { type: "mezzo", refId: t, label: t },
+descrizione: mat.label.toUpperCase(),
+quantita: mat.quantita,
+unita: mat.unita,
+direzione: "OUT",
+data: d,
+fornitore: inventarioAgg[idx]?.fornitore || null,
+motivo: desc,
+destinatario: { type: "mezzo", refId: t, label: t },
           });
         }
       }
-
+      setMaterialiTemp([]);
       await setItemSync(KEY_INVENTARIO, inventarioAgg);
       await setItemSync(KEY_MOVIMENTI, movAgg);
     } catch (err) {
@@ -347,7 +368,7 @@ const Manutenzioni: React.FC = () => {
     );
     await persistStorico(aggiornato);
 
-    setMaterialiTemp([]);
+    
     setMaterialeSearch("");
     setQuantitaTemp("");
     resetForm();
@@ -686,7 +707,7 @@ onClick={() => {
 
             <div className="man-row">
               <label className="man-label-inline">
-                <span className="man-label-text">Data (gg mm aaaa)</span>
+               <span className="man-label-text">Data</span>
                 <input
                   className="man-input"
                   value={data}
@@ -837,15 +858,33 @@ onClick={() => {
                           )}
                         </div>
                       </div>
-                      <div className="man-row-actions">
-                        <button
-                          type="button"
-                          className="man-delete-btn"
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          Elimina
-                        </button>
-                      </div>
+             <div className="man-row-actions">
+  <button
+    type="button"
+    className="man-edit-btn"
+    onClick={() => handleEdit(item)}
+    style={{
+      marginRight: "8px",
+      backgroundColor: "#007bff",
+      color: "white",
+      border: "none",
+      padding: "6px 10px",
+      borderRadius: "4px",
+      cursor: "pointer"
+    }}
+  >
+    Modifica
+  </button>
+
+  <button
+    type="button"
+    className="man-delete-btn"
+    onClick={() => handleDelete(item.id)}
+  >
+    Elimina
+  </button>
+</div>
+
                     </div>
                   );
                 })}
