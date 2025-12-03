@@ -1,238 +1,157 @@
-// -------------------------------------------------------
-// IMPORT
-// -------------------------------------------------------
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
-const admin = require("firebase-admin");
-const { OpenAI } = require("openai");
+/**
+ * Firebase Function (Node 20) per l'estrazione dati dal libretto
+ * Modello: gemini-2.5-flash (stabile e presente nella tua API key)
+ */
 
-// -------------------------------------------------------
-// FIREBASE ADMIN
-// -------------------------------------------------------
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
+const functions = require("firebase-functions");
+const { initializeApp } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
 
-// -------------------------------------------------------
-// SECRET OPENAI
-// -------------------------------------------------------
-const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
+initializeApp();
+const db = getFirestore();
 
-function getOpenAIClient() {
-  return new OpenAI({
-    apiKey: OPENAI_API_KEY.value(),
-  });
-}
+// 🔥 MODELLO CONFERMATO DALLA TUA LISTA MODELLI
+const MODEL_NAME = "gemini-2.5-flash";
+const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 
-// -------------------------------------------------------
-// IA CENTRALE
-// -------------------------------------------------------
-exports.aiCore = onCall(
-  {
-    region: "europe-west3",
-    secrets: [OPENAI_API_KEY],
-    timeoutSeconds: 540,
-    memory: "1GiB",
+// Schema JSON completo per estrazione libretto svizzero
+const VEHICLE_DATA_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    targa: { type: "STRING" },
+    marca: { type: "STRING" },
+    modello: { type: "STRING" },
+    telaio: { type: "STRING" },
+
+    colore: { type: "STRING" },
+    categoria: { type: "STRING" },
+
+    cilindrata: { type: "STRING" },
+    potenza: { type: "STRING" },
+
+    pesoVuoto: { type: "STRING" },
+    pesoTotale: { type: "STRING" },
+
+    proprietario: { type: "STRING" },
+    assicurazione: { type: "STRING" },
+
+    immatricolazione: { type: "STRING" },
+
+    ultimoCollaudo: { type: "STRING" },
+
+    note: { type: "STRING" }
   },
-  async (request) => {
-    const data = request.data || {};
-    const { task, payload } = data;
+  required: ["targa", "marca", "modello", "telaio"]
+};
 
-    if (!task) throw new HttpsError("invalid-argument", "TASK_MANCANTE");
+// Recupero API key
+async function getGeminiApiKey() {
+  const ref = db.doc("@impostazioni_app/gemini");
+  const snap = await ref.get();
+  const apiKey = snap.data()?.apiKey;
 
-    const openai = getOpenAIClient();
-
-    try {
-      // ---------------------------------------------------
-      // 1) ESTRAZIONE LIBRETTO (VISION GPT-4o)
-      // ---------------------------------------------------
-      if (task === "estrazione_libretto") {
-        const base64 = payload?.imageBase64;
-
-        if (!base64) {
-          throw new HttpsError("invalid-argument", "imageBase64 mancante");
-        }
-
-        const prompt = `
-Sei un sistema per l'estrazione dei dati dal libretto di circolazione.
-
-Restituisci SOLO un JSON valido con queste chiavi:
-
-{
-  "proprietario": "",
-  "indirizzo_proprietario": "",
-  "tipo_veicolo": "",
-  "marca": "",
-  "modello": "",
-  "variante": "",
-  "carrozzeria": "",
-  "colore": "",
-  "telaio": "",
-  "targa": "",
-  "omologazione": "",
-  "posti": "",
-  "peso_vuoto": "",
-  "peso_totale": "",
-  "peso_rimorchiabile": "",
-  "data_prima_immatricolazione": "",
-  "data_ultima_revisione": ""
+  if (!apiKey) throw new Error("API Key Gemini mancante");
+  return apiKey;
 }
 
-Nessun testo fuori dal JSON.
-`.trim();
-
-        const aiResponse = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                {
-                  type: "input_image",
-                  image_url: `data:image/jpeg;base64,${base64}`,
-                },
-              ],
-            },
-          ],
-          temperature: 0.1,
-        });
-
-        const raw = aiResponse.choices?.[0]?.message?.content || "";
-
-        let json;
-        try {
-          json = JSON.parse(raw);
-        } catch (e) {
-          json = { raw };
-        }
-
-        return {
-          ok: true,
-          type: "estrazione_libretto",
-          data: json,
-        };
-      }
-
-      // ---------------------------------------------------
-      // 2) PDF IA (VISION GPT-4o / TEXT GPT-4o)
-      // ---------------------------------------------------
-      if (task === "pdf_ia") {
-        const { tipo, dati, imageBase64 } = payload || {};
-
-        if (!tipo) throw new HttpsError("invalid-argument", "tipo mancante");
-        if (!dati) throw new HttpsError("invalid-argument", "dati mancanti");
-
-        const prompt = `
-Genera un JSON perfettamente formattato per creare un PDF aziendale.
-
-Il PDF deve contenere:
-- Titolo
-- Sottotitolo
-- Descrizione
-- Sezioni (lista di sezioni con titolo e contenuto)
-- Riassunto finale
-
-STRUTTURA OBBLIGATORIA DEL JSON:
-
-{
-  "titolo": "",
-  "sottotitolo": "",
-  "descrizione": "",
-  "sezioni": [
-    {
-      "titolo": "",
-      "contenuto": ""
-    }
-  ],
-  "riassunto_finale": ""
-}
-
-Regole:
-- Nessun markdown
-- Nessuna frase fuori dal JSON
-- Nessun commento
-- Nessuna spiegazione
-- Solo JSON puro
-- Adatta i contenuti al tipo: ${tipo}
-`.trim();
-
-        const messageContent = [
-          { type: "text", text: prompt },
-          {
-            type: "text",
-            text: `DATI DA USARE: ${JSON.stringify(dati)}`,
-          },
-        ];
-
-        if (imageBase64) {
-          messageContent.push({
-            type: "input_image",
-            image_url: imageBase64.startsWith("data:")
-              ? imageBase64
-              : `data:image/jpeg;base64,${imageBase64}`,
-          });
-        }
-
-        const aiResponse = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "user",
-              content: messageContent,
-            },
-          ],
-          temperature: 0.1,
-        });
-
-        const raw = aiResponse.choices?.[0]?.message?.content || "";
-
-        let json;
-        try {
-          json = JSON.parse(raw);
-        } catch (e) {
-          json = { raw };
-        }
-
-        return {
-          ok: true,
-          type: "pdf_ia",
-          data: json,
-        };
-      }
-
-      // ---------------------------------------------------
-      // ALTRI TASK (STUB)
-      // ---------------------------------------------------
-      if (task === "analisi_danno")
-        return { ok: true, type: "analisi_danno", message: "Stub pronto." };
-
-      if (task === "segnalazione_collega")
-        return { ok: true, type: "segnalazione_collega", message: "Stub pronto." };
-
-      if (task === "preventivi")
-        return { ok: true, type: "preventivi", message: "Stub pronto." };
-
-      if (task === "fatture")
-        return { ok: true, type: "fatture", message: "Stub pronto." };
-
-      if (task === "rifornimenti")
-        return { ok: true, type: "rifornimenti", message: "Stub pronto." };
-
-      if (task === "manutenzione_intelligente")
-        return { ok: true, type: "manutenzione_intelligente", message: "Stub pronto." };
-
-      if (task === "alert")
-        return { ok: true, type: "alert", message: "Stub pronto." };
-
-      throw new HttpsError("invalid-argument", `TASK_NON_SUPPORTATO: ${task}`);
-    } catch (err) {
-      console.error("Errore aiCore:", err);
-      throw new HttpsError(
-        "internal",
-        "ERRORE_INTERNO_AI_CORE",
-        String(err?.message || err)
-      );
-    }
+/**
+ * ENDPOINT PUBBLICO:
+ * https://us-central1-<PROJECT_ID>.cloudfunctions.net/estrazione_libretto
+ */
+exports.estrazione_libretto = functions.https.onRequest(async (req, res) => {
+  // CORS
+  if (req.method === "OPTIONS") {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    return res.status(204).send("");
   }
-);
+
+  res.set("Access-Control-Allow-Origin", "*");
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method Not Allowed" });
+  }
+
+  const { base64Image, mimeType = "image/jpeg" } = req.body;
+
+  if (!base64Image) {
+    return res.status(400).json({ error: "base64Image mancante" });
+  }
+
+  try {
+    const apiKey = await getGeminiApiKey();
+
+    // Rimuove eventuale prefisso "data:image/jpeg;base64,"
+    const cleanBase64 =
+      base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
+
+    // Payload per Gemini - REST API
+    const payload = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text:
+                "Estrai i dati del veicolo dal seguente libretto. Rispetta esattamente lo schema JSON richiesto."
+            },
+            {
+              inlineData: {
+                mimeType,
+                data: cleanBase64
+              }
+            }
+          ]
+        }
+      ],
+      // OUTPUT JSON GARANTITO
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: VEHICLE_DATA_SCHEMA,
+        temperature: 0
+      }
+    };
+
+    const url = `${BASE_URL}?key=${apiKey}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error("Errore API Gemini:", result);
+      return res.status(500).json({
+        success: false,
+        error: result.error?.message || "Errore API Gemini"
+      });
+    }
+
+    // Estraggo JSON direttamente (schema garantisce correttezza)
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      return res.status(500).json({
+        success: false,
+        error: "Risposta senza contenuto"
+      });
+    }
+
+    const parsed = JSON.parse(text);
+
+    return res.status(200).json({
+      success: true,
+      data: parsed
+    });
+  } catch (err) {
+    console.error("Errore Function:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
