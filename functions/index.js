@@ -155,3 +155,6 @@ exports.estrazione_libretto = functions.https.onRequest(async (req, res) => {
     });
   }
 });
+exports.estrazioneDocumenti = require("./estrazioneDocumenti").estrazioneDocumenti;
+
+

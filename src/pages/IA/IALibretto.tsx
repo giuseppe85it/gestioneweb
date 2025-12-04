@@ -12,21 +12,6 @@ import {
 import { db, storage } from "../../firebase";
 import "./IALibretto.css";
 
-interface LibrettoData {
-  targa: string;
-  marca: string;
-  modello: string;
-  telaio: string;
-  omologazione: string;
-  potenza: string;
-  cilindrata: string;
-  pesoVuoto: string;
-  pesoTotale: string;
-  dataImmatricolazione: string;
-  dataRevisione: string;
-  note: string;
-}
-
 const IALibretto: React.FC = () => {
   const navigate = useNavigate();
 

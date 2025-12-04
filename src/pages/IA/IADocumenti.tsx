@@ -1,8 +1,69 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../firebase";
+import {
+  doc,
+  getDoc,
+  collection,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../../firebase";  
 import "./IADocumenti.css";
+// TIPI
+
+type TipoDocumento = "PREVENTIVO" | "FATTURA" | "MAGAZZINO" | "GENERICO";
+type CategoriaArchivio = "MEZZO" | "MAGAZZINO" | "GENERICO";
+
+interface VoceDocumento {
+  codice?: string;
+  descrizione: string;
+  categoria?: string; // es. "MANODOPERA", "RICAMBIO", "TASSA"
+  quantita?: number;
+  prezzoUnitario?: number;
+  scontoPercentuale?: number;
+  importo?: number;
+}
+
+interface PagamentoInfo {
+  iban?: string;
+  beneficiario?: string;
+  riferimento?: string;
+  banca?: string;
+  scadenza?: string;
+  importo?: number;
+}
+
+interface DocumentoAnalizzato {
+  tipoDocumento: TipoDocumento;
+  categoriaArchivio: CategoriaArchivio;
+
+  fornitore: string;
+  numeroDocumento: string;
+  dataDocumento: string;
+
+  targa?: string;
+  mezzoMarca?: string;
+  mezzoModello?: string;
+  telaio?: string;
+  km?: string;
+  dataPrimaEntrata?: string;
+
+  riferimentoPreventivoNumero?: string;
+  riferimentoPreventivoData?: string;
+
+  imponibile?: number;
+  ivaPercentuale?: number;
+  ivaImporto?: number;
+  totaleDocumento?: number;
+
+  voci: VoceDocumento[];
+
+  pagamento?: PagamentoInfo;
+
+  testo?: string;
+
+  rawIaJson?: any;
+}
 
 const IADocumenti: React.FC = () => {
   const navigate = useNavigate();
@@ -10,12 +71,12 @@ const IADocumenti: React.FC = () => {
   const [apiKeyExists, setApiKeyExists] = useState<boolean | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [tipo, setTipo] = useState("GENERICO");
+  const [tipoArchivio, setTipoArchivio] = useState<CategoriaArchivio>("GENERICO");
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<DocumentoAnalizzato | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Controllo API KEY IA
+  // Controllo API KEY IA (stessa logica di IAApiKey / IALibretto)
   useEffect(() => {
     const load = async () => {
       try {
@@ -37,6 +98,7 @@ const IADocumenti: React.FC = () => {
 
     setSelectedFile(f);
     setErrorMessage(null);
+    setResults(null);
 
     // Preview solo immagini, non PDF
     if (f.type.startsWith("image/")) {
@@ -48,6 +110,68 @@ const IADocumenti: React.FC = () => {
     }
   };
 
+  // Converte il file in base64 (senza "data:...")
+  const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Errore lettura file"));
+      reader.onload = () => {
+        const res = reader.result as string;
+        // res è "data:xxx/yyy;base64,AAAA..."
+        const parts = res.split(",");
+        if (parts.length !== 2) {
+          reject(new Error("Formato base64 non valido"));
+          return;
+        }
+        resolve({ base64: parts[1], mimeType: file.type || "application/octet-stream" });
+      };
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+const analyzeDocumentoConIA = async (
+  base64: string,
+  mimeType: string,
+  categoriaArchivio: CategoriaArchivio | null
+): Promise<any> => {
+ 
+  try {
+    setLoading(true);
+
+    const response = await fetch(
+      "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task: "estrazione_documento",
+          fileBase64: base64,
+          mimeType: mimeType,
+          categoriaArchivio: categoriaArchivio || null,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Errore HTTP:", errorText);
+      throw new Error("Errore IA");
+    }
+
+    const data = await response.json();
+    setResults(data);
+    return data;
+
+  } catch (error) {
+    console.error("Errore analisi IA documenti:", error);
+    alert("Errore nell'analisi del documento.");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
   // Pulsante "Analizza"
   const handleAnalyze = async () => {
     if (!selectedFile) {
@@ -55,28 +179,59 @@ const IADocumenti: React.FC = () => {
       return;
     }
 
-    setLoading(true);
-    setErrorMessage(null);
+    try {
+      setLoading(true);
+      setErrorMessage(null);
+      setResults(null);
 
-    // Qui andrà la chiamata IA reale
-    // Per ora metto risultati finti corretti per test
-    setTimeout(() => {
-      setResults({
-        fornitore: "",
-        numero: "",
-        data: "",
-        importo: "",
-        materiali: [],
-        categoria: tipo,
-        testo: "",
-      });
+      const { base64, mimeType } = await fileToBase64(selectedFile);
+      const analyzed = await analyzeDocumentoConIA(base64, mimeType, tipoArchivio);
+      setResults(analyzed);
+    } catch (err: any) {
+      console.error("Errore analisi IA documenti:", err);
+      setErrorMessage(
+        err?.message || "Errore durante l'analisi del documento con IA."
+      );
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
-  // Salvataggio futuro
-  const handleSave = () => {
-    alert("Funzione di salvataggio pronta per integrazione.");
+  // Salvataggio su Firestore
+  const handleSave = async () => {
+    if (!results) {
+      setErrorMessage("Nessun risultato da salvare.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setErrorMessage(null);
+
+      let collectionName = "@documenti_generici";
+      if (results.categoriaArchivio === "MEZZO") {
+        collectionName = "@documenti_mezzi";
+      } else if (results.categoriaArchivio === "MAGAZZINO") {
+        collectionName = "@documenti_magazzino";
+      }
+
+      const payload = {
+        ...results,
+        createdAt: serverTimestamp(),
+        fonte: "IA",
+      };
+
+      await addDoc(collection(db, collectionName), payload);
+
+      alert("Documento salvato correttamente.");
+    } catch (err: any) {
+      console.error("Errore salvataggio documento:", err);
+      setErrorMessage(
+        err?.message || "Errore durante il salvataggio del documento."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Nessuna API KEY
@@ -85,7 +240,9 @@ const IADocumenti: React.FC = () => {
       <div className="iadoc-nokey">
         <h2>API Key IA mancante</h2>
         <p>Inserisci la tua chiave Gemini per usare i documenti IA.</p>
-        <button onClick={() => navigate("/ia/apikey")}>Vai alla pagina API Key</button>
+        <button onClick={() => navigate("/ia/apikey")}>
+          Vai alla pagina API Key
+        </button>
       </div>
     );
   }
@@ -100,11 +257,11 @@ const IADocumenti: React.FC = () => {
       <div className="iadoc-card">
         <h1 className="iadoc-title">Documenti IA</h1>
 
-        {/* Selettore tipo */}
+        {/* Selettore tipo archivio */}
         <select
           className="iadoc-select"
-          value={tipo}
-          onChange={(e) => setTipo(e.target.value)}
+          value={tipoArchivio}
+          onChange={(e) => setTipoArchivio(e.target.value as CategoriaArchivio)}
         >
           <option value="GENERICO">Generico</option>
           <option value="MEZZO">Mezzo</option>
@@ -114,7 +271,11 @@ const IADocumenti: React.FC = () => {
         {/* Upload */}
         <label className="iadoc-upload">
           Carica PDF o Immagine
-          <input type="file" accept="image/*,application/pdf" onChange={handleFile} />
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={handleFile}
+          />
         </label>
 
         {preview && (
@@ -138,34 +299,62 @@ const IADocumenti: React.FC = () => {
           <div className="iadoc-results">
             <h2>Risultati Analisi</h2>
 
+            <label>Tipo documento</label>
+            <input value={results.tipoDocumento} disabled />
+
             <label>Fornitore</label>
             <input
               value={results.fornitore}
-              onChange={(e) => setResults({ ...results, fornitore: e.target.value })}
+              onChange={(e) =>
+                setResults({ ...results, fornitore: e.target.value })
+              }
             />
 
-            <label>Numero Documento</label>
+            <label>Numero documento</label>
             <input
-              value={results.numero}
-              onChange={(e) => setResults({ ...results, numero: e.target.value })}
+              value={results.numeroDocumento}
+              onChange={(e) =>
+                setResults({ ...results, numeroDocumento: e.target.value })
+              }
             />
 
-            <label>Data</label>
+            <label>Data documento</label>
             <input
-              value={results.data}
-              onChange={(e) => setResults({ ...results, data: e.target.value })}
+              value={results.dataDocumento}
+              onChange={(e) =>
+                setResults({ ...results, dataDocumento: e.target.value })
+              }
             />
 
-            <label>Importo Totale</label>
+            <label>Targa</label>
             <input
-              value={results.importo}
-              onChange={(e) => setResults({ ...results, importo: e.target.value })}
+              value={results.targa || ""}
+              onChange={(e) =>
+                setResults({ ...results, targa: e.target.value })
+              }
             />
 
-            <label>Categoria</label>
-            <input value={tipo} disabled />
+            <label>Totale documento</label>
+            <input
+              value={
+                results.totaleDocumento !== undefined
+                  ? String(results.totaleDocumento)
+                  : ""
+              }
+              onChange={(e) =>
+                setResults({
+                  ...results,
+                  totaleDocumento: e.target.value
+                    ? Number(e.target.value)
+                    : undefined,
+                })
+              }
+            />
 
-            <button className="iadoc-save" onClick={handleSave}>
+            <label>Categoria archivio</label>
+            <input value={results.categoriaArchivio} disabled />
+
+            <button className="iadoc-save" onClick={handleSave} disabled={loading}>
               Salva Documento
             </button>
           </div>
