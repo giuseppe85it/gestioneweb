@@ -19,6 +19,11 @@ import DettaglioLavoro from "./pages/DettaglioLavoro";
 import DettaglioOrdine from "./pages/DettaglioOrdine";
 import DossierMezzo from "./pages/DossierMezzo";
 import Manutenzioni from "./pages/Manutenzioni";
+import IAHome from "./pages/IA/IAHome";
+import IAApiKey from "./pages/IA/IAApiKey";
+import IALibretto from "./pages/IA/IALibretto";
+import IADocumenti from "./pages/IA/IADocumenti";
+
 
 function App() {
   return (
@@ -49,7 +54,11 @@ function App() {
       <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
 
       <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
-      
+     <Route path="/ia" element={<IAHome />} />
+<Route path="/ia/apikey" element={<IAApiKey />} />
+<Route path="/ia/libretto" element={<IALibretto />} />
+<Route path="/ia/documenti" element={<IADocumenti />} />
+
     </Routes>
   );
 }

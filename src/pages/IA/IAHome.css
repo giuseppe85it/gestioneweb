@@ -1,0 +1,40 @@
+.ia-container {
+  padding: 20px;
+}
+
+.ia-title {
+  text-align: center;
+  font-size: 32px;
+  margin-bottom: 25px;
+}
+
+.ia-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.ia-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0px 4px 10px rgba(0,0,0,0.08);
+  transition: 0.2s;
+}
+
+.ia-card:hover {
+  transform: translateY(-3px);
+}
+
+.ia-card.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ia-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+}

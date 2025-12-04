@@ -16,7 +16,6 @@ function Home() {
             <p>Lavori</p>
           </Link>
 
-          {/* ICONA DOSSIER (UNICA E CORRETTA) */}
           <Link to="/dossiermezzi" className="home-box">
             <img src="/icons/mezzi.png" alt="Dossier Mezzi" className="icon-img" />
             <p>Dossier</p>
@@ -51,10 +50,17 @@ function Home() {
             <img src="/icons/fornitori.png" alt="Fornitori" className="icon-img" />
             <p>Fornitori</p>
           </Link>
-<Link to="/manutenzioni" className="home-box">
-  <img src="/icons/manutenzioni.png" alt="Manutenzioni" className="icon-img" />
-  <p>Manutenzioni</p>
-</Link>
+
+          <Link to="/manutenzioni" className="home-box">
+            <img src="/icons/manutenzioni.png" alt="Manutenzioni" className="icon-img" />
+            <p>Manutenzioni</p>
+          </Link>
+
+          {/* ✔️ NUOVA ICONA IA */}
+          <Link to="/ia" className="home-box">
+            <img src="/icons/ia.png" alt="IA" className="icon-img" />
+            <p>IA</p>
+          </Link>
 
         </div>
 
@@ -64,3 +70,4 @@ function Home() {
 }
 
 export default Home;
+

@@ -1,31 +1,29 @@
 // src/firebase.ts
 
-// Firebase core
 import { initializeApp } from "firebase/app";
-
-// Firestore
 import { getFirestore } from "firebase/firestore";
-
-// Storage
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 
-// CONFIGURAZIONE DEL TUO PROGETTO (già corretta)
+// CONFIGURAZIONE CORRETTA SENZA SEGNAPOSTI
 const firebaseConfig = {
   apiKey: "AIzaSyD5UVGv-sdjYQnLrva35EQLYxxhjWNGMV4",
   authDomain: "gestionemanutenzione-934ef.firebaseapp.com",
-  databaseURL: "https://gestionemanutenzione-934ef-default-rtdb.europe-west1.firebased...",
+  databaseURL: "https://gestionemanutenzione-934ef-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "gestionemanutenzione-934ef",
-  storageBucket: "gestionemanutenzione-934ef.appspot.com",
-  messagingSenderId: "71684576...",
-  appId: "1:71684576:web:xxxxxxxxxxxx",
+  storageBucket: "gestionemanutenzione-934ef.firebasestorage.app",
+  messagingSenderId: "716845762405",
+  appId: "1:716845762405:web:1db7e030d07aaf5ac3e326"
 };
 
-// INIZIALIZZA APP E ESPORTA
+// INIZIALIZZA APP
 export const app = initializeApp(firebaseConfig);
 
 // FIRESTORE
 export const db = getFirestore(app);
 
-// STORAGE (serve per foto materiali + PDF + allegati)
-export const storage = getStorage(app, "gestionemanutenzione-934ef.firebasestorage.app");
+// STORAGE
+export const storage = getStorage(app, firebaseConfig.storageBucket);
 
+// CLOUD FUNCTIONS
+export const functions = getFunctions(app);

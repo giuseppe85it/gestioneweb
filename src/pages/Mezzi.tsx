@@ -42,6 +42,8 @@ interface Mezzo {
   assicurazione: string;
   dataImmatricolazione: string;
   dataScadenzaRevisione: string;
+  dataUltimoCollaudo: string;      // <--- AGGIUNGI QUI
+
   manutenzioneProgrammata: boolean;
 
   manutenzioneDataInizio?: string;
@@ -243,6 +245,7 @@ const Mezzi: React.FC = () => {
   const [assicurazione, setAssicurazione] = useState("");
   const [dataImmatricolazione, setDataImmatricolazione] = useState("");
   const [dataScadenzaRevisione, setDataScadenzaRevisione] = useState("");
+  const [dataUltimoCollaudo, setDataUltimoCollaudo] = useState("");
   const [manutenzioneProgrammata, setManutenzioneProgrammata] = useState(false);
   const [note, setNote] = useState("");
 
@@ -534,6 +537,8 @@ const Mezzi: React.FC = () => {
         assicurazione: assicurazione.trim(),
         dataImmatricolazione,
         dataScadenzaRevisione,
+        dataUltimoCollaudo: "",
+
         manutenzioneProgrammata,
 
         manutenzioneDataInizio: manutenzioneProgrammata
@@ -912,6 +917,17 @@ const Mezzi: React.FC = () => {
                     value={dataScadenzaRevisione}
                     onChange={(e) => setDataScadenzaRevisione(e.target.value)}
                   />
+                  <div className="form-row">
+  <div className="form-field">
+    <label>Ultimo collaudo</label>
+    <input
+      type="date"
+      value={dataUltimoCollaudo}
+      onChange={(e) => setDataUltimoCollaudo(e.target.value)}
+    />
+  </div>
+</div>
+
                 </div>
               </div>
 
