@@ -135,7 +135,7 @@ const handleSave = async () => {
 
   try {
     const targa = results.targa.toUpperCase().replace(/\s+/g, "");
-    const refMezzi = doc(db, "@mezzi_aziendali", "storage");
+const refMezzi = doc(db, "storage", "@mezzi_aziendali");
     const snap = await getDoc(refMezzi);
 
     let mezzi = snap.exists() ? snap.data().value || [] : [];

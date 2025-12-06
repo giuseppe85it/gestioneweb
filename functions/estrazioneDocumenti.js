@@ -1,226 +1,163 @@
-const functions = require("firebase-functions");
-const cors = require("cors")({ origin: true });
+/**
+ * Firebase Function (Node 20) per l'estrazione documenti PDF
+ * Modello: gemini-2.5-flash
+ */
 
-// 🔥 Modello e endpoint usati anche da estrazione_libretto
+const functions = require("firebase-functions");
+const { initializeApp } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+const cors = require("cors")({ origin: true });
+const fetch = require("node-fetch"); // NECESSARIO
+
+initializeApp();
+const db = getFirestore();
+
+/**
+ * Recupero API key da Firestore (come fa estrazione_libretto)
+ */
+async function getGeminiApiKey() {
+  const ref = db.doc("@impostazioni_app/gemini");
+  const snap = await ref.get();
+  const apiKey = snap.data()?.apiKey;
+
+  if (!apiKey) throw new Error("API Key Gemini mancante");
+  return apiKey;
+}
+
+/**
+ * PROMPT NON RIGIDO PER LETTURA PDF
+ */
+const PROMPT_DOCUMENTO = `
+Leggi completamente il documento PDF o immagine.
+
+1. Estrai il testo completo.
+2. Identifica se presenti:
+   - fornitore
+   - numero documento
+   - data
+   - targa del mezzo
+   - totale
+3. Estrai eventuali voci di dettaglio (descrizione, quantità, prezzo, importo).
+
+Restituisci SOLO JSON con questa struttura (puoi omettere campi o aggiungerne se necessari):
+
+{
+  "tipoDocumento": "...",
+  "fornitore": "...",
+  "numeroDocumento": "...",
+  "dataDocumento": "...",
+  "targa": "...",
+  "marca": "...",
+  "modello": "...",
+  "telaio": "...",
+  "km": "...",
+  "imponibile": "...",
+  "ivaPercentuale": "...",
+  "ivaImporto": "...",
+  "totaleDocumento": "...",
+  "voci": [...],
+  "testo": "..."
+}
+
+NON aggiungere testo fuori dal JSON.
+`;
+
+/**
+ * CONFIG GEMINI
+ */
 const MODEL_NAME = "gemini-2.5-flash";
 const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 
 /**
- * Schema JSON per qualunque tipo di documento (preventivo, fattura, magazzino, generico)
+ * FUNCTION estrazioneDocumenti — CORRETTA
  */
-const DOCUMENTO_DATA_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    tipoDocumento: { type: "STRING" },
-
-    fornitore: { type: "STRING" },
-    numeroDocumento: { type: "STRING" },
-    dataDocumento: { type: "STRING" },
-
-    // Dati mezzo
-    targa: { type: "STRING" },
-    marca: { type: "STRING" },
-    modello: { type: "STRING" },
-    telaio: { type: "STRING" },
-    km: { type: "STRING" },
-
-    // Preventivo ↔ fattura
-    riferimentoPreventivoNumero: { type: "STRING" },
-    riferimentoPreventivoData: { type: "STRING" },
-
-    // Voci
-    voci: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          codice: { type: "STRING" },
-          descrizione: { type: "STRING" },
-          categoria: { type: "STRING" },
-          quantita: { type: "STRING" },
-          prezzoUnitario: { type: "STRING" },
-          scontoPercentuale: { type: "STRING" },
-          importo: { type: "STRING" }
-        },
-        required: ["descrizione"]
-      }
-    },
-
-    // Totali
-    imponibile: { type: "STRING" },
-    ivaPercentuale: { type: "STRING" },
-    ivaImporto: { type: "STRING" },
-    totaleDocumento: { type: "STRING" },
-
-    // Pagamento
-    iban: { type: "STRING" },
-    beneficiario: { type: "STRING" },
-    riferimentoPagamento: { type: "STRING" },
-    banca: { type: "STRING" },
-    importoPagamento: { type: "STRING" },
-
-    // Testo generico se non è un documento riconosciuto
-    testo: { type: "STRING" }
-  }
-};
-
-
-/**
- * PROMPT PER L'ESTRAZIONE DOCUMENTI
- */
-const PROMPT_DOCUMENTO = `
-Analizza il documento fornito (PDF o immagine).
-Riconosci automaticamente se è:
-- PREVENTIVO
-- FATTURA
-- MAGAZZINO
-- GENERICO
-
-Estrai tutte le informazioni nel formato JSON secondo lo schema fornito.
-Se un dato non esiste, lascia una stringa vuota "".
-
-NON AGGIUNGERE TESTO FUORI DAL JSON.
-`;
-
-/**
- * PROMPT PER CONFRONTO PREVENTIVI
- */
-const PROMPT_CONFRONTO = `
-Confronta i DUE preventivi forniti.
-Produci JSON con:
-- differenze di prezzo
-- differenze manodopera/materiali
-- voci presenti in uno ma non nell'altro
-- scostamento percentuale
-- preventivo più conveniente e motivo
-
-Rispondi solo con JSON valido.
-`;
-
-
-/**
- * 🔥 NUOVA FUNCTION: estrazioneDocumenti
- */
-exports.estrazioneDocumenti = functions.https.onRequest((req, res) => {
+exports.estrazioneDocumenti = functions.https.onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
-      // Gestione preflight CORS
+      // CORS
       if (req.method === "OPTIONS") {
         res.set("Access-Control-Allow-Origin", "*");
         res.set("Access-Control-Allow-Methods", "POST");
         res.set("Access-Control-Allow-Headers", "Content-Type");
-        return res.status(200).send();
+        return res.status(204).send("");
       }
 
-      const { task, fileBase64, mimeType, documentoA, documentoB } = req.body;
+      res.set("Access-Control-Allow-Origin", "*");
 
-      if (!task) return res.status(400).json({ error: "task mancante" });
+      if (req.method !== "POST") {
+        return res.status(405).json({ error: "Method Not Allowed" });
+      }
 
-      // Pulizia base64 (come fai tu in estrazione_libretto)
+      const { fileBase64, mimeType = "application/pdf" } = req.body;
+
+      if (!fileBase64) {
+        return res.status(400).json({ error: "fileBase64 mancante" });
+      }
+
+      // Rimuove eventuale prefisso data:...
       const cleanBase64 =
-        fileBase64?.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+        fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
 
-      if (task === "estrazione_documento") {
-        if (!cleanBase64 || !mimeType) {
-          return res.status(400).json({ error: "fileBase64 o mimeType mancante" });
-        }
+      // Recupero API key
+      const apiKey = await getGeminiApiKey();
 
-        const payload = {
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: PROMPT_DOCUMENTO },
-                {
-                  inlineData: {
-                    mimeType: mimeType,       // "application/pdf" oppure "image/jpeg"
-                    data: cleanBase64
-                  }
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: DOCUMENTO_DATA_SCHEMA,
-            temperature: 0
-          }
-        };
-
-        const responseAI = await fetch(
-          `${BASE_URL}?key=${process.env.GEMINI_API_KEY}`,
+      // Payload Gemini CORRETTO
+      const payload = {
+        contents: [
           {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          }
-        );
+            role: "user",
+            parts: [
+              { text: PROMPT_DOCUMENTO },
+              {
+                inlineData: {
+                  mimeType,
+                  data: cleanBase64,
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0,
+        },
+      };
 
-        const data = await responseAI.json();
+      const url = `${BASE_URL}?key=${apiKey}`;
 
-        const text =
-          data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-        res.set("Access-Control-Allow-Origin", "*");
-        return res.status(200).send(JSON.parse(text));
+      const result = await response.json();
+
+      // Estrazione testo JSON — compatibile con TUTTI i formati Gemini
+      const text =
+        result?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        result?.candidates?.[0]?.content?.parts?.[0]?.functionCall?.args?.json ||
+        result?.candidates?.[0]?.content?.parts?.[0]?.structuredResponse?.json;
+
+      if (!text) {
+        console.error("Risposta IA vuota:", result);
+        return res.status(500).json({ error: "Risposta IA vuota" });
       }
 
-
-      /**
-       * 2️⃣ CONFRONTO PREVENTIVI
-       */
-      if (task === "confronto_preventivi") {
-        if (!documentoA || !documentoB) {
-          return res.status(400).json({ error: "documentoA o documentoB mancante" });
-        }
-
-        const prompt = `
-${PROMPT_CONFRONTO}
-
-PREVENTIVO_A:
-${JSON.stringify(documentoA)}
-
-PREVENTIVO_B:
-${JSON.stringify(documentoB)}
-        `;
-
-        const payload = {
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0
-          }
-        };
-
-        const responseAI = await fetch(
-          `${BASE_URL}?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          }
-        );
-
-        const data = await responseAI.json();
-        const text =
-          data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-        res.set("Access-Control-Allow-Origin", "*");
-        return res.status(200).send(JSON.parse(text));
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (err) {
+        console.error("JSON IA non valido:", text);
+        return res.status(500).json({ error: "JSON IA non valido" });
       }
 
-
-      // Se task non valido
-      return res.status(400).json({ error: "task non valido" });
-
+      return res.status(200).json({
+        success: true,
+        data: parsed,
+      });
     } catch (err) {
       console.error("ERRORE estrazioneDocumenti:", err);
-      res.set("Access-Control-Allow-Origin", "*");
       return res.status(500).json({ error: err.message });
     }
   });

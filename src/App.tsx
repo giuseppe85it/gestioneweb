@@ -23,7 +23,7 @@ import IAHome from "./pages/IA/IAHome";
 import IAApiKey from "./pages/IA/IAApiKey";
 import IALibretto from "./pages/IA/IALibretto";
 import IADocumenti from "./pages/IA/IADocumenti";
-
+import LavoriInAttesa from "./pages/LavoriInAttesa";
 
 function App() {
   return (
@@ -32,7 +32,8 @@ function App() {
 
       <Route path="/lavori-da-eseguire" element={<LavoriDaEseguire />} />
       <Route path="/lavori-eseguiti" element={<LavoriEseguiti />} />
-
+<Route path="/lavori-in-attesa" element={<LavoriInAttesa />} />
+  
       {/* ✔️ DOSSIER LISTA + DOSSIER MEZZO */}
       <Route path="/dossiermezzi" element={<DossierLista />} />
       <Route path="/dossiermezzi/:targa" element={<DossierMezzo />} />

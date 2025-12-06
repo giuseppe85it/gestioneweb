@@ -1,9 +1,41 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
 import "./DossierMezzo.css";
+
+// Normalizza la targa togliendo spazi, simboli e differenze
+const normalizeTarga = (t: string = "") =>
+  t.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+
+// Tipo documento intelligente (accetta fattura, Fattura, FATTURA, ecc.)
+const normalizeTipo = (tipo: string = "") =>
+  tipo.toUpperCase().replace(/\s+/g, "").trim();
+
+// Confronto targa tollerante (accetta differenze minime IA)
+const isSameTarga = (a: string, b: string) => {
+  const na = normalizeTarga(a);
+  const nb = normalizeTarga(b);
+
+  // Se coincide → ok
+  if (na === nb) return true;
+
+  // Se differenza di 1 carattere → consideralo valido
+  if (Math.abs(na.length - nb.length) <= 1) {
+    const minLen = Math.min(na.length, nb.length);
+    let diff = 0;
+
+    for (let i = 0; i < minLen; i++) {
+      if (na[i] !== nb[i]) diff++;
+      if (diff > 1) return false;
+    }
+
+    return true;
+  }
+
+  return false;
+};
 
 interface Mezzo {
   id?: string;
@@ -75,12 +107,13 @@ interface FatturaPreventivo {
   descrizione?: string;
   importo?: number;
   fornitoreLabel?: string;
+  fileUrl?: string | null;   // <── AGGIUNTO
 }
 
 interface Manutenzione {
   id: string;
   targa?: string;
-  tipo?: string; // "mezzo" | "altro" | undefined
+  tipo?: string;
   data?: string;
   km?: number;
   ore?: number;
@@ -112,14 +145,18 @@ const DossierMezzo: React.FC = () => {
   });
 
   const [manutenzioni, setManutenzioni] = useState<Manutenzione[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Stati modali
   const [showAttesaModal, setShowAttesaModal] = useState(false);
   const [showEseguitiModal, setShowEseguitiModal] = useState(false);
   const [showManutenzioniModal, setShowManutenzioniModal] = useState(false);
+const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+const [showPreviewModal, setShowPreviewModal] = useState(false);
+const openDocumento = (url: string) => {
+  setPreviewUrl(url);
+  setShowPreviewModal(true);
+};
 
   useEffect(() => {
     let cancelled = false;
@@ -141,8 +178,7 @@ const DossierMezzo: React.FC = () => {
         const mezziArray = (mezziData.value || []) as Mezzo[];
 
         const mezzo = mezziArray.find(
-          (m) =>
-            m.targa?.toUpperCase().trim() === targa.toUpperCase().trim()
+          (m) => m.targa?.toUpperCase().trim() === targa.toUpperCase().trim()
         );
 
         const lavoriDocRef = doc(db, "storage", "@lavori");
@@ -155,12 +191,8 @@ const DossierMezzo: React.FC = () => {
           return t === targa.toUpperCase().trim();
         });
 
-        const lavoriDaEseguire = lavoriPerMezzo.filter(
-          (l) => l.eseguito === false
-        );
-        const lavoriEseguiti = lavoriPerMezzo.filter(
-          (l) => l.eseguito === true
-        );
+        const lavoriDaEseguire = lavoriPerMezzo.filter((l) => l.eseguito === false);
+        const lavoriEseguiti = lavoriPerMezzo.filter((l) => l.eseguito === true);
         const lavoriInAttesa = lavoriDaEseguire.filter(
           (l) => l.gruppoId && !l.eseguito
         );
@@ -168,8 +200,8 @@ const DossierMezzo: React.FC = () => {
         const movimentiDocRef = doc(db, "storage", "@materialiconsegnati");
         const movimentiSnap = await getDoc(movimentiDocRef);
         const movimentiData = movimentiSnap.data() || {};
-        const movimentiArray = (movimentiData.value ||
-          []) as MovimentoMateriale[];
+        const movimentiArray =
+          (movimentiData.value || []) as MovimentoMateriale[];
 
         const movimentiPerMezzo = movimentiArray.filter(
           (m) => m.destinatario?.label === targa
@@ -187,23 +219,93 @@ const DossierMezzo: React.FC = () => {
         const rifornimentiDocRef = doc(db, "storage", "@rifornimenti");
         const rifornimentiSnap = await getDoc(rifornimentiDocRef);
         const rifornimentiData = rifornimentiSnap.data() || {};
-        const rifornimentiArray = (rifornimentiData.items ||
-          []) as Rifornimento[];
+        const rifornimentiArray =
+          (rifornimentiData.items || []) as Rifornimento[];
 
         const rifornimentiPerMezzo = rifornimentiArray.filter((r) => {
           const t = (r.mezzoTarga || "").toUpperCase().trim();
           return t === targa.toUpperCase().trim();
         });
 
+        // ============================
+        // LETTURA DOCUMENTI IA — ROOT
+        // ============================
+
+        const tgUpper = targa.toUpperCase().trim();
+        void tgUpper;
+
+        const iaCollections = [
+          "@documenti_mezzi",
+          "@documenti_magazzino",
+          "@documenti_generici",
+        ];
+
+let iaDocs: any[] = [];
+
+for (const col of iaCollections) {
+  try {
+    const colRef = collection(db, col);
+    const snap = await getDocs(colRef);
+
+    snap.forEach((docSnap) => {
+      const d = docSnap.data() || {};
+
+      const docTipo = normalizeTipo(d.tipoDocumento);
+      const docTarga = normalizeTarga(d.targa);
+      const mezzoTargaNorm = normalizeTarga(targa);
+
+      // Accetta solo FATTURA o PREVENTIVO (qualsiasi forma)
+      const isDocValid =
+        docTipo === "FATTURA" ||
+        docTipo === "PREVENTIVO";
+
+      // Targa tollerante (accetta piccoli errori IA)
+      const isTargaMatch = isSameTarga(docTarga, mezzoTargaNorm);
+
+      if (isDocValid && isTargaMatch) {
+        iaDocs.push({
+          ...d,
+          tipoDocumento: docTipo,
+          targa: docTarga,
+        });
+      }
+    });
+  } catch (e) {
+    console.error("Errore lettura IA:", e);
+  }
+}
+
+const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
+  id: d.id || crypto.randomUUID(),
+  mezzoTarga: d.targa || "",
+  tipo:
+    d.tipoDocumento === "PREVENTIVO"
+      ? ("PREVENTIVO" as const)
+      : ("FATTURA" as const),
+  data: d.dataDocumento || "",
+  descrizione: d.fornitore
+    ? `${d.tipoDocumento} - ${d.fornitore}`
+    : d.tipoDocumento || "-",
+  importo: d.totaleDocumento
+    ? parseFloat(String(d.totaleDocumento).replace(",", "."))
+    : undefined,
+  fornitoreLabel: d.fornitore || "",
+  fileUrl: d.fileUrl || null,              // <── AGGIUNTO
+}));
+
         const costiDocRef = doc(db, "storage", "@costiMezzo");
         const costiSnap = await getDoc(costiDocRef);
         const costiData = costiSnap.data() || {};
-        const costiArray = (costiData.items || []) as FatturaPreventivo[];
+        const costiArray =
+          (costiData.items || []) as FatturaPreventivo[];
 
-        const costiPerMezzo = costiArray.filter((c) => {
-          const t = (c.mezzoTarga || "").toUpperCase().trim();
-          return t === targa.toUpperCase().trim();
-        });
+        const costiPerMezzo = [
+          ...costiArray.filter((c) => {
+            const t = (c.mezzoTarga || "").toUpperCase().trim();
+            return t === targa.toUpperCase().trim();
+          }),
+          ...documentiIA,
+        ];
 
         // Caricamento manutenzioni via storageSync
         let manArray: Manutenzione[] = [];
@@ -229,9 +331,7 @@ const DossierMezzo: React.FC = () => {
         }
       } catch (err: any) {
         if (!cancelled) {
-          setError(
-            err?.message || "Errore durante il caricamento del dossier."
-          );
+          setError(err?.message || "Errore durante il caricamento del dossier.");
           setLoading(false);
         }
       }
@@ -251,9 +351,32 @@ const DossierMezzo: React.FC = () => {
     console.log("Genera PDF dossier per targa:", targa);
   };
 
+
   if (loading) {
     return (
       <div className="dossier-wrapper">
+        {showPreviewModal && previewUrl && (
+  <div className="dossier-modal-overlay">
+    <div className="dossier-modal dossier-pdf-modal">
+      <div className="dossier-modal-header">
+        <h2>Documento PDF</h2>
+        <button
+          className="dossier-button"
+          onClick={() => setShowPreviewModal(false)}
+        >
+          Chiudi
+        </button>
+      </div>
+
+      <div className="dossier-modal-body">
+        <iframe
+          src={previewUrl}
+          style={{ width: "100%", height: "80vh", border: "none" }}
+        />
+      </div>
+    </div>
+  </div>
+)}
         <div className="dossier-loading">Caricamento dossier in corso…</div>
       </div>
     );
@@ -291,11 +414,8 @@ const DossierMezzo: React.FC = () => {
     (sum, r) => sum + (r.litri || 0),
     0
   );
-  const totaleCosti = state.documentiCosti.reduce(
-    (sum, d) => sum + (d.importo || 0),
-    0
-  );
-
+  void totaleLitri;
+ 
   const parseItalianDate = (d?: string): number => {
     if (!d) return 0;
     const parts = d.split(" ");
@@ -304,6 +424,24 @@ const DossierMezzo: React.FC = () => {
     return new Date(`${yyyy}-${mm}-${gg}`).getTime();
   };
 
+const preventivi = state.documentiCosti
+  .filter((d) => d.tipo === "PREVENTIVO")
+  .sort((a, b) => parseItalianDate(b.data) - parseItalianDate(a.data));
+
+const fatture = state.documentiCosti
+  .filter((d) => d.tipo === "FATTURA")
+  .sort((a, b) => parseItalianDate(b.data) - parseItalianDate(a.data));
+
+  const totalePreventivi = preventivi.reduce(
+    (sum, d) => sum + (d.importo || 0),
+    0
+  );
+  const totaleFatture = fatture.reduce(
+    (sum, d) => sum + (d.importo || 0),
+    0
+  );
+
+ 
   const urgenzaRank = (u?: string): number => {
     switch ((u || "").toUpperCase()) {
       case "ALTA":
@@ -366,6 +504,29 @@ const DossierMezzo: React.FC = () => {
   return (
     <div className="dossier-wrapper">
       <div className="dossier-header-bar">
+        {showPreviewModal && previewUrl && (
+  <div className="dossier-modal-overlay">
+    <div className="dossier-modal dossier-pdf-modal">
+      <div className="dossier-modal-header">
+        <h2>Documento PDF</h2>
+        <button
+          className="dossier-button"
+          onClick={() => setShowPreviewModal(false)}
+        >
+          Chiudi
+        </button>
+      </div>
+
+      <div className="dossier-modal-body">
+        <iframe
+          src={previewUrl}
+          style={{ width: "100%", height: "80vh", border: "none" }}
+        />
+      </div>
+    </div>
+  </div>
+)}
+
         <button className="dossier-button ghost" onClick={handleBack}>
           ⟵ Mezzi
         </button>
@@ -500,14 +661,13 @@ const DossierMezzo: React.FC = () => {
           </div>
         </section>
 
-        {/* LAVORI - CARD UNICA, COLONNA SINISTRA */}
+        {/* LAVORI */}
         <section className="dossier-card">
           <div className="dossier-card-header">
             <h2>Lavori</h2>
           </div>
 
           <div className="dossier-card-body dossier-work-grid">
-            {/* COLONNA IN ATTESA */}
             <div>
               <h3>In attesa</h3>
 
@@ -542,7 +702,6 @@ const DossierMezzo: React.FC = () => {
               </button>
             </div>
 
-            {/* COLONNA ESEGUITI */}
             <div>
               <h3>Eseguiti</h3>
 
@@ -579,7 +738,7 @@ const DossierMezzo: React.FC = () => {
           </div>
         </section>
 
-        {/* MANUTENZIONI - NUOVA CARD, COLONNA DESTRA */}
+        {/* MANUTENZIONI */}
         <section className="dossier-card">
           <div className="dossier-card-header">
             <h2>Manutenzioni</h2>
@@ -663,10 +822,7 @@ const DossierMezzo: React.FC = () => {
         {/* RIFORNIMENTI */}
         <section className="dossier-card">
           <div className="dossier-card-header">
-            <h2>Rifornimenti gasolio</h2>
-            <div className="dossier-chip">
-              Totale litri: <strong>{totaleLitri}</strong>
-            </div>
+            <h2>Rifornimenti</h2>
           </div>
 
           <div className="dossier-card-body">
@@ -675,75 +831,141 @@ const DossierMezzo: React.FC = () => {
                 Nessun rifornimento registrato per questo mezzo.
               </p>
             ) : (
-              <ul className="dossier-list">
-                {state.rifornimenti.map((r) => (
-                  <li key={r.id} className="dossier-list-item">
-                    <div className="dossier-list-main">
-                      <strong>{r.data}</strong>
-                      <span>
-                        {r.litri} L {r.distributore && `• ${r.distributore}`}
-                      </span>
-                    </div>
-                    <div className="dossier-list-meta">
-                      {r.costo ? `Costo: ${r.costo.toFixed(2)} CHF` : "-"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className="dossier-table-wrapper">
+                <table className="dossier-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Litri</th>
+                      <th>Distributore</th>
+                      <th>Costo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.rifornimenti.map((r) => (
+                      <tr key={r.id}>
+                        <td>{r.data || "-"}</td>
+                        <td>{r.litri ?? "-"}</td>
+                        <td>{r.distributore || "-"}</td>
+                        <td>{r.costo != null ? `${r.costo} CHF` : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </section>
 
         {/* COSTI */}
+        {/* PREVENTIVI */}
         <section className="dossier-card">
           <div className="dossier-card-header">
-            <h2>Preventivi e fatture</h2>
+            <h2>Preventivi</h2>
 
             <div className="dossier-chip">
-              Totale costi: <strong>{totaleCosti.toFixed(2)} CHF</strong>
+              Totale preventivi:{" "}
+              <strong>{totalePreventivi.toFixed(2)} CHF</strong>
             </div>
           </div>
 
           <div className="dossier-card-body">
-            {state.documentiCosti.length === 0 ? (
+            {preventivi.length === 0 ? (
               <p className="dossier-empty">
-                Nessun documento di costo registrato.
+                Nessun preventivo registrato.
               </p>
             ) : (
               <ul className="dossier-list">
-                {state.documentiCosti.map((d) => (
+                {preventivi.map((d) => (
                   <li key={d.id} className="dossier-list-item">
                     <div className="dossier-list-main">
-                      <span
-                        className={
-                          d.tipo === "FATTURA"
-                            ? "dossier-badge badge-danger"
-                            : "dossier-badge badge-info"
-                        }
-                      >
+                      <span className="dossier-badge badge-info">
                         {d.tipo}
                       </span>
                       <strong>{d.descrizione || "-"}</strong>
                     </div>
 
-                    <div className="dossier-list-meta">
-                      <span>{d.data}</span>
-                      <span>
-                        {d.importo
-                          ? `${d.importo.toFixed(2)} CHF`
-                          : "Importo n/d"}
-                      </span>
-                      <span>{d.fornitoreLabel || "-"}</span>
-                    </div>
+<div className="dossier-list-meta">
+  <span>{d.data}</span>
+  <span>
+    {d.importo
+      ? `${d.importo.toFixed(2)} CHF`
+      : "Importo n/d"}
+  </span>
+  <span>{d.fornitoreLabel || "-"}</span>
+
+  {d.fileUrl && (
+<button
+  className="dossier-button"
+  type="button"
+  onClick={() => openDocumento(d.fileUrl!)}
+>
+  Apri PDF
+</button>
+  )}
+</div>
                   </li>
                 ))}
               </ul>
             )}
           </div>
         </section>
-      </div>
 
-      {/* MODALI DENTRO IL WRAPPER */}
+        {/* FATTURE */}
+        <section className="dossier-card">
+          <div className="dossier-card-header">
+            <h2>Fatture</h2>
+
+            <div className="dossier-chip">
+              Totale fatture:{" "}
+              <strong>{totaleFatture.toFixed(2)} CHF</strong>
+            </div>
+          </div>
+
+          <div className="dossier-card-body">
+            {fatture.length === 0 ? (
+              <p className="dossier-empty">
+                Nessuna fattura registrata.
+              </p>
+            ) : (
+              <ul className="dossier-list">
+                {fatture.map((d) => (
+                  <li key={d.id} className="dossier-list-item">
+                    <div className="dossier-list-main">
+                      <span className="dossier-badge badge-danger">
+                        {d.tipo}
+                      </span>
+                      <strong>{d.descrizione || "-"}</strong>
+                    </div>
+
+<div className="dossier-list-meta">
+  <span>{d.data}</span>
+  <span>
+    {d.importo
+      ? `${d.importo.toFixed(2)} CHF`
+      : "Importo n/d"}
+  </span>
+  <span>{d.fornitoreLabel || "-"}</span>
+
+  {d.fileUrl && (
+<button
+  className="dossier-button"
+  type="button"
+  onClick={() => openDocumento(d.fileUrl!)}
+>
+  Apri PDF
+</button>
+  )}
+</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+       </div>    
+
+      {/* MODALI */}
       {showAttesaModal && (
         <div className="dossier-modal-overlay">
           <div className="dossier-modal">
@@ -857,8 +1079,8 @@ const DossierMezzo: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+     </div>
   );
-};
+}  
 
 export default DossierMezzo;
