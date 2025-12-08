@@ -5,6 +5,10 @@ import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import "./Manutenzioni.css";
+import ModalGomme from "./ModalGomme";
+import type { CambioGommeData } from "./ModalGomme";
+
+
 
 type TipoVoce = "mezzo" | "compressore";
 type SottoTipo = "motrice" | "trattore";
@@ -14,15 +18,15 @@ interface MaterialeManutenzione {
   label: string;
   quantita: number;
   unita: string;
-  fromInventario: boolean;
+  fromInventario?: boolean;
   refId?: string;
 }
 
 interface VoceManutenzione {
   id: string;
   targa: string;
-  km?: string | null;
-  ore?: string | null;
+  km?: number | null;
+  ore?: number | null;
   sottotipo?: SottoTipo | null;
   descrizione: string;
   eseguito?: string | null;
@@ -35,12 +39,13 @@ interface MezzoBasic {
   id: string;
   targa: string;
   label: string;
+  categoria?: string;
 }
 
 interface MaterialeInventario {
   id: string;
   label: string;
-  quantita: number;
+  quantitaTotale: number;
   unita: string;
   fornitoreLabel?: string;
 }
@@ -59,30 +64,18 @@ const oggi = () => {
   return `${gg} ${mm} ${yy}`;
 };
 
-function parseGGMMYYYY(data: string): number {
-  if (!data) return 0;
-
-  let gg = "";
-  let mm = "";
-  let yyyy = "";
-
-  if (data.includes("/")) {
-    const [d, m, y] = data.split("/");
-    gg = d;
-    mm = m;
-    yyyy = y;
-  } else if (data.includes(" ")) {
-    const [d, m, y] = data.split(" ");
-    gg = d;
-    mm = m;
-    yyyy = y;
-  } else {
-    return 0;
-  }
+// Converte "gg mm aaaa" in numero per ordinamento
+const dataToNumber = (d: string) => {
+  if (!d) return 0;
+  const [gg, mm, yy] = d.split(" ");
+  const yyyy = Number(yy);
+  const month = Number(mm);
+  const day = Number(gg);
+  if (!yyyy || !month || !day) return 0;
 
   const num = Date.parse(`${yyyy}-${mm}-${gg}T00:00:00`);
   return Number.isNaN(num) ? 0 : num;
-}
+};
 
 const Manutenzioni: React.FC = () => {
   const navigate = useNavigate();
@@ -112,6 +105,9 @@ const Manutenzioni: React.FC = () => {
   const [materialeSearch, setMaterialeSearch] = useState("");
   const [materialiTemp, setMaterialiTemp] = useState<MaterialeManutenzione[]>([]);
   const [quantitaTemp, setQuantitaTemp] = useState("");
+
+  // Modale gomme
+  const [modalGommeOpen, setModalGommeOpen] = useState(false);
 
   // Carica storico + mezzi + inventario
   useEffect(() => {
@@ -150,6 +146,7 @@ const Manutenzioni: React.FC = () => {
               id: m.id || tg,
               targa: tg,
               label: `${tg} – ${labelBase}`,
+              categoria: m.categoria || m.tipologia || "",
             };
           })
           .filter(Boolean) as MezzoBasic[];
@@ -172,17 +169,19 @@ const Manutenzioni: React.FC = () => {
             return {
               id: m.id || label,
               label,
-              quantita: m.quantita || 0,
+              quantitaTotale: Number(m.quantitaTotale || m.quantita || 0),
               unita: m.unita || "pz",
               fornitoreLabel: m.fornitoreLabel || m.fornitore || "",
             };
           })
           .filter(Boolean) as MaterialeInventario[];
 
-        // Ordina storico per data (più recente in alto)
-        const ordinato = [...storicoArr].sort(
-          (a, b) => parseGGMMYYYY(b.data) - parseGGMMYYYY(a.data)
-        );
+        // Ordino lo storico per data (più recente in alto)
+        const ordinato = [...storicoArr].sort((a, b) => {
+          const na = dataToNumber(a.data);
+          const nb = dataToNumber(b.data);
+          return nb - na;
+        });
 
         setStorico(ordinato);
         setMezzi(mappedMezzi);
@@ -218,6 +217,7 @@ const Manutenzioni: React.FC = () => {
 
   const resetForm = () => {
     // mantengo la targa selezionata per inserire più voci sullo stesso mezzo
+    const currentTarga = targa;
     setTipo("mezzo");
     setKm("");
     setOre("");
@@ -225,25 +225,26 @@ const Manutenzioni: React.FC = () => {
     setDescrizione("");
     setEseguito("");
     setData(oggi());
-    // non tocco targa
+    setMaterialiTemp([]);
+    setTarga(currentTarga);
   };
-const handleEdit = (item: VoceManutenzione) => {
-  setTarga(item.targa || "");
-  setTipo(item.tipo || "mezzo");
-  setKm(item.km || "");
-  setOre(item.ore || "");
-  setSottotipo((item.sottotipo as any) || "motrice");
-  setDescrizione(item.descrizione || "");
-  setEseguito(item.eseguito || "");
-  setData(item.data || oggi());
 
-  // Materiali
-  setMaterialiTemp(item.materiali || []);
+  const handleEdit = (item: VoceManutenzione) => {
+    // Carica la voce nello stato del form
+    setTarga(item.targa);
+    setTipo(item.tipo);
+    setKm(item.km != null ? String(item.km) : "");
+    setOre(item.ore != null ? String(item.ore) : "");
+    setSottotipo(item.sottotipo || "motrice");
+    setDescrizione(item.descrizione);
+    setEseguito(item.eseguito || "");
+    setData(item.data);
+    // Materiali
+    setMaterialiTemp(item.materiali || []);
 
-  // Rimuove la vecchia voce per riscriverla aggiornata
-  setStorico((prev) => prev.filter((v) => v.id !== item.id));
-};
-
+    // Rimuove la vecchia voce per riscriverla aggiornata
+    setStorico((prev) => prev.filter((v) => v.id !== item.id));
+  };
 
   const handleSelectTargaMezzo = (value: string) => {
     setTarga(value);
@@ -284,6 +285,26 @@ const nuovo: MaterialeManutenzione = {
     setMaterialiTemp((prev) => prev.filter((m) => m.id !== id));
   };
 
+  const integraDescrizioneConGomme = (data: CambioGommeData) => {
+    const header = `CAMBIO GOMME – ${data.modalita === "ordinario" ? "ordinario" : "straordinario"}`;
+    const asseLine = data.asseLabel ? `Asse: ${data.asseLabel}` : "";
+    const gommeLine = `Gomme cambiate: ${data.numeroGomme}`;
+    const marcaLine = data.marca ? `Marca: ${data.marca}` : "";
+    const kmLine = data.km ? `Km mezzo: ${data.km}` : "";
+    const categoriaLine = data.categoria ? `Categoria mezzo: ${data.categoria}` : "";
+
+    const blocco = [header, categoriaLine, asseLine, gommeLine, marcaLine, kmLine]
+      .filter(Boolean)
+      .join("\n");
+
+    setDescrizione((prev) => (prev ? `${prev}\n\n${blocco}` : blocco));
+  };
+
+  const handleGommeConfirm = (data: CambioGommeData) => {
+    integraDescrizioneConGomme(data);
+    setModalGommeOpen(false);
+  };
+
   const handleAdd = async () => {
     const t = targa.trim().toUpperCase();
     const desc = descrizione.trim();
@@ -294,92 +315,115 @@ const nuovo: MaterialeManutenzione = {
       return;
     }
 
+    if (tipo === "mezzo" && !km) {
+      const conferma = window.confirm(
+        "Non hai inserito i KM. Vuoi continuare lo stesso?"
+      );
+      if (!conferma) return;
+    }
+
+    if (tipo === "compressore" && !ore) {
+      const conferma = window.confirm(
+        "Non hai inserito le ORE. Vuoi continuare lo stesso?"
+      );
+      if (!conferma) return;
+    }
+
     const nuovaVoce: VoceManutenzione = {
       id: Date.now().toString(),
       targa: t,
-      km:
-        tipo === "mezzo"
-          ? ((km || "").trim() || undefined)
-          : undefined,
-      ore:
-        tipo === "compressore"
-          ? ((ore || "").trim() || undefined)
-          : undefined,
-      sottotipo: tipo === "compressore" ? sottotipo : undefined,
-      descrizione: desc,
-      eseguito: eseguito.trim() || undefined,
-      data: d,
       tipo,
-      materiali: materialiTemp.length ? materialiTemp : undefined,
+      km: km ? Number(km) : null,
+      ore: ore ? Number(ore) : null,
+      sottotipo: tipo === "compressore" ? sottotipo : null,
+      descrizione: desc,
+      eseguito: eseguito || null,
+      data: d,
+      materiali: materialiTemp.length ? [...materialiTemp] : [],
     };
 
-    // Aggiornamento inventario e movimenti OUT
+    const nuovoStorico = [nuovaVoce, ...storico];
+
     try {
-      const inventarioRaw = await getItemSync(KEY_INVENTARIO);
-      const inventarioArr: any[] = Array.isArray(inventarioRaw)
-        ? (inventarioRaw as any[])
-        : inventarioRaw?.value && Array.isArray(inventarioRaw.value)
-        ? (inventarioRaw.value as any[])
-        : [];
+      await persistStorico(nuovoStorico);
 
-      const movRaw = await getItemSync(KEY_MOVIMENTI);
-      const movArr: any[] = Array.isArray(movRaw)
-        ? (movRaw as any[])
-        : movRaw?.value && Array.isArray(movRaw.value)
-        ? (movRaw.value as any[])
-        : [];
+      // Aggiornamento inventario e movimenti OUT
+      try {
+        const inventarioRaw = await getItemSync(KEY_INVENTARIO);
+        const inventarioArr: any[] = Array.isArray(inventarioRaw)
+          ? (inventarioRaw as any[])
+          : inventarioRaw?.value && Array.isArray(inventarioRaw.value)
+          ? (inventarioRaw.value as any[])
+          : [];
 
-      let inventarioAgg = [...inventarioArr];
-      let movAgg = [...movArr];
+        const movRaw = await getItemSync(KEY_MOVIMENTI);
+        const movArr: any[] = Array.isArray(movRaw)
+          ? (movRaw as any[])
+          : movRaw?.value && Array.isArray(movRaw.value)
+          ? (movRaw.value as any[])
+          : [];
 
-      for (const mat of materialiTemp) {
-        if (mat.fromInventario && mat.refId) {
-          const idx = inventarioAgg.findIndex((i: any) => i.id === mat.refId);
-          if (idx !== -1) {
-            const currentQty = Number(inventarioAgg[idx].quantita || 0);
-            const usedQty = Number(mat.quantita || 0);
-            const nuovaQuantita = currentQty - usedQty;
-            inventarioAgg[idx].quantita = nuovaQuantita >= 0 ? nuovaQuantita : 0;
-          }
+        let inventarioAggiornato = [...inventarioArr];
+        const nuoveMovimentazioni = [...movArr];
 
-          movAgg.push({
-            id: `${Date.now().toString()}_${mat.id}`,
-            mezzoTarga: t,
-descrizione: mat.label.toUpperCase(),
-quantita: mat.quantita,
-unita: mat.unita,
-direzione: "OUT",
-data: d,
-fornitore: inventarioAgg[idx]?.fornitore || null,
-motivo: desc,
-destinatario: { type: "mezzo", refId: t, label: t },
+        for (const mat of materialiTemp) {
+          if (!mat.fromInventario || !mat.refId) continue;
+          const idx = inventarioAggiornato.findIndex((x) => x.id === mat.refId);
+          if (idx === -1) continue;
+
+          const corrente = inventarioAggiornato[idx];
+          const quantitaAttuale = Number(
+            corrente.quantitaTotale || corrente.quantita || 0
+          );
+
+          const nuovaQta = quantitaAttuale - mat.quantita;
+          inventarioAggiornato[idx] = {
+            ...corrente,
+            quantitaTotale: nuovaQta,
+          };
+
+          nuoveMovimentazioni.push({
+            id: Date.now().toString() + "_" + mat.id,
+            tipo: "OUT",
+            data: d,
+            materialeId: mat.refId,
+            materialeLabel: mat.label,
+            quantita: mat.quantita,
+            unita: mat.unita,
+            origine: "MANUTENZIONE",
+            targa: t,
           });
         }
+
+        await setItemSync(KEY_INVENTARIO, inventarioAggiornato);
+        await setItemSync(KEY_MOVIMENTI, nuoveMovimentazioni);
+      } catch (errMov) {
+        console.error(
+          "Errore aggiornamento inventario / movimenti da manutenzioni:",
+          errMov
+        );
       }
-      setMaterialiTemp([]);
-      await setItemSync(KEY_INVENTARIO, inventarioAgg);
-      await setItemSync(KEY_MOVIMENTI, movAgg);
+
+      resetForm();
+      alert("Manutenzione salvata correttamente.");
     } catch (err) {
-      console.error("Errore aggiornamento inventario/movimenti:", err);
+      console.error("Errore salvataggio manutenzione:", err);
+      alert("Errore durante il salvataggio. Riprova.");
     }
-
-    const aggiornato = [...storico, nuovaVoce].sort(
-      (a, b) => parseGGMMYYYY(b.data) - parseGGMMYYYY(a.data)
-    );
-    await persistStorico(aggiornato);
-
-    
-    setMaterialeSearch("");
-    setQuantitaTemp("");
-    resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Vuoi davvero eliminare questa manutenzione?")) {
-      return;
+    const conferma = window.confirm(
+      "Sei sicuro di voler eliminare questa manutenzione?"
+    );
+    if (!conferma) return;
+
+    const nuovoStorico = storico.filter((v) => v.id !== id);
+    try {
+      await persistStorico(nuovoStorico);
+    } catch (err) {
+      console.error("Errore durante l'eliminazione:", err);
     }
-    const filtrato = storico.filter((v) => v.id !== id);
-    await persistStorico(filtrato);
   };
 
   const handleApriDossier = () => {
@@ -390,6 +434,11 @@ destinatario: { type: "mezzo", refId: t, label: t },
     }
     navigate(`/dossier/${encodeURIComponent(tg)}`);
   };
+
+  const mezzoSelezionato = useMemo(
+    () => mezzi.find((m) => m.targa === targa) || null,
+    [mezzi, targa]
+  );
 
   const storicoFiltrato = useMemo(() => {
     return storico.filter((v) => {
@@ -404,55 +453,18 @@ destinatario: { type: "mezzo", refId: t, label: t },
     });
   }, [storico, filtroTarga, filtroTipo]);
 
-  const handleExportPDF = async () => {
-    if (storicoFiltrato.length === 0) {
-      alert("Non ci sono manutenzioni da esportare con i filtri attuali.");
-      return;
-    }
+  const materialiSugg = useMemo(() => {
+    if (!materialeSearch) return [];
+    const query = materialeSearch.trim().toUpperCase();
+    if (!query) return [];
 
-    const rows = storicoFiltrato.map((item) => {
-      const misura =
-        item.tipo === "mezzo"
-          ? `${item.km || "0"} km`
-          : `${item.ore || "0"} ore`;
-
-      return [
-        item.targa,
-        item.tipo === "mezzo" ? "MEZZO" : "COMPRESSORE",
-        misura,
-        item.sottotipo || "",
-        item.descrizione,
-        item.eseguito || "",
-        item.data,
-      ];
-    });
-
-    try {
-      await generateSmartPDF({
-        kind: "table",
-        title: "Storico manutenzioni",
-        columns: [
-          "Targa",
-          "Tipo",
-          "Km/Ore",
-          "Sottotipo",
-          "Descrizione",
-          "Eseguito da",
-          "Data",
-        ],
-        rows,
-      });
-    } catch (err) {
-      console.error("Errore generazione PDF manutenzioni:", err);
-      alert("Errore nella generazione del PDF.");
-    }
-  };
-
-  const materialiSuggeriti = useMemo(() => {
-    const term = materialeSearch.trim().toLowerCase();
-    if (!term) return [];
     return materialiInventario
-      .filter((m) => m.label.toLowerCase().includes(term))
+      .filter((m) =>
+        m.label.toUpperCase().includes(query) ||
+        (m.fornitoreLabel || "")
+          .toUpperCase()
+          .includes(query)
+      )
       .slice(0, 5);
   }, [materialeSearch, materialiInventario]);
 
@@ -472,349 +484,401 @@ destinatario: { type: "mezzo", refId: t, label: t },
               </div>
             </div>
 
-            <div className="man-header-actions">
-              <button
-                type="button"
-                className="man-header-btn"
-                onClick={handleExportPDF}
-                disabled={loading}
-              >
-                Esporta PDF
-              </button>
+            <button
+              type="button"
+              className="man-header-btn man-header-btn-outline"
+              onClick={handleApriDossier}
+            >
+              Apri dossier mezzo
+            </button>
+          </div>
+
+          <div className="man-card-body">
+            {/* SEZIONE 1 – SELEZIONE MEZZO */}
+            <div className="man-section">
+              <div className="man-section-title">Mezzo / Compressore</div>
+
+              <label className="man-label-block">
+                <span className="man-label-text">Targa / Codice</span>
+                <div className="man-row">
+                  <select
+                    className="man-input man-select-mezzo"
+                    value={targa}
+                    onChange={(e) => handleSelectTargaMezzo(e.target.value)}
+                  >
+                    <option value="">— Seleziona mezzo dall'elenco —</option>
+                    {mezzi.map((m) => (
+                      <option key={m.id} value={m.targa}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="man-or">oppure</span>
+                  <input
+                    className="man-input man-input-targa"
+                    value={targa}
+                    onChange={(e) => setTarga(e.target.value.toUpperCase())}
+                    placeholder="Es. TI315407"
+                  />
+                </div>
+              </label>
+
+              <div className="man-row">
+                <label className="man-label-inline">
+                  <span className="man-label-text">Tipo</span>
+                  <select
+                    className="man-input"
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value as TipoVoce)}
+                  >
+                    <option value="mezzo">Mezzo</option>
+                    <option value="compressore">Compressore</option>
+                  </select>
+                </label>
+
+                {tipo === "mezzo" && (
+                  <label className="man-label-inline">
+                    <span className="man-label-text">Km attuali</span>
+                    <input
+                      className="man-input"
+                      value={km}
+                      onChange={(e) => setKm(e.target.value)}
+                      placeholder="Es. 325000"
+                      inputMode="numeric"
+                    />
+                  </label>
+                )}
+
+                {tipo === "compressore" && (
+                  <label className="man-label-inline">
+                    <span className="man-label-text">Ore</span>
+                    <input
+                      className="man-input"
+                      value={ore}
+                      onChange={(e) => setOre(e.target.value)}
+                      placeholder="Es. 1200"
+                      inputMode="numeric"
+                    />
+                  </label>
+                )}
+              </div>
+
+              {tipo === "compressore" && (
+                <label className="man-label-block">
+                  <span className="man-label-text">Sottotipo compressore</span>
+                  <select
+                    className="man-input"
+                    value={sottotipo}
+                    onChange={(e) =>
+                      setSottotipo(e.target.value as SottoTipo)
+                    }
+                  >
+                    <option value="motrice">Motrice</option>
+                    <option value="trattore">Trattore</option>
+                  </select>
+                </label>
+              )}
+            </div>
+
+            {/* SEZIONE 2 – DETTAGLI MANUTENZIONE */}
+            <div className="man-section">
+              <div className="man-section-title">Dettagli manutenzione</div>
+
+              <label className="man-label-block">
+                <span className="man-label-text">Descrizione intervento</span>
+                <textarea
+                  className="man-input man-textarea"
+                  value={descrizione}
+                  onChange={(e) => setDescrizione(e.target.value)}
+                  placeholder="Es. Sostituzione pastiglie freno anteriori"
+                />
+              </label>
+
               <button
                 type="button"
                 className="man-header-btn man-header-btn-outline"
-                onClick={handleApriDossier}
+                style={{ marginTop: "8px", marginBottom: "12px" }}
+                onClick={() => setModalGommeOpen(true)}
+                disabled={!targa || !mezzoSelezionato}
               >
-                Apri dossier mezzo
+                Gestione gomme
               </button>
-            </div>
-          </div>
 
-          {/* SEZIONE 1 – INFO MEZZO */}
-          <div className="man-section">
-            <div className="man-section-title">Info mezzo</div>
-
-            <label className="man-label-block">
-              <span className="man-label-text">
-                Seleziona mezzo (da elenco mezzi)
-              </span>
-              <select
-                className="man-input"
-                value={targa}
-                onChange={(e) => handleSelectTargaMezzo(e.target.value)}
-              >
-                <option value="">— Seleziona —</option>
-                {mezzi.map((m) => (
-                  <option key={m.id} value={m.targa}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="man-label-block">
-              <span className="man-label-text">Targa</span>
-              <input
-                className="man-input"
-                value={targa}
-                onChange={(e) => setTarga(e.target.value.toUpperCase())}
-                placeholder="Es. TI315407"
-              />
-            </label>
-
-            <div className="man-row">
-              <label className="man-label-inline">
-                <span className="man-label-text">Tipo</span>
-                <select
-                  className="man-input"
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value as TipoVoce)}
-                >
-                  <option value="mezzo">Mezzo</option>
-                  <option value="compressore">Compressore</option>
-                </select>
-              </label>
-
-              {tipo === "mezzo" && (
-                <label className="man-label-inline">
-                  <span className="man-label-text">Km</span>
-                  <input
-                    className="man-input"
-                    value={km}
-                    onChange={(e) => setKm(e.target.value)}
-                    placeholder="Es. 250000"
-                    inputMode="numeric"
-                  />
-                </label>
-              )}
-
-{tipo === "compressore" && (
-  <label className="man-label-inline">
-    <span className="man-label-text">Ore</span>
-    <input
-      className="man-input"
-      value={ore}
-      onChange={(e) => setOre(e.target.value)}
-      placeholder="Es. 1200"
-      inputMode="numeric"
-    />
-  </label>
-)}
-              
-            </div>
-
-            {tipo === "compressore" && (
               <label className="man-label-block">
-                <span className="man-label-text">Sottotipo compressore</span>
-                <select
+                <span className="man-label-text">Eseguito da</span>
+                <input
                   className="man-input"
-                  value={sottotipo}
-                  onChange={(e) =>
-                    setSottotipo(e.target.value as SottoTipo)
-                  }
-                >
-                  <option value="motrice">Motrice</option>
-                  <option value="trattore">Trattore</option>
-                </select>
+                  value={eseguito}
+                  onChange={(e) => setEseguito(e.target.value.toUpperCase())}
+                  placeholder="Es. OFFICINA INTERNA / AGUSTONI CESARE / ..."
+                />
               </label>
-            )}
-          </div>
 
-          {/* SEZIONE 2 – DETTAGLI MANUTENZIONE */}
-          <div className="man-section">
-            <div className="man-section-title">Dettagli manutenzione</div>
-
-            <label className="man-label-block">
-              <span className="man-label-text">Descrizione intervento</span>
-              <textarea
-                className="man-input man-textarea"
-                value={descrizione}
-                onChange={(e) => setDescrizione(e.target.value)}
-                placeholder="Es. Sostituzione pastiglie freno anteriori"
-              />
-            </label>
-
-            <label className="man-label-block">
-              <span className="man-label-text">Eseguito da</span>
-              <input
-                className="man-input"
-                value={eseguito}
-                onChange={(e) => setEseguito(e.target.value)}
-                placeholder="Es. Officina Rossi"
-              />
-            </label>
-          </div>
-
-          {/* SEZIONE 2B – MATERIALI UTILIZZATI */}
-          <div className="man-section">
-            <div className="man-section-title">Materiali utilizzati</div>
-
-            <label className="man-label-block">
-              <span className="man-label-text">Cerca materiale</span>
-              <input
-                className="man-input"
-                value={materialeSearch}
-                onChange={(e) => setMaterialeSearch(e.target.value)}
-                placeholder="Es. pastiglie, olio, bulloni..."
-              />
-            </label>
-
-            {materialeSearch.trim() !== "" && (
-              <div className="man-autosuggest">
-                {materialiSuggeriti.map((m) => (
-                  <div
-                    key={m.id}
-                    className="man-autosuggest-item"
-onClick={() => {
-  if (!quantitaTemp || Number(quantitaTemp) <= 0) {
-    alert("Inserisci prima la quantità.");
-    return;
-  }
-
-  handleAddMateriale(
-    m.label,
-    Number(quantitaTemp),
-    m.unita || "pz",
-    true,
-    m.id
-  );
-}}
-                  >
-                    <strong>{m.label}</strong>
-                    <span style={{ marginLeft: "8px", opacity: 0.7 }}>
-                      {m.quantita} {m.unita}
-                    </span>
-                  </div>
-                ))}
-
-                <div
-                  className="man-autosuggest-item man-autosuggest-free"
-                  onClick={() =>
-                    handleAddMateriale(
-                      materialeSearch.trim(),
-                      Number(quantitaTemp || 1),
-                      "pz",
-                      false
-                    )
-                  }
-                >
-                  ➕ Aggiungi “{materialeSearch.trim()}” come materiale libero
-                </div>
-              </div>
-            )}
-
-            <label className="man-label-block" style={{ marginTop: "10px" }}>
-              <span className="man-label-text">Quantità</span>
-              <input
-                className="man-input"
-                value={quantitaTemp}
-                onChange={(e) => setQuantitaTemp(e.target.value)}
-                placeholder="Es. 2"
-                inputMode="numeric"
-              />
-            </label>
-
-            {materialiTemp.length > 0 && (
-              <div className="man-temp-list">
-                <h4 style={{ marginTop: "15px" }}>Materiali aggiunti</h4>
-
-                {materialiTemp.map((m) => (
-                  <div key={m.id} className="man-temp-item">
-                    <span>
-                      <strong>{m.label}</strong> — {m.quantita} {m.unita}
-                      {m.fromInventario && (
-                        <span style={{ opacity: 0.6 }}> (da inventario)</span>
-                      )}
-                    </span>
-
-                    <button
-                      type="button"
-                      className="man-delete-btn"
-                      onClick={() => handleRemoveMateriale(m.id)}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* SEZIONE 3 – DATA + AZIONI */}
-          <div className="man-section man-section-last">
-            <div className="man-section-title">Data e conferma</div>
-
-            <div className="man-row">
               <label className="man-label-inline">
-               <span className="man-label-text">Data</span>
+                <span className="man-label-text">Data intervento</span>
                 <input
                   className="man-input"
                   value={data}
                   onChange={(e) => setData(e.target.value)}
-                  placeholder="Es. 05 12 2025"
+                  placeholder="gg mm aaaa"
                 />
               </label>
+            </div>
 
-              <div className="man-actions">
-                <button
-                  type="button"
-                  className="man-secondary-btn"
-                  onClick={resetForm}
-                >
-                  Reset
-                </button>
-                <button
-                  type="button"
-                  className="man-primary-btn"
-                  onClick={handleAdd}
-                  disabled={loading}
-                >
-                  Aggiungi
-                </button>
+            {/* SEZIONE 3 – MATERIALI USATI */}
+            <div className="man-section">
+              <div className="man-section-title">Materiali utilizzati</div>
+
+              <div className="man-row man-row-materiale">
+                <div className="man-materiale-left">
+                  <label className="man-label-block">
+                    <span className="man-label-text">
+                      Cerca in inventario / inserisci materiale
+                    </span>
+                    <input
+                      className="man-input"
+                      value={materialeSearch}
+                      onChange={(e) => setMaterialeSearch(e.target.value)}
+                      placeholder="Es. PASTIGLIE FRENO, OLIO MOTORE..."
+                    />
+                  </label>
+
+                  {materialeSearch && materialiSugg.length > 0 && (
+                    <div className="man-autosuggest">
+                      {materialiSugg.map((m) => (
+                        <div
+                          key={m.id}
+                          className="man-autosuggest-item"
+                          onClick={() => {
+                            if (!quantitaTemp || Number(quantitaTemp) <= 0) {
+                              alert("Inserisci prima la quantità.");
+                              return;
+                            }
+
+                            handleAddMateriale(
+                              m.label,
+                              Number(quantitaTemp),
+                              m.unita || "pz",
+                              true,
+                              m.id
+                            );
+                          }}
+                        >
+                          <div className="man-autosuggest-main">
+                            <span className="man-autosuggest-label">
+                              {m.label}
+                            </span>
+                            {m.fornitoreLabel && (
+                              <span className="man-autosuggest-supplier">
+                                {m.fornitoreLabel}
+                              </span>
+                            )}
+                          </div>
+                          <div className="man-autosuggest-extra">
+                            <span>
+                              Disponibili: {m.quantitaTotale} {m.unita}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="man-materiale-right">
+                  <label className="man-label-inline">
+                    <span className="man-label-text">Quantità</span>
+                    <input
+                      className="man-input man-input-small"
+                      value={quantitaTemp}
+                      onChange={(e) => setQuantitaTemp(e.target.value)}
+                      placeholder="Es. 2"
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="man-header-btn"
+                    onClick={() => {
+                      if (!materialeSearch.trim()) {
+                        alert(
+                          "Inserisci il nome del materiale o selezionalo dall'inventario."
+                        );
+                        return;
+                      }
+                      if (!quantitaTemp || Number(quantitaTemp) <= 0) {
+                        alert("Inserisci una quantità valida.");
+                        return;
+                      }
+
+                      handleAddMateriale(
+                        materialeSearch.toUpperCase(),
+                        Number(quantitaTemp),
+                        "pz",
+                        false
+                      );
+                    }}
+                  >
+                    Aggiungi materiale
+                  </button>
+                </div>
               </div>
+
+              {materialiTemp.length > 0 && (
+                <div className="man-materiali-list">
+                  {materialiTemp.map((m) => (
+                    <div key={m.id} className="man-materiale-pill">
+                      <span className="man-materiale-label">
+                        {m.label} – {m.quantita} {m.unita}
+                        {m.fromInventario ? " (da inventario)" : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className="man-materiale-remove"
+                        onClick={() => handleRemoveMateriale(m.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="man-actions">
+              <button
+                type="button"
+                className="man-btn-primary"
+                onClick={handleAdd}
+                disabled={loading}
+              >
+                Salva manutenzione
+              </button>
+              <button
+                type="button"
+                className="man-btn-secondary"
+                onClick={resetForm}
+              >
+                Pulisci campi
+              </button>
             </div>
           </div>
         </div>
 
         {/* CARD DESTRA – STORICO */}
         <div className="man-card man-card-list">
-          <div className="man-card-header man-card-header-list">
+          <div className="man-card-header">
             <div>
-              <h2 className="man-title-small">Storico manutenzioni</h2>
+              <h2 className="man-title-sm">Storico manutenzioni</h2>
               <p className="man-subtitle">
-                Lista interventi filtrabile per targa e tipo
+                Filtra per targa e tipo per una ricerca veloce
               </p>
             </div>
+
+            <button
+              type="button"
+              className="man-header-btn man-header-btn-outline"
+              onClick={async () => {
+                try {
+                  if (!storico.length) {
+                    alert("Non ci sono manutenzioni da esportare.");
+                    return;
+                  }
+
+                  const rows = storico.map((v) => {
+                    const misura =
+                      v.tipo === "mezzo"
+                        ? v.km != null
+                          ? `${v.km} KM`
+                          : "-"
+                        : v.ore != null
+                        ? `${v.ore} ORE`
+                        : "-";
+
+                    return [
+                      v.targa,
+                      v.tipo === "mezzo" ? "MEZZO" : "COMPRESSORE",
+                      misura,
+                      v.sottotipo || "-",
+                      v.descrizione,
+                      v.eseguito || "-",
+                      v.data,
+                    ];
+                  });
+
+                  await generateSmartPDF({
+                    kind: "table",
+                    title: "Storico manutenzioni",
+                    columns: [
+                      "Targa",
+                      "Tipo",
+                      "Km/Ore",
+                      "Sottotipo",
+                      "Descrizione",
+                      "Eseguito da",
+                      "Data",
+                    ],
+                    rows,
+                  });
+                } catch (err) {
+                  console.error("Errore generazione PDF manutenzioni:", err);
+                  alert(
+                    "Errore durante la generazione del PDF. Riprova più tardi."
+                  );
+                }
+              }}
+            >
+              Esporta PDF
+            </button>
           </div>
 
-          {/* FILTRI LISTA */}
-          <div className="man-filters-list">
-            <label className="man-label-block">
-              <span className="man-label-text">Filtra per targa</span>
-              <input
-                className="man-input"
-                value={filtroTarga}
-                onChange={(e) => setFiltroTarga(e.target.value)}
-                placeholder="Es. TI315407"
-              />
-            </label>
+          <div className="man-card-body">
+            {/* FILTRI LISTA */}
+            <div className="man-filters">
+              <label className="man-label-inline">
+                <span className="man-label-text">Filtra per targa</span>
+                <input
+                  className="man-input"
+                  value={filtroTarga}
+                  onChange={(e) => setFiltroTarga(e.target.value)}
+                  placeholder="Es. TI315407"
+                />
+              </label>
 
-            <div className="man-filter-tipo">
-              <span className="man-label-text">Tipo</span>
-              <div className="man-filter-chips">
-                <button
-                  type="button"
-                  className={
-                    filtroTipo === "tutti"
-                      ? "man-chip man-chip-active"
-                      : "man-chip"
+              <label className="man-label-inline">
+                <span className="man-label-text">Tipo</span>
+                <select
+                  className="man-input"
+                  value={filtroTipo}
+                  onChange={(e) =>
+                    setFiltroTipo(e.target.value as "tutti" | TipoVoce)
                   }
-                  onClick={() => setFiltroTipo("tutti")}
                 >
-                  Tutti
-                </button>
-                <button
-                  type="button"
-                  className={
-                    filtroTipo === "mezzo"
-                      ? "man-chip man-chip-active"
-                      : "man-chip"
-                  }
-                  onClick={() => setFiltroTipo("mezzo")}
-                >
-                  Mezzi
-                </button>
-                <button
-                  type="button"
-                  className={
-                    filtroTipo === "compressore"
-                      ? "man-chip man-chip-active"
-                      : "man-chip"
-                  }
-                  onClick={() => setFiltroTipo("compressore")}
-                >
-                  Compressori
-                </button>
-              </div>
+                  <option value="tutti">Tutti</option>
+                  <option value="mezzo">Mezzi</option>
+                  <option value="compressore">Compressori</option>
+                </select>
+              </label>
             </div>
-          </div>
 
-          {/* LISTA */}
-          <div className="man-list-wrapper">
+            {/* LISTA STORICO */}
             {loading ? (
-              <div className="man-empty">Caricamento in corso…</div>
+              <div className="man-empty">Caricamento in corso...</div>
             ) : storicoFiltrato.length === 0 ? (
               <div className="man-empty">
-                Nessuna manutenzione registrata con i filtri attuali.
+                Nessuna manutenzione trovata con i filtri attuali.
               </div>
             ) : (
               <div className="man-list">
                 {storicoFiltrato.map((item) => {
                   const misura =
                     item.tipo === "mezzo"
-                      ? `${item.km || "0"} km`
-                      : `${item.ore || "0"} ore`;
+                      ? item.km != null
+                        ? `${item.km} KM`
+                        : "-"
+                      : item.ore != null
+                      ? `${item.ore} ORE`
+                      : "-";
 
                   return (
                     <div key={item.id} className="man-row-item">
@@ -837,54 +901,50 @@ onClick={() => {
                           <span className="man-data">{item.data}</span>
                         </div>
                         <div className="man-row-line2">
-                          <span className="man-descrizione">
+                          <div className="man-descr">
                             {item.descrizione}
-                          </span>
-                          {item.eseguito && (
+                          </div>
+                          <div className="man-row-meta">
                             <span className="man-eseguito">
-                              Eseguito da: {item.eseguito}
+                              {item.eseguito || "-"}
                             </span>
-                          )}
-                          {item.materiali && item.materiali.length > 0 && (
-                            <span className="man-materiali-usati">
-                              Materiali:{" "}
-                              {item.materiali
-                                .map(
-                                  (m) =>
-                                    `${m.label} (${m.quantita} ${m.unita})`
-                                )
-                                .join(", ")}
-                            </span>
-                          )}
+                            <button
+                              type="button"
+                              className="man-edit-btn"
+                              onClick={() => handleEdit(item)}
+                              style={{
+                                marginLeft: "8px",
+                                fontSize: "12px",
+                                padding: "6px 10px",
+                                borderRadius: "4px",
+                                cursor: "pointer"
+                              }}
+                            >
+                              Modifica
+                            </button>
+
+                            <button
+                              type="button"
+                              className="man-delete-btn"
+                              onClick={() => handleDelete(item.id)}
+                            >
+                              Elimina
+                            </button>
+                          </div>
                         </div>
+                        {item.materiali && item.materiali.length > 0 && (
+                          <div className="man-row-materiali">
+                            {item.materiali.map((m) => (
+                              <span
+                                key={m.id}
+                                className="man-materiale-pill-sm"
+                              >
+                                {m.label} – {m.quantita} {m.unita}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-             <div className="man-row-actions">
-  <button
-    type="button"
-    className="man-edit-btn"
-    onClick={() => handleEdit(item)}
-    style={{
-      marginRight: "8px",
-      backgroundColor: "#007bff",
-      color: "white",
-      border: "none",
-      padding: "6px 10px",
-      borderRadius: "4px",
-      cursor: "pointer"
-    }}
-  >
-    Modifica
-  </button>
-
-  <button
-    type="button"
-    className="man-delete-btn"
-    onClick={() => handleDelete(item.id)}
-  >
-    Elimina
-  </button>
-</div>
-
                     </div>
                   );
                 })}
@@ -893,6 +953,16 @@ onClick={() => {
           </div>
         </div>
       </div>
+      {modalGommeOpen && mezzoSelezionato && (
+        <ModalGomme
+          open={modalGommeOpen}
+          targa={mezzoSelezionato.targa}
+          categoria={mezzoSelezionato.categoria}
+          kmIniziale={km}
+          onClose={() => setModalGommeOpen(false)}
+          onConfirm={handleGommeConfirm}
+        />
+      )}
     </div>
   );
 };

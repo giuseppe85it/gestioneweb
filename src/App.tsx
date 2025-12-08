@@ -18,6 +18,8 @@ import CheckStorage from "./pages/CheckStorage";
 import DettaglioLavoro from "./pages/DettaglioLavoro";
 import DettaglioOrdine from "./pages/DettaglioOrdine";
 import DossierMezzo from "./pages/DossierMezzo";
+import AnalisiEconomica from "./pages/AnalisiEconomica";
+import DossierGomme from "./pages/DossierGomme";
 import Manutenzioni from "./pages/Manutenzioni";
 import IAHome from "./pages/IA/IAHome";
 import IAApiKey from "./pages/IA/IAApiKey";
@@ -37,6 +39,9 @@ function App() {
       {/* ✔️ DOSSIER LISTA + DOSSIER MEZZO */}
       <Route path="/dossiermezzi" element={<DossierLista />} />
       <Route path="/dossiermezzi/:targa" element={<DossierMezzo />} />
+      <Route path="/analisi-economica/:targa" element={<AnalisiEconomica />} />
+      <Route path="/dossier/:targa/gomme" element={<DossierGomme />} />
+
 
       <Route path="/materiali-da-ordinare" element={<MaterialiDaOrdinare />} />
       <Route path="/materiali-consegnati" element={<MaterialiConsegnati />} />

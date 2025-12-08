@@ -6,6 +6,7 @@
 const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
+const analisiEconomica = require("./analisiEconomica");
 
 initializeApp();
 const db = getFirestore();
@@ -58,6 +59,8 @@ async function getGeminiApiKey() {
  * ENDPOINT PUBBLICO:
  * https://us-central1-<PROJECT_ID>.cloudfunctions.net/estrazione_libretto
  */
+exports.estrazioneDocumenti = require("./estrazioneDocumenti").estrazioneDocumenti;
+exports.analisi_economica_mezzo = analisiEconomica.analisi_economica_mezzo;
 exports.estrazione_libretto = functions.https.onRequest(async (req, res) => {
   // CORS
   if (req.method === "OPTIONS") {
@@ -155,6 +158,6 @@ exports.estrazione_libretto = functions.https.onRequest(async (req, res) => {
     });
   }
 });
-exports.estrazioneDocumenti = require("./estrazioneDocumenti").estrazioneDocumenti;
+
 
 

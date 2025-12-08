@@ -1,0 +1,256 @@
+/* src/pages/ModalGomme.css */
+
+.mg-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.mg-modal {
+  background: #f8f4e8;
+  border-radius: 18px;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.25);
+  width: 960px;
+  max-width: 96vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e0d7c5;
+}
+
+.mg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e0d7c5;
+  background: #f2ebdd;
+}
+
+.mg-header-title {
+  font-weight: 700;
+  font-size: 18px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mg-subtitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.mg-targa {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.mg-close-btn {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.mg-body {
+  padding: 16px 20px 8px;
+  overflow: auto;
+}
+
+.mg-mode-row {
+  margin-bottom: 12px;
+  gap: 24px;
+}
+
+.mg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mg-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.mg-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.mg-svg-wrapper {
+  background: #fdfaf4;
+  border-radius: 16px;
+  border: 1px solid #e3d9c8;
+  padding: 10px 10px 14px;
+}
+
+.mg-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.mg-body-rect {
+  fill: #ffffff;
+  stroke: #3b3b3b;
+  stroke-width: 2;
+}
+
+.mg-cab-rect,
+.mg-tank-rect {
+  fill: #ffffff;
+  stroke: #3b3b3b;
+  stroke-width: 2;
+}
+
+.mg-wheel {
+  fill: #ffffff;
+  stroke: #333333;
+  stroke-width: 2;
+  transition: 0.15s ease-out;
+}
+
+.mg-wheel-selected {
+  fill: #2f855a;
+  stroke: #1f553b;
+}
+
+.mg-wheel-clickable {
+  cursor: pointer;
+}
+
+.mg-axis-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mg-axis-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 999px;
+  border: 1px solid #d7cbb5;
+  background: #f8f4e8;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mg-axis-item-active {
+  border-color: #2f855a;
+  box-shadow: 0 0 0 1px rgba(47, 133, 90, 0.2);
+  background: #f0faf4;
+}
+
+.mg-axis-label {
+  font-weight: 600;
+}
+
+.mg-axis-wheels {
+  display: flex;
+  gap: 3px;
+}
+
+.mg-axis-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #d3c9b9;
+}
+
+.mg-axis-dot-active {
+  background: #2f855a;
+}
+
+.mg-panel {
+  background: #fdfaf4;
+  border-radius: 16px;
+  border: 1px solid #e3d9c8;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mg-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.mg-value {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mg-input {
+  border-radius: 10px;
+  border: 1px solid #d8cdbb;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: #ffffff;
+}
+
+.mg-input:focus {
+  outline: none;
+  border-color: #2f855a;
+  box-shadow: 0 0 0 1px rgba(47, 133, 90, 0.2);
+}
+
+.mg-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.mg-footer {
+  padding: 10px 18px 14px;
+  border-top: 1px solid #e0d7c5;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  background: #f2ebdd;
+}
+
+.mg-btn {
+  border-radius: 999px;
+  border: none;
+  padding: 7px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mg-btn.primary {
+  background: #2f855a;
+  color: #ffffff;
+}
+
+.mg-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mg-btn.ghost {
+  background: transparent;
+  border: 1px solid #cbbfaa;
+}

@@ -500,103 +500,125 @@ const fatture = state.documentiCosti
     }
     return "-";
   };
+return (
+  <div className="dossier-wrapper">
 
-  return (
-    <div className="dossier-wrapper">
-      <div className="dossier-header-bar">
-        {showPreviewModal && previewUrl && (
-  <div className="dossier-modal-overlay">
-    <div className="dossier-modal dossier-pdf-modal">
-      <div className="dossier-modal-header">
-        <h2>Documento PDF</h2>
-        <button
-          className="dossier-button"
-          onClick={() => setShowPreviewModal(false)}
-        >
-          Chiudi
-        </button>
-      </div>
+    {showPreviewModal && previewUrl && (
+      <div className="dossier-modal-overlay">
+        <div className="dossier-modal dossier-pdf-modal">
+          <div className="dossier-modal-header">
+            <h2>Documento PDF</h2>
+            <button
+              className="dossier-button"
+              onClick={() => setShowPreviewModal(false)}
+            >
+              Chiudi
+            </button>
+          </div>
 
-      <div className="dossier-modal-body">
-        <iframe
-          src={previewUrl}
-          style={{ width: "100%", height: "80vh", border: "none" }}
-        />
-      </div>
-    </div>
-  </div>
-)}
-
-        <button className="dossier-button ghost" onClick={handleBack}>
-          ⟵ Mezzi
-        </button>
-
-        <div className="dossier-header-center">
-          <img src="/logo.png" alt="Logo" className="dossier-logo" />
-          <div className="dossier-header-text">
-            <span className="dossier-header-label">DOSSIER MEZZO</span>
-            <h1 className="dossier-header-title">
-              {mezzo.marca} {mezzo.modello} — {mezzo.targa}
-            </h1>
+          <div className="dossier-modal-body">
+            <iframe
+              src={previewUrl}
+              style={{ width: "100%", height: "80vh", border: "none" }}
+            />
           </div>
         </div>
+      </div>
+    )}
 
-        <button className="dossier-button primary" onClick={handleOpenPdf}>
-          Esporta PDF
-        </button>
+    <div className="dossier-header-bar">
+      <button className="dossier-button ghost" onClick={handleBack}>
+        ⟵ Mezzi
+      </button>
+
+      <div className="dossier-header-center">
+        <img src="/logo.png" alt="Logo" className="dossier-logo" />
+        <div className="dossier-header-text">
+          <span className="dossier-header-label">DOSSIER MEZZO</span>
+          <h1 className="dossier-header-title">
+            {mezzo.marca} {mezzo.modello} — {mezzo.targa}
+          </h1>
+        </div>
       </div>
 
-      <div className="dossier-grid">
-        {/* DATI TECNICI */}
-        <section className="dossier-card dossier-card-large">
-          <div className="dossier-card-header">
-            <h2>Dati tecnici</h2>
+<div style={{ display: "flex", gap: "8px" }}>
+  <button
+    className="dossier-button"
+    type="button"
+    onClick={() => navigate(`/analisi-economica/${mezzo.targa}`)}
+  >
+    Analisi Economica
+  </button>
+
+  <button
+    className="dossier-button"
+    type="button"
+    onClick={() => navigate(`/dossier/${mezzo.targa}/gomme`)}
+  >
+    Gomme
+  </button>
+
+  <button
+    className="dossier-button primary"
+    type="button"
+    onClick={handleOpenPdf}
+  >
+    Esporta PDF
+  </button>
+</div>
+    </div>
+
+    <div className="dossier-grid">
+      {/* DATI TECNICI */}
+      <section className="dossier-card dossier-card-large">
+        <div className="dossier-card-header">
+          <h2>Dati tecnici</h2>
+        </div>
+
+        <div className="dossier-card-body dossier-tech-grid">
+          <div className="dossier-tech-block">
+            <h3>Identificazione</h3>
+            <ul>
+              <li>
+                <span>Proprietario</span>
+                <strong>{mezzo.proprietario || "-"}</strong>
+              </li>
+              <li>
+                <span>Targa</span>
+                <strong>{mezzo.targa}</strong>
+              </li>
+              <li>
+                <span>Telaio / VIN</span>
+                <strong>{mezzo.telaio || "-"}</strong>
+              </li>
+              <li>
+                <span>Assicurazione</span>
+                <strong>{mezzo.assicurazione || "-"}</strong>
+              </li>
+            </ul>
           </div>
 
-          <div className="dossier-card-body dossier-tech-grid">
-            <div className="dossier-tech-block">
-              <h3>Identificazione</h3>
-              <ul>
-                <li>
-                  <span>Proprietario</span>
-                  <strong>{mezzo.proprietario || "-"}</strong>
-                </li>
-                <li>
-                  <span>Targa</span>
-                  <strong>{mezzo.targa}</strong>
-                </li>
-                <li>
-                  <span>Telaio / VIN</span>
-                  <strong>{mezzo.telaio || "-"}</strong>
-                </li>
-                <li>
-                  <span>Assicurazione</span>
-                  <strong>{mezzo.assicurazione || "-"}</strong>
-                </li>
-              </ul>
-            </div>
-
-            <div className="dossier-tech-block">
-              <h3>Caratteristiche</h3>
-              <ul>
-                <li>
-                  <span>Marca</span>
-                  <strong>{mezzo.marca || "-"}</strong>
-                </li>
-                <li>
-                  <span>Modello</span>
-                  <strong>{mezzo.modello || "-"}</strong>
-                </li>
-                <li>
-                  <span>Categoria</span>
-                  <strong>{mezzo.categoria || "-"}</strong>
-                </li>
-                <li>
-                  <span>Colore</span>
-                  <strong>{mezzo.colore || "-"}</strong>
-                </li>
-              </ul>
-            </div>
+          <div className="dossier-tech-block">
+            <h3>Caratteristiche</h3>
+            <ul>
+              <li>
+                <span>Marca</span>
+                <strong>{mezzo.marca || "-"}</strong>
+              </li>
+              <li>
+                <span>Modello</span>
+                <strong>{mezzo.modello || "-"}</strong>
+              </li>
+              <li>
+                <span>Categoria</span>
+                <strong>{mezzo.categoria || "-"}</strong>
+              </li>
+              <li>
+                <span>Colore</span>
+                <strong>{mezzo.colore || "-"}</strong>
+              </li>
+            </ul>
+          </div>
 
             <div className="dossier-tech-block">
               <h3>Motore e massa</h3>
