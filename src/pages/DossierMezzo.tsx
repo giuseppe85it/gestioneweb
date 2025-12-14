@@ -647,6 +647,11 @@ return (
                 <strong>{mezzo.targa}</strong>
               </li>
               <li>
+  <span>Autista abituale</span>
+  <strong>{(mezzo as any).autistaNome || "-"}</strong>
+</li>
+
+              <li>
                 <span>Telaio / VIN</span>
                 <strong>{mezzo.telaio || "-"}</strong>
               </li>
@@ -716,6 +721,33 @@ return (
                   <span>Note</span>
                   <strong>{mezzo.note || "-"}</strong>
                 </li>
+                <li>
+  <span>Manutenzione programmata</span>
+  <strong>
+    {(mezzo as any).manutenzioneProgrammata ? "ATTIVA" : "NON ATTIVA"}
+  </strong>
+</li>
+
+{(mezzo as any).manutenzioneProgrammata && (
+  <>
+    <li>
+      <span>Contratto</span>
+      <strong>{(mezzo as any).manutenzioneContratto || "-"}</strong>
+    </li>
+    <li>
+      <span>Periodo</span>
+      <strong>
+        {(mezzo as any).manutenzioneDataInizio || "-"} →{" "}
+        {(mezzo as any).manutenzioneDataFine || "-"}
+      </strong>
+    </li>
+    <li>
+      <span>KM massimi</span>
+      <strong>{(mezzo as any).manutenzioneKmMax || "-"}</strong>
+    </li>
+  </>
+)}
+
               </ul>
             </div>
           </div>

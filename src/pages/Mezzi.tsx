@@ -300,16 +300,18 @@ const Mezzi: React.FC = () => {
     setFotoDirty(false);
   };
 
-  const handleChangeAutista = (value: string) => {
-    const found = colleghi.find((c) => c.id === value);
-    if (!found) {
-      setAutistaId(null);
-      setAutistaNome(null);
-    } else {
-      setAutistaId(found.id);
-      setAutistaNome(found.nome);
-    }
-  };
+const handleChangeAutista = (value: string) => {
+  const found = colleghi.find((c) => c.id === value);
+  if (!found) {
+    setAutistaId(null);
+    setAutistaNome(null);
+  } else {
+    const nomeCompleto = `${found.nome}${found.cognome ? " " + found.cognome : ""}`;
+    setAutistaId(found.id);
+    setAutistaNome(nomeCompleto);
+  }
+};
+
 
   const handleTipoMezzoChange = (value: "motrice" | "cisterna") => {
     setTipoMezzo(value);

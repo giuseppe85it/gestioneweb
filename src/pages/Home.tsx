@@ -37,7 +37,7 @@ function Home() {
           </Link>
 <Link to="/gestione-operativa" className="home-box">
   <img
-    src="/icons/gestione.png"
+    src="/icons/gestione_operativa.png"
     alt="Gestione Operativa"
     className="icon-img"
   />
