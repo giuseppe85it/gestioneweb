@@ -1,6 +1,8 @@
+// src/pages/DossierGomme.tsx
+
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import "./DossierMezzo.css";
 
@@ -12,17 +14,77 @@ import {
   YAxis,
   Tooltip,
   LineChart,
-  Line
+  Line,
 } from "recharts";
+
+// Manutenzioni minime che ci servono dal doc @manutenzioni
+interface VoceManutenzione {
+  id: string;
+  targa: string;
+  data: string; // "gg mm aaaa"
+  descrizione: string;
+}
 
 interface SostituzioneGomme {
   id: string;
   data: string; // gg mm aaaa
-  posizione: "anteriori" | "posteriori";
+  posizione: string; // es: "Anteriore", "1° asse", ecc.
   marca: string;
   km: number;
-  costo: number;
-  fornitore: string;
+  costo: number; // per ora 0, in futuro da fatture IA
+  fornitore: string; // per ora vuoto, in futuro da fatture IA
+}
+
+// Parser blocchi "CAMBIO GOMME – ..." dalla descrizione manutenzioni
+function parseCambioGomme(voce: VoceManutenzione): SostituzioneGomme[] {
+  if (!voce.descrizione || !voce.descrizione.includes("CAMBIO GOMME")) {
+    return [];
+  }
+
+  const fornitore = (voce as any).eseguito?.trim().toUpperCase() || "";
+
+  const parts = voce.descrizione.split("CAMBIO GOMME").slice(1);
+  const results: SostituzioneGomme[] = [];
+
+  parts.forEach((part, idx) => {
+    const blocco = "CAMBIO GOMME" + part;
+    const righe = blocco
+      .split("\n")
+      .map((r) => r.trim())
+      .filter(Boolean);
+
+    let posizione = "";
+    let marca = "";
+    let km = 0;
+
+    righe.forEach((riga) => {
+      if (riga.toLowerCase().startsWith("asse:")) {
+        posizione = riga.replace(/asse:/i, "").trim();
+      } else if (riga.toLowerCase().startsWith("marca:")) {
+        marca = riga.replace(/marca:/i, "").trim();
+      } else if (riga.toLowerCase().startsWith("km mezzo:")) {
+        const num = parseInt(
+          riga.replace(/km mezzo:/i, "").replace(/[^\d]/g, ""),
+          10
+        );
+        if (!Number.isNaN(num)) {
+          km = num;
+        }
+      }
+    });
+
+    results.push({
+      id: `${voce.id || "manut"}-${idx}`,
+      data: voce.data || "",
+      posizione: posizione || "Cambio gomme",
+      marca,
+      km,
+      costo: 0,              // in futuro verrà dalla fattura IA
+      fornitore: fornitore,  // ← AGGIUNTO QUI
+    });
+  });
+
+  return results;
 }
 
 export default function DossierGomme() {
@@ -32,32 +94,49 @@ export default function DossierGomme() {
   const [sostituzioni, setSostituzioni] = useState<SostituzioneGomme[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    data: "",
-    posizione: "anteriori",
-    marca: "",
-    km: "",
-    costo: "",
-    fornitore: "",
-  });
-
   // ================================
-  // CARICAMENTO DATI
+  // CARICAMENTO DATI DA @manutenzioni
   // ================================
   useEffect(() => {
     if (!targa) return;
 
     const load = async () => {
-      const ref = doc(db, "@gomme_mezzi", targa.toUpperCase());
-      const snap = await getDoc(ref);
+      setLoading(true);
+      try {
+        const ref = doc(db, "storage", "@manutenzioni");
+        const snap = await getDoc(ref);
 
-      if (snap.exists()) {
-        const data = snap.data();
-        setSostituzioni(data.sostituzioni || []);
+        if (!snap.exists()) {
+          setSostituzioni([]);
+          setLoading(false);
+          return;
+        }
+
+        const raw = snap.data();
+        let storico: VoceManutenzione[] = [];
+
+        // Compatibile con storageSync (value) o array diretto
+        if (Array.isArray(raw)) {
+          storico = raw as VoceManutenzione[];
+        } else if (raw && Array.isArray(raw.value)) {
+          storico = raw.value as VoceManutenzione[];
+        }
+
+        const targaNorm = targa.toUpperCase().trim();
+        const perMezzo = storico.filter(
+          (v) => (v.targa || "").toUpperCase().trim() === targaNorm
+        );
+
+        // Estrai tutti i blocchi "CAMBIO GOMME" dalle manutenzioni del mezzo
+        const tutteLeSostituzioni = perMezzo.flatMap(parseCambioGomme);
+
+        setSostituzioni(tutteLeSostituzioni);
+      } catch (e) {
+        console.error("Errore caricamento DossierGomme:", e);
+        setSostituzioni([]);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
     load();
@@ -65,58 +144,33 @@ export default function DossierGomme() {
 
   // Ordina sostituzioni dalla più recente alla più vecchia
   const sorted = [...sostituzioni].sort((a, b) => {
-    const [ggA, mmA, yyyyA] = a.data.split(" ");
-    const [ggB, mmB, yyyyB] = b.data.split(" ");
-    return new Date(`${yyyyB}-${mmB}-${ggB}`).getTime() -
-           new Date(`${yyyyA}-${mmA}-${ggA}`).getTime();
+    const [ggA, mmA, yyyyA] = (a.data || "").split(" ");
+    const [ggB, mmB, yyyyB] = (b.data || "").split(" ");
+    const tsA = new Date(`${yyyyA}-${mmA}-${ggA}`).getTime() || 0;
+    const tsB = new Date(`${yyyyB}-${mmB}-${ggB}`).getTime() || 0;
+    return tsB - tsA;
   });
 
   const ultima = sorted[0] || null;
 
   const costoMedio = useMemo(() => {
     if (!sostituzioni.length) return 0;
-    const tot = sostituzioni.reduce((s, g) => s + g.costo, 0);
+    const tot = sostituzioni.reduce((s, g) => s + (g.costo || 0), 0);
     return tot / sostituzioni.length;
   }, [sostituzioni]);
 
   // ================================
-  // FORM → SALVATAGGIO
-  // ================================
-  const handleSave = async () => {
-    if (!targa) return;
-
-    const ref = doc(db, "@gomme_mezzi", targa.toUpperCase());
-
-    const newItem: SostituzioneGomme = {
-      id: crypto.randomUUID(),
-      data: formData.data,
-      posizione: formData.posizione as "anteriori" | "posteriori",
-      marca: formData.marca,
-      km: Number(formData.km),
-      costo: Number(formData.costo),
-      fornitore: formData.fornitore,
-    };
-
-    const snap = await getDoc(ref);
-    const current = snap.exists() ? snap.data().sostituzioni || [] : [];
-
-    await setDoc(ref, {
-      sostituzioni: [newItem, ...current],
-    });
-
-    setSostituzioni([newItem, ...sostituzioni]);
-    setShowForm(false);
-  };
-
-  // ================================
   // GRAFICO COSTI ANNUALI
+  // (per ora userà costo = 0, in futuro verrà riempito da fatture IA)
   // ================================
   const costiAnnuali = useMemo(() => {
     const m: Record<string, number> = {};
 
     sostituzioni.forEach((g) => {
-      const anno = g.data.split(" ")[2];
-      m[anno] = (m[anno] || 0) + g.costo;
+      const parts = (g.data || "").split(" ");
+      const anno = parts[2] || "";
+      if (!anno) return;
+      m[anno] = (m[anno] || 0) + (g.costo || 0);
     });
 
     return Object.entries(m).map(([anno, totale]) => ({
@@ -126,7 +180,7 @@ export default function DossierGomme() {
   }, [sostituzioni]);
 
   // ================================
-  // GRAFICO DURATA GOMME
+  // GRAFICO DURATA GOMME (km tra un cambio e il successivo)
   // ================================
   const durataKm = useMemo(() => {
     const arr: { data: string; kmPercorsi: number }[] = [];
@@ -135,10 +189,12 @@ export default function DossierGomme() {
       const curr = sorted[i];
       const next = sorted[i + 1];
 
-      arr.push({
-        data: curr.data,
-        kmPercorsi: curr.km - next.km,
-      });
+      if (curr.km != null && next.km != null) {
+        arr.push({
+          data: curr.data,
+          kmPercorsi: curr.km - next.km,
+        });
+      }
     }
 
     return arr;
@@ -154,7 +210,6 @@ export default function DossierGomme() {
 
   return (
     <div className="dossier-wrapper">
-
       {/* HEADER */}
       <div className="dossier-header-bar">
         <button className="dossier-button ghost" onClick={() => navigate(-1)}>
@@ -172,92 +227,9 @@ export default function DossierGomme() {
         <div style={{ width: 120 }}></div>
       </div>
 
-      {/* Pulsante aggiunta */}
-      <button
-        className="dossier-button primary"
-        onClick={() => setShowForm(true)}
-        style={{ marginBottom: "20px" }}
-      >
-        + Aggiungi sostituzione gomme
-      </button>
-
-      {/* FORM MODAL */}
-      {showForm && (
-        <div className="dossier-modal">
-          <div className="dossier-modal-content">
-            <h2>Nuova sostituzione gomme</h2>
-
-            <div className="dossier-input-group">
-              <label>Data</label>
-              <input
-                type="text"
-                placeholder="gg mm aaaa"
-                value={formData.data}
-                onChange={(e) => setFormData({ ...formData, data: e.target.value })}
-              />
-            </div>
-
-            <div className="dossier-input-group">
-              <label>Posizione</label>
-              <select
-                value={formData.posizione}
-                onChange={(e) => setFormData({ ...formData, posizione: e.target.value })}
-              >
-                <option value="anteriori">Anteriori</option>
-                <option value="posteriori">Posteriori</option>
-              </select>
-            </div>
-
-            <div className="dossier-input-group">
-              <label>Marca</label>
-              <input
-                type="text"
-                value={formData.marca}
-                onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
-              />
-            </div>
-
-            <div className="dossier-input-group">
-              <label>Km del mezzo</label>
-              <input
-                type="number"
-                value={formData.km}
-                onChange={(e) => setFormData({ ...formData, km: e.target.value })}
-              />
-            </div>
-
-            <div className="dossier-input-group">
-              <label>Costo (CHF)</label>
-              <input
-                type="number"
-                value={formData.costo}
-                onChange={(e) => setFormData({ ...formData, costo: e.target.value })}
-              />
-            </div>
-
-            <div className="dossier-input-group">
-              <label>Fornitore</label>
-              <input
-                type="text"
-                value={formData.fornitore}
-                onChange={(e) => setFormData({ ...formData, fornitore: e.target.value })}
-              />
-            </div>
-
-            <div className="dossier-modal-buttons">
-              <button className="dossier-button ghost" onClick={() => setShowForm(false)}>
-                Annulla
-              </button>
-              <button className="dossier-button primary" onClick={handleSave}>
-                Salva
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* NESSUN FORM / NESSUN PULSANTE DI INSERIMENTO QUI */}
 
       <div className="dossier-grid">
-
         {/* CARD STATISTICHE */}
         <section className="dossier-card">
           <div className="dossier-card-header">
@@ -304,7 +276,8 @@ export default function DossierGomme() {
                   <strong>Costo:</strong> <span>{ultima.costo} CHF</span>
                 </li>
                 <li className="dossier-list-item">
-                  <strong>Fornitore:</strong> <span>{ultima.fornitore}</span>
+                  <strong>Fornitore:</strong>{" "}
+                  <span>{ultima.fornitore || "-"}</span>
                 </li>
               </ul>
             )}
@@ -329,7 +302,7 @@ export default function DossierGomme() {
                     <div className="dossier-list-meta">
                       <span>{g.km} km</span>
                       <span>{g.costo} CHF</span>
-                      <span>{g.fornitore}</span>
+                      <span>{g.fornitore || "-"}</span>
                     </div>
                   </li>
                 ))}
@@ -349,7 +322,7 @@ export default function DossierGomme() {
                 <XAxis dataKey="anno" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="totale" fill="#3c7f5a" radius={[5, 5, 0, 0]} />
+                <Bar dataKey="totale" radius={[5, 5, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -369,14 +342,12 @@ export default function DossierGomme() {
                 <Line
                   type="monotone"
                   dataKey="kmPercorsi"
-                  stroke="#14532d"
                   strokeWidth={3}
                 />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </section>
-
       </div>
     </div>
   );

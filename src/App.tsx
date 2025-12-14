@@ -1,3 +1,7 @@
+import { useEffect, useState } from "react";
+import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { auth } from "./firebase";
+
 import { Routes, Route } from "react-router-dom";
 import "./App.css";
 
@@ -26,22 +30,38 @@ import IAApiKey from "./pages/IA/IAApiKey";
 import IALibretto from "./pages/IA/IALibretto";
 import IADocumenti from "./pages/IA/IADocumenti";
 import LavoriInAttesa from "./pages/LavoriInAttesa";
+import GestioneOperativa from "./pages/GestioneOperativa";
 
 function App() {
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        await signInAnonymously(auth);
+      }
+      setAuthReady(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // ⛔ BLOCCA TUTTO finché Firebase Auth non è pronto
+  if (!authReady) return null;
+
   return (
     <Routes>
       <Route path="/" element={<Home />} />
 
       <Route path="/lavori-da-eseguire" element={<LavoriDaEseguire />} />
       <Route path="/lavori-eseguiti" element={<LavoriEseguiti />} />
-<Route path="/lavori-in-attesa" element={<LavoriInAttesa />} />
-  
-      {/* ✔️ DOSSIER LISTA + DOSSIER MEZZO */}
+      <Route path="/lavori-in-attesa" element={<LavoriInAttesa />} />
+
+      {/* DOSSIER */}
       <Route path="/dossiermezzi" element={<DossierLista />} />
       <Route path="/dossiermezzi/:targa" element={<DossierMezzo />} />
       <Route path="/analisi-economica/:targa" element={<AnalisiEconomica />} />
       <Route path="/dossier/:targa/gomme" element={<DossierGomme />} />
-
 
       <Route path="/materiali-da-ordinare" element={<MaterialiDaOrdinare />} />
       <Route path="/materiali-consegnati" element={<MaterialiConsegnati />} />
@@ -58,13 +78,14 @@ function App() {
 
       <Route path="/check-storage" element={<CheckStorage />} />
       <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
-
       <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
-     <Route path="/ia" element={<IAHome />} />
-<Route path="/ia/apikey" element={<IAApiKey />} />
-<Route path="/ia/libretto" element={<IALibretto />} />
-<Route path="/ia/documenti" element={<IADocumenti />} />
 
+      <Route path="/ia" element={<IAHome />} />
+      <Route path="/ia/apikey" element={<IAApiKey />} />
+      <Route path="/ia/libretto" element={<IALibretto />} />
+      <Route path="/ia/documenti" element={<IADocumenti />} />
+
+      <Route path="/gestione-operativa" element={<GestioneOperativa />} />
     </Routes>
   );
 }

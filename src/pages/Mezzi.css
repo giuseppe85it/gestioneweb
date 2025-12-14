@@ -1,27 +1,28 @@
 /* ======================================================
-   MEZZI — LAYOUT PREMIUM 430px 
-   File riscritto da zero, senza duplicati
-   Compatibile con layout Generale + inventario + materiali
-   FIX PROG. UOMO ✔ (no wrap + flex stabile)
+   MEZZI — LAYOUT PREMIUM 430px ADATTATO AL TSX REALE
 ====================================================== */
 
-/* ---------- STRUTTURA GENERALE PAGINA ---------- */
+/* ---------- LAYOUT PRINCIPALE ---------- */
 
-.mezzi-page {
+.page-container.mezzi-page {
   display: flex;
-  flex-direction: row;
   justify-content: center;
-  gap: 20px;
   padding: 20px;
 }
 
-.mezzi-card-wrapper {
+.mezzi-grid {
   display: flex;
   flex-direction: row;
   gap: 20px;
 }
 
-/* ---------- CARD PRINCIPALE ---------- */
+.left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---------- CARD PREMIUM 430 ---------- */
 
 .premium-card-430 {
   width: 430px;
@@ -39,7 +40,7 @@
   margin-bottom: 12px;
 }
 
-.card-logo {
+.logo-mezzi {
   width: 48px;
   height: 48px;
 }
@@ -56,149 +57,242 @@
   color: #555;
 }
 
-/* ---------- SEZIONI ---------- */
+.card-body {
+  margin-top: 10px;
+}
+
+/* ---------- FOTO ---------- */
+
+.foto-row {
+  display: flex;
+  gap: 12px;
+}
+
+.foto-preview-wrapper {
+  width: 120px;
+  height: 90px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #eee;
+}
+
+.foto-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.foto-placeholder {
+  font-size: 12px;
+  color: #666;
+  padding-top: 20px;
+}
+
+.foto-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---------- FORM ---------- */
 
 .section-block {
   margin-top: 22px;
 }
 
-.section-header {
-  margin-bottom: 10px;
-}
-
-.section-header-inline {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-/* ---------- FOTO ---------- */
-
-.mezzo-foto-preview img {
-  width: 100%;
-  max-height: 180px;
-  border-radius: 10px;
-  object-fit: cover;
-  margin-top: 8px;
-}
-
-/* ---------- FORM ---------- */
-
 .form-row {
   display: flex;
-  flex-direction: row;
   gap: 12px;
   margin-bottom: 12px;
 }
 
-.form-field {
+.form-group {
   display: flex;
   flex-direction: column;
   flex: 1;
 }
 
-.form-field.full-width {
-  flex: 1 0 100%;
-}
-
-.form-field label {
+.form-group label {
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 4px;
 }
 
-.form-field input,
-.form-field select,
-.mezzi-textarea {
+.form-group input,
+.form-group select,
+.form-group textarea {
   width: 100%;
   padding: 8px 10px;
-  font-size: 14px;
   border-radius: 8px;
   border: 1px solid #ccc;
+  font-size: 14px;
   box-sizing: border-box;
 }
 
-.mezzi-textarea {
+textarea {
   resize: none;
-  padding: 10px;
 }
 
-/* ---------- CHECKBOX ---------- */
-
-.checkbox-field {
-  display: flex;
-  flex-direction: column;
+.form-group.full-width {
+  flex: 1 0 100%;
 }
 
-.checkbox-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* ---------- MANUTENZIONE PROGRAMMATA ---------- */
+
+.maint-section {
+  margin-top: 22px;
 }
 
-/* ---------- BOTTONI FORM ---------- */
+.maint-grid {
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.maint-grid .full-width {
+  grid-column: span 2;
+}
+
+/* ---------- BOTTONI ---------- */
 
 .form-actions {
-  width: 100%;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 14px;
 }
 
-/* ---------- LISTA MEZZI ---------- */
+.btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
 
-.mezzi-list {
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #444;
+}
+
+.btn-primary {
+  background: #1f6feb;
+  color: white;
+}
+
+.btn-secondary {
+  background: #ddd;
+}
+
+.btn-danger {
+  background: #c0392b;
+  color: #fff;
+}
+
+.btn-info {
+  background: #0074d9;
+  color: #fff;
+}
+
+.btn-small {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* ---------- LISTA MEZZI (COLONNA DESTRA) ---------- */
+
+.mezzi-list-card {
+  width: 430px;
+  background: #f8f4e8;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 0 12px rgba(0,0,0,0.16);
+}
+
+.mezzi-categorie-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ---------- CATEGORIA ---------- */
+
+.categoria-mezzo-block {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-/* ITEM DELLA LISTA */
-.mezzo-list-item {
+.categoria-header {
   background: #fff;
   border-radius: 10px;
   padding: 14px;
   box-shadow: 0 0 8px rgba(0,0,0,0.12);
-  box-sizing: border-box;
+  cursor: pointer;
 }
 
-/* HEADER MARCA + MODELLO */
-.mezzo-list-header {
+.mezzo-list-item .mezzo-list-header {
   margin-bottom: 6px;
 }
 
-.mezzo-marca-modello {
-  font-size: 16px;
-  font-weight: 700;
-  display: block;
-  word-break: break-word;
-}
-
-/* FIX DEFINITIVO PROG. UOMO */
 .mezzo-list-meta {
   display: flex;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-  align-items: center;
   gap: 10px;
+  white-space: nowrap;
 }
 
-/* TARGA */
-.mezzo-targa {
-  font-size: 14px;
+/* ---------- CARD MEZZO ---------- */
+
+.mezzo-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 0 8px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mezzo-card-row {
+  display: flex;
+  gap: 12px;
+}
+
+/* MINI FOTO */
+
+.mezzo-thumb {
+  width: 95px;
+  height: 70px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ddd;
+}
+
+.mezzo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* TESTI CARD MEZZO */
+
+.mezzo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mezzo-info-title {
+  font-size: 16px;
   font-weight: 700;
-  color: #222;
 }
 
-/* SCADENZE — una sola versione ✔ */
-.mezzo-scadenze {
+.mezzo-info-line {
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
+  color: #444;
 }
 
-/* COLORI DEADLINE */
+/* COLORAZIONE DEADLINE */
+
 .deadline-high {
   color: #b10000;
   font-weight: 700;
@@ -214,58 +308,22 @@
   font-weight: 700;
 }
 
-/* ---------- AZIONI ---------- */
+/* BOTTONI NELLA CARD MEZZO */
 
-.mezzo-list-actions {
+.mezzo-card-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
-.btn-small {
-  padding: 6px 10px;
-  font-size: 13px;
-  border-radius: 8px;
-}
-
-/* COLORI BOTTONI */
-.btn-outline {
-  border: 1px solid #444;
-  background: transparent;
-}
-
-.btn-info {
-  background: #0074d9;
-  color: white;
-}
-
-.btn-danger {
-  background: #c0392b;
-  color: white;
-}
-
-.btn-primary {
-  background: #1f6feb;
-  color: white;
-}
-
-/* ---------- TEXT / ERROR ---------- */
+/* ---------- TESTI E ALERT ---------- */
 
 .alert-error {
   background: #ffe5e5;
   color: #b40000;
-  padding: 10px;
   border-radius: 8px;
-  margin-bottom: 10px;
-}
-
-.alert-warning {
-  background: #fff3cd;
-  color: #856404;
   padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 10px;
 }
 
 .empty-text {
@@ -277,23 +335,44 @@
 /* ---------- RESPONSIVE ---------- */
 
 @media (max-width: 950px) {
-  .mezzi-card-wrapper {
+  .mezzi-grid {
     flex-direction: column;
     align-items: center;
   }
 }
-/* FIX FINALE PROG UOMO — impedisce deformazione numeri */
+
+/* FIX FINALI */
+
 .mezzo-marca-modello {
-  white-space: nowrap;        /* non va a capo */
-  overflow: hidden;           /* evita testo spezzato */
-  text-overflow: ellipsis;    /* se troppo lungo → ... */
-  font-variant-numeric: tabular-nums; /* numeri regolari */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
-/* FIX DEFINITIVO – blocca trasformazioni e ligature sui label delle scadenze */
+
 .mezzo-scadenze {
   text-transform: none !important;
   letter-spacing: 0 !important;
   font-variant-ligatures: none !important;
   font-variant-numeric: normal !important;
   font-feature-settings: "liga" 0, "kern" 0 !important;
+}
+.form-row .form-group input {
+  max-width: 100%;
+}
+/* Applica il grid solo quando ci sono 3 input dentro una form-row */
+.form-row:nth-child(6) {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+/* Fix universale: impedisce overflow delle date */
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.form-row .form-group {
+  flex: 1 1 calc(33.33% - 12px);
+  min-width: 0;
 }

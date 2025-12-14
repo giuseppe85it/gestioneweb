@@ -1,0 +1,275 @@
+/* ======================================================
+   GESTIONE OPERATIVA — STILE PREMIUM
+   Percorso: src/pages/GestioneOperativa.css
+   ------------------------------------------------------
+   Obiettivo:
+   - Stile coerente con Dossier
+   - Card beige premium
+   - Leggibilità immediata
+   - Mobile first
+   ====================================================== */
+
+/* ---------- BASE ---------- */
+.go-page {
+  background: #f3efe6;
+  padding: 16px;
+}
+
+.go-card {
+  max-width: 1100px;
+  margin: 0 auto;
+  background: #f8f4e8;
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  padding: 18px;
+}
+
+/* ---------- HEADER ---------- */
+.go-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #d8cfbf;
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+}
+
+.go-logo-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.go-logo {
+  width: 46px;
+  height: 46px;
+}
+
+.go-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.go-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.go-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.go-badge {
+  padding: 6px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.go-badge.danger {
+  background: #f2c9c9;
+  color: #7a1e1e;
+}
+
+/* ---------- SEZIONI ---------- */
+.go-section {
+  margin-bottom: 24px;
+}
+
+.go-section-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+/* ---------- INVENTARIO PREVIEW ---------- */
+.go-inventario-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.go-inventario-row {
+  background: #fffdf8;
+  border: 1px solid #d8cfbf;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.go-inv-desc {
+  font-weight: 600;
+}
+
+.go-inv-qty {
+  opacity: 0.8;
+}
+
+.go-link-btn {
+  margin-top: 12px;
+  background: transparent;
+  border: 1px solid #b8ae9c;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.go-link-btn:hover {
+  background: #efe7d6;
+}
+
+/* ---------- AZIONI OPERATIVE (SEZIONE DEDICATA) ---------- */
+
+/* Contenitore sezione azioni: stacco visivo tipo Dossier */
+.go-actions-section {
+  background: #f1eadb;
+  border-radius: 18px;
+  padding: 22px 20px 24px;
+  margin: 18px 0 30px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+.go-actions-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  margin-bottom: 16px;
+}
+
+.go-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+/* Card azione: peso alto, stile dossier */
+.go-action-card {
+  background: #fffdf8;
+  border: 1px solid #d6ccb9;
+  border-radius: 18px;
+  padding: 22px 22px 20px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.10);
+  position: relative;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.go-action-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+  background: #e2d7c2;
+}
+
+.go-action-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.14);
+}
+
+.go-action-card h3 {
+  margin: 10px 0 8px;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.go-action-card p {
+  margin: 0 0 22px;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.go-primary-btn {
+  width: 100%;
+  padding: 14px;
+  background: #4f4126;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(79, 65, 38, 0.28);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.go-primary-btn:hover {
+  background: #3f341e;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(79, 65, 38, 0.34);
+}
+
+.go-primary-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(79, 65, 38, 0.26);
+}
+
+/* ---------- STORICO ---------- */
+.go-storico {
+  border: 1px solid #d8cfbf;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.go-storico-row {
+  display: grid;
+  grid-template-columns: 100px 100px 1fr;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  border-bottom: 1px solid #e4dccd;
+}
+
+.go-storico-row:last-child {
+  border-bottom: none;
+}
+
+/* ---------- MOBILE ---------- */
+@media (max-width: 600px) {
+  .go-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .go-storico-row {
+    grid-template-columns: 1fr;
+    font-size: 0.75rem;
+  }
+}
+/* ======================================================
+   AZIONI OPERATIVE — COLORI FUNZIONALI
+   ====================================================== */
+
+/* --- USA MATERIALE (verde magazzino) --- */
+.go-action-card.use-materiale::before {
+  background: #2f5d3a;
+}
+
+.go-action-card.use-materiale .go-primary-btn {
+  background: #2f5d3a;
+}
+
+.go-action-card.use-materiale .go-primary-btn:hover {
+  background: #254c30;
+}
+
+/* --- REGISTRA MANUTENZIONE (blu tecnico) --- */
+.go-action-card.manutenzione::before {
+  background: #2f4f6f;
+}
+
+.go-action-card.manutenzione .go-primary-btn {
+  background: #2f4f6f;
+}
+
+.go-action-card.manutenzione .go-primary-btn:hover {
+  background: #243f59;
+}

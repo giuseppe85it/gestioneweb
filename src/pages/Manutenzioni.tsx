@@ -32,8 +32,9 @@ interface VoceManutenzione {
   eseguito?: string | null;
   data: string; // "gg mm aaaa"
   tipo: TipoVoce;
+  fornitore?: string;
   materiali?: MaterialeManutenzione[];
-}
+  }
 
 interface MezzoBasic {
   id: string;
@@ -79,6 +80,10 @@ const dataToNumber = (d: string) => {
 
 const Manutenzioni: React.FC = () => {
   const navigate = useNavigate();
+  const handleApriDossier = (targa: string) => {
+  navigate(`/dossier/${targa}`);
+};
+
 
   const [loading, setLoading] = useState(true);
 
@@ -105,6 +110,8 @@ const Manutenzioni: React.FC = () => {
   const [materialeSearch, setMaterialeSearch] = useState("");
   const [materialiTemp, setMaterialiTemp] = useState<MaterialeManutenzione[]>([]);
   const [quantitaTemp, setQuantitaTemp] = useState("");
+const [isEditing, setIsEditing] = useState(false);
+const [fornitore,] = useState("");
 
   // Modale gomme
   const [modalGommeOpen, setModalGommeOpen] = useState(false);
@@ -230,7 +237,8 @@ const Manutenzioni: React.FC = () => {
   };
 
   const handleEdit = (item: VoceManutenzione) => {
-    // Carica la voce nello stato del form
+  setIsEditing(true);
+  // Carica la voce nello stato del form
     setTarga(item.targa);
     setTipo(item.tipo);
     setKm(item.km != null ? String(item.km) : "");
@@ -333,6 +341,7 @@ const nuovo: MaterialeManutenzione = {
       id: Date.now().toString(),
       targa: t,
       tipo,
+     fornitore,
       km: km ? Number(km) : null,
       ore: ore ? Number(ore) : null,
       sottotipo: tipo === "compressore" ? sottotipo : null,
@@ -347,7 +356,8 @@ const nuovo: MaterialeManutenzione = {
     try {
       await persistStorico(nuovoStorico);
 
-      // Aggiornamento inventario e movimenti OUT
+     // Aggiornamento inventario e movimenti OUT (SOLO NUOVA MANUTENZIONE)
+if (!isEditing) {
       try {
         const inventarioRaw = await getItemSync(KEY_INVENTARIO);
         const inventarioArr: any[] = Array.isArray(inventarioRaw)
@@ -363,8 +373,16 @@ const nuovo: MaterialeManutenzione = {
           ? (movRaw.value as any[])
           : [];
 
+        const consRaw = await getItemSync("@materialiconsegnati");
+        const consArr: any[] = Array.isArray(consRaw)
+          ? (consRaw as any[])
+          : consRaw?.value && Array.isArray(consRaw.value)
+          ? (consRaw.value as any[])
+          : [];
+
         let inventarioAggiornato = [...inventarioArr];
         const nuoveMovimentazioni = [...movArr];
+        const nuoveConsegne = [...consArr];
 
         for (const mat of materialiTemp) {
           if (!mat.fromInventario || !mat.refId) continue;
@@ -375,11 +393,12 @@ const nuovo: MaterialeManutenzione = {
           const quantitaAttuale = Number(
             corrente.quantitaTotale || corrente.quantita || 0
           );
+          const nuovaQta = Math.max(0, quantitaAttuale - mat.quantita);
 
-          const nuovaQta = quantitaAttuale - mat.quantita;
           inventarioAggiornato[idx] = {
             ...corrente,
             quantitaTotale: nuovaQta,
+            quantita: nuovaQta,
           };
 
           nuoveMovimentazioni.push({
@@ -393,16 +412,36 @@ const nuovo: MaterialeManutenzione = {
             origine: "MANUTENZIONE",
             targa: t,
           });
+
+          // PATCH: consegna ufficiale per il dossier
+          nuoveConsegne.push({
+            id: Date.now().toString() + "_CONS_" + mat.id,
+            descrizione: mat.label,
+            quantita: mat.quantita,
+            unita: mat.unita,
+           fornitore: corrente.fornitore ?? "",
+
+            destinatario: {
+              type: "MEZZO",
+              refId: t,
+              label: t,
+            },
+            motivo: "UTILIZZO MANUTENZIONE",
+            data: d,
+          });
         }
 
         await setItemSync(KEY_INVENTARIO, inventarioAggiornato);
         await setItemSync(KEY_MOVIMENTI, nuoveMovimentazioni);
+        await setItemSync("@materialiconsegnati", nuoveConsegne);
       } catch (errMov) {
         console.error(
           "Errore aggiornamento inventario / movimenti da manutenzioni:",
           errMov
         );
       }
+}
+setIsEditing(false);
 
       resetForm();
       alert("Manutenzione salvata correttamente.");
@@ -418,21 +457,73 @@ const nuovo: MaterialeManutenzione = {
     );
     if (!conferma) return;
 
+    const voce = storico.find((v) => v.id === id);
+    if (!voce) return;
+
+    // PATCH: ripristino inventario (se i materiali provengono dall'inventario)
+    try {
+      const invRaw = await getItemSync(KEY_INVENTARIO);
+      let inventario: any[] = Array.isArray(invRaw) ? invRaw : invRaw?.value || [];
+
+      if (voce.materiali && Array.isArray(voce.materiali)) {
+        voce.materiali.forEach((m: any) => {
+          if (!m?.fromInventario || !m?.refId) return;
+
+          const idx = inventario.findIndex((x: any) => x.id === m.refId);
+          if (idx === -1) return;
+
+          const corrente = inventario[idx];
+          const attuale = Number(corrente.quantitaTotale || corrente.quantita || 0);
+          const nuovaQta = attuale + Number(m.quantita || 0);
+
+          inventario[idx] = {
+            ...corrente,
+            quantitaTotale: nuovaQta,
+            quantita: nuovaQta,
+          };
+        });
+      }
+
+      await setItemSync(KEY_INVENTARIO, inventario);
+    } catch (err) {
+      console.error("Errore ripristino inventario:", err);
+    }
+
+    // PATCH: rimuovo consegne create dalla manutenzione
+    try {
+      const consRaw = await getItemSync("@materialiconsegnati");
+      let consegne: any[] = Array.isArray(consRaw) ? consRaw : consRaw?.value || [];
+
+      if (voce.materiali && Array.isArray(voce.materiali)) {
+        voce.materiali.forEach((m: any) => {
+          consegne = consegne.filter(
+            (c: any) =>
+              !(
+                c?.motivo === "UTILIZZO MANUTENZIONE" &&
+                c?.destinatario?.refId === voce.targa &&
+                c?.descrizione === m?.label &&
+                c?.quantita === m?.quantita &&
+                c?.unita === m?.unita
+              )
+          );
+        });
+      }
+
+      await setItemSync("@materialiconsegnati", consegne);
+    } catch (err) {
+      console.error("Errore rimozione consegne manutenzione:", err);
+    }
+
     const nuovoStorico = storico.filter((v) => v.id !== id);
+
     try {
       await persistStorico(nuovoStorico);
+      setStorico(nuovoStorico);
+      alert("Manutenzione eliminata.");
     } catch (err) {
-      console.error("Errore durante l'eliminazione:", err);
+      console.error("Errore eliminazione manutenzione:", err);
+      alert("Errore durante l'eliminazione. Riprova.");
     }
-  };
-
-  const handleApriDossier = () => {
-    const tg = (filtroTarga || targa).trim().toUpperCase();
-    if (!tg) {
-      alert("Seleziona o inserisci una targa per aprire il dossier.");
-      return;
-    }
-    navigate(`/dossier/${encodeURIComponent(tg)}`);
   };
 
   const mezzoSelezionato = useMemo(
@@ -484,14 +575,13 @@ const nuovo: MaterialeManutenzione = {
               </div>
             </div>
 
-            <button
-              type="button"
-              className="man-header-btn man-header-btn-outline"
-              onClick={handleApriDossier}
-            >
-              Apri dossier mezzo
-            </button>
-          </div>
+<button
+  disabled={!targa}
+  onClick={() => handleApriDossier(targa)}
+>
+  Apri dossier mezzo
+</button>
+</div>
 
           <div className="man-card-body">
             {/* SEZIONE 1 – SELEZIONE MEZZO */}

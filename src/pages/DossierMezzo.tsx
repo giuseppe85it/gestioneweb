@@ -128,21 +128,25 @@ interface DossierState {
   movimentiMateriali: MovimentoMateriale[];
   rifornimenti: Rifornimento[];
   documentiCosti: FatturaPreventivo[];
+    documentiMagazzino: any[]; // SOLO per costi materiali da @documenti_magazzino
+
 }
 
 const DossierMezzo: React.FC = () => {
   const { targa } = useParams<{ targa: string }>();
   const navigate = useNavigate();
 
-  const [state, setState] = useState<DossierState>({
-    mezzo: null,
-    lavoriDaEseguire: [],
-    lavoriInAttesa: [],
-    lavoriEseguiti: [],
-    movimentiMateriali: [],
-    rifornimenti: [],
-    documentiCosti: [],
-  });
+ const [state, setState] = useState<DossierState>({
+  mezzo: null,
+  lavoriDaEseguire: [],
+  lavoriInAttesa: [],
+  lavoriEseguiti: [],
+  movimentiMateriali: [],
+  rifornimenti: [],
+  documentiCosti: [],
+  documentiMagazzino: [],   // <── AGGIUNTO
+});
+
 
   const [manutenzioni, setManutenzioni] = useState<Manutenzione[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,6 +230,23 @@ const openDocumento = (url: string) => {
           const t = (r.mezzoTarga || "").toUpperCase().trim();
           return t === targa.toUpperCase().trim();
         });
+// ============================
+// DOCUMENTI MAGAZZINO (solo per costi materiali)
+// ============================
+let docsMag: any[] = [];
+try {
+  const colRefMag = collection(db, "@documenti_magazzino");
+  const snapMag = await getDocs(colRefMag);
+
+  snapMag.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    if (Array.isArray(d.voci)) {
+      docsMag.push(d);
+    }
+  });
+} catch (e) {
+  console.error("Errore caricamento documenti magazzino:", e);
+}
 
         // ============================
         // LETTURA DOCUMENTI IA — ROOT
@@ -317,15 +338,16 @@ const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
         }
 
         if (!cancelled) {
-          setState({
-            mezzo: mezzo || null,
-            lavoriDaEseguire,
-            lavoriInAttesa,
-            lavoriEseguiti,
-            movimentiMateriali: movimentiPerMezzo,
-            rifornimenti: rifornimentiPerMezzo,
-            documentiCosti: costiPerMezzo,
-          });
+setState({
+  mezzo: mezzo || null,
+  lavoriDaEseguire,
+  lavoriInAttesa,
+  lavoriEseguiti,
+  movimentiMateriali: movimentiPerMezzo,
+  rifornimenti: rifornimentiPerMezzo,
+  documentiCosti: costiPerMezzo,
+  documentiMagazzino: docsMag,   // <── AGGIUNTO
+});
           setManutenzioni(manArray);
           setLoading(false);
         }
@@ -500,6 +522,43 @@ const fatture = state.documentiCosti
     }
     return "-";
   };
+  // ========================
+// Trova prezzo unitario dai documenti magazzino
+// ========================
+const trovaPrezzoUnitario = (descrMov?: string): number | null => {
+  if (!descrMov) return null;
+
+  const target = descrMov.toUpperCase().trim();
+
+  for (const doc of state.documentiMagazzino || []) {
+    const righe = Array.isArray(doc.voci) ? doc.voci : [];
+
+    for (const r of righe) {
+      const desc = (r.descrizione || "").toUpperCase().trim();
+      if (!desc) continue;
+
+      // match morbido
+      if (desc.includes(target) || target.includes(desc)) {
+        // 1) prezzoUnitario già estratto
+        if (r.prezzoUnitario != null) {
+          return Number(r.prezzoUnitario);
+        }
+
+        // 2) importo + quantita → calcolo
+        const imp = Number(r.importo);
+        const q = Number(r.quantita);
+        if (imp > 0 && q > 0) {
+          return imp / q;
+        }
+
+        return null;
+      }
+    }
+  }
+
+  return null;
+};
+
 return (
   <div className="dossier-wrapper">
 
@@ -818,6 +877,8 @@ return (
                       <th>Destinatario</th>
                       <th>Fornitore</th>
                       <th>Motivo</th>
+                            <th>Costo</th>
+
                     </tr>
                   </thead>
 
@@ -832,6 +893,19 @@ return (
                         <td>{m.destinatario?.label || "-"}</td>
                         <td>{m.fornitore || m.fornitoreLabel || "-"}</td>
                         <td>{m.motivo || "-"}</td>
+<td>
+  {(() => {
+    const label = m.descrizione || m.materialeLabel || "";
+    const pu = trovaPrezzoUnitario(label);
+    if (pu == null) return "–";
+
+    const qty = Number(m.quantita) || 0;
+    const totale = pu * qty;
+
+    return `${totale.toFixed(2)} CHF`;
+  })()}
+</td>
+
                       </tr>
                     ))}
                   </tbody>

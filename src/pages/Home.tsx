@@ -35,6 +35,14 @@ function Home() {
             <img src="/icons/inventario.png" alt="Inventario" className="icon-img" />
             <p>Inventario</p>
           </Link>
+<Link to="/gestione-operativa" className="home-box">
+  <img
+    src="/icons/gestione.png"
+    alt="Gestione Operativa"
+    className="icon-img"
+  />
+  <p>Gestione Operativa</p>
+</Link>
 
           <Link to="/mezzi" className="home-box">
             <img src="/icons/mezzi.png" alt="Mezzi" className="icon-img" />

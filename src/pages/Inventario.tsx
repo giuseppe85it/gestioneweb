@@ -1,14 +1,15 @@
-// src/pages/Inventario.tsx
+// ======================================================
+// INVENTARIO — VERSIONE COMPLETA + MODIFICA ARTICOLO
+// ======================================================
+
 import { useEffect, useState } from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import "./Inventario.css";
-import { storage } from "../firebase";
+import { storage, db } from "../firebase";
 
 import { collection, doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase";
-
-import {  ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export interface InventarioItem {
   id: string;
@@ -33,73 +34,66 @@ const Inventario: React.FC = () => {
 
   const [fornitoriList, setFornitoriList] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-
   const [fotoFile, setFotoFile] = useState<File | null>(null);
 
-  // ---------------------------------------------------
-  // CARICA inventario + fornitori
-  // ---------------------------------------------------
+  // ---------------------------
+  // MODIFICA ARTICOLO (UNICA AGGIUNTA)
+  // ---------------------------
+  const [editItem, setEditItem] = useState<InventarioItem | null>(null);
+  const [editFotoFile, setEditFotoFile] = useState<File | null>(null);
+
+  // ---------------------------
+  // CARICAMENTO
+  // ---------------------------
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       try {
-        // INVENTARIO
         const data = await getItemSync(INVENTARIO_KEY);
-        if (Array.isArray(data)) setInventario(data as InventarioItem[]);
-        else if (data?.value && Array.isArray(data.value))
-          setInventario(data.value as InventarioItem[]);
+        if (Array.isArray(data)) setInventario(data);
+        else if (data?.value && Array.isArray(data.value)) setInventario(data.value);
 
-        // FORNITORI
         try {
           const refF = doc(collection(db, "storage"), "@fornitori");
           const snap = await getDoc(refF);
-
           if (snap.exists()) {
             const raw = snap.data().value || [];
             const nomi = raw.map((f: any) =>
               (f.nome || f.ragioneSociale || "").toString().toUpperCase()
             );
             setFornitoriList(nomi);
-          } else {
-            setFornitoriList([]);
           }
-        } catch (err) {
-          console.error("Errore caricamento fornitori:", err);
-        }
+        } catch {}
       } finally {
         setIsLoading(false);
       }
     };
-
     void load();
   }, []);
 
-  // ---------------------------------------------------
+  // ---------------------------
   // SALVA
-  // ---------------------------------------------------
+  // ---------------------------
   const persist = async (items: InventarioItem[]) => {
     setInventario(items);
     await setItemSync(INVENTARIO_KEY, items);
   };
 
-  // ---------------------------------------------------
-  // UPLOAD foto su Firebase Storage
-  // ---------------------------------------------------
-  const uploadFoto = async (materialeId: string) => {
-    if (!fotoFile) return { url: null, path: null };
-
-        const path = `inventario/${materialeId}/foto.jpg`;
+  // ---------------------------
+  // UPLOAD FOTO
+  // ---------------------------
+  const uploadFoto = async (id: string, file: File | null) => {
+    if (!file) return { url: null, path: null };
+    const path = `inventario/${id}/foto.jpg`;
     const storageRef = ref(storage, path);
-
-    const snapshot = await uploadBytes(storageRef, fotoFile);
-    const url = await getDownloadURL(snapshot.ref);
-
+    const snap = await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(snap.ref);
     return { url, path };
   };
 
-  // ---------------------------------------------------
-  // AGGIUNGI nuovo materiale
-  // ---------------------------------------------------
+  // ---------------------------
+  // AGGIUNGI
+  // ---------------------------
   const handleAdd = async () => {
     if (!descrizione.trim() || !quantita.trim()) {
       alert("Inserisci descrizione e quantità.");
@@ -108,29 +102,21 @@ const Inventario: React.FC = () => {
 
     const q = Number(quantita.replace(",", "."));
     if (Number.isNaN(q) || q <= 0) {
-      alert("La quantità deve essere un numero valido.");
+      alert("Quantità non valida.");
       return;
     }
 
-    const nuovoId = generateId();
-
-    let fotoUrl = null;
-    let fotoStoragePath = null;
-
-    if (fotoFile) {
-      const foto = await uploadFoto(nuovoId);
-      fotoUrl = foto.url;
-      fotoStoragePath = foto.path;
-    }
+    const id = generateId();
+    const foto = await uploadFoto(id, fotoFile);
 
     const nuovo: InventarioItem = {
-      id: nuovoId,
+      id,
       descrizione: descrizione.trim(),
       quantita: q,
       unita,
       fornitore: fornitore.trim() || null,
-      fotoUrl,
-      fotoStoragePath,
+      fotoUrl: foto.url,
+      fotoStoragePath: foto.path,
     };
 
     const nuovi = [...inventario, nuovo];
@@ -144,9 +130,9 @@ const Inventario: React.FC = () => {
     setSuggestions([]);
   };
 
-  // ---------------------------------------------------
-  // CAMBIO QUANTITÀ (+/-)
-  // ---------------------------------------------------
+  // ---------------------------
+  // QUANTITÀ +/-
+  // ---------------------------
   const changeQty = async (id: string, delta: number) => {
     const nuovi = inventario.map((i) =>
       i.id === id ? { ...i, quantita: Math.max(0, i.quantita + delta) } : i
@@ -154,9 +140,6 @@ const Inventario: React.FC = () => {
     await persist(nuovi);
   };
 
-  // ---------------------------------------------------
-  // CAMBIO QUANTITÀ manuale
-  // ---------------------------------------------------
   const inputQty = async (id: string, value: string) => {
     const num = Number(value.replace(",", "."));
     if (Number.isNaN(num) || num < 0) return;
@@ -167,17 +150,57 @@ const Inventario: React.FC = () => {
     await persist(nuovi);
   };
 
-  // ---------------------------------------------------
+  // ---------------------------
   // ELIMINA
-  // ---------------------------------------------------
+  // ---------------------------
   const handleDelete = async (id: string) => {
-    if (!confirm("Vuoi veramente eliminare questo materiale?")) return;
+    if (!confirm("Eliminare materiale?")) return;
     await persist(inventario.filter((i) => i.id !== id));
   };
 
-  // ---------------------------------------------------
+  // ---------------------------
+  // SALVA MODIFICA (UNICA AGGIUNTA)
+  // ---------------------------
+  const handleSaveEdit = async () => {
+    if (!editItem) return;
+
+    const q = Number(editItem.quantita);
+    if (Number.isNaN(q) || q < 0) {
+      alert("Quantità non valida.");
+      return;
+    }
+
+    let fotoUrl = editItem.fotoUrl;
+    let fotoStoragePath = editItem.fotoStoragePath;
+
+    if (editFotoFile) {
+      const uploaded = await uploadFoto(editItem.id, editFotoFile);
+      fotoUrl = uploaded.url;
+      fotoStoragePath = uploaded.path;
+    }
+
+    const nuovi = inventario.map((i) =>
+      i.id === editItem.id
+        ? {
+            ...i,
+            descrizione: editItem.descrizione,
+            quantita: Number(editItem.quantita),
+            unita: editItem.unita,
+            fornitore: editItem.fornitore || null,
+            fotoUrl,
+            fotoStoragePath,
+          }
+        : i
+    );
+
+    await persist(nuovi);
+    setEditItem(null);
+    setEditFotoFile(null);
+  };
+
+  // ---------------------------
   // PDF
-  // ---------------------------------------------------
+  // ---------------------------
   const exportPDF = async () => {
     if (inventario.length === 0) {
       alert("Inventario vuoto.");
@@ -200,16 +223,17 @@ const Inventario: React.FC = () => {
     });
   };
 
-  // ---------------------------------------------------
+  // ======================================================
   // RENDER
-  // ---------------------------------------------------
+  // ======================================================
+
   return (
     <div className="inventario-page">
       <div className="inventario-card">
         {/* HEADER */}
         <div className="inventario-header">
           <div className="inventario-logo-title">
-            <img src="/logo.png" alt="logo" className="inventario-logo" />
+            <img src="/logo.png" className="inventario-logo" />
             <div>
               <h1 className="inventario-title">Inventario</h1>
               <p className="inventario-subtitle">Gestione magazzino centrale</p>
@@ -230,13 +254,11 @@ const Inventario: React.FC = () => {
               className="inventario-input"
               value={descrizione}
               onChange={(e) => setDescrizione(e.target.value)}
-              placeholder="Es. Tubo 40mm"
             />
           </label>
 
-          {/* FORNITORE */}
           <label className="inventario-label">
-            Fornitore (suggerimenti automatici)
+            Fornitore
             <input
               type="text"
               className="inventario-input"
@@ -255,7 +277,6 @@ const Inventario: React.FC = () => {
                 );
                 setSuggestions(filtered.slice(0, 5));
               }}
-              placeholder="Es. EDILCOM SA"
             />
 
             {suggestions.length > 0 && (
@@ -276,16 +297,12 @@ const Inventario: React.FC = () => {
             )}
           </label>
 
-          {/* FOTO */}
           <label className="inventario-label">
-            Foto (opzionale)
+            Foto
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setFotoFile(file);
-              }}
+              onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
             />
           </label>
 
@@ -294,7 +311,6 @@ const Inventario: React.FC = () => {
               <img
                 src={URL.createObjectURL(fotoFile)}
                 className="inventario-thumb"
-                alt="preview"
               />
             </div>
           )}
@@ -353,7 +369,8 @@ const Inventario: React.FC = () => {
                       {item.descrizione}
                       {item.fornitore && (
                         <span className="inventario-row-fornitore-inline">
-                          {" — "} {item.fornitore}
+                          {" — "}
+                          {item.fornitore}
                         </span>
                       )}
                     </span>
@@ -399,6 +416,17 @@ const Inventario: React.FC = () => {
                     >
                       Elimina
                     </button>
+
+                    {/* AGGIUNTA MODIFICA */}
+                    <button
+                      className="inventario-edit-button"
+                      onClick={() => {
+                        setEditItem({ ...item });
+                        setEditFotoFile(null);
+                      }}
+                    >
+                      Modifica
+                    </button>
                   </div>
                 </div>
               ))}
@@ -406,6 +434,96 @@ const Inventario: React.FC = () => {
           )}
         </div>
 
+        {/* MODALE MODIFICA — UNICA AGGIUNTA */}
+        {editItem && (
+          <div className="inventario-edit-modal">
+            <div className="inventario-edit-box">
+              <h3>Modifica materiale</h3>
+
+              <label className="inventario-label">
+                Descrizione
+                <input
+                  className="inventario-input"
+                  value={editItem.descrizione}
+                  onChange={(e) =>
+                    setEditItem({ ...editItem, descrizione: e.target.value })
+                  }
+                />
+              </label>
+
+              <label className="inventario-label">
+                Fornitore
+                <input
+                  className="inventario-input"
+                  value={editItem.fornitore || ""}
+                  onChange={(e) =>
+                    setEditItem({ ...editItem, fornitore: e.target.value })
+                  }
+                />
+              </label>
+
+              <label className="inventario-label">
+                Quantità
+                <input
+                  className="inventario-input"
+                  type="number"
+                  value={editItem.quantita}
+             onChange={(e) =>
+  setEditItem({ 
+    ...editItem, 
+    quantita: Number(e.target.value) 
+  })
+}
+
+                />
+              </label>
+
+              <label className="inventario-label">
+                Unità
+                <select
+                  className="inventario-input"
+                  value={editItem.unita}
+                  onChange={(e) =>
+                    setEditItem({ ...editItem, unita: e.target.value })
+                  }
+                >
+                  <option value="pz">pz</option>
+                  <option value="mt">mt</option>
+                  <option value="kg">kg</option>
+                  <option value="lt">lt</option>
+                </select>
+              </label>
+
+              {/* NUOVA FOTO */}
+              <label className="inventario-label">
+                Nuova foto (opzionale)
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    setEditFotoFile(e.target.files?.[0] || null)
+                  }
+                />
+              </label>
+
+              <div className="inventario-edit-actions">
+                <button
+                  className="inventario-edit-cancel"
+                  onClick={() => setEditItem(null)}
+                >
+                  Annulla
+                </button>
+
+                <button
+                  className="inventario-edit-save"
+                  onClick={handleSaveEdit}
+                >
+                  Salva modifiche
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

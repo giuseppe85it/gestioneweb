@@ -8,23 +8,22 @@ import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateMezzoPDF } from "../utils/pdfEngine";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
-import { callAICore } from "../utils/aiCore";
 
 const MEZZI_KEY = "@mezzi_aziendali";
-const LAVORI_KEY = "@lavori";
 const COLLEGHI_KEY = "@colleghi";
 
-type Urgenza = "bassa" | "media" | "alta";
+
 
 interface Collega {
   id: string;
   nome: string;
-  cognome: string;
+  cognome?: string;
 }
+
+
 
 interface Mezzo {
   id: string;
-  fotoUrl?: string;
 
   tipo?: "motrice" | "cisterna";
 
@@ -42,7 +41,7 @@ interface Mezzo {
   assicurazione: string;
   dataImmatricolazione: string;
   dataScadenzaRevisione: string;
-  dataUltimoCollaudo: string;      // <--- AGGIUNGI QUI
+  dataUltimoCollaudo: string;
 
   manutenzioneProgrammata: boolean;
 
@@ -57,23 +56,87 @@ interface Mezzo {
   autistaNome?: string | null;
 
   marcaModello?: string;
-  anno?: string;
+
+  fotoUrl?: string | null;
+  fotoPath?: string | null;
 }
 
-interface EstrattoLibrettoResponse {
-  targa?: string;
-  marca?: string;
-  modello?: string;
-  telaio?: string;
-  colore?: string;
-  cilindrata?: string;
-  potenza?: string;
-  massaComplessiva?: string;
-  massa_complessiva?: string;
-  dataImmatricolazione?: string;
-  data_immatricolazione?: string;
-  assicurazione?: string;
-  proprietario?: string;
+function formatDateForDisplay(isoDate: string | undefined | null): string {
+  if (!isoDate) return "-";
+
+  const date = new Date(isoDate);
+  if (isNaN(date.getTime())) return isoDate;
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day} ${month} ${year}`;
+}
+
+
+
+
+function extractBase64FromDataURL(dataUrl: string): string {
+  const idx = dataUrl.indexOf(",");
+  if (idx === -1) return dataUrl;
+  return dataUrl.slice(idx + 1);
+}
+
+// ---------------------------------------------
+// Revisione automatica
+// ---------------------------------------------
+
+function calculaProssimaRevisione(
+  dataImmatricolazione: string,
+  dataUltimoCollaudo: string
+): string {
+  if (!dataImmatricolazione) return dataUltimoCollaudo || "";
+
+  const immDate = new Date(dataImmatricolazione);
+  if (isNaN(immDate.getTime())) {
+    return dataUltimoCollaudo || "";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const firstRevision = new Date(immDate);
+  firstRevision.setFullYear(firstRevision.getFullYear() + 4);
+
+  if (!dataUltimoCollaudo) {
+    if (firstRevision > today) {
+      return firstRevision.toISOString().split("T")[0];
+    }
+
+    const afterFirst = new Date(firstRevision);
+    while (afterFirst <= today) {
+      afterFirst.setFullYear(afterFirst.getFullYear() + 2);
+    }
+    return afterFirst.toISOString().split("T")[0];
+  }
+
+  const lastCollaudo = new Date(dataUltimoCollaudo);
+  if (isNaN(lastCollaudo.getTime())) {
+    return dataUltimoCollaudo;
+  }
+
+  const nextFromCollaudo = new Date(lastCollaudo);
+  nextFromCollaudo.setFullYear(nextFromCollaudo.getFullYear() + 2);
+
+  const nextFromImmatricolazione = new Date(immDate);
+  while (nextFromImmatricolazione <= today) {
+    nextFromImmatricolazione.setFullYear(
+      nextFromImmatricolazione.getFullYear() + 2
+    );
+  }
+
+  const finalNext =
+    nextFromCollaudo > nextFromImmatricolazione
+      ? nextFromCollaudo
+      : nextFromImmatricolazione;
+
+  return finalNext.toISOString().split("T")[0];
 }
 
 // ---------------------------------------------
@@ -89,121 +152,8 @@ function giorniDaOggi(isoDate: string): number {
   target.setHours(0, 0, 0, 0);
 
   const diffMs = target.getTime() - today.getTime();
-  return Math.round(diffMs / (1000 * 60 * 60 * 24));
-}
-
-function formatDateForInput(value: string | undefined): string {
-  if (!value) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-
-  const match = value.match(/(\d{1,2}).(\d{1,2}).(\d{4})/);
-  if (!match) return "";
-  const [_, gg, mm, aaaa] = match;
-  const g = gg.padStart(2, "0");
-  const m = mm.padStart(2, "0");
-  return `${aaaa}-${m}-${g}`;
-}
-
-// NUOVA: per visualizzare in elenco in formato gg/mm/aaaa
-function formatDateForDisplay(value: string | undefined): string {
-  if (!value) return "-";
-
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    // se non è una data valida, restituisco la stringa originale
-    return value;
-  }
-
-  const gg = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const aaaa = d.getFullYear();
-
-  return `${gg}/${mm}/${aaaa}`;
-}
-
-function extractYear(value: string | undefined): string | null {
-  if (!value) return null;
-  const match = value.match(/(19|20)\d{2}/);
-  return match ? match[0] : null;
-}
-
-function extractBase64FromDataURL(dataUrl: string): string {
-  const idx = dataUrl.indexOf(",");
-  if (idx === -1) return dataUrl;
-  return dataUrl.slice(idx + 1);
-}
-
-// ---------------------------------------------
-// Revisione automatica
-// ---------------------------------------------
-
-async function ensureLavoroRevisione(
-  targa: string,
-  dataScadenzaRevisione: string
-) {
-  if (!targa || !dataScadenzaRevisione) return;
-
-  const giorni = giorniDaOggi(dataScadenzaRevisione);
-  if (Number.isNaN(giorni) || giorni > 30) {
-    return;
-  }
-
-  let urgenza: Urgenza;
-  let fascia: string;
-
-  if (giorni <= 5) {
-    urgenza = "alta";
-    fascia = "entro 5 giorni";
-  } else if (giorni <= 15) {
-    urgenza = "media";
-    fascia = "entro 15 giorni";
-  } else {
-    urgenza = "bassa";
-    fascia = "entro 30 giorni";
-  }
-
-  const raw = await getItemSync(LAVORI_KEY);
-  const lavori: any[] = Array.isArray(raw) ? raw : raw?.value ?? [];
-
-  const descrizione = `Revisione in scadenza per ${targa.toUpperCase()} – ${fascia}`;
-  const nowIso = new Date().toISOString();
-
-  const existingIndex = lavori.findIndex(
-    (l) =>
-      !l.eseguito &&
-      l.tipo === "targa" &&
-      l.targa === targa.toUpperCase() &&
-      l.segnalatoDa === "sistema:revisione"
-  );
-
-  if (existingIndex >= 0) {
-    lavori[existingIndex] = {
-      ...lavori[existingIndex],
-      descrizione,
-      urgenza,
-      dataInserimento: nowIso,
-    };
-  } else {
-    lavori.push({
-      id: `REV-${Date.now()}`,
-      descrizione,
-      targa: targa.toUpperCase(),
-      tipo: "targa",
-      gruppoId: targa.toUpperCase(),
-      eseguito: false,
-      urgenza,
-      dataInserimento: nowIso,
-      segnalatoDa: "sistema:revisione",
-    });
-  }
-
-  await setItemSync(LAVORI_KEY, lavori);
-
-  if (urgenza === "alta") {
-    alert(
-      `ATTENZIONE: revisione per ${targa.toUpperCase()} in scadenza entro 5 giorni.\nÈ stato creato un lavoro con priorità ALTA.`
-    );
-  }
+  const giorni = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  return giorni;
 }
 
 // ---------------------------------------------
@@ -253,14 +203,8 @@ const Mezzi: React.FC = () => {
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [fotoDirty, setFotoDirty] = useState(false);
 
-  // LIBRETTO
-  const [librettoPreview, setLibrettoPreview] = useState<string | null>(null);
-  const [librettoLoading, setLibrettoLoading] = useState(false);
-  const [librettoError, setLibrettoError] = useState<string | null>(null);
-
   const fotoInputRef = useRef<HTMLInputElement | null>(null);
-  const librettoCameraInputRef = useRef<HTMLInputElement | null>(null);
-  const librettoGalleryInputRef = useRef<HTMLInputElement | null>(null);
+  const [categoriaEspansa, setCategoriaEspansa] = useState<string | null>(null);
 
   // ---------------------------------------------
   // LOAD
@@ -290,7 +234,7 @@ const Mezzi: React.FC = () => {
   }, []);
 
   // ---------------------------------------------
-  // RESET
+  // HANDLERS FORM
   // ---------------------------------------------
 
   const resetForm = () => {
@@ -299,11 +243,6 @@ const Mezzi: React.FC = () => {
     setCategoria("");
     setAutistaId(null);
     setAutistaNome(null);
-
-    setManutenzioneDataInizio("");
-    setManutenzioneDataFine("");
-    setManutenzioneKmMax("");
-    setManutenzioneContratto("");
 
     setTipoMezzo("motrice");
     setTarga("");
@@ -318,59 +257,70 @@ const Mezzi: React.FC = () => {
     setAssicurazione("");
     setDataImmatricolazione("");
     setDataScadenzaRevisione("");
+    setDataUltimoCollaudo("");
     setManutenzioneProgrammata(false);
+    setManutenzioneDataInizio("");
+    setManutenzioneDataFine("");
+    setManutenzioneKmMax("");
+    setManutenzioneContratto("");
     setNote("");
 
     setFotoPreview(null);
     setFotoDirty(false);
-
-    setLibrettoPreview(null);
-    setLibrettoError(null);
-    setError(null);
   };
-
-  // ---------------------------------------------
-  // LOAD FORM (MODIFICA)
-  // ---------------------------------------------
 
   const loadMezzoInForm = (m: Mezzo) => {
     setEditingId(m.id);
 
     setCategoria(m.categoria || "");
-    setAutistaId(m.autistaId ?? null);
-    setAutistaNome(m.autistaNome ?? null);
+    setAutistaId(m.autistaId || null);
+    setAutistaNome(m.autistaNome || null);
 
+    setTipoMezzo(m.tipo || "motrice");
+    setTarga(m.targa || "");
+    setMarca(m.marca || "");
+    setModello(m.modello || "");
+    setTelaio(m.telaio || "");
+    setColore(m.colore || "");
+    setCilindrata(m.cilindrata || "");
+    setPotenza(m.potenza || "");
+    setMassaComplessiva(m.massaComplessiva || "");
+    setProprietario(m.proprietario || "");
+    setAssicurazione(m.assicurazione || "");
+    setDataImmatricolazione(m.dataImmatricolazione || "");
+    setDataScadenzaRevisione(m.dataScadenzaRevisione || "");
+    setDataUltimoCollaudo(m.dataUltimoCollaudo || "");
+    setManutenzioneProgrammata(!!m.manutenzioneProgrammata);
     setManutenzioneDataInizio(m.manutenzioneDataInizio || "");
     setManutenzioneDataFine(m.manutenzioneDataFine || "");
     setManutenzioneKmMax(m.manutenzioneKmMax || "");
     setManutenzioneContratto(m.manutenzioneContratto || "");
-
-    setTipoMezzo(m.tipo ?? "motrice");
-    setTarga(m.targa);
-    setMarca(m.marca);
-    setModello(m.modello);
-    setTelaio(m.telaio);
-    setColore(m.colore);
-    setCilindrata(m.cilindrata);
-    setPotenza(m.potenza);
-    setMassaComplessiva(m.massaComplessiva);
-    setProprietario(m.proprietario);
-    setAssicurazione(m.assicurazione);
-    setDataImmatricolazione(formatDateForInput(m.dataImmatricolazione));
-    setDataScadenzaRevisione(formatDateForInput(m.dataScadenzaRevisione));
-    setManutenzioneProgrammata(m.manutenzioneProgrammata);
-    setNote(m.note);
-
+    setNote(m.note || "");
     setFotoPreview(m.fotoUrl || null);
     setFotoDirty(false);
+  };
 
-    setLibrettoPreview(null);
-    setLibrettoError(null);
-    setError(null);
+  const handleChangeAutista = (value: string) => {
+    const found = colleghi.find((c) => c.id === value);
+    if (!found) {
+      setAutistaId(null);
+      setAutistaNome(null);
+    } else {
+      setAutistaId(found.id);
+      setAutistaNome(found.nome);
+    }
+  };
+
+  const handleTipoMezzoChange = (value: "motrice" | "cisterna") => {
+    setTipoMezzo(value);
+    if (value === "cisterna") {
+      setCilindrata("");
+      setPotenza("");
+    }
   };
 
   // ---------------------------------------------
-  // FOTO HANDLERS
+  // FOTO
   // ---------------------------------------------
 
   const handleFotoChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -393,220 +343,163 @@ const Mezzi: React.FC = () => {
   };
 
   // ---------------------------------------------
-  // IA — LIBRETTO
-  // ---------------------------------------------
-
-  const processLibrettoDataUrl = async (dataUrl: string) => {
-    try {
-      setLibrettoLoading(true);
-      setLibrettoError(null);
-
-      const imageBase64 = extractBase64FromDataURL(dataUrl);
-
-      const result = await callAICore("estrazione_libretto", { imageBase64 });
-
-      const data = (result?.data || {}) as EstrattoLibrettoResponse;
-
-      if (!data || Object.keys(data).length === 0) {
-        setLibrettoError(
-          "Impossibile estrarre i dati dal libretto. Compila i campi manualmente."
-        );
-        return;
-      }
-
-      if (data.targa) setTarga(data.targa.toUpperCase());
-      if (data.marca) setMarca(data.marca);
-      if (data.modello) setModello(data.modello);
-      if (data.telaio) setTelaio(data.telaio);
-      if (data.colore) setColore(data.colore);
-      if (data.cilindrata && tipoMezzo === "motrice")
-        setCilindrata(data.cilindrata);
-      if (data.potenza && tipoMezzo === "motrice") setPotenza(data.potenza);
-      if (data.massaComplessiva || data.massa_complessiva) {
-        setMassaComplessiva(
-          data.massaComplessiva || data.massa_complessiva || ""
-        );
-      }
-      if (data.proprietario) setProprietario(data.proprietario);
-      if (data.assicurazione) setAssicurazione(data.assicurazione);
-
-      const rawImm =
-        data.dataImmatricolazione || data.data_immatricolazione || "";
-      if (rawImm) {
-        const year = extractYear(rawImm);
-        const parsed = formatDateForInput(rawImm);
-        if (parsed) {
-          setDataImmatricolazione(parsed);
-        } else if (year) {
-          setDataImmatricolazione(`${year}-01-01`);
-        }
-      }
-    } catch (err) {
-      console.error("Errore IA libretto:", err);
-      setLibrettoError(
-        "Errore durante l'analisi del libretto. Riprova o inserisci i dati manualmente."
-      );
-    } finally {
-      setLibrettoLoading(false);
-    }
-  };
-
-  const handleLibrettoFileChange: React.ChangeEventHandler<HTMLInputElement> = (
-    e
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : null;
-      if (result) {
-        setLibrettoPreview(result);
-        processLibrettoDataUrl(result);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleOpenLibrettoCamera = () => {
-    librettoCameraInputRef.current?.click();
-  };
-
-  const handleOpenLibrettoGallery = () => {
-    librettoGalleryInputRef.current?.click();
-  };
-
-  // ---------------------------------------------
   // SALVATAGGIO MEZZO
   // ---------------------------------------------
 
   const handleSave = async () => {
-    setError(null);
-
-    const tg = targa.trim().toUpperCase();
-    if (!tg) {
-      setError("La targa è obbligatoria.");
-      return;
-    }
-
-    if (!marca.trim() || !modello.trim()) {
-      setError("Marca e modello sono obbligatori.");
-      return;
-    }
-
     try {
-      const raw = await getItemSync(MEZZI_KEY);
-      const arr: Mezzo[] = Array.isArray(raw) ? raw : raw?.value ?? [];
+      setError(null);
 
-      let mezzoId = editingId ?? `MEZZO-${Date.now()}`;
-      let fotoUrlToSave: string | undefined = arr.find(
-        (m) => m.id === mezzoId
-      )?.fotoUrl;
+      if (!targa.trim()) {
+        setError("La targa è obbligatoria.");
+        return;
+      }
+      if (!marca.trim()) {
+        setError("La marca è obbligatoria.");
+        return;
+      }
+      if (!modello.trim()) {
+        setError("Il modello è obbligatorio.");
+        return;
+      }
+
+      if (!dataImmatricolazione) {
+        setError("La data di immatricolazione è obbligatoria.");
+        return;
+      }
+
+      let finalFotoUrl: string | null | undefined = undefined;
+      let finalFotoPath: string | null | undefined = undefined;
 
       if (fotoPreview && fotoDirty) {
-        const storageRef = ref(storage, `mezzi/${mezzoId}/foto.jpg`);
-        await uploadString(storageRef, fotoPreview, "data_url");
-        fotoUrlToSave = await getDownloadURL(storageRef);
+        const fileName = `mezzi/${targa.replace(/\s+/g, "_")}_${Date.now()}.jpg`;
+        const storageRef = ref(storage, fileName);
+        const base64Data = extractBase64FromDataURL(fotoPreview);
+        await uploadString(storageRef, base64Data, "base64", {
+          contentType: "image/jpeg",
+        });
+        const downloadUrl = await getDownloadURL(storageRef);
+
+        finalFotoUrl = downloadUrl;
+        finalFotoPath = fileName;
+      } else if (!fotoPreview) {
+        finalFotoUrl = null;
+        finalFotoPath = null;
       }
 
-      // Autista: se null → Nessun autista fisso
-      let autId = autistaId;
-      let autNome = autistaNome;
+      const currentMezzi = [...mezzi];
 
-      if (autId === "NESSUNO") {
-        autId = null;
-        autNome = "Nessun autista fisso";
-      }
+      if (editingId) {
+        const idx = currentMezzi.findIndex((m) => m.id === editingId);
+        if (idx === -1) {
+          setError("Impossibile trovare il mezzo da modificare.");
+          return;
+        }
 
-      const nuovoMezzo: Mezzo = {
-        id: mezzoId,
-        fotoUrl: fotoUrlToSave,
+        const old = currentMezzi[idx];
 
-        tipo: tipoMezzo,
-        categoria,
-
-        targa: tg,
-        marca: marca.trim(),
-        modello: modello.trim(),
-        telaio: telaio.trim(),
-        colore: colore.trim(),
-        cilindrata: tipoMezzo === "motrice" ? cilindrata.trim() : "",
-        potenza: tipoMezzo === "motrice" ? potenza.trim() : "",
-        massaComplessiva: massaComplessiva.trim(),
-        proprietario: proprietario.trim(),
-        assicurazione: assicurazione.trim(),
-        dataImmatricolazione,
-        dataScadenzaRevisione,
-        dataUltimoCollaudo: "",
-
-        manutenzioneProgrammata,
-
-        manutenzioneDataInizio: manutenzioneProgrammata
-          ? manutenzioneDataInizio
-          : "",
-        manutenzioneDataFine: manutenzioneProgrammata
-          ? manutenzioneDataFine
-          : "",
-        manutenzioneKmMax: manutenzioneProgrammata ? manutenzioneKmMax : "",
-        manutenzioneContratto: manutenzioneProgrammata
-          ? manutenzioneContratto
-          : "",
-
-        note: note.trim(),
-
-        autistaId: autId,
-        autistaNome: autNome,
-
-        marcaModello: `${marca.trim()} ${modello.trim()}`.trim(),
-        anno: extractYear(dataImmatricolazione) || "",
-      };
-
-      const existingIndex = arr.findIndex((m) => m.id === mezzoId);
-      let updated: Mezzo[];
-      if (existingIndex >= 0) {
-        updated = [...arr];
-        updated[existingIndex] = nuovoMezzo;
+        currentMezzi[idx] = {
+          ...old,
+          categoria: categoria || "",
+          autistaId,
+          autistaNome,
+          tipo: tipoMezzo,
+          targa: targa.trim(),
+          marca: marca.trim(),
+          modello: modello.trim(),
+          telaio: telaio.trim(),
+          colore: colore.trim(),
+          cilindrata: tipoMezzo === "motrice" ? cilindrata.trim() : "",
+          potenza: tipoMezzo === "motrice" ? potenza.trim() : "",
+          massaComplessiva: massaComplessiva.trim(),
+          proprietario: proprietario.trim(),
+          assicurazione: assicurazione.trim(),
+          dataImmatricolazione,
+          dataScadenzaRevisione,
+          dataUltimoCollaudo,
+          manutenzioneProgrammata,
+          manutenzioneDataInizio: manutenzioneProgrammata
+            ? manutenzioneDataInizio
+            : "",
+          manutenzioneDataFine: manutenzioneProgrammata
+            ? manutenzioneDataFine
+            : "",
+          manutenzioneKmMax: manutenzioneProgrammata
+            ? manutenzioneKmMax
+            : "",
+          manutenzioneContratto: manutenzioneProgrammata
+            ? manutenzioneContratto
+            : "",
+          note: note.trim(),
+          marcaModello: `${marca.trim()} ${modello.trim()}`,
+          fotoUrl:
+            finalFotoUrl !== undefined ? finalFotoUrl : old.fotoUrl || null,
+          fotoPath:
+            finalFotoPath !== undefined ? finalFotoPath : old.fotoPath || null,
+        };
       } else {
-        updated = [...arr, nuovoMezzo];
+        const newMezzo: Mezzo = {
+          id: `${Date.now()}`,
+          categoria: categoria || "",
+          autistaId,
+          autistaNome,
+          tipo: tipoMezzo,
+          targa: targa.trim(),
+          marca: marca.trim(),
+          modello: modello.trim(),
+          telaio: telaio.trim(),
+          colore: colore.trim(),
+          cilindrata: tipoMezzo === "motrice" ? cilindrata.trim() : "",
+          potenza: tipoMezzo === "motrice" ? potenza.trim() : "",
+          massaComplessiva: massaComplessiva.trim(),
+          proprietario: proprietario.trim(),
+          assicurazione: assicurazione.trim(),
+          dataImmatricolazione,
+          dataScadenzaRevisione,
+          dataUltimoCollaudo,
+          manutenzioneProgrammata,
+          manutenzioneDataInizio: manutenzioneProgrammata
+            ? manutenzioneDataInizio
+            : "",
+          manutenzioneDataFine: manutenzioneProgrammata
+            ? manutenzioneDataFine
+            : "",
+          manutenzioneKmMax: manutenzioneProgrammata
+            ? manutenzioneKmMax
+            : "",
+          manutenzioneContratto: manutenzioneProgrammata
+            ? manutenzioneContratto
+            : "",
+          note: note.trim(),
+          marcaModello: `${marca.trim()} ${modello.trim()}`,
+          fotoUrl: finalFotoUrl ?? null,
+          fotoPath: finalFotoPath ?? null,
+        };
+
+        currentMezzi.push(newMezzo);
       }
 
-      // Firestore / storage: convertiamo undefined → null/stringa vuota
-      const sanitized = updated.map((m) => ({
-        ...m,
-        fotoUrl: m.fotoUrl ?? null,
-        autistaId: m.autistaId ?? null,
-        autistaNome: m.autistaNome ?? null,
-        manutenzioneDataInizio: m.manutenzioneDataInizio ?? "",
-        manutenzioneDataFine: m.manutenzioneDataFine ?? "",
-        manutenzioneKmMax: m.manutenzioneKmMax ?? "",
-        manutenzioneContratto: m.manutenzioneContratto ?? "",
-      }));
-
-      await setItemSync(MEZZI_KEY, sanitized);
-
-      setMezzi(updated);
-
-      await ensureLavoroRevisione(tg, dataScadenzaRevisione);
+      await setItemSync(MEZZI_KEY, currentMezzi);
+      setMezzi(currentMezzi);
 
       resetForm();
-      alert("Mezzo salvato correttamente.");
     } catch (err) {
-      console.error(err);
+      console.error("Errore salvataggio mezzo:", err);
       setError("Errore durante il salvataggio del mezzo.");
     }
   };
 
   // ---------------------------------------------
-  // DELETE
+  // ELIMINAZIONE MEZZO
   // ---------------------------------------------
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Sei sicuro di voler eliminare questo mezzo?")) return;
+    if (!window.confirm("Sei sicuro di voler eliminare questo mezzo?")) {
+      return;
+    }
 
     try {
-      const raw = await getItemSync(MEZZI_KEY);
-      const arr: Mezzo[] = Array.isArray(raw) ? raw : raw?.value ?? [];
-      const updated = arr.filter((m) => m.id !== id);
+      const updated = mezzi.filter((m) => m.id !== id);
       await setItemSync(MEZZI_KEY, updated);
       setMezzi(updated);
 
@@ -614,424 +507,447 @@ const Mezzi: React.FC = () => {
         resetForm();
       }
     } catch (err) {
-      console.error(err);
+      console.error("Errore eliminazione mezzo:", err);
       setError("Errore durante l'eliminazione del mezzo.");
     }
   };
 
-  const handleExportPdf = async (mezzo: Mezzo) => {
-    try {
-      await generateMezzoPDF("Scheda Mezzo", mezzo);
-    } catch (err) {
-      alert("Errore durante la generazione del PDF.");
-    }
-  };
+  // ---------------------------------------------
+  // PDF
+  // ---------------------------------------------
 
+const handleExportPdf = async (mezzo: Mezzo) => {
+  try {
+   
+    await generateMezzoPDF("Scheda Mezzo", mezzo);
+  } catch (err) {
+    console.error("Errore generazione PDF mezzo:", err);
+    alert("Errore durante la generazione del PDF.");
+  }
+};
   // ---------------------------------------------
   // RENDER
   // ---------------------------------------------
 
+  const CATEGORIE_ORDINATE: string[] = [
+    "motrice 2 assi",
+    "motrice 3 assi",
+    "motrice 4 assi",
+    "trattore stradale",
+    "semirimorchio asse fisso",
+    "semirimorchio asse sterzante",
+    "pianale",
+    "biga",
+    "centina",
+    "vasca",
+    "Senza categoria",
+  ];
+
+  const normalizzaCategoria = (value: string | undefined | null): string => {
+    if (!value || !value.trim()) return "Senza categoria";
+    return value.trim();
+  };
+
+  const mezziPerCategoria: Record<string, Mezzo[]> = {};
+  mezzi.forEach((m) => {
+    const key = normalizzaCategoria(m.categoria);
+    if (!mezziPerCategoria[key]) {
+      mezziPerCategoria[key] = [];
+    }
+    mezziPerCategoria[key].push(m);
+  });
+
+  const categoriePresenti = CATEGORIE_ORDINATE.filter(
+    (cat) => mezziPerCategoria[cat] && mezziPerCategoria[cat].length > 0
+  );
+
   return (
     <div className="page-container mezzi-page">
-      <div className="mezzi-card-wrapper">
-        <div className="premium-card-430 mezzi-card">
-          <div className="card-header">
-            <div className="logo-wrapper">
-              <img src="/logo.png" alt="Logo" className="card-logo" />
-            </div>
-            <div className="card-title-group">
-              <h1 className="card-title">Mezzi aziendali</h1>
-              <p className="card-subtitle">
-                Gestione mezzi, libretto, revisione e dossier dedicato
-              </p>
-            </div>
-          </div>
+      <div className="mezzi-grid">
+        {/* FORM + INFO */}
+        <div className="left-column">
+          {/* CARD PRINCIPALE FORM MEZZO */}
+          <div className="premium-card-430">
+<div className="card-header">
+  <img src="/logo.png" alt="Logo Ghielmi Cementi" className="logo-mezzi" />
 
-          <div className="card-body">
-            {error && <div className="alert alert-error">{error}</div>}
-            {librettoError && (
-              <div className="alert alert-warning">{librettoError}</div>
-            )}
-
-            {/* LIBRETTO */}
-            <div className="section-block libretto-section">
-              <div className="section-header">
-                <h2>Scansione libretto (IA)</h2>
-                <p>Scatta una foto o carica un’immagine del libretto.</p>
-              </div>
-
-              <div className="libretto-buttons-row">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleOpenLibrettoCamera}
-                  disabled={librettoLoading}
-                >
-                  Scansiona libretto
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleOpenLibrettoGallery}
-                  disabled={librettoLoading}
-                >
-                  Carica foto
-                </button>
-              </div>
-
-              {librettoLoading && (
-                <p className="small-info-text">Analisi in corso…</p>
-              )}
-
-              {librettoPreview && (
-                <div className="libretto-preview">
-                  <img src={librettoPreview} alt="Libretto" />
-                </div>
-              )}
-
-              <input
-                ref={librettoCameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: "none" }}
-                onChange={handleLibrettoFileChange}
-              />
-              <input
-                ref={librettoGalleryInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handleLibrettoFileChange}
-              />
-            </div>
-
-            {/* FOTO */}
-            <div className="section-block foto-section">
-              <div className="section-header-inline">
-                <h2>Foto mezzo</h2>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={handleOpenFotoPicker}
-                >
-                  Carica / scatta foto
-                </button>
-              </div>
-
-              {fotoPreview && (
-                <div className="mezzo-foto-preview">
-                  <img src={fotoPreview} alt="Foto mezzo" />
-                </div>
-              )}
-
-              <input
-                ref={fotoInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: "none" }}
-                onChange={handleFotoChange}
-              />
-            </div>
-
-            {/* FORM */}
-            <div className="section-block form-section">
-              <h2>Dati generali</h2>
-
-              {/* CATEGORIA */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Categoria mezzo</label>
-                  <select
-                    value={categoria}
-                    onChange={(e) => setCategoria(e.target.value)}
-                  >
-                    <option value="">Seleziona categoria</option>
-                    <option value="motrice 2 assi">Motrice 2 assi</option>
-                    <option value="motrice 3 assi">Motrice 3 assi</option>
-                    <option value="motrice 4 assi">Motrice 4 assi</option>
-                    <option value="trattore stradale">Trattore stradale</option>
-                    <option value="semirimorchio asse fisso">
-                      Semirimorchio asse fisso
-                    </option>
-                    <option value="semirimorchio asse sterzante">
-                      Semirimorchio asse sterzante
-                    </option>
-                    <option value="pianale">Pianale</option>
-                    <option value="biga">Biga</option>
-                    <option value="centina">Centina</option>
-                    <option value="vasca">Vasca</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* AUTISTA */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Autista abituale</label>
-                  <select
-                    value={autistaId ?? "NESSUNO"}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "NESSUNO") {
-                        setAutistaId("NESSUNO");
-                        setAutistaNome("Nessun autista fisso");
-                      } else {
-                        setAutistaId(val);
-                        const coll = colleghi.find((c) => c.id === val);
-                        setAutistaNome(
-                          coll ? `${coll.nome} ${coll.cognome}` : ""
-                        );
-                      }
-                    }}
-                  >
-                    <option value="NESSUNO">NESSUN AUTISTA FISSO</option>
-                    {colleghi.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome} {c.cognome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* TARGA / COLORE */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Targa</label>
-                  <input
-                    type="text"
-                    value={targa}
-                    onChange={(e) => setTarga(e.target.value.toUpperCase())}
-                    maxLength={10}
-                  />
-                </div>
-
-                <div className="form-field">
-                  <label>Colore</label>
-                  <input
-                    type="text"
-                    value={colore}
-                    onChange={(e) => setColore(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* MARCA / MODELLO */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Marca</label>
-                  <input
-                    type="text"
-                    value={marca}
-                    onChange={(e) => setMarca(e.target.value)}
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Modello</label>
-                  <input
-                    type="text"
-                    value={modello}
-                    onChange={(e) => setModello(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* TELAIO / MASSA */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Telaio</label>
-                  <input
-                    type="text"
-                    value={telaio}
-                    onChange={(e) => setTelaio(e.target.value)}
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Massa complessiva</label>
-                  <input
-                    type="text"
-                    value={massaComplessiva}
-                    onChange={(e) => setMassaComplessiva(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* MOTRICE */}
-              {tipoMezzo === "motrice" && (
-                <div className="form-row">
-                  <div className="form-field">
-                    <label>Cilindrata</label>
-                    <input
-                      type="text"
-                      value={cilindrata}
-                      onChange={(e) => setCilindrata(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label>Potenza</label>
-                    <input
-                      type="text"
-                      value={potenza}
-                      onChange={(e) => setPotenza(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* PROPRIETARIO / ASSICURAZIONE */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Proprietario</label>
-                  <input
-                    type="text"
-                    value={proprietario}
-                    onChange={(e) => setProprietario(e.target.value)}
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Assicurazione</label>
-                  <input
-                    type="text"
-                    value={assicurazione}
-                    onChange={(e) => setAssicurazione(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* IMMATRICOLAZIONE / REVISIONE */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Data immatricolazione</label>
-                  <input
-                    type="date"
-                    value={dataImmatricolazione}
-                    onChange={(e) => setDataImmatricolazione(e.target.value)}
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Scadenza revisione</label>
-                  <input
-                    type="date"
-                    value={dataScadenzaRevisione}
-                    onChange={(e) => setDataScadenzaRevisione(e.target.value)}
-                  />
-                  <div className="form-row">
-  <div className="form-field">
-    <label>Ultimo collaudo</label>
-    <input
-      type="date"
-      value={dataUltimoCollaudo}
-      onChange={(e) => setDataUltimoCollaudo(e.target.value)}
-    />
+  <div className="card-header-text">
+    <h1 className="card-title">Gestione Mezzi</h1>
+    <p className="card-subtitle">
+      Gestione mezzi, libretto, revisione e dossier dedicato
+    </p>
   </div>
 </div>
 
+            <div className="card-body">
+              {error && <div className="alert alert-error">{error}</div>}
+
+              {/* FOTO */}
+              <div className="section-block foto-section">
+                <div className="section-header">
+                  <h2>Foto mezzo</h2>
+                  <p>Scatta o carica una foto del mezzo.</p>
                 </div>
+
+                <div className="foto-row">
+                  <div className="foto-preview-wrapper">
+                    {fotoPreview ? (
+                      <img
+                        src={fotoPreview}
+                        alt="Foto mezzo"
+                        className="foto-preview"
+                      />
+                    ) : (
+                      <div className="foto-placeholder">
+                        Nessuna foto selezionata
+                      </div>
+                    )}
+                  </div>
+                  <div className="foto-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleOpenFotoPicker}
+                    >
+                      Carica foto
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setFotoPreview(null);
+                        setFotoDirty(true);
+                      }}
+                    >
+                      Rimuovi foto
+                    </button>
+                  </div>
+                </div>
+
+                <input
+                  ref={fotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  onChange={handleFotoChange}
+                />
               </div>
 
-              {/* MANUTENZIONE PROGRAMMATA */}
-              <div className="form-row">
-                <div className="form-field checkbox-field">
-                  <label>Manutenzione programmata</label>
-                  <div className="checkbox-inline">
-                    <input
-                      id="manut-programmata"
-                      type="checkbox"
-                      checked={manutenzioneProgrammata}
+              {/* FORM */}
+              <div className="section-block form-section">
+                <h2>Dati generali</h2>
+
+                {/* CATEGORIA + TIPO + AUTISTA */}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Categoria mezzo</label>
+                    <select
+                      value={categoria}
+                      onChange={(e) => setCategoria(e.target.value)}
+                    >
+                      <option value="">Seleziona categoria</option>
+                      <option value="motrice 2 assi">Motrice 2 assi</option>
+                      <option value="motrice 3 assi">Motrice 3 assi</option>
+                      <option value="motrice 4 assi">Motrice 4 assi</option>
+                      <option value="trattore stradale">
+                        Trattore stradale
+                      </option>
+                      <option value="semirimorchio asse fisso">
+                        Semirimorchio asse fisso
+                      </option>
+                      <option value="semirimorchio asse sterzante">
+                        Semirimorchio asse sterzante
+                      </option>
+                      <option value="pianale">Pianale</option>
+                      <option value="biga">Biga</option>
+                      <option value="centina">Centina</option>
+                      <option value="vasca">Vasca</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Tipo</label>
+                    <select
+                      value={tipoMezzo}
                       onChange={(e) =>
-                        setManutenzioneProgrammata(e.target.checked)
+                        handleTipoMezzoChange(
+                          e.target.value as "motrice" | "cisterna"
+                        )
+                      }
+                    >
+                      <option value="motrice">Motrice</option>
+                      <option value="cisterna">Cisterna / Rimorchio</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Autista</label>
+                    <select
+                      value={autistaId || ""}
+                      onChange={(e) => handleChangeAutista(e.target.value)}
+                    >
+                      <option value="">Nessun autista</option>
+                      {colleghi.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                          {c.cognome ? ` ${c.cognome}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* TARGA + MARCA + MODELLO */}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Targa</label>
+                    <input
+                      type="text"
+                      value={targa}
+                      onChange={(e) => setTarga(e.target.value.toUpperCase())}
+                      placeholder="Es. TI 315407"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Marca</label>
+                    <input
+                      type="text"
+                      value={marca}
+                      onChange={(e) => setMarca(e.target.value)}
+                      placeholder="Es. RENAULT"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Modello</label>
+                    <input
+                      type="text"
+                      value={modello}
+                      onChange={(e) => setModello(e.target.value)}
+                      placeholder="Es. C 430"
+                    />
+                  </div>
+                </div>
+
+                {/* TELAIO + COLORE */}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Telaio / VIN</label>
+                    <input
+                      type="text"
+                      value={telaio}
+                      onChange={(e) => setTelaio(e.target.value)}
+                      placeholder="Es. VF6..."
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Colore</label>
+                    <input
+                      type="text"
+                      value={colore}
+                      onChange={(e) => setColore(e.target.value)}
+                      placeholder="Es. Bianco"
+                    />
+                  </div>
+                </div>
+
+                {/* CILINDRATA + POTENZA + MASSA */}
+                <div className="form-row">
+                  {tipoMezzo === "motrice" && (
+                    <>
+                      <div className="form-group">
+                        <label>Cilindrata (cm³)</label>
+                        <input
+                          type="text"
+                          value={cilindrata}
+                          onChange={(e) => setCilindrata(e.target.value)}
+                          placeholder="Es. 10837"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Potenza (kW)</label>
+                        <input
+                          type="text"
+                          value={potenza}
+                          onChange={(e) => setPotenza(e.target.value)}
+                          placeholder="Es. 323.0"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div className="form-group">
+                    <label>Massa complessiva (kg)</label>
+                    <input
+                      type="text"
+                      value={massaComplessiva}
+                      onChange={(e) => setMassaComplessiva(e.target.value)}
+                      placeholder="Es. 40000"
+                    />
+                  </div>
+                </div>
+
+                {/* PROPRIETARIO + ASSICURAZIONE */}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Proprietario</label>
+                    <input
+                      type="text"
+                      value={proprietario}
+                      onChange={(e) => setProprietario(e.target.value)}
+                      placeholder="Es. GhielmiCementi SA"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Assicurazione</label>
+                    <input
+                      type="text"
+                      value={assicurazione}
+                      onChange={(e) => setAssicurazione(e.target.value)}
+                      placeholder="Es. Zurigo Assicurazioni SA"
+                    />
+                  </div>
+                </div>
+
+                {/* DATE */}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Data immatricolazione</label>
+                    <input
+                      type="date"
+                      value={dataImmatricolazione}
+                      onChange={(e) => setDataImmatricolazione(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Data ultimo collaudo</label>
+                    <input
+                      type="date"
+                      value={dataUltimoCollaudo}
+                      onChange={(e) => {
+                        const newVal = e.target.value;
+                        setDataUltimoCollaudo(newVal);
+                        if (newVal) {
+                          const calculated = calculaProssimaRevisione(
+                            dataImmatricolazione,
+                            newVal
+                          );
+                          setDataScadenzaRevisione(calculated);
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Prossima revisione</label>
+                    <input
+                      type="date"
+                      value={dataScadenzaRevisione}
+                      onChange={(e) =>
+                        setDataScadenzaRevisione(e.target.value)
                       }
                     />
-                    <label htmlFor="manut-programmata">Attiva</label>
                   </div>
                 </div>
-              </div>
 
-              {manutenzioneProgrammata && (
-                <>
-                  <div className="form-row">
-                    <div className="form-field">
-                      <label>Data inizio contratto</label>
+                {/* MANUTENZIONE PROGRAMMATA */}
+                <div className="section-block maint-section">
+                  <div className="maint-header">
+                    <label className="checkbox-label">
                       <input
-                        type="date"
-                        value={manutenzioneDataInizio}
+                        type="checkbox"
+                        checked={manutenzioneProgrammata}
                         onChange={(e) =>
-                          setManutenzioneDataInizio(e.target.value)
+                          setManutenzioneProgrammata(e.target.checked)
                         }
                       />
-                    </div>
-
-                    <div className="form-field">
-                      <label>Data fine contratto</label>
-                      <input
-                        type="date"
-                        value={manutenzioneDataFine}
-                        onChange={(e) =>
-                          setManutenzioneDataFine(e.target.value)
-                        }
-                      />
-                    </div>
+                      Manutenzione programmata
+                    </label>
+                    <p className="small-info-text">
+                      Se attivo, consente di impostare un intervallo di
+                      manutenzione programmata per il mezzo.
+                    </p>
                   </div>
 
-                  <div className="form-row">
-                    <div className="form-field">
-                      <label>Km massimi previsti</label>
-                      <input
-                        type="number"
-                        value={manutenzioneKmMax}
-                        onChange={(e) =>
-                          setManutenzioneKmMax(e.target.value)
-                        }
-                      />
+                  {manutenzioneProgrammata && (
+                    <div className="maint-grid">
+                      <div className="form-group">
+                        <label>Data inizio contratto</label>
+                        <input
+                          type="date"
+                          value={manutenzioneDataInizio}
+                          onChange={(e) =>
+                            setManutenzioneDataInizio(e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Data prossima scadenza</label>
+                        <input
+                          type="date"
+                          value={manutenzioneDataFine}
+                          onChange={(e) =>
+                            setManutenzioneDataFine(e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Km massimi</label>
+                        <input
+                          type="text"
+                          value={manutenzioneKmMax}
+                          onChange={(e) =>
+                            setManutenzioneKmMax(e.target.value)
+                          }
+                          placeholder="Es. 120000"
+                        />
+                      </div>
+                      <div className="form-group full-width">
+                        <label>Contratto / Note manutenzione</label>
+                        <textarea
+                          value={manutenzioneContratto}
+                          onChange={(e) =>
+                            setManutenzioneContratto(e.target.value)
+                          }
+                          rows={2}
+                        />
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="form-row">
-                    <div className="form-field full-width">
-                      <label>Contratto manutenzione in atto con</label>
-                      <input
-                        type="text"
-                        value={manutenzioneContratto}
-                        onChange={(e) =>
-                          setManutenzioneContratto(e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* NOTE */}
-              <div className="form-row">
-                <div className="form-field full-width">
-                  <label>Note</label>
-                  <textarea
-                    rows={3}
-                    className="mezzi-textarea"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                  />
+                  )}
                 </div>
-              </div>
 
-              {/* AZIONI */}
-              <div className="form-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={resetForm}
-                >
-                  Annulla
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary-strong"
-                  onClick={handleSave}
-                >
-                  {editingId ? "Salva modifiche" : "Salva mezzo"}
-                </button>
+                {/* NOTE */}
+                <div className="form-row">
+                  <div className="form-group full-width">
+                    <label>Note generali</label>
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      rows={3}
+                      placeholder="Note aggiuntive, vincoli particolari, ecc."
+                    />
+                  </div>
+                </div>
+
+                {/* BOTTONI SALVATAGGIO */}
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={resetForm}
+                  >
+                    Reset form
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleSave}
+                  >
+                    {editingId ? "Salva modifiche" : "Salva mezzo"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1058,97 +974,152 @@ const Mezzi: React.FC = () => {
             )}
 
             {!loading && mezzi.length > 0 && (
-              <div className="mezzi-list">
-                {mezzi.map((m) => {
-                  const revDisplay = formatDateForDisplay(
-                    m.dataScadenzaRevisione
-                  );
-                  const progDisplay = m.manutenzioneProgrammata
-                    ? formatDateForDisplay(m.manutenzioneDataFine || "")
-                    : null;
-
-                  // Calcolo colori scadenze (REV)
-                  const giorniRev = giorniDaOggi(m.dataScadenzaRevisione);
-                  let classeRev = "";
-                  if (giorniRev <= 5) classeRev = "deadline-high";
-                  else if (giorniRev <= 15) classeRev = "deadline-medium";
-                  else if (giorniRev <= 30) classeRev = "deadline-low";
-
-                  // Calcolo colori scadenze (MANUTENZIONE PROGRAMMATA)
-                  let classeProg = "";
-                  if (progDisplay) {
-                    const giorniProg = giorniDaOggi(
-                      m.manutenzioneDataFine || ""
-                    );
-
-                    if (giorniProg <= 5) classeProg = "deadline-high";
-                    else if (giorniProg <= 15) classeProg = "deadline-medium";
-                    else if (giorniProg <= 30) classeProg = "deadline-low";
-                  }
+              <div className="mezzi-categorie-wrapper">
+                {categoriePresenti.map((cat) => {
+                  const lista = mezziPerCategoria[cat] || [];
+                  const aperta = categoriaEspansa === cat;
 
                   return (
-                    <div key={m.id} className="mezzo-list-item">
-                      <div className="mezzo-list-main">
-                        {/* RIGA 1 → Marca + Modello */}
-                        <div className="mezzo-list-header">
-                          <span className="mezzo-marca-modello strong">
-                            {m.marca.toUpperCase()}{" "}
-                            {m.modello.toUpperCase()}
-                          </span>
-                        </div>
-
-                        {/* RIGA 2 → Targa + REV + MAN. PROG. */}
-                        <div className="mezzo-list-meta">
-                          <span className="mezzo-targa strong">
-                            {m.targa.toUpperCase()}
-                          </span>
-
-                          <span
-                            className={`mezzo-scadenze ${classeRev}`}
-                          >
-                            REV: {revDisplay}
-                          </span>
-
-                          {progDisplay && (
-                            <span
-                              className={`mezzo-scadenze ${classeProg}`}
-                            >
-                           PROG. MANUTENZIONE: {progDisplay}
+                    <div key={cat} className="categoria-mezzo-block">
+                      <div
+                        className="mezzo-list-item categoria-header"
+                        style={{ cursor: "pointer" }}
+                        onClick={() =>
+                          setCategoriaEspansa((prev) =>
+                            prev === cat ? null : cat
+                          )
+                        }
+                      >
+                        <div className="mezzo-list-main">
+                          <div className="mezzo-list-header">
+                            <span className="mezzo-marca-modello strong">
+                              {aperta ? "▾ " : "▸ "}
+                              {cat.toUpperCase()}
                             </span>
-                          )}
+                          </div>
+                          <div className="mezzo-list-meta">
+                            <span className="mezzo-targa">
+                              {lista.length} mezzi
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="mezzo-list-actions">
-                        <button
-                          type="button"
-                          className="btn btn-small btn-outline"
-                          onClick={() => loadMezzoInForm(m)}
-                        >
-                          Modifica
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-small btn-primary"
-                          onClick={() => navigate(`/dossiermezzi/${m.targa}`)}
-                        >
-                          Dossier
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-small btn-info"
-                          onClick={() => handleExportPdf(m)}
-                        >
-                          Esporta PDF Mezzo
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-small btn-danger"
-                          onClick={() => handleDelete(m.id)}
-                        >
-                          Elimina
-                        </button>
-                      </div>
+                      {aperta && (
+                        <div style={{ marginTop: 14, marginBottom: 16 }}>
+                          <div className="mezzi-list">
+                            {lista.map((m) => {
+                              const revDisplay = formatDateForDisplay(
+                                m.dataScadenzaRevisione
+                              );
+                              const progDisplay = m.manutenzioneProgrammata
+                                ? formatDateForDisplay(
+                                    m.manutenzioneDataFine || ""
+                                  )
+                                : null;
+
+                              const giorniRev = giorniDaOggi(
+                                m.dataScadenzaRevisione
+                              );
+                              let classeRev = "";
+                              if (giorniRev <= 5) classeRev = "deadline-high";
+                              else if (giorniRev <= 15)
+                                classeRev = "deadline-medium";
+                              else if (giorniRev <= 30)
+                                classeRev = "deadline-low";
+
+                              let classeProg = "";
+                              if (progDisplay) {
+                                const giorniProg = giorniDaOggi(
+                                  m.manutenzioneDataFine || ""
+                                );
+
+                                if (giorniProg <= 5)
+                                  classeProg = "deadline-high";
+                                else if (giorniProg <= 15)
+                                  classeProg = "deadline-medium";
+                                else if (giorniProg <= 30)
+                                  classeProg = "deadline-low";
+                              }
+return (
+  <div key={m.id} className="mezzo-card">
+
+    {/* MINIATURA + INFO */}
+    <div className="mezzo-card-row">
+
+      {/* Miniatura solo se esiste la foto */}
+      {m.fotoUrl && (
+        <div className="mezzo-thumb">
+          <img src={m.fotoUrl} alt={m.targa} />
+        </div>
+      )}
+
+      {/* Informazioni testuali */}
+      <div className="mezzo-info">
+        <div className="mezzo-info-title">
+          {m.marca.toUpperCase()} {m.modello.toUpperCase()}
+        </div>
+
+        <div className="mezzo-info-line">
+          Targa: {m.targa.toUpperCase()}
+        </div>
+
+        <div className="mezzo-info-line">
+          Categoria: {normalizzaCategoria(m.categoria)}
+        </div>
+
+        <div className={`mezzo-info-line ${classeRev}`}>
+          Revisione: {revDisplay}
+        </div>
+
+        {progDisplay && (
+          <div className={`mezzo-info-line ${classeProg}`}>
+            Manutenzione: {progDisplay}
+          </div>
+        )}
+      </div>
+    </div>
+
+    {/* Bottoni della card */}
+    <div className="mezzo-card-actions">
+      <button
+        type="button"
+        className="btn btn-small btn-outline"
+        onClick={() => loadMezzoInForm(m)}
+      >
+        Modifica
+      </button>
+
+      <button
+        type="button"
+        className="btn btn-small btn-primary"
+        onClick={() => navigate(`/dossiermezzi/${m.targa}`)}
+      >
+        Dossier
+      </button>
+
+      <button
+        type="button"
+        className="btn btn-small btn-info"
+        onClick={() => handleExportPdf(m)}
+      >
+        PDF
+      </button>
+
+      <button
+        type="button"
+        className="btn btn-small btn-danger"
+        onClick={() => handleDelete(m.id)}
+      >
+        Elimina
+      </button>
+    </div>
+  </div>
+);
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

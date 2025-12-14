@@ -4,6 +4,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
+import { getAuth } from "firebase/auth";
 
 // CONFIGURAZIONE CORRETTA SENZA SEGNAPOSTI
 const firebaseConfig = {
@@ -27,3 +28,5 @@ export const storage = getStorage(app, firebaseConfig.storageBucket);
 
 // CLOUD FUNCTIONS
 export const functions = getFunctions(app);
+// AUTH
+export const auth = getAuth(app);

@@ -83,6 +83,49 @@
   gap: 10px;
 }
 
+/* Griglia a 2 colonne (PIN SIM + PUK SIM) */
+.coll-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+/* --- Schede carburante --- */
+.coll-fuel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.coll-fuel-card {
+  background: #fffaf0;
+  border-radius: 10px;
+  border: 2px solid #d8c8a5;
+  padding: 10px;
+}
+
+.coll-fuel-pin input {
+  max-width: 150px;
+}
+
+/* Pulsante aggiungi scheda carburante */
+.coll-btn-add-fuel {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: #2d8b3a;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+  font-size: 13px;
+}
+
+.coll-btn-add-fuel:hover {
+  background: #24702f;
+}
+
 /* --- Pulsanti --- */
 .coll-actions {
   display: flex;
@@ -170,6 +213,11 @@
   border: 2px solid #d8c8a5;
   padding: 12px;
   border-radius: 12px;
+  cursor: pointer;
+}
+
+.coll-item:hover {
+  background: #fff7e8;
 }
 
 .coll-item-name {
@@ -203,14 +251,218 @@
   display: flex;
   gap: 8px;
 }
+
 /* FIX campi della griglia che uscivano fuori dal riquadro */
 .coll-grid input,
-.coll-grid textarea {
+.coll-grid textarea,
+.coll-grid-2 input,
+.coll-grid-2 textarea {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
 
-.coll-grid > div {
+.coll-grid > div,
+.coll-grid-2 > div {
   min-width: 0;
+}
+
+/* --- MODALE DETTAGLI COLLEGA --- */
+.coll-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.coll-modal {
+  background: #fffdf5;
+  border-radius: 18px;
+  border: 2px solid #d8c8a5;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  padding: 18px;
+  width: 90%;
+  max-width: 430px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.coll-modal-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.coll-modal-section {
+  margin-bottom: 14px;
+}
+
+.coll-modal-subtitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.coll-modal-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.coll-modal-row-block {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.coll-modal-label {
+  font-weight: 600;
+}
+
+.coll-modal-value {
+  font-weight: 400;
+}
+
+/* Card singola per scheda carburante nel modale */
+.coll-modal-fuel-card {
+  background: #fffaf0;
+  border-radius: 10px;
+  border: 2px solid #d8c8a5;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.coll-modal-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+/* Responsive generale */
+@media (max-width: 600px) {
+  .coll-card {
+    width: 100%;
+  }
+
+  .coll-modal {
+    width: 94%;
+    padding: 16px;
+  }
+
+  .coll-item-actions {
+    flex-direction: column;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    padding: 9px;
+  }
+}
+/* ============================= */
+/*            MODALE             */
+/* ============================= */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.modal-container {
+  width: 430px;
+  max-width: 92%;
+  background: #f8f5e8;
+  border: 1px solid #ddd3b8;
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+  padding: 20px;
+  overflow-y: auto;
+  max-height: 85vh;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 10px;
+}
+
+.modal-logo {
+  width: 42px;
+  height: auto;
+}
+
+.modal-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.modal-content {
+  margin-top: 10px;
+}
+
+.modal-card {
+  background: #fffdf5;
+  border: 1px solid #e5dbc4;
+  border-radius: 10px;
+  padding: 15px;
+}
+
+.modal-section {
+  margin-bottom: 15px;
+}
+
+.modal-section label {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.modal-section p {
+  margin: 3px 0 0;
+  font-size: 15px;
+}
+
+.modal-subtitle {
+  margin-top: 20px;
+  font-size: 18px;
+  font-weight: 700;
+  border-bottom: 1px solid #cfc4a8;
+  padding-bottom: 5px;
+}
+
+.fuel-card {
+  padding: 10px;
+  background: #faf7ee;
+  border: 1px solid #e5dbc4;
+  border-radius: 8px;
+}
+
+.modal-close-btn {
+  width: 100%;
+  margin-top: 20px;
+  background: #2d5f2e;
+  color: white;
+  font-weight: bold;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.modal-close-btn:hover {
+  background: #244b24;
 }
