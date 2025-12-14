@@ -63,6 +63,11 @@ function Home() {
             <img src="/icons/manutenzioni.png" alt="Manutenzioni" className="icon-img" />
             <p>Manutenzioni</p>
           </Link>
+          <Link to="/autisti/login" className="home-box">
+  <img src="/icons/autisti.png" alt="Autisti" className="icon-img" />
+  <p>Autisti</p>
+</Link>
+
 
           {/* ✔️ NUOVA ICONA IA */}
           <Link to="/ia" className="home-box">

@@ -31,6 +31,14 @@ import IALibretto from "./pages/IA/IALibretto";
 import IADocumenti from "./pages/IA/IADocumenti";
 import LavoriInAttesa from "./pages/LavoriInAttesa";
 import GestioneOperativa from "./pages/GestioneOperativa";
+//app autisti
+import LoginAutista from "./autisti/LoginAutista";
+import SetupMezzo from "./autisti/SetupMezzo";
+import HomeAutista from "./autisti/HomeAutista";
+import Rifornimento from "./autisti/Rifornimento";
+import ControlloMezzo from "./autisti/ControlloMezzo";
+import Segnalazioni from "./autisti/Segnalazioni";
+
 
 function App() {
   const [authReady, setAuthReady] = useState(false);
@@ -86,6 +94,14 @@ function App() {
       <Route path="/ia/documenti" element={<IADocumenti />} />
 
       <Route path="/gestione-operativa" element={<GestioneOperativa />} />
+      {/* AUTISTI */}
+<Route path="/autisti/login" element={<LoginAutista />} />
+<Route path="/autisti/setup-mezzo" element={<SetupMezzo />} />
+<Route path="/autisti/home" element={<HomeAutista />} />
+<Route path="/autisti/rifornimento" element={<Rifornimento />} />
+<Route path="/autisti/controllo" element={<ControlloMezzo />} />
+<Route path="/autisti/segnalazioni" element={<Segnalazioni />} />
+
     </Routes>
   );
 }
