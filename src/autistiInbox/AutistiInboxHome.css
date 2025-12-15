@@ -1,0 +1,44 @@
+/* src/autistiInbox/AutistiInboxHome.css */
+/* Stile premium coerente con dossier */
+
+.autisti-inbox-container {
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 20px;
+}
+
+.autisti-inbox-title {
+  font-size: 26px;
+  margin-bottom: 30px;
+}
+
+.autisti-inbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.autisti-inbox-card {
+  background: #f7f5ef;
+  border-radius: 14px;
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.autisti-inbox-card:hover {
+  background: #efece2;
+}
+
+.autisti-inbox-card h2 {
+  margin-bottom: 10px;
+}
+
+.autisti-inbox-card p {
+  opacity: 0.7;
+}
+
+.autisti-inbox-card.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

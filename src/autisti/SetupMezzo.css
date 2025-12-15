@@ -1,0 +1,82 @@
+.setup-container {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.setup-title {
+  font-size: 28px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.setup-subtitle {
+  font-size: 20px;
+  margin: 24px 0 10px;
+}
+
+.targhe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.targa-card {
+  background: #f6f4ee;
+  border-radius: 14px;
+  padding: 18px;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.targa-card:hover {
+  background: #eeeadd;
+}
+
+.targa-card.selected {
+  border-color: #2e7d32;
+  background: #e6f4ea;
+}
+
+.targa-card.warn {
+  border-color: #f2b705;
+}
+
+.targa-text {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.targa-note {
+  margin-top: 6px;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.targa-warn {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #9c6b00;
+}
+
+.setup-error {
+  margin-top: 16px;
+  color: #b00020;
+  font-weight: 600;
+}
+
+.setup-confirm {
+  margin-top: 28px;
+  width: 100%;
+  padding: 16px;
+  font-size: 20px;
+  font-weight: 700;
+  border: none;
+  border-radius: 14px;
+  background: #2e7d32;
+  color: white;
+  cursor: pointer;
+}

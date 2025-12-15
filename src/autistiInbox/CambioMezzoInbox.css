@@ -1,0 +1,79 @@
+.cmi-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.cmi-subtitle {
+  opacity: 0.7;
+  margin-bottom: 20px;
+}
+
+.cmi-empty {
+  margin-top: 30px;
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.cmi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cmi-card {
+  background: #f6f4ee;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.cmi-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.cmi-badge {
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.cmi-badge.rimorchio {
+  background: #ffecb3;
+  color: #8d6e00;
+}
+
+.cmi-badge.motrice {
+  background: #c8e6c9;
+  color: #1b5e20;
+}
+
+.cmi-time {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+.cmi-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.cmi-targa {
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.cmi-autista {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.cmi-row {
+  margin-top: 6px;
+  font-size: 15px;
+}

@@ -5,40 +5,53 @@ import { auth } from "./firebase";
 import { Routes, Route } from "react-router-dom";
 import "./App.css";
 
+/* ==================== APP PRINCIPALE ==================== */
 import Home from "./pages/Home";
 import LavoriDaEseguire from "./pages/LavoriDaEseguire";
-import DossierLista from "./pages/DossierLista";
 import LavoriEseguiti from "./pages/LavoriEseguiti";
+import LavoriInAttesa from "./pages/LavoriInAttesa";
+import GestioneOperativa from "./pages/GestioneOperativa";
+
+import DossierLista from "./pages/DossierLista";
+import DossierMezzo from "./pages/DossierMezzo";
+import DossierGomme from "./pages/DossierGomme";
+import AnalisiEconomica from "./pages/AnalisiEconomica";
+
 import MaterialiDaOrdinare from "./pages/MaterialiDaOrdinare";
 import MaterialiConsegnati from "./pages/MaterialiConsegnati";
 import Inventario from "./pages/Inventario";
+
 import Colleghi from "./pages/Colleghi";
 import Fornitori from "./pages/Fornitori";
 import Mezzi from "./pages/Mezzi";
+import Manutenzioni from "./pages/Manutenzioni";
+
 import Storico from "./pages/Storico";
 import OrdiniArrivati from "./pages/OrdiniArrivati";
 import OrdiniInAttesa from "./pages/OrdiniInAttesa";
+
 import CheckStorage from "./pages/CheckStorage";
 import DettaglioLavoro from "./pages/DettaglioLavoro";
 import DettaglioOrdine from "./pages/DettaglioOrdine";
-import DossierMezzo from "./pages/DossierMezzo";
-import AnalisiEconomica from "./pages/AnalisiEconomica";
-import DossierGomme from "./pages/DossierGomme";
-import Manutenzioni from "./pages/Manutenzioni";
+
+/* ==================== IA ==================== */
 import IAHome from "./pages/IA/IAHome";
 import IAApiKey from "./pages/IA/IAApiKey";
 import IALibretto from "./pages/IA/IALibretto";
 import IADocumenti from "./pages/IA/IADocumenti";
-import LavoriInAttesa from "./pages/LavoriInAttesa";
-import GestioneOperativa from "./pages/GestioneOperativa";
-//app autisti
+
+/* ==================== APP AUTISTI ==================== */
 import LoginAutista from "./autisti/LoginAutista";
-import SetupMezzo from "./autisti/SetupMezzo";
 import HomeAutista from "./autisti/HomeAutista";
+import SetupMezzo from "./autisti/SetupMezzo";
 import Rifornimento from "./autisti/Rifornimento";
 import ControlloMezzo from "./autisti/ControlloMezzo";
 import Segnalazioni from "./autisti/Segnalazioni";
+import CambioMezzoAutista from "./autisti/CambioMezzoAutista";
 
+/* ==================== AUTISTI INBOX (ADMIN) ==================== */
+import AutistiInboxHome from "./autistiInbox/AutistiInboxHome";
+import CambioMezzoInbox from "./autistiInbox/CambioMezzoInbox";
 
 function App() {
   const [authReady, setAuthReady] = useState(false);
@@ -54,13 +67,14 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // ⛔ BLOCCA TUTTO finché Firebase Auth non è pronto
   if (!authReady) return null;
 
   return (
     <Routes>
+      {/* HOME */}
       <Route path="/" element={<Home />} />
 
+      {/* LAVORI */}
       <Route path="/lavori-da-eseguire" element={<LavoriDaEseguire />} />
       <Route path="/lavori-eseguiti" element={<LavoriEseguiti />} />
       <Route path="/lavori-in-attesa" element={<LavoriInAttesa />} />
@@ -71,36 +85,51 @@ function App() {
       <Route path="/analisi-economica/:targa" element={<AnalisiEconomica />} />
       <Route path="/dossier/:targa/gomme" element={<DossierGomme />} />
 
+      {/* MATERIALI */}
       <Route path="/materiali-da-ordinare" element={<MaterialiDaOrdinare />} />
       <Route path="/materiali-consegnati" element={<MaterialiConsegnati />} />
       <Route path="/inventario" element={<Inventario />} />
+
+      {/* ANAGRAFICHE */}
       <Route path="/colleghi" element={<Colleghi />} />
       <Route path="/fornitori" element={<Fornitori />} />
       <Route path="/mezzi" element={<Mezzi />} />
+
+      {/* MANUTENZIONI */}
       <Route path="/manutenzioni" element={<Manutenzioni />} />
 
-      <Route path="/storico" element={<Storico />} />
-
+      {/* ORDINI */}
       <Route path="/ordini-arrivati" element={<OrdiniArrivati />} />
       <Route path="/ordini-in-attesa" element={<OrdiniInAttesa />} />
 
+      {/* ALTRO */}
+      <Route path="/storico" element={<Storico />} />
       <Route path="/check-storage" element={<CheckStorage />} />
       <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
       <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
+      <Route path="/gestione-operativa" element={<GestioneOperativa />} />
 
+      {/* IA */}
       <Route path="/ia" element={<IAHome />} />
       <Route path="/ia/apikey" element={<IAApiKey />} />
       <Route path="/ia/libretto" element={<IALibretto />} />
       <Route path="/ia/documenti" element={<IADocumenti />} />
 
-      <Route path="/gestione-operativa" element={<GestioneOperativa />} />
-      {/* AUTISTI */}
-<Route path="/autisti/login" element={<LoginAutista />} />
-<Route path="/autisti/setup-mezzo" element={<SetupMezzo />} />
-<Route path="/autisti/home" element={<HomeAutista />} />
-<Route path="/autisti/rifornimento" element={<Rifornimento />} />
-<Route path="/autisti/controllo" element={<ControlloMezzo />} />
-<Route path="/autisti/segnalazioni" element={<Segnalazioni />} />
+      {/* ==================== APP AUTISTI ==================== */}
+      <Route path="/autisti/login" element={<LoginAutista />} />
+      <Route path="/autisti/home" element={<HomeAutista />} />
+      <Route path="/autisti/setup-mezzo" element={<SetupMezzo />} />
+<Route path="/autisti/cambio-mezzo" element={<CambioMezzoAutista />} />
+      <Route path="/autisti/rifornimento" element={<Rifornimento />} />
+      <Route path="/autisti/controllo" element={<ControlloMezzo />} />
+      <Route path="/autisti/segnalazioni" element={<Segnalazioni />} />
+
+      {/* ==================== AUTISTI INBOX (ADMIN) ==================== */}
+      <Route path="/autisti-inbox" element={<AutistiInboxHome />} />
+<Route
+  path="/autisti-inbox/cambio-mezzo"
+  element={<CambioMezzoInbox />}
+/>
 
     </Routes>
   );

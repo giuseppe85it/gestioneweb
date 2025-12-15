@@ -1,0 +1,63 @@
+.cmz-container {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.cmz-targhe {
+  margin-bottom: 16px;
+}
+
+.cmz-targa {
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.cmz-targa.secondaria {
+  font-size: 22px;
+  opacity: 0.7;
+}
+
+.cmz-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.cmz-check {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: #f6f4ee;
+  border-radius: 14px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.cmz-check input {
+  width: 26px;
+  height: 26px;
+}
+
+.cmz-note {
+  width: 100%;
+  min-height: 80px;
+  padding: 14px;
+  font-size: 16px;
+  border-radius: 12px;
+  border: 2px solid #ccc;
+}
+
+.cmz-confirm {
+  margin-top: 20px;
+  width: 100%;
+  padding: 16px;
+  font-size: 20px;
+  font-weight: 800;
+  background: #2e7d32;
+  color: white;
+  border: none;
+  border-radius: 14px;
+}
