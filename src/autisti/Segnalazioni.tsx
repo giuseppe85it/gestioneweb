@@ -1,89 +1,451 @@
-// src/autisti/Segnalazioni.tsx
-
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./autisti.css";
+import "../autisti/autisti.css";
+import "./Segnalazioni.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "../firebase";
+
+type Ambito = "motrice" | "rimorchio";
+type TipoProblema = "motore" | "freni" | "gomme" | "idraulico" | "elettrico" | "altro";
+type PosizioneGomma = "anteriore" | "posteriore" | "asse1" | "asse2" | "asse3";
+type ProblemaGomma = "forata" | "usurata" | "da_controllare" | "altro";
+
+const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
+
+function genId() {
+  // compatibile
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c: any = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function toItDateTime(ts: number) {
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd} ${mm} ${yyyy} – ${hh}:${mi}`;
+}
+
+function normalizeCategoria(cat?: string | null) {
+  return (cat || "").toLowerCase().trim();
+}
+
+function getGommeOptions(ambito: Ambito | null, categoriaMezzo?: string | null): PosizioneGomma[] {
+  const cat = normalizeCategoria(categoriaMezzo);
+
+  if (!ambito) return [];
+
+  if (ambito === "motrice") {
+    if (cat.includes("motrice 4 assi")) return ["anteriore", "asse1", "asse2", "asse3"];
+    if (cat.includes("motrice 3 assi")) return ["anteriore", "asse1", "asse2"];
+    if (cat.includes("trattore")) return ["anteriore", "posteriore"];
+    // fallback motrice generico
+    return ["anteriore", "posteriore"];
+  }
+
+  // rimorchio
+  if (cat.includes("semirimorchio")) return ["asse1", "asse2", "asse3"]; // 3 assi
+  if (cat.includes("biga")) return ["asse1", "asse2"]; // 2 assi
+  // fallback rimorchio generico (non definito)
+  return ["asse1", "asse2"];
+}
+
+function labelPosizione(p: PosizioneGomma) {
+  switch (p) {
+    case "anteriore":
+      return "ANTERIORE";
+    case "posteriore":
+      return "POSTERIORE";
+    case "asse1":
+      return "ASSE 1";
+    case "asse2":
+      return "ASSE 2";
+    case "asse3":
+      return "ASSE 3";
+  }
+}
+
+function labelTipo(t: TipoProblema) {
+  switch (t) {
+    case "motore":
+      return "MOTORE";
+    case "freni":
+      return "FRENI";
+    case "gomme":
+      return "GOMME";
+    case "idraulico":
+      return "IDRAULICO";
+    case "elettrico":
+      return "ELETTRICO";
+    case "altro":
+      return "ALTRO";
+  }
+}
+
+function labelProblemaGomma(p: ProblemaGomma) {
+  switch (p) {
+    case "forata":
+      return "FORATA";
+    case "usurata":
+      return "USURATA";
+    case "da_controllare":
+      return "DA CONTROLLARE";
+    case "altro":
+      return "ALTRO";
+  }
+}
+
+type FotoLocal = { id: string; dataUrl: string };
 
 export default function Segnalazioni() {
   const navigate = useNavigate();
-  const [testo, setTesto] = useState("");
-  const [foto, setFoto] = useState<File | null>(null);
-  const [errore, setErrore] = useState("");
+  const nowTs = useMemo(() => Date.now(), []);
+
   const [loading, setLoading] = useState(false);
 
-  async function handleSave() {
-    setErrore("");
+  const [autista, setAutista] = useState<any>(null);
+  const [mezzo, setMezzo] = useState<any>(null);
 
-    if (!testo.trim()) {
-      setErrore("Inserisci una descrizione");
+  const [ambito, setAmbito] = useState<Ambito | null>(null);
+  const [tipo, setTipo] = useState<TipoProblema | null>(null);
+
+  // gomme
+  const [posizioneGomma, setPosizioneGomma] = useState<PosizioneGomma | null>(null);
+  const [problemaGomma, setProblemaGomma] = useState<ProblemaGomma | null>(null);
+
+  const [descrizione, setDescrizione] = useState("");
+  const [note, setNote] = useState("");
+
+  const [foto, setFoto] = useState<FotoLocal[]>([]);
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [alertMsg, setAlertMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const a = await getItemSync("@autista_attivo");
+      const m = await getItemSync("@mezzo_attivo_autista");
+      setAutista(a || null);
+      setMezzo(m || null);
+    })();
+  }, []);
+
+  const gommeOptions = useMemo(
+    () => getGommeOptions(ambito, mezzo?.categoria),
+    [ambito, mezzo?.categoria]
+  );
+
+  function resetGomme() {
+    setPosizioneGomma(null);
+    setProblemaGomma(null);
+  }
+
+  function resetByAmbito(next: Ambito) {
+    setAmbito(next);
+    // non resettiamo tipo per forza, ma per sicurezza e semplicità 60+
+    setTipo(null);
+    resetGomme();
+    setErrors({});
+    setAlertMsg(null);
+  }
+
+  function resetByTipo(next: TipoProblema) {
+    setTipo(next);
+    setErrors({});
+    setAlertMsg(null);
+
+    if (next !== "gomme") {
+      resetGomme();
+    }
+  }
+
+  function getPlaceholderDescrizione() {
+    if (tipo === "motore") return "Es. rumore anomalo, perdita olio, spia accesa…";
+    if (tipo === "gomme") return "Es. gomma asse 2 molto consumata, vibra, perde aria…";
+    if (tipo === "freni") return "Es. frena male, rumore, spia, aria…";
+    if (tipo === "idraulico") return "Es. perdita olio, pistone, tubo, pressione…";
+    if (tipo === "elettrico") return "Es. luci non funzionano, batteria, spie…";
+    return "Descrivi il problema in poche parole…";
+  }
+
+  function validate() {
+    const e: Record<string, string> = {};
+
+    if (!ambito) e.ambito = "Seleziona MOTRICE o RIMORCHIO";
+    if (!tipo) e.tipo = "Seleziona il tipo problema";
+    if (!descrizione.trim()) e.descrizione = "Scrivi una descrizione";
+
+    if (tipo === "gomme") {
+      if (!posizioneGomma) e.posizioneGomma = "Seleziona asse/posizione";
+      if (!problemaGomma) e.problemaGomma = "Seleziona il problema gomma";
+    }
+
+    setErrors(e);
+
+    if (Object.keys(e).length > 0) {
+      // alert sintetico “cosa manca”
+      const list = Object.values(e);
+      setAlertMsg("Manca: " + list.join(" · "));
+      return false;
+    }
+
+    setAlertMsg(null);
+    return true;
+  }
+
+  async function handleAddFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const remaining = 3 - foto.length;
+    if (remaining <= 0) {
+      setAlertMsg("Hai già inserito 3 foto (massimo).");
+      e.target.value = "";
       return;
     }
-    if (!foto) {
-      setErrore("Foto obbligatoria");
-      return;
+
+    const toRead = Array.from(files).slice(0, remaining);
+
+    const readOne = (file: File) =>
+      new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Errore lettura file"));
+        r.readAsDataURL(file);
+      });
+
+    try {
+      const urls = await Promise.all(toRead.map(readOne));
+      const newFoto = urls.map((u) => ({ id: genId(), dataUrl: u }));
+      setFoto((prev) => [...prev, ...newFoto]);
+    } catch {
+      setAlertMsg("Errore nel caricamento foto.");
+    } finally {
+      e.target.value = "";
     }
+  }
+
+  function removeFoto(id: string) {
+    setFoto((prev) => prev.filter((f) => f.id !== id));
+  }
+
+  async function handleSave() {
+    if (!validate()) return;
 
     setLoading(true);
 
-    const autista = await getItemSync("@autista_attivo");
-    const mezzo = await getItemSync("@mezzo_attivo_autista");
+    const record = {
+      id: genId(),
 
-    const storageRef = ref(
-      storage,
-      `segnalazioni_autisti/${Date.now()}_${foto.name}`
-    );
+      ambito, // "motrice" | "rimorchio"
 
-    await uploadBytes(storageRef, foto);
-    const fotoUrl = await getDownloadURL(storageRef);
+      mezzoId: mezzo?.id || null,
+      targa: mezzo?.targa || null,
+      categoriaMezzo: mezzo?.categoria || null,
 
-    await setItemSync("@segnalazioni_autisti_tmp", {
-      autista,
-      mezzo,
-      descrizione: testo.trim(),
-      fotoUrl,
-      timestamp: Date.now(),
-    });
+      autistaId: autista?.id || null,
+      autistaNome: autista?.nome || null,
 
-    setLoading(false);
-    navigate("/autisti/home");
+      tipoProblema: tipo,
+
+      posizioneGomma: tipo === "gomme" ? posizioneGomma : null,
+      problemaGomma: tipo === "gomme" ? problemaGomma : null,
+
+      descrizione: descrizione.trim(),
+      note: note.trim() || null,
+
+      // foto locali per ora (preview + prova sul campo)
+      // in futuro si spostano su Firebase Storage (url + storagePath)
+      foto: foto.map((f) => ({ dataUrl: f.dataUrl })),
+
+      data: nowTs,
+
+      stato: "nuova",
+      letta: false,
+
+      flagVerifica: false,
+      motivoVerifica: null,
+    };
+
+    try {
+      const current = (await getItemSync(KEY_SEGNALAZIONI)) || [];
+      const next = Array.isArray(current) ? [...current, record] : [record];
+      await setItemSync(KEY_SEGNALAZIONI, next);
+
+      setLoading(false);
+      navigate("/autisti/home");
+    } catch {
+      setLoading(false);
+      setAlertMsg("Errore salvataggio. Riprova.");
+    }
   }
 
   return (
-    <div className="autisti-container">
-      <h1 className="autisti-title">Segnalazioni</h1>
+    <div className="autisti-container seg-container">
+      <h1 className="autisti-title">Segnalazione manutenzione</h1>
 
-      <textarea
-        className="autisti-input"
-        placeholder="Descrivi il problema"
-        value={testo}
-        onChange={(e) => setTesto(e.target.value)}
-        rows={4}
-      />
+      <div className="seg-subtitle">
+        {mezzo?.targa ? `Targa: ${mezzo.targa}` : "Targa: -"}{" "}
+        {autista?.nome ? `• Autista: ${autista.nome}` : ""}
+      </div>
 
-      <input
-        className="autisti-input"
-        type="file"
-        accept="image/*"
-        onChange={(e) => setFoto(e.target.files?.[0] || null)}
-      />
+      {alertMsg && <div className="seg-alert">{alertMsg}</div>}
 
-      {errore && <div className="autisti-error">{errore}</div>}
+      {/* AMBITO */}
+      <div className="seg-section">
+        <div className="seg-label">Dove è il problema</div>
+        <div className="seg-toggle">
+          <button
+            className={ambito === "motrice" ? "active green" : errors.ambito ? "errorBtn" : ""}
+            onClick={() => resetByAmbito("motrice")}
+          >
+            MOTRICE
+          </button>
+          <button
+            className={ambito === "rimorchio" ? "active green" : errors.ambito ? "errorBtn" : ""}
+            onClick={() => resetByAmbito("rimorchio")}
+          >
+            RIMORCHIO
+          </button>
+        </div>
+        {errors.ambito && <div className="seg-error">{errors.ambito}</div>}
+      </div>
 
-      <button
-        className="autisti-button"
-        onClick={handleSave}
-        disabled={loading}
-      >
-        {loading ? "Invio..." : "Invia segnalazione"}
+      {/* TIPO PROBLEMA */}
+      <div className="seg-section">
+        <div className="seg-label">Tipo problema</div>
+
+        <div className="seg-grid">
+          {(["motore", "freni", "gomme", "idraulico", "elettrico", "altro"] as TipoProblema[]).map(
+            (t) => (
+              <button
+                key={t}
+                className={`seg-chip ${tipo === t ? "active green" : ""} ${
+                  errors.tipo ? "errorBtn" : ""
+                }`}
+                onClick={() => resetByTipo(t)}
+              >
+                {labelTipo(t)}
+              </button>
+            )
+          )}
+        </div>
+
+        {errors.tipo && <div className="seg-error">{errors.tipo}</div>}
+      </div>
+
+      {/* GOMME - MAPPA ASSI */}
+      {tipo === "gomme" && (
+        <div className="seg-section">
+          <div className="seg-label">Seleziona asse / posizione</div>
+
+          <div className="seg-grid">
+            {gommeOptions.map((p) => (
+              <button
+                key={p}
+                className={`seg-chip ${posizioneGomma === p ? "active green" : ""} ${
+                  errors.posizioneGomma ? "errorBtn" : ""
+                }`}
+                onClick={() => setPosizioneGomma(p)}
+              >
+                {labelPosizione(p)}
+              </button>
+            ))}
+          </div>
+          {errors.posizioneGomma && <div className="seg-error">{errors.posizioneGomma}</div>}
+
+          <div className="seg-label" style={{ marginTop: 12 }}>
+            Problema gomma
+          </div>
+          <div className="seg-grid">
+            {(["forata", "usurata", "da_controllare", "altro"] as ProblemaGomma[]).map((p) => (
+              <button
+                key={p}
+                className={`seg-chip ${problemaGomma === p ? "active green" : ""} ${
+                  errors.problemaGomma ? "errorBtn" : ""
+                }`}
+                onClick={() => setProblemaGomma(p)}
+              >
+                {labelProblemaGomma(p)}
+              </button>
+            ))}
+          </div>
+          {errors.problemaGomma && <div className="seg-error">{errors.problemaGomma}</div>}
+
+          <div className="seg-hint">
+            Consigliato: aggiungi una foto (massimo 3).
+          </div>
+        </div>
+      )}
+
+      {/* FOTO */}
+      <div className="seg-section">
+        <div className="seg-label">Foto (opzionale)</div>
+
+        <label className="seg-photoBtn">
+          + AGGIUNGI FOTO
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+            onChange={handleAddFoto}
+            style={{ display: "none" }}
+          />
+        </label>
+
+        {foto.length > 0 && (
+          <div className="seg-photoGrid">
+            {foto.map((f) => (
+              <div key={f.id} className="seg-photoCard">
+                <img src={f.dataUrl} alt="foto" className="seg-photoImg" />
+                <button className="seg-photoRemove" onClick={() => removeFoto(f.id)}>
+                  RIMUOVI
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* DESCRIZIONE */}
+      <div className="seg-section">
+        <div className="seg-label">Descrizione</div>
+        <textarea
+          className={`seg-textarea ${errors.descrizione ? "errorField" : ""}`}
+          placeholder={getPlaceholderDescrizione()}
+          value={descrizione}
+          onChange={(e) => setDescrizione(e.target.value)}
+        />
+        {errors.descrizione && <div className="seg-error">{errors.descrizione}</div>}
+      </div>
+
+      {/* NOTE */}
+      <div className="seg-section">
+        <div className="seg-label">Note (opzionale)</div>
+        <textarea
+          className="seg-textarea"
+          placeholder="Note aggiuntive (opzionale)…"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+
+      {/* DATA */}
+      <div className="seg-section">
+        <div className="seg-label">Data</div>
+        <div className="seg-date">{toItDateTime(nowTs)}</div>
+      </div>
+
+      {/* FOOTER */}
+      <button className="autisti-button seg-save" onClick={handleSave} disabled={loading}>
+        {loading ? "Invio..." : "INVIA SEGNALAZIONE"}
       </button>
 
-      <button
-        className="autisti-button secondary"
-        onClick={() => navigate("/autisti/home")}
-      >
+      <button className="autisti-button secondary" onClick={() => navigate("/autisti/home")}>
         Indietro
       </button>
     </div>

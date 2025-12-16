@@ -48,7 +48,7 @@ import Rifornimento from "./autisti/Rifornimento";
 import ControlloMezzo from "./autisti/ControlloMezzo";
 import Segnalazioni from "./autisti/Segnalazioni";
 import CambioMezzoAutista from "./autisti/CambioMezzoAutista";
-
+import AutistiGate from "./autisti/AutistiGate";
 /* ==================== AUTISTI INBOX (ADMIN) ==================== */
 import AutistiInboxHome from "./autistiInbox/AutistiInboxHome";
 import CambioMezzoInbox from "./autistiInbox/CambioMezzoInbox";
@@ -116,6 +116,7 @@ function App() {
       <Route path="/ia/documenti" element={<IADocumenti />} />
 
       {/* ==================== APP AUTISTI ==================== */}
+      <Route path="/autisti" element={<AutistiGate />} />
       <Route path="/autisti/login" element={<LoginAutista />} />
       <Route path="/autisti/home" element={<HomeAutista />} />
       <Route path="/autisti/setup-mezzo" element={<SetupMezzo />} />

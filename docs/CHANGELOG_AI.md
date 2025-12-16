@@ -1,3 +1,9 @@
+## [SETUP] Distribuzione App Autisti su Vercel
+
+- Risolto routing diretto delle route /autisti/* tramite rewrite verso index.html
+- Disabilitata cache Vercel per evitare versioni bloccate su PWA
+- Definito flusso corretto di installazione app autisti su Home (PWA)
+
 diff --git a/docs/CHANGELOG_AI.md b/docs/CHANGELOG_AI.md
 new file mode 100644
 index 0000000000000000000000000000000000000000..785d301cb58d1fcf27e544d8fdd1debae23736ac

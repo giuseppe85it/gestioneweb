@@ -25,3 +25,23 @@ index 0000000000000000000000000000000000000000..1b33d2bb8df4ca4e216c661c65a7a3a3
 +- L’API key IA è salvata in chiaro nel documento `@impostazioni_app/gemini` senza cifratura lato client né filtri di esposizione (`src/pages/IA/IAApiKey.tsx`).  
 +- Le Cloud Function esterne (`aiCore`, `analisi_economica_mezzo`) sono dipendenze hardcoded; indisponibilità o credenziali mancanti interrompono flussi IA e analisi (`src/utils/aiCore.ts`, `src/pages/AnalisiEconomica.tsx`).  
 +- I dati autisti e segnalazioni sono salvati in Firestore ma non è presente nel codice alcuna sincronizzazione verso i moduli gestionali: integrazione con il flusso principale NON DETERMINABILE DAL CODICE (`src/autisti/*.tsx`).  
+### Regola PWA / Autisti
+
+L’app autisti:
+- deve essere aperta e aggiunta alla Home partendo sempre da /autisti o /autisti/login
+- non deve mai essere aggiunta partendo dalla root /
+- non utilizza Service Worker
+- non utilizza cache offline
+
+Qualsiasi modifica a Vercel deve preservare:
+- rewrite di tutte le route verso index.html
+- header Cache-Control: no-store
+### Autenticazione Autisti
+
+Il codice autista viene richiesto:
+- solo al primo accesso
+- oppure se non esiste un mezzo assegnato
+- oppure dopo logout manuale
+
+Se `@autista_attivo` e `@mezzo_attivo_autista` sono presenti,
+l’app autisti entra direttamente senza richiedere il codice.

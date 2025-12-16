@@ -80,3 +80,21 @@ index 0000000000000000000000000000000000000000..3f0c85914a7e41c89d869339bb529cf3
 +- Documenti IA (`@documenti_*`) sono consumati da Dossier e Analisi Economica per costi e sintesi (`src/pages/DossierMezzo.tsx`, `src/pages/AnalisiEconomica.tsx`).  
 +- Movimenti materiali `@materialiconsegnati` collegano utilizzi in Manutenzioni e consegne a mezzi/destinatari, e sono mostrati nel Dossier (`src/pages/Manutenzioni.tsx`, `src/pages/MaterialiConsegnati.tsx`, `src/pages/DossierMezzo.tsx`).  
 +- App Autisti produce chiavi temporanee e media che non risultano ancora integrate nei moduli amministrativi principali se non via Inbox storici (nessuna sincronizzazione oltre ai setItemSync osservati). NON DETERMINABILE DAL CODICE se esista processo server-side di consolidamento.  
+## Distribuzione App Autisti (Vercel)
+
+L’app autisti è distribuita come Web App (PWA leggera) tramite Vercel.
+
+URL ufficiale:
+- https://gestioneweb.vercel.app/autisti/login
+
+Caratteristiche:
+- Stesso progetto dell’app admin
+- Routing SPA gestito lato client (React Router)
+- Rewrite Vercel attivo verso /index.html
+- Nessun Service Worker
+- Cache disabilitata (Cache-Control: no-store)
+
+Motivazione:
+- Evitare versioni bloccate su dispositivi mobili
+- Garantire che ogni apertura carichi sempre l’ultima versione
+- Consentire link diretti alle route /autisti/*
