@@ -1,0 +1,27 @@
+diff --git a/docs/PROJECT_RULES.md b/docs/PROJECT_RULES.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b33d2bb8df4ca4e216c661c65a7a3a3f7368b9c
+--- /dev/null
++++ b/docs/PROJECT_RULES.md
+@@ -0,0 +1,21 @@
++# PROJECT_RULES
++
++## Invarianti dedotte
++- Le liste persistite tramite `storageSync` usano documenti Firestore nella collection `storage` con payload `{ value: [...] }` (es. fornitori, colleghi, lavori, inventario, manutenzioni).  
++- Le manutenzioni salvano date nel formato stringa `"gg mm aaaa"` e normalizzano `km/ore/sottotipo/eseguito` a `null` per evitare `undefined` (`src/pages/Manutenzioni.tsx`).  
++- I lavori raggruppano elementi tramite `gruppoId` e marcano esecuzione con booleano `eseguito`; la cancellazione o modifica attende questa struttura (`src/pages/LavoriDaEseguire.tsx`, `src/pages/LavoriEseguiti.tsx`, `src/pages/DettaglioLavoro.tsx`).  
++- Le foto mezzi, inventario e materiali usano percorsi Storage derivati dagli identificativi (targa/id materiale) e vengono salvate prima dell’aggiornamento Firestore (`src/pages/Mezzi.tsx`, `src/pages/Inventario.tsx`, `src/utils/materialImages.ts`).  
++- I documenti IA vengono scritti nelle collection dedicate (`@documenti_mezzi`/`@documenti_magazzino`/`@documenti_generici`) senza mutare le strutture restituite dall’analisi; l’importazione inventario filtra parole chiave escluse e somma quantità su descrizioni identiche (`src/pages/IA/IADocumenti.tsx`).  
++- `GestioneOperativa` dichiara vincolo di non cambiare le chiavi di lettura/scrittura dei moduli monitorati (`src/pages/GestioneOperativa.tsx`).  
++
++## Pattern vietati
++- Cambiare i nomi delle chiavi Firestore esistenti (`@inventario`, `@materialiconsegnati`, `@mezzi_aziendali`, ecc.) rompe caricamenti a cascata nei moduli dipendenti (`src/pages/GestioneOperativa.tsx`, `src/pages/DossierMezzo.tsx`, `src/pages/Manutenzioni.tsx`).  
++- Salvare strutture con `undefined` o formati data diversi in manutenzioni può compromettere ordinamenti e rendering (`src/pages/Manutenzioni.tsx`).  
++- Spostare documenti IA fuori dalle collection dedicate impedisce a Dossier e Analisi Economica di leggerli (`src/pages/DossierMezzo.tsx`, `src/pages/AnalisiEconomica.tsx`).  
++- Usare chiavi `localStorage` al posto di `storageSync` nei moduli che aspettano Firestore produce divergenze dati (nessun modulo di dominio legge `localStorage`, solo `CheckStorage` lo usa) (`src/pages/CheckStorage.tsx`).  
++
++## Rischi reali
++- Le regole Storage negano ogni lettura/scrittura, bloccando upload/download immagini e PDF previsti dai moduli (foto mezzi, inventario, materiali, documenti IA, segnalazioni) (`storage.rules`).  
++- L’API key IA è salvata in chiaro nel documento `@impostazioni_app/gemini` senza cifratura lato client né filtri di esposizione (`src/pages/IA/IAApiKey.tsx`).  
++- Le Cloud Function esterne (`aiCore`, `analisi_economica_mezzo`) sono dipendenze hardcoded; indisponibilità o credenziali mancanti interrompono flussi IA e analisi (`src/utils/aiCore.ts`, `src/pages/AnalisiEconomica.tsx`).  
++- I dati autisti e segnalazioni sono salvati in Firestore ma non è presente nel codice alcuna sincronizzazione verso i moduli gestionali: integrazione con il flusso principale NON DETERMINABILE DAL CODICE (`src/autisti/*.tsx`).  
