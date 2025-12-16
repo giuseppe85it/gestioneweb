@@ -6,21 +6,33 @@ export default function AutistiGate() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const autista = getItemSync("@autista_attivo");
-    const mezzo = getItemSync("@mezzo_attivo_autista");
+    let mounted = true;
 
-    if (!autista) {
-      navigate("/autisti/login", { replace: true });
-      return;
+    async function check() {
+      const autista = await getItemSync("@autista_attivo");
+      const mezzo = await getItemSync("@mezzo_attivo_autista");
+
+      if (!mounted) return;
+
+      if (!autista) {
+        navigate("/autisti/login", { replace: true });
+        return;
+      }
+
+      if (!mezzo) {
+        navigate("/autisti/setup-mezzo", { replace: true });
+        return;
+      }
+
+      navigate("/autisti/home", { replace: true });
     }
 
-    if (!mezzo) {
-      navigate("/autisti/setup-mezzo", { replace: true });
-      return;
-    }
+    check();
 
-    navigate("/autisti/home", { replace: true });
+    return () => {
+      mounted = false;
+    };
   }, [navigate]);
 
-  return null; // non renderizza nulla
+  return null;
 }
