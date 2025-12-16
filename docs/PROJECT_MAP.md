@@ -98,3 +98,9 @@ Motivazione:
 - Evitare versioni bloccate su dispositivi mobili
 - Garantire che ogni apertura carichi sempre l’ultima versione
 - Consentire link diretti alle route /autisti/*
+### Sessione Autisti
+
+L’identità dell’autista e il mezzo attivo sono salvati localmente
+(per dispositivo) e NON su Firestore.
+
+Firestore contiene solo dati operativi e storici.

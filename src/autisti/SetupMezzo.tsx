@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./SetupMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { saveMezzoLocal } from "./autistiStorage";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const AUTISTA_KEY = "@autista_attivo";
@@ -145,6 +146,12 @@ export default function SetupMezzo() {
       targaRimorchio,
       timestamp: now,
     });
+saveMezzoLocal({
+  targaCamion,
+  targaRimorchio,
+  timestamp: now,
+});
+
 
     navigate("/autisti/home");
   }

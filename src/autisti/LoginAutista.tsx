@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { saveAutistaLocal } from "./autistiStorage";
 
 const COLLEGHI_KEY = "@colleghi";
 
@@ -45,6 +46,11 @@ export default function LoginAutista() {
       badge: badge.trim(),
       timestamp: Date.now(),
     });
+saveAutistaLocal({
+  id: collega.id,
+  nome: collega.nome,
+  badge: badge.trim(),
+});
 
     navigate("/autisti/setup-mezzo");
   }

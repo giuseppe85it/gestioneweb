@@ -1,37 +1,25 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getItemSync } from "../utils/storageSync";
+import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
 
 export default function AutistiGate() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    let mounted = true;
+    const autista = getAutistaLocal();
+    const mezzo = getMezzoLocal();
 
-    async function check() {
-      const autista = await getItemSync("@autista_attivo");
-      const mezzo = await getItemSync("@mezzo_attivo_autista");
-
-      if (!mounted) return;
-
-      if (!autista) {
-        navigate("/autisti/login", { replace: true });
-        return;
-      }
-
-      if (!mezzo) {
-        navigate("/autisti/setup-mezzo", { replace: true });
-        return;
-      }
-
-      navigate("/autisti/home", { replace: true });
+    if (!autista) {
+      navigate("/autisti/login", { replace: true });
+      return;
     }
 
-    check();
+    if (!mezzo) {
+      navigate("/autisti/setup-mezzo", { replace: true });
+      return;
+    }
 
-    return () => {
-      mounted = false;
-    };
+    navigate("/autisti/home", { replace: true });
   }, [navigate]);
 
   return null;
