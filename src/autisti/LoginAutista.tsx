@@ -1,77 +1,95 @@
-// src/autisti/LoginAutista.tsx
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "../autisti/autisti.css";
+import "./Autisti.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { saveAutistaLocal } from "./autistiStorage";
-
-const COLLEGHI_KEY = "@colleghi";
-
-interface Collega {
-  id: string;
-  nome: string;
-  badge?: string;
-}
+import { getAutistaLocal, getMezzoLocal, saveAutistaLocal } from "./autistiStorage";
 
 export default function LoginAutista() {
   const navigate = useNavigate();
+
   const [badge, setBadge] = useState("");
-  const [errore, setErrore] = useState("");
+  const [errore, setErrore] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
- async function handleLogin() {
+  // 🔒 REDIRECT AUTOMATICO SE GIÀ LOGGATO
+  useEffect(() => {
+    const autista = getAutistaLocal();
+    const mezzo = getMezzoLocal();
 
-    setErrore("");
+    if (autista && mezzo) {
+      navigate("/autisti/home", { replace: true });
+    }
+  }, [navigate]);
 
+  async function handleLogin() {
     if (!badge.trim()) {
       setErrore("Inserisci il badge");
       return;
     }
 
-   const colleghi: Collega[] = (await getItemSync(COLLEGHI_KEY)) || [];
+    setLoading(true);
+    setErrore(null);
 
+    try {
+      const colleghi = (await getItemSync("@colleghi")) || [];
+      const collega = colleghi.find(
+        (c: any) => String(c.badge) === badge.trim()
+      );
 
-    const collega = colleghi.find(
-      (c) => c.badge?.trim() === badge.trim()
-    );
+      if (!collega) {
+        setErrore("Badge non valido");
+        setLoading(false);
+        return;
+      }
 
-    if (!collega) {
-      setErrore("Badge non valido");
-      return;
+      const autista = {
+        id: collega.id,
+        nome: collega.nome,
+        badge: badge.trim(),
+      };
+
+      // 🔹 SALVATAGGIO PER ADMIN / STORICO
+      await setItemSync("@autista_attivo", {
+        ...autista,
+        timestamp: Date.now(),
+      });
+
+      // 🔹 SALVATAGGIO LOCALE PER SESSIONE
+      saveAutistaLocal(autista);
+
+      navigate("/autisti/setup-mezzo");
+    } catch (e) {
+      setErrore("Errore durante il login");
+    } finally {
+      setLoading(false);
     }
-
-    setItemSync("@autista_attivo", {
-      id: collega.id,
-      nome: collega.nome,
-      badge: badge.trim(),
-      timestamp: Date.now(),
-    });
-saveAutistaLocal({
-  id: collega.id,
-  nome: collega.nome,
-  badge: badge.trim(),
-});
-
-    navigate("/autisti/setup-mezzo");
   }
 
   return (
     <div className="autisti-container">
-      <h1 className="autisti-title">Accesso Autista</h1>
+      <h1 className="autisti-title">Accesso Autisti</h1>
 
-      <input
-        className="autisti-input"
-        type="text"
-        placeholder="Numero badge"
-        value={badge}
-        onChange={(e) => setBadge(e.target.value)}
-      />
+      <div className="autisti-card">
+        <label className="autisti-label">Badge</label>
 
-      {errore && <div className="autisti-error">{errore}</div>}
+        <input
+          className="autisti-input"
+          type="number"
+          placeholder="Inserisci badge"
+          value={badge}
+          onChange={(e) => setBadge(e.target.value)}
+        />
 
-      <button className="autisti-button" onClick={handleLogin}>
-        Entra
-      </button>
+        {errore && <div className="autisti-error">{errore}</div>}
+
+        <button
+          className="autisti-button"
+          onClick={handleLogin}
+          disabled={loading}
+        >
+          {loading ? "Verifica..." : "ENTRA"}
+        </button>
+      </div>
     </div>
   );
 }
