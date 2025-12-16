@@ -104,3 +104,20 @@ L’identità dell’autista e il mezzo attivo sono salvati localmente
 (per dispositivo) e NON su Firestore.
 
 Firestore contiene solo dati operativi e storici.
+## App Autisti – Flusso di Accesso
+
+Punto di ingresso:
+- `/autisti` → AutistiGate
+
+Flusso:
+1. Se non esiste sessione locale → LoginAutista
+2. Se esiste autista ma non mezzo → SetupMezzo
+3. Se esistono entrambi → HomeAutisti
+
+Componenti chiave:
+- AutistiGate.tsx → decide il flusso
+- LoginAutista.tsx → login badge + redirect automatico se già loggato
+- autistiStorage.ts → persistenza locale della sessione
+
+Nota:
+L’utente non deve mai entrare direttamente da `/autisti/login`.

@@ -29,3 +29,10 @@ index 0000000000000000000000000000000000000000..785d301cb58d1fcf27e544d8fdd1deba
 +- Aggiornare `storage.rules` per consentire gli upload necessari mantenendo sicurezza: attualmente `allow read, write: if false` blocca ogni feature multimediale (`storage.rules`).  
 +- Definire e implementare il flusso di consolidamento dei dati temporanei autisti (`@rifornimenti_autisti_tmp`, `@segnalazioni_autisti_tmp`, `@autisti_sessione_attive`, ecc.) verso dataset gestionali o pipeline dedicate: NON DETERMINABILE DAL CODICE.  
 +- Completare il flusso Rifornimento autisti, oggi segnato “Funzione in fase iniziale” e privo di dettagli costo/litri salvati (`src/autisti/Rifornimento.tsx`).  
+## [FIX] Sessione Autisti persistente su Web/PWA
+
+- Risolta richiesta continua del badge ad ogni apertura
+- Introdotto storage locale dedicato per la sessione autista e mezzo
+- Centralizzato l’accesso tramite AutistiGate su /autisti
+- Aggiunto redirect automatico in LoginAutista se sessione già presente
+- Separata definitivamente la sessione autista dai dati Firestore

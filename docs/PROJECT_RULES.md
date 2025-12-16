@@ -45,3 +45,25 @@ Il codice autista viene richiesto:
 
 Se `@autista_attivo` e `@mezzo_attivo_autista` sono presenti,
 l’app autisti entra direttamente senza richiedere il codice.
+## Sessione Autisti (Web / PWA)
+
+L’app Autisti utilizza una gestione di sessione locale per dispositivo.
+
+Regole definitive:
+- L’ingresso ufficiale dell’app Autisti è SEMPRE `/autisti`
+- La route `/autisti/login` non è un punto di ingresso ma solo una pagina interna
+- Il login con badge viene richiesto solo:
+  - al primo accesso
+  - dopo logout manuale
+  - su un nuovo dispositivo
+
+Implementazione:
+- L’identità dell’autista e il mezzo attivo sono salvati in localStorage dedicato:
+  - `@autista_attivo_local`
+  - `@mezzo_attivo_autista_local`
+- Firestore NON viene usato per la sessione autista
+- Firestore resta la fonte unica dei dati operativi e storici
+
+Sicurezza:
+- La sessione è per-dispositivo
+- Cambiando telefono o cancellando i dati, il badge viene richiesto di nuovo

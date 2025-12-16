@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./Autisti.css";
+import "./autisti.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal, saveAutistaLocal } from "./autistiStorage";
 
