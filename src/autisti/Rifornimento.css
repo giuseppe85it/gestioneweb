@@ -1,0 +1,175 @@
+/* CONTENITORE */
+.rifornimento-container {
+  max-width: 430px;
+  margin: 0 auto;
+}
+
+/* SEZIONI */
+.rf-section {
+  background: #ffffff;
+  padding: 18px;
+  border-radius: 14px;
+  margin-bottom: 18px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+/* ========================= */
+/* TOGGLE TIPO RIFORNIMENTO */
+/* ========================= */
+
+.rf-toggle {
+  display: flex;
+  gap: 10px;
+}
+
+.rf-toggle button {
+  flex: 1;
+  padding: 16px 12px;
+  border-radius: 14px;
+  border: 2px solid #ccc;
+  background: #eaeaea;
+  font-size: 17px;
+  font-weight: 700;
+  color: #333;
+}
+
+/* STATO ATTIVO */
+.rf-toggle button.active {
+  background: #1e6bff;
+  border-color: #1e6bff;
+  color: #ffffff;
+}
+
+/* VERSIONE PICCOLA (Italia / Svizzera) */
+.rf-toggle.small button {
+  padding: 14px;
+  font-size: 16px;
+}
+
+/* ================= */
+/* INPUT PRINCIPALI */
+/* ================= */
+
+.rf-section input,
+.rf-section textarea {
+  width: 100%;
+  padding: 16px;
+  margin-top: 12px;
+  border-radius: 14px;
+  border: 2px solid #ccc;
+  font-size: 18px;
+}
+
+/* CAMPO ATTIVO */
+.rf-section input:focus,
+.rf-section textarea:focus {
+  border-color: #1e6bff;
+  outline: none;
+}
+
+/* NOTE */
+.rf-section textarea {
+  resize: none;
+  height: 90px;
+}
+
+/* DATA */
+.rf-date {
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #444;
+}
+
+/* ================= */
+/* RADIO PAGAMENTO */
+/* ================= */
+
+.rf-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rf-radio label {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.rf-radio input {
+  transform: scale(1.4);
+  margin-right: 10px;
+}
+
+/* ================= */
+/* BOTTONI FINALI */
+/* ================= */
+
+.autisti-button {
+  width: 100%;
+  padding: 18px;
+  margin-top: 12px;
+  border-radius: 14px;
+  font-size: 20px;
+  font-weight: 800;
+  border: none;
+}
+
+/* SALVA */
+.autisti-button:not(:disabled) {
+  background: #2fa84f;
+  color: white;
+}
+
+/* DISABILITATO */
+.autisti-button:disabled {
+  background: #cccccc;
+  color: #666;
+}
+
+/* INDIETRO */
+.autisti-button.secondary {
+  background: #e0e0e0;
+  color: #000;
+  border: 2px solid #999;
+}
+.rf-toggle button.active.green {
+  background: #2fa84f;
+  border-color: #2fa84f;
+  color: white;
+}
+
+.rf-error {
+  color: #e53935;
+  font-size: 14px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+input.error,
+textarea.error {
+  border-color: #e53935;
+  background: #fdeaea;
+}
+
+.rf-alert {
+  background: #fff3cd;
+  border: 2px solid #ff9800;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.rf-alert p {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.rf-alert button {
+  margin-right: 10px;
+  padding: 10px 16px;
+  font-size: 16px;
+  font-weight: 700;
+}

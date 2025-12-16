@@ -4,13 +4,10 @@ import { Link } from "react-router-dom";
 function Home() {
   return (
     <div className="home-container">
-
       <div className="home-content">
-
         <h1 className="home-title">Gestione Mezzi</h1>
 
         <div className="home-grid">
-
           <Link to="/lavori-da-eseguire" className="home-box">
             <img src="/icons/lavori.png" alt="Lavori" className="icon-img" />
             <p>Lavori</p>
@@ -26,23 +23,14 @@ function Home() {
             <p>Da ordinare</p>
           </Link>
 
-          <Link to="/materiali-consegnati" className="home-box">
-            <img src="/icons/consegnati.png" alt="Consegnati" className="icon-img" />
-            <p>Consegnati</p>
+          <Link to="/gestione-operativa" className="home-box">
+            <img
+              src="/icons/gestione_operativa.png"
+              alt="Gestione Operativa"
+              className="icon-img"
+            />
+            <p>Gestione Operativa</p>
           </Link>
-
-          <Link to="/inventario" className="home-box">
-            <img src="/icons/inventario.png" alt="Inventario" className="icon-img" />
-            <p>Inventario</p>
-          </Link>
-<Link to="/gestione-operativa" className="home-box">
-  <img
-    src="/icons/gestione_operativa.png"
-    alt="Gestione Operativa"
-    className="icon-img"
-  />
-  <p>Gestione Operativa</p>
-</Link>
 
           <Link to="/mezzi" className="home-box">
             <img src="/icons/mezzi.png" alt="Mezzi" className="icon-img" />
@@ -59,33 +47,24 @@ function Home() {
             <p>Fornitori</p>
           </Link>
 
-          <Link to="/manutenzioni" className="home-box">
-            <img src="/icons/manutenzioni.png" alt="Manutenzioni" className="icon-img" />
-            <p>Manutenzioni</p>
-          </Link>
           <Link to="/autisti/login" className="home-box">
-  <img src="/icons/autisti.png" alt="Autisti" className="icon-img" />
-  <p>Autisti</p>
-</Link>
-<Link to="/autisti-inbox" className="home-box">
-  <img src="/icons/autisti.png" alt="Autisti Inbox" className="icon-img" />
-  <p>Autisti – Inbox</p>
-</Link>
+            <img src="/icons/autisti.png" alt="Autisti" className="icon-img" />
+            <p>Autisti</p>
+          </Link>
 
+          <Link to="/autisti-inbox" className="home-box">
+            <img src="/icons/autisti.png" alt="Autisti Inbox" className="icon-img" />
+            <p>Autisti – Inbox</p>
+          </Link>
 
-
-          {/* ✔️ NUOVA ICONA IA */}
           <Link to="/ia" className="home-box">
             <img src="/icons/ia.png" alt="IA" className="icon-img" />
             <p>IA</p>
           </Link>
-
         </div>
-
       </div>
     </div>
   );
 }
 
 export default Home;
-
