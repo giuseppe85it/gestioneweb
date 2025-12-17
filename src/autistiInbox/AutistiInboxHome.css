@@ -1,44 +1,188 @@
-/* src/autistiInbox/AutistiInboxHome.css */
-/* Stile premium coerente con dossier */
+/* ======================================================
+   AUTISTI INBOX – HOME OPERATIVA (DESKTOP FIRST)
+   Rifinitura grafica finale
+====================================================== */
 
-.autisti-inbox-container {
-  max-width: 1100px;
-  margin: 40px auto;
-  padding: 20px;
+/* ===== BASE ===== */
+.autisti-home {
+  background: #e7e1d3; /* contrasto con le card */
+  min-height: 100vh;
+  padding: 28px 32px 40px;
+  box-sizing: border-box;
+  color: #1f1f1f;
 }
 
-.autisti-inbox-title {
-  font-size: 26px;
-  margin-bottom: 30px;
+/* ===== HEADER ===== */
+.autisti-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
 }
 
-.autisti-inbox-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
+.autisti-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.autisti-inbox-card {
-  background: #f7f5ef;
-  border-radius: 14px;
-  padding: 24px;
+.autisti-header-left img {
+  height: 40px;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
 
-.autisti-inbox-card:hover {
-  background: #efece2;
+.autisti-header h1 {
+  font-size: 26px;
+  font-weight: 600;
+  margin: 0;
 }
 
-.autisti-inbox-card h2 {
+/* ===== HEADER ACTIONS ===== */
+.autisti-header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.autisti-header-actions button {
+  background: #f3efe4;
+  border: 1px solid #d8d1bf;
+  border-radius: 18px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.autisti-header-actions button:hover {
+  background: #ebe6d6;
+}
+
+/* ===== DATA ===== */
+.autisti-date-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin: 20px 0 32px;
+}
+
+.autisti-date-bar span {
+  font-size: 20px;            /* data più grande */
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.autisti-date-bar button {
+  background: #f3efe4;
+  border: 1px solid #d8d1bf;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+}
+
+/* ===== LAYOUT ===== */
+.autisti-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 28px;
+}
+
+/* ===== CARD GRID ===== */
+.autisti-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 22px;
+}
+
+/* ===== CARD BASE ===== */
+.daily-card {
+  background: #f7f5ef;
+  border-radius: 20px;
+  padding: 22px 24px;
+  min-height: 180px;          /* card più grandi */
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.daily-card h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* ===== CARD SEGNALAZIONI ===== */
+.daily-card.alert {
+  border-left: 6px solid #b23b2e; /* rosso elegante */
+}
+
+/* ===== ITEM GIORNO ===== */
+.daily-item {
+  font-size: 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid #e2dccb;
+}
+
+.daily-item:last-child {
+  border-bottom: none;
+}
+
+/* ===== EMPTY STATE ===== */
+.daily-card .empty {
+  font-style: italic;
+  color: #8b877b;
+  font-size: 14px;
+}
+
+/* ===== STATO RIMORCHI ===== */
+.rimorchi-panel {
+  background: #f7f5ef;
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+}
+
+.rimorchi-panel h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* ===== RIGA RIMORCHIO ===== */
+.rimorchio-row {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 10px 12px;
   margin-bottom: 10px;
+  font-size: 14px;
 }
 
-.autisti-inbox-card p {
-  opacity: 0.7;
+.rimorchio-row strong {
+  display: block;
+  font-size: 15px;
 }
 
-.autisti-inbox-card.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.rimorchio-row small {
+  color: #5f5c53;
+}
+
+/* ===== BADGE VISIVO ===== */
+.rimorchio-row[data-stato="AGGANCIATO"] {
+  border-left: 6px solid #2e7d32;
+}
+
+.rimorchio-row[data-stato="LIBERO"] {
+  border-left: 6px solid #c62828;
+}
+
+/* ===== RESPONSIVE MINIMO ===== */
+@media (max-width: 1200px) {
+  .autisti-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .autisti-cards {
+    grid-template-columns: 1fr;
+  }
 }

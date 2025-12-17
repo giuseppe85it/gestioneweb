@@ -1,14 +1,20 @@
 // ======================================================
-// CambioMezzo.tsx
+// CambioMezzoAutista.tsx
 // APP AUTISTI
-// Schermata unica per:
-// - Cambio Rimorchio
+// - Cambio Rimorchio (SGANCIO)
 // - Cambio Motrice
+// Scrive:
+// - storageSync (come prima)
+// - Firestore (EVENTI OPERATIVI)
 // ======================================================
 
 import { useEffect, useState } from "react";
 import "./CambioMezzoAutista.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+
+// 🔥 Firestore diretto per eventi
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
 
 const AUTISTA_KEY = "@autista_attivo";
 const SESSIONI_KEY = "@autisti_sessione_attive";
@@ -28,13 +34,14 @@ interface Sessione {
   timestamp: number;
 }
 
-export default function CambioMezzo() {
+export default function CambioMezzoAutista() {
   const [modalita, setModalita] = useState<Modalita>("rimorchio");
   const [sessione, setSessione] = useState<Sessione | null>(null);
 
   const [luogo, setLuogo] = useState("");
   const [luogoAltro, setLuogoAltro] = useState("");
-  const [statoCarico, setStatoCarico] = useState<"PIENO" | "SCARICO">("SCARICO");
+  const [statoCarico, setStatoCarico] =
+    useState<"PIENO" | "SCARICO">("SCARICO");
 
   const [condizioni, setCondizioni] = useState({
     specifiche: {
@@ -52,6 +59,9 @@ export default function CambioMezzo() {
 
   const [errore, setErrore] = useState("");
 
+  // ======================================================
+  // LOAD SESSIONE ATTIVA
+  // ======================================================
   useEffect(() => {
     caricaSessione();
   }, [modalita]);
@@ -76,6 +86,9 @@ export default function CambioMezzo() {
     });
   }
 
+  // ======================================================
+  // CONFERMA CAMBIO
+  // ======================================================
   async function conferma() {
     setErrore("");
 
@@ -95,8 +108,12 @@ export default function CambioMezzo() {
     const now = Date.now();
     const luogoFinale = luogo === "ALTRO" ? luogoAltro : luogo;
 
+    // =======================
+    // SGANCIO RIMORCHIO
+    // =======================
     if (modalita === "rimorchio") {
       const storico = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
+
       storico.push({
         targaRimorchio: sessione.targa,
         categoria: sessione.categoria,
@@ -108,11 +125,29 @@ export default function CambioMezzo() {
         timestampAggancio: sessione.timestamp,
         timestampSgancio: now,
       });
+
       await setItemSync(STORICO_RIMORCHI_KEY, storico);
+
+      // 🔥 EVENTO FIRESTORE
+      await addDoc(collection(db, "autisti_eventi"), {
+        tipo: "SGANCIO_RIMORCHIO",
+        autistaNome: sessione.nomeAutista,
+        badgeAutista: sessione.badgeAutista,
+        targaRimorchio: sessione.targa,
+        luogo: luogoFinale,
+        statoCarico,
+        condizioni,
+        timestamp: now,
+        createdAt: serverTimestamp(),
+      });
     }
 
+    // =======================
+    // CAMBIO MOTRICE
+    // =======================
     if (modalita === "motrice") {
       const storico = (await getItemSync(STORICO_MOTRICI_KEY)) || [];
+
       storico.push({
         targaMotrice: sessione.targa,
         autista: sessione.nomeAutista,
@@ -121,9 +156,25 @@ export default function CambioMezzo() {
         condizioni: condizioni.generali,
         timestampCambio: now,
       });
+
       await setItemSync(STORICO_MOTRICI_KEY, storico);
+
+      // 🔥 EVENTO FIRESTORE
+      await addDoc(collection(db, "autisti_eventi"), {
+        tipo: "CAMBIO_MOTRICE",
+        autistaNome: sessione.nomeAutista,
+        badgeAutista: sessione.badgeAutista,
+        targaMotrice: sessione.targa,
+        luogo: luogoFinale,
+        condizioni: condizioni.generali,
+        timestamp: now,
+        createdAt: serverTimestamp(),
+      });
     }
 
+    // =======================
+    // RIMOZIONE SESSIONE
+    // =======================
     const sessioni: Sessione[] = (await getItemSync(SESSIONI_KEY)) || [];
     const aggiornate = sessioni.filter(
       (s) =>
@@ -132,18 +183,20 @@ export default function CambioMezzo() {
           s.badgeAutista === sessione.badgeAutista
         )
     );
+
     await setItemSync(SESSIONI_KEY, aggiornate);
 
     alert("Cambio registrato correttamente");
     setSessione(null);
   }
 
+  // ======================================================
+  // UI
+  // ======================================================
   return (
     <div className="cm-container">
       <h1>CAMBIO MEZZO</h1>
-      <p className="cm-subtitle">
-        Seleziona cosa stai cambiando
-      </p>
+      <p className="cm-subtitle">Seleziona cosa stai cambiando</p>
 
       <div className="cm-switch">
         <button
@@ -161,9 +214,7 @@ export default function CambioMezzo() {
       </div>
 
       {!sessione && (
-        <div className="cm-empty">
-          Nessun {modalita} attivo
-        </div>
+        <div className="cm-empty">Nessun {modalita} attivo</div>
       )}
 
       {sessione && (
