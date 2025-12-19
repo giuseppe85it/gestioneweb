@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
 import "./Segnalazioni.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
 
 type Ambito = "motrice" | "rimorchio";
 type TipoProblema = "motore" | "freni" | "gomme" | "idraulico" | "elettrico" | "altro";
@@ -10,8 +11,6 @@ type PosizioneGomma = "anteriore" | "posteriore" | "asse1" | "asse2" | "asse3";
 type ProblemaGomma = "forata" | "usurata" | "da_controllare" | "altro";
 
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
-const KEY_AUTISTA = "@autista_attivo";
-const KEY_MEZZO_ATTIVO = "@mezzo_attivo_autista";
 const KEY_MEZZI = "@mezzi_aziendali";
 
 function genId() {
@@ -106,7 +105,7 @@ type MezzoAziendale = {
   categoria?: string;
 };
 
-type MezzoAttivo = {
+type MezzoAttivoLocal = {
   targaCamion: string | null;
   targaRimorchio: string | null;
   timestamp?: number;
@@ -119,7 +118,7 @@ export default function Segnalazioni() {
   const [loading, setLoading] = useState(false);
 
   const [autista, setAutista] = useState<any>(null);
-  const [mezzoAttivo, setMezzoAttivo] = useState<MezzoAttivo | null>(null);
+  const [mezzoAttivo, setMezzoAttivo] = useState<MezzoAttivoLocal | null>(null);
   const [mezziAziendali, setMezziAziendali] = useState<MezzoAziendale[]>([]);
 
   const [ambito, setAmbito] = useState<Ambito | null>(null);
@@ -138,15 +137,25 @@ export default function Segnalazioni() {
 
   useEffect(() => {
     (async () => {
-      const a = await getItemSync(KEY_AUTISTA);
-      const m = await getItemSync(KEY_MEZZO_ATTIVO);
+      // SESSIONE SOLO LOCALE
+      const a = getAutistaLocal();
+      const m = getMezzoLocal();
       const list = (await getItemSync(KEY_MEZZI)) || [];
 
+      if (!a?.badge) {
+        navigate("/autisti/login", { replace: true });
+        return;
+      }
+      if (!m?.targaCamion) {
+        navigate("/autisti/setup-mezzo", { replace: true });
+        return;
+      }
+
       setAutista(a || null);
-      setMezzoAttivo((m as MezzoAttivo) || null);
+      setMezzoAttivo((m as MezzoAttivoLocal) || null);
       setMezziAziendali(Array.isArray(list) ? list : []);
     })();
-  }, []);
+  }, [navigate]);
 
   function findMezzoByTarga(targa?: string | null) {
     if (!targa) return null;
@@ -175,7 +184,6 @@ export default function Segnalazioni() {
   }
 
   function resetByAmbito(next: Ambito) {
-    // Se scelgo RIMORCHIO ma non c’è rimorchio agganciato, blocco.
     if (next === "rimorchio" && !targaRimorchio) {
       setAlertMsg("Nessun rimorchio agganciato. Seleziona MOTRICE.");
       setErrors({ ambito: "Nessun rimorchio agganciato" });
@@ -193,7 +201,6 @@ export default function Segnalazioni() {
     setTipo(next);
     setErrors({});
     setAlertMsg(null);
-
     if (next !== "gomme") resetGomme();
   }
 
@@ -223,8 +230,7 @@ export default function Segnalazioni() {
     setErrors(e);
 
     if (Object.keys(e).length > 0) {
-      const list = Object.values(e);
-      setAlertMsg("Manca: " + list.join(" · "));
+      setAlertMsg("Manca: " + Object.values(e).join(" · "));
       return false;
     }
 
@@ -274,25 +280,24 @@ export default function Segnalazioni() {
     setLoading(true);
 
     const isMotrice = ambito === "motrice";
-
     const targaSelezionata = isMotrice ? targaMotrice : targaRimorchio;
     const mezzoRef = isMotrice ? mezzoMotrice : mezzoRimorchio;
 
     const record = {
       id: genId(),
 
-      ambito, // "motrice" | "rimorchio"
+      ambito,
 
       mezzoId: mezzoRef?.id || null,
       targa: targaSelezionata || null,
       categoriaMezzo: mezzoRef?.categoria || null,
 
-      // utile per admin/debug (non rompe nulla se ignorato)
       targaCamion: targaMotrice || null,
       targaRimorchio: targaRimorchio || null,
 
       autistaId: autista?.id || null,
       autistaNome: autista?.nome || null,
+      badgeAutista: autista?.badge || null,
 
       tipoProblema: tipo,
 
@@ -338,7 +343,6 @@ export default function Segnalazioni() {
 
       {alertMsg && <div className="seg-alert">{alertMsg}</div>}
 
-      {/* AMBITO */}
       <div className="seg-section">
         <div className="seg-label">Dove è il problema</div>
         <div className="seg-toggle">
@@ -360,7 +364,6 @@ export default function Segnalazioni() {
         {errors.ambito && <div className="seg-error">{errors.ambito}</div>}
       </div>
 
-      {/* TIPO PROBLEMA */}
       <div className="seg-section">
         <div className="seg-label">Tipo problema</div>
 
@@ -381,7 +384,6 @@ export default function Segnalazioni() {
         {errors.tipo && <div className="seg-error">{errors.tipo}</div>}
       </div>
 
-      {/* GOMME */}
       {tipo === "gomme" && (
         <div className="seg-section">
           <div className="seg-label">Seleziona asse / posizione</div>
@@ -390,9 +392,7 @@ export default function Segnalazioni() {
             {gommeOptions.map((p) => (
               <button
                 key={p}
-                className={`seg-chip ${posizioneGomma === p ? "active green" : ""} ${
-                  errors.posizioneGomma ? "errorBtn" : ""
-                }`}
+                className={`seg-chip ${posizioneGomma === p ? "active green" : ""} ${errors.posizioneGomma ? "errorBtn" : ""}`}
                 onClick={() => setPosizioneGomma(p)}
               >
                 {labelPosizione(p)}
@@ -408,9 +408,7 @@ export default function Segnalazioni() {
             {(["forata", "usurata", "da_controllare", "altro"] as ProblemaGomma[]).map((p) => (
               <button
                 key={p}
-                className={`seg-chip ${problemaGomma === p ? "active green" : ""} ${
-                  errors.problemaGomma ? "errorBtn" : ""
-                }`}
+                className={`seg-chip ${problemaGomma === p ? "active green" : ""} ${errors.problemaGomma ? "errorBtn" : ""}`}
                 onClick={() => setProblemaGomma(p)}
               >
                 {labelProblemaGomma(p)}
@@ -423,7 +421,6 @@ export default function Segnalazioni() {
         </div>
       )}
 
-      {/* FOTO */}
       <div className="seg-section">
         <div className="seg-label">Foto (opzionale)</div>
 
@@ -453,7 +450,6 @@ export default function Segnalazioni() {
         )}
       </div>
 
-      {/* DESCRIZIONE */}
       <div className="seg-section">
         <div className="seg-label">Descrizione</div>
         <textarea
@@ -465,7 +461,6 @@ export default function Segnalazioni() {
         {errors.descrizione && <div className="seg-error">{errors.descrizione}</div>}
       </div>
 
-      {/* NOTE */}
       <div className="seg-section">
         <div className="seg-label">Note (opzionale)</div>
         <textarea
@@ -476,13 +471,11 @@ export default function Segnalazioni() {
         />
       </div>
 
-      {/* DATA */}
       <div className="seg-section">
         <div className="seg-label">Data</div>
         <div className="seg-date">{toItDateTime(nowTs)}</div>
       </div>
 
-      {/* FOOTER */}
       <button className="autisti-button seg-save" onClick={handleSave} disabled={loading}>
         {loading ? "Invio..." : "INVIA SEGNALAZIONE"}
       </button>

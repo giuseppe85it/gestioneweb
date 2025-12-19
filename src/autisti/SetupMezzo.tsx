@@ -1,7 +1,8 @@
 // ======================================================
 // SetupMezzo.tsx
 // - mode=rimorchio: MOTRICE BLOCCATA, scegli solo rimorchio
-// - mode=motrice (o nessun mode): scegli motrice e rimorchio (opzionale)
+// - mode=motrice: RIMORCHIO BLOCCATO, scegli solo motrice
+// - mode vuoto: scelta completa
 // - conferma -> SEMPRE /autisti/controllo
 // ======================================================
 
@@ -44,6 +45,7 @@ export default function SetupMezzo() {
 
   const mode = (searchParams.get("mode") || "").toLowerCase(); // "rimorchio" | "motrice" | ""
   const lockMotrice = mode === "rimorchio";
+  const lockRimorchio = mode === "motrice";
 
   const [motriciAll, setMotriciAll] = useState<Mezzo[]>([]);
   const [rimorchiAll, setRimorchiAll] = useState<Mezzo[]>([]);
@@ -77,41 +79,51 @@ export default function SetupMezzo() {
     const preMotrice = mezzoLocal?.targaCamion || null;
     const preRimorchio = mezzoLocal?.targaRimorchio || null;
 
+    // ----------------------------
+    // MOTRICE
+    // ----------------------------
     if (lockMotrice) {
-      // Se arrivi in mode=rimorchio senza motrice locale, è incoerente -> torna a setup normale
+      // Cambio RIMORCHIO: motrice bloccata
       if (!preMotrice) {
         navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
         return;
       }
       setTargaCamion(preMotrice);
 
-      // mostra solo la motrice attuale (no confusione)
       const attuale = mot.find((x) => x.targa === preMotrice);
       setMotriciAll(attuale ? [attuale] : []);
     } else {
-      // scelta completa: lista intera
+      // scelta completa o cambio motrice: lista intera
       setMotriciAll(mot);
 
-      // se non hai preMotrice locale, prova preselezione “autista abituale”
       if (!preMotrice && autista?.nome) {
         const motAssegnata = mot.find((m) => norm(m.autistaNome) === norm(autista.nome));
         if (motAssegnata) setTargaCamion(motAssegnata.targa);
+        else setTargaCamion(null);
       } else {
         setTargaCamion(preMotrice);
       }
     }
 
+    // ----------------------------
+    // RIMORCHI
+    // ----------------------------
     setRimorchiAll(rim);
 
-    // rimorchio: se c’è locale lo preseleziona, altrimenti prova “abituale”
-    if (preRimorchio) {
+    if (lockRimorchio) {
+      // Cambio MOTRICE: rimorchio bloccato com’è (anche null)
       setTargaRimorchio(preRimorchio);
-    } else if (autista?.nome) {
-      const rimAssegnato = rim.find((m) => norm(m.autistaNome) === norm(autista.nome));
-      if (rimAssegnato) setTargaRimorchio(rimAssegnato.targa);
-      else setTargaRimorchio(null);
     } else {
-      setTargaRimorchio(null);
+      // setup normale / cambio rimorchio: rimorchio selezionabile
+      if (preRimorchio) {
+        setTargaRimorchio(preRimorchio);
+      } else if (autista?.nome) {
+        const rimAssegnato = rim.find((m) => norm(m.autistaNome) === norm(autista.nome));
+        if (rimAssegnato) setTargaRimorchio(rimAssegnato.targa);
+        else setTargaRimorchio(null);
+      } else {
+        setTargaRimorchio(null);
+      }
     }
   }
 
@@ -140,7 +152,6 @@ export default function SetupMezzo() {
     const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
     const prev: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
 
-    // rimuove eventuale sessione precedente dell’autista
     const nuove = prev.filter((s) => s.badgeAutista !== autista.badge);
 
     const sessione: SessioneAttiva = {
@@ -152,7 +163,6 @@ export default function SetupMezzo() {
     };
 
     nuove.push(sessione);
-
     await setItemSync(SESSIONI_KEY, nuove);
 
     // compat: aggiorna anche la chiave sync (non usarla per gating)
@@ -207,7 +217,7 @@ export default function SetupMezzo() {
               onClick={() => {
                 if (!lockMotrice) setTargaCamion(m.targa);
               }}
-              style={lockMotrice ? { cursor: "default" } : undefined}
+              style={lockMotrice ? { cursor: "default", opacity: 0.85 } : undefined}
             >
               <div className="targa-text">{fmtTarga(m.targa)}</div>
               {m.autistaNome && <div className="targa-note">Autista abituale: {m.autistaNome}</div>}
@@ -218,10 +228,20 @@ export default function SetupMezzo() {
       </div>
 
       <h2 className="setup-subtitle">Rimorchio (opzionale)</h2>
+
+      {lockRimorchio && (
+        <div className="setup-error" style={{ marginBottom: 12 }}>
+          Rimorchio bloccato: stai facendo CAMBIO MOTRICE
+        </div>
+      )}
+
       <div className="targhe-list">
         <div
           className={`targa-card ${!targaRimorchio ? "selected" : ""}`}
-          onClick={() => setTargaRimorchio(null)}
+          onClick={() => {
+            if (!lockRimorchio) setTargaRimorchio(null);
+          }}
+          style={lockRimorchio ? { cursor: "default", opacity: 0.7 } : undefined}
         >
           <div className="targa-text">NESSUN RIMORCHIO</div>
         </div>
@@ -232,7 +252,10 @@ export default function SetupMezzo() {
             <div
               key={m.id}
               className={`targa-card ${targaRimorchio === m.targa ? "selected" : ""} ${warn ? "warn" : ""}`}
-              onClick={() => setTargaRimorchio(m.targa)}
+              onClick={() => {
+                if (!lockRimorchio) setTargaRimorchio(m.targa);
+              }}
+              style={lockRimorchio ? { cursor: "default", opacity: 0.7 } : undefined}
             >
               <div className="targa-text">{fmtTarga(m.targa)}</div>
               {m.autistaNome && <div className="targa-note">Autista abituale: {m.autistaNome}</div>}

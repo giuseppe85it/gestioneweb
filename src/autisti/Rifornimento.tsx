@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
 import "./Rifornimento.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
 
 type TipoRifornimento = "caravate" | "distributore";
 type MetodoPagamento = "piccadilly" | "eni" | "contanti";
@@ -22,6 +23,9 @@ export default function Rifornimento() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
+  const [autista, setAutista] = useState<any>(null);
+  const [mezzo, setMezzo] = useState<any>(null);
+
   const [tipo, setTipo] = useState<TipoRifornimento>("caravate");
   const [metodo, setMetodo] = useState<MetodoPagamento | null>(null);
   const [paese, setPaese] = useState<Paese | null>(null);
@@ -37,6 +41,24 @@ export default function Rifornimento() {
 
   const data = new Date();
 
+  useEffect(() => {
+    // SESSIONE SOLO LOCALE
+    const a = getAutistaLocal();
+    const m = getMezzoLocal();
+
+    if (!a?.badge) {
+      navigate("/autisti/login", { replace: true });
+      return;
+    }
+    if (!m?.targaCamion) {
+      navigate("/autisti/setup-mezzo", { replace: true });
+      return;
+    }
+
+    setAutista(a);
+    setMezzo(m);
+  }, [navigate]);
+
   function formatKm(value: string) {
     const n = value.replace(/\D/g, "");
     return n.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -51,21 +73,20 @@ export default function Rifornimento() {
     if (tipo === "distributore") {
       if (!metodo) e.metodo = "Seleziona pagamento";
       if (!paese) e.paese = "Seleziona paese";
-      if (metodo === "contanti" && !importo)
-        e.importo = "Inserisci importo";
+      if (metodo === "contanti" && !importo) e.importo = "Inserisci importo";
     }
 
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
-  async function handleSave() {
+  async function saveCore(isForced: boolean) {
     if (!validate()) return;
 
     const kmNum = Number(km.replace(/\./g, ""));
     const litriNum = Number(litri);
 
-    if (!forceConfirm) {
+    if (!isForced) {
       if (litriNum > 1000) {
         setShowAlert("Quantità carburante molto alta. Confermi?");
         return;
@@ -78,16 +99,13 @@ export default function Rifornimento() {
 
     setLoading(true);
 
-    const autista = await getItemSync("@autista_attivo");
-    const mezzo = await getItemSync("@mezzo_attivo_autista");
-
     const record = {
       id: genId(),
 
       autistaId: autista?.id || null,
       autistaNome: autista?.nome || null,
+      badgeAutista: autista?.badge || null,
 
-      // coerente con SetupMezzo
       targaCamion: mezzo?.targaCamion || null,
       targaRimorchio: mezzo?.targaRimorchio || null,
 
@@ -108,10 +126,7 @@ export default function Rifornimento() {
 
     try {
       const current = (await getItemSync(KEY_RIFORNIMENTI)) || [];
-      const next = Array.isArray(current)
-        ? [...current, record]
-        : [record];
-
+      const next = Array.isArray(current) ? [...current, record] : [record];
       await setItemSync(KEY_RIFORNIMENTI, next);
 
       setLoading(false);
@@ -121,6 +136,12 @@ export default function Rifornimento() {
       setShowAlert("Errore salvataggio rifornimento");
     }
   }
+
+  async function handleSave() {
+    await saveCore(forceConfirm);
+  }
+
+  if (!autista || !mezzo) return null;
 
   return (
     <div className="autisti-container rifornimento-container">
@@ -133,12 +154,16 @@ export default function Rifornimento() {
             onClick={() => {
               setForceConfirm(true);
               setShowAlert(null);
-              handleSave();
+              saveCore(true);
             }}
           >
             Conferma
           </button>
-          <button onClick={() => setShowAlert(null)}>
+          <button
+            onClick={() => {
+              setShowAlert(null);
+            }}
+          >
             Modifica
           </button>
         </div>
@@ -156,10 +181,7 @@ export default function Rifornimento() {
           >
             CARAVATE
           </button>
-          <button
-            className={tipo === "distributore" ? "active green" : ""}
-            onClick={() => setTipo("distributore")}
-          >
+          <button className={tipo === "distributore" ? "active green" : ""} onClick={() => setTipo("distributore")}>
             DISTRIBUTORE
           </button>
         </div>
@@ -185,10 +207,7 @@ export default function Rifornimento() {
 
         <div className="rf-date">
           Data: {data.toLocaleDateString("it-IT")} –{" "}
-          {data.toLocaleTimeString("it-IT", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {data.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
         </div>
       </div>
 
@@ -208,16 +227,10 @@ export default function Rifornimento() {
           {errors.metodo && <div className="rf-error">{errors.metodo}</div>}
 
           <div className="rf-toggle small">
-            <button
-              className={paese === "IT" ? "active green" : ""}
-              onClick={() => setPaese("IT")}
-            >
+            <button className={paese === "IT" ? "active green" : ""} onClick={() => setPaese("IT")}>
               ITALIA
             </button>
-            <button
-              className={paese === "CH" ? "active green" : ""}
-              onClick={() => setPaese("CH")}
-            >
+            <button className={paese === "CH" ? "active green" : ""} onClick={() => setPaese("CH")}>
               SVIZZERA
             </button>
           </div>
@@ -232,34 +245,21 @@ export default function Rifornimento() {
                 onChange={(e) => setImporto(e.target.value)}
                 className={errors.importo ? "error" : ""}
               />
-              {errors.importo && (
-                <div className="rf-error">{errors.importo}</div>
-              )}
+              {errors.importo && <div className="rf-error">{errors.importo}</div>}
             </>
           )}
         </div>
       )}
 
       <div className="rf-section">
-        <textarea
-          placeholder="Note (opzionale)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
+        <textarea placeholder="Note (opzionale)" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
 
-      <button
-        className="autisti-button"
-        onClick={handleSave}
-        disabled={loading}
-      >
+      <button className="autisti-button" onClick={handleSave} disabled={loading}>
         {loading ? "Salvataggio..." : "Salva rifornimento"}
       </button>
 
-      <button
-        className="autisti-button secondary"
-        onClick={() => navigate("/autisti/home")}
-      >
+      <button className="autisti-button secondary" onClick={() => navigate("/autisti/home")}>
         Indietro
       </button>
     </div>
