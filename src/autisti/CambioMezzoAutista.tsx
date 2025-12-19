@@ -1,18 +1,15 @@
 // ======================================================
 // CambioMezzoAutista.tsx
 // APP AUTISTI
-// - Cambio Rimorchio (SGANCIO)
-// - Cambio Motrice
-// Scrive:
-// - storageSync (come prima)
-// - Firestore (EVENTI OPERATIVI)
+// - SGANCIO RIMORCHIO
+// - CAMBIO MOTRICE
+// - TRANSIZIONE GUIDATA A SETUP MEZZO
 // ======================================================
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./CambioMezzoAutista.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-
-// 🔥 Firestore diretto per eventi
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -21,24 +18,25 @@ const SESSIONI_KEY = "@autisti_sessione_attive";
 const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
 const STORICO_MOTRICI_KEY = "@storico_cambi_motrice";
 
-const LUOGHI = ["STABIO", "MEV", "ALTRO"];
-
+const LUOGHI = ["STABIO", "MEV", "ALTRO"] as const;
+type Luogo = typeof LUOGHI[number];
 type Modalita = "rimorchio" | "motrice";
 
-interface Sessione {
-  targa: string;
-  tipo: "motrice" | "rimorchio";
-  categoria?: string;
+interface SessioneAttiva {
+  targaMotrice: string | null;
+  targaRimorchio: string | null;
   badgeAutista: string;
   nomeAutista: string;
   timestamp: number;
 }
 
 export default function CambioMezzoAutista() {
-  const [modalita, setModalita] = useState<Modalita>("rimorchio");
-  const [sessione, setSessione] = useState<Sessione | null>(null);
+  const navigate = useNavigate();
 
-  const [luogo, setLuogo] = useState("");
+  const [modalita, setModalita] = useState<Modalita>("rimorchio");
+  const [sessione, setSessione] = useState<SessioneAttiva | null>(null);
+
+  const [luogo, setLuogo] = useState<Luogo | "">("");
   const [luogoAltro, setLuogoAltro] = useState("");
   const [statoCarico, setStatoCarico] =
     useState<"PIENO" | "SCARICO">("SCARICO");
@@ -68,10 +66,15 @@ export default function CambioMezzoAutista() {
 
   async function caricaSessione() {
     const autista = await getItemSync(AUTISTA_KEY);
-    const sessioni: Sessione[] = (await getItemSync(SESSIONI_KEY)) || [];
+    const sessioni: SessioneAttiva[] =
+      (await getItemSync(SESSIONI_KEY)) || [];
 
     const trovata = sessioni.find(
-      (s) => s.tipo === modalita && s.badgeAutista === autista?.badge
+      (s) =>
+        s.badgeAutista === autista?.badge &&
+        (modalita === "motrice"
+          ? !!s.targaMotrice
+          : !!s.targaRimorchio)
     );
 
     setSessione(trovata || null);
@@ -96,10 +99,12 @@ export default function CambioMezzoAutista() {
       setErrore("Nessun mezzo attivo");
       return;
     }
+
     if (!luogo) {
       setErrore("Seleziona il luogo");
       return;
     }
+
     if (luogo === "ALTRO" && !luogoAltro.trim()) {
       setErrore("Specifica il luogo");
       return;
@@ -111,12 +116,11 @@ export default function CambioMezzoAutista() {
     // =======================
     // SGANCIO RIMORCHIO
     // =======================
-    if (modalita === "rimorchio") {
+    if (modalita === "rimorchio" && sessione.targaRimorchio) {
       const storico = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
 
       storico.push({
-        targaRimorchio: sessione.targa,
-        categoria: sessione.categoria,
+        targaRimorchio: sessione.targaRimorchio,
         autista: sessione.nomeAutista,
         badgeAutista: sessione.badgeAutista,
         luogo: luogoFinale,
@@ -128,12 +132,11 @@ export default function CambioMezzoAutista() {
 
       await setItemSync(STORICO_RIMORCHI_KEY, storico);
 
-      // 🔥 EVENTO FIRESTORE
       await addDoc(collection(db, "autisti_eventi"), {
         tipo: "SGANCIO_RIMORCHIO",
         autistaNome: sessione.nomeAutista,
         badgeAutista: sessione.badgeAutista,
-        targaRimorchio: sessione.targa,
+        targaRimorchio: sessione.targaRimorchio,
         luogo: luogoFinale,
         statoCarico,
         condizioni,
@@ -145,11 +148,11 @@ export default function CambioMezzoAutista() {
     // =======================
     // CAMBIO MOTRICE
     // =======================
-    if (modalita === "motrice") {
+    if (modalita === "motrice" && sessione.targaMotrice) {
       const storico = (await getItemSync(STORICO_MOTRICI_KEY)) || [];
 
       storico.push({
-        targaMotrice: sessione.targa,
+        targaMotrice: sessione.targaMotrice,
         autista: sessione.nomeAutista,
         badgeAutista: sessione.badgeAutista,
         luogo: luogoFinale,
@@ -159,12 +162,11 @@ export default function CambioMezzoAutista() {
 
       await setItemSync(STORICO_MOTRICI_KEY, storico);
 
-      // 🔥 EVENTO FIRESTORE
       await addDoc(collection(db, "autisti_eventi"), {
         tipo: "CAMBIO_MOTRICE",
         autistaNome: sessione.nomeAutista,
         badgeAutista: sessione.badgeAutista,
-        targaMotrice: sessione.targa,
+        targaMotrice: sessione.targaMotrice,
         luogo: luogoFinale,
         condizioni: condizioni.generali,
         timestamp: now,
@@ -173,25 +175,33 @@ export default function CambioMezzoAutista() {
     }
 
     // =======================
-    // RIMOZIONE SESSIONE
+    // AGGIORNA SESSIONE
     // =======================
-    const sessioni: Sessione[] = (await getItemSync(SESSIONI_KEY)) || [];
-    const aggiornate = sessioni.filter(
-      (s) =>
-        !(
-          s.tipo === modalita &&
-          s.badgeAutista === sessione.badgeAutista
-        )
-    );
+    const sessioni: SessioneAttiva[] =
+      (await getItemSync(SESSIONI_KEY)) || [];
+
+    const aggiornate = sessioni.map((s) => {
+      if (s.badgeAutista !== sessione.badgeAutista) return s;
+
+      return {
+        ...s,
+        targaRimorchio:
+          modalita === "rimorchio" ? null : s.targaRimorchio,
+        targaMotrice:
+          modalita === "motrice" ? null : s.targaMotrice,
+      };
+    });
 
     await setItemSync(SESSIONI_KEY, aggiornate);
 
-    alert("Cambio registrato correttamente");
-    setSessione(null);
+    // =======================
+    // TRANSIZIONE GUIDATA
+    // =======================
+    navigate("/autisti/setup-mezzo");
   }
 
   // ======================================================
-  // UI
+  // UI (INVARIATA)
   // ======================================================
   return (
     <div className="cm-container">
@@ -219,7 +229,11 @@ export default function CambioMezzoAutista() {
 
       {sessione && (
         <>
-          <div className="cm-targa">{sessione.targa}</div>
+          <div className="cm-targa">
+            {modalita === "rimorchio"
+              ? sessione.targaRimorchio
+              : sessione.targaMotrice}
+          </div>
 
           <h2>Luogo</h2>
           <div className="cm-luoghi">

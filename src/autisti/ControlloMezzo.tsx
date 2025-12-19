@@ -1,9 +1,10 @@
 // ======================================================
 // ControlloMezzo.tsx
-// APP AUTISTI – Controllo rapido mezzo
+// APP AUTISTI – STEP 3 OBBLIGATORIO
 // ======================================================
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./ControlloMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 
@@ -12,6 +13,8 @@ const MEZZO_ATTIVO_KEY = "@mezzo_attivo_autista";
 const CONTROLLI_KEY = "@controlli_mezzo_autisti";
 
 export default function ControlloMezzo() {
+  const navigate = useNavigate();
+
   const [autista, setAutista] = useState<any>(null);
   const [mezzo, setMezzo] = useState<any>(null);
   const [note, setNote] = useState("");
@@ -25,14 +28,22 @@ export default function ControlloMezzo() {
 
   useEffect(() => {
     async function load() {
-      setAutista(await getItemSync(AUTISTA_KEY));
-      setMezzo(await getItemSync(MEZZO_ATTIVO_KEY));
+      const a = await getItemSync(AUTISTA_KEY);
+      const m = await getItemSync(MEZZO_ATTIVO_KEY);
+
+      if (!a || !m) {
+        navigate("/autisti/login");
+        return;
+      }
+
+      setAutista(a);
+      setMezzo(m);
     }
     load();
-  }, []);
+  }, [navigate]);
 
-  function toggle(key: string) {
-    setCheck((prev) => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
+  function toggle(key: keyof typeof check) {
+    setCheck((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   async function salva() {
@@ -46,22 +57,28 @@ export default function ControlloMezzo() {
     storico.push({
       autistaNome: autista.nome,
       badgeAutista: autista.badge,
+
       targaCamion: mezzo.targaCamion || null,
       targaRimorchio: mezzo.targaRimorchio || null,
+
       check,
-      note,
+      note: note || null,
+
+      obbligatorio: true, // STEP 3
       timestamp: Date.now(),
     });
 
     await setItemSync(CONTROLLI_KEY, storico);
 
-    alert("Controllo mezzo registrato");
-    setNote("");
+    navigate("/autisti/home");
   }
 
   return (
     <div className="cmz-container">
       <h1>CONTROLLO MEZZO</h1>
+      <p className="cmz-subtitle">
+        Verifica iniziale obbligatoria prima di iniziare il lavoro
+      </p>
 
       {mezzo && (
         <div className="cmz-targhe">
@@ -79,16 +96,18 @@ export default function ControlloMezzo() {
       <h2>Verifica rapida</h2>
 
       <div className="cmz-checklist">
-        {[
-          ["gomme", "GOMME"],
-          ["freni", "FRENI"],
-          ["luci", "LUCI"],
-          ["perdite", "PERDITE"],
-        ].map(([key, label]) => (
+        {(
+          [
+            ["gomme", "GOMME"],
+            ["freni", "FRENI"],
+            ["luci", "LUCI"],
+            ["perdite", "PERDITE"],
+          ] as const
+        ).map(([key, label]) => (
           <label key={key} className="cmz-check">
             <input
               type="checkbox"
-              checked={check[key as keyof typeof check]}
+              checked={check[key]}
               onChange={() => toggle(key)}
             />
             <span>{label}</span>
@@ -105,7 +124,7 @@ export default function ControlloMezzo() {
       />
 
       <button className="cmz-confirm" onClick={salva}>
-        REGISTRA CONTROLLO
+        CONFERMA CONTROLLO
       </button>
     </div>
   );

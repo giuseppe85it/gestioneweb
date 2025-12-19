@@ -1,0 +1,157 @@
+Di seguito uno schema strutturato e verificato dei flussi dati tra App Autisti e App Admin (AutistiInbox), basato esclusivamente sul codice reale analizzato nei file indicati (src/autisti, src/autistiInbox) e dai moduli che tali file importano (storageSync, homeEvents, firebase).
+
+Panoramica meccanismo di scrittura
+- LocalStorage (solo dispositivo): tramite autistiStorage
+  - Chiavi locali: “@autista_attivo_local”, “@mezzo_attivo_autista_local”
+  - Riferimenti: src/autisti/autistiStorage.ts; usate da LoginAutista.tsx e SetupMezzo.tsx
+- Firebase via sync (Firestore): tramite getItemSync/setItemSync/removeItemSync
+  - Collezione: storage (docId = chiave esatta, campo: { value })
+  - Riferimenti: usata da tutti i componenti che persistono dati condivisi
+- Firestore diretto (collezione dedicata):
+  - Collezione: autisti_eventi (addDoc di singoli eventi)
+  - Riferimenti: src/autisti/CambioMezzoAutista.tsx
+
+A) File che SCRIVONO dati (chi/come)
+- src/autisti/LoginAutista.tsx (funzione: handleLogin)
+  - LocalStorage: @autista_attivo_local (via saveAutistaLocal)
+  - Firebase via sync (storage): @autista_attivo (oggetto autista + timestamp)
+- src/autisti/SetupMezzo.tsx (funzione: handleConfirm)
+  - Firebase via sync (storage):
+    - @autisti_sessione_attive (array sessioni: targa, tipo, badgeAutista, nomeAutista, timestamp)
+    - @mezzo_attivo_autista (oggetto: targaCamion, targaRimorchio, timestamp)
+  - LocalStorage: @mezzo_attivo_autista_local (via saveMezzoLocal)
+- src/autisti/CambioMezzoAutista.tsx (funzione: conferma)
+  - Firebase via sync (storage):
+    - @storico_sganci_rimorchi (append array record di sgancio rimorchio)
+    - @storico_cambi_motrice (append array record di cambio motrice)
+    - @autisti_sessione_attive (update: rimozione della sessione attiva per tipo/autista)
+  - Firestore diretto: autisti_eventi (addDoc con tipo SGANCIO_RIMORCHIO o CAMBIO_MOTRICE)
+- src/autisti/Segnalazioni.tsx (funzione: handleSave)
+  - Firebase via sync (storage): @segnalazioni_autisti_tmp (append array record segnalazione)
+- src/autisti/Rifornimento.tsx (funzione: handleSave)
+  - Firebase via sync (storage): @rifornimenti_autisti_tmp (scrive un singolo record, non append)
+- src/autisti/ControlloMezzo.tsx (funzione: salva)
+  - Firebase via sync (storage): @controlli_mezzo_autisti (append array record controllo)
+- src/autisti/AutistiGate.tsx: nessuna scrittura (solo lettura localStorage per redirect)
+- App Admin – solo LETTURA
+  - src/autistiInbox/AutistiInboxHome.tsx: legge tramite utils/homeEvents (solo read)
+  - src/autistiInbox/CambioMezzoInbox.tsx: legge @storico_sganci_rimorchi e @storico_cambi_motrice (solo read)
+
+B-C-D-E) Cosa scrivono, Dove, Quando, Classificazione
+1) Sessione autista
+- Dove:
+  - LocalStorage: @autista_attivo_local (LoginAutista.handleLogin)
+  - Firestore/storage: @autista_attivo (LoginAutista.handleLogin)
+- Quando: login
+- Classificazione: SESSIONE (stato attuale)
+
+2) Mezzo attivo (motrice + rimorchio opzionale)
+- Dove:
+  - LocalStorage: @mezzo_attivo_autista_local (SetupMezzo.handleConfirm)
+  - Firestore/storage: @mezzo_attivo_autista (SetupMezzo.handleConfirm)
+- Contenuto: { targaCamion, targaRimorchio, timestamp }
+- Quando: setup mezzo
+- Classificazione: SESSIONE
+
+3) Rimorchio agganciato
+- Dove:
+  - Firestore/storage: @autisti_sessione_attive APPEND di una sessione con { targa, tipo: "rimorchio", badgeAutista, nomeAutista, timestamp } (SetupMezzo.handleConfirm)
+- Quando: setup mezzo (se selezionato rimorchio)
+- Classificazione: SESSIONE
+- Evento storico: non presente (nessun evento di AGGANCIO in storici o in autisti_eventi)
+
+4) Rimorchio sganciato
+- Dove:
+  - Firestore/storage: @storico_sganci_rimorchi (append record con: targaRimorchio, categoria, autista, badgeAutista, luogo, statoCarico, condizioni, timestampAggancio, timestampSgancio) (CambioMezzoAutista.conferma con modalita="rimorchio")
+  - Firestore diretto: autisti_eventi (addDoc con tipo="SGANCIO_RIMORCHIO" + campi correlati)
+  - Firestore/storage: @autisti_sessione_attive (rimozione della sessione rimorchio dell’autista) (CambioMezzoAutista.conferma)
+- Quando: cambio mezzo – sezione “CAMBIO RIMORCHIO” confermato
+- Classificazione: EVENTO STORICO (storico_sganci_rimorchi e autisti_eventi); SESSIONE aggiornata (rimozione)
+
+5) Cambio motrice
+- Dove:
+  - Firestore/storage: @storico_cambi_motrice (append record con: targaMotrice, autista, badgeAutista, luogo, condizioni.generali, timestampCambio) (CambioMezzoAutista.conferma con modalita="motrice")
+  - Firestore diretto: autisti_eventi (addDoc con tipo="CAMBIO_MOTRICE" + campi correlati)
+  - Firestore/storage: @autisti_sessione_attive (rimozione della sessione motrice dell’autista) (CambioMezzoAutista.conferma)
+- Quando: cambio mezzo – sezione “CAMBIO MOTRICE” confermato
+- Classificazione: EVENTO STORICO (storico_cambi_motrice e autisti_eventi); SESSIONE aggiornata (rimozione)
+
+6) Controllo mezzo
+- Dove:
+  - Firestore/storage: @controlli_mezzo_autisti (append record con: autistaNome, badgeAutista, targaCamion, targaRimorchio, check, note, timestamp) (ControlloMezzo.salva)
+- Quando: operazione autista “Controllo Mezzo”
+- Classificazione: EVENTO STORICO
+
+7) Segnalazioni
+- Dove:
+  - Firestore/storage: @segnalazioni_autisti_tmp (append array record con campi: id, ambito, mezzoId, targa, categoriaMezzo, autistaId, autistaNome, tipoProblema, posizioneGomma, problemaGomma, descrizione, note, foto[dataUrl], data, stato, letta, flagVerifica, motivoVerifica) (Segnalazioni.handleSave)
+- Quando: operazione autista “Segnalazioni”
+- Classificazione: EVENTO STORICO
+
+8) Rifornimenti
+- Dove:
+  - Firestore/storage: @rifornimenti_autisti_tmp (scrive UN singolo record, non append) con campi: id, autistaId, autistaNome, mezzoId, targa, tipo, metodoPagamento (se distributore), paese (se distributore), km, litri, importo (se contanti), note, data, flagVerifica, confermatoAutista (Rifornimento.handleSave)
+- Quando: operazione autista “Rifornimento”
+- Classificazione: EVENTO STORICO (ma vedi punti critici)
+
+9) Logout
+- Dove/Quando: non presente (nessuna funzione di logout; removeAutistaLocal/removeMezzoLocal sono definiti ma non richiamati)
+- Classificazione: non presente
+
+F) Punti critici (dal codice)
+- Doppie scritture (evento cambio mezzo):
+  - CambioMezzoAutista.tsx scrive sia su storage (storici locali via sync) sia su Firestore diretto (collezione autisti_eventi) per SGANCIO_RIMORCHIO e CAMBIO_MOTRICE.
+  - AutistiInbox (Home/Inbox) NON legge la collezione autisti_eventi: la visibilità admin usa solo i dati in storage (@storico_… e @autisti_sessione_attive). Gli eventi in autisti_eventi risultano quindi “non visibili” all’admin (nel codice fornito).
+- Eventi mancanti:
+  - AGGANCIO RIMORCHIO: nessun evento storico di aggancio; esiste solo l’aggiunta in @autisti_sessione_attive (SESSIONE). Nessun addDoc in autisti_eventi e nessuno storico di “aggancio”.
+- Dati scritti solo in locale:
+  - Solo per gating/redirect: @autista_attivo_local e @mezzo_attivo_autista_local (usati da AutistiGate e dai flussi UI); tutte le operazioni operative scrivono via storageSync su Firestore/storage.
+- Incongruenze tra Autisti e AutistiInbox (letture/forme dati):
+  1) Stato rimorchi (homeEvents.loadRimorchiStatus)
+     - Si aspetta in sessioni campi targaRimorchio e targaMotrice per segnalare AGGANCIATO. Ma SetupMezzo salva le sessioni con solo “targa” e “tipo”. Risultato: i rimorchi AGGANCIATI potrebbero non comparire lato admin.
+  2) Rifornimenti: scrittura singolo record
+     - Rifornimento.handleSave sovrascrive @rifornimenti_autisti_tmp con un solo record. homeEvents.loadHomeEvents si aspetta un ARRAY (for-of su rifornimenti). Se non è array, gli eventi di rifornimento del giorno non vengono mostrati.
+  3) Targa mezzo in segnalazioni/rifornimenti
+     - Segnalazioni/Rifornimento leggono @mezzo_attivo_autista e usano mezzo?.targa nei record. SetupMezzo salva { targaCamion, targaRimorchio }, non “targa”. Risultato: i record possono avere targa = null, e quindi in AutistiInboxHome i campi targa risultano “-”.
+  4) autisti_eventi non letta lato admin
+     - Nessun componente in autistiInbox legge la collezione “autisti_eventi”. Gli eventi registrati direttamente in Firestore non sono mostrati.
+  5) Logout assente
+     - Nessun flusso di cancellazione sessione locale o remota al logout (non presente). Possibili sessioni attive persistenti fino a un cambio.
+
+Visibilità Admin (cosa vede, da dove)
+- Dashboard giornaliera (AutistiInboxHome.tsx via utils/homeEvents):
+  - Rifornimenti: da @rifornimenti_autisti_tmp (array atteso) – vedi incongruenza 2
+  - Segnalazioni: da @segnalazioni_autisti_tmp (array)
+  - Controlli: da @controlli_mezzo_autisti (array)
+  - Cambi motrice: da @storico_cambi_motrice (array)
+- Stato rimorchi (colonna destra in AutistiInboxHome.tsx via loadRimorchiStatus):
+  - AGGANCIATO: da @autisti_sessione_attive (campi targaRimorchio/targaMotrice attesi ma non presenti nei salvataggi correnti)
+  - LIBERO: dall’ultimo record di @storico_sganci_rimorchi per targa
+- Lista cambio mezzo (CambioMezzoInbox.tsx):
+  - Sganci rimorchi: da @storico_sganci_rimorchi
+  - Cambi motrice: da @storico_cambi_motrice
+  - Nota: non legge “autisti_eventi”
+
+Riepilogo chiavi/collezioni citate (nomi esatti)
+- LocalStorage:
+  - @autista_attivo_local (LoginAutista)
+  - @mezzo_attivo_autista_local (SetupMezzo)
+- Firestore via storageSync (collezione: storage, docId = chiave):
+  - @autista_attivo (LoginAutista)
+  - @autisti_sessione_attive (SetupMezzo, CambioMezzoAutista)
+  - @mezzo_attivo_autista (SetupMezzo)
+  - @storico_sganci_rimorchi (CambioMezzoAutista)
+  - @storico_cambi_motrice (CambioMezzoAutista)
+  - @segnalazioni_autisti_tmp (Segnalazioni)
+  - @rifornimenti_autisti_tmp (Rifornimento)
+  - @controlli_mezzo_autisti (ControlloMezzo)
+  - (letture aggiuntive): @colleghi, @mezzi_aziendali
+- Firestore diretto (addDoc):
+  - Collezione: autisti_eventi (SGANCIO_RIMORCHIO, CAMBIO_MOTRICE) (CambioMezzoAutista)
+
+Note finali per i casi richiesti
+- Aggancio rimorchio: scrittura SOLO in @autisti_sessione_attive (SESSIONE). Nessuno storico o evento in autisti_eventi. Admin: stato “AGGANCIATO” atteso dalle sessioni, ma con mismatch campi (vedi punti critici).
+- Sgancio rimorchio: scrittura in @storico_sganci_rimorchi (EVENTO STORICO) e in autisti_eventi; rimozione dalla sessione attiva.
+- Cambio motrice: scrittura in @storico_cambi_motrice (EVENTO STORICO) e in autisti_eventi; rimozione dalla sessione attiva.
+- Login / Logout: login presente (vedi sopra); logout non presente.
+- Visibilità admin: basata su chiavi storage lette da utils/homeEvents e da CambioMezzoInbox; la collezione autisti_eventi non è letta lato admin.

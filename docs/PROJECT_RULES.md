@@ -67,3 +67,76 @@ Implementazione:
 Sicurezza:
 - La sessione è per-dispositivo
 - Cambiando telefono o cancellando i dati, il badge viene richiesto di nuovo
+Regole definitive – App Autisti
+
+Login
+
+Il login autentica solo l’autista.
+
+Non assegna automaticamente alcun mezzo.
+
+SetupMezzo
+
+È l’unico punto in cui si seleziona:
+
+motrice
+
+rimorchio (opzionale)
+
+Deve essere accessibile:
+
+dopo il login
+
+dopo un cambio mezzo
+
+quando l’autista ha una motrice ma vuole agganciare un rimorchio
+
+Non è solo “setup iniziale”, ma selettore attivo del mezzo.
+
+CambioMezzo
+
+Serve a chiudere una configurazione attuale.
+
+Registra sempre:
+
+storico
+
+stato del mezzo lasciato
+
+Non chiude la sessione autista.
+
+Dopo il cambio, l’autista deve poter selezionare subito un altro mezzo tramite SetupMezzo.
+
+Controllo Mezzo
+
+È obbligatorio:
+
+dopo ogni nuova selezione di motrice
+
+dopo ogni nuovo aggancio rimorchio
+
+Non deve bloccare il cambio mezzo.
+
+Serve a validare l’inizio della nuova configurazione.
+
+Rimorchio
+
+Il rimorchio è opzionale.
+
+Un autista può lavorare:
+
+con sola motrice
+
+con motrice + rimorchio
+
+Deve essere sempre possibile:
+
+agganciare un rimorchio se assente
+
+sganciare un rimorchio senza obbligo di riaggancio.
+
+Logout
+
+È solo manuale.
+
+Nessun flusso operativo richiede il logout.

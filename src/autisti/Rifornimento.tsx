@@ -8,6 +8,16 @@ type TipoRifornimento = "caravate" | "distributore";
 type MetodoPagamento = "piccadilly" | "eni" | "contanti";
 type Paese = "IT" | "CH";
 
+const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
+
+function genId() {
+  // compatibile ovunque
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c: any = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export default function Rifornimento() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -19,7 +29,7 @@ export default function Rifornimento() {
   const [km, setKm] = useState("");
   const [litri, setLitri] = useState("");
   const [importo, setImporto] = useState("");
-   const [note, setNote] = useState("");
+  const [note, setNote] = useState("");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAlert, setShowAlert] = useState<string | null>(null);
@@ -72,11 +82,14 @@ export default function Rifornimento() {
     const mezzo = await getItemSync("@mezzo_attivo_autista");
 
     const record = {
-      id: crypto.randomUUID(),
+      id: genId(),
+
       autistaId: autista?.id || null,
       autistaNome: autista?.nome || null,
-      mezzoId: mezzo?.id || null,
-      targa: mezzo?.targa || null,
+
+      // coerente con SetupMezzo
+      targaCamion: mezzo?.targaCamion || null,
+      targaRimorchio: mezzo?.targaRimorchio || null,
 
       tipo,
       metodoPagamento: tipo === "distributore" ? metodo : null,
@@ -84,10 +97,8 @@ export default function Rifornimento() {
 
       km: kmNum,
       litri: litriNum,
-      importo:
-        metodo === "contanti" ? Number(importo) : null,
+      importo: metodo === "contanti" ? Number(importo) : null,
 
-      
       note: note || null,
 
       data: Date.now(),
@@ -95,10 +106,20 @@ export default function Rifornimento() {
       confermatoAutista: true,
     };
 
-    await setItemSync("@rifornimenti_autisti_tmp", record);
+    try {
+      const current = (await getItemSync(KEY_RIFORNIMENTI)) || [];
+      const next = Array.isArray(current)
+        ? [...current, record]
+        : [record];
 
-    setLoading(false);
-    navigate("/autisti/home");
+      await setItemSync(KEY_RIFORNIMENTI, next);
+
+      setLoading(false);
+      navigate("/autisti/home");
+    } catch {
+      setLoading(false);
+      setShowAlert("Errore salvataggio rifornimento");
+    }
   }
 
   return (
@@ -164,7 +185,10 @@ export default function Rifornimento() {
 
         <div className="rf-date">
           Data: {data.toLocaleDateString("it-IT")} –{" "}
-          {data.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+          {data.toLocaleTimeString("it-IT", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </div>
       </div>
 

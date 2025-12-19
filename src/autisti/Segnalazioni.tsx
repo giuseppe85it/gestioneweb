@@ -10,6 +10,9 @@ type PosizioneGomma = "anteriore" | "posteriore" | "asse1" | "asse2" | "asse3";
 type ProblemaGomma = "forata" | "usurata" | "da_controllare" | "altro";
 
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
+const KEY_AUTISTA = "@autista_attivo";
+const KEY_MEZZO_ATTIVO = "@mezzo_attivo_autista";
+const KEY_MEZZI = "@mezzi_aziendali";
 
 function genId() {
   // compatibile
@@ -42,14 +45,11 @@ function getGommeOptions(ambito: Ambito | null, categoriaMezzo?: string | null):
     if (cat.includes("motrice 4 assi")) return ["anteriore", "asse1", "asse2", "asse3"];
     if (cat.includes("motrice 3 assi")) return ["anteriore", "asse1", "asse2"];
     if (cat.includes("trattore")) return ["anteriore", "posteriore"];
-    // fallback motrice generico
     return ["anteriore", "posteriore"];
   }
 
-  // rimorchio
-  if (cat.includes("semirimorchio")) return ["asse1", "asse2", "asse3"]; // 3 assi
-  if (cat.includes("biga")) return ["asse1", "asse2"]; // 2 assi
-  // fallback rimorchio generico (non definito)
+  if (cat.includes("semirimorchio")) return ["asse1", "asse2", "asse3"];
+  if (cat.includes("biga")) return ["asse1", "asse2"];
   return ["asse1", "asse2"];
 }
 
@@ -100,6 +100,18 @@ function labelProblemaGomma(p: ProblemaGomma) {
 
 type FotoLocal = { id: string; dataUrl: string };
 
+type MezzoAziendale = {
+  id: string;
+  targa: string;
+  categoria?: string;
+};
+
+type MezzoAttivo = {
+  targaCamion: string | null;
+  targaRimorchio: string | null;
+  timestamp?: number;
+};
+
 export default function Segnalazioni() {
   const navigate = useNavigate();
   const nowTs = useMemo(() => Date.now(), []);
@@ -107,12 +119,12 @@ export default function Segnalazioni() {
   const [loading, setLoading] = useState(false);
 
   const [autista, setAutista] = useState<any>(null);
-  const [mezzo, setMezzo] = useState<any>(null);
+  const [mezzoAttivo, setMezzoAttivo] = useState<MezzoAttivo | null>(null);
+  const [mezziAziendali, setMezziAziendali] = useState<MezzoAziendale[]>([]);
 
   const [ambito, setAmbito] = useState<Ambito | null>(null);
   const [tipo, setTipo] = useState<TipoProblema | null>(null);
 
-  // gomme
   const [posizioneGomma, setPosizioneGomma] = useState<PosizioneGomma | null>(null);
   const [problemaGomma, setProblemaGomma] = useState<ProblemaGomma | null>(null);
 
@@ -126,16 +138,35 @@ export default function Segnalazioni() {
 
   useEffect(() => {
     (async () => {
-      const a = await getItemSync("@autista_attivo");
-      const m = await getItemSync("@mezzo_attivo_autista");
+      const a = await getItemSync(KEY_AUTISTA);
+      const m = await getItemSync(KEY_MEZZO_ATTIVO);
+      const list = (await getItemSync(KEY_MEZZI)) || [];
+
       setAutista(a || null);
-      setMezzo(m || null);
+      setMezzoAttivo((m as MezzoAttivo) || null);
+      setMezziAziendali(Array.isArray(list) ? list : []);
     })();
   }, []);
 
+  function findMezzoByTarga(targa?: string | null) {
+    if (!targa) return null;
+    return mezziAziendali.find((x) => (x.targa || "").toUpperCase() === targa.toUpperCase()) || null;
+  }
+
+  const targaMotrice = mezzoAttivo?.targaCamion ?? null;
+  const targaRimorchio = mezzoAttivo?.targaRimorchio ?? null;
+
+  const mezzoMotrice = useMemo(() => findMezzoByTarga(targaMotrice), [mezziAziendali, targaMotrice]);
+  const mezzoRimorchio = useMemo(() => findMezzoByTarga(targaRimorchio), [mezziAziendali, targaRimorchio]);
+
+  const categoriaSelezionata = useMemo(() => {
+    if (!ambito) return null;
+    return ambito === "motrice" ? mezzoMotrice?.categoria ?? null : mezzoRimorchio?.categoria ?? null;
+  }, [ambito, mezzoMotrice?.categoria, mezzoRimorchio?.categoria]);
+
   const gommeOptions = useMemo(
-    () => getGommeOptions(ambito, mezzo?.categoria),
-    [ambito, mezzo?.categoria]
+    () => getGommeOptions(ambito, categoriaSelezionata),
+    [ambito, categoriaSelezionata]
   );
 
   function resetGomme() {
@@ -144,8 +175,14 @@ export default function Segnalazioni() {
   }
 
   function resetByAmbito(next: Ambito) {
+    // Se scelgo RIMORCHIO ma non c’è rimorchio agganciato, blocco.
+    if (next === "rimorchio" && !targaRimorchio) {
+      setAlertMsg("Nessun rimorchio agganciato. Seleziona MOTRICE.");
+      setErrors({ ambito: "Nessun rimorchio agganciato" });
+      return;
+    }
+
     setAmbito(next);
-    // non resettiamo tipo per forza, ma per sicurezza e semplicità 60+
     setTipo(null);
     resetGomme();
     setErrors({});
@@ -157,9 +194,7 @@ export default function Segnalazioni() {
     setErrors({});
     setAlertMsg(null);
 
-    if (next !== "gomme") {
-      resetGomme();
-    }
+    if (next !== "gomme") resetGomme();
   }
 
   function getPlaceholderDescrizione() {
@@ -175,6 +210,8 @@ export default function Segnalazioni() {
     const e: Record<string, string> = {};
 
     if (!ambito) e.ambito = "Seleziona MOTRICE o RIMORCHIO";
+    if (ambito === "rimorchio" && !targaRimorchio) e.ambito = "Nessun rimorchio agganciato";
+
     if (!tipo) e.tipo = "Seleziona il tipo problema";
     if (!descrizione.trim()) e.descrizione = "Scrivi una descrizione";
 
@@ -186,7 +223,6 @@ export default function Segnalazioni() {
     setErrors(e);
 
     if (Object.keys(e).length > 0) {
-      // alert sintetico “cosa manca”
       const list = Object.values(e);
       setAlertMsg("Manca: " + list.join(" · "));
       return false;
@@ -237,14 +273,23 @@ export default function Segnalazioni() {
 
     setLoading(true);
 
+    const isMotrice = ambito === "motrice";
+
+    const targaSelezionata = isMotrice ? targaMotrice : targaRimorchio;
+    const mezzoRef = isMotrice ? mezzoMotrice : mezzoRimorchio;
+
     const record = {
       id: genId(),
 
       ambito, // "motrice" | "rimorchio"
 
-      mezzoId: mezzo?.id || null,
-      targa: mezzo?.targa || null,
-      categoriaMezzo: mezzo?.categoria || null,
+      mezzoId: mezzoRef?.id || null,
+      targa: targaSelezionata || null,
+      categoriaMezzo: mezzoRef?.categoria || null,
+
+      // utile per admin/debug (non rompe nulla se ignorato)
+      targaCamion: targaMotrice || null,
+      targaRimorchio: targaRimorchio || null,
 
       autistaId: autista?.id || null,
       autistaNome: autista?.nome || null,
@@ -257,8 +302,6 @@ export default function Segnalazioni() {
       descrizione: descrizione.trim(),
       note: note.trim() || null,
 
-      // foto locali per ora (preview + prova sul campo)
-      // in futuro si spostano su Firebase Storage (url + storagePath)
       foto: foto.map((f) => ({ dataUrl: f.dataUrl })),
 
       data: nowTs,
@@ -288,7 +331,8 @@ export default function Segnalazioni() {
       <h1 className="autisti-title">Segnalazione manutenzione</h1>
 
       <div className="seg-subtitle">
-        {mezzo?.targa ? `Targa: ${mezzo.targa}` : "Targa: -"}{" "}
+        {targaMotrice ? `Motrice: ${targaMotrice}` : "Motrice: -"}{" "}
+        {targaRimorchio ? `• Rimorchio: ${targaRimorchio}` : "• Rimorchio: -"}{" "}
         {autista?.nome ? `• Autista: ${autista.nome}` : ""}
       </div>
 
@@ -307,6 +351,8 @@ export default function Segnalazioni() {
           <button
             className={ambito === "rimorchio" ? "active green" : errors.ambito ? "errorBtn" : ""}
             onClick={() => resetByAmbito("rimorchio")}
+            disabled={!targaRimorchio}
+            title={!targaRimorchio ? "Nessun rimorchio agganciato" : ""}
           >
             RIMORCHIO
           </button>
@@ -323,9 +369,7 @@ export default function Segnalazioni() {
             (t) => (
               <button
                 key={t}
-                className={`seg-chip ${tipo === t ? "active green" : ""} ${
-                  errors.tipo ? "errorBtn" : ""
-                }`}
+                className={`seg-chip ${tipo === t ? "active green" : ""} ${errors.tipo ? "errorBtn" : ""}`}
                 onClick={() => resetByTipo(t)}
               >
                 {labelTipo(t)}
@@ -337,7 +381,7 @@ export default function Segnalazioni() {
         {errors.tipo && <div className="seg-error">{errors.tipo}</div>}
       </div>
 
-      {/* GOMME - MAPPA ASSI */}
+      {/* GOMME */}
       {tipo === "gomme" && (
         <div className="seg-section">
           <div className="seg-label">Seleziona asse / posizione</div>
@@ -375,9 +419,7 @@ export default function Segnalazioni() {
           </div>
           {errors.problemaGomma && <div className="seg-error">{errors.problemaGomma}</div>}
 
-          <div className="seg-hint">
-            Consigliato: aggiungi una foto (massimo 3).
-          </div>
+          <div className="seg-hint">Consigliato: aggiungi una foto (massimo 3).</div>
         </div>
       )}
 

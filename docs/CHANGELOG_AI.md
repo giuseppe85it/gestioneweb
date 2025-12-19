@@ -36,3 +36,56 @@ index 0000000000000000000000000000000000000000..785d301cb58d1fcf27e544d8fdd1deba
 - Centralizzato l’accesso tramite AutistiGate su /autisti
 - Aggiunto redirect automatico in LoginAutista se sessione già presente
 - Separata definitivamente la sessione autista dai dati Firestore
+Sessione – Revisione flussi App Autisti
+
+Decisioni prese
+
+Confermato che:
+
+CambioMezzo è una transizione, non una chiusura.
+
+SetupMezzo è il selettore unico dei mezzi.
+
+ControlloMezzo è uno step obbligatorio post-selezione.
+
+Eliminata l’idea di rilogin forzato durante il cambio mezzo.
+
+Modifiche concettuali
+
+CambioMezzo → deve sempre portare a SetupMezzo.
+
+SetupMezzo deve essere raggiungibile anche:
+
+con motrice già attiva
+
+senza passare dal login.
+
+Problemi emersi
+
+AutistiGate blocca l’accesso a SetupMezzo in più scenari.
+
+Stato locale del mezzo non sempre coerente dopo:
+
+cambio motrice
+
+cambio rimorchio.
+
+Attualmente:
+
+se loggato con sola motrice
+
+non è possibile agganciare un rimorchio.
+
+SetupMezzo non viene raggiunto:
+
+né dopo login
+
+né dopo cambio mezzo.
+
+Da risolvere
+
+Revisione completa della logica di AutistiGate.
+
+Chiarire quando un mezzo è “operativo” vs “in transizione”.
+
+Allineare stato locale e stato Firestore dopo i cambi.

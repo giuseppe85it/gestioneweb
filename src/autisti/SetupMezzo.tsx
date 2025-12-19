@@ -1,10 +1,9 @@
 // ======================================================
-// SetupMezzo.tsx — DEFINITIVO
-// - categorie REALI da Firestore (categoria)
-// - separazione MOTRICI / RIMORCHI
-// - preselezione solo coerente
-// - BLOCCO MORBIDO (solo avviso)
-// - scrittura sessione in @autisti_sessione_attive
+// SetupMezzo.tsx — COERENTE
+// - sessione unica con targaMotrice / targaRimorchio
+// - AGGANCIO_RIMORCHIO come EVENTO STORICO (Firestore)
+// - sessione aggiornata in @autisti_sessione_attive
+// - mezzo attivo locale + sync
 // ======================================================
 
 import { useEffect, useState } from "react";
@@ -12,12 +11,13 @@ import { useNavigate } from "react-router-dom";
 import "./SetupMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { saveMezzoLocal } from "./autistiStorage";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const AUTISTA_KEY = "@autista_attivo";
 const SESSIONI_KEY = "@autisti_sessione_attive";
 
-// CATEGORIE REALI (contratto dati)
 const MOTRICI = [
   "motrice 2 assi",
   "motrice 3 assi",
@@ -42,10 +42,10 @@ interface Mezzo {
 }
 
 interface SessioneAttiva {
-  targa: string;
+  targaMotrice: string | null;
+  targaRimorchio: string | null;
   badgeAutista: string;
   nomeAutista: string;
-  tipo: "motrice" | "rimorchio";
   timestamp: number;
 }
 
@@ -80,7 +80,6 @@ export default function SetupMezzo() {
     const mot = mezzi.filter(m => MOTRICI.includes(norm(m.categoria)));
     const rim = mezzi.filter(m => RIMORCHI.includes(norm(m.categoria)));
 
-    // preselezione SOLO coerente
     if (a?.nome) {
       const motAssegnata = mot.find(m => norm(m.autistaNome) === norm(a.nome));
       if (motAssegnata) {
@@ -104,7 +103,9 @@ export default function SetupMezzo() {
   }
 
   function statoUso(targa: string) {
-    const s = sessioni.find(x => x.targa === targa);
+    const s = sessioni.find(
+      x => x.targaMotrice === targa || x.targaRimorchio === targa
+    );
     if (!s) return null;
     if (s.badgeAutista === autista?.badge) return null;
     return `IN USO da ${s.nomeAutista}`;
@@ -112,33 +113,24 @@ export default function SetupMezzo() {
 
   async function handleConfirm() {
     setErrore("");
-    if (!targaCamion) {
+    if (!targaCamion || !autista) {
       setErrore("Seleziona una motrice o trattore");
       return;
     }
 
     const now = Date.now();
-    let nuove = sessioni.filter(
-      s => !(s.badgeAutista === autista?.badge && (s.tipo === "motrice" || s.tipo === "rimorchio"))
-    );
 
-    nuove.push({
-      targa: targaCamion,
-      badgeAutista: autista!.badge,
-      nomeAutista: autista!.nome,
-      tipo: "motrice",
+    const nuove = sessioni.filter(s => s.badgeAutista !== autista.badge);
+
+    const sessione: SessioneAttiva = {
+      targaMotrice: targaCamion,
+      targaRimorchio,
+      badgeAutista: autista.badge,
+      nomeAutista: autista.nome,
       timestamp: now,
-    });
+    };
 
-    if (targaRimorchio) {
-      nuove.push({
-        targa: targaRimorchio,
-        badgeAutista: autista!.badge,
-        nomeAutista: autista!.nome,
-        tipo: "rimorchio",
-        timestamp: now,
-      });
-    }
+    nuove.push(sessione);
 
     await setItemSync(SESSIONI_KEY, nuove);
     await setItemSync("@mezzo_attivo_autista", {
@@ -146,12 +138,24 @@ export default function SetupMezzo() {
       targaRimorchio,
       timestamp: now,
     });
-saveMezzoLocal({
-  targaCamion,
-  targaRimorchio,
-  timestamp: now,
-});
 
+    saveMezzoLocal({
+      targaCamion,
+      targaRimorchio,
+      timestamp: now,
+    });
+
+    if (targaRimorchio) {
+      await addDoc(collection(db, "autisti_eventi"), {
+        tipo: "AGGANCIO_RIMORCHIO",
+        autistaNome: autista.nome,
+        badgeAutista: autista.badge,
+        targaMotrice: targaCamion,
+        targaRimorchio,
+        timestamp: now,
+        createdAt: serverTimestamp(),
+      });
+    }
 
     navigate("/autisti/home");
   }

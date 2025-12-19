@@ -121,3 +121,55 @@ Componenti chiave:
 
 Nota:
 L’utente non deve mai entrare direttamente da `/autisti/login`.
+Mappa flussi – App Autisti
+Flusso ideale (target)
+
+Login
+→ SetupMezzo
+
+SetupMezzo
+
+selezione motrice
+
+selezione rimorchio (opzionale)
+→ ControlloMezzo
+
+ControlloMezzo
+
+registrazione controllo iniziale
+→ HomeAutista
+
+HomeAutista
+
+operatività normale
+
+possibilità di:
+
+CambioMezzo
+
+Aggancio rimorchio (se assente)
+
+CambioMezzo
+
+chiusura configurazione attuale
+
+registrazione storico
+→ SetupMezzo
+
+Stato attuale (problemi)
+
+SetupMezzo non sempre raggiungibile.
+
+CambioMezzo non porta sempre a nuova selezione.
+
+AutistiGate intercetta e blocca flussi validi.
+
+Rimorchio non agganciabile se assente.
+
+Obiettivo
+
+Nessun vicolo cieco.
+
+Ogni cambio porta sempre a una scelta.
+
+Flusso continuo, senza rilogin.
