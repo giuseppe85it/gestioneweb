@@ -89,3 +89,33 @@ Revisione completa della logica di AutistiGate.
 Chiarire quando un mezzo è “operativo” vs “in transizione”.
 
 Allineare stato locale e stato Firestore dopo i cambi.
+
+## [FIX] 2025-12-19 – Stabilizzazione App Autisti (sessione per-dispositivo)
+
+- Risolto rischio “targa/nome di un altro telefono”: la sessione è ora SOLO locale via `autistiStorage.ts`
+  - `@autista_attivo_local`
+  - `@mezzo_attivo_autista_local`
+- Allineati i moduli Autisti a lettura locale: Home, ControlloMezzo, Segnalazioni, Rifornimento, SetupMezzo, CambioMezzo.
+- `SetupMezzo` aggiornato con blocco speculare:
+  - `mode=rimorchio` → motrice bloccata
+  - `mode=motrice` → rimorchio bloccato
+- Dopo conferma mezzo: redirect sempre a `/autisti/controllo`.
+
+## [FIX] 2025-12-19 – Segnalazioni e Rifornimenti coerenti dopo cambio mezzo
+- Segnalazioni e Rifornimento salvano sempre con `targaCamion/targaRimorchio` corretti letti da sessione locale.
+- Chiavi dati:
+  - `@segnalazioni_autisti_tmp`
+  - `@rifornimenti_autisti_tmp`
+
+## [CHORE] 2025-12-19 – ControlloMezzo reso non “sezione”
+- Rimosso accesso manuale da Home: ControlloMezzo resta solo step obbligatorio post-setup/cambio.
+
+## [FEAT] 2025-12-19 – Richiesta Attrezzature (minimal)
+- Aggiunta schermata “Che ti serve?” con testo libero + foto opzionale.
+- Chiave: `@richieste_attrezzature_autisti_tmp`
+- Route: `/autisti/richiesta-attrezzature`
+
+## [NOTE] 2025-12-19 – Admin rimandato
+- Firestore resta mirror/admin:
+  - `@autisti_sessione_attive`, `@mezzo_attivo_autista`, `autisti_eventi`
+- La dashboard admin verrà implementata in chat dedicata successiva.

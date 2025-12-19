@@ -173,3 +173,42 @@ Nessun vicolo cieco.
 Ogni cambio porta sempre a una scelta.
 
 Flusso continuo, senza rilogin.
+
+## App Autisti – Stato aggiornato (2025-12-19)
+
+### Sessione (per-dispositivo)
+- Fonte verità: localStorage (`src/autisti/autistiStorage.ts`)
+  - `@autista_attivo_local`
+  - `@mezzo_attivo_autista_local`
+
+### Mirror/Admin (Firestore)
+- Quadro live: `@autisti_sessione_attive`
+- Mirror compat: `@mezzo_attivo_autista`
+- Storico eventi: collection `autisti_eventi`
+
+### Flusso attuale (stabile)
+1. `/autisti` → `AutistiGate`
+2. Se manca sessione locale → `/autisti/login`
+3. Se autista ok ma mezzo mancante → `/autisti/setup-mezzo`
+4. Conferma mezzo → `/autisti/controllo`
+5. Dopo controllo → `/autisti/home`
+
+Cambio mezzo:
+- `/autisti/cambio-mezzo`
+- Cambio rimorchio → `/autisti/setup-mezzo?mode=rimorchio` → `/autisti/controllo` → Home
+- Cambio motrice → `/autisti/setup-mezzo?mode=motrice` → `/autisti/controllo` → Home
+
+### Route Autisti (aggiornate)
+- `/autisti/login` → LoginAutista
+- `/autisti/setup-mezzo` → SetupMezzo
+- `/autisti/controllo` → ControlloMezzo (solo step post-setup/cambio)
+- `/autisti/home` → HomeAutista
+- `/autisti/cambio-mezzo` → CambioMezzoAutista
+- `/autisti/segnalazioni` → Segnalazioni
+- `/autisti/rifornimento` → Rifornimento
+- `/autisti/richiesta-attrezzature` → RichiestaAttrezzature
+
+### Chiavi Autisti (dati operativi)
+- `@segnalazioni_autisti_tmp` (Segnalazioni)
+- `@rifornimenti_autisti_tmp` (Rifornimenti)
+- `@richieste_attrezzature_autisti_tmp` (Richiesta Attrezzature)

@@ -140,3 +140,44 @@ Logout
 È solo manuale.
 
 Nessun flusso operativo richiede il logout.
+
+## Aggiornamento App Autisti (2025-12-19) – Regole operative
+
+### Sessione Autista (REGOLA OBBLIGATORIA)
+- La sessione Autista e Mezzo attivo è **solo locale** (per-dispositivo) tramite `src/autisti/autistiStorage.ts`.
+- Chiavi localStorage ufficiali:
+  - `@autista_attivo_local`
+  - `@mezzo_attivo_autista_local`
+- È vietato usare come gating o fonte “vera”:
+  - `@autista_attivo`
+  - `@mezzo_attivo_autista`
+
+### Firestore (solo mirror/admin, non gating)
+- Firestore resta usato per:
+  - quadro live: `@autisti_sessione_attive`
+  - compat mirror: `@mezzo_attivo_autista`
+  - storico eventi: `autisti_eventi`
+- La UI Autisti deve decidere sempre su **localStorage**.
+
+### Flusso obbligatorio Controllo Mezzo
+- `ControlloMezzo` è uno step **obbligatorio solo**:
+  - dopo `SetupMezzo` (prima selezione)
+  - dopo `CambioMezzoAutista` (motrice o rimorchio)
+- `ControlloMezzo` non deve essere una sezione “manuale” dalla Home Autista.
+
+### SetupMezzo (selettore unico e coerente)
+- `SetupMezzo` gestisce anche i cambi, non solo il primo setup.
+- Supporta query mode:
+  - `?mode=rimorchio` → motrice bloccata (si cambia solo rimorchio)
+  - `?mode=motrice` → rimorchio bloccato (si cambia solo motrice)
+- Dopo conferma mezzo: redirect sempre a `/autisti/controllo`.
+
+### Moduli che devono leggere SOLO locale
+- `HomeAutista`, `ControlloMezzo`, `Segnalazioni`, `Rifornimento`, `SetupMezzo`, `CambioMezzoAutista`
+  - devono usare `getAutistaLocal()` e `getMezzoLocal()`.
+
+### Nuova funzione: Richiesta Attrezzature (boomer-proof)
+- Schermata minimal: 1 campo testo libero + foto opzionale + invio.
+- Chiave dati: `@richieste_attrezzature_autisti_tmp`
+- Route: `/autisti/richiesta-attrezzature`
+- Admin la gestirà successivamente (lettura e workflow).

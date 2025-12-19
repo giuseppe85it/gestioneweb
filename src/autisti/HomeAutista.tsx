@@ -107,8 +107,8 @@ export default function HomeAutista() {
           Segnalazioni
         </button>
 
-        <button onClick={() => navigate("/autisti/controllo")}>
-          Controllo mezzo
+        <button onClick={() => navigate("/autisti/richiesta-attrezzature")}>
+          Richiesta attrezzature
         </button>
 
         <button onClick={() => navigate("/autisti/cambio-mezzo")}>
