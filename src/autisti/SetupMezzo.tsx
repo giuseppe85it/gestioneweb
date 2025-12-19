@@ -157,7 +157,8 @@ export default function SetupMezzo() {
       });
     }
 
-    navigate("/autisti/home");
+   navigate("/autisti/controllo", { replace: true });
+
   }
 
   return (
