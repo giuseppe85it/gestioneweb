@@ -9,49 +9,53 @@ export default function AutistiGate() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    async function checkFlow() {
-      const autista = getAutistaLocal();
-      const mezzo = getMezzoLocal();
+    let cancelled = false;
 
-      if (!autista) {
+    async function checkFlow() {
+      // Supporta sia funzioni sync che async (se autistiStorage cambia)
+      const autista: any = await Promise.resolve((getAutistaLocal as any)());
+      const mezzo: any = await Promise.resolve((getMezzoLocal as any)());
+
+      if (cancelled) return;
+
+      // 1) Nessun autista locale -> login
+      if (!autista || !autista.badge) {
         navigate("/autisti/login", { replace: true });
         return;
       }
 
-      if (!mezzo) {
+      // 2) Nessun mezzo locale o nessuna motrice -> setup
+      if (!mezzo || !mezzo.targaCamion) {
         navigate("/autisti/setup-mezzo", { replace: true });
         return;
       }
-// SE NON C'È MOTRICE → STO CAMBIANDO → TORNO A SETUP
-if (!mezzo.targaCamion) {
-  navigate("/autisti/setup-mezzo");
-  return;
-}
 
-      // ================================
-      // CONTROLLO MEZZO OBBLIGATORIO
-      // ================================
-      const controlli = (await getItemSync(CONTROLLI_KEY)) || [];
+      // 3) Controllo mezzo obbligatorio (solo se esiste la lista)
+      const controlliRaw = (await getItemSync(CONTROLLI_KEY)) || [];
+      const controlli = Array.isArray(controlliRaw) ? controlliRaw : [];
 
-     const controlloValido = controlli
-  .filter((c: any) => c.obbligatorio === true)
-  .find(
-    (c: any) =>
-      c.badgeAutista === autista.badge &&
-      c.targaCamion === mezzo.targaCamion
-  );
-
+      const controlloValido = controlli
+        .filter((c: any) => c?.obbligatorio === true)
+        .find(
+          (c: any) =>
+            c?.badgeAutista === autista.badge &&
+            c?.targaCamion === mezzo.targaCamion
+        );
 
       if (!controlloValido) {
-             + navigate("/autisti/controllo", { replace: true });
-
+        navigate("/autisti/controllo", { replace: true });
         return;
       }
 
+      // 4) OK -> home
       navigate("/autisti/home", { replace: true });
     }
 
     checkFlow();
+
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   return null;
