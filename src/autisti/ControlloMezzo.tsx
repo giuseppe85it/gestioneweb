@@ -1,15 +1,14 @@
 // ======================================================
 // ControlloMezzo.tsx
-// APP AUTISTI – STEP 3 OBBLIGATORIO
+// APP AUTISTI – STEP OBBLIGATORIO (SESSIONE SOLO LOCALE)
 // ======================================================
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./ControlloMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
 
-const AUTISTA_KEY = "@autista_attivo";
-const MEZZO_ATTIVO_KEY = "@mezzo_attivo_autista";
 const CONTROLLI_KEY = "@controlli_mezzo_autisti";
 
 export default function ControlloMezzo() {
@@ -27,19 +26,22 @@ export default function ControlloMezzo() {
   });
 
   useEffect(() => {
-    async function load() {
-      const a = await getItemSync(AUTISTA_KEY);
-      const m = await getItemSync(MEZZO_ATTIVO_KEY);
+    // SOLO LOCALE (per-dispositivo)
+    const a = getAutistaLocal();
+    const m = getMezzoLocal();
 
-      if (!a || !m) {
-        navigate("/autisti/login");
-        return;
-      }
-
-      setAutista(a);
-      setMezzo(m);
+    if (!a || !a.badge) {
+      navigate("/autisti/login", { replace: true });
+      return;
     }
-    load();
+
+    if (!m || !m.targaCamion) {
+      navigate("/autisti/setup-mezzo", { replace: true });
+      return;
+    }
+
+    setAutista(a);
+    setMezzo(m);
   }, [navigate]);
 
   function toggle(key: keyof typeof check) {
@@ -52,11 +54,12 @@ export default function ControlloMezzo() {
       return;
     }
 
-    const storico = (await getItemSync(CONTROLLI_KEY)) || [];
+    const storicoRaw = (await getItemSync(CONTROLLI_KEY)) || [];
+    const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
     storico.push({
-      autistaNome: autista.nome,
-      badgeAutista: autista.badge,
+      autistaNome: autista.nome || null,
+      badgeAutista: autista.badge || null,
 
       targaCamion: mezzo.targaCamion || null,
       targaRimorchio: mezzo.targaRimorchio || null,
@@ -64,13 +67,13 @@ export default function ControlloMezzo() {
       check,
       note: note || null,
 
-      obbligatorio: true, // STEP 3
+      obbligatorio: true,
       timestamp: Date.now(),
     });
 
     await setItemSync(CONTROLLI_KEY, storico);
 
-    navigate("/autisti/home");
+    navigate("/autisti/home", { replace: true });
   }
 
   return (
@@ -86,9 +89,7 @@ export default function ControlloMezzo() {
             <div className="cmz-targa">{mezzo.targaCamion}</div>
           )}
           {mezzo.targaRimorchio && (
-            <div className="cmz-targa secondaria">
-              {mezzo.targaRimorchio}
-            </div>
+            <div className="cmz-targa secondaria">{mezzo.targaRimorchio}</div>
           )}
         </div>
       )}
