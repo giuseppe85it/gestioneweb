@@ -3,7 +3,7 @@
 // APP AUTISTI
 // - SGANCIO RIMORCHIO
 // - CAMBIO MOTRICE
-// - TRANSIZIONE GUIDATA A SETUP MEZZO
+// - TRANSIZIONE GUIDATA A SETUP MEZZO (mode)
 // ======================================================
 
 import { useEffect, useState } from "react";
@@ -12,11 +12,12 @@ import "./CambioMezzoAutista.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
+import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
 
-const AUTISTA_KEY = "@autista_attivo";
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
 const STORICO_MOTRICI_KEY = "@storico_cambi_motrice";
+const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
 
 const LUOGHI = ["STABIO", "MEV", "ALTRO"] as const;
 type Luogo = typeof LUOGHI[number];
@@ -38,46 +39,62 @@ export default function CambioMezzoAutista() {
 
   const [luogo, setLuogo] = useState<Luogo | "">("");
   const [luogoAltro, setLuogoAltro] = useState("");
-  const [statoCarico, setStatoCarico] =
-    useState<"PIENO" | "SCARICO">("SCARICO");
+  const [statoCarico, setStatoCarico] = useState<"PIENO" | "SCARICO">("SCARICO");
 
   const [condizioni, setCondizioni] = useState({
-    specifiche: {
-      cinghie: true,
-      stecche: true,
-      botole: true,
-      tubi: true,
-    },
-    generali: {
-      gomme: true,
-      freni: true,
-      perdite: true,
-    },
+    specifiche: { cinghie: true, stecche: true, botole: true, tubi: true },
+    generali: { gomme: true, freni: true, perdite: true },
   });
 
   const [errore, setErrore] = useState("");
 
-  // ======================================================
-  // LOAD SESSIONE ATTIVA
-  // ======================================================
   useEffect(() => {
+    // reset campi quando cambi tab
+    setErrore("");
+    setLuogo("");
+    setLuogoAltro("");
+    setStatoCarico("SCARICO");
+    setCondizioni({
+      specifiche: { cinghie: true, stecche: true, botole: true, tubi: true },
+      generali: { gomme: true, freni: true, perdite: true },
+    });
+
     caricaSessione();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalita]);
 
   async function caricaSessione() {
-    const autista = await getItemSync(AUTISTA_KEY);
-    const sessioni: SessioneAttiva[] =
-      (await getItemSync(SESSIONI_KEY)) || [];
+    const a: any = getAutistaLocal();
+    const mezzoLocal: any = getMezzoLocal();
 
-    const trovata = sessioni.find(
-      (s) =>
-        s.badgeAutista === autista?.badge &&
-        (modalita === "motrice"
-          ? !!s.targaMotrice
-          : !!s.targaRimorchio)
-    );
+    const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+    const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
 
-    setSessione(trovata || null);
+    // prova: sessione su Firestore per quel badge
+    let trovata = sessioni.find((s) => s.badgeAutista === a?.badge) || null;
+
+    // fallback: costruisci da locale (per evitare stati “sporchi”)
+    if (!trovata && a?.badge) {
+      trovata = {
+        targaMotrice: mezzoLocal?.targaCamion || null,
+        targaRimorchio: mezzoLocal?.targaRimorchio || null,
+        badgeAutista: a.badge,
+        nomeAutista: a.nome || "",
+        timestamp: mezzoLocal?.timestamp || Date.now(),
+      };
+    }
+
+    // per la tab selezionata, serve che esista il mezzo relativo
+    if (modalita === "rimorchio" && !trovata?.targaRimorchio) {
+      setSessione(null);
+      return;
+    }
+    if (modalita === "motrice" && !trovata?.targaMotrice) {
+      setSessione(null);
+      return;
+    }
+
+    setSessione(trovata);
   }
 
   function toggle(path: string) {
@@ -89,14 +106,32 @@ export default function CambioMezzoAutista() {
     });
   }
 
-  // ======================================================
-  // CONFERMA CAMBIO
-  // ======================================================
   async function conferma() {
     setErrore("");
 
-    if (!sessione) {
-      setErrore("Nessun mezzo attivo");
+    const a: any = getAutistaLocal();
+    const mezzoLocal: any = getMezzoLocal();
+
+    if (!a?.badge) {
+      setErrore("Autista non valido. Fai login.");
+      return;
+    }
+
+    // sessione coerente: preferisci quella calcolata
+    const cur: SessioneAttiva = sessione || {
+      targaMotrice: mezzoLocal?.targaCamion || null,
+      targaRimorchio: mezzoLocal?.targaRimorchio || null,
+      badgeAutista: a.badge,
+      nomeAutista: a.nome || "",
+      timestamp: mezzoLocal?.timestamp || Date.now(),
+    };
+
+    if (modalita === "rimorchio" && !cur.targaRimorchio) {
+      setErrore("Nessun rimorchio agganciato");
+      return;
+    }
+    if (modalita === "motrice" && !cur.targaMotrice) {
+      setErrore("Nessuna motrice attiva");
       return;
     }
 
@@ -104,29 +139,29 @@ export default function CambioMezzoAutista() {
       setErrore("Seleziona il luogo");
       return;
     }
-
     if (luogo === "ALTRO" && !luogoAltro.trim()) {
       setErrore("Specifica il luogo");
       return;
     }
 
     const now = Date.now();
-    const luogoFinale = luogo === "ALTRO" ? luogoAltro : luogo;
+    const luogoFinale = luogo === "ALTRO" ? luogoAltro.trim() : luogo;
 
     // =======================
     // SGANCIO RIMORCHIO
     // =======================
-    if (modalita === "rimorchio" && sessione.targaRimorchio) {
-      const storico = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
+    if (modalita === "rimorchio" && cur.targaRimorchio) {
+      const storicoRaw = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
+      const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
       storico.push({
-        targaRimorchio: sessione.targaRimorchio,
-        autista: sessione.nomeAutista,
-        badgeAutista: sessione.badgeAutista,
+        targaRimorchio: cur.targaRimorchio,
+        autista: cur.nomeAutista,
+        badgeAutista: cur.badgeAutista,
         luogo: luogoFinale,
         statoCarico,
         condizioni,
-        timestampAggancio: sessione.timestamp,
+        timestampAggancio: cur.timestamp,
         timestampSgancio: now,
       });
 
@@ -134,27 +169,56 @@ export default function CambioMezzoAutista() {
 
       await addDoc(collection(db, "autisti_eventi"), {
         tipo: "SGANCIO_RIMORCHIO",
-        autistaNome: sessione.nomeAutista,
-        badgeAutista: sessione.badgeAutista,
-        targaRimorchio: sessione.targaRimorchio,
+        autistaNome: cur.nomeAutista,
+        badgeAutista: cur.badgeAutista,
+        targaMotrice: cur.targaMotrice || null,
+        targaRimorchio: cur.targaRimorchio,
         luogo: luogoFinale,
         statoCarico,
         condizioni,
         timestamp: now,
         createdAt: serverTimestamp(),
       });
+
+      // aggiorna sessioni attive: rimorchio -> null
+      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+      const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+      const aggiornate = sessioni.map((s) => {
+        if (s.badgeAutista !== cur.badgeAutista) return s;
+        return { ...s, targaRimorchio: null };
+      });
+      await setItemSync(SESSIONI_KEY, aggiornate);
+
+      // aggiorna locale: mantieni motrice, azzera rimorchio
+      saveMezzoLocal({
+        targaCamion: cur.targaMotrice,
+        targaRimorchio: null,
+        timestamp: now,
+      });
+
+      // compat: aggiorna anche la chiave sync (non usarla per gating)
+      await setItemSync(MEZZO_SYNC_KEY, {
+        targaCamion: cur.targaMotrice,
+        targaRimorchio: null,
+        timestamp: now,
+      });
+
+      // vai a setup SOLO rimorchio (motrice bloccata)
+      navigate("/autisti/setup-mezzo?mode=rimorchio", { replace: true });
+      return;
     }
 
     // =======================
     // CAMBIO MOTRICE
     // =======================
-    if (modalita === "motrice" && sessione.targaMotrice) {
-      const storico = (await getItemSync(STORICO_MOTRICI_KEY)) || [];
+    if (modalita === "motrice" && cur.targaMotrice) {
+      const storicoRaw = (await getItemSync(STORICO_MOTRICI_KEY)) || [];
+      const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
       storico.push({
-        targaMotrice: sessione.targaMotrice,
-        autista: sessione.nomeAutista,
-        badgeAutista: sessione.badgeAutista,
+        targaMotrice: cur.targaMotrice,
+        autista: cur.nomeAutista,
+        badgeAutista: cur.badgeAutista,
         luogo: luogoFinale,
         condizioni: condizioni.generali,
         timestampCambio: now,
@@ -164,45 +228,45 @@ export default function CambioMezzoAutista() {
 
       await addDoc(collection(db, "autisti_eventi"), {
         tipo: "CAMBIO_MOTRICE",
-        autistaNome: sessione.nomeAutista,
-        badgeAutista: sessione.badgeAutista,
-        targaMotrice: sessione.targaMotrice,
+        autistaNome: cur.nomeAutista,
+        badgeAutista: cur.badgeAutista,
+        targaMotrice: cur.targaMotrice,
         luogo: luogoFinale,
         condizioni: condizioni.generali,
         timestamp: now,
         createdAt: serverTimestamp(),
       });
+
+      // aggiorna sessioni attive: motrice -> null (rimorchio lo lasciamo invariato)
+      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+      const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+      const aggiornate = sessioni.map((s) => {
+        if (s.badgeAutista !== cur.badgeAutista) return s;
+        return { ...s, targaMotrice: null };
+      });
+      await setItemSync(SESSIONI_KEY, aggiornate);
+
+      // aggiorna locale: azzera motrice, rimorchio resta com’è
+      saveMezzoLocal({
+        targaCamion: null,
+        targaRimorchio: cur.targaRimorchio || null,
+        timestamp: now,
+      });
+
+      await setItemSync(MEZZO_SYNC_KEY, {
+        targaCamion: null,
+        targaRimorchio: cur.targaRimorchio || null,
+        timestamp: now,
+      });
+
+      // vai a setup motrice (scelta completa)
+      navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
+      return;
     }
 
-    // =======================
-    // AGGIORNA SESSIONE
-    // =======================
-    const sessioni: SessioneAttiva[] =
-      (await getItemSync(SESSIONI_KEY)) || [];
-
-    const aggiornate = sessioni.map((s) => {
-      if (s.badgeAutista !== sessione.badgeAutista) return s;
-
-      return {
-        ...s,
-        targaRimorchio:
-          modalita === "rimorchio" ? null : s.targaRimorchio,
-        targaMotrice:
-          modalita === "motrice" ? null : s.targaMotrice,
-      };
-    });
-
-    await setItemSync(SESSIONI_KEY, aggiornate);
-
-    // =======================
-    // TRANSIZIONE GUIDATA
-    // =======================
-    navigate("/autisti/setup-mezzo");
+    setErrore("Operazione non valida");
   }
 
-  // ======================================================
-  // UI (INVARIATA)
-  // ======================================================
   return (
     <div className="cm-container">
       <h1>CAMBIO MEZZO</h1>
@@ -230,9 +294,7 @@ export default function CambioMezzoAutista() {
       {sessione && (
         <>
           <div className="cm-targa">
-            {modalita === "rimorchio"
-              ? sessione.targaRimorchio
-              : sessione.targaMotrice}
+            {modalita === "rimorchio" ? sessione.targaRimorchio : sessione.targaMotrice}
           </div>
 
           <h2>Luogo</h2>

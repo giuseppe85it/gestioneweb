@@ -1,38 +1,24 @@
 // ======================================================
-// SetupMezzo.tsx — COERENTE
-// - sessione unica con targaMotrice / targaRimorchio
-// - AGGANCIO_RIMORCHIO come EVENTO STORICO (Firestore)
-// - sessione aggiornata in @autisti_sessione_attive
-// - mezzo attivo locale + sync
+// SetupMezzo.tsx
+// - mode=rimorchio: MOTRICE BLOCCATA, scegli solo rimorchio
+// - mode=motrice (o nessun mode): scegli motrice e rimorchio (opzionale)
+// - conferma -> SEMPRE /autisti/controllo
 // ======================================================
 
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import "./SetupMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { saveMezzoLocal } from "./autistiStorage";
+import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
 const MEZZI_KEY = "@mezzi_aziendali";
-const AUTISTA_KEY = "@autista_attivo";
 const SESSIONI_KEY = "@autisti_sessione_attive";
+const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
 
-const MOTRICI = [
-  "motrice 2 assi",
-  "motrice 3 assi",
-  "motrice 4 assi",
-  "trattore stradale",
-];
-
-const RIMORCHI = [
-  "semirimorchio asse fisso",
-  "semirimorchio asse sterzante",
-  "pianale",
-  "biga",
-  "centina",
-  "vasca",
-];
+const MOTRICI = ["motrice 2 assi", "motrice 3 assi", "motrice 4 assi", "trattore stradale"];
+const RIMORCHI = ["semirimorchio asse fisso", "semirimorchio asse sterzante", "pianale", "biga", "centina", "vasca"];
 
 interface Mezzo {
   id: string;
@@ -54,58 +40,83 @@ const fmtTarga = (t: string) => t.replace(/([A-Z]{2})(\d+)/, "$1 $2");
 
 export default function SetupMezzo() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [motrici, setMotrici] = useState<Mezzo[]>([]);
-  const [rimorchi, setRimorchi] = useState<Mezzo[]>([]);
+  const mode = (searchParams.get("mode") || "").toLowerCase(); // "rimorchio" | "motrice" | ""
+  const lockMotrice = mode === "rimorchio";
+
+  const [motriciAll, setMotriciAll] = useState<Mezzo[]>([]);
+  const [rimorchiAll, setRimorchiAll] = useState<Mezzo[]>([]);
   const [sessioni, setSessioni] = useState<SessioneAttiva[]>([]);
 
   const [targaCamion, setTargaCamion] = useState<string | null>(null);
   const [targaRimorchio, setTargaRimorchio] = useState<string | null>(null);
   const [errore, setErrore] = useState("");
 
-  const [autista, setAutista] = useState<{ badge: string; nome: string } | null>(null);
+  const autista: any = useMemo(() => getAutistaLocal(), []);
+  const mezzoLocal: any = useMemo(() => getMezzoLocal(), []);
 
   useEffect(() => {
+    if (!autista?.badge) {
+      navigate("/autisti/login", { replace: true });
+      return;
+    }
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function init() {
-    const a = await getItemSync(AUTISTA_KEY);
-    setAutista(a);
-
     const mezzi: Mezzo[] = (await getItemSync(MEZZI_KEY)) || [];
     const sess: SessioneAttiva[] = (await getItemSync(SESSIONI_KEY)) || [];
-    setSessioni(sess);
+    setSessioni(Array.isArray(sess) ? sess : []);
 
-    const mot = mezzi.filter(m => MOTRICI.includes(norm(m.categoria)));
-    const rim = mezzi.filter(m => RIMORCHI.includes(norm(m.categoria)));
+    const mot = mezzi.filter((m) => MOTRICI.includes(norm(m.categoria)));
+    const rim = mezzi.filter((m) => RIMORCHI.includes(norm(m.categoria)));
 
-    if (a?.nome) {
-      const motAssegnata = mot.find(m => norm(m.autistaNome) === norm(a.nome));
-      if (motAssegnata) {
-        setTargaCamion(motAssegnata.targa);
-        setMotrici([motAssegnata, ...mot.filter(x => x.id !== motAssegnata.id)]);
-      } else {
-        setMotrici(mot);
+    // Preselezioni: preferisci locale (coerenza per-dispositivo)
+    const preMotrice = mezzoLocal?.targaCamion || null;
+    const preRimorchio = mezzoLocal?.targaRimorchio || null;
+
+    if (lockMotrice) {
+      // Se arrivi in mode=rimorchio senza motrice locale, è incoerente -> torna a setup normale
+      if (!preMotrice) {
+        navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
+        return;
       }
+      setTargaCamion(preMotrice);
 
-      const rimAssegnato = rim.find(m => norm(m.autistaNome) === norm(a.nome));
-      if (rimAssegnato) {
-        setTargaRimorchio(rimAssegnato.targa);
-        setRimorchi([rimAssegnato, ...rim.filter(x => x.id !== rimAssegnato.id)]);
-      } else {
-        setRimorchi(rim);
-      }
+      // mostra solo la motrice attuale (no confusione)
+      const attuale = mot.find((x) => x.targa === preMotrice);
+      setMotriciAll(attuale ? [attuale] : []);
     } else {
-      setMotrici(mot);
-      setRimorchi(rim);
+      // scelta completa: lista intera
+      setMotriciAll(mot);
+
+      // se non hai preMotrice locale, prova preselezione “autista abituale”
+      if (!preMotrice && autista?.nome) {
+        const motAssegnata = mot.find((m) => norm(m.autistaNome) === norm(autista.nome));
+        if (motAssegnata) setTargaCamion(motAssegnata.targa);
+      } else {
+        setTargaCamion(preMotrice);
+      }
+    }
+
+    setRimorchiAll(rim);
+
+    // rimorchio: se c’è locale lo preseleziona, altrimenti prova “abituale”
+    if (preRimorchio) {
+      setTargaRimorchio(preRimorchio);
+    } else if (autista?.nome) {
+      const rimAssegnato = rim.find((m) => norm(m.autistaNome) === norm(autista.nome));
+      if (rimAssegnato) setTargaRimorchio(rimAssegnato.targa);
+      else setTargaRimorchio(null);
+    } else {
+      setTargaRimorchio(null);
     }
   }
 
   function statoUso(targa: string) {
-    const s = sessioni.find(
-      x => x.targaMotrice === targa || x.targaRimorchio === targa
-    );
+    const s = sessioni.find((x) => x.targaMotrice === targa || x.targaRimorchio === targa);
     if (!s) return null;
     if (s.badgeAutista === autista?.badge) return null;
     return `IN USO da ${s.nomeAutista}`;
@@ -113,18 +124,28 @@ export default function SetupMezzo() {
 
   async function handleConfirm() {
     setErrore("");
-    if (!targaCamion || !autista) {
+
+    if (!autista?.badge || !autista?.nome) {
+      setErrore("Autista non valido. Fai login.");
+      return;
+    }
+
+    if (!targaCamion) {
       setErrore("Seleziona una motrice o trattore");
       return;
     }
 
     const now = Date.now();
 
-    const nuove = sessioni.filter(s => s.badgeAutista !== autista.badge);
+    const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+    const prev: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+
+    // rimuove eventuale sessione precedente dell’autista
+    const nuove = prev.filter((s) => s.badgeAutista !== autista.badge);
 
     const sessione: SessioneAttiva = {
       targaMotrice: targaCamion,
-      targaRimorchio,
+      targaRimorchio: targaRimorchio || null,
       badgeAutista: autista.badge,
       nomeAutista: autista.nome,
       timestamp: now,
@@ -133,18 +154,22 @@ export default function SetupMezzo() {
     nuove.push(sessione);
 
     await setItemSync(SESSIONI_KEY, nuove);
-    await setItemSync("@mezzo_attivo_autista", {
+
+    // compat: aggiorna anche la chiave sync (non usarla per gating)
+    await setItemSync(MEZZO_SYNC_KEY, {
       targaCamion,
-      targaRimorchio,
+      targaRimorchio: targaRimorchio || null,
       timestamp: now,
     });
 
+    // locale per dispositivo
     saveMezzoLocal({
       targaCamion,
-      targaRimorchio,
+      targaRimorchio: targaRimorchio || null,
       timestamp: now,
     });
 
+    // evento aggancio rimorchio (solo se selezionato)
     if (targaRimorchio) {
       await addDoc(collection(db, "autisti_eventi"), {
         tipo: "AGGANCIO_RIMORCHIO",
@@ -157,8 +182,7 @@ export default function SetupMezzo() {
       });
     }
 
-   navigate("/autisti/controllo", { replace: true });
-
+    navigate("/autisti/controllo", { replace: true });
   }
 
   return (
@@ -166,14 +190,24 @@ export default function SetupMezzo() {
       <h1 className="setup-title">Selezione Mezzo</h1>
 
       <h2 className="setup-subtitle">Motrice / Trattore</h2>
+
+      {lockMotrice && (
+        <div className="setup-error" style={{ marginBottom: 12 }}>
+          Motrice bloccata: stai facendo CAMBIO RIMORCHIO
+        </div>
+      )}
+
       <div className="targhe-list">
-        {motrici.map(m => {
+        {motriciAll.map((m) => {
           const warn = statoUso(m.targa);
           return (
             <div
               key={m.id}
               className={`targa-card ${targaCamion === m.targa ? "selected" : ""} ${warn ? "warn" : ""}`}
-              onClick={() => setTargaCamion(m.targa)}
+              onClick={() => {
+                if (!lockMotrice) setTargaCamion(m.targa);
+              }}
+              style={lockMotrice ? { cursor: "default" } : undefined}
             >
               <div className="targa-text">{fmtTarga(m.targa)}</div>
               {m.autistaNome && <div className="targa-note">Autista abituale: {m.autistaNome}</div>}
@@ -192,7 +226,7 @@ export default function SetupMezzo() {
           <div className="targa-text">NESSUN RIMORCHIO</div>
         </div>
 
-        {rimorchi.map(m => {
+        {rimorchiAll.map((m) => {
           const warn = statoUso(m.targa);
           return (
             <div
