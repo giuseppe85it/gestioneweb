@@ -9,6 +9,7 @@ import "./autisti.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import {
   getAutistaLocal,
+  getMezzoLocal,
   removeAutistaLocal,
   removeMezzoLocal,
 } from "./autistiStorage";
@@ -22,43 +23,45 @@ export default function HomeAutista() {
   const [mezzo, setMezzo] = useState<any>(null);
 
   // ======================================================
-  // LOAD SESSIONE
+  // LOAD SESSIONE (SOLO LOCALE)
   // ======================================================
   useEffect(() => {
-    async function load() {
-      const a = await getAutistaLocal();
-      const m = await getItemSync("@mezzo_attivo_autista");
+    const a = getAutistaLocal();
+    const m = getMezzoLocal();
 
-      if (!a || !m) {
-        navigate("/autisti/login");
-        return;
-      }
-
-      setAutista(a);
-      setMezzo(m);
+    if (!a || !a.badge) {
+      navigate("/autisti/login", { replace: true });
+      return;
     }
 
-    load();
+    // autista ok ma mezzo non selezionato -> setup
+    if (!m || !m.targaCamion) {
+      navigate("/autisti/setup-mezzo", { replace: true });
+      return;
+    }
+
+    setAutista(a);
+    setMezzo(m);
   }, [navigate]);
 
   // ======================================================
   // LOGOUT
   // ======================================================
   async function handleLogout() {
-    if (!autista) return;
+    const a = getAutistaLocal();
+    if (!a?.badge) return;
 
-    // 1. rimuove sessione attiva Firestore
-    const sessioni = (await getItemSync(SESSIONI_KEY)) || [];
-    const aggiornate = sessioni.filter(
-      (s: any) => s.badgeAutista !== autista.badge
-    );
+    // opzionale: pulizia sessione attiva lato Firestore (non usata per gating)
+    const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+    const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+    const aggiornate = sessioni.filter((s: any) => s?.badgeAutista !== a.badge);
     await setItemSync(SESSIONI_KEY, aggiornate);
 
-    // 2. pulizia locale
+    // pulizia locale (questa è quella che conta)
     removeAutistaLocal();
     removeMezzoLocal();
 
-    navigate("/autisti/login");
+    navigate("/autisti/login", { replace: true });
   }
 
   if (!autista || !mezzo) return null;
@@ -84,13 +87,11 @@ export default function HomeAutista() {
         <h2>Mezzo attivo</h2>
         <div className="autisti-mezzo-card">
           <div>
-            <strong>Motrice:</strong>{" "}
-            {mezzo.targaCamion || "-"}
+            <strong>Motrice:</strong> {mezzo.targaCamion || "-"}
           </div>
           {mezzo.targaRimorchio && (
             <div>
-              <strong>Rimorchio:</strong>{" "}
-              {mezzo.targaRimorchio}
+              <strong>Rimorchio:</strong> {mezzo.targaRimorchio}
             </div>
           )}
         </div>
