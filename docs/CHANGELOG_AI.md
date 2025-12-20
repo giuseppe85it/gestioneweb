@@ -119,3 +119,55 @@ Allineare stato locale e stato Firestore dopo i cambi.
 - Firestore resta mirror/admin:
   - `@autisti_sessione_attive`, `@mezzo_attivo_autista`, `autisti_eventi`
 - La dashboard admin verrà implementata in chat dedicata successiva.
+# CHANGELOG_AI
+
+## Stato attuale (oggi)
+- Inbox Autisti premium centrata e coerente desktop/mobile.
+- Centro rettifica dati (AutistiAdmin) attivo con filtri per data e categorie.
+- `homeEvents.ts` centralizza la lettura eventi giornalieri e lo stato rimorchi (agganciati/liberi).
+- Controllo Mezzo aggiornato per distinguere MOTRICE/RIMORCHIO/ENTRAMBI tramite campo `target`.
+
+---
+
+## [UI] 2025-12-20 – Inbox Autisti premium (layout stabile)
+- Sistemato CSS della home Inbox per:
+  - contenitore centrato con max-width
+  - card leggibili su desktop e mobile
+- Aggiunta 5a card “Richiesta Attrezzature” (tasto/link presente, pagina già prevista ma si rifinisce dopo).
+- Logo ingrandito; click per tornare alla home principale da rendere attivo quando si completa la navigazione.
+
+---
+
+## [FEAT] 2025-12-20 – Centro rettifica dati (AutistiAdmin)
+- Aggiunta dashboard admin con:
+  - filtri per data (giorno precedente/successivo)
+  - tab categorie: rifornimenti, segnalazioni, controlli, cambio mezzo, richieste attrezzature
+  - sezione “Cambio mezzo” con:
+    - Agganci rimorchi (include anche agganci LIVE per chiudere il cerchio)
+    - Sganci rimorchi (storico)
+
+---
+
+## [FIX] 2025-12-20 – Rimorchi: nome autista e timestamp coerenti
+- Allineata lettura autista in `loadRimorchiStatus()` su campi reali:
+  - `nomeAutista` (primario), fallback `autistaNome`/`autista`
+- Rimosso comportamento “ora che scorre” dovuto a fallback `Date.now()`:
+  - timestamp rimorchi AGGANCIATI = timestamp aggancio (da sessione)
+  - timestamp rimorchi LIBERI = timestamp sgancio (da storico)
+
+---
+
+## [FEAT] 2025-12-20 – Controllo Mezzo con target
+- `SetupMezzo` naviga a `/autisti/controllo?target=...` in base a modalità (motrice/rimorchio/entrambi).
+- `ControlloMezzo` legge la query e salva `target` nel record.
+- `homeEvents.loadHomeEvents()` mostra la targa corretta in “Controlli”:
+  - rimorchio: targa rimorchio
+  - motrice: targa motrice
+  - entrambi: “MOTRICE + RIMORCHIO”
+
+---
+
+## TODO immediati (prossima chat)
+1) LIVE: mostrare anche “ora corrente” nella card LIVE, mantenendo “ora aggancio” come dato stabile.
+2) Modali: in Inbox mostrare solo 5 righe per card e “Vedi tutto” in modale.
+3) Completare layout e navigazione pagine (rifornimenti, segnalazioni, controlli, richieste attrezzature) senza cambiare chiavi.

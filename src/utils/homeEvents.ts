@@ -23,53 +23,42 @@ export type RimorchioStatus = {
   motrice: string | null;
   luogo: string | null;
   statoCarico: string | null;
-  timestamp: number; // AGGANCIATO = ora aggancio, LIBERO = ora sgancio
+  timestamp: number;
 };
 
 const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_CONTROLLI = "@controlli_mezzo_autisti";
+const KEY_CAMBI_MOTRICE = "@cambi_mezzo_autisti_tmp";
 const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
-const KEY_CAMBI_MOTRICE = "@storico_cambi_motrice";
-const KEY_SGANCIO_RIMORCHI = "@storico_sganci_rimorchi";
+
 const KEY_SESSIONI = "@autisti_sessione_attive";
+const KEY_SGANCIO_RIMORCHI = "@storico_sganci_rimorchi";
 
 function genId() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const c: any = globalThis.crypto;
-  if (c?.randomUUID) return c.randomUUID();
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return `evt_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toTs(v: any): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const t = Date.parse(v);
-    return Number.isFinite(t) ? t : null;
-  }
-  if (v && typeof v === "object") {
-    if (typeof v.toMillis === "function") {
-      const t = v.toMillis();
-      return typeof t === "number" && Number.isFinite(t) ? t : null;
-    }
-    if (typeof v.seconds === "number") {
-      const ms =
-        v.seconds * 1000 +
-        (typeof v.nanoseconds === "number" ? Math.floor(v.nanoseconds / 1e6) : 0);
-      return Number.isFinite(ms) ? ms : null;
-    }
-  }
-  return null;
-}
-
-function isSameDay(ts: number, day: Date): boolean {
+function isSameDay(ts: number, day: Date) {
   const d = new Date(ts);
   return (
     d.getFullYear() === day.getFullYear() &&
     d.getMonth() === day.getMonth() &&
     d.getDate() === day.getDate()
   );
+}
+
+function toTs(val: any): number | null {
+  if (!val) return null;
+  if (typeof val === "number" && Number.isFinite(val)) return val;
+  if (typeof val === "string") {
+    const n = Number(val);
+    if (Number.isFinite(n) && n > 0) return n;
+    const t = Date.parse(val);
+    if (!Number.isNaN(t)) return t;
+  }
+  if (val?.seconds && typeof val.seconds === "number") return val.seconds * 1000;
+  return null;
 }
 
 export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
@@ -94,13 +83,13 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
   const segnalazioni = (await getItemSync(KEY_SEGNALAZIONI)) || [];
   if (Array.isArray(segnalazioni)) {
     for (const s of segnalazioni) {
-      const ts = toTs(s?.data);
+      const ts = toTs(s?.timestamp) ?? toTs(s?.data);
       if (!ts || !isSameDay(ts, day)) continue;
       events.push({
         id: s.id ?? genId(),
         tipo: "segnalazione",
         targa: s.targa ?? null,
-        autista: s.nomeAutista ?? s.autistaNome ?? null,
+        autista: s.autistaNome ?? s.nomeAutista ?? null,
         timestamp: ts,
         payload: s,
       });
@@ -114,6 +103,7 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
       if (!ts || !isSameDay(ts, day)) continue;
 
       const target = String(c?.target || "").toLowerCase();
+
       const targa =
         target === "rimorchio"
           ? c.targaRimorchio ?? null
@@ -123,6 +113,8 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
           ? c.targaCamion && c.targaRimorchio
             ? `${c.targaCamion} + ${c.targaRimorchio}`
             : c.targaCamion ?? c.targaRimorchio ?? null
+          : c.targaCamion && c.targaRimorchio
+          ? `${c.targaCamion} + ${c.targaRimorchio}`
           : c.targaCamion ?? c.targaRimorchio ?? null;
 
       events.push({
@@ -178,7 +170,6 @@ export async function loadRimorchiStatus(): Promise<RimorchioStatus[]> {
   const risultati: RimorchioStatus[] = [];
   const inUso = new Set<string>();
 
-  // AGGANCIATI: sessioni attive (timestamp = ora aggancio stabile)
   if (Array.isArray(sessioni)) {
     for (const s of sessioni) {
       if (!s?.targaRimorchio) continue;
@@ -199,7 +190,6 @@ export async function loadRimorchiStatus(): Promise<RimorchioStatus[]> {
     }
   }
 
-  // LIBERI: ultimo sgancio per targa, solo se non in uso
   const lastByTarga = new Map<string, any>();
   if (Array.isArray(sganci)) {
     for (const s of sganci) {

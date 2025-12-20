@@ -97,9 +97,10 @@ export default function ControlloMezzo() {
       <h1>CONTROLLO MEZZO</h1>
       <p className="cmz-subtitle">Verifica iniziale obbligatoria prima di iniziare il lavoro</p>
 
-      <p className="cmz-subtitle" style={{ marginTop: 6, fontWeight: 900 }}>
-        TARGET: {target.toUpperCase()}
-      </p>
+     <p className="cmz-subtitle" style={{ marginTop: 6, fontWeight: 900 }}>
+  {target.toUpperCase()}
+</p>
+
 
       {mezzo && (
         <div className="cmz-targhe">

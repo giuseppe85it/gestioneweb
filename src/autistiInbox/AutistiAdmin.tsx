@@ -30,14 +30,41 @@ function isSameDay(ts: number, day: Date) {
 }
 
 function formatDayLabel(d: Date) {
-  const giorni = ["Domenica","Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato"];
-  const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
-  return `${giorni[d.getDay()]} ${String(d.getDate()).padStart(2,"0")} ${mesi[d.getMonth()]} ${d.getFullYear()}`;
+  const giorni = [
+    "Domenica",
+    "Lunedì",
+    "Martedì",
+    "Mercoledì",
+    "Giovedì",
+    "Venerdì",
+    "Sabato",
+  ];
+  const mesi = [
+    "Gennaio",
+    "Febbraio",
+    "Marzo",
+    "Aprile",
+    "Maggio",
+    "Giugno",
+    "Luglio",
+    "Agosto",
+    "Settembre",
+    "Ottobre",
+    "Novembre",
+    "Dicembre",
+  ];
+  return `${giorni[d.getDay()]} ${String(d.getDate()).padStart(
+    2,
+    "0"
+  )} ${mesi[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function formatHHMM(ts: number) {
   const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 export default function AutistiAdmin() {
@@ -45,6 +72,13 @@ export default function AutistiAdmin() {
 
   const [tab, setTab] = useState<TabKey>("rifornimenti");
   const [day, setDay] = useState<Date>(() => new Date());
+
+  // ORA CORRENTE per LIVE
+  const [nowTs, setNowTs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNowTs(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
 
   const [events, setEvents] = useState<HomeEvent[]>([]);
   const [storicoRimorchi, setStoricoRimorchi] = useState<any[]>([]);
@@ -108,38 +142,13 @@ export default function AutistiAdmin() {
     }
   }, [events, tab]);
 
- const agganciRimorchi = useMemo(() => {
-  // agganci da storico (solo quelli che esistono perché poi sganciati)
-  const fromStorico = storicoRimorchi
-    .filter((x) => x?.timestampAggancio && isSameDay(x.timestampAggancio, day))
-    .map((x) => ({ ...x, _ts: x.timestampAggancio, _src: "storico" as const }));
-
-  // agganci LIVE del giorno (anche se non ancora sganciati)
-  const fromLive = rimorchiLive
-    .filter((r) => r.stato === "AGGANCIATO" && r.timestamp && isSameDay(r.timestamp, day))
-    .map((r) => ({
-      id: `live_${r.targa}_${r.timestamp}`,
-      targaRimorchio: r.targa,
-      autista: r.autista ?? null,
-      targaMotrice: r.motrice ?? null,
-      _ts: r.timestamp,
-      _src: "live" as const,
-    }));
-
-  // merge (evita duplicati: se esiste già da storico, non aggiungere live)
-  const map = new Map<string, any>();
-  for (const a of fromStorico) {
-    const k = `${a.targaRimorchio ?? ""}_${a._ts ?? 0}`;
-    map.set(k, a);
-  }
-  for (const a of fromLive) {
-    const k = `${a.targaRimorchio ?? ""}_${a._ts ?? 0}`;
-    if (!map.has(k)) map.set(k, a);
-  }
-
-  return Array.from(map.values()).sort((a, b) => (b._ts ?? 0) - (a._ts ?? 0));
-}, [storicoRimorchi, rimorchiLive, day]);
-
+  const agganciRimorchi = useMemo(() => {
+    // SOLO storico: eventi certi di aggancio (no merge con LIVE).
+    return storicoRimorchi
+      .filter((x) => x?.timestampAggancio && isSameDay(x.timestampAggancio, day))
+      .map((x) => ({ ...x, _ts: x.timestampAggancio }))
+      .sort((a, b) => (b._ts ?? 0) - (a._ts ?? 0));
+  }, [storicoRimorchi, day]);
 
   const sganciRimorchi = useMemo(() => {
     return storicoRimorchi
@@ -174,7 +183,6 @@ export default function AutistiAdmin() {
 
     await setItemSync(KEY_SESSIONI, updated);
 
-    // refresh live
     const live = await loadRimorchiStatus();
     const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
     setRimorchiLive(live);
@@ -182,11 +190,10 @@ export default function AutistiAdmin() {
   }
 
   function openEditSession(targaRimorchio: string) {
-    // trova la sessione che contiene quel rimorchio
     const s = sessioniRaw.find((x) => x?.targaRimorchio === targaRimorchio) || null;
 
     setEditTargetTarga(targaRimorchio);
-  setEditAutista(String(s?.nomeAutista ?? s?.autistaNome ?? ""));
+    setEditAutista(String(s?.nomeAutista ?? s?.autistaNome ?? ""));
     setEditMotrice(String(s?.targaMotrice ?? ""));
     setEditRimorchio(String(s?.targaRimorchio ?? targaRimorchio));
     setEditOpen(true);
@@ -203,9 +210,8 @@ export default function AutistiAdmin() {
 
       return {
         ...s,
-       nomeAutista: editAutista.trim() || null,
-autistaNome: editAutista.trim() || null,
-
+        nomeAutista: editAutista.trim() || null,
+        autistaNome: editAutista.trim() || null,
         targaMotrice: editMotrice.trim() || null,
         targaRimorchio: editRimorchio.trim() || null,
         adminEdit: {
@@ -262,7 +268,8 @@ autistaNome: editAutista.trim() || null,
           {rimorchiInUsoLive.map((r) => (
             <div className="row" key={`live_${r.targa}_${r.timestamp}`}>
               <div className="row-left">
-                <div className="time">{r.timestamp ? formatHHMM(r.timestamp) : "--:--"}</div>
+                {/* ORA CORRENTE */}
+                <div className="time">{formatHHMM(nowTs)}</div>
                 <div className="main">
                   <div className="line1">
                     <strong>{r.targa}</strong>
@@ -270,16 +277,16 @@ autistaNome: editAutista.trim() || null,
                     <span>{r.autista ?? "-"}</span>
                     <span className="sep">•</span>
                     <span>{r.motrice ?? "-"}</span>
+                    <span className="sep">•</span>
+                    <span className="muted">
+                      agg. {r.timestamp ? formatHHMM(r.timestamp) : "--:--"}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="row-actions">
-                <button
-                  type="button"
-                  className="edit"
-                  onClick={() => openEditSession(r.targa)}
-                >
+                <button type="button" className="edit" onClick={() => openEditSession(r.targa)}>
                   MODIFICA
                 </button>
                 <button
@@ -373,24 +380,44 @@ autistaNome: editAutista.trim() || null,
             <div className="empty">Nessun elemento per questa data.</div>
           )}
 
-          {filtered.map((e) => (
-            <div className="row" key={e.id}>
-              <div className="row-left">
-                <div className="time">{formatHHMM(e.timestamp)}</div>
-                <div className="main">
-                  <div className="line1">
-                    <strong>{e.targa ?? "-"}</strong>
-                    <span className="sep">•</span>
-                    <span>{e.autista ?? "-"}</span>
+          {filtered.map((e) => {
+            const p = e.payload || {};
+            const isCtrl = e.tipo === "controllo";
+
+            return (
+              <div className="row" key={e.id}>
+                <div className="row-left">
+                  <div className="time">{formatHHMM(e.timestamp)}</div>
+                  <div className="main">
+                    <div className="line1">
+                      <strong>{e.targa ?? "-"}</strong>
+                      <span className="sep">•</span>
+                      <span>{e.autista ?? "-"}</span>
+
+                      {isCtrl ? (
+                        <>
+                          <span className="sep">•</span>
+                          <span className="muted">{String(p.target || "??").toUpperCase()}</span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    {isCtrl ? (
+                      <div className="line2 muted">
+                        {p.targaCamion ? `Camion: ${p.targaCamion}` : "Camion: -"}
+                        {"  "}
+                        {p.targaRimorchio ? `Rimorchio: ${p.targaRimorchio}` : "Rimorchio: -"}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-              </div>
 
-              <button type="button" className="edit" disabled title="Step successivo">
-                MODIFICA
-              </button>
-            </div>
-          ))}
+                <button type="button" className="edit" disabled title="Step successivo">
+                  MODIFICA
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {tab === "cambi" && (
@@ -410,28 +437,13 @@ autistaNome: editAutista.trim() || null,
                   <div className="row-left">
                     <div className="time">{a._ts ? formatHHMM(a._ts) : "--:--"}</div>
                     <div className="main">
-                    <div className="line1">
-  <strong>{a.targaRimorchio ?? "-"}</strong>
-
-  {a._src === "storico" ? (
-    <>
-      <span className="sep">•</span>
-      <span>{a.autista ?? "-"}</span>
-      {a.targaMotrice ? (
-        <>
-          <span className="sep">•</span>
-          <span>{a.targaMotrice}</span>
-        </>
-      ) : null}
-    </>
-  ) : (
-    <>
-      <span className="sep">•</span>
-      <span className="muted">AGGANCIO</span>
-    </>
-  )}
-</div>
-
+                      <div className="line1">
+                        <strong>{a.targaRimorchio ?? "-"}</strong>
+                        <span className="sep">•</span>
+                        <span>{a.autista ?? "-"}</span>
+                        <span className="sep">•</span>
+                        <span>{a.targaMotrice ?? "-"}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -461,12 +473,8 @@ autistaNome: editAutista.trim() || null,
                         <strong>{s.targaRimorchio ?? "-"}</strong>
                         <span className="sep">•</span>
                         <span>{s.autista ?? "-"}</span>
-                        {s.targaMotrice ? (
-                          <>
-                            <span className="sep">•</span>
-                            <span>{s.targaMotrice}</span>
-                          </>
-                        ) : null}
+                        <span className="sep">•</span>
+                        <span>{s.targaMotrice ?? "-"}</span>
                       </div>
                     </div>
                   </div>

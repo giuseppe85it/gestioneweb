@@ -163,9 +163,10 @@ export default function CambioMezzoAutista() {
       const storicoRaw = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
       const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
-   storico.push({
+storico.push({
   id: genId(),
   targaRimorchio: cur.targaRimorchio,
+  targaMotrice: cur.targaMotrice || null, // <-- AGGIUNTA
   autista: (cur.nomeAutista ?? "").trim() || null,
   badgeAutista: cur.badgeAutista,
   luogo: luogoFinale,

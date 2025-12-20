@@ -181,3 +181,43 @@ Nessun flusso operativo richiede il logout.
 - Chiave dati: `@richieste_attrezzature_autisti_tmp`
 - Route: `/autisti/richiesta-attrezzature`
 - Admin la gestirà successivamente (lettura e workflow).
+# PROJECT_RULES
+
+## Regole operative (non negoziabili)
+1) Niente chiavi nuove “a caso”.
+   - Se serve correzione admin, si modifica lo stesso record dove ha scritto l’autista.
+   - Facoltativo: aggiungere metadato `adminEdit` dentro lo stesso record (patch + timestamp).
+
+2) Sessione Autisti = locale.
+   - Gating e identità autista devono funzionare anche senza leggere Firestore.
+   - Firestore è per dati operativi e monitoraggio admin.
+
+3) Controllo Mezzo obbligatorio, ma non deve bloccare il cambio.
+   - Deve essere richiesto:
+     - dopo selezione motrice
+     - dopo aggancio rimorchio
+   - Deve salvare sempre `target` (motrice/rimorchio/entrambi).
+
+4) “Target” deve essere deterministico.
+   - `SetupMezzo` passa il target via query (`/autisti/controllo?target=...`).
+   - `ControlloMezzo` legge la query e salva `target` nel record.
+
+5) Timestamp coerenti.
+   - Rimorchi AGGANCIATI: timestamp = momento aggancio (stabile).
+   - Rimorchi LIBERI: timestamp = momento sgancio.
+   - Vietato usare `Date.now()` come fallback per dati storici (crea “orari che scorrono”).
+
+6) UI premium e responsiva senza hack globali.
+   - Non si tocca “CSS madre” o layout globale per risolvere una sola pagina.
+   - Ogni pagina deve essere coerente desktop + mobile con max-width, centering, e grid/flex corretti.
+
+7) Modifiche chirurgiche e verificabili.
+   - Quando si cambia logica: aggiornare anche `PROJECT_MAP.md` e `CHANGELOG_AI.md`.
+   - Evitare patch “a pezzi morti”: o sostituzione file completo o patch minima con punto esatto.
+
+---
+
+## Standard stile Autisti Inbox
+- Home Inbox: 5 card principali + card laterale rimorchio.
+- Solo 5 righe giornaliere per card, il resto in modale “Vedi tutto” (TODO).
+- Logo clickabile per tornare alla home principale (TODO da attivare nel codice).

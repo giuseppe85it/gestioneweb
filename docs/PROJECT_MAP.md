@@ -212,3 +212,101 @@ Cambio mezzo:
 - `@segnalazioni_autisti_tmp` (Segnalazioni)
 - `@rifornimenti_autisti_tmp` (Rifornimenti)
 - `@richieste_attrezzature_autisti_tmp` (Richiesta Attrezzature)
+# PROJECT_MAP
+
+## Stack reale
+- Frontend: React + Vite + TypeScript.
+- Routing: React Router.
+- Firebase: Auth anonima + Firestore + Storage + Functions.
+- Persistenza dati app: `storageSync.ts` (wrapper key-value su Firestore) + localStorage dedicato per sessione Autisti.
+
+---
+
+## Struttura cartelle chiave (logica)
+- `src/pages/*` = app admin principale (mezzi, dossier, magazzino, IA, ecc.).
+- `src/autisti/*` = app Autisti (login, setup, controllo, rifornimenti, segnalazioni, richieste).
+- `src/autistiInbox/*` = Inbox/monitoraggio + Centro rettifica dati (admin) per la parte Autisti.
+- `src/utils/storageSync.ts` = lettura/scrittura key-value su Firestore.
+- `src/utils/homeEvents.ts` = normalizzazione e aggregazione eventi Autisti per Home Inbox e Admin Inbox.
+
+---
+
+## Autisti: sessione e dati
+### Sessione Autisti (SOLO locale, per gating)
+- File: `src/autisti/autistiStorage.ts`
+- Chiavi localStorage:
+  - `@autista_attivo_local`
+  - `@mezzo_attivo_autista_local`
+- Nota: la sessione non deve dipendere da Firestore per funzionare.
+
+### Mirror/admin (solo monitoraggio)
+- Firestore key-value:
+  - `@autisti_sessione_attive` (stato “live” rimorchi agganciati, per controllo admin)
+  - `@mezzo_attivo_autista` (mirror/admin se usato)
+- Regola: l’app Autisti usa la sessione locale per operare, Firestore è per dati operativi + visibilità admin.
+
+---
+
+## Chiavi operative Autisti (key-value Firestore via storageSync)
+- `@segnalazioni_autisti_tmp`
+- `@rifornimenti_autisti_tmp`
+- `@controlli_mezzo_autisti`
+- `@richieste_attrezzature_autisti_tmp`
+- `@storico_cambi_motrice`
+- `@storico_sganci_rimorchi`
+
+---
+
+## Funzioni “event aggregator” (Inbox)
+File: `src/utils/homeEvents.ts`
+
+### `loadHomeEvents(day)`
+Restituisce array normalizzato di eventi per data:
+- rifornimenti
+- segnalazioni
+- controlli
+- cambio mezzo (motrice)
+- richiesta attrezzature
+
+### `loadRimorchiStatus()`
+Costruisce stato rimorchi:
+- AGGANCIATI: da `@autisti_sessione_attive`
+  - `timestamp` = ora aggancio stabile (non deve essere `Date.now()` di fallback)
+- LIBERI: da `@storico_sganci_rimorchi`
+  - `timestamp` = ora sgancio
+
+---
+
+## Controllo Mezzo: target deterministico
+- File: `src/autisti/ControlloMezzo.tsx`
+- Il record controllo salva:
+  - `targaCamion`
+  - `targaRimorchio`
+  - `target: "motrice" | "rimorchio" | "entrambi"`
+- Provenienza target:
+  - `SetupMezzo.tsx` deve navigare a `/autisti/controllo?target=...` in base a `mode` e presenza rimorchio.
+
+---
+
+## Route Autisti (attuali)
+- `/autisti/login` → LoginAutista
+- `/autisti/setup-mezzo` → SetupMezzo
+- `/autisti/controllo` → ControlloMezzo (step obbligatorio post-setup/cambio)
+- `/autisti/home` → HomeAutista
+- `/autisti/cambio-mezzo` → CambioMezzoAutista
+- `/autisti/segnalazioni` → Segnalazioni
+- `/autisti/rifornimento` → Rifornimento
+- `/autisti/richiesta-attrezzature` → RichiestaAttrezzature
+
+---
+
+## Inbox Admin (Autisti)
+- `AutistiInboxHome.tsx` + CSS: dashboard premium con:
+  - 4 card eventi giornalieri + 1 card “Richiesta Attrezzature” (link/placeholder)
+  - card laterale “Stato rimorchi” (live)
+- `AutistiAdmin.tsx`: Centro rettifica dati
+  - filtri per data e categoria
+  - sezione cambio mezzo con:
+    - Agganci rimorchi (include anche righe live dell’aggancio corrente)
+    - Sganci rimorchi (storico)
+  - obiettivo: correggere i dati direttamente sulle stesse chiavi (no chiavi nuove).
