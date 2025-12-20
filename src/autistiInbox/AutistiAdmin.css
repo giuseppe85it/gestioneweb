@@ -1,0 +1,278 @@
+.autisti-admin-page{
+  min-height: 100vh;
+  padding: 26px 18px 40px;
+  box-sizing: border-box;
+  background: radial-gradient(circle at top, #ece4d4 0, #dcd2c0 35%, #c9c0ae 70%, #b3ab9a 100%);
+  color: #2b2923;
+
+  width: 100vw;
+  max-width: 100vw;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+
+  display: flex;
+  justify-content: center;
+}
+
+.autisti-admin-wrap{
+  width: 100%;
+  max-width: 1200px;
+}
+
+.autisti-admin-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.autisti-admin-head h1{
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.autisti-admin-back{
+  background: rgba(250,244,233,0.75);
+  border: 1px solid rgba(180,167,144,0.55);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: #3a352b;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+}
+
+.autisti-admin-topbar{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.autisti-admin-tabs{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.autisti-admin-tabs .tab{
+  background: rgba(250,244,233,0.72);
+  border: 1px solid rgba(180,167,144,0.55);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: #3a352b;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+}
+
+.autisti-admin-tabs .tab.active{
+  background: rgba(250,244,233,0.98);
+  outline: 2px solid rgba(110,96,70,0.35);
+}
+
+.autisti-admin-datebar{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.autisti-admin-datebar .label{
+  font-size: 14px;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.autisti-admin-datebar .nav{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(180,167,144,0.55);
+  background: rgba(250,244,233,0.75);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+}
+
+.autisti-admin-card{
+  background: rgba(248,244,232,0.98);
+  border-radius: 18px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 14px 35px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.18) inset;
+  margin-bottom: 14px;
+}
+
+.autisti-admin-card-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.autisti-admin-card h2{
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3a352b;
+}
+
+.loading{
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.75;
+}
+
+.empty{
+  padding: 10px 2px;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: rgba(255,253,247,0.9);
+  border: 1px solid rgba(196,180,154,0.5);
+  margin-bottom: 10px;
+}
+
+.row-left{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.time{
+  width: 54px;
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.main{
+  min-width: 0;
+}
+
+.line1{
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sep{
+  margin: 0 8px;
+  opacity: 0.6;
+}
+
+.line2{
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.muted{
+  opacity: 0.7;
+}
+
+.edit{
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px solid rgba(180,167,144,0.55);
+  background: #f1e7d6;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: #3a352b;
+}
+
+.edit:disabled{
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px){
+  .autisti-admin-page{
+    width: auto;
+    max-width: none;
+    left: auto;
+    transform: none;
+    display: block;
+  }
+
+  .autisti-admin-wrap{
+    max-width: 430px;
+    margin: 0 auto;
+  }
+
+  .autisti-admin-head{
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .time{
+    width: 48px;
+  }
+}
+.row-actions{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.edit.danger{
+  background: #f3d1cc;
+}
+
+.aix-form{
+  display: grid;
+  gap: 12px;
+}
+
+.aix-form label{
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #3a352b;
+}
+
+.aix-form input{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(180,167,144,0.55);
+  background: rgba(255,253,247,0.95);
+  font-size: 13px;
+  font-weight: 800;
+  color: #2b2923;
+  outline: none;
+}
+
+.aix-actions{
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}

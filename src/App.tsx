@@ -54,6 +54,7 @@ import RichiestaAttrezzature from "./autisti/RichiestaAttrezzature";
 /* ==================== AUTISTI INBOX (ADMIN) ==================== */
 import AutistiInboxHome from "./autistiInbox/AutistiInboxHome";
 import CambioMezzoInbox from "./autistiInbox/CambioMezzoInbox";
+import AutistiAdmin from "./autistiInbox/AutistiAdmin";
 
 function App() {
   const [authReady, setAuthReady] = useState(false);
@@ -130,10 +131,9 @@ function App() {
 
       {/* ==================== AUTISTI INBOX (ADMIN) ==================== */}
       <Route path="/autisti-inbox" element={<AutistiInboxHome />} />
-<Route
-  path="/autisti-inbox/cambio-mezzo"
-  element={<CambioMezzoInbox />}
-/>
+<Route  path="/autisti-inbox/cambio-mezzo"  element={<CambioMezzoInbox />}/>
+<Route path="/autisti-admin" element={<AutistiAdmin />} />
+
 
     </Routes>
   );

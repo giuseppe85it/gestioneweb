@@ -396,3 +396,62 @@
     margin-top: 14px;
   }
 }
+.autisti-title-row{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.autisti-menu-wrap{
+  position: relative;
+}
+
+.autisti-menu-btn{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(250,244,233,0.70);
+  border: 1px solid rgba(180,167,144,0.55);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+}
+
+.autisti-menu-btn .dot{
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #c62828; /* rosso puntini */
+  display: block;
+}
+
+.autisti-menu{
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #f8f4e8;
+  border: 1px solid rgba(180,167,144,0.55);
+  border-radius: 14px;
+  box-shadow: 0 14px 35px rgba(0,0,0,0.22);
+  overflow: hidden;
+  z-index: 50;
+}
+
+.autisti-menu-item{
+  width: 240px;
+  padding: 12px 12px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: #3a352b;
+}
+
+.autisti-menu-item:disabled{
+  opacity: 0.55;
+  cursor: not-allowed;
+}

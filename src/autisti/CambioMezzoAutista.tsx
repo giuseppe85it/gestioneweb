@@ -166,7 +166,7 @@ export default function CambioMezzoAutista() {
    storico.push({
   id: genId(),
   targaRimorchio: cur.targaRimorchio,
-  autista: cur.nomeAutista,
+  autista: (cur.nomeAutista ?? "").trim() || null,
   badgeAutista: cur.badgeAutista,
   luogo: luogoFinale,
   statoCarico,
@@ -229,7 +229,7 @@ export default function CambioMezzoAutista() {
     storico.push({
   id: genId(),
   targaMotrice: cur.targaMotrice,
-  autista: cur.nomeAutista,
+ autista: (cur.nomeAutista ?? "").trim() || null,
   badgeAutista: cur.badgeAutista,
   luogo: luogoFinale,
   condizioni: condizioni.generali,

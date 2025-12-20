@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./AutistiInboxHome.css";
 
@@ -15,6 +15,20 @@ type ModalKind =
 
 export default function AutistiInboxHome() {
   const navigate = useNavigate();
+ 
+  const [menuOpen, setMenuOpen] = useState(false);
+const menuRef = useRef<HTMLDivElement | null>(null);
+
+useEffect(() => {
+  function onDown(e: MouseEvent) {
+    if (!menuRef.current) return;
+    if (menuRef.current.contains(e.target as Node)) return;
+    setMenuOpen(false);
+  }
+  if (menuOpen) document.addEventListener("mousedown", onDown);
+  return () => document.removeEventListener("mousedown", onDown);
+}, [menuOpen]);
+
 
   const [day, setDay] = useState<Date>(new Date());
   const [events, setEvents] = useState<HomeEvent[]>([]);
@@ -140,7 +154,40 @@ export default function AutistiInboxHome() {
         <div className="autisti-header">
           <div className="autisti-header-left">
             <img src="/logo.png" alt="Logo" onClick={() => navigate("/")} />
-            <h1>Centro di controllo mezzi</h1>
+          <div className="autisti-title-row">
+  <h1>Centro di controllo mezzi</h1>
+
+  <div className="autisti-menu-wrap" ref={menuRef}>
+    <button
+      type="button"
+      className="autisti-menu-btn"
+      onClick={() => setMenuOpen((v) => !v)}
+      aria-label="Menu"
+      title="Menu"
+    >
+      <span className="dot" />
+      <span className="dot" />
+      <span className="dot" />
+    </button>
+
+    {menuOpen && (
+      <div className="autisti-menu">
+     <button
+  type="button"
+  className="autisti-menu-item"
+  onClick={() => {
+    setMenuOpen(false);
+    navigate("/autisti-admin");
+  }}
+>
+  Centro rettifica dati
+</button>
+
+      </div>
+    )}
+  </div>
+</div>
+
           </div>
 
           <div className="autisti-header-actions">
