@@ -186,7 +186,7 @@ export default function AutistiAdmin() {
     const s = sessioniRaw.find((x) => x?.targaRimorchio === targaRimorchio) || null;
 
     setEditTargetTarga(targaRimorchio);
-    setEditAutista(String(s?.autistaNome ?? ""));
+  setEditAutista(String(s?.nomeAutista ?? s?.autistaNome ?? ""));
     setEditMotrice(String(s?.targaMotrice ?? ""));
     setEditRimorchio(String(s?.targaRimorchio ?? targaRimorchio));
     setEditOpen(true);
@@ -203,7 +203,9 @@ export default function AutistiAdmin() {
 
       return {
         ...s,
-        autistaNome: editAutista.trim() || null,
+       nomeAutista: editAutista.trim() || null,
+autistaNome: editAutista.trim() || null,
+
         targaMotrice: editMotrice.trim() || null,
         targaRimorchio: editRimorchio.trim() || null,
         adminEdit: {

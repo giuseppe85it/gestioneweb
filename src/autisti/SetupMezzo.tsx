@@ -191,9 +191,22 @@ export default function SetupMezzo() {
         createdAt: serverTimestamp(),
       });
     }
+    
 
-    navigate("/autisti/controllo", { replace: true });
+    const target =
+      mode === "rimorchio"
+        ? "rimorchio"
+        : mode === "motrice"
+        ? "motrice"
+        : targaRimorchio
+        ? "entrambi"
+        : "motrice";
+
+    navigate(`/autisti/controllo?target=${encodeURIComponent(target)}`, { replace: true });
   }
+
+
+  
 
   return (
     <div className="setup-container">

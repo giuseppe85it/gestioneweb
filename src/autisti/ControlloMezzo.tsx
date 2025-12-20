@@ -1,29 +1,29 @@
-// ======================================================
-// ControlloMezzo.tsx
-// APP AUTISTI – STEP OBBLIGATORIO (SESSIONE SOLO LOCALE)
-// ======================================================
-
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import "./ControlloMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
 
 const CONTROLLI_KEY = "@controlli_mezzo_autisti";
+
+type TargetControllo = "motrice" | "rimorchio" | "entrambi";
+
 function genId() {
-  // compatibile
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const c: any = globalThis.crypto;
   if (c?.randomUUID) return c.randomUUID();
   return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-
 export default function ControlloMezzo() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [autista, setAutista] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mezzo, setMezzo] = useState<any>(null);
+
   const [note, setNote] = useState("");
 
   const [check, setCheck] = useState({
@@ -34,7 +34,6 @@ export default function ControlloMezzo() {
   });
 
   useEffect(() => {
-    // SOLO LOCALE (per-dispositivo)
     const a = getAutistaLocal();
     const m = getMezzoLocal();
 
@@ -42,7 +41,6 @@ export default function ControlloMezzo() {
       navigate("/autisti/login", { replace: true });
       return;
     }
-
     if (!m || !m.targaCamion) {
       navigate("/autisti/setup-mezzo", { replace: true });
       return;
@@ -52,55 +50,61 @@ export default function ControlloMezzo() {
     setMezzo(m);
   }, [navigate]);
 
+  const target: TargetControllo = useMemo(() => {
+    const raw = (searchParams.get("target") || "").toLowerCase();
+
+    let t: TargetControllo = mezzo?.targaRimorchio ? "entrambi" : "motrice";
+    if (raw === "motrice" || raw === "rimorchio" || raw === "entrambi") t = raw as TargetControllo;
+
+    if (t === "rimorchio" && !mezzo?.targaRimorchio) t = "motrice";
+    return t;
+  }, [searchParams, mezzo]);
+
   function toggle(key: keyof typeof check) {
     setCheck((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   async function salva() {
-    if (!autista || !mezzo) {
-      alert("Mezzo o autista non disponibili");
-      return;
-    }
+    if (!autista || !mezzo) return;
 
     const storicoRaw = (await getItemSync(CONTROLLI_KEY)) || [];
     const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
-   storico.push({
-  id: genId(),
-  autistaNome: autista.nome || null,
-  badgeAutista: autista.badge || null,
+    storico.push({
+      id: genId(),
+      autistaNome: autista.nome || null,
+      badgeAutista: autista.badge || null,
 
-  targaCamion: mezzo.targaCamion || null,
-  targaRimorchio: mezzo.targaRimorchio || null,
+      targaCamion: mezzo.targaCamion || null,
+      targaRimorchio: mezzo.targaRimorchio || null,
 
-  check,
-  note: note || null,
+      // fondamentale per capire cosa hai controllato
+      target,
 
-  obbligatorio: true,
-  timestamp: Date.now(),
-});
+      check,
+      note: note || null,
 
+      obbligatorio: true,
+      timestamp: Date.now(),
+    });
 
     await setItemSync(CONTROLLI_KEY, storico);
-
     navigate("/autisti/home", { replace: true });
   }
 
   return (
     <div className="cmz-container">
       <h1>CONTROLLO MEZZO</h1>
-      <p className="cmz-subtitle">
-        Verifica iniziale obbligatoria prima di iniziare il lavoro
+      <p className="cmz-subtitle">Verifica iniziale obbligatoria prima di iniziare il lavoro</p>
+
+      <p className="cmz-subtitle" style={{ marginTop: 6, fontWeight: 900 }}>
+        TARGET: {target.toUpperCase()}
       </p>
 
       {mezzo && (
         <div className="cmz-targhe">
-          {mezzo.targaCamion && (
-            <div className="cmz-targa">{mezzo.targaCamion}</div>
-          )}
-          {mezzo.targaRimorchio && (
-            <div className="cmz-targa secondaria">{mezzo.targaRimorchio}</div>
-          )}
+          {mezzo.targaCamion && <div className="cmz-targa">{mezzo.targaCamion}</div>}
+          {mezzo.targaRimorchio && <div className="cmz-targa secondaria">{mezzo.targaRimorchio}</div>}
         </div>
       )}
 
@@ -116,11 +120,7 @@ export default function ControlloMezzo() {
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="cmz-check">
-            <input
-              type="checkbox"
-              checked={check[key]}
-              onChange={() => toggle(key)}
-            />
+            <input type="checkbox" checked={check[key]} onChange={() => toggle(key)} />
             <span>{label}</span>
           </label>
         ))}
