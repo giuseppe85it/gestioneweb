@@ -10,6 +10,14 @@ import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
 
 const CONTROLLI_KEY = "@controlli_mezzo_autisti";
+function genId() {
+  // compatibile
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c: any = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 
 export default function ControlloMezzo() {
   const navigate = useNavigate();
@@ -57,19 +65,21 @@ export default function ControlloMezzo() {
     const storicoRaw = (await getItemSync(CONTROLLI_KEY)) || [];
     const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
-    storico.push({
-      autistaNome: autista.nome || null,
-      badgeAutista: autista.badge || null,
+   storico.push({
+  id: genId(),
+  autistaNome: autista.nome || null,
+  badgeAutista: autista.badge || null,
 
-      targaCamion: mezzo.targaCamion || null,
-      targaRimorchio: mezzo.targaRimorchio || null,
+  targaCamion: mezzo.targaCamion || null,
+  targaRimorchio: mezzo.targaRimorchio || null,
 
-      check,
-      note: note || null,
+  check,
+  note: note || null,
 
-      obbligatorio: true,
-      timestamp: Date.now(),
-    });
+  obbligatorio: true,
+  timestamp: Date.now(),
+});
+
 
     await setItemSync(CONTROLLI_KEY, storico);
 

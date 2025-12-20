@@ -10,7 +10,12 @@ import { getItemSync } from "./storageSync";
 ======================================================= */
 export type HomeEvent = {
   id: string;
-  tipo: "rifornimento" | "segnalazione" | "controllo" | "cambio_mezzo";
+  tipo:
+    | "rifornimento"
+    | "segnalazione"
+    | "controllo"
+    | "cambio_mezzo"
+    | "richiesta_attrezzature";
   targa: string | null;
   autista: string | null;
   timestamp: number;
@@ -37,6 +42,7 @@ export type RimorchioStatus = {
 const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_CONTROLLI = "@controlli_mezzo_autisti";
+const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
 const KEY_CAMBI_MOTRICE = "@storico_cambi_motrice";
 const KEY_SGANCIO_RIMORCHI = "@storico_sganci_rimorchi";
 const KEY_SESSIONI = "@autisti_sessione_attive";
@@ -51,6 +57,27 @@ function isSameDay(ts: number, day: Date): boolean {
     d.getMonth() === day.getMonth() &&
     d.getDate() === day.getDate()
   );
+}
+
+function toTs(v: any): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    return Number.isFinite(t) ? t : null;
+  }
+  if (v && typeof v === "object") {
+    if (typeof v.toMillis === "function") {
+      const t = v.toMillis();
+      return typeof t === "number" && Number.isFinite(t) ? t : null;
+    }
+    if (typeof v.seconds === "number") {
+      const ms =
+        v.seconds * 1000 +
+        (typeof v.nanoseconds === "number" ? Math.floor(v.nanoseconds / 1e6) : 0);
+      return Number.isFinite(ms) ? ms : null;
+    }
+  }
+  return null;
 }
 
 /* =======================================================
@@ -94,7 +121,7 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
     for (const c of controlli) {
       if (!c?.timestamp || !isSameDay(c.timestamp, day)) continue;
       events.push({
-        id: crypto.randomUUID(),
+       id: c.id ?? crypto.randomUUID(),
         tipo: "controllo",
         targa: c.targaCamion ?? c.targaRimorchio ?? null,
         autista: c.autistaNome ?? null,
@@ -104,12 +131,35 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
     }
   }
 
+  const richieste = (await getItemSync(KEY_RICHIESTE_ATTREZZATURE)) || [];
+  if (Array.isArray(richieste)) {
+    for (const r of richieste) {
+      const ts =
+        toTs(r?.data) ??
+        toTs(r?.timestamp) ??
+        toTs(r?.createdAt) ??
+        toTs(r?.ts) ??
+        toTs(r?.timestampRichiesta);
+
+      if (!ts || !isSameDay(ts, day)) continue;
+
+      events.push({
+        id: r.id ?? crypto.randomUUID(),
+        tipo: "richiesta_attrezzature",
+        targa: r.targa ?? r.targaCamion ?? r.targaMotrice ?? null,
+        autista: r.autistaNome ?? r.autista ?? null,
+        timestamp: ts,
+        payload: r,
+      });
+    }
+  }
+
   const cambi = (await getItemSync(KEY_CAMBI_MOTRICE)) || [];
   if (Array.isArray(cambi)) {
     for (const m of cambi) {
       if (!m?.timestampCambio || !isSameDay(m.timestampCambio, day)) continue;
       events.push({
-        id: crypto.randomUUID(),
+       id: m.id ?? crypto.randomUUID(),
         tipo: "cambio_mezzo",
         targa: m.targaMotrice ?? null,
         autista: m.autista ?? null,
@@ -123,7 +173,7 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
 }
 
 /* =======================================================
-   STATO RIMORCHI (COLONNA DESTRA)
+   STATO RIMORCHI (PANNELLO DX)
 ======================================================= */
 export async function loadRimorchiStatus(): Promise<RimorchioStatus[]> {
   const sessioni = (await getItemSync(KEY_SESSIONI)) || [];
@@ -143,41 +193,41 @@ export async function loadRimorchiStatus(): Promise<RimorchioStatus[]> {
         targa: s.targaRimorchio,
         stato: "AGGANCIATO",
         colore: "green",
-        autista: s.autistaNome ?? null,
+        autista: s.autista ?? null,
         motrice: s.targaMotrice ?? null,
-        luogo: "IN USO",
-        statoCarico: null,
-        timestamp: s.timestamp ?? Date.now(),
+        luogo: null,
+        statoCarico: s.statoCarico ?? null,
+        timestamp: s.timestampAggancio ?? Date.now(),
       });
     }
   }
 
-  // Rimorchi LIBERI (ultimo sgancio)
+  // Rimorchi LIBERI (sganciati, ultimo evento per targa)
+  const lastByTarga = new Map<string, any>();
   if (Array.isArray(sganci)) {
-    const last = new Map<string, any>();
-
     for (const s of sganci) {
-      if (!s?.targaRimorchio || !s?.timestampSgancio) continue;
-      const prev = last.get(s.targaRimorchio);
-      if (!prev || s.timestampSgancio > prev.timestampSgancio) {
-        last.set(s.targaRimorchio, s);
+      const targa = s?.targaRimorchio;
+      if (!targa) continue;
+      const prev = lastByTarga.get(targa);
+      if (!prev || (s.timestampSgancio ?? 0) > (prev.timestampSgancio ?? 0)) {
+        lastByTarga.set(targa, s);
       }
     }
+  }
 
-    for (const [targa, s] of last.entries()) {
-      if (inUso.has(targa)) continue;
+  for (const [targa, s] of lastByTarga.entries()) {
+    if (inUso.has(targa)) continue;
 
-      risultati.push({
-        targa,
-        stato: "LIBERO",
-        colore: "red",
-        autista: s.autista ?? null,
-        motrice: null,
-        luogo: s.luogo ?? null,
-        statoCarico: s.statoCarico ?? null,
-        timestamp: s.timestampSgancio,
-      });
-    }
+    risultati.push({
+      targa,
+      stato: "LIBERO",
+      colore: "red",
+      autista: s.autista ?? null,
+      motrice: null,
+      luogo: s.luogo ?? null,
+      statoCarico: s.statoCarico ?? null,
+      timestamp: s.timestampSgancio,
+    });
   }
 
   return risultati.sort((a, b) => b.timestamp - a.timestamp);

@@ -19,6 +19,15 @@ const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
 const STORICO_MOTRICI_KEY = "@storico_cambi_motrice";
 const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
 
+function genId() {
+  // compatibile
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c: any = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+
 const LUOGHI = ["STABIO", "MEV", "ALTRO"] as const;
 type Luogo = typeof LUOGHI[number];
 type Modalita = "rimorchio" | "motrice";
@@ -154,16 +163,18 @@ export default function CambioMezzoAutista() {
       const storicoRaw = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
       const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
-      storico.push({
-        targaRimorchio: cur.targaRimorchio,
-        autista: cur.nomeAutista,
-        badgeAutista: cur.badgeAutista,
-        luogo: luogoFinale,
-        statoCarico,
-        condizioni,
-        timestampAggancio: cur.timestamp,
-        timestampSgancio: now,
-      });
+   storico.push({
+  id: genId(),
+  targaRimorchio: cur.targaRimorchio,
+  autista: cur.nomeAutista,
+  badgeAutista: cur.badgeAutista,
+  luogo: luogoFinale,
+  statoCarico,
+  condizioni,
+  timestampAggancio: cur.timestamp,
+  timestampSgancio: now,
+});
+
 
       await setItemSync(STORICO_RIMORCHI_KEY, storico);
 
@@ -215,14 +226,16 @@ export default function CambioMezzoAutista() {
       const storicoRaw = (await getItemSync(STORICO_MOTRICI_KEY)) || [];
       const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
-      storico.push({
-        targaMotrice: cur.targaMotrice,
-        autista: cur.nomeAutista,
-        badgeAutista: cur.badgeAutista,
-        luogo: luogoFinale,
-        condizioni: condizioni.generali,
-        timestampCambio: now,
-      });
+    storico.push({
+  id: genId(),
+  targaMotrice: cur.targaMotrice,
+  autista: cur.nomeAutista,
+  badgeAutista: cur.badgeAutista,
+  luogo: luogoFinale,
+  condizioni: condizioni.generali,
+  timestampCambio: now,
+});
+
 
       await setItemSync(STORICO_MOTRICI_KEY, storico);
 
