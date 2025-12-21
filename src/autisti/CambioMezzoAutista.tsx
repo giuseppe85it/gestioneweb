@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./autisti.css";
 import "./CambioMezzoAutista.css"; 
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { db } from "../firebase";
@@ -285,109 +284,156 @@ export default function CambioMezzoAutista() {
     }
   }
 
-  return (
-    <div className="autisti-page">
-      <div className="autisti-card">
-        <h1 className="autisti-title">{titolo}</h1>
-
-        <div className="autisti-row">
-          <button
-            className={`autisti-chip ${modalita === "rimorchio" ? "active" : ""}`}
-            onClick={() => setModalita("rimorchio")}
-          >
-            RIMORCHIO
-          </button>
-          <button
-            className={`autisti-chip ${modalita === "motrice" ? "active" : ""}`}
-            onClick={() => setModalita("motrice")}
-          >
-            MOTRICE
-          </button>
+   return (
+    <div className="cm-container">
+      <h1>{titolo}</h1>
+      {sessione && (
+        <div className="cm-subtitle">
+          Attuale:{" "}
+          {modalita === "rimorchio"
+            ? sessione.targaRimorchio || "NESSUN RIMORCHIO"
+            : sessione.targaMotrice || "NESSUNA MOTRICE"}
         </div>
+      )}
 
-        <div className="autisti-section">
-          <div className="autisti-label">Luogo</div>
-          <div className="autisti-row">
-            {(["MEV", "CANTIERE", "ALTRO"] as Luogo[]).map((l) => (
+      <div className="cm-switch">
+        <button
+          className={modalita === "rimorchio" ? "active" : ""}
+          onClick={() => setModalita("rimorchio")}
+          type="button"
+        >
+          RIMORCHIO
+        </button>
+        <button
+          className={modalita === "motrice" ? "active" : ""}
+          onClick={() => setModalita("motrice")}
+          type="button"
+        >
+          MOTRICE
+        </button>
+      </div>
+
+      <div className="cm-subtitle">Luogo</div>
+      <div className="cm-switch cm-luoghi">
+        {(["MEV", "CANTIERE", "ALTRO"] as Luogo[]).map((l) => (
+          <button
+            key={l}
+            className={luogo === l ? "active" : ""}
+            onClick={() => setLuogo(l)}
+            type="button"
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {luogo === "ALTRO" && (
+        <input
+          className="cm-input"
+          value={luogoAltro}
+          onChange={(e) => setLuogoAltro(e.target.value)}
+          placeholder="Specifica luogo"
+        />
+      )}
+
+      {modalita === "rimorchio" && (
+        <>
+          <div className="cm-subtitle" style={{ marginTop: 16 }}>
+            Stato carico
+          </div>
+          <div className="cm-switch">
+            {(["PIENO", "PARZIALE", "VUOTO"] as StatoCarico[]).map((s) => (
               <button
-                key={l}
-                className={`autisti-chip ${luogo === l ? "active" : ""}`}
-                onClick={() => setLuogo(l)}
+                key={s}
+                className={statoCarico === s ? "active" : ""}
+                onClick={() => setStatoCarico(s)}
+                type="button"
               >
-                {l}
+                {s}
               </button>
             ))}
           </div>
-          {luogo === "ALTRO" && (
-            <input
-              className="autisti-input"
-              value={luogoAltro}
-              onChange={(e) => setLuogoAltro(e.target.value)}
-              placeholder="Specifica luogo"
-            />
-          )}
-        </div>
+        </>
+      )}
 
-        {modalita === "rimorchio" && (
-          <div className="autisti-section">
-            <div className="autisti-label">Stato carico</div>
-            <div className="autisti-row">
-              {(["PIENO", "PARZIALE", "VUOTO"] as StatoCarico[]).map((s) => (
-                <button
-                  key={s}
-                  className={`autisti-chip ${statoCarico === s ? "active" : ""}`}
-                  onClick={() => setStatoCarico(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="autisti-section">
-          <div className="autisti-label">Condizioni generali</div>
-          <div className="autisti-row autisti-row-wrap">
-            <button className={`autisti-chip ${condizioni.generali.freni ? "ok" : "bad"}`} onClick={() => toggle("generali.freni")}>
-              FRENI
-            </button>
-            <button className={`autisti-chip ${condizioni.generali.gomme ? "ok" : "bad"}`} onClick={() => toggle("generali.gomme")}>
-              GOMME
-            </button>
-            <button className={`autisti-chip ${condizioni.generali.perdite ? "ok" : "bad"}`} onClick={() => toggle("generali.perdite")}>
-              PERDITE
-            </button>
-          </div>
-
-          {modalita === "rimorchio" && (
-            <>
-              <div className="autisti-label" style={{ marginTop: 10 }}>
-                Condizioni specifiche
-              </div>
-              <div className="autisti-row autisti-row-wrap">
-                <button className={`autisti-chip ${condizioni.specifiche.botole ? "ok" : "bad"}`} onClick={() => toggle("specifiche.botole")}>
-                  BOTOLE
-                </button>
-                <button className={`autisti-chip ${condizioni.specifiche.cinghie ? "ok" : "bad"}`} onClick={() => toggle("specifiche.cinghie")}>
-                  CINGHIE
-                </button>
-                <button className={`autisti-chip ${condizioni.specifiche.stecche ? "ok" : "bad"}`} onClick={() => toggle("specifiche.stecche")}>
-                  STECCHE
-                </button>
-                <button className={`autisti-chip ${condizioni.specifiche.tubi ? "ok" : "bad"}`} onClick={() => toggle("specifiche.tubi")}>
-                  TUBI
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {errore && <div className="autisti-error">{errore}</div>}
-
-        <button className="autisti-btn" onClick={conferma}>
-          CONFERMA
-        </button>
+      <div className="cm-subtitle" style={{ marginTop: 18 }}>
+        Condizioni generali
       </div>
+      <div className="cm-checklist">
+        <label className="cm-check">
+          <input
+            type="checkbox"
+            checked={condizioni.generali.freni}
+            onChange={() => toggle("generali.freni")}
+          />
+          FRENI OK
+        </label>
+        <label className="cm-check">
+          <input
+            type="checkbox"
+            checked={condizioni.generali.gomme}
+            onChange={() => toggle("generali.gomme")}
+          />
+          GOMME OK
+        </label>
+        <label className="cm-check">
+          <input
+            type="checkbox"
+            checked={condizioni.generali.perdite}
+            onChange={() => toggle("generali.perdite")}
+          />
+          NESSUNA PERDITA
+        </label>
+      </div>
+
+      {modalita === "rimorchio" && (
+        <>
+          <div className="cm-subtitle" style={{ marginTop: 18 }}>
+            Condizioni specifiche
+          </div>
+          <div className="cm-checklist">
+            <label className="cm-check">
+              <input
+                type="checkbox"
+                checked={condizioni.specifiche.botole}
+                onChange={() => toggle("specifiche.botole")}
+              />
+              BOTOLE OK
+            </label>
+            <label className="cm-check">
+              <input
+                type="checkbox"
+                checked={condizioni.specifiche.cinghie}
+                onChange={() => toggle("specifiche.cinghie")}
+              />
+              CINGHIE OK
+            </label>
+            <label className="cm-check">
+              <input
+                type="checkbox"
+                checked={condizioni.specifiche.stecche}
+                onChange={() => toggle("specifiche.stecche")}
+              />
+              STECCHE OK
+            </label>
+            <label className="cm-check">
+              <input
+                type="checkbox"
+                checked={condizioni.specifiche.tubi}
+                onChange={() => toggle("specifiche.tubi")}
+              />
+              TUBI OK
+            </label>
+          </div>
+        </>
+      )}
+
+      {errore && <div className="cm-error">{errore}</div>}
+
+      <button className="cm-confirm" onClick={conferma} type="button">
+        CONFERMA
+      </button>
     </div>
   );
+
 }
