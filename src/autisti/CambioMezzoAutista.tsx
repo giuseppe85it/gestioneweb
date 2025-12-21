@@ -15,7 +15,7 @@ const STORICO_MOTRICI_KEY = "@storico_cambi_motrice";
 
 type Modalita = "motrice" | "rimorchio";
 
-type Luogo = "MEV" | "CANTIERE" | "ALTRO";
+type Luogo = "MEV" | "STABIO" | "ALTRO";
 
 type StatoCarico = "PIENO" | "VUOTO" | "PARZIALE";
 
@@ -286,13 +286,18 @@ export default function CambioMezzoAutista() {
 
    return (
     <div className="cm-container">
+          <button type="button" className="cm-back" onClick={() => navigate(-1)}>
+      ← INDIETRO
+    </button>
+
       <h1>{titolo}</h1>
       {sessione && (
         <div className="cm-subtitle">
           Attuale:{" "}
-          {modalita === "rimorchio"
-            ? sessione.targaRimorchio || "NESSUN RIMORCHIO"
-            : sessione.targaMotrice || "NESSUNA MOTRICE"}
+         {modalita === "rimorchio"
+  ? (getMezzoLocal()?.targaRimorchio ?? sessione.targaRimorchio) || "NESSUN RIMORCHIO"
+  : (getMezzoLocal()?.targaCamion ?? sessione.targaMotrice) || "NESSUNA MOTRICE"}
+
         </div>
       )}
 
@@ -315,7 +320,7 @@ export default function CambioMezzoAutista() {
 
       <div className="cm-subtitle">Luogo</div>
       <div className="cm-switch cm-luoghi">
-        {(["MEV", "CANTIERE", "ALTRO"] as Luogo[]).map((l) => (
+        {(["MEV", "STABIO", "ALTRO"] as Luogo[]).map((l) => (
           <button
             key={l}
             className={luogo === l ? "active" : ""}
