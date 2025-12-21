@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import "./autisti.css";
 import "./CambioMezzoAutista.css"; 
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { db } from "../firebase";
