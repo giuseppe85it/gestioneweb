@@ -1,0 +1,1 @@
+src/autisti/SetupMezzo.tsx

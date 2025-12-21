@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import "./Autisti.css";
+import "./autisti.css";
+import "./SetupMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { db } from "../firebase";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
