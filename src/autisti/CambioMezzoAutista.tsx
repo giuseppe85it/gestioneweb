@@ -1,36 +1,37 @@
-// ======================================================
-// CambioMezzoAutista.tsx
-// APP AUTISTI
-// - SGANCIO RIMORCHIO
-// - CAMBIO MOTRICE
-// - TRANSIZIONE GUIDATA A SETUP MEZZO (mode)
-// ======================================================
+// src/autisti/CambioMezzoAutista.tsx
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./CambioMezzoAutista.css";
+import "./Autisti.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
+const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
 const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
 const STORICO_MOTRICI_KEY = "@storico_cambi_motrice";
-const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
 
-function genId() {
-  // compatibile
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const c: any = globalThis.crypto;
-  if (c?.randomUUID) return c.randomUUID();
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
+type Modalita = "motrice" | "rimorchio";
 
+type Luogo = "MEV" | "CANTIERE" | "ALTRO";
 
-const LUOGHI = ["STABIO", "MEV", "ALTRO"] as const;
-type Luogo = typeof LUOGHI[number];
-type Modalita = "rimorchio" | "motrice";
+type StatoCarico = "PIENO" | "VUOTO" | "PARZIALE";
+
+type Condizioni = {
+  generali: {
+    freni: boolean;
+    gomme: boolean;
+    perdite: boolean;
+  };
+  specifiche: {
+    botole: boolean;
+    cinghie: boolean;
+    stecche: boolean;
+    tubi: boolean;
+  };
+};
 
 interface SessioneAttiva {
   targaMotrice: string | null;
@@ -40,75 +41,54 @@ interface SessioneAttiva {
   timestamp: number;
 }
 
+function genId() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export default function CambioMezzoAutista() {
   const navigate = useNavigate();
 
   const [modalita, setModalita] = useState<Modalita>("rimorchio");
+  const [errore, setErrore] = useState("");
+
   const [sessione, setSessione] = useState<SessioneAttiva | null>(null);
 
   const [luogo, setLuogo] = useState<Luogo | "">("");
   const [luogoAltro, setLuogoAltro] = useState("");
-  const [statoCarico, setStatoCarico] = useState<"PIENO" | "SCARICO">("SCARICO");
 
-  const [condizioni, setCondizioni] = useState({
-    specifiche: { cinghie: true, stecche: true, botole: true, tubi: true },
-    generali: { gomme: true, freni: true, perdite: true },
+  const [statoCarico, setStatoCarico] = useState<StatoCarico>("VUOTO");
+
+  const [condizioni, setCondizioni] = useState<Condizioni>({
+    generali: { freni: true, gomme: true, perdite: true },
+    specifiche: { botole: true, cinghie: true, stecche: true, tubi: true },
   });
 
-  const [errore, setErrore] = useState("");
-
   useEffect(() => {
-    // reset campi quando cambi tab
-    setErrore("");
-    setLuogo("");
-    setLuogoAltro("");
-    setStatoCarico("SCARICO");
-    setCondizioni({
-      specifiche: { cinghie: true, stecche: true, botole: true, tubi: true },
-      generali: { gomme: true, freni: true, perdite: true },
-    });
+    let alive = true;
+    async function load() {
+      const a: any = getAutistaLocal();
+      if (!a?.badge) return;
 
-    caricaSessione();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      const raw = (await getItemSync(SESSIONI_KEY)) || [];
+      const arr: SessioneAttiva[] = Array.isArray(raw) ? raw : [];
+      const s = arr.find((x) => x.badgeAutista === String(a.badge)) || null;
+
+      if (!alive) return;
+      setSessione(s);
+    }
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const titolo = useMemo(() => {
+    return modalita === "rimorchio" ? "Cambio Rimorchio" : "Cambio Motrice";
   }, [modalita]);
 
-  async function caricaSessione() {
-    const a: any = getAutistaLocal();
-    const mezzoLocal: any = getMezzoLocal();
-
-    const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-    const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-
-    // prova: sessione su Firestore per quel badge
-    let trovata = sessioni.find((s) => s.badgeAutista === a?.badge) || null;
-
-    // fallback: costruisci da locale (per evitare stati “sporchi”)
-    if (!trovata && a?.badge) {
-      trovata = {
-        targaMotrice: mezzoLocal?.targaCamion || null,
-        targaRimorchio: mezzoLocal?.targaRimorchio || null,
-        badgeAutista: a.badge,
-        nomeAutista: a.nome || "",
-        timestamp: mezzoLocal?.timestamp || Date.now(),
-      };
-    }
-
-    // per la tab selezionata, serve che esista il mezzo relativo
-    if (modalita === "rimorchio" && !trovata?.targaRimorchio) {
-      setSessione(null);
-      return;
-    }
-    if (modalita === "motrice" && !trovata?.targaMotrice) {
-      setSessione(null);
-      return;
-    }
-
-    setSessione(trovata);
-  }
-
-  function toggle(path: string) {
+  function toggle(path: "generali.freni" | "generali.gomme" | "generali.perdite" | "specifiche.botole" | "specifiche.cinghie" | "specifiche.stecche" | "specifiche.tubi") {
     setCondizioni((prev) => {
-      const copy = structuredClone(prev) as any;
+      const copy: any = JSON.parse(JSON.stringify(prev));
       const [group, key] = path.split(".");
       copy[group][key] = !copy[group][key];
       return copy;
@@ -163,19 +143,44 @@ export default function CambioMezzoAutista() {
       const storicoRaw = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
       const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
-storico.push({
-  id: genId(),
-  targaRimorchio: cur.targaRimorchio,
-  targaMotrice: cur.targaMotrice || null, // <-- AGGIUNTA
-  autista: (cur.nomeAutista ?? "").trim() || null,
-  badgeAutista: cur.badgeAutista,
-  luogo: luogoFinale,
-  statoCarico,
-  condizioni,
-  timestampAggancio: cur.timestamp,
-  timestampSgancio: now,
-});
+      const nomeAutista =
+        ((cur.nomeAutista as any) || (cur as any).autistaNome || (cur as any).nome || "").trim() || null;
 
+      // Chiudi l'ultimo aggancio aperto (timestampSgancio null) per questo rimorchio
+      let closed = false;
+      for (let i = storico.length - 1; i >= 0; i--) {
+        const r: any = storico[i];
+        if (r && r.targaRimorchio === cur.targaRimorchio && !r.timestampSgancio) {
+          storico[i] = {
+            ...r,
+            targaMotrice: cur.targaMotrice || r.targaMotrice || null,
+            autista: nomeAutista,
+            badgeAutista: cur.badgeAutista,
+            luogo: luogoFinale,
+            statoCarico,
+            condizioni,
+            timestampSgancio: now,
+          };
+          closed = true;
+          break;
+        }
+      }
+
+      // Fallback: se non esiste un aggancio aperto, registra SOLO lo sgancio (senza timestampAggancio)
+      if (!closed) {
+        storico.push({
+          id: genId(),
+          targaRimorchio: cur.targaRimorchio,
+          targaMotrice: cur.targaMotrice || null,
+          autista: nomeAutista,
+          badgeAutista: cur.badgeAutista,
+          luogo: luogoFinale,
+          statoCarico,
+          condizioni,
+          timestampAggancio: null,
+          timestampSgancio: now,
+        });
+      }
 
       await setItemSync(STORICO_RIMORCHI_KEY, storico);
 
@@ -227,16 +232,15 @@ storico.push({
       const storicoRaw = (await getItemSync(STORICO_MOTRICI_KEY)) || [];
       const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
 
-    storico.push({
-  id: genId(),
-  targaMotrice: cur.targaMotrice,
- autista: (cur.nomeAutista ?? "").trim() || null,
-  badgeAutista: cur.badgeAutista,
-  luogo: luogoFinale,
-  condizioni: condizioni.generali,
-  timestampCambio: now,
-});
-
+      storico.push({
+        id: genId(),
+        targaMotrice: cur.targaMotrice,
+        autista: (cur.nomeAutista ?? "").trim() || null,
+        badgeAutista: cur.badgeAutista,
+        luogo: luogoFinale,
+        condizioni,
+        timestampCambio: now,
+      });
 
       await setItemSync(STORICO_MOTRICI_KEY, storico);
 
@@ -246,12 +250,12 @@ storico.push({
         badgeAutista: cur.badgeAutista,
         targaMotrice: cur.targaMotrice,
         luogo: luogoFinale,
-        condizioni: condizioni.generali,
+        condizioni,
         timestamp: now,
         createdAt: serverTimestamp(),
       });
 
-      // aggiorna sessioni attive: motrice -> null (rimorchio lo lasciamo invariato)
+      // aggiorna sessioni attive: motrice -> null (rimorchio resta se c'è)
       const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
       const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
       const aggiornate = sessioni.map((s) => {
@@ -260,120 +264,129 @@ storico.push({
       });
       await setItemSync(SESSIONI_KEY, aggiornate);
 
-      // aggiorna locale: azzera motrice, rimorchio resta com’è
+      // aggiorna locale: azzera motrice, mantieni rimorchio
       saveMezzoLocal({
         targaCamion: null,
-        targaRimorchio: cur.targaRimorchio || null,
+        targaRimorchio: cur.targaRimorchio,
         timestamp: now,
       });
 
+      // compat
       await setItemSync(MEZZO_SYNC_KEY, {
         targaCamion: null,
-        targaRimorchio: cur.targaRimorchio || null,
+        targaRimorchio: cur.targaRimorchio,
         timestamp: now,
       });
 
-      // vai a setup motrice (scelta completa)
+      // vai a setup SOLO motrice (rimorchio bloccato)
       navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
       return;
     }
-
-    setErrore("Operazione non valida");
   }
 
   return (
-    <div className="cm-container">
-      <h1>CAMBIO MEZZO</h1>
-      <p className="cm-subtitle">Seleziona cosa stai cambiando</p>
+    <div className="autisti-page">
+      <div className="autisti-card">
+        <h1 className="autisti-title">{titolo}</h1>
 
-      <div className="cm-switch">
-        <button
-          className={modalita === "rimorchio" ? "active" : ""}
-          onClick={() => setModalita("rimorchio")}
-        >
-          CAMBIO RIMORCHIO
-        </button>
-        <button
-          className={modalita === "motrice" ? "active" : ""}
-          onClick={() => setModalita("motrice")}
-        >
-          CAMBIO MOTRICE
-        </button>
-      </div>
+        <div className="autisti-row">
+          <button
+            className={`autisti-chip ${modalita === "rimorchio" ? "active" : ""}`}
+            onClick={() => setModalita("rimorchio")}
+          >
+            RIMORCHIO
+          </button>
+          <button
+            className={`autisti-chip ${modalita === "motrice" ? "active" : ""}`}
+            onClick={() => setModalita("motrice")}
+          >
+            MOTRICE
+          </button>
+        </div>
 
-      {!sessione && (
-        <div className="cm-empty">Nessun {modalita} attivo</div>
-      )}
-
-      {sessione && (
-        <>
-          <div className="cm-targa">
-            {modalita === "rimorchio" ? sessione.targaRimorchio : sessione.targaMotrice}
-          </div>
-
-          <h2>Luogo</h2>
-          <div className="cm-luoghi">
-            {LUOGHI.map((l) => (
+        <div className="autisti-section">
+          <div className="autisti-label">Luogo</div>
+          <div className="autisti-row">
+            {(["MEV", "CANTIERE", "ALTRO"] as Luogo[]).map((l) => (
               <button
                 key={l}
-                className={luogo === l ? "active" : ""}
+                className={`autisti-chip ${luogo === l ? "active" : ""}`}
                 onClick={() => setLuogo(l)}
               >
                 {l}
               </button>
             ))}
           </div>
-
           {luogo === "ALTRO" && (
             <input
-              className="cm-input"
+              className="autisti-input"
               value={luogoAltro}
               onChange={(e) => setLuogoAltro(e.target.value)}
-              placeholder="Scrivi il luogo"
+              placeholder="Specifica luogo"
             />
           )}
+        </div>
+
+        {modalita === "rimorchio" && (
+          <div className="autisti-section">
+            <div className="autisti-label">Stato carico</div>
+            <div className="autisti-row">
+              {(["PIENO", "PARZIALE", "VUOTO"] as StatoCarico[]).map((s) => (
+                <button
+                  key={s}
+                  className={`autisti-chip ${statoCarico === s ? "active" : ""}`}
+                  onClick={() => setStatoCarico(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="autisti-section">
+          <div className="autisti-label">Condizioni generali</div>
+          <div className="autisti-row autisti-row-wrap">
+            <button className={`autisti-chip ${condizioni.generali.freni ? "ok" : "bad"}`} onClick={() => toggle("generali.freni")}>
+              FRENI
+            </button>
+            <button className={`autisti-chip ${condizioni.generali.gomme ? "ok" : "bad"}`} onClick={() => toggle("generali.gomme")}>
+              GOMME
+            </button>
+            <button className={`autisti-chip ${condizioni.generali.perdite ? "ok" : "bad"}`} onClick={() => toggle("generali.perdite")}>
+              PERDITE
+            </button>
+          </div>
 
           {modalita === "rimorchio" && (
             <>
-              <h2>Stato carico</h2>
-              <div className="cm-switch">
-                <button
-                  className={statoCarico === "SCARICO" ? "active" : ""}
-                  onClick={() => setStatoCarico("SCARICO")}
-                >
-                  SCARICO
+              <div className="autisti-label" style={{ marginTop: 10 }}>
+                Condizioni specifiche
+              </div>
+              <div className="autisti-row autisti-row-wrap">
+                <button className={`autisti-chip ${condizioni.specifiche.botole ? "ok" : "bad"}`} onClick={() => toggle("specifiche.botole")}>
+                  BOTOLE
                 </button>
-                <button
-                  className={statoCarico === "PIENO" ? "active" : ""}
-                  onClick={() => setStatoCarico("PIENO")}
-                >
-                  PIENO
+                <button className={`autisti-chip ${condizioni.specifiche.cinghie ? "ok" : "bad"}`} onClick={() => toggle("specifiche.cinghie")}>
+                  CINGHIE
+                </button>
+                <button className={`autisti-chip ${condizioni.specifiche.stecche ? "ok" : "bad"}`} onClick={() => toggle("specifiche.stecche")}>
+                  STECCHE
+                </button>
+                <button className={`autisti-chip ${condizioni.specifiche.tubi ? "ok" : "bad"}`} onClick={() => toggle("specifiche.tubi")}>
+                  TUBI
                 </button>
               </div>
             </>
           )}
+        </div>
 
-          <h2>Condizioni generali</h2>
-          <div className="cm-checklist">
-            {["gomme", "freni", "perdite"].map((k) => (
-              <label key={k} className="cm-check">
-                <input
-                  type="checkbox"
-                  checked={(condizioni.generali as any)[k]}
-                  onChange={() => toggle(`generali.${k}`)}
-                />
-                <span>{k.toUpperCase()}</span>
-              </label>
-            ))}
-          </div>
+        {errore && <div className="autisti-error">{errore}</div>}
 
-          {errore && <div className="cm-error">{errore}</div>}
-
-          <button className="cm-confirm" onClick={conferma}>
-            CONFERMA CAMBIO
-          </button>
-        </>
-      )}
+        <button className="autisti-btn" onClick={conferma}>
+          CONFERMA
+        </button>
+      </div>
     </div>
   );
 }
