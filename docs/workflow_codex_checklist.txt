@@ -1,0 +1,211 @@
+WORKFLOW STANDARD (Codex + ChatGPT) – Zero casino
+
+OBIETTIVO
+Usare Codex per leggere e applicare patch mirate sul repo, mantenendo controllo totale su:
+- file toccati
+- chiavi Firestore
+- logica invariata
+- rollback immediato
+
+────────────────────────────────────────────────────────────
+FASE 0 — PRE-SICUREZZA (prima di qualsiasi patch)
+[ ] Working tree pulito (nessun file modificato non voluto).
+[ ] Se ci sono modifiche locali importanti, fai commit SOLO dopo test.
+[ ] Se task è rischioso: crea branch temporaneo oppure copia dei file target.
+
+Rollback rapido (solo tu):
+- VS Code: Source Control → Discard Changes (solo file target)
+- oppure: git restore <file1> <file2> ...
+
+────────────────────────────────────────────────────────────
+FASE 1 — LETTURA E MAPPA (Codex in sola lettura)
+Istruzione per Codex:
+1) Leggi i file richiesti.
+2) NON applicare patch.
+3) Produci solo:
+   - mappa file/funzioni coinvolte
+   - mappa chiavi lette/scritte (@...)
+   - shape dati principali (campi record)
+   - rischi/mismatch writer vs reader
+
+Output atteso:
+- elenco file analizzati
+- elenco chiavi Firestore/localStorage
+- 5-10 punti massimo di conclusioni tecniche
+
+Checkpoint:
+[ ] La mappa corrisponde a quello che vedo nel progetto.
+[ ] Nessuna supposizione. Solo cose verificabili nel codice.
+
+────────────────────────────────────────────────────────────
+FASE 2 — SPECIFICA (ChatGPT + Requisiti testabili)
+Prima di far scrivere Codex:
+[ ] Definire obiettivo in 1 frase.
+[ ] Definire “DONE” (criteri verificabili in locale).
+[ ] Definire vincoli:
+    - file ammessi alla scrittura (whitelist)
+    - file vietati
+    - chiavi vietate da cambiare
+    - niente refactor / niente rinominare / niente pulizie
+[ ] Definire test manuale (5-10 passi).
+
+Esempio DONE:
+- “Clic MODIFICA apre modale, salva per id, persiste dopo refresh, nessun file extra toccato”.
+
+────────────────────────────────────────────────────────────
+FASE 3 — PATCH PICCOLA (Codex in scrittura controllata)
+Regola d’oro:
+Codex deve SEMPRE fare prima un PIANO breve, poi la patch.
+
+Istruzione per Codex (template):
+- Puoi leggere tutto il repo che serve.
+- Puoi scrivere SOLO sui file ammessi.
+- NON eseguire comandi shell (npm/vite/tsc/firebase ecc).
+- NON usare git (no commit/push/checkout/restore).
+- Prima: piano in max 10 bullet + lista file toccati.
+- Poi: applica patch e mostra diff completo.
+
+Checkpoint prima di approvare patch:
+[ ] File toccati = SOLO quelli ammessi.
+[ ] Nessuna dipendenza nuova.
+[ ] Nessuna modifica a chiavi Firestore non richiesta.
+[ ] Nessuna modifica a routing/app shell non richiesta.
+[ ] Nessun refactor massivo.
+
+────────────────────────────────────────────────────────────
+FASE 4 — VERIFICA TECNICA RAPIDA (CTRL+F)
+Prima del test UI, verifica 5 cose nel codice (solo ricerca testo):
+[ ] setItemSync/getItemSync usa la chiave giusta (@...).
+[ ] Update per id: findIndex/find con record.id.
+[ ] Non perde campi: usa spread (...old, ...draft) o patch mirata.
+[ ] Timestamp: normalizzazione (timestamp ?? data ?? ...) se serve.
+[ ] Nessun import sospetto / codice morto enorme.
+
+────────────────────────────────────────────────────────────
+FASE 5 — TEST LOCALE (manuale, breve)
+Esegui SEMPRE questi test minimi:
+[ ] Compila e parte in locale.
+[ ] Flusso principale: la feature richiesta funziona.
+[ ] Refresh pagina: i dati restano corretti.
+[ ] Caso negativo: input mancante mostra errore o non rompe.
+[ ] Mobile width: nessun overflow evidente (se UI).
+
+Checklist test da scrivere per ogni task:
+1) ...
+2) ...
+3) ...
+
+────────────────────────────────────────────────────────────
+FASE 6 — DECISIONE
+Se OK:
+[ ] Solo dopo test locale: commit con messaggio chiaro.
+[ ] Push quando hai verificato.
+
+Se NON OK:
+[ ] Rollback immediato (discard o git restore file target).
+[ ] Ripeti con patch più piccola e vincoli più stretti.
+
+────────────────────────────────────────────────────────────
+REGOLE ASSOLUTE
+- Niente “patch giganti” su 10+ file.
+- Prima leggere e capire, poi scrivere.
+- Un problema alla volta.
+- Mai cambiare chiavi o data model se non richiesto.
+- Se qualcosa è ambiguo: stop e piano, non patch.
+CODEX — LETTURA LIBERA, SCRITTURA BLINDATA (REGOLA PERMANENTE)
+
+PRINCIPIO
+- Codex può LEGGERE qualunque file del progetto per capire contesto.
+- Codex può SCRIVERE solo dentro una WHITELIST di file dichiarata PRIMA della patch.
+- Quando gli chiediamo di applicare modifiche, NON deve chiedere ogni volta “acconsenti”.
+  Se whitelist ok e file esistono: applica direttamente la patch.
+  Se serve un file fuori whitelist: STOP e scrivi “SERVE FILE EXTRA: <path>” senza modificare nulla.
+
+OBBLIGO OPERATIVO NEI PROMPT
+- Ogni prompt a Codex DEVE includere i comandi per raggiungere cartelle e file (pwd/ls/rg).
+  Se non li includiamo, Codex spesso non segue o non trova i file corretti.
+- Codex deve stampare SEMPRE i path reali dei file che userà per la patch.
+
+PRE-CHECK (PRIMA DI LANCIARE CODEX)
+- Salvare i file in VS Code (se non sono salvati, Codex non li vede).
+- Far confermare a Codex la cartella di lavoro con:
+  1) pwd
+  2) ls
+  3) ls src
+
+TEMPLATE PROMPT (LETTURA LIBERA + PATCH BLINDATA)
+
+OBIETTIVO
+[Descrivi in 1–3 righe cosa deve cambiare.]
+
+REGOLE DI ACCESSO
+- LETTURA: puoi leggere QUALSIASI file nel progetto.
+- SCRITTURA: puoi modificare SOLO i file nella WHITELIST FINALE che dichiarerai PRIMA della patch.
+- NON chiedere “acconsenti” o conferme intermedie. Se whitelist ok, applica direttamente.
+- Se serve toccare file fuori whitelist: scrivi “SERVE FILE EXTRA: <path>” e STOP senza patch.
+
+REGOLE FERREE
+- NON creare file nuovi.
+- NON eseguire comandi (npm/vite/tsc/firebase).
+- NON usare git.
+- [Eventuali cartelle vietate: es. “NON toccare src/autisti/*”.]
+
+COMANDI DI ORIENTAMENTO (solo lettura)
+1) pwd
+2) ls
+3) ls src
+4) ls src/pages
+5) ls src/utils
+6) ls src/components
+7) rg -n "[keyword1|keyword2|chiave_storage]" src
+8) rg -n "[nomePagina|nomeFunzione]" src
+9) rg -n "load|mapping|render|isSameDay|toTs" src
+
+PROCESSO OBBLIGATORIO
+FASE 1 — ANALISI (lettura libera)
+- Trova e stampa i path reali dei file coinvolti:
+  A) mapping dati / letture chiavi
+  B) rendering UI (tab/lista/card)
+- Riporta chiavi lette/scritte e campi usati in UI.
+- Individua filtri/condizioni che possono nascondere dati.
+
+FASE 2 — WHITELIST FINALE (scrittura blindata)
+- Scrivi:
+  “WHITELIST FINALE:”
+  - <path1>
+  - <path2>
+  - <path3>
+- Frase obbligatoria:
+  “Modificherò SOLO questi file. Nessun altro.”
+
+FASE 3 — PATCH (solo su whitelist)
+- Applica le modifiche richieste SOLO nei file whitelist.
+- Output obbligatorio:
+  1) piano breve (max 10 bullet)
+  2) WHITELIST FINALE
+  3) diff completo
+
+ESEMPIO SPECIFICO — ADMIN EVENTI AUTISTI (solo Admin, Autisti intoccabili)
+
+OBIETTIVO
+In ADMIN:
+- Rifornimenti + Segnalazioni: mostra targa (targaCamion + eventuale targaRimorchio) e categoria mezzo via lookup da @mezzi_aziendali usando targaCamion.
+- Richieste attrezzature: mostra SOLO autistaNome.
+NON modificare src/autisti/*.
+
+COMANDI
+1) pwd
+2) ls
+3) ls src
+4) ls src/pages
+5) rg -n "@segnalazioni_autisti_tmp|@rifornimenti_autisti_tmp|@richieste_attrezzature_autisti_tmp" src
+6) rg -n "@mezzi_aziendali" src
+7) rg -n "Admin|AutistiAdmin|Autisti|Event" src
+8) rg -n "loadHomeEvents|homeEvents|mapping|isSameDay|toTs" src
+9) rg -n "targaCamion|targaRimorchio|autistaNome|categoria" src
+
+VINCOLI
+- lettura libera ovunque
+- scrittura solo su whitelist finale
+- niente “acconsenti”
+- se serve altro file: “SERVE FILE EXTRA: <path>” e stop

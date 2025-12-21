@@ -111,6 +111,12 @@ export default function HomeAutista() {
           Richiesta attrezzature
         </button>
 
+        {!mezzo.targaRimorchio && (
+          <button onClick={() => navigate("/autisti/setup-mezzo?mode=rimorchio")}>
+            AGGANCIA RIMORCHIO
+          </button>
+        )}
+
         <button onClick={() => navigate("/autisti/cambio-mezzo")}>
           Cambio mezzo
         </button>

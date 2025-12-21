@@ -69,7 +69,7 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
   const rifornimenti = (await getItemSync(KEY_RIFORNIMENTI)) || [];
   if (Array.isArray(rifornimenti)) {
     for (const r of rifornimenti) {
-      const ts = toTs(r?.timestamp);
+      const ts = toTs(r?.timestamp ?? r?.data);
       if (!ts || !isSameDay(ts, day)) continue;
       events.push({
         id: r.id ?? genId(),
@@ -85,7 +85,7 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
   const segnalazioni = (await getItemSync(KEY_SEGNALAZIONI)) || [];
   if (Array.isArray(segnalazioni)) {
     for (const s of segnalazioni) {
-      const ts = toTs(s?.timestamp);
+      const ts = toTs(s?.timestamp ?? s?.data);
       if (!ts || !isSameDay(ts, day)) continue;
       events.push({
         id: s.id ?? genId(),
@@ -135,7 +135,7 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
   const richieste = (await getItemSync(KEY_RICHIESTE_ATTREZZATURE)) || [];
   if (Array.isArray(richieste)) {
     for (const r of richieste) {
-      const ts = toTs(r?.timestamp);
+      const ts = toTs(r?.timestamp ?? r?.data);
       if (!ts || !isSameDay(ts, day)) continue;
       events.push({
         id: r.id ?? genId(),

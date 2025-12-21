@@ -220,8 +220,8 @@ export default function CambioMezzoAutista() {
         timestamp: now,
       });
 
-      // vai a setup SOLO rimorchio (motrice bloccata)
-      navigate("/autisti/setup-mezzo?mode=rimorchio", { replace: true });
+      // rientra in home: consente guida senza rimorchio e aggancio successivo
+      navigate("/autisti/home", { replace: true });
       return;
     }
 
