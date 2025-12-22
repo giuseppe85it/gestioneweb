@@ -4,9 +4,17 @@ import "./AutistiInboxHome.css";
 
 import { loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
 import type { HomeEvent, RimorchioStatus } from "../utils/homeEvents";
+import { getItemSync } from "../utils/storageSync";
 
 type ModalKind =
   | null
+  | "rifornimenti"
+  | "segnalazioni"
+  | "controlli"
+  | "cambi"
+  | "attrezzature";
+
+type ActiveTab =
   | "rifornimenti"
   | "segnalazioni"
   | "controlli"
@@ -34,11 +42,55 @@ useEffect(() => {
   const [events, setEvents] = useState<HomeEvent[]>([]);
   const [rimorchi, setRimorchi] = useState<RimorchioStatus[]>([]);
   const [modal, setModal] = useState<ModalKind>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>("rifornimenti");
+  const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
+  const [showJson, setShowJson] = useState(false);
+  const [mezziByTarga, setMezziByTarga] = useState<Record<string, string>>({});
+
+  const rifornimentiRef = useRef<HTMLDivElement | null>(null);
+  const segnalazioniRef = useRef<HTMLDivElement | null>(null);
+  const controlliRef = useRef<HTMLDivElement | null>(null);
+  const cambiRef = useRef<HTMLDivElement | null>(null);
+  const attrezzatureRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     loadHomeEvents(day).then(setEvents);
     loadRimorchiStatus().then(setRimorchi);
   }, [day]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const raw = await getItemSync("@mezzi_aziendali");
+      const list = Array.isArray(raw)
+        ? raw
+        : raw?.value && Array.isArray(raw.value)
+        ? raw.value
+        : [];
+      const map: Record<string, string> = {};
+      for (const m of list) {
+        const targa =
+          m?.targa ??
+          m?.targaCamion ??
+          m?.targaMotrice ??
+          m?.targaRimorchio ??
+          null;
+        const categoria =
+          m?.categoria ??
+          m?.categoriaMezzo ??
+          m?.tipoMezzo ??
+          m?.tipo ??
+          null;
+        if (targa && categoria && !map[String(targa)]) {
+          map[String(targa)] = String(categoria);
+        }
+      }
+      if (active) setMezziByTarga(map);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const rifornimenti = useMemo(
     () => events.filter((e) => e.tipo === "rifornimento"),
@@ -73,6 +125,30 @@ useEffect(() => {
   }
   function closeModal() {
     setModal(null);
+  }
+
+  function closeDetails() {
+    setSelectedEvent(null);
+  }
+
+  useEffect(() => {
+    setShowJson(false);
+  }, [selectedEvent]);
+
+  function scrollToTab(tab: ActiveTab) {
+    const refMap = {
+      rifornimenti: rifornimentiRef,
+      segnalazioni: segnalazioniRef,
+      controlli: controlliRef,
+      cambi: cambiRef,
+      attrezzature: attrezzatureRef,
+    };
+    refMap[tab].current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function handleTabClick(tab: ActiveTab) {
+    setActiveTab(tab);
+    scrollToTab(tab);
   }
 
   const modalTitle = useMemo(() => {
@@ -147,6 +223,172 @@ useEffect(() => {
     );
   }
 
+  function getTipoLabel(tipo: HomeEvent["tipo"]) {
+    switch (tipo) {
+      case "rifornimento":
+        return "RIFORNIMENTO";
+      case "segnalazione":
+        return "SEGNALAZIONE";
+      case "controllo":
+        return "CONTROLLO MEZZO";
+      case "cambio_mezzo":
+        return "CAMBIO MEZZO";
+      case "richiesta_attrezzature":
+        return "RICHIESTA ATTREZZATURE";
+      default:
+        return "EVENTO";
+    }
+  }
+
+  function formatDateTime(ts?: number) {
+    if (!ts) return "-";
+    return new Date(ts).toLocaleString("it-IT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function getAutistaInfo(e: HomeEvent) {
+    const p: any = e.payload || {};
+    const nome = p.autistaNome ?? p.nomeAutista ?? e.autista ?? "-";
+    const badge = p.badgeAutista ?? p.badge ?? null;
+    return {
+      nome: String(nome || "-"),
+      badge: badge ? String(badge) : null,
+    };
+  }
+
+  function getCategoria(targa?: string | null) {
+    if (!targa) return null;
+    return mezziByTarga[String(targa)] ?? null;
+  }
+
+  function buildMezzoRows(e: HomeEvent) {
+    const p: any = e.payload || {};
+    const rows: Array<{ label: string; targa: string; categoria?: string | null }> = [];
+    if (e.tipo === "segnalazione") {
+      const ambito = String(p.ambito ?? "").toLowerCase();
+      if (ambito === "rimorchio") {
+        const t = p.targaRimorchio ?? null;
+        if (t) rows.push({ label: "Rimorchio", targa: String(t), categoria: getCategoria(t) });
+      } else {
+        const t = p.targaCamion ?? p.targaMotrice ?? null;
+        if (t) rows.push({ label: "Motrice", targa: String(t), categoria: getCategoria(t) });
+      }
+    } else if (e.tipo === "rifornimento") {
+      const t = p.targaCamion ?? p.targaMotrice ?? null;
+      if (t) rows.push({ label: "Motrice", targa: String(t), categoria: getCategoria(t) });
+    } else if (e.tipo === "controllo") {
+      const tm = p.targaCamion ?? p.targaMotrice ?? null;
+      const tr = p.targaRimorchio ?? null;
+      if (tm) rows.push({ label: "Motrice", targa: String(tm), categoria: getCategoria(tm) });
+      if (tr) rows.push({ label: "Rimorchio", targa: String(tr), categoria: getCategoria(tr) });
+    } else if (e.tipo === "cambio_mezzo") {
+      const t = p.targaMotrice ?? p.targaCamion ?? e.targa ?? null;
+      if (t) rows.push({ label: "Motrice", targa: String(t), categoria: getCategoria(t) });
+    }
+    return rows;
+  }
+
+  function formatValue(v: any) {
+    if (v === undefined || v === null || v === "") return null;
+    if (typeof v === "boolean") return v ? "OK" : "KO";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function buildDetailsRows(e: HomeEvent) {
+    const p: any = e.payload || {};
+    const rows: Array<{ label: string; value: string }> = [];
+
+    if (e.tipo === "segnalazione") {
+      const tipoProblema = formatValue(p.tipoProblema);
+      const descrizione = formatValue(p.descrizione);
+      const note = formatValue(p.note);
+      const stato = formatValue(p.stato);
+      if (tipoProblema) rows.push({ label: "Tipo problema", value: tipoProblema });
+      if (descrizione) rows.push({ label: "Descrizione", value: descrizione });
+      if (note) rows.push({ label: "Note", value: note });
+      if (stato) rows.push({ label: "Stato", value: stato });
+    } else if (e.tipo === "rifornimento") {
+      const litri = formatValue(p.litri ?? p.quantita);
+      const km = formatValue(p.km);
+      const importo = formatValue(p.importo);
+      const paese = formatValue(p.paese);
+      const metodoPagamento = formatValue(p.metodoPagamento);
+      const tipo = formatValue(p.tipo);
+      const note = formatValue(p.note);
+      if (litri) rows.push({ label: "Litri", value: litri });
+      if (km) rows.push({ label: "Km", value: km });
+      if (importo) rows.push({ label: "Importo", value: importo });
+      if (paese) rows.push({ label: "Paese", value: paese });
+      if (metodoPagamento) rows.push({ label: "Metodo pagamento", value: metodoPagamento });
+      if (tipo) rows.push({ label: "Tipo", value: tipo });
+      if (note) rows.push({ label: "Note", value: note });
+    } else if (e.tipo === "controllo") {
+      const esito = formatValue(p.esito ?? p.tuttoOk ?? p.ok);
+      const condizioni = formatValue(p.condizioni);
+      const statoCarico = formatValue(p.statoCarico);
+      const luogo = formatValue(p.luogo);
+      const note = formatValue(p.note);
+      if (esito) rows.push({ label: "Esito", value: esito });
+      if (condizioni) rows.push({ label: "Condizioni", value: condizioni });
+      if (statoCarico) rows.push({ label: "Stato carico", value: statoCarico });
+      if (luogo) rows.push({ label: "Luogo", value: luogo });
+      if (note) rows.push({ label: "Note", value: note });
+    } else if (e.tipo === "cambio_mezzo") {
+      const luogo = formatValue(p.luogo);
+      const condizioni = formatValue(p.condizioni);
+      const note = formatValue(p.note);
+      if (luogo) rows.push({ label: "Luogo", value: luogo });
+      if (condizioni) rows.push({ label: "Condizioni", value: condizioni });
+      if (note) rows.push({ label: "Note", value: note });
+    } else if (e.tipo === "richiesta_attrezzature") {
+      const testo = formatValue(p.testo ?? p.richiesta ?? p.messaggio);
+      if (testo) rows.push({ label: "Testo", value: testo });
+    }
+
+    return rows;
+  }
+
+  function getFotoList(p: any) {
+    const list: string[] = [];
+    if (Array.isArray(p?.foto)) {
+      for (const f of p.foto) {
+        if (typeof f === "string") list.push(f);
+        else if (f?.dataUrl) list.push(String(f.dataUrl));
+      }
+    }
+    if (p?.fotoDataUrl) list.push(String(p.fotoDataUrl));
+    if (p?.fotoUrl) list.push(String(p.fotoUrl));
+    if (Array.isArray(p?.fotoUrls)) {
+      for (const u of p.fotoUrls) {
+        if (u) list.push(String(u));
+      }
+    }
+    return list;
+  }
+
+  const detailsTitle = useMemo(() => {
+    if (!selectedEvent) return "";
+    return getTipoLabel(selectedEvent.tipo);
+  }, [selectedEvent]);
+
+  function renderDetailsRows(e: HomeEvent) {
+    const rows = buildDetailsRows(e);
+    return rows.map((row, index) => (
+      <div key={`${row.label}-${index}`} className="aix-row">
+        <div className="aix-row-top">
+          <strong>{row.label}</strong>
+          <span>{row.value}</span>
+        </div>
+      </div>
+    ));
+  }
+
   return (
     <div className="autisti-home">
       <div className="autisti-inbox-wrap">
@@ -191,23 +433,56 @@ useEffect(() => {
           </div>
 
           <div className="autisti-header-actions">
-            {/* Per ora le pagine non esistono: le teniamo ma non rompono la navigazione */}
-            <button disabled title="In arrivo">
+            <button
+              onClick={() => handleTabClick("rifornimenti")}
+              style={
+                activeTab === "rifornimenti"
+                  ? { background: "#2e7d32", color: "#fff" }
+                  : undefined
+              }
+            >
               Rifornimenti
             </button>
-            <button disabled title="In arrivo">
+            <button
+              onClick={() => handleTabClick("segnalazioni")}
+              style={
+                activeTab === "segnalazioni"
+                  ? { background: "#2e7d32", color: "#fff" }
+                  : undefined
+              }
+            >
               Segnalazioni
             </button>
-            <button disabled title="In arrivo">
+            <button
+              onClick={() => handleTabClick("controlli")}
+              style={
+                activeTab === "controlli"
+                  ? { background: "#2e7d32", color: "#fff" }
+                  : undefined
+              }
+            >
               Controllo mezzo
             </button>
-            <button onClick={() => navigate("/autisti-inbox/cambio-mezzo")}>
+            <button
+              onClick={() => handleTabClick("cambi")}
+              style={
+                activeTab === "cambi"
+                  ? { background: "#2e7d32", color: "#fff" }
+                  : undefined
+              }
+            >
               Cambio mezzo
             </button>
-            <button disabled title="In arrivo">
-  Richiesta attrezzature
-</button>
-
+            <button
+              onClick={() => handleTabClick("attrezzature")}
+              style={
+                activeTab === "attrezzature"
+                  ? { background: "#2e7d32", color: "#fff" }
+                  : undefined
+              }
+            >
+              Richiesta attrezzature
+            </button>
           </div>
         </div>
 
@@ -236,7 +511,7 @@ useEffect(() => {
           {/* CARD GRID */}
           <div className="autisti-cards">
             {/* RIFORNIMENTI */}
-            <div className="daily-card">
+            <div className="daily-card" ref={rifornimentiRef}>
               <div className="daily-card-head">
                 <h2>Rifornimenti</h2>
                 <button
@@ -252,11 +527,23 @@ useEffect(() => {
               {rifornimenti.length === 0 ? (
                 <div className="daily-item empty">Nessun rifornimento</div>
               ) : (
-                rifornimenti.slice(0, 5).map((r) => {
+                rifornimenti.slice(0, 5).map((r, index) => {
                   const p: any = r.payload || {};
                   const litri = p.litri ?? p.quantita ?? "-";
                   return (
-                    <div key={r.id} className="daily-item">
+                    <div
+                      key={
+                        r.id ??
+                        `${r.tipo ?? "x"}-${r.timestamp ?? 0}-${r.targa ?? ""}-${index}`
+                      }
+                      className="daily-item"
+                      onClick={() => setSelectedEvent(r)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setSelectedEvent(r);
+                      }}
+                    >
                       {formatTime(r.timestamp)} · {r.targa ?? "-"} · {litri} lt
                     </div>
                   );
@@ -265,7 +552,7 @@ useEffect(() => {
             </div>
 
             {/* SEGNALAZIONI */}
-            <div className="daily-card alert">
+            <div className="daily-card alert" ref={segnalazioniRef}>
               <div className="daily-card-head">
                 <h2>Segnalazioni</h2>
                 <button
@@ -281,8 +568,20 @@ useEffect(() => {
               {segnalazioni.length === 0 ? (
                 <div className="daily-item empty">Nessuna segnalazione</div>
               ) : (
-                segnalazioni.slice(0, 5).map((s) => (
-                  <div key={s.id} className="daily-item">
+                segnalazioni.slice(0, 5).map((s, index) => (
+                  <div
+                    key={
+                      s.id ??
+                      `${s.tipo ?? "x"}-${s.timestamp ?? 0}-${s.targa ?? ""}-${index}`
+                    }
+                    className="daily-item"
+                    onClick={() => setSelectedEvent(s)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") setSelectedEvent(s);
+                    }}
+                  >
                     {formatTime(s.timestamp)} · {s.targa ?? "-"} · {s.autista ?? "-"}
                   </div>
                 ))
@@ -290,7 +589,7 @@ useEffect(() => {
             </div>
 
             {/* CONTROLLO */}
-            <div className="daily-card">
+            <div className="daily-card" ref={controlliRef}>
               <div className="daily-card-head">
                 <h2>Controllo mezzo</h2>
                 <button
@@ -306,8 +605,20 @@ useEffect(() => {
               {controlli.length === 0 ? (
                 <div className="daily-item empty">Nessun controllo</div>
               ) : (
-                controlli.slice(0, 5).map((c) => (
-                  <div key={c.id} className="daily-item">
+                controlli.slice(0, 5).map((c, index) => (
+                  <div
+                    key={
+                      c.id ??
+                      `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`
+                    }
+                    className="daily-item"
+                    onClick={() => setSelectedEvent(c)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
+                    }}
+                  >
                     {formatTime(c.timestamp)} · {c.targa ?? "-"} · OK
                   </div>
                 ))
@@ -315,7 +626,7 @@ useEffect(() => {
             </div>
 
             {/* CAMBIO MEZZO */}
-            <div className="daily-card">
+            <div className="daily-card" ref={cambiRef}>
               <div className="daily-card-head">
                 <h2>Cambio mezzo</h2>
                 <button
@@ -331,8 +642,20 @@ useEffect(() => {
               {cambiMezzo.length === 0 ? (
                 <div className="daily-item empty">Nessun cambio</div>
               ) : (
-                cambiMezzo.slice(0, 5).map((c) => (
-                  <div key={c.id} className="daily-item">
+                cambiMezzo.slice(0, 5).map((c, index) => (
+                  <div
+                    key={
+                      c.id ??
+                      `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`
+                    }
+                    className="daily-item"
+                    onClick={() => setSelectedEvent(c)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
+                    }}
+                  >
                     {formatTime(c.timestamp)} · {c.targa ?? "-"} · {c.autista ?? "-"}
                   </div>
                 ))
@@ -340,7 +663,7 @@ useEffect(() => {
             </div>
 
             {/* RICHIESTA ATTREZZATURE (5ª CARD) */}
-            <div className="daily-card info wide">
+            <div className="daily-card info wide" ref={attrezzatureRef}>
               <div className="daily-card-head">
                 <h2>Richiesta attrezzature</h2>
                 <button
@@ -356,13 +679,25 @@ useEffect(() => {
               {richiesteAttrezzature.length === 0 ? (
                 <div className="daily-item empty">Nessuna richiesta</div>
               ) : (
-                richiesteAttrezzature.slice(0, 5).map((r) => {
+                richiesteAttrezzature.slice(0, 5).map((r, index) => {
                   const p: any = r.payload || {};
                   const extra =
                     p.testo ?? p.richiesta ?? p.descrizione ?? p.note ?? null;
 
                   return (
-                    <div key={r.id} className="daily-item">
+                    <div
+                      key={
+                        r.id ??
+                        `${r.tipo ?? "x"}-${r.timestamp ?? 0}-${r.targa ?? ""}-${index}`
+                      }
+                      className="daily-item"
+                      onClick={() => setSelectedEvent(r)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setSelectedEvent(r);
+                      }}
+                    >
                       {formatTime(r.timestamp)} · {r.targa ?? "-"} · {r.autista ?? "-"}
                       {extra ? <div className="daily-sub">{String(extra)}</div> : null}
                     </div>
@@ -379,8 +714,12 @@ useEffect(() => {
             {rimorchi.length === 0 ? (
               <div className="rimorchio-row">Nessun rimorchio</div>
             ) : (
-              rimorchi.map((r) => (
-                <div key={r.targa} className="rimorchio-row" data-stato={r.stato}>
+              rimorchi.map((r, index) => (
+                <div
+                  key={`${r.targa}-${r.stato}-${r.motrice ?? ""}-${index}`}
+                  className="rimorchio-row"
+                  data-stato={r.stato}
+                >
                   <strong>{r.targa}</strong>
                   <div>{r.stato}</div>
 
@@ -414,8 +753,20 @@ useEffect(() => {
                 {modalList.length === 0 ? (
                   <div className="aix-empty">Nessun elemento</div>
                 ) : (
-                  modalList.map((e) => (
-                    <div key={e.id} className="aix-row">
+                  modalList.map((e, index) => (
+                    <div
+                      key={
+                        e.id ??
+                        `${e.tipo ?? "x"}-${e.timestamp ?? 0}-${e.targa ?? ""}-${index}`
+                      }
+                      className="aix-row"
+                      onClick={() => setSelectedEvent(e)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") setSelectedEvent(e);
+                      }}
+                    >
                       {renderModalRow(e)}
                     </div>
                   ))
@@ -424,7 +775,122 @@ useEffect(() => {
             </div>
           </div>
         )}
+        {selectedEvent &&
+          (() => {
+            const p: any = selectedEvent.payload || {};
+            const { nome, badge } = getAutistaInfo(selectedEvent);
+            const autistaLabel = badge ? `${nome} (${badge})` : nome;
+            const mezzoRows = buildMezzoRows(selectedEvent);
+            const detailRows = buildDetailsRows(selectedEvent);
+            const fotoList = getFotoList(p);
+            return (
+              <div className="aix-backdrop" onClick={closeDetails}>
+                <div className="aix-modal" onClick={(e) => e.stopPropagation()}>
+                  <div className="aix-head">
+                    <div>
+                      <h3>{detailsTitle}</h3>
+                      <div style={{ fontSize: "13px", opacity: 0.8 }}>
+                        {autistaLabel}
+                      </div>
+                    </div>
+                    <button className="aix-close" onClick={closeDetails} aria-label="Chiudi">
+                      X
+                    </button>
+                  </div>
+                  <div className="aix-body">
+                    <div className="aix-row">
+                      <div className="aix-row-top">
+                        <strong>DATA/ORA</strong>
+                        <span>{formatDateTime(selectedEvent.timestamp)}</span>
+                      </div>
+                    </div>
+
+                    {mezzoRows.length > 0 && (
+                      <>
+                        <div className="aix-row">
+                          <div className="aix-row-top">
+                            <strong>MEZZO</strong>
+                          </div>
+                        </div>
+                        {mezzoRows.map((row, index) => (
+                          <div key={`mezzo-${index}`} className="aix-row">
+                            <div className="aix-row-top">
+                              <strong>{row.label}</strong>
+                              <span>{row.targa}</span>
+                            </div>
+                            {row.categoria ? (
+                              <div className="aix-row-bot">
+                                Categoria: {row.categoria}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {detailRows.length > 0 && (
+                      <>
+                        <div className="aix-row">
+                          <div className="aix-row-top">
+                            <strong>DETTAGLI</strong>
+                          </div>
+                        </div>
+                        {renderDetailsRows(selectedEvent)}
+                      </>
+                    )}
+
+                    {fotoList.length > 0 && (
+                      <>
+                        <div className="aix-row">
+                          <div className="aix-row-top">
+                            <strong>ALLEGATI/FOTO</strong>
+                          </div>
+                        </div>
+                        <div className="aix-row">
+                          <div className="aix-row-bot">
+                            {fotoList.map((src, index) => (
+                              <img
+                                key={`foto-${index}`}
+                                src={src}
+                                alt="Foto"
+                                style={{
+                                  maxWidth: "100%",
+                                  borderRadius: 8,
+                                  marginTop: 8,
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="aix-row">
+                      <div className="aix-row-top">
+                        <strong>JSON</strong>
+                        <button
+                          type="button"
+                          className="daily-more"
+                          onClick={() => setShowJson((v) => !v)}
+                        >
+                          {showJson ? "Nascondi JSON" : "Mostra JSON"}
+                        </button>
+                      </div>
+                    </div>
+                    {showJson ? (
+                      <pre className="aix-json">
+                        {JSON.stringify(p ?? {}, null, 2)}
+                      </pre>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
       </div>
     </div>
   );
 }
+
+
+
