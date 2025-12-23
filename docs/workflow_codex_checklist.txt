@@ -209,3 +209,45 @@ VINCOLI
 - scrittura solo su whitelist finale
 - niente “acconsenti”
 - se serve altro file: “SERVE FILE EXTRA: <path>” e stop
+--- a/workflow_codex_checklist.txt
++++ b/workflow_codex_checklist.txt
+@@
+ FASE 4 — VERIFICA TECNICA RAPIDA (CTRL+F)
+ Prima del test UI, verifica 5 cose nel codice (solo ricerca testo):
+ [ ] setItemSync/getItemSync usa la chiave giusta (@...).
+ [ ] Update per id: findIndex/find con record.id.
+ [ ] Non perde campi: usa spread (...old, ...draft) o patch mirata.
+ [ ] Timestamp: normalizzazione (timestamp ?? data ?? ...) se serve.
+ [ ] Nessun import sospetto / codice morto enorme.
++[ ] React list keys: nessun warning "Encountered two children with the same key".
++    - Ogni .map deve usare una key stabile e UNICA (preferisci record.id).
++    - Evita index come key se la lista può cambiare ordine o filtrare.
++[ ] VS Code "Problems" pulito: nessun errore TS e niente unused che blocca CI/deploy.
++    - Rimuovere funzioni/variabili inutilizzate o usarle davvero.
+ 
+ ────────────────────────────────────────────────────────────
+ FASE 5 — TEST LOCALE (manuale, breve)
+ Esegui SEMPRE questi test minimi:
+ [ ] Compila e parte in locale.
+ [ ] Flusso principale: la feature richiesta funziona.
+ [ ] Refresh pagina: i dati restano corretti.
+ [ ] Caso negativo: input mancante mostra errore o non rompe.
+ [ ] Mobile width: nessun overflow evidente (se UI).
++[ ] Desktop wide: allineamenti ok, nessun "vuoto" da layout (grid che viene spinta da sidebar).
++[ ] Se ci sono sidebar lunghe (es. Stato rimorchi/Sessioni): scroll INTERNO, non deve spingere giù le card centrali.
+@@
+ COMANDI DI ORIENTAMENTO (solo lettura)
+ 1) pwd
+ 2) ls
+ 3) ls src
+ 4) ls src/pages
+ 5) ls src/utils
+ 6) ls src/components
++7) ls src/autistiInbox
++8) ls src/autistiInbox/components
+-7) rg -n "[keyword1|keyword2|chiave_storage]" src
+-8) rg -n "[nomePagina|nomeFunzione]" src
+-9) rg -n "load|mapping|render|isSameDay|toTs" src
++9) rg -n "[keyword1|keyword2|chiave_storage]" src
++10) rg -n "[nomePagina|nomeFunzione]" src
++11) rg -n "load|mapping|render|isSameDay|toTs|HomeEvent" src

@@ -1,3 +1,5 @@
+import { collection, getDocs, query } from "firebase/firestore";
+import { db } from "../firebase";
 import { getItemSync } from "./storageSync";
 
 export type HomeEvent = {
@@ -23,6 +25,27 @@ export type RimorchioStatus = {
   luogo: string | null;
   statoCarico: string | null;
   timestamp: number;
+};
+
+export type ActiveSession = {
+  badgeAutista: string;
+  nomeAutista: string;
+  targaMotrice: string | null;
+  targaRimorchio: string | null;
+  timestamp: number | null;
+};
+
+type FirestoreAutistiEvento = {
+  tipo?: string;
+  autistaNome?: string;
+  badgeAutista?: string;
+  targaMotrice?: string | null;
+  targaRimorchio?: string | null;
+  luogo?: string | null;
+  statoCarico?: string | null;
+  condizioni?: string | null;
+  timestamp?: number;
+  createdAt?: any;
 };
 
 const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
@@ -164,7 +187,75 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
     }
   }
 
+  const fs = await loadFirestoreAutistiEventi(day).catch(() => []);
+  events.push(...fs);
+
   return events.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export async function loadFirestoreAutistiEventi(day: Date): Promise<HomeEvent[]> {
+  const snapshot = await getDocs(query(collection(db, "autisti_eventi")));
+  const events: HomeEvent[] = [];
+
+  snapshot.forEach((docSnap) => {
+    const data = docSnap.data() as FirestoreAutistiEvento;
+    const ts = toTs(data?.timestamp);
+    if (!ts || !isSameDay(ts, day)) return;
+
+    const fsTipo = data?.tipo ? String(data.tipo) : "";
+    let targa: string | null = null;
+    if (fsTipo === "CAMBIO_MOTRICE") {
+      targa = data.targaMotrice ?? null;
+    } else if (fsTipo === "SGANCIO_RIMORCHIO" || fsTipo === "AGGANCIO_RIMORCHIO") {
+      targa = data.targaRimorchio ?? data.targaMotrice ?? null;
+    } else {
+      targa = data.targaRimorchio ?? data.targaMotrice ?? null;
+    }
+
+    events.push({
+      id: docSnap.id,
+      tipo: "cambio_mezzo",
+      targa,
+      autista: data.autistaNome ?? null,
+      timestamp: ts,
+      payload: { ...data, fsTipo, source: "firestore_autisti_eventi" },
+    });
+  });
+
+  return events;
+}
+
+export async function loadActiveSessions(): Promise<ActiveSession[]> {
+  const raw = (await getItemSync(KEY_SESSIONI)) || [];
+  const list = Array.isArray(raw)
+    ? raw
+    : raw?.value && Array.isArray(raw.value)
+    ? raw.value
+    : [];
+
+  const sessions: ActiveSession[] = [];
+  for (const s of list) {
+    const badge = s?.badgeAutista ?? s?.badge ?? "";
+    const nome = s?.nomeAutista ?? s?.autistaNome ?? s?.autista ?? "";
+    const targaMotrice = s?.targaMotrice ?? s?.targaCamion ?? null;
+    const targaRimorchio = s?.targaRimorchio ?? null;
+    const timestamp = toTs(s?.timestamp) ?? null;
+
+    sessions.push({
+      badgeAutista: badge ? String(badge) : "",
+      nomeAutista: nome ? String(nome) : "",
+      targaMotrice: targaMotrice ? String(targaMotrice) : null,
+      targaRimorchio: targaRimorchio ? String(targaRimorchio) : null,
+      timestamp,
+    });
+  }
+
+  return sessions.sort((a, b) => {
+    if (a.timestamp == null && b.timestamp == null) return 0;
+    if (a.timestamp == null) return 1;
+    if (b.timestamp == null) return -1;
+    return b.timestamp - a.timestamp;
+  });
 }
 
 export async function loadRimorchiStatus(): Promise<RimorchioStatus[]> {
