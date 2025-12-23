@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./AutistiInboxHome.css";
 
-import { loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
-import type { HomeEvent, RimorchioStatus } from "../utils/homeEvents";
+import { loadActiveSessions, loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
+import type { ActiveSession, HomeEvent, RimorchioStatus } from "../utils/homeEvents";
 import { getItemSync } from "../utils/storageSync";
+import SessioniAttiveCard from "./components/SessioniAttiveCard";
 
 type ModalKind =
   | null
@@ -41,6 +42,7 @@ useEffect(() => {
   const [day, setDay] = useState<Date>(new Date());
   const [events, setEvents] = useState<HomeEvent[]>([]);
   const [rimorchi, setRimorchi] = useState<RimorchioStatus[]>([]);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [modal, setModal] = useState<ModalKind>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("rifornimenti");
   const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
@@ -56,6 +58,7 @@ useEffect(() => {
   useEffect(() => {
     loadHomeEvents(day).then(setEvents);
     loadRimorchiStatus().then(setRimorchi);
+    loadActiveSessions().then(setActiveSessions).catch(() => setActiveSessions([]));
   }, [day]);
 
   useEffect(() => {
@@ -187,7 +190,7 @@ useEffect(() => {
 
   function renderModalRow(e: HomeEvent) {
     // Mostra info reali senza inventare campi.
-    // Se nel payload c'è testo richiesta, lo mettiamo come riga 2.
+    // Se nel payload c'e testo richiesta, lo mettiamo come riga 2.
     const p: any = e.payload || {};
     const extra =
       p.testo ??
@@ -489,7 +492,7 @@ useEffect(() => {
         {/* DATA */}
         <div className="autisti-date-bar">
           <button onClick={() => setDay(new Date(day.getTime() - 86400000))}>
-            ◀
+            {"<"}
           </button>
 
           <span>
@@ -502,12 +505,15 @@ useEffect(() => {
           </span>
 
           <button onClick={() => setDay(new Date(day.getTime() + 86400000))}>
-            ▶
+            {">"}
           </button>
         </div>
 
         {/* LAYOUT */}
         <div className="autisti-layout">
+          <aside className="sessioni-panel">
+            <SessioniAttiveCard sessions={activeSessions} />
+          </aside>
           {/* CARD GRID */}
           <div className="autisti-cards">
             {/* RIFORNIMENTI */}
@@ -544,7 +550,7 @@ useEffect(() => {
                         if (e.key === "Enter" || e.key === " ") setSelectedEvent(r);
                       }}
                     >
-                      {formatTime(r.timestamp)} · {r.targa ?? "-"} · {litri} lt
+                      {formatTime(r.timestamp)} - {r.targa ?? "-"} - {litri} lt
                     </div>
                   );
                 })
@@ -582,7 +588,7 @@ useEffect(() => {
                       if (e.key === "Enter" || e.key === " ") setSelectedEvent(s);
                     }}
                   >
-                    {formatTime(s.timestamp)} · {s.targa ?? "-"} · {s.autista ?? "-"}
+                    {formatTime(s.timestamp)} - {s.targa ?? "-"} - {s.autista ?? "-"}
                   </div>
                 ))
               )}
@@ -619,7 +625,7 @@ useEffect(() => {
                       if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
                     }}
                   >
-                    {formatTime(c.timestamp)} · {c.targa ?? "-"} · OK
+                    {formatTime(c.timestamp)} - {c.targa ?? "-"} - OK
                   </div>
                 ))
               )}
@@ -656,13 +662,13 @@ useEffect(() => {
                       if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
                     }}
                   >
-                    {formatTime(c.timestamp)} · {c.targa ?? "-"} · {c.autista ?? "-"}
+                    {formatTime(c.timestamp)} - {c.targa ?? "-"} - {c.autista ?? "-"}
                   </div>
                 ))
               )}
             </div>
 
-            {/* RICHIESTA ATTREZZATURE (5ª CARD) */}
+            {/* RICHIESTA ATTREZZATURE (5a CARD) */}
             <div className="daily-card info wide" ref={attrezzatureRef}>
               <div className="daily-card-head">
                 <h2>Richiesta attrezzature</h2>
@@ -698,7 +704,7 @@ useEffect(() => {
                         if (e.key === "Enter" || e.key === " ") setSelectedEvent(r);
                       }}
                     >
-                      {formatTime(r.timestamp)} · {r.targa ?? "-"} · {r.autista ?? "-"}
+                      {formatTime(r.timestamp)} - {r.targa ?? "-"} - {r.autista ?? "-"}
                       {extra ? <div className="daily-sub">{String(extra)}</div> : null}
                     </div>
                   );
@@ -745,7 +751,7 @@ useEffect(() => {
               <div className="aix-head">
                 <h3>{modalTitle}</h3>
                 <button className="aix-close" onClick={closeModal} aria-label="Chiudi">
-                  ✕
+                  X
                 </button>
               </div>
 

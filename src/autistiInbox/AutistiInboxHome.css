@@ -1,5 +1,5 @@
 /* ======================================================
-   AUTISTI INBOX HOME – layout tipo DOSSIER
+   AUTISTI INBOX HOME - layout tipo DOSSIER
    Desktop: 5 card a sinistra (2x2 + 1 wide) + Rimorchi a destra
    Mobile: 1 colonna + Rimorchi sotto
 ====================================================== */
@@ -27,7 +27,7 @@
 /* contenitore reale desktop */
 .autisti-inbox-wrap{
   width: 100%;
-  max-width: 1200px;
+  max-width: 1500px;
 }
 
 /* ===== HEADER ===== */
@@ -125,8 +125,8 @@
 .autisti-layout{
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px; /* sinistra + rimorchi */
-  gap: 18px;
+  grid-template-columns: 360px minmax(0, 1fr) 340px;
+  gap: 22px;
   align-items: start;
 }
 
@@ -134,7 +134,167 @@
 .autisti-cards{
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 24px;
+  width: 100%;
+}
+
+/* ===== SESSIONI ATTIVE (colonna sinistra) ===== */
+.sessioni-panel{
+  background: rgba(248,244,232,0.98);
+  border-radius: 18px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 14px 35px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.18) inset;
+  box-sizing: border-box;
+  align-self: start;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.sessioni-panel h2{
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3a352b;
+}
+
+.sessioni-card{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sessioni-card-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sessioni-filters{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sessioni-filter-input{
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(180,167,144,0.55);
+  background: rgba(255,253,247,0.9);
+  font-size: 13px;
+  color: #3a352b;
+  box-sizing: border-box;
+}
+
+.sessioni-filter-input:focus{
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(47,95,154,0.2);
+}
+
+.sessione-row{
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: rgba(255,253,247,0.9);
+  border: 1px solid rgba(196,180,154,0.5);
+  border-left: 6px solid #2e7d32;
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.sessione-row:hover{
+  background: rgba(255,253,247,1);
+}
+
+.sessione-row.alert,
+.sessione-row.conflict{
+  border-left-color: #c62828;
+}
+
+.sessione-row.empty{
+  font-style: italic;
+  opacity: 0.75;
+  border-left-color: rgba(196,180,154,0.5);
+  cursor: default;
+}
+
+.sessione-top{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.sessione-status{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessione-time{
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.sessione-line{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.sessione-label{
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.sessione-value{
+  font-weight: 800;
+}
+
+.sessione-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #2f5f9a;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sessione-conflict-badge{
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #c62828;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sessione-conflict-text{
+  margin-top: 6px;
+  color: #c62828;
+  font-weight: 800;
+  font-size: 13px;
+  display: block;
 }
 
 /* ===== CARD (stile dossier) ===== */
@@ -225,6 +385,8 @@
   box-shadow: 0 14px 35px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.18) inset;
   box-sizing: border-box;
   align-self: start;
+  max-height: 72vh;
+  overflow-y: auto;
 }
 
 .rimorchi-panel h2{
@@ -349,7 +511,7 @@
   white-space: pre-wrap;
 }
 
-/* ===== MOBILE: torna dentro “gabbia telefono” automaticamente ===== */
+/* ===== MOBILE: torna dentro "gabbia telefono" automaticamente ===== */
 @media (max-width: 900px){
   .autisti-home{
     width: auto;
@@ -394,6 +556,10 @@
 
   .rimorchi-panel{
     margin-top: 14px;
+  }
+
+  .sessioni-filters{
+    grid-template-columns: 1fr;
   }
 }
 .autisti-title-row{
