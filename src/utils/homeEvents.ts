@@ -55,6 +55,7 @@ const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
 const KEY_CAMBI_MOTRICE = "@storico_cambi_motrice";
 const KEY_SGANCIO_RIMORCHI = "@storico_sganci_rimorchi";
 const KEY_SESSIONI = "@autisti_sessione_attive";
+const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
 function genId() {
   const c: any = globalThis.crypto;
@@ -183,6 +184,28 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
         autista: m.autista ?? m.nomeAutista ?? null,
         timestamp: ts,
         payload: m,
+      });
+    }
+  }
+
+  const operativi = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+  if (Array.isArray(operativi)) {
+    for (const evt of operativi) {
+      const ts = toTs(evt?.timestamp);
+      if (!ts || !isSameDay(ts, day)) continue;
+      const targa =
+        evt?.dopo?.targaMotrice ||
+        evt?.prima?.targaMotrice ||
+        evt?.dopo?.targaRimorchio ||
+        evt?.prima?.targaRimorchio ||
+        null;
+      events.push({
+        id: evt?.id ?? genId(),
+        tipo: "cambio_mezzo",
+        targa: targa ? String(targa) : null,
+        autista: evt?.nomeAutista ? String(evt.nomeAutista) : null,
+        timestamp: ts,
+        payload: evt,
       });
     }
   }

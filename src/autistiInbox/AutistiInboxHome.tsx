@@ -303,6 +303,14 @@ useEffect(() => {
     return String(v);
   }
 
+  function formatSnapshot(v: any) {
+    const motrice = v?.targaMotrice ?? null;
+    const rimorchio = v?.targaRimorchio ?? null;
+    const motriceText = motrice ? `Motrice: ${motrice}` : "Motrice: -";
+    const rimorchioText = rimorchio ? `Rimorchio: ${rimorchio}` : "Rimorchio: -";
+    return `${motriceText} | ${rimorchioText}`;
+  }
+
   function buildDetailsRows(e: HomeEvent) {
     const p: any = e.payload || {};
     const rows: Array<{ label: string; value: string }> = [];
@@ -344,9 +352,16 @@ useEffect(() => {
       if (note) rows.push({ label: "Note", value: note });
     } else if (e.tipo === "cambio_mezzo") {
       const luogo = formatValue(p.luogo);
+      const statoCarico = formatValue(p.statoCarico);
       const condizioni = formatValue(p.condizioni);
       const note = formatValue(p.note);
+      if (p?.tipo && p?.prima && p?.dopo) {
+        rows.push({ label: "EVENTO", value: String(p.tipo) });
+        rows.push({ label: "PRIMA", value: formatSnapshot(p.prima) });
+        rows.push({ label: "DOPO", value: formatSnapshot(p.dopo) });
+      }
       if (luogo) rows.push({ label: "Luogo", value: luogo });
+      if (statoCarico) rows.push({ label: "Stato carico", value: statoCarico });
       if (condizioni) rows.push({ label: "Condizioni", value: condizioni });
       if (note) rows.push({ label: "Note", value: note });
     } else if (e.tipo === "richiesta_attrezzature") {

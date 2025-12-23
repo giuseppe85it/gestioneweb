@@ -13,6 +13,7 @@ const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
 const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
+const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
 type Mode = "rimorchio" | "motrice" | "none";
 
@@ -44,6 +45,20 @@ interface SessioneAttiva {
   timestamp: number;
 }
 
+type EventoOperativo = {
+  id: string;
+  tipo: string;
+  timestamp: number;
+  badgeAutista: string;
+  nomeAutista: string;
+  prima: { targaMotrice: string | null; targaRimorchio: string | null };
+  dopo: { targaMotrice: string | null; targaRimorchio: string | null };
+  luogo: string | null;
+  statoCarico: string | null;
+  condizioni: any;
+  source: string;
+};
+
 function norm(s: string) {
   return (s || "").trim().toLowerCase();
 }
@@ -52,6 +67,14 @@ const fmtTarga = (t: string) => (t || "").trim().toUpperCase();
 
 function genId() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+async function appendEventoOperativo(evt: EventoOperativo) {
+  const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+  const list: EventoOperativo[] = Array.isArray(raw) ? raw : [];
+  if (list.some((e) => e?.id === evt.id)) return;
+  list.push(evt);
+  await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
 }
 
 export default function SetupMezzo() {
@@ -202,6 +225,21 @@ export default function SetupMezzo() {
     const prev: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
 
     const nuove = prev.filter((s) => s.badgeAutista !== autista.badge);
+    const prevSession = prev.find((s) => s.badgeAutista === autista.badge) || null;
+
+    const prima = {
+      targaMotrice:
+        prevSession?.targaMotrice ??
+        (mezzoLocal?.targaCamion ? String(mezzoLocal.targaCamion) : null),
+      targaRimorchio:
+        prevSession?.targaRimorchio ??
+        (mezzoLocal?.targaRimorchio ? String(mezzoLocal.targaRimorchio) : null),
+    };
+
+    const dopo = {
+      targaMotrice: targaCamion ? String(targaCamion) : null,
+      targaRimorchio: targaRimorchio ? String(targaRimorchio) : null,
+    };
 
     const sessione: SessioneAttiva = {
       targaMotrice: targaCamion,
@@ -261,6 +299,48 @@ export default function SetupMezzo() {
         timestamp: now,
         createdAt: serverTimestamp(),
       });
+    }
+
+    const baseEvento = {
+      timestamp: now,
+      badgeAutista: autista.badge,
+      nomeAutista: autista.nome,
+      prima,
+      dopo,
+      luogo: null,
+      statoCarico: null,
+      condizioni: null,
+      source: "SetupMezzo",
+    };
+
+    const eventiOperativi: EventoOperativo[] = [];
+    if (!prima.targaMotrice && dopo.targaMotrice) {
+      const tipo = "SETUP_INIZIALE";
+      eventiOperativi.push({
+        id: `${tipo}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
+        tipo,
+        ...baseEvento,
+      });
+    }
+    if (prima.targaMotrice !== dopo.targaMotrice) {
+      const tipo = "AGGANCIO_MOTRICE";
+      eventiOperativi.push({
+        id: `${tipo}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
+        tipo,
+        ...baseEvento,
+      });
+    }
+    if (dopo.targaRimorchio && prima.targaRimorchio !== dopo.targaRimorchio) {
+      const tipo = "AGGANCIO_RIMORCHIO";
+      eventiOperativi.push({
+        id: `${tipo}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
+        tipo,
+        ...baseEvento,
+      });
+    }
+
+    for (const evt of eventiOperativi) {
+      await appendEventoOperativo(evt);
     }
 
     const target =

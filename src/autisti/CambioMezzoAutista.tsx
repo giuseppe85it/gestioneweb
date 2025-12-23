@@ -12,6 +12,7 @@ const SESSIONI_KEY = "@autisti_sessione_attive";
 const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
 const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
 const STORICO_MOTRICI_KEY = "@storico_cambi_motrice";
+const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
 type Modalita = "motrice" | "rimorchio";
 
@@ -41,8 +42,30 @@ interface SessioneAttiva {
   timestamp: number;
 }
 
+type EventoOperativo = {
+  id: string;
+  tipo: string;
+  timestamp: number;
+  badgeAutista: string;
+  nomeAutista: string;
+  prima: { targaMotrice: string | null; targaRimorchio: string | null };
+  dopo: { targaMotrice: string | null; targaRimorchio: string | null };
+  luogo: string | null;
+  statoCarico: string | null;
+  condizioni: Condizioni | null;
+  source: string;
+};
+
 function genId() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+async function appendEventoOperativo(evt: EventoOperativo) {
+  const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+  const list: EventoOperativo[] = Array.isArray(raw) ? raw : [];
+  if (list.some((e) => e?.id === evt.id)) return;
+  list.push(evt);
+  await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
 }
 
 export default function CambioMezzoAutista() {
@@ -113,6 +136,10 @@ export default function CambioMezzoAutista() {
       badgeAutista: a.badge,
       nomeAutista: a.nome || "",
       timestamp: mezzoLocal?.timestamp || Date.now(),
+    };
+    const prima = {
+      targaMotrice: cur.targaMotrice || null,
+      targaRimorchio: cur.targaRimorchio || null,
     };
 
     if (modalita === "rimorchio" && !cur.targaRimorchio) {
@@ -197,6 +224,25 @@ export default function CambioMezzoAutista() {
         createdAt: serverTimestamp(),
       });
 
+      const tipoEvento = "SGANCIO_RIMORCHIO";
+      const dopo = {
+        targaMotrice: cur.targaMotrice || null,
+        targaRimorchio: null,
+      };
+      await appendEventoOperativo({
+        id: `${tipoEvento}-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
+        tipo: tipoEvento,
+        timestamp: now,
+        badgeAutista: cur.badgeAutista,
+        nomeAutista: cur.nomeAutista,
+        prima,
+        dopo,
+        luogo: luogoFinale,
+        statoCarico,
+        condizioni,
+        source: "CambioMezzoAutista",
+      });
+
       // aggiorna sessioni attive: rimorchio -> null
       const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
       const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
@@ -253,6 +299,25 @@ export default function CambioMezzoAutista() {
         condizioni,
         timestamp: now,
         createdAt: serverTimestamp(),
+      });
+
+      const tipoEvento = "SGANCIO_MOTRICE";
+      const dopo = {
+        targaMotrice: null,
+        targaRimorchio: cur.targaRimorchio || null,
+      };
+      await appendEventoOperativo({
+        id: `${tipoEvento}-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
+        tipo: tipoEvento,
+        timestamp: now,
+        badgeAutista: cur.badgeAutista,
+        nomeAutista: cur.nomeAutista,
+        prima,
+        dopo,
+        luogo: luogoFinale,
+        statoCarico: null,
+        condizioni,
+        source: "CambioMezzoAutista",
       });
 
       // aggiorna sessioni attive: motrice -> null (rimorchio resta se c'è)
