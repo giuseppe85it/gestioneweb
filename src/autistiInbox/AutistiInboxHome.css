@@ -363,6 +363,58 @@
   line-height: 1.2;
 }
 
+.daily-item.cambio-item{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.cambio-line{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.cambio-line-top{
+  font-weight: 800;
+}
+
+.cambio-main{
+  font-size: 15px;
+}
+
+.cambio-line-bot{
+  font-size: 15px;
+}
+
+.cambio-tag{
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(180,167,144,0.55);
+  background: rgba(241,231,214,0.85);
+  color: #3a352b;
+}
+
+.cambio-tag.operativo{
+  background: rgba(46,125,50,0.15);
+  color: #2e7d32;
+  border-color: rgba(46,125,50,0.35);
+}
+
+.cambio-tag.legacy{
+  background: rgba(198,40,40,0.12);
+  color: #c62828;
+  border-color: rgba(198,40,40,0.35);
+}
+
 .daily-item:last-child{ border-bottom: none; }
 
 .daily-item.empty{
@@ -560,6 +612,10 @@
 
   .sessioni-filters{
     grid-template-columns: 1fr;
+  }
+
+  .cambio-tag{
+    margin-left: 0;
   }
 }
 .autisti-title-row{

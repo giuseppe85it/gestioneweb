@@ -264,6 +264,41 @@ useEffect(() => {
     };
   }
 
+  function getCambioInfo(e: HomeEvent) {
+    const p: any = e.payload || {};
+    const tipoLabel = String(p.tipoOperativo ?? p.tipo ?? p.fsTipo ?? "CAMBIO MEZZO");
+    const autista = getAutistaInfo(e);
+    const prima = {
+      motrice: p?.prima?.targaMotrice ?? p?.prima?.targaCamion ?? null,
+      rimorchio: p?.prima?.targaRimorchio ?? null,
+    };
+    const dopo = {
+      motrice:
+        p?.dopo?.targaMotrice ??
+        p?.dopo?.targaCamion ??
+        p?.targaMotrice ??
+        p?.targaCamion ??
+        null,
+      rimorchio: p?.dopo?.targaRimorchio ?? p?.targaRimorchio ?? null,
+    };
+    const hasOperativo = !!(p?.prima && p?.dopo);
+    const hasLegacy =
+      !hasOperativo &&
+      !!(p?.targaMotrice || p?.targaRimorchio || p?.targaCamion || p?.fsTipo || p?.tipo);
+    return {
+      tipoLabel,
+      nomeAutista: autista.nome || "-",
+      badgeAutista: autista.badge,
+      prima,
+      dopo,
+      hasOperativo,
+      hasLegacy,
+      luogo: p?.luogo ?? null,
+      condizioni: p?.condizioni ?? null,
+      statoCarico: p?.statoCarico ?? null,
+    };
+  }
+
   function getCategoria(targa?: string | null) {
     if (!targa) return null;
     return mezziByTarga[String(targa)] ?? null;
@@ -303,12 +338,22 @@ useEffect(() => {
     return String(v);
   }
 
-  function formatSnapshot(v: any) {
-    const motrice = v?.targaMotrice ?? null;
-    const rimorchio = v?.targaRimorchio ?? null;
-    const motriceText = motrice ? `Motrice: ${motrice}` : "Motrice: -";
-    const rimorchioText = rimorchio ? `Rimorchio: ${rimorchio}` : "Rimorchio: -";
-    return `${motriceText} | ${rimorchioText}`;
+  function formatCambioValue(
+    hasOperativo: boolean,
+    primaValue: string | null,
+    dopoValue: string | null
+  ) {
+    const prima = primaValue ? String(primaValue) : "-";
+    const dopo = dopoValue ? String(dopoValue) : "-";
+    if (hasOperativo) return `${prima} -> ${dopo}`;
+    const single = dopoValue ?? primaValue;
+    return single ? String(single) : "-";
+  }
+
+  function formatCambioSnapshotBlock(snapshot: { motrice: string | null; rimorchio: string | null }) {
+    const motrice = snapshot.motrice ? String(snapshot.motrice) : "-";
+    const rimorchio = snapshot.rimorchio ? String(snapshot.rimorchio) : "-";
+    return `Motrice: ${motrice}\nRimorchio: ${rimorchio}`;
   }
 
   function buildDetailsRows(e: HomeEvent) {
@@ -355,11 +400,6 @@ useEffect(() => {
       const statoCarico = formatValue(p.statoCarico);
       const condizioni = formatValue(p.condizioni);
       const note = formatValue(p.note);
-      if (p?.tipo && p?.prima && p?.dopo) {
-        rows.push({ label: "EVENTO", value: String(p.tipo) });
-        rows.push({ label: "PRIMA", value: formatSnapshot(p.prima) });
-        rows.push({ label: "DOPO", value: formatSnapshot(p.dopo) });
-      }
       if (luogo) rows.push({ label: "Luogo", value: luogo });
       if (statoCarico) rows.push({ label: "Stato carico", value: statoCarico });
       if (condizioni) rows.push({ label: "Condizioni", value: condizioni });
@@ -663,23 +703,61 @@ useEffect(() => {
               {cambiMezzo.length === 0 ? (
                 <div className="daily-item empty">Nessun cambio</div>
               ) : (
-                cambiMezzo.slice(0, 5).map((c, index) => (
-                  <div
-                    key={
-                      c.id ??
-                      `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`
-                    }
-                    className="daily-item"
-                    onClick={() => setSelectedEvent(c)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
-                    }}
-                  >
-                    {formatTime(c.timestamp)} - {c.targa ?? "-"} - {c.autista ?? "-"}
-                  </div>
-                ))
+                cambiMezzo.slice(0, 5).map((c, index) => {
+                  const info = getCambioInfo(c);
+                  const badgeLabel = info.badgeAutista
+                    ? `BADGE ${info.badgeAutista}`
+                    : "BADGE -";
+                  const topLine = `${info.tipoLabel} - ${info.nomeAutista} (${badgeLabel}) - ${formatTime(
+                    c.timestamp
+                  )}`;
+                  const motriceText = formatCambioValue(
+                    info.hasOperativo,
+                    info.prima.motrice,
+                    info.dopo.motrice
+                  );
+                  const rimorchioText = formatCambioValue(
+                    info.hasOperativo,
+                    info.prima.rimorchio,
+                    info.dopo.rimorchio
+                  );
+                  const luogoText = info.luogo ? ` | Luogo: ${info.luogo}` : "";
+                  const bottomLine = `Motrice: ${motriceText} | Rimorchio: ${rimorchioText}${luogoText}`;
+                  const tag = info.hasOperativo
+                    ? "OPERATIVO"
+                    : info.hasLegacy
+                    ? "LEGACY"
+                    : null;
+                  return (
+                    <div
+                      key={
+                        c.id ??
+                        `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`
+                      }
+                      className="daily-item cambio-item"
+                      onClick={() => setSelectedEvent(c)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
+                      }}
+                    >
+                      <div className="cambio-line cambio-line-top">
+                        <span className="cambio-main">{topLine}</span>
+                        {tag ? (
+                          <span
+                            className={`cambio-tag ${
+                              tag === "OPERATIVO" ? "operativo" : "legacy"
+                            }`}
+                          >
+                            {tag}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="cambio-line cambio-line-bot">{bottomLine}</div>
+                    </div>
+                  );
+                })
               )}
             </div>
 
@@ -804,6 +882,8 @@ useEffect(() => {
             const mezzoRows = buildMezzoRows(selectedEvent);
             const detailRows = buildDetailsRows(selectedEvent);
             const fotoList = getFotoList(p);
+            const isCambioMezzo = selectedEvent.tipo === "cambio_mezzo";
+            const cambioInfo = isCambioMezzo ? getCambioInfo(selectedEvent) : null;
             return (
               <div className="aix-backdrop" onClick={closeDetails}>
                 <div className="aix-modal" onClick={(e) => e.stopPropagation()}>
@@ -825,6 +905,27 @@ useEffect(() => {
                         <span>{formatDateTime(selectedEvent.timestamp)}</span>
                       </div>
                     </div>
+
+                    {isCambioMezzo && cambioInfo ? (
+                      <>
+                        <div className="aix-row">
+                          <div className="aix-row-top">
+                            <strong>PRIMA</strong>
+                          </div>
+                          <div className="aix-row-bot">
+                            {formatCambioSnapshotBlock(cambioInfo.prima)}
+                          </div>
+                        </div>
+                        <div className="aix-row">
+                          <div className="aix-row-top">
+                            <strong>DOPO</strong>
+                          </div>
+                          <div className="aix-row-bot">
+                            {formatCambioSnapshotBlock(cambioInfo.dopo)}
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
 
                     {mezzoRows.length > 0 && (
                       <>
