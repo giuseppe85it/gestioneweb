@@ -266,7 +266,8 @@ useEffect(() => {
 
   function getCambioInfo(e: HomeEvent) {
     const p: any = e.payload || {};
-    const tipoLabel = String(p.tipoOperativo ?? p.tipo ?? p.fsTipo ?? "CAMBIO MEZZO");
+    const tipo = String(p.tipo ?? p.tipoOperativo ?? p.fsTipo ?? "CAMBIO_ASSETTO");
+    const tipoLabel = tipo.replace(/_/g, " ");
     const autista = getAutistaInfo(e);
     const prima = {
       motrice:
@@ -297,20 +298,15 @@ useEffect(() => {
         p?.targaRimorchio ??
         null,
     };
-    const source =
-      p?.source ??
-      (p?.primaMotrice || p?.dopoMotrice || p?.primaRimorchio || p?.dopoRimorchio
-        ? "storico"
-        : p?.prima && p?.dopo
-        ? "storico"
-        : "legacy");
+    const isInizio = tipo === "INIZIO_ASSETTO";
     return {
+      tipo,
       tipoLabel,
+      isInizio,
       nomeAutista: autista.nome || "-",
       badgeAutista: autista.badge,
       prima,
       dopo,
-      source,
       luogo: p?.luogo ?? null,
       condizioni: p?.condizioni ?? null,
       statoCarico: p?.statoCarico ?? null,
@@ -357,7 +353,7 @@ useEffect(() => {
   }
 
   function formatCambioSide(value: string | null) {
-    return value ? String(value) : "(non registrato)";
+    return value ? String(value) : "INIZIO";
   }
 
   function isSameCambioValue(a: string | null, b: string | null) {
@@ -372,12 +368,18 @@ useEffect(() => {
     dopo: { motrice: string | null; rimorchio: string | null };
   }) {
     const lines: string[] = [];
-    if ((info.prima.motrice || info.dopo.motrice) && !isSameCambioValue(info.prima.motrice, info.dopo.motrice)) {
+    if (
+      (info.prima.motrice || info.dopo.motrice) &&
+      !isSameCambioValue(info.prima.motrice, info.dopo.motrice)
+    ) {
       lines.push(
         `MOTRICE: ${formatCambioSide(info.prima.motrice)} -> ${formatCambioSide(info.dopo.motrice)}`
       );
     }
-    if ((info.prima.rimorchio || info.dopo.rimorchio) && !isSameCambioValue(info.prima.rimorchio, info.dopo.rimorchio)) {
+    if (
+      (info.prima.rimorchio || info.dopo.rimorchio) &&
+      !isSameCambioValue(info.prima.rimorchio, info.dopo.rimorchio)
+    ) {
       lines.push(
         `RIMORCHIO: ${formatCambioSide(info.prima.rimorchio)} -> ${formatCambioSide(info.dopo.rimorchio)}`
       );
@@ -742,13 +744,12 @@ useEffect(() => {
                   const info = getCambioInfo(c);
                   const badgeLabel = info.badgeAutista
                     ? `BADGE ${info.badgeAutista}`
-                    : "BADGE non registrato";
-                  const nomeLabel = info.nomeAutista || "Autista non registrato";
+                    : "BADGE -";
+                  const nomeLabel = info.nomeAutista || "-";
                   const topLine = `${info.tipoLabel} · ${nomeLabel} (${badgeLabel}) · ${formatTime(
                     c.timestamp
                   )}`;
                   const changeLines = buildCambioLines(info);
-                  const tag = info.source === "legacy" ? "LEGACY" : null;
                   return (
                     <div
                       key={
@@ -765,30 +766,15 @@ useEffect(() => {
                     >
                       <div className="cambio-line cambio-line-top">
                         <span className="cambio-main">{topLine}</span>
-                        {tag ? (
-                          <span
-                            className={`cambio-tag ${
-                              tag === "LEGACY" ? "legacy" : "operativo"
-                            }`}
-                          >
-                            {tag}
-                          </span>
-                        ) : null}
                       </div>
-                      {changeLines.length === 0 ? (
-                        <div className="cambio-line cambio-line-bot">
-                          Dati non registrati
+                      {changeLines.map((line, lineIndex) => (
+                        <div
+                          key={`cambio-${c.id ?? "x"}-${lineIndex}`}
+                          className="cambio-line cambio-line-bot"
+                        >
+                          {line}
                         </div>
-                      ) : (
-                        changeLines.map((line, lineIndex) => (
-                          <div
-                            key={`cambio-${c.id ?? "x"}-${lineIndex}`}
-                            className="cambio-line cambio-line-bot"
-                          >
-                            {line}
-                          </div>
-                        ))
-                      )}
+                      ))}
                     </div>
                   );
                 })

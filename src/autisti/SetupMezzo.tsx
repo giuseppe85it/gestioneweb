@@ -51,6 +51,7 @@ type EventoOperativo = {
   timestamp: number;
   badgeAutista: string;
   nomeAutista: string;
+  autista?: string;
   autistaNome?: string;
   prima: {
     targaMotrice: string | null;
@@ -260,12 +261,15 @@ export default function SetupMezzo() {
       timestamp: now,
     };
 
-    const eventoCambioMezzo: EventoOperativo = {
-      id: `CAMBIO_MEZZO-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
-      tipo: "CAMBIO_MEZZO",
+    const isInizioAssetto = !prima.targaMotrice && !prima.targaRimorchio;
+    const tipoAssetto = isInizioAssetto ? "INIZIO_ASSETTO" : "CAMBIO_ASSETTO";
+    const eventoAssetto: EventoOperativo = {
+      id: `${tipoAssetto}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
+      tipo: tipoAssetto,
       timestamp: now,
       badgeAutista: autista.badge,
       nomeAutista: autista.nome,
+      autista: autista.nome,
       autistaNome: autista.nome,
       prima: {
         targaMotrice: prima.targaMotrice,
@@ -284,7 +288,7 @@ export default function SetupMezzo() {
       condizioni: null,
       source: "setup_confirm",
     };
-    await appendEventoOperativo(eventoCambioMezzo);
+    await appendEventoOperativo(eventoAssetto);
 
     nuove.push(sessione);
     await setItemSync(SESSIONI_KEY, nuove);

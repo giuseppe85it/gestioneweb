@@ -48,8 +48,20 @@ type EventoOperativo = {
   timestamp: number;
   badgeAutista: string;
   nomeAutista: string;
-  prima: { targaMotrice: string | null; targaRimorchio: string | null };
-  dopo: { targaMotrice: string | null; targaRimorchio: string | null };
+  autista?: string;
+  autistaNome?: string;
+  prima: {
+    targaMotrice: string | null;
+    targaRimorchio: string | null;
+    motrice?: string | null;
+    rimorchio?: string | null;
+  };
+  dopo: {
+    targaMotrice: string | null;
+    targaRimorchio: string | null;
+    motrice?: string | null;
+    rimorchio?: string | null;
+  };
   luogo: string | null;
   statoCarico: string | null;
   condizioni: Condizioni | null;
@@ -243,6 +255,32 @@ export default function CambioMezzoAutista() {
         source: "CambioMezzoAutista",
       });
 
+      await appendEventoOperativo({
+        id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
+        tipo: "CAMBIO_ASSETTO",
+        timestamp: now,
+        badgeAutista: cur.badgeAutista,
+        nomeAutista: cur.nomeAutista,
+        autista: cur.nomeAutista,
+        autistaNome: cur.nomeAutista,
+        prima: {
+          targaMotrice: prima.targaMotrice,
+          targaRimorchio: prima.targaRimorchio,
+          motrice: prima.targaMotrice,
+          rimorchio: prima.targaRimorchio,
+        },
+        dopo: {
+          targaMotrice: dopo.targaMotrice,
+          targaRimorchio: dopo.targaRimorchio,
+          motrice: dopo.targaMotrice,
+          rimorchio: dopo.targaRimorchio,
+        },
+        luogo: luogoFinale,
+        statoCarico,
+        condizioni,
+        source: "CambioMezzoAutista",
+      });
+
       // aggiorna sessioni attive: rimorchio -> null
       const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
       const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
@@ -314,6 +352,32 @@ export default function CambioMezzoAutista() {
         nomeAutista: cur.nomeAutista,
         prima,
         dopo,
+        luogo: luogoFinale,
+        statoCarico: null,
+        condizioni,
+        source: "CambioMezzoAutista",
+      });
+
+      await appendEventoOperativo({
+        id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
+        tipo: "CAMBIO_ASSETTO",
+        timestamp: now,
+        badgeAutista: cur.badgeAutista,
+        nomeAutista: cur.nomeAutista,
+        autista: cur.nomeAutista,
+        autistaNome: cur.nomeAutista,
+        prima: {
+          targaMotrice: prima.targaMotrice,
+          targaRimorchio: prima.targaRimorchio,
+          motrice: prima.targaMotrice,
+          rimorchio: prima.targaRimorchio,
+        },
+        dopo: {
+          targaMotrice: dopo.targaMotrice,
+          targaRimorchio: dopo.targaRimorchio,
+          motrice: dopo.targaMotrice,
+          rimorchio: dopo.targaRimorchio,
+        },
         luogo: luogoFinale,
         statoCarico: null,
         condizioni,
