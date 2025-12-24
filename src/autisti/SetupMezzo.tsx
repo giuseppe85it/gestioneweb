@@ -51,8 +51,19 @@ type EventoOperativo = {
   timestamp: number;
   badgeAutista: string;
   nomeAutista: string;
-  prima: { targaMotrice: string | null; targaRimorchio: string | null };
-  dopo: { targaMotrice: string | null; targaRimorchio: string | null };
+  autistaNome?: string;
+  prima: {
+    targaMotrice: string | null;
+    targaRimorchio: string | null;
+    motrice?: string | null;
+    rimorchio?: string | null;
+  };
+  dopo: {
+    targaMotrice: string | null;
+    targaRimorchio: string | null;
+    motrice?: string | null;
+    rimorchio?: string | null;
+  };
   luogo: string | null;
   statoCarico: string | null;
   condizioni: any;
@@ -248,6 +259,32 @@ export default function SetupMezzo() {
       nomeAutista: autista.nome,
       timestamp: now,
     };
+
+    const eventoCambioMezzo: EventoOperativo = {
+      id: `CAMBIO_MEZZO-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
+      tipo: "CAMBIO_MEZZO",
+      timestamp: now,
+      badgeAutista: autista.badge,
+      nomeAutista: autista.nome,
+      autistaNome: autista.nome,
+      prima: {
+        targaMotrice: prima.targaMotrice,
+        targaRimorchio: prima.targaRimorchio,
+        motrice: prima.targaMotrice,
+        rimorchio: prima.targaRimorchio,
+      },
+      dopo: {
+        targaMotrice: dopo.targaMotrice,
+        targaRimorchio: dopo.targaRimorchio,
+        motrice: dopo.targaMotrice,
+        rimorchio: dopo.targaRimorchio,
+      },
+      luogo: null,
+      statoCarico: null,
+      condizioni: null,
+      source: "setup_confirm",
+    };
+    await appendEventoOperativo(eventoCambioMezzo);
 
     nuove.push(sessione);
     await setItemSync(SESSIONI_KEY, nuove);

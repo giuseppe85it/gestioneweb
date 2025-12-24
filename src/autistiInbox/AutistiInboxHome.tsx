@@ -256,7 +256,7 @@ useEffect(() => {
 
   function getAutistaInfo(e: HomeEvent) {
     const p: any = e.payload || {};
-    const nome = p.autistaNome ?? p.nomeAutista ?? e.autista ?? "-";
+    const nome = p.autista ?? p.autistaNome ?? p.nomeAutista ?? e.autista ?? "-";
     const badge = p.badgeAutista ?? p.badge ?? null;
     return {
       nome: String(nome || "-"),
@@ -269,30 +269,48 @@ useEffect(() => {
     const tipoLabel = String(p.tipoOperativo ?? p.tipo ?? p.fsTipo ?? "CAMBIO MEZZO");
     const autista = getAutistaInfo(e);
     const prima = {
-      motrice: p?.prima?.targaMotrice ?? p?.prima?.targaCamion ?? null,
-      rimorchio: p?.prima?.targaRimorchio ?? null,
+      motrice:
+        p?.primaMotrice ??
+        p?.prima?.motrice ??
+        p?.prima?.targaMotrice ??
+        p?.prima?.targaCamion ??
+        null,
+      rimorchio:
+        p?.primaRimorchio ??
+        p?.prima?.rimorchio ??
+        p?.prima?.targaRimorchio ??
+        null,
     };
     const dopo = {
       motrice:
+        p?.dopoMotrice ??
+        p?.dopo?.motrice ??
         p?.dopo?.targaMotrice ??
         p?.dopo?.targaCamion ??
         p?.targaMotrice ??
         p?.targaCamion ??
         null,
-      rimorchio: p?.dopo?.targaRimorchio ?? p?.targaRimorchio ?? null,
+      rimorchio:
+        p?.dopoRimorchio ??
+        p?.dopo?.rimorchio ??
+        p?.dopo?.targaRimorchio ??
+        p?.targaRimorchio ??
+        null,
     };
-    const hasOperativo = !!(p?.prima && p?.dopo);
-    const hasLegacy =
-      !hasOperativo &&
-      !!(p?.targaMotrice || p?.targaRimorchio || p?.targaCamion || p?.fsTipo || p?.tipo);
+    const source =
+      p?.source ??
+      (p?.primaMotrice || p?.dopoMotrice || p?.primaRimorchio || p?.dopoRimorchio
+        ? "storico"
+        : p?.prima && p?.dopo
+        ? "storico"
+        : "legacy");
     return {
       tipoLabel,
       nomeAutista: autista.nome || "-",
       badgeAutista: autista.badge,
       prima,
       dopo,
-      hasOperativo,
-      hasLegacy,
+      source,
       luogo: p?.luogo ?? null,
       condizioni: p?.condizioni ?? null,
       statoCarico: p?.statoCarico ?? null,
@@ -338,21 +356,38 @@ useEffect(() => {
     return String(v);
   }
 
-  function formatCambioValue(
-    hasOperativo: boolean,
-    primaValue: string | null,
-    dopoValue: string | null
-  ) {
-    const prima = primaValue ? String(primaValue) : "-";
-    const dopo = dopoValue ? String(dopoValue) : "-";
-    if (hasOperativo) return `${prima} -> ${dopo}`;
-    const single = dopoValue ?? primaValue;
-    return single ? String(single) : "-";
+  function formatCambioSide(value: string | null) {
+    return value ? String(value) : "(non registrato)";
+  }
+
+  function isSameCambioValue(a: string | null, b: string | null) {
+    const aa = (a ?? "").trim().toUpperCase();
+    const bb = (b ?? "").trim().toUpperCase();
+    if (!aa && !bb) return true;
+    return aa === bb;
+  }
+
+  function buildCambioLines(info: {
+    prima: { motrice: string | null; rimorchio: string | null };
+    dopo: { motrice: string | null; rimorchio: string | null };
+  }) {
+    const lines: string[] = [];
+    if ((info.prima.motrice || info.dopo.motrice) && !isSameCambioValue(info.prima.motrice, info.dopo.motrice)) {
+      lines.push(
+        `MOTRICE: ${formatCambioSide(info.prima.motrice)} -> ${formatCambioSide(info.dopo.motrice)}`
+      );
+    }
+    if ((info.prima.rimorchio || info.dopo.rimorchio) && !isSameCambioValue(info.prima.rimorchio, info.dopo.rimorchio)) {
+      lines.push(
+        `RIMORCHIO: ${formatCambioSide(info.prima.rimorchio)} -> ${formatCambioSide(info.dopo.rimorchio)}`
+      );
+    }
+    return lines;
   }
 
   function formatCambioSnapshotBlock(snapshot: { motrice: string | null; rimorchio: string | null }) {
-    const motrice = snapshot.motrice ? String(snapshot.motrice) : "-";
-    const rimorchio = snapshot.rimorchio ? String(snapshot.rimorchio) : "-";
+    const motrice = formatCambioSide(snapshot.motrice);
+    const rimorchio = formatCambioSide(snapshot.rimorchio);
     return `Motrice: ${motrice}\nRimorchio: ${rimorchio}`;
   }
 
@@ -707,27 +742,13 @@ useEffect(() => {
                   const info = getCambioInfo(c);
                   const badgeLabel = info.badgeAutista
                     ? `BADGE ${info.badgeAutista}`
-                    : "BADGE -";
-                  const topLine = `${info.tipoLabel} - ${info.nomeAutista} (${badgeLabel}) - ${formatTime(
+                    : "BADGE non registrato";
+                  const nomeLabel = info.nomeAutista || "Autista non registrato";
+                  const topLine = `${info.tipoLabel} · ${nomeLabel} (${badgeLabel}) · ${formatTime(
                     c.timestamp
                   )}`;
-                  const motriceText = formatCambioValue(
-                    info.hasOperativo,
-                    info.prima.motrice,
-                    info.dopo.motrice
-                  );
-                  const rimorchioText = formatCambioValue(
-                    info.hasOperativo,
-                    info.prima.rimorchio,
-                    info.dopo.rimorchio
-                  );
-                  const luogoText = info.luogo ? ` | Luogo: ${info.luogo}` : "";
-                  const bottomLine = `Motrice: ${motriceText} | Rimorchio: ${rimorchioText}${luogoText}`;
-                  const tag = info.hasOperativo
-                    ? "OPERATIVO"
-                    : info.hasLegacy
-                    ? "LEGACY"
-                    : null;
+                  const changeLines = buildCambioLines(info);
+                  const tag = info.source === "legacy" ? "LEGACY" : null;
                   return (
                     <div
                       key={
@@ -747,14 +768,27 @@ useEffect(() => {
                         {tag ? (
                           <span
                             className={`cambio-tag ${
-                              tag === "OPERATIVO" ? "operativo" : "legacy"
+                              tag === "LEGACY" ? "legacy" : "operativo"
                             }`}
                           >
                             {tag}
                           </span>
                         ) : null}
                       </div>
-                      <div className="cambio-line cambio-line-bot">{bottomLine}</div>
+                      {changeLines.length === 0 ? (
+                        <div className="cambio-line cambio-line-bot">
+                          Dati non registrati
+                        </div>
+                      ) : (
+                        changeLines.map((line, lineIndex) => (
+                          <div
+                            key={`cambio-${c.id ?? "x"}-${lineIndex}`}
+                            className="cambio-line cambio-line-bot"
+                          >
+                            {line}
+                          </div>
+                        ))
+                      )}
                     </div>
                   );
                 })

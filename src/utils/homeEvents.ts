@@ -78,6 +78,15 @@ function toTs(v: any): number | null {
   return null;
 }
 
+function toStrOrNull(v: any): string | null {
+  if (v === undefined || v === null || v === "") return null;
+  return String(v);
+}
+
+function normKey(v: any): string {
+  return toStrOrNull(v)?.trim().toUpperCase() ?? "";
+}
+
 function isSameDay(ts: number, day: Date): boolean {
   const d = new Date(ts);
   return (
@@ -172,43 +181,134 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
     }
   }
 
+  const cambiMezzoEvents: HomeEvent[] = [];
+  const completiIndex: Array<{
+    badge: string;
+    timestamp: number;
+    primaMotrice: string;
+    dopoMotrice: string;
+  }> = [];
+  const dedupWindowMs = 5 * 60 * 1000;
+
+  const operativi = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+  if (Array.isArray(operativi)) {
+    for (const evt of operativi) {
+      const tipo = String(evt?.tipo ?? evt?.tipoOperativo ?? "");
+      if (tipo !== "CAMBIO_MEZZO") continue;
+
+      const ts = toTs(evt?.timestamp);
+      if (!ts || !isSameDay(ts, day)) continue;
+
+      const primaMotrice =
+        toStrOrNull(evt?.prima?.motrice ?? evt?.prima?.targaMotrice ?? evt?.prima?.targaCamion) ??
+        null;
+      const dopoMotrice =
+        toStrOrNull(evt?.dopo?.motrice ?? evt?.dopo?.targaMotrice ?? evt?.dopo?.targaCamion) ??
+        null;
+      const primaRimorchio =
+        toStrOrNull(evt?.prima?.rimorchio ?? evt?.prima?.targaRimorchio) ?? null;
+      const dopoRimorchio =
+        toStrOrNull(evt?.dopo?.rimorchio ?? evt?.dopo?.targaRimorchio) ?? null;
+
+      if (!dopoMotrice && !dopoRimorchio) continue;
+
+      const badge = toStrOrNull(evt?.badgeAutista ?? evt?.badge) ?? null;
+      const autista = toStrOrNull(evt?.autistaNome ?? evt?.nomeAutista) ?? null;
+      const luogo = toStrOrNull(evt?.luogo) ?? null;
+      const condizioni = evt?.condizioni ?? null;
+      const statoCarico = evt?.statoCarico ?? null;
+      const targa =
+        toStrOrNull(dopoMotrice ?? primaMotrice ?? dopoRimorchio ?? primaRimorchio) ?? null;
+
+      cambiMezzoEvents.push({
+        id: evt?.id ?? genId(),
+        tipo: "cambio_mezzo",
+        targa,
+        autista,
+        timestamp: ts,
+        payload: {
+          primaMotrice,
+          dopoMotrice,
+          primaRimorchio,
+          dopoRimorchio,
+          badgeAutista: badge,
+          autista,
+          luogo,
+          statoCarico,
+          condizioni,
+          timestamp: ts,
+          source: "storico",
+          raw: evt,
+        },
+      });
+
+      const badgeKey = normKey(badge);
+      const primaKey = normKey(primaMotrice);
+      const dopoKey = normKey(dopoMotrice);
+      if (badgeKey) {
+        completiIndex.push({
+          badge: badgeKey,
+          timestamp: ts,
+          primaMotrice: primaKey,
+          dopoMotrice: dopoKey,
+        });
+      }
+    }
+  }
+
   const cambiMotrice = (await getItemSync(KEY_CAMBI_MOTRICE)) || [];
   if (Array.isArray(cambiMotrice)) {
     for (const m of cambiMotrice) {
       const ts = toTs(m?.timestampCambio);
       if (!ts || !isSameDay(ts, day)) continue;
-      events.push({
+
+      const badge = toStrOrNull(m?.badgeAutista ?? m?.badge) ?? null;
+      const autista = toStrOrNull(m?.autista ?? m?.nomeAutista) ?? null;
+      const targaLegacy = toStrOrNull(m?.targaMotrice ?? m?.targaCamion) ?? null;
+
+      const badgeKey = normKey(badge);
+      const targaKey = normKey(targaLegacy);
+      const hasComplete =
+        !!badgeKey &&
+        !!targaKey &&
+        completiIndex.some(
+          (c) =>
+            c.badge === badgeKey &&
+            Math.abs(ts - c.timestamp) <= dedupWindowMs &&
+            (targaKey === c.primaMotrice || targaKey === c.dopoMotrice)
+        );
+
+      if (hasComplete) continue;
+
+      const luogo = toStrOrNull(m?.luogo) ?? null;
+      const condizioni = m?.condizioni ?? null;
+      const statoCarico = m?.statoCarico ?? null;
+
+      cambiMezzoEvents.push({
         id: m.id ?? genId(),
         tipo: "cambio_mezzo",
-        targa: m.targaMotrice ?? null,
-        autista: m.autista ?? m.nomeAutista ?? null,
+        targa: targaLegacy,
+        autista,
         timestamp: ts,
-        payload: m,
+        payload: {
+          primaMotrice: targaLegacy,
+          dopoMotrice: null,
+          primaRimorchio: null,
+          dopoRimorchio: null,
+          badgeAutista: badge,
+          autista,
+          luogo,
+          statoCarico,
+          condizioni,
+          timestamp: ts,
+          source: "legacy",
+          raw: m,
+        },
       });
     }
   }
 
-  const operativi = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
-  if (Array.isArray(operativi)) {
-    for (const evt of operativi) {
-      const ts = toTs(evt?.timestamp);
-      if (!ts || !isSameDay(ts, day)) continue;
-      const targa =
-        evt?.dopo?.targaMotrice ||
-        evt?.prima?.targaMotrice ||
-        evt?.dopo?.targaRimorchio ||
-        evt?.prima?.targaRimorchio ||
-        null;
-      events.push({
-        id: evt?.id ?? genId(),
-        tipo: "cambio_mezzo",
-        targa: targa ? String(targa) : null,
-        autista: evt?.nomeAutista ? String(evt.nomeAutista) : null,
-        timestamp: ts,
-        payload: evt,
-      });
-    }
-  }
+  events.push(...cambiMezzoEvents);
 
   const fs = await loadFirestoreAutistiEventi(day).catch(() => []);
   events.push(...fs);
