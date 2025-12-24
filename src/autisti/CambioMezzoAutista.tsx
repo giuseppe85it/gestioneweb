@@ -226,11 +226,6 @@ export default function CambioMezzoAutista() {
     // CAMBIO MOTRICE
     // =======================
     if (modalita === "motrice" && cur.targaMotrice) {
-      const dopo = {
-        targaMotrice: null,
-        targaRimorchio: cur.targaRimorchio || null,
-      };
-
       // aggiorna sessioni attive: motrice -> null (rimorchio resta se c'è)
       const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
       const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
