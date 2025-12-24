@@ -4,14 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./CambioMezzoAutista.css"; 
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { db } from "../firebase";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
-const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
-const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
-const STORICO_MOTRICI_KEY = "@storico_cambi_motrice";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
 type Modalita = "motrice" | "rimorchio";
@@ -67,10 +62,6 @@ type EventoOperativo = {
   condizioni: Condizioni | null;
   source: string;
 };
-
-function genId() {
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
 async function appendEventoOperativo(evt: EventoOperativo) {
   const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
@@ -179,81 +170,10 @@ export default function CambioMezzoAutista() {
     // SGANCIO RIMORCHIO
     // =======================
     if (modalita === "rimorchio" && cur.targaRimorchio) {
-      const storicoRaw = (await getItemSync(STORICO_RIMORCHI_KEY)) || [];
-      const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
-
-      const nomeAutista =
-        ((cur.nomeAutista as any) || (cur as any).autistaNome || (cur as any).nome || "").trim() || null;
-
-      // Chiudi l'ultimo aggancio aperto (timestampSgancio null) per questo rimorchio
-      let closed = false;
-      for (let i = storico.length - 1; i >= 0; i--) {
-        const r: any = storico[i];
-        if (r && r.targaRimorchio === cur.targaRimorchio && !r.timestampSgancio) {
-          storico[i] = {
-            ...r,
-            targaMotrice: cur.targaMotrice || r.targaMotrice || null,
-            autista: nomeAutista,
-            badgeAutista: cur.badgeAutista,
-            luogo: luogoFinale,
-            statoCarico,
-            condizioni,
-            timestampSgancio: now,
-          };
-          closed = true;
-          break;
-        }
-      }
-
-      // Fallback: se non esiste un aggancio aperto, registra SOLO lo sgancio (senza timestampAggancio)
-      if (!closed) {
-        storico.push({
-          id: genId(),
-          targaRimorchio: cur.targaRimorchio,
-          targaMotrice: cur.targaMotrice || null,
-          autista: nomeAutista,
-          badgeAutista: cur.badgeAutista,
-          luogo: luogoFinale,
-          statoCarico,
-          condizioni,
-          timestampAggancio: null,
-          timestampSgancio: now,
-        });
-      }
-
-      await setItemSync(STORICO_RIMORCHI_KEY, storico);
-
-      await addDoc(collection(db, "autisti_eventi"), {
-        tipo: "SGANCIO_RIMORCHIO",
-        autistaNome: cur.nomeAutista,
-        badgeAutista: cur.badgeAutista,
-        targaMotrice: cur.targaMotrice || null,
-        targaRimorchio: cur.targaRimorchio,
-        luogo: luogoFinale,
-        statoCarico,
-        condizioni,
-        timestamp: now,
-        createdAt: serverTimestamp(),
-      });
-
-      const tipoEvento = "SGANCIO_RIMORCHIO";
       const dopo = {
         targaMotrice: cur.targaMotrice || null,
         targaRimorchio: null,
       };
-      await appendEventoOperativo({
-        id: `${tipoEvento}-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
-        tipo: tipoEvento,
-        timestamp: now,
-        badgeAutista: cur.badgeAutista,
-        nomeAutista: cur.nomeAutista,
-        prima,
-        dopo,
-        luogo: luogoFinale,
-        statoCarico,
-        condizioni,
-        source: "CambioMezzoAutista",
-      });
 
       await appendEventoOperativo({
         id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
@@ -297,13 +217,6 @@ export default function CambioMezzoAutista() {
         timestamp: now,
       });
 
-      // compat: aggiorna anche la chiave sync (non usarla per gating)
-      await setItemSync(MEZZO_SYNC_KEY, {
-        targaCamion: cur.targaMotrice,
-        targaRimorchio: null,
-        timestamp: now,
-      });
-
       // rientra in home: consente guida senza rimorchio e aggancio successivo
       navigate("/autisti/home", { replace: true });
       return;
@@ -313,50 +226,10 @@ export default function CambioMezzoAutista() {
     // CAMBIO MOTRICE
     // =======================
     if (modalita === "motrice" && cur.targaMotrice) {
-      const storicoRaw = (await getItemSync(STORICO_MOTRICI_KEY)) || [];
-      const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
-
-      storico.push({
-        id: genId(),
-        targaMotrice: cur.targaMotrice,
-        autista: (cur.nomeAutista ?? "").trim() || null,
-        badgeAutista: cur.badgeAutista,
-        luogo: luogoFinale,
-        condizioni,
-        timestampCambio: now,
-      });
-
-      await setItemSync(STORICO_MOTRICI_KEY, storico);
-
-      await addDoc(collection(db, "autisti_eventi"), {
-        tipo: "CAMBIO_MOTRICE",
-        autistaNome: cur.nomeAutista,
-        badgeAutista: cur.badgeAutista,
-        targaMotrice: cur.targaMotrice,
-        luogo: luogoFinale,
-        condizioni,
-        timestamp: now,
-        createdAt: serverTimestamp(),
-      });
-
-      const tipoEvento = "SGANCIO_MOTRICE";
       const dopo = {
         targaMotrice: null,
         targaRimorchio: cur.targaRimorchio || null,
       };
-      await appendEventoOperativo({
-        id: `${tipoEvento}-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
-        tipo: tipoEvento,
-        timestamp: now,
-        badgeAutista: cur.badgeAutista,
-        nomeAutista: cur.nomeAutista,
-        prima,
-        dopo,
-        luogo: luogoFinale,
-        statoCarico: null,
-        condizioni,
-        source: "CambioMezzoAutista",
-      });
 
       await appendEventoOperativo({
         id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
@@ -395,13 +268,6 @@ export default function CambioMezzoAutista() {
 
       // aggiorna locale: azzera motrice, mantieni rimorchio
       saveMezzoLocal({
-        targaCamion: null,
-        targaRimorchio: cur.targaRimorchio,
-        timestamp: now,
-      });
-
-      // compat
-      await setItemSync(MEZZO_SYNC_KEY, {
         targaCamion: null,
         targaRimorchio: cur.targaRimorchio,
         timestamp: now,

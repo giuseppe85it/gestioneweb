@@ -605,6 +605,11 @@ export default function AutistiAdmin() {
         ? KEY_SGANCIO_RIMORCHI
         : KEY_CAMBI_MOTRICE;
 
+    if (key === KEY_SGANCIO_RIMORCHI || key === KEY_CAMBI_MOTRICE) {
+      closeAdminEdit();
+      return;
+    }
+
     const raw = (await getItemSync(key)) || [];
     if (!Array.isArray(raw)) return;
 

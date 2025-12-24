@@ -52,10 +52,9 @@ const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_CONTROLLI = "@controlli_mezzo_autisti";
 const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
-const KEY_SGANCIO_RIMORCHI = "@storico_sganci_rimorchi";
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
-const CAMBIO_ASSETTO_TIPI = new Set(["CAMBIO_ASSETTO", "INIZIO_ASSETTO"]);
+const CAMBIO_ASSETTO_TIPO = "CAMBIO_ASSETTO";
 
 function genId() {
   const c: any = globalThis.crypto;
@@ -183,7 +182,7 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
   if (Array.isArray(operativi)) {
     for (const evt of operativi) {
       const tipo = String(evt?.tipo ?? evt?.tipoOperativo ?? "");
-      if (!CAMBIO_ASSETTO_TIPI.has(tipo)) continue;
+      if (tipo !== CAMBIO_ASSETTO_TIPO) continue;
 
       const ts = toTs(evt?.timestamp);
       if (!ts || !isSameDay(ts, day)) continue;
@@ -200,8 +199,6 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
       const dopoRimorchio = toStrOrNull(
         evt?.dopo?.rimorchio ?? evt?.dopo?.targaRimorchio
       );
-
-      if (!dopoMotrice && !dopoRimorchio) continue;
 
       const badge = toStrOrNull(evt?.badgeAutista ?? evt?.badge);
       const autista = toStrOrNull(evt?.autista ?? evt?.autistaNome ?? evt?.nomeAutista);
@@ -237,9 +234,6 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
 
   events.push(...cambiMezzoEvents);
 
-  const fs = await loadFirestoreAutistiEventi(day).catch(() => []);
-  events.push(...fs);
-
   return events.sort((a, b) => b.timestamp - a.timestamp);
 }
 
@@ -253,7 +247,7 @@ export async function loadFirestoreAutistiEventi(day: Date): Promise<HomeEvent[]
     if (!ts || !isSameDay(ts, day)) return;
 
     const fsTipo = data?.tipo ? String(data.tipo) : "";
-    if (!CAMBIO_ASSETTO_TIPI.has(fsTipo)) return;
+    if (fsTipo !== CAMBIO_ASSETTO_TIPO) return;
 
     const dataAny: any = data;
     const primaMotrice = toStrOrNull(dataAny?.prima?.motrice ?? dataAny?.primaMotrice ?? null);
@@ -264,9 +258,6 @@ export async function loadFirestoreAutistiEventi(day: Date): Promise<HomeEvent[]
     const dopoRimorchio = toStrOrNull(
       dataAny?.dopo?.rimorchio ?? dataAny?.dopoRimorchio ?? null
     );
-
-    if (!dopoMotrice && !dopoRimorchio) return;
-    if (fsTipo === "CAMBIO_ASSETTO" && !primaMotrice && !primaRimorchio) return;
 
     const badge = toStrOrNull(data.badgeAutista ?? dataAny?.badge ?? null);
     const autista = toStrOrNull(
@@ -339,17 +330,14 @@ export async function loadActiveSessions(): Promise<ActiveSession[]> {
 
 export async function loadRimorchiStatus(): Promise<RimorchioStatus[]> {
   const sessioni = (await getItemSync(KEY_SESSIONI)) || [];
-  const sganci = (await getItemSync(KEY_SGANCIO_RIMORCHI)) || [];
 
   const risultati: RimorchioStatus[] = [];
-  const inUso = new Set<string>();
 
   if (Array.isArray(sessioni)) {
     for (const s of sessioni) {
       if (!s?.targaRimorchio) continue;
 
       const targa = String(s.targaRimorchio);
-      inUso.add(targa);
 
       risultati.push({
         targa,
@@ -360,25 +348,6 @@ export async function loadRimorchiStatus(): Promise<RimorchioStatus[]> {
         luogo: null,
         statoCarico: null,
         timestamp: toTs(s.timestamp) ?? 0,
-      });
-    }
-  }
-
-  if (Array.isArray(sganci)) {
-    for (const s of sganci) {
-      const targa = String(s.targaRimorchio ?? "");
-      if (!targa) continue;
-      if (inUso.has(targa)) continue;
-
-      risultati.push({
-        targa,
-        stato: "LIBERO",
-        colore: "red",
-        autista: s.nomeAutista ?? s.autistaNome ?? s.autista ?? null,
-        motrice: null,
-        luogo: s.luogo ?? null,
-        statoCarico: s.statoCarico ?? null,
-        timestamp: toTs(s.timestampSgancio) ?? 0,
       });
     }
   }

@@ -5,14 +5,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "./autisti.css";
 import "./SetupMezzo.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { db } from "../firebase";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./autistiStorage";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
-const MEZZO_SYNC_KEY = "@mezzo_attivo_autista";
-const STORICO_RIMORCHI_KEY = "@storico_sganci_rimorchi";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
 type Mode = "rimorchio" | "motrice" | "none";
@@ -76,10 +72,6 @@ function norm(s: string) {
 }
 
 const fmtTarga = (t: string) => (t || "").trim().toUpperCase();
-
-function genId() {
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
 async function appendEventoOperativo(evt: EventoOperativo) {
   const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
@@ -261,8 +253,7 @@ export default function SetupMezzo() {
       timestamp: now,
     };
 
-    const isInizioAssetto = !prima.targaMotrice && !prima.targaRimorchio;
-    const tipoAssetto = isInizioAssetto ? "INIZIO_ASSETTO" : "CAMBIO_ASSETTO";
+    const tipoAssetto = "CAMBIO_ASSETTO";
     const eventoAssetto: EventoOperativo = {
       id: `${tipoAssetto}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
       tipo: tipoAssetto,
@@ -293,96 +284,12 @@ export default function SetupMezzo() {
     nuove.push(sessione);
     await setItemSync(SESSIONI_KEY, nuove);
 
-    // compat: aggiorna anche la chiave sync (non usarla per gating)
-    await setItemSync(MEZZO_SYNC_KEY, {
-      targaCamion,
-      targaRimorchio: targaRimorchio || null,
-      timestamp: now,
-    });
-
     // locale per dispositivo
     saveMezzoLocal({
       targaCamion,
       targaRimorchio: targaRimorchio || null,
       timestamp: now,
     });
-
-    // storico aggancio rimorchio (serve per la visualizzazione admin "Agganci Rimorchi")
-    // - crea SOLO su aggancio reale
-    // - evita duplicati se rimorchio già uguale a quello precedente
-    const prevRimorchio = (mezzoLocal?.targaRimorchio ?? null) as string | null;
-    if (targaRimorchio && targaRimorchio !== prevRimorchio) {
-      const storicoRaw = await getItemSync(STORICO_RIMORCHI_KEY);
-      const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
-      storico.push({
-        id: genId(),
-        targaRimorchio,
-        targaMotrice: targaCamion || null,
-        autista: autista.nome || null,
-        badgeAutista: autista.badge || null,
-        timestampAggancio: now,
-        timestampSgancio: null,
-        luogo: null,
-        statoCarico: null,
-        condizioni: null,
-      });
-      await setItemSync(STORICO_RIMORCHI_KEY, storico);
-    }
-
-    // evento aggancio rimorchio (solo se selezionato)
-    if (targaRimorchio) {
-      await addDoc(collection(db, "autisti_eventi"), {
-        tipo: "AGGANCIO_RIMORCHIO",
-        autistaNome: autista.nome,
-        badgeAutista: autista.badge,
-        targaMotrice: targaCamion,
-        targaRimorchio,
-        timestamp: now,
-        createdAt: serverTimestamp(),
-      });
-    }
-
-    const baseEvento = {
-      timestamp: now,
-      badgeAutista: autista.badge,
-      nomeAutista: autista.nome,
-      prima,
-      dopo,
-      luogo: null,
-      statoCarico: null,
-      condizioni: null,
-      source: "SetupMezzo",
-    };
-
-    const eventiOperativi: EventoOperativo[] = [];
-    if (!prima.targaMotrice && dopo.targaMotrice) {
-      const tipo = "SETUP_INIZIALE";
-      eventiOperativi.push({
-        id: `${tipo}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
-        tipo,
-        ...baseEvento,
-      });
-    }
-    if (prima.targaMotrice !== dopo.targaMotrice) {
-      const tipo = "AGGANCIO_MOTRICE";
-      eventiOperativi.push({
-        id: `${tipo}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
-        tipo,
-        ...baseEvento,
-      });
-    }
-    if (dopo.targaRimorchio && prima.targaRimorchio !== dopo.targaRimorchio) {
-      const tipo = "AGGANCIO_RIMORCHIO";
-      eventiOperativi.push({
-        id: `${tipo}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
-        tipo,
-        ...baseEvento,
-      });
-    }
-
-    for (const evt of eventiOperativi) {
-      await appendEventoOperativo(evt);
-    }
 
     const target =
       mode === "rimorchio"
