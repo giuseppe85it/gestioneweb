@@ -231,32 +231,6 @@ export default function CambioMezzoAutista() {
         targaRimorchio: cur.targaRimorchio || null,
       };
 
-      await appendEventoOperativo({
-        id: `CAMBIO_ASSETTO-${cur.badgeAutista}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
-        tipo: "CAMBIO_ASSETTO",
-        timestamp: now,
-        badgeAutista: cur.badgeAutista,
-        nomeAutista: cur.nomeAutista,
-        autista: cur.nomeAutista,
-        autistaNome: cur.nomeAutista,
-        prima: {
-          targaMotrice: prima.targaMotrice,
-          targaRimorchio: prima.targaRimorchio,
-          motrice: prima.targaMotrice,
-          rimorchio: prima.targaRimorchio,
-        },
-        dopo: {
-          targaMotrice: dopo.targaMotrice,
-          targaRimorchio: dopo.targaRimorchio,
-          motrice: dopo.targaMotrice,
-          rimorchio: dopo.targaRimorchio,
-        },
-        luogo: luogoFinale,
-        statoCarico: null,
-        condizioni,
-        source: "CambioMezzoAutista",
-      });
-
       // aggiorna sessioni attive: motrice -> null (rimorchio resta se c'è)
       const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
       const sessioni: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
@@ -269,6 +243,7 @@ export default function CambioMezzoAutista() {
       // aggiorna locale: azzera motrice, mantieni rimorchio
       saveMezzoLocal({
         targaCamion: null,
+        targaCamionPrima: cur.targaMotrice,
         targaRimorchio: cur.targaRimorchio,
         timestamp: now,
       });

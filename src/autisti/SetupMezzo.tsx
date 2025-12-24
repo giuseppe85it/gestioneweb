@@ -99,6 +99,7 @@ export default function SetupMezzo() {
     if (!m) return null;
     return {
       targaCamion: m?.targaCamion ? String(m.targaCamion) : null,
+      targaCamionPrima: m?.targaCamionPrima ? String(m.targaCamionPrima) : null,
       targaRimorchio: m?.targaRimorchio ? String(m.targaRimorchio) : null,
       timestamp: typeof m?.timestamp === "number" ? m.timestamp : null,
     };
@@ -234,7 +235,8 @@ export default function SetupMezzo() {
     const prima = {
       targaMotrice:
         prevSession?.targaMotrice ??
-        (mezzoLocal?.targaCamion ? String(mezzoLocal.targaCamion) : null),
+        (mezzoLocal?.targaCamion ? String(mezzoLocal.targaCamion) : null) ??
+        (mezzoLocal?.targaCamionPrima ? String(mezzoLocal.targaCamionPrima) : null),
       targaRimorchio:
         prevSession?.targaRimorchio ??
         (mezzoLocal?.targaRimorchio ? String(mezzoLocal.targaRimorchio) : null),
@@ -253,7 +255,8 @@ export default function SetupMezzo() {
       timestamp: now,
     };
 
-    const tipoAssetto = "CAMBIO_ASSETTO";
+    const tipoAssetto =
+      prima.targaMotrice || prima.targaRimorchio ? "CAMBIO_ASSETTO" : "INIZIO_ASSETTO";
     const eventoAssetto: EventoOperativo = {
       id: `${tipoAssetto}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
       tipo: tipoAssetto,
@@ -287,6 +290,7 @@ export default function SetupMezzo() {
     // locale per dispositivo
     saveMezzoLocal({
       targaCamion,
+      targaCamionPrima: null,
       targaRimorchio: targaRimorchio || null,
       timestamp: now,
     });
