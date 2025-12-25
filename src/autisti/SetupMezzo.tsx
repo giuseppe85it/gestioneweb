@@ -38,6 +38,14 @@ interface SessioneAttiva {
   targaRimorchio: string | null;
   badgeAutista: string;
   nomeAutista: string;
+  autistaNome?: string | null;
+  autista?: string | null;
+  revoked?: {
+    at: number;
+    scope: "MOTRICE" | "RIMORCHIO" | "TUTTO";
+    by?: string;
+    reason?: string;
+  };
   timestamp: number;
 }
 
