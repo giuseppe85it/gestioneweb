@@ -80,6 +80,18 @@ function norm(s: string) {
 }
 
 const fmtTarga = (t: string) => (t || "").trim().toUpperCase();
+const fmtText = (t: any) => String(t ?? "").trim();
+
+function getCategoriaLabel(mezzo: any) {
+  const value =
+    mezzo?.categoria ?? mezzo?.categoriaMezzo ?? mezzo?.tipoMezzo ?? mezzo?.tipo ?? "";
+  return fmtText(value) || "-";
+}
+
+function getAutistaSolito(mezzo: any) {
+  const value = mezzo?.autistaNome ?? mezzo?.driverName ?? "";
+  return fmtText(value) || "-";
+}
 
 async function appendEventoOperativo(evt: EventoOperativo) {
   const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
@@ -391,6 +403,12 @@ export default function SetupMezzo() {
               title={warn ?? undefined}
             >
               <div className="targa-text">{m.targa}</div>
+              <div className="mezzo-meta">
+                <span className="mezzo-badge">{getCategoriaLabel(m)}</span>
+                <span className="mezzo-autista">
+                  Autista solito: {getAutistaSolito(m)}
+                </span>
+              </div>
               {warn && <div className="targa-warn">{warn}</div>}
             </div>
           );
@@ -416,6 +434,10 @@ export default function SetupMezzo() {
           style={lockRimorchio ? { cursor: "not-allowed", opacity: 0.85 } : undefined}
         >
           <div className="targa-text">NESSUN RIMORCHIO</div>
+          <div className="mezzo-meta">
+            <span className="mezzo-badge">-</span>
+            <span className="mezzo-autista">Autista solito: -</span>
+          </div>
         </div>
 
         {rimorchiAll.map((m) => {
@@ -433,6 +455,12 @@ export default function SetupMezzo() {
               title={warn ?? undefined}
             >
               <div className="targa-text">{m.targa}</div>
+              <div className="mezzo-meta">
+                <span className="mezzo-badge">{getCategoriaLabel(m)}</span>
+                <span className="mezzo-autista">
+                  Autista solito: {getAutistaSolito(m)}
+                </span>
+              </div>
               {warn && <div className="targa-warn">{warn}</div>}
             </div>
           );
