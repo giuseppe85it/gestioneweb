@@ -10,21 +10,20 @@ import {
 } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 
-const KEY_SGANCIO_RIMORCHI = "@storico_sganci_rimorchi";
-const KEY_CAMBI_MOTRICE = "@storico_cambi_motrice";
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
 const KEY_CONTROLLI = "@controlli_mezzo_autisti";
 const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
+const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
 type TabKey =
   | "rifornimenti"
   | "segnalazioni"
   | "controlli"
-  | "cambi"
-  | "attrezzature";
+  | "attrezzature"
+  | "storico_cambio";
 
 function isSameDay(ts: number, day: Date) {
   const d = new Date(ts);
@@ -86,6 +85,22 @@ function toTs(v: any): number | null {
   return null;
 }
 
+function toStrOrNull(v: any): string | null {
+  if (v === undefined || v === null || v === "") return null;
+  return String(v);
+}
+
+function formatDateTime(ts: number) {
+  if (!ts) return "-";
+  return new Date(ts).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function normalizeMezzi(raw: any): any[] {
   if (Array.isArray(raw)) return raw;
   if (raw?.value && Array.isArray(raw.value)) return raw.value;
@@ -106,8 +121,7 @@ export default function AutistiAdmin() {
   }, []);
 
   const [events, setEvents] = useState<HomeEvent[]>([]);
-  const [storicoRimorchi, setStoricoRimorchi] = useState<any[]>([]);
-  const [, setStoricoCambiMotrice] = useState<any[]>([]);
+  const [storicoOperativi, setStoricoOperativi] = useState<any[]>([]);
   const [, setRimorchiLive] = useState<RimorchioStatus[]>([]);
   const [sessioniRaw, setSessioniRaw] = useState<any[]>([]);
   const [mezziAziendali, setMezziAziendali] = useState<any[]>([]);
@@ -125,9 +139,6 @@ export default function AutistiAdmin() {
     | "segnalazione"
     | "attrezzature"
     | "controllo"
-    | "cambio"
-    | "aggancio"
-    | "sgancio"
     | null
   >(null);
   const [adminEditId, setAdminEditId] = useState<string | null>(null);
@@ -136,6 +147,10 @@ export default function AutistiAdmin() {
   const [adminEditNote, setAdminEditNote] = useState("");
   const [adminEditFotos, setAdminEditFotos] = useState<string[]>([]);
   const [adminEditFotoDataUrl, setAdminEditFotoDataUrl] = useState<string | null>(null);
+  const [canonEditOpen, setCanonEditOpen] = useState(false);
+  const [canonEditId, setCanonEditId] = useState<string | null>(null);
+  const [canonEditIndex, setCanonEditIndex] = useState<number | null>(null);
+  const [canonEditForm, setCanonEditForm] = useState<any>({});
 
   useEffect(() => {
     let alive = true;
@@ -145,24 +160,20 @@ export default function AutistiAdmin() {
       try {
         const e = await loadHomeEvents(day);
 
-        const s = (await getItemSync(KEY_SGANCIO_RIMORCHI)) || [];
-        const all = Array.isArray(s) ? s : [];
+        const operativi = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+        const operativiArr = Array.isArray(operativi) ? operativi : [];
 
         const live = await loadRimorchiStatus();
 
         const sess = (await getItemSync(KEY_SESSIONI)) || [];
         const sessArr = Array.isArray(sess) ? sess : [];
 
-        const cambi = (await getItemSync(KEY_CAMBI_MOTRICE)) || [];
-        const cambiArr = Array.isArray(cambi) ? cambi : [];
-
         const mezziRaw = await getItemSync(KEY_MEZZI);
         const mezziArr = normalizeMezzi(mezziRaw);
 
         if (!alive) return;
         setEvents(e);
-        setStoricoRimorchi(all);
-        setStoricoCambiMotrice(cambiArr);
+        setStoricoOperativi(operativiArr);
         setRimorchiLive(live);
         setSessioniRaw(sessArr);
         setMezziAziendali(mezziArr);
@@ -189,11 +200,11 @@ export default function AutistiAdmin() {
       case "controlli":
         list = events.filter((e) => e.tipo === "controllo");
         break;
-      case "cambi":
-        list = events.filter((e) => e.tipo === "cambio_mezzo");
-        break;
       case "attrezzature":
         list = events.filter((e) => (e as any).tipo === "richiesta_attrezzature");
+        break;
+      case "storico_cambio":
+        list = [];
         break;
       default:
         list = [];
@@ -204,6 +215,20 @@ export default function AutistiAdmin() {
     }
     return list;
   }, [events, tab]);
+
+  const cambioCanonico = useMemo(() => {
+    const list: Array<any> = [];
+    if (!Array.isArray(storicoOperativi)) return list;
+    storicoOperativi.forEach((evt, index) => {
+      const tipo = String(evt?.tipo ?? "");
+      if (tipo !== "CAMBIO_ASSETTO") return;
+      const ts = toTs(evt?.timestamp);
+      if (!ts) return;
+      if (!isSameDay(ts, day)) return;
+      list.push({ ...evt, _ts: ts, _index: index });
+    });
+    return list.sort((a, b) => (b._ts ?? 0) - (a._ts ?? 0));
+  }, [storicoOperativi, day]);
 
   const mezziByTarga = useMemo(() => {
     const map = new Map<string, string>();
@@ -227,6 +252,66 @@ export default function AutistiAdmin() {
     const key = String(targa ?? "").trim().toUpperCase();
     if (!key) return "";
     return mezziByTarga.get(key) || "";
+  }
+
+  function getCambioCanonSnapshot(record: any) {
+    const primaMotrice = toStrOrNull(
+      record?.prima?.motrice ??
+        record?.prima?.targaMotrice ??
+        record?.primaMotrice ??
+        record?.targaMotricePrima ??
+        null
+    );
+    const dopoMotrice = toStrOrNull(
+      record?.dopo?.motrice ??
+        record?.dopo?.targaMotrice ??
+        record?.dopoMotrice ??
+        record?.targaMotriceDopo ??
+        null
+    );
+    const primaRimorchio = toStrOrNull(
+      record?.prima?.rimorchio ??
+        record?.prima?.targaRimorchio ??
+        record?.primaRimorchio ??
+        record?.targaRimorchioPrima ??
+        null
+    );
+    const dopoRimorchio = toStrOrNull(
+      record?.dopo?.rimorchio ??
+        record?.dopo?.targaRimorchio ??
+        record?.dopoRimorchio ??
+        record?.targaRimorchioDopo ??
+        null
+    );
+    return {
+      prima: { motrice: primaMotrice, rimorchio: primaRimorchio },
+      dopo: { motrice: dopoMotrice, rimorchio: dopoRimorchio },
+    };
+  }
+
+  function isSameCambioValue(a: string | null, b: string | null) {
+    const aa = (a ?? "").trim().toUpperCase();
+    const bb = (b ?? "").trim().toUpperCase();
+    if (!aa && !bb) return true;
+    return aa === bb;
+  }
+
+  function buildCambioLine(label: string, prima: string | null, dopo: string | null) {
+    if ((!prima && !dopo) || isSameCambioValue(prima, dopo)) return null;
+    const left = prima ? String(prima) : "-";
+    const right = dopo ? String(dopo) : "-";
+    return `${label}: ${left} -> ${right}`;
+  }
+
+  function getCambioBadgeNome(record: any) {
+    const badge = toStrOrNull(record?.badgeAutista ?? record?.badge ?? null);
+    const nome = toStrOrNull(
+      record?.nomeAutista ?? record?.autistaNome ?? record?.autista ?? null
+    );
+    return {
+      badge: badge ?? "-",
+      nome: nome ?? "-",
+    };
   }
 
   function getRecordTs(record: any) {
@@ -295,60 +380,12 @@ export default function AutistiAdmin() {
     );
   }
 
-  function normalizeTargaValue(value: any): string {
-    return String(value ?? "").trim().toUpperCase();
-  }
-
-  function resolveCambioFlags(record: any): { motrice?: boolean; rimorchio?: boolean } {
-    const pairs = [
-      ["targaMotricePrima", "targaMotriceDopo", "motrice"],
-      ["targaCamionPrima", "targaCamionDopo", "motrice"],
-      ["targaMotriceOld", "targaMotriceNew", "motrice"],
-      ["targaCamionOld", "targaCamionNew", "motrice"],
-      ["targaMotriceFrom", "targaMotriceTo", "motrice"],
-      ["targaCamionFrom", "targaCamionTo", "motrice"],
-      ["targaRimorchioPrima", "targaRimorchioDopo", "rimorchio"],
-      ["targaRimorchioOld", "targaRimorchioNew", "rimorchio"],
-      ["targaRimorchioFrom", "targaRimorchioTo", "rimorchio"],
-    ] as const;
-
-    let motriceFlag: boolean | undefined;
-    let rimorchioFlag: boolean | undefined;
-
-    pairs.forEach(([fromKey, toKey, target]) => {
-      const fromVal = record?.[fromKey];
-      const toVal = record?.[toKey];
-      if (fromVal == null || toVal == null) return;
-      const changed = normalizeTargaValue(fromVal) !== normalizeTargaValue(toVal);
-      if (target === "motrice" && motriceFlag === undefined) motriceFlag = changed;
-      if (target === "rimorchio" && rimorchioFlag === undefined) rimorchioFlag = changed;
-    });
-
-    if (motriceFlag === undefined && rimorchioFlag === undefined) return {};
-    return { motrice: motriceFlag, rimorchio: rimorchioFlag };
-  }
-
   function getLivePillClass(stato: string, alert: boolean) {
     if (alert) return "pill-danger";
     if (stato === "ACCOPPIATO") return "pill-ok";
     if (stato === "SOLO MOTRICE") return "pill-warn";
     return "pill-warn";
   }
-
-  const agganciRimorchi = useMemo(() => {
-    // SOLO storico: eventi certi di aggancio (no merge con LIVE).
-    return storicoRimorchi
-      .filter((x) => x?.timestampAggancio && isSameDay(x.timestampAggancio, day))
-      .map((x) => ({ ...x, _ts: x.timestampAggancio }))
-      .sort((a, b) => (b._ts ?? 0) - (a._ts ?? 0));
-  }, [storicoRimorchi, day]);
-
-  const sganciRimorchi = useMemo(() => {
-    return storicoRimorchi
-      .filter((x) => x?.timestampSgancio && isSameDay(x.timestampSgancio, day))
-      .map((x) => ({ ...x, _ts: x.timestampSgancio }))
-      .sort((a, b) => (b._ts ?? 0) - (a._ts ?? 0));
-  }, [storicoRimorchi, day]);
 
   const sessioniLive = useMemo(() => {
     return sessioniRaw
@@ -481,22 +518,12 @@ export default function AutistiAdmin() {
       | "rifornimento"
       | "segnalazione"
       | "attrezzature"
-      | "controllo"
-      | "cambio"
-      | "aggancio"
-      | "sgancio",
+      | "controllo",
     record: any,
     fallbackId?: string
   ) {
     const base = record || {};
-    const ts =
-      kind === "cambio"
-        ? toTs(base.timestampCambio) ?? getRecordTs(base)
-        : kind === "aggancio"
-        ? toTs(base.timestampAggancio) ?? getRecordTs(base)
-        : kind === "sgancio"
-        ? toTs(base.timestampSgancio) ?? getRecordTs(base)
-        : getRecordTs(base);
+    const ts = getRecordTs(base);
     const id = String(base?.id ?? fallbackId ?? "");
     const check = base.check || {};
     const condizioni = base.condizioni || {};
@@ -561,6 +588,118 @@ export default function AutistiAdmin() {
     setAdminEditFotoDataUrl(null);
   }
 
+  function openCanonEdit(record: any) {
+    const ts = toTs(record?.timestamp) ?? 0;
+    const { prima, dopo } = getCambioCanonSnapshot(record);
+    const { badge, nome } = getCambioBadgeNome(record);
+    setCanonEditId(record?.id ? String(record.id) : null);
+    setCanonEditIndex(
+      typeof record?._index === "number" ? Number(record._index) : null
+    );
+    setCanonEditForm({
+      dataOra: ts ? toDateTimeLocal(ts) : "",
+      badgeAutista: badge ?? "",
+      nomeAutista: nome ?? "",
+      luogo: record?.luogo ?? "",
+      primaMotrice: prima.motrice ?? "",
+      dopoMotrice: dopo.motrice ?? "",
+      primaRimorchio: prima.rimorchio ?? "",
+      dopoRimorchio: dopo.rimorchio ?? "",
+    });
+    setCanonEditOpen(true);
+  }
+
+  function closeCanonEdit() {
+    setCanonEditOpen(false);
+    setCanonEditId(null);
+    setCanonEditIndex(null);
+    setCanonEditForm({});
+  }
+
+  function updateCanonForm(key: string, value: any) {
+    setCanonEditForm((prev: any) => ({ ...prev, [key]: value }));
+  }
+
+  async function saveCanonEdit() {
+    const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+    if (!Array.isArray(raw)) return;
+
+    let idx = -1;
+    if (canonEditId) {
+      idx = raw.findIndex((r) => String(r?.id ?? "") === String(canonEditId));
+    }
+    if (idx < 0 && canonEditIndex != null && canonEditIndex >= 0) {
+      idx = canonEditIndex;
+    }
+    if (idx < 0) return;
+
+    const original = raw[idx] || {};
+    const dataOra = fromDateTimeLocal(canonEditForm.dataOra || "");
+    const ts = dataOra || toTs(original?.timestamp) || Date.now();
+    const badgeAutista = String(canonEditForm.badgeAutista ?? "").trim() || null;
+    const nomeAutista = String(canonEditForm.nomeAutista ?? "").trim() || null;
+    const luogo = String(canonEditForm.luogo ?? "").trim() || null;
+    const primaMotrice = String(canonEditForm.primaMotrice ?? "").trim() || null;
+    const dopoMotrice = String(canonEditForm.dopoMotrice ?? "").trim() || null;
+    const primaRimorchio = String(canonEditForm.primaRimorchio ?? "").trim() || null;
+    const dopoRimorchio = String(canonEditForm.dopoRimorchio ?? "").trim() || null;
+
+    const next = {
+      ...original,
+      timestamp: ts,
+      badgeAutista,
+      nomeAutista,
+      autista: nomeAutista ?? original?.autista ?? null,
+      autistaNome: nomeAutista ?? original?.autistaNome ?? null,
+      luogo,
+      prima: {
+        ...(original?.prima || {}),
+        motrice: primaMotrice,
+        targaMotrice: primaMotrice,
+        rimorchio: primaRimorchio,
+        targaRimorchio: primaRimorchio,
+      },
+      dopo: {
+        ...(original?.dopo || {}),
+        motrice: dopoMotrice,
+        targaMotrice: dopoMotrice,
+        rimorchio: dopoRimorchio,
+        targaRimorchio: dopoRimorchio,
+      },
+      adminEdit: {
+        ...(original?.adminEdit || {}),
+        edited: true,
+        editedAt: Date.now(),
+        editedBy: "ADMIN",
+        note: original?.adminEdit?.note ?? "",
+      },
+    };
+
+    const updated = raw.slice();
+    updated[idx] = next;
+    await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, updated);
+    setStoricoOperativi(updated);
+    closeCanonEdit();
+  }
+
+  async function deleteCanonEvent() {
+    if (!canonEditId && canonEditIndex == null) return;
+    const confirmDelete = window.confirm("Eliminare questo evento?");
+    if (!confirmDelete) return;
+
+    const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+    if (!Array.isArray(raw)) return;
+
+    const updated = raw.filter((r, idx) => {
+      if (canonEditId) return String(r?.id ?? "") !== String(canonEditId);
+      return idx !== canonEditIndex;
+    });
+
+    await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, updated);
+    setStoricoOperativi(updated);
+    closeCanonEdit();
+  }
+
   function removeSegnalazioneFoto(index: number) {
     setAdminEditFotos((prev) => prev.filter((_, i) => i !== index));
   }
@@ -601,14 +740,8 @@ export default function AutistiAdmin() {
         ? KEY_RICHIESTE_ATTREZZATURE
         : adminEditKind === "controllo"
         ? KEY_CONTROLLI
-        : adminEditKind === "aggancio" || adminEditKind === "sgancio"
-        ? KEY_SGANCIO_RIMORCHI
-        : KEY_CAMBI_MOTRICE;
-
-    if (key === KEY_SGANCIO_RIMORCHI || key === KEY_CAMBI_MOTRICE) {
-      closeAdminEdit();
-      return;
-    }
+        : null;
+    if (!key) return;
 
     const raw = (await getItemSync(key)) || [];
     if (!Array.isArray(raw)) return;
@@ -621,18 +754,9 @@ export default function AutistiAdmin() {
 
     const dataOra = fromDateTimeLocal(adminEditForm.dataOra || "");
     const ts = dataOra || getRecordTs(original);
-    if (adminEditKind === "cambio") {
-      next.timestampCambio = ts;
-      if ("timestamp" in original) next.timestamp = ts;
-    } else if (adminEditKind === "aggancio") {
-      next.timestampAggancio = ts;
-    } else if (adminEditKind === "sgancio") {
-      next.timestampSgancio = ts;
-    } else {
-      next.timestamp = ts;
-      if (adminEditKind !== "attrezzature" && ("data" in original || adminEditForm.dataOra)) {
-        next.data = ts;
-      }
+    next.timestamp = ts;
+    if (adminEditKind !== "attrezzature" && ("data" in original || adminEditForm.dataOra)) {
+      next.data = ts;
     }
 
     if (adminEditKind === "rifornimento") {
@@ -729,48 +853,6 @@ export default function AutistiAdmin() {
       };
     }
 
-    if (adminEditKind === "cambio") {
-      next.autista = adminEditForm.autistaNome.trim() || null;
-      next.badgeAutista = adminEditForm.badgeAutista.trim() || null;
-      next.targaMotrice = adminEditForm.targaCamion.trim() || null;
-      next.luogo = adminEditForm.luogo.trim() || null;
-      next.condizioni = {
-        generali: {
-          freni: !!adminEditForm.condFreni,
-          gomme: !!adminEditForm.condGomme,
-          perdite: !!adminEditForm.condPerdite,
-        },
-        specifiche: {
-          botole: !!adminEditForm.condBotole,
-          cinghie: !!adminEditForm.condCinghie,
-          stecche: !!adminEditForm.condStecche,
-          tubi: !!adminEditForm.condTubi,
-        },
-      };
-    }
-
-    if (adminEditKind === "aggancio" || adminEditKind === "sgancio") {
-      next.autista = adminEditForm.autistaNome.trim() || null;
-      next.badgeAutista = adminEditForm.badgeAutista.trim() || null;
-      next.targaMotrice = adminEditForm.targaCamion.trim() || null;
-      next.targaRimorchio = adminEditForm.targaRimorchio.trim() || null;
-      next.luogo = adminEditForm.luogo.trim() || null;
-      next.statoCarico = adminEditForm.statoCarico.trim() || null;
-      next.condizioni = {
-        generali: {
-          freni: !!adminEditForm.condFreni,
-          gomme: !!adminEditForm.condGomme,
-          perdite: !!adminEditForm.condPerdite,
-        },
-        specifiche: {
-          botole: !!adminEditForm.condBotole,
-          cinghie: !!adminEditForm.condCinghie,
-          stecche: !!adminEditForm.condStecche,
-          tubi: !!adminEditForm.condTubi,
-        },
-      };
-    }
-
     const patchFields =
       adminEditKind === "rifornimento"
         ? [
@@ -834,36 +916,7 @@ export default function AutistiAdmin() {
             "obbligatorio",
             "timestamp",
           ]
-        : adminEditKind === "aggancio"
-        ? [
-            "autista",
-            "badgeAutista",
-            "targaMotrice",
-            "targaRimorchio",
-            "luogo",
-            "statoCarico",
-            "condizioni",
-            "timestampAggancio",
-          ]
-        : adminEditKind === "sgancio"
-        ? [
-            "autista",
-            "badgeAutista",
-            "targaMotrice",
-            "targaRimorchio",
-            "luogo",
-            "statoCarico",
-            "condizioni",
-            "timestampSgancio",
-          ]
-        : [
-            "autista",
-            "badgeAutista",
-            "targaMotrice",
-            "luogo",
-            "condizioni",
-            "timestampCambio",
-          ];
+        : ["timestamp"];
 
     next.adminEdit = {
       edited: true,
@@ -993,11 +1046,11 @@ export default function AutistiAdmin() {
               Controllo mezzo
             </button>
             <button
-              className={tab === "cambi" ? "tab active" : "tab"}
-              onClick={() => setTab("cambi")}
+              className={tab === "storico_cambio" ? "tab active" : "tab"}
+              onClick={() => setTab("storico_cambio")}
               type="button"
             >
-              Cambio mezzo
+              Cambio mezzo (storico canonico)
             </button>
             <button
               className={tab === "attrezzature" ? "tab active" : "tab"}
@@ -1038,20 +1091,28 @@ export default function AutistiAdmin() {
         {/* LISTA PER CATEGORIA */}
         <div className="autisti-admin-card">
           <div className="autisti-admin-card-head">
-            <h2>{tab === "cambi" ? "Cambio mezzo (motrice)" : tab.toUpperCase()}</h2>
+            <h2>
+              {tab === "storico_cambio"
+                ? "Cambio mezzo (storico canonico)"
+                : tab.toUpperCase()}
+            </h2>
             {loading && <span className="loading">Caricamento...</span>}
           </div>
 
-          {!loading && filtered.length === 0 && (
+          {!loading && tab !== "storico_cambio" && filtered.length === 0 && (
             <div className="empty">Nessun elemento per questa data.</div>
           )}
 
-          {filtered.map((e) => {
+          {!loading && tab === "storico_cambio" && cambioCanonico.length === 0 && (
+            <div className="empty">Nessun evento per questa data.</div>
+          )}
+
+          {tab !== "storico_cambio" &&
+            filtered.map((e) => {
             const p = e.payload || {};
             const isCtrl = e.tipo === "controllo";
             const isAttrezzature = e.tipo === "richiesta_attrezzature";
             const isRifornSegn = e.tipo === "rifornimento" || e.tipo === "segnalazione";
-            const isCambio = e.tipo === "cambio_mezzo";
             const targaCamion = p?.targaCamion ?? p?.targaMotrice ?? null;
             const targaRimorchio = p?.targaRimorchio ?? null;
             const categoriaCamion = targaCamion ? getCategoriaValue(targaCamion) : "";
@@ -1070,24 +1131,7 @@ export default function AutistiAdmin() {
                 ? "attrezzature"
                 : e.tipo === "controllo"
                 ? "controllo"
-                : e.tipo === "cambio_mezzo"
-                ? "cambio"
                 : null;
-            const cambioFlags = isCambio ? resolveCambioFlags(p) : {};
-            let motriceVariant: "ok" | "danger" | undefined;
-            let rimorchioVariant: "ok" | "danger" | undefined;
-            if (cambioFlags.motrice !== undefined || cambioFlags.rimorchio !== undefined) {
-              if (cambioFlags.motrice && cambioFlags.rimorchio) {
-                motriceVariant = "ok";
-                rimorchioVariant = "ok";
-              } else if (cambioFlags.motrice && cambioFlags.rimorchio === false) {
-                motriceVariant = "ok";
-                rimorchioVariant = "danger";
-              } else if (cambioFlags.motrice === false && cambioFlags.rimorchio) {
-                motriceVariant = "danger";
-                rimorchioVariant = "ok";
-              }
-            }
             return (
               <div className="row" key={e.id}>
                 <div className="row-left">
@@ -1138,21 +1182,6 @@ export default function AutistiAdmin() {
                           </>
                         ) : null}
                       </div>
-                    ) : isCambio ? (
-                      <div className="line2 targa-pills-row">
-                        {renderTargaPill(
-                          "Motrice",
-                          targaCamion,
-                          getCategoria(targaCamion),
-                          motriceVariant
-                        )}
-                        {renderTargaPill(
-                          "Rimorchio",
-                          targaRimorchio,
-                          getCategoria(targaRimorchio),
-                          rimorchioVariant
-                        )}
-                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -1173,86 +1202,66 @@ export default function AutistiAdmin() {
               </div>
                 );
               })}
-            </div>
-        {tab === "cambi" && (
-          <>
-            <div className="autisti-admin-card">
-              <div className="autisti-admin-card-head">
-                <h2>Agganci rimorchi</h2>
-                {loading && <span className="loading">Caricamento...</span>}
+
+          {tab === "storico_cambio" && (
+            <div className="canon-list">
+              <div className="canon-row canon-row-head">
+                <div className="canon-cell">Data/Ora</div>
+                <div className="canon-cell">Badge/Nome</div>
+                <div className="canon-cell">Luogo</div>
+                <div className="canon-cell">Motrice</div>
+                <div className="canon-cell">Rimorchio</div>
+                <div className="canon-cell canon-actions">Azioni</div>
               </div>
-
-              {!loading && agganciRimorchi.length === 0 && (
-                <div className="empty">Nessun aggancio per questa data.</div>
-              )}
-
-              {agganciRimorchi.map((a) => (
-                <div className="row" key={a.id ?? `${a._ts}_${a.targaRimorchio}`}>
-                  <div className="row-left">
-                    <div className="time">{a._ts ? formatHHMM(a._ts) : "--:--"}</div>
-                    <div className="main">
-                      <div className="line1">
-                        <span>{a.autista ?? "-"}</span>
-                      </div>
-                      <div className="line2 targa-pills-row">
-                        {renderTargaPill("Motrice", a.targaMotrice, getCategoria(a.targaMotrice))}
-                        {renderTargaPill(
-                          "Rimorchio",
-                          a.targaRimorchio,
-                          getCategoria(a.targaRimorchio)
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="edit"
-                    onClick={() => openAdminEdit("aggancio", a, a.id)}
+              {cambioCanonico.map((evt) => {
+                const ts = evt?._ts ?? toTs(evt?.timestamp) ?? 0;
+                const { prima, dopo } = getCambioCanonSnapshot(evt);
+                const motriceLine = buildCambioLine(
+                  "MOTRICE",
+                  prima.motrice,
+                  dopo.motrice
+                );
+                const rimorchioLine = buildCambioLine(
+                  "RIMORCHIO",
+                  prima.rimorchio,
+                  dopo.rimorchio
+                );
+                const { badge, nome } = getCambioBadgeNome(evt);
+                const luogo = toStrOrNull(evt?.luogo) ?? "-";
+                return (
+                  <div
+                    className="canon-row"
+                    key={evt?.id ?? `${ts}-${evt?._index ?? 0}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openCanonEdit(evt)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") openCanonEdit(evt);
+                    }}
                   >
-                    MODIFICA
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="autisti-admin-card">
-              <div className="autisti-admin-card-head">
-                <h2>Sganci rimorchi</h2>
-                {loading && <span className="loading">Caricamento...</span>}
-              </div>
-
-              {!loading && sganciRimorchi.length === 0 && (
-                <div className="empty">Nessuno sgancio per questa data.</div>
-              )}
-
-              {sganciRimorchi.map((s) => (
-                <div className="row" key={s.id ?? `${s._ts}_${s.targaRimorchio}`}>
-                  <div className="row-left">
-                    <div className="time">{s._ts ? formatHHMM(s._ts) : "--:--"}</div>
-                    <div className="main">
-                      <div className="line1">
-                        <span>{s.autista ?? "-"}</span>
-                      </div>
-                      <div className="line2 targa-pills-row">
-                        {renderTargaPill("Motrice", s.targaMotrice, getCategoria(s.targaMotrice))}
-                        {renderTargaPill(
-                          "Rimorchio",
-                          s.targaRimorchio,
-                          getCategoria(s.targaRimorchio)
-                        )}
-                      </div>
+                    <div className="canon-cell">{formatDateTime(ts)}</div>
+                    <div className="canon-cell">{`BADGE ${badge} | ${nome}`}</div>
+                    <div className="canon-cell">{luogo}</div>
+                    <div className="canon-cell">{motriceLine ?? ""}</div>
+                    <div className="canon-cell">{rimorchioLine ?? ""}</div>
+                    <div className="canon-cell canon-actions">
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          openCanonEdit(evt);
+                        }}
+                      >
+                        MODIFICA
+                      </button>
                     </div>
                   </div>
-
-                  <button type="button" className="edit" disabled title="Step successivo">
-                    MODIFICA
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </>
-        )}
+          )}
+        </div>
 
         {/* MODALE EDIT EVENTI */}
         {adminEditOpen && adminEditKind && (
@@ -1268,11 +1277,7 @@ export default function AutistiAdmin() {
                     ? "Modifica richiesta attrezzature"
                     : adminEditKind === "controllo"
                     ? "Modifica controllo mezzo"
-                    : adminEditKind === "aggancio"
-                    ? "Modifica aggancio rimorchio"
-                    : adminEditKind === "sgancio"
-                    ? "Modifica sgancio rimorchio"
-                    : "Modifica cambio mezzo"}
+                    : "Modifica evento"}
                 </h3>
                 <button className="aix-close" type="button" onClick={closeAdminEdit}>
                   CHIUDI
@@ -1312,9 +1317,8 @@ export default function AutistiAdmin() {
                         />
                         {renderCategoriaLine(adminEditForm.targaCamion)}
                       </label>
-                      {adminEditKind !== "cambio" &&
-                      ((adminEditForm.targaRimorchio ?? "") ||
-                        adminEditOriginal?.targaRimorchio) ? (
+                      {(adminEditForm.targaRimorchio ?? "") ||
+                      adminEditOriginal?.targaRimorchio ? (
                         <label>
                           Rimorchio
                           <input
@@ -1520,89 +1524,6 @@ export default function AutistiAdmin() {
                         </>
                       ) : null}
 
-                      {adminEditKind === "cambio" ||
-                      adminEditKind === "aggancio" ||
-                      adminEditKind === "sgancio" ? (
-                        <>
-                          <label className="admin-edit-full">
-                            Luogo
-                            <input
-                              value={adminEditForm.luogo ?? ""}
-                              onChange={(e) => updateAdminForm("luogo", e.target.value)}
-                            />
-                          </label>
-                          {adminEditKind === "aggancio" || adminEditKind === "sgancio" ? (
-                            <label>
-                              Stato carico
-                              <select
-                                value={adminEditForm.statoCarico ?? ""}
-                                onChange={(e) => updateAdminForm("statoCarico", e.target.value)}
-                              >
-                                <option value="">-</option>
-                                <option value="PIENO">Pieno</option>
-                                <option value="PARZIALE">Parziale</option>
-                                <option value="VUOTO">Vuoto</option>
-                              </select>
-                            </label>
-                          ) : null}
-                          <label className="admin-edit-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={!!adminEditForm.condFreni}
-                              onChange={(e) => updateAdminForm("condFreni", e.target.checked)}
-                            />
-                            Freni
-                          </label>
-                          <label className="admin-edit-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={!!adminEditForm.condGomme}
-                              onChange={(e) => updateAdminForm("condGomme", e.target.checked)}
-                            />
-                            Gomme
-                          </label>
-                          <label className="admin-edit-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={!!adminEditForm.condPerdite}
-                              onChange={(e) => updateAdminForm("condPerdite", e.target.checked)}
-                            />
-                            Perdite
-                          </label>
-                          <label className="admin-edit-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={!!adminEditForm.condBotole}
-                              onChange={(e) => updateAdminForm("condBotole", e.target.checked)}
-                            />
-                            Botole
-                          </label>
-                          <label className="admin-edit-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={!!adminEditForm.condCinghie}
-                              onChange={(e) => updateAdminForm("condCinghie", e.target.checked)}
-                            />
-                            Cinghie
-                          </label>
-                          <label className="admin-edit-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={!!adminEditForm.condStecche}
-                              onChange={(e) => updateAdminForm("condStecche", e.target.checked)}
-                            />
-                            Stecche
-                          </label>
-                          <label className="admin-edit-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={!!adminEditForm.condTubi}
-                              onChange={(e) => updateAdminForm("condTubi", e.target.checked)}
-                            />
-                            Tubi
-                          </label>
-                        </>
-                      ) : null}
                     </div>
                   </div>
 
@@ -1704,6 +1625,110 @@ export default function AutistiAdmin() {
                     ANNULLA
                   </button>
                   <button className="edit" type="button" onClick={saveAdminEdit}>
+                    SALVA
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {canonEditOpen && (
+          <div className="aix-backdrop" onMouseDown={closeCanonEdit}>
+            <div className="aix-modal admin-edit-modal" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="aix-head">
+                <h3>Modifica evento</h3>
+                <button className="aix-close" type="button" onClick={closeCanonEdit}>
+                  CHIUDI
+                </button>
+              </div>
+
+              <div className="aix-body admin-edit-body">
+                <div className="admin-edit-scroll">
+                  <div className="admin-edit-section">
+                    <h4>Evento</h4>
+                    <div className="admin-edit-grid">
+                      <label>
+                        Data/Ora
+                        <input
+                          type="datetime-local"
+                          value={canonEditForm.dataOra ?? ""}
+                          onChange={(e) => updateCanonForm("dataOra", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Badge
+                        <input
+                          value={canonEditForm.badgeAutista ?? ""}
+                          onChange={(e) => updateCanonForm("badgeAutista", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Nome
+                        <input
+                          value={canonEditForm.nomeAutista ?? ""}
+                          onChange={(e) => updateCanonForm("nomeAutista", e.target.value)}
+                        />
+                      </label>
+                      <label className="admin-edit-full">
+                        Luogo
+                        <input
+                          value={canonEditForm.luogo ?? ""}
+                          onChange={(e) => updateCanonForm("luogo", e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="admin-edit-section">
+                    <h4>Prima</h4>
+                    <div className="admin-edit-grid">
+                      <label>
+                        Motrice
+                        <input
+                          value={canonEditForm.primaMotrice ?? ""}
+                          onChange={(e) => updateCanonForm("primaMotrice", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Rimorchio
+                        <input
+                          value={canonEditForm.primaRimorchio ?? ""}
+                          onChange={(e) => updateCanonForm("primaRimorchio", e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="admin-edit-section">
+                    <h4>Dopo</h4>
+                    <div className="admin-edit-grid">
+                      <label>
+                        Motrice
+                        <input
+                          value={canonEditForm.dopoMotrice ?? ""}
+                          onChange={(e) => updateCanonForm("dopoMotrice", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Rimorchio
+                        <input
+                          value={canonEditForm.dopoRimorchio ?? ""}
+                          onChange={(e) => updateCanonForm("dopoRimorchio", e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="admin-edit-actions">
+                  <button className="edit" type="button" onClick={closeCanonEdit}>
+                    ANNULLA
+                  </button>
+                  <button className="edit danger" type="button" onClick={deleteCanonEvent}>
+                    ELIMINA EVENTO
+                  </button>
+                  <button className="edit" type="button" onClick={saveCanonEdit}>
                     SALVA
                   </button>
                 </div>
