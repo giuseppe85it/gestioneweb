@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import "./autisti.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import {
+  clearLastHandledRevokedAt,
   getAutistaLocal,
   getMezzoLocal,
   removeAutistaLocal,
@@ -58,6 +59,7 @@ export default function HomeAutista() {
     await setItemSync(SESSIONI_KEY, aggiornate);
 
     // pulizia locale (questa è quella che conta)
+    clearLastHandledRevokedAt(a.badge);
     removeAutistaLocal();
     removeMezzoLocal();
 

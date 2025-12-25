@@ -2,11 +2,11 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getAutistaLocal,
-  getLastRevokedAt,
+  getLastHandledRevokedAt,
   getMezzoLocal,
   removeMezzoLocal,
   saveMezzoLocal,
-  setLastRevokedAt,
+  setLastHandledRevokedAt,
 } from "./autistiStorage";
 import { getItemSync } from "../utils/storageSync";
 
@@ -38,7 +38,7 @@ export default function AutistiGate() {
       const revokedAt =
         typeof sessioneLive?.revoked?.at === "number" ? sessioneLive.revoked.at : 0;
       if (revokedAt) {
-        const lastRevokedAt = getLastRevokedAt(autista.badge);
+        const lastRevokedAt = getLastHandledRevokedAt(autista.badge);
         if (revokedAt > lastRevokedAt) {
           const scope = String(sessioneLive?.revoked?.scope ?? "TUTTO");
           if (scope === "RIMORCHIO") {
@@ -63,17 +63,15 @@ export default function AutistiGate() {
             removeMezzoLocal();
           }
 
-          setLastRevokedAt(autista.badge, revokedAt);
+          setLastHandledRevokedAt(autista.badge, revokedAt);
 
-          const mode =
-            scope === "MOTRICE"
-              ? "motrice"
-              : scope === "RIMORCHIO" && mezzo?.targaCamion
-              ? "rimorchio"
-              : "none";
-          navigate(`/autisti/setup-mezzo?mode=${encodeURIComponent(mode)}`, {
-            replace: true,
-          });
+          if (scope === "TUTTO") {
+            navigate("/autisti/setup-mezzo", { replace: true });
+            return;
+          }
+
+          const mode = scope === "MOTRICE" ? "motrice" : "rimorchio";
+          navigate(`/autisti/setup-mezzo?mode=${encodeURIComponent(mode)}`, { replace: true });
           return;
         }
       }

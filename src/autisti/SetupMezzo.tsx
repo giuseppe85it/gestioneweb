@@ -229,8 +229,48 @@ export default function SetupMezzo() {
     const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
     const prev: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
 
-    const nuove = prev.filter((s) => s.badgeAutista !== autista.badge);
     const prevSession = prev.find((s) => s.badgeAutista === autista.badge) || null;
+
+    const rimorchioKey = targaRimorchio ? fmtTarga(String(targaRimorchio)) : "";
+    const conflittiRimorchio = rimorchioKey
+      ? prev.filter(
+          (s) =>
+            s?.badgeAutista !== autista.badge &&
+            fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey
+        )
+      : [];
+    if (conflittiRimorchio.length > 0) {
+      const elenco = conflittiRimorchio
+        .map((s) => {
+          const badge = s?.badgeAutista ? `BADGE ${s.badgeAutista}` : "BADGE -";
+          const nome = s?.nomeAutista ?? s?.autistaNome ?? s?.autista ?? "-";
+          return `${nome} (${badge})`;
+        })
+        .join(", ");
+      const ok = window.confirm(
+        `RIMORCHIO gia in uso da ${elenco}. Vuoi continuare?`
+      );
+      if (!ok) return;
+    }
+
+    const nuove = prev
+      .filter((s) => s.badgeAutista !== autista.badge)
+      .map((s) => {
+        if (rimorchioKey && fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey) {
+          return {
+            ...s,
+            targaRimorchio: null,
+            revoked: {
+              ...(s?.revoked || {}),
+              by: "AUTO",
+              at: now,
+              scope: "RIMORCHIO",
+              reason: `Rimorchio assegnato a ${autista.badge}`,
+            },
+          };
+        }
+        return s;
+      });
 
     const prima = {
       targaMotrice:

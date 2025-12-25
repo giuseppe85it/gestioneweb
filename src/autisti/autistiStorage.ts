@@ -30,7 +30,7 @@ export function removeMezzoLocal() {
   localStorage.removeItem(MEZZO_KEY);
 }
 
-export function getLastRevokedAt(badge: string) {
+export function getLastHandledRevokedAt(badge: string) {
   if (!badge) return 0;
   const raw = localStorage.getItem(REVOKE_KEY);
   if (!raw) return 0;
@@ -43,7 +43,7 @@ export function getLastRevokedAt(badge: string) {
   }
 }
 
-export function setLastRevokedAt(badge: string, ts: number) {
+export function setLastHandledRevokedAt(badge: string, ts: number) {
   if (!badge || !Number.isFinite(ts)) return;
   const raw = localStorage.getItem(REVOKE_KEY);
   let data: Record<string, number> = {};
@@ -56,4 +56,24 @@ export function setLastRevokedAt(badge: string, ts: number) {
   }
   data[badge] = ts;
   localStorage.setItem(REVOKE_KEY, JSON.stringify(data));
+}
+
+export function clearLastHandledRevokedAt(badge?: string) {
+  if (!badge) {
+    localStorage.removeItem(REVOKE_KEY);
+    return;
+  }
+  const raw = localStorage.getItem(REVOKE_KEY);
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw) || {};
+    delete data[badge];
+    if (Object.keys(data).length === 0) {
+      localStorage.removeItem(REVOKE_KEY);
+    } else {
+      localStorage.setItem(REVOKE_KEY, JSON.stringify(data));
+    }
+  } catch {
+    localStorage.removeItem(REVOKE_KEY);
+  }
 }
