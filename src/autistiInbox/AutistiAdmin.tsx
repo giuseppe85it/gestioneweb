@@ -247,7 +247,10 @@ export default function AutistiAdmin() {
     return mezziByTarga.get(key) || "-";
   }
 
-  
+  function normTarga(value?: string | null) {
+    return String(value ?? "").trim().toUpperCase();
+  }
+
   function getCategoriaValue(targa?: string | null) {
     const key = String(targa ?? "").trim().toUpperCase();
     if (!key) return "";
@@ -387,6 +390,45 @@ export default function AutistiAdmin() {
     return "pill-warn";
   }
 
+  const conflitti = useMemo(() => {
+    const motrici = new Map<
+      string,
+      Array<{ badgeAutista: string | null; nomeAutista: string | null }>
+    >();
+    const rimorchi = new Map<
+      string,
+      Array<{ badgeAutista: string | null; nomeAutista: string | null }>
+    >();
+
+    sessioniRaw.forEach((s) => {
+      const badgeAutista = s?.badgeAutista ?? null;
+      const nomeAutista = s?.nomeAutista ?? s?.autistaNome ?? s?.autista ?? null;
+      const targaMotrice = normTarga(s?.targaMotrice ?? null);
+      const targaRimorchio = normTarga(s?.targaRimorchio ?? null);
+
+      if (targaMotrice) {
+        const list = motrici.get(targaMotrice) || [];
+        list.push({ badgeAutista, nomeAutista });
+        motrici.set(targaMotrice, list);
+      }
+
+      if (targaRimorchio) {
+        const list = rimorchi.get(targaRimorchio) || [];
+        list.push({ badgeAutista, nomeAutista });
+        rimorchi.set(targaRimorchio, list);
+      }
+    });
+
+    const motriciConflict = new Map(
+      Array.from(motrici.entries()).filter(([, list]) => list.length > 1)
+    );
+    const rimorchiConflict = new Map(
+      Array.from(rimorchi.entries()).filter(([, list]) => list.length > 1)
+    );
+
+    return { motrici: motriciConflict, rimorchi: rimorchiConflict };
+  }, [sessioniRaw]);
+
   const sessioniLive = useMemo(() => {
     return sessioniRaw
       .map((s, idx) => {
@@ -403,6 +445,32 @@ export default function AutistiAdmin() {
           stato = "RIMORCHIO SENZA MOTRICE";
           alert = true;
         }
+        const motriceKey = normTarga(targaMotrice);
+        const rimorchioKey = normTarga(targaRimorchio);
+        const motriceOthers = motriceKey
+          ? (conflitti.motrici.get(motriceKey) || []).filter(
+              (c) => c.badgeAutista !== badgeAutista
+            )
+          : [];
+        const rimorchioOthers = rimorchioKey
+          ? (conflitti.rimorchi.get(rimorchioKey) || []).filter(
+              (c) => c.badgeAutista !== badgeAutista
+            )
+          : [];
+        const seen = new Set<string>();
+        const conflictList = [...motriceOthers, ...rimorchioOthers]
+          .map((c) => {
+            const badge = c.badgeAutista ? `badge ${c.badgeAutista}` : "badge -";
+            const nome = c.nomeAutista ?? "-";
+            return `${badge} (${nome})`;
+          })
+          .filter((label) => {
+            if (seen.has(label)) return false;
+            seen.add(label);
+            return true;
+          });
+        const conflictText =
+          conflictList.length > 0 ? `in uso anche da: ${conflictList.join(", ")}` : "";
         return {
           key: s?.id ?? `${targaMotrice ?? "m"}_${targaRimorchio ?? "r"}_${idx}`,
           targaMotrice,
@@ -412,10 +480,12 @@ export default function AutistiAdmin() {
           ts,
           stato,
           alert,
+          conflict: conflictList.length > 0,
+          conflictText,
         };
       })
       .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
-  }, [sessioniRaw]);
+  }, [conflitti, sessioniRaw]);
 
   const showAdminVerifica =
     adminEditKind !== "attrezzature" &&
@@ -431,24 +501,57 @@ export default function AutistiAdmin() {
     adminEditKind === "segnalazione" &&
     ((adminEditOriginal && "targa" in adminEditOriginal) || !!adminEditForm.targa);
 
-  async function forceLibero(targaRimorchio: string) {
+  async function forceLibero(
+    badgeAutista: string,
+    scope: "MOTRICE" | "RIMORCHIO" | "TUTTO",
+    reason: string
+  ) {
     const sess = (await getItemSync(KEY_SESSIONI)) || [];
     if (!Array.isArray(sess)) return;
 
+    const note = reason.trim() || "forza libero";
+    const now = Date.now();
     const updated = sess.map((s) => {
-      if (s?.targaRimorchio !== targaRimorchio) return s;
+      if (s?.badgeAutista !== badgeAutista) return s;
+      const next = { ...s };
+      if (scope === "MOTRICE" || scope === "TUTTO") {
+        next.targaMotrice = null;
+      }
+      if (scope === "RIMORCHIO" || scope === "TUTTO") {
+        next.targaRimorchio = null;
+      }
       return {
-        ...s,
-        targaRimorchio: null,
+        ...next,
+        revoked: {
+          ...(s?.revoked || {}),
+          by: "ADMIN",
+          at: now,
+          scope,
+          reason: note,
+        },
         adminEdit: {
+          ...(s?.adminEdit || {}),
           edited: true,
-          editedAt: Date.now(),
+          editedAt: now,
           editedBy: "admin",
-          note: "Forzato LIBERO da Centro rettifica",
+          note,
         },
       };
     });
 
+    await setItemSync(KEY_SESSIONI, updated);
+
+    const live = await loadRimorchiStatus();
+    const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
+    setRimorchiLive(live);
+    setSessioniRaw(Array.isArray(sess2) ? sess2 : []);
+  }
+
+  async function deleteSessione(badgeAutista: string) {
+    const sess = (await getItemSync(KEY_SESSIONI)) || [];
+    if (!Array.isArray(sess)) return;
+
+    const updated = sess.filter((s) => s?.badgeAutista !== badgeAutista);
     await setItemSync(KEY_SESSIONI, updated);
 
     const live = await loadRimorchiStatus();
@@ -972,13 +1075,22 @@ export default function AutistiAdmin() {
           )}
 
           {sessioniLive.map((s) => (
-            <div className={`row ${s.alert ? "pill-danger" : ""}`} key={`live_${s.key}`}>
+            <div
+              className={`row ${s.alert ? "pill-danger" : ""} ${s.conflict ? "conflict" : ""}`}
+              key={`live_${s.key}`}
+            >
               <div className="row-left">
                 {/* ORA CORRENTE */}
                 <div className="time">{s.ts ? formatHHMM(s.ts) : formatHHMM(nowTs)}</div>
                 <div className="main">
                   <div className="line1">
                     <span className={`pill ${getLivePillClass(s.stato, s.alert)}`}>{s.stato}</span>
+                    {s.conflict ? (
+                      <>
+                        <span className="sep">|</span>
+                        <span className="pill conflict">CONFLITTO</span>
+                      </>
+                    ) : null}
                     <span className="sep">|</span>
                     <span>{s.autista ?? "-"}</span>
                     <span className="sep">|</span>
@@ -993,27 +1105,93 @@ export default function AutistiAdmin() {
                       !s.targaMotrice && s.targaRimorchio ? "danger" : undefined
                     )}
                   </div>
+                  {s.conflictText ? (
+                    <div className="line2 conflict-note">{s.conflictText}</div>
+                  ) : null}
                 </div>
               </div>
 
               <div className="row-actions">
-                {s.targaRimorchio ? (
+                {s.badgeAutista ? (
                   <>
                     <button
                       type="button"
                       className="edit"
                       onClick={() => openEditSession(s.targaRimorchio as string)}
+                      disabled={!s.targaRimorchio}
                     >
                       MODIFICA
                     </button>
                     <button
                       type="button"
                       className="edit danger"
-                      onClick={() => forceLibero(s.targaRimorchio as string)}
+                      disabled={!s.targaMotrice}
+                      onClick={() => {
+                        if (!s.badgeAutista) return;
+                        const ok = window.confirm(
+                          `Forzare LIBERO MOTRICE per badge ${s.badgeAutista}?`
+                        );
+                        if (!ok) return;
+                        const reason =
+                          window.prompt("Motivo revoca", "forza libero") || "forza libero";
+                        forceLibero(s.badgeAutista, "MOTRICE", reason);
+                      }}
+                      title="Rimuove la motrice dalla sessione attiva"
+                    >
+                      FORZA LIBERO MOTRICE
+                    </button>
+                    <button
+                      type="button"
+                      className="edit danger"
+                      disabled={!s.targaRimorchio}
+                      onClick={() => {
+                        if (!s.badgeAutista) return;
+                        const ok = window.confirm(
+                          `Forzare LIBERO RIMORCHIO per badge ${s.badgeAutista}?`
+                        );
+                        if (!ok) return;
+                        const reason =
+                          window.prompt("Motivo revoca", "forza libero") || "forza libero";
+                        forceLibero(s.badgeAutista, "RIMORCHIO", reason);
+                      }}
                       title="Rimuove il rimorchio dalla sessione attiva"
                     >
-                      FORZA LIBERO
+                      FORZA LIBERO RIMORCHIO
                     </button>
+                    <button
+                      type="button"
+                      className="edit danger"
+                      disabled={!s.targaMotrice && !s.targaRimorchio}
+                      onClick={() => {
+                        if (!s.badgeAutista) return;
+                        const ok = window.confirm(
+                          `Forzare LIBERO TUTTO per badge ${s.badgeAutista}?`
+                        );
+                        if (!ok) return;
+                        const reason =
+                          window.prompt("Motivo revoca", "forza libero") || "forza libero";
+                        forceLibero(s.badgeAutista, "TUTTO", reason);
+                      }}
+                      title="Rimuove motrice e rimorchio dalla sessione attiva"
+                    >
+                      FORZA LIBERO TUTTO
+                    </button>
+                    {!s.targaMotrice && !s.targaRimorchio ? (
+                      <button
+                        type="button"
+                        className="edit danger"
+                        onClick={() => {
+                          if (!s.badgeAutista) return;
+                          const ok = window.confirm(
+                            `Eliminare la sessione per badge ${s.badgeAutista}?`
+                          );
+                          if (!ok) return;
+                          deleteSessione(s.badgeAutista);
+                        }}
+                      >
+                        ELIMINA SESSIONE
+                      </button>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -1772,7 +1950,12 @@ export default function AutistiAdmin() {
                     <button
                       className="edit danger"
                       type="button"
-                      onClick={() => forceLibero(editTargetTarga)}
+                      onClick={() => {
+                        const s =
+                          sessioniRaw.find((x) => x?.targaRimorchio === editTargetTarga) || null;
+                        if (!s?.badgeAutista) return;
+                        forceLibero(s.badgeAutista, "RIMORCHIO", "forza libero");
+                      }}
                     >
                       FORZA LIBERO
                     </button>

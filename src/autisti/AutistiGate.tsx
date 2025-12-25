@@ -1,9 +1,17 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
+import {
+  getAutistaLocal,
+  getLastRevokedAt,
+  getMezzoLocal,
+  removeMezzoLocal,
+  saveMezzoLocal,
+  setLastRevokedAt,
+} from "./autistiStorage";
 import { getItemSync } from "../utils/storageSync";
 
 const CONTROLLI_KEY = "@controlli_mezzo_autisti";
+const SESSIONI_KEY = "@autisti_sessione_attive";
 
 export default function AutistiGate() {
   const navigate = useNavigate();
@@ -22,6 +30,52 @@ export default function AutistiGate() {
       if (!autista || !autista.badge) {
         navigate("/autisti/login", { replace: true });
         return;
+      }
+
+      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+      const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+      const sessioneLive = sessioni.find((s: any) => s?.badgeAutista === autista.badge);
+      const revokedAt =
+        typeof sessioneLive?.revoked?.at === "number" ? sessioneLive.revoked.at : 0;
+      if (revokedAt) {
+        const lastRevokedAt = getLastRevokedAt(autista.badge);
+        if (revokedAt > lastRevokedAt) {
+          const scope = String(sessioneLive?.revoked?.scope ?? "TUTTO");
+          if (scope === "RIMORCHIO") {
+            if (mezzo?.targaCamion) {
+              saveMezzoLocal({
+                ...mezzo,
+                targaRimorchio: null,
+              });
+            } else {
+              removeMezzoLocal();
+            }
+          } else if (scope === "MOTRICE") {
+            if (mezzo?.targaRimorchio) {
+              saveMezzoLocal({
+                ...mezzo,
+                targaCamion: null,
+              });
+            } else {
+              removeMezzoLocal();
+            }
+          } else {
+            removeMezzoLocal();
+          }
+
+          setLastRevokedAt(autista.badge, revokedAt);
+
+          const mode =
+            scope === "MOTRICE"
+              ? "motrice"
+              : scope === "RIMORCHIO" && mezzo?.targaCamion
+              ? "rimorchio"
+              : "none";
+          navigate(`/autisti/setup-mezzo?mode=${encodeURIComponent(mode)}`, {
+            replace: true,
+          });
+          return;
+        }
       }
 
       // 2) Nessun mezzo locale o nessuna motrice -> setup

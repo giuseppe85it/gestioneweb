@@ -114,8 +114,8 @@ export default function SetupMezzo() {
   const [targaCamion, setTargaCamion] = useState("");
   const [targaRimorchio, setTargaRimorchio] = useState<string | null>(null);
 
-  const lockMotrice = mode === "rimorchio";
-  const lockRimorchio = mode === "motrice";
+  const lockMotrice = mode === "rimorchio" && !!mezzoLocal?.targaCamion;
+  const lockRimorchio = mode === "motrice" && !!mezzoLocal?.targaRimorchio;
 
   const motriciAll = useMemo(() => {
     return mezziAll.filter((m) => {
