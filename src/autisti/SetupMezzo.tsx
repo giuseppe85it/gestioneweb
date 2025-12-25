@@ -251,6 +251,28 @@ export default function SetupMezzo() {
 
     const prevSession = prev.find((s) => s.badgeAutista === autista.badge) || null;
 
+    const motriceKey = targaCamion ? fmtTarga(String(targaCamion)) : "";
+    const conflittiMotrice = motriceKey
+      ? prev.filter(
+          (s) =>
+            s?.badgeAutista !== autista.badge &&
+            fmtTarga(String(s?.targaMotrice ?? "")) === motriceKey
+        )
+      : [];
+    if (conflittiMotrice.length > 0) {
+      const elenco = conflittiMotrice
+        .map((s) => {
+          const badge = s?.badgeAutista ? `BADGE ${s.badgeAutista}` : "BADGE -";
+          const nome = s?.nomeAutista ?? s?.autistaNome ?? s?.autista ?? "-";
+          return `${nome} (${badge})`;
+        })
+        .join(", ");
+      const ok = window.confirm(
+        `MOTRICE gia in uso da ${elenco}. Vuoi continuare?`
+      );
+      if (!ok) return;
+    }
+
     const rimorchioKey = targaRimorchio ? fmtTarga(String(targaRimorchio)) : "";
     const conflittiRimorchio = rimorchioKey
       ? prev.filter(
@@ -276,20 +298,35 @@ export default function SetupMezzo() {
     const nuove = prev
       .filter((s) => s.badgeAutista !== autista.badge)
       .map((s) => {
-        if (rimorchioKey && fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey) {
-          return {
-            ...s,
-            targaRimorchio: null,
-            revoked: {
-              ...(s?.revoked || {}),
-              by: "AUTO",
-              at: now,
-              scope: "RIMORCHIO",
-              reason: `Rimorchio assegnato a ${autista.badge}`,
-            },
-          };
-        }
-        return s;
+        const motriceConflict =
+          !!motriceKey && fmtTarga(String(s?.targaMotrice ?? "")) === motriceKey;
+        const rimorchioConflict =
+          !!rimorchioKey && fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey;
+        if (!motriceConflict && !rimorchioConflict) return s;
+
+        const scope = motriceConflict && rimorchioConflict
+          ? "TUTTO"
+          : motriceConflict
+          ? "MOTRICE"
+          : "RIMORCHIO";
+        const reason =
+          scope === "MOTRICE"
+            ? `Motrice assegnata a ${autista.badge}`
+            : scope === "RIMORCHIO"
+            ? `Rimorchio assegnato a ${autista.badge}`
+            : `Assetto assegnato a ${autista.badge}`;
+        return {
+          ...s,
+          targaMotrice: motriceConflict ? null : s?.targaMotrice ?? null,
+          targaRimorchio: rimorchioConflict ? null : s?.targaRimorchio ?? null,
+          revoked: {
+            ...(s?.revoked || {}),
+            by: "AUTO",
+            at: now,
+            scope,
+            reason,
+          },
+        };
       });
 
     const prima = {

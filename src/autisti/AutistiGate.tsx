@@ -18,19 +18,15 @@ export default function AutistiGate() {
 
   useEffect(() => {
     let cancelled = false;
+    let intervalId: number | null = null;
 
-    async function checkFlow() {
-      // Supporta sia funzioni sync che async (se autistiStorage cambia)
-      const autista: any = await Promise.resolve((getAutistaLocal as any)());
-      const mezzo: any = await Promise.resolve((getMezzoLocal as any)());
-
-      if (cancelled) return;
-
-      // 1) Nessun autista locale -> login
-      if (!autista || !autista.badge) {
-        navigate("/autisti/login", { replace: true });
-        return;
-      }
+    async function checkRevoca(autistaArg?: any, mezzoArg?: any) {
+      if (cancelled) return false;
+      const autista: any =
+        autistaArg ?? (await Promise.resolve((getAutistaLocal as any)()));
+      if (!autista?.badge) return false;
+      const mezzo: any = mezzoArg ?? (await Promise.resolve((getMezzoLocal as any)()));
+      if (cancelled) return false;
 
       const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
       const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
@@ -41,6 +37,8 @@ export default function AutistiGate() {
         const lastRevokedAt = getLastHandledRevokedAt(autista.badge);
         if (revokedAt > lastRevokedAt) {
           const scope = String(sessioneLive?.revoked?.scope ?? "TUTTO");
+          const by = String(sessioneLive?.revoked?.by ?? "ADMIN");
+          const reason = String(sessioneLive?.revoked?.reason ?? "");
           if (scope === "RIMORCHIO") {
             if (mezzo?.targaCamion) {
               saveMezzoLocal({
@@ -64,17 +62,40 @@ export default function AutistiGate() {
           }
 
           setLastHandledRevokedAt(autista.badge, revokedAt);
+          const scopeLabel =
+            scope === "MOTRICE" ? "motrice" : scope === "RIMORCHIO" ? "rimorchio" : "tutto";
+          const reasonText = reason ? ` Motivo: ${reason}` : "";
+          window.alert(`Sessione revocata (${scopeLabel}) da ${by}.${reasonText}`);
 
           if (scope === "TUTTO") {
             navigate("/autisti/setup-mezzo", { replace: true });
-            return;
+            return true;
           }
 
           const mode = scope === "MOTRICE" ? "motrice" : "rimorchio";
           navigate(`/autisti/setup-mezzo?mode=${encodeURIComponent(mode)}`, { replace: true });
-          return;
+          return true;
         }
       }
+
+      return false;
+    }
+
+    async function checkFlow() {
+      // Supporta sia funzioni sync che async (se autistiStorage cambia)
+      const autista: any = await Promise.resolve((getAutistaLocal as any)());
+      const mezzo: any = await Promise.resolve((getMezzoLocal as any)());
+
+      if (cancelled) return;
+
+      // 1) Nessun autista locale -> login
+      if (!autista || !autista.badge) {
+        navigate("/autisti/login", { replace: true });
+        return;
+      }
+
+      const revocata = await checkRevoca(autista, mezzo);
+      if (cancelled || revocata) return;
 
       // 2) Nessun mezzo locale o nessuna motrice -> setup
       if (!mezzo || !mezzo.targaCamion) {
@@ -104,9 +125,23 @@ export default function AutistiGate() {
     }
 
     checkFlow();
+    const onFocus = () => {
+      checkRevoca();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") checkRevoca();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    intervalId = window.setInterval(() => {
+      checkRevoca();
+    }, 15000);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (intervalId) window.clearInterval(intervalId);
     };
   }, [navigate]);
 
