@@ -4,7 +4,7 @@ import "./AutistiInboxHome.css";
 
 import { loadActiveSessions, loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
 import type { ActiveSession, HomeEvent, RimorchioStatus } from "../utils/homeEvents";
-import { getItemSync } from "../utils/storageSync";
+import { getItemSync, setItemSync } from "../utils/storageSync";
 import RifornimentiCard from "./components/RifornimentiCard";
 import SessioniAttiveCard from "./components/SessioniAttiveCard";
 
@@ -22,6 +22,11 @@ type ActiveTab =
   | "controlli"
   | "cambi"
   | "attrezzature";
+
+type CreateFrom = {
+  tipo: "segnalazione" | "controllo";
+  payload: any;
+};
 
 export default function AutistiInboxHome() {
   const navigate = useNavigate();
@@ -50,6 +55,14 @@ useEffect(() => {
   const [showJson, setShowJson] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [mezziByTarga, setMezziByTarga] = useState<Record<string, string>>({});
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createFrom, setCreateFrom] = useState<CreateFrom | null>(null);
+  const [createDescrizione, setCreateDescrizione] = useState("");
+  const [createUrgenza, setCreateUrgenza] = useState<"bassa" | "media" | "alta">("media");
+  const [createTarga, setCreateTarga] = useState("");
+  const [createTipo, setCreateTipo] = useState<"targa" | "magazzino">("targa");
+  const [createNote, setCreateNote] = useState("");
+  const [createAlsoRimorchio, setCreateAlsoRimorchio] = useState(false);
 
   const rifornimentiRef = useRef<HTMLDivElement | null>(null);
   const segnalazioniRef = useRef<HTMLDivElement | null>(null);
@@ -135,6 +148,8 @@ useEffect(() => {
   function closeDetails() {
     setSelectedEvent(null);
     setLightboxSrc(null);
+    setCreateOpen(false);
+    setCreateFrom(null);
   }
 
   useEffect(() => {
@@ -255,6 +270,190 @@ useEffect(() => {
       hour: "2-digit",
       minute: "2-digit",
     });
+  }
+
+  function fmtTarga(value?: string | null) {
+    return value ? String(value).toUpperCase().trim() : "";
+  }
+
+  function todayYmd() {
+    return new Date().toISOString().substring(0, 10);
+  }
+
+  function genId() {
+    const c: any = globalThis.crypto;
+    if (c?.randomUUID) return c.randomUUID();
+    return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  async function loadArray(key: string) {
+    const raw = await getItemSync(key);
+    return Array.isArray(raw) ? raw : [];
+  }
+
+  async function saveArray(key: string, arr: any[]) {
+    await setItemSync(key, arr);
+  }
+
+  function hasLinkedLavoro(payload: any) {
+    if (!payload) return false;
+    if (payload.linkedLavoroId) return true;
+    if (Array.isArray(payload.linkedLavoroIds) && payload.linkedLavoroIds.length > 0) {
+      return true;
+    }
+    return false;
+  }
+
+  function openCreateFromSegnalazione(p: any) {
+    if (hasLinkedLavoro(p)) return;
+    const targa =
+      p?.targa ?? p?.targaCamion ?? p?.targaRimorchio ?? "";
+    const cleanTarga = fmtTarga(targa);
+    const tipo = cleanTarga ? "targa" : "magazzino";
+    const tipoProblema = String(p?.tipoProblema ?? "").trim();
+    const descr = String(p?.descrizione ?? "").trim();
+    const descrizione = `Segnalazione: ${tipoProblema} - ${descr}`.trim();
+    setCreateFrom({ tipo: "segnalazione", payload: p });
+    setCreateDescrizione(descrizione === "Segnalazione: -" ? "Segnalazione" : descrizione);
+    setCreateUrgenza(p?.flagVerifica ? "alta" : "media");
+    setCreateTarga(cleanTarga);
+    setCreateTipo(tipo);
+    setCreateNote("");
+    setCreateAlsoRimorchio(false);
+    setCreateOpen(true);
+  }
+
+  function openCreateFromControllo(p: any) {
+    if (hasLinkedLavoro(p)) return;
+    const check = p?.check ?? {};
+    const koList = Object.entries(check)
+      .filter(([, v]) => v === false)
+      .map(([k]) => String(k).toUpperCase());
+    if (koList.length === 0) {
+      window.alert("Controllo OK: nessun lavoro.");
+      return;
+    }
+    const target = String(p?.target ?? "").toLowerCase();
+    const targaCamion = fmtTarga(p?.targaCamion ?? p?.targaMotrice ?? "");
+    const targaRimorchio = fmtTarga(p?.targaRimorchio ?? "");
+    const defaultTarga =
+      target === "rimorchio"
+        ? targaRimorchio
+        : targaCamion;
+    const tipo = defaultTarga ? "targa" : "magazzino";
+    setCreateFrom({ tipo: "controllo", payload: p });
+    setCreateDescrizione(`Controllo KO: ${koList.join(", ")}`.trim());
+    setCreateUrgenza(
+      koList.length > 1 || p?.obbligatorio === true ? "alta" : "media"
+    );
+    setCreateTarga(defaultTarga);
+    setCreateTipo(tipo);
+    setCreateNote("");
+    setCreateAlsoRimorchio(
+      target === "entrambi" && !!targaCamion && !!targaRimorchio
+    );
+    setCreateOpen(true);
+  }
+
+  async function confirmCreateLavoro() {
+    if (!createFrom) return;
+    const p = createFrom.payload || {};
+    const descrizione = createDescrizione.trim();
+    if (!descrizione) return;
+    const targaClean = fmtTarga(createTarga);
+    const tipo = createTipo === "targa" && targaClean ? "targa" : "magazzino";
+    const gruppoId = genId();
+    const base = {
+      gruppoId,
+      tipo,
+      descrizione,
+      dataInserimento: todayYmd(),
+      eseguito: false,
+      urgenza: createUrgenza,
+      segnalatoDa: String(p?.autistaNome ?? p?.badgeAutista ?? "autista"),
+      sottoElementi: [],
+      dettagli: createNote.trim() || null,
+    };
+
+    const nuovi: any[] = [];
+    if (createFrom.tipo === "controllo") {
+      const target = String(p?.target ?? "").toLowerCase();
+      const targaCamion = fmtTarga(p?.targaCamion ?? p?.targaMotrice ?? "");
+      const targaRimorchio = fmtTarga(p?.targaRimorchio ?? "");
+      const motriceLavoro = targaClean || targaCamion;
+      if (motriceLavoro) {
+        nuovi.push({
+          id: genId(),
+          targa: motriceLavoro,
+          ...base,
+          source: { type: "controllo", id: p?.id ?? null, key: "@controlli_mezzo_autisti" },
+        });
+      } else {
+        nuovi.push({
+          id: genId(),
+          targa: "",
+          ...base,
+          tipo: "magazzino",
+          source: { type: "controllo", id: p?.id ?? null, key: "@controlli_mezzo_autisti" },
+        });
+      }
+      if (
+        createAlsoRimorchio &&
+        target === "entrambi" &&
+        targaRimorchio
+      ) {
+        nuovi.push({
+          id: genId(),
+          targa: targaRimorchio,
+          ...base,
+          tipo: "targa",
+          source: { type: "controllo", id: p?.id ?? null, key: "@controlli_mezzo_autisti" },
+        });
+      }
+    } else {
+      nuovi.push({
+        id: genId(),
+        targa: tipo === "targa" ? targaClean : "",
+        ...base,
+        tipo,
+        source: { type: "segnalazione", id: p?.id ?? null, key: "@segnalazioni_autisti_tmp" },
+      });
+    }
+
+    if (nuovi.length === 0) return;
+    const existing = await loadArray("@lavori");
+    await saveArray("@lavori", [...existing, ...nuovi]);
+
+    if (createFrom.tipo === "segnalazione") {
+      const arr = await loadArray("@segnalazioni_autisti_tmp");
+      const updated = arr.map((r: any) => {
+        if (String(r?.id ?? "") !== String(p?.id ?? "")) return r;
+        const next = { ...r, linkedLavoroId: nuovi[0].id, letta: true };
+        if ("stato" in r || r?.stato) next.stato = "presa_in_carico";
+        return next;
+      });
+      await saveArray("@segnalazioni_autisti_tmp", updated);
+    }
+
+    if (createFrom.tipo === "controllo") {
+      const arr = await loadArray("@controlli_mezzo_autisti");
+      const updated = arr.map((r: any) => {
+        if (String(r?.id ?? "") !== String(p?.id ?? "")) return r;
+        const next: any = { ...r, letta: true };
+        if (nuovi.length > 1) {
+          next.linkedLavoroIds = nuovi.map((n) => n.id);
+          next.linkedMultiple = true;
+        } else {
+          next.linkedLavoroId = nuovi[0].id;
+        }
+        return next;
+      });
+      await saveArray("@controlli_mezzo_autisti", updated);
+    }
+
+    setCreateOpen(false);
+    setCreateFrom(null);
+    window.alert("Lavoro creato.");
   }
 
   function getAutistaInfo(e: HomeEvent) {
@@ -984,6 +1183,31 @@ useEffect(() => {
                       </>
                     )}
 
+                    {(selectedEvent.tipo === "segnalazione" ||
+                      selectedEvent.tipo === "controllo") && (
+                      <div className="aix-row">
+                        <div className="aix-row-top">
+                          <strong>LAVORO</strong>
+                        </div>
+                        <div className="aix-row-bot">
+                          <button
+                            type="button"
+                            className="aix-create-btn"
+                            disabled={hasLinkedLavoro(p)}
+                            onClick={() => {
+                              if (selectedEvent.tipo === "segnalazione") {
+                                openCreateFromSegnalazione(p);
+                              } else {
+                                openCreateFromControllo(p);
+                              }
+                            }}
+                          >
+                            {hasLinkedLavoro(p) ? "GIÀ CREATO" : "CREA LAVORO"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {fotoList.length > 0 && (
                       <>
                         <div className="aix-row">
@@ -1032,6 +1256,98 @@ useEffect(() => {
               </div>
             );
           })()}
+        {createOpen && createFrom && (
+          <div className="aix-create-backdrop" onClick={() => setCreateOpen(false)}>
+            <div className="aix-create-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="aix-create-head">
+                <h3>Crea lavoro</h3>
+                <button
+                  type="button"
+                  className="aix-create-close"
+                  onClick={() => setCreateOpen(false)}
+                >
+                  X
+                </button>
+              </div>
+              <div className="aix-create-body">
+                <label className="aix-create-label">
+                  Descrizione
+                  <textarea
+                    className="aix-create-input"
+                    value={createDescrizione}
+                    onChange={(e) => setCreateDescrizione(e.target.value)}
+                  />
+                </label>
+                <label className="aix-create-label">
+                  Urgenza
+                  <select
+                    className="aix-create-select"
+                    value={createUrgenza}
+                    onChange={(e) =>
+                      setCreateUrgenza(e.target.value as "bassa" | "media" | "alta")
+                    }
+                  >
+                    <option value="bassa">Bassa</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </label>
+                <label className="aix-create-label">
+                  Target/Targa
+                  <input
+                    className="aix-create-input"
+                    value={createTarga}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCreateTarga(v);
+                      setCreateTipo(v.trim() ? "targa" : "magazzino");
+                    }}
+                    placeholder="Targa (opzionale)"
+                  />
+                </label>
+                <label className="aix-create-label">
+                  Note
+                  <textarea
+                    className="aix-create-input"
+                    value={createNote}
+                    onChange={(e) => setCreateNote(e.target.value)}
+                    placeholder="Opzionale"
+                  />
+                </label>
+                {createFrom.tipo === "controllo" &&
+                  String(createFrom.payload?.target ?? "").toLowerCase() ===
+                    "entrambi" &&
+                  fmtTarga(createFrom.payload?.targaCamion ?? "") &&
+                  fmtTarga(createFrom.payload?.targaRimorchio ?? "") && (
+                    <label className="aix-create-toggle">
+                      <input
+                        type="checkbox"
+                        checked={createAlsoRimorchio}
+                        onChange={(e) => setCreateAlsoRimorchio(e.target.checked)}
+                      />
+                      <span>Crea anche per rimorchio</span>
+                    </label>
+                  )}
+                <div className="aix-create-actions">
+                  <button
+                    type="button"
+                    className="aix-create-cancel"
+                    onClick={() => setCreateOpen(false)}
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    type="button"
+                    className="aix-create-confirm"
+                    onClick={confirmCreateLavoro}
+                  >
+                    Conferma
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {lightboxSrc && (
           <div className="aix-lightbox" onClick={() => setLightboxSrc(null)}>
             <button

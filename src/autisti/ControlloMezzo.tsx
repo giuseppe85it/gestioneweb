@@ -63,6 +63,8 @@ export default function ControlloMezzo() {
     if (raw === "motrice" || raw === "rimorchio" || raw === "entrambi") {
       t = raw as TargetControllo;
       setTargetLocked(true);
+    } else {
+      setTargetLocked(false);
     }
     if (t === "rimorchio" && !hasRimorchio) t = "motrice";
     if (t === "entrambi" && !(hasMotrice && hasRimorchio)) {
