@@ -588,7 +588,7 @@ useEffect(() => {
               Cambio mezzo
             </button>
             <button
-              onClick={() => handleTabClick("attrezzature")}
+              onClick={() => navigate("/autisti-inbox/richiesta-attrezzature")}
               style={
                 activeTab === "attrezzature"
                   ? { background: "#2e7d32", color: "#fff" }
@@ -787,8 +787,8 @@ useEffect(() => {
                 <h2>Richiesta attrezzature</h2>
                 <button
                   className="daily-more"
-                  disabled={richiesteAttrezzature.length <= 5}
-                  onClick={() => openModal("attrezzature")}
+                  type="button"
+                  onClick={() => navigate("/autisti-inbox/richiesta-attrezzature")}
                   title={richiesteAttrezzature.length <= 5 ? "Niente altro" : "Vedi tutto"}
                 >
                   Vedi tutto
