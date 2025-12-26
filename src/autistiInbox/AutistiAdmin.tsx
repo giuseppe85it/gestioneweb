@@ -9,7 +9,8 @@ import {
   type RimorchioStatus,
 } from "../utils/homeEvents";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { deleteObject, ref } from "firebase/storage";
+import { db, storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
@@ -20,6 +21,23 @@ const DOSSIER_RIFORNIMENTI_KEY = "@rifornimenti";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
+
+type LavoroTipo = "magazzino" | "targa";
+type LavoroUrgenza = "bassa" | "media" | "alta";
+
+type LavoroRecord = {
+  id: string;
+  gruppoId: string;
+  tipo: LavoroTipo;
+  targa: string;
+  descrizione: string;
+  dataInserimento: string;
+  eseguito: boolean;
+  urgenza: LavoroUrgenza;
+  segnalatoDa: string;
+  sottoElementi: any[];
+  source?: { type: string; id?: string | null; key?: string };
+};
 
 type TabKey =
   | "rifornimenti"
@@ -187,6 +205,7 @@ export default function AutistiAdmin() {
   const [adminEditNote, setAdminEditNote] = useState("");
   const [adminEditFotos, setAdminEditFotos] = useState<string[]>([]);
   const [adminEditFotoDataUrl, setAdminEditFotoDataUrl] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [canonEditOpen, setCanonEditOpen] = useState(false);
   const [canonEditId, setCanonEditId] = useState<string | null>(null);
   const [canonEditIndex, setCanonEditIndex] = useState<number | null>(null);
@@ -483,6 +502,58 @@ export default function AutistiAdmin() {
       toTs(record?.timestamp ?? record?.data ?? record?.adminEdit?.editedAt) ??
       0
     );
+  }
+
+  function fmtTarga(value?: string | null) {
+    return value ? String(value).toUpperCase().trim() : "";
+  }
+
+  function todayYmd() {
+    return new Date().toISOString().substring(0, 10);
+  }
+
+  function genId() {
+    const c: any = globalThis.crypto;
+    if (c?.randomUUID) return c.randomUUID();
+    return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  async function appendLavori(newItems: LavoroRecord[]) {
+    const raw = (await getItemSync("@lavori")) || [];
+    const list = Array.isArray(raw) ? raw : [];
+    const next = [...list, ...newItems];
+    await setItemSync("@lavori", next);
+    return next;
+  }
+
+  function getFotoList(record: any) {
+    const list: string[] = [];
+    if (Array.isArray(record?.foto)) {
+      for (const f of record.foto) {
+        if (typeof f === "string") list.push(f);
+        else if (f?.dataUrl) list.push(String(f.dataUrl));
+        else if (f?.url) list.push(String(f.url));
+      }
+    }
+    if (record?.fotoDataUrl) list.push(String(record.fotoDataUrl));
+    if (record?.fotoUrl) list.push(String(record.fotoUrl));
+    if (Array.isArray(record?.fotoUrls)) {
+      for (const u of record.fotoUrls) {
+        if (u) list.push(String(u));
+      }
+    }
+    return list;
+  }
+
+  function getFotoStoragePaths(record: any) {
+    const paths: string[] = [];
+    if (record?.fotoStoragePath) paths.push(String(record.fotoStoragePath));
+    if (Array.isArray(record?.fotoStoragePaths)) {
+      for (const p of record.fotoStoragePaths) {
+        if (p) paths.push(String(p));
+      }
+    }
+    return paths;
   }
 
   function toDateTimeLocal(ts: number) {
@@ -836,7 +907,7 @@ export default function AutistiAdmin() {
       dataOra: toDateTimeLocal(ts),
     });
     setAdminEditNote(String(base.adminEdit?.note ?? ""));
-    setAdminEditFotos(Array.isArray(base.foto) ? base.foto.slice() : []);
+    setAdminEditFotos(getFotoList(base));
     setAdminEditFotoDataUrl(base.fotoDataUrl ?? null);
     setAdminEditOpen(true);
   }
@@ -850,6 +921,7 @@ export default function AutistiAdmin() {
     setAdminEditNote("");
     setAdminEditFotos([]);
     setAdminEditFotoDataUrl(null);
+    setLightboxSrc(null);
   }
 
   function openCanonEdit(record: any) {
@@ -966,6 +1038,199 @@ export default function AutistiAdmin() {
 
   function removeSegnalazioneFoto(index: number) {
     setAdminEditFotos((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function deleteStoragePaths(paths: string[]) {
+    for (const path of paths) {
+      try {
+        await deleteObject(ref(storage, path));
+      } catch (err) {
+        console.error("Errore delete storage:", err);
+      }
+    }
+  }
+
+  async function deleteSegnalazione(record: any) {
+    const id = String(record?.id ?? "");
+    if (!id) return;
+    const confirmDelete = window.confirm("Eliminare questa segnalazione?");
+    if (!confirmDelete) return;
+
+    const raw = (await getItemSync(KEY_SEGNALAZIONI)) || [];
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.value)
+      ? raw.value
+      : [];
+    const updated = list.filter((r: any) => String(r?.id ?? "") !== id);
+    await setItemSync(KEY_SEGNALAZIONI, updated);
+    setSegnalazioniRaw(updated);
+    await deleteStoragePaths(getFotoStoragePaths(record));
+    if (adminEditOpen && adminEditId === id) closeAdminEdit();
+  }
+
+  async function deleteAttrezzature(record: any) {
+    const id = String(record?.id ?? "");
+    if (!id) return;
+    const confirmDelete = window.confirm("Eliminare questa richiesta?");
+    if (!confirmDelete) return;
+
+    const raw = (await getItemSync(KEY_RICHIESTE_ATTREZZATURE)) || [];
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.value)
+      ? raw.value
+      : [];
+    const updated = list.filter((r: any) => String(r?.id ?? "") !== id);
+    await setItemSync(KEY_RICHIESTE_ATTREZZATURE, updated);
+    await deleteStoragePaths(getFotoStoragePaths(record));
+    const e = await loadHomeEvents(day);
+    setEvents(e);
+    if (adminEditOpen && adminEditId === id) closeAdminEdit();
+  }
+
+  function hasLinkedLavoro(record: any) {
+    if (record?.linkedLavoroId) return true;
+    if (Array.isArray(record?.linkedLavoroIds) && record.linkedLavoroIds.length > 0) {
+      return true;
+    }
+    return false;
+  }
+
+  async function createLavoroFromSegnalazione(record: any) {
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Lavoro già creato per questa segnalazione.");
+      return;
+    }
+    if (!window.confirm("Creare un lavoro da questa segnalazione?")) return;
+
+    const targaRaw =
+      record?.targa ?? record?.targaCamion ?? record?.targaRimorchio ?? "";
+    const targa = fmtTarga(targaRaw);
+    const tipo: LavoroTipo = targa ? "targa" : "magazzino";
+    const tipoProblema = record?.tipoProblema ?? "";
+    const descr = record?.descrizione ?? "";
+    const descrizione = `Segnalazione: ${String(tipoProblema || "-")} - ${String(
+      descr || "-"
+    )}`;
+    const gruppoId = genId();
+    const id = genId();
+    const lavoro: LavoroRecord = {
+      id,
+      gruppoId,
+      tipo,
+      targa: tipo === "targa" ? targa : "",
+      descrizione,
+      dataInserimento: todayYmd(),
+      eseguito: false,
+      urgenza: record?.flagVerifica ? "alta" : "media",
+      segnalatoDa: String(record?.autistaNome ?? record?.badgeAutista ?? "autista"),
+      sottoElementi: [],
+      source: {
+        type: "segnalazione",
+        id: record?.id ?? null,
+        key: KEY_SEGNALAZIONI,
+      },
+    };
+
+    await appendLavori([lavoro]);
+
+    const raw = (await getItemSync(KEY_SEGNALAZIONI)) || [];
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.value)
+      ? raw.value
+      : [];
+    const updated = list.map((r: any) => {
+      if (String(r?.id ?? "") !== String(record?.id ?? "")) return r;
+      const next = { ...r, linkedLavoroId: id };
+      if ("stato" in r || r?.stato) next.stato = "presa_in_carico";
+      else next.letta = true;
+      return next;
+    });
+    await setItemSync(KEY_SEGNALAZIONI, updated);
+    setSegnalazioniRaw(updated);
+  }
+
+  async function createLavoroFromControllo(record: any) {
+    if (!record) return;
+    if (hasLinkedLavoro(record)) {
+      window.alert("Lavoro già creato per questo controllo.");
+      return;
+    }
+    const check = record?.check ?? {};
+    const koList = Object.entries(check)
+      .filter(([, v]) => v === false)
+      .map(([k]) => String(k).toUpperCase());
+    if (koList.length === 0) {
+      window.alert("Controllo OK: nessun lavoro da creare.");
+      return;
+    }
+
+    const target = String(record?.target ?? "").toLowerCase();
+    const targaMotrice = fmtTarga(record?.targaCamion ?? record?.targaMotrice ?? "");
+    const targaRimorchio = fmtTarga(record?.targaRimorchio ?? "");
+    const targhe: string[] = [];
+    if (target === "entrambi") {
+      if (targaMotrice) targhe.push(targaMotrice);
+      if (targaRimorchio) targhe.push(targaRimorchio);
+    } else if (target === "rimorchio") {
+      if (targaRimorchio) targhe.push(targaRimorchio);
+    } else {
+      if (targaMotrice) targhe.push(targaMotrice);
+    }
+    if (targhe.length === 0) {
+      window.alert("Targa non disponibile per questo controllo.");
+      return;
+    }
+    if (!window.confirm("Creare un lavoro da questo controllo?")) return;
+
+    const gruppoId = genId();
+    const descrizione = `Controllo KO: ${koList.join(", ")}`;
+    const urgenza: LavoroUrgenza =
+      koList.length > 1 || record?.obbligatorio === true ? "alta" : "media";
+    const segnalatoDa = String(record?.autistaNome ?? record?.badgeAutista ?? "autista");
+
+    const lavori = targhe.map((t) => ({
+      id: genId(),
+      gruppoId,
+      tipo: "targa" as const,
+      targa: t,
+      descrizione,
+      dataInserimento: todayYmd(),
+      eseguito: false,
+      urgenza,
+      segnalatoDa,
+      sottoElementi: [],
+      source: {
+        type: "controllo",
+        id: record?.id ?? null,
+        key: KEY_CONTROLLI,
+      },
+    }));
+
+    await appendLavori(lavori);
+
+    const raw = (await getItemSync(KEY_CONTROLLI)) || [];
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.value)
+      ? raw.value
+      : [];
+    const updated = list.map((r: any) => {
+      if (String(r?.id ?? "") !== String(record?.id ?? "")) return r;
+      const next: any = { ...r, letta: true };
+      if (lavori.length > 1) {
+        next.linkedLavoroIds = lavori.map((l) => l.id);
+        next.linkedMultiple = true;
+      } else {
+        next.linkedLavoroId = lavori[0].id;
+      }
+      return next;
+    });
+    await setItemSync(KEY_CONTROLLI, updated);
+    setControlliRaw(updated);
   }
 
   function normalizeValue(v: any) {
@@ -1532,6 +1797,8 @@ export default function AutistiAdmin() {
                 const ambito = String(r.ambito ?? r.target ?? "").toUpperCase() || "-";
                 const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
                 const badge = r.badgeAutista ?? "-";
+                const fotoList = getFotoList(r);
+                const hasLinked = hasLinkedLavoro(r);
                 return (
                   <div className={`row ${item.isNuova ? "pill-danger" : ""}`} key={item.key}>
                     <div className="row-left">
@@ -1559,15 +1826,46 @@ export default function AutistiAdmin() {
                             </>
                           ) : null}
                         </div>
+                        {fotoList.length > 0 ? (
+                          <div className="row-photos">
+                            {fotoList.slice(0, 3).map((src, idx) => (
+                              <button
+                                type="button"
+                                className="row-photo-thumb"
+                                key={`${item.key}_${idx}`}
+                                onClick={() => setLightboxSrc(src)}
+                              >
+                                <img src={src} alt="Foto segnalazione" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="edit"
-                      onClick={() => openAdminEdit("segnalazione", r, r.id)}
-                    >
-                      MODIFICA
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={() => openAdminEdit("segnalazione", r, r.id)}
+                      >
+                        MODIFICA
+                      </button>
+                      <button
+                        type="button"
+                        className="edit"
+                        disabled={hasLinked}
+                        onClick={() => createLavoroFromSegnalazione(r)}
+                      >
+                        CREA LAVORO
+                      </button>
+                      <button
+                        type="button"
+                        className="edit danger"
+                        onClick={() => deleteSegnalazione(r)}
+                      >
+                        ELIMINA
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -1621,6 +1919,7 @@ export default function AutistiAdmin() {
                 const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
                 const badge = r.badgeAutista ?? "-";
                 const koText = item.koList.length ? item.koList.join(", ") : "";
+                const hasLinked = hasLinkedLavoro(r);
                 return (
                   <div className={`row ${item.isKO ? "pill-danger" : ""}`} key={item.key}>
                     <div className="row-left">
@@ -1658,13 +1957,23 @@ export default function AutistiAdmin() {
                         </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="edit"
-                      onClick={() => openAdminEdit("controllo", r, r.id)}
-                    >
-                      MODIFICA
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={() => openAdminEdit("controllo", r, r.id)}
+                      >
+                        MODIFICA
+                      </button>
+                      <button
+                        type="button"
+                        className="edit"
+                        disabled={hasLinked}
+                        onClick={() => createLavoroFromControllo(r)}
+                      >
+                        CREA LAVORO
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -1698,6 +2007,7 @@ export default function AutistiAdmin() {
                 : e.tipo === "controllo"
                 ? "controllo"
                 : null;
+            const fotoList = isAttrezzature ? getFotoList(p) : [];
             return (
               <div className="row" key={e.id}>
                 <div className="row-left">
@@ -1749,17 +2059,42 @@ export default function AutistiAdmin() {
                         ) : null}
                       </div>
                     ) : null}
+                    {isAttrezzature && fotoList.length > 0 ? (
+                      <div className="row-photos">
+                        {fotoList.slice(0, 3).map((src, idx) => (
+                          <button
+                            type="button"
+                            className="row-photo-thumb"
+                            key={`att_foto_${e.id ?? "x"}_${idx}`}
+                            onClick={() => setLightboxSrc(src)}
+                          >
+                            <img src={src} alt="Foto richiesta" />
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
                 {editKind ? (
-                  <button
-                    type="button"
-                    className="edit"
-                    onClick={() => openAdminEdit(editKind, p, e.id)}
-                  >
-                    MODIFICA
-                  </button>
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      className="edit"
+                      onClick={() => openAdminEdit(editKind, p, e.id)}
+                    >
+                      MODIFICA
+                    </button>
+                    {editKind === "attrezzature" ? (
+                      <button
+                        type="button"
+                        className="edit danger"
+                        onClick={() => deleteAttrezzature({ ...p, id: p?.id ?? e.id })}
+                      >
+                        ELIMINA
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <button type="button" className="edit" disabled title="Step successivo">
                     MODIFICA
@@ -2139,35 +2474,30 @@ export default function AutistiAdmin() {
 
                   <div className="admin-edit-section">
                     <h4>Foto</h4>
-                    {adminEditKind === "segnalazione" && adminEditFotos.length > 0 ? (
+                    {(adminEditKind === "segnalazione" ||
+                      adminEditKind === "attrezzature") &&
+                    adminEditFotos.length > 0 ? (
                       <div className="admin-edit-photos">
                         {adminEditFotos.map((url, idx) => (
                           <div className="admin-edit-photo" key={`foto_${idx}`}>
-                            <img src={url} alt={`foto_${idx}`} />
                             <button
                               type="button"
-                              className="edit danger"
-                              onClick={() => removeSegnalazioneFoto(idx)}
+                              className="admin-photo-thumb"
+                              onClick={() => setLightboxSrc(url)}
                             >
-                              RIMUOVI
+                              <img src={url} alt={`foto_${idx}`} />
                             </button>
+                            {adminEditKind === "segnalazione" ? (
+                              <button
+                                type="button"
+                                className="edit danger"
+                                onClick={() => removeSegnalazioneFoto(idx)}
+                              >
+                                RIMUOVI
+                              </button>
+                            ) : null}
                           </div>
                         ))}
-                      </div>
-                    ) : null}
-
-                    {adminEditKind === "attrezzature" && adminEditFotoDataUrl ? (
-                      <div className="admin-edit-photos">
-                        <div className="admin-edit-photo">
-                          <img src={adminEditFotoDataUrl} alt="foto_attrezzature" />
-                          <button
-                            type="button"
-                            className="edit danger"
-                            onClick={() => setAdminEditFotoDataUrl(null)}
-                          >
-                            RIMUOVI
-                          </button>
-                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -2353,6 +2683,23 @@ export default function AutistiAdmin() {
             </div>
           </div>
         )}
+        {lightboxSrc ? (
+          <div className="admin-lightbox" onClick={() => setLightboxSrc(null)}>
+            <button
+              type="button"
+              className="admin-lightbox-close"
+              onClick={() => setLightboxSrc(null)}
+              aria-label="Chiudi"
+            >
+              X
+            </button>
+            <img
+              src={lightboxSrc}
+              alt="Foto"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

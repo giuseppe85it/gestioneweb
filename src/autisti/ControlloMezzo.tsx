@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import "./autisti.css";
 import "./ControlloMezzo.css";
@@ -26,6 +26,9 @@ export default function ControlloMezzo() {
   const [mezzo, setMezzo] = useState<any>(null);
 
   const [note, setNote] = useState("");
+  const [targetSelezionato, setTargetSelezionato] = useState<TargetControllo>("motrice");
+  const [targetLocked, setTargetLocked] = useState(false);
+  const [targetInitialized, setTargetInitialized] = useState(false);
 
   const [check, setCheck] = useState({
     gomme: true,
@@ -51,15 +54,23 @@ export default function ControlloMezzo() {
     setMezzo(m);
   }, [navigate]);
 
-  const target: TargetControllo = useMemo(() => {
+  useEffect(() => {
+    if (!mezzo || targetInitialized) return;
     const raw = (searchParams.get("target") || "").toLowerCase();
-
-    let t: TargetControllo = mezzo?.targaRimorchio ? "entrambi" : "motrice";
-    if (raw === "motrice" || raw === "rimorchio" || raw === "entrambi") t = raw as TargetControllo;
-
-    if (t === "rimorchio" && !mezzo?.targaRimorchio) t = "motrice";
-    return t;
-  }, [searchParams, mezzo]);
+    const hasMotrice = !!mezzo?.targaCamion;
+    const hasRimorchio = !!mezzo?.targaRimorchio;
+    let t: TargetControllo = hasMotrice ? "motrice" : "rimorchio";
+    if (raw === "motrice" || raw === "rimorchio" || raw === "entrambi") {
+      t = raw as TargetControllo;
+      setTargetLocked(true);
+    }
+    if (t === "rimorchio" && !hasRimorchio) t = "motrice";
+    if (t === "entrambi" && !(hasMotrice && hasRimorchio)) {
+      t = hasRimorchio ? "rimorchio" : "motrice";
+    }
+    setTargetSelezionato(t);
+    setTargetInitialized(true);
+  }, [mezzo, searchParams, targetInitialized]);
 
   function toggle(key: keyof typeof check) {
     setCheck((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -67,6 +78,17 @@ export default function ControlloMezzo() {
 
   async function salva() {
     if (!autista || !mezzo) return;
+    if (targetSelezionato === "rimorchio" && !mezzo.targaRimorchio) {
+      alert("Seleziona un rimorchio valido.");
+      return;
+    }
+    if (
+      targetSelezionato === "entrambi" &&
+      (!mezzo.targaCamion || !mezzo.targaRimorchio)
+    ) {
+      alert("Per 'entrambi' servono motrice e rimorchio.");
+      return;
+    }
 
     const storicoRaw = (await getItemSync(CONTROLLI_KEY)) || [];
     const storico = Array.isArray(storicoRaw) ? storicoRaw : [];
@@ -80,7 +102,7 @@ export default function ControlloMezzo() {
       targaRimorchio: mezzo.targaRimorchio || null,
 
       // fondamentale per capire cosa hai controllato
-      target,
+      target: targetSelezionato,
 
       check,
       note: note || null,
@@ -98,15 +120,56 @@ export default function ControlloMezzo() {
       <h1>CONTROLLO MEZZO</h1>
       <p className="cmz-subtitle">Verifica iniziale obbligatoria prima di iniziare il lavoro</p>
 
-     <p className="cmz-subtitle" style={{ marginTop: 6, fontWeight: 900 }}>
-  {target.toUpperCase()}
-</p>
+      <div className="cmz-target">
+        <div className="cmz-target-question">
+          Stai controllando: MOTRICE o RIMORCHIO?
+        </div>
+        <div className="cmz-target-row">
+          <button
+            type="button"
+            className={`cmz-target-btn ${targetSelezionato === "motrice" ? "active" : ""}`}
+            onClick={() => setTargetSelezionato("motrice")}
+            disabled={targetLocked}
+          >
+            MOTRICE
+          </button>
+          {mezzo?.targaRimorchio ? (
+            <button
+              type="button"
+              className={`cmz-target-btn ${targetSelezionato === "rimorchio" ? "active" : ""}`}
+              onClick={() => setTargetSelezionato("rimorchio")}
+              disabled={targetLocked}
+            >
+              RIMORCHIO
+            </button>
+          ) : null}
+        </div>
+        {mezzo?.targaCamion && mezzo?.targaRimorchio ? (
+          <button
+            type="button"
+            className={`cmz-target-btn cmz-target-btn-small ${
+              targetSelezionato === "entrambi" ? "active" : ""
+            }`}
+            onClick={() => setTargetSelezionato("entrambi")}
+            disabled={targetLocked}
+          >
+            ENTRAMBI
+          </button>
+        ) : null}
+      </div>
 
 
       {mezzo && (
         <div className="cmz-targhe">
           {mezzo.targaCamion && <div className="cmz-targa">{mezzo.targaCamion}</div>}
           {mezzo.targaRimorchio && <div className="cmz-targa secondaria">{mezzo.targaRimorchio}</div>}
+          <div className="cmz-target-summary">
+            {targetSelezionato === "rimorchio"
+              ? `Target: RIMORCHIO (TARGA ${mezzo.targaRimorchio || "-"})`
+              : targetSelezionato === "entrambi"
+              ? `Target: ENTRAMBI (MOTRICE ${mezzo.targaCamion || "-"}, RIMORCHIO ${mezzo.targaRimorchio || "-"})`
+              : `Target: MOTRICE (TARGA ${mezzo.targaCamion || "-"})`}
+          </div>
         </div>
       )}
 

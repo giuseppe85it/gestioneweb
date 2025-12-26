@@ -48,6 +48,7 @@ useEffect(() => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("rifornimenti");
   const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
   const [showJson, setShowJson] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [mezziByTarga, setMezziByTarga] = useState<Record<string, string>>({});
 
   const rifornimentiRef = useRef<HTMLDivElement | null>(null);
@@ -133,6 +134,7 @@ useEffect(() => {
 
   function closeDetails() {
     setSelectedEvent(null);
+    setLightboxSrc(null);
   }
 
   useEffect(() => {
@@ -991,18 +993,18 @@ useEffect(() => {
                         </div>
                         <div className="aix-row">
                           <div className="aix-row-bot">
-                            {fotoList.map((src, index) => (
-                              <img
-                                key={`foto-${index}`}
-                                src={src}
-                                alt="Foto"
-                                style={{
-                                  maxWidth: "100%",
-                                  borderRadius: 8,
-                                  marginTop: 8,
-                                }}
-                              />
-                            ))}
+                            <div className="aix-photo-grid">
+                              {fotoList.map((src, index) => (
+                                <button
+                                  type="button"
+                                  key={`foto-${index}`}
+                                  className="aix-photo-thumb"
+                                  onClick={() => setLightboxSrc(src)}
+                                >
+                                  <img src={src} alt="Foto" />
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </>
@@ -1030,6 +1032,23 @@ useEffect(() => {
               </div>
             );
           })()}
+        {lightboxSrc && (
+          <div className="aix-lightbox" onClick={() => setLightboxSrc(null)}>
+            <button
+              type="button"
+              className="aix-lightbox-close"
+              onClick={() => setLightboxSrc(null)}
+              aria-label="Chiudi"
+            >
+              X
+            </button>
+            <img
+              src={lightboxSrc}
+              alt="Foto"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

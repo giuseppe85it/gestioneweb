@@ -15,6 +15,9 @@ type RichiestaAttrezzatureRecord = {
   stato?: string | null;
   letta?: boolean | null;
   fotoDataUrl?: string | null;
+  fotoUrl?: string | null;
+  fotoUrls?: string[] | null;
+  foto?: Array<{ dataUrl?: string; url?: string } | string> | null;
 };
 
 function formatDateTime(ts?: number | null) {
@@ -28,10 +31,30 @@ function formatDateTime(ts?: number | null) {
   });
 }
 
+function getFotoList(r: RichiestaAttrezzatureRecord) {
+  const list: string[] = [];
+  if (Array.isArray(r?.foto)) {
+    for (const f of r.foto) {
+      if (typeof f === "string") list.push(f);
+      else if (f?.dataUrl) list.push(String(f.dataUrl));
+      else if (f?.url) list.push(String(f.url));
+    }
+  }
+  if (r?.fotoDataUrl) list.push(String(r.fotoDataUrl));
+  if (r?.fotoUrl) list.push(String(r.fotoUrl));
+  if (Array.isArray(r?.fotoUrls)) {
+    for (const u of r.fotoUrls) {
+      if (u) list.push(String(u));
+    }
+  }
+  return list;
+}
+
 export default function RichiestaAttrezzatureAll() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<RichiestaAttrezzatureRecord[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -55,6 +78,7 @@ export default function RichiestaAttrezzatureAll() {
       const statoRaw = typeof r.stato === "string" ? r.stato : "";
       const letta = typeof r.letta === "boolean" ? r.letta : true;
       const isNuova = statoRaw.toLowerCase() === "nuova" || letta === false;
+      const fotoList = getFotoList(r);
       return {
         key: String(r.id ?? `${ts}-${index}`),
         ts,
@@ -63,7 +87,8 @@ export default function RichiestaAttrezzatureAll() {
         testo: r.testo ?? "-",
         stato: statoRaw || "-",
         isNuova,
-        foto: !!r.fotoDataUrl,
+        fotoList,
+        fotoCount: fotoList.length,
       };
     });
 
@@ -122,7 +147,7 @@ export default function RichiestaAttrezzatureAll() {
                       >
                         {item.isNuova ? "NUOVA" : item.stato}
                       </span>
-                      {item.foto ? (
+                      {item.fotoCount > 0 ? (
                         <span className="richiesta-badge badge-foto">FOTO</span>
                       ) : null}
                     </div>
@@ -131,6 +156,20 @@ export default function RichiestaAttrezzatureAll() {
                     </div>
                     <div className="richiesta-row-text">{item.testo}</div>
                   </button>
+                  {item.fotoCount > 0 ? (
+                    <div className="richiesta-photo-grid">
+                      {item.fotoList.slice(0, 3).map((src, idx) => (
+                        <button
+                          key={`foto_${item.key}_${idx}`}
+                          type="button"
+                          className="richiesta-photo-thumb"
+                          onClick={() => setLightboxSrc(src)}
+                        >
+                          <img src={src} alt="Foto richiesta" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   {isOpen ? (
                     <div className="richiesta-row-detail">
                       <div>
@@ -140,7 +179,8 @@ export default function RichiestaAttrezzatureAll() {
                         <strong>Testo:</strong> {item.testo}
                       </div>
                       <div>
-                        <strong>Foto:</strong> {item.foto ? "presente" : "nessuna"}
+                        <strong>Foto:</strong>{" "}
+                        {item.fotoCount > 0 ? `${item.fotoCount} presenti` : "nessuna"}
                       </div>
                     </div>
                   ) : null}
@@ -150,6 +190,23 @@ export default function RichiestaAttrezzatureAll() {
           </div>
         )}
       </div>
+      {lightboxSrc ? (
+        <div className="richiesta-lightbox" onClick={() => setLightboxSrc(null)}>
+          <button
+            type="button"
+            className="richiesta-lightbox-close"
+            onClick={() => setLightboxSrc(null)}
+            aria-label="Chiudi"
+          >
+            X
+          </button>
+          <img
+            src={lightboxSrc}
+            alt="Foto richiesta"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

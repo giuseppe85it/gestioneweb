@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import "./AutistiSegnalazioniAll.css";
@@ -28,6 +28,8 @@ type SegnalazioneView = SegnalazioneRecord & {
   ts: number;
   targaLabel: string;
   ambitoLabel: string;
+  ambito?: string | null;
+  fotoList: string[];
   fotoCount: number;
 };
 
@@ -52,6 +54,24 @@ function buildTargaLabel(r: SegnalazioneRecord) {
   return String(targa || "-");
 }
 
+function getFotoList(r: SegnalazioneRecord) {
+  const list: string[] = [];
+  if (Array.isArray(r?.foto)) {
+    for (const f of r.foto) {
+      if (typeof f === "string") list.push(f);
+      else if (f?.dataUrl) list.push(String(f.dataUrl));
+      else if (f?.url) list.push(String(f.url));
+    }
+  }
+  if (r?.fotoUrl) list.push(String(r.fotoUrl));
+  if (Array.isArray(r?.fotoUrls)) {
+    for (const u of r.fotoUrls) {
+      if (u) list.push(String(u));
+    }
+  }
+  return list;
+}
+
 export default function AutistiSegnalazioniAll() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<SegnalazioneRecord[]>([]);
@@ -59,6 +79,7 @@ export default function AutistiSegnalazioniAll() {
   const [filterAmbito, setFilterAmbito] = useState<"tutti" | "motrice" | "rimorchio">("tutti");
   const [onlyNuove, setOnlyNuove] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -79,7 +100,7 @@ export default function AutistiSegnalazioniAll() {
 
   const filtered = useMemo(() => {
     const key = normTarga(filterTarga);
-    const items: SegnalazioneView[] = records.map((r) => {
+    const items: SegnalazioneView[] = records.map((r: SegnalazioneRecord) => {
       const ts =
         typeof r.data === "number"
           ? r.data
@@ -87,20 +108,16 @@ export default function AutistiSegnalazioniAll() {
           ? r.timestamp
           : 0;
       const isNuova = r.stato === "nuova" || r.letta === false;
-      const fotoCount = Array.isArray(r.fotoUrls)
-        ? r.fotoUrls.length
-        : Array.isArray(r.foto)
-        ? r.foto.length
-        : r.fotoUrl
-        ? 1
-        : 0;
+      const fotoList = getFotoList(r);
+      const fotoCount = fotoList.length;
       const ambito = String(r.ambito ?? "").toLowerCase();
       return {
         ...r,
         isNuova,
         ts,
         targaLabel: buildTargaLabel(r),
-        ambitoLabel: ambito ? ambito.toUpperCase() : "—",
+        ambitoLabel: ambito ? ambito.toUpperCase() : "-",
+        fotoList,
         fotoCount,
       };
     });
@@ -175,7 +192,7 @@ export default function AutistiSegnalazioniAll() {
             {filtered.length === 0 ? (
               <div className="aix-empty">Nessuna segnalazione disponibile.</div>
             ) : (
-              filtered.map((r, index) => {
+              filtered.map((r: SegnalazioneView, index: number) => {
                 const autista = r.autistaNome ?? "-";
                 const badge = r.badgeAutista ? `(${r.badgeAutista})` : "";
                 const isOpen = openId === String(r.id ?? `seg_${index}`);
@@ -207,9 +224,26 @@ export default function AutistiSegnalazioniAll() {
                       <span className="aix-foto">Foto: {r.fotoCount}</span>
                     </div>
                     <div className="aix-row-bot">
-                      <span className="aix-tipo">{r.tipoProblema ?? "—"}</span>
-                      <span className="aix-desc">{r.descrizione ?? "—"}</span>
+                      <span className="aix-tipo">{r.tipoProblema ?? "-"}</span>
+                      <span className="aix-desc">{r.descrizione ?? "-"}</span>
                     </div>
+                    {r.fotoList.length > 0 ? (
+                      <div className="aix-photo-grid">
+                        {r.fotoList.slice(0, 3).map((src: string, idx: number) => (
+                          <button
+                            type="button"
+                            key={`${r.id ?? `seg_${index}`}_${idx}`}
+                            className="aix-photo-thumb"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLightboxSrc(src);
+                            }}
+                          >
+                            <img src={src} alt="Foto segnalazione" />
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     {isOpen && (
                       <div className="aix-row-detail">
                         {r.note ? <div>Note: {r.note}</div> : null}
@@ -223,6 +257,25 @@ export default function AutistiSegnalazioniAll() {
           </div>
         </div>
       </div>
+      {lightboxSrc ? (
+        <div className="aix-lightbox" onClick={() => setLightboxSrc(null)}>
+          <button
+            type="button"
+            className="aix-lightbox-close"
+            onClick={() => setLightboxSrc(null)}
+            aria-label="Chiudi"
+          >
+            X
+          </button>
+          <img
+            src={lightboxSrc}
+            alt="Foto segnalazione"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
+
+

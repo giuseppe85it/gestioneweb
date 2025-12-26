@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
+import "./RichiestaAttrezzature.css";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
@@ -163,82 +164,89 @@ export default function RichiestaAttrezzature() {
   if (!autista || !mezzo) return null;
 
   return (
-    <div className="autisti-container richiesta-attrezzature-page">
-      <div className="richiesta-header">
-        <button
-          className="autisti-button secondary richiesta-back"
-          type="button"
-          onClick={() => navigate("/autisti/home")}
-        >
-          Indietro
-        </button>
-        <h1 className="autisti-title">Richiesta attrezzature</h1>
-      </div>
-
-      <div className="richiesta-meta">
-        <div>
-          <strong>Motrice:</strong> {mezzo?.targaCamion || "-"}
+    <div className="richiesta-page">
+      <div className="autisti-container richiesta-container">
+        <div className="richiesta-header">
+          <button
+            className="richiesta-back"
+            type="button"
+            onClick={() => navigate("/autisti/home")}
+          >
+            INDIETRO
+          </button>
+          <h1 className="richiesta-title">Richiesta attrezzature</h1>
         </div>
-        <div>
-          <strong>Rimorchio:</strong> {mezzo?.targaRimorchio || "-"}
-        </div>
-        <div>
-          <strong>Autista:</strong> {autista?.nome || "-"}
-        </div>
-      </div>
 
-      <label className="richiesta-label" htmlFor="richiesta-testo">
-        Messaggio
-      </label>
-      <textarea
-        id="richiesta-testo"
-        className="richiesta-textarea"
-        value={testo}
-        onChange={(e) => setTesto(e.target.value)}
-        placeholder="Cosa ti serve?"
-      />
-
-      <div className="richiesta-foto">
-        <label className="autisti-button secondary richiesta-foto-btn">
-          Aggiungi foto
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFoto}
-            style={{ display: "none" }}
-          />
-        </label>
-
-        {fotoUploading ? (
-          <div style={{ marginTop: 8, fontSize: 13 }}>Caricamento foto...</div>
-        ) : null}
-
-        {fotoUrl && (
-          <div className="richiesta-foto-preview">
-            <img src={fotoUrl} alt="foto" />
-            <button
-              className="autisti-button secondary"
-              type="button"
-              onClick={handleRemoveFoto}
-              disabled={fotoUploading}
-            >
-              Rimuovi foto
-            </button>
+        <div className="richiesta-section richiesta-meta">
+          <div className="richiesta-meta-row">
+            <strong>Motrice:</strong> {mezzo?.targaCamion || "-"}
           </div>
-        )}
+          <div className="richiesta-meta-row">
+            <strong>Rimorchio:</strong> {mezzo?.targaRimorchio || "-"}
+          </div>
+          <div className="richiesta-meta-row">
+            <strong>Autista:</strong> {autista?.nome || "-"}
+          </div>
+        </div>
+
+        <div className="richiesta-section">
+          <label className="richiesta-label" htmlFor="richiesta-testo">
+            Messaggio
+          </label>
+          <textarea
+            id="richiesta-testo"
+            className="richiesta-textarea"
+            value={testo}
+            onChange={(e) => setTesto(e.target.value)}
+            placeholder="Cosa ti serve?"
+          />
+        </div>
+
+        <div className="richiesta-section">
+          <div className="richiesta-label">Foto (opzionale)</div>
+          <label className="richiesta-photo-btn">
+            Aggiungi foto
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFoto}
+              style={{ display: "none" }}
+            />
+          </label>
+
+          {fotoUploading ? (
+            <div className="richiesta-uploading">Caricamento foto...</div>
+          ) : null}
+
+          {fotoUrl && (
+            <div className="richiesta-photo-preview">
+              <img src={fotoUrl} alt="foto" />
+              <button
+                className="autisti-button secondary"
+                type="button"
+                onClick={handleRemoveFoto}
+                disabled={fotoUploading}
+              >
+                Rimuovi foto
+              </button>
+            </div>
+          )}
+        </div>
+
+        {errore && <div className="richiesta-errore">{errore}</div>}
+
+        <button
+          className="autisti-button richiesta-submit"
+          type="button"
+          onClick={invia}
+          disabled={loading}
+        >
+          {loading ? "INVIO..." : "INVIA RICHIESTA"}
+        </button>
       </div>
-
-      {errore && <div className="richiesta-errore">{errore}</div>}
-
-      <button
-        className="autisti-button richiesta-submit"
-        type="button"
-        onClick={invia}
-        disabled={loading}
-      >
-        {loading ? "INVIO..." : "INVIA RICHIESTA"}
-      </button>
     </div>
   );
 }
+
+
