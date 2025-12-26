@@ -10,9 +10,12 @@ import { getItemSync, setItemSync } from "../utils/storageSync";
 import {
   clearLastHandledRevokedAt,
   getAutistaLocal,
+  getLastHandledRevokedAt,
   getMezzoLocal,
   removeAutistaLocal,
   removeMezzoLocal,
+  saveMezzoLocal,
+  setLastHandledRevokedAt,
 } from "./autistiStorage";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
@@ -22,6 +25,125 @@ export default function HomeAutista() {
 
   const [autista, setAutista] = useState<any>(null);
   const [mezzo, setMezzo] = useState<any>(null);
+
+  // ======================================================
+  // REVOCHE + COERENZA LIVE/LOCALE
+  // ======================================================
+  useEffect(() => {
+    let cancelled = false;
+    let intervalId: number | null = null;
+
+    async function checkRevocaAndCoerenza() {
+      if (cancelled) return;
+      const a = getAutistaLocal();
+      if (!a?.badge) return;
+      const m = getMezzoLocal();
+
+      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+      const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+      const badgeKey = String(a.badge).trim();
+      const sessioneLive = sessioni.find(
+        (s: any) => String(s?.badgeAutista ?? s?.badge ?? "").trim() === badgeKey
+      );
+      if (!sessioneLive) return;
+
+      const revokedAt =
+        typeof sessioneLive?.revoked?.at === "number" ? sessioneLive.revoked.at : 0;
+      const lastHandled = getLastHandledRevokedAt(badgeKey);
+      if (revokedAt && revokedAt > lastHandled) {
+        const scope = String(sessioneLive?.revoked?.scope ?? "TUTTO");
+        const by = String(sessioneLive?.revoked?.by ?? "ADMIN");
+        const reason = String(sessioneLive?.revoked?.reason ?? "");
+        if (scope === "RIMORCHIO") {
+          if (m?.targaCamion) {
+            const updated = { ...m, targaRimorchio: null };
+            saveMezzoLocal(updated);
+            setMezzo(updated);
+          } else {
+            removeMezzoLocal();
+            setMezzo(null);
+          }
+        } else if (scope === "MOTRICE") {
+          if (m?.targaRimorchio) {
+            const updated = { ...m, targaCamion: null };
+            saveMezzoLocal(updated);
+            setMezzo(updated);
+          } else {
+            removeMezzoLocal();
+            setMezzo(null);
+          }
+        } else {
+          removeMezzoLocal();
+          setMezzo(null);
+        }
+
+        setLastHandledRevokedAt(badgeKey, revokedAt);
+        const scopeLabel =
+          scope === "MOTRICE" ? "motrice" : scope === "RIMORCHIO" ? "rimorchio" : "tutto";
+        const reasonText = reason ? ` Motivo: ${reason}` : "";
+        window.alert(`Sessione revocata (${scopeLabel}) da ${by}.${reasonText}`);
+
+        if (scope === "TUTTO") {
+          navigate("/autisti/setup-mezzo", { replace: true });
+          return;
+        }
+
+        const mode = scope === "MOTRICE" ? "motrice" : "rimorchio";
+        navigate(`/autisti/setup-mezzo?mode=${encodeURIComponent(mode)}`, { replace: true });
+        return;
+      }
+
+      const liveMotrice = sessioneLive?.targaMotrice ?? null;
+      const liveRimorchio = sessioneLive?.targaRimorchio ?? null;
+
+      if (!liveMotrice && m?.targaCamion) {
+        const updated = { ...m, targaCamion: null };
+        if (updated.targaRimorchio) {
+          saveMezzoLocal(updated);
+          setMezzo(updated);
+        } else {
+          removeMezzoLocal();
+          setMezzo(null);
+        }
+        window.alert("Motrice revocata da admin: reimposta la motrice.");
+        navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
+        return;
+      }
+
+      if (!liveRimorchio && m?.targaRimorchio) {
+        const updated = { ...m, targaRimorchio: null };
+        if (updated.targaCamion) {
+          saveMezzoLocal(updated);
+          setMezzo(updated);
+        } else {
+          removeMezzoLocal();
+          setMezzo(null);
+        }
+        window.alert("Rimorchio revocato da admin: reimposta il rimorchio.");
+        navigate("/autisti/setup-mezzo?mode=rimorchio", { replace: true });
+      }
+    }
+
+    checkRevocaAndCoerenza();
+    const onFocus = () => {
+      checkRevocaAndCoerenza();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") checkRevocaAndCoerenza();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    intervalId = window.setInterval(() => {
+      checkRevocaAndCoerenza();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [navigate]);
 
   // ======================================================
   // LOAD SESSIONE (SOLO LOCALE)
