@@ -48,16 +48,17 @@ import Rifornimento from "./autisti/Rifornimento";
 import ControlloMezzo from "./autisti/ControlloMezzo";
 import Segnalazioni from "./autisti/Segnalazioni";
 import CambioMezzoAutista from "./autisti/CambioMezzoAutista";
-import AutistiControlliAll from "./autisti/AutistiControlliAll";
-import AutistiSegnalazioniAll from "./autisti/AutistiSegnalazioniAll";
 import AutistiGate from "./autisti/AutistiGate";
 import RichiestaAttrezzature from "./autisti/RichiestaAttrezzature";
+
 
 /* ==================== AUTISTI INBOX (ADMIN) ==================== */
 import AutistiInboxHome from "./autistiInbox/AutistiInboxHome";
 import CambioMezzoInbox from "./autistiInbox/CambioMezzoInbox";
 import AutistiAdmin from "./autistiInbox/AutistiAdmin";
-
+import AutistiControlliAll from "./autistiInbox/AutistiControlliAll";
+import AutistiSegnalazioniAll from "./autistiInbox/AutistiSegnalazioniAll";
+import RichiestaAttrezzatureAll from "./autistiInbox/RichiestaAttrezzatureAll";
 function App() {
   const [authReady, setAuthReady] = useState(false);
 
@@ -136,6 +137,10 @@ function App() {
 <Route  path="/autisti-inbox/cambio-mezzo"  element={<CambioMezzoInbox />}/>
 <Route path="/autisti-inbox/controlli" element={<AutistiControlliAll />} />
 <Route path="/autisti-inbox/segnalazioni" element={<AutistiSegnalazioniAll />} />
+<Route
+  path="/autisti-inbox/richiesta-attrezzature"
+  element={<RichiestaAttrezzatureAll />}
+/>
 <Route path="/autisti-admin" element={<AutistiAdmin />} />
 
 

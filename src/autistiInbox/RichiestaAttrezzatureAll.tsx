@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
+import "./RichiestaAttrezzatureAll.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
+import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
 
 const KEY_RICHIESTE = "@richieste_attrezzature_autisti_tmp";
 
@@ -71,19 +72,20 @@ export default function RichiestaAttrezzature() {
 
     setLoading(true);
 
+    const now = Date.now();
     const record = {
       id: genId(),
       testo: msg,
 
-      autistaNome: autista?.nome || null,
-      badgeAutista: autista?.badge || null,
+      autistaNome: autista?.nome ?? null,
+      badgeAutista: autista?.badge ?? null,
 
-      targaCamion: mezzo?.targaCamion || null,
-      targaRimorchio: mezzo?.targaRimorchio || null,
+      targaCamion: mezzo?.targaCamion ?? null,
+      targaRimorchio: mezzo?.targaRimorchio ?? null,
 
-      fotoDataUrl: fotoDataUrl || null,
+      fotoDataUrl: fotoDataUrl ?? null,
 
-      timestamp: Date.now(),
+      timestamp: now,
       stato: "nuova",
       letta: false,
     };
@@ -93,6 +95,9 @@ export default function RichiestaAttrezzature() {
       const next = Array.isArray(current) ? [...current, record] : [record];
       await setItemSync(KEY_RICHIESTE, next);
 
+      setTesto("");
+      setFotoDataUrl(null);
+      window.alert("Richiesta inviata");
       setLoading(false);
       navigate("/autisti/home", { replace: true });
     } catch {
@@ -104,31 +109,44 @@ export default function RichiestaAttrezzature() {
   if (!autista || !mezzo) return null;
 
   return (
-    <div className="autisti-container">
-      <h1 className="autisti-title">Cosa ti serve?</h1>
-
-      <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 10 }}>
-        {mezzo?.targaCamion ? `Motrice: ${mezzo.targaCamion}` : ""}{" "}
-        {mezzo?.targaRimorchio ? `• Rimorchio: ${mezzo.targaRimorchio}` : ""}{" "}
-        {autista?.nome ? `• Autista: ${autista.nome}` : ""}
+    <div className="autisti-container richiesta-attrezzature-page">
+      <div className="richiesta-header">
+        <button
+          className="autisti-button secondary richiesta-back"
+          type="button"
+          onClick={() => navigate("/autisti/home")}
+        >
+          Indietro
+        </button>
+        <h1 className="autisti-title">Richiesta attrezzature</h1>
       </div>
 
+      <div className="richiesta-meta">
+        <div>
+          <strong>Motrice:</strong> {mezzo?.targaCamion || "-"}
+        </div>
+        <div>
+          <strong>Rimorchio:</strong> {mezzo?.targaRimorchio || "-"}
+        </div>
+        <div>
+          <strong>Autista:</strong> {autista?.nome || "-"}
+        </div>
+      </div>
+
+      <label className="richiesta-label" htmlFor="richiesta-testo">
+        Messaggio
+      </label>
       <textarea
+        id="richiesta-testo"
+        className="richiesta-textarea"
         value={testo}
         onChange={(e) => setTesto(e.target.value)}
-        placeholder="Scrivi semplice: cosa ti serve, quantità, dove sei."
-        style={{
-          width: "100%",
-          minHeight: 160,
-          fontSize: 18,
-          padding: 12,
-          borderRadius: 12,
-        }}
+        placeholder="Cosa ti serve?"
       />
 
-      <div style={{ marginTop: 12 }}>
-        <label className="autisti-button secondary" style={{ display: "inline-block" }}>
-          + FOTO (OPZIONALE)
+      <div className="richiesta-foto">
+        <label className="autisti-button secondary richiesta-foto-btn">
+          Aggiungi foto
           <input
             type="file"
             accept="image/*"
@@ -139,27 +157,28 @@ export default function RichiestaAttrezzature() {
         </label>
 
         {fotoDataUrl && (
-          <div style={{ marginTop: 10 }}>
-            <img src={fotoDataUrl} alt="foto" style={{ width: "100%", borderRadius: 12 }} />
+          <div className="richiesta-foto-preview">
+            <img src={fotoDataUrl} alt="foto" />
             <button
               className="autisti-button secondary"
-              style={{ marginTop: 8 }}
+              type="button"
               onClick={() => setFotoDataUrl(null)}
             >
-              RIMUOVI FOTO
+              Rimuovi foto
             </button>
           </div>
         )}
       </div>
 
-      {errore && <div style={{ marginTop: 10, color: "crimson", fontWeight: 700 }}>{errore}</div>}
+      {errore && <div className="richiesta-errore">{errore}</div>}
 
-      <button className="autisti-button" style={{ marginTop: 14 }} onClick={invia} disabled={loading}>
+      <button
+        className="autisti-button richiesta-submit"
+        type="button"
+        onClick={invia}
+        disabled={loading}
+      >
         {loading ? "INVIO..." : "INVIA RICHIESTA"}
-      </button>
-
-      <button className="autisti-button secondary" style={{ marginTop: 10 }} onClick={() => navigate("/autisti/home")}>
-        Indietro
       </button>
     </div>
   );
