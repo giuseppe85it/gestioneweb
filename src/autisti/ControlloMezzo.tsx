@@ -60,9 +60,12 @@ export default function ControlloMezzo() {
     const hasMotrice = !!mezzo?.targaCamion;
     const hasRimorchio = !!mezzo?.targaRimorchio;
     let t: TargetControllo = hasMotrice ? "motrice" : "rimorchio";
-    if (raw === "motrice" || raw === "rimorchio" || raw === "entrambi") {
+    if (raw === "motrice" || raw === "rimorchio") {
       t = raw as TargetControllo;
       setTargetLocked(true);
+    } else if (raw === "entrambi") {
+      t = raw as TargetControllo;
+      setTargetLocked(false);
     } else {
       setTargetLocked(false);
     }
