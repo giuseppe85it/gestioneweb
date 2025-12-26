@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
+import "./RichiestaAttrezzature.css";
+import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal } from "./autistiStorage";
 
@@ -19,7 +22,10 @@ export default function RichiestaAttrezzature() {
   const [mezzo, setMezzo] = useState<any>(null);
 
   const [testo, setTesto] = useState("");
-  const [fotoDataUrl, setFotoDataUrl] = useState<string | null>(null);
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [fotoStoragePath, setFotoStoragePath] = useState<string | null>(null);
+  const [recordId, setRecordId] = useState<string | null>(null);
+  const [fotoUploading, setFotoUploading] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
@@ -46,22 +52,68 @@ export default function RichiestaAttrezzature() {
     if (!file) return;
 
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Errore lettura foto"));
-        r.readAsDataURL(file);
-      });
-      setFotoDataUrl(dataUrl);
-    } catch {
+      setErrore(null);
+
+      const nextId = recordId ?? genId();
+      if (!recordId) setRecordId(nextId);
+
+      const ts = Date.now();
+      const extFromName = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const extFromType = file.type.includes("png")
+        ? "png"
+        : file.type.includes("jpeg")
+        ? "jpg"
+        : file.type.includes("webp")
+        ? "webp"
+        : extFromName;
+      const safeExt = ["jpg", "jpeg", "png", "webp"].includes(extFromType)
+        ? extFromType
+        : "jpg";
+      const path = `autisti/richieste-attrezzature/${nextId}/${ts}.${safeExt}`;
+
+      setFotoUploading(true);
+      if (fotoStoragePath) {
+        try {
+          await deleteObject(ref(storage, fotoStoragePath));
+        } catch (err) {
+          console.error("Errore rimozione foto precedente", err);
+        }
+      }
+
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setFotoUrl(url);
+      setFotoStoragePath(path);
+    } catch (err) {
+      console.error("Errore caricamento foto", err);
       setErrore("Errore caricamento foto");
     } finally {
+      setFotoUploading(false);
       e.target.value = "";
     }
   }
 
+  async function handleRemoveFoto() {
+    if (fotoStoragePath) {
+      try {
+        await deleteObject(ref(storage, fotoStoragePath));
+      } catch (err) {
+        console.error("Errore rimozione foto", err);
+      }
+    }
+    setFotoUrl(null);
+    setFotoStoragePath(null);
+    setRecordId(null);
+  }
+
   async function invia() {
     setErrore(null);
+
+    if (fotoUploading) {
+      setErrore("Attendi il caricamento della foto");
+      return;
+    }
 
     const msg = testo.trim();
     if (msg.length < 3) {
@@ -71,19 +123,22 @@ export default function RichiestaAttrezzature() {
 
     setLoading(true);
 
+    const now = Date.now();
+    const id = recordId ?? genId();
     const record = {
-      id: genId(),
+      id,
       testo: msg,
 
-      autistaNome: autista?.nome || null,
-      badgeAutista: autista?.badge || null,
+      autistaNome: autista?.nome ?? null,
+      badgeAutista: autista?.badge ?? null,
 
-      targaCamion: mezzo?.targaCamion || null,
-      targaRimorchio: mezzo?.targaRimorchio || null,
+      targaCamion: mezzo?.targaCamion ?? null,
+      targaRimorchio: mezzo?.targaRimorchio ?? null,
 
-      fotoDataUrl: fotoDataUrl || null,
+      fotoUrl: fotoUrl ?? null,
+      fotoStoragePath: fotoStoragePath ?? null,
 
-      timestamp: Date.now(),
+      timestamp: now,
       stato: "nuova",
       letta: false,
     };
@@ -93,6 +148,11 @@ export default function RichiestaAttrezzature() {
       const next = Array.isArray(current) ? [...current, record] : [record];
       await setItemSync(KEY_RICHIESTE, next);
 
+      setTesto("");
+      setFotoUrl(null);
+      setFotoStoragePath(null);
+      setRecordId(null);
+      window.alert("Richiesta inviata");
       setLoading(false);
       navigate("/autisti/home", { replace: true });
     } catch {
@@ -104,31 +164,44 @@ export default function RichiestaAttrezzature() {
   if (!autista || !mezzo) return null;
 
   return (
-    <div className="autisti-container">
-      <h1 className="autisti-title">Cosa ti serve?</h1>
-
-      <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 10 }}>
-        {mezzo?.targaCamion ? `Motrice: ${mezzo.targaCamion}` : ""}{" "}
-        {mezzo?.targaRimorchio ? `• Rimorchio: ${mezzo.targaRimorchio}` : ""}{" "}
-        {autista?.nome ? `• Autista: ${autista.nome}` : ""}
+    <div className="autisti-container richiesta-attrezzature-page">
+      <div className="richiesta-header">
+        <button
+          className="autisti-button secondary richiesta-back"
+          type="button"
+          onClick={() => navigate("/autisti/home")}
+        >
+          Indietro
+        </button>
+        <h1 className="autisti-title">Richiesta attrezzature</h1>
       </div>
 
+      <div className="richiesta-meta">
+        <div>
+          <strong>Motrice:</strong> {mezzo?.targaCamion || "-"}
+        </div>
+        <div>
+          <strong>Rimorchio:</strong> {mezzo?.targaRimorchio || "-"}
+        </div>
+        <div>
+          <strong>Autista:</strong> {autista?.nome || "-"}
+        </div>
+      </div>
+
+      <label className="richiesta-label" htmlFor="richiesta-testo">
+        Messaggio
+      </label>
       <textarea
+        id="richiesta-testo"
+        className="richiesta-textarea"
         value={testo}
         onChange={(e) => setTesto(e.target.value)}
-        placeholder="Scrivi semplice: cosa ti serve, quantità, dove sei."
-        style={{
-          width: "100%",
-          minHeight: 160,
-          fontSize: 18,
-          padding: 12,
-          borderRadius: 12,
-        }}
+        placeholder="Cosa ti serve?"
       />
 
-      <div style={{ marginTop: 12 }}>
-        <label className="autisti-button secondary" style={{ display: "inline-block" }}>
-          + FOTO (OPZIONALE)
+      <div className="richiesta-foto">
+        <label className="autisti-button secondary richiesta-foto-btn">
+          Aggiungi foto
           <input
             type="file"
             accept="image/*"
@@ -138,28 +211,34 @@ export default function RichiestaAttrezzature() {
           />
         </label>
 
-        {fotoDataUrl && (
-          <div style={{ marginTop: 10 }}>
-            <img src={fotoDataUrl} alt="foto" style={{ width: "100%", borderRadius: 12 }} />
+        {fotoUploading ? (
+          <div style={{ marginTop: 8, fontSize: 13 }}>Caricamento foto...</div>
+        ) : null}
+
+        {fotoUrl && (
+          <div className="richiesta-foto-preview">
+            <img src={fotoUrl} alt="foto" />
             <button
               className="autisti-button secondary"
-              style={{ marginTop: 8 }}
-              onClick={() => setFotoDataUrl(null)}
+              type="button"
+              onClick={handleRemoveFoto}
+              disabled={fotoUploading}
             >
-              RIMUOVI FOTO
+              Rimuovi foto
             </button>
           </div>
         )}
       </div>
 
-      {errore && <div style={{ marginTop: 10, color: "crimson", fontWeight: 700 }}>{errore}</div>}
+      {errore && <div className="richiesta-errore">{errore}</div>}
 
-      <button className="autisti-button" style={{ marginTop: 14 }} onClick={invia} disabled={loading}>
+      <button
+        className="autisti-button richiesta-submit"
+        type="button"
+        onClick={invia}
+        disabled={loading}
+      >
         {loading ? "INVIO..." : "INVIA RICHIESTA"}
-      </button>
-
-      <button className="autisti-button secondary" style={{ marginTop: 10 }} onClick={() => navigate("/autisti/home")}>
-        Indietro
       </button>
     </div>
   );

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./autisti.css";
 import "./Segnalazioni.css";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
 
@@ -28,7 +30,7 @@ function toItDateTime(ts: number) {
   const yyyy = d.getFullYear();
   const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${dd} ${mm} ${yyyy} – ${hh}:${mi}`;
+  return `${dd} ${mm} ${yyyy} â€“ ${hh}:${mi}`;
 }
 
 function normalizeCategoria(cat?: string | null) {
@@ -97,7 +99,7 @@ function labelProblemaGomma(p: ProblemaGomma) {
   }
 }
 
-type FotoLocal = { id: string; dataUrl: string };
+type FotoLocal = { id: string; url: string; storagePath: string };
 
 type MezzoAziendale = {
   id: string;
@@ -131,6 +133,8 @@ export default function Segnalazioni() {
   const [note, setNote] = useState("");
 
   const [foto, setFoto] = useState<FotoLocal[]>([]);
+  const [recordId, setRecordId] = useState<string | null>(null);
+  const [fotoUploading, setFotoUploading] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
@@ -205,12 +209,12 @@ export default function Segnalazioni() {
   }
 
   function getPlaceholderDescrizione() {
-    if (tipo === "motore") return "Es. rumore anomalo, perdita olio, spia accesa…";
-    if (tipo === "gomme") return "Es. gomma asse 2 molto consumata, vibra, perde aria…";
-    if (tipo === "freni") return "Es. frena male, rumore, spia, aria…";
-    if (tipo === "idraulico") return "Es. perdita olio, pistone, tubo, pressione…";
-    if (tipo === "elettrico") return "Es. luci non funzionano, batteria, spie…";
-    return "Descrivi il problema in poche parole…";
+    if (tipo === "motore") return "Es. rumore anomalo, perdita olio, spia accesaâ€¦";
+    if (tipo === "gomme") return "Es. gomma asse 2 molto consumata, vibra, perde ariaâ€¦";
+    if (tipo === "freni") return "Es. frena male, rumore, spia, ariaâ€¦";
+    if (tipo === "idraulico") return "Es. perdita olio, pistone, tubo, pressioneâ€¦";
+    if (tipo === "elettrico") return "Es. luci non funzionano, batteria, spieâ€¦";
+    return "Descrivi il problema in poche paroleâ€¦";
   }
 
   function validate() {
@@ -230,7 +234,7 @@ export default function Segnalazioni() {
     setErrors(e);
 
     if (Object.keys(e).length > 0) {
-      setAlertMsg("Manca: " + Object.values(e).join(" · "));
+      setAlertMsg("Manca: " + Object.values(e).join(" Â· "));
       return false;
     }
 
@@ -244,28 +248,45 @@ export default function Segnalazioni() {
 
     const remaining = 3 - foto.length;
     if (remaining <= 0) {
-      setAlertMsg("Hai già inserito 3 foto (massimo).");
+      setAlertMsg("Hai gia inserito 3 foto (massimo).");
       e.target.value = "";
       return;
     }
 
-    const toRead = Array.from(files).slice(0, remaining);
+    const toUpload = Array.from(files).slice(0, remaining);
+    const baseId = recordId ?? genId();
+    if (!recordId) setRecordId(baseId);
+    setAlertMsg(null);
+    setFotoUploading(true);
 
-    const readOne = (file: File) =>
-      new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Errore lettura file"));
-        r.readAsDataURL(file);
-      });
-
+    const uploaded: FotoLocal[] = [];
     try {
-      const urls = await Promise.all(toRead.map(readOne));
-      const newFoto = urls.map((u) => ({ id: genId(), dataUrl: u }));
-      setFoto((prev) => [...prev, ...newFoto]);
-    } catch {
+      for (let i = 0; i < toUpload.length; i += 1) {
+        const file = toUpload[i];
+        const ts = Date.now();
+        const extFromName = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const extFromType = file.type.includes("png")
+          ? "png"
+          : file.type.includes("jpeg")
+          ? "jpg"
+          : file.type.includes("webp")
+          ? "webp"
+          : extFromName;
+        const safeExt = ["jpg", "jpeg", "png", "webp"].includes(extFromType)
+          ? extFromType
+          : "jpg";
+        const path = `autisti/segnalazioni/${baseId}/${ts}_${foto.length + i}.${safeExt}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+        uploaded.push({ id: genId(), url, storagePath: path });
+      }
+      setFoto((prev) => [...prev, ...uploaded]);
+    } catch (err) {
+      console.error("Errore nel caricamento foto.", err);
       setAlertMsg("Errore nel caricamento foto.");
     } finally {
+      setFotoUploading(false);
       e.target.value = "";
     }
   }
@@ -275,6 +296,10 @@ export default function Segnalazioni() {
   }
 
   async function handleSave() {
+    if (fotoUploading) {
+      setAlertMsg("Attendi il caricamento delle foto.");
+      return;
+    }
     if (!validate()) return;
 
     setLoading(true);
@@ -283,8 +308,9 @@ export default function Segnalazioni() {
     const targaSelezionata = isMotrice ? targaMotrice : targaRimorchio;
     const mezzoRef = isMotrice ? mezzoMotrice : mezzoRimorchio;
 
+    const id = recordId ?? genId();
     const record = {
-      id: genId(),
+      id,
 
       ambito,
 
@@ -307,8 +333,8 @@ export default function Segnalazioni() {
       descrizione: descrizione.trim(),
       note: note.trim() || null,
 
-      foto: foto.map((f) => ({ dataUrl: f.dataUrl })),
-
+      fotoUrls: foto.map((f) => f.url),
+      fotoStoragePaths: foto.map((f) => f.storagePath),
       data: nowTs,
 
       stato: "nuova",
@@ -324,8 +350,9 @@ export default function Segnalazioni() {
       await setItemSync(KEY_SEGNALAZIONI, next);
 
       setLoading(false);
-      navigate("/autisti/home");
-    } catch {
+      setRecordId(null);
+      setFoto([]);
+      navigate("/autisti/home");    } catch {
       setLoading(false);
       setAlertMsg("Errore salvataggio. Riprova.");
     }
@@ -337,14 +364,14 @@ export default function Segnalazioni() {
 
       <div className="seg-subtitle">
         {targaMotrice ? `Motrice: ${targaMotrice}` : "Motrice: -"}{" "}
-        {targaRimorchio ? `• Rimorchio: ${targaRimorchio}` : "• Rimorchio: -"}{" "}
-        {autista?.nome ? `• Autista: ${autista.nome}` : ""}
+        {targaRimorchio ? `â€¢ Rimorchio: ${targaRimorchio}` : "â€¢ Rimorchio: -"}{" "}
+        {autista?.nome ? `â€¢ Autista: ${autista.nome}` : ""}
       </div>
 
       {alertMsg && <div className="seg-alert">{alertMsg}</div>}
 
       <div className="seg-section">
-        <div className="seg-label">Dove è il problema</div>
+        <div className="seg-label">Dove Ã¨ il problema</div>
         <div className="seg-toggle">
           <button
             className={ambito === "motrice" ? "active green" : errors.ambito ? "errorBtn" : ""}
@@ -436,11 +463,15 @@ export default function Segnalazioni() {
           />
         </label>
 
+        {fotoUploading && (
+          <div style={{ marginTop: 8, fontSize: 12 }}>Caricamento foto in corso...</div>
+        )}
+
         {foto.length > 0 && (
           <div className="seg-photoGrid">
             {foto.map((f) => (
               <div key={f.id} className="seg-photoCard">
-                <img src={f.dataUrl} alt="foto" className="seg-photoImg" />
+                <img src={f.url} alt="foto" className="seg-photoImg" />
                 <button className="seg-photoRemove" onClick={() => removeFoto(f.id)}>
                   RIMUOVI
                 </button>
@@ -465,7 +496,7 @@ export default function Segnalazioni() {
         <div className="seg-label">Note (opzionale)</div>
         <textarea
           className="seg-textarea"
-          placeholder="Note aggiuntive (opzionale)…"
+          placeholder="Note aggiuntive (opzionale)â€¦"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -476,7 +507,7 @@ export default function Segnalazioni() {
         <div className="seg-date">{toItDateTime(nowTs)}</div>
       </div>
 
-      <button className="autisti-button seg-save" onClick={handleSave} disabled={loading}>
+      <button className="autisti-button seg-save" onClick={handleSave} disabled={loading || fotoUploading}>
         {loading ? "Invio..." : "INVIA SEGNALAZIONE"}
       </button>
 
@@ -486,3 +517,4 @@ export default function Segnalazioni() {
     </div>
   );
 }
+

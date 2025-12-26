@@ -18,7 +18,9 @@ type SegnalazioneRecord = {
   tipoProblema?: string | null;
   descrizione?: string | null;
   note?: string | null;
-  foto?: Array<{ dataUrl?: string }> | null;
+  foto?: Array<{ dataUrl?: string; url?: string }> | null;
+  fotoUrls?: string[] | null;
+  fotoUrl?: string | null;
 };
 
 type SegnalazioneView = SegnalazioneRecord & {
@@ -85,7 +87,13 @@ export default function AutistiSegnalazioniAll() {
           ? r.timestamp
           : 0;
       const isNuova = r.stato === "nuova" || r.letta === false;
-      const fotoCount = Array.isArray(r.foto) ? r.foto.length : 0;
+      const fotoCount = Array.isArray(r.fotoUrls)
+        ? r.fotoUrls.length
+        : Array.isArray(r.foto)
+        ? r.foto.length
+        : r.fotoUrl
+        ? 1
+        : 0;
       const ambito = String(r.ambito ?? "").toLowerCase();
       return {
         ...r,

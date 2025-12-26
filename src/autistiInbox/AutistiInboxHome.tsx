@@ -456,6 +456,7 @@ useEffect(() => {
       for (const f of p.foto) {
         if (typeof f === "string") list.push(f);
         else if (f?.dataUrl) list.push(String(f.dataUrl));
+        else if (f?.url) list.push(String(f.url));
       }
     }
     if (p?.fotoDataUrl) list.push(String(p.fotoDataUrl));
