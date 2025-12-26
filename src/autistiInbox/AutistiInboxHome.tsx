@@ -540,7 +540,7 @@ useEffect(() => {
               Rifornimenti
             </button>
             <button
-              onClick={() => handleTabClick("segnalazioni")}
+              onClick={() => navigate("/autisti-inbox/segnalazioni")}
               style={
                 activeTab === "segnalazioni"
                   ? { background: "#2e7d32", color: "#fff" }
@@ -548,9 +548,27 @@ useEffect(() => {
               }
             >
               Segnalazioni
+              {segnalazioni.some((s) => {
+                const p: any = s.payload || {};
+                return p?.stato === "nuova" || p?.letta === false;
+              }) && (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    background: "#d32f2f",
+                    color: "#fff",
+                    borderRadius: 10,
+                    padding: "2px 6px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  NUOVE
+                </span>
+              )}
             </button>
             <button
-              onClick={() => handleTabClick("controlli")}
+              onClick={() => navigate("/autisti-inbox/controlli")}
               style={
                 activeTab === "controlli"
                   ? { background: "#2e7d32", color: "#fff" }
@@ -623,9 +641,8 @@ useEffect(() => {
                 <h2>Segnalazioni</h2>
                 <button
                   className="daily-more"
-                  disabled={segnalazioni.length <= 5}
-                  onClick={() => openModal("segnalazioni")}
-                  title={segnalazioni.length <= 5 ? "Niente altro" : "Vedi tutto"}
+                  onClick={() => navigate("/autisti-inbox/segnalazioni")}
+                  title="Vedi tutto"
                 >
                   Vedi tutto
                 </button>
@@ -660,9 +677,8 @@ useEffect(() => {
                 <h2>Controllo mezzo</h2>
                 <button
                   className="daily-more"
-                  disabled={controlli.length <= 5}
-                  onClick={() => openModal("controlli")}
-                  title={controlli.length <= 5 ? "Niente altro" : "Vedi tutto"}
+                  onClick={() => navigate("/autisti-inbox/controlli")}
+                  title="Vedi tutto"
                 >
                   Vedi tutto
                 </button>
@@ -672,21 +688,37 @@ useEffect(() => {
                 <div className="daily-item empty">Nessun controllo</div>
               ) : (
                 controlli.slice(0, 5).map((c, index) => (
-                  <div
-                    key={
-                      c.id ??
-                      `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`
-                    }
-                    className="daily-item"
-                    onClick={() => setSelectedEvent(c)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
-                    }}
-                  >
-                    {formatTime(c.timestamp)} - {c.targa ?? "-"} - OK
-                  </div>
+                  (() => {
+                    const p: any = c.payload || {};
+                    const check = p?.check;
+                    const koList =
+                      check && typeof check === "object"
+                        ? Object.entries(check)
+                            .filter(([, v]) => v === false)
+                            .map(([k]) => String(k).toUpperCase())
+                        : [];
+                    const isKO = koList.length > 0;
+                    return (
+                      <div
+                        key={
+                          c.id ??
+                          `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`
+                        }
+                        className="daily-item"
+                        onClick={() => setSelectedEvent(c)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
+                        }}
+                      >
+                        {formatTime(c.timestamp)} - {c.targa ?? "-"} -{" "}
+                        <span style={isKO ? { color: "#d32f2f", fontWeight: 700 } : undefined}>
+                          {isKO ? "KO" : "OK"}
+                        </span>
+                      </div>
+                    );
+                  })()
                 ))
               )}
             </div>

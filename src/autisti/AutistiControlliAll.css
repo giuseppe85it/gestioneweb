@@ -1,0 +1,134 @@
+.aic-page {
+  padding: 24px;
+}
+
+.aic-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.aic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.aic-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.aic-logo {
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+}
+
+.aic-back {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.aic-card {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.aic-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.aic-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.aic-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.aic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aic-row {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.aic-row-top {
+  display: flex;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.aic-row-mid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.aic-row-bot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.aic-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.aic-badge.ok {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.aic-badge.ko {
+  background: #fdecea;
+  color: #d32f2f;
+}
+
+.aic-ko-list {
+  color: #d32f2f;
+  font-size: 12px;
+}
+
+.aic-note {
+  margin-top: 6px;
+  color: #555;
+}
+
+.aic-empty {
+  color: #777;
+  padding: 12px 0;
+}

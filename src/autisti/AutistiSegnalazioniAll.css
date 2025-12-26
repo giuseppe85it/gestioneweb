@@ -1,0 +1,137 @@
+.aix-page {
+  padding: 24px;
+}
+
+.aix-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.aix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.aix-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.aix-logo {
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+}
+
+.aix-back {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.aix-card {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.aix-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.aix-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.aix-select {
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.aix-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.aix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aix-row {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.aix-row-top {
+  display: flex;
+  gap: 12px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.aix-row-mid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.aix-row-bot {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.aix-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.aix-badge.nuova {
+  background: #fdecea;
+  color: #d32f2f;
+}
+
+.aix-foto {
+  color: #555;
+  font-size: 12px;
+}
+
+.aix-row-detail {
+  margin-top: 8px;
+  color: #555;
+}
+
+.aix-empty {
+  color: #777;
+  padding: 12px 0;
+}

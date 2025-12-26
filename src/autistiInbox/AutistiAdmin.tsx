@@ -163,6 +163,8 @@ export default function AutistiAdmin() {
   const [, setRimorchiLive] = useState<RimorchioStatus[]>([]);
   const [sessioniRaw, setSessioniRaw] = useState<any[]>([]);
   const [mezziAziendali, setMezziAziendali] = useState<any[]>([]);
+  const [segnalazioniRaw, setSegnalazioniRaw] = useState<any[]>([]);
+  const [controlliRaw, setControlliRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Modale modifica sessione
@@ -189,6 +191,16 @@ export default function AutistiAdmin() {
   const [canonEditId, setCanonEditId] = useState<string | null>(null);
   const [canonEditIndex, setCanonEditIndex] = useState<number | null>(null);
   const [canonEditForm, setCanonEditForm] = useState<any>({});
+  const [segnaFilterTarga, setSegnaFilterTarga] = useState("");
+  const [segnaFilterAmbito, setSegnaFilterAmbito] = useState<
+    "tutti" | "motrice" | "rimorchio"
+  >("tutti");
+  const [segnaOnlyNuove, setSegnaOnlyNuove] = useState(true);
+  const [ctrlFilterTarga, setCtrlFilterTarga] = useState("");
+  const [ctrlFilterTarget, setCtrlFilterTarget] = useState<
+    "tutti" | "motrice" | "rimorchio" | "entrambi"
+  >("tutti");
+  const [ctrlOnlyKo, setCtrlOnlyKo] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -209,12 +221,28 @@ export default function AutistiAdmin() {
         const mezziRaw = await getItemSync(KEY_MEZZI);
         const mezziArr = normalizeMezzi(mezziRaw);
 
+        const segnalazioni = await getItemSync(KEY_SEGNALAZIONI);
+        const segnalazioniArr = Array.isArray(segnalazioni)
+          ? segnalazioni
+          : Array.isArray(segnalazioni?.value)
+          ? segnalazioni.value
+          : [];
+
+        const controlli = await getItemSync(KEY_CONTROLLI);
+        const controlliArr = Array.isArray(controlli)
+          ? controlli
+          : Array.isArray(controlli?.value)
+          ? controlli.value
+          : [];
+
         if (!alive) return;
         setEvents(e);
         setStoricoOperativi(operativiArr);
         setRimorchiLive(live);
         setSessioniRaw(sessArr);
         setMezziAziendali(mezziArr);
+        setSegnalazioniRaw(segnalazioniArr);
+        setControlliRaw(controlliArr);
       } finally {
         if (alive) setLoading(false);
       }
@@ -233,10 +261,10 @@ export default function AutistiAdmin() {
         list = events.filter((e) => e.tipo === "rifornimento");
         break;
       case "segnalazioni":
-        list = events.filter((e) => e.tipo === "segnalazione");
+        list = [];
         break;
       case "controlli":
-        list = events.filter((e) => e.tipo === "controllo");
+        list = [];
         break;
       case "attrezzature":
         list = events.filter((e) => (e as any).tipo === "richiesta_attrezzature");
@@ -253,6 +281,101 @@ export default function AutistiAdmin() {
     }
     return list;
   }, [events, tab]);
+
+  const segnalazioniFiltered = useMemo(() => {
+    const targaFilter = normTarga(segnaFilterTarga);
+    const list = segnalazioniRaw.map((record, index) => {
+      const stato = String(record?.stato ?? "").toLowerCase();
+      const letta =
+        typeof record?.letta === "boolean" ? record.letta : true;
+      const isNuova = stato === "nuova" || letta === false;
+      const ts = getRecordTs(record);
+      const ambito = String(record?.ambito ?? record?.target ?? "")
+        .toLowerCase()
+        .trim();
+      const targaMatch = [
+        normTarga(record?.targa),
+        normTarga(record?.targaCamion),
+        normTarga(record?.targaRimorchio),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return {
+        record,
+        key: String(record?.id ?? `${ts}-${index}`),
+        isNuova,
+        ts,
+        ambito,
+        targaMatch,
+      };
+    });
+
+    const filtered = list.filter((item) => {
+      if (segnaOnlyNuove && !item.isNuova) return false;
+      if (segnaFilterAmbito !== "tutti") {
+        if (!item.ambito) return false;
+        if (item.ambito !== segnaFilterAmbito) return false;
+      }
+      if (targaFilter) {
+        if (!item.targaMatch.includes(targaFilter)) return false;
+      }
+      return true;
+    });
+
+    filtered.sort((a, b) => {
+      if (a.isNuova !== b.isNuova) return a.isNuova ? -1 : 1;
+      return (b.ts ?? 0) - (a.ts ?? 0);
+    });
+    return filtered;
+  }, [segnalazioniRaw, segnaFilterTarga, segnaFilterAmbito, segnaOnlyNuove]);
+
+  const controlliFiltered = useMemo(() => {
+    const targaFilter = normTarga(ctrlFilterTarga);
+    const list = controlliRaw.map((record, index) => {
+      const check = record?.check ?? {};
+      const koList = Object.entries(check)
+        .filter(([, v]) => v === false)
+        .map(([k]) => k);
+      const isKO = koList.length > 0;
+      const ts = getRecordTs(record);
+      const target = String(record?.target ?? "")
+        .toLowerCase()
+        .trim();
+      const targaMatch = [
+        normTarga(record?.targaCamion),
+        normTarga(record?.targaRimorchio),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return {
+        record,
+        key: String(record?.id ?? `${ts}-${index}`),
+        isKO,
+        koList,
+        ts,
+        target,
+        targaMatch,
+      };
+    });
+
+    const filtered = list.filter((item) => {
+      if (ctrlOnlyKo && !item.isKO) return false;
+      if (ctrlFilterTarget !== "tutti") {
+        if (!item.target) return false;
+        if (item.target !== ctrlFilterTarget) return false;
+      }
+      if (targaFilter) {
+        if (!item.targaMatch.includes(targaFilter)) return false;
+      }
+      return true;
+    });
+
+    filtered.sort((a, b) => {
+      if (a.isKO !== b.isKO) return a.isKO ? -1 : 1;
+      return (b.ts ?? 0) - (a.ts ?? 0);
+    });
+    return filtered;
+  }, [controlliRaw, ctrlFilterTarga, ctrlFilterTarget, ctrlOnlyKo]);
 
   const cambioCanonico = useMemo(() => {
     const list: Array<any> = [];
@@ -1070,6 +1193,12 @@ export default function AutistiAdmin() {
     const updated = [...raw];
     updated[idx] = next;
     await setItemSync(key, updated);
+    if (adminEditKind === "segnalazione") {
+      setSegnalazioniRaw(updated);
+    }
+    if (adminEditKind === "controllo") {
+      setControlliRaw(updated);
+    }
 
     if (adminEditKind === "rifornimento") {
       const dossierRef = doc(db, "storage", DOSSIER_RIFORNIMENTI_KEY);
@@ -1337,15 +1466,214 @@ export default function AutistiAdmin() {
             {loading && <span className="loading">Caricamento...</span>}
           </div>
 
-          {!loading && tab !== "storico_cambio" && filtered.length === 0 && (
-            <div className="empty">Nessun elemento per questa data.</div>
+          {!loading && tab === "segnalazioni" && segnalazioniFiltered.length === 0 && (
+            <div className="empty">Nessuna segnalazione trovata.</div>
           )}
+
+          {!loading && tab === "controlli" && controlliFiltered.length === 0 && (
+            <div className="empty">Nessun controllo trovato.</div>
+          )}
+
+          {!loading &&
+            tab !== "storico_cambio" &&
+            tab !== "segnalazioni" &&
+            tab !== "controlli" &&
+            filtered.length === 0 && (
+              <div className="empty">Nessun elemento per questa data.</div>
+            )}
 
           {!loading && tab === "storico_cambio" && cambioCanonico.length === 0 && (
             <div className="empty">Nessun evento per questa data.</div>
           )}
 
+          {tab === "segnalazioni" && (
+            <>
+              <div className="admin-edit-section">
+                <div className="admin-edit-grid">
+                  <label>
+                    Targa
+                    <input
+                      value={segnaFilterTarga}
+                      onChange={(e) => setSegnaFilterTarga(e.target.value)}
+                      placeholder="Cerca targa..."
+                    />
+                  </label>
+                  <label>
+                    Ambito
+                    <select
+                      value={segnaFilterAmbito}
+                      onChange={(e) =>
+                        setSegnaFilterAmbito(
+                          e.target.value as "tutti" | "motrice" | "rimorchio"
+                        )
+                      }
+                    >
+                      <option value="tutti">Tutti</option>
+                      <option value="motrice">Motrice</option>
+                      <option value="rimorchio">Rimorchio</option>
+                    </select>
+                  </label>
+                  <label className="admin-edit-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={segnaOnlyNuove}
+                      onChange={(e) => setSegnaOnlyNuove(e.target.checked)}
+                    />
+                    Solo nuove
+                  </label>
+                </div>
+              </div>
+              {segnalazioniFiltered.map((item) => {
+                const r = item.record || {};
+                const ts = item.ts ?? 0;
+                const targaMain =
+                  r.targa ?? r.targaCamion ?? r.targaMotrice ?? "-";
+                const targaRimorchio = r.targaRimorchio ?? null;
+                const ambito = String(r.ambito ?? r.target ?? "").toUpperCase() || "-";
+                const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
+                const badge = r.badgeAutista ?? "-";
+                return (
+                  <div className={`row ${item.isNuova ? "pill-danger" : ""}`} key={item.key}>
+                    <div className="row-left">
+                      <div className="time">{formatDateTime(ts)}</div>
+                      <div className="main">
+                        <div className="line1">
+                          <span>{autista}</span>
+                          <span className="sep">|</span>
+                          <span>BADGE {badge}</span>
+                          <span className="sep">|</span>
+                          <span className="muted">{ambito}</span>
+                          {item.isNuova ? (
+                            <>
+                              <span className="sep">|</span>
+                              <span className="pill pill-danger">NUOVA</span>
+                            </>
+                          ) : null}
+                        </div>
+                        <div className="line2">
+                          <span>Targa: {String(targaMain)}</span>
+                          {targaRimorchio ? (
+                            <>
+                              <span className="sep">|</span>
+                              <span>Rim: {String(targaRimorchio)}</span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="edit"
+                      onClick={() => openAdminEdit("segnalazione", r, r.id)}
+                    >
+                      MODIFICA
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {tab === "controlli" && (
+            <>
+              <div className="admin-edit-section">
+                <div className="admin-edit-grid">
+                  <label>
+                    Targa
+                    <input
+                      value={ctrlFilterTarga}
+                      onChange={(e) => setCtrlFilterTarga(e.target.value)}
+                      placeholder="Cerca targa..."
+                    />
+                  </label>
+                  <label>
+                    Target
+                    <select
+                      value={ctrlFilterTarget}
+                      onChange={(e) =>
+                        setCtrlFilterTarget(
+                          e.target.value as "tutti" | "motrice" | "rimorchio" | "entrambi"
+                        )
+                      }
+                    >
+                      <option value="tutti">Tutti</option>
+                      <option value="motrice">Motrice</option>
+                      <option value="rimorchio">Rimorchio</option>
+                      <option value="entrambi">Entrambi</option>
+                    </select>
+                  </label>
+                  <label className="admin-edit-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={ctrlOnlyKo}
+                      onChange={(e) => setCtrlOnlyKo(e.target.checked)}
+                    />
+                    Solo KO
+                  </label>
+                </div>
+              </div>
+              {controlliFiltered.map((item) => {
+                const r = item.record || {};
+                const ts = item.ts ?? 0;
+                const target = String(r.target ?? "").toUpperCase() || "-";
+                const targaCamion = r.targaCamion ?? r.targaMotrice ?? "-";
+                const targaRimorchio = r.targaRimorchio ?? "-";
+                const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
+                const badge = r.badgeAutista ?? "-";
+                const koText = item.koList.length ? item.koList.join(", ") : "";
+                return (
+                  <div className={`row ${item.isKO ? "pill-danger" : ""}`} key={item.key}>
+                    <div className="row-left">
+                      <div className="time">{formatDateTime(ts)}</div>
+                      <div className="main">
+                        <div className="line1">
+                          <span>{autista}</span>
+                          <span className="sep">|</span>
+                          <span>BADGE {badge}</span>
+                          <span className="sep">|</span>
+                          <span className="muted">{target}</span>
+                        </div>
+                        <div className="line2 targa-pills-row">
+                          {target === "RIMORCHIO" ? null : (
+                            <span>
+                              Motrice: {String(targaCamion)}
+                            </span>
+                          )}
+                          {target === "MOTRICE" ? null : (
+                            <>
+                              <span className="sep">|</span>
+                              <span>Rim: {String(targaRimorchio)}</span>
+                            </>
+                          )}
+                          <span className="sep">|</span>
+                          <span className={`pill ${item.isKO ? "pill-danger" : "pill-ok"}`}>
+                            {item.isKO ? "KO" : "OK"}
+                          </span>
+                          {item.isKO && koText ? (
+                            <>
+                              <span className="sep">|</span>
+                              <span>KO: {koText}</span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="edit"
+                      onClick={() => openAdminEdit("controllo", r, r.id)}
+                    >
+                      MODIFICA
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
           {tab !== "storico_cambio" &&
+            tab !== "segnalazioni" &&
+            tab !== "controlli" &&
             filtered.map((e) => {
             const p = e.payload || {};
             const isCtrl = e.tipo === "controllo";

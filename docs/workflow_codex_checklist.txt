@@ -251,3 +251,31 @@ VINCOLI
 +9) rg -n "[keyword1|keyword2|chiave_storage]" src
 +10) rg -n "[nomePagina|nomeFunzione]" src
 +11) rg -n "load|mapping|render|isSameDay|toTs|HomeEvent" src
+## AGGIUNTE CHECKLIST (NUOVE REGOLE EMERSE)
+
+### 1) Regola “storageSync wrapper vs top-level”
+- Se un modulo scrive/legge con `setItemSync/getItemSync`, il documento Firestore in `storage/<KEY>` salva i dati dentro **`value`**.
+- Se un modulo legge con `getDoc` diretto (`doc(db,"storage","<KEY>")`) e cerca campi top-level (es. `items`), rischia di non vedere nulla.
+- Regola operativa:
+  - **O** usi sempre `getItemSync` (e leggi `value`),
+  - **O** se vuoi top-level, allora scrivi/leggi con `setDoc/getDoc` e schema top-level coerente.
+- Prima di fare patch: controlla in Firestore Console la shape del doc (`value` vs top-level).
+
+### 2) Regola “normalizzazione targa” (spazi + null-safe)
+- Tutti i confronti su targhe devono passare da una funzione unica `normalizeTarga`.
+- `normalizeTarga` deve essere **null-safe** (mai `.toUpperCase()` su `null/undefined`).
+- Normalizzazione consigliata:
+  - uppercase
+  - trim
+  - rimozione spazi: `replace(/\s+/g, "")`
+- Usare la stessa normalizzazione sia lato filtro (Dossier/InBox/Admin) sia lato scrittura/aggancio.
+
+### 3) Regola “TypeScript strict” (build Vercel)
+- Vietato lasciare errori TS che bloccano build:
+  - TS7006 (implicit any)
+  - TS2367 (confronto number vs string)
+- Regola operativa:
+  - tipizzare sempre gli array/record letti da storage con `type`/`interface`
+  - nei `sort` su timestamp usare fallback numerico: `(b.data ?? 0) - (a.data ?? 0)`
+  - nei confronti usare cast/normalizzazione coerente (Number/String) o check `== null`
+- Dopo ogni patch: `Save All` → tab “Problems” deve essere 0 errori.
