@@ -1,7 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
-import "./RichiestaAttrezzature.css";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
