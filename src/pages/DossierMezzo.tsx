@@ -6,12 +6,21 @@ import { getItemSync } from "../utils/storageSync";
 import "./DossierMezzo.css";
 
 // Normalizza la targa togliendo spazi, simboli e differenze
-const normalizeTarga = (t: string = "") =>
-  t.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+const normalizeTarga = (t?: unknown) => {
+  if (typeof t !== "string") return "";
+  return t.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+};
+
+const normalizeRifornimentoTarga = (t?: unknown) => {
+  if (typeof t !== "string") return "";
+  return t.toUpperCase().replace(/\s+/g, "").trim();
+};
 
 // Tipo documento intelligente (accetta fattura, Fattura, FATTURA, ecc.)
-const normalizeTipo = (tipo: string = "") =>
-  tipo.toUpperCase().replace(/\s+/g, "").trim();
+const normalizeTipo = (tipo?: unknown) => {
+  if (typeof tipo !== "string") return "";
+  return tipo.toUpperCase().replace(/\s+/g, "").trim();
+};
 
 // Confronto targa tollerante (accetta differenze minime IA)
 const isSameTarga = (a: string, b: string) => {
@@ -92,12 +101,29 @@ interface MovimentoMateriale {
 
 interface Rifornimento {
   id: string;
-  mezzoTarga?: string;
-  data?: string;
-  litri?: number;
-  distributore?: string;
-  costo?: number;
+  targaCamion?: string | null;
+  data?: number | null;
+  litri?: number | null;
+  km?: number | null;
+  tipo?: string | null;
+  autistaNome?: string | null;
+  badgeAutista?: string | null;
 }
+
+type RifornimentoTmp = {
+  id?: string;
+  targaCamion?: string | null;
+  data?: number | null;
+  timestamp?: number | null;
+  litri?: number | null;
+  km?: number | null;
+  tipo?: string | null;
+  autistaNome?: string | null;
+  nomeAutista?: string | null;
+  autista?: string | null;
+  badgeAutista?: string | null;
+  badge?: string | null;
+};
 
 interface FatturaPreventivo {
   id: string;
@@ -220,16 +246,52 @@ const openDocumento = (url: string) => {
           return parse(b.data) - parse(a.data);
         });
 
-        const rifornimentiDocRef = doc(db, "storage", "@rifornimenti");
-        const rifornimentiSnap = await getDoc(rifornimentiDocRef);
-        const rifornimentiData = rifornimentiSnap.data() || {};
-        const rifornimentiArray =
-          (rifornimentiData.items || []) as Rifornimento[];
+        const rifornimentiRaw = await getItemSync("@rifornimenti_autisti_tmp");
+        const rifornimentiArray: RifornimentoTmp[] = Array.isArray(rifornimentiRaw)
+          ? rifornimentiRaw
+          : rifornimentiRaw?.value && Array.isArray(rifornimentiRaw.value)
+          ? rifornimentiRaw.value
+          : [];
 
-        const rifornimentiPerMezzo = rifornimentiArray.filter((r) => {
-          const t = (r.mezzoTarga || "").toUpperCase().trim();
-          return t === targa.toUpperCase().trim();
-        });
+        const targaNorm = normalizeRifornimentoTarga(targa);
+        const rifornimentiPerMezzo = rifornimentiArray
+          .filter((r: RifornimentoTmp) => {
+            const t = normalizeRifornimentoTarga(String(r?.targaCamion ?? ""));
+            return t && t === targaNorm;
+          })
+          .map((r: RifornimentoTmp, index: number) => {
+            const ts =
+              typeof r?.data === "number"
+                ? r.data
+                : typeof r?.timestamp === "number"
+                ? r.timestamp
+                : null;
+            const litriRaw = r?.litri;
+            const litri =
+              typeof litriRaw === "number"
+                ? litriRaw
+                : typeof litriRaw === "string" && litriRaw !== ""
+                ? Number(litriRaw)
+                : null;
+            const kmRaw = r?.km;
+            const km =
+              typeof kmRaw === "number"
+                ? kmRaw
+                : typeof kmRaw === "string" && kmRaw !== ""
+                ? Number(kmRaw)
+                : null;
+            return {
+              id: String(r?.id ?? `rf_${index}`),
+              targaCamion: r?.targaCamion ?? null,
+              data: ts,
+              litri: Number.isFinite(litri) ? litri : null,
+              km: Number.isFinite(km) ? km : null,
+              tipo: r?.tipo ?? null,
+              autistaNome: r?.autistaNome ?? r?.nomeAutista ?? r?.autista ?? null,
+              badgeAutista: r?.badgeAutista ?? r?.badge ?? null,
+            } as Rifornimento;
+          })
+          .sort((a: Rifornimento, b: Rifornimento) => (b.data ?? 0) - (a.data ?? 0));
 // ============================
 // DOCUMENTI MAGAZZINO (solo per costi materiali)
 // ============================
@@ -437,7 +499,18 @@ setState({
     0
   );
   void totaleLitri;
- 
+
+  const formatDateTime = (ts?: number | null) => {
+    if (!ts) return "-";
+    return new Date(ts).toLocaleString("it-IT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const parseItalianDate = (d?: string): number => {
     if (!d) return 0;
     const parts = d.split(" ");
@@ -963,19 +1036,27 @@ return (
                 <table className="dossier-table">
                   <thead>
                     <tr>
-                      <th>Data</th>
+                      <th>Data/Ora</th>
                       <th>Litri</th>
-                      <th>Distributore</th>
-                      <th>Costo</th>
+                      <th>Km</th>
+                      <th>Tipo</th>
+                      <th>Autista</th>
                     </tr>
                   </thead>
                   <tbody>
                     {state.rifornimenti.map((r) => (
                       <tr key={r.id}>
-                        <td>{r.data || "-"}</td>
+                        <td>{formatDateTime(r.data)}</td>
                         <td>{r.litri ?? "-"}</td>
-                        <td>{r.distributore || "-"}</td>
-                        <td>{r.costo != null ? `${r.costo} CHF` : "-"}</td>
+                        <td>{r.km ?? "-"}</td>
+                        <td>{r.tipo ?? "-"}</td>
+                        <td>
+                          {r.autistaNome
+                            ? `${r.autistaNome}${
+                                r.badgeAutista ? ` (${r.badgeAutista})` : ""
+                              }`
+                            : r.badgeAutista ?? "-"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

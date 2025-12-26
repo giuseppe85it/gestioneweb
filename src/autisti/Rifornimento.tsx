@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./autisti.css";
 import "./Rifornimento.css";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
 
@@ -10,6 +12,7 @@ type MetodoPagamento = "piccadilly" | "eni" | "contanti";
 type Paese = "IT" | "CH";
 
 const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
+const DOSSIER_RIFORNIMENTI_KEY = "@rifornimenti";
 
 function genId() {
   // compatibile ovunque
@@ -17,6 +20,42 @@ function genId() {
   const c: any = globalThis.crypto;
   if (c?.randomUUID) return c.randomUUID();
   return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function formatDateString(ts: number) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("it-IT");
+}
+
+function toNumberOrNull(value: any) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildDistributore(record: any) {
+  const parts: string[] = [];
+  if (record?.tipo) parts.push(String(record.tipo));
+  if (record?.paese) parts.push(String(record.paese));
+  if (record?.metodoPagamento) parts.push(String(record.metodoPagamento));
+  return parts.length ? parts.join(" ") : "—";
+}
+
+function buildDossierItem(record: any) {
+  const id = String(record?.id ?? "");
+  const ts = Number(record?.timestamp ?? record?.data ?? Date.now());
+  const mezzoRaw =
+    record?.targaCamion ?? record?.targaMotrice ?? record?.mezzoTarga ?? null;
+  const mezzoTarga = mezzoRaw ? String(mezzoRaw).toUpperCase().trim() : null;
+  return {
+    id,
+    mezzoTarga,
+    data: formatDateString(ts),
+    litri: toNumberOrNull(record?.litri),
+    distributore: buildDistributore(record),
+    costo: toNumberOrNull(record?.importo),
+  };
 }
 
 export default function Rifornimento() {
@@ -128,6 +167,24 @@ export default function Rifornimento() {
       const current = (await getItemSync(KEY_RIFORNIMENTI)) || [];
       const next = Array.isArray(current) ? [...current, record] : [record];
       await setItemSync(KEY_RIFORNIMENTI, next);
+
+      const dossierRef = doc(db, "storage", DOSSIER_RIFORNIMENTI_KEY);
+      const dossierSnap = await getDoc(dossierRef);
+      const dossierRaw = dossierSnap.exists() ? dossierSnap.data() : {};
+      const dossier =
+        dossierRaw && typeof dossierRaw === "object" ? dossierRaw : {};
+      const items = Array.isArray(dossier.items)
+        ? dossier.items
+        : Array.isArray(dossier?.value?.items)
+        ? dossier.value.items
+        : [];
+      const item = buildDossierItem(record);
+      const idx = items.findIndex((i: any) => String(i?.id ?? "") === String(item.id));
+      const updatedItems =
+        idx >= 0
+          ? items.map((i: any, index: number) => (index === idx ? item : i))
+          : [...items, item];
+      await setDoc(dossierRef, { ...dossier, items: updatedItems });
 
       setLoading(false);
       navigate("/autisti/home");

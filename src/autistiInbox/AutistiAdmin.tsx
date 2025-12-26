@@ -8,12 +8,15 @@ import {
   type HomeEvent,
   type RimorchioStatus,
 } from "../utils/homeEvents";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
 const KEY_CONTROLLI = "@controlli_mezzo_autisti";
 const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
+const DOSSIER_RIFORNIMENTI_KEY = "@rifornimenti";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
@@ -88,6 +91,41 @@ function toTs(v: any): number | null {
 function toStrOrNull(v: any): string | null {
   if (v === undefined || v === null || v === "") return null;
   return String(v);
+}
+
+function formatDateString(ts: number) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("it-IT");
+}
+
+function toNumberOrNull(value: any) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildDistributore(record: any) {
+  const parts: string[] = [];
+  if (record?.tipo) parts.push(String(record.tipo));
+  if (record?.paese) parts.push(String(record.paese));
+  if (record?.metodoPagamento) parts.push(String(record.metodoPagamento));
+  return parts.length ? parts.join(" ") : "—";
+}
+
+function buildDossierItem(record: any) {
+  const ts = toTs(record?.timestamp ?? record?.data) ?? Date.now();
+  const mezzoRaw =
+    record?.targaCamion ?? record?.targaMotrice ?? record?.mezzoTarga ?? null;
+  const mezzoTarga = mezzoRaw ? String(mezzoRaw).toUpperCase().trim() : null;
+  return {
+    id: String(record?.id ?? ""),
+    mezzoTarga,
+    data: formatDateString(ts),
+    litri: toNumberOrNull(record?.litri),
+    distributore: buildDistributore(record),
+    costo: toNumberOrNull(record?.importo),
+  };
 }
 
 function formatDateTime(ts: number) {
@@ -1032,6 +1070,28 @@ export default function AutistiAdmin() {
     const updated = [...raw];
     updated[idx] = next;
     await setItemSync(key, updated);
+
+    if (adminEditKind === "rifornimento") {
+      const dossierRef = doc(db, "storage", DOSSIER_RIFORNIMENTI_KEY);
+      const dossierSnap = await getDoc(dossierRef);
+      const dossierRaw = dossierSnap.exists() ? dossierSnap.data() : {};
+      const dossier =
+        dossierRaw && typeof dossierRaw === "object" ? dossierRaw : {};
+      const items = Array.isArray(dossier.items)
+        ? dossier.items
+        : Array.isArray(dossier?.value?.items)
+        ? dossier.value.items
+        : [];
+      const item = buildDossierItem({ ...next, id: next.id ?? adminEditId });
+      const i = items.findIndex(
+        (it: any) => String(it?.id ?? "") === String(item.id)
+      );
+      const updatedItems =
+        i >= 0
+          ? items.map((it: any, index: number) => (index === i ? item : it))
+          : [...items, item];
+      await setDoc(dossierRef, { ...dossier, items: updatedItems });
+    }
 
     const e = await loadHomeEvents(day);
     setEvents(e);

@@ -99,10 +99,12 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
     for (const r of rifornimenti) {
       const ts = toTs(r?.timestamp ?? r?.data);
       if (!ts || !isSameDay(ts, day)) continue;
+      const targaFallback =
+        r?.targaCamion ?? r?.targaMotrice ?? r?.mezzoTarga ?? r?.targa ?? "-";
       events.push({
         id: r.id ?? genId(),
         tipo: "rifornimento",
-        targa: r.targa ?? null,
+        targa: targaFallback ? String(targaFallback) : "-",
         autista: r.autistaNome ?? r.nomeAutista ?? null,
         timestamp: ts,
         payload: r,

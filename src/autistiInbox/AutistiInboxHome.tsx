@@ -5,6 +5,7 @@ import "./AutistiInboxHome.css";
 import { loadActiveSessions, loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
 import type { ActiveSession, HomeEvent, RimorchioStatus } from "../utils/homeEvents";
 import { getItemSync } from "../utils/storageSync";
+import RifornimentiCard from "./components/RifornimentiCard";
 import SessioniAttiveCard from "./components/SessioniAttiveCard";
 
 type ModalKind =
@@ -609,45 +610,12 @@ useEffect(() => {
           {/* CARD GRID */}
           <div className="autisti-cards">
             {/* RIFORNIMENTI */}
-            <div className="daily-card" ref={rifornimentiRef}>
-              <div className="daily-card-head">
-                <h2>Rifornimenti</h2>
-                <button
-                  className="daily-more"
-                  disabled={rifornimenti.length <= 5}
-                  onClick={() => openModal("rifornimenti")}
-                  title={rifornimenti.length <= 5 ? "Niente altro" : "Vedi tutto"}
-                >
-                  Vedi tutto
-                </button>
-              </div>
-
-              {rifornimenti.length === 0 ? (
-                <div className="daily-item empty">Nessun rifornimento</div>
-              ) : (
-                rifornimenti.slice(0, 5).map((r, index) => {
-                  const p: any = r.payload || {};
-                  const litri = p.litri ?? p.quantita ?? "-";
-                  return (
-                    <div
-                      key={
-                        r.id ??
-                        `${r.tipo ?? "x"}-${r.timestamp ?? 0}-${r.targa ?? ""}-${index}`
-                      }
-                      className="daily-item"
-                      onClick={() => setSelectedEvent(r)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") setSelectedEvent(r);
-                      }}
-                    >
-                      {formatTime(r.timestamp)} - {r.targa ?? "-"} - {litri} lt
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            <RifornimentiCard
+              events={rifornimenti}
+              cardRef={rifornimentiRef}
+              onOpenAll={() => openModal("rifornimenti")}
+              onOpenDetail={(event) => setSelectedEvent(event)}
+            />
 
             {/* SEGNALAZIONI */}
             <div className="daily-card alert" ref={segnalazioniRef}>
