@@ -52,18 +52,30 @@ const TruckGommeSvg: FC<TruckGommeSvgProps> = ({
             : selectedWheelIds.includes(w.id);
 
         return (
-          <circle
-            key={w.id}
-            cx={w.x}
-            cy={w.y}
-            r={8}
-            className={
-              "mg-wheel" +
-              (active ? " mg-wheel-selected" : "") +
-              (modalita === "straordinario" ? " mg-wheel-clickable" : "")
-            }
-            onClick={() => onToggleWheel(w.id)}
-          />
+          <g key={w.id}>
+            <circle
+              cx={w.x}
+              cy={w.y}
+              r={8}
+              fill="none"
+              className={
+                "mg-wheel-ring" +
+                (active ? " mg-wheel-ring--active" : "")
+              }
+            />
+            <circle
+              cx={w.x}
+              cy={w.y}
+              r={18}
+              fill="transparent"
+              stroke="transparent"
+              className={
+                "mg-wheel-hit" +
+                (modalita === "straordinario" ? " mg-wheel-clickable" : "")
+              }
+              onClick={() => onToggleWheel(w.id)}
+            />
+          </g>
         );
       })}
     </svg>

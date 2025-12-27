@@ -180,29 +180,6 @@ async function loadLogoBase64(): Promise<string | null> {
   }
 }
 
-// --------------------------------------------------------
-// 🔴🟠🟢 Pallini priorità
-// --------------------------------------------------------
-function drawPriorityDot(
-  doc: jsPDF,
-  urgency: string | undefined,
-  x: number,
-  y: number
-) {
-  const r = 3;
-
-  if (urgency === "Alta") {
-    doc.setFillColor(...COLORS.urgentRed);
-  } else if (urgency === "Media") {
-    doc.setFillColor(...COLORS.mediumOrange);
-  } else if (urgency === "Bassa") {
-    doc.setFillColor(...COLORS.lowGreen);
-  } else {
-    doc.setFillColor(180, 180, 180);
-  }
-
-  doc.circle(x, y, r, "F");
-}
 
 // --------------------------------------------------------
 // Header comune

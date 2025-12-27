@@ -114,16 +114,24 @@
   stroke-width: 2;
 }
 
-.mg-wheel {
-  fill: #ffffff;
-  stroke: #333333;
+.mg-wheel-ring {
+  fill: none;
+  stroke: #6a6a6a;
   stroke-width: 2;
+  opacity: 0.8;
   transition: 0.15s ease-out;
 }
 
-.mg-wheel-selected {
-  fill: #2f855a;
-  stroke: #1f553b;
+.mg-wheel-ring--active {
+  stroke: #2f855a;
+  stroke-width: 3.5;
+  opacity: 1;
+  filter: drop-shadow(0 0 6px rgba(47, 133, 90, 0.55));
+}
+
+.mg-wheel-hit {
+  cursor: pointer;
+  pointer-events: all;
 }
 
 .mg-wheel-clickable {
