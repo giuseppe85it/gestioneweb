@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
+import { generateDossierMezzoPDF } from "../utils/pdfEngine";
 import "./DossierMezzo.css";
 
 // Normalizza la targa togliendo spazi, simboli e differenze
@@ -134,6 +135,8 @@ interface FatturaPreventivo {
   importo?: number;
   fornitoreLabel?: string;
   fileUrl?: string | null;   // <── AGGIUNTO
+  sourceKey?: string;
+  sourceDocId?: string;
 }
 
 interface Manutenzione {
@@ -350,6 +353,8 @@ for (const col of iaCollections) {
           ...d,
           tipoDocumento: docTipo,
           targa: docTarga,
+          sourceKey: col,
+          sourceDocId: docSnap.id,
         });
       }
     });
@@ -359,7 +364,7 @@ for (const col of iaCollections) {
 }
 
 const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
-  id: d.id || crypto.randomUUID(),
+  id: d.id || d.sourceDocId || crypto.randomUUID(),
   mezzoTarga: d.targa || "",
   tipo:
     d.tipoDocumento === "PREVENTIVO"
@@ -374,6 +379,8 @@ const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
     : undefined,
   fornitoreLabel: d.fornitore || "",
   fileUrl: d.fileUrl || null,              // <── AGGIUNTO
+  sourceKey: d.sourceKey,
+  sourceDocId: d.sourceDocId,
 }));
 
         const costiDocRef = doc(db, "storage", "@costiMezzo");
@@ -386,7 +393,10 @@ const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
           ...costiArray.filter((c) => {
             const t = (c.mezzoTarga || "").toUpperCase().trim();
             return t === targa.toUpperCase().trim();
-          }),
+          }).map((c) => ({
+            ...c,
+            sourceKey: "@costiMezzo",
+          })),
           ...documentiIA,
         ];
 
@@ -431,8 +441,58 @@ setState({
     navigate("/mezzi");
   };
 
-  const handleOpenPdf = () => {
-    console.log("Genera PDF dossier per targa:", targa);
+  const handleOpenPdf = async () => {
+    try {
+      await generateDossierMezzoPDF({
+        mezzo: state.mezzo,
+        mezzoFotoUrl: state.mezzo?.fotoUrl ?? null,
+        mezzoFotoStoragePath: (state.mezzo as any)?.fotoStoragePath ?? (state.mezzo as any)?.fotoPath ?? null,
+        lavoriDaEseguire: state.lavoriDaEseguire,
+        lavoriInAttesa: state.lavoriInAttesa,
+        lavoriEseguiti: state.lavoriEseguiti,
+        rifornimenti: state.rifornimenti,
+        segnalazioni: null,
+        controlli: null,
+        targa,
+      });
+    } catch (err) {
+      console.error("Errore generazione PDF dossier:", err);
+      alert("Errore durante la generazione del PDF.");
+    }
+  };
+
+  const deletePreventivo = async (p: FatturaPreventivo) => {
+    if (!window.confirm("Eliminare questo preventivo?")) return;
+
+    try {
+      if (p.sourceKey && p.sourceKey.startsWith("@documenti_")) {
+        const docId = p.sourceDocId || p.id;
+        if (!docId) {
+          alert("Impossibile individuare la sorgente del preventivo.");
+          return;
+        }
+        await deleteDoc(doc(db, p.sourceKey, docId));
+      } else {
+        const costiDocRef = doc(db, "storage", "@costiMezzo");
+        const costiSnap = await getDoc(costiDocRef);
+        const costiData = costiSnap.data() || {};
+        const items = Array.isArray(costiData.items) ? costiData.items : [];
+        const updated = items.filter(
+          (x: any) => String(x?.id ?? "") !== String(p.id)
+        );
+        await setDoc(costiDocRef, { items: updated }, { merge: true });
+      }
+
+      setState((prev) => ({
+        ...prev,
+        documentiCosti: prev.documentiCosti.filter(
+          (d) => String(d.id) !== String(p.id)
+        ),
+      }));
+    } catch (err) {
+      console.error("Errore eliminazione preventivo:", err);
+      alert("Errore durante l'eliminazione del preventivo.");
+    }
   };
 
 
@@ -1112,6 +1172,13 @@ return (
   Apri PDF
 </button>
   )}
+<button
+  className="dossier-button"
+  type="button"
+  onClick={() => deletePreventivo(d)}
+>
+  Elimina
+</button>
 </div>
                   </li>
                 ))}

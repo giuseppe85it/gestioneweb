@@ -5,6 +5,13 @@ import "./AutistiInboxHome.css";
 import { loadActiveSessions, loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
 import type { ActiveSession, HomeEvent, RimorchioStatus } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import {
+  generateCambioMezzoPDF,
+  generateControlloPDF,
+  generateRichiestaAttrezzaturePDF,
+  generateRifornimentoPDF,
+  generateSegnalazionePDF,
+} from "../utils/pdfEngine";
 import RifornimentiCard from "./components/RifornimentiCard";
 import SessioniAttiveCard from "./components/SessioniAttiveCard";
 
@@ -270,6 +277,29 @@ useEffect(() => {
       hour: "2-digit",
       minute: "2-digit",
     });
+  }
+
+  function handleExportPdf(e: HomeEvent) {
+    const p: any = e.payload || {};
+    switch (e.tipo) {
+      case "segnalazione":
+        void generateSegnalazionePDF(p);
+        return;
+      case "controllo":
+        void generateControlloPDF(p);
+        return;
+      case "richiesta_attrezzature":
+        void generateRichiestaAttrezzaturePDF(p);
+        return;
+      case "rifornimento":
+        void generateRifornimentoPDF(p);
+        return;
+      case "cambio_mezzo":
+        void generateCambioMezzoPDF(p);
+        return;
+      default:
+        return;
+    }
   }
 
   function fmtTarga(value?: string | null) {
@@ -1106,6 +1136,12 @@ useEffect(() => {
             const fotoList = getFotoList(p);
             const isCambioMezzo = selectedEvent.tipo === "cambio_mezzo";
             const cambioInfo = isCambioMezzo ? getCambioInfo(selectedEvent) : null;
+            const canExportPdf =
+              selectedEvent.tipo === "segnalazione" ||
+              selectedEvent.tipo === "controllo" ||
+              selectedEvent.tipo === "richiesta_attrezzature" ||
+              selectedEvent.tipo === "rifornimento" ||
+              selectedEvent.tipo === "cambio_mezzo";
             return (
               <div className="aix-backdrop" onClick={closeDetails}>
                 <div className="aix-modal" onClick={(e) => e.stopPropagation()}>
@@ -1203,6 +1239,23 @@ useEffect(() => {
                             }}
                           >
                             {hasLinkedLavoro(p) ? "GIÀ CREATO" : "CREA LAVORO"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {canExportPdf && (
+                      <div className="aix-row">
+                        <div className="aix-row-top">
+                          <strong>PDF</strong>
+                        </div>
+                        <div className="aix-row-bot">
+                          <button
+                            type="button"
+                            className="aix-create-btn"
+                            onClick={() => handleExportPdf(selectedEvent)}
+                          >
+                            ESPORTA PDF
                           </button>
                         </div>
                       </div>

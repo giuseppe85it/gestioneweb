@@ -12,6 +12,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { deleteObject, ref } from "firebase/storage";
 import { db, storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { generateControlloPDF, generateSegnalazionePDF } from "../utils/pdfEngine";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -1853,6 +1854,15 @@ export default function AutistiAdmin() {
                       <button
                         type="button"
                         className="edit"
+                        onClick={() => {
+                          void generateSegnalazionePDF(r);
+                        }}
+                      >
+                        PDF
+                      </button>
+                      <button
+                        type="button"
+                        className="edit"
                         disabled={hasLinked}
                         onClick={() => createLavoroFromSegnalazione(r)}
                       >
@@ -1964,6 +1974,15 @@ export default function AutistiAdmin() {
                         onClick={() => openAdminEdit("controllo", r, r.id)}
                       >
                         MODIFICA
+                      </button>
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={() => {
+                          void generateControlloPDF(r);
+                        }}
+                      >
+                        PDF
                       </button>
                       <button
                         type="button"

@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
+import { generateSegnalazionePDF } from "../utils/pdfEngine";
 import "./AutistiSegnalazioniAll.css";
 
 type SegnalazioneRecord = {
@@ -222,6 +223,17 @@ export default function AutistiSegnalazioniAll() {
                       </span>
                       {r.isNuova && <span className="aix-badge nuova">NUOVA</span>}
                       <span className="aix-foto">Foto: {r.fotoCount}</span>
+                      <button
+                        type="button"
+                        className="aix-back"
+                        style={{ padding: "4px 8px", fontSize: "12px" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void generateSegnalazionePDF(r);
+                        }}
+                      >
+                        PDF
+                      </button>
                     </div>
                     <div className="aix-row-bot">
                       <span className="aix-tipo">{r.tipoProblema ?? "-"}</span>

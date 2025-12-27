@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
+import { generateControlloPDF } from "../utils/pdfEngine";
 import "./AutistiControlliAll.css";
 
 type ControlloRecord = {
@@ -178,6 +179,16 @@ export default function AutistiControlliAll() {
                             KO: {r.koList.join(", ")}
                           </span>
                         )}
+                        <button
+                          type="button"
+                          className="aic-back"
+                          style={{ padding: "4px 8px", fontSize: "12px" }}
+                          onClick={() => {
+                            void generateControlloPDF(r);
+                          }}
+                        >
+                          PDF
+                        </button>
                       </div>
                       {r.note ? <div className="aic-note">{r.note}</div> : null}
                     </div>

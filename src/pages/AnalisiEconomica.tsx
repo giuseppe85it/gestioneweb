@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { generateAnalisiEconomicaPDF } from "../utils/pdfEngine";
 import "./DossierMezzo.css"; // riusa lo stile premium del dossier
 
 // =========================
@@ -513,6 +514,75 @@ const AnalisiEconomica: React.FC = () => {
     }
   };
 
+  const handleExportPdf = async () => {
+    const hasAnalisi =
+      !!analisiIA?.analisiCosti ||
+      !!analisiIA?.riepilogoBreve ||
+      !!analisiIA?.anomalie ||
+      !!analisiIA?.fornitoriNotevoli;
+    if (!hasAnalisi) {
+      alert("Nessuna analisi disponibile");
+      return;
+    }
+
+    const sezioni: Array<{
+      title: string;
+      text?: string;
+      columns?: string[];
+      rows?: string[][];
+    }> = [];
+
+    const riepilogoRows: string[][] = [
+      ["Totale storico", `${totaleStorico.toFixed(2)} CHF`],
+      ["Totale anno corrente", `${totaleAnnoCorrente.toFixed(2)} CHF`],
+      ["Totale preventivi", `${totalePreventivi.toFixed(2)} CHF`],
+      ["Totale fatture", `${totaleFatture.toFixed(2)} CHF`],
+    ];
+    sezioni.push({
+      title: "Riepilogo costi",
+      columns: ["Voce", "Valore"],
+      rows: riepilogoRows,
+    });
+
+    if (fornitoriAggregati.length > 0) {
+      const fornitoriRows = fornitoriAggregati.map((f) => [
+        f.nome,
+        `${f.totale.toFixed(2)} CHF`,
+        String(f.numeroDocumenti),
+      ]);
+      sezioni.push({
+        title: "Fornitori",
+        columns: ["Fornitore", "Totale", "Documenti"],
+        rows: fornitoriRows,
+      });
+    }
+
+    if (analisiIA?.riepilogoBreve && analisiIA?.analisiCosti) {
+      sezioni.push({ title: "Riepilogo", text: analisiIA.riepilogoBreve });
+    }
+    if (analisiIA?.fornitoriNotevoli) {
+      sezioni.push({
+        title: "Fornitori da tenere d'occhio",
+        text: analisiIA.fornitoriNotevoli,
+      });
+    }
+    if (analisiIA?.anomalie) {
+      sezioni.push({ title: "Anomalie / punti di attenzione", text: analisiIA.anomalie });
+    }
+
+    const testoPrincipale =
+      analisiIA?.analisiCosti ||
+      analisiIA?.riepilogoBreve ||
+      "";
+
+    await generateAnalisiEconomicaPDF({
+      targa: mezzo?.targa ?? targa ?? "",
+      mezzoInfo: mezzo,
+      testoAnalisi: testoPrincipale,
+      sezioniOpzionali: sezioni,
+    });
+  };
+
   // =========================
   // RENDER
   // =========================
@@ -588,13 +658,18 @@ const AnalisiEconomica: React.FC = () => {
           </div>
         </div>
 
-        <button
-          className="dossier-button primary"
-          onClick={handleRigeneraAnalisi}
-          disabled={savingIA || documentiCosti.length === 0}
-        >
-          {savingIA ? "Analisi IA in corso…" : "Rigenera analisi IA"}
-        </button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button className="dossier-button" onClick={handleExportPdf}>
+            Esporta PDF
+          </button>
+          <button
+            className="dossier-button primary"
+            onClick={handleRigeneraAnalisi}
+            disabled={savingIA || documentiCosti.length === 0}
+          >
+            {savingIA ? "Analisi IA in corso…" : "Rigenera analisi IA"}
+          </button>
+        </div>
       </div>
 
       {/* GRID ANALISI */}

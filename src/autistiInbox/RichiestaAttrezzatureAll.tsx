@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
 import "./RichiestaAttrezzatureAll.css";
 import { getItemSync } from "../utils/storageSync";
+import { generateRichiestaAttrezzaturePDF } from "../utils/pdfEngine";
 
 const KEY_RICHIESTE = "@richieste_attrezzature_autisti_tmp";
 
@@ -81,6 +82,7 @@ export default function RichiestaAttrezzatureAll() {
       const fotoList = getFotoList(r);
       return {
         key: String(r.id ?? `${ts}-${index}`),
+        record: r,
         ts,
         autista: r.autistaNome ?? "-",
         badge: r.badgeAutista ?? "-",
@@ -182,6 +184,16 @@ export default function RichiestaAttrezzatureAll() {
                         <strong>Foto:</strong>{" "}
                         {item.fotoCount > 0 ? `${item.fotoCount} presenti` : "nessuna"}
                       </div>
+                      <button
+                        type="button"
+                        className="richiesta-back-btn"
+                        style={{ padding: "4px 8px", fontSize: "12px", marginTop: "8px" }}
+                        onClick={() => {
+                          void generateRichiestaAttrezzaturePDF(item.record);
+                        }}
+                      >
+                        PDF
+                      </button>
                     </div>
                   ) : null}
                 </div>
