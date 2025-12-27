@@ -1,10 +1,111 @@
+/* Wrapper pagina */
+.le-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: radial-gradient(circle at top, #ece4d4 0, #dcd2c0 35%, #c9c0ae 70%, #b3ab9a 100%);
+  padding: 26px 18px 40px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  line-height: 1.45;
+}
+
 /* Container generale */
 .le-container {
-  max-width: 600px;
+  width: 100%;
+  max-width: 430px;
   margin: 0 auto;
-  padding: 18px;
-  background: #f7f7ef;
-  border-radius: 22px;
+  padding: 20px 18px 24px;
+  background: rgba(248, 244, 232, 0.98);
+  border-radius: 18px;
+  border: 1px solid rgba(180, 167, 144, 0.45);
+  box-shadow:
+    0 14px 35px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ===== BOTTONI PREMIUM ===== */
+.lavori-btn {
+  height: 44px;
+  border-radius: 999px;
+  padding: 0 16px;
+  border: 1px solid rgba(180, 167, 144, 0.55);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  background: rgba(250, 244, 233, 0.95);
+  color: #3a352b;
+}
+
+.lavori-btn.is-primary {
+  background: #2d6a4f;
+  border-color: #2d6a4f;
+  color: #ffffff;
+}
+
+.lavori-btn.is-secondary {
+  background: rgba(250, 244, 233, 0.95);
+  border-color: rgba(180, 167, 144, 0.55);
+  color: #3a352b;
+}
+
+.lavori-btn.is-danger {
+  background: #b23b2a;
+  border-color: #b23b2a;
+  color: #ffffff;
+}
+
+.lavori-btn.is-ghost {
+  background: rgba(250, 244, 233, 0.75);
+  border-color: rgba(180, 167, 144, 0.45);
+  color: #3a352b;
+}
+
+.lavori-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.lavori-header-logo {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.lavori-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lavori-header-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #5b574c;
+}
+
+.lavori-header-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #2b2923;
+}
+
+.le-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* Header */
@@ -13,29 +114,18 @@
   margin-bottom: 20px;
 }
 
-.le-icon {
-  font-size: 42px;
-  margin-bottom: 6px;
-}
-
-.le-title {
-  font-size: 28px;
-  font-weight: bold;
-  color: #1d3b1a;
-}
-
 /* RIGA SETTIMANA */
 .le-section {
   margin-bottom: 18px;
-  background: white;
-  border-radius: 12px;
+  background: rgba(255, 253, 247, 0.95);
+  border-radius: 18px;
   overflow: hidden;
-  border: 1px solid #e5e5d8;
+  border: 1px solid rgba(180, 167, 144, 0.45);
 }
 
 .le-week-row {
   padding: 14px;
-  background: #e8f2e3;
+  background: #2d6a4f;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -43,28 +133,26 @@
 }
 
 .le-week-text {
-  font-size: 18px;
-  color: #2b6022;
-  font-weight: bold;
+  font-size: 14px;
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* pdf button */
 .le-pdf-btn {
-  background: white;
-  border: 1px solid #2b6022;
-  padding: 6px 10px;
-  border-radius: 8px;
-  cursor: pointer;
   margin-right: 8px;
-  font-size: 14px;
-  color: #2b6022;
+  padding: 0 12px;
+  height: 44px;
+  font-size: 11px;
 }
 
 /* Arrow */
 .le-arrow {
-  font-size: 18px;
-  color: #2b6022;
-  font-weight: bold;
+  font-size: 14px;
+  color: #ffffff;
+  font-weight: 800;
 }
 
 /* LISTA LAVORI */
@@ -73,10 +161,14 @@
 }
 
 .le-work-item {
-  padding: 12px 0;
-  border-bottom: 1px solid #ddd;
+  padding: 12px;
+  border-bottom: 1px solid rgba(180, 167, 144, 0.35);
   display: flex;
   justify-content: space-between;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 10px;
 }
 
 .le-work-left {
@@ -84,34 +176,38 @@
 }
 
 .le-work-title {
-  font-size: 17px;
-  font-weight: bold;
-  color: #333;
+  font-size: 16px;
+  font-weight: 800;
+  color: #2b2923;
 }
 
 .le-work-date {
-  font-size: 14px;
-  color: #666;
+  font-size: 13px;
+  color: #5b574c;
+  font-weight: 700;
 }
 
 /* elimina */
 .le-delete-btn {
-  background: transparent;
-  border: none;
-  color: red;
-  font-size: 14px;
-  cursor: pointer;
+  padding: 0 12px;
+  height: 44px;
+  font-size: 11px;
 }
 
 /* back */
 .le-back-btn {
   margin-top: 20px;
   width: 100%;
-  padding: 14px;
-  background: #2b6022;
-  color: white;
-  font-size: 20px;
-  border: none;
-  border-radius: 14px;
-  cursor: pointer;
+  padding: 0 16px;
+  font-size: 12px;
+  position: sticky;
+  bottom: 0;
+  height: 44px;
+}
+
+@media (min-width: 900px) {
+  .le-container {
+    max-width: 720px;
+    padding: 26px 22px 28px;
+  }
 }

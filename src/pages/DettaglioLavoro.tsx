@@ -88,32 +88,41 @@ const DettaglioLavoro = () => {
   };
 
   return (
-    <div className="dl-container">
-
-      <div className="wip-header">
-        <img src="/lavori.png" className="wip-logo" />
-      </div>
-
-      <div className="dl-title">DETTAGLIO LAVORO</div>
+    <div className="dl-page">
+      <div className="dl-container">
+        <div className="lavori-header">
+          <img src="/logo.png" alt="logo" className="lavori-header-logo" />
+          <div className="lavori-header-text">
+            <div className="lavori-header-eyebrow">LAVORI</div>
+            <div className="lavori-header-title">Dettaglio lavoro</div>
+          </div>
+        </div>
 
       {lavoriGruppo.map((l) => (
         <div
           className={`lavoro-card ${l.eseguito ? "lavoro-card-eseguito" : ""}`}
           key={l.id}
         >
-          <div className="lavoro-descrizione">{l.descrizione}</div>
+          <div className="lavoro-top-row">
+            <div className="lavoro-descrizione">{l.descrizione}</div>
+            {l.urgenza && (
+              <span className={`lavori-badge lavori-badge-${l.urgenza}`}>
+                {String(l.urgenza).toUpperCase()}
+              </span>
+            )}
+          </div>
 
           {l.targa && (
             <div className="lavoro-dettaglio">Targa: {l.targa}</div>
           )}
 
-          <div className="lavoro-dettaglio">
+          <div className="lavoro-dettaglio lavoro-data">
             Inserito: {l.dataInserimento}
           </div>
           
           <div className="dl-buttons">
             <button
-              className="dl-btn dl-btn-modifica"
+              className="dl-btn lavori-btn is-secondary"
               onClick={() => {
                 setModalModifica(true);
                 setLavoroSelezionato(l);
@@ -125,14 +134,14 @@ const DettaglioLavoro = () => {
             </button>
 
             <button
-              className="dl-btn dl-btn-elimina"
+              className="dl-btn lavori-btn is-danger"
               onClick={() => elimina(l.id)}
             >
               ELIMINA
             </button>
 
             <button
-              className={`dl-btn ${l.eseguito ? "dl-btn-disattivo" : "dl-btn-esegui"}`}
+              className={`dl-btn lavori-btn ${l.eseguito ? "is-ghost" : "is-primary"}`}
               onClick={() => {
                 if (l.eseguito) return;
                 setModalVisible(true);
@@ -157,10 +166,10 @@ const DettaglioLavoro = () => {
             />
 
             <div className="modal-buttons">
-              <button className="modal-btn modal-annulla" onClick={() => setModalVisible(false)}>
+              <button className="modal-btn lavori-btn is-ghost" onClick={() => setModalVisible(false)}>
                 Annulla
               </button>
-              <button className="modal-btn modal-salva" onClick={() => esegui(lavoroSelezionato, nomeEsecutore)}>
+              <button className="modal-btn lavori-btn is-primary" onClick={() => esegui(lavoroSelezionato, nomeEsecutore)}>
                 Salva
               </button>
             </div>
@@ -189,10 +198,10 @@ const DettaglioLavoro = () => {
             />
 
             <div className="modal-buttons">
-              <button className="modal-btn modal-annulla" onClick={() => setModalModifica(false)}>
+              <button className="modal-btn lavori-btn is-ghost" onClick={() => setModalModifica(false)}>
                 Annulla
               </button>
-              <button className="modal-btn modal-salva" onClick={salvaModifica}>
+              <button className="modal-btn lavori-btn is-primary" onClick={salvaModifica}>
                 Salva
               </button>
             </div>
@@ -200,9 +209,10 @@ const DettaglioLavoro = () => {
         </div>
       )}
 
-      <button className="btn-indietro" onClick={() => navigate(-1)}>
-        TORNA INDIETRO
-      </button>
+        <button className="btn-indietro lavori-btn is-primary" onClick={() => navigate(-1)}>
+          TORNA INDIETRO
+        </button>
+      </div>
     </div>
   );
 };

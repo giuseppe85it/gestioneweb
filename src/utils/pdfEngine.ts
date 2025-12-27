@@ -477,7 +477,7 @@ async function generateLavoriPdf(
       const rawDate = l.dataInserimento ?? l.data ?? "";
       const date = rawDate ? formatGGMMYYYY(rawDate) : "";
       const desc = l.descrizione || "";
-      const urg = l.urgenza || "";
+      const urg = String(l.urgenza || "").toUpperCase();
       const mag = l.magazzino || "";
       const targa = l.targa || "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -492,6 +492,11 @@ async function generateLavoriPdf(
       fontSize: 9,
       cellPadding: 3,
     },
+    columnStyles: {
+      0: { cellWidth: 24 },
+      2: { cellWidth: 28, halign: "center" },
+      3: { cellWidth: 40 },
+    },
     headStyles: {
       fillColor: COLORS.tableHeaderBg,
       textColor: COLORS.tableHeaderText,
@@ -500,14 +505,24 @@ async function generateLavoriPdf(
     alternateRowStyles: {
       fillColor: COLORS.rowAlt,
     },
-    didDrawCell: (data) => {
+    didParseCell: (data) => {
       if (data.section === "body" && data.column.index === 2) {
-        const urgency = (data.cell.raw as string) || "";
+        const urgency = String(data.cell.raw || "").toUpperCase();
         if (!urgency) return;
 
-        const centerX = data.cell.x + data.cell.width / 2;
-        const centerY = data.cell.y + data.cell.height / 2;
-        drawPriorityDot(doc, urgency, centerX, centerY);
+        data.cell.text = [urgency];
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.textColor = [255, 255, 255];
+
+        if (urgency === "ALTA") {
+          data.cell.styles.fillColor = [214, 82, 63];
+        } else if (urgency === "MEDIA") {
+          data.cell.styles.fillColor = [240, 166, 47];
+        } else if (urgency === "BASSA") {
+          data.cell.styles.fillColor = [62, 139, 53];
+        } else {
+          data.cell.styles.fillColor = [120, 120, 120];
+        }
       }
     },
   });

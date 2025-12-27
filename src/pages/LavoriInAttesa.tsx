@@ -117,10 +117,10 @@ const LavoriInAttesa: React.FC = () => {
   };
 
   const getUrgencyClass = (urgenza?: string) => {
-    if (urgenza === "alta") return "lia-urgency lia-urgency--alta";
-    if (urgenza === "media") return "lia-urgency lia-urgency--media";
-    if (urgenza === "bassa") return "lia-urgency lia-urgency--bassa";
-    return "lia-urgency lia-urgency--default";
+    if (urgenza === "alta") return "lavori-badge lavori-badge-alta";
+    if (urgenza === "media") return "lavori-badge lavori-badge-media";
+    if (urgenza === "bassa") return "lavori-badge lavori-badge-bassa";
+    return "lavori-badge lavori-badge-media";
   };
 
   // Selezione gruppi da mostrare (ALL oppure singolo gruppo)
@@ -153,14 +153,13 @@ const LavoriInAttesa: React.FC = () => {
   return (
     <div className="lia-page">
       <div className="lia-card">
-        {/* HEADER */}
-        <header className="lia-header">
-          <div className="lia-header-left">
-            <div className="lia-header-icon" />
-            <div className="lia-header-title">LAVORI IN ATTESA</div>
+        <div className="lavori-header">
+          <img src="/logo.png" alt="logo" className="lavori-header-logo" />
+          <div className="lavori-header-text">
+            <div className="lavori-header-eyebrow">LAVORI</div>
+            <div className="lavori-header-title">Lavori in attesa</div>
           </div>
-          <div className="lia-header-right">LAVORI</div>
-        </header>
+        </div>
 
         {/* FILTRO A TENDINA (MAGAZZINO / TARGA / TUTTI) */}
         <div className="lia-filter-bar">
@@ -203,7 +202,7 @@ const LavoriInAttesa: React.FC = () => {
 
                   <div className="lia-section-actions">
                     <button
-                      className="lia-pdf-inline"
+                      className="lia-pdf-inline lavori-btn is-ghost"
                       onClick={(e) => {
                         e.stopPropagation();
                         exportPdf(section.title, section.lavori);
@@ -229,9 +228,9 @@ const LavoriInAttesa: React.FC = () => {
                       : "lia-section-body--closed"
                   }`}
                 >
-                  {section.lavori.map((l) => (
+                  {section.lavori.map((l, index) => (
                     <div
-                      key={l.id}
+                      key={`${section.title}-${l.id}-${index}`}
                       className="lia-job-card"
                       onClick={() => openDettaglio(l.id)}
                     >
@@ -257,7 +256,7 @@ const LavoriInAttesa: React.FC = () => {
 
         {/* FOOTER */}
         <div className="lia-footer">
-          <button className="lia-back-button" onClick={() => navigate(-1)}>
+          <button className="lia-back-button lavori-btn is-primary" onClick={() => navigate(-1)}>
             TORNA INDIETRO
           </button>
         </div>

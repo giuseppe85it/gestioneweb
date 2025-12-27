@@ -279,3 +279,105 @@ VINCOLI
   - nei `sort` su timestamp usare fallback numerico: `(b.data ?? 0) - (a.data ?? 0)`
   - nei confronti usare cast/normalizzazione coerente (Number/String) o check `== null`
 - Dopo ogni patch: `Save All` → tab “Problems” deve essere 0 errori.
+1) Regola “Autisti vs AutistiInbox” (cartelle e route mai confuse)
+
+Autisti app: src/autisti/* e route /autisti/*
+
+Inbox/Admin: src/autistiInbox/* e route /autisti-inbox/* + /autisti-admin
+
+Convenzione pratica: tutte le pagine “vedi tutto” dell’Inbox devono finire in *All.tsx e stare in src/autistiInbox/.
+
+2) Pre-check routing obbligatorio quando aggiungi una pagina
+
+Prima di qualsiasi patch UI:
+
+controlla in App.tsx:
+
+import del componente giusto (cartella giusta)
+
+route giusta (prefisso giusto)
+
+controlla in AutistiInboxHome.tsx:
+
+il bottone punta alla route giusta
+
+evitare mismatch tipo: route /autisti/... che importa da autistiInbox o viceversa.
+3) Regola “Cache / PWA / Vercel” (versione vecchia anche se il codice è giusto)
+
+Sintomo: “non funziona” ma dopo reset cookie/site data funziona.
+Prima di toccare file:
+
+Testa in Incognito.
+
+Fai Hard reload (Ctrl+F5).
+
+Chrome DevTools → Application:
+
+Clear storage → Clear site data
+
+(Se PWA) Unregister Service Worker
+
+Su telefono: cancella dati sito (non solo cache) o prova browser diverso.
+
+4) Regola “Foto” (mai affidarsi a Base64 dentro Firestore per uso reale)
+
+Problema tipico: su telefono salvataggi che “non salvano niente” quando c’è la foto.
+Regola pratica:
+
+Foto vanno su Firebase Storage.
+
+Nel record salva solo riferimenti leggeri:
+
+fotoUrl e fotoStoragePath (oppure fotoUrls[]/fotoStoragePaths[]).
+
+I reader (Inbox/Admin/All) devono supportare sia:
+
+legacy dataUrl base64
+
+nuovi fotoUrl (Storage)
+
+5) Regola “Windows vs Vercel” (case-sensitive + file mancanti)
+
+Sintomo: in locale funziona, su Vercel fallisce con Failed to resolve import ... .css.
+Regole:
+
+Su Vercel (Linux) i path sono case-sensitive.
+
+Verifica SEMPRE:
+
+nome file reale = import (maiuscole/minuscole identiche)
+
+il file esiste davvero nel repo
+
+git status pulito, file aggiunti e pushati
+
+Se sposti file tra cartelle, aggiorna tutti gli import relativi.
+
+6) Regola “Separazione Autisti vs AutistiInbox” (mai mischiare route/import)
+
+Obiettivo: evitare che una route Autisti punti a un componente Inbox (o viceversa).
+Check rapido:
+
+/autisti/* importa da src/autisti/*
+
+/autisti-inbox/* importa da src/autistiInbox/*
+
+Se rinomini in *All.tsx in Inbox, anche import/route devono usare *All.
+
+7) Regola “Create lavoro da segnalazione/controllo” (dedup obbligatorio)
+
+Quando crei un lavoro da Admin:
+
+scrivi linkedLavoroId (o linkedLavoroIds) nel record sorgente
+
+imposta anche stato/letta per “presa in carico”
+
+per controlli target="entrambi": 2 lavori (motrice + rimorchio) se targhe presenti
+
+normalizza sempre targa: toUpperCase().trim()
+
+8) Regola “Deploy”
+
+Modifiche solo frontend (src/**) → nessun deploy functions.
+
+Deploy functions solo se tocchi functions/** e relative chiamate.

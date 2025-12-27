@@ -4,22 +4,103 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #d1d3cc;
-  padding: 24px;
+  background: radial-gradient(circle at top, #ece4d4 0, #dcd2c0 35%, #c9c0ae 70%, #b3ab9a 100%);
+  padding: 26px 18px 40px;
   box-sizing: border-box;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+  line-height: 1.45;
 }
 
 /* TELEFONO / CARD GRANDE */
 .lde-phone {
-  width: 380px;
-  max-width: 100%;
-  background: #f1efe9;
-  border-radius: 36px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
-  padding: 22px 18px 26px;
+  width: 100%;
+  max-width: 430px;
+  background: rgba(248, 244, 232, 0.98);
+  border-radius: 18px;
+  box-shadow:
+    0 14px 35px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  padding: 20px 18px 24px;
   box-sizing: border-box;
+  overflow: visible;
+  border: 1px solid rgba(180, 167, 144, 0.45);
+}
+
+/* ===== BOTTONI PREMIUM ===== */
+.lavori-btn {
+  height: 44px;
+  border-radius: 999px;
+  padding: 0 16px;
+  border: 1px solid rgba(180, 167, 144, 0.55);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  background: rgba(250, 244, 233, 0.95);
+  color: #3a352b;
+}
+
+.lavori-btn.is-primary {
+  background: #2d6a4f;
+  border-color: #2d6a4f;
+  color: #ffffff;
+}
+
+.lavori-btn.is-secondary {
+  background: rgba(250, 244, 233, 0.95);
+  border-color: rgba(180, 167, 144, 0.55);
+  color: #3a352b;
+}
+
+.lavori-btn.is-danger {
+  background: #b23b2a;
+  border-color: #b23b2a;
+  color: #ffffff;
+}
+
+.lavori-btn.is-ghost {
+  background: rgba(250, 244, 233, 0.75);
+  border-color: rgba(180, 167, 144, 0.45);
+  color: #3a352b;
+}
+
+.lavori-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.lavori-header-logo {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.lavori-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lavori-header-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #5b574c;
+  text-transform: uppercase;
+}
+
+.lavori-header-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #2b2923;
 }
 
 /* HEADER SUPERIORE */
@@ -64,37 +145,32 @@
 /* TABS */
 .lde-tabs {
   display: flex;
-  background: #deddd7;
-  border-radius: 18px;
-  padding: 3px;
+  gap: 10px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 
 .lde-tab {
   flex: 1;
   text-align: center;
   font-size: 12px;
-  padding: 8px 4px;
-  border-radius: 14px;
+  padding: 0 12px;
   text-decoration: none;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: #616a64;
-  background: transparent;
 }
 
 .lde-tab-active {
-  background: #f3f1eb;
-  color: #214827;
+  background: rgba(250, 244, 233, 0.95);
+  color: #2b2923;
 }
 
 /* BOX SEZIONI */
 .lde-section {
-  background: #f6f4ee;
-  border-radius: 22px;
-  padding: 16px 14px 18px;
-  border: 1px solid #d2d0c8;
+  background: rgba(255, 253, 247, 0.9);
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid rgba(180, 167, 144, 0.45);
   box-sizing: border-box;
+  overflow: visible;
 }
 
 .lde-section + .lde-section {
@@ -103,50 +179,67 @@
 
 .lde-section-title {
   margin: 0 0 12px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: #285c30;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #3a352b;
+  text-transform: uppercase;
 }
 
 /* SWITCH MAGAZZINO/TARGA */
 .lde-switch {
   display: flex;
-  border-radius: 16px;
+  border-radius: 999px;
   overflow: hidden;
-  background: #e1dfd9;
-  margin-bottom: 12px;
+  background: rgba(250, 244, 233, 0.75);
+  border: 1px solid rgba(180, 167, 144, 0.45);
+  margin-bottom: 14px;
 }
 
 .lde-switch-btn {
   flex: 1;
   border: none;
   background: transparent;
-  padding: 10px 4px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: #33503a;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #3a352b;
   cursor: pointer;
+  text-transform: uppercase;
+  box-shadow: none;
+  height: 44px;
 }
 
-.lde-switch-active {
-  background: #3e8b35;
+.lde-toggle-btn {
+  background: #f3efe3;
+  color: #2a2a2a;
+  border: 1px solid rgba(180, 167, 144, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.lde-toggle-btn.is-selected {
+  background: #2f7a3a;
   color: #ffffff;
+  border-color: #245f2d;
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.18),
+    0 0 0 2px rgba(47, 122, 58, 0.35);
+  transform: translateY(-1px) scale(1.01);
 }
 
 /* INPUTS */
 .lde-input {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid #d4d2c9;
-  background: #f0eee7;
-  padding: 8px 10px;
-  font-size: 13px;
-  color: #2a4130;
+  border: 1px solid rgba(180, 167, 144, 0.55);
+  background: rgba(255, 253, 247, 0.9);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #3a352b;
   box-sizing: border-box;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .lde-input-date {
@@ -155,8 +248,18 @@
 
 .lde-input:focus {
   outline: none;
-  border-color: #3e8b35;
-  box-shadow: 0 0 0 1px rgba(62, 139, 53, 0.18);
+  border-color: #2d6a4f;
+  box-shadow: 0 0 0 2px rgba(45, 106, 79, 0.18);
+}
+
+.lde-input-wide {
+  grid-column: 1 / -1;
+}
+
+.lde-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 /* PRIORITÀ */
@@ -168,46 +271,85 @@
 
 .lde-priority {
   flex: 1;
-  border-radius: 18px;
+  border-radius: 999px;
   border: none;
-  padding: 9px 4px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #ffffff;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   cursor: pointer;
-  opacity: 0.85;
+  text-transform: uppercase;
+  opacity: 0.9;
+  height: 44px;
 }
 
-.lde-priority.active {
-  opacity: 1;
+.lde-prio-btn {
+  background: #f3efe3;
+  color: #2a2a2a;
+  border: 1px solid rgba(180, 167, 144, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
 }
 
-.lde-priority-low {
-  background: #3e8b35;
+.lde-prio-btn.is-selected.prio-bassa {
+  background: #2f7a3a;
+  color: #ffffff;
+  border-color: #245f2d;
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.18),
+    0 0 0 2px rgba(47, 122, 58, 0.35);
+  transform: translateY(-1px) scale(1.01);
 }
 
-.lde-priority-medium {
-  background: #f0a62f;
+.lde-prio-btn.is-selected.prio-media {
+  background: #e0a928;
+  color: #1a1a1a;
+  border-color: #b9851e;
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.18),
+    0 0 0 2px rgba(224, 169, 40, 0.35);
+  transform: translateY(-1px) scale(1.01);
 }
 
+.lde-prio-btn.is-selected.prio-alta {
+  background: #c84a3a;
+  color: #ffffff;
+  border-color: #9f3a2d;
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.18),
+    0 0 0 2px rgba(200, 74, 58, 0.35);
+  transform: translateY(-1px) scale(1.01);
+}
+
+.lde-prio-btn:focus-visible,
+.lde-toggle-btn:focus-visible {
+  outline: 2px solid rgba(47, 122, 58, 0.55);
+  outline-offset: 2px;
+}
+
+.lde-prio-btn:hover,
+.lde-toggle-btn:hover {
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
+.lde-priority-low,
+.lde-priority-medium,
 .lde-priority-high {
-  background: #d6523f;
+  background: transparent;
+  color: inherit;
 }
 
 /* BOTTONE PRINCIPALE (AGGIUNGI + SALVA GRUPPO) */
 .lde-main-btn {
   width: 100%;
-  border-radius: 20px;
-  border: none;
-  padding: 11px 8px;
-  font-size: 14px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-align: center;
-  background: #3e8b35;
-  color: #ffffff;
   cursor: pointer;
+  text-transform: uppercase;
+  height: 44px;
 }
 
 .lde-save-btn {
@@ -223,7 +365,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 2px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(180, 167, 144, 0.35);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+  margin-bottom: 8px;
 }
 
 .lde-list-left {
@@ -233,9 +380,9 @@
 }
 
 .lde-list-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #254130;
+  font-size: 15px;
+  font-weight: 800;
+  color: #2b2923;
 }
 
 .lde-list-subline {
@@ -256,32 +403,33 @@
 
 .lde-list-subtext {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.06em;
-  color: #274734;
+  color: #5b574c;
 }
 
 /* BADGE URGENZA NELLA LISTA */
-.lde-badge {
-  min-width: 60px;
-  padding: 6px 10px;
-  border-radius: 18px;
+.lavori-badge {
+  min-width: 76px;
+  padding: 7px 12px;
+  border-radius: 999px;
   text-align: center;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   color: #ffffff;
+  text-transform: uppercase;
 }
 
-.lde-badge.low {
+.lavori-badge-bassa {
   background: #3e8b35;
 }
 
-.lde-badge.medium {
+.lavori-badge-media {
   background: #f0a62f;
 }
 
-.lde-badge.high {
+.lavori-badge-alta {
   background: #d6523f;
 }
 
@@ -310,11 +458,26 @@
   background: #ffffff;
   border: 1px solid #d4d2c9;
   border-top: none;
-  z-index: 30;
+  z-index: 60;
   border-radius: 0 0 12px 12px;
   max-height: 190px;
   overflow-y: auto;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+@media (min-width: 900px) {
+  .lde-phone {
+    max-width: 720px;
+    padding: 26px 22px 28px;
+  }
+
+  .lde-section {
+    padding: 18px;
+  }
+
+  .lde-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .autosuggest-item {

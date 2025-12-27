@@ -140,13 +140,17 @@ const LavoriEseguiti: React.FC = () => {
   };
 
   return (
-    <div className="le-container">
-
-      <div className="le-header">
-        <div className="le-icon">🚚</div>
+    <div className="le-page">
+      <div className="le-container">
+        <div className="lavori-header">
+          <img src="/logo.png" alt="logo" className="lavori-header-logo" />
+          <div className="lavori-header-text">
+            <div className="lavori-header-eyebrow">LAVORI</div>
+            <div className="lavori-header-title">Lavori eseguiti</div>
+          </div>
+        </div>
         <div className="le-title">LAVORI ESEGUITI</div>
-      </div>
-
+        <div className="le-sections">
       {sections.map((sec) => {
         const isOpen = expanded[sec.title];
 
@@ -161,7 +165,7 @@ const LavoriEseguiti: React.FC = () => {
               <span className="le-week-text">Settimana {sec.title}</span>
 
               <button
-                className="le-pdf-btn"
+                className="le-pdf-btn lavori-btn is-ghost"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleExportPDF(sec.data, sec.title);
@@ -193,7 +197,7 @@ const LavoriEseguiti: React.FC = () => {
                     </div>
 
                     <button
-                      className="le-delete-btn"
+                      className="le-delete-btn lavori-btn is-danger"
                       onClick={() => handleDelete(lavoro.id)}
                     >
                       Elimina
@@ -205,12 +209,15 @@ const LavoriEseguiti: React.FC = () => {
           </div>
         );
       })}
+        </div>
 
-      <button className="le-back-btn" onClick={() => navigate(-1)}>
-        TORNA INDIETRO
-      </button>
+        <button className="le-back-btn lavori-btn is-primary" onClick={() => navigate(-1)}>
+          TORNA INDIETRO
+        </button>
+      </div>
     </div>
   );
 };
 
 export default LavoriEseguiti;
+

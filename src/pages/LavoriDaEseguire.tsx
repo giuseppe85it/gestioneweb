@@ -120,22 +120,20 @@ const LavoriDaEseguire: React.FC = () => {
   return (
     <div className="lde-page">
       <div className="lde-phone">
-        {/* HEADER */}
-        <div className="lde-header">
-          <div className="lde-truck-wrap">
-            <img src="/cisterna.png" alt="mezzo" className="lde-truck-img" />
+        <div className="lavori-header">
+          <img src="/logo.png" alt="logo" className="lavori-header-logo" />
+          <div className="lavori-header-text">
+            <div className="lavori-header-eyebrow">LAVORI</div>
+            <h1 className="lavori-header-title">Lavori da eseguire</h1>
           </div>
-          <div className="lde-header-right">LAVORI</div>
         </div>
-
-        <h1 className="lde-title">LAVORI DA ESEGUIRE</h1>
 
         {/* TABS */}
         <div className="lde-tabs">
-          <Link to="/lavori-in-attesa" className="lde-tab lde-tab-active">
+          <Link to="/lavori-in-attesa" className="lde-tab lavori-btn is-primary">
             LAVORI IN ATTESA
           </Link>
-          <Link to="/lavori-eseguiti" className="lde-tab">
+          <Link to="/lavori-eseguiti" className="lde-tab lavori-btn is-ghost">
             LAVORI ESEGUITI
           </Link>
         </div>
@@ -148,8 +146,8 @@ const LavoriDaEseguire: React.FC = () => {
           <div className="lde-switch">
             <button
               className={
-                "lde-switch-btn" +
-                (tipo === "magazzino" ? " lde-switch-active" : "")
+                "lde-switch-btn lde-toggle-btn lavori-btn is-ghost" +
+                (tipo === "magazzino" ? " is-selected" : "")
               }
               onClick={() => setTipo("magazzino")}
             >
@@ -157,7 +155,8 @@ const LavoriDaEseguire: React.FC = () => {
             </button>
             <button
               className={
-                "lde-switch-btn" + (tipo === "targa" ? " lde-switch-active" : "")
+                "lde-switch-btn lde-toggle-btn lavori-btn is-ghost" +
+                (tipo === "targa" ? " is-selected" : "")
               }
               onClick={() => setTipo("targa")}
             >
@@ -166,12 +165,14 @@ const LavoriDaEseguire: React.FC = () => {
           </div>
 
           {/* DATA */}
-          <input
-            type="date"
-            className="lde-input lde-input-date"
-            value={dataInserimento}
-            onChange={(e) => setDataInserimento(e.target.value)}
-          />
+          <div className="lde-form-grid">
+            <input
+              type="date"
+              className="lde-input lde-input-date"
+              value={dataInserimento}
+              onChange={(e) => setDataInserimento(e.target.value)}
+            />
+          </div>
 
           {/* AUTOSUGGEST TARGA */}
           {tipo === "targa" && (
@@ -227,7 +228,7 @@ const LavoriDaEseguire: React.FC = () => {
           {/* DESCRIZIONE */}
           <input
             type="text"
-            className="lde-input"
+            className="lde-input lde-input-wide"
             placeholder="Descrizione lavoro"
             value={descrizione}
             onChange={(e) => setDescrizione(e.target.value)}
@@ -237,8 +238,8 @@ const LavoriDaEseguire: React.FC = () => {
           <div className="lde-priority-row">
             <button
               className={
-                "lde-priority lde-priority-low" +
-                (urgenza === "bassa" ? " active" : "")
+                "lde-priority lde-prio-btn prio-bassa lavori-btn is-secondary" +
+                (urgenza === "bassa" ? " is-selected" : "")
               }
               onClick={() => setUrgenza("bassa")}
             >
@@ -246,8 +247,8 @@ const LavoriDaEseguire: React.FC = () => {
             </button>
             <button
               className={
-                "lde-priority lde-priority-medium" +
-                (urgenza === "media" ? " active" : "")
+                "lde-priority lde-prio-btn prio-media lavori-btn is-secondary" +
+                (urgenza === "media" ? " is-selected" : "")
               }
               onClick={() => setUrgenza("media")}
             >
@@ -255,16 +256,16 @@ const LavoriDaEseguire: React.FC = () => {
             </button>
             <button
               className={
-                "lde-priority lde-priority-high" +
-                (urgenza === "alta" ? " active" : "")
+                "lde-priority lde-prio-btn prio-alta lavori-btn is-secondary" +
+                (urgenza === "alta" ? " is-selected" : "")
               }
               onClick={() => setUrgenza("alta")}
             >
-              RIMUOVI
+              ALTA
             </button>
           </div>
 
-          <button className="lde-main-btn" onClick={aggiungiLavoro}>
+          <button className="lde-main-btn lavori-btn is-primary" onClick={aggiungiLavoro}>
             AGGIUNGI
           </button>
         </section>
@@ -298,12 +299,12 @@ const LavoriDaEseguire: React.FC = () => {
 
                 <div
                   className={
-                    "lde-badge " +
+                    "lavori-badge " +
                     (lavoro.urgenza === "bassa"
-                      ? "low"
+                      ? "lavori-badge-bassa"
                       : lavoro.urgenza === "media"
-                      ? "medium"
-                      : "high")
+                      ? "lavori-badge-media"
+                      : "lavori-badge-alta")
                   }
                 >
                   {labelUrgenza(lavoro.urgenza)}
@@ -316,7 +317,7 @@ const LavoriDaEseguire: React.FC = () => {
             )}
           </div>
 
-          <button className="lde-main-btn lde-save-btn" onClick={salvaGruppo}>
+          <button className="lde-main-btn lde-save-btn lavori-btn is-primary" onClick={salvaGruppo}>
             SALVA GRUPPO LAVORI
           </button>
         </section>
