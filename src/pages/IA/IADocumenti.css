@@ -43,6 +43,34 @@
   color: #b71c1c;
 }
 
+.iadoc-targa-ok {
+  background: #e8f5e9;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: #1b5e20;
+  font-size: 0.9rem;
+}
+
+.iadoc-targa-verify {
+  background: #fff3e0;
+  padding: 10px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.iadoc-badge-warn {
+  display: inline-flex;
+  align-self: flex-start;
+  background: #c62828;
+  color: white;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
 .iadoc-analyze,
 .iadoc-save,
 .iadoc-back {

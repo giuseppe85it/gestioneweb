@@ -72,6 +72,10 @@ interface DocumentoAnalizzato {
   testo?: string;
 }
 
+interface MezzoDoc {
+  targa?: string;
+}
+
 // =======================================================
 // TIPI E COSTANTI PER INVENTARIO (allineati a Inventario.tsx)
 // =======================================================
@@ -110,6 +114,9 @@ const IADocumenti: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<DocumentoAnalizzato | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [mezzi, setMezzi] = useState<MezzoDoc[]>([]);
+  const [targaEstrattaIA, setTargaEstrattaIA] = useState<string>("");
+  const [targaSelezionata, setTargaSelezionata] = useState<string>("");
 
   // flag per sapere se il documento è stato salvato su Firestore
   const [documentSaved, setDocumentSaved] = useState(false);
@@ -137,6 +144,34 @@ const IADocumenti: React.FC = () => {
     void load();
   }, []);
 
+  useEffect(() => {
+    const loadMezzi = async () => {
+      try {
+        const mezziRef = doc(db, "storage", "@mezzi_aziendali");
+        const snap = await getDoc(mezziRef);
+        const data = snap.data() || {};
+        const arr = Array.isArray(data.value)
+          ? data.value
+          : Array.isArray(data)
+          ? data
+          : [];
+        setMezzi(arr as MezzoDoc[]);
+      } catch {
+        setMezzi([]);
+      }
+    };
+    void loadMezzi();
+  }, []);
+
+  const fmtTarga = (s?: unknown) =>
+    typeof s === "string" ? s.toUpperCase().replace(/\s+/g, " ").trim() : "";
+
+  const exactMatch = (estratta?: unknown, listaMezzi: MezzoDoc[] = []) => {
+    const t = fmtTarga(estratta);
+    if (!t) return null;
+    return listaMezzi.find((m) => fmtTarga(m?.targa) === t) || null;
+  };
+
   // ===================================================
   // UPLOAD FILE (PDF o IMMAGINE) + PREVIEW
   // ===================================================
@@ -148,6 +183,8 @@ const IADocumenti: React.FC = () => {
     setErrorMessage(null);
     setResults(null);
     setDocumentSaved(false); // nuovo documento → azzero flag salvataggio
+    setTargaEstrattaIA("");
+    setTargaSelezionata("");
 
     // Preview solo immagini, non PDF
     if (f.type.startsWith("image/")) {
@@ -242,6 +279,8 @@ const IADocumenti: React.FC = () => {
       setErrorMessage(null);
       setResults(null);
       setDocumentSaved(false); // Nuova analisi → il documento non è ancora salvato
+      setTargaEstrattaIA("");
+      setTargaSelezionata("");
 
       const { base64, mimeType } = await fileToBase64(selectedFile);
       const analyzed = await analyzeDocumentoConIA(base64, mimeType);
@@ -254,6 +293,8 @@ const IADocumenti: React.FC = () => {
           ...analyzed.data,
           categoriaArchivio: tipoArchivio,
         } as DocumentoAnalizzato);
+        setTargaEstrattaIA(String(analyzed?.data?.targa ?? ""));
+        setTargaSelezionata("");
       }
     } catch (err: any) {
       console.error("Errore analisi IA documenti:", err);
@@ -274,6 +315,15 @@ const IADocumenti: React.FC = () => {
       return;
     }
 
+    const matched = exactMatch(targaEstrattaIA, mezzi);
+    const needsManual =
+      fmtTarga(targaEstrattaIA) !== "" && !matched;
+
+    if (needsManual && !targaSelezionata) {
+      setErrorMessage("Seleziona una targa valida per salvare.");
+      return;
+    }
+
     try {
       setLoading(true);
       setErrorMessage(null);
@@ -290,10 +340,18 @@ const IADocumenti: React.FC = () => {
       // 2. Prepara il payload per Firestore (lasciamo inalterata la struttura esistente)
       const payload = {
         ...results,
+        targa: needsManual ? targaSelezionata : results.targa,
         fileUrl,
         nomeFile: selectedFile.name,
         createdAt: serverTimestamp(),
         fonte: "IA",
+        ...(needsManual
+          ? {
+              daVerificare: true,
+              motivoVerifica: "targa_non_match",
+              targaEstrattaIA: targaEstrattaIA || null,
+            }
+          : {}),
       };
 
       // 3. Seleziona la collection di destinazione in base alla categoria archivio
@@ -594,6 +652,44 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
                 setResults({ ...results, targa: e.target.value })
               }
             />
+            {(() => {
+              const match = exactMatch(targaEstrattaIA, mezzi);
+              const needsManual =
+                fmtTarga(targaEstrattaIA) !== "" && !match;
+
+              if (match) {
+                return (
+                  <div className="iadoc-targa-ok">
+                    Targa riconosciuta: {match.targa || targaEstrattaIA}
+                  </div>
+                );
+              }
+
+              if (!needsManual) return null;
+
+              return (
+                <div className="iadoc-targa-verify">
+                  <span className="iadoc-badge-warn">DA VERIFICARE</span>
+                  <label>Seleziona targa mezzo</label>
+                  <select
+                    className="iadoc-select"
+                    value={targaSelezionata}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setTargaSelezionata(value);
+                      setResults({ ...results, targa: value });
+                    }}
+                  >
+                    <option value="">Seleziona targa...</option>
+                    {mezzi.map((m, idx) => (
+                      <option key={`${m.targa || "mezzo"}_${idx}`} value={m.targa || ""}>
+                        {m.targa || "—"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
 
             <label>Marca</label>
             <input
@@ -816,7 +912,12 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
             <button
               className="iadoc-save"
               onClick={handleSave}
-              disabled={loading}
+              disabled={
+                loading ||
+                (fmtTarga(targaEstrattaIA) !== "" &&
+                  !exactMatch(targaEstrattaIA, mezzi) &&
+                  !targaSelezionata)
+              }
             >
               Salva Documento
             </button>
