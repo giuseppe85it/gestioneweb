@@ -201,7 +201,12 @@ const MaterialiDaOrdinare: React.FC = () => {
       <div className="mdo-card">
         <header className="mdo-header">
           <div className="mdo-header-left">
-            <img src="/logo.png" className="mdo-logo" alt="logo" />
+            <img
+              src="/logo.png"
+              className="mdo-logo"
+              alt="logo"
+              onClick={() => navigate("/")}
+            />
             <div className="mdo-header-title">MATERIALI DA ORDINARE</div>
           </div>
 

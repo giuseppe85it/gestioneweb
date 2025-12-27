@@ -101,7 +101,12 @@ const GestioneOperativa: React.FC = () => {
         {/* ================= HEADER ================= */}
         <div className="go-header">
           <div className="go-logo-title">
-            <img src="/logo.png" alt="Logo" className="go-logo" />
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="go-logo"
+              onClick={() => navigate("/")}
+            />
             <div>
               <h1 className="go-title">Gestione Operativa</h1>
               <p className="go-subtitle">

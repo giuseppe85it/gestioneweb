@@ -81,7 +81,12 @@ const dataToNumber = (d: string) => {
 const Manutenzioni: React.FC = () => {
   const navigate = useNavigate();
   const handleApriDossier = (targa: string) => {
-  navigate(`/dossier/${targa}`);
+  const targaPulita = (targa || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!targaPulita) {
+    alert("Seleziona una targa valida.");
+    return;
+  }
+  navigate(`/dossiermezzi/${targaPulita}`);
 };
 
 
@@ -566,7 +571,12 @@ setIsEditing(false);
         <div className="man-card man-card-form">
           <div className="man-card-header">
             <div className="man-logo-title">
-              <img src="/logo.png" alt="logo" className="man-logo" />
+              <img
+                src="/logo.png"
+                alt="logo"
+                className="man-logo"
+                onClick={() => navigate("/")}
+              />
               <div>
                 <h1 className="man-title">Manutenzioni</h1>
                 <p className="man-subtitle">

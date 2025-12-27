@@ -1,5 +1,6 @@
 // src/pages/MaterialiConsegnati.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import type { InventarioItem } from "./Inventario";
@@ -66,6 +67,7 @@ interface SuggestionMat {
 }
 
 const MaterialiConsegnati: React.FC = () => {
+  const navigate = useNavigate();
   const [inventario, setInventario] = useState<InventarioItem[]>([]);
   const [consegne, setConsegne] = useState<MaterialeConsegnato[]>([]);
 
@@ -502,7 +504,12 @@ const MaterialiConsegnati: React.FC = () => {
         {/* HEADER */}
         <div className="mc-header">
           <div className="mc-logo-title">
-            <img src="/logo.png" alt="logo" className="mc-logo" />
+            <img
+              src="/logo.png"
+              alt="logo"
+              className="mc-logo"
+              onClick={() => navigate("/")}
+            />
             <div>
               <h1 className="mc-title">Materiali consegnati</h1>
               <p className="mc-subtitle">

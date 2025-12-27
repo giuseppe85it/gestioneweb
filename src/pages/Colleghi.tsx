@@ -1,6 +1,7 @@
 // src/pages/Colleghi.tsx
 
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateSmartPDF } from "../utils/pdfEngine";
@@ -30,6 +31,7 @@ const COLLEGHI_DOC_ID = "@colleghi";
 const generaId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const Colleghi: React.FC = () => {
+  const navigate = useNavigate();
   const [colleghi, setColleghi] = useState<Collega[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -275,7 +277,12 @@ const Colleghi: React.FC = () => {
       <div className="coll-card">
         <header className="coll-header">
           <div className="coll-header-left">
-            <img src="/logo.png" className="coll-logo" alt="logo" />
+            <img
+              src="/logo.png"
+              className="coll-logo"
+              alt="logo"
+              onClick={() => navigate("/")}
+            />
             <h1 className="coll-title">Colleghi</h1>
           </div>
         </header>
@@ -517,7 +524,12 @@ const Colleghi: React.FC = () => {
     >
       {/* HEADER */}
       <div className="modal-header">
-        <img src="/logo.png" alt="logo" className="modal-logo" />
+        <img
+          src="/logo.png"
+          alt="logo"
+          className="modal-logo"
+          onClick={() => navigate("/")}
+        />
         <h2 className="modal-title">Dettagli collega</h2>
       </div>
 

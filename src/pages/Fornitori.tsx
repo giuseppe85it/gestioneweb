@@ -1,6 +1,7 @@
 // src/pages/Fornitori.tsx
 
 import  { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateSmartPDF } from "../utils/pdfEngine";
@@ -20,6 +21,7 @@ const FORNITORI_DOC_ID = "@fornitori";
 const generaId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const Fornitori: React.FC = () => {
+  const navigate = useNavigate();
   const [fornitori, setFornitori] = useState<Fornitore[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,7 +185,12 @@ const Fornitori: React.FC = () => {
       <div className="forn-card">
         <header className="forn-header">
           <div className="forn-header-left">
-            <img src="/logo.png" className="forn-logo" alt="logo" />
+            <img
+              src="/logo.png"
+              className="forn-logo"
+              alt="logo"
+              onClick={() => navigate("/")}
+            />
             <h1 className="forn-title">Fornitori</h1>
           </div>
         </header>

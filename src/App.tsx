@@ -88,6 +88,7 @@ function App() {
       {/* DOSSIER */}
       <Route path="/dossiermezzi" element={<DossierLista />} />
       <Route path="/dossiermezzi/:targa" element={<DossierMezzo />} />
+      <Route path="/dossier/:targa" element={<DossierMezzo />} />
       <Route path="/analisi-economica/:targa" element={<AnalisiEconomica />} />
       <Route path="/dossier/:targa/gomme" element={<DossierGomme />} />
 

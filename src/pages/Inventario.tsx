@@ -3,6 +3,7 @@
 // ======================================================
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import "./Inventario.css";
@@ -25,6 +26,7 @@ const INVENTARIO_KEY = "@inventario";
 const generateId = () => `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
 const Inventario: React.FC = () => {
+  const navigate = useNavigate();
   const [inventario, setInventario] = useState<InventarioItem[]>([]);
   const [descrizione, setDescrizione] = useState("");
   const [quantita, setQuantita] = useState("");
@@ -233,7 +235,11 @@ const Inventario: React.FC = () => {
         {/* HEADER */}
         <div className="inventario-header">
           <div className="inventario-logo-title">
-            <img src="/logo.png" className="inventario-logo" />
+            <img
+              src="/logo.png"
+              className="inventario-logo"
+              onClick={() => navigate("/")}
+            />
             <div>
               <h1 className="inventario-title">Inventario</h1>
               <p className="inventario-subtitle">Gestione magazzino centrale</p>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { setItemSync, getItemSync } from "../utils/storageSync";
 import { v4 as uuidv4 } from "uuid";
 import "./LavoriDaEseguire.css";
@@ -30,6 +30,7 @@ interface MezzoBasic {
 const KEY_MEZZI = "@mezzi_aziendali";
 
 const LavoriDaEseguire: React.FC = () => {
+  const navigate = useNavigate();
   const [tipo, setTipo] = useState<"magazzino" | "targa">("magazzino");
   const [targa, setTarga] = useState("");
   const [descrizione, setDescrizione] = useState("");
@@ -121,7 +122,12 @@ const LavoriDaEseguire: React.FC = () => {
     <div className="lde-page">
       <div className="lde-phone">
         <div className="lavori-header">
-          <img src="/logo.png" alt="logo" className="lavori-header-logo" />
+          <img
+            src="/logo.png"
+            alt="logo"
+            className="lavori-header-logo"
+            onClick={() => navigate("/")}
+          />
           <div className="lavori-header-text">
             <div className="lavori-header-eyebrow">LAVORI</div>
             <h1 className="lavori-header-title">Lavori da eseguire</h1>

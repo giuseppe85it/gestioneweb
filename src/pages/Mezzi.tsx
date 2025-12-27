@@ -571,7 +571,12 @@ const handleExportPdf = async (mezzo: Mezzo) => {
           {/* CARD PRINCIPALE FORM MEZZO */}
           <div className="premium-card-430">
 <div className="card-header">
-  <img src="/logo.png" alt="Logo Ghielmi Cementi" className="logo-mezzi" />
+  <img
+    src="/logo.png"
+    alt="Logo Ghielmi Cementi"
+    className="logo-mezzi"
+    onClick={() => navigate("/")}
+  />
 
   <div className="card-header-text">
     <h1 className="card-title">Gestione Mezzi</h1>

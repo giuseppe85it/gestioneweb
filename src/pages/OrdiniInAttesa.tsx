@@ -92,7 +92,12 @@ const OrdiniInAttesa: React.FC = () => {
   return (
     <div className="ordini-attesa-page">
       <header className="ordini-attesa-header">
-        <img src="/logo.png" alt="Logo" className="ordini-attesa-logo" />
+        <img
+          src="/logo.png"
+          alt="Logo"
+          className="ordini-attesa-logo"
+          onClick={() => navigate("/")}
+        />
         <h1>Ordini in Attesa</h1>
       </header>
 
