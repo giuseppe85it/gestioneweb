@@ -25,14 +25,14 @@ export const biga: WheelGeomEntry = {
 
   // lato destro (vista DX)
   dx: [
-    { cx: 69,  cy: 91 },   // asse 1 DX
-    { cx: 166, cy: 106 },  // asse 2 DX
+    { cx: 87.47288167110891, cy: 144.63150065083988 },   // asse 1 DX
+    { cx: 118.17764829851856, cy: 147.48775801152917 },  // asse 2 DX
   ],
 
   // lato sinistro (vista SX)
   sx: [
-    { cx: 130, cy: 129 },  // asse 1 SX
-    { cx: 253, cy: 113 },  // asse 2 SX
+    { cx: 243.13890782867415, cy: 148.9158866918738 },  // asse 1 SX
+    { cx: 273.8436744560838, cy: 143.91743631066757 },  // asse 2 SX
   ],
 };
 
@@ -44,14 +44,14 @@ export const motrice2assi: WheelGeomEntry = {
   imageDX: "motrice2assiDX.png",
   imageSX: "motrice2assiSx.png",
   dx: [
-    { cx: 202, cy: 141 },  // anteriore DX
-    { cx: 41, cy: 123 },   // post esterna DX
-    { cx: 40, cy: 121 },   // post interna DX
+    { cx: 258.1342589722928, cy: 138.91898592946134 },  // anteriore DX
+    { cx: 88.90101035145354, cy: 131.06427818756586 },   // post esterna DX
+    { cx: 86.04475299076427, cy: 141.77524329015063 },   // post interna DX
   ],
   sx: [
-    { cx: 158, cy: 140 },  // anteriore SX
-    { cx: 317, cy: 123 },  // post esterna SX
-    { cx: 321, cy: 116 },  // post interna SX
+    { cx: 103.1822971548999, cy: 138.20492158928903 },  // anteriore SX
+    { cx: 273.8436744560838, cy: 137.49085724911671 },  // post esterna SX
+    { cx: 273.1296101159115, cy: 131.06427818756586 },  // post interna SX
   ],
 };
 
@@ -62,17 +62,16 @@ export const motrice3assi: WheelGeomEntry = {
   imageDX: "motrice3assiDX.png",
   imageSX: "motrice3assiSX.png",
   dx: [
-    { cx: 187, cy: 141 },  // anteriore
-    { cx: 57, cy: 133 },   // 2° asse esterna
-    { cx: 57, cy: 133 },   // 2° asse interna
-    { cx: 24, cy: 128 },   // 3° asse
-    { cx: 58, cy: 118 },   // 2° asse interna corretta
+    { cx: 267.41709539453296, cy: 127.85098865679043 },  // anteriore
+    { cx: 146.74022190541126, cy: 127.1369243166181 },   // 2° asse esterna
+    { cx: 146.02615756523895, cy: 137.8478894192029 },   // 2° asse interna
+    { cx: 116.0354552780016, cy: 128.56505299696275 },   // 3° asse
   ],
   sx: [
-    { cx: 169, cy: 145 },  // anteriore
-    { cx: 302, cy: 131 },  // 2° asse esterna
-    { cx: 280, cy: 128 },  // 2° asse interna
-    { cx: 335, cy: 127 },  // 3° asse
+    { cx: 93.89946073265976, cy: 127.1369243166181 },  // anteriore
+    { cx: 216.00446290212608, cy: 137.13382507903057 },  // 2° asse esterna
+    { cx: 213.86226988160914, cy: 126.42285997644579 },  // 2° asse interna
+    { cx: 247.42329386970806, cy: 129.27911733713506 },  // 3° asse
   ],
 };
 
@@ -83,20 +82,20 @@ export const motrice4assi: WheelGeomEntry = {
   imageDX: "motrice4assiDX.png",
   imageSX: "motrice4assiSX.png",
   dx: [
-    { cx: 250, cy: 140 }, // asse 1
-    { cx: 173, cy: 128 }, // asse 2
-    { cx: 81, cy: 110 },  // asse 3 ext
-    { cx: 95, cy: 107 },  // asse 3 int
-    { cx: 50, cy: 103 },  // asse 4 ext
-    { cx: 64, cy: 92 },   // asse 4 int
+    { cx: 265.98896671418834, cy: 128.20802082687658 }, // asse 1
+    { cx: 163.16370172937457, cy: 128.20802082687658 }, // asse 2
+    { cx: 124.60422736006942, cy: 135.34866422859977 },  // asse 3 ext
+    { cx: 130.31674208144796, cy: 120.3533130849811 },  // asse 3 int
+    { cx: 92.47133205231513, cy: 132.4924068679105 },  // asse 4 ext
+    { cx: 94.61352507283209, cy: 118.92518440463645 },   // asse 4 int
   ],
   sx: [
-    { cx: 109, cy: 143 }, // asse 1
-    { cx: 184, cy: 128 }, // asse 2
-    { cx: 279, cy: 108 }, // asse 3 ext
-    { cx: 259, cy: 107 }, // asse 3 int
-    { cx: 308, cy: 104 }, // asse 4 ext
-    { cx: 292, cy: 98 },  // asse 4 int
+    { cx: 95.3275894130044, cy: 128.20802082687658 }, // asse 1
+    { cx: 196.7247257174735, cy: 125.35176346618732 }, // asse 2
+    { cx: 231.71387838591707, cy: 133.92053554825512 }, // asse 3 ext
+    { cx: 230.99981404574476, cy: 118.92518440463645 }, // asse 3 int
+    { cx: 268.8452240748776, cy: 133.2064712080828 }, // asse 4 ext
+    { cx: 265.98896671418834, cy: 115.35486270377487 },  // asse 4 int
   ],
 };
 
@@ -125,14 +124,14 @@ export const vasca: WheelGeomEntry = {
   imageDX: "vascaDX.png",
   imageSX: "vascaSX.png",
   dx: [
-    { cx: 67, cy: 149 },
-    { cx: 40, cy: 145 },
-    { cx: 23, cy: 142 },
+    { cx: 101.04010413438294, cy: 151.4151118824769 },
+    { cx: 78.19004524886878, cy: 148.55885452178765 },
+    { cx: 58.9103080642162, cy: 145.70259716109837 },
   ],
   sx: [
-    { cx: 289, cy: 149 },
-    { cx: 316, cy: 146 },
-    { cx: 335, cy: 143 },
+    { cx: 262.41864501332674, cy: 151.4151118824769 },
+    { cx: 284.55463955866855, cy: 149.27291886195997 },
+    { cx: 303.12031240314883, cy: 147.8447901816153 },
   ],
 };
 
@@ -143,14 +142,14 @@ export const centina: WheelGeomEntry = {
   imageDX: "centinaDX.png",
   imageSX: "centinaSX.png",
   dx: [
-    { cx: 72, cy: 152 },
-    { cx: 63, cy: 148 },
-    { cx: 53, cy: 146 },
+    { cx: 128.174549060931, cy: 132.13537469782435 },
+    { cx: 106.75261885576148, cy: 131.421310357652 },
+    { cx: 86.7588173309366, cy: 129.27911733713506 },
   ],
   sx: [
-    { cx: 285, cy: 151 },
-    { cx: 295, cy: 148 },
-    { cx: 304, cy: 146 },
+    { cx: 235.99826442695098, cy: 131.421310357652 },
+    { cx: 255.27800161160354, cy: 127.85098865679043 },
+    { cx: 275.27180313642845, cy: 127.1369243166181 },
   ],
 };
 
@@ -161,14 +160,14 @@ export const trattore: WheelGeomEntry = {
   imageDX: "trattore_cisternaDX.png",
   imageSX: "trattore_cisternaSX.png",
   dx: [
-    { cx: 268, cy: 159 }, // ant dx
-    { cx: 168, cy: 128 }, // post dx est
-    { cx: 176, cy: 116 }, // post dx int
+    { cx: 176.0168598524763, cy: 153.91433707308002 }, // ant dx
+    { cx: 84.61662431041964, cy: 144.63150065083988 }, // post dx est
+    { cx: 101.75416847455526, cy: 138.91898592946134 }, // post dx int
   ],
   sx: [
-    { cx: 91, cy: 157 },  // ant sx
-    { cx: 189, cy: 126 }, // post sx est
-    { cx: 176, cy: 117 }, // post sx int
+    { cx: 186.72782495506107, cy: 151.05807971239076 },  // ant sx
+    { cx: 273.1296101159115, cy: 146.77369367135685 }, // post sx est
+    { cx: 261.7045806731544, cy: 139.63305026963366 }, // post sx int
   ],
 };
 
@@ -179,14 +178,14 @@ export const semirimorchioFissi: WheelGeomEntry = {
   imageDX: "semirimorchioassefissoDX.png",
   imageSX: "semirimorchioassefissoSX.png",
   dx: [
-    { cx: 177, cy: 134 },
-    { cx: 128, cy: 134 },
-    { cx: 73, cy: 137 },
+    { cx: 183.15750325419947, cy: 134.2775677183413 },
+    { cx: 142.45583586437738, cy: 137.13382507903057 },
+    { cx: 102.46823281472757, cy: 138.5619537593752 },
   ],
   sx: [
     { cx: 178, cy: 134 },
-    { cx: 230, cy: 134 },
-    { cx: 286, cy: 136 },
+    { cx: 218.14665592264302, cy: 136.41976073885823 },
+    { cx: 258.84832331246514, cy: 137.8478894192029 },
   ],
 };
 
@@ -197,14 +196,14 @@ export const semirimorchioSterzante: WheelGeomEntry = {
   imageDX: "semirimorchioassesterzanteDX.png",
   imageSX: "semirimorchioassesterzanteSX.png",
   dx: [
-    { cx: 177, cy: 134 },
-    { cx: 128, cy: 134 },
-    { cx: 73, cy: 137 },
+    { cx: 181.72937457385484, cy: 134.2775677183413 },
+    { cx: 142.45583586437738, cy: 137.8478894192029 },
+    { cx: 102.46823281472757, cy: 138.5619537593752 },
   ],
   sx: [
     { cx: 178, cy: 134 },
-    { cx: 230, cy: 134 },
-    { cx: 286, cy: 136 },
+    { cx: 218.14665592264302, cy: 134.9916320585136 },
+    { cx: 259.5623876526374, cy: 137.8478894192029 },
   ],
 };
 

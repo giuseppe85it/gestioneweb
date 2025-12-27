@@ -1,5 +1,5 @@
 // src/components/TruckGommeSvg.tsx
-import type { FC } from "react";
+import type { FC, PointerEvent, Ref } from "react";
 
 interface TruckWheelGeom {
   id: string;
@@ -19,6 +19,10 @@ interface TruckGommeSvgProps {
   selectedAxisId: string | null;
   modalita: "ordinario" | "straordinario";
   onToggleWheel: (wheelId: string) => void;
+  calibraActive?: boolean;
+  draggingWheelId?: string | null;
+  onWheelPointerDown?: (wheelId: string, event: PointerEvent<SVGCircleElement>) => void;
+  svgRef?: Ref<SVGSVGElement>;
 }
 
 const TruckGommeSvg: FC<TruckGommeSvgProps> = ({
@@ -28,9 +32,13 @@ const TruckGommeSvg: FC<TruckGommeSvgProps> = ({
   selectedAxisId,
   modalita,
   onToggleWheel,
+  calibraActive,
+  draggingWheelId,
+  onWheelPointerDown,
+  svgRef,
 }) => {
   return (
-    <svg viewBox="0 0 360 180" className="mg-truck-svg">
+    <svg ref={svgRef} viewBox="0 0 360 180" className="mg-truck-svg">
       {/* immagine tecnica reale del mezzo */}
       {backgroundImage && (
         <image
@@ -51,6 +59,8 @@ const TruckGommeSvg: FC<TruckGommeSvgProps> = ({
             ? w.axisId === selectedAxisId
             : selectedWheelIds.includes(w.id);
 
+        const dragging = draggingWheelId === w.id;
+
         return (
           <g key={w.id}>
             <circle
@@ -60,7 +70,8 @@ const TruckGommeSvg: FC<TruckGommeSvgProps> = ({
               fill="none"
               className={
                 "mg-wheel-ring" +
-                (active ? " mg-wheel-ring--active" : "")
+                (active ? " mg-wheel-ring--active" : "") +
+                (dragging ? " mg-wheel-ring--dragging" : "")
               }
             />
             <circle
@@ -71,9 +82,17 @@ const TruckGommeSvg: FC<TruckGommeSvgProps> = ({
               stroke="transparent"
               className={
                 "mg-wheel-hit" +
-                (modalita === "straordinario" ? " mg-wheel-clickable" : "")
+                (modalita === "straordinario" ? " mg-wheel-clickable" : "") +
+                (dragging ? " mg-wheel-hit--dragging" : "")
               }
-              onClick={() => onToggleWheel(w.id)}
+              onPointerDown={
+                calibraActive
+                  ? (e) => onWheelPointerDown?.(w.id, e)
+                  : undefined
+              }
+              onClick={
+                calibraActive ? undefined : () => onToggleWheel(w.id)
+              }
             />
           </g>
         );

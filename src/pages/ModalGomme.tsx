@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./ModalGomme.css";
 import TruckGommeSvg from "../components/TruckGommeSvg";
 import { wheelGeom, type WheelPoint } from "../components/wheels";
@@ -16,6 +16,13 @@ export interface CambioGommeData {
   marca: string;
   km: string;
 }
+
+type WheelOverridePoint = { x: number; y: number };
+type WheelOverrideSide = Record<string, WheelOverridePoint>;
+type WheelOverrideEntry = { dx?: WheelOverrideSide; sx?: WheelOverrideSide };
+type WheelOverrideStore = Record<string, WheelOverrideEntry>;
+
+const OVERRIDE_KEY = "@wheelGeom_override_v1";
 
 interface ModalGommeProps {
   open: boolean;
@@ -194,8 +201,14 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
   const [marca, setMarca] = useState("");
   const [km, setKm] = useState(kmIniziale || "");
   const [lato, setLato] = useState<"dx" | "sx">("dx");
+  const [calibra, setCalibra] = useState(false);
+  const [draggingWheelId, setDraggingWheelId] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState<WheelOverrideStore>({});
+  const [overrideDraft, setOverrideDraft] = useState<WheelOverrideSide>({});
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
   const config = useMemo(() => buildConfig(categoria), [categoria]);
+  const geomKey = useMemo(() => resolveWheelGeomKey(categoria), [categoria]);
 
   const isRimorchio = useMemo(
     () => config.tipoLabel.toLowerCase().includes("rimorchio"),
@@ -203,17 +216,23 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
   );
 
   const { wheelsSvg, backgroundImage } = useMemo(() => {
-    const key = resolveWheelGeomKey(categoria);
-    if (!key) {
+    if (!geomKey) {
       return {
         wheelsSvg: [] as TruckWheelGeom[],
         backgroundImage: "",
       };
     }
 
-    const entry = wheelGeom[key];
+    const entry = wheelGeom[geomKey];
     const points = lato === "dx" ? entry.dx : entry.sx;
-    const wheels = buildWheelsForSvg(config, points, key);
+    const baseWheels = buildWheelsForSvg(config, points, geomKey);
+    const sideOverrides = calibra
+      ? overrideDraft
+      : overrides[geomKey]?.[lato] || {};
+    const wheels = baseWheels.map((w) => {
+      const ov = sideOverrides[w.id];
+      return ov ? { ...w, x: ov.x, y: ov.y } : w;
+    });
 
     const imgName = lato === "dx" ? entry.imageDX : entry.imageSX;
     const bg =
@@ -225,7 +244,139 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
       wheelsSvg: wheels,
       backgroundImage: bg,
     };
-  }, [categoria, lato, config]);
+  }, [geomKey, lato, config, calibra, overrideDraft, overrides]);
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const raw = localStorage.getItem(OVERRIDE_KEY);
+      const parsed = raw ? (JSON.parse(raw) as WheelOverrideStore) : {};
+      setOverrides(parsed || {});
+    } catch {
+      setOverrides({});
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!calibra || !geomKey) return;
+    const current = overrides[geomKey]?.[lato];
+    setOverrideDraft(current ? { ...current } : {});
+  }, [calibra, geomKey, lato, overrides]);
+
+  useEffect(() => {
+    if (!calibra) {
+      setDraggingWheelId(null);
+      return;
+    }
+    if (!draggingWheelId) return;
+
+    const toSvgCoords = (clientX: number, clientY: number) => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const rect = svg.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const vb = svg.viewBox?.baseVal;
+      const vbW = vb?.width || 360;
+      const vbH = vb?.height || 180;
+      let x = ((clientX - rect.left) * vbW) / rect.width;
+      let y = ((clientY - rect.top) * vbH) / rect.height;
+      x = Math.max(0, Math.min(vbW, x));
+      y = Math.max(0, Math.min(vbH, y));
+      return { x, y };
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const pos = toSvgCoords(e.clientX, e.clientY);
+      if (!pos) return;
+      setOverrideDraft((prev) => ({
+        ...prev,
+        [draggingWheelId]: pos,
+      }));
+    };
+
+    const onUp = () => {
+      setDraggingWheelId(null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [calibra, draggingWheelId]);
+
+  const persistOverrides = (next: WheelOverrideStore) => {
+    try {
+      localStorage.setItem(OVERRIDE_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSaveOverrides = () => {
+    if (!geomKey) return;
+    const next: WheelOverrideStore = {
+      ...overrides,
+      [geomKey]: {
+        ...(overrides[geomKey] || {}),
+        [lato]: overrideDraft,
+      },
+    };
+    setOverrides(next);
+    persistOverrides(next);
+  };
+
+  const handleResetOverrides = () => {
+    if (!geomKey) return;
+    const next: WheelOverrideStore = { ...overrides };
+    if (next[geomKey]) {
+      const entry: WheelOverrideEntry = { ...next[geomKey] };
+      delete entry[lato];
+      if (!entry.dx && !entry.sx) {
+        delete next[geomKey];
+      } else {
+        next[geomKey] = entry;
+      }
+    }
+    setOverrides(next);
+    setOverrideDraft({});
+    persistOverrides(next);
+  };
+
+  const handleExportOverrides = () => {
+    if (!geomKey) return;
+    const data = { [geomKey]: { [lato]: overrideDraft } };
+    const json = JSON.stringify(data, null, 2);
+    window.prompt("Copia JSON override", json);
+  };
+
+  const handleWheelPointerDown = (
+    wheelId: string,
+    e: React.PointerEvent<SVGCircleElement>
+  ) => {
+    if (!calibra) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingWheelId(wheelId);
+    const svg = svgRef.current;
+    if (svg) {
+      const rect = svg.getBoundingClientRect();
+      const vb = svg.viewBox?.baseVal;
+      const vbW = vb?.width || 360;
+      const vbH = vb?.height || 180;
+      let x = ((e.clientX - rect.left) * vbW) / rect.width;
+      let y = ((e.clientY - rect.top) * vbH) / rect.height;
+      x = Math.max(0, Math.min(vbW, x));
+      y = Math.max(0, Math.min(vbH, y));
+      setOverrideDraft((prev) => ({
+        ...prev,
+        [wheelId]: { x, y },
+      }));
+    }
+  };
 
   // default selezione asse / ruote
   useEffect(() => {
@@ -332,6 +483,36 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
             </label>
           </div>
 
+          {import.meta.env.DEV && (
+            <div className="mg-row mg-calibra-row">
+              <label className="mg-calibra-toggle">
+                <input
+                  type="checkbox"
+                  checked={calibra}
+                  onChange={(e) => setCalibra(e.target.checked)}
+                />
+                <span>Calibra</span>
+              </label>
+            </div>
+          )}
+
+          {import.meta.env.DEV && calibra && (
+            <div className="mg-calibra-panel">
+              <div className="mg-calibra-title">Calibrazione</div>
+              <div className="mg-calibra-actions">
+                <button type="button" className="mg-calibra-btn" onClick={handleSaveOverrides}>
+                  Salva posizioni
+                </button>
+                <button type="button" className="mg-calibra-btn ghost" onClick={handleResetOverrides}>
+                  Reset
+                </button>
+                <button type="button" className="mg-calibra-btn ghost" onClick={handleExportOverrides}>
+                  Esporta JSON
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Selettore lato */}
           <div className="mg-row mg-side-row">
             <button
@@ -356,7 +537,7 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
 
           <div className="mg-main">
             {/* SVG camion / rimorchio con immagine tecnica */}
-            <div className="mg-svg-wrapper">
+            <div className={"mg-svg-wrapper" + (calibra ? " mg-svg-wrapper-calibra" : "")}>
               <TruckGommeSvg
                 isRimorchio={isRimorchio}
                 backgroundImage={backgroundImage}
@@ -365,6 +546,10 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
                 selectedAxisId={selectedAxisId}
                 modalita={modalita}
                 onToggleWheel={handleToggleWheel}
+                calibraActive={calibra}
+                draggingWheelId={draggingWheelId}
+                onWheelPointerDown={handleWheelPointerDown}
+                svgRef={svgRef}
               />
 
               {/* legenda assi */}

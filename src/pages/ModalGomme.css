@@ -95,6 +95,14 @@
   padding: 10px 10px 14px;
 }
 
+.mg-svg-wrapper-calibra {
+  touch-action: none;
+}
+
+.mg-svg-wrapper-calibra .mg-wheel-hit {
+  cursor: grab;
+}
+
 .mg-svg {
   width: 100%;
   height: auto;
@@ -129,9 +137,20 @@
   filter: drop-shadow(0 0 6px rgba(47, 133, 90, 0.55));
 }
 
+.mg-wheel-ring--dragging {
+  stroke: #2f855a;
+  stroke-width: 4.5;
+  opacity: 1;
+  filter: drop-shadow(0 0 10px rgba(47, 133, 90, 0.75));
+}
+
 .mg-wheel-hit {
   cursor: pointer;
   pointer-events: all;
+}
+
+.mg-wheel-hit--dragging {
+  cursor: grabbing;
 }
 
 .mg-wheel-clickable {
@@ -143,6 +162,63 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.mg-calibra-row {
+  margin-top: 8px;
+}
+
+.mg-calibra-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #3a352b;
+}
+
+.mg-calibra-panel {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #e0d7c5;
+  background: #f2ebdd;
+}
+
+.mg-calibra-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  color: #3a352b;
+  margin-bottom: 8px;
+}
+
+.mg-calibra-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mg-calibra-btn {
+  border-radius: 999px;
+  border: 1px solid #2f855a;
+  background: #2f855a;
+  color: #ffffff;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.mg-calibra-btn.ghost {
+  background: transparent;
+  color: #3a352b;
+  border-color: #cbbfaa;
 }
 
 .mg-axis-item {
