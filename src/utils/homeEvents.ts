@@ -9,7 +9,8 @@ export type HomeEvent = {
     | "segnalazione"
     | "controllo"
     | "cambio_mezzo"
-    | "richiesta_attrezzature";
+    | "richiesta_attrezzature"
+    | "gomme";
   targa: string | null;
   autista: string | null;
   timestamp: number;
@@ -52,6 +53,7 @@ const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_CONTROLLI = "@controlli_mezzo_autisti";
 const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
+const KEY_GOMME = "@cambi_gomme_autisti_tmp";
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 const CAMBIO_ASSETTO_TIPO = "CAMBIO_ASSETTO";
@@ -93,6 +95,7 @@ function isSameDay(ts: number, day: Date): boolean {
 
 export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
   const events: HomeEvent[] = [];
+  const gommeEvents: HomeEvent[] = [];
 
   const rifornimenti = (await getItemSync(KEY_RIFORNIMENTI)) || [];
   if (Array.isArray(rifornimenti)) {
@@ -178,6 +181,28 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
     }
   }
 
+  const gomme = (await getItemSync(KEY_GOMME)) || [];
+  if (Array.isArray(gomme)) {
+    for (const g of gomme) {
+      const ts = toTs(g?.data ?? g?.timestamp);
+      if (!ts || !isSameDay(ts, day)) continue;
+      const targa =
+        g?.targetTarga ?? g?.targa ?? g?.targaCamion ?? g?.targaRimorchio ?? null;
+      const autista =
+        g?.autista?.nome ?? g?.autistaNome ?? g?.nomeAutista ?? null;
+      const evento: HomeEvent = {
+        id: g.id ?? genId(),
+        tipo: "gomme",
+        targa: targa ? String(targa) : null,
+        autista: autista ? String(autista) : null,
+        timestamp: ts,
+        payload: g,
+      };
+      events.push(evento);
+      gommeEvents.push(evento);
+    }
+  }
+
   const cambiMezzoEvents: HomeEvent[] = [];
 
   const operativi = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
@@ -236,7 +261,10 @@ export async function loadHomeEvents(day: Date): Promise<HomeEvent[]> {
 
   events.push(...cambiMezzoEvents);
 
-  return events.sort((a, b) => b.timestamp - a.timestamp);
+  const sorted = events.sort((a, b) => b.timestamp - a.timestamp);
+  const sortedGomme = gommeEvents.sort((a, b) => b.timestamp - a.timestamp);
+  (sorted as HomeEvent[] & { gomme?: HomeEvent[] }).gomme = sortedGomme;
+  return sorted;
 }
 
 export async function loadFirestoreAutistiEventi(day: Date): Promise<HomeEvent[]> {

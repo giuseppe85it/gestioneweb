@@ -29,6 +29,7 @@ interface ModalGommeProps {
   targa: string;
   categoria?: string;
   kmIniziale?: string;
+  enableCalibration?: boolean;
   onClose: () => void;
   onConfirm: (data: CambioGommeData) => void;
 }
@@ -192,6 +193,7 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
   targa,
   categoria,
   kmIniziale,
+  enableCalibration = true,
   onClose,
   onConfirm,
 }) => {
@@ -226,7 +228,7 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
     const entry = wheelGeom[geomKey];
     const points = lato === "dx" ? entry.dx : entry.sx;
     const baseWheels = buildWheelsForSvg(config, points, geomKey);
-    const sideOverrides = calibra
+    const sideOverrides = enableCalibration && calibra
       ? overrideDraft
       : overrides[geomKey]?.[lato] || {};
     const wheels = baseWheels.map((w) => {
@@ -244,7 +246,17 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
       wheelsSvg: wheels,
       backgroundImage: bg,
     };
-  }, [geomKey, lato, config, calibra, overrideDraft, overrides]);
+  }, [geomKey, lato, config, calibra, overrideDraft, overrides, enableCalibration]);
+
+  const wheelsAll = useMemo(() => {
+    if (!geomKey) {
+      return { dx: [] as TruckWheelGeom[], sx: [] as TruckWheelGeom[], all: [] as TruckWheelGeom[] };
+    }
+    const entry = wheelGeom[geomKey];
+    const dx = buildWheelsForSvg(config, entry.dx, geomKey);
+    const sx = buildWheelsForSvg(config, entry.sx, geomKey);
+    return { dx, sx, all: [...dx, ...sx] };
+  }, [geomKey, config]);
 
   useEffect(() => {
     if (!open) return;
@@ -258,13 +270,17 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
   }, [open]);
 
   useEffect(() => {
+    if (!enableCalibration) {
+      if (calibra) setCalibra(false);
+      return;
+    }
     if (!calibra || !geomKey) return;
     const current = overrides[geomKey]?.[lato];
     setOverrideDraft(current ? { ...current } : {});
-  }, [calibra, geomKey, lato, overrides]);
+  }, [enableCalibration, calibra, geomKey, lato, overrides]);
 
   useEffect(() => {
-    if (!calibra) {
+    if (!enableCalibration || !calibra) {
       setDraggingWheelId(null);
       return;
     }
@@ -306,7 +322,7 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [calibra, draggingWheelId]);
+  }, [enableCalibration, calibra, draggingWheelId]);
 
   const persistOverrides = (next: WheelOverrideStore) => {
     try {
@@ -357,7 +373,7 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
     wheelId: string,
     e: React.PointerEvent<SVGCircleElement>
   ) => {
-    if (!calibra) return;
+    if (!enableCalibration || !calibra) return;
     e.preventDefault();
     e.stopPropagation();
     setDraggingWheelId(wheelId);
@@ -380,27 +396,27 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
 
   // default selezione asse / ruote
   useEffect(() => {
-    if (!config.assi.length || !wheelsSvg.length) return;
+    if (!config.assi.length || !wheelsAll.all.length) return;
 
     const firstAxisId = config.assi[0].id;
     setSelectedAxisId(firstAxisId);
 
     if (modalita === "ordinario") {
-      const wheelsForAxis = wheelsSvg
+      const wheelsForAxis = wheelsAll.all
         .filter((w) => w.axisId === firstAxisId)
         .map((w) => w.id);
       setSelectedWheelIds(wheelsForAxis);
     } else {
       setSelectedWheelIds([]);
     }
-  }, [config, wheelsSvg, modalita]);
+  }, [config, wheelsAll, modalita]);
 
   if (!open) return null;
 
   const handleSelectAxis = (axisId: string) => {
     setSelectedAxisId(axisId);
     if (modalita === "ordinario") {
-      const wheelsForAxis = wheelsSvg
+      const wheelsForAxis = wheelsAll.all
         .filter((w) => w.axisId === axisId)
         .map((w) => w.id);
       setSelectedWheelIds(wheelsForAxis);
@@ -483,7 +499,7 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
             </label>
           </div>
 
-          {import.meta.env.DEV && (
+          {enableCalibration && import.meta.env.DEV && (
             <div className="mg-row mg-calibra-row">
               <label className="mg-calibra-toggle">
                 <input
@@ -496,7 +512,7 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
             </div>
           )}
 
-          {import.meta.env.DEV && calibra && (
+          {enableCalibration && import.meta.env.DEV && calibra && (
             <div className="mg-calibra-panel">
               <div className="mg-calibra-title">Calibrazione</div>
               <div className="mg-calibra-actions">
@@ -514,26 +530,28 @@ const ModalGomme: React.FC<ModalGommeProps> = ({
           )}
 
           {/* Selettore lato */}
-          <div className="mg-row mg-side-row">
-            <button
-              type="button"
-              className={
-                "mg-side-btn" + (lato === "dx" ? " mg-side-btn-active" : "")
-              }
-              onClick={() => setLato("dx")}
-            >
-              Lato destro
-            </button>
-            <button
-              type="button"
-              className={
-                "mg-side-btn" + (lato === "sx" ? " mg-side-btn-active" : "")
-              }
-              onClick={() => setLato("sx")}
-            >
-              Lato sinistro
-            </button>
-          </div>
+          {modalita === "straordinario" && (
+            <div className="mg-row mg-side-row">
+              <button
+                type="button"
+                className={
+                  "mg-side-btn" + (lato === "dx" ? " mg-side-btn-active" : "")
+                }
+                onClick={() => setLato("dx")}
+              >
+                Lato destro
+              </button>
+              <button
+                type="button"
+                className={
+                  "mg-side-btn" + (lato === "sx" ? " mg-side-btn-active" : "")
+                }
+                onClick={() => setLato("sx")}
+              >
+                Lato sinistro
+              </button>
+            </div>
+          )}
 
           <div className="mg-main">
             {/* SVG camion / rimorchio con immagine tecnica */}

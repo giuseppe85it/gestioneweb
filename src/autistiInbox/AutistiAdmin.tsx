@@ -22,6 +22,8 @@ const DOSSIER_RIFORNIMENTI_KEY = "@rifornimenti";
 const KEY_SEGNALAZIONI = "@segnalazioni_autisti_tmp";
 const KEY_RICHIESTE_ATTREZZATURE = "@richieste_attrezzature_autisti_tmp";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
+const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
+const KEY_GOMME_EVENTI = "@gomme_eventi";
 
 type LavoroTipo = "magazzino" | "targa";
 type LavoroUrgenza = "bassa" | "media" | "alta";
@@ -44,6 +46,7 @@ type TabKey =
   | "rifornimenti"
   | "segnalazioni"
   | "controlli"
+  | "gomme"
   | "attrezzature"
   | "storico_cambio";
 
@@ -184,6 +187,7 @@ export default function AutistiAdmin() {
   const [mezziAziendali, setMezziAziendali] = useState<any[]>([]);
   const [segnalazioniRaw, setSegnalazioniRaw] = useState<any[]>([]);
   const [controlliRaw, setControlliRaw] = useState<any[]>([]);
+  const [gommeRaw, setGommeRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Modale modifica sessione
@@ -198,6 +202,7 @@ export default function AutistiAdmin() {
     | "segnalazione"
     | "attrezzature"
     | "controllo"
+    | "gomme"
     | null
   >(null);
   const [adminEditId, setAdminEditId] = useState<string | null>(null);
@@ -221,6 +226,8 @@ export default function AutistiAdmin() {
     "tutti" | "motrice" | "rimorchio" | "entrambi"
   >("tutti");
   const [ctrlOnlyKo, setCtrlOnlyKo] = useState(true);
+  const [gommeFilterTarga, setGommeFilterTarga] = useState("");
+  const [gommeOnlyNuove, setGommeOnlyNuove] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -255,6 +262,13 @@ export default function AutistiAdmin() {
           ? controlli.value
           : [];
 
+        const gomme = await getItemSync(KEY_GOMME_TMP);
+        const gommeArr = Array.isArray(gomme)
+          ? gomme
+          : Array.isArray(gomme?.value)
+          ? gomme.value
+          : [];
+
         if (!alive) return;
         setEvents(e);
         setStoricoOperativi(operativiArr);
@@ -263,6 +277,7 @@ export default function AutistiAdmin() {
         setMezziAziendali(mezziArr);
         setSegnalazioniRaw(segnalazioniArr);
         setControlliRaw(controlliArr);
+        setGommeRaw(gommeArr);
       } finally {
         if (alive) setLoading(false);
       }
@@ -396,6 +411,39 @@ export default function AutistiAdmin() {
     });
     return filtered;
   }, [controlliRaw, ctrlFilterTarga, ctrlFilterTarget, ctrlOnlyKo]);
+
+  const gommeFiltered = useMemo(() => {
+    const targaFilter = normTarga(gommeFilterTarga);
+    const list = gommeRaw.map((record, index) => {
+      const stato = String(record?.stato ?? "").toLowerCase();
+      const letta =
+        typeof record?.letta === "boolean" ? record.letta : true;
+      const isNuova = stato === "nuovo" || letta === false;
+      const ts = getRecordTs(record);
+      const targaMatch = normTarga(record?.targetTarga ?? record?.targa ?? "");
+      return {
+        record,
+        key: String(record?.id ?? `${ts}-${index}`),
+        isNuova,
+        ts,
+        targaMatch,
+      };
+    });
+
+    const filtered = list.filter((item) => {
+      if (gommeOnlyNuove && !item.isNuova) return false;
+      if (targaFilter) {
+        if (!item.targaMatch.includes(targaFilter)) return false;
+      }
+      return true;
+    });
+
+    filtered.sort((a, b) => {
+      if (a.isNuova !== b.isNuova) return a.isNuova ? -1 : 1;
+      return (b.ts ?? 0) - (a.ts ?? 0);
+    });
+    return filtered;
+  }, [gommeRaw, gommeFilterTarga, gommeOnlyNuove]);
 
   const cambioCanonico = useMemo(() => {
     const list: Array<any> = [];
@@ -854,7 +902,8 @@ export default function AutistiAdmin() {
       | "rifornimento"
       | "segnalazione"
       | "attrezzature"
-      | "controllo",
+      | "controllo"
+      | "gomme",
     record: any,
     fallbackId?: string
   ) {
@@ -906,6 +955,16 @@ export default function AutistiAdmin() {
       letta: !!base.letta,
       testo: String(base.testo ?? ""),
       dataOra: toDateTimeLocal(ts),
+      targetType: String(base.targetType ?? ""),
+      targetTarga: String(base.targetTarga ?? base.targa ?? ""),
+      categoria: String(base.categoria ?? ""),
+      gommeIds: Array.isArray(base.gommeIds)
+        ? base.gommeIds.join(", ")
+        : String(base.gommeIds ?? ""),
+      asseId: String(base.asseId ?? ""),
+      asseLabel: String(base.asseLabel ?? ""),
+      rotazioneSchema: String(base.rotazioneSchema ?? ""),
+      rotazioneText: String(base.rotazioneText ?? ""),
     });
     setAdminEditNote(String(base.adminEdit?.note ?? ""));
     setAdminEditFotos(getFotoList(base));
@@ -1234,6 +1293,27 @@ export default function AutistiAdmin() {
     setControlliRaw(updated);
   }
 
+  async function updateGommeRecord(recordId: string, patch: any) {
+    if (!recordId) return;
+    const raw = (await getItemSync(KEY_GOMME_TMP)) || [];
+    const list = Array.isArray(raw) ? raw : [];
+    const updated = list.map((r: any) => {
+      if (String(r?.id ?? "") !== String(recordId)) return r;
+      return { ...r, ...patch };
+    });
+    await setItemSync(KEY_GOMME_TMP, updated);
+    setGommeRaw(updated);
+  }
+
+  async function importGommeRecord(record: any) {
+    if (!record?.id) return;
+    const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
+    const list = Array.isArray(raw) ? raw : [];
+    const { letta, stato, ...ufficiale } = record;
+    await setItemSync(KEY_GOMME_EVENTI, [...list, ufficiale]);
+    await updateGommeRecord(String(record.id), { stato: "importato", letta: true });
+  }
+
   function normalizeValue(v: any) {
     if (v === undefined || v === "") return null;
     return v;
@@ -1270,6 +1350,8 @@ export default function AutistiAdmin() {
         ? KEY_RICHIESTE_ATTREZZATURE
         : adminEditKind === "controllo"
         ? KEY_CONTROLLI
+        : adminEditKind === "gomme"
+        ? KEY_GOMME_TMP
         : null;
     if (!key) return;
 
@@ -1383,6 +1465,27 @@ export default function AutistiAdmin() {
       };
     }
 
+    if (adminEditKind === "gomme") {
+      const gommeIds = String(adminEditForm.gommeIds ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      next.km =
+        adminEditForm.km === "" ? null : Number(adminEditForm.km);
+      next.tipo = String(adminEditForm.tipo ?? "").trim() || null;
+      next.gommeIds = gommeIds;
+      next.asseId = String(adminEditForm.asseId ?? "").trim() || null;
+      next.asseLabel = String(adminEditForm.asseLabel ?? "").trim() || null;
+      next.rotazioneSchema = String(adminEditForm.rotazioneSchema ?? "").trim() || null;
+      next.rotazioneText = String(adminEditForm.rotazioneText ?? "").trim() || null;
+      if ("stato" in original || adminEditForm.stato) {
+        next.stato = String(adminEditForm.stato ?? "").trim() || null;
+      }
+      if ("letta" in original || adminEditForm.letta) {
+        next.letta = !!adminEditForm.letta;
+      }
+    }
+
     const patchFields =
       adminEditKind === "rifornimento"
         ? [
@@ -1446,6 +1549,20 @@ export default function AutistiAdmin() {
             "obbligatorio",
             "timestamp",
           ]
+        : adminEditKind === "gomme"
+        ? [
+            "km",
+            "tipo",
+            "gommeIds",
+            "asseId",
+            "asseLabel",
+            "rotazioneSchema",
+            "rotazioneText",
+            "stato",
+            "letta",
+            "timestamp",
+            "data",
+          ]
         : ["timestamp"];
 
     next.adminEdit = {
@@ -1464,6 +1581,9 @@ export default function AutistiAdmin() {
     }
     if (adminEditKind === "controllo") {
       setControlliRaw(updated);
+    }
+    if (adminEditKind === "gomme") {
+      setGommeRaw(updated);
     }
 
     if (adminEditKind === "rifornimento") {
@@ -1679,6 +1799,13 @@ export default function AutistiAdmin() {
               Controllo mezzo
             </button>
             <button
+              className={tab === "gomme" ? "tab active" : "tab"}
+              onClick={() => setTab("gomme")}
+              type="button"
+            >
+              Gomme
+            </button>
+            <button
               className={tab === "storico_cambio" ? "tab active" : "tab"}
               onClick={() => setTab("storico_cambio")}
               type="button"
@@ -1739,11 +1866,15 @@ export default function AutistiAdmin() {
           {!loading && tab === "controlli" && controlliFiltered.length === 0 && (
             <div className="empty">Nessun controllo trovato.</div>
           )}
+          {!loading && tab === "gomme" && gommeFiltered.length === 0 && (
+            <div className="empty">Nessun evento gomme trovato.</div>
+          )}
 
           {!loading &&
             tab !== "storico_cambio" &&
             tab !== "segnalazioni" &&
             tab !== "controlli" &&
+            tab !== "gomme" &&
             filtered.length === 0 && (
               <div className="empty">Nessun elemento per questa data.</div>
             )}
@@ -1999,9 +2130,110 @@ export default function AutistiAdmin() {
             </>
           )}
 
+          {tab === "gomme" && (
+            <>
+              <div className="admin-edit-section">
+                <div className="admin-edit-grid">
+                  <label>
+                    Targa
+                    <input
+                      value={gommeFilterTarga}
+                      onChange={(e) => setGommeFilterTarga(e.target.value)}
+                      placeholder="Cerca targa..."
+                    />
+                  </label>
+                  <label className="admin-edit-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={gommeOnlyNuove}
+                      onChange={(e) => setGommeOnlyNuove(e.target.checked)}
+                    />
+                    Solo nuovi
+                  </label>
+                </div>
+              </div>
+              {gommeFiltered.map((item) => {
+                const r = item.record || {};
+                const ts = item.ts ?? 0;
+                const targa = r.targetTarga ?? r.targa ?? "-";
+                const target = String(r.targetType ?? "").toUpperCase() || "-";
+                const autista =
+                  r.autista?.nome ?? r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
+                const badge = r.autista?.badge ?? r.badgeAutista ?? "-";
+                const tipo = String(r.tipo ?? "-").toUpperCase();
+                const km = r.km ?? "-";
+                const rotazione = r.rotazioneSchema ?? r.rotazioneText ?? null;
+                return (
+                  <div className={`row ${item.isNuova ? "pill-danger" : ""}`} key={item.key}>
+                    <div className="row-left">
+                      <div className="time">{formatDateTime(ts)}</div>
+                      <div className="main">
+                        <div className="line1">
+                          <span>{autista}</span>
+                          <span className="sep">|</span>
+                          <span>BADGE {badge}</span>
+                          <span className="sep">|</span>
+                          <span className="muted">{target}</span>
+                          {item.isNuova ? (
+                            <>
+                              <span className="sep">|</span>
+                              <span className="pill pill-danger">NUOVO</span>
+                            </>
+                          ) : null}
+                        </div>
+                        <div className="line2">
+                          <span>Targa: {String(targa)}</span>
+                          <span className="sep">|</span>
+                          <span>Tipo: {tipo}</span>
+                          <span className="sep">|</span>
+                          <span>KM: {String(km)}</span>
+                        </div>
+                        {rotazione ? (
+                          <div className="line2">Rotazione: {String(rotazione)}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={() => openAdminEdit("gomme", r, r.id)}
+                      >
+                        MODIFICA
+                      </button>
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={() => updateGommeRecord(String(r?.id ?? ""), { letta: true })}
+                      >
+                        LETTO
+                      </button>
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={() =>
+                          updateGommeRecord(String(r?.id ?? ""), { stato: "presa_in_carico" })
+                        }
+                      >
+                        PRESO IN CARICO
+                      </button>
+                      <button
+                        type="button"
+                        className="edit"
+                        onClick={() => void importGommeRecord(r)}
+                      >
+                        IMPORTA
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
           {tab !== "storico_cambio" &&
             tab !== "segnalazioni" &&
             tab !== "controlli" &&
+            tab !== "gomme" &&
             filtered.map((e) => {
             const p = e.payload || {};
             const isCtrl = e.tipo === "controllo";
@@ -2197,6 +2429,8 @@ export default function AutistiAdmin() {
                     ? "Modifica richiesta attrezzature"
                     : adminEditKind === "controllo"
                     ? "Modifica controllo mezzo"
+                    : adminEditKind === "gomme"
+                    ? "Modifica gomme"
                     : "Modifica evento"}
                 </h3>
                 <button className="aix-close" type="button" onClick={closeAdminEdit}>
@@ -2247,6 +2481,23 @@ export default function AutistiAdmin() {
                           />
                           {renderCategoriaLine(adminEditForm.targaRimorchio)}
                         </label>
+                      ) : null}
+                      {adminEditKind === "gomme" ? (
+                        <>
+                          <label>
+                            Target
+                            <input value={adminEditForm.targetType ?? ""} disabled />
+                          </label>
+                          <label>
+                            Targa target
+                            <input value={adminEditForm.targetTarga ?? ""} disabled />
+                            {renderCategoriaLine(adminEditForm.targetTarga)}
+                          </label>
+                          <label>
+                            Categoria
+                            <input value={adminEditForm.categoria ?? ""} disabled />
+                          </label>
+                        </>
                       ) : null}
                       {adminEditKind === "segnalazione" ? (
                         <label>
@@ -2439,6 +2690,60 @@ export default function AutistiAdmin() {
                             <textarea
                               value={adminEditForm.note ?? ""}
                               onChange={(e) => updateAdminForm("note", e.target.value)}
+                            />
+                          </label>
+                        </>
+                      ) : null}
+                      {adminEditKind === "gomme" ? (
+                        <>
+                          <label>
+                            Tipo
+                            <input
+                              value={adminEditForm.tipo ?? ""}
+                              onChange={(e) => updateAdminForm("tipo", e.target.value)}
+                            />
+                          </label>
+                          <label>
+                            KM
+                            <input
+                              type="number"
+                              value={adminEditForm.km ?? ""}
+                              onChange={(e) => updateAdminForm("km", e.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Asse ID
+                            <input
+                              value={adminEditForm.asseId ?? ""}
+                              onChange={(e) => updateAdminForm("asseId", e.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Asse label
+                            <input
+                              value={adminEditForm.asseLabel ?? ""}
+                              onChange={(e) => updateAdminForm("asseLabel", e.target.value)}
+                            />
+                          </label>
+                          <label className="admin-edit-full">
+                            Gomme IDs (csv)
+                            <input
+                              value={adminEditForm.gommeIds ?? ""}
+                              onChange={(e) => updateAdminForm("gommeIds", e.target.value)}
+                            />
+                          </label>
+                          <label className="admin-edit-full">
+                            Rotazione schema
+                            <input
+                              value={adminEditForm.rotazioneSchema ?? ""}
+                              onChange={(e) => updateAdminForm("rotazioneSchema", e.target.value)}
+                            />
+                          </label>
+                          <label className="admin-edit-full">
+                            Rotazione testo
+                            <textarea
+                              value={adminEditForm.rotazioneText ?? ""}
+                              onChange={(e) => updateAdminForm("rotazioneText", e.target.value)}
                             />
                           </label>
                         </>

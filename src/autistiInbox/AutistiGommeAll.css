@@ -1,0 +1,129 @@
+.aig-page {
+  padding: 24px;
+}
+
+.aig-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.aig-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.aig-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.aig-logo {
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+}
+
+.aig-back {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.aig-card {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.aig-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.aig-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.aig-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.aig-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aig-row {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.aig-row-top {
+  display: flex;
+  gap: 12px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.aig-row-mid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.aig-row-detail {
+  margin-top: 8px;
+  color: #555;
+}
+
+.aig-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.aig-badge.nuova {
+  background: #fdecea;
+  color: #d32f2f;
+}
+
+.aig-badge.stato {
+  background: #f3f4f6;
+  color: #444;
+}
+
+.aig-badge.importato {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.aig-empty {
+  color: #777;
+  padding: 12px 0;
+}

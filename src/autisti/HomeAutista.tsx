@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./autisti.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import GommeAutistaModal from "./GommeAutistaModal";
 import {
   clearLastHandledRevokedAt,
   getAutistaLocal,
@@ -25,6 +26,7 @@ export default function HomeAutista() {
 
   const [autista, setAutista] = useState<any>(null);
   const [mezzo, setMezzo] = useState<any>(null);
+  const [gommeOpen, setGommeOpen] = useState(false);
 
   // ======================================================
   // REVOCHE + COERENZA LIVE/LOCALE
@@ -231,6 +233,10 @@ export default function HomeAutista() {
           Segnalazioni
         </button>
 
+        <button onClick={() => setGommeOpen(true)}>
+          Gomme
+        </button>
+
         <button onClick={() => navigate("/autisti/richiesta-attrezzature")}>
           Richiesta attrezzature
         </button>
@@ -245,6 +251,8 @@ export default function HomeAutista() {
           Cambio mezzo
         </button>
       </div>
+
+      <GommeAutistaModal open={gommeOpen} onClose={() => setGommeOpen(false)} />
     </div>
   );
 }

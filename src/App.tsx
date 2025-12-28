@@ -59,6 +59,7 @@ import AutistiAdmin from "./autistiInbox/AutistiAdmin";
 import AutistiControlliAll from "./autistiInbox/AutistiControlliAll";
 import AutistiSegnalazioniAll from "./autistiInbox/AutistiSegnalazioniAll";
 import RichiestaAttrezzatureAll from "./autistiInbox/RichiestaAttrezzatureAll";
+import AutistiGommeAll from "./autistiInbox/AutistiGommeAll";
 function App() {
   const [authReady, setAuthReady] = useState(false);
 
@@ -142,6 +143,7 @@ function App() {
   path="/autisti-inbox/richiesta-attrezzature"
   element={<RichiestaAttrezzatureAll />}
 />
+<Route path="/autisti-inbox/gomme" element={<AutistiGommeAll />} />
 <Route path="/autisti-admin" element={<AutistiAdmin />} />
 
 

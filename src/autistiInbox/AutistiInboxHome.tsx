@@ -1,7 +1,9 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import "./AutistiInboxHome.css";
 
+import { db } from "../firebase";
 import { loadActiveSessions, loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
 import type { ActiveSession, HomeEvent, RimorchioStatus } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
@@ -34,6 +36,10 @@ type CreateFrom = {
   tipo: "segnalazione" | "controllo";
   payload: any;
 };
+
+const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
+const KEY_GOMME_EVENTI = "@gomme_eventi";
+const KEY_MANUTENZIONI = "@manutenzioni";
 
 export default function AutistiInboxHome() {
   const navigate = useNavigate();
@@ -136,6 +142,20 @@ useEffect(() => {
   const richiesteAttrezzature = useMemo(
     () => events.filter((e) => e.tipo === "richiesta_attrezzature"),
     [events]
+  );
+  const gomme = useMemo(() => {
+    const withExtras = events as HomeEvent[] & { gomme?: HomeEvent[] };
+    const list = withExtras.gomme ?? events.filter((e) => e.tipo === "gomme");
+    return [...list].sort((a, b) => b.timestamp - a.timestamp);
+  }, [events]);
+  const gommePreview = useMemo(() => gomme.slice(0, 5), [gomme]);
+  const gommeNuoveCount = useMemo(
+    () =>
+      gomme.filter((g) => {
+        const p: any = g.payload || {};
+        return String(p?.stato ?? "").toLowerCase() === "nuovo" && p?.letta === false;
+      }).length,
+    [gomme]
   );
 
   function formatTime(ts: number) {
@@ -263,6 +283,8 @@ useEffect(() => {
         return "CAMBIO MEZZO";
       case "richiesta_attrezzature":
         return "RICHIESTA ATTREZZATURE";
+      case "gomme":
+        return "GOMME";
       default:
         return "EVENTO";
     }
@@ -323,6 +345,132 @@ useEffect(() => {
 
   async function saveArray(key: string, arr: any[]) {
     await setItemSync(key, arr);
+  }
+
+  async function updateGommeRecord(recordId: string, patch: any) {
+    if (!recordId) return;
+    const raw = (await getItemSync(KEY_GOMME_TMP)) || [];
+    const list = Array.isArray(raw) ? raw : [];
+    const updated = list.map((r: any) => {
+      if (String(r?.id ?? "") !== String(recordId)) return r;
+      return { ...r, ...patch };
+    });
+    await setItemSync(KEY_GOMME_TMP, updated);
+  }
+
+  async function importGommeRecord(record: any) {
+    if (!record?.id) return;
+    const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
+    const list = Array.isArray(raw) ? raw : [];
+    const { letta, stato, ...ufficiale } = record;
+    await setItemSync(KEY_GOMME_EVENTI, [...list, ufficiale]);
+    await updateGommeRecord(String(record.id), { stato: "importato", letta: true });
+  }
+
+  function resolveGommeAsseLabel(payload: any) {
+    const modalita = String(payload?.modalita ?? "").toLowerCase();
+    const asseLabel = payload?.asseLabel ?? payload?.asseId ?? null;
+    const gommeRaw = payload?.gommeIds ?? null;
+    const gommeIds = Array.isArray(gommeRaw)
+      ? gommeRaw.join(", ")
+      : typeof gommeRaw === "string" && gommeRaw.trim()
+      ? gommeRaw.trim()
+      : null;
+    const posizione = payload?.posizione ?? payload?.ruota ?? null;
+
+    if (modalita === "asse") {
+      return asseLabel ? String(asseLabel) : "";
+    }
+    if (modalita === "singola") {
+      if (gommeIds) return String(gommeIds);
+      if (posizione) return String(posizione);
+      return "";
+    }
+    if (asseLabel) return String(asseLabel);
+    if (gommeIds) return String(gommeIds);
+    if (posizione) return String(posizione);
+    return "";
+  }
+
+  function buildGommeDescrizione(payload: any) {
+    const asseValue = resolveGommeAsseLabel(payload).trim() || "--";
+    const marcaValue = String(payload?.marca ?? "").trim() || "--";
+    const kmRaw = payload?.km ?? payload?.kmMezzo;
+    const kmValue =
+      typeof kmRaw === "number"
+        ? String(kmRaw)
+        : typeof kmRaw === "string" && kmRaw.trim()
+        ? kmRaw.trim()
+        : "--";
+    const lines = [
+      "CAMBIO GOMME",
+      `asse: ${asseValue}`,
+      `marca: ${marcaValue}`,
+      `km mezzo: ${kmValue}`,
+    ];
+    const tipo = String(payload?.tipo ?? "").trim();
+    if (tipo) lines.push(`tipo: ${tipo}`);
+    const rotazioneText = String(payload?.rotazioneText ?? "").trim();
+    if (rotazioneText) lines.push(`rotazione: ${rotazioneText}`);
+    return lines.join("\n");
+  }
+
+  function getGommeTimestamp(payload: any, fallback?: number) {
+    if (typeof payload?.timestamp === "number" && Number.isFinite(payload.timestamp)) {
+      return payload.timestamp;
+    }
+    if (typeof payload?.data === "number" && Number.isFinite(payload.data)) {
+      return payload.data;
+    }
+    if (typeof fallback === "number" && Number.isFinite(fallback)) {
+      return fallback;
+    }
+    return Date.now();
+  }
+
+  async function appendGommeManutenzione(event: HomeEvent) {
+    const payload = event.payload || {};
+    const baseId = String(payload?.id ?? event.id ?? "");
+    if (!baseId) return;
+    const id = `GOMME_${baseId}`;
+    const targaRaw =
+      payload?.targetTarga ??
+      payload?.targa ??
+      event.targa ??
+      payload?.targaCamion ??
+      payload?.targaMotrice ??
+      payload?.targaRimorchio ??
+      "";
+    const targa = fmtTarga(targaRaw);
+    const data = getGommeTimestamp(payload, event.timestamp);
+    const descrizione = buildGommeDescrizione(payload);
+
+    const ref = doc(db, "storage", KEY_MANUTENZIONI);
+    const snap = await getDoc(ref);
+    const raw = snap.exists() ? snap.data() : {};
+    const store = raw && typeof raw === "object" ? raw : {};
+    const list = Array.isArray((store as any).value)
+      ? (store as any).value
+      : Array.isArray((store as any).items)
+      ? (store as any).items
+      : [];
+    if (list.some((item: any) => String(item?.id ?? "") === id)) return;
+    const updated = [...list, { id, targa, data, descrizione }];
+    if (Array.isArray((store as any).items)) {
+      await setDoc(ref, { ...store, items: updated });
+    } else {
+      await setDoc(ref, { ...store, value: updated });
+    }
+  }
+
+  async function handleImportGomme(event: HomeEvent) {
+    const payload = event.payload || {};
+    if (!payload?.id) return;
+    await importGommeRecord(payload);
+    await appendGommeManutenzione(event);
+    const updatedEvents = await loadHomeEvents(day);
+    setEvents(updatedEvents);
+    closeDetails();
   }
 
   function hasLinkedLavoro(payload: any) {
@@ -488,8 +636,16 @@ useEffect(() => {
 
   function getAutistaInfo(e: HomeEvent) {
     const p: any = e.payload || {};
-    const nome = p.autista ?? p.autistaNome ?? p.nomeAutista ?? e.autista ?? "-";
-    const badge = p.badgeAutista ?? p.badge ?? null;
+    const autistaObj =
+      p.autista && typeof p.autista === "object" ? p.autista : null;
+    const nome =
+      autistaObj?.nome ??
+      p.autista ??
+      p.autistaNome ??
+      p.nomeAutista ??
+      e.autista ??
+      "-";
+    const badge = autistaObj?.badge ?? p.badgeAutista ?? p.badge ?? null;
     return {
       nome: String(nome || "-"),
       badge: badge ? String(badge) : null,
@@ -573,6 +729,16 @@ useEffect(() => {
     } else if (e.tipo === "cambio_mezzo") {
       const t = p.targaMotrice ?? p.targaCamion ?? e.targa ?? null;
       if (t) rows.push({ label: "Motrice", targa: String(t), categoria: getCategoria(t) });
+    } else if (e.tipo === "gomme") {
+      const targetType = String(p.targetType ?? "").toLowerCase();
+      const t = p.targetTarga ?? e.targa ?? null;
+      if (t) {
+        rows.push({
+          label: targetType === "rimorchio" ? "Rimorchio" : "Motrice",
+          targa: String(t),
+          categoria: getCategoria(t),
+        });
+      }
     }
     return rows;
   }
@@ -673,6 +839,21 @@ useEffect(() => {
       if (statoCarico) rows.push({ label: "Stato carico", value: statoCarico });
       if (condizioni) rows.push({ label: "Condizioni", value: condizioni });
       if (note) rows.push({ label: "Note", value: note });
+    } else if (e.tipo === "gomme") {
+      const tipo = formatValue(p.tipo);
+      const km = formatValue(p.km);
+      const asse = formatValue(p.asseLabel ?? p.asseId);
+      const gommeIds = Array.isArray(p.gommeIds)
+        ? p.gommeIds.join(", ")
+        : formatValue(p.gommeIds);
+      const rotazione = formatValue(p.rotazioneSchema ?? p.rotazioneText);
+      const stato = formatValue(p.stato);
+      if (tipo) rows.push({ label: "Tipo intervento", value: tipo });
+      if (km) rows.push({ label: "Km", value: km });
+      if (asse) rows.push({ label: "Asse", value: asse });
+      if (gommeIds) rows.push({ label: "Gomme", value: gommeIds });
+      if (rotazione) rows.push({ label: "Rotazione", value: rotazione });
+      if (stato) rows.push({ label: "Stato", value: stato });
     } else if (e.tipo === "richiesta_attrezzature") {
       const testo = formatValue(p.testo ?? p.richiesta ?? p.messaggio);
       if (testo) rows.push({ label: "Testo", value: testo });
@@ -1013,6 +1194,65 @@ useEffect(() => {
               )}
             </div>
 
+            {/* GOMME */}
+            <div className="daily-card">
+              <div className="daily-card-head">
+                <h2>
+                  Gomme
+                  {gommeNuoveCount > 0 ? (
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        background: "#d32f2f",
+                        color: "#fff",
+                        borderRadius: 10,
+                        padding: "2px 6px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      NUOVE {gommeNuoveCount}
+                    </span>
+                  ) : null}
+                </h2>
+                <button
+                  className="daily-more"
+                  type="button"
+                  onClick={() => navigate("/autisti-inbox/gomme")}
+                  title="Vedi tutto"
+                >
+                  Vedi tutto
+                </button>
+              </div>
+              <div className="daily-item empty">Cambio / Rotazione</div>
+              {gommePreview.length === 0 ? (
+                <div className="daily-item empty">Nessun evento gomme</div>
+              ) : (
+                gommePreview.map((g, index) => {
+                  const p: any = g.payload || {};
+                  const ts = Number(g?.timestamp ?? p?.data ?? p?.timestamp ?? 0);
+                  const time = ts ? formatTime(ts) : "--";
+                  const targa = g?.targa ?? p?.targetTarga ?? "-";
+                  const tipo = String(p?.tipo ?? "-").toUpperCase();
+                  const km = p?.km ?? "-";
+                  return (
+                    <div
+                      key={String(g?.id ?? `${targa}-${ts}-${index}`)}
+                      className="daily-item"
+                      onClick={() => setSelectedEvent(g)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setSelectedEvent(g);
+                      }}
+                    >
+                      {time} - {targa} - {tipo} - KM {km}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
             {/* RICHIESTA ATTREZZATURE (5a CARD) */}
             <div className="daily-card info wide" ref={attrezzatureRef}>
               <div className="daily-card-head">
@@ -1142,6 +1382,7 @@ useEffect(() => {
               selectedEvent.tipo === "richiesta_attrezzature" ||
               selectedEvent.tipo === "rifornimento" ||
               selectedEvent.tipo === "cambio_mezzo";
+            const isGomme = selectedEvent.tipo === "gomme";
             return (
               <div className="aix-backdrop" onClick={closeDetails}>
                 <div className="aix-modal" onClick={(e) => e.stopPropagation()}>
@@ -1256,6 +1497,23 @@ useEffect(() => {
                             onClick={() => handleExportPdf(selectedEvent)}
                           >
                             ESPORTA PDF
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isGomme && (
+                      <div className="aix-row">
+                        <div className="aix-row-top">
+                          <strong>DOSSIER</strong>
+                        </div>
+                        <div className="aix-row-bot">
+                          <button
+                            type="button"
+                            className="aix-create-btn"
+                            onClick={() => void handleImportGomme(selectedEvent)}
+                          >
+                            IMPORTA IN DOSSIER
                           </button>
                         </div>
                       </div>
