@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Mezzi.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generateMezzoPDF } from "../utils/pdfEngine";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
 
@@ -515,18 +514,6 @@ const handleChangeAutista = (value: string) => {
   };
 
   // ---------------------------------------------
-  // PDF
-  // ---------------------------------------------
-
-const handleExportPdf = async (mezzo: Mezzo) => {
-  try {
-   
-    await generateMezzoPDF("Scheda Mezzo", mezzo);
-  } catch (err) {
-    console.error("Errore generazione PDF mezzo:", err);
-    alert("Errore durante la generazione del PDF.");
-  }
-};
   // ---------------------------------------------
   // RENDER
   // ---------------------------------------------
@@ -965,8 +952,7 @@ const handleExportPdf = async (mezzo: Mezzo) => {
           <div className="card-header">
             <h2 className="card-title">Elenco mezzi</h2>
             <p className="card-subtitle">
-              Seleziona un mezzo per modificare, esportare PDF o aprire il
-              dossier.
+              Seleziona un mezzo per modificare o aprire il dossier.
             </p>
           </div>
 
@@ -1103,14 +1089,6 @@ return (
         onClick={() => navigate(`/dossiermezzi/${m.targa}`)}
       >
         Dossier
-      </button>
-
-      <button
-        type="button"
-        className="btn btn-small btn-info"
-        onClick={() => handleExportPdf(m)}
-      >
-        PDF
       </button>
 
       <button
