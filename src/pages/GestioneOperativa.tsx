@@ -176,6 +176,17 @@ const GestioneOperativa: React.FC = () => {
                 Vai a manutenzioni
               </button>
             </div>
+
+            <div className="go-action-card">
+              <h3>Attrezzature cantieri</h3>
+              <p>Registra consegne, spostamenti e ritiro attrezzature</p>
+              <button
+                className="go-primary-btn"
+                onClick={() => navigate("/attrezzature-cantieri")}
+              >
+                Vai ad attrezzature cantieri
+              </button>
+            </div>
           </div>
         </div>
 

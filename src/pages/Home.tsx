@@ -46,6 +46,7 @@ type EventoOperativo = {
 
 const QUICK_LINKS_OPERATIVO = [
   { to: "/gestione-operativa", label: "Gestione Operativa" },
+  { to: "/attrezzature-cantieri", label: "Attrezzature Cantieri" },
   { to: "/autisti-admin", label: "Autisti Admin" },
   { to: "/autisti-inbox", label: "Autisti Inbox" },
   { to: "/autisti-inbox/cambio-mezzo", label: "Cambio Mezzo Inbox" },

@@ -21,6 +21,7 @@ import Mezzo360 from "./pages/Mezzo360";
 import MaterialiDaOrdinare from "./pages/MaterialiDaOrdinare";
 import MaterialiConsegnati from "./pages/MaterialiConsegnati";
 import Inventario from "./pages/Inventario";
+import AttrezzatureCantieri from "./pages/AttrezzatureCantieri";
 
 import Colleghi from "./pages/Colleghi";
 import Fornitori from "./pages/Fornitori";
@@ -118,6 +119,7 @@ function App() {
       <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
       <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
       <Route path="/gestione-operativa" element={<GestioneOperativa />} />
+      <Route path="/attrezzature-cantieri" element={<AttrezzatureCantieri />} />
 
       {/* IA */}
       <Route path="/ia" element={<IAHome />} />
