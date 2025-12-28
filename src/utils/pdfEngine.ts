@@ -696,24 +696,126 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   }
 }
 
+type NormalizedImage = {
+  dataUrl: string;
+  width: number;
+  height: number;
+};
+
+async function fetchImageBlob(url: string): Promise<Blob | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.blob();
+  } catch {
+    return null;
+  }
+}
+
+async function readBlobAsDataUrl(blob: Blob): Promise<string | null> {
+  return await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function decodeImageBlob(blob: Blob): Promise<NormalizedImage | null> {
+  if (!blob) return null;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  if (typeof createImageBitmap === "function") {
+    try {
+      const options: any = { imageOrientation: "from-image" };
+      const bitmap = await createImageBitmap(blob, options);
+      const width = bitmap.width || 0;
+      const height = bitmap.height || 0;
+      if (!width || !height) return null;
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(bitmap, 0, 0);
+      if (typeof bitmap.close === "function") bitmap.close();
+      return {
+        dataUrl: canvas.toDataURL("image/jpeg", 0.92),
+        width,
+        height,
+      };
+    } catch {
+      // fallback below
+    }
+  }
+
+  const dataUrl = await readBlobAsDataUrl(blob);
+  if (!dataUrl) return null;
+
+  const img = await new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = dataUrl;
+  });
+  if (!img) return null;
+
+  const width = img.naturalWidth || img.width || 0;
+  const height = img.naturalHeight || img.height || 0;
+  if (!width || !height) return null;
+
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(img, 0, 0);
+
+  return {
+    dataUrl: canvas.toDataURL("image/jpeg", 0.92),
+    width,
+    height,
+  };
+}
+
+async function normalizeImageFromUrl(url: string): Promise<NormalizedImage | null> {
+  const blob = await fetchImageBlob(url);
+  if (!blob) return null;
+  return await decodeImageBlob(blob);
+}
+
 async function resolvePhotoDataUrl(
   url?: string | null,
   storagePath?: string | null
-): Promise<string | null> {
+): Promise<NormalizedImage | null> {
   if (url) {
-    const direct = await fetchImageAsDataUrl(url);
+    const direct = await normalizeImageFromUrl(url);
     if (direct) return direct;
   }
   if (storagePath) {
     try {
       const downloadUrl = await getDownloadURL(ref(storage, storagePath));
-      const viaStorage = await fetchImageAsDataUrl(downloadUrl);
+      const viaStorage = await normalizeImageFromUrl(downloadUrl);
       if (viaStorage) return viaStorage;
     } catch {
       return null;
     }
   }
   return null;
+}
+
+function containBox(
+  boxW: number,
+  boxH: number,
+  imgW: number,
+  imgH: number
+): { width: number; height: number; offsetX: number; offsetY: number } {
+  if (!boxW || !boxH || !imgW || !imgH) {
+    return { width: boxW, height: boxH, offsetX: 0, offsetY: 0 };
+  }
+  const scale = Math.min(boxW / imgW, boxH / imgH);
+  const width = imgW * scale;
+  const height = imgH * scale;
+  const offsetX = (boxW - width) / 2;
+  const offsetY = (boxH - height) / 2;
+  return { width, height, offsetX, offsetY };
 }
 
 async function drawStandardHeader(doc: jsPDF, model: PdfDocModel): Promise<number> {
@@ -1592,8 +1694,17 @@ export async function generateDossierMezzoPDF(data: DossierPdfData): Promise<voi
   const fotoDataUrl = await resolvePhotoDataUrl(fotoUrl, fotoPath);
 
   if (fotoDataUrl) {
-    const format = fotoDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-    doc.addImage(fotoDataUrl, format, photoX, currentY, photoSize, photoSize, undefined, "FAST");
+    const fit = containBox(photoSize, photoSize, fotoDataUrl.width, fotoDataUrl.height);
+    doc.addImage(
+      fotoDataUrl.dataUrl,
+      "JPEG",
+      photoX + fit.offsetX,
+      currentY + fit.offsetY,
+      fit.width,
+      fit.height,
+      undefined,
+      "FAST"
+    );
   } else {
     doc.setDrawColor(180, 180, 180);
     doc.rect(photoX, currentY, photoSize, photoSize);
