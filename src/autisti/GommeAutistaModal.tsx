@@ -231,6 +231,10 @@ export default function GommeAutistaModal({ open, onClose, onSaved }: Props) {
       categoria,
       km: kmNum,
       data: Date.now(),
+      marca:
+        mode === "cambio"
+          ? String(gommeData?.marca ?? "").trim() || null
+          : null,
       tipo: mode === "cambio" ? tipoIntervento : "rotazione",
       gommeIds: mode === "cambio" ? gommeData?.gommeIds ?? [] : [],
       asseId: mode === "cambio" ? gommeData?.asseId ?? null : null,

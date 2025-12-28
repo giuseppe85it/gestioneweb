@@ -1,0 +1,229 @@
+Executive Summary
+
+Il prodotto è funzionalmente ricco ma i dati sono frammentati tra doc storage/@… e collezioni @…, con formati misti e duplicazioni che generano incoerenze.
+L’esperienza mobile 430px è coerente, mentre desktop è disomogeneo: solo Inbox ha layout wide, il resto resta “phone‑first”.
+L’autenticazione è anonima e senza ruoli; le funzioni admin sono accessibili via URL e la sicurezza è debole.
+IA e PDF sono potenti ma spezzati tra Cloud Functions, Cloud Run, Vercel Edge e server locale; manca un backend unico.
+Molte azioni critiche usano alert/confirm/prompt e non esistono feedback strutturati o flussi guidati.
+Le regole Storage negano lettura/scrittura: se deployate, foto e upload non funzionano.
+Mappa Cartelle + Responsabilità
+
+Cartella/File	Responsabilità principale	Note
+src/pages	Moduli core (mezzi, dossier, manutenzioni, magazzino, IA, PDF)	UI principale admin/office
+src/autisti	App autisti (login, setup, controllo, segnalazioni, gomme, richieste, cambio)	UX mobile 430px
+src/autistiInbox	Inbox eventi autisti + Admin rettifiche	Layout desktop più evoluto
+src/utils	Storage sync, PDF engine, AI client, home events	Infrastruttura condivisa
+src/components	Componenti grafici gomme	UI specifica gomme
+public	Asset statici (logo, bg, icons, gomme)	UI/branding
+functions	Cloud Functions Gemini (estrazione, analisi economica)	CORS aperto
+api	Funzioni Edge Vercel per OpenAI	API alternativa
+server.js	Server locale per OpenAI	Ambiente separato
+firebase.ts	Config Firebase + auth anonima	Chiavi in chiaro
+storage.rules	Regole Firebase Storage	read/write: false
+Mappa Dati Firestore/Storage (Writer/Reader)
+
+Tipo	Key/Collection	Writer principali	Reader principali
+Storage doc	storage/@mezzi_aziendali	Mezzi.tsx IALibretto.tsx	DossierLista.tsx DossierMezzo.tsx Manutenzioni.tsx IADocumenti.tsx
+Storage doc	storage/@colleghi	Colleghi.tsx	LoginAutista.tsx MaterialiConsegnati.tsx
+Storage doc	storage/@fornitori	Fornitori.tsx	MaterialiDaOrdinare.tsx Inventario.tsx
+Storage doc	storage/@inventario	Inventario.tsx MaterialiConsegnati.tsx DettaglioOrdine.tsx IADocumenti.tsx	GestioneOperativa.tsx MaterialiConsegnati.tsx
+Storage doc	storage/@ordini	MaterialiDaOrdinare.tsx DettaglioOrdine.tsx	OrdiniInAttesa.tsx OrdiniArrivati.tsx
+Storage doc	storage/@materialiconsegnati	MaterialiConsegnati.tsx Manutenzioni.tsx	GestioneOperativa.tsx DossierMezzo.tsx
+Storage doc	storage/@manutenzioni	Manutenzioni.tsx AutistiInboxHome.tsx	DossierGomme.tsx DossierMezzo.tsx GestioneOperativa.tsx
+Storage doc	storage/@lavori	LavoriDaEseguire.tsx DettaglioLavoro.tsx AutistiInboxHome.tsx	LavoriInAttesa.tsx LavoriEseguiti.tsx DossierMezzo.tsx
+Storage doc	storage/@rifornimenti_autisti_tmp	Rifornimento.tsx	AutistiAdmin.tsx homeEvents.ts DossierMezzo.tsx
+Storage doc	storage/@rifornimenti	Rifornimento.tsx AutistiAdmin.tsx	Nessuna lettura trovata
+Storage doc	storage/@segnalazioni_autisti_tmp	Segnalazioni.tsx	AutistiSegnalazioniAll.tsx AutistiAdmin.tsx homeEvents.ts
+Storage doc	storage/@controlli_mezzo_autisti	ControlloMezzo.tsx	AutistiGate.tsx AutistiControlliAll.tsx AutistiAdmin.tsx
+Storage doc	storage/@richieste_attrezzature_autisti_tmp	RichiestaAttrezzature.tsx	RichiestaAttrezzatureAll.tsx homeEvents.ts
+Storage doc	storage/@cambi_gomme_autisti_tmp	GommeAutistaModal.tsx	AutistiGommeAll.tsx AutistiAdmin.tsx homeEvents.ts
+Storage doc	storage/@gomme_eventi	AutistiAdmin.tsx AutistiInboxHome.tsx	Nessuna lettura trovata
+Storage doc	storage/@autisti_sessione_attive	SetupMezzo.tsx CambioMezzoAutista.tsx HomeAutista.tsx	AutistiGate.tsx AutistiAdmin.tsx AutistiInboxHome.tsx
+Storage doc	storage/@storico_eventi_operativi	SetupMezzo.tsx CambioMezzoAutista.tsx	homeEvents.ts AutistiAdmin.tsx
+Storage doc	storage/@storico_sganci_rimorchi	Nessun writer trovato	CambioMezzoInbox.tsx
+Storage doc	storage/@storico_cambi_motrice	Nessun writer trovato	CambioMezzoInbox.tsx
+Storage doc	storage/@autista_attivo	LoginAutista.tsx	Nessuna lettura trovata
+Storage doc	storage/@storico	Storico.tsx	Storico.tsx
+Storage doc	storage/@costiMezzo	DossierMezzo.tsx	DossierMezzo.tsx AnalisiEconomica.tsx
+Collection	@impostazioni_app/gemini	IAApiKey.tsx	IAHome.tsx IALibretto.tsx IADocumenti.tsx index.js
+Collection	@documenti_mezzi @documenti_magazzino @documenti_generici	IADocumenti.tsx	DossierMezzo.tsx AnalisiEconomica.tsx
+Collection	@analisi_economica_mezzi	AnalisiEconomica.tsx	AnalisiEconomica.tsx
+Collection	autisti_eventi	NON DETERMINABILE DAL REPO	homeEvents.ts (funzione non usata)
+LocalStorage	@autista_attivo_local @mezzo_attivo_autista_local @autista_revoca_local	autistiStorage.ts	AutistiGate.tsx HomeAutista.tsx
+LocalStorage	@wheelGeom_override_v1	ModalGomme.tsx	ModalGomme.tsx
+Top 20 Problemi UX (1/4)
+
+Home offre troppi ingressi equivalenti e non chiarisce il percorso “giusto” per operazioni quotidiane. Home.tsx
+“Gestione Operativa” è un hub parallelo non collegato al resto, creando doppia navigazione. GestioneOperativa.tsx
+Admin rettifica dati è nascosto in un menu poco visibile. AutistiInboxHome.tsx
+Dossier ha percorsi duplicati (/dossiermezzi e /dossier) e l’utente non capisce quale usare. App.tsx
+Il flusso autisti non mostra progressione o stato, solo redirect silenziosi. AutistiGate.tsx
+Top 20 Problemi UX (2/4)
+
+Troppi form senza pre‑compilazione da contesto (targa/mezzo), con rischio di errori. Manutenzioni.tsx
+Filtri e ricerche sono locali per pagina, manca una ricerca globale per targa/mezzo. DossierLista.tsx
+Feedback utente quasi sempre con alert/confirm/prompt, esperienza incoerente. AutistiAdmin.tsx
+Azioni critiche senza anteprima o “undo” (elimina, revoca, import). DettaglioLavoro.tsx
+Liste lunghe senza paginazione o infinite scroll, difficile trovare eventi vecchi. AutistiAdmin.tsx
+Top 20 Problemi UX (3/4)
+
+Dati duplicati tra chiavi “tmp” e “dossier” senza visibilità di stato sincronizzato. Rifornimento.tsx
+Cambio mezzo inbox legge chiavi mai scritte, schermo spesso vuoto. CambioMezzoInbox.tsx
+Alcune scritture non sono lette da nessun modulo (es. @autista_attivo). LoginAutista.tsx
+Formati data eterogenei (timestamp vs “gg mm aaaa”), ordinamenti incoerenti. Manutenzioni.tsx
+Upload foto dipende da Storage ma le regole attuali bloccano tutto. storage.rules
+Top 20 Problemi UX (4/4)
+
+IA frammentata: Cloud Run, Functions, Vercel Edge e server locale convivono senza UI unificata. IALibretto.tsx
+Funzione aiCore referenziata ma non presente, PDF IA potenzialmente rotto. aiCore.ts
+Dossier gomme dipende da parsing testo fragile, basta una riga diversa per perdere dati. DossierGomme.tsx
+Autenticazione anonima senza ruoli: qualsiasi utente vede tutto. App.tsx
+Manca un “centro di controllo” desktop coerente; solo Inbox è wide. AutistiInboxHome.css
+Top 20 Miglioramenti ad Alto Impatto (1/4)
+
+Unificare la home in un “Control Center” desktop con pannelli e alert: effort alto, rischio medio. Home.tsx
+Aggiungere ricerca globale per targa/autista e quick actions: effort medio, rischio basso. DossierLista.tsx
+Introdurre un wizard autisti con step visibili e stato sessione: effort medio, rischio basso. AutistiGate.tsx
+Rendere visibile il Centro rettifica dati con accesso diretto: effort basso, rischio basso. AutistiInboxHome.tsx
+Consolidare navigazione Dossier (un solo path canonico): effort basso, rischio basso. App.tsx
+Top 20 Miglioramenti ad Alto Impatto (2/4)
+
+Definire schema canonico per storage (sempre {value: []}) e wrapper unificati: effort medio, rischio medio. storageSync.ts
+Centralizzare normalizzazione targa/data e applicarla in tutte le scritture: effort medio, rischio basso. normalize.ts
+Eliminare chiavi legacy o mapparle alle nuove: effort basso, rischio basso. CambioMezzoInbox.tsx
+Aggiungere dedup per import e aggiornamenti (id/source): effort basso, rischio basso. AutistiAdmin.tsx
+Separare chiaramente tmp vs canon e mostrare stato sync in UI: effort medio, rischio medio. homeEvents.ts
+Top 20 Miglioramenti ad Alto Impatto (3/4)
+
+Implementare auth reale con ruoli (admin/autista) e gating UI: effort alto, rischio medio. App.tsx
+Regole Firestore/Storage con accesso minimo necessario: effort medio, rischio medio. storage.rules
+Creare gestione errori con toast e retry standardizzati: effort medio, rischio basso. storageSync.ts
+Aggiungere modalità offline/queue per autisti: effort alto, rischio alto. HomeAutista.tsx
+Definire backup automatici/export periodici: effort medio, rischio basso. firebase.json
+Top 20 Miglioramenti ad Alto Impatto (4/4)
+
+Consolidare IA su un solo backend (Functions o Vercel): effort medio, rischio medio. index.js
+Implementare aiCore o rimuoverlo dal PDF engine: effort medio, rischio basso. aiCore.ts
+Agganciare risultati IA direttamente a Dossier/Manutenzioni: effort medio, rischio medio. IADocumenti.tsx
+Aggiungere preview PDF e progress status: effort medio, rischio basso. pdfEngine.ts
+Creare audit log per modifiche admin (chi/quando): effort medio, rischio basso. AutistiAdmin.tsx
+Lista “Cose Mancanti” per Modulo
+
+Mezzi
+
+Cosa fa: anagrafica mezzi, foto, scadenze, PDF. Mezzi.tsx
+Input: form manuale + upload foto + collega assegnato. Mezzi.tsx
+Output: scrive storage/@mezzi_aziendali e file in Storage. Mezzi.tsx
+Problemi: nessun controllo di univocità targa e normalizzazione uniforme. Mezzi.tsx
+Migliorie: validazioni targa/duplicati, autofill da IA, scadenze evidenziate. Mezzi.tsx
+DossierMezzo
+
+Cosa fa: aggrega costi, lavori, rifornimenti, documenti, materiali. DossierMezzo.tsx
+Input: targa da route, query su più chiavi e collezioni. DossierMezzo.tsx
+Output: PDF dossier, cancellazione documenti/costi. DossierMezzo.tsx
+Problemi: molte sorgenti eterogenee e parsing ripetuto senza cache. DossierMezzo.tsx
+Migliorie: caching, schema unico costi/documenti, alert anomalie. DossierMezzo.tsx
+DossierGomme
+
+Cosa fa: parsing “CAMBIO GOMME” da manutenzioni e grafici. DossierGomme.tsx
+Input: storage/@manutenzioni (descrizione testuale). DossierGomme.tsx
+Output: storico sostituzioni + KPI. DossierGomme.tsx
+Problemi: parsing fragile e dipendente da formati stringa. DossierGomme.tsx
+Migliorie: salvare campi strutturati gomme (asse/marca/km) separati. DossierGomme.tsx
+Manutenzioni
+
+Cosa fa: inserimento interventi + materiali usati + PDF. Manutenzioni.tsx
+Input: form manuale, inventario e mezzi. Manutenzioni.tsx
+Output: storage/@manutenzioni e storage/@materialiconsegnati. Manutenzioni.tsx
+Problemi: dati semi‑strutturati in descrizione, formati data misti. Manutenzioni.tsx
+Migliorie: campi strutturati + validazione km/ore + dedup. Manutenzioni.tsx
+Materiali / Ordini / Inventario / Consegnati
+
+Cosa fa: gestione inventario, ordini, consegne, PDF. Inventario.tsx
+Input: form manuali + upload immagini materiale. MaterialiDaOrdinare.tsx
+Output: storage/@inventario storage/@ordini storage/@materialiconsegnati. MaterialiConsegnati.tsx
+Problemi: nessuna transazione tra consegne e inventario, rischio stock incoerente. MaterialiConsegnati.tsx
+Migliorie: update atomico, collegamento ordini→inventario, stati standard. DettaglioOrdine.tsx
+Autisti (login/setup/cambio/rifornimenti/controlli/segnalazioni/richieste/gomme)
+
+Cosa fa: flussi operativi autisti con sessioni, controlli e richieste. HomeAutista.tsx
+Input: badge, scelta mezzi, moduli operativi, foto. LoginAutista.tsx
+Output: eventi su chiavi @…_autisti_tmp, sessioni attive e storico eventi. SetupMezzo.tsx
+Problemi: gating basato su localStorage, feedback limitati e assenza storico personale. AutistiGate.tsx
+Migliorie: stato sessione visibile, esito invio, modalità offline/queue. HomeAutista.tsx
+Autisti Inbox + Admin
+
+Cosa fa: monitoraggio eventi, rettifica dati, import dossier. AutistiAdmin.tsx
+Input: lettura da chiavi tmp + sessioni. AutistiInboxHome.tsx
+Output: aggiornamenti stato, importazioni in dossier. AutistiAdmin.tsx
+Problemi: strumenti admin nascosti, molte azioni senza audit. AutistiInboxHome.tsx
+Migliorie: log modifiche, bulk actions, filtri avanzati. AutistiAdmin.tsx
+IA (libretto/documenti/analisi economica)
+
+Cosa fa: estrazione dati da immagini/PDF e analisi costi. IADocumenti.tsx
+Input: file upload, API key Gemini. IAApiKey.tsx
+Output: @documenti_*, @mezzi_aziendali, @analisi_economica_mezzi. AnalisiEconomica.tsx
+Problemi: endpoint IA disallineati e output non integrato nei flussi. IALibretto.tsx
+Migliorie: backend unico + mapping automatico a Dossier/Manutenzioni. index.js
+PDF (pdfEngine)
+
+Cosa fa: generazione PDF standard + “Smart PDF”. pdfEngine.ts
+Input: dati da moduli e storage. pdfEngine.ts
+Output: download PDF locale, alcuni con IA. pdfEngine.ts
+Problemi: dipendenza da aiCore non presente, upload immagini bloccato. aiCore.ts
+Migliorie: fallback senza IA, progress e preview unificati. pdfEngine.ts
+Proposta Control Center Desktop
+
+Wireframe testuale
+
+[HEADER] Logo | Data/Ora | Cerca targa/autista | Toggle Alert | CTA principali
+[LEFT] Sessioni attive + Rimorchi (live) + Conflitti
+[CENTER] Inbox Eventi (tabs: rifornimenti, segnalazioni, controlli, gomme, richieste)
+[RIGHT] Scadenze (revisione/collaudo) + Materiali critici + Ordini in attesa
+[FOOTER] KPI: costi mese, gomme, rifornimenti, lavori aperti
+Pannelli + dati mostrati (con sorgenti)
+
+Sessioni attive, revoche, conflitti: storage/@autisti_sessione_attive AutistiAdmin.tsx
+Inbox eventi autisti per giorno: storage/@rifornimenti_autisti_tmp storage/@segnalazioni_autisti_tmp storage/@controlli_mezzo_autisti storage/@cambi_gomme_autisti_tmp
+Scadenze mezzi e alert collaudi: storage/@mezzi_aziendali Mezzi.tsx
+Materiali critici e consegne: storage/@inventario storage/@materialiconsegnati MaterialiConsegnati.tsx
+Manutenzioni e lavori aperti: storage/@manutenzioni storage/@lavori LavoriInAttesa.tsx
+Logica alert (esempi)
+
+“Nuovo/non letto” su segnalazioni/controlli/gomme: storage/@segnalazioni_autisti_tmp storage/@controlli_mezzo_autisti
+“Scadenza entro X giorni” su revisione/collaudo: storage/@mezzi_aziendali
+“Conflitto sessione” se targa usata da due badge: storage/@autisti_sessione_attive
+“Inventario critico” per quantità <= 0: storage/@inventario
+“Ordini bloccati” se materiale non arrivato da > N giorni: storage/@ordini
+Vincoli mobile (non toccare)
+
+Mantenere layout 430px e flussi verticali dell’app autisti. autisti.css
+Evitare nuove dashboard complesse su mobile, usare quick actions. Home.tsx
+Non cambiare il pattern “card + button” già consolidato. Mezzi.css
+Usare solo breakpoint desktop per la nuova vista wide. AutistiInboxHome.css
+Proposta “Home” rinnovata (desktop + mobile)
+
+Desktop: home minimale con 3 macro‑entrate (Control Center, Dossier, IA). Home.tsx
+Mobile: mantenere griglia icone, aggiungere badge “nuovo/critico”. Home.css
+Integrare IA come azione rapida con stato API key visibile. IAHome.tsx
+Inserire “Ricerca targa” globale direttamente in home. Home.tsx
+Rischi Tecnici e Debiti
+
+Regole Storage bloccanti e assenza regole Firestore versionate nel repo. storage.rules
+Auth anonima senza ruoli: rischio accesso admin non controllato. App.tsx
+Dati duplicati e chiavi legacy non utilizzate che generano incoerenza. CambioMezzoInbox.tsx
+AI frammentata con endpoint multipli e modelli diversi, difficile supporto. index.js
+Schema dati non uniforme (array vs value/items, date miste). storageSync.ts
+Roadmap Suggerita (4 Fasi)
+
+Fase 1: sicurezza e stabilità dati (regole, ruoli, normalizzazione) per ridurre rischi immediati.
+Fase 2: unificazione backend IA + aiCore e mapping risultati nei moduli principali.
+Fase 3: Control Center desktop e ricerca globale per targa/autista.
+Fase 4: raffinare UX mobile e aggiungere offline/queue per autisti.
+MANCANZE
+
+Regole Firestore non presenti: stato reale NON DETERMINABILE DAL REPO.
+Policy di ruoli/permessi, onboarding utenti e auditing NON DETERMINABILE DAL REPO.
+Strategia backup/restore e retention dati NON DETERMINABILE DAL REPO.
+Ambiente di deploy primario (Firebase vs Vercel vs server locale) NON DETERMINABILE DAL REPO.
+Monitoraggio/analytics e alerting produzione NON DETERMINABILE DAL REPO.

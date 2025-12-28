@@ -381,3 +381,75 @@ normalizza sempre targa: toUpperCase().trim()
 Modifiche solo frontend (src/**) → nessun deploy functions.
 
 Deploy functions solo se tocchi functions/** e relative chiamate.
+────────────────────────────────────────────────────────────
+AGGIUNTE CHECKLIST (NUOVE REGOLE EMERSE)
+
+1) Regola “storageSync wrapper vs top-level”
+- Se un modulo scrive/legge con setItemSync/getItemSync, il doc Firestore storage/<KEY> salva i dati dentro "value".
+- Se un modulo legge con getDoc diretto (doc(db,"storage","<KEY>")) e si aspetta campi top-level (es. items), rischia di non vedere nulla.
+- Regola operativa:
+  - O usi SEMPRE getItemSync/setItemSync (e leggi/scrivi value)
+  - O se vuoi top-level, allora usi setDoc/getDoc con schema top-level coerente.
+- Prima di patch: controlla in Firestore Console la shape reale del doc (value vs top-level).
+
+2) Regola “normalizzazione targa” (null-safe)
+- Tutti i confronti su targa devono passare da normalizeTarga (null-safe: mai .toUpperCase() su null/undefined).
+- Normalizzazione consigliata:
+  - uppercase
+  - trim
+  - rimozione spazi: replace(/\s+/g, "")
+- Usare la stessa normalizzazione in scrittura e in lettura (Dossier/InBox/Admin).
+
+3) Regola “TypeScript strict” (build Vercel)
+- Vietato lasciare errori TS che bloccano build (TS7006, TS2367, ecc.).
+- Regola operativa:
+  - tipizzare array/record letti da storage con type/interface
+  - sort su timestamp con fallback numerico (bTs - aTs) e fallback a 0
+  - nei confronti number/string usare normalizzazione coerente (Number/String) o check null.
+- Dopo ogni patch: Save All → tab “Problems” deve essere 0 errori.
+
+4) Regola “Autisti vs AutistiInbox” (cartelle e route mai confuse)
+- App Autisti: src/autisti/* e route /autisti/*
+- Inbox/Admin: src/autistiInbox/* e route /autisti-inbox/* + /autisti-admin
+- Convenzione: tutte le pagine “Vedi tutto” Inbox finiscono in *All.tsx e stanno in src/autistiInbox/.
+
+5) Pre-check routing obbligatorio quando aggiungi una pagina
+- Prima di qualsiasi patch UI:
+  - controlla in App.tsx: import del componente giusto (cartella giusta) + route con prefisso giusto
+  - controlla in AutistiInboxHome.tsx: i bottoni puntano alle route giuste
+- Evitare mismatch tipo: route /autisti/... che importa da autistiInbox o viceversa.
+
+6) Regola “Cache / PWA / Vercel” (versione vecchia anche se il codice è giusto)
+- Prima di toccare file:
+  - test in Incognito
+  - Hard reload (Ctrl+F5)
+  - DevTools → Application → Clear site data
+  - (se PWA) Unregister Service Worker
+  - su telefono: cancella dati sito, non solo cache.
+
+7) Regola “Foto” (mai Base64 in Firestore per uso reale)
+- Foto su Firebase Storage.
+- Nel record salva solo riferimenti leggeri:
+  - fotoUrl e fotoStoragePath (oppure fotoUrls[]/fotoStoragePaths[]).
+- Reader (Inbox/Admin/All) devono supportare:
+  - legacy dataUrl base64
+  - nuovi fotoUrl da Storage.
+
+8) Regola “Windows vs Vercel” (case-sensitive + file mancanti)
+- Su Vercel (Linux) i path sono case-sensitive.
+- Verifica sempre:
+  - nome file reale = import (maiuscole/minuscole identiche)
+  - il file esiste nel repo
+  - git status pulito, file aggiunti e pushati.
+
+9) Regola “Create lavoro da segnalazione/controllo” (dedup obbligatorio)
+- Quando crei un lavoro da Admin:
+  - scrivi linkedLavoroId (o linkedLavoroIds) nel record sorgente
+  - imposta stato/letta = “presa in carico”
+  - per controlli target="entrambi": 2 lavori (motrice + rimorchio) se targhe presenti
+  - normalizza sempre targa.
+
+10) Regola “Deploy”
+- Modifiche solo frontend (src/**) → nessun deploy functions.
+- Deploy functions solo se tocchi functions/** e relative chiamate.
+────────────────────────────────────────────────────────────

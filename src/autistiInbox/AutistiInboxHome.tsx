@@ -1,9 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, getDoc, setDoc } from "firebase/firestore";
 import "./AutistiInboxHome.css";
 
-import { db } from "../firebase";
 import { loadActiveSessions, loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
 import type { ActiveSession, HomeEvent, RimorchioStatus } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
@@ -368,40 +366,21 @@ useEffect(() => {
   }
 
   function resolveGommeAsseLabel(payload: any) {
-    const modalita = String(payload?.modalita ?? "").toLowerCase();
-    const asseLabel = payload?.asseLabel ?? payload?.asseId ?? null;
-    const gommeRaw = payload?.gommeIds ?? null;
-    const gommeIds = Array.isArray(gommeRaw)
-      ? gommeRaw.join(", ")
-      : typeof gommeRaw === "string" && gommeRaw.trim()
-      ? gommeRaw.trim()
-      : null;
-    const posizione = payload?.posizione ?? payload?.ruota ?? null;
-
-    if (modalita === "asse") {
-      return asseLabel ? String(asseLabel) : "";
-    }
-    if (modalita === "singola") {
-      if (gommeIds) return String(gommeIds);
-      if (posizione) return String(posizione);
-      return "";
-    }
-    if (asseLabel) return String(asseLabel);
-    if (gommeIds) return String(gommeIds);
-    if (posizione) return String(posizione);
-    return "";
+    const raw = payload?.asseLabel ?? payload?.asseId ?? "";
+    return String(raw ?? "").trim();
   }
 
   function buildGommeDescrizione(payload: any) {
-    const asseValue = resolveGommeAsseLabel(payload).trim() || "--";
-    const marcaValue = String(payload?.marca ?? "").trim() || "--";
+    const asseValue = resolveGommeAsseLabel(payload) || "N/D";
+    const marcaRaw = payload?.marca ?? "";
+    const marcaValue = String(marcaRaw ?? "").trim() || "N/D";
     const kmRaw = payload?.km ?? payload?.kmMezzo;
     const kmValue =
       typeof kmRaw === "number"
         ? String(kmRaw)
         : typeof kmRaw === "string" && kmRaw.trim()
         ? kmRaw.trim()
-        : "--";
+        : "N/D";
     const lines = [
       "CAMBIO GOMME",
       `asse: ${asseValue}`,
@@ -409,7 +388,7 @@ useEffect(() => {
       `km mezzo: ${kmValue}`,
     ];
     const tipo = String(payload?.tipo ?? "").trim();
-    if (tipo) lines.push(`tipo: ${tipo}`);
+    if (tipo) lines.push(`intervento: ${tipo}`);
     const rotazioneText = String(payload?.rotazioneText ?? "").trim();
     if (rotazioneText) lines.push(`rotazione: ${rotazioneText}`);
     return lines.join("\n");
@@ -428,38 +407,53 @@ useEffect(() => {
     return Date.now();
   }
 
+  function fmtDate(ms: number) {
+    const d = new Date(ms);
+    const gg = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = d.getFullYear();
+    return `${gg} ${mm} ${yy}`;
+  }
+
   async function appendGommeManutenzione(event: HomeEvent) {
     const payload = event.payload || {};
-    const baseId = String(payload?.id ?? event.id ?? "");
-    if (!baseId) return;
-    const id = `GOMME_${baseId}`;
-    const targaRaw =
-      payload?.targetTarga ??
-      payload?.targa ??
-      event.targa ??
-      payload?.targaCamion ??
-      payload?.targaMotrice ??
-      payload?.targaRimorchio ??
-      "";
-    const targa = fmtTarga(targaRaw);
-    const data = getGommeTimestamp(payload, event.timestamp);
-    const descrizione = buildGommeDescrizione(payload);
+    try {
+      const targaRaw =
+        payload?.targetTarga ??
+        payload?.targa ??
+        event.targa ??
+        payload?.targaCamion ??
+        payload?.targaMotrice ??
+        payload?.targaRimorchio ??
+        "";
+      const targa = fmtTarga(targaRaw);
+      const dataMs = getGommeTimestamp(payload, event.timestamp);
+      const data = fmtDate(dataMs);
+      const descrizione = buildGommeDescrizione(payload);
+      const kmRaw = payload?.km ?? payload?.kmMezzo;
+      const km =
+        typeof kmRaw === "number" && Number.isFinite(kmRaw)
+          ? kmRaw
+          : typeof kmRaw === "string" && kmRaw.trim() && Number.isFinite(Number(kmRaw))
+          ? Number(kmRaw)
+          : null;
 
-    const ref = doc(db, "storage", KEY_MANUTENZIONI);
-    const snap = await getDoc(ref);
-    const raw = snap.exists() ? snap.data() : {};
-    const store = raw && typeof raw === "object" ? raw : {};
-    const list = Array.isArray((store as any).value)
-      ? (store as any).value
-      : Array.isArray((store as any).items)
-      ? (store as any).items
-      : [];
-    if (list.some((item: any) => String(item?.id ?? "") === id)) return;
-    const updated = [...list, { id, targa, data, descrizione }];
-    if (Array.isArray((store as any).items)) {
-      await setDoc(ref, { ...store, items: updated });
-    } else {
-      await setDoc(ref, { ...store, value: updated });
+      const nuovaVoce = {
+        id: Date.now().toString(),
+        targa,
+        tipo: "mezzo",
+        descrizione,
+        data,
+        km,
+        materiali: [],
+      };
+
+      const raw = (await getItemSync(KEY_MANUTENZIONI)) || [];
+      const list = Array.isArray(raw) ? raw : [];
+      await setItemSync(KEY_MANUTENZIONI, [...list, nuovaVoce]);
+    } catch (err) {
+      console.error("Errore salvataggio manutenzione gomme:", err);
+      window.alert("Errore salvataggio manutenzione gomme.");
     }
   }
 
