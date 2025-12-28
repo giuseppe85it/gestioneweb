@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./autisti.css";
-import { getItemSync, setItemSync } from "../utils/storageSync";
+import { getItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal, saveAutistaLocal } from "./autistiStorage";
 
 export default function LoginAutista() {
@@ -49,10 +49,6 @@ export default function LoginAutista() {
       };
 
       // 🔹 SALVATAGGIO PER ADMIN / STORICO
-      await setItemSync("@autista_attivo", {
-        ...autista,
-        timestamp: Date.now(),
-      });
 
       // 🔹 SALVATAGGIO LOCALE PER SESSIONE
       saveAutistaLocal(autista);
