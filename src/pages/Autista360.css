@@ -1,0 +1,444 @@
+.autista-360-page {
+  min-height: 100vh;
+  background: radial-gradient(circle at 15% 10%, rgba(150, 210, 220, 0.25), transparent 45%),
+    radial-gradient(circle at 85% 15%, rgba(255, 215, 150, 0.3), transparent 50%),
+    linear-gradient(120deg, #f6fafb 0%, #e7eff2 70%);
+  color: #0f2c32;
+  font-family: "Gill Sans", "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.autista-360-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 26px 18px 80px;
+}
+
+.autista-360-card {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #dfe7ea;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 14px 36px rgba(18, 40, 48, 0.1);
+  margin-bottom: 16px;
+}
+
+.autista-360-header-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.autista-360-logo {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.autista-360-logo img {
+  width: clamp(52px, 7vw, 82px);
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.autista-360-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 11px;
+  color: #47626a;
+}
+
+.autista-360-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef3f5;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.autista-360-search-name {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #4a666d;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.autista-360-title {
+  font-size: clamp(26px, 3vw, 40px);
+  margin: 8px 0 4px;
+  font-weight: 700;
+}
+
+.autista-360-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #203b41;
+}
+
+.autista-360-session {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #4a666d;
+}
+
+.autista-360-session.is-active {
+  color: #1b5a3b;
+  font-weight: 600;
+}
+
+.autista-360-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.autista-360-stat {
+  background: #f0f6f7;
+  border-radius: 999px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #d7e2e6;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.autista-360-stat:hover {
+  transform: translateY(-1px);
+  border-color: #c0d0d5;
+  box-shadow: 0 10px 20px rgba(18, 40, 48, 0.08);
+}
+
+.autista-360-stat.is-active {
+  border-color: #0f2f36;
+  box-shadow: 0 12px 24px rgba(18, 40, 48, 0.12);
+}
+
+.autista-360-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5b7077;
+}
+
+.autista-360-stat-value {
+  font-weight: 700;
+}
+
+.autista-360-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #4a666d;
+}
+
+.filter-field span {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: #556a71;
+}
+
+.filter-field input,
+.filter-field select {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d6e2e6;
+  background: #ffffff;
+  font-size: 13px;
+  color: inherit;
+}
+
+.filter-field input:focus,
+.filter-field select:focus {
+  outline: none;
+  border-color: #9fb2b8;
+  box-shadow: 0 0 0 3px rgba(140, 178, 184, 0.2);
+}
+
+.autista-360-timeline-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.autista-360-timeline-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.autista-360-timeline-head span {
+  font-size: 12px;
+  color: #4a666d;
+}
+
+.autista-360-matches-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.autista-360-matches-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.autista-360-matches-head span {
+  font-size: 12px;
+  color: #4a666d;
+}
+
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.match-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fbfcfd;
+  border: 1px solid #e3ecef;
+  border-radius: 14px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.match-item:hover {
+  transform: translateY(-1px);
+  border-color: #cddadd;
+  box-shadow: 0 10px 20px rgba(18, 40, 48, 0.1);
+}
+
+.match-item.is-active {
+  border-color: #9fb2b8;
+  box-shadow: 0 12px 24px rgba(18, 40, 48, 0.12);
+}
+
+.match-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.match-name {
+  font-weight: 600;
+}
+
+.match-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5a7077;
+}
+
+.match-count {
+  font-size: 12px;
+  color: #4a666d;
+  white-space: nowrap;
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #fbfcfd;
+  border: 1px solid #e3ecef;
+  border-radius: 14px;
+}
+
+.timeline-date {
+  font-size: 12px;
+  color: #5a7077;
+}
+
+.timeline-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeline-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.timeline-title-text {
+  font-weight: 600;
+}
+
+.timeline-meta {
+  font-size: 12px;
+  color: #4a666d;
+}
+
+.timeline-details {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #4a666d;
+}
+
+.timeline-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #2b4a50;
+}
+
+.timeline-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.timeline-details-body {
+  margin-top: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.timeline-details-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timeline-details-label {
+  font-weight: 600;
+  color: #2f4b52;
+}
+
+.type-pill {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e7eef0;
+  color: #30454b;
+}
+
+.type-agganci {
+  background: #d3efe1;
+  color: #1b5a3b;
+}
+
+.type-sganci {
+  background: #f3e3cc;
+  color: #7a4a12;
+}
+
+.type-segnalazioni {
+  background: #ffe2e2;
+  color: #7a2020;
+}
+
+.type-controlli {
+  background: #e7f0ff;
+  color: #2a4f7a;
+}
+
+.type-rifornimenti {
+  background: #e6f0f5;
+  color: #355a60;
+}
+
+.type-richieste {
+  background: #ffe9c7;
+  color: #7b4a12;
+}
+
+.type-gomme {
+  background: #e0f2f1;
+  color: #1b5a56;
+}
+
+.type-storico {
+  background: #e7eef0;
+  color: #30454b;
+}
+
+.match-pill {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid #f0d4a4;
+  background: #fff3d6;
+  color: #7a4a12;
+}
+
+.photo-pill {
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid #c8d3d8;
+  background: #eef3f5;
+  color: #3c4f55;
+}
+
+.timeline-empty {
+  padding: 14px;
+  border-radius: 12px;
+  background: #f2f6f7;
+  color: #5a6f76;
+  font-style: italic;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .autista-360-header-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .autista-360-shell {
+    padding: 22px 16px 60px;
+  }
+
+  .autista-360-card {
+    padding: 16px;
+  }
+
+  .timeline-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -679,6 +679,14 @@ function sanitizeFileName(name: string): string {
   return cleaned.replace(/_+/g, "_").replace(/^_+|_+$/g, "") || "Documento";
 }
 
+function isDataUrl(value: string): boolean {
+  return value.startsWith("data:image/");
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
 async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   if (!url) return null;
   try {
@@ -701,6 +709,23 @@ type NormalizedImage = {
   width: number;
   height: number;
 };
+
+async function normalizeImageFromDataUrl(dataUrl: string): Promise<NormalizedImage | null> {
+  if (!dataUrl) return null;
+  const img = await new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = dataUrl;
+  });
+  if (!img) return null;
+
+  const width = img.naturalWidth || img.width || 0;
+  const height = img.naturalHeight || img.height || 0;
+  if (!width || !height) return null;
+
+  return { dataUrl, width, height };
+}
 
 async function fetchImageBlob(url: string): Promise<Blob | null> {
   if (!url) return null;
@@ -781,22 +806,34 @@ async function normalizeImageFromUrl(url: string): Promise<NormalizedImage | nul
   return await decodeImageBlob(blob);
 }
 
+async function normalizeImageFromRef(refValue: string): Promise<NormalizedImage | null> {
+  const value = String(refValue || "").trim();
+  if (!value) return null;
+  if (isDataUrl(value)) {
+    return await normalizeImageFromDataUrl(value);
+  }
+  if (isHttpUrl(value)) {
+    return await normalizeImageFromUrl(value);
+  }
+  try {
+    const downloadUrl = await getDownloadURL(ref(storage, value));
+    return await normalizeImageFromUrl(downloadUrl);
+  } catch {
+    return null;
+  }
+}
+
 async function resolvePhotoDataUrl(
   url?: string | null,
   storagePath?: string | null
 ): Promise<NormalizedImage | null> {
   if (url) {
-    const direct = await normalizeImageFromUrl(url);
+    const direct = await normalizeImageFromRef(url);
     if (direct) return direct;
   }
   if (storagePath) {
-    try {
-      const downloadUrl = await getDownloadURL(ref(storage, storagePath));
-      const viaStorage = await normalizeImageFromUrl(downloadUrl);
-      if (viaStorage) return viaStorage;
-    } catch {
-      return null;
-    }
+    const viaStorage = await normalizeImageFromRef(storagePath);
+    if (viaStorage) return viaStorage;
   }
   return null;
 }
@@ -934,10 +971,10 @@ async function addPhotosGrid(
       rowHeight = 0;
     }
 
-    const dataUrl = await fetchImageAsDataUrl(urls[i]);
-    if (dataUrl) {
-      const format = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-      doc.addImage(dataUrl, format, x, y, cellW, cellH, undefined, "FAST");
+    const normalized = await resolvePhotoDataUrl(urls[i]);
+    if (normalized?.dataUrl) {
+      const format = normalized.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+      doc.addImage(normalized.dataUrl, format, x, y, cellW, cellH, undefined, "FAST");
     } else {
       doc.setDrawColor(180, 180, 180);
       doc.rect(x, y, cellW, cellH);
@@ -1029,6 +1066,9 @@ async function renderBlocks(
 
     if (block.kind === "table") {
       await ensureSpace(12);
+      const highlightKo =
+        typeof block.title === "string" &&
+        block.title.trim().toLowerCase() === "check";
       autoTable(doc, {
         startY: currentY,
         margin: { left: PDF_MARGIN_X, right: PDF_MARGIN_X },
@@ -1046,6 +1086,16 @@ async function renderBlocks(
         },
         alternateRowStyles: {
           fillColor: COLORS.rowAlt,
+        },
+        didParseCell: (data) => {
+          if (!highlightKo) return;
+          if (data.section !== "body") return;
+          const raw = String(data.cell.raw ?? "").toUpperCase();
+          if (raw !== "KO") return;
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fillColor = COLORS.urgentRed;
+          data.cell.styles.fontSize = 11;
         },
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1146,8 +1196,19 @@ function getFotoUrlsFromRecord(record: any): string[] {
   if (record?.fotoDataUrl) urls.push(String(record.fotoDataUrl));
   if (Array.isArray(record?.foto)) {
     record.foto.forEach((f: any) => {
+      if (typeof f === "string") {
+        urls.push(String(f));
+        return;
+      }
       if (f?.url) urls.push(String(f.url));
       if (f?.dataUrl) urls.push(String(f.dataUrl));
+      if (f?.storagePath) urls.push(String(f.storagePath));
+    });
+  }
+  if (record?.fotoStoragePath) urls.push(String(record.fotoStoragePath));
+  if (Array.isArray(record?.fotoStoragePaths)) {
+    record.fotoStoragePaths.forEach((p: any) => {
+      if (p) urls.push(String(p));
     });
   }
   return Array.from(new Set(urls)).filter(Boolean);

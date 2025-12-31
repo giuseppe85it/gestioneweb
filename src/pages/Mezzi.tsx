@@ -60,20 +60,63 @@ interface Mezzo {
   fotoPath?: string | null;
 }
 
-function formatDateForDisplay(isoDate: string | undefined | null): string {
-  if (!isoDate) return "-";
+function buildDate(yyyyStr: string, mmStr: string, ddStr: string): Date | null {
+  const yyyy = Number(yyyyStr);
+  const mm = Number(mmStr);
+  const dd = Number(ddStr);
+  if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) {
+    return null;
+  }
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const date = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+  if (
+    date.getFullYear() !== yyyy ||
+    date.getMonth() !== mm - 1 ||
+    date.getDate() !== dd
+  ) {
+    return null;
+  }
+  return date;
+}
 
-  const date = new Date(isoDate);
-  if (isNaN(date.getTime())) return isoDate;
+function parseDateFlexible(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
 
+  const isoMatch = /(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  const dmyMatch = /(\d{2})[./\s](\d{2})[./\s](\d{4})/.exec(text);
+
+  const candidates: Array<{ index: number; date: Date }> = [];
+  if (isoMatch) {
+    const date = buildDate(isoMatch[1], isoMatch[2], isoMatch[3]);
+    if (date) candidates.push({ index: isoMatch.index, date });
+  }
+  if (dmyMatch) {
+    const date = buildDate(dmyMatch[3], dmyMatch[2], dmyMatch[1]);
+    if (date) candidates.push({ index: dmyMatch.index, date });
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.index - b.index);
+  return candidates[0].date;
+}
+
+function formatDateForDisplay(date: Date | null): string {
+  if (!date) return "-";
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
-
   return `${day} ${month} ${year}`;
 }
 
-
+function formatDateForInput(date: Date | null): string {
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 
 function extractBase64FromDataURL(dataUrl: string): string {
@@ -87,38 +130,36 @@ function extractBase64FromDataURL(dataUrl: string): string {
 // ---------------------------------------------
 
 function calculaProssimaRevisione(
-  dataImmatricolazione: string,
-  dataUltimoCollaudo: string
-): string {
-  if (!dataImmatricolazione) return dataUltimoCollaudo || "";
-
-  const immDate = new Date(dataImmatricolazione);
-  if (isNaN(immDate.getTime())) {
-    return dataUltimoCollaudo || "";
+  dataImmatricolazione: Date | null,
+  dataUltimoCollaudo: Date | null
+): Date | null {
+  if (!dataImmatricolazione) {
+    return dataUltimoCollaudo ? new Date(dataUltimoCollaudo) : null;
   }
 
+  const immDate = new Date(dataImmatricolazione);
+  immDate.setHours(12, 0, 0, 0);
+
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setHours(12, 0, 0, 0);
 
   const firstRevision = new Date(immDate);
   firstRevision.setFullYear(firstRevision.getFullYear() + 4);
 
   if (!dataUltimoCollaudo) {
     if (firstRevision > today) {
-      return firstRevision.toISOString().split("T")[0];
+      return firstRevision;
     }
 
     const afterFirst = new Date(firstRevision);
     while (afterFirst <= today) {
       afterFirst.setFullYear(afterFirst.getFullYear() + 2);
     }
-    return afterFirst.toISOString().split("T")[0];
+    return afterFirst;
   }
 
   const lastCollaudo = new Date(dataUltimoCollaudo);
-  if (isNaN(lastCollaudo.getTime())) {
-    return dataUltimoCollaudo;
-  }
+  lastCollaudo.setHours(12, 0, 0, 0);
 
   const nextFromCollaudo = new Date(lastCollaudo);
   nextFromCollaudo.setFullYear(nextFromCollaudo.getFullYear() + 2);
@@ -130,29 +171,29 @@ function calculaProssimaRevisione(
     );
   }
 
-  const finalNext =
-    nextFromCollaudo > nextFromImmatricolazione
-      ? nextFromCollaudo
-      : nextFromImmatricolazione;
-
-  return finalNext.toISOString().split("T")[0];
+  return nextFromCollaudo > nextFromImmatricolazione
+    ? nextFromCollaudo
+    : nextFromImmatricolazione;
 }
 
 // ---------------------------------------------
 // UTILS DATE
 // ---------------------------------------------
 
-function giorniDaOggi(isoDate: string): number {
-  if (!isoDate) return Number.NaN;
+function giorniDaOggi(target: Date | null): number | null {
+  if (!target) return null;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const target = new Date(isoDate);
-  target.setHours(0, 0, 0, 0);
-
-  const diffMs = target.getTime() - today.getTime();
-  const giorni = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  return giorni;
+  const utcToday = Date.UTC(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const utcTarget = Date.UTC(
+    target.getFullYear(),
+    target.getMonth(),
+    target.getDate()
+  );
+  return Math.round((utcTarget - utcToday) / 86400000);
 }
 
 // ---------------------------------------------
@@ -824,10 +865,10 @@ const handleChangeAutista = (value: string) => {
                         setDataUltimoCollaudo(newVal);
                         if (newVal) {
                           const calculated = calculaProssimaRevisione(
-                            dataImmatricolazione,
-                            newVal
+                            parseDateFlexible(dataImmatricolazione),
+                            parseDateFlexible(newVal)
                           );
-                          setDataScadenzaRevisione(calculated);
+                          setDataScadenzaRevisione(formatDateForInput(calculated));
                         }
                       }}
                     />
@@ -1002,36 +1043,44 @@ const handleChangeAutista = (value: string) => {
                         <div style={{ marginTop: 14, marginBottom: 16 }}>
                           <div className="mezzi-list">
                             {lista.map((m) => {
-                              const revDisplay = formatDateForDisplay(
-                                m.dataScadenzaRevisione
+                              const scadenzaPrimaria = parseDateFlexible(
+                                m.dataScadenzaRevisione || ""
                               );
+                              const immDate = parseDateFlexible(
+                                m.dataImmatricolazione || ""
+                              );
+                              const collaudoDate = parseDateFlexible(
+                                m.dataUltimoCollaudo || ""
+                              );
+                              const computed = calculaProssimaRevisione(
+                                immDate,
+                                collaudoDate
+                              );
+                              const scadenzaDate = scadenzaPrimaria ?? computed;
+                              const revDisplay = formatDateForDisplay(scadenzaDate);
+
+                              const progDate = m.manutenzioneProgrammata
+                                ? parseDateFlexible(m.manutenzioneDataFine || "")
+                                : null;
                               const progDisplay = m.manutenzioneProgrammata
-                                ? formatDateForDisplay(
-                                    m.manutenzioneDataFine || ""
-                                  )
+                                ? formatDateForDisplay(progDate)
                                 : null;
 
-                              const giorniRev = giorniDaOggi(
-                                m.dataScadenzaRevisione
-                              );
+                              const giorniRev = giorniDaOggi(scadenzaDate);
                               let classeRev = "";
-                              if (giorniRev <= 5) classeRev = "deadline-high";
-                              else if (giorniRev <= 15)
-                                classeRev = "deadline-medium";
-                              else if (giorniRev <= 30)
-                                classeRev = "deadline-low";
+                              if (giorniRev !== null && giorniRev <= 30) {
+                                classeRev = "deadline-danger";
+                              }
 
                               let classeProg = "";
-                              if (progDisplay) {
-                                const giorniProg = giorniDaOggi(
-                                  m.manutenzioneDataFine || ""
-                                );
+                              if (progDate) {
+                                const giorniProg = giorniDaOggi(progDate);
 
-                                if (giorniProg <= 5)
+                                if (giorniProg !== null && giorniProg <= 5)
                                   classeProg = "deadline-high";
-                                else if (giorniProg <= 15)
+                                else if (giorniProg !== null && giorniProg <= 15)
                                   classeProg = "deadline-medium";
-                                else if (giorniProg <= 30)
+                                else if (giorniProg !== null && giorniProg <= 30)
                                   classeProg = "deadline-low";
                               }
 return (

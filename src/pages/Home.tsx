@@ -1,7 +1,7 @@
 import "./Home.css";
-import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
-import { getItemSync } from "../utils/storageSync";
+import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getItemSync, } from "../utils/storageSync";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
@@ -27,6 +27,13 @@ type SessioneRecord = {
   nomeAutista?: string;
   badgeAutista?: string;
   timestamp?: number;
+};
+
+type AutistaSuggestion = {
+  name: string;
+  badge?: string;
+  targa?: string;
+  priority: number;
 };
 
 type EventoOperativo = {
@@ -87,53 +94,106 @@ function fmtTarga(value: string | null | undefined): string {
   return String(value || "").trim().toUpperCase();
 }
 
-function formatDateForDisplay(isoDate: string | undefined | null): string {
-  if (!isoDate) return "-";
+function normalizeName(value: string | null | undefined): string {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  const date = new Date(isoDate);
-  if (isNaN(date.getTime())) return isoDate;
+function normalizeNameKey(value: string | null | undefined): string {
+  return normalizeName(value).toLowerCase();
+}
 
+function normalizeBadge(value: string | null | undefined): string {
+  return String(value || "").trim();
+}
+
+function normalizeBadgeKey(value: string | null | undefined): string {
+  return normalizeBadge(value).toLowerCase();
+}
+
+function buildDate(yyyyStr: string, mmStr: string, ddStr: string): Date | null {
+  const yyyy = Number(yyyyStr);
+  const mm = Number(mmStr);
+  const dd = Number(ddStr);
+  if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) {
+    return null;
+  }
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const date = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+  if (
+    date.getFullYear() !== yyyy ||
+    date.getMonth() !== mm - 1 ||
+    date.getDate() !== dd
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function parseDateFlexible(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+
+  const isoMatch = /(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  const dmyMatch = /(\d{2})[./\s](\d{2})[./\s](\d{4})/.exec(text);
+
+  const candidates: Array<{ index: number; date: Date }> = [];
+  if (isoMatch) {
+    const date = buildDate(isoMatch[1], isoMatch[2], isoMatch[3]);
+    if (date) candidates.push({ index: isoMatch.index, date });
+  }
+  if (dmyMatch) {
+    const date = buildDate(dmyMatch[3], dmyMatch[2], dmyMatch[1]);
+    if (date) candidates.push({ index: dmyMatch.index, date });
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.index - b.index);
+  return candidates[0].date;
+}
+
+function formatDateForDisplay(date: Date | null): string {
+  if (!date) return "-";
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
-
   return `${day} ${month} ${year}`;
 }
 
 // Revisione automatica (copiata da Mezzi.tsx)
 function calculaProssimaRevisione(
-  dataImmatricolazione: string,
-  dataUltimoCollaudo: string
-): string {
-  if (!dataImmatricolazione) return dataUltimoCollaudo || "";
-
-  const immDate = new Date(dataImmatricolazione);
-  if (isNaN(immDate.getTime())) {
-    return dataUltimoCollaudo || "";
+  dataImmatricolazione: Date | null,
+  dataUltimoCollaudo: Date | null
+): Date | null {
+  if (!dataImmatricolazione) {
+    return dataUltimoCollaudo ? new Date(dataUltimoCollaudo) : null;
   }
 
+  const immDate = new Date(dataImmatricolazione);
+  immDate.setHours(12, 0, 0, 0);
+
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setHours(12, 0, 0, 0);
 
   const firstRevision = new Date(immDate);
   firstRevision.setFullYear(firstRevision.getFullYear() + 4);
 
   if (!dataUltimoCollaudo) {
     if (firstRevision > today) {
-      return firstRevision.toISOString().split("T")[0];
+      return firstRevision;
     }
 
     const afterFirst = new Date(firstRevision);
     while (afterFirst <= today) {
       afterFirst.setFullYear(afterFirst.getFullYear() + 2);
     }
-    return afterFirst.toISOString().split("T")[0];
+    return afterFirst;
   }
 
   const lastCollaudo = new Date(dataUltimoCollaudo);
-  if (isNaN(lastCollaudo.getTime())) {
-    return dataUltimoCollaudo;
-  }
+  lastCollaudo.setHours(12, 0, 0, 0);
 
   const nextFromCollaudo = new Date(lastCollaudo);
   nextFromCollaudo.setFullYear(nextFromCollaudo.getFullYear() + 2);
@@ -145,25 +205,25 @@ function calculaProssimaRevisione(
     );
   }
 
-  const finalNext =
-    nextFromCollaudo > nextFromImmatricolazione
-      ? nextFromCollaudo
-      : nextFromImmatricolazione;
-
-  return finalNext.toISOString().split("T")[0];
+  return nextFromCollaudo > nextFromImmatricolazione
+    ? nextFromCollaudo
+    : nextFromImmatricolazione;
 }
 
-function giorniDaOggi(isoDate: string): number {
-  if (!isoDate) return Number.NaN;
+function giorniDaOggi(target: Date | null): number | null {
+  if (!target) return null;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const target = new Date(isoDate);
-  target.setHours(0, 0, 0, 0);
-
-  const diffMs = target.getTime() - today.getTime();
-  const giorni = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  return giorni;
+  const utcToday = Date.UTC(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const utcTarget = Date.UTC(
+    target.getFullYear(),
+    target.getMonth(),
+    target.getDate()
+  );
+  return Math.round((utcTarget - utcToday) / 86400000);
 }
 
 function isRimorchioCategoria(categoria?: string | null): boolean {
@@ -182,11 +242,16 @@ function isRimorchioCategoria(categoria?: string | null): boolean {
 }
 
 function Home() {
+  const navigate = useNavigate();
+  const nameSuggestRef = useRef<HTMLDivElement | null>(null);
   const [mezzi, setMezzi] = useState<MezzoRecord[]>([]);
   const [sessioni, setSessioni] = useState<SessioneRecord[]>([]);
   const [eventi, setEventi] = useState<EventoOperativo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [badgeQuery, setBadgeQuery] = useState("");
+  const [nameQuery, setNameQuery] = useState("");
+  const [nameSuggestOpen, setNameSuggestOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -212,6 +277,45 @@ function Home() {
       mounted = false;
     };
   }, []);
+
+  const handleAutistaSearch = () => {
+    const badgeValue = badgeQuery.trim();
+    if (badgeValue) {
+      navigate(`/autista-360/${encodeURIComponent(badgeValue)}`);
+      return;
+    }
+    const nameValue = nameQuery.trim();
+    if (!nameValue) return;
+    navigate(`/autista-360?nome=${encodeURIComponent(nameValue)}`);
+  };
+
+  const handleNameChange = (value: string) => {
+    setNameQuery(value);
+    const normalized = normalizeNameKey(value);
+    if (normalized.length >= 2) {
+      setNameSuggestOpen(true);
+    } else {
+      setNameSuggestOpen(false);
+    }
+  };
+
+  const handleNameSuggestion = (suggestion: AutistaSuggestion) => {
+    setNameQuery(suggestion.name);
+    setBadgeQuery(suggestion.badge || "");
+    setNameSuggestOpen(false);
+  };
+
+  useEffect(() => {
+    if (!nameSuggestOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target || !nameSuggestRef.current) return;
+      if (nameSuggestRef.current.contains(target)) return;
+      setNameSuggestOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [nameSuggestOpen]);
 
   const mezzoByTarga = useMemo(() => {
     const map = new Map<string, MezzoRecord>();
@@ -258,6 +362,76 @@ function Home() {
       })
       .slice(0, 8);
   }, [mezzi, searchQuery]);
+
+  const allAutistaSuggestions = useMemo(() => {
+    const map = new Map<string, AutistaSuggestion>();
+    const addCandidate = (
+      nameRaw: string | null | undefined,
+      badgeRaw: string | null | undefined,
+      targaRaw: string | null | undefined,
+      priority: number
+    ) => {
+      const nameLabel = normalizeName(nameRaw);
+      if (!nameLabel) return;
+      const badgeLabel = normalizeBadge(badgeRaw);
+      const badgeKey = normalizeBadgeKey(badgeLabel);
+      const nameKey = normalizeNameKey(nameLabel);
+      const key = badgeKey ? `${nameKey}|${badgeKey}` : nameKey;
+      const targaLabel = targaRaw ? fmtTarga(targaRaw) : "";
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          name: nameLabel,
+          badge: badgeLabel || undefined,
+          targa: targaLabel || undefined,
+          priority,
+        });
+        return;
+      }
+      if (priority > existing.priority && nameLabel) {
+        existing.name = nameLabel;
+        existing.priority = priority;
+      }
+      if (!existing.badge && badgeLabel) {
+        existing.badge = badgeLabel;
+      }
+      if (targaLabel && (!existing.targa || priority > existing.priority)) {
+        existing.targa = targaLabel;
+      }
+    };
+
+    sessioni.forEach((s) => {
+      addCandidate(
+        s.nomeAutista,
+        s.badgeAutista,
+        s.targaMotrice || s.targaRimorchio,
+        2
+      );
+    });
+
+    mezzi.forEach((m) => {
+      const mezzoBadge =
+        (m as any)?.badgeAutista || (m as any)?.badge || (m as any)?.autistaBadge;
+      addCandidate(m.autistaNome, mezzoBadge, m.targa, 1);
+    });
+
+    return Array.from(map.values());
+  }, [sessioni, mezzi]);
+
+  const nameQueryKey = useMemo(() => normalizeNameKey(nameQuery), [nameQuery]);
+
+  const nameSuggestions = useMemo(() => {
+    if (nameQueryKey.length < 2) return [];
+    return allAutistaSuggestions
+      .filter((s) => normalizeNameKey(s.name).includes(nameQueryKey))
+      .sort((a, b) => {
+        if (a.priority !== b.priority) return b.priority - a.priority;
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 8);
+  }, [allAutistaSuggestions, nameQueryKey]);
+
+  const showNameSuggestions = nameSuggestOpen && nameSuggestions.length > 0;
 
   const rimorchi = useMemo(() => {
     const inUso = new Set(
@@ -316,17 +490,15 @@ function Home() {
 
   const revisioni = useMemo(() => {
     return mezzi.map((m) => {
-      const computed = calculaProssimaRevisione(
-        m.dataImmatricolazione || "",
-        m.dataUltimoCollaudo || ""
-      );
-      const scadenza = computed || m.dataScadenzaRevisione || "";
+      const scadenzaPrimaria = parseDateFlexible(m.dataScadenzaRevisione || "");
+      const immDate = parseDateFlexible(m.dataImmatricolazione || "");
+      const collaudoDate = parseDateFlexible(m.dataUltimoCollaudo || "");
+      const computed = calculaProssimaRevisione(immDate, collaudoDate);
+      const scadenza = scadenzaPrimaria ?? computed;
       const giorni = giorniDaOggi(scadenza);
       let classe = "";
-      if (!Number.isNaN(giorni)) {
-        if (giorni <= 5) classe = "deadline-high";
-        else if (giorni <= 15) classe = "deadline-medium";
-        else if (giorni <= 30) classe = "deadline-low";
+      if (giorni !== null && giorni <= 30) {
+        classe = "deadline-danger";
       }
       return {
         targa: fmtTarga(m.targa),
@@ -341,15 +513,17 @@ function Home() {
 
   const revisioniUrgenti = useMemo(() => {
     return revisioni
-      .filter((r) => !Number.isNaN(r.giorni))
-      .sort((a, b) => a.giorni - b.giorni)
+      .filter((r) => r.giorni !== null)
+      .sort((a, b) => (a.giorni ?? 0) - (b.giorni ?? 0))
       .slice(0, 6);
   }, [revisioni]);
 
   const revCounts = useMemo(() => {
-    const valid = revisioni.filter((r) => !Number.isNaN(r.giorni));
-    const scadute = valid.filter((r) => r.giorni < 0).length;
-    const inScadenza = valid.filter((r) => r.giorni >= 0 && r.giorni <= 30).length;
+    const valid = revisioni.filter((r) => r.giorni !== null);
+    const scadute = valid.filter((r) => (r.giorni ?? 0) < 0).length;
+    const inScadenza = valid.filter(
+      (r) => (r.giorni ?? 0) >= 0 && (r.giorni ?? 0) <= 30
+    ).length;
     return { scadute, inScadenza };
   }, [revisioni]);
 
@@ -435,6 +609,80 @@ function Home() {
                 })
               )}
             </div>
+            <div className="badge-search">
+              <div className="badge-search-label">Cerca badge</div>
+              <div className="badge-search-form">
+                <div className="badge-search-field">
+                  <input
+                    className="badge-search-input"
+                    type="text"
+                    placeholder="Inserisci badge"
+                    value={badgeQuery}
+                    onChange={(e) => setBadgeQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAutistaSearch();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="badge-search-field" ref={nameSuggestRef}>
+                  <input
+                    className="badge-search-input"
+                    type="text"
+                    placeholder="Nome autista..."
+                    value={nameQuery}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    onFocus={() => {
+                      if (nameQueryKey.length >= 2) setNameSuggestOpen(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setNameSuggestOpen(false);
+                        return;
+                      }
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAutistaSearch();
+                      }
+                    }}
+                  />
+                  {showNameSuggestions ? (
+                    <div className="badge-suggest">
+                      {nameSuggestions.map((suggestion) => (
+                        <button
+                          key={`${suggestion.name}-${suggestion.badge || "no-badge"}`}
+                          type="button"
+                          className="badge-suggest-item"
+                          onClick={() => handleNameSuggestion(suggestion)}
+                        >
+                          <div className="badge-suggest-main">
+                            <span className="badge-suggest-name">{suggestion.name}</span>
+                            <span className="badge-suggest-meta">
+                              {suggestion.badge ? `Badge ${suggestion.badge}` : "Badge -"}
+                            </span>
+                            {suggestion.targa ? (
+                              <span className="badge-suggest-meta">
+                                Targa {suggestion.targa}
+                              </span>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="badge-search-button"
+                  onClick={handleAutistaSearch}
+                >
+                  Apri
+                </button>
+              </div>
+            </div>
           </section>
 
           <section className="panel panel-rimorchi" style={{ animationDelay: "60ms" }}>
@@ -507,16 +755,40 @@ function Home() {
                 sessioniAttive.map((s, idx) => {
                   const motrice = fmtTarga(s.targaMotrice);
                   const rimorchio = fmtTarga(s.targaRimorchio);
+                  const badgeValue = String(s.badgeAutista || "").trim();
+                  const profilePath = badgeValue
+                    ? `/autista-360/${encodeURIComponent(badgeValue)}`
+                    : "";
                   return (
-                    <Link
+                    <div
                       key={`${s.badgeAutista || "s"}-${idx}`}
-                      to="/autisti-inbox"
-                      className="panel-row"
+                      className="panel-row panel-row-link"
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => navigate("/autisti-inbox")}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate("/autisti-inbox");
+                        }
+                      }}
                     >
                       <div className="row-main">
                         <div className="row-title">
                           <span>{s.nomeAutista || "Autista"}</span>
                           <span className="badge">badge {s.badgeAutista || "-"}</span>
+                          {badgeValue ? (
+                            <button
+                              type="button"
+                              className="session-profile-link"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                navigate(profilePath);
+                              }}
+                            >
+                              Profilo
+                            </button>
+                          ) : null}
                         </div>
                         <div className="row-meta">
                           <span className="label">Motrice:</span>{" "}
@@ -530,7 +802,7 @@ function Home() {
                         </div>
                       </div>
                       <span className="row-arrow">-&gt;</span>
-                    </Link>
+                    </div>
                   );
                 })
               )}
@@ -569,9 +841,10 @@ function Home() {
               ) : (
                 revisioniUrgenti.map((r, idx) => {
                   const tooltip = getTargaTooltip(r.targa);
-                  const giorniLabel = Number.isNaN(r.giorni)
-                    ? "-"
-                    : `${r.giorni > 0 ? "+" : ""}${r.giorni}g`;
+                  const giorniLabel =
+                    r.giorni === null
+                      ? "-"
+                      : `${r.giorni > 0 ? "+" : ""}${r.giorni}g`;
                   const dossierPath = r.targa
                     ? `/dossiermezzi/${encodeURIComponent(r.targa)}`
                     : "/dossiermezzi";
