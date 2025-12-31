@@ -507,7 +507,7 @@ export default function SetupMezzo() {
       {errore && <div className="setup-error">{errore}</div>}
 
       <div className="setup-actions">
-        <button className="setup-btn" onClick={handleConfirm}>
+        <button className="setup-confirm" onClick={handleConfirm}>
           CONFERMA
         </button>
       </div>

@@ -34,6 +34,20 @@
   margin-bottom: 24px;
 }
 
+.home-hero-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.home-hero-logo img {
+  width: clamp(56px, 8vw, 86px);
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
 .home-kicker {
   text-transform: uppercase;
   letter-spacing: 0.22em;

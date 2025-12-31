@@ -74,7 +74,6 @@ const QUICK_LINKS_ANAGRAFICHE = [
   { to: "/colleghi", label: "Colleghi" },
   { to: "/fornitori", label: "Fornitori" },
   { to: "/autisti", label: "Autisti App" },
-  { to: "/autisti/login", label: "Login Autisti" },
 ];
 
 function unwrapList(value: any): any[] {
@@ -366,6 +365,9 @@ function Home() {
               portano alle sezioni operative.
             </p>
           </div>
+          <div className="home-hero-logo">
+            <img src="/logo.png" alt="Logo" />
+          </div>
           <div className="home-hero-right">
             <Link to="/autisti-admin" className="hero-card">
               <div className="hero-card-title">Autisti Admin</div>
@@ -488,17 +490,17 @@ function Home() {
                 <h2>Sessioni attive</h2>
                 <span>Ultime 6 sessioni live</span>
               </div>
-              <Link to="/gestione-operativa" className="panel-link">
+              <Link to="/autisti-inbox" className="panel-link">
                 Gestisci sessioni
               </Link>
             </div>
             <div className="panel-body">
               {loading ? (
-                <Link to="/autisti-admin" className="panel-row panel-row-empty">
+                <Link to="/autisti-inbox" className="panel-row panel-row-empty">
                   Caricamento dati...
                 </Link>
               ) : sessioniAttive.length === 0 ? (
-                <Link to="/autisti-admin" className="panel-row panel-row-empty">
+                <Link to="/autisti-inbox" className="panel-row panel-row-empty">
                   Nessuna sessione attiva
                 </Link>
               ) : (
@@ -508,7 +510,7 @@ function Home() {
                   return (
                     <Link
                       key={`${s.badgeAutista || "s"}-${idx}`}
-                      to="/autisti-admin"
+                      to="/autisti-inbox"
                       className="panel-row"
                     >
                       <div className="row-main">
