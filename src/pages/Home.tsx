@@ -1,11 +1,25 @@
 import "./Home.css";
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { getItemSync, } from "../utils/storageSync";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { getItemSync, setItemSync } from "../utils/storageSync";
+import {
+  applyAlertAction,
+  createEmptyAlertsState,
+  isMetaChanged,
+  normalizeTargaForAlertId,
+  parseAlertsState,
+  pruneAlertsState,
+  stableHash32,
+  type AlertAction,
+  type AlertMeta,
+  type AlertsState,
+} from "../utils/alertsState";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const EVENTI_KEY = "@storico_eventi_operativi";
+const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
+const ALERTS_STATE_KEY = "@alerts_state";
 
 type MezzoRecord = {
   id?: string;
@@ -29,6 +43,22 @@ type SessioneRecord = {
   timestamp?: number;
 };
 
+type SegnalazioneRecord = {
+  id?: string | null;
+  data?: number | null;
+  timestamp?: number | null;
+  stato?: string | null;
+  letta?: boolean | null;
+  ambito?: string | null;
+  targa?: string | null;
+  targaCamion?: string | null;
+  targaRimorchio?: string | null;
+  autistaNome?: string | null;
+  badgeAutista?: string | null;
+  tipoProblema?: string | null;
+  descrizione?: string | null;
+};
+
 type AutistaSuggestion = {
   name: string;
   badge?: string;
@@ -49,6 +79,18 @@ type EventoOperativo = {
   };
   primaRimorchio?: string | null;
   dopoRimorchio?: string | null;
+};
+
+type HomeAlertSeverity = "danger" | "warning" | "info";
+
+type HomeAlertCandidate = {
+  id: string;
+  meta: AlertMeta;
+  title: string;
+  detail: ReactNode;
+  severity: HomeAlertSeverity;
+  sortBucket: number;
+  sortValue: number;
 };
 
 const QUICK_LINKS_OPERATIVO = [
@@ -162,6 +204,40 @@ function formatDateForDisplay(date: Date | null): string {
   return `${day} ${month} ${year}`;
 }
 
+function formatDateTimeForDisplay(ts?: number | null): string {
+  if (!ts) return "-";
+  return new Date(ts).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function buildSegnalazioneTarga(r: SegnalazioneRecord): string {
+  const targa = r.targa ?? r.targaCamion ?? r.targaRimorchio ?? "";
+  return fmtTarga(targa);
+}
+
+function normalizeFreeText(value: string | null | undefined): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncateText(value: string, maxLen: number): string {
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+}
+
+function formatGiorniLabel(giorni: number): string {
+  if (giorni === 0) return "oggi";
+  const abs = Math.abs(giorni);
+  const base = abs === 1 ? "1 giorno" : `${abs} giorni`;
+  return giorni < 0 ? `${base} fa` : `tra ${base}`;
+}
+
 // Revisione automatica (copiata da Mezzi.tsx)
 function calculaProssimaRevisione(
   dataImmatricolazione: Date | null,
@@ -244,9 +320,13 @@ function isRimorchioCategoria(categoria?: string | null): boolean {
 function Home() {
   const navigate = useNavigate();
   const nameSuggestRef = useRef<HTMLDivElement | null>(null);
+  const alertsStateRef = useRef<AlertsState | null>(null);
   const [mezzi, setMezzi] = useState<MezzoRecord[]>([]);
   const [sessioni, setSessioni] = useState<SessioneRecord[]>([]);
   const [eventi, setEventi] = useState<EventoOperativo[]>([]);
+  const [segnalazioni, setSegnalazioni] = useState<SegnalazioneRecord[]>([]);
+  const [alertsState, setAlertsState] = useState<AlertsState | null>(null);
+  const [alertsNow, setAlertsNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [badgeQuery, setBadgeQuery] = useState("");
@@ -258,15 +338,26 @@ function Home() {
 
     const load = async () => {
       try {
-        const [mezziRaw, sessioniRaw, eventiRaw] = await Promise.all([
+        const [mezziRaw, sessioniRaw, eventiRaw, segnalazioniRaw, alertsRaw] = await Promise.all([
           getItemSync(MEZZI_KEY),
           getItemSync(SESSIONI_KEY),
           getItemSync(EVENTI_KEY),
+          getItemSync(SEGNALAZIONI_KEY),
+          getItemSync(ALERTS_STATE_KEY),
         ]);
         if (!mounted) return;
         setMezzi(unwrapList(mezziRaw));
         setSessioni(unwrapList(sessioniRaw));
         setEventi(unwrapList(eventiRaw));
+        setSegnalazioni(unwrapList(segnalazioniRaw));
+
+        const parsedAlerts = parseAlertsState(alertsRaw);
+        const pruned = pruneAlertsState(parsedAlerts, Date.now());
+        setAlertsState(pruned.state);
+        alertsStateRef.current = pruned.state;
+        if (pruned.didChange) {
+          void setItemSync(ALERTS_STATE_KEY, pruned.state);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -276,6 +367,11 @@ function Home() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setAlertsNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const handleAutistaSearch = () => {
@@ -527,6 +623,231 @@ function Home() {
     return { scadute, inScadenza };
   }, [revisioni]);
 
+  const alertCandidates = useMemo<HomeAlertCandidate[]>(() => {
+    const candidates: HomeAlertCandidate[] = [];
+
+    revisioni
+      .filter((r) => r.giorni !== null && (r.giorni ?? 0) <= 30)
+      .sort((a, b) => (a.giorni ?? 0) - (b.giorni ?? 0))
+      .forEach((r) => {
+        const targaId = normalizeTargaForAlertId(r.targa);
+        if (!targaId) return;
+        const scadenzaMs = r.scadenza ? r.scadenza.getTime() : 0;
+        const giorni = r.giorni ?? 0;
+        const meta: AlertMeta = { type: "revisione", ref: String(scadenzaMs || "") };
+        candidates.push({
+          id: `revisione:${targaId}`,
+          meta,
+          title: giorni < 0 ? "Revisione scaduta" : "Revisione in scadenza",
+          detail: (
+            <div className="alert-detail-row">
+              <span className="targa">{r.targa || "-"}</span>
+              <span className="alert-detail">
+                {giorni < 0 ? "Scaduta" : "Scade"} {formatGiorniLabel(giorni)}
+              </span>
+              <span className="alert-detail">({formatDateForDisplay(r.scadenza)})</span>
+            </div>
+          ),
+          severity: "danger",
+          sortBucket: 0,
+          sortValue: giorni,
+        });
+      });
+
+    const segnalazioniNuove = segnalazioni
+      .map((s) => {
+        const ts =
+          typeof s.data === "number"
+            ? s.data
+            : typeof s.timestamp === "number"
+            ? s.timestamp
+            : 0;
+        const isNuova = s.stato === "nuova" || s.letta === false;
+        return { src: s, ts, isNuova };
+      })
+      .filter((s) => s.isNuova)
+      .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+
+    segnalazioniNuove.forEach(({ src, ts }) => {
+      const targa = buildSegnalazioneTarga(src);
+      const targaId = normalizeTargaForAlertId(targa);
+      const idBase =
+        src.id && String(src.id).trim()
+          ? String(src.id).trim()
+          : stableHash32(
+              [
+                String(ts || 0),
+                targaId,
+                String(src.badgeAutista || ""),
+                normalizeFreeText(src.tipoProblema),
+                normalizeFreeText(src.descrizione),
+              ].join("|")
+            );
+
+      const contentSig = stableHash32(
+        [
+          String(ts || 0),
+          targaId,
+          String(src.badgeAutista || ""),
+          normalizeFreeText(src.ambito),
+          normalizeFreeText(src.tipoProblema),
+          normalizeFreeText(src.descrizione),
+        ].join("|")
+      );
+
+      const meta: AlertMeta = { type: "segnalazione", ref: `v1:${ts || 0}:${contentSig}` };
+      const tipo = truncateText(normalizeFreeText(src.tipoProblema) || "-", 48);
+      const desc = truncateText(normalizeFreeText(src.descrizione) || "-", 90);
+      candidates.push({
+        id: `segnalazione:${idBase}`,
+        meta,
+        title: "Segnalazione non letta",
+        detail: (
+          <div className="alert-detail-row">
+            <span className="targa">{targa || "-"}</span>
+            <span className="alert-detail">{formatDateTimeForDisplay(ts)}</span>
+            <span className="alert-detail">{tipo}</span>
+            <span className="alert-detail">{desc}</span>
+          </div>
+        ),
+        severity: "warning",
+        sortBucket: 1,
+        sortValue: -(ts || 0),
+      });
+    });
+
+    const motrici = new Map<string, Array<{ badgeAutista: string | null; nomeAutista: string | null }>>();
+    const rimorchi = new Map<string, Array<{ badgeAutista: string | null; nomeAutista: string | null }>>();
+    sessioni.forEach((s) => {
+      const badgeAutista = s?.badgeAutista ? String(s.badgeAutista) : null;
+      const nomeAutista = s?.nomeAutista ? String(s.nomeAutista) : null;
+      const targaMotrice = normalizeTargaForAlertId(s?.targaMotrice ?? null);
+      const targaRimorchio = normalizeTargaForAlertId(s?.targaRimorchio ?? null);
+
+      if (targaMotrice) {
+        const list = motrici.get(targaMotrice) || [];
+        list.push({ badgeAutista, nomeAutista });
+        motrici.set(targaMotrice, list);
+      }
+
+      if (targaRimorchio) {
+        const list = rimorchi.get(targaRimorchio) || [];
+        list.push({ badgeAutista, nomeAutista });
+        rimorchi.set(targaRimorchio, list);
+      }
+    });
+
+    const pushConflictAlert = (scope: "motrice" | "rimorchio", targaId: string, list: Array<{ badgeAutista: string | null; nomeAutista: string | null }>) => {
+      const seen = new Set<string>();
+      const labels = list
+        .map((c) => {
+          const badge = c.badgeAutista ? `badge ${c.badgeAutista}` : "badge -";
+          const nome = c.nomeAutista ?? "-";
+          return `${badge} (${nome})`;
+        })
+        .filter((label) => {
+          if (seen.has(label)) return false;
+          seen.add(label);
+          return true;
+        })
+        .sort((a, b) => a.localeCompare(b));
+
+      const meta: AlertMeta = {
+        type: "conflitto",
+        ref: `v1:${stableHash32([scope, targaId, String(labels.length), labels.join("|")].join("|"))}`,
+      };
+
+      const labelText = truncateText(labels.join(", "), 120);
+      candidates.push({
+        id: `conflitto:${scope}:${targaId}`,
+        meta,
+        title: scope === "motrice" ? "Conflitto agganci (motrice)" : "Conflitto agganci (rimorchio)",
+        detail: (
+          <div className="alert-detail-row">
+            <span className="targa">{targaId}</span>
+            <span className="alert-detail">
+              In uso da {labels.length} sessioni
+            </span>
+            {labelText ? <span className="alert-detail">{labelText}</span> : null}
+          </div>
+        ),
+        severity: "danger",
+        sortBucket: 0,
+        sortValue: -1,
+      });
+    };
+
+    Array.from(motrici.entries())
+      .filter(([, list]) => list.length > 1)
+      .forEach(([targaId, list]) => pushConflictAlert("motrice", targaId, list));
+
+    Array.from(rimorchi.entries())
+      .filter(([, list]) => list.length > 1)
+      .forEach(([targaId, list]) => pushConflictAlert("rimorchio", targaId, list));
+
+    return candidates.sort((a, b) => {
+      if (a.sortBucket !== b.sortBucket) return a.sortBucket - b.sortBucket;
+      if (a.sortValue !== b.sortValue) return a.sortValue - b.sortValue;
+      return a.title.localeCompare(b.title);
+    });
+  }, [revisioni, segnalazioni, sessioni]);
+
+  const candidateAlertIds = useMemo(() => new Set(alertCandidates.map((a) => a.id)), [alertCandidates]);
+
+  useEffect(() => {
+    if (!alertsState) return;
+    const now = Date.now();
+
+    let didChange = false;
+    let next = alertsState;
+    const nextItems: AlertsState["items"] = { ...next.items };
+
+    alertCandidates.forEach((candidate) => {
+      const item = nextItems[candidate.id];
+      if (!item) return;
+      if (isMetaChanged(item.meta, candidate.meta)) {
+        delete nextItems[candidate.id];
+        didChange = true;
+      }
+    });
+
+    if (didChange) {
+      next = { ...next, items: nextItems };
+    }
+
+    const pruned = pruneAlertsState(next, now, candidateAlertIds);
+    if (pruned.didChange) {
+      next = pruned.state;
+      didChange = true;
+    }
+
+    if (!didChange) return;
+    setAlertsState(next);
+    alertsStateRef.current = next;
+    void setItemSync(ALERTS_STATE_KEY, next);
+  }, [alertCandidates, alertsState, candidateAlertIds]);
+
+  const visibleAlerts = useMemo(() => {
+    const state = alertsState ?? createEmptyAlertsState();
+    return alertCandidates.filter((candidate) => {
+      const item = state.items[candidate.id];
+      if (!item) return true;
+      if (isMetaChanged(item.meta, candidate.meta)) return true;
+      if (item.ackAt !== null) return false;
+      if (item.snoozeUntil !== null && alertsNow < item.snoozeUntil) return false;
+      return true;
+    });
+  }, [alertCandidates, alertsNow, alertsState]);
+
+  const handleAlertAction = (candidate: HomeAlertCandidate, action: AlertAction) => {
+    const now = Date.now();
+    const base = alertsStateRef.current ?? alertsState ?? createEmptyAlertsState();
+    const next = applyAlertAction(base, candidate.id, candidate.meta, action, now);
+    setAlertsState(next);
+    alertsStateRef.current = next;
+    void setItemSync(ALERTS_STATE_KEY, next);
+  };
+
   return (
     <div className="home-container">
       <div className="home-shell">
@@ -563,6 +884,74 @@ function Home() {
         </header>
 
         <div className="home-dashboard">
+          <section className="panel panel-alerts" style={{ animationDelay: "20ms" }}>
+            <div className="panel-head">
+              <div>
+                <h2>ALERT</h2>
+                <span>Revisioni, segnalazioni non lette e conflitti agganci</span>
+              </div>
+            </div>
+            <div className="panel-body alerts-list">
+              {loading || !alertsState ? (
+                <div className="panel-row panel-row-empty">Caricamento alert...</div>
+              ) : visibleAlerts.length === 0 ? (
+                <div className="panel-row panel-row-empty">Nessun alert attivo</div>
+              ) : (
+                visibleAlerts.map((alert) => {
+                  const badgeClass =
+                    alert.severity === "danger"
+                      ? "deadline-danger"
+                      : alert.severity === "warning"
+                      ? "deadline-medium"
+                      : "deadline-low";
+                  const badgeLabel =
+                    alert.severity === "danger"
+                      ? "URGENTE"
+                      : alert.severity === "warning"
+                      ? "ATTENZIONE"
+                      : "INFO";
+                  return (
+                    <div
+                      key={alert.id}
+                      className={`alert-row alert-${alert.severity}`}
+                    >
+                      <div className="alert-main">
+                        <div className="alert-title">
+                          <span className="alert-title-text">{alert.title}</span>
+                          <span className={`status ${badgeClass}`}>{badgeLabel}</span>
+                        </div>
+                        <div className="alert-detail">{alert.detail}</div>
+                      </div>
+                      <div className="alert-actions">
+                        <button
+                          type="button"
+                          className="alert-action"
+                          onClick={() => handleAlertAction(alert, "snooze_1d")}
+                        >
+                          Ignora 1 giorno
+                        </button>
+                        <button
+                          type="button"
+                          className="alert-action"
+                          onClick={() => handleAlertAction(alert, "snooze_3d")}
+                        >
+                          In seguito 3 giorni
+                        </button>
+                        <button
+                          type="button"
+                          className="alert-action primary"
+                          onClick={() => handleAlertAction(alert, "ack")}
+                        >
+                          Letto
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
           <section className="panel panel-search" style={{ animationDelay: "40ms" }}>
             <div className="panel-head">
               <div>
