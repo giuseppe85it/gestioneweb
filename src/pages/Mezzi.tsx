@@ -1197,7 +1197,7 @@ return (
         className="btn btn-small btn-primary"
         onClick={() => navigate(`/dossiermezzi/${m.targa}`)}
       >
-        Dossier
+        Dossier Mezzo
       </button>
 
       <button

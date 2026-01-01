@@ -510,7 +510,7 @@ export default function Mezzo360() {
               Torna ai Mezzi
             </Link>
             <Link to={`/dossiermezzi/${encodeURIComponent(targa)}`} className="mezzo360-action">
-              Apri Dossier
+              Dossier Mezzo
             </Link>
           </div>
         </header>
@@ -839,7 +839,7 @@ export default function Mezzo360() {
                 Manutenzioni
               </Link>
               <Link to="/autisti-admin" className="mezzo360-action">
-                Autisti Admin
+                Centro rettifica dati
               </Link>
               <Link to="/autisti-inbox" className="mezzo360-action">
                 Autisti Inbox

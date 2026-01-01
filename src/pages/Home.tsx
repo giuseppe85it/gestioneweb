@@ -255,13 +255,8 @@ function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
 const QUICK_LINKS_OPERATIVO = buildQuickLinks([
   { to: "/gestione-operativa", label: "Gestione Operativa" },
   { to: "/attrezzature-cantieri", label: "Attrezzature Cantieri" },
-  { to: "/autisti-admin", label: "Autisti Admin" },
+  { to: "/autisti-admin", label: "Centro rettifica dati" },
   { to: "/autisti-inbox", label: "Autisti Inbox" },
-  { to: "/autisti-inbox/cambio-mezzo", label: "Cambio Mezzo Inbox" },
-  { to: "/autisti-inbox/controlli", label: "Controlli Inbox" },
-  { to: "/autisti-inbox/segnalazioni", label: "Segnalazioni Inbox" },
-  { to: "/autisti-inbox/richiesta-attrezzature", label: "Richieste Attrezzature Inbox" },
-  { to: "/autisti-inbox/gomme", label: "Gomme Inbox" },
   { to: "/manutenzioni", label: "Manutenzioni" },
   { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire" },
   { to: "/lavori-eseguiti", label: "Lavori Eseguiti" },
@@ -1412,8 +1407,8 @@ function Home() {
           </div>
           <div className="home-hero-right">
             <Link to="/autisti-admin" className="hero-card">
-              <div className="hero-card-title">Autisti Admin</div>
-              <div className="hero-card-value">Centro Rettifica</div>
+              <div className="hero-card-title">Centro rettifica dati</div>
+              <div className="hero-card-value">Centro rettifica dati</div>
             </Link>
             <Link to="/mezzi" className="hero-card">
               <div className="hero-card-title">Mezzi</div>
@@ -1665,19 +1660,16 @@ function Home() {
                 <h2>Rimorchi: dove sono</h2>
                 <span>Ultimo luogo da storico eventi</span>
               </div>
-              <Link to="/autisti-admin" className="panel-link">
-                Apri Autisti Admin
-              </Link>
             </div>
             <div className="panel-body">
               {loading ? (
-                <Link to="/autisti-admin" className="panel-row panel-row-empty">
+                <div className="panel-row panel-row-empty">
                   Caricamento dati...
-                </Link>
+                </div>
               ) : rimorchi.length === 0 ? (
-                <Link to="/autisti-admin" className="panel-row panel-row-empty">
+                <div className="panel-row panel-row-empty">
                   Nessun rimorchio trovato
-                </Link>
+                </div>
               ) : (
                 rimorchi.slice(0, 6).map((r, idx) => {
                   const tooltip = getTargaTooltip(r.targa);
@@ -1712,19 +1704,16 @@ function Home() {
                 <h2>Sessioni attive</h2>
                 <span>Ultime 6 sessioni live</span>
               </div>
-              <Link to="/autisti-inbox" className="panel-link">
-                Gestisci sessioni
-              </Link>
             </div>
             <div className="panel-body">
               {loading ? (
-                <Link to="/autisti-inbox" className="panel-row panel-row-empty">
+                <div className="panel-row panel-row-empty">
                   Caricamento dati...
-                </Link>
+                </div>
               ) : sessioniAttive.length === 0 ? (
-                <Link to="/autisti-inbox" className="panel-row panel-row-empty">
+                <div className="panel-row panel-row-empty">
                   Nessuna sessione attiva
-                </Link>
+                </div>
               ) : (
                 sessioniAttive.map((s, idx) => {
                   const motrice = fmtTarga(s.targaMotrice);
@@ -1789,9 +1778,6 @@ function Home() {
                 <h2>Revisioni</h2>
                 <span>Allarmi basati su immatricolazione e ultimo collaudo</span>
               </div>
-              <Link to="/mezzi" className="panel-link">
-                Apri Mezzi
-              </Link>
             </div>
             <div className="panel-stats">
               <div className="stat-chip">
@@ -1805,13 +1791,13 @@ function Home() {
             </div>
             <div className="panel-body">
               {loading ? (
-                <Link to="/mezzi" className="panel-row panel-row-empty">
+                <div className="panel-row panel-row-empty">
                   Caricamento dati...
-                </Link>
+                </div>
               ) : revisioniUrgenti.length === 0 ? (
-                <Link to="/mezzi" className="panel-row panel-row-empty">
+                <div className="panel-row panel-row-empty">
                   Nessuna revisione imminente
-                </Link>
+                </div>
               ) : (
                 revisioniUrgenti.map((r, idx) => {
                   const tooltip = getTargaTooltip(r.targa);
@@ -1942,9 +1928,6 @@ function Home() {
                 <h2>Collegamenti rapidi</h2>
                 <span>Tutte le sezioni in un click</span>
               </div>
-              <Link to="/gestione-operativa" className="panel-link">
-                Gestione Operativa
-              </Link>
             </div>
             <div className="quick-toolbar">
               <input

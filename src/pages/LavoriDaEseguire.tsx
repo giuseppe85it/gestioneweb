@@ -1,23 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { setItemSync, getItemSync } from "../utils/storageSync";
+import { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
 import { v4 as uuidv4 } from "uuid";
 import "./LavoriDaEseguire.css";
-
-type Urgenza = "bassa" | "media" | "alta";
-
-interface Lavoro {
-  id: string;
-  gruppoId: string;
-  tipo: "magazzino" | "targa";
-  targa: string;
-  descrizione: string;
-  dataInserimento: string;
-  eseguito: boolean;
-  urgenza: Urgenza;
-  segnalatoDa: string;
-  sottoElementi: any[];
-}
 
 interface MezzoBasic {
   id: string;
@@ -31,7 +17,7 @@ const KEY_MEZZI = "@mezzi_aziendali";
 
 const LavoriDaEseguire: React.FC = () => {
   const navigate = useNavigate();
-  const [tipo, setTipo] = useState<"magazzino" | "targa">("magazzino");
+  const [tipo, setTipo] = useState<TipoLavoro>("magazzino");
   const [targa, setTarga] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [dataInserimento, setDataInserimento] = useState(

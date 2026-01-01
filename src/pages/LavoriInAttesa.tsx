@@ -5,26 +5,15 @@ import { useNavigate } from "react-router-dom";
 
 import { getItemSync } from "../utils/storageSync";
 import { generateLavoriPDF } from "../utils/pdfEngine"; // <--- PDF ENGINE UNIVERSALE
+import { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
 
 import "./LavoriInAttesa.css";
-
-interface Lavoro {
-  id: string;
-  gruppoId: string;
-  tipo: "targa" | "magazzino";
-  descrizione: string;
-  targa?: string;
-  dataInserimento: string;
-  eseguito: boolean;
-  sottoElementi: any[];
-  urgenza?: "bassa" | "media" | "alta";
-}
 
 const LavoriInAttesa: React.FC = () => {
   const navigate = useNavigate();
 
   const [sections, setSections] = useState<
-    { title: string; lavori: Lavoro[]; tipo: "magazzino" | "targa" }[]
+    { title: string; lavori: Lavoro[]; tipo: TipoLavoro }[]
   >([]);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
     {}
@@ -33,7 +22,7 @@ const LavoriInAttesa: React.FC = () => {
 
   // Ordina per priorità: ALTA → MEDIA → BASSA → nessuna
   const sortByUrgency = (items: Lavoro[]) => {
-    const priorityValue = (u?: string) =>
+    const priorityValue = (u?: Urgenza) =>
       u === "alta" ? 1 : u === "media" ? 2 : u === "bassa" ? 3 : 4;
 
     return items.sort(
@@ -102,7 +91,7 @@ const LavoriInAttesa: React.FC = () => {
     navigate(`/dettagliolavori?lavoroId=${id}`);
   };
 
-  const getUrgencyLabel = (urgenza?: string) => {
+  const getUrgencyLabel = (urgenza?: Urgenza) => {
     if (urgenza === "alta") return "ALTA";
     if (urgenza === "media") return "MEDIA";
     if (urgenza === "bassa") return "BASSA";
@@ -126,7 +115,7 @@ const LavoriInAttesa: React.FC = () => {
     await generateLavoriPDF(`Lavori in Attesa – ${titolo}`, lavori, titolo);
   };
 
-  const getUrgencyClass = (urgenza?: string) => {
+  const getUrgencyClass = (urgenza?: Urgenza) => {
     if (urgenza === "alta") return "lavori-badge lavori-badge-alta";
     if (urgenza === "media") return "lavori-badge lavori-badge-media";
     if (urgenza === "bassa") return "lavori-badge lavori-badge-bassa";

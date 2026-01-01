@@ -3,29 +3,8 @@ import  { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { generateTablePDF } from "../utils/pdfEngine";     // <── PDF ENGINE
+import { Lavoro, Urgenza } from "../types/lavori";
 import "./LavoriEseguiti.css";
-
-interface SottoElemento {
-  id: string;
-  descrizione: string;
-  quantita?: number;
-  eseguito: boolean;
-}
-
-interface Lavoro {
-  id: string;
-  gruppoId: string;
-  tipo: "targa" | "magazzino";
-  descrizione: string;
-  targa?: string;
-  segnalatoDa?: string;
-  dataInserimento: string;
-  eseguito: boolean;
-  urgenza?: "bassa" | "media" | "alta";
-  chiHaEseguito?: string;
-  dataEsecuzione?: string;
-  sottoElementi: SottoElemento[];
-}
 
 interface LavoroGroup {
   title: string;
@@ -123,7 +102,7 @@ const LavoriEseguiti: React.FC = () => {
     await generateTablePDF(titolo, rows, columns);
   };
 
-  const getUrgencyClass = (urgenza?: string) => {
+  const getUrgencyClass = (urgenza?: Urgenza) => {
     if (urgenza === "alta") return "lavori-badge lavori-badge-alta";
     if (urgenza === "media") return "lavori-badge lavori-badge-media";
     if (urgenza === "bassa") return "lavori-badge lavori-badge-bassa";

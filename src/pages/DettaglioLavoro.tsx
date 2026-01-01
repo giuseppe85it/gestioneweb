@@ -1,6 +1,7 @@
 import  { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { setItemSync, getItemSync } from "../utils/storageSync";
+import { Lavoro } from "../types/lavori";
 import "./DettaglioLavoro.css";
 
 const DettaglioLavoro = () => {
@@ -8,7 +9,7 @@ const DettaglioLavoro = () => {
   const [searchParams] = useSearchParams();
   const lavoroId = searchParams.get("lavoroId") || "";
 
-  const [lavoriGruppo, setLavoriGruppo] = useState<any[]>([]);
+  const [lavoriGruppo, setLavoriGruppo] = useState<Lavoro[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalModifica, setModalModifica] = useState(false);
 
@@ -16,11 +17,11 @@ const DettaglioLavoro = () => {
   const [descrizioneMod, setDescrizioneMod] = useState("");
   const [dataMod, setDataMod] = useState("");
 
-  const [lavoroSelezionato, setLavoroSelezionato] = useState<any | null>(null);
+  const [lavoroSelezionato, setLavoroSelezionato] = useState<Lavoro | null>(null);
 
   const load = async () => {
     const json = await getItemSync("@lavori");
-    const data: any[] = json || [];
+    const data = (json as Lavoro[]) || [];
 
     const L = data.find((x) => x.id === lavoroId);
     if (!L) return;
@@ -38,7 +39,7 @@ const DettaglioLavoro = () => {
     if (!window.confirm("Vuoi eliminare questo lavoro?")) return;
 
     const json = await getItemSync("@lavori");
-    const data: any[] = json || [];
+    const data = (json as Lavoro[]) || [];
 
     const nuovo = data.filter((l) => l.id !== id);
     await setItemSync("@lavori", nuovo);
@@ -47,9 +48,9 @@ const DettaglioLavoro = () => {
   };
 
   // ESEGUI
-  const esegui = async (lavoro: any, esecutore: string) => {
+  const esegui = async (lavoro: Lavoro, esecutore: string) => {
     const json = await getItemSync("@lavori");
-    const data: any[] = json || [];
+    const data = (json as Lavoro[]) || [];
 
     const nuovo = data.map((l) =>
       l.id === lavoro.id
@@ -70,10 +71,11 @@ const DettaglioLavoro = () => {
   // MODIFICA
   const salvaModifica = async () => {
     const json = await getItemSync("@lavori");
-    const data: any[] = json || [];
+    const data = (json as Lavoro[]) || [];
 
+    const target = lavoroSelezionato as Lavoro;
     const nuovo = data.map((l) =>
-      l.id === lavoroSelezionato.id
+      l.id === target.id
         ? {
             ...l,
             descrizione: descrizioneMod,
@@ -169,7 +171,7 @@ const DettaglioLavoro = () => {
               <button className="modal-btn lavori-btn is-ghost" onClick={() => setModalVisible(false)}>
                 Annulla
               </button>
-              <button className="modal-btn lavori-btn is-primary" onClick={() => esegui(lavoroSelezionato, nomeEsecutore)}>
+              <button className="modal-btn lavori-btn is-primary" onClick={() => esegui(lavoroSelezionato as Lavoro, nomeEsecutore)}>
                 Salva
               </button>
             </div>
