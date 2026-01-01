@@ -1631,11 +1631,11 @@ export default function AutistiAdmin() {
               className="autisti-admin-back"
               onClick={() => navigate("/autisti-inbox")}
             >
-              {"<"} INBOX
+              Torna a Autisti Inbox
             </button>
           </div>
 
-          <h1>Centro rettifica dati</h1>
+          <h1>Centro rettifica dati (admin)</h1>
         </div>
 
         {/* LIVE RIMORCHI */}

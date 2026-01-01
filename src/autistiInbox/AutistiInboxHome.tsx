@@ -900,7 +900,7 @@ useEffect(() => {
           <div className="autisti-header-left">
             <img src="/logo.png" alt="Logo" onClick={() => navigate("/")} />
           <div className="autisti-title-row">
-  <h1>Centro di controllo mezzi</h1>
+  <h1>Autisti Inbox (admin)</h1>
 
   <div className="autisti-menu-wrap" ref={menuRef}>
     <button
@@ -925,7 +925,7 @@ useEffect(() => {
     navigate("/autisti-admin");
   }}
 >
-  Centro rettifica dati
+  Centro rettifica dati (admin)
 </button>
 
       </div>

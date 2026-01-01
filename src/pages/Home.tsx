@@ -107,6 +107,7 @@ type QuickLink = {
   id: string;
   to: string;
   label: string;
+  description?: string;
 };
 
 type QuickLinkUsage = {
@@ -150,7 +151,7 @@ function createQuickLinkId(item: { id?: string; to?: string; label: string }): s
 }
 
 function buildQuickLinks(
-  items: Array<{ to: string; label: string; id?: string }>
+  items: Array<{ to: string; label: string; id?: string; description?: string }>
 ): QuickLink[] {
   return items.map((item) => ({
     ...item,
@@ -255,8 +256,16 @@ function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
 const QUICK_LINKS_OPERATIVO = buildQuickLinks([
   { to: "/gestione-operativa", label: "Gestione Operativa" },
   { to: "/attrezzature-cantieri", label: "Attrezzature Cantieri" },
-  { to: "/autisti-admin", label: "Centro rettifica dati" },
-  { to: "/autisti-inbox", label: "Autisti Inbox" },
+  {
+    to: "/autisti-admin",
+    label: "Centro rettifica dati (admin)",
+    description: "Correggi dati e risolvi anomalie operative.",
+  },
+  {
+    to: "/autisti-inbox",
+    label: "Autisti Inbox (admin)",
+    description: "Vedi e gestisci cio che arriva dagli autisti.",
+  },
   { to: "/manutenzioni", label: "Manutenzioni" },
   { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire" },
   { to: "/lavori-eseguiti", label: "Lavori Eseguiti" },
@@ -276,7 +285,11 @@ const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([
   { to: "/dossiermezzi", label: "Dossier Mezzi" },
   { to: "/colleghi", label: "Colleghi" },
   { to: "/fornitori", label: "Fornitori" },
-  { to: "/autisti", label: "Autisti App" },
+  {
+    to: "/autisti",
+    label: "Autisti App (telefono)",
+    description: "Usata dagli autisti per inviare rifornimenti, segnalazioni e controlli.",
+  },
 ]);
 
 const QUICK_LINKS_ALL = [...QUICK_LINKS_OPERATIVO, ...QUICK_LINKS_ANAGRAFICHE];
@@ -967,7 +980,7 @@ function Home() {
       });
 
       return [
-        { id: "autisti", title: "Autisti Inbox", links: autisti },
+        { id: "autisti", title: "Autisti (app + admin)", links: autisti },
         { id: "lavori", title: "Lavori e Manutenzioni", links: lavori },
         { id: "materiali", title: "Materiali e Magazzino", links: materiali },
         { id: "ia", title: "IA", links: ia },
@@ -984,6 +997,9 @@ function Home() {
           onClick={() => recordQuickLinkUse(link.id)}
         >
           <span className="quick-link-label">{link.label}</span>
+          {link.description ? (
+            <span className="quick-link-desc">{link.description}</span>
+          ) : null}
           {isPinned ? <span className="quick-link-badge">PIN</span> : null}
         </Link>
         <button
@@ -1407,8 +1423,10 @@ function Home() {
           </div>
           <div className="home-hero-right">
             <Link to="/autisti-admin" className="hero-card">
-              <div className="hero-card-title">Centro rettifica dati</div>
-              <div className="hero-card-value">Centro rettifica dati</div>
+              <div className="hero-card-title">Centro rettifica dati (admin)</div>
+              <div className="hero-card-value hero-card-subtext">
+                Correggi dati e risolvi anomalie operative.
+              </div>
             </Link>
             <Link to="/mezzi" className="hero-card">
               <div className="hero-card-title">Mezzi</div>
@@ -1419,8 +1437,10 @@ function Home() {
               <div className="hero-card-value">Registro</div>
             </Link>
             <Link to="/autisti-inbox" className="hero-card">
-              <div className="hero-card-title">Autisti Inbox</div>
-              <div className="hero-card-value">Operativita</div>
+              <div className="hero-card-title">Autisti Inbox (admin)</div>
+              <div className="hero-card-value hero-card-subtext">
+                Vedi e gestisci cio che arriva dagli autisti.
+              </div>
             </Link>
           </div>
         </header>

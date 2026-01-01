@@ -112,6 +112,13 @@
   margin-top: 6px;
 }
 
+.hero-card-subtext {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3f5960;
+  line-height: 1.4;
+}
+
 .home-dashboard {
   display: grid;
   grid-template-columns: 1fr;
@@ -1115,6 +1122,13 @@
 
 .quick-link-label {
   font-size: 13px;
+}
+
+.quick-link-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #54666d;
+  font-weight: 500;
 }
 
 .quick-link-badge {
