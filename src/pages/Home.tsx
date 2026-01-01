@@ -20,6 +20,7 @@ const SESSIONI_KEY = "@autisti_sessione_attive";
 const EVENTI_KEY = "@storico_eventi_operativi";
 const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
 const ALERTS_STATE_KEY = "@alerts_state";
+const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 
 type MezzoRecord = {
   id?: string;
@@ -31,8 +32,16 @@ type MezzoRecord = {
   dataImmatricolazione?: string;
   dataUltimoCollaudo?: string;
   dataScadenzaRevisione?: string;
+  prenotazioneCollaudo?: PrenotazioneCollaudo | null;
   manutenzioneProgrammata?: boolean;
   manutenzioneDataFine?: string;
+};
+
+type PrenotazioneCollaudo = {
+  data: string;
+  ora?: string;
+  luogo?: string;
+  note?: string;
 };
 
 type SessioneRecord = {
@@ -93,7 +102,106 @@ type HomeAlertCandidate = {
   sortValue: number;
 };
 
-const QUICK_LINKS_OPERATIVO = [
+type QuickLink = {
+  id: string;
+  to: string;
+  label: string;
+};
+
+type QuickLinkUsage = {
+  count: number;
+  lastUsedAt: number;
+};
+
+type QuickLinksStore = {
+  pins: string[];
+  usage: Record<string, QuickLinkUsage>;
+};
+
+type QuickSectionId = "autisti" | "lavori" | "materiali" | "ia";
+
+function createQuickLinkId(item: { id?: string; to?: string; label: string }): string {
+  if (item.id) return item.id;
+  const toValue = String(item.to || "").trim();
+  if (toValue) return `route:${toValue}`;
+  const labelValue = String(item.label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  return `label:${labelValue || "link"}`;
+}
+
+function buildQuickLinks(
+  items: Array<{ to: string; label: string; id?: string }>
+): QuickLink[] {
+  return items.map((item) => ({
+    ...item,
+    id: createQuickLinkId(item),
+  }));
+}
+
+function normalizeQuickLinksStore(value: unknown): QuickLinksStore {
+  const rawPins =
+    value && typeof value === "object" && "pins" in value
+      ? (value as { pins?: unknown }).pins
+      : undefined;
+  const pinsRaw = Array.isArray(rawPins) ? rawPins : [];
+  const pins = Array.from(
+    new Set(pinsRaw.filter((pin: unknown): pin is string => typeof pin === "string"))
+  ).slice(0, 3);
+
+  const rawUsage =
+    value && typeof value === "object" && "usage" in value
+      ? (value as { usage?: unknown }).usage
+      : undefined;
+  const usageSource =
+    rawUsage && typeof rawUsage === "object" && !Array.isArray(rawUsage)
+      ? (rawUsage as Record<string, unknown>)
+      : {};
+  const usage: Record<string, QuickLinkUsage> = {};
+  Object.entries(usageSource).forEach(([id, entry]) => {
+    if (!entry || typeof entry !== "object") return;
+    const count = (entry as { count?: unknown }).count;
+    const lastUsedAt = (entry as { lastUsedAt?: unknown }).lastUsedAt;
+    if (typeof count !== "number" || typeof lastUsedAt !== "number") return;
+    usage[id] = {
+      count: Number.isFinite(count) && count > 0 ? count : 0,
+      lastUsedAt: Number.isFinite(lastUsedAt) && lastUsedAt > 0 ? lastUsedAt : 0,
+    };
+  });
+  return { pins, usage };
+}
+
+function readQuickLinksStore(): QuickLinksStore {
+  if (typeof window === "undefined") return { pins: [], usage: {} };
+  try {
+    const raw = window.localStorage.getItem(QUICKLINKS_STORAGE_KEY);
+    if (!raw) return { pins: [], usage: {} };
+    const parsed: unknown = JSON.parse(raw);
+    return normalizeQuickLinksStore(parsed);
+  } catch {
+    return { pins: [], usage: {} };
+  }
+}
+
+function writeQuickLinksStore(next: QuickLinksStore) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(QUICKLINKS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+
+function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
+  if (!lastUsedAt) return 0;
+  const delta = now - lastUsedAt;
+  if (delta <= 86_400_000) return 3;
+  if (delta <= 604_800_000) return 1;
+  return 0;
+}
+
+const QUICK_LINKS_OPERATIVO = buildQuickLinks([
   { to: "/gestione-operativa", label: "Gestione Operativa" },
   { to: "/attrezzature-cantieri", label: "Attrezzature Cantieri" },
   { to: "/autisti-admin", label: "Autisti Admin" },
@@ -115,15 +223,20 @@ const QUICK_LINKS_OPERATIVO = [
   { to: "/ia", label: "IA" },
   { to: "/ia/libretto", label: "IA Libretto" },
   { to: "/ia/documenti", label: "IA Documenti" },
-];
+]);
 
-const QUICK_LINKS_ANAGRAFICHE = [
+const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([
   { to: "/mezzi", label: "Mezzi" },
   { to: "/dossiermezzi", label: "Dossier Mezzi" },
   { to: "/colleghi", label: "Colleghi" },
   { to: "/fornitori", label: "Fornitori" },
   { to: "/autisti", label: "Autisti App" },
-];
+]);
+
+const QUICK_LINKS_ALL = [...QUICK_LINKS_OPERATIVO, ...QUICK_LINKS_ANAGRAFICHE];
+const QUICK_LINKS_BY_ID = new Map(
+  QUICK_LINKS_ALL.map((link) => [link.id, link])
+);
 
 function unwrapList(value: any): any[] {
   if (Array.isArray(value)) return value;
@@ -202,6 +315,14 @@ function formatDateForDisplay(date: Date | null): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
   return `${day} ${month} ${year}`;
+}
+
+function formatDateForInput(date: Date | null): string {
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function formatDateTimeForDisplay(ts?: number | null): string {
@@ -320,6 +441,7 @@ function isRimorchioCategoria(categoria?: string | null): boolean {
 function Home() {
   const navigate = useNavigate();
   const nameSuggestRef = useRef<HTMLDivElement | null>(null);
+  const datePickerRef = useRef<HTMLInputElement | null>(null);
   const alertsStateRef = useRef<AlertsState | null>(null);
   const [mezzi, setMezzi] = useState<MezzoRecord[]>([]);
   const [sessioni, setSessioni] = useState<SessioneRecord[]>([]);
@@ -332,6 +454,30 @@ function Home() {
   const [badgeQuery, setBadgeQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [nameSuggestOpen, setNameSuggestOpen] = useState(false);
+  const [quickSearch, setQuickSearch] = useState("");
+  const [quickLinksStore, setQuickLinksStore] = useState<QuickLinksStore>(() =>
+    readQuickLinksStore()
+  );
+  const [quickSectionsOpen, setQuickSectionsOpen] = useState({
+    autisti: true,
+    lavori: false,
+    materiali: false,
+    ia: false,
+  });
+  const [quickSectionsExpanded, setQuickSectionsExpanded] = useState({
+    autisti: false,
+    lavori: false,
+    materiali: false,
+    ia: false,
+  });
+  const [prenotazioneModalOpen, setPrenotazioneModalOpen] = useState(false);
+  const [prenotazioneTargetTarga, setPrenotazioneTargetTarga] = useState<string | null>(null);
+  const [prenotazioneForm, setPrenotazioneForm] = useState({
+    data: "",
+    ora: "",
+    luogo: "",
+    note: "",
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -399,6 +545,147 @@ function Home() {
     setNameQuery(suggestion.name);
     setBadgeQuery(suggestion.badge || "");
     setNameSuggestOpen(false);
+  };
+
+  const closePrenotazioneModal = () => {
+    setPrenotazioneModalOpen(false);
+    setPrenotazioneTargetTarga(null);
+  };
+
+  const openPrenotazioneModal = (
+    targa: string,
+    current?: PrenotazioneCollaudo | null
+  ) => {
+    setPrenotazioneTargetTarga(targa);
+    const luogoValue = current ? String(current?.luogo ?? "") : "Camorino";
+    setPrenotazioneForm({
+      data: String(current?.data ?? ""),
+      ora: String(current?.ora ?? ""),
+      luogo: luogoValue,
+      note: String(current?.note ?? ""),
+    });
+    setPrenotazioneModalOpen(true);
+  };
+
+  const persistPrenotazioneCollaudo = (
+    targa: string,
+    prenotazione: PrenotazioneCollaudo | null
+  ) => {
+    const key = fmtTarga(targa);
+    if (!key) return;
+    const idx = mezzi.findIndex((m) => fmtTarga(m.targa) === key);
+    if (idx < 0) {
+      window.alert("Mezzo non trovato.");
+      return;
+    }
+    const updated = [...mezzi];
+    updated[idx] = { ...updated[idx], prenotazioneCollaudo: prenotazione };
+    setMezzi(updated);
+    void setItemSync(MEZZI_KEY, updated);
+  };
+
+  const handlePrenotazioneSave = () => {
+    if (!prenotazioneTargetTarga) return;
+    const data = prenotazioneForm.data.trim();
+    if (!data) {
+      window.alert("Inserisci la data della prenotazione collaudo.");
+      return;
+    }
+    if (!parseDateFlexible(data)) {
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      return;
+    }
+
+    const ora = prenotazioneForm.ora.trim();
+    if (ora && !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(ora)) {
+      window.alert("Ora non valida. Usa formato HH:mm.");
+      return;
+    }
+
+    const luogo = prenotazioneForm.luogo.trim();
+    const note = prenotazioneForm.note.trim();
+
+    const next: PrenotazioneCollaudo = {
+      data,
+      ...(ora ? { ora } : {}),
+      ...(luogo ? { luogo } : {}),
+      ...(note ? { note } : {}),
+    };
+
+    persistPrenotazioneCollaudo(prenotazioneTargetTarga, next);
+    closePrenotazioneModal();
+  };
+
+  const openDatePicker = () => {
+    const input =
+      datePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+    input.click();
+  };
+
+  const handleDatePickerChange = (value: string) => {
+    if (!value) return;
+    const [year, month, day] = value.split("-");
+    const picked = buildDate(year, month, day);
+    if (!picked) return;
+    setPrenotazioneForm((prev) => ({ ...prev, data: formatDateForDisplay(picked) }));
+  };
+
+  const handlePrenotazioneDelete = (targa: string) => {
+    if (!window.confirm("Cancellare la prenotazione collaudo per questo mezzo?")) {
+      return;
+    }
+    persistPrenotazioneCollaudo(targa, null);
+  };
+
+  const recordQuickLinkUse = (id: string) => {
+    const now = Date.now();
+    setQuickLinksStore((prev) => {
+      const current = prev.usage[id] ?? { count: 0, lastUsedAt: 0 };
+      const nextUsage = {
+        ...prev.usage,
+        [id]: { count: current.count + 1, lastUsedAt: now },
+      };
+      const next = { ...prev, usage: nextUsage };
+      writeQuickLinksStore(next);
+      return next;
+    });
+  };
+
+  const toggleQuickLinkPin = (id: string) => {
+    setQuickLinksStore((prev) => {
+      const isPinned = prev.pins.includes(id);
+      if (isPinned) {
+        const next = {
+          ...prev,
+          pins: prev.pins.filter((pinId: string) => pinId !== id),
+        };
+        writeQuickLinksStore(next);
+        return next;
+      }
+      const trimmedPins = prev.pins.slice(0, 2);
+      const next = { ...prev, pins: [id, ...trimmedPins] };
+      writeQuickLinksStore(next);
+      return next;
+    });
+  };
+
+  const toggleQuickSectionOpen = (sectionId: QuickSectionId) => {
+    setQuickSectionsOpen((prev) => ({
+      ...prev,
+      [sectionId]: !prev[sectionId],
+    }));
+  };
+
+  const toggleQuickSectionExpanded = (sectionId: QuickSectionId) => {
+    setQuickSectionsExpanded((prev) => ({
+      ...prev,
+      [sectionId]: !prev[sectionId],
+    }));
   };
 
   useEffect(() => {
@@ -528,6 +815,126 @@ function Home() {
   }, [allAutistaSuggestions, nameQueryKey]);
 
   const showNameSuggestions = nameSuggestOpen && nameSuggestions.length > 0;
+
+  const prenotazioneDateValue = formatDateForInput(
+    parseDateFlexible(prenotazioneForm.data)
+  );
+
+  const quickSearchValue = quickSearch.trim();
+  const quickSearchActive = quickSearchValue.length > 0;
+  const quickSearchResults = quickSearchActive
+    ? [...QUICK_LINKS_ALL]
+        .filter((link) =>
+          link.label.toLowerCase().includes(quickSearchValue.toLowerCase())
+        )
+        .sort((a, b) => a.label.localeCompare(b.label))
+    : [];
+
+  const quickPinnedIds = quickLinksStore.pins.filter((id) =>
+    QUICK_LINKS_BY_ID.has(id)
+  );
+  const quickPinnedSet = new Set(quickPinnedIds);
+  const quickFavorites = (() => {
+    const now = Date.now();
+    const pinnedLinks = quickPinnedIds
+      .map((id) => QUICK_LINKS_BY_ID.get(id))
+      .filter((link): link is QuickLink => Boolean(link));
+    const scoredLinks = QUICK_LINKS_ALL
+      .filter((link) => !quickPinnedSet.has(link.id))
+      .map((link) => {
+        const usage = quickLinksStore.usage[link.id];
+        const count = usage?.count ?? 0;
+        const lastUsedAt = usage?.lastUsedAt ?? 0;
+        return {
+          link,
+          score: count + getQuickLinkRecencyBonus(lastUsedAt, now),
+          lastUsedAt,
+        };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.lastUsedAt !== a.lastUsedAt) return b.lastUsedAt - a.lastUsedAt;
+        return a.link.label.localeCompare(b.link.label);
+      })
+      .map((item) => item.link);
+    return [...pinnedLinks, ...scoredLinks].slice(0, 6);
+  })();
+
+  const quickCategories: Array<{ id: QuickSectionId; title: string; links: QuickLink[] }> =
+    (() => {
+      const autisti: QuickLink[] = [];
+      const lavori: QuickLink[] = [];
+      const materiali: QuickLink[] = [];
+      const ia: QuickLink[] = [];
+
+      QUICK_LINKS_OPERATIVO.forEach((link) => {
+        if (
+          link.to.startsWith("/autisti-inbox") ||
+          link.to.startsWith("/autisti-admin")
+        ) {
+          autisti.push(link);
+          return;
+        }
+        if (
+          link.to.startsWith("/lavori-") ||
+          link.to.startsWith("/manutenzioni") ||
+          link.to === "/gestione-operativa"
+        ) {
+          lavori.push(link);
+          return;
+        }
+        if (
+          link.to.startsWith("/materiali-") ||
+          link.to.startsWith("/inventario") ||
+          link.to.startsWith("/ordini-") ||
+          link.to.startsWith("/attrezzature-cantieri")
+        ) {
+          materiali.push(link);
+          return;
+        }
+        if (link.to.startsWith("/ia")) {
+          ia.push(link);
+          return;
+        }
+        lavori.push(link);
+      });
+
+      return [
+        { id: "autisti", title: "Autisti Inbox", links: autisti },
+        { id: "lavori", title: "Lavori e Manutenzioni", links: lavori },
+        { id: "materiali", title: "Materiali e Magazzino", links: materiali },
+        { id: "ia", title: "IA", links: ia },
+      ];
+    })();
+
+  const renderQuickLink = (link: QuickLink) => {
+    const isPinned = quickPinnedSet.has(link.id);
+    return (
+      <div key={link.id} className="quick-link-item">
+        <Link
+          to={link.to}
+          className={`quick-link ${isPinned ? "pinned" : ""}`}
+          onClick={() => recordQuickLinkUse(link.id)}
+        >
+          <span className="quick-link-label">{link.label}</span>
+          {isPinned ? <span className="quick-link-badge">PIN</span> : null}
+        </Link>
+        <button
+          type="button"
+          className={`quick-pin-toggle ${isPinned ? "active" : ""}`}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleQuickLinkPin(link.id);
+          }}
+          aria-pressed={isPinned}
+          title={isPinned ? "Rimuovi pin" : "Fissa nei preferiti"}
+        >
+          PIN
+        </button>
+      </div>
+    );
+  };
 
   const rimorchi = useMemo(() => {
     const inUso = new Set(
@@ -1237,11 +1644,38 @@ function Home() {
                   const dossierPath = r.targa
                     ? `/dossiermezzi/${encodeURIComponent(r.targa)}`
                     : "/dossiermezzi";
+                  const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
+                  const prenotazione = mezzo?.prenotazioneCollaudo ?? null;
+                  const prenData = prenotazione?.data ? String(prenotazione.data).trim() : "";
+                  const prenDate = prenData ? parseDateFlexible(prenData) : null;
+                  const prenDateLabel = prenDate ? formatDateForDisplay(prenDate) : prenData;
+                  const prenOra = prenotazione?.ora ? String(prenotazione.ora).trim() : "";
+                  const prenLuogo = prenotazione?.luogo ? normalizeFreeText(prenotazione.luogo) : "";
+                  const prenNote = prenotazione?.note ? normalizeFreeText(prenotazione.note) : "";
+                  const prenLuogoShort = prenLuogo ? truncateText(prenLuogo, 40) : "";
+                  const prenNoteShort = prenNote ? truncateText(prenNote, 70) : "";
+                  const prenSummary = prenotazione
+                    ? `${prenDateLabel}${prenOra ? ` ${prenOra}` : ""}${
+                        prenLuogoShort ? ` — ${prenLuogoShort}` : ""
+                      }`
+                    : "";
+                  const showMissingDanger = !prenotazione && r.giorni !== null && (r.giorni ?? 0) <= 30;
+                  const scadenzaExtra =
+                    r.giorni === null ? "" : ` (${formatGiorniLabel(r.giorni)})`;
+                  const canEditPrenotazione = Boolean(r.targa);
                   return (
-                    <Link
+                    <div
                       key={r.targa || `rev-${idx}`}
-                      to={dossierPath}
-                      className="panel-row"
+                      className="panel-row panel-row-link"
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => navigate(dossierPath)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(dossierPath);
+                        }
+                      }}
                     >
                       <div className="row-main">
                         <div className="row-title">
@@ -1250,13 +1684,74 @@ function Home() {
                           </span>
                           <span className={`status ${r.classe}`}>{giorniLabel}</span>
                         </div>
-                        <div className="row-meta">
-                          Scadenza {formatDateForDisplay(r.scadenza)}{" "}
-                          {r.marca || r.modello ? `- ${r.marca} ${r.modello}`.trim() : ""}
+                        <div className="row-meta row-meta-stack">
+                          <div className="row-meta-line">
+                            <span>
+                              Scadenza {formatDateForDisplay(r.scadenza)}
+                              {scadenzaExtra}{" "}
+                              {r.marca || r.modello
+                                ? `- ${r.marca} ${r.modello}`.trim()
+                                : ""}
+                            </span>
+                          </div>
+                          <div className="row-meta-line row-meta-booking">
+                            <span className="label">Prenotazione collaudo:</span>
+                            {prenotazione ? (
+                              <span className="booking-value">
+                                {prenSummary}
+                                {prenNoteShort ? (
+                                  <span className="booking-note"> — {prenNoteShort}</span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              <span className={`booking-missing ${showMissingDanger ? "danger" : ""}`}>
+                                NON PRENOTATO
+                              </span>
+                            )}
+                            {canEditPrenotazione ? (
+                              <span className="booking-actions">
+                                {prenotazione ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="booking-action"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openPrenotazioneModal(r.targa as string, prenotazione);
+                                      }}
+                                    >
+                                      MODIFICA
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="booking-action danger"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handlePrenotazioneDelete(r.targa as string);
+                                      }}
+                                    >
+                                      CANCELLA
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="booking-action primary"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openPrenotazioneModal(r.targa as string, null);
+                                    }}
+                                  >
+                                    PRENOTA
+                                  </button>
+                                )}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                       <span className="row-arrow">-&gt;</span>
-                    </Link>
+                    </div>
                   );
                 })
               )}
@@ -1273,31 +1768,201 @@ function Home() {
                 Gestione Operativa
               </Link>
             </div>
-            <div className="quick-sections">
-              <div className="quick-section">
-                <div className="quick-title">Operativo</div>
-                <div className="quick-grid">
-                  {QUICK_LINKS_OPERATIVO.map((link) => (
-                    <Link key={link.to} to={link.to} className="quick-link">
-                      {link.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-              <div className="quick-section">
-                <div className="quick-title">Anagrafiche</div>
-                <div className="quick-grid">
-                  {QUICK_LINKS_ANAGRAFICHE.map((link) => (
-                    <Link key={link.to} to={link.to} className="quick-link">
-                      {link.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
+            <div className="quick-toolbar">
+              <input
+                className="quick-search-input"
+                value={quickSearch}
+                onChange={(e) => setQuickSearch(e.target.value)}
+                placeholder="Cerca sezione..."
+                aria-label="Cerca sezione"
+              />
             </div>
+            {quickSearchActive ? (
+              <div className="quick-search-results">
+                {quickSearchResults.length > 0 ? (
+                  <div className="quick-grid quick-search-grid">
+                    {quickSearchResults.map(renderQuickLink)}
+                  </div>
+                ) : (
+                  <div className="quick-empty">Nessun risultato</div>
+                )}
+              </div>
+            ) : (
+              <div className="quick-sections">
+                <div className="quick-section quick-favorites">
+                  <div className="quick-title">Preferiti</div>
+                  <div className="quick-grid quick-favorites-grid">
+                    {quickFavorites.map(renderQuickLink)}
+                  </div>
+                </div>
+
+                <div className="quick-accordion">
+                  {quickCategories.map((section) => {
+                    const isOpen = quickSectionsOpen[section.id];
+                    const isExpanded = quickSectionsExpanded[section.id];
+                    const visibleLinks = isExpanded
+                      ? section.links
+                      : section.links.slice(0, 4);
+                    const hasMore = section.links.length > 4;
+                    return (
+                      <div key={section.id} className="quick-accordion-item">
+                        <button
+                          type="button"
+                          className="quick-accordion-toggle"
+                          onClick={() => toggleQuickSectionOpen(section.id)}
+                          aria-expanded={isOpen}
+                        >
+                          <span className="quick-accordion-title">{section.title}</span>
+                          <span className="quick-accordion-meta">
+                            {section.links.length}
+                          </span>
+                          <span className={`quick-accordion-arrow ${isOpen ? "open" : ""}`}>
+                            &gt;
+                          </span>
+                        </button>
+                        {isOpen ? (
+                          <div className="quick-accordion-body">
+                            <div className="quick-grid quick-category-grid">
+                              {visibleLinks.map(renderQuickLink)}
+                            </div>
+                            {hasMore ? (
+                              <button
+                                type="button"
+                                className="quick-more-btn"
+                                onClick={() => toggleQuickSectionExpanded(section.id)}
+                              >
+                                {isExpanded ? "Mostra meno" : "Mostra tutti"}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="quick-section quick-anagrafiche">
+                  <div className="quick-title">Anagrafiche</div>
+                  <div className="quick-grid quick-anagrafiche-grid">
+                    {QUICK_LINKS_ANAGRAFICHE.map(renderQuickLink)}
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </div>
+
+      {prenotazioneModalOpen ? (
+        <div
+          className="home-modal-backdrop"
+          onClick={closePrenotazioneModal}
+          role="presentation"
+        >
+          <div
+            className="home-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Prenotazione collaudo"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="home-modal-head">
+              <div className="home-modal-title">Prenotazione collaudo</div>
+              <div className="home-modal-subtitle">
+                Targa <span className="targa">{prenotazioneTargetTarga || "-"}</span>
+              </div>
+            </div>
+
+            <div className="home-modal-body">
+              <label className="home-modal-field">
+                <span className="home-modal-label">Data</span>
+                <div className="home-modal-date-row">
+                  <input
+                    className="home-modal-input"
+                    value={prenotazioneForm.data}
+                    onChange={(e) =>
+                      setPrenotazioneForm((prev) => ({ ...prev, data: e.target.value }))
+                    }
+                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
+                  />
+                  <button
+                    type="button"
+                    className="home-modal-date-btn"
+                    onClick={openDatePicker}
+                    aria-label="Apri calendario"
+                    title="Apri calendario"
+                  >
+                    📅
+                  </button>
+                  <input
+                    ref={datePickerRef}
+                    className="home-modal-date-input"
+                    type="date"
+                    value={prenotazioneDateValue}
+                    onChange={(e) => handleDatePickerChange(e.target.value)}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+                </div>
+              </label>
+
+              <label className="home-modal-field">
+                <span className="home-modal-label">Ora (opzionale)</span>
+                <input
+                  className="home-modal-input"
+                  type="time"
+                  value={prenotazioneForm.ora}
+                  onChange={(e) =>
+                    setPrenotazioneForm((prev) => ({ ...prev, ora: e.target.value }))
+                  }
+                />
+              </label>
+
+              <label className="home-modal-field">
+                <span className="home-modal-label">Luogo (opzionale)</span>
+                <input
+                  className="home-modal-input"
+                  value={prenotazioneForm.luogo}
+                  onChange={(e) =>
+                    setPrenotazioneForm((prev) => ({ ...prev, luogo: e.target.value }))
+                  }
+                  placeholder="Motorizzazione / officina / ..."
+                />
+              </label>
+
+              <label className="home-modal-field">
+                <span className="home-modal-label">Note (opzionale)</span>
+                <textarea
+                  className="home-modal-textarea"
+                  value={prenotazioneForm.note}
+                  onChange={(e) =>
+                    setPrenotazioneForm((prev) => ({ ...prev, note: e.target.value }))
+                  }
+                  placeholder="Note brevi..."
+                  rows={3}
+                />
+              </label>
+            </div>
+
+            <div className="home-modal-actions">
+              <button
+                type="button"
+                className="home-modal-btn"
+                onClick={closePrenotazioneModal}
+              >
+                ANNULLA
+              </button>
+              <button
+                type="button"
+                className="home-modal-btn primary"
+                onClick={handlePrenotazioneSave}
+              >
+                SALVA
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
