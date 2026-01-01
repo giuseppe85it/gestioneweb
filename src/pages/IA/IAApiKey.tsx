@@ -14,6 +14,8 @@ const IAApiKey: React.FC = () => {
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const isMissingKey = !apiKey.trim();
+  const showMissingBanner = isMissingKey && status !== "loading";
 
   useEffect(() => {
     const loadApiKey = async () => {
@@ -84,12 +86,19 @@ const IAApiKey: React.FC = () => {
     <div className="ia-apikey-page">
       <div className="ia-apikey-card">
         <div className="ia-apikey-header">
+          <div className="ia-apikey-kicker">Configurazione</div>
           <h1>Impostazioni IA (Gemini)</h1>
           <p>
             Inserisci la tua API Key Gemini. Senza questa chiave tutte le
             funzioni IA restano disattivate.
           </p>
         </div>
+
+        {showMissingBanner ? (
+          <div className="ia-apikey-banner">
+            API Key mancante: inserisci la chiave per attivare i moduli IA.
+          </div>
+        ) : null}
 
         <form className="ia-apikey-form" onSubmit={handleSave}>
           <label className="ia-apikey-label" htmlFor="gemini-api-key">

@@ -266,77 +266,117 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
 
   // UI
   if (apiKeyExists === null)
-    return <div className="ialibretto-loading">Caricamento...</div>;
+    return (
+      <div className="ialibretto-page">
+        <div className="ialibretto-shell">
+          <div className="ialibretto-card ia-state-card">
+            <div className="ia-state-title">Caricamento...</div>
+          </div>
+        </div>
+      </div>
+    );
 
   if (apiKeyExists === false) {
     return (
-      <div className="ialibretto-nokey">
-        <h2>API Key IA mancante</h2>
-        <p>Prima di usare questa funzione devi inserire la tua chiave Gemini.</p>
-        <button onClick={() => navigate("/ia/apikey")}>
-          Vai a API Key IA
-        </button>
+      <div className="ialibretto-page">
+        <div className="ialibretto-shell">
+          <div className="ialibretto-card ia-state-card">
+            <div className="ia-state-title">API Key IA mancante</div>
+            <p className="ia-state-text">
+              Prima di usare questa funzione devi inserire la tua chiave Gemini.
+            </p>
+            <button className="ia-btn primary" onClick={() => navigate("/ia/apikey")}>
+              Vai a API Key IA
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="ialibretto-page">
-      <div className="ialibretto-card">
-        <h1 className="ialibretto-title">Estrazione Libretto Mezzo (IA)</h1>
+      <div className="ialibretto-shell">
+        <header className="ia-page-head">
+          <div>
+            <div className="ia-kicker">Modulo IA</div>
+            <h1 className="ialibretto-title">Estrazione Libretto Mezzo</h1>
+            <p className="ia-subtitle">
+              Carica una foto, analizza con IA e verifica i dati estratti.
+            </p>
+          </div>
+          <div className="ia-steps">
+            <span>1 Carica</span>
+            <span>2 Analizza</span>
+            <span>3 Verifica</span>
+            <span>4 Salva</span>
+          </div>
+        </header>
 
-        {/* UPLOAD */}
-        <div className="ialibretto-upload">
-          <label className="upload-label">
-            Carica foto del libretto
-            <input type="file" accept="image/*" onChange={handleFile} />
-          </label>
+        <div className="ialibretto-grid">
+          <div className="ialibretto-panel">
+            <div className="ia-panel-head">
+              <h2>Caricamento libretto</h2>
+              <span>JPG o PNG, foto nitida</span>
+            </div>
 
-          {preview && (
-            <img src={preview} className="ialibretto-preview" alt="preview" />
-          )}
-        </div>
+            <label className="upload-label">
+              Carica foto del libretto
+              <input type="file" accept="image/*" onChange={handleFile} />
+            </label>
 
-        {/* ERRORE */}
-        {errorMessage && (
-          <div className="ialibretto-error">{errorMessage}</div>
-        )}
+            {errorMessage && (
+              <div className="ialibretto-error">{errorMessage}</div>
+            )}
 
-        {/* ANALIZZA */}
-        <button
-          className="ialibretto-analyze"
-          onClick={handleAnalyze}
-          disabled={!selectedFile || loading}
-        >
-          {loading ? "Analisi in corso..." : "Analizza con IA"}
-        </button>
+            <button
+              className="ia-btn primary"
+              onClick={handleAnalyze}
+              disabled={!selectedFile || loading}
+            >
+              {loading ? "Analisi in corso..." : "Analizza con IA"}
+            </button>
 
-        {/* RISULTATI */}
-        {results && (
-          <div className="ialibretto-results">
-            <h2>Dati estratti</h2>
-
-            {Object.entries(results).map(([key, value]) => (
-              <div key={key} className="ialibretto-field">
-                <label>{key}</label>
-                <input
-                  value={String(value ?? "")}
-                  onChange={(e) =>
-                    setResults({ ...results, [key]: e.target.value })
-                  }
-                />
-              </div>
-            ))}
-
-            <button className="ialibretto-save" onClick={handleSave}>
-              Salva nei documenti del mezzo
+            <button className="ia-btn outline" onClick={() => navigate("/ia")}>
+              Torna al menu IA
             </button>
           </div>
-        )}
 
-        <button className="ialibretto-back" onClick={() => navigate("/ia")}>
-          Torna al menu IA
-        </button>
+          <div className="ialibretto-panel">
+            <div className="ia-panel-head">
+              <h2>Anteprima e risultati</h2>
+              <span>Verifica e correggi prima di salvare</span>
+            </div>
+
+            {preview ? (
+              <img src={preview} className="ialibretto-preview" alt="preview" />
+            ) : (
+              <div className="ialibretto-empty">Nessuna anteprima</div>
+            )}
+
+            {results && (
+              <div className="ialibretto-results">
+                <h2>Dati estratti</h2>
+
+                {Object.entries(results).map(([key, value]) => (
+                  <div key={key} className="ialibretto-field">
+                    <label>{key}</label>
+                    <input
+                      value={String(value ?? "")}
+                      onChange={(e) =>
+                        setResults({ ...results, [key]: e.target.value })
+                      }
+                    />
+                  </div>
+                ))}
+
+                <button className="ia-btn primary" onClick={handleSave}>
+                  Salva nei documenti del mezzo
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

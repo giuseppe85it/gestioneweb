@@ -117,6 +117,12 @@ const IADocumenti: React.FC = () => {
   const [mezzi, setMezzi] = useState<MezzoDoc[]>([]);
   const [targaEstrattaIA, setTargaEstrattaIA] = useState<string>("");
   const [targaSelezionata, setTargaSelezionata] = useState<string>("");
+  const [sectionsOpen, setSectionsOpen] = useState({
+    documento: true,
+    mezzo: false,
+    voci: false,
+    pagamento: false,
+  });
 
   // flag per sapere se il documento è stato salvato su Firestore
   const [documentSaved, setDocumentSaved] = useState(false);
@@ -528,17 +534,34 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
     }
   };
 
+  const toggleSection = (section: keyof typeof sectionsOpen) => {
+    setSectionsOpen((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
+
   // ===================================================
   // RENDER: CASI SPECIALI (NESSUNA API KEY / CARICAMENTO INIT)
   // ===================================================
   if (apiKeyExists === false) {
     return (
-      <div className="iadoc-nokey">
-        <h2>API Key IA mancante</h2>
-        <p>Inserisci la tua chiave Gemini per usare i documenti IA.</p>
-        <button onClick={() => navigate("/ia/apikey")}>
-          Vai alla pagina API Key
-        </button>
+      <div className="iadoc-page">
+        <div className="iadoc-shell">
+          <div className="iadoc-panel ia-state-card">
+            <span className="ia-state-title">API Key IA mancante</span>
+            <p className="ia-state-text">
+              Inserisci la tua chiave Gemini per usare i documenti IA.
+            </p>
+            <button
+              type="button"
+              className="ia-btn primary"
+              onClick={() => navigate("/ia/apikey")}
+            >
+              Vai alla pagina API Key
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -552,55 +575,105 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
   // ===================================================
   return (
     <div className="iadoc-page">
-      <div className="iadoc-card">
-        <h1 className="iadoc-title">Documenti IA</h1>
+      <div className="iadoc-shell">
+        <div className="ia-page-head">
+          <div>
+            <span className="ia-kicker">Intelligenza artificiale</span>
+            <h1 className="iadoc-title">Documenti IA</h1>
+            <p className="ia-subtitle">
+              Carica un documento, analizzalo con IA e verifica i campi prima
+              di salvare.
+            </p>
+          </div>
+          <div className="ia-steps">
+            <span>1 Carica</span>
+            <span>2 Analizza</span>
+            <span>3 Verifica</span>
+            <span>4 Salva</span>
+          </div>
+        </div>
 
-        {/* Selettore tipo archivio (MEZZO / MAGAZZINO / GENERICO) */}
-        <select
-          className="iadoc-select"
-          value={tipoArchivio}
-          onChange={(e) =>
-            setTipoArchivio(e.target.value as CategoriaArchivio)
-          }
-        >
-          <option value="GENERICO">Generico</option>
-          <option value="MEZZO">Mezzo</option>
-          <option value="MAGAZZINO">Magazzino</option>
-        </select>
+        <div className="iadoc-grid">
+          <div className="iadoc-panel">
+            <div className="ia-panel-head">
+              <h2>Caricamento</h2>
+              <span>Seleziona categoria e carica il file da analizzare.</span>
+            </div>
 
-        {/* Upload file */}
-        <label className="iadoc-upload">
-          Carica PDF o Immagine
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={handleFile}
-          />
-        </label>
+            <div className="iadoc-field">
+              <label>Categoria archivio</label>
+              <select
+                className="iadoc-select"
+                value={tipoArchivio}
+                onChange={(e) =>
+                  setTipoArchivio(e.target.value as CategoriaArchivio)
+                }
+              >
+                <option value="GENERICO">Generico</option>
+                <option value="MEZZO">Mezzo</option>
+                <option value="MAGAZZINO">Magazzino</option>
+              </select>
+            </div>
 
-        {/* Preview immagine (se non PDF) */}
-        {preview && (
-          <img src={preview} alt="preview" className="iadoc-preview" />
-        )}
+            <label className="upload-label">
+              Carica PDF o Immagine
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={handleFile}
+              />
+            </label>
 
-        {/* Errori */}
-        {errorMessage && (
-          <div className="iadoc-error">{errorMessage}</div>
-        )}
+            {errorMessage && (
+              <div className="iadoc-error">{errorMessage}</div>
+            )}
 
-        {/* Pulsante Analizza con IA */}
-        <button
-          className="iadoc-analyze"
-          disabled={!selectedFile || loading}
-          onClick={handleAnalyze}
-        >
-          {loading ? "Analisi..." : "Analizza con IA"}
-        </button>
+            <button
+              type="button"
+              className="ia-btn primary"
+              disabled={!selectedFile || loading}
+              onClick={handleAnalyze}
+            >
+              {loading ? "Analisi..." : "Analizza con IA"}
+            </button>
+          </div>
 
-        {/* RISULTATI IA */}
-        {results && (
-          <div className="iadoc-results">
-            <h2>Risultati Analisi</h2>
+          <div className="iadoc-panel">
+            <div className="ia-panel-head">
+              <h2>Anteprima e risultati</h2>
+              <span>Controlla le informazioni estratte prima di salvare.</span>
+            </div>
+
+            {preview ? (
+              <img src={preview} alt="preview" className="iadoc-preview" />
+            ) : (
+              <div className="iadoc-empty">
+                Nessuna anteprima disponibile.
+              </div>
+            )}
+
+            {/* RISULTATI IA */}
+            {results && (
+              <div className="iadoc-results">
+                <h2>Risultati analisi</h2>
+
+                <div className="iadoc-section">
+                  <button
+                    type="button"
+                    className="iadoc-section-toggle"
+                    onClick={() => toggleSection("documento")}
+                  >
+                    <span>Dati documento</span>
+                    <span
+                      className={`iadoc-toggle-icon ${
+                        sectionsOpen.documento ? "open" : ""
+                      }`}
+                    >
+                      {sectionsOpen.documento ? "-" : "+"}
+                    </span>
+                  </button>
+                  {sectionsOpen.documento && (
+                    <div className="iadoc-section-body">
 
             {/* Dati documento */}
             <label>Tipo documento</label>
@@ -643,6 +716,28 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
                 })
               }
             />
+
+                    </div>
+                  )}
+                </div>
+
+                <div className="iadoc-section">
+                  <button
+                    type="button"
+                    className="iadoc-section-toggle"
+                    onClick={() => toggleSection("mezzo")}
+                  >
+                    <span>Dati mezzo</span>
+                    <span
+                      className={`iadoc-toggle-icon ${
+                        sectionsOpen.mezzo ? "open" : ""
+                      }`}
+                    >
+                      {sectionsOpen.mezzo ? "-" : "+"}
+                    </span>
+                  </button>
+                  {sectionsOpen.mezzo && (
+                    <div className="iadoc-section-body">
 
             {/* Dati mezzo */}
             <label>Targa</label>
@@ -722,6 +817,28 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
                 setResults({ ...results, km: e.target.value })
               }
             />
+
+                    </div>
+                  )}
+                </div>
+
+                <div className="iadoc-section">
+                  <button
+                    type="button"
+                    className="iadoc-section-toggle"
+                    onClick={() => toggleSection("pagamento")}
+                  >
+                    <span>Pagamento</span>
+                    <span
+                      className={`iadoc-toggle-icon ${
+                        sectionsOpen.pagamento ? "open" : ""
+                      }`}
+                    >
+                      {sectionsOpen.pagamento ? "-" : "+"}
+                    </span>
+                  </button>
+                  {sectionsOpen.pagamento && (
+                    <div className="iadoc-section-body">
 
             {/* Collegamento preventivo */}
             <label>Numero preventivo</label>
@@ -845,6 +962,32 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
               }
             />
 
+            {/* Categoria archivio (solo lettura) */}
+            <label>Categoria archivio</label>
+            <input value={results.categoriaArchivio} disabled />
+
+                    </div>
+                  )}
+                </div>
+
+            <div className="iadoc-section">
+              <button
+                type="button"
+                className="iadoc-section-toggle"
+                onClick={() => toggleSection("voci")}
+              >
+                <span>Voci</span>
+                <span
+                  className={`iadoc-toggle-icon ${
+                    sectionsOpen.voci ? "open" : ""
+                  }`}
+                >
+                  {sectionsOpen.voci ? "-" : "+"}
+                </span>
+              </button>
+              {sectionsOpen.voci && (
+                <div className="iadoc-section-body">
+
             {/* Voci documento (dettaglio righe) */}
             {results.voci && results.voci.length > 0 && (
               <>
@@ -904,13 +1047,15 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
               </>
             )}
 
-            {/* Categoria archivio (solo lettura) */}
-            <label>Categoria archivio</label>
-            <input value={results.categoriaArchivio} disabled />
+                </div>
+              )}
+            </div>
 
+            <div className="iadoc-actions">
             {/* Pulsante SALVA DOCUMENTO (logica originale) */}
             <button
-              className="iadoc-save"
+              type="button"
+              className="ia-btn primary"
               onClick={handleSave}
               disabled={
                 loading ||
@@ -933,18 +1078,21 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
               results.voci &&
               results.voci.length > 0 && (
                 <button
-                  className="iadoc-save iadoc-import-inventario"
+                  type="button"
+                  className="ia-btn outline iadoc-import-inventario"
                   onClick={importaInInventario}
                   disabled={importingInventario || loading}
-                  style={{ marginTop: "10px" }}
                 >
                   {importingInventario
                     ? "Importazione in Inventario..."
                     : "Importa materiali in Inventario"}
                 </button>
               )}
+            </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

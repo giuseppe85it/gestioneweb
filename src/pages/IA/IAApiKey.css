@@ -5,31 +5,53 @@
   justify-content: center;
   padding: 24px;
   box-sizing: border-box;
-  background: #f8f4e8; /* beige aziendale */
+  background:
+    radial-gradient(circle at 20% 0%, #f2f7f7 0%, #eef4f5 40%, #e6eef1 100%),
+    linear-gradient(120deg, #f7fafb 0%, #e5eef1 70%);
+  font-family: "Gill Sans", "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
 .ia-apikey-card {
   width: 430px;
   max-width: 100%;
-  background: #ffffff;
-  border-radius: 24px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  padding: 24px 24px 20px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 20px;
+  border: 1px solid #d7e2e5;
+  box-shadow: 0 18px 36px rgba(18, 40, 48, 0.12);
+  padding: 22px 22px 20px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+.ia-apikey-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  color: #3d585f;
+  margin-bottom: 6px;
+}
+
 .ia-apikey-header h1 {
   margin: 0 0 4px;
-  font-size: 1.4rem;
+  font-size: 1.5rem;
+  color: #0f2c32;
 }
 
 .ia-apikey-header p {
   margin: 0;
   font-size: 0.9rem;
-  color: #555;
+  color: #2f4b52;
+}
+
+.ia-apikey-banner {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff1f1;
+  color: #7a2020;
+  border: 1px solid rgba(178, 59, 46, 0.35);
+  font-size: 0.85rem;
 }
 
 .ia-apikey-form {
@@ -40,8 +62,11 @@
 }
 
 .ia-apikey-label {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2f3f45;
 }
 
 .ia-apikey-input-row {
@@ -53,30 +78,33 @@
 .ia-apikey-input {
   flex: 1;
   border-radius: 12px;
-  border: 1px solid #d0d0d0;
+  border: 1px solid #9fb2b8;
   padding: 10px 12px;
   font-size: 0.9rem;
   outline: none;
   box-sizing: border-box;
+  background: #f7fafb;
+  color: #0f2c32;
 }
 
 .ia-apikey-input:focus {
-  border-color: #2f7c87;
-  box-shadow: 0 0 0 2px rgba(47, 124, 135, 0.15);
+  border-color: #2c5c66;
+  box-shadow: 0 0 0 3px rgba(44, 92, 102, 0.2);
+  background: #ffffff;
 }
 
 .ia-apikey-toggle {
   border-radius: 12px;
-  border: 1px solid #d0d0d0;
+  border: 1px solid #cfdade;
   padding: 8px 12px;
   font-size: 0.8rem;
   cursor: pointer;
-  background: #f5f5f5;
+  background: #f3f7f8;
   white-space: nowrap;
 }
 
 .ia-apikey-toggle:hover {
-  background: #e9e9e9;
+  background: #e6eff1;
 }
 
 .ia-apikey-message {
@@ -108,14 +136,18 @@
   min-width: 120px;
   padding: 10px 12px;
   border-radius: 999px;
-  border: none;
-  font-size: 0.9rem;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
   cursor: pointer;
   box-sizing: border-box;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
 }
 
 .ia-apikey-save {
-  background: #2f7c87;
+  background: #0f2f36;
+  border-color: #0f2f36;
   color: #ffffff;
 }
 
@@ -125,16 +157,19 @@
 }
 
 .ia-apikey-save:not(:disabled):hover {
-  filter: brightness(0.95);
+  background: #18424a;
+  border-color: #18424a;
 }
 
 .ia-apikey-back {
-  background: #f3f3f3;
-  color: #333333;
+  background: #ffffff;
+  color: #0f2f36;
+  border-color: #cfdade;
 }
 
 .ia-apikey-back:hover {
-  background: #e5e5e5;
+  border-color: #9fb2b8;
+  background: #f3f7f8;
 }
 
 .ia-apikey-note {
