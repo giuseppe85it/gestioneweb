@@ -29,11 +29,10 @@ import Fornitori from "./pages/Fornitori";
 import Mezzi from "./pages/Mezzi";
 import Manutenzioni from "./pages/Manutenzioni";
 
-import Storico from "./pages/Storico";
 import OrdiniArrivati from "./pages/OrdiniArrivati";
 import OrdiniInAttesa from "./pages/OrdiniInAttesa";
 
-import CheckStorage from "./pages/CheckStorage";
+
 import DettaglioLavoro from "./pages/DettaglioLavoro";
 import DettaglioOrdine from "./pages/DettaglioOrdine";
 
@@ -117,8 +116,8 @@ function App() {
       <Route path="/ordini-in-attesa" element={<OrdiniInAttesa />} />
 
       {/* ALTRO */}
-      <Route path="/storico" element={<Storico />} />
-      <Route path="/check-storage" element={<CheckStorage />} />
+     
+     
       <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
       <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
       <Route path="/gestione-operativa" element={<GestioneOperativa />} />

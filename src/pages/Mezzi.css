@@ -129,6 +129,17 @@
   box-sizing: border-box;
 }
 
+.field-missing {
+  border-color: rgba(178, 59, 46, 0.7);
+  background: #fff1f1;
+  box-shadow: 0 0 0 2px rgba(178, 59, 46, 0.18);
+}
+
+.field-missing:focus {
+  border-color: #b23b2e;
+  box-shadow: 0 0 0 3px rgba(178, 59, 46, 0.25);
+}
+
 textarea {
   resize: none;
 }

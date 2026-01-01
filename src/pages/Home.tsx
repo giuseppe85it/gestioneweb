@@ -1,5 +1,5 @@
 import "./Home.css";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import {
@@ -21,6 +21,7 @@ const EVENTI_KEY = "@storico_eventi_operativi";
 const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
 const ALERTS_STATE_KEY = "@alerts_state";
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
+const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
 
 type MezzoRecord = {
   id?: string;
@@ -120,6 +121,22 @@ type QuickLinksStore = {
 
 type QuickSectionId = "autisti" | "lavori" | "materiali" | "ia";
 
+type MissingAlertState = {
+  nextRemindAt: number;
+};
+
+type MissingMezzo = {
+  id?: string;
+  targa: string;
+  categoria: string;
+  autistaNome: string;
+  missing: {
+    targa: boolean;
+    categoria: boolean;
+    autista: boolean;
+  };
+};
+
 function createQuickLinkId(item: { id?: string; to?: string; label: string }): string {
   if (item.id) return item.id;
   const toValue = String(item.to || "").trim();
@@ -189,6 +206,40 @@ function writeQuickLinksStore(next: QuickLinksStore) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(QUICKLINKS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+
+function normalizeMissingAlertState(value: unknown): MissingAlertState {
+  if (!value || typeof value !== "object") {
+    return { nextRemindAt: 0 };
+  }
+  const raw = (value as { nextRemindAt?: unknown }).nextRemindAt;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return { nextRemindAt: Math.max(0, raw) };
+  }
+  return { nextRemindAt: 0 };
+}
+
+function readMissingAlertState(): MissingAlertState {
+  if (typeof window === "undefined") return { nextRemindAt: 0 };
+  try {
+    const raw = window.localStorage.getItem(DOSSIER_MISSING_ALERT_KEY);
+    if (!raw) return { nextRemindAt: 0 };
+    const parsed: unknown = JSON.parse(raw);
+    return normalizeMissingAlertState(parsed);
+  } catch {
+    return { nextRemindAt: 0 };
+  }
+}
+
+function writeMissingAlertState(next: MissingAlertState) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      DOSSIER_MISSING_ALERT_KEY,
+      JSON.stringify(next)
+    );
   } catch {
   }
 }
@@ -265,6 +316,10 @@ function normalizeBadge(value: string | null | undefined): string {
 
 function normalizeBadgeKey(value: string | null | undefined): string {
   return normalizeBadge(value).toLowerCase();
+}
+
+function isMissing(value: unknown): boolean {
+  return value == null || (typeof value === "string" && value.trim() === "");
 }
 
 function buildDate(yyyyStr: string, mmStr: string, ddStr: string): Date | null {
@@ -458,6 +513,9 @@ function Home() {
   const [quickLinksStore, setQuickLinksStore] = useState<QuickLinksStore>(() =>
     readQuickLinksStore()
   );
+  const [missingAlertState, setMissingAlertState] = useState<MissingAlertState>(() =>
+    readMissingAlertState()
+  );
   const [quickSectionsOpen, setQuickSectionsOpen] = useState({
     autisti: true,
     lavori: false,
@@ -478,6 +536,8 @@ function Home() {
     luogo: "",
     note: "",
   });
+  const [missingModalOpen, setMissingModalOpen] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     let mounted = true;
@@ -514,6 +574,18 @@ function Home() {
       mounted = false;
     };
   }, []);
+
+  const refreshMezzi = async () => {
+    try {
+      const mezziRaw = await getItemSync(MEZZI_KEY);
+      setMezzi(unwrapList(mezziRaw));
+    } catch {
+    }
+  };
+
+  useEffect(() => {
+    void refreshMezzi();
+  }, [location.key]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setAlertsNow(Date.now()), 60_000);
@@ -1030,6 +1102,74 @@ function Home() {
     return { scadute, inScadenza };
   }, [revisioni]);
 
+  const mezziIncompleti = useMemo<MissingMezzo[]>(() => {
+    return mezzi
+      .map((m) => {
+        const targaValue = fmtTarga(m.targa);
+        const categoriaValue = normalizeName(m.categoria);
+        const autistaValue = normalizeName(m.autistaNome);
+        const missing = {
+          targa: isMissing(m.targa),
+          categoria: isMissing(m.categoria),
+          autista: isMissing(m.autistaNome),
+        };
+        return {
+          id: m.id ? String(m.id) : undefined,
+          targa: targaValue,
+          categoria: categoriaValue,
+          autistaNome: autistaValue,
+          missing,
+        };
+      })
+      .filter((m) => m.missing.targa || m.missing.categoria || m.missing.autista)
+      .sort((a, b) => {
+        if (a.missing.targa !== b.missing.targa) {
+          return a.missing.targa ? -1 : 1;
+        }
+        return a.targa.localeCompare(b.targa);
+      });
+  }, [mezzi]);
+
+  const missingAlertVisible =
+    mezziIncompleti.length > 0 &&
+    alertsNow >= missingAlertState.nextRemindAt;
+
+  const updateMissingAlertState = (nextRemindAt: number) => {
+    const next = { nextRemindAt };
+    setMissingAlertState(next);
+    writeMissingAlertState(next);
+  };
+
+  const handleMissingIgnore = () => {
+    updateMissingAlertState(Date.now() + 86_400_000);
+  };
+
+  const handleMissingLater = () => {
+    updateMissingAlertState(Date.now() + 259_200_000);
+  };
+
+  const handleMissingNow = () => {
+    setMissingModalOpen(true);
+  };
+
+  const closeMissingModal = () => {
+    setMissingModalOpen(false);
+    void refreshMezzi();
+  };
+
+  const handleMissingSelect = (item: MissingMezzo) => {
+    const params = new URLSearchParams();
+    if (item.id) {
+      params.set("mezzoId", item.id);
+    } else if (item.targa) {
+      params.set("targa", item.targa);
+    }
+    params.set("highlightMissing", "1");
+    setMissingModalOpen(false);
+    const query = params.toString();
+    navigate(`/mezzi${query ? `?${query}` : ""}`);
+  };
+
   const alertCandidates = useMemo<HomeAlertCandidate[]>(() => {
     const candidates: HomeAlertCandidate[] = [];
 
@@ -1295,66 +1435,104 @@ function Home() {
             <div className="panel-head">
               <div>
                 <h2>ALERT</h2>
-                <span>Revisioni, segnalazioni non lette e conflitti agganci</span>
+                <span>Revisioni, segnalazioni non lette, conflitti agganci e dati mancanti</span>
               </div>
             </div>
             <div className="panel-body alerts-list">
               {loading || !alertsState ? (
                 <div className="panel-row panel-row-empty">Caricamento alert...</div>
-              ) : visibleAlerts.length === 0 ? (
+              ) : visibleAlerts.length === 0 && !missingAlertVisible ? (
                 <div className="panel-row panel-row-empty">Nessun alert attivo</div>
               ) : (
-                visibleAlerts.map((alert) => {
-                  const badgeClass =
-                    alert.severity === "danger"
-                      ? "deadline-danger"
-                      : alert.severity === "warning"
-                      ? "deadline-medium"
-                      : "deadline-low";
-                  const badgeLabel =
-                    alert.severity === "danger"
-                      ? "URGENTE"
-                      : alert.severity === "warning"
-                      ? "ATTENZIONE"
-                      : "INFO";
-                  return (
-                    <div
-                      key={alert.id}
-                      className={`alert-row alert-${alert.severity}`}
-                    >
+                <>
+                  {missingAlertVisible ? (
+                    <div className="alert-row alert-warning alert-missing">
                       <div className="alert-main">
                         <div className="alert-title">
-                          <span className="alert-title-text">{alert.title}</span>
-                          <span className={`status ${badgeClass}`}>{badgeLabel}</span>
+                          <span className="alert-title-text">Dati mancanti nel Dossier</span>
+                          <span className="status deadline-medium">ATTENZIONE</span>
                         </div>
-                        <div className="alert-detail">{alert.detail}</div>
+                        <div className="alert-detail">
+                          Alcuni mezzi hanno dati incompleti: completa per evitare problemi nel dossier.
+                        </div>
                       </div>
                       <div className="alert-actions">
                         <button
                           type="button"
                           className="alert-action"
-                          onClick={() => handleAlertAction(alert, "snooze_1d")}
+                          onClick={handleMissingIgnore}
                         >
                           Ignora
                         </button>
                         <button
                           type="button"
                           className="alert-action"
-                          onClick={() => handleAlertAction(alert, "snooze_3d")}
+                          onClick={handleMissingLater}
                         >
                           In seguito
                         </button>
                         <button
                           type="button"
                           className="alert-action primary"
-                          onClick={() => handleAlertAction(alert, "ack")}
+                          onClick={handleMissingNow}
                         >
-                          Letto
+                          Adesso
                         </button>
                       </div>
                     </div>
-                  );
-                })
+                  ) : null}
+                  {visibleAlerts.map((alert) => {
+                    const badgeClass =
+                      alert.severity === "danger"
+                        ? "deadline-danger"
+                        : alert.severity === "warning"
+                        ? "deadline-medium"
+                        : "deadline-low";
+                    const badgeLabel =
+                      alert.severity === "danger"
+                        ? "URGENTE"
+                        : alert.severity === "warning"
+                        ? "ATTENZIONE"
+                        : "INFO";
+                    return (
+                      <div
+                        key={alert.id}
+                        className={`alert-row alert-${alert.severity}`}
+                      >
+                        <div className="alert-main">
+                          <div className="alert-title">
+                            <span className="alert-title-text">{alert.title}</span>
+                            <span className={`status ${badgeClass}`}>{badgeLabel}</span>
+                          </div>
+                          <div className="alert-detail">{alert.detail}</div>
+                        </div>
+                        <div className="alert-actions">
+                          <button
+                            type="button"
+                            className="alert-action"
+                            onClick={() => handleAlertAction(alert, "snooze_1d")}
+                          >
+                            Ignora
+                          </button>
+                          <button
+                            type="button"
+                            className="alert-action"
+                            onClick={() => handleAlertAction(alert, "snooze_3d")}
+                          >
+                            In seguito
+                          </button>
+                          <button
+                            type="button"
+                            className="alert-action primary"
+                            onClick={() => handleAlertAction(alert, "ack")}
+                          >
+                            Letto
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
           </section>
@@ -1958,6 +2136,98 @@ function Home() {
                 onClick={handlePrenotazioneSave}
               >
                 SALVA
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {missingModalOpen ? (
+        <div
+          className="home-modal-backdrop"
+          onClick={closeMissingModal}
+          role="presentation"
+        >
+          <div
+            className="home-modal missing-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mezzi con dati mancanti"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="home-modal-head">
+              <div className="home-modal-title">Mezzi con dati mancanti</div>
+              <div className="home-modal-subtitle">
+                {mezziIncompleti.length} mezzi da completare
+              </div>
+            </div>
+
+            <div className="home-modal-body missing-modal-body">
+              {mezziIncompleti.length === 0 ? (
+                <div className="panel-row panel-row-empty">
+                  Nessun mezzo incompleto
+                </div>
+              ) : (
+                <div className="missing-list">
+                  {mezziIncompleti.map((mezzo) => {
+                    const targaLabel = mezzo.targa || "TARGA MANCANTE";
+                    const categoriaLabel = mezzo.categoria || "MANCANTE";
+                    const autistaLabel = mezzo.autistaNome || "MANCANTE";
+                    return (
+                      <button
+                        key={mezzo.id || mezzo.targa || targaLabel}
+                        type="button"
+                        className="missing-item"
+                        onClick={() => handleMissingSelect(mezzo)}
+                      >
+                        <div className="missing-item-main">
+                          <div className="missing-item-title">
+                            <span
+                              className={`missing-item-targa ${
+                                mezzo.missing.targa ? "is-missing" : ""
+                              }`}
+                            >
+                              {targaLabel}
+                            </span>
+                            {mezzo.missing.targa ? (
+                              <span className="missing-chip">MANCANTE</span>
+                            ) : null}
+                          </div>
+                          <div className="missing-item-meta">
+                            <span className="missing-label">Categoria:</span>
+                            <span
+                              className={`missing-value ${
+                                mezzo.missing.categoria ? "is-missing" : ""
+                              }`}
+                            >
+                              {categoriaLabel}
+                            </span>
+                            <span className="missing-sep">•</span>
+                            <span className="missing-label">Autista:</span>
+                            <span
+                              className={`missing-value ${
+                                mezzo.missing.autista ? "is-missing" : ""
+                              }`}
+                            >
+                              {autistaLabel}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="row-arrow">-&gt;</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="home-modal-actions">
+              <button
+                type="button"
+                className="home-modal-btn"
+                onClick={closeMissingModal}
+              >
+                Chiudi
               </button>
             </div>
           </div>

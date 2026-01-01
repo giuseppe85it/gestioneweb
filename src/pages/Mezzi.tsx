@@ -2,7 +2,7 @@
 // src/pages/Mezzi.tsx
 
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./Mezzi.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
@@ -118,6 +118,10 @@ function formatDateForInput(date: Date | null): string {
   return `${year}-${month}-${day}`;
 }
 
+function normalizeTarga(value: string | null | undefined): string {
+  return String(value || "").trim().toUpperCase();
+}
+
 
 function extractBase64FromDataURL(dataUrl: string): string {
   const idx = dataUrl.indexOf(",");
@@ -202,6 +206,7 @@ function giorniDaOggi(target: Date | null): number | null {
 
 const Mezzi: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [mezzi, setMezzi] = useState<Mezzo[]>([]);
   const [colleghi, setColleghi] = useState<Collega[]>([]);
@@ -244,6 +249,10 @@ const Mezzi: React.FC = () => {
   const [fotoDirty, setFotoDirty] = useState(false);
 
   const fotoInputRef = useRef<HTMLInputElement | null>(null);
+  const targaInputRef = useRef<HTMLInputElement | null>(null);
+  const categoriaSelectRef = useRef<HTMLSelectElement | null>(null);
+  const autistaSelectRef = useRef<HTMLSelectElement | null>(null);
+  const preselectRef = useRef(false);
   const [categoriaEspansa, setCategoriaEspansa] = useState<string | null>(null);
 
   // ---------------------------------------------
@@ -339,6 +348,28 @@ const Mezzi: React.FC = () => {
     setFotoPreview(m.fotoUrl || null);
     setFotoDirty(false);
   };
+
+  useEffect(() => {
+    if (loading) return;
+    const params = new URLSearchParams(location.search);
+    const targetId = params.get("mezzoId");
+    const targetTarga = params.get("targa");
+    if (!targetId && !targetTarga) return;
+    if (preselectRef.current) return;
+
+    const match = targetId
+      ? mezzi.find((m) => String(m.id) === targetId)
+      : targetTarga
+      ? mezzi.find(
+          (m) => normalizeTarga(m.targa) === normalizeTarga(targetTarga)
+        )
+      : null;
+
+    if (match) {
+      loadMezzoInForm(match);
+    }
+    preselectRef.current = true;
+  }, [loading, location.search, mezzi]);
 
 const handleChangeAutista = (value: string) => {
   const found = colleghi.find((c) => c.id === value);
@@ -554,6 +585,29 @@ const handleChangeAutista = (value: string) => {
     }
   };
 
+  const highlightMissing = new URLSearchParams(location.search).get("highlightMissing") === "1";
+  const highlightMissingActive = highlightMissing && Boolean(editingId);
+  const missingTarga = highlightMissingActive && !targa.trim();
+  const missingCategoria = highlightMissingActive && !categoria.trim();
+  const missingAutista =
+    highlightMissingActive && !String(autistaNome || "").trim();
+
+  useEffect(() => {
+    if (!highlightMissingActive) return;
+    const target = missingTarga
+      ? targaInputRef.current
+      : missingCategoria
+      ? categoriaSelectRef.current
+      : missingAutista
+      ? autistaSelectRef.current
+      : null;
+    if (!target) return;
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.focus();
+    });
+  }, [highlightMissingActive, missingTarga, missingCategoria, missingAutista]);
+
   // ---------------------------------------------
   // ---------------------------------------------
   // RENDER
@@ -678,6 +732,8 @@ const handleChangeAutista = (value: string) => {
                   <div className="form-group">
                     <label>Categoria mezzo</label>
                     <select
+                      ref={categoriaSelectRef}
+                      className={missingCategoria ? "field-missing" : ""}
                       value={categoria}
                       onChange={(e) => setCategoria(e.target.value)}
                     >
@@ -719,6 +775,8 @@ const handleChangeAutista = (value: string) => {
                   <div className="form-group">
                     <label>Autista</label>
                     <select
+                      ref={autistaSelectRef}
+                      className={missingAutista ? "field-missing" : ""}
                       value={autistaId || ""}
                       onChange={(e) => handleChangeAutista(e.target.value)}
                     >
@@ -739,6 +797,8 @@ const handleChangeAutista = (value: string) => {
                     <label>Targa</label>
                     <input
                       type="text"
+                      ref={targaInputRef}
+                      className={missingTarga ? "field-missing" : ""}
                       value={targa}
                       onChange={(e) => setTarga(e.target.value.toUpperCase())}
                       placeholder="Es. TI 315407"
