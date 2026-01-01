@@ -21,7 +21,7 @@
 .home-shell {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 28px 20px 80px;
+  padding: 22px 20px 68px;
   position: relative;
   z-index: 1;
   animation: fadeIn 0.6s ease both;
@@ -30,14 +30,19 @@
 .home-hero {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.home-hero-left {
+  flex: 1;
+  min-width: 260px;
 }
 
 .home-hero-logo {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   flex: 0 0 auto;
 }
 
@@ -52,19 +57,20 @@
   text-transform: uppercase;
   letter-spacing: 0.22em;
   font-size: 11px;
-  color: #47626a;
+  color: #3d585f;
 }
 
 .home-title {
   font-size: clamp(28px, 3.2vw, 42px);
   margin: 8px 0 6px;
   font-weight: 700;
+  line-height: 1.15;
 }
 
 .home-subtitle {
   margin: 0;
   max-width: 640px;
-  color: #3c5b61;
+  color: #2f4b52;
   font-size: 14px;
   line-height: 1.6;
 }
@@ -72,18 +78,20 @@
 .home-hero-right {
   display: grid;
   grid-template-columns: repeat(2, minmax(140px, 1fr));
-  gap: 12px;
+  gap: 10px;
+  align-content: start;
 }
 
 .hero-card {
   background: #ffffff;
-  border: 1px solid #d6e2e6;
+  border: 1px solid #cfdade;
   border-radius: 14px;
-  padding: 14px;
+  padding: 12px;
   text-decoration: none;
   color: inherit;
-  box-shadow: 0 14px 30px rgba(15, 35, 40, 0.08);
+  box-shadow: 0 12px 22px rgba(15, 35, 40, 0.08);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  min-height: 66px;
 }
 
 .hero-card:hover {
@@ -92,29 +100,30 @@
 }
 
 .hero-card-title {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #4b646b;
+  color: #3f5960;
 }
 
 .hero-card-value {
   font-size: 16px;
   font-weight: 700;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .home-dashboard {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 18px;
+  gap: 20px;
+  align-items: start;
 }
 
 .panel {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #dfe7ea;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d7e2e5;
   border-radius: 18px;
-  padding: 18px;
+  padding: 16px 18px;
   box-shadow: 0 14px 36px rgba(18, 40, 48, 0.1);
   animation: riseIn 0.5s ease both;
 }
@@ -124,36 +133,49 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e3ecef;
 }
 
 .panel-head h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 19px;
+  font-weight: 700;
 }
 
 .panel-head span {
   display: block;
   font-size: 12px;
-  color: #4a666d;
+  color: #3f5a61;
   margin-top: 4px;
 }
 
 .panel-link {
-  font-size: 12px;
+  font-size: 11px;
   color: #0f2f36;
   text-decoration: none;
-  border-bottom: 1px solid transparent;
+  border: 1px solid #cfdade;
+  background: #f3f7f8;
+  border-radius: 999px;
+  padding: 6px 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
 }
 
 .panel-link:hover {
-  border-color: #0f2f36;
+  border-color: #9fb2b8;
 }
 
 .panel-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .panel-alerts .panel-body {
@@ -161,34 +183,38 @@
 }
 
 .alerts-list {
-  gap: 12px;
+  gap: 10px;
 }
 
 .alert-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px;
+  gap: 12px;
+  padding: 12px;
   border-radius: 16px;
-  border: 1px solid #e3ecef;
-  background: #fbfcfd;
-  box-shadow: 0 10px 20px rgba(18, 40, 48, 0.06);
+  border: 1px solid #d7e2e6;
+  border-left: 4px solid #c7d6da;
+  background: #f8fbfc;
+  box-shadow: 0 8px 18px rgba(18, 40, 48, 0.05);
 }
 
 .alert-row.alert-danger {
-  border-color: rgba(178, 59, 46, 0.35);
-  background: linear-gradient(120deg, rgba(255, 217, 217, 0.7), rgba(255, 255, 255, 0.92));
+  border-color: rgba(178, 59, 46, 0.25);
+  border-left-color: rgba(178, 59, 46, 0.65);
+  background: #fff5f5;
 }
 
 .alert-row.alert-warning {
-  border-color: rgba(123, 74, 18, 0.28);
-  background: linear-gradient(120deg, rgba(255, 233, 199, 0.78), rgba(255, 255, 255, 0.92));
+  border-color: rgba(123, 74, 18, 0.2);
+  border-left-color: rgba(123, 74, 18, 0.55);
+  background: #fff6e7;
 }
 
 .alert-row.alert-info {
-  border-color: rgba(42, 79, 122, 0.22);
-  background: linear-gradient(120deg, rgba(231, 240, 255, 0.9), rgba(255, 255, 255, 0.92));
+  border-color: rgba(42, 79, 122, 0.18);
+  border-left-color: rgba(42, 79, 122, 0.5);
+  background: #f2f6ff;
 }
 
 .alert-main {
@@ -212,7 +238,7 @@
 
 .alert-detail {
   font-size: 12px;
-  color: #4a646b;
+  color: #405960;
 }
 
 .alert-detail-row {
@@ -227,27 +253,27 @@
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .alert-action {
-  border: 1px solid #d6e2e6;
+  border: 1px solid #cfdade;
   border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 11px;
+  padding: 7px 10px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  background: #ffffff;
-  color: inherit;
+  background: #f5f8f9;
+  color: #2f4b52;
   cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .alert-action:hover {
   transform: translateY(-1px);
-  border-color: #c7d6da;
-  box-shadow: 0 10px 20px rgba(18, 40, 48, 0.08);
+  border-color: #b7c7cc;
+  box-shadow: 0 8px 16px rgba(18, 40, 48, 0.08);
 }
 
 .alert-action.primary {
@@ -630,7 +656,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  background: #fbfcfd;
+  background: #f9fbfc;
   border: 1px solid #e3ecef;
   border-radius: 14px;
   text-decoration: none;
@@ -674,7 +700,7 @@
 
 .row-meta {
   font-size: 12px;
-  color: #4a646b;
+  color: #40585f;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -705,7 +731,7 @@
 
 .booking-note {
   font-weight: 400;
-  color: #4a666d;
+  color: #475f66;
 }
 
 .booking-missing {
@@ -835,7 +861,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #6a7d83;
+  color: #4f666d;
 }
 
 .session-profile-link {
@@ -859,6 +885,20 @@
   display: flex;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.panel-revisioni .panel-row {
+  border-color: #d7e1e5;
+  background: #f7fafb;
+}
+
+.panel-revisioni .row-meta-line:first-child span {
+  font-weight: 600;
+  color: #1f343a;
+}
+
+.panel-revisioni .row-meta-booking .label {
+  color: #3c535a;
 }
 
 .stat-chip {

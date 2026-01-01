@@ -1,7 +1,7 @@
 // src/pages/LavoriEseguiti.tsx
 import  { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { setItemSync, getItemSync } from "../utils/storageSync";
+import { getItemSync } from "../utils/storageSync";
 import { generateTablePDF } from "../utils/pdfEngine";     // <── PDF ENGINE
 import "./LavoriEseguiti.css";
 
@@ -21,6 +21,7 @@ interface Lavoro {
   segnalatoDa?: string;
   dataInserimento: string;
   eseguito: boolean;
+  urgenza?: "bassa" | "media" | "alta";
   chiHaEseguito?: string;
   dataEsecuzione?: string;
   sottoElementi: SottoElemento[];
@@ -122,21 +123,11 @@ const LavoriEseguiti: React.FC = () => {
     await generateTablePDF(titolo, rows, columns);
   };
 
-  const handleDelete = async (id: string) => {
-    const json = await getItemSync("@lavori");
-    let all: Lavoro[] = json ? json : [];
-
-    all = all.filter((l) => l.id !== id);
-    await setItemSync("@lavori", all);
-
-    setSections((prev) =>
-      prev
-        .map((sec) => ({
-          ...sec,
-          data: sec.data.filter((l) => l.id !== id),
-        }))
-        .filter((sec) => sec.data.length > 0)
-    );
+  const getUrgencyClass = (urgenza?: string) => {
+    if (urgenza === "alta") return "lavori-badge lavori-badge-alta";
+    if (urgenza === "media") return "lavori-badge lavori-badge-media";
+    if (urgenza === "bassa") return "lavori-badge lavori-badge-bassa";
+    return "lavori-badge lavori-badge-media";
   };
 
   return (
@@ -179,31 +170,37 @@ const LavoriEseguiti: React.FC = () => {
 
             {isOpen && (
               <div className="le-work-list">
-                {sec.data.map((lavoro) => (
-                  <div key={lavoro.id} className="le-work-item">
+                {sec.data.map((lavoro) => {
+                  const targetLabel =
+                    lavoro.tipo === "magazzino"
+                      ? "MAGAZZINO"
+                      : `TARGA ${lavoro.targa || "-"}`;
+                  return (
                     <div
-                      className="le-work-left"
+                      key={lavoro.id}
+                      className="le-work-row"
                       onClick={() =>
                         navigate(`/dettagliolavori?lavoroId=${lavoro.id}`)
                       }
                     >
-                      <div className="le-work-title">{lavoro.descrizione}</div>
-                      <div className="le-work-date">
-                        Inserito: {formatDate(lavoro.dataInserimento)}
+                      <div className="le-work-main">
+                        <div className="le-work-line1">
+                          <span className="le-work-desc">{lavoro.descrizione}</span>
+                          {lavoro.urgenza ? (
+                            <span className={getUrgencyClass(lavoro.urgenza)}>
+                              {String(lavoro.urgenza).toUpperCase()}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="le-work-line2">
+                          {targetLabel} • Inserito: {formatDate(lavoro.dataInserimento)} • Eseguito:{" "}
+                          {formatDate(lavoro.dataEsecuzione)}
+                        </div>
                       </div>
-                      <div className="le-work-date">
-                        Eseguito: {formatDate(lavoro.dataEsecuzione)}
-                      </div>
+                      <span className="le-work-chevron">&gt;</span>
                     </div>
-
-                    <button
-                      className="le-delete-btn lavori-btn is-danger"
-                      onClick={() => handleDelete(lavoro.id)}
-                    >
-                      Elimina
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

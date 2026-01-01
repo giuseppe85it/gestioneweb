@@ -109,6 +109,16 @@ const LavoriInAttesa: React.FC = () => {
     return "";
   };
 
+  const formatDateShort = (value?: string) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   // -----------------------------------------
   // 📄 ESPORTA PDF con PDF ENGINE UNIVERSALE
   // -----------------------------------------
@@ -228,26 +238,32 @@ const LavoriInAttesa: React.FC = () => {
                       : "lia-section-body--closed"
                   }`}
                 >
-                  {section.lavori.map((l, index) => (
-                    <div
-                      key={`${section.title}-${l.id}-${index}`}
-                      className="lia-job-card"
-                      onClick={() => openDettaglio(l.id)}
-                    >
-                      <div className="lia-job-left">
-                        <div className="lia-job-title">{l.descrizione}</div>
-                        <div className="lia-job-date">
-                          Inserito: {l.dataInserimento}
+                  {section.lavori.map((l, index) => {
+                    const targetLabel =
+                      l.tipo === "magazzino"
+                        ? "MAGAZZINO"
+                        : `TARGA ${l.targa?.trim() || "SENZA TARGA"}`;
+                    return (
+                      <div
+                        key={`${section.title}-${l.id}-${index}`}
+                        className="lia-job-row"
+                        onClick={() => openDettaglio(l.id)}
+                      >
+                      <div className="lia-job-main">
+                        <div className="lia-job-line1">
+                          <span className="lia-job-desc">{l.descrizione}</span>
+                          <span className={getUrgencyClass(l.urgenza)}>
+                            {getUrgencyLabel(l.urgenza)}
+                          </span>
+                        </div>
+                        <div className="lia-job-line2">
+                          {targetLabel} • Inserito: {formatDateShort(l.dataInserimento)}
                         </div>
                       </div>
-
-                      <div className="lia-job-right">
-                        <div className={getUrgencyClass(l.urgenza)}>
-                          {getUrgencyLabel(l.urgenza)}
-                        </div>
+                      <span className="lia-job-chevron">&gt;</span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );

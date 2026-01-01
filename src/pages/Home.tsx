@@ -1335,14 +1335,14 @@ function Home() {
                           className="alert-action"
                           onClick={() => handleAlertAction(alert, "snooze_1d")}
                         >
-                          Ignora 1 giorno
+                          Ignora
                         </button>
                         <button
                           type="button"
                           className="alert-action"
                           onClick={() => handleAlertAction(alert, "snooze_3d")}
                         >
-                          In seguito 3 giorni
+                          In seguito
                         </button>
                         <button
                           type="button"
