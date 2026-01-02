@@ -22,6 +22,16 @@ const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
 const ALERTS_STATE_KEY = "@alerts_state";
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
+const CATEGORIE_RIMORCHI_HOME = [
+  "biga",
+  "vasca",
+  "centina",
+  "semirimorchio asse fisso",
+  "semirimorchio asse sterzante",
+];
+const CATEGORIE_RIMORCHI_HOME_SET = new Set(
+  CATEGORIE_RIMORCHI_HOME.map((value) => value.trim().toLowerCase())
+);
 
 type MezzoRecord = {
   id?: string;
@@ -77,18 +87,35 @@ type AutistaSuggestion = {
 };
 
 type EventoOperativo = {
+  id?: string | number;
+  tipo?: string;
   timestamp?: number;
   luogo?: string | null;
+  badgeAutista?: string | null;
+  nomeAutista?: string | null;
+  autista?: string | null;
+  autistaNome?: string | null;
+  statoCarico?: string | null;
+  condizioni?: unknown;
+  source?: string;
   prima?: {
     targaRimorchio?: string | null;
     rimorchio?: string | null;
+    targaMotrice?: string | null;
+    motrice?: string | null;
+    targaCamion?: string | null;
   };
   dopo?: {
     targaRimorchio?: string | null;
     rimorchio?: string | null;
+    targaMotrice?: string | null;
+    motrice?: string | null;
+    targaCamion?: string | null;
   };
   primaRimorchio?: string | null;
   dopoRimorchio?: string | null;
+  primaMotrice?: string | null;
+  dopoMotrice?: string | null;
 };
 
 type HomeAlertSeverity = "danger" | "warning" | "info";
@@ -136,6 +163,13 @@ type MissingMezzo = {
     categoria: boolean;
     autista: boolean;
   };
+};
+
+type RimorchioEditState = {
+  targa: string;
+  luogo: string;
+  eventId: string | null;
+  eventIndex: number | null;
 };
 
 function createQuickLinkId(item: { id?: string; to?: string; label: string }): string {
@@ -486,19 +520,14 @@ function giorniDaOggi(target: Date | null): number | null {
   return Math.round((utcTarget - utcToday) / 86400000);
 }
 
+function normalizeCategoria(value: string | null | undefined): string {
+  return String(value || "").trim().toLowerCase();
+}
+
 function isRimorchioCategoria(categoria?: string | null): boolean {
-  const value = String(categoria || "").toLowerCase();
-  if (!value) return false;
-  const keywords = [
-    "rimorchio",
-    "semirimorchio",
-    "biga",
-    "pianale",
-    "centina",
-    "vasca",
-    "carrello",
-  ];
-  return keywords.some((k) => value.includes(k));
+  const key = normalizeCategoria(categoria);
+  if (!key) return false;
+  return CATEGORIE_RIMORCHI_HOME_SET.has(key);
 }
 
 function Home() {
@@ -517,6 +546,7 @@ function Home() {
   const [badgeQuery, setBadgeQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [nameSuggestOpen, setNameSuggestOpen] = useState(false);
+  const [rimorchioEdit, setRimorchioEdit] = useState<RimorchioEditState | null>(null);
   const [quickSearch, setQuickSearch] = useState("");
   const [quickLinksStore, setQuickLinksStore] = useState<QuickLinksStore>(() =>
     readQuickLinksStore()
@@ -625,6 +655,103 @@ function Home() {
     setNameQuery(suggestion.name);
     setBadgeQuery(suggestion.badge || "");
     setNameSuggestOpen(false);
+  };
+
+  const startRimorchioEdit = (rimorchio: {
+    targa: string;
+    luogoRaw: string;
+    luogoEventId: string | null;
+    luogoEventIndex: number | null;
+  }) => {
+    setRimorchioEdit({
+      targa: rimorchio.targa,
+      luogo: rimorchio.luogoRaw || "",
+      eventId: rimorchio.luogoEventId,
+      eventIndex: rimorchio.luogoEventIndex,
+    });
+  };
+
+  const cancelRimorchioEdit = () => {
+    setRimorchioEdit(null);
+  };
+
+  const saveRimorchioEdit = async () => {
+    if (!rimorchioEdit) return;
+    try {
+      const raw = await getItemSync(EVENTI_KEY);
+      const list = unwrapList(raw);
+      const updated = list.slice();
+      let idx = -1;
+      if (rimorchioEdit.eventId) {
+        idx = updated.findIndex(
+          (evt) => String((evt as { id?: unknown }).id ?? "") === rimorchioEdit.eventId
+        );
+      }
+      if (idx < 0 && rimorchioEdit.eventIndex != null && rimorchioEdit.eventIndex >= 0) {
+        idx = rimorchioEdit.eventIndex;
+      }
+      const luogoValue = rimorchioEdit.luogo.trim();
+      if (idx >= 0 && idx < updated.length) {
+        const original = updated[idx] || {};
+        updated[idx] = {
+          ...original,
+          luogo: luogoValue || null,
+        };
+      } else {
+        const targaKey = fmtTarga(rimorchioEdit.targa);
+        if (!targaKey) {
+          setRimorchioEdit(null);
+          return;
+        }
+        const mezzo = mezzoByTarga.get(targaKey);
+        const isRimorchio = isRimorchioCategoria(mezzo?.categoria);
+        const now = Date.now();
+        const id = `CAMBIO_ASSETTO-ADMIN-${now}-${targaKey}`;
+        const assetto = isRimorchio
+          ? {
+              targaRimorchio: targaKey,
+              rimorchio: targaKey,
+              targaMotrice: null,
+              motrice: null,
+              targaCamion: null,
+            }
+          : {
+              targaRimorchio: null,
+              rimorchio: null,
+              targaMotrice: targaKey,
+              motrice: targaKey,
+              targaCamion: targaKey,
+            };
+        const newEvent: EventoOperativo = {
+          id,
+          tipo: "CAMBIO_ASSETTO",
+          timestamp: now,
+          luogo: luogoValue || null,
+          prima: { ...assetto },
+          dopo: { ...assetto },
+          source: "Home",
+        };
+        updated.push(newEvent);
+      }
+
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const rawObj = raw as Record<string, unknown>;
+        if (Array.isArray(rawObj.value)) {
+          await setItemSync(EVENTI_KEY, { ...rawObj, value: updated });
+        } else if (Array.isArray(rawObj.items)) {
+          await setItemSync(EVENTI_KEY, { ...rawObj, items: updated });
+        } else {
+          await setItemSync(EVENTI_KEY, updated);
+        }
+      } else {
+        await setItemSync(EVENTI_KEY, updated);
+      }
+
+      setEventi(updated as EventoOperativo[]);
+      setRimorchioEdit(null);
+    } catch {
+      setRimorchioEdit(null);
+    }
   };
 
   const closePrenotazioneModal = () => {
@@ -987,6 +1114,13 @@ function Home() {
       ];
     })();
 
+  const quickSectionPills: Record<QuickSectionId, string> = {
+    autisti: "AUTISTI",
+    lavori: "OPERATIVO",
+    materiali: "MAGAZZINO",
+    ia: "IA",
+  };
+
   const renderQuickLink = (link: QuickLink) => {
     const isPinned = quickPinnedSet.has(link.id);
     return (
@@ -1019,57 +1153,133 @@ function Home() {
     );
   };
 
-  const rimorchi = useMemo(() => {
-    const inUso = new Set(
+  // NOTE (audit):
+  // - La lista rimorchi nasce da mezzi filtrati per categoria (isRimorchioCategoria).
+  // - Il luogo deriva dall'ultimo evento operativo associato alla targa.
+  // - Le sessioni attive marcano l'inUso tramite targaRimorchio.
+  // - In UI veniva applicato rimorchi.slice(0, 6) nel render.
+  // - Quel cap e' la causa diretta del limite a 6 elementi mostrati.
+  // - I filtri/ordinamenti non riducevano stabilmente a 6 da soli.
+  // - Ora il rendering non limita e si separano rimorchi vs altri mezzi.
+  const { rimorchiDaMostrare, motriciTrattoriDaMostrare } = useMemo(() => {
+    const inUsoRimorchio = new Set(
       sessioni
         .map((s) => fmtTarga(s.targaRimorchio))
         .filter((t) => t.length > 0)
     );
+    const inUsoMotrice = new Set(
+      sessioni
+        .map((s) => fmtTarga(s.targaMotrice))
+        .filter((t) => t.length > 0)
+    );
+    const rimorchiAgganciati = new Set(inUsoRimorchio);
 
-    const ultimoLuogo = new Map<string, { timestamp: number; luogo: string | null }>();
-    eventi.forEach((evt) => {
+    const ultimoLuogo = new Map<
+      string,
+      { timestamp: number; luogo: string | null; eventId: string | null; eventIndex: number | null }
+    >();
+    eventi.forEach((evt, index) => {
       const ts = typeof evt?.timestamp === "number" ? evt.timestamp : 0;
       const rawLuogo = typeof evt?.luogo === "string" ? evt.luogo.trim() : "";
       const luogo = rawLuogo || null;
+      const rawEventId = (evt as { id?: unknown }).id;
+      const eventId = rawEventId != null ? String(rawEventId) : null;
 
       const targas = new Set<string>();
-      const prima = fmtTarga(
+      const rimorchioPrima = fmtTarga(
         evt?.prima?.targaRimorchio ?? evt?.prima?.rimorchio ?? evt?.primaRimorchio
       );
-      const dopo = fmtTarga(
+      const rimorchioDopo = fmtTarga(
         evt?.dopo?.targaRimorchio ?? evt?.dopo?.rimorchio ?? evt?.dopoRimorchio
       );
-      if (prima) targas.add(prima);
-      if (dopo) targas.add(dopo);
+      const motricePrima = fmtTarga(
+        evt?.prima?.targaMotrice ??
+          evt?.prima?.motrice ??
+          evt?.prima?.targaCamion ??
+          evt?.primaMotrice
+      );
+      const motriceDopo = fmtTarga(
+        evt?.dopo?.targaMotrice ??
+          evt?.dopo?.motrice ??
+          evt?.dopo?.targaCamion ??
+          evt?.dopoMotrice
+      );
+      if (rimorchioPrima) targas.add(rimorchioPrima);
+      if (rimorchioDopo) targas.add(rimorchioDopo);
+      if (motricePrima) targas.add(motricePrima);
+      if (motriceDopo) targas.add(motriceDopo);
 
       targas.forEach((targa) => {
         const prev = ultimoLuogo.get(targa);
-        if (!prev || ts > prev.timestamp) {
-          ultimoLuogo.set(targa, { timestamp: ts, luogo });
+        if (
+          !prev ||
+          ts > prev.timestamp ||
+          (ts === prev.timestamp && index > (prev.eventIndex ?? -1))
+        ) {
+          ultimoLuogo.set(targa, {
+            timestamp: ts,
+            luogo,
+            eventId,
+            eventIndex: index,
+          });
         }
       });
     });
 
-    return mezzi
-      .filter((m) => isRimorchioCategoria(m.categoria))
-      .map((m) => {
-        const targa = fmtTarga(m.targa);
-        const inUsoRimorchio = targa ? inUso.has(targa) : false;
-        const luogo = !inUsoRimorchio
-          ? ultimoLuogo.get(targa)?.luogo || "Luogo non impostato"
-          : "Sessione attiva";
-        return {
-          targa,
-          categoria: m.categoria || "-",
-          autistaNome: m.autistaNome || null,
-          inUso: inUsoRimorchio,
-          luogo,
-        };
-      })
-      .sort((a, b) => {
-        if (a.inUso !== b.inUso) return a.inUso ? -1 : 1;
-        return a.targa.localeCompare(b.targa);
-      });
+    const rimorchiDaMostrare: Array<{
+      targa: string;
+      categoria: string;
+      autistaNome: string | null;
+      inUso: boolean;
+      luogo: string;
+      luogoRaw: string;
+      luogoEventId: string | null;
+      luogoEventIndex: number | null;
+      statusLabel: string;
+    }> = [];
+    const motriciTrattoriDaMostrare: Array<{
+      targa: string;
+      categoria: string;
+      autistaNome: string | null;
+      inUso: boolean;
+      luogo: string;
+      luogoRaw: string;
+      luogoEventId: string | null;
+      luogoEventIndex: number | null;
+      statusLabel: string;
+    }> = [];
+
+    mezzi.forEach((m) => {
+      const targa = fmtTarga(m.targa);
+      if (!targa) return;
+      const isRimorchio = isRimorchioCategoria(m.categoria);
+      const inUso = isRimorchio ? inUsoRimorchio.has(targa) : inUsoMotrice.has(targa);
+      if (inUso) return;
+      if (isRimorchio && rimorchiAgganciati.has(targa)) return;
+      const luogoInfo = ultimoLuogo.get(targa);
+      const luogoRaw = luogoInfo?.luogo || "";
+      const luogo = luogoRaw || "Luogo non impostato";
+      const entry = {
+        targa,
+        categoria: m.categoria || "-",
+        autistaNome: m.autistaNome || null,
+        inUso,
+        luogo,
+        luogoRaw,
+        luogoEventId: luogoInfo?.eventId ?? null,
+        luogoEventIndex: luogoInfo?.eventIndex ?? null,
+        statusLabel: isRimorchio ? "SGANCIATO" : "LIBERO",
+      };
+      if (isRimorchio) {
+        rimorchiDaMostrare.push(entry);
+      } else {
+        motriciTrattoriDaMostrare.push(entry);
+      }
+    });
+
+    rimorchiDaMostrare.sort((a, b) => a.targa.localeCompare(b.targa));
+    motriciTrattoriDaMostrare.sort((a, b) => a.targa.localeCompare(b.targa));
+    return { rimorchiDaMostrare, motriciTrattoriDaMostrare };
   }, [mezzi, sessioni, eventi]);
 
   const sessioniAttive = useMemo(() => sessioni.slice(0, 6), [sessioni]);
@@ -1410,289 +1620,602 @@ function Home() {
     <div className="home-container">
       <div className="home-shell">
         <header className="home-hero">
-          <div className="home-hero-left">
-            <div className="home-kicker">Centrale Operativa</div>
-            <h1 className="home-title">Dashboard Admin</h1>
-            <p className="home-subtitle">
-              Panoramica rapida su rimorchi, sessioni attive e revisioni. Tutti i pannelli
-              portano alle sezioni operative.
-            </p>
-          </div>
-          <div className="home-hero-logo">
-            <img src="/logo.png" alt="Logo" />
-          </div>
-          <div className="home-hero-right">
-            <Link to="/autisti-admin" className="hero-card">
-              <div className="hero-card-title">Centro rettifica dati (admin)</div>
-              <div className="hero-card-value hero-card-subtext">
-                Correggi dati e risolvi anomalie operative.
+          <div className="homeTopGrid">
+            <div className="homeTopLeft">
+              <div className="home-hero-logo">
+                <img src="/logo.png" alt="Logo" />
               </div>
-            </Link>
-            <Link to="/mezzi" className="hero-card">
-              <div className="hero-card-title">Mezzi</div>
-              <div className="hero-card-value">Anagrafiche</div>
-            </Link>
-            <Link to="/manutenzioni" className="hero-card">
-              <div className="hero-card-title">Manutenzioni</div>
-              <div className="hero-card-value">Registro</div>
-            </Link>
-            <Link to="/autisti-inbox" className="hero-card">
-              <div className="hero-card-title">Autisti Inbox (admin)</div>
-              <div className="hero-card-value hero-card-subtext">
-                Vedi e gestisci cio che arriva dagli autisti.
+              <div className="home-hero-left homeTopLeftTexts">
+                <div className="home-kicker">Centrale Operativa</div>
+                <h1 className="home-title">Dashboard Admin</h1>
+                <p className="home-subtitle">
+                  Panoramica rapida su rimorchi, sessioni attive e revisioni. Tutti i pannelli
+                  portano alle sezioni operative.
+                </p>
               </div>
-            </Link>
+            </div>
+            <div className="home-hero-right homeTopRight">
+              <Link to="/autisti-admin" className="hero-card">
+                <div className="hero-card-title">Centro rettifica dati (admin)</div>
+                <div className="hero-card-value hero-card-subtext">
+                  Correggi dati e risolvi anomalie operative.
+                </div>
+              </Link>
+              <Link to="/mezzi" className="hero-card">
+                <div className="hero-card-title">Mezzi</div>
+                <div className="hero-card-value">Anagrafiche</div>
+              </Link>
+              <Link to="/manutenzioni" className="hero-card">
+                <div className="hero-card-title">Manutenzioni</div>
+                <div className="hero-card-value">Registro</div>
+              </Link>
+              <Link to="/autisti-inbox" className="hero-card">
+                <div className="hero-card-title">Autisti Inbox (admin)</div>
+                <div className="hero-card-value hero-card-subtext">
+                  Vedi e gestisci cio che arriva dagli autisti.
+                </div>
+              </Link>
+            </div>
           </div>
         </header>
 
         <div className="home-dashboard">
-          <section className="panel panel-alerts" style={{ animationDelay: "20ms" }}>
-            <div className="panel-head">
-              <div>
-                <h2>ALERT</h2>
-                <span>Revisioni, segnalazioni non lette, conflitti agganci e dati mancanti</span>
-              </div>
-            </div>
-            <div className="panel-body alerts-list">
-              {loading || !alertsState ? (
-                <div className="panel-row panel-row-empty">Caricamento alert...</div>
-              ) : visibleAlerts.length === 0 && !missingAlertVisible ? (
-                <div className="panel-row panel-row-empty">Nessun alert attivo</div>
-              ) : (
-                <>
-                  {missingAlertVisible ? (
-                    <div className="alert-row alert-warning alert-missing">
-                      <div className="alert-main">
-                        <div className="alert-title">
-                          <span className="alert-title-text">Dati mancanti nel Dossier</span>
-                          <span className="status deadline-medium">ATTENZIONE</span>
-                        </div>
-                        <div className="alert-detail">
-                          Alcuni mezzi hanno dati incompleti: completa per evitare problemi nel dossier.
-                        </div>
-                      </div>
-                      <div className="alert-actions">
-                        <button
-                          type="button"
-                          className="alert-action"
-                          onClick={handleMissingIgnore}
-                        >
-                          Ignora
-                        </button>
-                        <button
-                          type="button"
-                          className="alert-action"
-                          onClick={handleMissingLater}
-                        >
-                          In seguito
-                        </button>
-                        <button
-                          type="button"
-                          className="alert-action primary"
-                          onClick={handleMissingNow}
-                        >
-                          Adesso
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                  {visibleAlerts.map((alert) => {
-                    const badgeClass =
-                      alert.severity === "danger"
-                        ? "deadline-danger"
-                        : alert.severity === "warning"
-                        ? "deadline-medium"
-                        : "deadline-low";
-                    const badgeLabel =
-                      alert.severity === "danger"
-                        ? "URGENTE"
-                        : alert.severity === "warning"
-                        ? "ATTENZIONE"
-                        : "INFO";
-                    return (
-                      <div
-                        key={alert.id}
-                        className={`alert-row alert-${alert.severity}`}
-                      >
-                        <div className="alert-main">
-                          <div className="alert-title">
-                            <span className="alert-title-text">{alert.title}</span>
-                            <span className={`status ${badgeClass}`}>{badgeLabel}</span>
-                          </div>
-                          <div className="alert-detail">{alert.detail}</div>
-                        </div>
-                        <div className="alert-actions">
-                          <button
-                            type="button"
-                            className="alert-action"
-                            onClick={() => handleAlertAction(alert, "snooze_1d")}
-                          >
-                            Ignora
-                          </button>
-                          <button
-                            type="button"
-                            className="alert-action"
-                            onClick={() => handleAlertAction(alert, "snooze_3d")}
-                          >
-                            In seguito
-                          </button>
-                          <button
-                            type="button"
-                            className="alert-action primary"
-                            onClick={() => handleAlertAction(alert, "ack")}
-                          >
-                            Letto
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          </section>
-
-          <section className="panel panel-search" style={{ animationDelay: "40ms" }}>
-            <div className="panel-head">
-              <div>
-                <h2>Ricerca 360</h2>
-                <span>Cerca targa o autista e apri la Vista Mezzo 360</span>
-              </div>
-            </div>
-            <div className="search-field">
-              <input
-                className="search-input"
-                type="text"
-                placeholder="Cerca targa o autista"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="search-results">
-              {loading ? (
-                <div className="search-empty">Caricamento dati...</div>
-              ) : !searchQuery.trim() ? (
-                <div className="search-empty">Digita per cercare</div>
-              ) : searchResults.length === 0 ? (
-                <div className="search-empty">Nessun risultato</div>
-              ) : (
-                searchResults.map((r, idx) => {
-                  const tooltip = getTargaTooltip(r.targa);
-                  return (
-                    <Link
-                      key={`${r.targa}-${idx}`}
-                      to={`/mezzo-360/${encodeURIComponent(r.targa)}`}
-                      className="search-item"
-                    >
-                      <div className="search-item-main">
-                        <span className="targa" title={tooltip || undefined}>
-                          {r.targa}
-                        </span>
-                        <span className="search-meta">
-                          {r.autistaNome ? `Autista: ${r.autistaNome}` : "Autista: -"}
-                        </span>
-                      </div>
-                      <span className="row-arrow">-&gt;</span>
-                    </Link>
-                  );
-                })
-              )}
-            </div>
-            <div className="badge-search">
-              <div className="badge-search-label">Cerca badge</div>
-              <div className="badge-search-form">
-                <div className="badge-search-field">
-                  <input
-                    className="badge-search-input"
-                    type="text"
-                    placeholder="Inserisci badge"
-                    value={badgeQuery}
-                    onChange={(e) => setBadgeQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAutistaSearch();
-                      }
-                    }}
-                  />
+          <div className="home-grid">
+            <section className="home-span2">
+              <section className="panel panel-search home-card home-full" style={{ animationDelay: "40ms" }}>
+                <div className="panel-head home-card__head">
+                  <div>
+                    <h2 className="home-card__title">Ricerca 360</h2>
+                    <span className="home-card__subtitle">
+                      Cerca targa o autista e apri la Vista Mezzo 360
+                    </span>
+                  </div>
                 </div>
-                <div className="badge-search-field" ref={nameSuggestRef}>
-                  <input
-                    className="badge-search-input"
-                    type="text"
-                    placeholder="Nome autista..."
-                    value={nameQuery}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    onFocus={() => {
-                      if (nameQueryKey.length >= 2) setNameSuggestOpen(true);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        setNameSuggestOpen(false);
-                        return;
-                      }
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAutistaSearch();
-                      }
-                    }}
-                  />
-                  {showNameSuggestions ? (
-                    <div className="badge-suggest">
-                      {nameSuggestions.map((suggestion) => (
-                        <button
-                          key={`${suggestion.name}-${suggestion.badge || "no-badge"}`}
-                          type="button"
-                          className="badge-suggest-item"
-                          onClick={() => handleNameSuggestion(suggestion)}
-                        >
-                          <div className="badge-suggest-main">
-                            <span className="badge-suggest-name">{suggestion.name}</span>
-                            <span className="badge-suggest-meta">
-                              {suggestion.badge ? `Badge ${suggestion.badge}` : "Badge -"}
-                            </span>
-                            {suggestion.targa ? (
-                              <span className="badge-suggest-meta">
-                                Targa {suggestion.targa}
+                <div className="home-card__body">
+                  <div className="search-field">
+                    <input
+                      className="search-input"
+                      type="text"
+                      placeholder="Cerca targa o autista"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <div className="search-results">
+                    {loading ? (
+                      <div className="search-empty">Caricamento dati...</div>
+                    ) : !searchQuery.trim() ? (
+                      <div className="search-empty">Digita per cercare</div>
+                    ) : searchResults.length === 0 ? (
+                      <div className="search-empty">Nessun risultato</div>
+                    ) : (
+                      searchResults.map((r, idx) => {
+                        const tooltip = getTargaTooltip(r.targa);
+                        return (
+                          <Link
+                            key={`${r.targa}-${idx}`}
+                            to={`/mezzo-360/${encodeURIComponent(r.targa)}`}
+                            className="search-item"
+                          >
+                            <div className="search-item-main">
+                              <span className="targa" title={tooltip || undefined}>
+                                {r.targa}
                               </span>
+                              <span className="search-meta">
+                                {r.autistaNome ? `Autista: ${r.autistaNome}` : "Autista: -"}
+                              </span>
+                            </div>
+                            <span className="row-arrow">-&gt;</span>
+                          </Link>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="badge-search">
+                    <div className="badge-search-label">Cerca badge</div>
+                    <div className="badge-search-form">
+                      <div className="homeBadgeRowGrid">
+                        <div className="badge-search-field homeBadgeCol">
+                          <input
+                            className="badge-search-input"
+                            type="text"
+                            placeholder="Inserisci badge"
+                            value={badgeQuery}
+                            onChange={(e) => setBadgeQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAutistaSearch();
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="badge-search-field homeNomeCol">
+                          <div className="homeSuggestWrap" ref={nameSuggestRef}>
+                            <input
+                              className="badge-search-input"
+                              type="text"
+                              placeholder="Nome autista..."
+                              value={nameQuery}
+                              onChange={(e) => handleNameChange(e.target.value)}
+                              onFocus={() => {
+                                if (nameQueryKey.length >= 2) setNameSuggestOpen(true);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  setNameSuggestOpen(false);
+                                  return;
+                                }
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAutistaSearch();
+                                }
+                              }}
+                            />
+                            {showNameSuggestions ? (
+                              <div className="badge-suggest homeSuggestList">
+                                {nameSuggestions.map((suggestion) => (
+                                  <button
+                                    key={`${suggestion.name}-${suggestion.badge || "no-badge"}`}
+                                    type="button"
+                                    className="badge-suggest-item"
+                                    onClick={() => handleNameSuggestion(suggestion)}
+                                  >
+                                    <div className="badge-suggest-main">
+                                      <span className="badge-suggest-name">{suggestion.name}</span>
+                                      <span className="badge-suggest-meta">
+                                        {suggestion.badge ? `Badge ${suggestion.badge}` : "Badge -"}
+                                      </span>
+                                      {suggestion.targa ? (
+                                        <span className="badge-suggest-meta">
+                                          Targa {suggestion.targa}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
                             ) : null}
                           </div>
-                        </button>
-                      ))}
+                        </div>
+                        <div className="homeApriCol">
+                          <button
+                            type="button"
+                            className="badge-search-button"
+                            onClick={handleAutistaSearch}
+                          >
+                            Apri
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  ) : null}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="badge-search-button"
-                  onClick={handleAutistaSearch}
-                >
-                  Apri
-                </button>
-              </div>
-            </div>
-          </section>
+              </section>
+            </section>
+            <div className="home-col">
+                <section className="panel panel-alerts home-card" style={{ animationDelay: "20ms" }}>
+                  <div className="panel-head home-card__head">
+                    <div>
+                      <h2 className="home-card__title">ALERT</h2>
+                      <span className="home-card__subtitle">
+                        Revisioni, segnalazioni non lette, conflitti agganci e dati mancanti
+                      </span>
+                    </div>
+                  </div>
+                  <div className="panel-body alerts-list home-card__body">
+                    {loading || !alertsState ? (
+                      <div className="panel-row panel-row-empty">Caricamento alert...</div>
+                    ) : visibleAlerts.length === 0 && !missingAlertVisible ? (
+                      <div className="panel-row panel-row-empty">Nessun alert attivo</div>
+                    ) : (
+                      <>
+                        {missingAlertVisible ? (
+                          <div className="alert-row alert-warning alert-missing">
+                            <div className="alert-main">
+                              <div className="alert-title">
+                                <span className="alert-title-text">Dati mancanti nel Dossier</span>
+                                <span className="status deadline-medium">ATTENZIONE</span>
+                              </div>
+                              <div className="alert-detail">
+                                Alcuni mezzi hanno dati incompleti: completa per evitare problemi nel dossier.
+                              </div>
+                            </div>
+                            <div className="alert-actions">
+                              <button
+                                type="button"
+                                className="alert-action"
+                                onClick={handleMissingIgnore}
+                              >
+                                Ignora
+                              </button>
+                              <button
+                                type="button"
+                                className="alert-action"
+                                onClick={handleMissingLater}
+                              >
+                                In seguito
+                              </button>
+                              <button
+                                type="button"
+                                className="alert-action primary"
+                                onClick={handleMissingNow}
+                              >
+                                Adesso
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                        {visibleAlerts.map((alert) => {
+                          const badgeClass =
+                            alert.severity === "danger"
+                              ? "deadline-danger"
+                              : alert.severity === "warning"
+                              ? "deadline-medium"
+                              : "deadline-low";
+                          const badgeLabel =
+                            alert.severity === "danger"
+                              ? "URGENTE"
+                              : alert.severity === "warning"
+                              ? "ATTENZIONE"
+                              : "INFO";
+                          return (
+                            <div
+                              key={alert.id}
+                              className={`alert-row alert-${alert.severity}`}
+                            >
+                              <div className="alert-main">
+                                <div className="alert-title">
+                                  <span className="alert-title-text">{alert.title}</span>
+                                  <span className={`status ${badgeClass}`}>{badgeLabel}</span>
+                                </div>
+                                <div className="alert-detail">{alert.detail}</div>
+                              </div>
+                              <div className="alert-actions">
+                                <button
+                                  type="button"
+                                  className="alert-action"
+                                  onClick={() => handleAlertAction(alert, "snooze_1d")}
+                                >
+                                  Ignora
+                                </button>
+                                <button
+                                  type="button"
+                                  className="alert-action"
+                                  onClick={() => handleAlertAction(alert, "snooze_3d")}
+                                >
+                                  In seguito
+                                </button>
+                                <button
+                                  type="button"
+                                  className="alert-action primary"
+                                  onClick={() => handleAlertAction(alert, "ack")}
+                                >
+                                  Letto
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                </section>
 
-          <section className="panel panel-rimorchi" style={{ animationDelay: "60ms" }}>
-            <div className="panel-head">
+                <section className="panel panel-sessioni home-card" style={{ animationDelay: "120ms" }}>
+                  <div className="panel-head home-card__head">
+                    <div>
+                      <h2 className="home-card__title">Sessioni attive</h2>
+                      <span className="home-card__subtitle">Ultime 6 sessioni live</span>
+                    </div>
+                  </div>
+                  <div className="panel-body home-card__body">
+                    {loading ? (
+                      <div className="panel-row panel-row-empty">
+                        Caricamento dati...
+                      </div>
+                    ) : sessioniAttive.length === 0 ? (
+                      <div className="panel-row panel-row-empty">
+                        Nessuna sessione attiva
+                      </div>
+                    ) : (
+                      sessioniAttive.map((s, idx) => {
+                        const motrice = fmtTarga(s.targaMotrice);
+                        const rimorchio = fmtTarga(s.targaRimorchio);
+                        const badgeValue = String(s.badgeAutista || "").trim();
+                        const profilePath = badgeValue
+                          ? `/autista-360/${encodeURIComponent(badgeValue)}`
+                          : "";
+                        return (
+                          <div
+                            key={`${s.badgeAutista || "s"}-${idx}`}
+                            className="panel-row panel-row-link"
+                            role="link"
+                            tabIndex={0}
+                            onClick={() => navigate("/autisti-inbox")}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                navigate("/autisti-inbox");
+                              }
+                            }}
+                          >
+                            <div className="row-main">
+                              <div className="row-title">
+                                <span>{s.nomeAutista || "Autista"}</span>
+                                <span className="badge">badge {s.badgeAutista || "-"}</span>
+                                {badgeValue ? (
+                                  <button
+                                    type="button"
+                                    className="session-profile-link"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      navigate(profilePath);
+                                    }}
+                                  >
+                                    Profilo
+                                  </button>
+                                ) : null}
+                              </div>
+                              <div className="row-meta">
+                                <span className="label">Motrice:</span>{" "}
+                                <span className="targa" title={getTargaTooltip(motrice) || undefined}>
+                                  {motrice || "-"}
+                                </span>{" "}
+                                <span className="label">Rimorchio:</span>{" "}
+                                <span className="targa" title={getTargaTooltip(rimorchio) || undefined}>
+                                  {rimorchio || "-"}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="row-arrow">-&gt;</span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              </div>
+              <div className="home-col">
+                <section className="panel panel-revisioni home-card" style={{ animationDelay: "180ms" }}>
+                  <div className="panel-head home-card__head">
+                    <div>
+                      <h2 className="home-card__title">Revisioni</h2>
+                      <span className="home-card__subtitle">
+                        Allarmi basati su immatricolazione e ultimo collaudo
+                      </span>
+                    </div>
+                  </div>
+                  <div className="home-card__body">
+                    <div className="panel-stats">
+                      <div className="stat-chip">
+                        <span className="stat-label">Scadute</span>
+                        <span className="stat-value">{revCounts.scadute}</span>
+                      </div>
+                      <div className="stat-chip">
+                        <span className="stat-label">In scadenza</span>
+                        <span className="stat-value">{revCounts.inScadenza}</span>
+                      </div>
+                    </div>
+                    <div className="panel-body">
+                    {loading ? (
+                      <div className="panel-row panel-row-empty">
+                        Caricamento dati...
+                      </div>
+                    ) : revisioniUrgenti.length === 0 ? (
+                      <div className="panel-row panel-row-empty">
+                        Nessuna revisione imminente
+                      </div>
+                    ) : (
+                      revisioniUrgenti.map((r, idx) => {
+                        const tooltip = getTargaTooltip(r.targa);
+                        const giorniLabel =
+                          r.giorni === null
+                            ? "-"
+                            : `${r.giorni > 0 ? "+" : ""}${r.giorni}g`;
+                        const dossierPath = r.targa
+                          ? `/dossiermezzi/${encodeURIComponent(r.targa)}`
+                          : "/dossiermezzi";
+                        const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
+                        const prenotazione = mezzo?.prenotazioneCollaudo ?? null;
+                        const prenData = prenotazione?.data ? String(prenotazione.data).trim() : "";
+                        const prenDate = prenData ? parseDateFlexible(prenData) : null;
+                        const prenDateLabel = prenDate ? formatDateForDisplay(prenDate) : prenData;
+                        const prenOra = prenotazione?.ora ? String(prenotazione.ora).trim() : "";
+                        const prenLuogo = prenotazione?.luogo ? normalizeFreeText(prenotazione.luogo) : "";
+                        const prenNote = prenotazione?.note ? normalizeFreeText(prenotazione.note) : "";
+                        const prenLuogoShort = prenLuogo ? truncateText(prenLuogo, 40) : "";
+                        const prenNoteShort = prenNote ? truncateText(prenNote, 70) : "";
+                        const prenSummary = prenotazione
+                          ? `${prenDateLabel}${prenOra ? ` ${prenOra}` : ""}${
+                              prenLuogoShort ? ` ƒ?" ${prenLuogoShort}` : ""
+                            }`
+                          : "";
+                        const showMissingDanger = !prenotazione && r.giorni !== null && (r.giorni ?? 0) <= 30;
+                        const scadenzaExtra =
+                          r.giorni === null ? "" : ` (${formatGiorniLabel(r.giorni)})`;
+                        const canEditPrenotazione = Boolean(r.targa);
+                        return (
+                          <div
+                            key={r.targa || `rev-${idx}`}
+                            className="panel-row panel-row-link"
+                            role="link"
+                            tabIndex={0}
+                            onClick={() => navigate(dossierPath)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                navigate(dossierPath);
+                              }
+                            }}
+                          >
+                            <div className="row-main">
+                              <div className="row-title">
+                                <span className="targa" title={tooltip || undefined}>
+                                  {r.targa || "-"}
+                                </span>
+                                <span className={`status ${r.classe}`}>{giorniLabel}</span>
+                              </div>
+                              <div className="row-meta row-meta-stack">
+                                <div className="row-meta-line">
+                                  <span>
+                                    Scadenza {formatDateForDisplay(r.scadenza)}
+                                    {scadenzaExtra}{" "}
+                                    {r.marca || r.modello
+                                      ? `- ${r.marca} ${r.modello}`.trim()
+                                      : ""}
+                                  </span>
+                                </div>
+                                <div className="row-meta-line row-meta-booking">
+                                  <span className="label">Prenotazione collaudo:</span>
+                                  {prenotazione ? (
+                                    <span className="booking-value">
+                                      {prenSummary}
+                                      {prenNoteShort ? (
+                                        <span className="booking-note"> ƒ?" {prenNoteShort}</span>
+                                      ) : null}
+                                    </span>
+                                  ) : (
+                                    <span className={`booking-missing ${showMissingDanger ? "danger" : ""}`}>
+                                      NON PRENOTATO
+                                    </span>
+                                  )}
+                                  {canEditPrenotazione ? (
+                                    <span className="booking-actions">
+                                      {prenotazione ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="booking-action"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              openPrenotazioneModal(r.targa as string, prenotazione);
+                                            }}
+                                          >
+                                            MODIFICA
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="booking-action danger"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              handlePrenotazioneDelete(r.targa as string);
+                                            }}
+                                          >
+                                            CANCELLA
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="booking-action primary"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openPrenotazioneModal(r.targa as string, null);
+                                          }}
+                                        >
+                                          PRENOTA
+                                        </button>
+                                      )}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                            <span className="row-arrow">-&gt;</span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  </div>
+                </section>
+              </div>
+            <div className="home-col">
+                <section className="panel panel-rimorchi home-card" style={{ animationDelay: "60ms" }}>
+            <div className="panel-head home-card__head">
               <div>
-                <h2>Rimorchi: dove sono</h2>
-                <span>Ultimo luogo da storico eventi</span>
+                <h2 className="home-card__title">Rimorchi: dove sono</h2>
+                <span className="home-card__subtitle">Ultimo luogo da storico eventi</span>
               </div>
             </div>
-            <div className="panel-body">
+            <div className="panel-body home-card__body">
               {loading ? (
                 <div className="panel-row panel-row-empty">
                   Caricamento dati...
                 </div>
-              ) : rimorchi.length === 0 ? (
+              ) : rimorchiDaMostrare.length === 0 ? (
                 <div className="panel-row panel-row-empty">
                   Nessun rimorchio trovato
                 </div>
               ) : (
-                rimorchi.slice(0, 6).map((r, idx) => {
+                rimorchiDaMostrare.map((r, idx) => {
                   const tooltip = getTargaTooltip(r.targa);
+                  const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
+                  const labelMarca = mezzo?.marca ? String(mezzo.marca).trim() : "";
+                  const labelModello = mezzo?.modello ? String(mezzo.modello).trim() : "";
+                  const rimorchioLabel = [labelMarca, labelModello].filter(Boolean).join(" ");
+                  const isEditing = rimorchioEdit?.targa === r.targa;
+                  const canEdit = !r.inUso;
+
+                  if (isEditing) {
+                    return (
+                      <div
+                        key={r.targa || `rim-${idx}`}
+                        className="panel-row panel-row-edit"
+                      >
+                      <div className="row-main">
+                        <div className="row-title rimorchi-title">
+                          <span className="targa" title={tooltip || undefined}>
+                            {r.targa || "-"}
+                          </span>
+                          {rimorchioLabel ? (
+                            <span className="rimorchi-model">— {rimorchioLabel}</span>
+                          ) : null}
+                          <span className={`status ${r.inUso ? "in-uso" : "sganciato"}`}>
+                            {r.inUso ? "IN USO" : r.statusLabel}
+                          </span>
+                        </div>
+                          <div className="rimorchi-edit">
+                            <input
+                              className="rimorchi-edit-input"
+                              value={rimorchioEdit?.luogo ?? ""}
+                              onChange={(event) =>
+                                setRimorchioEdit((prev) =>
+                                  prev ? { ...prev, luogo: event.target.value } : prev
+                                )
+                              }
+                              placeholder="Inserisci luogo..."
+                            />
+                            <div className="rimorchi-edit-actions">
+                              <button
+                                type="button"
+                                className="rimorchi-edit-btn"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  cancelRimorchioEdit();
+                                }}
+                              >
+                                Annulla
+                              </button>
+                              <button
+                                type="button"
+                                className="rimorchi-edit-btn primary"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void saveRimorchioEdit();
+                                }}
+                              >
+                                Salva
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <Link
                       key={r.targa || `rim-${idx}`}
@@ -1700,15 +2223,33 @@ function Home() {
                       className="panel-row"
                     >
                       <div className="row-main">
-                        <div className="row-title">
+                        <div className="row-title rimorchi-title">
                           <span className="targa" title={tooltip || undefined}>
                             {r.targa || "-"}
                           </span>
+                          {rimorchioLabel ? (
+                            <span className="rimorchi-model">— {rimorchioLabel}</span>
+                          ) : null}
                           <span className={`status ${r.inUso ? "in-uso" : "sganciato"}`}>
-                            {r.inUso ? "IN USO" : "SGANCIATO"}
+                            {r.inUso ? "IN USO" : r.statusLabel}
                           </span>
                         </div>
-                        <div className="row-meta">{r.luogo}</div>
+                        <div className="row-meta">
+                          <span className="rimorchi-luogo">{r.luogo}</span>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              className="rimorchi-edit-btn"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                startRimorchioEdit(r);
+                              }}
+                            >
+                              Modifica
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                       <span className="row-arrow">-&gt;</span>
                     </Link>
@@ -1716,100 +2257,158 @@ function Home() {
                 })
               )}
             </div>
-          </section>
-
-          <section className="panel panel-sessioni" style={{ animationDelay: "120ms" }}>
-            <div className="panel-head">
+                </section>
+              </div>
+              <div className="home-col">
+                <section className="panel panel-motrici home-card" style={{ animationDelay: "90ms" }}>
+            <div className="panel-head home-card__head">
               <div>
-                <h2>Sessioni attive</h2>
-                <span>Ultime 6 sessioni live</span>
+                <h2 className="home-card__title">Motrici e trattori: dove sono</h2>
+                <span className="home-card__subtitle">Ultimo luogo da storico eventi</span>
               </div>
             </div>
-            <div className="panel-body">
+            <div className="panel-body home-card__body">
               {loading ? (
                 <div className="panel-row panel-row-empty">
                   Caricamento dati...
                 </div>
-              ) : sessioniAttive.length === 0 ? (
+              ) : motriciTrattoriDaMostrare.length === 0 ? (
                 <div className="panel-row panel-row-empty">
-                  Nessuna sessione attiva
+                  Nessun mezzo trovato
                 </div>
               ) : (
-                sessioniAttive.map((s, idx) => {
-                  const motrice = fmtTarga(s.targaMotrice);
-                  const rimorchio = fmtTarga(s.targaRimorchio);
-                  const badgeValue = String(s.badgeAutista || "").trim();
-                  const profilePath = badgeValue
-                    ? `/autista-360/${encodeURIComponent(badgeValue)}`
-                    : "";
+                motriciTrattoriDaMostrare.map((r, idx) => {
+                  const tooltip = getTargaTooltip(r.targa);
+                  const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
+                  const labelMarca = mezzo?.marca ? String(mezzo.marca).trim() : "";
+                  const labelModello = mezzo?.modello ? String(mezzo.modello).trim() : "";
+                  const mezzoLabel = [labelMarca, labelModello].filter(Boolean).join(" ");
+                  const isEditing = rimorchioEdit?.targa === r.targa;
+                  const canEdit = !r.inUso;
+
+                  if (isEditing) {
+                    return (
+                      <div
+                        key={r.targa || `mot-${idx}`}
+                        className="panel-row panel-row-edit"
+                      >
+                        <div className="row-main">
+                          <div className="row-title rimorchi-title">
+                            <span className="targa" title={tooltip || undefined}>
+                              {r.targa || "-"}
+                            </span>
+                            {mezzoLabel ? (
+                              <span className="rimorchi-model">— {mezzoLabel}</span>
+                            ) : null}
+                            <span className={`status ${r.inUso ? "in-uso" : "sganciato"}`}>
+                              {r.inUso ? "IN USO" : r.statusLabel}
+                            </span>
+                          </div>
+                          <div className="rimorchi-edit">
+                            <input
+                              className="rimorchi-edit-input"
+                              value={rimorchioEdit?.luogo ?? ""}
+                              onChange={(event) =>
+                                setRimorchioEdit((prev) =>
+                                  prev ? { ...prev, luogo: event.target.value } : prev
+                                )
+                              }
+                              placeholder="Inserisci luogo..."
+                            />
+                            <div className="rimorchi-edit-actions">
+                              <button
+                                type="button"
+                                className="rimorchi-edit-btn"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  cancelRimorchioEdit();
+                                }}
+                              >
+                                Annulla
+                              </button>
+                              <button
+                                type="button"
+                                className="rimorchi-edit-btn primary"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void saveRimorchioEdit();
+                                }}
+                              >
+                                Salva
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div
-                      key={`${s.badgeAutista || "s"}-${idx}`}
-                      className="panel-row panel-row-link"
-                      role="link"
-                      tabIndex={0}
-                      onClick={() => navigate("/autisti-inbox")}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          navigate("/autisti-inbox");
-                        }
-                      }}
+                    <Link
+                      key={r.targa || `mot-${idx}`}
+                      to="/autisti-admin"
+                      className="panel-row"
                     >
                       <div className="row-main">
-                        <div className="row-title">
-                          <span>{s.nomeAutista || "Autista"}</span>
-                          <span className="badge">badge {s.badgeAutista || "-"}</span>
-                          {badgeValue ? (
+                        <div className="row-title rimorchi-title">
+                          <span className="targa" title={tooltip || undefined}>
+                            {r.targa || "-"}
+                          </span>
+                          {mezzoLabel ? (
+                            <span className="rimorchi-model">— {mezzoLabel}</span>
+                          ) : null}
+                          <span className={`status ${r.inUso ? "in-uso" : "sganciato"}`}>
+                            {r.inUso ? "IN USO" : r.statusLabel}
+                          </span>
+                        </div>
+                        <div className="row-meta">
+                          <span className="rimorchi-luogo">{r.luogo}</span>
+                          {canEdit ? (
                             <button
                               type="button"
-                              className="session-profile-link"
+                              className="rimorchi-edit-btn"
                               onClick={(event) => {
+                                event.preventDefault();
                                 event.stopPropagation();
-                                navigate(profilePath);
+                                startRimorchioEdit(r);
                               }}
                             >
-                              Profilo
+                              Modifica
                             </button>
                           ) : null}
                         </div>
-                        <div className="row-meta">
-                          <span className="label">Motrice:</span>{" "}
-                          <span className="targa" title={getTargaTooltip(motrice) || undefined}>
-                            {motrice || "-"}
-                          </span>{" "}
-                          <span className="label">Rimorchio:</span>{" "}
-                          <span className="targa" title={getTargaTooltip(rimorchio) || undefined}>
-                            {rimorchio || "-"}
-                          </span>
-                        </div>
                       </div>
                       <span className="row-arrow">-&gt;</span>
-                    </div>
+                    </Link>
                   );
                 })
               )}
             </div>
-          </section>
+                </section>
+              </div>
 
-          <section className="panel panel-revisioni" style={{ animationDelay: "180ms" }}>
-            <div className="panel-head">
+          {/*
+          <section className="panel panel-revisioni home-card" style={{ animationDelay: "180ms" }}>
+            <div className="panel-head home-card__head">
               <div>
-                <h2>Revisioni</h2>
-                <span>Allarmi basati su immatricolazione e ultimo collaudo</span>
+                <h2 className="home-card__title">Revisioni</h2>
+                <span className="home-card__subtitle">
+                  Allarmi basati su immatricolazione e ultimo collaudo
+                </span>
               </div>
             </div>
-            <div className="panel-stats">
-              <div className="stat-chip">
-                <span className="stat-label">Scadute</span>
-                <span className="stat-value">{revCounts.scadute}</span>
+            <div className="home-card__body">
+              <div className="panel-stats">
+                <div className="stat-chip">
+                  <span className="stat-label">Scadute</span>
+                  <span className="stat-value">{revCounts.scadute}</span>
+                </div>
+                <div className="stat-chip">
+                  <span className="stat-label">In scadenza</span>
+                  <span className="stat-value">{revCounts.inScadenza}</span>
+                </div>
               </div>
-              <div className="stat-chip">
-                <span className="stat-label">In scadenza</span>
-                <span className="stat-value">{revCounts.inScadenza}</span>
-              </div>
-            </div>
-            <div className="panel-body">
+              <div className="panel-body">
               {loading ? (
                 <div className="panel-row panel-row-empty">
                   Caricamento dati...
@@ -1940,97 +2539,115 @@ function Home() {
                 })
               )}
             </div>
+            </div>
           </section>
+          */}
 
-          <section className="panel panel-quick" style={{ animationDelay: "240ms" }}>
-            <div className="panel-head">
+            <section className="home-span2">
+              <section className="panel panel-quick home-card home-full" style={{ animationDelay: "240ms" }}>
+            <div className="panel-head home-card__head">
               <div>
-                <h2>Collegamenti rapidi</h2>
-                <span>Tutte le sezioni in un click</span>
+                <h2 className="home-card__title">Collegamenti rapidi</h2>
+                <span className="home-card__subtitle">Tutte le sezioni in un click</span>
               </div>
             </div>
-            <div className="quick-toolbar">
-              <input
-                className="quick-search-input"
-                value={quickSearch}
-                onChange={(e) => setQuickSearch(e.target.value)}
-                placeholder="Cerca sezione..."
-                aria-label="Cerca sezione"
-              />
-            </div>
-            {quickSearchActive ? (
-              <div className="quick-search-results">
-                {quickSearchResults.length > 0 ? (
-                  <div className="quick-grid quick-search-grid">
-                    {quickSearchResults.map(renderQuickLink)}
-                  </div>
-                ) : (
-                  <div className="quick-empty">Nessun risultato</div>
-                )}
+            <div className="home-card__body">
+              <div className="quick-toolbar">
+                <input
+                  className="quick-search-input"
+                  value={quickSearch}
+                  onChange={(e) => setQuickSearch(e.target.value)}
+                  placeholder="Cerca sezione..."
+                  aria-label="Cerca sezione"
+                />
               </div>
-            ) : (
-              <div className="quick-sections">
-                <div className="quick-section quick-favorites">
-                  <div className="quick-title">Preferiti</div>
-                  <div className="quick-grid quick-favorites-grid">
-                    {quickFavorites.map(renderQuickLink)}
-                  </div>
+              {quickSearchActive ? (
+                <div className="quick-search-results">
+                  {quickSearchResults.length > 0 ? (
+                    <div className="quick-grid quick-search-grid">
+                      {quickSearchResults.map(renderQuickLink)}
+                    </div>
+                  ) : (
+                    <div className="quick-empty">Nessun risultato</div>
+                  )}
                 </div>
+              ) : (
+                <div className="quick-sections">
+                  <div className="quick-section quick-favorites">
+                    <div className="quick-title">
+                      <span>Preferiti</span>
+                      <span className="quick-pill quick-pill-favorites">TOP 6</span>
+                    </div>
+                    <div className="quick-grid quick-favorites-grid">
+                      {quickFavorites.map(renderQuickLink)}
+                    </div>
+                  </div>
 
-                <div className="quick-accordion">
-                  {quickCategories.map((section) => {
-                    const isOpen = quickSectionsOpen[section.id];
-                    const isExpanded = quickSectionsExpanded[section.id];
-                    const visibleLinks = isExpanded
-                      ? section.links
-                      : section.links.slice(0, 4);
-                    const hasMore = section.links.length > 4;
-                    return (
-                      <div key={section.id} className="quick-accordion-item">
-                        <button
-                          type="button"
-                          className="quick-accordion-toggle"
-                          onClick={() => toggleQuickSectionOpen(section.id)}
-                          aria-expanded={isOpen}
-                        >
-                          <span className="quick-accordion-title">{section.title}</span>
-                          <span className="quick-accordion-meta">
-                            {section.links.length}
-                          </span>
-                          <span className={`quick-accordion-arrow ${isOpen ? "open" : ""}`}>
-                            &gt;
-                          </span>
-                        </button>
-                        {isOpen ? (
-                          <div className="quick-accordion-body">
-                            <div className="quick-grid quick-category-grid">
-                              {visibleLinks.map(renderQuickLink)}
+                  <div className="quick-accordion">
+                    {quickCategories.map((section) => {
+                      const isOpen = quickSectionsOpen[section.id];
+                      const isExpanded = quickSectionsExpanded[section.id];
+                      const visibleLinks = isExpanded
+                        ? section.links
+                        : section.links.slice(0, 4);
+                      const hasMore = section.links.length > 4;
+                      return (
+                        <div key={section.id} className="quick-accordion-item">
+                          <button
+                            type="button"
+                            className="quick-accordion-toggle"
+                            onClick={() => toggleQuickSectionOpen(section.id)}
+                            aria-expanded={isOpen}
+                          >
+                            <span className="quick-accordion-title">
+                              <span>{section.title}</span>
+                              <span className={`quick-pill quick-pill-${section.id}`}>
+                                {quickSectionPills[section.id]}
+                              </span>
+                            </span>
+                            <span className="quick-accordion-meta">
+                              {section.links.length}
+                            </span>
+                            <span className={`quick-accordion-arrow ${isOpen ? "open" : ""}`}>
+                              &gt;
+                            </span>
+                          </button>
+                          {isOpen ? (
+                            <div className="quick-accordion-body">
+                              <div className="quick-grid quick-category-grid">
+                                {visibleLinks.map(renderQuickLink)}
+                              </div>
+                              {hasMore ? (
+                                <button
+                                  type="button"
+                                  className="quick-more-btn"
+                                  onClick={() => toggleQuickSectionExpanded(section.id)}
+                                >
+                                  {isExpanded ? "Mostra meno" : "Mostra tutti"}
+                                </button>
+                              ) : null}
                             </div>
-                            {hasMore ? (
-                              <button
-                                type="button"
-                                className="quick-more-btn"
-                                onClick={() => toggleQuickSectionExpanded(section.id)}
-                              >
-                                {isExpanded ? "Mostra meno" : "Mostra tutti"}
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
 
-                <div className="quick-section quick-anagrafiche">
-                  <div className="quick-title">Anagrafiche</div>
-                  <div className="quick-grid quick-anagrafiche-grid">
-                    {QUICK_LINKS_ANAGRAFICHE.map(renderQuickLink)}
+                  <div className="quick-section quick-anagrafiche">
+                    <div className="quick-title">
+                      <span>Anagrafiche</span>
+                      <span className="quick-pill quick-pill-anagrafiche">ANAGRAFICHE</span>
+                    </div>
+                    <div className="quick-grid quick-anagrafiche-grid">
+                      {QUICK_LINKS_ANAGRAFICHE.map(renderQuickLink)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </section>
+        </section>
+          </div>
         </div>
       </div>
 

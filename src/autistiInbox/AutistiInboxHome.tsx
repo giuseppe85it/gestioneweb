@@ -2,8 +2,8 @@
 import { useNavigate } from "react-router-dom";
 import "./AutistiInboxHome.css";
 
-import { loadActiveSessions, loadHomeEvents, loadRimorchiStatus } from "../utils/homeEvents";
-import type { ActiveSession, HomeEvent, RimorchioStatus } from "../utils/homeEvents";
+import { loadActiveSessions, loadHomeEvents } from "../utils/homeEvents";
+import type { ActiveSession, HomeEvent } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import {
   generateCambioMezzoPDF,
@@ -58,7 +58,6 @@ useEffect(() => {
 
   const [day, setDay] = useState<Date>(new Date());
   const [events, setEvents] = useState<HomeEvent[]>([]);
-  const [rimorchi, setRimorchi] = useState<RimorchioStatus[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [modal, setModal] = useState<ModalKind>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("rifornimenti");
@@ -80,10 +79,10 @@ useEffect(() => {
   const controlliRef = useRef<HTMLDivElement | null>(null);
   const cambiRef = useRef<HTMLDivElement | null>(null);
   const attrezzatureRef = useRef<HTMLDivElement | null>(null);
+  const datePickerRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     loadHomeEvents(day).then(setEvents);
-    loadRimorchiStatus().then(setRimorchi);
     loadActiveSessions().then(setActiveSessions).catch(() => setActiveSessions([]));
   }, [day]);
 
@@ -328,6 +327,33 @@ useEffect(() => {
 
   function todayYmd() {
     return new Date().toISOString().substring(0, 10);
+  }
+
+  function formatDateInputValue(value: Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const dayValue = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${dayValue}`;
+  }
+
+  function openDatePicker() {
+    const input = datePickerRef.current;
+    if (!input) return;
+    const picker = (input as HTMLInputElement & { showPicker?: () => void }).showPicker;
+    if (picker) {
+      picker.call(input);
+    } else {
+      input.click();
+    }
+  }
+
+  function handleDatePickerChange(value: string) {
+    if (!value) return;
+    const [year, month, dayValue] = value.split("-").map(Number);
+    if (!year || !month || !dayValue) return;
+    const next = new Date(year, month - 1, dayValue);
+    if (Number.isNaN(next.getTime())) return;
+    setDay(next);
   }
 
   function genId() {
@@ -1013,14 +1039,30 @@ useEffect(() => {
             {"<"}
           </button>
 
-          <span>
-            {day.toLocaleDateString("it-IT", {
-              weekday: "long",
-              day: "2-digit",
-              month: "long",
-              year: "numeric",
-            })}
-          </span>
+          <div className="autisti-date-picker">
+            <button
+              type="button"
+              className="autisti-date-label"
+              onClick={openDatePicker}
+              aria-label="Seleziona data"
+            >
+              {day.toLocaleDateString("it-IT", {
+                weekday: "long",
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              })}
+            </button>
+            <input
+              ref={datePickerRef}
+              className="autisti-date-input"
+              type="date"
+              value={formatDateInputValue(day)}
+              onChange={(e) => handleDatePickerChange(e.target.value)}
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+          </div>
 
           <button onClick={() => setDay(new Date(day.getTime() + 86400000))}>
             {">"}
@@ -1292,35 +1334,6 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* STATO RIMORCHI */}
-          <aside className="rimorchi-panel">
-            <h2>Stato rimorchi</h2>
-
-            {rimorchi.length === 0 ? (
-              <div className="rimorchio-row">Nessun rimorchio</div>
-            ) : (
-              rimorchi.map((r, index) => (
-                <div
-                  key={`${r.targa}-${r.stato}-${r.motrice ?? ""}-${index}`}
-                  className="rimorchio-row"
-                  data-stato={r.stato}
-                >
-                  <strong>{r.targa}</strong>
-                  <div>{r.stato}</div>
-
-                  {r.stato === "LIBERO" && <div>{r.luogo ?? "-"}</div>}
-
-                  {r.stato === "AGGANCIATO" && (
-                    <>
-                      <small>{r.autista ?? "-"}</small>
-                      {r.motrice ? <small>Motrice: {r.motrice}</small> : null}
-                      {r.statoCarico ? <small>Carico: {r.statoCarico}</small> : null}
-                    </>
-                  )}
-                </div>
-              ))
-            )}
-          </aside>
         </div>
 
         {/* MODALE */}

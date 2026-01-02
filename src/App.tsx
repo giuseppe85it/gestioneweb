@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { auth } from "./firebase";
 
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Outlet } from "react-router-dom";
 import "./App.css";
 
 /* ==================== APP PRINCIPALE ==================== */
@@ -81,78 +81,76 @@ function App() {
   return (
     <Routes>
       {/* HOME */}
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<div className="app-shell app-shell--homeWide"><Home /></div>} />
 
-      {/* LAVORI */}
-      <Route path="/lavori-da-eseguire" element={<LavoriDaEseguire />} />
-      <Route path="/lavori-eseguiti" element={<LavoriEseguiti />} />
-      <Route path="/lavori-in-attesa" element={<LavoriInAttesa />} />
+      <Route element={<div className="app-shell"><Outlet /></div>}>
+        {/* LAVORI */}
+        <Route path="/lavori-da-eseguire" element={<LavoriDaEseguire />} />
+        <Route path="/lavori-eseguiti" element={<LavoriEseguiti />} />
+        <Route path="/lavori-in-attesa" element={<LavoriInAttesa />} />
 
-      {/* DOSSIER */}
-      <Route path="/dossiermezzi" element={<DossierLista />} />
-      <Route path="/dossiermezzi/:targa" element={<DossierMezzo />} />
-      <Route path="/dossier/:targa" element={<DossierMezzo />} />
-      <Route path="/analisi-economica/:targa" element={<AnalisiEconomica />} />
-      <Route path="/dossier/:targa/gomme" element={<DossierGomme />} />
-      <Route path="/mezzo-360/:targa" element={<Mezzo360 />} />
-      <Route path="/autista-360" element={<Autista360 />} />
-      <Route path="/autista-360/:badge" element={<Autista360 />} />
+        {/* DOSSIER */}
+        <Route path="/dossiermezzi" element={<DossierLista />} />
+        <Route path="/dossiermezzi/:targa" element={<DossierMezzo />} />
+        <Route path="/dossier/:targa" element={<DossierMezzo />} />
+        <Route path="/analisi-economica/:targa" element={<AnalisiEconomica />} />
+        <Route path="/dossier/:targa/gomme" element={<DossierGomme />} />
+        <Route path="/mezzo-360/:targa" element={<Mezzo360 />} />
+        <Route path="/autista-360" element={<Autista360 />} />
+        <Route path="/autista-360/:badge" element={<Autista360 />} />
 
-      {/* MATERIALI */}
-      <Route path="/materiali-da-ordinare" element={<MaterialiDaOrdinare />} />
-      <Route path="/materiali-consegnati" element={<MaterialiConsegnati />} />
-      <Route path="/inventario" element={<Inventario />} />
+        {/* MATERIALI */}
+        <Route path="/materiali-da-ordinare" element={<MaterialiDaOrdinare />} />
+        <Route path="/materiali-consegnati" element={<MaterialiConsegnati />} />
+        <Route path="/inventario" element={<Inventario />} />
 
-      {/* ANAGRAFICHE */}
-      <Route path="/colleghi" element={<Colleghi />} />
-      <Route path="/fornitori" element={<Fornitori />} />
-      <Route path="/mezzi" element={<Mezzi />} />
+        {/* ANAGRAFICHE */}
+        <Route path="/colleghi" element={<Colleghi />} />
+        <Route path="/fornitori" element={<Fornitori />} />
+        <Route path="/mezzi" element={<Mezzi />} />
 
-      {/* MANUTENZIONI */}
-      <Route path="/manutenzioni" element={<Manutenzioni />} />
+        {/* MANUTENZIONI */}
+        <Route path="/manutenzioni" element={<Manutenzioni />} />
 
-      {/* ORDINI */}
-      <Route path="/ordini-arrivati" element={<OrdiniArrivati />} />
-      <Route path="/ordini-in-attesa" element={<OrdiniInAttesa />} />
+        {/* ORDINI */}
+        <Route path="/ordini-arrivati" element={<OrdiniArrivati />} />
+        <Route path="/ordini-in-attesa" element={<OrdiniInAttesa />} />
 
-      {/* ALTRO */}
-     
-     
-      <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
-      <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
-      <Route path="/gestione-operativa" element={<GestioneOperativa />} />
-      <Route path="/attrezzature-cantieri" element={<AttrezzatureCantieri />} />
+        {/* ALTRO */}
+        <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
+        <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
+        <Route path="/gestione-operativa" element={<GestioneOperativa />} />
+        <Route path="/attrezzature-cantieri" element={<AttrezzatureCantieri />} />
 
-      {/* IA */}
-      <Route path="/ia" element={<IAHome />} />
-      <Route path="/ia/apikey" element={<IAApiKey />} />
-      <Route path="/ia/libretto" element={<IALibretto />} />
-      <Route path="/ia/documenti" element={<IADocumenti />} />
+        {/* IA */}
+        <Route path="/ia" element={<IAHome />} />
+        <Route path="/ia/apikey" element={<IAApiKey />} />
+        <Route path="/ia/libretto" element={<IALibretto />} />
+        <Route path="/ia/documenti" element={<IADocumenti />} />
 
-      {/* ==================== APP AUTISTI ==================== */}
-      <Route path="/autisti" element={<AutistiGate />} />
-      <Route path="/autisti/login" element={<LoginAutista />} />
-      <Route path="/autisti/home" element={<HomeAutista />} />
-      <Route path="/autisti/setup-mezzo" element={<SetupMezzo />} />
-<Route path="/autisti/cambio-mezzo" element={<CambioMezzoAutista />} />
-      <Route path="/autisti/rifornimento" element={<Rifornimento />} />
-      <Route path="/autisti/controllo" element={<ControlloMezzo />} />
-      <Route path="/autisti/segnalazioni" element={<Segnalazioni />} />
-<Route path="/autisti/richiesta-attrezzature" element={<RichiestaAttrezzature />} />
+        {/* ==================== APP AUTISTI ==================== */}
+        <Route path="/autisti" element={<AutistiGate />} />
+        <Route path="/autisti/login" element={<LoginAutista />} />
+        <Route path="/autisti/home" element={<HomeAutista />} />
+        <Route path="/autisti/setup-mezzo" element={<SetupMezzo />} />
+        <Route path="/autisti/cambio-mezzo" element={<CambioMezzoAutista />} />
+        <Route path="/autisti/rifornimento" element={<Rifornimento />} />
+        <Route path="/autisti/controllo" element={<ControlloMezzo />} />
+        <Route path="/autisti/segnalazioni" element={<Segnalazioni />} />
+        <Route path="/autisti/richiesta-attrezzature" element={<RichiestaAttrezzature />} />
 
-      {/* ==================== AUTISTI INBOX (ADMIN) ==================== */}
-      <Route path="/autisti-inbox" element={<AutistiInboxHome />} />
-<Route  path="/autisti-inbox/cambio-mezzo"  element={<CambioMezzoInbox />}/>
-<Route path="/autisti-inbox/controlli" element={<AutistiControlliAll />} />
-<Route path="/autisti-inbox/segnalazioni" element={<AutistiSegnalazioniAll />} />
-<Route
-  path="/autisti-inbox/richiesta-attrezzature"
-  element={<RichiestaAttrezzatureAll />}
-/>
-<Route path="/autisti-inbox/gomme" element={<AutistiGommeAll />} />
-<Route path="/autisti-admin" element={<AutistiAdmin />} />
-
-
+        {/* ==================== AUTISTI INBOX (ADMIN) ==================== */}
+        <Route path="/autisti-inbox" element={<AutistiInboxHome />} />
+        <Route path="/autisti-inbox/cambio-mezzo" element={<CambioMezzoInbox />} />
+        <Route path="/autisti-inbox/controlli" element={<AutistiControlliAll />} />
+        <Route path="/autisti-inbox/segnalazioni" element={<AutistiSegnalazioniAll />} />
+        <Route
+          path="/autisti-inbox/richiesta-attrezzature"
+          element={<RichiestaAttrezzatureAll />}
+        />
+        <Route path="/autisti-inbox/gomme" element={<AutistiGommeAll />} />
+        <Route path="/autisti-admin" element={<AutistiAdmin />} />
+      </Route>
     </Routes>
   );
 }

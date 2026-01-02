@@ -116,6 +116,28 @@
   text-transform: capitalize;
 }
 
+.autisti-admin-date-picker{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.autisti-admin-date-label{
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.autisti-admin-date-input{
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .autisti-admin-datebar .nav{
   width: 34px;
   height: 34px;

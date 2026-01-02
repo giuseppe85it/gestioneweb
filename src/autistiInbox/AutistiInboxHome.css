@@ -105,10 +105,50 @@
   margin: 10px 0 18px;
 }
 
-.autisti-date-bar span{
+.autisti-date-bar span,
+.autisti-date-bar .autisti-date-label{
   font-size: 16px;
   font-weight: 800;
   text-transform: capitalize;
+  white-space: nowrap;
+  line-height: 1.2;
+  min-width: 240px;
+  text-align: center;
+  display: inline-block;
+}
+
+.autisti-date-picker{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.autisti-date-label{
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.autisti-date-input{
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 480px){
+  .autisti-date-bar{
+    gap: 10px;
+  }
+
+  .autisti-date-bar span,
+  .autisti-date-bar .autisti-date-label{
+    font-size: 14px;
+    min-width: 0;
+  }
 }
 
 .autisti-date-bar button{
@@ -125,7 +165,7 @@
 .autisti-layout{
   width: 100%;
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr) 340px;
+  grid-template-columns: 360px minmax(0, 1fr);
   gap: 22px;
   align-items: start;
 }
@@ -428,51 +468,6 @@
   font-size: 11px;
   color: #5b574c;
 }
-
-/* ===== RIMORCHI (colonna destra lunga) ===== */
-.rimorchi-panel{
-  background: rgba(248,244,232,0.98);
-  border-radius: 18px;
-  padding: 14px 16px 16px;
-  box-shadow: 0 14px 35px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.18) inset;
-  box-sizing: border-box;
-  align-self: start;
-  max-height: 72vh;
-  overflow-y: auto;
-}
-
-.rimorchi-panel h2{
-  margin: 0 0 10px;
-  font-size: 14px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #3a352b;
-}
-
-.rimorchio-row{
-  padding: 10px 10px;
-  border-radius: 14px;
-  background: rgba(255,253,247,0.9);
-  border: 1px solid rgba(196,180,154,0.5);
-  margin-bottom: 10px;
-  font-size: 12px;
-}
-
-.rimorchio-row strong{
-  display: block;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.rimorchio-row small{
-  display: block;
-  margin-top: 3px;
-  opacity: 0.82;
-}
-
-.rimorchio-row[data-stato="AGGANCIATO"]{ border-left: 6px solid #2e7d32; }
-.rimorchio-row[data-stato="LIBERO"]{ border-left: 6px solid #c62828; }
 
 /* ===== MODALE ===== */
 .aix-backdrop{
@@ -800,10 +795,6 @@
 
   .daily-card.wide{
     grid-column: auto;
-  }
-
-  .rimorchi-panel{
-    margin-top: 14px;
   }
 
   .sessioni-filters{

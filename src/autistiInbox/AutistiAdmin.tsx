@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./AutistiAdmin.css";
 
@@ -172,6 +172,7 @@ export default function AutistiAdmin() {
 
   const [tab, setTab] = useState<TabKey>("rifornimenti");
   const [day, setDay] = useState<Date>(() => new Date());
+  const datePickerRef = useRef<HTMLInputElement | null>(null);
 
   // ORA CORRENTE per LIVE
   const [nowTs, setNowTs] = useState<number>(() => Date.now());
@@ -179,6 +180,33 @@ export default function AutistiAdmin() {
     const t = window.setInterval(() => setNowTs(Date.now()), 30_000);
     return () => window.clearInterval(t);
   }, []);
+
+  const formatDateInputValue = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const dayValue = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${dayValue}`;
+  };
+
+  const openDatePicker = () => {
+    const input = datePickerRef.current;
+    if (!input) return;
+    const picker = (input as HTMLInputElement & { showPicker?: () => void }).showPicker;
+    if (picker) {
+      picker.call(input);
+    } else {
+      input.click();
+    }
+  };
+
+  const handleDatePickerChange = (value: string) => {
+    if (!value) return;
+    const [year, month, dayValue] = value.split("-").map(Number);
+    if (!year || !month || !dayValue) return;
+    const next = new Date(year, month - 1, dayValue);
+    if (Number.isNaN(next.getTime())) return;
+    setDay(next);
+  };
 
   const [events, setEvents] = useState<HomeEvent[]>([]);
   const [storicoOperativi, setStoricoOperativi] = useState<any[]>([]);
@@ -1833,7 +1861,25 @@ export default function AutistiAdmin() {
               {"<"}
             </button>
 
-            <span className="label">{formatDayLabel(day)}</span>
+            <div className="autisti-admin-date-picker">
+              <button
+                type="button"
+                className="label autisti-admin-date-label"
+                onClick={openDatePicker}
+                aria-label="Seleziona data"
+              >
+                {formatDayLabel(day)}
+              </button>
+              <input
+                ref={datePickerRef}
+                className="autisti-admin-date-input"
+                type="date"
+                value={formatDateInputValue(day)}
+                onChange={(e) => handleDatePickerChange(e.target.value)}
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+            </div>
 
             <button
               type="button"
