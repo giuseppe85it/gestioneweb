@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { getItemSync } from "../utils/storageSync";
 import { generateLavoriPDF } from "../utils/pdfEngine"; // <--- PDF ENGINE UNIVERSALE
-import { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
+import type { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
 
 import "./LavoriInAttesa.css";
 

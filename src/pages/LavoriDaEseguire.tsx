@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { setItemSync, getItemSync } from "../utils/storageSync";
-import { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
+import type { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
 import { v4 as uuidv4 } from "uuid";
 import "./LavoriDaEseguire.css";
 
@@ -299,7 +299,7 @@ const LavoriDaEseguire: React.FC = () => {
                       : "lavori-badge-alta")
                   }
                 >
-                  {labelUrgenza(lavoro.urgenza)}
+                  {labelUrgenza(lavoro.urgenza ?? "bassa")}
                 </div>
               </div>
             ))}

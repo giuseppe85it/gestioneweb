@@ -1,7 +1,7 @@
 import  { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { setItemSync, getItemSync } from "../utils/storageSync";
-import { Lavoro } from "../types/lavori";
+import type { Lavoro } from "../types/lavori";
 import "./DettaglioLavoro.css";
 
 const DettaglioLavoro = () => {

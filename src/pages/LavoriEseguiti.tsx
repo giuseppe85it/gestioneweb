@@ -3,7 +3,7 @@ import  { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { generateTablePDF } from "../utils/pdfEngine";     // <── PDF ENGINE
-import { Lavoro, Urgenza } from "../types/lavori";
+import type { Lavoro, Urgenza } from "../types/lavori";
 import "./LavoriEseguiti.css";
 
 interface LavoroGroup {
