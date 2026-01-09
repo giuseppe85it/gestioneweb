@@ -53,6 +53,9 @@ interface FatturaPreventivo {
   importo?: number;
   fornitoreLabel?: string;
   fileUrl?: string | null;
+  nomeFile?: string | null;
+  sourceKey?: string;
+  sourceDocId?: string;
 }
 
 interface AnalisiEconomicaIA {
@@ -112,11 +115,17 @@ interface DocumentoIACompleto {
 // HELPER
 // =========================
 
-const normalizeTarga = (t: string = "") =>
-  t.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+const normalizeTarga = (t: unknown = "") => {
+  if (typeof t !== "string") return "";
+  return t.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+};
 
 const normalizeTipo = (tipo: string = "") =>
   tipo.toUpperCase().replace(/\s+/g, "").trim();
+
+const fmtTarga = (value?: unknown) => normalizeTarga(value);
+const DEBUG_DOCS = true;
+const DEBUG_DOC_NAME = "augustonifattura.pdf";
 
 const isSameTarga = (a: string, b: string) => {
   const na = normalizeTarga(a);
@@ -134,6 +143,7 @@ const isSameTarga = (a: string, b: string) => {
   }
   return false;
 };
+void isSameTarga;
 
 const parseItalianDate = (d?: string): number => {
   if (!d) return 0;
@@ -234,11 +244,17 @@ const AnalisiEconomica: React.FC = () => {
         const costiSnap = await getDoc(costiDocRef);
         const costiData = costiSnap.data() || {};
         const costiArray = (costiData.items || []) as FatturaPreventivo[];
+        const targaNorm = fmtTarga(targa);
 
-        const costiPerMezzoBase = costiArray.filter((c) => {
-          const t = (c.mezzoTarga || "").toUpperCase().trim();
-          return t === targa.toUpperCase().trim();
-        });
+        const costiPerMezzoBase = costiArray
+          .filter((c) => {
+            const docTarga = (c.mezzoTarga || "").toUpperCase().trim();
+            return docTarga === targa.toUpperCase().trim();
+          })
+          .map((c) => ({
+            ...c,
+            sourceKey: "@costiMezzo",
+          }));
 
         // 3. Carica DOCUMENTI IA da:
         //    @documenti_mezzi, @documenti_magazzino, @documenti_generici
@@ -248,8 +264,8 @@ const AnalisiEconomica: React.FC = () => {
           "@documenti_generici",
         ];
 
-        const mezzoTargaNorm = normalizeTarga(targa);
         let iaDocs: any[] = [];
+        let iaDocsRawCount = 0;
 
         for (const colName of iaCollections) {
           try {
@@ -258,20 +274,45 @@ const AnalisiEconomica: React.FC = () => {
 
             snap.forEach((docSnap) => {
               const d = docSnap.data() || {};
+              if (DEBUG_DOCS) {
+                iaDocsRawCount += 1;
+                if (d.nomeFile === DEBUG_DOC_NAME) {
+                  const docId =
+                    (d as any)?.id ?? (d as any)?.docId ?? docSnap.id ?? "";
+                  console.log("[AnalisiEconomica][IA] raw match", {
+                    nomeFile: d.nomeFile,
+                    targa: d.targa,
+                    tipoDocumento: d.tipoDocumento,
+                    categoriaArchivio: d.categoriaArchivio,
+                    fileUrl: d.fileUrl,
+                    docId,
+                  });
+                }
+              }
               const docTipo = normalizeTipo(d.tipoDocumento);
-              const docTarga = normalizeTarga(d.targa || "");
+              const docTarga = fmtTarga(d.targa || "");
               const isDocValid =
                 docTipo === "FATTURA" || docTipo === "PREVENTIVO";
-              const isTargaMatch =
-                isSameTarga(docTarga, mezzoTargaNorm) ||
-                (typeof d.testo === "string" &&
-                  d.testo.toUpperCase().includes(mezzoTargaNorm));
+              const isTargaMatch = docTarga !== "" && docTarga === targaNorm;
+              if (DEBUG_DOCS && d.nomeFile === DEBUG_DOC_NAME) {
+                console.log("[AnalisiEconomica][IA] filter check", {
+                  nomeFile: d.nomeFile,
+                  tipoDocumento: d.tipoDocumento,
+                  tipoCanon: docTipo,
+                  docTargaNorm: docTarga,
+                  targaAttivaNorm: targaNorm,
+                  isDocValid,
+                  isTargaMatch,
+                });
+              }
 
               if (isDocValid && isTargaMatch) {
                 iaDocs.push({
                   ...d,
                   tipoDocumento: docTipo,
-                  targa: docTarga || mezzoTargaNorm,
+                  targa: docTarga,
+                  sourceKey: colName,
+                  sourceDocId: docSnap.id,
                 });
               }
             });
@@ -279,10 +320,17 @@ const AnalisiEconomica: React.FC = () => {
             console.error("Errore lettura IA:", e);
           }
         }
+        if (DEBUG_DOCS) {
+          console.log("[AnalisiEconomica][IA] raw count", iaDocsRawCount);
+          console.log(
+            "[AnalisiEconomica][IA] after type/targa filter",
+            iaDocs.length
+          );
+        }
 
         const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
-          id: d.id || crypto.randomUUID(),
-          mezzoTarga: d.targa || "",
+          id: d.id || d.sourceDocId || crypto.randomUUID(),
+          mezzoTarga: fmtTarga(d.targa || ""),
           tipo:
             d.tipoDocumento === "PREVENTIVO"
               ? ("PREVENTIVO" as const)
@@ -294,6 +342,9 @@ const AnalisiEconomica: React.FC = () => {
           importo: extractImportoFromRaw(d),
           fornitoreLabel: d.fornitore || "",
           fileUrl: d.fileUrl || null,
+          nomeFile: d.nomeFile || null,
+          sourceKey: d.sourceKey,
+          sourceDocId: d.sourceDocId,
         }));
 
         // Dati completi per IA (estratti dai PDF, come salvati da IADocumenti)
@@ -325,6 +376,37 @@ const AnalisiEconomica: React.FC = () => {
         }));
 
         const costiPerMezzo = [...costiPerMezzoBase, ...documentiIA];
+        if (DEBUG_DOCS) {
+          console.log(
+            "[AnalisiEconomica][IA] before dedup",
+            costiPerMezzo.length
+          );
+        }
+        const dedupKeys = new Set<string>();
+        const costiPerMezzoDedup = costiPerMezzo.filter((item) => {
+          const docId = item.sourceDocId ?? item.id ?? "";
+          if (!docId) return true;
+          const sourceKey = item.sourceKey ?? "";
+          const key = sourceKey ? `${sourceKey}:${docId}` : String(docId);
+          if (DEBUG_DOCS && item.nomeFile === DEBUG_DOC_NAME) {
+            console.log("[AnalisiEconomica][IA] dedup check", {
+              nomeFile: item.nomeFile,
+              sourceKey,
+              docId,
+              key,
+              alreadySeen: dedupKeys.has(key),
+            });
+          }
+          if (dedupKeys.has(key)) return false;
+          dedupKeys.add(key);
+          return true;
+        });
+        if (DEBUG_DOCS) {
+          console.log(
+            "[AnalisiEconomica][IA] after dedup",
+            costiPerMezzoDedup.length
+          );
+        }
 
         // 4. Carica ANALISI IA salvata in @analisi_economica_mezzi
         const analisiRef = doc(
@@ -340,7 +422,7 @@ const AnalisiEconomica: React.FC = () => {
 
         if (!cancelled) {
           setMezzo(mezzoFound || null);
-          setDocumentiCosti(costiPerMezzo);
+          setDocumentiCosti(costiPerMezzoDedup);
           setDocumentiIACompleti(docsCompleti);
           setAnalisiIA(analisiData);
           setLoading(false);

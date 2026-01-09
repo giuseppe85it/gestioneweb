@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
+import type { HomeEvent } from "../utils/homeEvents";
+import AutistiEventoModal from "../components/AutistiEventoModal";
 import "./Mezzo360.css";
 
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -25,8 +27,19 @@ const DOC_COLLECTIONS = [
 ];
 
 const PREVIEW_LIMIT = 5;
+const DEBUG_DOCS = true;
+const DEBUG_DOC_NAME = "augustonifattura.pdf";
 
 type AnyRecord = Record<string, any>;
+type TimelineItem = {
+  id: string;
+  ts: number;
+  title: string;
+  subtitle?: string;
+  detail?: string;
+  source: string;
+  record: AnyRecord;
+};
 
 function unwrapList(value: any): any[] {
   if (Array.isArray(value)) return value;
@@ -36,7 +49,7 @@ function unwrapList(value: any): any[] {
 }
 
 function fmtTarga(value: string | null | undefined): string {
-  return String(value || "").trim().toUpperCase();
+  return normalizeTarga(value);
 }
 
 function normalizeTarga(t?: unknown) {
@@ -152,18 +165,33 @@ export default function Mezzo360() {
   const [showAllMateriali, setShowAllMateriali] = useState(false);
   const [showAllDocumenti, setShowAllDocumenti] = useState(false);
   const [showAllRichieste, setShowAllRichieste] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadDocumenti = async () => {
       const out: AnyRecord[] = [];
+      let rawCount = 0;
       for (const colName of DOC_COLLECTIONS) {
         try {
           const snap = await getDocs(collection(db, colName));
           snap.forEach((docSnap) => {
+            const d = docSnap.data() || {};
+            rawCount += 1;
+            if (DEBUG_DOCS && d.nomeFile === DEBUG_DOC_NAME) {
+              const docId = (d as any)?.id ?? (d as any)?.docId ?? docSnap.id;
+              console.log("[Mezzo360][IA] raw match", {
+                nomeFile: d.nomeFile,
+                targa: d.targa,
+                tipoDocumento: d.tipoDocumento,
+                categoriaArchivio: d.categoriaArchivio,
+                fileUrl: d.fileUrl,
+                docId,
+              });
+            }
             out.push({
-              ...docSnap.data(),
+              ...d,
               sourceKey: colName,
               sourceDocId: docSnap.id,
             });
@@ -171,6 +199,9 @@ export default function Mezzo360() {
         } catch {
           // ignore collection errors
         }
+      }
+      if (DEBUG_DOCS) {
+        console.log("[Mezzo360][IA] raw count", rawCount);
       }
       return out;
     };
@@ -313,12 +344,27 @@ export default function Mezzo360() {
   }, [materialiRaw, targaNorm]);
 
   const documenti = useMemo(() => {
-    return documentiRaw
+    if (DEBUG_DOCS) {
+      console.log("[Mezzo360][IA] before filter", documentiRaw.length);
+    }
+    const filtered = documentiRaw
       .map((d) => {
         const docTipo = normalizeTipo(d?.tipoDocumento);
-        const docTarga = normalizeTarga(d?.targa);
+        const docTargaNorm = fmtTarga(d?.targa || "");
+        const docTargaLabel = docTargaNorm;
         const isDocValid = docTipo === "FATTURA" || docTipo === "PREVENTIVO";
-        const isMatch = isSameTarga(docTarga, targaNorm);
+        const isMatch = docTargaNorm !== "" && docTargaNorm === targa;
+        if (DEBUG_DOCS && d?.nomeFile === DEBUG_DOC_NAME) {
+          console.log("[Mezzo360][IA] filter check", {
+            nomeFile: d?.nomeFile,
+            tipoDocumento: d?.tipoDocumento,
+            tipoCanon: docTipo,
+            docTargaNorm,
+            targaAttivaNorm: targa,
+            isDocValid,
+            isTargaMatch: isMatch,
+          });
+        }
         if (!isDocValid || !isMatch) return null;
         const importoRaw = d?.totaleDocumento;
         const importo =
@@ -328,22 +374,56 @@ export default function Mezzo360() {
             ? parseFloat(importoRaw.replace(",", "."))
             : null;
         return {
-          id: d?.id || d?.sourceDocId || `${docTipo}_${docTarga}`,
+          id: d?.id || d?.sourceDocId || `${docTipo}_${docTargaNorm}`,
           tipo: docTipo,
-          targa: docTarga,
+          targa: docTargaLabel,
           data: d?.dataDocumento || "",
           descrizione: d?.fornitore
             ? `${docTipo} - ${d.fornitore}`
             : docTipo || "-",
           importo,
           fileUrl: d?.fileUrl || null,
+          nomeFile: d?.nomeFile || null,
           fornitore: d?.fornitore || null,
           sourceKey: d?.sourceKey || "",
+          sourceDocId: d?.sourceDocId || "",
         };
       })
-      .filter(Boolean)
-      .sort((a: any, b: any) => parseDateStringToMs(b?.data) - parseDateStringToMs(a?.data));
-  }, [documentiRaw, targaNorm]);
+      .filter(Boolean) as AnyRecord[];
+    if (DEBUG_DOCS) {
+      console.log(
+        "[Mezzo360][IA] after type/targa filter",
+        filtered.length
+      );
+    }
+
+    const dedupKeys = new Set<string>();
+    const deduped = filtered.filter((item) => {
+      const docId = String(item?.sourceDocId || item?.id || "");
+      if (!docId) return true;
+      const sourceKey = String(item?.sourceKey || "");
+      const key = sourceKey ? `${sourceKey}:${docId}` : docId;
+      if (DEBUG_DOCS && item?.nomeFile === DEBUG_DOC_NAME) {
+        console.log("[Mezzo360][IA] dedup check", {
+          nomeFile: item?.nomeFile,
+          sourceKey,
+          docId,
+          key,
+          alreadySeen: dedupKeys.has(key),
+        });
+      }
+      if (dedupKeys.has(key)) return false;
+      dedupKeys.add(key);
+      return true;
+    });
+    if (DEBUG_DOCS) {
+      console.log("[Mezzo360][IA] after dedup", deduped.length);
+    }
+
+    return deduped.sort(
+      (a: any, b: any) => parseDateStringToMs(b?.data) - parseDateStringToMs(a?.data)
+    );
+  }, [documentiRaw, targa]);
 
   const segnalazioni = useMemo(() => {
     return segnalazioniRaw.filter(
@@ -398,7 +478,7 @@ export default function Mezzo360() {
   }, [richiesteRaw, targaNorm]);
 
   const timeline = useMemo(() => {
-    const items: AnyRecord[] = [];
+    const items: TimelineItem[] = [];
 
     eventiMatch.forEach((evt, idx) => {
       const motrice = fmtTarga(evt?.dopo?.targaMotrice ?? evt?.dopo?.motrice);
@@ -412,6 +492,7 @@ export default function Mezzo360() {
         subtitle: `Motrice: ${motrice || "-"} | Rimorchio: ${rimorchio || "-"}`,
         detail: evt?.luogo ? `Luogo: ${evt.luogo}` : "Luogo: -",
         source: "storico_eventi_operativi",
+        record: evt,
       });
     });
 
@@ -423,6 +504,7 @@ export default function Mezzo360() {
         subtitle: s?.descrizione ? s.descrizione : "Segnalazione",
         detail: s?.ambito ? `Ambito: ${s.ambito}` : "",
         source: "segnalazioni",
+        record: s,
       });
     });
 
@@ -434,6 +516,7 @@ export default function Mezzo360() {
         subtitle: c?.target ? `Target: ${c.target}` : "",
         detail: c?.note ? `Note: ${c.note}` : "",
         source: "controlli",
+        record: c,
       });
     });
 
@@ -447,6 +530,7 @@ export default function Mezzo360() {
         subtitle: `Litri: ${litri} | Km: ${km}`,
         detail: r?.tipo ? `Tipo: ${r.tipo}` : "",
         source: "rifornimenti",
+        record: r,
       });
     });
 
@@ -460,6 +544,7 @@ export default function Mezzo360() {
         subtitle: `Asse: ${asse} | Marca: ${marca}`,
         detail: g?.rotazioneText ? `Rotazione: ${g.rotazioneText}` : "",
         source: "gomme",
+        record: g,
       });
     });
 
@@ -485,6 +570,128 @@ export default function Mezzo360() {
   const richiestePreview = showAllRichieste
     ? richieste
     : richieste.slice(0, PREVIEW_LIMIT);
+
+  function resolveHomeEventTipo(source: string): HomeEvent["tipo"] | null {
+    switch (source) {
+      case "segnalazioni":
+        return "segnalazione";
+      case "controlli":
+        return "controllo";
+      case "rifornimenti":
+        return "rifornimento";
+      case "gomme":
+        return "gomme";
+      case "storico_eventi_operativi":
+        return "cambio_mezzo";
+      default:
+        return null;
+    }
+  }
+
+  function resolveRecordTarga(record: AnyRecord): string | null {
+    const raw =
+      record?.targa ??
+      record?.targaCamion ??
+      record?.targaMotrice ??
+      record?.targaRimorchio ??
+      record?.targetTarga ??
+      record?.mezzoTarga ??
+      record?.dopo?.targaMotrice ??
+      record?.dopo?.motrice ??
+      record?.dopo?.targaRimorchio ??
+      record?.dopo?.rimorchio ??
+      record?.prima?.targaMotrice ??
+      record?.prima?.motrice ??
+      record?.prima?.targaRimorchio ??
+      record?.prima?.rimorchio ??
+      record?.motrice ??
+      record?.rimorchio;
+    const targa = fmtTarga(raw);
+    return targa || null;
+  }
+
+  function buildCambioPayload(record: AnyRecord, fallbackTs: number) {
+    const payload: AnyRecord = { ...record };
+    payload.primaMotrice =
+      payload.primaMotrice ??
+      payload?.prima?.motrice ??
+      payload?.prima?.targaMotrice ??
+      null;
+    payload.dopoMotrice =
+      payload.dopoMotrice ??
+      payload?.dopo?.motrice ??
+      payload?.dopo?.targaMotrice ??
+      null;
+    payload.primaRimorchio =
+      payload.primaRimorchio ??
+      payload?.prima?.rimorchio ??
+      payload?.prima?.targaRimorchio ??
+      null;
+    payload.dopoRimorchio =
+      payload.dopoRimorchio ??
+      payload?.dopo?.rimorchio ??
+      payload?.dopo?.targaRimorchio ??
+      null;
+    payload.targaMotrice =
+      payload.targaMotrice ??
+      payload.targaCamion ??
+      payload.dopoMotrice ??
+      payload.primaMotrice ??
+      null;
+    payload.targaRimorchio =
+      payload.targaRimorchio ??
+      payload.dopoRimorchio ??
+      payload.primaRimorchio ??
+      null;
+    payload.tipo = payload.tipo ?? payload.tipoOperativo ?? payload.fsTipo ?? "CAMBIO_ASSETTO";
+    payload.badgeAutista = payload.badgeAutista ?? payload.badge ?? null;
+    payload.autista =
+      payload.autista ?? payload.autistaNome ?? payload.nomeAutista ?? null;
+    payload.timestamp = payload.timestamp ?? fallbackTs ?? null;
+    return payload;
+  }
+
+  function buildHomeEventFromTimeline(item: TimelineItem): HomeEvent | null {
+    const tipo = resolveHomeEventTipo(item.source);
+    if (!tipo) return null;
+    const record = item.record ?? {};
+    const payload =
+      tipo === "cambio_mezzo" ? buildCambioPayload(record, item.ts) : record;
+    const ts = item.ts || getTimestamp(record);
+    const targa = resolveRecordTarga(record);
+    const autista =
+      record?.autistaNome ?? record?.nomeAutista ?? record?.autista ?? null;
+    return {
+      id: String(record?.id ?? item.id ?? `evt-${ts}`),
+      tipo,
+      targa,
+      autista,
+      timestamp: ts || 0,
+      payload,
+    };
+  }
+
+  function buildHomeEventFromRichiesta(record: AnyRecord): HomeEvent {
+    const ts = getTimestamp(record);
+    const targa = resolveRecordTarga(record);
+    return {
+      id: String(record?.id ?? `req-${ts || Date.now()}`),
+      tipo: "richiesta_attrezzature",
+      targa,
+      autista: record?.autistaNome ?? record?.nomeAutista ?? record?.autista ?? null,
+      timestamp: ts || 0,
+      payload: record,
+    };
+  }
+
+  function openTimelineModal(item: TimelineItem) {
+    const evt = buildHomeEventFromTimeline(item);
+    if (evt) setSelectedEvent(evt);
+  }
+
+  function openRichiestaModal(record: AnyRecord) {
+    setSelectedEvent(buildHomeEventFromRichiesta(record));
+  }
 
   const targaTooltip = mezzo
     ? `Categoria: ${mezzo?.categoria || "-"}\nAutista: ${mezzo?.autistaNome || "-"}`
@@ -620,7 +827,19 @@ export default function Mezzo360() {
             ) : (
               <div className="timeline-list">
                 {timelinePreview.map((item) => (
-                  <div key={item.id} className="timeline-item">
+                  <div
+                    key={item.id}
+                    className="timeline-item"
+                    role="button"
+                    tabIndex={0}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openTimelineModal(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        openTimelineModal(item);
+                      }
+                    }}
+                  >
                     <div className="timeline-head">
                       <span className="timeline-title">{item.title}</span>
                       <span className="timeline-date">{formatDateTime(item.ts)}</span>
@@ -814,7 +1033,19 @@ export default function Mezzo360() {
             ) : (
               <div className="mezzo360-list">
                 {richiestePreview.map((r, idx) => (
-                  <div key={r?.id ?? `req-${idx}`} className="mezzo360-item">
+                  <div
+                    key={r?.id ?? `req-${idx}`}
+                    className="mezzo360-item"
+                    role="button"
+                    tabIndex={0}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openRichiestaModal(r)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        openRichiestaModal(r);
+                      }
+                    }}
+                  >
                     <div className="mezzo360-item-title">
                       {r?.testo || "Richiesta"}
                     </div>
@@ -850,6 +1081,10 @@ export default function Mezzo360() {
             </div>
           </section>
         </div>
+        <AutistiEventoModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+        />
       </div>
     </div>
   );

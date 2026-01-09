@@ -324,6 +324,22 @@ const IADocumenti: React.FC = () => {
     const matched = exactMatch(targaEstrattaIA, mezzi);
     const needsManual =
       fmtTarga(targaEstrattaIA) !== "" && !matched;
+    const targaFinale = fmtTarga(
+      targaSelezionata || results.targa || targaEstrattaIA || ""
+    );
+    const exists = mezzi.some(
+      (m) => fmtTarga(m.targa || "") === targaFinale
+    );
+
+    if (!exists) {
+      setErrorMessage(
+        "Targa non valida o non trovata nei mezzi. Seleziona manualmente il mezzo corretto."
+      );
+      if (targaFinale) {
+        setTargaEstrattaIA(targaFinale);
+      }
+      return;
+    }
 
     if (needsManual && !targaSelezionata) {
       setErrorMessage("Seleziona una targa valida per salvare.");
@@ -346,7 +362,7 @@ const IADocumenti: React.FC = () => {
       // 2. Prepara il payload per Firestore (lasciamo inalterata la struttura esistente)
       const payload = {
         ...results,
-        targa: needsManual ? targaSelezionata : results.targa,
+        targa: targaFinale,
         fileUrl,
         nomeFile: selectedFile.name,
         createdAt: serverTimestamp(),

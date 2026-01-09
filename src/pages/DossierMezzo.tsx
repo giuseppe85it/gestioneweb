@@ -23,6 +23,11 @@ const normalizeTipo = (tipo?: unknown) => {
   return tipo.toUpperCase().replace(/\s+/g, "").trim();
 };
 
+const DEBUG_DOCS = true;
+const DEBUG_DOC_NAME = "augustonifattura.pdf";
+
+const fmtTarga = (value?: unknown) => normalizeTarga(value);
+
 // Confronto targa tollerante (accetta differenze minime IA)
 const isSameTarga = (a: string, b: string) => {
   const na = normalizeTarga(a);
@@ -46,6 +51,7 @@ const isSameTarga = (a: string, b: string) => {
 
   return false;
 };
+void isSameTarga;
 
 interface Mezzo {
   id?: string;
@@ -317,8 +323,7 @@ try {
         // LETTURA DOCUMENTI IA — ROOT
         // ============================
 
-        const tgUpper = targa.toUpperCase().trim();
-        void tgUpper;
+        const targaNorm2 = fmtTarga(targa);
 
         const iaCollections = [
           "@documenti_mezzi",
@@ -327,6 +332,9 @@ try {
         ];
 
 let iaDocs: any[] = [];
+let iaDocsRawCount = 0;
+let targetDocId: string | null = null;
+let targetSourceKey: string | null = null;
 
 for (const col of iaCollections) {
   try {
@@ -335,18 +343,47 @@ for (const col of iaCollections) {
 
     snap.forEach((docSnap) => {
       const d = docSnap.data() || {};
+      if (DEBUG_DOCS) {
+        iaDocsRawCount += 1;
+        if (d.nomeFile === DEBUG_DOC_NAME) {
+          const docId =
+            (d as any)?.id ?? (d as any)?.docId ?? docSnap.id ?? "";
+          targetDocId = docId ? String(docId) : null;
+          targetSourceKey = col;
+          console.log("[DossierMezzo][IA] raw match", {
+            nomeFile: d.nomeFile,
+            targa: d.targa,
+            tipoDocumento: d.tipoDocumento,
+            categoriaArchivio: d.categoriaArchivio,
+            fileUrl: d.fileUrl,
+            docId,
+          });
+        }
+      }
 
       const docTipo = normalizeTipo(d.tipoDocumento);
-      const docTarga = normalizeTarga(d.targa);
-      const mezzoTargaNorm = normalizeTarga(targa);
+      const docTarga = fmtTarga(d.targa || "");
 
       // Accetta solo FATTURA o PREVENTIVO (qualsiasi forma)
       const isDocValid =
         docTipo === "FATTURA" ||
         docTipo === "PREVENTIVO";
 
-      // Targa tollerante (accetta piccoli errori IA)
-      const isTargaMatch = isSameTarga(docTarga, mezzoTargaNorm);
+      if (!docTarga) return;
+      const isTargaMatch = docTarga === targaNorm2;
+
+      if (DEBUG_DOCS && d.nomeFile === DEBUG_DOC_NAME) {
+        console.log("[DossierMezzo][IA] filter check", {
+          nomeFile: d.nomeFile,
+          tipoDocumento: d.tipoDocumento,
+          tipoCanon: docTipo,
+          docTargaNorm: docTarga,
+          targaAttivaNorm: targaNorm,
+          targaAttivaFmt: targaNorm2,
+          isDocValid,
+          isTargaMatch,
+        });
+      }
 
       if (isDocValid && isTargaMatch) {
         iaDocs.push({
@@ -363,9 +400,14 @@ for (const col of iaCollections) {
   }
 }
 
+if (DEBUG_DOCS) {
+  console.log("[DossierMezzo][IA] raw count", iaDocsRawCount);
+  console.log("[DossierMezzo][IA] after type/targa filter", iaDocs.length);
+}
+
 const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
   id: d.id || d.sourceDocId || crypto.randomUUID(),
-  mezzoTarga: d.targa || "",
+  mezzoTarga: fmtTarga(d.targa || ""),
   tipo:
     d.tipoDocumento === "PREVENTIVO"
       ? ("PREVENTIVO" as const)
@@ -390,15 +432,54 @@ const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
           (costiData.items || []) as FatturaPreventivo[];
 
         const costiPerMezzo = [
-          ...costiArray.filter((c) => {
-            const t = (c.mezzoTarga || "").toUpperCase().trim();
-            return t === targa.toUpperCase().trim();
-          }).map((c) => ({
-            ...c,
-            sourceKey: "@costiMezzo",
-          })),
+          ...costiArray
+            .filter((c) => {
+              const docTarga = (c.mezzoTarga || "").toUpperCase().trim();
+              return docTarga === targa.toUpperCase().trim();
+            })
+            .map((c) => ({
+              ...c,
+              sourceKey: "@costiMezzo",
+            })),
           ...documentiIA,
         ];
+
+        if (DEBUG_DOCS) {
+          console.log(
+            "[DossierMezzo][IA] before dedup",
+            costiPerMezzo.length
+          );
+        }
+        const dedupKeys = new Set<string>();
+        const costiPerMezzoDedup = costiPerMezzo.filter((item) => {
+          const docId = (item as any)?.sourceDocId ?? (item as any)?.id ?? "";
+          if (!docId) return true;
+          const sourceKey = (item as any)?.sourceKey ?? "";
+          const key = sourceKey ? `${sourceKey}:${docId}` : String(docId);
+          if (
+            DEBUG_DOCS &&
+            targetDocId &&
+            String(docId) === String(targetDocId) &&
+            (!targetSourceKey || sourceKey === targetSourceKey)
+          ) {
+            console.log("[DossierMezzo][IA] dedup check", {
+              nomeFile: DEBUG_DOC_NAME,
+              sourceKey,
+              docId,
+              key,
+              alreadySeen: dedupKeys.has(key),
+            });
+          }
+          if (dedupKeys.has(key)) return false;
+          dedupKeys.add(key);
+          return true;
+        });
+        if (DEBUG_DOCS) {
+          console.log(
+            "[DossierMezzo][IA] after dedup",
+            costiPerMezzoDedup.length
+          );
+        }
 
         // Caricamento manutenzioni via storageSync
         let manArray: Manutenzione[] = [];
@@ -417,7 +498,7 @@ setState({
   lavoriEseguiti,
   movimentiMateriali: movimentiPerMezzo,
   rifornimenti: rifornimentiPerMezzo,
-  documentiCosti: costiPerMezzo,
+  documentiCosti: costiPerMezzoDedup,
   documentiMagazzino: docsMag,   // <── AGGIUNTO
 });
           setManutenzioni(manArray);

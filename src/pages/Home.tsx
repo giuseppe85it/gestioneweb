@@ -2,6 +2,11 @@ import "./Home.css";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import type { HomeEvent } from "../utils/homeEvents";
+import AutistiEventoModal from "../components/AutistiEventoModal";
+import AutistiImportantEventsModal, {
+  type ImportantAutistiEventItem,
+} from "../components/AutistiImportantEventsModal";
 import {
   applyAlertAction,
   createEmptyAlertsState,
@@ -19,6 +24,7 @@ const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const EVENTI_KEY = "@storico_eventi_operativi";
 const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
+const CONTROLLI_KEY = "@controlli_mezzo_autisti";
 const ALERTS_STATE_KEY = "@alerts_state";
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
@@ -69,14 +75,54 @@ type SegnalazioneRecord = {
   timestamp?: number | null;
   stato?: string | null;
   letta?: boolean | null;
+  flagVerifica?: boolean | null;
+  urgenza?: string | null;
+  priorita?: string | null;
+  gravita?: string | null;
+  severity?: string | null;
+  livello?: string | null;
   ambito?: string | null;
   targa?: string | null;
   targaCamion?: string | null;
   targaRimorchio?: string | null;
   autistaNome?: string | null;
+  nomeAutista?: string | null;
   badgeAutista?: string | null;
   tipoProblema?: string | null;
   descrizione?: string | null;
+  note?: string | null;
+  messaggio?: string | null;
+};
+
+type ControlloRecord = {
+  id?: string | number | null;
+  data?: number | string | null;
+  timestamp?: number | string | null;
+  target?: string | null;
+  targaMotrice?: string | null;
+  targaCamion?: string | null;
+  targaRimorchio?: string | null;
+  autistaNome?: string | null;
+  nomeAutista?: string | null;
+  badgeAutista?: string | null;
+  esito?: string | boolean | null;
+  ok?: boolean | null;
+  tuttoOk?: boolean | null;
+  stato?: string | null;
+  outcome?: string | boolean | null;
+  ko?: boolean | null;
+  check?: Record<string, boolean> | null;
+  koList?: unknown[] | null;
+  koItems?: unknown[] | null;
+  anomalie?: unknown[] | null;
+  problemi?: unknown[] | null;
+  difetti?: unknown[] | null;
+  errori?: unknown[] | null;
+  controlliKo?: unknown[] | null;
+  koDetails?: unknown[] | null;
+  note?: string | null;
+  dettaglio?: string | null;
+  messaggio?: string | null;
 };
 
 type AutistaSuggestion = {
@@ -438,6 +484,204 @@ function buildSegnalazioneTarga(r: SegnalazioneRecord): string {
   return fmtTarga(targa);
 }
 
+function normalizeSeverityValue(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isHighSeverity(value: string): boolean {
+  if (!value) return false;
+  return (
+    value.includes("alta") ||
+    value.includes("high") ||
+    value.includes("urgent") ||
+    value.includes("urgente") ||
+    value.includes("crit") ||
+    value.includes("grave")
+  );
+}
+
+function isSegnalazioneImportante(record: SegnalazioneRecord): boolean {
+  if (record.flagVerifica === true) return true;
+  const fields = [
+    record.urgenza,
+    record.priorita,
+    record.gravita,
+    record.severity,
+    record.livello,
+  ];
+  return fields.some((value) => isHighSeverity(normalizeSeverityValue(value)));
+}
+
+function normalizeEsitoValue(value: string | boolean | null | undefined): string {
+  if (typeof value === "string") return value.trim().toUpperCase();
+  return "";
+}
+
+function extractKoItems(record: ControlloRecord): string[] {
+  const items: string[] = [];
+  const check = record.check;
+  if (check && typeof check === "object" && !Array.isArray(check)) {
+    Object.entries(check).forEach(([key, value]) => {
+      if (value === false) items.push(String(key).toUpperCase());
+    });
+  }
+  const buckets = [
+    record.koList,
+    record.koItems,
+    record.anomalie,
+    record.problemi,
+    record.difetti,
+    record.errori,
+    record.controlliKo,
+    record.koDetails,
+  ];
+  buckets.forEach((bucket) => {
+    if (!Array.isArray(bucket)) return;
+    bucket.forEach((entry) => {
+      if (typeof entry === "string") {
+        const trimmed = entry.trim();
+        if (trimmed) items.push(trimmed);
+        return;
+      }
+      if (entry && typeof entry === "object") {
+        const label =
+          typeof (entry as { label?: unknown }).label === "string"
+            ? String((entry as { label?: unknown }).label)
+            : typeof (entry as { nome?: unknown }).nome === "string"
+            ? String((entry as { nome?: unknown }).nome)
+            : typeof (entry as { titolo?: unknown }).titolo === "string"
+            ? String((entry as { titolo?: unknown }).titolo)
+            : typeof (entry as { descrizione?: unknown }).descrizione === "string"
+            ? String((entry as { descrizione?: unknown }).descrizione)
+            : typeof (entry as { name?: unknown }).name === "string"
+            ? String((entry as { name?: unknown }).name)
+            : typeof (entry as { testo?: unknown }).testo === "string"
+            ? String((entry as { testo?: unknown }).testo)
+            : "";
+        if (label.trim()) items.push(label.trim());
+      }
+    });
+  });
+  return Array.from(new Set(items));
+}
+
+function isControlloKo(record: ControlloRecord): boolean {
+  if (record.ko === true) return true;
+  if (record.ok === false || record.tuttoOk === false || record.outcome === false) return true;
+  if (record.esito === false) return true;
+  const esitoRaw = normalizeEsitoValue(record.esito ?? record.stato ?? record.outcome);
+  if (esitoRaw === "KO") return true;
+  const check = record.check;
+  if (check && typeof check === "object" && !Array.isArray(check)) {
+    if (Object.values(check).some((value) => value === false)) return true;
+  }
+  const koItems = extractKoItems(record);
+  return koItems.length > 0;
+}
+
+function isEventoImportante(input: {
+  tipo: "segnalazione" | "controllo";
+  record: SegnalazioneRecord | ControlloRecord;
+}): boolean {
+  if (input.tipo === "segnalazione") {
+    return isSegnalazioneImportante(input.record as SegnalazioneRecord);
+  }
+  return isControlloKo(input.record as ControlloRecord);
+}
+
+function resolveTimestamp(value: number | string | null | undefined): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function getSegnalazioneTimestamp(record: SegnalazioneRecord): number {
+  if (typeof record.data === "number") return record.data;
+  if (typeof record.timestamp === "number") return record.timestamp;
+  return resolveTimestamp(record.data ?? record.timestamp);
+}
+
+function getControlloTimestamp(record: ControlloRecord): number {
+  if (typeof record.timestamp === "number") return record.timestamp;
+  if (typeof record.data === "number") return record.data;
+  return resolveTimestamp(record.timestamp ?? record.data);
+}
+
+function buildControlloTarga(record: ControlloRecord): string {
+  const target = String(record.target ?? "").trim().toLowerCase();
+  const targaMotrice = fmtTarga(record.targaMotrice ?? record.targaCamion ?? "");
+  const targaRimorchio = fmtTarga(record.targaRimorchio ?? "");
+  if (target === "rimorchio") return targaRimorchio || targaMotrice;
+  if (target === "motrice") return targaMotrice || targaRimorchio;
+  if (target === "entrambi") {
+    const a = targaMotrice || "";
+    const b = targaRimorchio || "";
+    if (a && b) return `${a} + ${b}`;
+    return a || b;
+  }
+  return targaRimorchio || targaMotrice;
+}
+
+function buildHomeEventFromSegnalazione(
+  record: SegnalazioneRecord,
+  fallbackId: string
+): HomeEvent {
+  const targa = buildSegnalazioneTarga(record) || null;
+  const autista = normalizeName(record.autistaNome ?? record.nomeAutista ?? null) || null;
+  const ts = getSegnalazioneTimestamp(record);
+  const id =
+    record.id && String(record.id).trim() ? String(record.id).trim() : fallbackId;
+  return {
+    id,
+    tipo: "segnalazione",
+    targa,
+    autista,
+    timestamp: ts || 0,
+    payload: record,
+  };
+}
+
+function buildHomeEventFromControllo(
+  record: ControlloRecord,
+  fallbackId: string
+): HomeEvent {
+  const targa = buildControlloTarga(record) || null;
+  const autista = normalizeName(record.autistaNome ?? record.nomeAutista ?? null) || null;
+  const ts = getControlloTimestamp(record);
+  const id =
+    record.id && String(record.id).trim() ? String(record.id).trim() : fallbackId;
+  return {
+    id,
+    tipo: "controllo",
+    targa,
+    autista,
+    timestamp: ts || 0,
+    payload: record,
+  };
+}
+
+function getSegnalazionePreview(record: SegnalazioneRecord): string {
+  const tipo = normalizeFreeText(record.tipoProblema);
+  const descrizione = normalizeFreeText(record.descrizione);
+  const note = normalizeFreeText(record.note ?? record.messaggio);
+  const preview = descrizione || note || "";
+  if (preview) return truncateText(preview, 80);
+  return truncateText(tipo || "-", 80);
+}
+
+function getControlloPreview(record: ControlloRecord): string {
+  const koItems = extractKoItems(record);
+  if (koItems.length > 0) {
+    return truncateText(`KO: ${koItems.slice(0, 4).join(", ")}`, 80);
+  }
+  const note = normalizeFreeText(record.note ?? record.dettaglio ?? record.messaggio);
+  if (note) return truncateText(note, 80);
+  return "KO";
+}
+
 function normalizeFreeText(value: string | null | undefined): string {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -539,6 +783,7 @@ function Home() {
   const [sessioni, setSessioni] = useState<SessioneRecord[]>([]);
   const [eventi, setEventi] = useState<EventoOperativo[]>([]);
   const [segnalazioni, setSegnalazioni] = useState<SegnalazioneRecord[]>([]);
+  const [controlli, setControlli] = useState<ControlloRecord[]>([]);
   const [alertsState, setAlertsState] = useState<AlertsState | null>(null);
   const [alertsNow, setAlertsNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
@@ -575,6 +820,8 @@ function Home() {
     note: "",
   });
   const [missingModalOpen, setMissingModalOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
+  const [importantEventsOpen, setImportantEventsOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -582,11 +829,19 @@ function Home() {
 
     const load = async () => {
       try {
-        const [mezziRaw, sessioniRaw, eventiRaw, segnalazioniRaw, alertsRaw] = await Promise.all([
+        const [
+          mezziRaw,
+          sessioniRaw,
+          eventiRaw,
+          segnalazioniRaw,
+          controlliRaw,
+          alertsRaw,
+        ] = await Promise.all([
           getItemSync(MEZZI_KEY),
           getItemSync(SESSIONI_KEY),
           getItemSync(EVENTI_KEY),
           getItemSync(SEGNALAZIONI_KEY),
+          getItemSync(CONTROLLI_KEY),
           getItemSync(ALERTS_STATE_KEY),
         ]);
         if (!mounted) return;
@@ -594,6 +849,7 @@ function Home() {
         setSessioni(unwrapList(sessioniRaw));
         setEventi(unwrapList(eventiRaw));
         setSegnalazioni(unwrapList(segnalazioniRaw));
+        setControlli(unwrapList(controlliRaw));
 
         const parsedAlerts = parseAlertsState(alertsRaw);
         const pruned = pruneAlertsState(parsedAlerts, Date.now());
@@ -1391,6 +1647,73 @@ function Home() {
     navigate(`/mezzi${query ? `?${query}` : ""}`);
   };
 
+  const importantAutistiItems = useMemo<ImportantAutistiEventItem[]>(() => {
+    const items: ImportantAutistiEventItem[] = [];
+
+    segnalazioni.forEach((record) => {
+      if (!isEventoImportante({ tipo: "segnalazione", record })) return;
+      const ts = getSegnalazioneTimestamp(record);
+      const targa = buildSegnalazioneTarga(record);
+      const targaId = normalizeTargaForAlertId(targa);
+      const idBase =
+        record.id && String(record.id).trim()
+          ? String(record.id).trim()
+          : stableHash32(
+              [
+                String(ts || 0),
+                targaId,
+                String(record.badgeAutista || ""),
+                normalizeFreeText(record.tipoProblema),
+                normalizeFreeText(record.descrizione),
+              ].join("|")
+            );
+      const event = buildHomeEventFromSegnalazione(record, idBase);
+      const tipo = truncateText(
+        normalizeFreeText(record.tipoProblema) || "Segnalazione",
+        40
+      );
+      const preview = getSegnalazionePreview(record);
+      items.push({
+        id: `segnalazione:${idBase}`,
+        event,
+        ts,
+        targa,
+        tipo,
+        preview,
+      });
+    });
+
+    controlli.forEach((record) => {
+      if (!isEventoImportante({ tipo: "controllo", record })) return;
+      const ts = getControlloTimestamp(record);
+      const targa = buildControlloTarga(record);
+      const targaId = normalizeTargaForAlertId(targa);
+      const idBase =
+        record.id && String(record.id).trim()
+          ? String(record.id).trim()
+          : stableHash32(
+              [
+                String(ts || 0),
+                targaId,
+                String(record.badgeAutista || record.nomeAutista || ""),
+                String(record.target || ""),
+              ].join("|")
+            );
+      const event = buildHomeEventFromControllo(record, idBase);
+      const preview = getControlloPreview(record);
+      items.push({
+        id: `controllo:${idBase}`,
+        event,
+        ts,
+        targa,
+        tipo: "Controllo KO",
+        preview,
+      });
+    });
+
+    return items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  }, [segnalazioni, controlli]);
+
   const alertCandidates = useMemo<HomeAlertCandidate[]>(() => {
     const candidates: HomeAlertCandidate[] = [];
 
@@ -1484,6 +1807,73 @@ function Home() {
       });
     });
 
+    const importantItems = importantAutistiItems;
+
+    if (importantItems.length > 0) {
+      const topItems = importantItems.slice(0, 5);
+      const hasKo = importantItems.some((item) => item.event.tipo === "controllo");
+      const remaining = importantItems.length - topItems.length;
+      const metaRef = stableHash32(
+        importantItems.map((item) => `${item.id}:${item.ts || 0}`).join("|")
+      );
+      const meta: AlertMeta = { type: "segnalazione", ref: `v1:${metaRef}` };
+      candidates.push({
+        id: "autisti-eventi-importanti",
+        meta,
+        title: `Eventi importanti autisti (${importantItems.length})`,
+        detail: (
+          <>
+            {topItems.map((item) => {
+              const targaLabel = item.targa || "-";
+              const preview = item.preview || "-";
+              return (
+                <div
+                  key={item.id}
+                  className="alert-detail-row"
+                  role="button"
+                  tabIndex={0}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setSelectedEvent(item.event)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedEvent(item.event);
+                    }
+                  }}
+                >
+                  <span className="targa">{targaLabel}</span>
+                  <span className="alert-detail">
+                    {formatDateTimeForDisplay(item.ts)}
+                  </span>
+                  <span className="alert-detail">{item.tipo}</span>
+                  <span className="alert-detail">{preview}</span>
+                </div>
+              );
+            })}
+            {remaining > 0 ? (
+              <div className="alert-detail-row">
+                <span className="alert-detail">+{remaining} altri eventi</span>
+              </div>
+            ) : null}
+            {importantItems.length > 5 ? (
+              <div className="alert-detail-row">
+                <button
+                  type="button"
+                  className="alert-action"
+                  onClick={() => setImportantEventsOpen(true)}
+                >
+                  Vedi tutto
+                </button>
+              </div>
+            ) : null}
+          </>
+        ),
+        severity: hasKo ? "danger" : "warning",
+        sortBucket: 1,
+        sortValue: -(topItems[0]?.ts || 0),
+      });
+    }
+
     const motrici = new Map<string, Array<{ badgeAutista: string | null; nomeAutista: string | null }>>();
     const rimorchi = new Map<string, Array<{ badgeAutista: string | null; nomeAutista: string | null }>>();
     sessioni.forEach((s) => {
@@ -1558,7 +1948,7 @@ function Home() {
       if (a.sortValue !== b.sortValue) return a.sortValue - b.sortValue;
       return a.title.localeCompare(b.title);
     });
-  }, [revisioni, segnalazioni, sessioni]);
+  }, [revisioni, segnalazioni, sessioni, importantAutistiItems]);
 
   const candidateAlertIds = useMemo(() => new Set(alertCandidates.map((a) => a.id)), [alertCandidates]);
 
@@ -2650,6 +3040,21 @@ function Home() {
           </div>
         </div>
       </div>
+
+      <AutistiImportantEventsModal
+        open={importantEventsOpen}
+        items={importantAutistiItems}
+        onClose={() => setImportantEventsOpen(false)}
+        onSelect={(event) => {
+          setSelectedEvent(event);
+          setImportantEventsOpen(false);
+        }}
+      />
+
+      <AutistiEventoModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+      />
 
       {prenotazioneModalOpen ? (
         <div

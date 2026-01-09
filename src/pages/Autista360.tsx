@@ -2,6 +2,8 @@ import "./Autista360.css";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
+import type { HomeEvent } from "../utils/homeEvents";
+import AutistiEventoModal from "../components/AutistiEventoModal";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
@@ -62,6 +64,7 @@ type TimelineEvent = {
   afterRimorchio?: string;
   isChangeEvent?: boolean;
   extra?: string[];
+  rawRecord?: any;
 };
 
 type NameMatch = {
@@ -549,6 +552,100 @@ function formatOperativoLabel(value: string): string {
   return raw;
 }
 
+function resolveHomeEventTipo(event: TimelineEvent): HomeEvent["tipo"] | null {
+  switch (event.type) {
+    case "Segnalazioni":
+      return "segnalazione";
+    case "Controlli":
+      return "controllo";
+    case "Rifornimenti":
+      return "rifornimento";
+    case "Richieste":
+      return "richiesta_attrezzature";
+    case "Gomme":
+      return "gomme";
+    default:
+      break;
+  }
+  if (event.sourceKey === SESSIONI_KEY || event.sourceKey === EVENTI_OPERATIVI_KEY) {
+    return "cambio_mezzo";
+  }
+  return null;
+}
+
+function buildCambioPayloadFromTimeline(event: TimelineEvent) {
+  const record = event.rawRecord && typeof event.rawRecord === "object" ? event.rawRecord : {};
+  const payload: any = { ...record };
+
+  const beforeMotrice =
+    payload.primaMotrice ??
+    payload?.prima?.motrice ??
+    payload?.prima?.targaMotrice ??
+    event.beforeMotrice ??
+    null;
+  const afterMotrice =
+    payload.dopoMotrice ??
+    payload?.dopo?.motrice ??
+    payload?.dopo?.targaMotrice ??
+    event.afterMotrice ??
+    null;
+  const beforeRimorchio =
+    payload.primaRimorchio ??
+    payload?.prima?.rimorchio ??
+    payload?.prima?.targaRimorchio ??
+    event.beforeRimorchio ??
+    null;
+  const afterRimorchio =
+    payload.dopoRimorchio ??
+    payload?.dopo?.rimorchio ??
+    payload?.dopo?.targaRimorchio ??
+    event.afterRimorchio ??
+    null;
+
+  if (payload.primaMotrice == null && beforeMotrice) payload.primaMotrice = beforeMotrice;
+  if (payload.dopoMotrice == null && afterMotrice) payload.dopoMotrice = afterMotrice;
+  if (payload.primaRimorchio == null && beforeRimorchio) payload.primaRimorchio = beforeRimorchio;
+  if (payload.dopoRimorchio == null && afterRimorchio) payload.dopoRimorchio = afterRimorchio;
+
+  if (payload.targaMotrice == null && (afterMotrice || event.motrice || beforeMotrice)) {
+    payload.targaMotrice = afterMotrice || event.motrice || beforeMotrice;
+  }
+  if (payload.targaRimorchio == null && (afterRimorchio || event.rimorchio || beforeRimorchio)) {
+    payload.targaRimorchio = afterRimorchio || event.rimorchio || beforeRimorchio;
+  }
+
+  if (payload.badgeAutista == null && payload.badge == null && event.badge) {
+    payload.badgeAutista = event.badge;
+  }
+  const recordName = getNameFromRecord(record);
+  if (!payload.autista && !payload.autistaNome && !payload.nomeAutista && recordName) {
+    payload.autista = recordName;
+  }
+  if (!payload.timestamp && event.ts) payload.timestamp = event.ts;
+  if (!payload.tipo) payload.tipo = payload.tipoOperativo ?? payload.fsTipo ?? event.type;
+
+  return payload;
+}
+
+function buildHomeEventFromTimeline(event: TimelineEvent): HomeEvent | null {
+  const tipo = resolveHomeEventTipo(event);
+  if (!tipo) return null;
+  const record = event.rawRecord;
+  const payload =
+    tipo === "cambio_mezzo" ? buildCambioPayloadFromTimeline(event) : record ?? {};
+  const autistaName = record ? getNameFromRecord(record) : "";
+  const rawId = event.rawRefId ?? record?.id ?? record?.uid ?? record?.uuid ?? null;
+  const targaValue = event.targa || "";
+  return {
+    id: rawId ? String(rawId) : `${event.sourceKey}-${event.ts}`,
+    tipo,
+    targa: targaValue || null,
+    autista: autistaName || null,
+    timestamp: event.ts || 0,
+    payload,
+  };
+}
+
 function Autista360() {
   const navigate = useNavigate();
   const { badge } = useParams();
@@ -579,6 +676,7 @@ function Autista360() {
   const [selectedNameBadgeKey, setSelectedNameBadgeKey] = useState<string | null>(
     null
   );
+  const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
 
   useEffect(() => {
     setSelectedNameBadgeKey(null);
@@ -764,6 +862,7 @@ function Autista360() {
           afterMotrice: motrice || undefined,
           afterRimorchio: rimorchio || undefined,
           isChangeEvent: true,
+          rawRecord: record,
         },
         matchInfo.recordBadge,
         matchInfo.recordName
@@ -791,6 +890,7 @@ function Autista360() {
             afterMotrice: "",
             afterRimorchio: "",
             isChangeEvent: true,
+            rawRecord: record,
           },
           matchInfo.recordBadge,
           matchInfo.recordName
@@ -838,6 +938,7 @@ function Autista360() {
           sourceKey,
           rawRefId: getRawRefId(record),
           badgeMatch: matchInfo.badgeMatch,
+          rawRecord: record,
           ...(extraPayload || {}),
         },
         matchInfo.recordBadge,
@@ -1107,6 +1208,7 @@ function Autista360() {
             Boolean(hasBeforeAfter) ||
             /CAMBIO|AGGANCIO|SGANCIO|ASSETTO/.test(tipoUpper),
           extra: extra.length ? extra : undefined,
+          rawRecord: record,
         },
         matchInfo.recordBadge,
         matchInfo.recordName
@@ -1205,6 +1307,11 @@ function Autista360() {
     isNameMode,
     selectedNameBadgeKey,
   ]);
+
+  function openEventModal(item: TimelineEvent) {
+    const homeEvent = buildHomeEventFromTimeline(item);
+    if (homeEvent) setSelectedEvent(homeEvent);
+  }
 
   const activeMotrice = activeSession ? getMotriceFromRecord(activeSession) : "";
   const activeRimorchio = activeSession ? getRimorchioFromRecord(activeSession) : "";
@@ -1388,6 +1495,15 @@ function Autista360() {
                   <div
                     key={`${event.sourceKey}-${event.rawRefId || index}`}
                     className="timeline-row"
+                    role="button"
+                    tabIndex={0}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openEventModal(event)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        openEventModal(event);
+                      }
+                    }}
                   >
                     <div className="timeline-date">{event.dateLabel}</div>
                     <div className="timeline-body">
@@ -1400,7 +1516,10 @@ function Autista360() {
                         {event.photo ? <span className="photo-pill">📷 Foto</span> : null}
                       </div>
                       {meta ? <div className="timeline-meta">{meta}</div> : null}
-                      <details className="timeline-details">
+                      <details
+                        className="timeline-details"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <summary>Dettagli</summary>
                         <div className="timeline-details-body">
                           {detailRows.map((row) => (
@@ -1418,6 +1537,10 @@ function Autista360() {
             </div>
           )}
         </div>
+        <AutistiEventoModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+        />
       </div>
     </div>
   );
