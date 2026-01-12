@@ -73,6 +73,7 @@ export default function Rifornimento() {
   const [litri, setLitri] = useState("");
   const [importo, setImporto] = useState("");
   const [note, setNote] = useState("");
+  const [targaConfirmed, setTargaConfirmed] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAlert, setShowAlert] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export default function Rifornimento() {
 
     setAutista(a);
     setMezzo(m);
+    setTargaConfirmed(false);
   }, [navigate]);
 
   function formatKm(value: string) {
@@ -103,11 +105,26 @@ export default function Rifornimento() {
     return n.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   }
 
+  function parseDecimal(value: string) {
+    const normalized = String(value ?? "")
+      .replace(",", ".")
+      .trim();
+    if (!normalized) return null;
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : null;
+  }
+
   function validate() {
     const e: Record<string, string> = {};
 
+    if (!targaConfirmed) e.targa = "Conferma che la targa è corretta";
     if (!km) e.km = "Inserisci i km";
-    if (!litri) e.litri = "Inserisci i litri";
+    if (!litri) {
+      e.litri = "Inserisci i litri";
+    } else {
+      const litriNum = parseDecimal(litri);
+      if (!litriNum || litriNum <= 0) e.litri = "Litri non validi";
+    }
 
     if (tipo === "distributore") {
       if (!metodo) e.metodo = "Seleziona pagamento";
@@ -123,7 +140,7 @@ export default function Rifornimento() {
     if (!validate()) return;
 
     const kmNum = Number(km.replace(/\./g, ""));
-    const litriNum = Number(litri);
+    const litriNum = parseDecimal(litri) ?? NaN;
 
     if (!isForced) {
       if (litriNum > 1000) {
@@ -199,10 +216,45 @@ export default function Rifornimento() {
   }
 
   if (!autista || !mezzo) return null;
+  const targaCamionLabel = String(mezzo?.targaCamion ?? "-")
+    .toUpperCase()
+    .trim();
 
   return (
     <div className="autisti-container rifornimento-container">
       <h1 className="autisti-title">Rifornimento</h1>
+
+      <div className="rf-section rf-targa-section">
+        <div className="rf-targa-label">Targa mezzo</div>
+        <div className="rf-targa-value">{targaCamionLabel}</div>
+
+        <label className="rf-check">
+          <input
+            type="checkbox"
+            checked={targaConfirmed}
+            onChange={(e) => {
+              setTargaConfirmed(e.target.checked);
+              if (e.target.checked) {
+                setErrors((prev) => {
+                  if (!prev.targa) return prev;
+                  const { targa: _targa, ...rest } = prev;
+                  return rest;
+                });
+              }
+            }}
+          />
+          <span>Confermo che la targa è corretta</span>
+        </label>
+        {errors.targa && <div className="rf-error">{errors.targa}</div>}
+
+        <button
+          type="button"
+          className="rf-change-mezzo"
+          onClick={() => navigate("/autisti/cambio-mezzo")}
+        >
+          Targa errata? Cambia mezzo
+        </button>
+      </div>
 
       {showAlert && (
         <div className="rf-alert">
@@ -255,6 +307,9 @@ export default function Rifornimento() {
 
         <input
           type="number"
+          inputMode="decimal"
+          pattern="[0-9]*[.,]?[0-9]*"
+          step="0.01"
           placeholder="Litri riforniti"
           value={litri}
           onChange={(e) => setLitri(e.target.value)}
@@ -312,7 +367,7 @@ export default function Rifornimento() {
         <textarea placeholder="Note (opzionale)" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
 
-      <button className="autisti-button" onClick={handleSave} disabled={loading}>
+      <button className="autisti-button" onClick={handleSave} disabled={loading || !targaConfirmed}>
         {loading ? "Salvataggio..." : "Salva rifornimento"}
       </button>
 

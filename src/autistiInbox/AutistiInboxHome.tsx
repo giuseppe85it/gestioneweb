@@ -547,8 +547,8 @@ useEffect(() => {
               {controlli.length === 0 ? (
                 <div className="daily-item empty">Nessun controllo</div>
               ) : (
-                controlli.slice(0, 5).map((c, index) => (
-                  (() => {
+                (() => {
+                  const preview = controlli.slice(0, 5).map((c, index) => {
                     const p: any = c.payload || {};
                     const check = p?.check;
                     const koList =
@@ -558,28 +558,54 @@ useEffect(() => {
                             .map(([k]) => String(k).toUpperCase())
                         : [];
                     const isKO = koList.length > 0;
-                    return (
-                      <div
-                        key={
-                          c.id ??
-                          `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`
-                        }
-                        className="daily-item"
-                        onClick={() => setSelectedEvent(c)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") setSelectedEvent(c);
-                        }}
-                      >
-                        {formatTime(c.timestamp)} - {c.targa ?? "-"} -{" "}
-                        <span style={isKO ? { color: "#d32f2f", fontWeight: 700 } : undefined}>
-                          {isKO ? "KO" : "OK"}
-                        </span>
+                    const key =
+                      c.id ??
+                      `${c.tipo ?? "x"}-${c.timestamp ?? 0}-${c.targa ?? ""}-${index}`;
+                    return { c, key, isKO };
+                  });
+
+                  const itemsKO = preview.filter((x) => x.isKO);
+                  const itemsOK = preview.filter((x) => !x.isKO);
+
+                  const renderItem = (x: { c: HomeEvent; key: string; isKO: boolean }) => (
+                    <div
+                      key={x.key}
+                      className="daily-item"
+                      onClick={() => setSelectedEvent(x.c)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setSelectedEvent(x.c);
+                      }}
+                    >
+                      {formatTime(x.c.timestamp)} - {x.c.targa ?? "-"} -{" "}
+                      <span style={x.isKO ? { color: "#d32f2f", fontWeight: 700 } : undefined}>
+                        {x.isKO ? "KO" : "OK"}
+                      </span>
+                    </div>
+                  );
+
+                  return (
+                    <div className="daily-two-col">
+                      <div className="daily-col">
+                        <div className="daily-col-title ko">ESITI KO</div>
+                        {itemsKO.length === 0 ? (
+                          <div className="daily-item empty">Nessun KO</div>
+                        ) : (
+                          itemsKO.map(renderItem)
+                        )}
                       </div>
-                    );
-                  })()
-                ))
+                      <div className="daily-col">
+                        <div className="daily-col-title ok">ESITI OK</div>
+                        {itemsOK.length === 0 ? (
+                          <div className="daily-item empty">Nessun OK</div>
+                        ) : (
+                          itemsOK.map(renderItem)
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </div>
 

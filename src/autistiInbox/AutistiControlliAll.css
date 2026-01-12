@@ -73,6 +73,66 @@
   gap: 10px;
 }
 
+@supports selector(.aic-row:has(.aic-badge.ko)) {
+  .aic-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 14px;
+    align-items: start;
+  }
+
+  .aic-list::before,
+  .aic-list::after {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    opacity: 0.85;
+    padding: 0 2px;
+  }
+
+  .aic-list::before {
+    content: "ESITI KO";
+    grid-column: 1;
+    grid-row: 1;
+    color: #d32f2f;
+  }
+
+  .aic-list::after {
+    content: "ESITI OK";
+    grid-column: 2;
+    grid-row: 1;
+    color: #2e7d32;
+  }
+
+  .aic-empty {
+    grid-column: 1 / -1;
+  }
+
+  .aic-row:has(.aic-badge.ko) {
+    grid-column: 1;
+  }
+
+  .aic-row:has(.aic-badge.ok) {
+    grid-column: 2;
+  }
+
+  @media (max-width: 760px) {
+    .aic-list {
+      grid-template-columns: 1fr;
+    }
+
+    .aic-list::before,
+    .aic-list::after {
+      content: none;
+    }
+
+    .aic-row {
+      grid-column: 1 !important;
+    }
+  }
+}
+
 .aic-row {
   border: 1px solid #eee;
   border-radius: 8px;

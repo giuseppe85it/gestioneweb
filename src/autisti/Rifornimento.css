@@ -173,3 +173,55 @@ textarea.error {
   font-size: 16px;
   font-weight: 700;
 }
+
+/* ================= */
+/* TARGA + CONFERMA  */
+/* ================= */
+
+.rf-targa-section {
+  text-align: center;
+}
+
+.rf-targa-label {
+  font-size: 14px;
+  font-weight: 800;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.rf-targa-value {
+  margin-top: 6px;
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #111;
+}
+
+.rf-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #222;
+}
+
+.rf-check input {
+  transform: scale(1.3);
+}
+
+.rf-change-mezzo {
+  margin-top: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 2px solid #1e6bff;
+  background: #eef4ff;
+  color: #1e6bff;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+}

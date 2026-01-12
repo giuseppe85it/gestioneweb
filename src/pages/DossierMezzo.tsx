@@ -77,6 +77,7 @@ interface Mezzo {
   manutenzioneDataFine?: string;
   manutenzioneKmMax?: string;
   manutenzioneProgrammata?: boolean;
+  librettoUrl?: string | null;
 }
 
 interface Lavoro {
@@ -192,9 +193,15 @@ const DossierMezzo: React.FC = () => {
   const [showManutenzioniModal, setShowManutenzioniModal] = useState(false);
 const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 const [showPreviewModal, setShowPreviewModal] = useState(false);
+const [showLibrettoModal, setShowLibrettoModal] = useState(false);
 const openDocumento = (url: string) => {
   setPreviewUrl(url);
   setShowPreviewModal(true);
+};
+
+const isPdfUrl = (url: string) => {
+  const u = String(url || "").toLowerCase();
+  return u.includes(".pdf") || u.includes("application/pdf");
 };
 
   useEffect(() => {
@@ -634,6 +641,10 @@ setState({
   }
 
   const { mezzo } = state;
+  const librettoUrls = [mezzo.librettoUrl]
+    .filter((u): u is string => typeof u === "string")
+    .map((u) => u.trim())
+    .filter(Boolean);
 
   const totaleLitri = state.rifornimenti.reduce(
     (sum, r) => sum + (r.litri || 0),
@@ -799,6 +810,96 @@ return (
       </div>
     )}
 
+    {showLibrettoModal && (
+      <div
+        className="dossier-modal-overlay"
+        onClick={() => setShowLibrettoModal(false)}
+      >
+        <div
+          className="dossier-modal dossier-libretto-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="dossier-modal-header">
+            <h2>Libretto - {mezzo.targa}</h2>
+            <button
+              className="dossier-button"
+              type="button"
+              onClick={() => setShowLibrettoModal(false)}
+            >
+              Chiudi
+            </button>
+          </div>
+
+          <div className="dossier-modal-body dossier-libretto-body">
+            {librettoUrls.length === 0 ? (
+              <div className="dossier-empty">
+                Nessun libretto associato.
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    className="dossier-button"
+                    type="button"
+                    onClick={() => navigate("/ia/libretto")}
+                  >
+                    Vai a IA Libretto
+                  </button>
+                </div>
+              </div>
+            ) : (
+              librettoUrls.map((url, index) => (
+                <div key={`${url}_${index}`} className="dossier-libretto-item">
+                  {isPdfUrl(url) ? (
+                    <>
+                      <iframe
+                        src={url}
+                        className="dossier-libretto-frame"
+                        title={`Libretto PDF ${index + 1}`}
+                      />
+                      <div className="dossier-libretto-actions">
+                        <a
+                          className="dossier-button"
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Apri PDF
+                        </a>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="dossier-libretto-image-wrap">
+                      <img
+                        src={url}
+                        className="dossier-libretto-img"
+                        alt={`Libretto ${index + 1}`}
+                      />
+                      <div className="dossier-libretto-actions">
+                        <a
+                          className="dossier-button"
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Apri immagine
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="dossier-header-bar">
       <button className="dossier-button ghost" onClick={handleBack}>
         ⟵ Mezzi
@@ -814,7 +915,7 @@ return (
         </div>
       </div>
 
-<div style={{ display: "flex", gap: "8px" }}>
+<div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
   <button
     className="dossier-button"
     type="button"
@@ -829,6 +930,14 @@ return (
     onClick={() => navigate(`/dossier/${mezzo.targa}/gomme`)}
   >
     Gomme
+  </button>
+
+  <button
+    className="dossier-button"
+    type="button"
+    onClick={() => setShowLibrettoModal(true)}
+  >
+    LIBRETTO
   </button>
 
   <button

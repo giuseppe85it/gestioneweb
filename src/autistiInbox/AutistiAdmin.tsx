@@ -1641,6 +1641,76 @@ export default function AutistiAdmin() {
     closeAdminEdit();
   }
 
+  async function deleteAdminEdit() {
+    if (!adminEditKind || !adminEditId) return;
+
+    const ok = window.confirm("Operazione irreversibile. Eliminare questo elemento?");
+    if (!ok) return;
+
+    const key =
+      adminEditKind === "rifornimento"
+        ? KEY_RIFORNIMENTI
+        : adminEditKind === "segnalazione"
+        ? KEY_SEGNALAZIONI
+        : adminEditKind === "attrezzature"
+        ? KEY_RICHIESTE_ATTREZZATURE
+        : adminEditKind === "controllo"
+        ? KEY_CONTROLLI
+        : adminEditKind === "gomme"
+        ? KEY_GOMME_TMP
+        : null;
+    if (!key) return;
+
+    try {
+      const raw = (await getItemSync(key)) || [];
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as any)?.value)
+        ? (raw as any).value
+        : [];
+      const updated = list.filter((r: any) => String(r?.id ?? "") !== String(adminEditId));
+      await setItemSync(key, updated);
+
+      if (adminEditKind === "segnalazione") {
+        setSegnalazioniRaw(updated);
+      }
+      if (adminEditKind === "controllo") {
+        setControlliRaw(updated);
+      }
+      if (adminEditKind === "gomme") {
+        setGommeRaw(updated);
+      }
+
+      if (adminEditKind === "rifornimento") {
+        const dossierRef = doc(db, "storage", DOSSIER_RIFORNIMENTI_KEY);
+        const dossierSnap = await getDoc(dossierRef);
+        const dossierRaw = dossierSnap.exists() ? dossierSnap.data() : {};
+        const dossier =
+          dossierRaw && typeof dossierRaw === "object" ? dossierRaw : {};
+        const items = Array.isArray((dossier as any).items)
+          ? (dossier as any).items
+          : Array.isArray((dossier as any)?.value?.items)
+          ? (dossier as any).value.items
+          : [];
+        const updatedItems = items.filter(
+          (it: any) => String(it?.id ?? "") !== String(adminEditId)
+        );
+        await setDoc(dossierRef, { ...(dossier as any), items: updatedItems });
+      }
+
+      if (adminEditKind === "segnalazione" || adminEditKind === "attrezzature") {
+        await deleteStoragePaths(getFotoStoragePaths(adminEditOriginal || {}));
+      }
+
+      const e = await loadHomeEvents(day);
+      setEvents(e);
+      closeAdminEdit();
+    } catch (err) {
+      console.error("Errore eliminazione elemento:", err);
+      window.alert("Errore durante l'eliminazione.");
+    }
+  }
+
   return (
     <div className="autisti-admin-page">
       <div className="autisti-admin-wrap">
@@ -2097,82 +2167,98 @@ export default function AutistiAdmin() {
                   </label>
                 </div>
               </div>
-              {controlliFiltered.map((item) => {
-                const r = item.record || {};
-                const ts = item.ts ?? 0;
-                const target = String(r.target ?? "").toUpperCase() || "-";
-                const targaCamion = r.targaCamion ?? r.targaMotrice ?? "-";
-                const targaRimorchio = r.targaRimorchio ?? "-";
-                const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
-                const badge = r.badgeAutista ?? "-";
-                const koText = item.koList.length ? item.koList.join(", ") : "";
-                const hasLinked = hasLinkedLavoro(r);
-                return (
-                  <div className={`row ${item.isKO ? "pill-danger" : ""}`} key={item.key}>
-                    <div className="row-left">
-                      <div className="time">{formatDateTime(ts)}</div>
-                      <div className="main">
-                        <div className="line1">
-                          <span>{autista}</span>
-                          <span className="sep">|</span>
-                          <span>BADGE {badge}</span>
-                          <span className="sep">|</span>
-                          <span className="muted">{target}</span>
-                        </div>
-                        <div className="line2 targa-pills-row">
-                          {target === "RIMORCHIO" ? null : (
-                            <span>
-                              Motrice: {String(targaCamion)}
+              {(() => {
+                const itemsKO = controlliFiltered.filter((x) => x.isKO);
+                const itemsOK = controlliFiltered.filter((x) => !x.isKO);
+
+                const renderRow = (item: any) => {
+                  const r = item.record || {};
+                  const ts = item.ts ?? 0;
+                  const target = String(r.target ?? "").toUpperCase() || "-";
+                  const targaCamion = r.targaCamion ?? r.targaMotrice ?? "-";
+                  const targaRimorchio = r.targaRimorchio ?? "-";
+                  const autista = r.autistaNome ?? r.nomeAutista ?? r.autista ?? "-";
+                  const badge = r.badgeAutista ?? "-";
+                  const koText = item.koList.length ? item.koList.join(", ") : "";
+                  const hasLinked = hasLinkedLavoro(r);
+                  return (
+                    <div className={`row ${item.isKO ? "pill-danger" : ""}`} key={item.key}>
+                      <div className="row-left">
+                        <div className="time">{formatDateTime(ts)}</div>
+                        <div className="main">
+                          <div className="line1">
+                            <span>{autista}</span>
+                            <span className="sep">|</span>
+                            <span>BADGE {badge}</span>
+                            <span className="sep">|</span>
+                            <span className="muted">{target}</span>
+                          </div>
+                          <div className="line2 targa-pills-row">
+                            {target === "RIMORCHIO" ? null : (
+                              <span>Motrice: {String(targaCamion)}</span>
+                            )}
+                            {target === "MOTRICE" ? null : (
+                              <>
+                                <span className="sep">|</span>
+                                <span>Rim: {String(targaRimorchio)}</span>
+                              </>
+                            )}
+                            <span className="sep">|</span>
+                            <span className={`pill ${item.isKO ? "pill-danger" : "pill-ok"}`}>
+                              {item.isKO ? "KO" : "OK"}
                             </span>
-                          )}
-                          {target === "MOTRICE" ? null : (
-                            <>
-                              <span className="sep">|</span>
-                              <span>Rim: {String(targaRimorchio)}</span>
-                            </>
-                          )}
-                          <span className="sep">|</span>
-                          <span className={`pill ${item.isKO ? "pill-danger" : "pill-ok"}`}>
-                            {item.isKO ? "KO" : "OK"}
-                          </span>
-                          {item.isKO && koText ? (
-                            <>
-                              <span className="sep">|</span>
-                              <span>KO: {koText}</span>
-                            </>
-                          ) : null}
+                            {item.isKO && koText ? (
+                              <>
+                                <span className="sep">|</span>
+                                <span>KO: {koText}</span>
+                              </>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="edit"
+                          onClick={() => openAdminEdit("controllo", r, r.id)}
+                        >
+                          MODIFICA
+                        </button>
+                        <button
+                          type="button"
+                          className="edit"
+                          onClick={() => {
+                            void generateControlloPDF(r);
+                          }}
+                        >
+                          PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="edit"
+                          disabled={hasLinked}
+                          onClick={() => createLavoroFromControllo(r)}
+                        >
+                          CREA LAVORO
+                        </button>
+                      </div>
                     </div>
-                    <div className="row-actions">
-                      <button
-                        type="button"
-                        className="edit"
-                        onClick={() => openAdminEdit("controllo", r, r.id)}
-                      >
-                        MODIFICA
-                      </button>
-                      <button
-                        type="button"
-                        className="edit"
-                        onClick={() => {
-                          void generateControlloPDF(r);
-                        }}
-                      >
-                        PDF
-                      </button>
-                      <button
-                        type="button"
-                        className="edit"
-                        disabled={hasLinked}
-                        onClick={() => createLavoroFromControllo(r)}
-                      >
-                        CREA LAVORO
-                      </button>
+                  );
+                };
+
+                return (
+                  <div className="admin-two-col">
+                    <div className="admin-col">
+                      <div className="admin-col-title ko">ESITI KO</div>
+                      {itemsKO.length === 0 ? <div className="empty">Nessun KO</div> : itemsKO.map(renderRow)}
+                    </div>
+                    <div className="admin-col">
+                      <div className="admin-col-title ok">ESITI OK</div>
+                      {itemsOK.length === 0 ? <div className="empty">Nessun OK</div> : itemsOK.map(renderRow)}
                     </div>
                   </div>
                 );
-              })}
+              })()}
             </>
           )}
 
@@ -2889,6 +2975,9 @@ export default function AutistiAdmin() {
                 <div className="admin-edit-actions">
                   <button className="edit" type="button" onClick={closeAdminEdit}>
                     ANNULLA
+                  </button>
+                  <button className="edit danger" type="button" onClick={deleteAdminEdit}>
+                    ELIMINA
                   </button>
                   <button className="edit" type="button" onClick={saveAdminEdit}>
                     SALVA
