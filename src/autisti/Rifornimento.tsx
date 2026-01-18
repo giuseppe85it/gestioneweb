@@ -299,6 +299,8 @@ export default function Rifornimento() {
       <div className="rf-section">
         <input
           placeholder="Km attuali"
+          inputMode="decimal"
+          pattern="[0-9]*[.,]?[0-9]*"
           value={formatKm(km)}
           onChange={(e) => setKm(e.target.value)}
           className={errors.km ? "error" : ""}
