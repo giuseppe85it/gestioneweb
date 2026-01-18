@@ -75,9 +75,9 @@ export default function CambioMezzoInbox() {
 
   return (
     <div className="cmi-container">
-      <h1>CAMBIO MEZZO – AUTISTI</h1>
+      <h1>CAMBIO MEZZO - AUTISTI</h1>
       <p className="cmi-subtitle">
-        Centro di controllo eventi provenienti dall’app autisti
+        Centro di controllo eventi provenienti dall'app autisti
       </p>
 
       {eventi.length === 0 && (

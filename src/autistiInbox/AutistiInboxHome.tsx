@@ -632,7 +632,7 @@ useEffect(() => {
                     ? `BADGE ${info.badgeAutista}`
                     : "BADGE -";
                   const nomeLabel = info.nomeAutista || "-";
-                  const topLine = `${info.tipoLabel} · ${nomeLabel} (${badgeLabel}) · ${formatTime(
+                  const topLine = `${info.tipoLabel} - ${nomeLabel} (${badgeLabel}) - ${formatTime(
                     c.timestamp
                   )}`;
                   const changeLines = buildCambioLines(info);

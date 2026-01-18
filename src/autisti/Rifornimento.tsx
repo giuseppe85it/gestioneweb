@@ -39,7 +39,7 @@ function buildDistributore(record: any) {
   if (record?.tipo) parts.push(String(record.tipo));
   if (record?.paese) parts.push(String(record.paese));
   if (record?.metodoPagamento) parts.push(String(record.metodoPagamento));
-  return parts.length ? parts.join(" ") : "—";
+  return parts.length ? parts.join(" ") : "-";
 }
 
 function buildDossierItem(record: any) {
@@ -318,7 +318,7 @@ export default function Rifornimento() {
         {errors.litri && <div className="rf-error">{errors.litri}</div>}
 
         <div className="rf-date">
-          Data: {data.toLocaleDateString("it-IT")} –{" "}
+          Data: {data.toLocaleDateString("it-IT")} -{" "}
           {data.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
         </div>
       </div>
@@ -352,7 +352,7 @@ export default function Rifornimento() {
             <>
               <input
                 type="number"
-                placeholder="Importo pagato €"
+                placeholder="Importo pagato EUR"
                 value={importo}
                 onChange={(e) => setImporto(e.target.value)}
                 className={errors.importo ? "error" : ""}

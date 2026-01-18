@@ -132,7 +132,7 @@ function buildDistributore(record: any) {
   if (record?.tipo) parts.push(String(record.tipo));
   if (record?.paese) parts.push(String(record.paese));
   if (record?.metodoPagamento) parts.push(String(record.metodoPagamento));
-  return parts.length ? parts.join(" ") : "—";
+  return parts.length ? parts.join(" ") : "-";
 }
 
 function buildDossierItem(record: any) {
@@ -2638,7 +2638,7 @@ export default function AutistiAdmin() {
                             value={adminEditForm.ambito ?? ""}
                             onChange={(e) => updateAdminForm("ambito", e.target.value)}
                           >
-                            <option value="">—</option>
+                            <option value="">-</option>
                             <option value="motrice">Motrice</option>
                             <option value="rimorchio">Rimorchio</option>
                             <option value="entrambi">Entrambi</option>

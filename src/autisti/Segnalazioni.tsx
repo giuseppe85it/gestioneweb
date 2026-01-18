@@ -30,7 +30,7 @@ function toItDateTime(ts: number) {
   const yyyy = d.getFullYear();
   const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${dd} ${mm} ${yyyy} â€“ ${hh}:${mi}`;
+  return `${dd} ${mm} ${yyyy} - ${hh}:${mi}`;
 }
 
 function normalizeCategoria(cat?: string | null) {
@@ -209,12 +209,12 @@ export default function Segnalazioni() {
   }
 
   function getPlaceholderDescrizione() {
-    if (tipo === "motore") return "Es. rumore anomalo, perdita olio, spia accesaâ€¦";
-    if (tipo === "gomme") return "Es. gomma asse 2 molto consumata, vibra, perde ariaâ€¦";
-    if (tipo === "freni") return "Es. frena male, rumore, spia, ariaâ€¦";
-    if (tipo === "idraulico") return "Es. perdita olio, pistone, tubo, pressioneâ€¦";
-    if (tipo === "elettrico") return "Es. luci non funzionano, batteria, spieâ€¦";
-    return "Descrivi il problema in poche paroleâ€¦";
+    if (tipo === "motore") return "Es. rumore anomalo, perdita olio, spia accesa...";
+    if (tipo === "gomme") return "Es. gomma asse 2 molto consumata, vibra, perde aria...";
+    if (tipo === "freni") return "Es. frena male, rumore, spia, aria...";
+    if (tipo === "idraulico") return "Es. perdita olio, pistone, tubo, pressione...";
+    if (tipo === "elettrico") return "Es. luci non funzionano, batteria, spie...";
+    return "Descrivi il problema in poche parole...";
   }
 
   function validate() {
@@ -234,7 +234,7 @@ export default function Segnalazioni() {
     setErrors(e);
 
     if (Object.keys(e).length > 0) {
-      setAlertMsg("Manca: " + Object.values(e).join(" Â· "));
+      setAlertMsg("Manca: " + Object.values(e).join(" - "));
       return false;
     }
 
@@ -364,14 +364,14 @@ export default function Segnalazioni() {
 
       <div className="seg-subtitle">
         {targaMotrice ? `Motrice: ${targaMotrice}` : "Motrice: -"}{" "}
-        {targaRimorchio ? `â€¢ Rimorchio: ${targaRimorchio}` : "â€¢ Rimorchio: -"}{" "}
-        {autista?.nome ? `â€¢ Autista: ${autista.nome}` : ""}
+        {targaRimorchio ? `- Rimorchio: ${targaRimorchio}` : "- Rimorchio: -"}{" "}
+        {autista?.nome ? `- Autista: ${autista.nome}` : ""}
       </div>
 
       {alertMsg && <div className="seg-alert">{alertMsg}</div>}
 
       <div className="seg-section">
-        <div className="seg-label">Dove Ã¨ il problema</div>
+        <div className="seg-label">Dove e' il problema</div>
         <div className="seg-toggle">
           <button
             className={ambito === "motrice" ? "active green" : errors.ambito ? "errorBtn" : ""}
@@ -496,7 +496,7 @@ export default function Segnalazioni() {
         <div className="seg-label">Note (opzionale)</div>
         <textarea
           className="seg-textarea"
-          placeholder="Note aggiuntive (opzionale)â€¦"
+          placeholder="Note aggiuntive (opzionale)..."
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />

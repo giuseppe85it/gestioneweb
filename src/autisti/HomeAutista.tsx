@@ -199,7 +199,7 @@ export default function HomeAutista() {
         <div>
           <h1>Area Autista</h1>
           <div className="autisti-sub">
-            {autista.nome} · Badge {autista.badge}
+            {autista.nome} - Badge {autista.badge}
           </div>
         </div>
 
