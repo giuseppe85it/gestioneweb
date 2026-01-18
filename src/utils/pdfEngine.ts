@@ -687,6 +687,10 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+function getImageFormatFromDataUrl(dataUrl: string): "PNG" | "JPEG" {
+  return dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+}
+
 type NormalizedImage = {
   dataUrl: string;
   width: number;
@@ -1739,9 +1743,10 @@ export async function generateDossierMezzoPDF(data: DossierPdfData): Promise<voi
 
   if (fotoDataUrl) {
     const fit = containBox(photoSize, photoSize, fotoDataUrl.width, fotoDataUrl.height);
+    const format = getImageFormatFromDataUrl(fotoDataUrl.dataUrl);
     doc.addImage(
       fotoDataUrl.dataUrl,
-      "JPEG",
+      format,
       photoX + fit.offsetX,
       currentY + fit.offsetY,
       fit.width,
