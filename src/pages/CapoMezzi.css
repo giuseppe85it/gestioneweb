@@ -1,0 +1,243 @@
+.capo-mezzi-wrapper {
+  min-height: 100vh;
+  padding: 28px 16px 48px;
+  background: radial-gradient(circle at top, #ece4d4 0, #dcd2c0 35%, #c9c0ae 70%, #b3ab9a 100%);
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.capo-mezzi-shell {
+  width: min(1200px, 100%);
+}
+
+.capo-mezzi-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.capo-mezzi-header h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #2b2923;
+}
+
+.capo-mezzi-header p {
+  margin: 0;
+  color: #4a4235;
+  font-size: 13px;
+}
+
+.capo-mezzi-state {
+  padding: 16px;
+  background: rgba(248, 244, 232, 0.96);
+  border-radius: 14px;
+  border: 1px solid rgba(180, 167, 144, 0.5);
+  color: #3a352b;
+  font-size: 13px;
+}
+
+.capo-mezzi-state.error {
+  border-color: rgba(178, 59, 46, 0.4);
+  color: #7b2e25;
+}
+
+.capo-mezzi-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.capo-mezzi-controls input {
+  width: min(320px, 100%);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 167, 144, 0.6);
+  background: rgba(248, 244, 232, 0.96);
+  color: #2b2923;
+  font-size: 13px;
+}
+
+.capo-mezzi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.capo-mezzi-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.capo-mezzi-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.capo-mezzi-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.capo-mezzi-section-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3a352b;
+}
+
+.capo-mezzi-section-head span {
+  font-size: 11px;
+  color: #5a5040;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.capo-mezzo-card {
+  display: flex;
+  flex-direction: column;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(248, 244, 232, 0.98);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.18) inset;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  height: 100%;
+}
+
+.capo-mezzo-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.22) inset;
+}
+
+.capo-mezzo-photo {
+  width: 100%;
+  height: 160px;
+  background: rgba(255, 252, 245, 0.9);
+  border-bottom: 1px solid rgba(180, 167, 144, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.capo-mezzo-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.capo-mezzo-placeholder {
+  font-size: 12px;
+  color: #6b6252;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.capo-mezzo-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.capo-mezzo-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #2b2923;
+  letter-spacing: 0.08em;
+}
+
+.capo-mezzo-desc {
+  font-size: 12px;
+  color: #4a4235;
+  line-height: 1.4;
+}
+
+.capo-mezzo-metrics {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.capo-mezzo-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.capo-mezzo-metric span {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #5a5040;
+}
+
+.capo-mezzo-metric strong {
+  font-size: 13px;
+  color: #2b2923;
+}
+
+.capo-mezzo-metric.mini strong {
+  font-size: 12px;
+  color: #3a352b;
+}
+
+.capo-mezzo-badge {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.capo-mezzo-badge.potential {
+  background: rgba(50, 99, 160, 0.12);
+  color: #214a7a;
+}
+
+.capo-mezzo-badge.incomplete {
+  background: rgba(180, 67, 54, 0.12);
+  color: #7b2e25;
+}
+
+@media (max-width: 1100px) {
+  .capo-mezzi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .capo-mezzi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .capo-mezzi-controls {
+    justify-content: stretch;
+  }
+
+  .capo-mezzi-controls input {
+    width: 100%;
+  }
+}

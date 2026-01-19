@@ -2035,6 +2035,12 @@ function Home() {
                 <div className="hero-card-title">Mezzi</div>
                 <div className="hero-card-value">Anagrafiche</div>
               </Link>
+              <Link to="/capo/mezzi" className="hero-card">
+                <div className="hero-card-title">Area Capo</div>
+                <div className="hero-card-value hero-card-subtext">
+                  Costi mezzi, fatture e riepiloghi.
+                </div>
+              </Link>
               <Link to="/manutenzioni" className="hero-card">
                 <div className="hero-card-title">Manutenzioni</div>
                 <div className="hero-card-value">Registro</div>

@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getDownloadURL, ref } from "firebase/storage";
+import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
 import { storage } from "../firebase";
 import { generaPDFconIA } from "./aiCore";
 
@@ -1842,4 +1843,249 @@ export async function generateAnalisiEconomicaPDF(
     blocks,
     footerSign: { leftLabel: "Firma Admin", rightLabel: "Firma Admin" },
   });
+}
+
+type PreventiviCapoPdfItem = {
+  data?: string;
+  fornitore?: string;
+  importo?: number;
+  fileUrl?: string | null;
+  status?: string;
+};
+
+type PreventiviCapoPdfInput = {
+  targa?: string;
+  anno: number;
+  mese?: number;
+  listaPreventivi: PreventiviCapoPdfItem[];
+};
+
+export async function generatePreventiviCapoPDF(
+  input: PreventiviCapoPdfInput
+): Promise<void> {
+  const docId = buildDocId("PRV");
+  const targa = fmtTarga(input?.targa || "");
+  const title = targa ? `Preventivi Mezzo - ${targa}` : "Preventivi Mezzo";
+  const dateTimeLabel = formatDateTime(new Date());
+
+  const doc = new jsPDF();
+  const model: PdfDocModel = {
+    docId,
+    title,
+    dateTimeLabel,
+    blocks: [],
+  };
+
+  let currentY = await drawStandardHeader(doc, model);
+
+  const monthLabels = [
+    "Gennaio",
+    "Febbraio",
+    "Marzo",
+    "Aprile",
+    "Maggio",
+    "Giugno",
+    "Luglio",
+    "Agosto",
+    "Settembre",
+    "Ottobre",
+    "Novembre",
+    "Dicembre",
+  ];
+  const year = Number(input?.anno) || new Date().getFullYear();
+  const monthIndex =
+    typeof input?.mese === "number" && input.mese >= 1 && input.mese <= 12
+      ? input.mese
+      : null;
+  const periodLabel = monthIndex
+    ? `${year} - ${monthLabels[monthIndex - 1]}`
+    : `${year}`;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(`Periodo: ${periodLabel}`, PDF_MARGIN_X, currentY);
+  currentY += 8;
+
+  const formatAmount = (value?: number): string => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return "-";
+    return `${value.toFixed(2)} CHF`;
+  };
+
+  const rows = (input?.listaPreventivi || []).map((item) => {
+    const status =
+      item.status === "APPROVATO" || item.status === "RIFIUTATO"
+        ? item.status
+        : "";
+    return [
+      safeStr(item.data) || "-",
+      safeStr(item.fornitore) || "-",
+      formatAmount(item.importo),
+      status,
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    margin: { left: PDF_MARGIN_X, right: PDF_MARGIN_X },
+    head: [["Data", "Fornitore", "Importo", "Stato"]],
+    body: rows,
+    styles: {
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 3,
+    },
+    headStyles: {
+      fillColor: COLORS.tableHeaderBg,
+      textColor: COLORS.tableHeaderText,
+      fontStyle: "bold",
+    },
+    alternateRowStyles: {
+      fillColor: COLORS.rowAlt,
+    },
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const finalY = (doc as any).lastAutoTable?.finalY || currentY;
+  currentY = finalY + 8;
+
+  const total = (input?.listaPreventivi || []).reduce((sum, item) => {
+    if (typeof item.importo !== "number" || !Number.isFinite(item.importo)) return sum;
+    return sum + item.importo;
+  }, 0);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...COLORS.textBlack);
+  doc.text(`Totale preventivi: ${formatAmount(total)}`, PDF_MARGIN_X, currentY);
+
+  addStandardFooter(doc, model.footerSign);
+
+  const exportDate = (() => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  })();
+
+  const pageCount = doc.getNumberOfPages();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  for (let i = 1; i <= pageCount; i += 1) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...COLORS.textBlack);
+    doc.text(`Data export: ${exportDate}`, PDF_MARGIN_X, pageHeight - 8);
+  }
+
+  const name = sanitizeFileName(`${title}_${docId}`);
+  doc.save(`${name}.pdf`);
+}
+
+type StampOriginalPdfParams = {
+  fileUrl: string;
+  stampText: "APPROVATO" | "RIFIUTATO";
+  metaText: string;
+  outFileName: string;
+};
+
+export async function stampOriginalPdfWithStatus(
+  params: StampOriginalPdfParams
+): Promise<void> {
+  const fileUrl = params?.fileUrl;
+  if (!fileUrl) {
+    throw new Error("URL PDF non disponibile.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(fileUrl);
+  } catch (err) {
+    throw new Error(`Download PDF fallito: ${String(err)}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Download PDF fallito: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer);
+
+  const stampFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const stampColor =
+    params.stampText === "APPROVATO"
+      ? rgb(0.13, 0.5, 0.3)
+      : rgb(0.7, 0.2, 0.2);
+
+  const stampOpacity = 0.22;
+  const margin = 24;
+  const angleDeg = 35;
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
+  const clampSize = (value: number) => Math.max(48, Math.min(140, value));
+  const estimateFit = (fontSize: number, textLength: number) => {
+    const textWidth = fontSize * (textLength * 0.6);
+    const textHeight = fontSize;
+    const bw = Math.abs(textWidth * cosA) + Math.abs(textHeight * sinA);
+    const bh = Math.abs(textWidth * sinA) + Math.abs(textHeight * cosA);
+    return { bw, bh };
+  };
+
+  const pages = pdfDoc.getPages();
+  pages.forEach((page) => {
+    const { width, height } = page.getSize();
+
+    const usableW = Math.max(0, width - margin * 2);
+    const usableH = Math.max(0, height - margin * 2);
+    let stampSize = clampSize(width * 0.12);
+    const textLength = params.stampText.length || 1;
+    for (let i = 0; i < 12; i += 1) {
+      const { bw, bh } = estimateFit(stampSize, textLength);
+      if (bw <= usableW && bh <= usableH) break;
+      stampSize -= 6;
+      if (stampSize < 36) {
+        stampSize = 36;
+        break;
+      }
+    }
+
+    const textWidth = stampFont.widthOfTextAtSize(params.stampText, stampSize);
+    const textHeight = stampFont.heightAtSize(stampSize);
+    const x = (width - textWidth) / 2;
+    const y = (height - textHeight) / 2;
+
+    page.drawText(params.stampText, {
+      x,
+      y,
+      size: stampSize,
+      font: stampFont,
+      color: stampColor,
+      rotate: degrees(angleDeg),
+      opacity: stampOpacity,
+    });
+  });
+
+  const pdfBytes = await pdfDoc.save();
+  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+
+  const rawName = (params.outFileName || "Preventivo_timbrato").replace(
+    /\.pdf$/i,
+    ""
+  );
+  const safeName = sanitizeFileName(rawName);
+  const finalName = `${safeName}.pdf`;
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = finalName;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
 }

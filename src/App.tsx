@@ -18,6 +18,8 @@ import DossierGomme from "./pages/DossierGomme";
 import AnalisiEconomica from "./pages/AnalisiEconomica";
 import Mezzo360 from "./pages/Mezzo360";
 import Autista360 from "./pages/Autista360";
+import CapoMezzi from "./pages/CapoMezzi";
+import CapoCostiMezzo from "./pages/CapoCostiMezzo";
 
 import MaterialiDaOrdinare from "./pages/MaterialiDaOrdinare";
 import MaterialiConsegnati from "./pages/MaterialiConsegnati";
@@ -98,6 +100,10 @@ function App() {
         <Route path="/mezzo-360/:targa" element={<Mezzo360 />} />
         <Route path="/autista-360" element={<Autista360 />} />
         <Route path="/autista-360/:badge" element={<Autista360 />} />
+
+        {/* CAPO */}
+        <Route path="/capo/mezzi" element={<CapoMezzi />} />
+        <Route path="/capo/costi/:targa" element={<CapoCostiMezzo />} />
 
         {/* MATERIALI */}
         <Route path="/materiali-da-ordinare" element={<MaterialiDaOrdinare />} />

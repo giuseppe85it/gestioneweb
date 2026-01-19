@@ -1,0 +1,546 @@
+.capo-costi-wrapper {
+  min-height: 100vh;
+  padding: 28px 16px 48px;
+  background: radial-gradient(circle at top, #ece4d4 0, #dcd2c0 35%, #c9c0ae 70%, #b3ab9a 100%);
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.capo-costi-shell {
+  width: min(1200px, 100%);
+}
+
+.capo-costi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.capo-costi-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  text-align: center;
+}
+
+.capo-costi-title h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #2b2923;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.capo-costi-title span {
+  font-size: 28px;
+  font-weight: 900;
+  color: #2b2923;
+  letter-spacing: 0.08em;
+}
+
+.capo-costi-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.capo-costi-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5a5040;
+}
+
+.capo-costi-filters select {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(180, 167, 144, 0.6);
+  background: rgba(248, 244, 232, 0.96);
+  color: #2b2923;
+  font-size: 13px;
+}
+
+.capo-costi-state {
+  padding: 16px;
+  background: rgba(248, 244, 232, 0.96);
+  border-radius: 14px;
+  border: 1px solid rgba(180, 167, 144, 0.5);
+  color: #3a352b;
+  font-size: 13px;
+}
+
+.capo-costi-state.error {
+  border-color: rgba(178, 59, 46, 0.4);
+  color: #7b2e25;
+}
+
+.capo-month-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.capo-month-chip {
+  border-radius: 999px;
+  padding: 6px 8px;
+  border: 1px solid rgba(180, 167, 144, 0.55);
+  background: rgba(248, 244, 232, 0.9);
+  color: #3a352b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.1s ease;
+}
+
+.capo-month-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.18);
+}
+
+.capo-month-chip.active {
+  background: #2d6a4f;
+  color: #fdfaf4;
+  border-color: rgba(45, 106, 79, 0.7);
+}
+
+.capo-month-chip.muted {
+  opacity: 0.5;
+}
+
+.capo-button {
+  border-radius: 999px;
+  padding: 8px 14px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #f1e7d6;
+  color: #3a352b;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+}
+
+.capo-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.24);
+}
+
+.capo-button.ghost {
+  background: rgba(250, 244, 233, 0.75);
+}
+
+.capo-button.secondary {
+  background: rgba(255, 253, 247, 0.92);
+  border: 1px solid rgba(180, 167, 144, 0.5);
+}
+
+.capo-costi-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+  align-items: center;
+}
+
+.capo-kpi-card {
+  background: rgba(248, 244, 232, 0.98);
+  border-radius: 16px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.18) inset;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.capo-kpi-card span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #5a5040;
+}
+
+.capo-kpi-card strong {
+  font-size: 16px;
+  color: #2b2923;
+}
+
+.capo-kpi-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(180, 67, 54, 0.12);
+  color: #7b2e25;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  justify-self: start;
+}
+
+.capo-costi-list {
+  background: rgba(248, 244, 232, 0.98);
+  border-radius: 18px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+}
+
+.capo-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.capo-list-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3a352b;
+}
+
+.capo-list-header span {
+  font-size: 11px;
+  color: #5a5040;
+}
+
+.capo-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.capo-tab {
+  border-radius: 999px;
+  padding: 6px 12px;
+  border: 1px solid rgba(180, 167, 144, 0.6);
+  background: rgba(248, 244, 232, 0.9);
+  color: #3a352b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.capo-tab.active {
+  background: #2d6a4f;
+  color: #fdfaf4;
+  border-color: rgba(45, 106, 79, 0.7);
+}
+
+.capo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.capo-list-item {
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.capo-doc-card {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(180, 167, 144, 0.45);
+  background: rgba(255, 253, 247, 0.92);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.capo-doc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.capo-doc-date {
+  font-size: 11px;
+  color: #5a5040;
+}
+
+.capo-doc-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.capo-doc-main strong {
+  font-size: 14px;
+  color: #2b2923;
+}
+
+.capo-doc-amount {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2b2923;
+}
+
+.capo-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.capo-chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: rgba(91, 137, 111, 0.12);
+  color: #2d6a4f;
+}
+
+.capo-chip.danger {
+  background: rgba(178, 59, 46, 0.12);
+  color: #7b2e25;
+}
+
+.capo-chip.info {
+  background: rgba(50, 99, 160, 0.12);
+  color: #214a7a;
+}
+
+.capo-meta-muted {
+  color: #7a6f5d;
+  font-size: 11px;
+}
+
+.capo-approvazioni {
+  margin-bottom: 18px;
+  background: rgba(248, 244, 232, 0.98);
+  border-radius: 18px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+}
+
+.capo-approvazioni-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.capo-approvazioni-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3a352b;
+}
+
+.capo-approvazioni-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.capo-approvazioni-controls .capo-button {
+  white-space: nowrap;
+}
+
+.capo-approvazioni-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #4a4235;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.capo-approvazioni-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.capo-approvazioni-card {
+  border-radius: 16px;
+  border: 1px solid rgba(180, 167, 144, 0.45);
+  background: rgba(255, 253, 247, 0.92);
+  padding: 12px 14px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.capo-approvazioni-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.capo-approvazioni-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.capo-approvazioni-status.pending {
+  background: rgba(120, 112, 92, 0.14);
+  color: #5a5040;
+}
+
+.capo-approvazioni-status.approved {
+  background: rgba(45, 106, 79, 0.18);
+  color: #2d6a4f;
+}
+
+.capo-approvazioni-status.rejected {
+  background: rgba(178, 59, 46, 0.16);
+  color: #7b2e25;
+}
+
+.capo-approvazioni-date {
+  font-size: 11px;
+  color: #5a5040;
+}
+
+.capo-approvazioni-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.capo-approvazioni-main strong {
+  font-size: 14px;
+  color: #2b2923;
+}
+
+.capo-approvazioni-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.capo-action {
+  flex: 1;
+  min-width: 120px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: none;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: #2b2923;
+  background: rgba(248, 244, 232, 0.96);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14);
+}
+
+.capo-action.approve {
+  background: rgba(45, 106, 79, 0.18);
+  color: #2d6a4f;
+}
+
+.capo-action.reject {
+  background: rgba(178, 59, 46, 0.16);
+  color: #7b2e25;
+}
+
+.capo-action.pending {
+  background: rgba(120, 112, 92, 0.14);
+  color: #5a5040;
+}
+
+.capo-approvazioni-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .capo-approvazioni-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .capo-approvazioni-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .capo-approvazioni-actions {
+    flex-direction: column;
+  }
+
+  .capo-action {
+    width: 100%;
+  }
+
+  .capo-approvazioni-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 720px) {
+  .capo-costi-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .capo-costi-title {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .capo-month-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .capo-list-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
