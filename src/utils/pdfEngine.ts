@@ -2069,7 +2069,9 @@ export async function stampOriginalPdfWithStatus(
   });
 
   const pdfBytes = await pdfDoc.save();
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const ab = new ArrayBuffer(pdfBytes.byteLength);
+  new Uint8Array(ab).set(pdfBytes);
+  const blob = new Blob([ab], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
 
   const rawName = (params.outFileName || "Preventivo_timbrato").replace(
