@@ -23,6 +23,35 @@ const normalizeTipo = (tipo?: unknown) => {
   return tipo.toUpperCase().replace(/\s+/g, "").trim();
 };
 
+type Currency = "EUR" | "CHF" | "UNKNOWN";
+
+const detectCurrencyFromText = (input: unknown): Currency => {
+  if (!input) return "UNKNOWN";
+  const text = String(input).toUpperCase();
+  if (text.includes("€") || text.includes("EUR")) return "EUR";
+  if (text.includes("CHF") || text.includes("FR.")) return "CHF";
+  return "UNKNOWN";
+};
+
+const resolveCurrencyFromRecord = (record: any): Currency => {
+  const direct = detectCurrencyFromText(record?.valuta ?? record?.currency);
+  if (direct !== "UNKNOWN") return direct;
+  const source = [
+    record?.totaleDocumento,
+    record?.importo,
+    record?.testo,
+    record?.imponibile,
+    record?.ivaImporto,
+    record?.importoPagamento,
+    record?.numeroDocumento,
+    record?.fornitoreLabel,
+    record?.descrizione,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return detectCurrencyFromText(source);
+};
+
 const DEBUG_DOCS = true;
 const DEBUG_DOC_NAME = "augustonifattura.pdf";
 
@@ -140,6 +169,8 @@ interface FatturaPreventivo {
   data?: string;
   descrizione?: string;
   importo?: number;
+  valuta?: Currency;
+  currency?: Currency;
   fornitoreLabel?: string;
   fileUrl?: string | null;   // <── AGGIUNTO
   sourceKey?: string;
@@ -426,6 +457,7 @@ const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
   importo: d.totaleDocumento
     ? parseFloat(String(d.totaleDocumento).replace(",", "."))
     : undefined,
+  valuta: resolveCurrencyFromRecord(d),
   fornitoreLabel: d.fornitore || "",
   fileUrl: d.fileUrl || null,              // <── AGGIUNTO
   sourceKey: d.sourceKey,
@@ -447,6 +479,7 @@ const documentiIA: FatturaPreventivo[] = iaDocs.map((d: any) => ({
             .map((c) => ({
               ...c,
               sourceKey: "@costiMezzo",
+              valuta: resolveCurrencyFromRecord(c),
             })),
           ...documentiIA,
         ];
@@ -679,14 +712,43 @@ const fatture = state.documentiCosti
   .filter((d) => d.tipo === "FATTURA")
   .sort((a, b) => parseItalianDate(b.data) - parseItalianDate(a.data));
 
-  const totalePreventivi = preventivi.reduce(
-    (sum, d) => sum + (d.importo || 0),
-    0
-  );
-  const totaleFatture = fatture.reduce(
-    (sum, d) => sum + (d.importo || 0),
-    0
-  );
+  const sumByCurrency = (items: FatturaPreventivo[]) => {
+    let chf = 0;
+    let eur = 0;
+    let unknown = 0;
+    items.forEach((d) => {
+      const imp = typeof d.importo === "number" && !Number.isNaN(d.importo)
+        ? d.importo
+        : null;
+      if (imp == null) return;
+      const curr = resolveCurrencyFromRecord(d);
+      if (curr === "CHF") chf += imp;
+      else if (curr === "EUR") eur += imp;
+      else unknown += 1;
+    });
+    return { chf, eur, unknown };
+  };
+
+  const preventiviTotals = sumByCurrency(preventivi);
+  const fattureTotals = sumByCurrency(fatture);
+
+  const renderAmountWithCurrency = (
+    value: number | undefined,
+    currency: Currency
+  ) => {
+    if (typeof value !== "number" || Number.isNaN(value)) return "Importo n/d";
+    if (currency === "UNKNOWN") {
+      return (
+        <>
+          {value.toFixed(2)}
+          <span className="dossier-badge badge-info" style={{ marginLeft: "6px" }}>
+            VALUTA DA VERIFICARE
+          </span>
+        </>
+      );
+    }
+    return `${value.toFixed(2)} ${currency}`;
+  };
 
  
   const urgenzaRank = (u?: string): number => {
@@ -1257,7 +1319,7 @@ return (
     const qty = Number(m.quantita) || 0;
     const totale = pu * qty;
 
-    return `${totale.toFixed(2)} CHF`;
+    return renderAmountWithCurrency(totale, "UNKNOWN");
   })()}
 </td>
 
@@ -1324,7 +1386,15 @@ return (
 
             <div className="dossier-chip">
               Totale preventivi:{" "}
-              <strong>{totalePreventivi.toFixed(2)} CHF</strong>
+              <strong>CHF {preventiviTotals.chf.toFixed(2)}</strong>
+              <span style={{ marginLeft: "8px" }}>
+                EUR {preventiviTotals.eur.toFixed(2)}
+              </span>
+              {preventiviTotals.unknown > 0 && (
+                <span className="dossier-badge badge-info" style={{ marginLeft: "8px" }}>
+                  VALUTA DA VERIFICARE ({preventiviTotals.unknown})
+                </span>
+              )}
             </div>
           </div>
 
@@ -1346,11 +1416,7 @@ return (
 
 <div className="dossier-list-meta">
   <span>{d.data}</span>
-  <span>
-    {d.importo
-      ? `${d.importo.toFixed(2)} CHF`
-      : "Importo n/d"}
-  </span>
+  <span>{renderAmountWithCurrency(d.importo, resolveCurrencyFromRecord(d))}</span>
   <span>{d.fornitoreLabel || "-"}</span>
 
   {d.fileUrl && (
@@ -1384,7 +1450,15 @@ return (
 
             <div className="dossier-chip">
               Totale fatture:{" "}
-              <strong>{totaleFatture.toFixed(2)} CHF</strong>
+              <strong>CHF {fattureTotals.chf.toFixed(2)}</strong>
+              <span style={{ marginLeft: "8px" }}>
+                EUR {fattureTotals.eur.toFixed(2)}
+              </span>
+              {fattureTotals.unknown > 0 && (
+                <span className="dossier-badge badge-info" style={{ marginLeft: "8px" }}>
+                  VALUTA DA VERIFICARE ({fattureTotals.unknown})
+                </span>
+              )}
             </div>
           </div>
 
@@ -1406,11 +1480,7 @@ return (
 
 <div className="dossier-list-meta">
   <span>{d.data}</span>
-  <span>
-    {d.importo
-      ? `${d.importo.toFixed(2)} CHF`
-      : "Importo n/d"}
-  </span>
+  <span>{renderAmountWithCurrency(d.importo, resolveCurrencyFromRecord(d))}</span>
   <span>{d.fornitoreLabel || "-"}</span>
 
   {d.fileUrl && (

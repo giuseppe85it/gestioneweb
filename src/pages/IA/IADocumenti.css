@@ -363,6 +363,109 @@
   color: #4a646b;
 }
 
+.iadoc-docs-panel {
+  gap: 14px;
+}
+
+.iadoc-docs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.iadoc-docs-item {
+  border: 1px solid #d7e2e5;
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 20px rgba(18, 40, 48, 0.08);
+}
+
+.iadoc-docs-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.iadoc-docs-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: #12343b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.iadoc-docs-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: #3a535a;
+}
+
+.iadoc-docs-actions {
+  display: flex;
+  align-items: center;
+}
+
+.iadoc-badge-verify {
+  border: none;
+  background: rgba(178, 59, 46, 0.12);
+  color: #7b2e25;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.iadoc-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 20, 24, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+
+.iadoc-modal-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 18px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 20px 40px rgba(18, 40, 48, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.iadoc-modal-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.iadoc-modal-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #3a535a;
+}
+
+.iadoc-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 @media (max-width: 900px) {
   .iadoc-grid {
     grid-template-columns: 1fr;
@@ -381,5 +484,15 @@
 @media (max-width: 640px) {
   .iadoc-page {
     padding: 20px 16px 50px;
+  }
+
+  .iadoc-docs-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .iadoc-docs-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

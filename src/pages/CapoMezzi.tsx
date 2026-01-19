@@ -19,6 +19,8 @@ type CostRecord = {
   tipo: "FATTURA" | "PREVENTIVO";
   data?: string;
   importo?: number;
+  valuta?: string;
+  currency?: string;
   fornitore?: string;
   fileUrl?: string | null;
   sourceKey?: string;
@@ -39,6 +41,35 @@ const normalizeTarga = (value?: unknown): string => {
 const normalizeTipo = (value?: unknown): string => {
   if (typeof value !== "string") return "";
   return value.toUpperCase().replace(/\s+/g, "").trim();
+};
+
+type Currency = "EUR" | "CHF" | "UNKNOWN";
+
+const detectCurrencyFromText = (input: unknown): Currency => {
+  if (!input) return "UNKNOWN";
+  const text = String(input).toUpperCase();
+  if (text.includes("€") || text.includes("EUR")) return "EUR";
+  if (text.includes("CHF") || text.includes("FR.")) return "CHF";
+  return "UNKNOWN";
+};
+
+const resolveCurrencyFromRecord = (record: any): Currency => {
+  const direct = detectCurrencyFromText(record?.valuta ?? record?.currency);
+  if (direct !== "UNKNOWN") return direct;
+  const source = [
+    record?.totaleDocumento,
+    record?.importo,
+    record?.testo,
+    record?.imponibile,
+    record?.ivaImporto,
+    record?.importoPagamento,
+    record?.numeroDocumento,
+    record?.fornitoreLabel,
+    record?.descrizione,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return detectCurrencyFromText(source);
 };
 
 const parseDateAny = (value?: string): Date | null => {
@@ -106,13 +137,18 @@ const extractImportoFromRaw = (d: any): number | undefined => {
   return undefined;
 };
 
-const formatCurrency = (value: number) => `${value.toFixed(2)} CHF`;
+const formatAmountValue = (value: number) => value.toFixed(2);
 
 type CostSummary = {
-  fattureMonth: number;
-  fattureYear: number;
-  preventiviMonth: number;
-  preventiviYear: number;
+  fattureMonthCHF: number;
+  fattureMonthEUR: number;
+  fattureYearCHF: number;
+  fattureYearEUR: number;
+  preventiviMonthCHF: number;
+  preventiviMonthEUR: number;
+  preventiviYearCHF: number;
+  preventiviYearEUR: number;
+  unknownCount: number;
   incomplete: number;
 };
 
@@ -146,10 +182,15 @@ const buildCostIndex = (costs: CostRecord[], now: Date): Map<string, CostSummary
     if (!targaKey) continue;
 
     const entry = map.get(targaKey) || {
-      fattureMonth: 0,
-      fattureYear: 0,
-      preventiviMonth: 0,
-      preventiviYear: 0,
+      fattureMonthCHF: 0,
+      fattureMonthEUR: 0,
+      fattureYearCHF: 0,
+      fattureYearEUR: 0,
+      preventiviMonthCHF: 0,
+      preventiviMonthEUR: 0,
+      preventiviYearCHF: 0,
+      preventiviYearEUR: 0,
+      unknownCount: 0,
       incomplete: 0,
     };
 
@@ -164,17 +205,40 @@ const buildCostIndex = (costs: CostRecord[], now: Date): Map<string, CostSummary
       continue;
     }
 
+    const currency = resolveCurrencyFromRecord(record);
+    if (currency === "UNKNOWN") {
+      entry.unknownCount += 1;
+      map.set(targaKey, entry);
+      continue;
+    }
+
     const d = dateValue as Date;
     if (d.getFullYear() === year) {
       if (record.tipo === "FATTURA") {
-        entry.fattureYear += importo as number;
+        if (currency === "CHF") {
+          entry.fattureYearCHF += importo as number;
+        } else {
+          entry.fattureYearEUR += importo as number;
+        }
         if (d.getMonth() === month) {
-          entry.fattureMonth += importo as number;
+          if (currency === "CHF") {
+            entry.fattureMonthCHF += importo as number;
+          } else {
+            entry.fattureMonthEUR += importo as number;
+          }
         }
       } else {
-        entry.preventiviYear += importo as number;
+        if (currency === "CHF") {
+          entry.preventiviYearCHF += importo as number;
+        } else {
+          entry.preventiviYearEUR += importo as number;
+        }
         if (d.getMonth() === month) {
-          entry.preventiviMonth += importo as number;
+          if (currency === "CHF") {
+            entry.preventiviMonthCHF += importo as number;
+          } else {
+            entry.preventiviMonthEUR += importo as number;
+          }
         }
       }
     }
@@ -217,6 +281,7 @@ const CapoMezzi: React.FC = () => {
           tipo: c?.tipo === "PREVENTIVO" ? "PREVENTIVO" : "FATTURA",
           data: c?.data || "",
           importo: parseAmountAny(c?.importo) ?? undefined,
+          valuta: resolveCurrencyFromRecord(c),
           fornitore: c?.fornitoreLabel || "",
           fileUrl: c?.fileUrl || null,
           sourceKey: "@costiMezzo",
@@ -251,6 +316,7 @@ const CapoMezzi: React.FC = () => {
           tipo: d.tipoDocumento === "PREVENTIVO" ? "PREVENTIVO" : "FATTURA",
           data: d.dataDocumento || "",
           importo: extractImportoFromRaw(d),
+          valuta: resolveCurrencyFromRecord(d),
           fornitore: d.fornitore || "",
           fileUrl: d.fileUrl || null,
           sourceKey: d.sourceKey,
@@ -300,8 +366,10 @@ const CapoMezzi: React.FC = () => {
       .sort((a, b) => {
         const ta = normalizeTarga(a.targa);
         const tb = normalizeTarga(b.targa);
-        const costA = costIndex.get(ta)?.fattureYear ?? 0;
-        const costB = costIndex.get(tb)?.fattureYear ?? 0;
+        const statsA = costIndex.get(ta);
+        const statsB = costIndex.get(tb);
+        const costA = (statsA?.fattureYearCHF ?? 0) + (statsA?.fattureYearEUR ?? 0);
+        const costB = (statsB?.fattureYearCHF ?? 0) + (statsB?.fattureYearEUR ?? 0);
         if (costB !== costA) return costB - costA;
         return ta.localeCompare(tb);
       });
@@ -322,7 +390,15 @@ const CapoMezzi: React.FC = () => {
     <div className="capo-mezzi-wrapper">
       <div className="capo-mezzi-shell">
         <header className="capo-mezzi-header">
-          <div>
+          <div className="capo-mezzi-title">
+            <button
+              type="button"
+              className="capo-logo-button"
+              onClick={() => navigate("/")}
+              aria-label="Vai alla Home"
+            >
+              <img src="/logo.png" alt="Logo" />
+            </button>
             <h1>Mezzi</h1>
             <p>Seleziona un mezzo per vedere costi e documenti.</p>
           </div>
@@ -359,10 +435,15 @@ const CapoMezzi: React.FC = () => {
                     {list.map((mezzo, index) => {
                       const targa = normalizeTarga(mezzo.targa);
                       const stats = costIndex.get(targa) || {
-                        fattureMonth: 0,
-                        fattureYear: 0,
-                        preventiviMonth: 0,
-                        preventiviYear: 0,
+                        fattureMonthCHF: 0,
+                        fattureMonthEUR: 0,
+                        fattureYearCHF: 0,
+                        fattureYearEUR: 0,
+                        preventiviMonthCHF: 0,
+                        preventiviMonthEUR: 0,
+                        preventiviYearCHF: 0,
+                        preventiviYearEUR: 0,
+                        unknownCount: 0,
                         incomplete: 0,
                       };
                       const description =
@@ -395,19 +476,50 @@ const CapoMezzi: React.FC = () => {
                             <div className="capo-mezzo-metrics">
                               <div className="capo-mezzo-metric">
                                 <span>Costo reale anno</span>
-                                <strong>{formatCurrency(stats.fattureYear)}</strong>
+                                <div className="capo-mezzo-values">
+                                  {stats.fattureYearCHF > 0 && (
+                                    <strong>CHF {formatAmountValue(stats.fattureYearCHF)}</strong>
+                                  )}
+                                  {stats.fattureYearEUR > 0 && (
+                                    <strong>EUR {formatAmountValue(stats.fattureYearEUR)}</strong>
+                                  )}
+                                  {stats.fattureYearCHF === 0 && stats.fattureYearEUR === 0 && (
+                                    <strong>0.00</strong>
+                                  )}
+                                </div>
                               </div>
-                              {stats.fattureMonth > 0 && (
+                              {(stats.fattureMonthCHF > 0 || stats.fattureMonthEUR > 0) && (
                                 <div className="capo-mezzo-metric mini">
                                   <span>Fatture mese</span>
-                                  <strong>{formatCurrency(stats.fattureMonth)}</strong>
+                                  <div className="capo-mezzo-values">
+                                    {stats.fattureMonthCHF > 0 && (
+                                      <strong>CHF {formatAmountValue(stats.fattureMonthCHF)}</strong>
+                                    )}
+                                    {stats.fattureMonthEUR > 0 && (
+                                      <strong>EUR {formatAmountValue(stats.fattureMonthEUR)}</strong>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
 
-                            {stats.preventiviYear > 0 && (
+                            {(stats.preventiviYearCHF > 0 || stats.preventiviYearEUR > 0) && (
                               <div className="capo-mezzo-badge potential">
-                                Potenziale {formatCurrency(stats.preventiviYear)}
+                                <span>Potenziale</span>
+                                <div className="capo-mezzo-values">
+                                  {stats.preventiviYearCHF > 0 && (
+                                    <strong>CHF {formatAmountValue(stats.preventiviYearCHF)}</strong>
+                                  )}
+                                  {stats.preventiviYearEUR > 0 && (
+                                    <strong>EUR {formatAmountValue(stats.preventiviYearEUR)}</strong>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {stats.unknownCount > 0 && (
+                              <div className="capo-mezzo-badge currency-warning">
+                                VALUTA DA VERIFICARE ({stats.unknownCount})
                               </div>
                             )}
 

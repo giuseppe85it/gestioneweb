@@ -41,6 +41,8 @@ type TimelineItem = {
   record: AnyRecord;
 };
 
+type Currency = "EUR" | "CHF" | "UNKNOWN";
+
 function unwrapList(value: any): any[] {
   if (Array.isArray(value)) return value;
   if (value && Array.isArray(value.value)) return value.value;
@@ -60,6 +62,61 @@ function normalizeTarga(t?: unknown) {
 function normalizeTipo(tipo?: unknown) {
   if (typeof tipo !== "string") return "";
   return tipo.toUpperCase().replace(/\s+/g, "").trim();
+}
+
+function detectCurrencyFromText(input: unknown): Currency {
+  if (!input) return "UNKNOWN";
+  const text = String(input).toUpperCase();
+  if (text.includes("€") || text.includes("EUR")) return "EUR";
+  if (text.includes("CHF") || text.includes("FR.")) return "CHF";
+  return "UNKNOWN";
+}
+
+function resolveCurrencyFromRecord(record: AnyRecord): Currency {
+  const direct = detectCurrencyFromText(record?.valuta ?? record?.currency);
+  if (direct !== "UNKNOWN") return direct;
+  const source = [
+    record?.totaleDocumento,
+    record?.importo,
+    record?.testo,
+    record?.imponibile,
+    record?.ivaImporto,
+    record?.importoPagamento,
+    record?.numeroDocumento,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return detectCurrencyFromText(source);
+}
+
+function renderAmountWithCurrency(
+  value: number | null | undefined,
+  currency: Currency
+) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "-";
+  if (currency === "UNKNOWN") {
+    return (
+      <>
+        {value.toFixed(2)}
+        <span
+          style={{
+            marginLeft: "6px",
+            padding: "2px 6px",
+            borderRadius: "999px",
+            background: "rgba(178, 59, 46, 0.12)",
+            color: "#7b2e25",
+            fontSize: "10px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+          }}
+        >
+          VALUTA DA VERIFICARE
+        </span>
+      </>
+    );
+  }
+  return `${value.toFixed(2)} ${currency}`;
 }
 
 function isSameTarga(a: string, b: string) {
@@ -373,6 +430,7 @@ export default function Mezzo360() {
             : typeof importoRaw === "string"
             ? parseFloat(importoRaw.replace(",", "."))
             : null;
+        const currency = resolveCurrencyFromRecord(d);
         return {
           id: d?.id || d?.sourceDocId || `${docTipo}_${docTargaNorm}`,
           tipo: docTipo,
@@ -387,6 +445,7 @@ export default function Mezzo360() {
           fornitore: d?.fornitore || null,
           sourceKey: d?.sourceKey || "",
           sourceDocId: d?.sourceDocId || "",
+          currency,
         };
       })
       .filter(Boolean) as AnyRecord[];
@@ -997,7 +1056,11 @@ export default function Mezzo360() {
                       {d?.descrizione || d?.tipo || "Documento"}
                     </div>
                     <div className="mezzo360-item-meta">
-                      {formatDateOnly(d?.data)} | Importo: {d?.importo ?? "-"}
+                      {formatDateOnly(d?.data)} | Importo:{" "}
+                      {renderAmountWithCurrency(
+                        d?.importo,
+                        d?.currency ?? "UNKNOWN"
+                      )}
                     </div>
                     {d?.fileUrl ? (
                       <a

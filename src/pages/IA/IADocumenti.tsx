@@ -8,6 +8,8 @@ import {
   getDoc,
   collection,
   addDoc,
+  getDocs,
+  updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -57,6 +59,8 @@ interface DocumentoAnalizzato {
   ivaPercentuale?: string;
   ivaImporto?: string;
   totaleDocumento?: string;
+  valuta?: string;
+  currency?: string;
 
   // Voci di dettaglio
   voci?: VoceDocumento[];
@@ -75,6 +79,26 @@ interface DocumentoAnalizzato {
 interface MezzoDoc {
   targa?: string;
 }
+
+type Currency = "EUR" | "CHF" | "UNKNOWN";
+
+type DocumentoLista = {
+  docId: string;
+  sourceKey: string;
+  tipoDocumento?: string;
+  targa?: string;
+  dataDocumento?: string;
+  totaleDocumento?: string | number;
+  fornitore?: string;
+  fileUrl?: string | null;
+  valuta?: Currency;
+  currency?: Currency;
+  testo?: string;
+  imponibile?: string;
+  ivaImporto?: string;
+  importoPagamento?: string;
+  numeroDocumento?: string;
+};
 
 // =======================================================
 // TIPI E COSTANTI PER INVENTARIO (allineati a Inventario.tsx)
@@ -95,6 +119,48 @@ const INVENTARIO_KEY = "@inventario";
 // stessa logica di generateId usata in Inventario.tsx
 const generateInventarioId = () =>
   `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+const detectCurrencyFromText = (input: unknown): Currency => {
+  if (!input) return "UNKNOWN";
+  const text = String(input).toUpperCase();
+  if (text.includes("€") || text.includes("EUR")) return "EUR";
+  if (text.includes("CHF") || text.includes("FR.")) return "CHF";
+  return "UNKNOWN";
+};
+
+const resolveDocumentCurrency = (doc: DocumentoAnalizzato): Currency => {
+  const direct = detectCurrencyFromText(doc.valuta ?? doc.currency);
+  if (direct !== "UNKNOWN") return direct;
+  const source = [
+    doc.testo,
+    doc.totaleDocumento,
+    doc.imponibile,
+    doc.ivaImporto,
+    doc.importoPagamento,
+    doc.numeroDocumento,
+    doc.fornitore,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return detectCurrencyFromText(source);
+};
+
+const resolveCurrencyForDisplay = (doc: DocumentoLista): Currency => {
+  const direct = detectCurrencyFromText(doc.valuta ?? doc.currency);
+  if (direct !== "UNKNOWN") return direct;
+  const source = [
+    doc.testo,
+    doc.totaleDocumento,
+    doc.imponibile,
+    doc.ivaImporto,
+    doc.importoPagamento,
+    doc.numeroDocumento,
+    doc.fornitore,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return detectCurrencyFromText(source);
+};
 
 // =======================================================
 // COMPONENTE PRINCIPALE IADocumenti
@@ -123,6 +189,10 @@ const IADocumenti: React.FC = () => {
     voci: false,
     pagamento: false,
   });
+  const [documentiLista, setDocumentiLista] = useState<DocumentoLista[]>([]);
+  const [documentiLoading, setDocumentiLoading] = useState(false);
+  const [documentiError, setDocumentiError] = useState<string | null>(null);
+  const [valutaModalDoc, setValutaModalDoc] = useState<DocumentoLista | null>(null);
 
   // flag per sapere se il documento è stato salvato su Firestore
   const [documentSaved, setDocumentSaved] = useState(false);
@@ -167,6 +237,60 @@ const IADocumenti: React.FC = () => {
       }
     };
     void loadMezzi();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDocumenti = async () => {
+      try {
+        setDocumentiLoading(true);
+        setDocumentiError(null);
+        const collections = ["@documenti_mezzi", "@documenti_magazzino", "@documenti_generici"];
+        const items: DocumentoLista[] = [];
+        for (const colName of collections) {
+          try {
+            const snap = await getDocs(collection(db, colName));
+            snap.forEach((docSnap) => {
+              const d = docSnap.data() || {};
+              items.push({
+                docId: docSnap.id,
+                sourceKey: colName,
+                tipoDocumento: d.tipoDocumento,
+                targa: d.targa,
+                dataDocumento: d.dataDocumento,
+                totaleDocumento: d.totaleDocumento,
+                fornitore: d.fornitore,
+                fileUrl: d.fileUrl || null,
+                valuta: d.valuta,
+                currency: d.currency,
+                testo: d.testo,
+                imponibile: d.imponibile,
+                ivaImporto: d.ivaImporto,
+                importoPagamento: d.importoPagamento,
+                numeroDocumento: d.numeroDocumento,
+              });
+            });
+          } catch {
+            // ignore collection errors
+          }
+        }
+        if (!cancelled) {
+          setDocumentiLista(items);
+          setDocumentiLoading(false);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setDocumentiError(err?.message || "Errore caricamento documenti.");
+          setDocumentiLoading(false);
+        }
+      }
+    };
+
+    void loadDocumenti();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const fmtTarga = (s?: unknown) =>
@@ -359,9 +483,12 @@ const IADocumenti: React.FC = () => {
       await uploadBytes(fileRef, selectedFile);
       const fileUrl = await getDownloadURL(fileRef);
 
+      const valuta = resolveDocumentCurrency(results);
+
       // 2. Prepara il payload per Firestore (lasciamo inalterata la struttura esistente)
       const payload = {
         ...results,
+        valuta,
         targa: targaFinale,
         fileUrl,
         nomeFile: selectedFile.name,
@@ -386,7 +513,27 @@ const IADocumenti: React.FC = () => {
           : "@documenti_generici";
 
       // 4. Salva il documento IA nella collection corretta
-      await addDoc(collection(db, targetCollection), payload);
+      const savedRef = await addDoc(collection(db, targetCollection), payload);
+
+      setDocumentiLista((prev) => [
+        {
+          docId: savedRef.id,
+          sourceKey: targetCollection,
+          tipoDocumento: results.tipoDocumento,
+          targa: targaFinale,
+          dataDocumento: results.dataDocumento,
+          totaleDocumento: results.totaleDocumento,
+          fornitore: results.fornitore,
+          fileUrl,
+          valuta,
+          testo: results.testo,
+          imponibile: results.imponibile,
+          ivaImporto: results.ivaImporto,
+          importoPagamento: results.importoPagamento,
+          numeroDocumento: results.numeroDocumento,
+        },
+        ...prev,
+      ]);
 
       // 5. Imposta flag documento salvato (serve per abilitare il bottone Importa Inventario)
       setDocumentSaved(true);
@@ -555,6 +702,38 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
       ...prev,
       [section]: !prev[section],
     }));
+  };
+
+  const handleOpenPdf = (url?: string | null) => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const formatImporto = (value?: string | number) => {
+    if (value == null || value === "") return "-";
+    if (typeof value === "number" && !Number.isNaN(value)) {
+      return value.toFixed(2);
+    }
+    const raw = String(value).trim();
+    return raw || "-";
+  };
+
+  const handleSetValuta = async (docItem: DocumentoLista, currency: Currency) => {
+    try {
+      await updateDoc(doc(db, docItem.sourceKey, docItem.docId), {
+        valuta: currency,
+      });
+      setDocumentiLista((prev) =>
+        prev.map((item) =>
+          item.docId === docItem.docId && item.sourceKey === docItem.sourceKey
+            ? { ...item, valuta: currency }
+            : item
+        )
+      );
+      setValutaModalDoc(null);
+    } catch (err: any) {
+      alert(err?.message || "Errore aggiornamento valuta.");
+    }
   };
 
   // ===================================================
@@ -1109,7 +1288,120 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
             )}
           </div>
         </div>
+
+        <div className="iadoc-panel iadoc-docs-panel">
+          <div className="ia-panel-head">
+            <h2>Documenti IA salvati</h2>
+            <span>Gestisci la valuta e apri i PDF originali.</span>
+          </div>
+
+          {documentiLoading && <div className="iadoc-empty">Caricamento documenti...</div>}
+          {documentiError && !documentiLoading && (
+            <div className="iadoc-error">{documentiError}</div>
+          )}
+
+          {!documentiLoading && !documentiError && documentiLista.length === 0 && (
+            <div className="iadoc-empty">Nessun documento salvato.</div>
+          )}
+
+          {!documentiLoading && !documentiError && documentiLista.length > 0 && (
+            <div className="iadoc-docs-list">
+              {documentiLista.map((docItem) => {
+                const explicitCurrency = detectCurrencyFromText(
+                  docItem.valuta ?? docItem.currency
+                );
+                const displayCurrency =
+                  explicitCurrency !== "UNKNOWN"
+                    ? explicitCurrency
+                    : resolveCurrencyForDisplay(docItem);
+                const needsVerify = explicitCurrency === "UNKNOWN";
+                return (
+                  <div
+                    key={`${docItem.sourceKey}-${docItem.docId}`}
+                    className="iadoc-docs-item"
+                  >
+                    <div className="iadoc-docs-main">
+                      <div className="iadoc-docs-title">
+                        {docItem.tipoDocumento || "Documento"}
+                      </div>
+                      <div className="iadoc-docs-meta">
+                        <span>Targa: {docItem.targa || "-"}</span>
+                        <span>Data: {docItem.dataDocumento || "-"}</span>
+                        <span>Totale: {formatImporto(docItem.totaleDocumento)}</span>
+                      </div>
+                      <div className="iadoc-docs-meta">
+                        <span>Fornitore: {docItem.fornitore || "-"}</span>
+                        <span>Valuta: {displayCurrency}</span>
+                        {needsVerify && (
+                          <button
+                            type="button"
+                            className="iadoc-badge-verify"
+                            onClick={() => setValutaModalDoc(docItem)}
+                          >
+                            VALUTA DA VERIFICARE
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="iadoc-docs-actions">
+                      {docItem.fileUrl ? (
+                        <button
+                          type="button"
+                          className="ia-btn outline"
+                          onClick={() => handleOpenPdf(docItem.fileUrl)}
+                        >
+                          APRI PDF
+                        </button>
+                      ) : (
+                        <span className="iadoc-empty">Nessun PDF</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
+
+      {valutaModalDoc && (
+        <div className="iadoc-modal-overlay" onClick={() => setValutaModalDoc(null)}>
+          <div
+            className="iadoc-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>Imposta valuta</h3>
+            <div className="iadoc-modal-meta">
+              <span>Targa: {valutaModalDoc.targa || "-"}</span>
+              <span>Data: {valutaModalDoc.dataDocumento || "-"}</span>
+              <span>Totale: {formatImporto(valutaModalDoc.totaleDocumento)}</span>
+            </div>
+            <div className="iadoc-modal-actions">
+              <button
+                type="button"
+                className="ia-btn"
+                onClick={() => handleSetValuta(valutaModalDoc, "EUR")}
+              >
+                EUR
+              </button>
+              <button
+                type="button"
+                className="ia-btn"
+                onClick={() => handleSetValuta(valutaModalDoc, "CHF")}
+              >
+                CHF
+              </button>
+              <button
+                type="button"
+                className="ia-btn outline"
+                onClick={() => setValutaModalDoc(null)}
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

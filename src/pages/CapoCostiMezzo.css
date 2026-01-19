@@ -28,9 +28,34 @@
   text-align: center;
 }
 
+.capo-logo-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.capo-logo-button img {
+  height: 48px;
+  width: auto;
+  display: block;
+}
+
+.capo-logo-button:hover {
+  opacity: 0.85;
+}
+
+.capo-costi-header .capo-button.ghost {
+  padding: 12px 22px;
+  font-size: 14px;
+}
+
 .capo-costi-title h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
   color: #2b2923;
   letter-spacing: 0.06em;
@@ -38,7 +63,7 @@
 }
 
 .capo-costi-title span {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 900;
   color: #2b2923;
   letter-spacing: 0.08em;
@@ -287,8 +312,9 @@
 }
 
 .capo-doc-date {
-  font-size: 11px;
-  color: #5a5040;
+  font-size: 13px;
+  color: #3f372c;
+  font-weight: 700;
 }
 
 .capo-doc-main {

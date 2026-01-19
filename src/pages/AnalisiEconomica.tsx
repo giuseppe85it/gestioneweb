@@ -44,6 +44,8 @@ interface Mezzo {
   manutenzioneProgrammata?: boolean;
 }
 
+type Currency = "EUR" | "CHF" | "UNKNOWN";
+
 interface FatturaPreventivo {
   id: string;
   mezzoTarga?: string;
@@ -51,6 +53,8 @@ interface FatturaPreventivo {
   data?: string;
   descrizione?: string;
   importo?: number;
+  valuta?: Currency;
+  currency?: Currency;
   fornitoreLabel?: string;
   fileUrl?: string | null;
   nomeFile?: string | null;
@@ -69,7 +73,9 @@ interface AnalisiEconomicaIA {
 
 interface FornitoreAggregato {
   nome: string;
-  totale: number;
+  totaleCHF: number;
+  totaleEUR: number;
+  unknownCount: number;
   numeroDocumenti: number;
 }
 
@@ -108,6 +114,8 @@ interface DocumentoIACompleto {
   importoPagamento?: string;
 
   testo?: string;
+  valuta?: Currency;
+  currency?: Currency;
   fileUrl?: string | null;
 }
 
@@ -118,6 +126,51 @@ interface DocumentoIACompleto {
 const normalizeTarga = (t: unknown = "") => {
   if (typeof t !== "string") return "";
   return t.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+};
+
+const detectCurrencyFromText = (input: unknown): Currency => {
+  if (!input) return "UNKNOWN";
+  const text = String(input).toUpperCase();
+  if (text.includes("€") || text.includes("EUR")) return "EUR";
+  if (text.includes("CHF") || text.includes("FR.")) return "CHF";
+  return "UNKNOWN";
+};
+
+const resolveCurrencyFromRecord = (record: any): Currency => {
+  const direct = detectCurrencyFromText(record?.valuta ?? record?.currency);
+  if (direct !== "UNKNOWN") return direct;
+  const source = [
+    record?.totaleDocumento,
+    record?.importo,
+    record?.testo,
+    record?.imponibile,
+    record?.ivaImporto,
+    record?.importoPagamento,
+    record?.numeroDocumento,
+    record?.fornitoreLabel,
+    record?.descrizione,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return detectCurrencyFromText(source);
+};
+
+const renderAmountWithCurrency = (
+  value: number | undefined,
+  currency: Currency
+) => {
+  if (typeof value !== "number" || Number.isNaN(value)) return "Importo n/d";
+  if (currency === "UNKNOWN") {
+    return (
+      <>
+        {value.toFixed(2)}
+        <span className="dossier-badge badge-info" style={{ marginLeft: "6px" }}>
+          VALUTA DA VERIFICARE
+        </span>
+      </>
+    );
+  }
+  return `${value.toFixed(2)} ${currency}`;
 };
 
 const normalizeTipo = (tipo: string = "") =>
@@ -254,6 +307,7 @@ const AnalisiEconomica: React.FC = () => {
           .map((c) => ({
             ...c,
             sourceKey: "@costiMezzo",
+            valuta: resolveCurrencyFromRecord(c),
           }));
 
         // 3. Carica DOCUMENTI IA da:
@@ -340,6 +394,7 @@ const AnalisiEconomica: React.FC = () => {
             ? `${d.tipoDocumento} - ${d.fornitore}`
             : d.tipoDocumento || "-",
           importo: extractImportoFromRaw(d),
+          valuta: resolveCurrencyFromRecord(d),
           fornitoreLabel: d.fornitore || "",
           fileUrl: d.fileUrl || null,
           nomeFile: d.nomeFile || null,
@@ -372,6 +427,7 @@ const AnalisiEconomica: React.FC = () => {
           banca: d.banca,
           importoPagamento: d.importoPagamento,
           testo: d.testo,
+          valuta: resolveCurrencyFromRecord(d),
           fileUrl: d.fileUrl || null,
         }));
 
@@ -449,62 +505,103 @@ const AnalisiEconomica: React.FC = () => {
   const {
     preventivi,
     fatture,
-    totalePreventivi,
-    totaleFatture,
-    totaleStorico,
-    totaleAnnoCorrente,
+    totalePreventiviCHF,
+    totalePreventiviEUR,
+    totaleFattureCHF,
+    totaleFattureEUR,
+    totaleStoricoCHF,
+    totaleStoricoEUR,
+    totaleAnnoCorrenteCHF,
+    totaleAnnoCorrenteEUR,
+    valutaDaVerificare,
   } = useMemo(() => {
-    const preventivi = documentiCosti
+    const enriched = documentiCosti.map((d) => ({
+      ...d,
+      valuta: d.valuta ?? resolveCurrencyFromRecord(d),
+    }));
+
+    const preventivi = enriched
       .filter((d) => d.tipo === "PREVENTIVO")
       .sort((a, b) => parseItalianDate(b.data) - parseItalianDate(a.data));
 
-    const fatture = documentiCosti
+    const fatture = enriched
       .filter((d) => d.tipo === "FATTURA")
       .sort((a, b) => parseItalianDate(b.data) - parseItalianDate(a.data));
 
-    const totalePreventivi = preventivi.reduce(
-      (sum, d) => sum + (d.importo || 0),
-      0
-    );
-    const totaleFatture = fatture.reduce(
-      (sum, d) => sum + (d.importo || 0),
-      0
-    );
-
+    let totalePreventiviCHF = 0;
+    let totalePreventiviEUR = 0;
+    let totaleFattureCHF = 0;
+    let totaleFattureEUR = 0;
+    let totaleStoricoCHF = 0;
+    let totaleStoricoEUR = 0;
+    let totaleAnnoCorrenteCHF = 0;
+    let totaleAnnoCorrenteEUR = 0;
+    let valutaDaVerificare = 0;
     const nowYear = new Date().getFullYear();
-    let totaleStorico = 0;
-    let totaleAnnoCorrente = 0;
 
-    for (const d of documentiCosti) {
-      const imp = d.importo || 0;
-      totaleStorico += imp;
+    for (const d of enriched) {
+      if (typeof d.importo !== "number" || Number.isNaN(d.importo)) continue;
+      const currency = d.valuta ?? "UNKNOWN";
+      if (currency === "UNKNOWN") {
+        valutaDaVerificare += 1;
+        continue;
+      }
+
+      if (currency === "CHF") {
+        totaleStoricoCHF += d.importo;
+      } else {
+        totaleStoricoEUR += d.importo;
+      }
+
       const ts = parseItalianDate(d.data);
       if (ts) {
         const year = new Date(ts).getFullYear();
         if (year === nowYear) {
-          totaleAnnoCorrente += imp;
+          if (currency === "CHF") {
+            totaleAnnoCorrenteCHF += d.importo;
+          } else {
+            totaleAnnoCorrenteEUR += d.importo;
+          }
         }
+      }
+
+      if (d.tipo === "PREVENTIVO") {
+        if (currency === "CHF") totalePreventiviCHF += d.importo;
+        else totalePreventiviEUR += d.importo;
+      } else {
+        if (currency === "CHF") totaleFattureCHF += d.importo;
+        else totaleFattureEUR += d.importo;
       }
     }
 
     return {
       preventivi,
       fatture,
-      totalePreventivi,
-      totaleFatture,
-      totaleStorico,
-      totaleAnnoCorrente,
+      totalePreventiviCHF,
+      totalePreventiviEUR,
+      totaleFattureCHF,
+      totaleFattureEUR,
+      totaleStoricoCHF,
+      totaleStoricoEUR,
+      totaleAnnoCorrenteCHF,
+      totaleAnnoCorrenteEUR,
+      valutaDaVerificare,
     };
   }, [documentiCosti]);
 
   const fornitoriAggregati: FornitoreAggregato[] = useMemo(() => {
-    const map = new Map<string, { totale: number; count: number }>();
+    const map = new Map<string, { chf: number; eur: number; unknown: number; count: number }>();
 
     for (const d of documentiCosti) {
       const nome = d.fornitoreLabel || "Senza fornitore";
-      const imp = d.importo || 0;
-      const prev = map.get(nome) || { totale: 0, count: 0 };
-      prev.totale += imp;
+      const imp = typeof d.importo === "number" && !Number.isNaN(d.importo) ? d.importo : null;
+      const currency = resolveCurrencyFromRecord(d);
+      const prev = map.get(nome) || { chf: 0, eur: 0, unknown: 0, count: 0 };
+      if (imp != null) {
+        if (currency === "CHF") prev.chf += imp;
+        else if (currency === "EUR") prev.eur += imp;
+        else prev.unknown += 1;
+      }
       prev.count += 1;
       map.set(nome, prev);
     }
@@ -512,10 +609,12 @@ const AnalisiEconomica: React.FC = () => {
     return Array.from(map.entries())
       .map(([nome, v]) => ({
         nome,
-        totale: v.totale,
+        totaleCHF: v.chf,
+        totaleEUR: v.eur,
+        unknownCount: v.unknown,
         numeroDocumenti: v.count,
       }))
-      .sort((a, b) => b.totale - a.totale);
+      .sort((a, b) => b.totaleCHF + b.totaleEUR - (a.totaleCHF + a.totaleEUR));
   }, [documentiCosti]);
 
   // =========================
@@ -533,18 +632,34 @@ const AnalisiEconomica: React.FC = () => {
       setSavingIA(true);
       setError(null);
 
+      const totaleStorico = totaleStoricoCHF + totaleStoricoEUR;
+      const totaleAnnoCorrente = totaleAnnoCorrenteCHF + totaleAnnoCorrenteEUR;
+      const totaleFatture = totaleFattureCHF + totaleFattureEUR;
+      const totalePreventivi = totalePreventiviCHF + totalePreventiviEUR;
+
       const payload = {
         targa,
         totaleStorico,
         totaleAnnoCorrente,
         totaleFatture,
         totalePreventivi,
+        totaleStoricoCHF,
+        totaleStoricoEUR,
+        totaleAnnoCorrenteCHF,
+        totaleAnnoCorrenteEUR,
+        totaleFattureCHF,
+        totaleFattureEUR,
+        totalePreventiviCHF,
+        totalePreventiviEUR,
+        valutaDaVerificare,
         numeroDocumenti: documentiCosti.length,
         numeroFatture: fatture.length,
         numeroPreventivi: preventivi.length,
         perFornitore: fornitoriAggregati.map((f) => ({
           nome: f.nome,
-          totale: f.totale,
+          totaleCHF: f.totaleCHF,
+          totaleEUR: f.totaleEUR,
+          valutaDaVerificare: f.unknownCount,
           numeroDocumenti: f.numeroDocumenti,
         })),
         documenti: documentiIACompleti, // ← dati completi estratti dai PDF
@@ -615,11 +730,21 @@ const AnalisiEconomica: React.FC = () => {
     }> = [];
 
     const riepilogoRows: string[][] = [
-      ["Totale storico", `${totaleStorico.toFixed(2)} CHF`],
-      ["Totale anno corrente", `${totaleAnnoCorrente.toFixed(2)} CHF`],
-      ["Totale preventivi", `${totalePreventivi.toFixed(2)} CHF`],
-      ["Totale fatture", `${totaleFatture.toFixed(2)} CHF`],
+      ["Totale storico CHF", `${totaleStoricoCHF.toFixed(2)} CHF`],
+      ["Totale storico EUR", `${totaleStoricoEUR.toFixed(2)} EUR`],
+      ["Totale anno corrente CHF", `${totaleAnnoCorrenteCHF.toFixed(2)} CHF`],
+      ["Totale anno corrente EUR", `${totaleAnnoCorrenteEUR.toFixed(2)} EUR`],
+      ["Totale preventivi CHF", `${totalePreventiviCHF.toFixed(2)} CHF`],
+      ["Totale preventivi EUR", `${totalePreventiviEUR.toFixed(2)} EUR`],
+      ["Totale fatture CHF", `${totaleFattureCHF.toFixed(2)} CHF`],
+      ["Totale fatture EUR", `${totaleFattureEUR.toFixed(2)} EUR`],
     ];
+    if (valutaDaVerificare > 0) {
+      riepilogoRows.push([
+        "Valuta da verificare",
+        String(valutaDaVerificare),
+      ]);
+    }
     sezioni.push({
       title: "Riepilogo costi",
       columns: ["Voce", "Valore"],
@@ -629,12 +754,14 @@ const AnalisiEconomica: React.FC = () => {
     if (fornitoriAggregati.length > 0) {
       const fornitoriRows = fornitoriAggregati.map((f) => [
         f.nome,
-        `${f.totale.toFixed(2)} CHF`,
+        `${f.totaleCHF.toFixed(2)} CHF`,
+        `${f.totaleEUR.toFixed(2)} EUR`,
+        String(f.unknownCount),
         String(f.numeroDocumenti),
       ]);
       sezioni.push({
         title: "Fornitori",
-        columns: ["Fornitore", "Totale", "Documenti"],
+        columns: ["Fornitore", "Totale CHF", "Totale EUR", "Valuta n/d", "Documenti"],
         rows: fornitoriRows,
       });
     }
@@ -768,7 +895,8 @@ const AnalisiEconomica: React.FC = () => {
                   <strong>Totale storico (preventivi + fatture)</strong>
                 </div>
                 <div className="dossier-list-meta">
-                  <span>{totaleStorico.toFixed(2)} CHF</span>
+                  <span>CHF {totaleStoricoCHF.toFixed(2)}</span>
+                  <span>EUR {totaleStoricoEUR.toFixed(2)}</span>
                 </div>
               </li>
               <li className="dossier-list-item">
@@ -776,7 +904,8 @@ const AnalisiEconomica: React.FC = () => {
                   <strong>Totale anno corrente (tutti i documenti)</strong>
                 </div>
                 <div className="dossier-list-meta">
-                  <span>{totaleAnnoCorrente.toFixed(2)} CHF</span>
+                  <span>CHF {totaleAnnoCorrenteCHF.toFixed(2)}</span>
+                  <span>EUR {totaleAnnoCorrenteEUR.toFixed(2)}</span>
                 </div>
               </li>
               <li className="dossier-list-item">
@@ -784,7 +913,8 @@ const AnalisiEconomica: React.FC = () => {
                   <strong>Totale preventivi</strong>
                 </div>
                 <div className="dossier-list-meta">
-                  <span>{totalePreventivi.toFixed(2)} CHF</span>
+                  <span>CHF {totalePreventiviCHF.toFixed(2)}</span>
+                  <span>EUR {totalePreventiviEUR.toFixed(2)}</span>
                 </div>
               </li>
               <li className="dossier-list-item">
@@ -792,9 +922,22 @@ const AnalisiEconomica: React.FC = () => {
                   <strong>Totale fatture</strong>
                 </div>
                 <div className="dossier-list-meta">
-                  <span>{totaleFatture.toFixed(2)} CHF</span>
+                  <span>CHF {totaleFattureCHF.toFixed(2)}</span>
+                  <span>EUR {totaleFattureEUR.toFixed(2)}</span>
                 </div>
               </li>
+              {valutaDaVerificare > 0 && (
+                <li className="dossier-list-item">
+                  <div className="dossier-list-main">
+                    <strong>Valuta da verificare</strong>
+                  </div>
+                  <div className="dossier-list-meta">
+                    <span className="dossier-badge badge-info">
+                      {valutaDaVerificare}
+                    </span>
+                  </div>
+                </li>
+              )}
             </ul>
           </div>
         </section>
@@ -815,7 +958,9 @@ const AnalisiEconomica: React.FC = () => {
                   <thead>
                     <tr>
                       <th>Fornitore</th>
-                      <th>Totale</th>
+                      <th>Totale CHF</th>
+                      <th>Totale EUR</th>
+                      <th>Valuta n/d</th>
                       <th>Documenti</th>
                     </tr>
                   </thead>
@@ -823,7 +968,9 @@ const AnalisiEconomica: React.FC = () => {
                     {fornitoriAggregati.map((f) => (
                       <tr key={f.nome}>
                         <td>{f.nome}</td>
-                        <td>{f.totale.toFixed(2)} CHF</td>
+                        <td>{f.totaleCHF.toFixed(2)} CHF</td>
+                        <td>{f.totaleEUR.toFixed(2)} EUR</td>
+                        <td>{f.unknownCount}</td>
                         <td>{f.numeroDocumenti}</td>
                       </tr>
                     ))}
@@ -870,9 +1017,10 @@ const AnalisiEconomica: React.FC = () => {
                       <div className="dossier-list-meta">
                         <span>{d.data || "-"}</span>
                         <span>
-                          {d.importo
-                            ? `${d.importo.toFixed(2)} CHF`
-                            : "Importo n/d"}
+                          {renderAmountWithCurrency(
+                            d.importo,
+                            d.valuta ?? resolveCurrencyFromRecord(d)
+                          )}
                         </span>
                         <span>{d.fornitoreLabel || "-"}</span>
                       </div>

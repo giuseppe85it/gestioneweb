@@ -12,6 +12,8 @@ type CostRecord = {
   tipo: "FATTURA" | "PREVENTIVO";
   data?: string;
   importo?: number;
+  currency?: Currency;
+  valuta?: Currency;
   fornitore?: string;
   fileUrl?: string | null;
   sourceKey?: string;
@@ -27,6 +29,8 @@ type ApprovalEntry = {
   updatedAt: string;
 };
 
+type Currency = "EUR" | "CHF" | "UNKNOWN";
+
 const IA_COLLECTIONS = [
   "@documenti_mezzi",
   "@documenti_magazzino",
@@ -41,6 +45,33 @@ const normalizeTarga = (value?: unknown): string => {
 const normalizeTipo = (value?: unknown): string => {
   if (typeof value !== "string") return "";
   return value.toUpperCase().replace(/\s+/g, "").trim();
+};
+
+const detectCurrencyFromText = (input: unknown): Currency => {
+  if (!input) return "UNKNOWN";
+  const text = String(input).toUpperCase();
+  if (text.includes("€") || text.includes("EUR")) return "EUR";
+  if (text.includes("CHF") || text.includes("FR.")) return "CHF";
+  return "UNKNOWN";
+};
+
+const resolveCurrencyFromRecord = (record: any): Currency => {
+  const direct = detectCurrencyFromText(record?.valuta ?? record?.currency);
+  if (direct !== "UNKNOWN") return direct;
+  const source = [
+    record?.totaleDocumento,
+    record?.importo,
+    record?.testo,
+    record?.imponibile,
+    record?.ivaImporto,
+    record?.importoPagamento,
+    record?.numeroDocumento,
+    record?.fornitoreLabel,
+    record?.descrizione,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return detectCurrencyFromText(source);
 };
 
 const parseDateAny = (value?: string): Date | null => {
@@ -108,7 +139,31 @@ const extractImportoFromRaw = (d: any): number | undefined => {
   return undefined;
 };
 
-const formatCurrency = (value: number) => `${value.toFixed(2)} CHF`;
+const formatAmountValue = (value: number) => value.toFixed(2);
+
+const renderAmountWithCurrency = (
+  value: number | undefined,
+  currency: Currency
+) => {
+  if (typeof value !== "number" || Number.isNaN(value)) return "Importo n/d";
+  if (currency === "UNKNOWN") {
+    return (
+      <>
+        {formatAmountValue(value)}
+        <span className="capo-chip info" style={{ marginLeft: "6px" }}>
+          VALUTA DA VERIFICARE
+        </span>
+      </>
+    );
+  }
+  return `${formatAmountValue(value)} ${currency}`;
+};
+
+const formatAmountText = (value: number | undefined, currency: Currency) => {
+  if (typeof value !== "number" || Number.isNaN(value)) return "-";
+  if (currency === "UNKNOWN") return formatAmountValue(value);
+  return `${formatAmountValue(value)} ${currency}`;
+};
 
 const formatDateShort = (value?: string): string => {
   const dateValue = parseDateAny(value);
@@ -178,6 +233,7 @@ const CapoCostiMezzo: React.FC = () => {
             tipo: c?.tipo === "PREVENTIVO" ? "PREVENTIVO" : "FATTURA",
             data: c?.data || "",
             importo: parseAmountAny(c?.importo) ?? undefined,
+            currency: resolveCurrencyFromRecord(c),
             fornitore: c?.fornitoreLabel || "",
             fileUrl: c?.fileUrl || null,
             sourceKey: "@costiMezzo",
@@ -212,6 +268,7 @@ const CapoCostiMezzo: React.FC = () => {
           tipo: d.tipoDocumento === "PREVENTIVO" ? "PREVENTIVO" : "FATTURA",
           data: d.dataDocumento || "",
           importo: extractImportoFromRaw(d),
+          currency: resolveCurrencyFromRecord(d),
           fornitore: d.fornitore || "",
           fileUrl: d.fileUrl || null,
           sourceKey: d.sourceKey,
@@ -304,31 +361,54 @@ const CapoCostiMezzo: React.FC = () => {
   );
 
   const computed = useMemo(() => {
-    let fattureMonth = 0;
-    let fattureYear = 0;
-    let preventiviMonth = 0;
-    let preventiviYear = 0;
+    let fattureMonthCHF = 0;
+    let fattureMonthEUR = 0;
+    let fattureYearCHF = 0;
+    let fattureYearEUR = 0;
+    let preventiviMonthCHF = 0;
+    let preventiviMonthEUR = 0;
+    let preventiviYearCHF = 0;
+    let preventiviYearEUR = 0;
     let incomplete = 0;
+    let currencyUnknown = 0;
 
     const enriched = records.map((r) => {
       const dateValue = parseDateAny(r.data);
       const importoValue = parseAmountAny(r.importo);
       const importoValid = Number.isFinite(importoValue as number);
       const dateValid = !!dateValue;
+      const currency = r.currency ?? resolveCurrencyFromRecord(r);
       if (!importoValid || !dateValid) {
         incomplete += 1;
+      } else if (currency === "UNKNOWN") {
+        currencyUnknown += 1;
       } else {
         const d = dateValue as Date;
         if (d.getFullYear() === selectedYear) {
+          const amount = importoValue as number;
           if (r.tipo === "FATTURA") {
-            fattureYear += importoValue as number;
-            if (d.getMonth() + 1 === selectedMonth) {
-              fattureMonth += importoValue as number;
+            if (currency === "CHF") {
+              fattureYearCHF += amount;
+              if (d.getMonth() + 1 === selectedMonth) {
+                fattureMonthCHF += amount;
+              }
+            } else {
+              fattureYearEUR += amount;
+              if (d.getMonth() + 1 === selectedMonth) {
+                fattureMonthEUR += amount;
+              }
             }
           } else {
-            preventiviYear += importoValue as number;
-            if (d.getMonth() + 1 === selectedMonth) {
-              preventiviMonth += importoValue as number;
+            if (currency === "CHF") {
+              preventiviYearCHF += amount;
+              if (d.getMonth() + 1 === selectedMonth) {
+                preventiviMonthCHF += amount;
+              }
+            } else {
+              preventiviYearEUR += amount;
+              if (d.getMonth() + 1 === selectedMonth) {
+                preventiviMonthEUR += amount;
+              }
             }
           }
         }
@@ -339,6 +419,7 @@ const CapoCostiMezzo: React.FC = () => {
         importoValue,
         importoValid,
         dateValid,
+        currency,
       };
     });
 
@@ -379,11 +460,16 @@ const CapoCostiMezzo: React.FC = () => {
     });
 
     return {
-      fattureMonth,
-      fattureYear,
-      preventiviMonth,
-      preventiviYear,
+      fattureMonthCHF,
+      fattureMonthEUR,
+      fattureYearCHF,
+      fattureYearEUR,
+      preventiviMonthCHF,
+      preventiviMonthEUR,
+      preventiviYearCHF,
+      preventiviYearEUR,
       incomplete,
+      currencyUnknown,
       filtered,
       fattureCount,
       preventiviCount,
@@ -398,12 +484,14 @@ const CapoCostiMezzo: React.FC = () => {
       .map((r) => {
         const dateValue = parseDateAny(r.data);
         const importoValue = parseAmountAny(r.importo);
+        const currency = r.currency ?? resolveCurrencyFromRecord(r);
         const key = buildApprovalKey(targaKey, r);
         const approval = approvalsMap[key];
         return {
           ...r,
           dateValue,
           importoValue,
+          currency,
           approvalStatus: approval?.status ?? "pending",
           approvalKey: key,
         };
@@ -502,7 +590,7 @@ const CapoCostiMezzo: React.FC = () => {
       `Targa: ${targaKey || "-"}`,
       `Fornitore: ${item.fornitore || "-"}`,
       `Data: ${formatDateShort(item.data)}`,
-      `Importo: ${item.importoValue != null ? formatCurrency(item.importoValue) : "-"}`,
+      `Importo: ${formatAmountText(item.importoValue ?? undefined, item.currency ?? "UNKNOWN")}`,
       `ID: ${item.approvalKey || "-"}`,
       `Data/ora: ${formatDateTimeShort(new Date())}`,
     ].join(" | ");
@@ -527,6 +615,14 @@ const CapoCostiMezzo: React.FC = () => {
       <div className="capo-costi-shell">
         <header className="capo-costi-header">
           <div className="capo-costi-title">
+            <button
+              type="button"
+              className="capo-logo-button"
+              onClick={() => navigate("/")}
+              aria-label="Vai alla Home"
+            >
+              <img src="/logo.png" alt="Logo" />
+            </button>
             <h1>Costi Mezzo</h1>
             <span>{normalizeTarga(targa)}</span>
           </div>
@@ -593,23 +689,40 @@ const CapoCostiMezzo: React.FC = () => {
             <div className="capo-costi-kpi">
               <div className="capo-kpi-card">
                 <span>Totale mese (fatture)</span>
-                <strong>{formatCurrency(computed.fattureMonth)}</strong>
+                <strong>CHF {formatAmountValue(computed.fattureMonthCHF)}</strong>
+                <div className="capo-meta-muted">
+                  EUR {formatAmountValue(computed.fattureMonthEUR)}
+                </div>
               </div>
               <div className="capo-kpi-card">
                 <span>Totale anno (fatture)</span>
-                <strong>{formatCurrency(computed.fattureYear)}</strong>
+                <strong>CHF {formatAmountValue(computed.fattureYearCHF)}</strong>
+                <div className="capo-meta-muted">
+                  EUR {formatAmountValue(computed.fattureYearEUR)}
+                </div>
               </div>
               <div className="capo-kpi-card">
                 <span>Preventivi mese</span>
-                <strong>{formatCurrency(computed.preventiviMonth)}</strong>
+                <strong>CHF {formatAmountValue(computed.preventiviMonthCHF)}</strong>
+                <div className="capo-meta-muted">
+                  EUR {formatAmountValue(computed.preventiviMonthEUR)}
+                </div>
               </div>
               <div className="capo-kpi-card">
                 <span>Preventivi anno</span>
-                <strong>{formatCurrency(computed.preventiviYear)}</strong>
+                <strong>CHF {formatAmountValue(computed.preventiviYearCHF)}</strong>
+                <div className="capo-meta-muted">
+                  EUR {formatAmountValue(computed.preventiviYearEUR)}
+                </div>
               </div>
               {computed.incomplete > 0 && (
                 <div className="capo-kpi-badge">
                   Dati incompleti ({computed.incomplete})
+                </div>
+              )}
+              {computed.currencyUnknown > 0 && (
+                <div className="capo-kpi-badge">
+                  Valuta da verificare ({computed.currencyUnknown})
                 </div>
               )}
             </div>
@@ -666,7 +779,10 @@ const CapoCostiMezzo: React.FC = () => {
                       <div className="capo-approvazioni-main">
                         <strong>{item.fornitore || "Fornitore n/d"}</strong>
                         <span>
-                          {item.importoValue != null ? formatCurrency(item.importoValue) : "Importo n/d"}
+                          {renderAmountWithCurrency(
+                            item.importoValue ?? undefined,
+                            item.currency ?? "UNKNOWN"
+                          )}
                         </span>
                       </div>
 
@@ -763,7 +879,12 @@ const CapoCostiMezzo: React.FC = () => {
                         <div className="capo-doc-main">
                           <strong>{item.fornitore || "Fornitore n/d"}</strong>
                           <span className="capo-doc-amount">
-                            {item.importoValid ? formatCurrency(item.importoValue as number) : "Importo n/d"}
+                            {item.importoValid
+                              ? renderAmountWithCurrency(
+                                  item.importoValue as number,
+                                  item.currency ?? "UNKNOWN"
+                                )
+                              : "Importo n/d"}
                           </span>
                         </div>
 
