@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generatePreventiviCapoPDF, stampOriginalPdfWithStatus } from "../utils/pdfEngine";
+import { generatePreventiviCapoPDF } from "../utils/pdfEngine";
 import "./CapoCostiMezzo.css";
 
 type CostRecord = {
@@ -581,32 +581,50 @@ const CapoCostiMezzo: React.FC = () => {
   };
 
   const handleDownloadStamped = async (item: any) => {
-    if (!item.fileUrl) return;
-    if (item.approvalStatus !== "approved" && item.approvalStatus !== "rejected") return;
+    if (!item.fileUrl) {
+      window.alert("Errore scaricamento PDF timbrato.");
+      return;
+    }
+    const status =
+      item.approvalStatus === "approved"
+        ? "APPROVATO"
+        : item.approvalStatus === "rejected"
+        ? "RIFIUTATO"
+        : null;
+    if (!status) return;
 
-    const targaKey = normalizeTarga(targa);
-    const stampText = item.approvalStatus === "approved" ? "APPROVATO" : "RIFIUTATO";
-    const metaText = [
-      `Targa: ${targaKey || "-"}`,
-      `Fornitore: ${item.fornitore || "-"}`,
-      `Data: ${formatDateShort(item.data)}`,
-      `Importo: ${formatAmountText(item.importoValue ?? undefined, item.currency ?? "UNKNOWN")}`,
-      `ID: ${item.approvalKey || "-"}`,
-      `Data/ora: ${formatDateTimeShort(new Date())}`,
-    ].join(" | ");
-
-    const outFileName = `Preventivo_${targaKey || "TARGA"}_${stampText}`;
+    const now = new Date();
+    const stampTimeHHmm = `${String(now.getHours()).padStart(2, "0")}:${String(
+      now.getMinutes()
+    ).padStart(2, "0")}`;
 
     try {
-      await stampOriginalPdfWithStatus({
-        fileUrl: item.fileUrl,
-        stampText,
-        metaText,
-        outFileName,
-      });
+      const response = await fetch(
+        "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/stamp_pdf",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileUrl: item.fileUrl,
+            status,
+            stampTimeHHmm,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`stamp_pdf failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data?.stampedUrl) {
+        throw new Error("stamp_pdf missing stampedUrl");
+      }
+
+      window.open(data.stampedUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error(err);
-      window.alert("Errore scaricamento PDF timbrato.");
+      window.alert("Errore timbro");
     }
   };
 
