@@ -159,12 +159,6 @@ const renderAmountWithCurrency = (
   return `${formatAmountValue(value)} ${currency}`;
 };
 
-const formatAmountText = (value: number | undefined, currency: Currency) => {
-  if (typeof value !== "number" || Number.isNaN(value)) return "-";
-  if (currency === "UNKNOWN") return formatAmountValue(value);
-  return `${formatAmountValue(value)} ${currency}`;
-};
-
 const formatDateShort = (value?: string): string => {
   const dateValue = parseDateAny(value);
   if (!dateValue) return "Data n/d";
@@ -172,15 +166,6 @@ const formatDateShort = (value?: string): string => {
   const mm = String(dateValue.getMonth() + 1).padStart(2, "0");
   const yyyy = dateValue.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
-};
-
-const formatDateTimeShort = (value: Date): string => {
-  const dd = String(value.getDate()).padStart(2, "0");
-  const mm = String(value.getMonth() + 1).padStart(2, "0");
-  const yyyy = value.getFullYear();
-  const hh = String(value.getHours()).padStart(2, "0");
-  const mi = String(value.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
 };
 
 const buildApprovalKey = (targaKey: string, record: CostRecord): string => {
