@@ -1059,10 +1059,17 @@ function Home() {
       return;
     }
 
-    const ora = prenotazioneForm.ora.trim();
-    if (ora && !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(ora)) {
+    const rawOra = prenotazioneForm.ora;
+    let ora = rawOra.trim().replace(/\\./g, ":");
+    if (ora && /^[0-9]:[0-5]\\d(:[0-5]\\d)?$/.test(ora)) {
+      ora = `0${ora}`;
+    }
+    if (ora && !/^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$/.test(ora)) {
       window.alert("Ora non valida. Usa formato HH:mm.");
       return;
+    }
+    if (ora.length > 5) {
+      ora = ora.slice(0, 5);
     }
 
     const luogo = prenotazioneForm.luogo.trim();
