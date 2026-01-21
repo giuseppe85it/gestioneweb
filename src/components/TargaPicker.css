@@ -1,0 +1,41 @@
+.targa-picker {
+  position: relative;
+  width: 100%;
+}
+
+.targa-picker-input {
+  width: 100%;
+}
+
+.targa-picker-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  max-height: 280px;
+  overflow: auto;
+}
+
+.targa-picker-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.targa-picker-item:hover,
+.targa-picker-item.is-active {
+  background: rgba(235, 229, 218, 0.85);
+}
+
+.targa-picker-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.7;
+}

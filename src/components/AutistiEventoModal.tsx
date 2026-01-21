@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HomeEvent } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
+import { useTarghe } from "../utils/targhe";
 import {
   generateCambioMezzoPDF,
   generateControlloPDF,
@@ -9,6 +10,7 @@ import {
   generateSegnalazionePDF,
 } from "../utils/pdfEngine";
 import "../autistiInbox/AutistiInboxHome.css";
+import TargaPicker from "./TargaPicker";
 
 type CreateFrom = {
   tipo: "segnalazione" | "controllo";
@@ -41,6 +43,7 @@ export default function AutistiEventoModal({
   const [createTipo, setCreateTipo] = useState<"targa" | "magazzino">("targa");
   const [createNote, setCreateNote] = useState("");
   const [createAlsoRimorchio, setCreateAlsoRimorchio] = useState(false);
+  const targhe = useTarghe();
 
   useEffect(() => {
     let active = true;
@@ -923,15 +926,16 @@ export default function AutistiEventoModal({
               </label>
               <label className="aix-create-label">
                 Target/Targa
-                <input
-                  className="aix-create-input"
+                <TargaPicker
                   value={createTarga}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  targhe={targhe}
+                  placeholder="Targa (opzionale)"
+                  inputClassName="aix-create-input"
+                  onChange={(value) => {
+                    const v = value.toUpperCase();
                     setCreateTarga(v);
                     setCreateTipo(v.trim() ? "targa" : "magazzino");
                   }}
-                  placeholder="Targa (opzionale)"
                 />
               </label>
               <label className="aix-create-label">

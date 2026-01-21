@@ -13,6 +13,8 @@ import { deleteObject, ref } from "firebase/storage";
 import { db, storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateControlloPDF, generateSegnalazionePDF } from "../utils/pdfEngine";
+import { buildTargheList } from "../utils/targhe";
+import TargaPicker from "../components/TargaPicker";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -497,6 +499,8 @@ export default function AutistiAdmin() {
     });
     return map;
   }, [mezziAziendali]);
+
+  const targhe = useMemo(() => buildTargheList(mezziAziendali), [mezziAziendali]);
 
   function getCategoria(targa?: string | null) {
     const key = String(targa ?? "").trim().toUpperCase();
@@ -2597,9 +2601,10 @@ export default function AutistiAdmin() {
                     <div className="admin-edit-grid">
                       <label>
                         Motrice
-                        <input
+                        <TargaPicker
                           value={adminEditForm.targaCamion ?? ""}
-                          onChange={(e) => updateAdminForm("targaCamion", e.target.value)}
+                          targhe={targhe}
+                          onChange={(value) => updateAdminForm("targaCamion", value)}
                         />
                         {renderCategoriaLine(adminEditForm.targaCamion)}
                       </label>
@@ -2607,9 +2612,10 @@ export default function AutistiAdmin() {
                       adminEditOriginal?.targaRimorchio ? (
                         <label>
                           Rimorchio
-                          <input
+                          <TargaPicker
                             value={adminEditForm.targaRimorchio ?? ""}
-                            onChange={(e) => updateAdminForm("targaRimorchio", e.target.value)}
+                            targhe={targhe}
+                            onChange={(value) => updateAdminForm("targaRimorchio", value)}
                           />
                           {renderCategoriaLine(adminEditForm.targaRimorchio)}
                         </label>
@@ -2648,9 +2654,10 @@ export default function AutistiAdmin() {
                       {showAdminTarga ? (
                         <label>
                           Targa (se presente)
-                          <input
+                          <TargaPicker
                             value={adminEditForm.targa ?? ""}
-                            onChange={(e) => updateAdminForm("targa", e.target.value)}
+                            targhe={targhe}
+                            onChange={(value) => updateAdminForm("targa", value)}
                           />
                           {renderCategoriaLine(adminEditForm.targa)}
                         </label>
@@ -3040,16 +3047,18 @@ export default function AutistiAdmin() {
                     <div className="admin-edit-grid">
                       <label>
                         Motrice
-                        <input
+                        <TargaPicker
                           value={canonEditForm.primaMotrice ?? ""}
-                          onChange={(e) => updateCanonForm("primaMotrice", e.target.value)}
+                          targhe={targhe}
+                          onChange={(value) => updateCanonForm("primaMotrice", value)}
                         />
                       </label>
                       <label>
                         Rimorchio
-                        <input
+                        <TargaPicker
                           value={canonEditForm.primaRimorchio ?? ""}
-                          onChange={(e) => updateCanonForm("primaRimorchio", e.target.value)}
+                          targhe={targhe}
+                          onChange={(value) => updateCanonForm("primaRimorchio", value)}
                         />
                       </label>
                     </div>
@@ -3060,16 +3069,18 @@ export default function AutistiAdmin() {
                     <div className="admin-edit-grid">
                       <label>
                         Motrice
-                        <input
+                        <TargaPicker
                           value={canonEditForm.dopoMotrice ?? ""}
-                          onChange={(e) => updateCanonForm("dopoMotrice", e.target.value)}
+                          targhe={targhe}
+                          onChange={(value) => updateCanonForm("dopoMotrice", value)}
                         />
                       </label>
                       <label>
                         Rimorchio
-                        <input
+                        <TargaPicker
                           value={canonEditForm.dopoRimorchio ?? ""}
-                          onChange={(e) => updateCanonForm("dopoRimorchio", e.target.value)}
+                          targhe={targhe}
+                          onChange={(value) => updateCanonForm("dopoRimorchio", value)}
                         />
                       </label>
                     </div>
@@ -3111,11 +3122,19 @@ export default function AutistiAdmin() {
                   </label>
                   <label>
                     Motrice
-                    <input value={editMotrice} onChange={(e) => setEditMotrice(e.target.value)} />
+                    <TargaPicker
+                      value={editMotrice}
+                      targhe={targhe}
+                      onChange={(value) => setEditMotrice(value)}
+                    />
                   </label>
                   <label>
                     Rimorchio
-                    <input value={editRimorchio} onChange={(e) => setEditRimorchio(e.target.value)} />
+                    <TargaPicker
+                      value={editRimorchio}
+                      targhe={targhe}
+                      onChange={(value) => setEditRimorchio(value)}
+                    />
                   </label>
                 </div>
 
