@@ -226,6 +226,16 @@ export default function AutistiAdmin() {
   const [editAutista, setEditAutista] = useState("");
   const [editMotrice, setEditMotrice] = useState("");
   const [editRimorchio, setEditRimorchio] = useState("");
+  const [forceCambioOpen, setForceCambioOpen] = useState(false);
+  const [forceCambioScope, setForceCambioScope] = useState<
+    "MOTRICE" | "RIMORCHIO" | null
+  >(null);
+  const [forceCambioBadge, setForceCambioBadge] = useState<string | null>(null);
+  const [forceCambioAutista, setForceCambioAutista] = useState<string | null>(null);
+  const [forceCambioCurrentTarga, setForceCambioCurrentTarga] = useState<string | null>(
+    null
+  );
+  const [forceCambioTarga, setForceCambioTarga] = useState("");
   const [adminEditOpen, setAdminEditOpen] = useState(false);
   const [adminEditKind, setAdminEditKind] = useState<
     | "rifornimento"
@@ -858,6 +868,87 @@ export default function AutistiAdmin() {
     const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
     setRimorchiLive(live);
     setSessioniRaw(Array.isArray(sess2) ? sess2 : []);
+  }
+
+  function openForceCambio(
+    scope: "MOTRICE" | "RIMORCHIO",
+    session: {
+      badgeAutista?: string | null;
+      nomeAutista?: string | null;
+      autistaNome?: string | null;
+      autista?: string | null;
+      targaMotrice?: string | null;
+      targaRimorchio?: string | null;
+    }
+  ) {
+    if (!session?.badgeAutista) return;
+    const currentTarga =
+      scope === "MOTRICE" ? session.targaMotrice : session.targaRimorchio;
+    setForceCambioScope(scope);
+    setForceCambioBadge(String(session.badgeAutista));
+    setForceCambioAutista(
+      String(session.nomeAutista ?? session.autistaNome ?? session.autista ?? "")
+    );
+    setForceCambioCurrentTarga(currentTarga ? String(currentTarga) : null);
+    setForceCambioTarga(normTarga(currentTarga ?? ""));
+    setForceCambioOpen(true);
+  }
+
+  function closeForceCambio() {
+    setForceCambioOpen(false);
+    setForceCambioScope(null);
+    setForceCambioBadge(null);
+    setForceCambioAutista(null);
+    setForceCambioCurrentTarga(null);
+    setForceCambioTarga("");
+  }
+
+  async function saveForceCambio() {
+    if (!forceCambioBadge || !forceCambioScope) return;
+    const nextTarga = normTarga(forceCambioTarga);
+    if (!nextTarga) {
+      window.alert("Seleziona una targa valida.");
+      return;
+    }
+
+    const sess = (await getItemSync(KEY_SESSIONI)) || [];
+    if (!Array.isArray(sess)) return;
+
+    const now = Date.now();
+    const note =
+      forceCambioScope === "MOTRICE" ? "forza cambio motrice" : "forza cambio rimorchio";
+    const updated = sess.map((s) => {
+      if (s?.badgeAutista !== forceCambioBadge) return s;
+      const next = { ...s };
+      if (forceCambioScope === "MOTRICE") {
+        next.targaMotrice = nextTarga;
+        if ("targaCamion" in next) {
+          next.targaCamion = nextTarga;
+        }
+      } else {
+        next.targaRimorchio = nextTarga;
+      }
+      return {
+        ...next,
+        adminEdit: {
+          ...(s?.adminEdit || {}),
+          edited: true,
+          editedAt: now,
+          editedBy: "admin",
+          note,
+        },
+      };
+    });
+
+    await setItemSync(KEY_SESSIONI, updated);
+
+    const live = await loadRimorchiStatus();
+    const sess2 = (await getItemSync(KEY_SESSIONI)) || [];
+    setRimorchiLive(live);
+    setSessioniRaw(Array.isArray(sess2) ? sess2 : []);
+
+    closeForceCambio();
+    window.alert("Sessione aggiornata.");
   }
 
   async function deleteSessione(badgeAutista: string) {
@@ -1834,6 +1925,22 @@ export default function AutistiAdmin() {
                       title="Rimuove il rimorchio dalla sessione attiva"
                     >
                       FORZA LIBERO RIMORCHIO
+                    </button>
+                    <button
+                      type="button"
+                      className="edit"
+                      onClick={() => openForceCambio("MOTRICE", s)}
+                      title="Imposta una nuova targa motrice per la sessione attiva"
+                    >
+                      FORZA CAMBIO MOTRICE
+                    </button>
+                    <button
+                      type="button"
+                      className="edit"
+                      onClick={() => openForceCambio("RIMORCHIO", s)}
+                      title="Imposta una nuova targa rimorchio per la sessione attiva"
+                    >
+                      FORZA CAMBIO RIMORCHIO
                     </button>
                     <button
                       type="button"
@@ -3156,6 +3263,55 @@ export default function AutistiAdmin() {
                       FORZA LIBERO
                     </button>
                   ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {forceCambioOpen && (
+          <div className="aix-backdrop" onMouseDown={closeForceCambio}>
+            <div className="aix-modal" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="aix-head">
+                <h3>
+                  Forza cambio{" "}
+                  {forceCambioScope === "RIMORCHIO" ? "rimorchio" : "motrice"}
+                </h3>
+                <button className="aix-close" type="button" onClick={closeForceCambio}>
+                  CHIUDI
+                </button>
+              </div>
+
+              <div className="aix-body">
+                <div className="aix-form">
+                  <label>
+                    Badge
+                    <input value={forceCambioBadge ?? "-"} disabled />
+                  </label>
+                  <label>
+                    Autista
+                    <input value={forceCambioAutista ?? "-"} disabled />
+                  </label>
+                  <label>
+                    Targa attuale
+                    <input value={forceCambioCurrentTarga ?? "-"} disabled />
+                  </label>
+                  <label>
+                    Nuova targa
+                    <TargaPicker
+                      value={forceCambioTarga}
+                      targhe={targhe}
+                      onChange={(value) => setForceCambioTarga(value)}
+                    />
+                  </label>
+                </div>
+
+                <div className="aix-actions">
+                  <button className="edit" type="button" onClick={closeForceCambio}>
+                    ANNULLA
+                  </button>
+                  <button className="edit" type="button" onClick={saveForceCambio}>
+                    CONFERMA
+                  </button>
                 </div>
               </div>
             </div>

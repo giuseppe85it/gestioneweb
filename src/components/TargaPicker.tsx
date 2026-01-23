@@ -25,6 +25,7 @@ export default function TargaPicker({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const blurTimeoutRef = useRef<number | null>(null);
 
   const query = value.trim().toUpperCase();
   const filtered = useMemo(() => {
@@ -55,6 +56,14 @@ export default function TargaPicker({
     return () => window.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
 
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current != null) {
+        window.clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleSelect = (next: string) => {
     onChange(next);
     setOpen(false);
@@ -63,6 +72,20 @@ export default function TargaPicker({
   const handleInputChange = (next: string) => {
     onChange(next.toUpperCase());
     if (!open) setOpen(true);
+  };
+
+  const handleFocus = () => {
+    if (blurTimeoutRef.current != null) {
+      window.clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setOpen(true);
+  };
+
+  const handleBlur = () => {
+    blurTimeoutRef.current = window.setTimeout(() => {
+      setOpen(false);
+    }, 120);
   };
 
   const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
@@ -100,7 +123,8 @@ export default function TargaPicker({
       <input
         value={value}
         onChange={(e) => handleInputChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className={`targa-picker-input${inputClassName ? ` ${inputClassName}` : ""}`}
