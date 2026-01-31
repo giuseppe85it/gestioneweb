@@ -80,6 +80,7 @@ export interface LavoroLike {
   targa?: string;
   magazzino?: string;
   gruppoId?: string;
+  chiHaEseguito?: string;
   note?: string;
 }
 
@@ -137,6 +138,11 @@ export type PdfInput =
       title?: string;
       rows: any[];
       columns?: string[];
+      orientation?: "portrait" | "landscape";
+      columnStyles?: Record<string, any>;
+      fontSize?: number;
+      overflow?: "linebreak" | "ellipsize" | "visible" | "hidden";
+      tableWidth?: "auto" | "wrap" | number;
     }
   | any;
 
@@ -450,7 +456,15 @@ async function generateLavoriPdf(
   autoTable(doc, {
     startY: currentY,
     margin: { left: 14, right: 14 },
-    head: [["Data", "Descrizione", "Urgenza", "Targa/Magazzino"]],
+    head: [[
+      "Data",
+      "Targa",
+      "Tipo",
+      "Urgenza",
+      "Descrizione",
+      "Esecutore",
+      "Note",
+    ]],
     body: lavori.map((l) => {
       const rawDate = l.dataInserimento ?? l.data ?? "";
       const date = rawDate ? formatGGMMYYYY(rawDate) : "";
@@ -458,12 +472,14 @@ async function generateLavoriPdf(
       const urg = String(l.urgenza || "").toUpperCase();
       const mag = l.magazzino || "";
       const targa = l.targa || "";
+      const esecutore = l.chiHaEseguito || "";
+      const note = l.note || "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tipo = (l as any)?.tipo;
-      const infoRaw = [targa, mag].filter(Boolean).join(" / ");
-      const info = infoRaw || (tipo === "magazzino" ? "MAGAZZINO" : "");
+      const targaLabel = targa || mag || "";
+      const tipoLabel = tipo === "magazzino" ? "MAGAZZINO" : "MEZZO";
 
-      return [date, desc, urg, info];
+      return [date, targaLabel, tipoLabel, urg, desc, esecutore, note];
     }),
     styles: {
       font: "helvetica",
@@ -471,9 +487,13 @@ async function generateLavoriPdf(
       cellPadding: 3,
     },
     columnStyles: {
-      0: { cellWidth: 24 },
-      2: { cellWidth: 28, halign: "center" },
-      3: { cellWidth: 40 },
+      0: { cellWidth: 20 },
+      1: { cellWidth: 26 },
+      2: { cellWidth: 22 },
+      3: { cellWidth: 22, halign: "center" },
+      4: { cellWidth: 58 },
+      5: { cellWidth: 28 },
+      6: { cellWidth: 28 },
     },
     headStyles: {
       fillColor: COLORS.tableHeaderBg,
@@ -484,7 +504,7 @@ async function generateLavoriPdf(
       fillColor: COLORS.rowAlt,
     },
     didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 2) {
+      if (data.section === "body" && data.column.index === 3) {
         const urgency = String(data.cell.raw || "").toUpperCase();
         if (!urgency) return;
 
@@ -545,11 +565,17 @@ async function generateTablePdf(
     startY: currentY,
     margin: { left: 14, right: 14 },
     head: [columns],
-    body: rows.map((row) => columns.map((c) => String(row[c] ?? ""))),
+    body: rows.map((row) =>
+      columns.map((c, idx) => {
+        const value = Array.isArray(row) ? row[idx] : (row as any)[c];
+        return String(value ?? "");
+      })
+    ),
     styles: {
       font: "helvetica",
-      fontSize: 9,
+      fontSize: typeof input.fontSize === "number" ? input.fontSize : 9,
       cellPadding: 3,
+      ...(input.overflow ? { overflow: input.overflow } : {}),
     },
     headStyles: {
       fillColor: COLORS.tableHeaderBg,
@@ -559,6 +585,8 @@ async function generateTablePdf(
     alternateRowStyles: {
       fillColor: COLORS.rowAlt,
     },
+    ...(input.columnStyles ? { columnStyles: input.columnStyles } : {}),
+    ...(input.tableWidth ? { tableWidth: input.tableWidth } : {}),
   });
 }
 
@@ -1122,7 +1150,8 @@ async function generateDocFromModel(model: PdfDocModel): Promise<void> {
 // --------------------------------------------------------
 export async function generateSmartPDF(input: PdfInput): Promise<void> {
   const kind = detectKind(input);
-  const doc = new jsPDF();
+  const orientation = (input as any)?.orientation;
+  const doc = orientation ? new jsPDF({ orientation }) : new jsPDF();
 
   if (kind === "lavori") {
     await generateLavoriPdf(doc, input);

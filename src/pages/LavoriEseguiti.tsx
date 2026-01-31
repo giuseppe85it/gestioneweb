@@ -89,15 +89,16 @@ const LavoriEseguiti: React.FC = () => {
     if (lavori.length === 0) return;
 
     const rows = lavori.map((l) => ({
-  Descrizione: l.descrizione,
-  Targa: l.targa || "-",
-  Inserimento: formatDateGGMMYYYY(l.dataInserimento),
-  Esecuzione: formatDateGGMMYYYY(l.dataEsecuzione),
-}));
+      Descrizione: l.descrizione,
+      Targa: l.targa || "-",
+      Esecutore: l.chiHaEseguito || "-",
+      Inserimento: formatDateGGMMYYYY(l.dataInserimento),
+      Esecuzione: formatDateGGMMYYYY(l.dataEsecuzione),
+    }));
 
 
     // colonne opzionali
-    const columns = ["Descrizione", "Targa", "Inserimento", "Esecuzione"];
+    const columns = ["Descrizione", "Targa", "Esecutore", "Inserimento", "Esecuzione"];
 
     await generateTablePDF(titolo, rows, columns);
   };

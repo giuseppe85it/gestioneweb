@@ -880,12 +880,12 @@ setIsEditing(false);
               className="man-header-btn man-header-btn-outline"
               onClick={async () => {
                 try {
-                  if (!storico.length) {
+                  if (!storicoFiltrato.length) {
                     alert("Non ci sono manutenzioni da esportare.");
                     return;
                   }
 
-                  const rows = storico.map((v) => {
+                  const rows = storicoFiltrato.map((v) => {
                     const misura =
                       v.tipo === "mezzo"
                         ? v.km != null
@@ -909,6 +909,7 @@ setIsEditing(false);
                   await generateSmartPDF({
                     kind: "table",
                     title: "Storico manutenzioni",
+                    orientation: "landscape",
                     columns: [
                       "Targa",
                       "Tipo",
@@ -918,6 +919,17 @@ setIsEditing(false);
                       "Eseguito da",
                       "Data",
                     ],
+                    fontSize: 8,
+                    tableWidth: "auto",
+                    columnStyles: {
+                      0: { cellWidth: 26 },
+                      1: { cellWidth: 24 },
+                      2: { cellWidth: 26 },
+                      3: { cellWidth: 28 },
+                      4: { cellWidth: 90, overflow: "linebreak" },
+                      5: { cellWidth: 32 },
+                      6: { cellWidth: 24 },
+                    },
                     rows,
                   });
                 } catch (err) {
