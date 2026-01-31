@@ -50,6 +50,8 @@ type MezzoRecord = {
   dataUltimoCollaudo?: string;
   dataScadenzaRevisione?: string;
   prenotazioneCollaudo?: PrenotazioneCollaudo | null;
+  preCollaudo?: PreCollaudo | null;
+  note?: string;
   manutenzioneProgrammata?: boolean;
   manutenzioneDataFine?: string;
 };
@@ -59,6 +61,15 @@ type PrenotazioneCollaudo = {
   ora?: string;
   luogo?: string;
   note?: string;
+  esito?: string;
+  noteEsito?: string;
+  completata?: boolean;
+  completataIl?: string;
+};
+
+type PreCollaudo = {
+  data: string;
+  officina: string;
 };
 
 type SessioneRecord = {
@@ -688,9 +699,22 @@ function normalizeFreeText(value: string | null | undefined): string {
     .trim();
 }
 
+function sanitizeBookingText(value: string): string {
+  return value
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function truncateText(value: string, maxLen: number): string {
   if (value.length <= maxLen) return value;
   return `${value.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+}
+
+function truncateAsciiText(value: string, maxLen: number): string {
+  if (value.length <= maxLen) return value;
+  const sliceLen = Math.max(0, maxLen - 3);
+  return `${value.slice(0, sliceLen).trimEnd()}...`;
 }
 
 function formatGiorniLabel(giorni: number): string {
@@ -778,6 +802,8 @@ function Home() {
   const navigate = useNavigate();
   const nameSuggestRef = useRef<HTMLDivElement | null>(null);
   const datePickerRef = useRef<HTMLInputElement | null>(null);
+  const preCollaudoDatePickerRef = useRef<HTMLInputElement | null>(null);
+  const revisioneDatePickerRef = useRef<HTMLInputElement | null>(null);
   const alertsStateRef = useRef<AlertsState | null>(null);
   const [mezzi, setMezzi] = useState<MezzoRecord[]>([]);
   const [sessioni, setSessioni] = useState<SessioneRecord[]>([]);
@@ -817,6 +843,19 @@ function Home() {
     data: "",
     ora: "",
     luogo: "",
+    note: "",
+  });
+  const [preCollaudoModalOpen, setPreCollaudoModalOpen] = useState(false);
+  const [preCollaudoTargetTarga, setPreCollaudoTargetTarga] = useState<string | null>(null);
+  const [preCollaudoForm, setPreCollaudoForm] = useState({
+    data: "",
+    officina: "",
+  });
+  const [revisioneModalOpen, setRevisioneModalOpen] = useState(false);
+  const [revisioneTargetTarga, setRevisioneTargetTarga] = useState<string | null>(null);
+  const [revisioneForm, setRevisioneForm] = useState({
+    data: "",
+    esito: "",
     note: "",
   });
   const [missingModalOpen, setMissingModalOpen] = useState(false);
@@ -1015,6 +1054,38 @@ function Home() {
     setPrenotazioneTargetTarga(null);
   };
 
+  const closePreCollaudoModal = () => {
+    setPreCollaudoModalOpen(false);
+    setPreCollaudoTargetTarga(null);
+  };
+
+  const closeRevisioneModal = () => {
+    setRevisioneModalOpen(false);
+    setRevisioneTargetTarga(null);
+  };
+
+  const openRevisioneModal = (targa: string, current?: PrenotazioneCollaudo | null) => {
+    const todayLabel = formatDateForDisplay(new Date());
+    const currentDateRaw = current?.completataIl ? String(current.completataIl).trim() : "";
+    const currentDate = currentDateRaw ? parseDateFlexible(currentDateRaw) : null;
+    setRevisioneTargetTarga(targa);
+    setRevisioneForm({
+      data: currentDate ? formatDateForDisplay(currentDate) : todayLabel,
+      esito: String(current?.esito ?? "").trim(),
+      note: String(current?.noteEsito ?? "").trim(),
+    });
+    setRevisioneModalOpen(true);
+  };
+
+  const openPreCollaudoModal = (targa: string, current?: PreCollaudo | null) => {
+    setPreCollaudoTargetTarga(targa);
+    setPreCollaudoForm({
+      data: String(current?.data ?? "").trim(),
+      officina: String(current?.officina ?? "").trim(),
+    });
+    setPreCollaudoModalOpen(true);
+  };
+
   const openPrenotazioneModal = (
     targa: string,
     current?: PrenotazioneCollaudo | null
@@ -1084,9 +1155,133 @@ function Home() {
     closePrenotazioneModal();
   };
 
+  const handlePreCollaudoSave = () => {
+    if (!preCollaudoTargetTarga) return;
+    const data = preCollaudoForm.data.trim();
+    if (!data) {
+      window.alert("Inserisci la data del pre-collaudo.");
+      return;
+    }
+    if (!parseDateFlexible(data)) {
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      return;
+    }
+
+    const officina = preCollaudoForm.officina.trim();
+    if (!officina) {
+      window.alert("Inserisci l'officina del pre-collaudo.");
+      return;
+    }
+
+    const key = fmtTarga(preCollaudoTargetTarga);
+    if (!key) return;
+    const idx = mezzi.findIndex((m) => fmtTarga(m.targa) === key);
+    if (idx < 0) {
+      window.alert("Mezzo non trovato.");
+      return;
+    }
+
+    const updated = [...mezzi];
+    updated[idx] = {
+      ...updated[idx],
+      preCollaudo: { data, officina },
+    };
+
+    setMezzi(updated);
+    void setItemSync(MEZZI_KEY, updated);
+    closePreCollaudoModal();
+  };
+
+  const handleRevisioneSave = () => {
+    if (!revisioneTargetTarga) return;
+    const dataRaw = revisioneForm.data.trim();
+    if (!dataRaw) {
+      window.alert("Inserisci la data della revisione.");
+      return;
+    }
+    const parsedDate = parseDateFlexible(dataRaw);
+    if (!parsedDate) {
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      return;
+    }
+    const esito = revisioneForm.esito.trim();
+    if (!esito) {
+      window.alert("Inserisci l'esito della revisione.");
+      return;
+    }
+
+    const revisioneDateValue = formatDateForInput(parsedDate);
+    const revisioneDateLabel = formatDateForDisplay(parsedDate);
+    const scadenzaDate = new Date(parsedDate);
+    scadenzaDate.setHours(12, 0, 0, 0);
+    scadenzaDate.setFullYear(scadenzaDate.getFullYear() + 1);
+    const scadenzaValue = formatDateForInput(scadenzaDate);
+    const noteEsito = revisioneForm.note.trim();
+    const key = fmtTarga(revisioneTargetTarga);
+    if (!key) return;
+    const idx = mezzi.findIndex((m) => fmtTarga(m.targa) === key);
+    if (idx < 0) {
+      window.alert("Mezzo non trovato.");
+      return;
+    }
+
+    const updated = [...mezzi];
+    const current = updated[idx];
+    const prenotazioneBase: PrenotazioneCollaudo =
+      (current.prenotazioneCollaudo as PrenotazioneCollaudo | null) ?? { data: "" };
+    const nextPrenotazione: PrenotazioneCollaudo = {
+      ...prenotazioneBase,
+      completata: true,
+      completataIl: revisioneDateValue,
+      esito,
+      ...(noteEsito ? { noteEsito } : {}),
+    };
+
+    let nextNote = current.note;
+    if (noteEsito) {
+      const noteLine = `REVISIONE ${revisioneDateLabel}: ${esito} - ${noteEsito}`;
+      const noteBase = String(current.note ?? "").trim();
+      nextNote = noteBase ? `${noteBase}\n${noteLine}` : noteLine;
+    }
+
+    updated[idx] = {
+      ...current,
+      dataUltimoCollaudo: revisioneDateValue,
+      dataScadenzaRevisione: scadenzaValue,
+      prenotazioneCollaudo: nextPrenotazione,
+      ...(noteEsito ? { note: nextNote } : {}),
+    };
+
+    setMezzi(updated);
+    void setItemSync(MEZZI_KEY, updated);
+    closeRevisioneModal();
+  };
+
   const openDatePicker = () => {
     const input =
       datePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+    input.click();
+  };
+
+  const openPreCollaudoDatePicker = () => {
+    const input =
+      preCollaudoDatePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+    input.click();
+  };
+
+  const openRevisioneDatePicker = () => {
+    const input =
+      revisioneDatePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
     if (!input) return;
     if (typeof input.showPicker === "function") {
       input.showPicker();
@@ -1101,6 +1296,22 @@ function Home() {
     const picked = buildDate(year, month, day);
     if (!picked) return;
     setPrenotazioneForm((prev) => ({ ...prev, data: formatDateForDisplay(picked) }));
+  };
+
+  const handlePreCollaudoDatePickerChange = (value: string) => {
+    if (!value) return;
+    const [year, month, day] = value.split("-");
+    const picked = buildDate(year, month, day);
+    if (!picked) return;
+    setPreCollaudoForm((prev) => ({ ...prev, data: formatDateForDisplay(picked) }));
+  };
+
+  const handleRevisioneDatePickerChange = (value: string) => {
+    if (!value) return;
+    const [year, month, day] = value.split("-");
+    const picked = buildDate(year, month, day);
+    if (!picked) return;
+    setRevisioneForm((prev) => ({ ...prev, data: formatDateForDisplay(picked) }));
   };
 
   const handlePrenotazioneDelete = (targa: string) => {
@@ -1286,6 +1497,12 @@ function Home() {
 
   const prenotazioneDateValue = formatDateForInput(
     parseDateFlexible(prenotazioneForm.data)
+  );
+  const preCollaudoDateValue = formatDateForInput(
+    parseDateFlexible(preCollaudoForm.data)
+  );
+  const revisioneDateValue = formatDateForInput(
+    parseDateFlexible(revisioneForm.data)
   );
 
   const quickSearchValue = quickSearch.trim();
@@ -1728,6 +1945,17 @@ function Home() {
       .forEach((r) => {
         const targaId = normalizeTargaForAlertId(r.targa);
         if (!targaId) return;
+        const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
+        const prenotazione = mezzo?.prenotazioneCollaudo ?? null;
+        const prenCompletata = prenotazione?.completata === true;
+        if (prenCompletata) return;
+        const prenData = prenotazione?.data ? String(prenotazione.data).trim() : "";
+        const prenDate = prenData ? parseDateFlexible(prenData) : null;
+        const prenDateLabel = prenDate ? formatDateForDisplay(prenDate) : prenData;
+        const prenOra = prenotazione?.ora ? String(prenotazione.ora).trim() : "";
+        const prenSummary = prenotazione
+          ? `PRENOTATA per ${prenDateLabel}${prenOra ? ` ${prenOra}` : ""}`
+          : "";
         const scadenzaMs = r.scadenza ? r.scadenza.getTime() : 0;
         const giorni = r.giorni ?? 0;
         const meta: AlertMeta = { type: "revisione", ref: String(scadenzaMs || "") };
@@ -1742,6 +1970,9 @@ function Home() {
                 {giorni < 0 ? "Scaduta" : "Scade"} {formatGiorniLabel(giorni)}
               </span>
               <span className="alert-detail">({formatDateForDisplay(r.scadenza)})</span>
+              {prenSummary ? (
+                <span className="alert-detail">{prenSummary}</span>
+              ) : null}
             </div>
           ),
           severity: "danger",
@@ -1953,7 +2184,7 @@ function Home() {
       if (a.sortValue !== b.sortValue) return a.sortValue - b.sortValue;
       return a.title.localeCompare(b.title);
     });
-  }, [revisioni, segnalazioni, sessioni, importantAutistiItems]);
+  }, [revisioni, segnalazioni, sessioni, importantAutistiItems, mezzoByTarga]);
 
   const candidateAlertIds = useMemo(() => new Set(alertCandidates.map((a) => a.id)), [alertCandidates]);
 
@@ -2420,17 +2651,43 @@ function Home() {
                           : "/dossiermezzi";
                         const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
                         const prenotazione = mezzo?.prenotazioneCollaudo ?? null;
+                        const preCollaudo = mezzo?.preCollaudo ?? null;
+                        const hasPreCollaudo = Boolean(preCollaudo);
+                        const prenCompletata = prenotazione?.completata === true;
                         const prenData = prenotazione?.data ? String(prenotazione.data).trim() : "";
                         const prenDate = prenData ? parseDateFlexible(prenData) : null;
-                        const prenDateLabel = prenDate ? formatDateForDisplay(prenDate) : prenData;
-                        const prenOra = prenotazione?.ora ? String(prenotazione.ora).trim() : "";
-                        const prenLuogo = prenotazione?.luogo ? normalizeFreeText(prenotazione.luogo) : "";
-                        const prenNote = prenotazione?.note ? normalizeFreeText(prenotazione.note) : "";
-                        const prenLuogoShort = prenLuogo ? truncateText(prenLuogo, 40) : "";
-                        const prenNoteShort = prenNote ? truncateText(prenNote, 70) : "";
+                        let prenDateLabel = prenDate ? formatDateForDisplay(prenDate) : prenData;
+                        let prenOra = prenotazione?.ora ? String(prenotazione.ora).trim() : "";
+                        prenOra = prenOra ? sanitizeBookingText(prenOra) : "";
+                        const prenLuogo = prenotazione?.luogo
+                          ? sanitizeBookingText(normalizeFreeText(prenotazione.luogo))
+                          : "";
+                        const prenNote = prenotazione?.note
+                          ? sanitizeBookingText(normalizeFreeText(prenotazione.note))
+                          : "";
+                        const prenCompletataRaw = prenotazione?.completataIl
+                          ? String(prenotazione.completataIl).trim()
+                          : "";
+                        const prenCompletataDate = prenCompletataRaw
+                          ? parseDateFlexible(prenCompletataRaw)
+                          : null;
+                        const prenCompletataLabel = prenCompletataDate
+                          ? formatDateForDisplay(prenCompletataDate)
+                          : prenCompletataRaw;
+                        let prenLuogoShort = prenLuogo ? truncateAsciiText(prenLuogo, 40) : "";
+                        const prenNoteShort = prenNote ? truncateAsciiText(prenNote, 70) : "";
+                        if (prenotazione) {
+                          if (prenCompletata) {
+                            prenDateLabel = `COMPLETATA${prenCompletataLabel ? ` il ${prenCompletataLabel}` : ""}`;
+                            prenOra = "";
+                            prenLuogoShort = "";
+                          } else {
+                            prenDateLabel = `PRENOTATA per ${prenDateLabel}`;
+                          }
+                        }
                         const prenSummary = prenotazione
                           ? `${prenDateLabel}${prenOra ? ` ${prenOra}` : ""}${
-                              prenLuogoShort ? ` ƒ?" ${prenLuogoShort}` : ""
+                              prenLuogoShort ? ` - ${prenLuogoShort}` : ""
                             }`
                           : "";
                         const showMissingDanger = !prenotazione && r.giorni !== null && (r.giorni ?? 0) <= 30;
@@ -2473,8 +2730,8 @@ function Home() {
                                   {prenotazione ? (
                                     <span className="booking-value">
                                       {prenSummary}
-                                      {prenNoteShort ? (
-                                        <span className="booking-note"> ƒ?" {prenNoteShort}</span>
+                                      {!prenCompletata && prenNoteShort ? (
+                                        <span className="booking-note"> - {prenNoteShort}</span>
                                       ) : null}
                                     </span>
                                   ) : (
@@ -2484,7 +2741,19 @@ function Home() {
                                   )}
                                   {canEditPrenotazione ? (
                                     <span className="booking-actions">
-                                      {prenotazione ? (
+                                      {!prenCompletata ? (
+                                        <button
+                                          type="button"
+                                          className="booking-action primary"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openRevisioneModal(r.targa as string, prenotazione);
+                                          }}
+                                        >
+                                          SEGNA REVISIONE FATTA
+                                        </button>
+                                      ) : null}
+                                      {prenotazione && !prenCompletata ? (
                                         <>
                                           <button
                                             type="button"
@@ -2507,7 +2776,7 @@ function Home() {
                                             CANCELLA
                                           </button>
                                         </>
-                                      ) : (
+                                      ) : !prenotazione ? (
                                         <button
                                           type="button"
                                           className="booking-action primary"
@@ -2517,6 +2786,41 @@ function Home() {
                                           }}
                                         >
                                           PRENOTA
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="row-meta-line row-meta-booking">
+                                  <span className="label">Pre-collaudo:</span>
+                                  {hasPreCollaudo ? (
+                                    <span className="booking-value">
+                                      <span className="badge">Pre-collaudo programmato</span>
+                                    </span>
+                                  ) : null}
+                                  {canEditPrenotazione ? (
+                                    <span className="booking-actions">
+                                      {hasPreCollaudo ? (
+                                        <button
+                                          type="button"
+                                          className="booking-action"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openPreCollaudoModal(r.targa as string, preCollaudo);
+                                          }}
+                                        >
+                                          MODIFICA
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="booking-action primary"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openPreCollaudoModal(r.targa as string, null);
+                                          }}
+                                        >
+                                          PRE-COLLAUDO
                                         </button>
                                       )}
                                     </span>
@@ -3106,7 +3410,7 @@ function Home() {
                     aria-label="Apri calendario"
                     title="Apri calendario"
                   >
-                    📅
+                    CALENDARIO
                   </button>
                   <input
                     ref={datePickerRef}
@@ -3170,6 +3474,191 @@ function Home() {
                 type="button"
                 className="home-modal-btn primary"
                 onClick={handlePrenotazioneSave}
+              >
+                SALVA
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {preCollaudoModalOpen ? (
+        <div
+          className="home-modal-backdrop"
+          onClick={closePreCollaudoModal}
+          role="presentation"
+        >
+          <div
+            className="home-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Programmazione Pre-collaudo"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="home-modal-head">
+              <div className="home-modal-title">Programmazione Pre-collaudo</div>
+              <div className="home-modal-subtitle">
+                Targa <span className="targa">{preCollaudoTargetTarga || "-"}</span>
+              </div>
+            </div>
+
+            <div className="home-modal-body">
+              <label className="home-modal-field">
+                <span className="home-modal-label">Data</span>
+                <div className="home-modal-date-row">
+                  <input
+                    className="home-modal-input"
+                    value={preCollaudoForm.data}
+                    onChange={(e) =>
+                      setPreCollaudoForm((prev) => ({ ...prev, data: e.target.value }))
+                    }
+                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
+                  />
+                  <button
+                    type="button"
+                    className="home-modal-date-btn"
+                    onClick={openPreCollaudoDatePicker}
+                    aria-label="Apri calendario"
+                    title="Apri calendario"
+                  >
+                    CALENDARIO
+                  </button>
+                  <input
+                    ref={preCollaudoDatePickerRef}
+                    className="home-modal-date-input"
+                    type="date"
+                    value={preCollaudoDateValue}
+                    onChange={(e) => handlePreCollaudoDatePickerChange(e.target.value)}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+                </div>
+              </label>
+
+              <label className="home-modal-field">
+                <span className="home-modal-label">Officina</span>
+                <input
+                  className="home-modal-input"
+                  value={preCollaudoForm.officina}
+                  onChange={(e) =>
+                    setPreCollaudoForm((prev) => ({ ...prev, officina: e.target.value }))
+                  }
+                  placeholder="Officina / luogo..."
+                />
+              </label>
+            </div>
+
+            <div className="home-modal-actions">
+              <button
+                type="button"
+                className="home-modal-btn"
+                onClick={closePreCollaudoModal}
+              >
+                ANNULLA
+              </button>
+              <button
+                type="button"
+                className="home-modal-btn primary"
+                onClick={handlePreCollaudoSave}
+              >
+                SALVA
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {revisioneModalOpen ? (
+        <div
+          className="home-modal-backdrop"
+          onClick={closeRevisioneModal}
+          role="presentation"
+        >
+          <div
+            className="home-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Segna revisione fatta"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="home-modal-head">
+              <div className="home-modal-title">Segna revisione fatta</div>
+              <div className="home-modal-subtitle">
+                Targa <span className="targa">{revisioneTargetTarga || "-"}</span>
+              </div>
+            </div>
+
+            <div className="home-modal-body">
+              <label className="home-modal-field">
+                <span className="home-modal-label">Data</span>
+                <div className="home-modal-date-row">
+                  <input
+                    className="home-modal-input"
+                    value={revisioneForm.data}
+                    onChange={(e) =>
+                      setRevisioneForm((prev) => ({ ...prev, data: e.target.value }))
+                    }
+                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
+                  />
+                  <button
+                    type="button"
+                    className="home-modal-date-btn"
+                    onClick={openRevisioneDatePicker}
+                    aria-label="Apri calendario"
+                    title="Apri calendario"
+                  >
+                    CALENDARIO
+                  </button>
+                  <input
+                    ref={revisioneDatePickerRef}
+                    className="home-modal-date-input"
+                    type="date"
+                    value={revisioneDateValue}
+                    onChange={(e) => handleRevisioneDatePickerChange(e.target.value)}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+                </div>
+              </label>
+
+              <label className="home-modal-field">
+                <span className="home-modal-label">Esito</span>
+                <input
+                  className="home-modal-input"
+                  value={revisioneForm.esito}
+                  onChange={(e) =>
+                    setRevisioneForm((prev) => ({ ...prev, esito: e.target.value }))
+                  }
+                  placeholder="Es. OK / Respinta / ..."
+                />
+              </label>
+
+              <label className="home-modal-field">
+                <span className="home-modal-label">Note (opzionale)</span>
+                <textarea
+                  className="home-modal-textarea"
+                  value={revisioneForm.note}
+                  onChange={(e) =>
+                    setRevisioneForm((prev) => ({ ...prev, note: e.target.value }))
+                  }
+                  placeholder="Note brevi..."
+                  rows={3}
+                />
+              </label>
+            </div>
+
+            <div className="home-modal-actions">
+              <button
+                type="button"
+                className="home-modal-btn"
+                onClick={closeRevisioneModal}
+              >
+                ANNULLA
+              </button>
+              <button
+                type="button"
+                className="home-modal-btn primary"
+                onClick={handleRevisioneSave}
               >
                 SALVA
               </button>

@@ -1112,7 +1112,7 @@ return (
                 </li>
                 <li>
                   <span>Note</span>
-                  <strong>{mezzo.note || "-"}</strong>
+                  <strong style={{ whiteSpace: "pre-line" }}>{mezzo.note || "-"}</strong>
                 </li>
                 <li>
   <span>Manutenzione programmata</span>
