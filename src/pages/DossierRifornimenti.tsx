@@ -1,16 +1,13 @@
-// src/pages/DossierGomme.tsx
-
 import { useNavigate, useParams } from "react-router-dom";
 import "./DossierMezzo.css";
-import GommeEconomiaSection from "./GommeEconomiaSection";
+import RifornimentiEconomiaSection from "./RifornimentiEconomiaSection";
 
-export default function DossierGomme() {
+export default function DossierRifornimenti() {
   const { targa } = useParams<{ targa: string }>();
   const navigate = useNavigate();
 
   return (
     <div className="dossier-wrapper">
-      {/* HEADER */}
       <div className="dossier-header-bar">
         <button className="dossier-button ghost" onClick={() => navigate(-1)}>
           ⟵ Dossier
@@ -19,7 +16,7 @@ export default function DossierGomme() {
         <div className="dossier-header-center">
           <img src="/logo.png" alt="Logo" className="dossier-logo" />
           <div className="dossier-header-text">
-            <span className="dossier-header-label">MANUTENZIONE GOMME</span>
+            <span className="dossier-header-label">RIFORNIMENTI</span>
             <h1 className="dossier-header-title">{targa}</h1>
           </div>
         </div>
@@ -27,10 +24,8 @@ export default function DossierGomme() {
         <div style={{ width: 120 }}></div>
       </div>
 
-      {/* NESSUN FORM / NESSUN PULSANTE DI INSERIMENTO QUI */}
-
       <div className="dossier-grid">
-        {targa ? <GommeEconomiaSection targa={targa} /> : null}
+        {targa ? <RifornimentiEconomiaSection targa={targa} /> : null}
       </div>
     </div>
   );

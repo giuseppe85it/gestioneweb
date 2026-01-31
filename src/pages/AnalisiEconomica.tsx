@@ -12,6 +12,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateAnalisiEconomicaPDF } from "../utils/pdfEngine";
+import GommeEconomiaSection from "./GommeEconomiaSection";
+import RifornimentiEconomiaSection from "./RifornimentiEconomiaSection";
 import "./DossierMezzo.css"; // riusa lo stile premium del dossier
 
 // =========================
@@ -941,6 +943,9 @@ const AnalisiEconomica: React.FC = () => {
             </ul>
           </div>
         </section>
+
+        {targa ? <GommeEconomiaSection targa={targa} /> : null}
+        {targa ? <RifornimentiEconomiaSection targa={targa} /> : null}
 
         {/* FORNITORI */}
         <section className="dossier-card">

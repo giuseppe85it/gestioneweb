@@ -147,8 +147,10 @@ function buildDossierItem(record: any) {
     mezzoTarga,
     data: formatDateString(ts),
     litri: toNumberOrNull(record?.litri),
+    km: toNumberOrNull(record?.km),
     distributore: buildDistributore(record),
     costo: toNumberOrNull(record?.importo),
+    note: record?.note != null ? String(record.note) : "",
   };
 }
 

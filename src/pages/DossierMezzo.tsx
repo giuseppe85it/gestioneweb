@@ -997,6 +997,14 @@ return (
   <button
     className="dossier-button"
     type="button"
+    onClick={() => navigate(`/dossier/${mezzo.targa}/rifornimenti`)}
+  >
+    Rifornimenti (dettaglio)
+  </button>
+
+  <button
+    className="dossier-button"
+    type="button"
     onClick={() => setShowLibrettoModal(true)}
   >
     LIBRETTO
