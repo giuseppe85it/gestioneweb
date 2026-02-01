@@ -4,6 +4,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
 import type { HomeEvent } from "../utils/homeEvents";
+import type { Lavoro } from "../types/lavori";
 import AutistiEventoModal from "../components/AutistiEventoModal";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import { isLavoroInAttesaGlobal } from "../utils/lavoriSelectors";
@@ -44,6 +45,16 @@ type TimelineItem = {
 };
 
 type Currency = "EUR" | "CHF" | "UNKNOWN";
+
+function isLavoroRecord(value: AnyRecord): value is Lavoro {
+  return (
+    !!value &&
+    typeof value.id === "string" &&
+    typeof value.gruppoId === "string" &&
+    typeof value.tipo === "string" &&
+    typeof value.descrizione === "string"
+  );
+}
 
 function unwrapList(value: any): any[] {
   if (Array.isArray(value)) return value;
@@ -378,7 +389,10 @@ export default function Mezzo360() {
     [lavoriPerMezzo]
   );
   const lavoriInAttesa = useMemo(
-    () => lavoriPerMezzo.filter((l) => isLavoroInAttesaGlobal(l)),
+    () =>
+      lavoriPerMezzo.filter(
+        (l): l is Lavoro => isLavoroRecord(l) && isLavoroInAttesaGlobal(l)
+      ),
     [lavoriPerMezzo]
   );
 
