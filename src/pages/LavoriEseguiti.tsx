@@ -1,10 +1,11 @@
 // src/pages/LavoriEseguiti.tsx
 import  { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { generateTablePDF } from "../utils/pdfEngine";     // <── PDF ENGINE
 import type { Lavoro, Urgenza } from "../types/lavori";
 import { formatDateUI } from "../utils/dateFormat";
+import { isLavoroEseguito } from "../utils/lavoriSelectors";
 import "./LavoriEseguiti.css";
 
 interface LavoroGroup {
@@ -39,15 +40,30 @@ const getWeekRange = (iso?: string) => {
 
 const LavoriEseguiti: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sections, setSections] = useState<LavoroGroup[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const targaFilterParam = (searchParams.get("targa") || "").trim();
+  const targaFilterNorm = targaFilterParam
+    ? targaFilterParam.toUpperCase().replace(/\s+/g, "").trim()
+    : "";
 
   const loadLavori = async () => {
     const json = await getItemSync("@lavori");
     const data: Lavoro[] = json ? json : [];
 
     const eseguiti = data
-      .filter((l) => l.eseguito)
+      .filter((l) => isLavoroEseguito(l))
+      .filter((l) => {
+        if (!targaFilterNorm) return true;
+        const targaRaw =
+          l.targa ??
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (l as any)?.mezzoTarga ??
+          "";
+        const targaNorm = String(targaRaw).toUpperCase().replace(/\s+/g, "").trim();
+        return targaNorm === targaFilterNorm;
+      })
       .sort(
         (a, b) =>
           new Date(a.dataEsecuzione || "").getTime() -
@@ -71,7 +87,7 @@ const LavoriEseguiti: React.FC = () => {
 
   useEffect(() => {
     loadLavori();
-  }, []);
+  }, [targaFilterNorm]);
 
   // 🔥 INTEGRAZIONE PDF ENGINE UFFICIALE
   const handleExportPDF = async (lavori: Lavoro[], titolo: string) => {
@@ -109,6 +125,31 @@ const LavoriEseguiti: React.FC = () => {
             <div className="lavori-header-title">Lavori eseguiti</div>
           </div>
         </div>
+        {targaFilterNorm ? (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "8px 10px",
+              background: "#f7f7f7",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 13 }}>
+              Filtro: <strong>{targaFilterParam}</strong>
+            </div>
+            <button
+              className="lavori-btn is-ghost"
+              type="button"
+              onClick={() => setSearchParams({})}
+            >
+              Rimuovi filtro
+            </button>
+          </div>
+        ) : null}
         <div className="le-title">LAVORI ESEGUITI</div>
         <div className="le-sections">
       {sections.map((sec) => {

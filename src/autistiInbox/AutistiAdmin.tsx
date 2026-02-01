@@ -1291,6 +1291,9 @@ export default function AutistiAdmin() {
     };
 
     await appendLavori([lavoro]);
+    if (window.confirm("Lavoro creato. Aprire il dettaglio?")) {
+      navigate(`/dettagliolavori?lavoroId=${id}`);
+    }
 
     const raw = (await getItemSync(KEY_SEGNALAZIONI)) || [];
     const list = Array.isArray(raw)
@@ -1367,6 +1370,10 @@ export default function AutistiAdmin() {
     }));
 
     await appendLavori(lavori);
+    const firstLavoroId = lavori[0]?.id;
+    if (firstLavoroId && window.confirm("Lavoro creato. Aprire il dettaglio?")) {
+      navigate(`/dettagliolavori?lavoroId=${firstLavoroId}`);
+    }
 
     const raw = (await getItemSync(KEY_CONTROLLI)) || [];
     const list = Array.isArray(raw)

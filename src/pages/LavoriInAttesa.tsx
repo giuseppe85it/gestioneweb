@@ -1,17 +1,19 @@
 // src/pages/LavoriInAttesa.tsx
 
 import  { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getItemSync } from "../utils/storageSync";
 import { generateLavoriPDF } from "../utils/pdfEngine"; // <--- PDF ENGINE UNIVERSALE
 import type { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
 import { formatDateUI } from "../utils/dateFormat";
+import { isLavoroInAttesaGlobal } from "../utils/lavoriSelectors";
 
 import "./LavoriInAttesa.css";
 
 const LavoriInAttesa: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [sections, setSections] = useState<
     { title: string; lavori: Lavoro[]; tipo: TipoLavoro }[]
@@ -20,6 +22,10 @@ const LavoriInAttesa: React.FC = () => {
     {}
   );
   const [selectedGroup, setSelectedGroup] = useState<string>("ALL");
+  const targaFilterParam = (searchParams.get("targa") || "").trim();
+  const targaFilterNorm = targaFilterParam
+    ? targaFilterParam.toUpperCase().replace(/\s+/g, "").trim()
+    : "";
 
   // Ordina per priorità: ALTA → MEDIA → BASSA → nessuna
   const sortByUrgency = (items: Lavoro[]) => {
@@ -35,7 +41,18 @@ const LavoriInAttesa: React.FC = () => {
     try {
       const json = await getItemSync("@lavori");
       const data: Lavoro[] = json ? json : [];
-      const risultati = data.filter((l) => l.eseguito === false);
+      const risultati = data
+        .filter((l) => isLavoroInAttesaGlobal(l))
+        .filter((l) => {
+          if (!targaFilterNorm) return true;
+          const targaRaw =
+            l.targa ??
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (l as any)?.mezzoTarga ??
+            "";
+          const targaNorm = String(targaRaw).toUpperCase().replace(/\s+/g, "").trim();
+          return targaNorm === targaFilterNorm;
+        });
 
       const grouped: Record<
         string,
@@ -79,7 +96,7 @@ const LavoriInAttesa: React.FC = () => {
 
   useEffect(() => {
     loadLavori();
-  }, []);
+  }, [targaFilterNorm]);
 
   const toggleExpand = (title: string) => {
     setExpandedGroups((prev) => ({
@@ -154,6 +171,32 @@ const LavoriInAttesa: React.FC = () => {
             <div className="lavori-header-title">Lavori in attesa</div>
           </div>
         </div>
+
+        {targaFilterNorm ? (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "8px 10px",
+              background: "#f7f7f7",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 13 }}>
+              Filtro: <strong>{targaFilterParam}</strong>
+            </div>
+            <button
+              className="lavori-btn is-ghost"
+              type="button"
+              onClick={() => setSearchParams({})}
+            >
+              Rimuovi filtro
+            </button>
+          </div>
+        ) : null}
 
         {/* FILTRO A TENDINA (MAGAZZINO / TARGA / TUTTI) */}
         <div className="lia-filter-bar">

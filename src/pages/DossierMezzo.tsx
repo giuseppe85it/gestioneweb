@@ -697,6 +697,11 @@ setState({
     return formatDateTimeUI(ts ?? null);
   };
 
+  const openDettaglioLavoro = (id?: string) => {
+    if (!id) return;
+    navigate(`/dettagliolavori?lavoroId=${id}`);
+  };
+
   const parseItalianDate = (d?: string): number => {
     if (!d) return 0;
     const parts = d.split(" ");
@@ -1215,7 +1220,12 @@ return (
               ) : (
                 <ul className="dossier-list">
                   {lavoriInAttesaMostrati.map((l) => (
-                    <li key={l.id} className="dossier-list-item">
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      onClick={() => openDettaglioLavoro(l.id)}
+                      style={{ cursor: "pointer" }}
+                    >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-info">
                           IN ATTESA
@@ -1249,7 +1259,12 @@ return (
               ) : (
                 <ul className="dossier-list">
                   {lavoriEseguitiMostrati.map((l) => (
-                    <li key={l.id} className="dossier-list-item">
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      onClick={() => openDettaglioLavoro(l.id)}
+                      style={{ cursor: "pointer" }}
+                    >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-success">
                           ESEGUITO
@@ -1562,7 +1577,12 @@ return (
               ) : (
                 <ul className="dossier-list">
                   {state.lavoriInAttesa.map((l) => (
-                    <li key={l.id} className="dossier-list-item">
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      onClick={() => openDettaglioLavoro(l.id)}
+                      style={{ cursor: "pointer" }}
+                    >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-info">
                           IN ATTESA
@@ -1601,7 +1621,12 @@ return (
               ) : (
                 <ul className="dossier-list">
                   {state.lavoriEseguiti.map((l) => (
-                    <li key={l.id} className="dossier-list-item">
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      onClick={() => openDettaglioLavoro(l.id)}
+                      style={{ cursor: "pointer" }}
+                    >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-success">
                           ESEGUITO

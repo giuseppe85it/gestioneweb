@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { HomeEvent } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { useTarghe } from "../utils/targhe";
@@ -33,6 +34,7 @@ export default function AutistiEventoModal({
   onClose,
   onAfterGommeImport,
 }: AutistiEventoModalProps) {
+  const navigate = useNavigate();
   const [showJson, setShowJson] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [mezziByTarga, setMezziByTarga] = useState<Record<string, string>>({});
@@ -414,6 +416,13 @@ export default function AutistiEventoModal({
     if (nuovi.length === 0) return;
     const existing = await loadArray("@lavori");
     await saveArray("@lavori", [...existing, ...nuovi]);
+    const firstLavoroId = nuovi[0]?.id;
+    const openDetail =
+      !!firstLavoroId &&
+      window.confirm("Lavoro creato. Aprire il dettaglio?");
+    if (openDetail && firstLavoroId) {
+      navigate(`/dettagliolavori?lavoroId=${firstLavoroId}`);
+    }
 
     if (createFrom.tipo === "segnalazione") {
       const arr = await loadArray("@segnalazioni_autisti_tmp");
@@ -444,7 +453,9 @@ export default function AutistiEventoModal({
 
     setCreateOpen(false);
     setCreateFrom(null);
-    window.alert("Lavoro creato.");
+    if (!openDetail) {
+      window.alert("Lavoro creato.");
+    }
   }
 
   function getAutistaInfo(e: HomeEvent) {

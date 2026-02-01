@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
 import type { HomeEvent } from "../utils/homeEvents";
 import AutistiEventoModal from "../components/AutistiEventoModal";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
+import { isLavoroInAttesaGlobal } from "../utils/lavoriSelectors";
 import "./Mezzo360.css";
 
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -186,6 +187,7 @@ export default function Mezzo360() {
 
   const targa = fmtTarga(decodedParam);
   const targaNorm = normalizeTarga(decodedParam);
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -376,7 +378,7 @@ export default function Mezzo360() {
     [lavoriPerMezzo]
   );
   const lavoriInAttesa = useMemo(
-    () => lavoriPerMezzo.filter((l) => l?.eseguito !== true),
+    () => lavoriPerMezzo.filter((l) => isLavoroInAttesaGlobal(l)),
     [lavoriPerMezzo]
   );
 
@@ -958,7 +960,21 @@ export default function Mezzo360() {
                     <div className="mezzo360-empty">Nessun lavoro in attesa.</div>
                   ) : (
                     lavoriInAttesaPreview.map((l, idx) => (
-                      <div key={l?.id ?? `lav-a-${idx}`} className="mezzo360-item">
+                      <div
+                        key={l?.id ?? `lav-a-${idx}`}
+                        className="mezzo360-item"
+                        role="button"
+                        tabIndex={0}
+                        style={{ cursor: l?.id ? "pointer" : "default" }}
+                        onClick={() => {
+                          if (l?.id) navigate(`/dettagliolavori?lavoroId=${l.id}`);
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === "Enter" || e.key === " ") && l?.id) {
+                            navigate(`/dettagliolavori?lavoroId=${l.id}`);
+                          }
+                        }}
+                      >
                         <div className="mezzo360-item-title">
                           {l?.descrizione || "Lavoro"}
                         </div>
@@ -975,7 +991,21 @@ export default function Mezzo360() {
                     <div className="mezzo360-empty">Nessun lavoro eseguito.</div>
                   ) : (
                     lavoriEseguitiPreview.map((l, idx) => (
-                      <div key={l?.id ?? `lav-e-${idx}`} className="mezzo360-item">
+                      <div
+                        key={l?.id ?? `lav-e-${idx}`}
+                        className="mezzo360-item"
+                        role="button"
+                        tabIndex={0}
+                        style={{ cursor: l?.id ? "pointer" : "default" }}
+                        onClick={() => {
+                          if (l?.id) navigate(`/dettagliolavori?lavoroId=${l.id}`);
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === "Enter" || e.key === " ") && l?.id) {
+                            navigate(`/dettagliolavori?lavoroId=${l.id}`);
+                          }
+                        }}
+                      >
                         <div className="mezzo360-item-title">
                           {l?.descrizione || "Lavoro"}
                         </div>
