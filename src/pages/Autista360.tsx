@@ -152,10 +152,6 @@ function getTimestamp(record: any, keys: string[]): number | null {
   return null;
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
 function formatDateLabel(ts: number): string {
   return formatDateTimeUI(ts);
 }

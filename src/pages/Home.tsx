@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
@@ -711,15 +712,16 @@ function extractTargaFromNode(node: ReactNode): string | null {
     return null;
   }
   if (!isValidElement(node)) return null;
-  const className = String(node.props?.className ?? "");
+  const element = node as ReactElement<{ className?: string; children?: ReactNode }>;
+  const className = String(element.props?.className ?? "");
   if (className.split(" ").includes("targa")) {
-    const child = node.props?.children;
+    const child = element.props?.children;
     if (typeof child === "string" || typeof child === "number") {
       const text = String(child).trim();
       return text || null;
     }
   }
-  return extractTargaFromNode(node.props?.children);
+  return extractTargaFromNode(element.props?.children);
 }
 
 function stripTargaFromNode(node: ReactNode): ReactNode {
@@ -732,10 +734,11 @@ function stripTargaFromNode(node: ReactNode): ReactNode {
     return next as ReactNode;
   }
   if (!isValidElement(node)) return node;
-  const className = String(node.props?.className ?? "");
+  const element = node as ReactElement<{ className?: string; children?: ReactNode }>;
+  const className = String(element.props?.className ?? "");
   if (className.split(" ").includes("targa")) return null;
-  const children = stripTargaFromNode(node.props?.children);
-  return cloneElement(node, node.props, children as any);
+  const children = stripTargaFromNode(element.props?.children);
+  return cloneElement(element, element.props, children as ReactNode);
 }
 
 function truncateText(value: string, maxLen: number): string {
