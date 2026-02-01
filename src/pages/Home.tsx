@@ -1,6 +1,14 @@
 import "./Home.css";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import type { HomeEvent } from "../utils/homeEvents";
 import AutistiEventoModal from "../components/AutistiEventoModal";
@@ -704,6 +712,44 @@ function sanitizeBookingText(value: string): string {
     .replace(/[^\x20-\x7E]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function extractTargaFromNode(node: ReactNode): string | null {
+  if (node == null || typeof node === "boolean") return null;
+  if (typeof node === "string" || typeof node === "number") return null;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = extractTargaFromNode(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isValidElement(node)) return null;
+  const className = String(node.props?.className ?? "");
+  if (className.split(" ").includes("targa")) {
+    const child = node.props?.children;
+    if (typeof child === "string" || typeof child === "number") {
+      const text = String(child).trim();
+      return text || null;
+    }
+  }
+  return extractTargaFromNode(node.props?.children);
+}
+
+function stripTargaFromNode(node: ReactNode): ReactNode {
+  if (node == null || typeof node === "boolean") return null;
+  if (typeof node === "string" || typeof node === "number") return node;
+  if (Array.isArray(node)) {
+    const next = node
+      .map((item) => stripTargaFromNode(item))
+      .filter((item) => item !== null && item !== false);
+    return next as ReactNode;
+  }
+  if (!isValidElement(node)) return node;
+  const className = String(node.props?.className ?? "");
+  if (className.split(" ").includes("targa")) return null;
+  const children = stripTargaFromNode(node.props?.children);
+  return cloneElement(node, node.props, children as any);
 }
 
 function truncateText(value: string, maxLen: number): string {
@@ -2492,36 +2538,74 @@ function Home() {
                               : alert.severity === "warning"
                               ? "ATTENZIONE"
                               : "INFO";
+                          const alertTarga = extractTargaFromNode(alert.detail);
+                          const isTargaAlert = Boolean(alertTarga);
+                          const detailNode = isTargaAlert
+                            ? stripTargaFromNode(alert.detail)
+                            : alert.detail;
                           return (
                             <div
                               key={alert.id}
                               className={`alert-row alert-${alert.severity}`}
                             >
                               <div className="alert-main">
-                                <div className="alert-title">
-                                  <span className="alert-title-text">{alert.title}</span>
-                                  <span className={`status ${badgeClass}`}>{badgeLabel}</span>
-                                </div>
-                                <div className="alert-detail">{alert.detail}</div>
+                                {isTargaAlert ? (
+                                  <>
+                                    <div className="row-title">
+                                      <span
+                                        className="targa"
+                                        style={{ fontSize: "18px", fontWeight: 700 }}
+                                      >
+                                        {alertTarga}
+                                      </span>
+                                      <span
+                                        className={`status ${badgeClass}`}
+                                        style={{ fontSize: "12px", fontWeight: 600 }}
+                                      >
+                                        {badgeLabel}
+                                      </span>
+                                    </div>
+                                    <div className="row-meta row-meta-stack">
+                                      <div className="row-meta-line" style={{ fontSize: "14px" }}>
+                                        <span className="label">Stato:</span>{" "}
+                                        <strong>{alert.title}</strong>
+                                      </div>
+                                      <div className="row-meta-line" style={{ fontSize: "14px" }}>
+                                        <span className="label">Dettaglio:</span>{" "}
+                                        <span>{detailNode}</span>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="alert-title">
+                                      <span className="alert-title-text">{alert.title}</span>
+                                      <span className={`status ${badgeClass}`}>{badgeLabel}</span>
+                                    </div>
+                                    <div className="alert-detail">{detailNode}</div>
+                                  </>
+                                )}
                               </div>
-                              <div className="alert-actions">
+                              <div className={`alert-actions ${isTargaAlert ? "booking-actions" : ""}`}>
                                 <button
                                   type="button"
-                                  className="alert-action"
+                                  className={isTargaAlert ? "booking-action" : "alert-action"}
                                   onClick={() => handleAlertAction(alert, "snooze_1d")}
                                 >
                                   Ignora
                                 </button>
                                 <button
                                   type="button"
-                                  className="alert-action"
+                                  className={isTargaAlert ? "booking-action" : "alert-action"}
                                   onClick={() => handleAlertAction(alert, "snooze_3d")}
                                 >
                                   In seguito
                                 </button>
                                 <button
                                   type="button"
-                                  className="alert-action primary"
+                                  className={
+                                    isTargaAlert ? "booking-action primary" : "alert-action primary"
+                                  }
                                   onClick={() => handleAlertAction(alert, "ack")}
                                 >
                                   Letto
@@ -2693,6 +2777,13 @@ function Home() {
                         const showMissingDanger = !prenotazione && r.giorni !== null && (r.giorni ?? 0) <= 30;
                         const scadenzaExtra =
                           r.giorni === null ? "" : ` (${formatGiorniLabel(r.giorni)})`;
+                        const statusLabel =
+                          r.giorni == null
+                            ? "REVISIONE"
+                            : r.giorni < 0
+                            ? "REVISIONE SCADUTA"
+                            : "REVISIONE IN SCADENZA";
+                        const mezzoLabel = [r.marca, r.modello].filter(Boolean).join(" ");
                         const canEditPrenotazione = Boolean(r.targa);
                         return (
                           <div
@@ -2710,20 +2801,35 @@ function Home() {
                           >
                             <div className="row-main">
                               <div className="row-title">
-                                <span className="targa" title={tooltip || undefined}>
+                                <span
+                                  className="targa"
+                                  title={tooltip || undefined}
+                                  style={{ fontSize: "18px", fontWeight: 700 }}
+                                >
                                   {r.targa || "-"}
                                 </span>
-                                <span className={`status ${r.classe}`}>{giorniLabel}</span>
+                                <span
+                                  className={`status ${r.classe}`}
+                                  style={{ fontSize: "12px", fontWeight: 600 }}
+                                >
+                                  {giorniLabel}
+                                </span>
                               </div>
                               <div className="row-meta row-meta-stack">
-                                <div className="row-meta-line">
+                                <div className="row-meta-line" style={{ fontSize: "14px" }}>
+                                  <span className="label">Stato:</span>{" "}
+                                  <strong>{statusLabel}</strong>
+                                </div>
+                                <div className="row-meta-line" style={{ fontSize: "14px" }}>
+                                  <span className="label">Scadenza:</span>{" "}
                                   <span>
-                                    Scadenza {formatDateForDisplay(r.scadenza)}
-                                    {scadenzaExtra}{" "}
-                                    {r.marca || r.modello
-                                      ? `- ${r.marca} ${r.modello}`.trim()
-                                      : ""}
+                                    {formatDateForDisplay(r.scadenza)}
+                                    {scadenzaExtra}
                                   </span>
+                                </div>
+                                <div className="row-meta-line" style={{ fontSize: "14px" }}>
+                                  <span className="label">Mezzo:</span>{" "}
+                                  <span>{mezzoLabel || "-"}</span>
                                 </div>
                                 <div className="row-meta-line row-meta-booking">
                                   <span className="label">Prenotazione collaudo:</span>
@@ -2739,7 +2845,9 @@ function Home() {
                                       NON PRENOTATO
                                     </span>
                                   )}
-                                  {canEditPrenotazione ? (
+                                </div>
+                                {canEditPrenotazione ? (
+                                  <div className="row-meta-line row-meta-booking">
                                     <span className="booking-actions">
                                       {!prenCompletata ? (
                                         <button
@@ -2779,7 +2887,7 @@ function Home() {
                                       ) : !prenotazione ? (
                                         <button
                                           type="button"
-                                          className="booking-action primary"
+                                          className="booking-action"
                                           onClick={(event) => {
                                             event.stopPropagation();
                                             openPrenotazioneModal(r.targa as string, null);
@@ -2789,8 +2897,8 @@ function Home() {
                                         </button>
                                       ) : null}
                                     </span>
-                                  ) : null}
-                                </div>
+                                  </div>
+                                ) : null}
                                 <div className="row-meta-line row-meta-booking">
                                   <span className="label">Pre-collaudo:</span>
                                   {hasPreCollaudo ? (
@@ -2814,7 +2922,7 @@ function Home() {
                                       ) : (
                                         <button
                                           type="button"
-                                          className="booking-action primary"
+                                          className="booking-action"
                                           onClick={(event) => {
                                             event.stopPropagation();
                                             openPreCollaudoModal(r.targa as string, null);

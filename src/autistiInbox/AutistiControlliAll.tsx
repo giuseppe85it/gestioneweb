@@ -60,7 +60,7 @@ export default function AutistiControlliAll() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<ControlloRecord[]>([]);
   const [filterTarga, setFilterTarga] = useState("");
-  const [onlyKo, setOnlyKo] = useState(true);
+  const [onlyKo, setOnlyKo] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -114,6 +114,51 @@ export default function AutistiControlliAll() {
     });
   }, [records, filterTarga, onlyKo]);
 
+  const koList = useMemo(() => filtered.filter((r) => r.isKO), [filtered]);
+  const okList = useMemo(() => filtered.filter((r) => !r.isKO), [filtered]);
+
+  const renderRow = (r: ControlloView, index: number) => {
+    const autista = r.autistaNome ?? "-";
+    const badge = r.badgeAutista ? `(${r.badgeAutista})` : "";
+    return (
+      <div className="aic-row" key={r.id ?? `ctrl_${index}`}>
+        <div className="aic-row-main">
+          <div className="aic-row-top">
+            <span className="aic-time">{formatDateTime(r.timestamp)}</span>
+            <span className="aic-target">{r.targetLabel}</span>
+          </div>
+          <div className="aic-row-mid">
+            <span className="aic-targa">{r.targaLabel}</span>
+            <span className="aic-autista">
+              {autista} {badge}
+            </span>
+          </div>
+          <div className="aic-row-bot">
+            <span className={r.isKO ? "aic-badge ko" : "aic-badge ok"}>
+              {r.isKO ? "KO" : "OK"}
+            </span>
+            {r.isKO && (
+              <span className="aic-ko-list">
+                KO: {r.koList.join(", ")}
+              </span>
+            )}
+            <button
+              type="button"
+              className="aic-back"
+              style={{ padding: "4px 8px", fontSize: "12px" }}
+              onClick={() => {
+                void generateControlloPDF(r);
+              }}
+            >
+              PDF
+            </button>
+          </div>
+          {r.note ? <div className="aic-note">{r.note}</div> : null}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="aic-page">
       <div className="aic-wrap">
@@ -150,51 +195,34 @@ export default function AutistiControlliAll() {
             </label>
           </div>
 
-          <div className="aic-list">
+          <div
+            className="aic-list"
+            style={{
+              display: "grid",
+              gridTemplateColumns: onlyKo ? "1fr" : "1fr 1fr",
+              gap: "16px",
+              alignItems: "start",
+            }}
+          >
             {filtered.length === 0 ? (
               <div className="aic-empty">Nessun controllo disponibile.</div>
             ) : (
-              filtered.map((r, index) => {
-                const autista = r.autistaNome ?? "-";
-                const badge = r.badgeAutista ? `(${r.badgeAutista})` : "";
-                return (
-                  <div className="aic-row" key={r.id ?? `ctrl_${index}`}>
-                    <div className="aic-row-main">
-                      <div className="aic-row-top">
-                        <span className="aic-time">{formatDateTime(r.timestamp)}</span>
-                        <span className="aic-target">{r.targetLabel}</span>
-                      </div>
-                      <div className="aic-row-mid">
-                        <span className="aic-targa">{r.targaLabel}</span>
-                        <span className="aic-autista">
-                          {autista} {badge}
-                        </span>
-                      </div>
-                      <div className="aic-row-bot">
-                        <span className={r.isKO ? "aic-badge ko" : "aic-badge ok"}>
-                          {r.isKO ? "KO" : "OK"}
-                        </span>
-                        {r.isKO && (
-                          <span className="aic-ko-list">
-                            KO: {r.koList.join(", ")}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          className="aic-back"
-                          style={{ padding: "4px 8px", fontSize: "12px" }}
-                          onClick={() => {
-                            void generateControlloPDF(r);
-                          }}
-                        >
-                          PDF
-                        </button>
-                      </div>
-                      {r.note ? <div className="aic-note">{r.note}</div> : null}
-                    </div>
+              <>
+                <div style={{ minWidth: 0 }}>
+                  <div className="aic-row-top" style={{ marginBottom: "8px" }}>
+                    <strong>ESITI KO ({koList.length})</strong>
                   </div>
-                );
-              })
+                  {koList.map(renderRow)}
+                </div>
+                {!onlyKo ? (
+                  <div style={{ minWidth: 0 }}>
+                    <div className="aic-row-top" style={{ marginBottom: "8px" }}>
+                      <strong>ESITI OK ({okList.length})</strong>
+                    </div>
+                    {okList.map(renderRow)}
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         </div>

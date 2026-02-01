@@ -124,6 +124,10 @@ useEffect(() => {
   }
 
   function handleTabClick(tab: ActiveTab) {
+    if (tab === "cambi") {
+      navigate(`/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(day)}`);
+      return;
+    }
     setActiveTab(tab);
     scrollToTab(tab);
   }
@@ -616,7 +620,7 @@ useEffect(() => {
                 <button
                   className="daily-more"
                   disabled={cambiMezzo.length <= 5}
-                  onClick={() => openModal("cambi")}
+                  onClick={() => navigate(`/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(day)}`)}
                   title={cambiMezzo.length <= 5 ? "Niente altro" : "Vedi tutto"}
                 >
                   Vedi tutto

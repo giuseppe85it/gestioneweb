@@ -1,119 +1,315 @@
 // ======================================================
 // CambioMezzoInbox.tsx
-// APP ADMIN – Centro di controllo eventi autisti
+// APP ADMIN - Centro di controllo eventi autisti
 // LETTURA ONLY
 // ======================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./CambioMezzoInbox.css";
-import { getItemSync } from "../utils/storageSync";
+import { loadHomeEvents, type HomeEvent } from "../utils/homeEvents";
 
-const SGANCI_RIMORCHI_KEY = "@storico_sganci_rimorchi";
-const CAMBI_MOTRICE_KEY = "@storico_cambi_motrice";
+function formatDateInputValue(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const dayValue = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${dayValue}`;
+}
 
-type Evento =
-  | {
-      tipo: "rimorchio";
-      targa: string;
-      categoria?: string;
-      autista: string;
-      badgeAutista: string;
-      luogo: string;
-      statoCarico: string;
-      condizioni: any;
-      timestamp: number;
-    }
-  | {
-      tipo: "motrice";
-      targa: string;
-      autista: string;
-      badgeAutista: string;
-      luogo: string;
-      condizioni: any;
-      timestamp: number;
-    };
+function parseDayParam(value: string | null): Date | null {
+  if (!value) return null;
+  const [yy, mm, dd] = value.split("-").map(Number);
+  if (!yy || !mm || !dd) return null;
+  const next = new Date(yy, mm - 1, dd);
+  if (Number.isNaN(next.getTime())) return null;
+  return next;
+}
+
+function normTarga(value?: string | null) {
+  return String(value ?? "").toUpperCase().replace(/\s+/g, "").trim();
+}
+
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDateTime(ts: number) {
+  return new Date(ts).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getAutistaInfo(e: HomeEvent) {
+  const p: any = e.payload || {};
+  const autistaObj = p.autista && typeof p.autista === "object" ? p.autista : null;
+  const nome =
+    autistaObj?.nome ??
+    p.autista ??
+    p.autistaNome ??
+    p.nomeAutista ??
+    e.autista ??
+    "-";
+  const badge = autistaObj?.badge ?? p.badgeAutista ?? p.badge ?? null;
+  return {
+    nome: String(nome || "-"),
+    badge: badge ? String(badge) : null,
+  };
+}
+
+function getCambioInfo(e: HomeEvent) {
+  const p: any = e.payload || {};
+  const tipo = String(p.tipo ?? p.tipoOperativo ?? p.fsTipo ?? "CAMBIO_ASSETTO");
+  const tipoLabel = tipo.replace(/_/g, " ");
+  const autista = getAutistaInfo(e);
+  const prima = {
+    motrice:
+      p?.primaMotrice ??
+      p?.prima?.motrice ??
+      p?.prima?.targaMotrice ??
+      p?.prima?.targaCamion ??
+      null,
+    rimorchio:
+      p?.primaRimorchio ?? p?.prima?.rimorchio ?? p?.prima?.targaRimorchio ?? null,
+  };
+  const dopo = {
+    motrice:
+      p?.dopoMotrice ??
+      p?.dopo?.motrice ??
+      p?.dopo?.targaMotrice ??
+      p?.dopo?.targaCamion ??
+      p?.targaMotrice ??
+      p?.targaCamion ??
+      null,
+    rimorchio:
+      p?.dopoRimorchio ??
+      p?.dopo?.rimorchio ??
+      p?.dopo?.targaRimorchio ??
+      p?.targaRimorchio ??
+      null,
+  };
+  return {
+    tipoLabel,
+    nomeAutista: autista.nome || "-",
+    badgeAutista: autista.badge,
+    prima,
+    dopo,
+  };
+}
+
+function formatCambioSide(value: string | null) {
+  return value ? String(value) : "INIZIO";
+}
+
+function isSameCambioValue(a: string | null, b: string | null) {
+  const aa = (a ?? "").trim().toUpperCase();
+  const bb = (b ?? "").trim().toUpperCase();
+  if (!aa && !bb) return true;
+  return aa === bb;
+}
+
+function buildCambioLines(info: {
+  prima: { motrice: string | null; rimorchio: string | null };
+  dopo: { motrice: string | null; rimorchio: string | null };
+}) {
+  const lines: string[] = [];
+  if (
+    (info.prima.motrice || info.dopo.motrice) &&
+    !isSameCambioValue(info.prima.motrice, info.dopo.motrice)
+  ) {
+    lines.push(
+      `MOTRICE: ${formatCambioSide(info.prima.motrice)} -> ${formatCambioSide(
+        info.dopo.motrice
+      )}`
+    );
+  }
+  if (
+    (info.prima.rimorchio || info.dopo.rimorchio) &&
+    !isSameCambioValue(info.prima.rimorchio, info.dopo.rimorchio)
+  ) {
+    lines.push(
+      `RIMORCHIO: ${formatCambioSide(info.prima.rimorchio)} -> ${formatCambioSide(
+        info.dopo.rimorchio
+      )}`
+    );
+  }
+  return lines;
+}
 
 export default function CambioMezzoInbox() {
-  const [eventi, setEventi] = useState<Evento[]>([]);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const datePickerRef = useRef<HTMLInputElement | null>(null);
+  const [day, setDay] = useState<Date>(new Date());
+  const [events, setEvents] = useState<HomeEvent[]>([]);
+  const [filterTarga, setFilterTarga] = useState("");
 
   useEffect(() => {
-    caricaEventi();
-  }, []);
+    const params = new URLSearchParams(location.search);
+    const parsed = parseDayParam(params.get("day"));
+    if (parsed) setDay(parsed);
+  }, [location.search]);
 
-  async function caricaEventi() {
-    const rimorchi = (await getItemSync(SGANCI_RIMORCHI_KEY)) || [];
-    const motrici = (await getItemSync(CAMBI_MOTRICE_KEY)) || [];
+  useEffect(() => {
+    let alive = true;
+    loadHomeEvents(day).then((list) => {
+      if (!alive) return;
+      setEvents(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [day]);
 
-    const eventiRimorchi: Evento[] = rimorchi.map((r: any) => ({
-      tipo: "rimorchio",
-      targa: r.targaRimorchio,
-      categoria: r.categoria,
-      autista: r.autista,
-      badgeAutista: r.badgeAutista,
-      luogo: r.luogo,
-      statoCarico: r.statoCarico,
-      condizioni: r.condizioni,
-      timestamp: r.timestampSgancio,
-    }));
+  const filtered = useMemo(() => {
+    const base = events
+      .filter((e) => e.tipo === "cambio_mezzo")
+      .sort((a, b) => b.timestamp - a.timestamp);
+    const key = normTarga(filterTarga);
+    if (!key) return base;
+    return base.filter((e) => {
+      const t = normTarga(e.targa);
+      return t && t.includes(key);
+    });
+  }, [events, filterTarga]);
 
-    const eventiMotrici: Evento[] = motrici.map((m: any) => ({
-      tipo: "motrice",
-      targa: m.targaMotrice,
-      autista: m.autista,
-      badgeAutista: m.badgeAutista,
-      luogo: m.luogo,
-      condizioni: m.condizioni,
-      timestamp: m.timestampCambio,
-    }));
+  function openDatePicker() {
+    const input = datePickerRef.current;
+    if (!input) return;
+    const picker = (input as HTMLInputElement & { showPicker?: () => void }).showPicker;
+    if (picker) {
+      picker.call(input);
+    } else {
+      input.click();
+    }
+  }
 
-    const tutti = [...eventiRimorchi, ...eventiMotrici].sort(
-      (a, b) => b.timestamp - a.timestamp
-    );
+  function setDayAndUrl(next: Date) {
+    setDay(next);
+    navigate(`/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(next)}`, {
+      replace: true,
+    });
+  }
 
-    setEventi(tutti);
+  function handleDatePickerChange(value: string) {
+    if (!value) return;
+    const [year, month, dayValue] = value.split("-").map(Number);
+    if (!year || !month || !dayValue) return;
+    const next = new Date(year, month - 1, dayValue);
+    if (Number.isNaN(next.getTime())) return;
+    setDayAndUrl(next);
   }
 
   return (
-    <div className="cmi-container">
-      <h1>CAMBIO MEZZO - AUTISTI</h1>
-      <p className="cmi-subtitle">
-        Centro di controllo eventi provenienti dall'app autisti
-      </p>
+    <div className="aix-page">
+      <div className="aix-wrap">
+        <div className="aix-header">
+          <div className="aix-header-left">
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="aix-logo"
+              onClick={() => navigate("/")}
+            />
+            <h1>Cambio mezzo</h1>
+          </div>
+          <button className="aix-back" onClick={() => navigate("/autisti-inbox")}>
+            INDIETRO
+          </button>
+        </div>
 
-      {eventi.length === 0 && (
-        <div className="cmi-empty">Nessun evento registrato</div>
-      )}
+        <div className="aix-card">
+          <div className="aix-filters">
+            <input
+              className="aix-input"
+              value={filterTarga}
+              onChange={(e) => setFilterTarga(e.target.value)}
+              placeholder="Filtra per targa"
+            />
+            <button
+              type="button"
+              className="aix-select"
+              aria-label="Giorno precedente"
+              onClick={() => setDayAndUrl(new Date(day.getTime() - 86400000))}
+            >
+              PRECEDENTE
+            </button>
+            <button
+              type="button"
+              className="aix-select"
+              onClick={openDatePicker}
+              aria-label="Seleziona data"
+            >
+              {day.toLocaleDateString("it-IT", {
+                weekday: "long",
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              })}
+            </button>
+            <input
+              ref={datePickerRef}
+              className="aix-input"
+              type="date"
+              value={formatDateInputValue(day)}
+              onChange={(e) => handleDatePickerChange(e.target.value)}
+              tabIndex={-1}
+              aria-hidden="true"
+              style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
+            />
+            <button
+              type="button"
+              className="aix-select"
+              aria-label="Giorno successivo"
+              onClick={() => setDayAndUrl(new Date(day.getTime() + 86400000))}
+            >
+              SUCCESSIVO
+            </button>
+            <span className="aix-select">Eventi: {filtered.length}</span>
+          </div>
 
-      <div className="cmi-list">
-        {eventi.map((e, idx) => (
-          <div key={idx} className="cmi-card">
-            <div className="cmi-header">
-              <span className={`cmi-badge ${e.tipo}`}>
-                {e.tipo === "rimorchio" ? "RIMORCHIO" : "MOTRICE"}
-              </span>
-              <span className="cmi-time">
-                {new Date(e.timestamp).toLocaleString("it-CH")}
-              </span>
-            </div>
+          <div className="aix-list">
+            {filtered.length === 0 ? (
+              <div className="aix-empty">Nessun cambio per la giornata selezionata</div>
+            ) : (
+              filtered.map((e, idx) => {
+                const info = getCambioInfo(e);
+                const badgeLabel = info.badgeAutista
+                  ? `BADGE ${info.badgeAutista}`
+                  : "BADGE -";
+                const nomeLabel = info.nomeAutista || "-";
+                const topLine = `${info.tipoLabel} - ${nomeLabel} (${badgeLabel}) - ${formatTime(
+                  e.timestamp
+                )}`;
+                const changeLines = buildCambioLines(info);
+                return (
+                  <div key={e.id ?? `cambio_${e.timestamp}_${idx}`} className="cmi-card">
+                    <div className="cmi-header">
+                      <span className="aix-time">{formatDateTime(e.timestamp)}</span>
+                    </div>
 
-            <div className="cmi-main">
-              <div className="cmi-targa">{e.targa}</div>
-              <div className="cmi-autista">
-                {e.autista} ({e.badgeAutista})
-              </div>
-            </div>
+                    <div className="cmi-main">
+                      <div className="cmi-targa">{e.targa || "-"}</div>
+                      <div className="cmi-autista">{topLine}</div>
+                    </div>
 
-            <div className="cmi-row">
-              <strong>Luogo:</strong> {e.luogo}
-            </div>
-
-            {e.tipo === "rimorchio" && (
-              <div className="cmi-row">
-                <strong>Stato carico:</strong> {e.statoCarico}
-              </div>
+                    {changeLines.map((line, lineIndex) => (
+                      <div key={`cambio-${e.id ?? "x"}-${lineIndex}`} className="cmi-row">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })
             )}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
