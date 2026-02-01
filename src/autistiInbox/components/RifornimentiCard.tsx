@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import type { HomeEvent } from "../../utils/homeEvents";
+import { formatDateTimeUI } from "../../utils/dateFormat";
 
 type Props = {
   events: HomeEvent[];
@@ -9,10 +10,7 @@ type Props = {
 };
 
 function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString("it-IT", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts);
 }
 
 function getTarga(e: HomeEvent) {

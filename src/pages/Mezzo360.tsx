@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
 import type { HomeEvent } from "../utils/homeEvents";
 import AutistiEventoModal from "../components/AutistiEventoModal";
+import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import "./Mezzo360.css";
 
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -162,27 +163,14 @@ function getTimestamp(record: AnyRecord): number {
 }
 
 function formatDateTime(ts?: number | null) {
-  if (!ts) return "-";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "-";
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${dd} ${mm} ${yy} ${hh}:${mi}`;
+  return formatDateTimeUI(ts ?? null);
 }
 
 function formatDateOnly(value?: string) {
-  if (!value) return "-";
-  if (/^\d{2}\s\d{2}\s\d{4}$/.test(value.trim())) return value;
+  if (!value) return "—";
   const ts = parseDateStringToMs(value);
-  if (!ts) return value;
-  const d = new Date(ts);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yy = d.getFullYear();
-  return `${dd} ${mm} ${yy}`;
+  if (!ts) return "—";
+  return formatDateUI(ts);
 }
 
 export default function Mezzo360() {

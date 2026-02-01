@@ -7,6 +7,7 @@ import type { ActiveSession, HomeEvent } from "../utils/homeEvents";
 import RifornimentiCard from "./components/RifornimentiCard";
 import SessioniAttiveCard from "./components/SessioniAttiveCard";
 import AutistiEventoModal from "../components/AutistiEventoModal";
+import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 
 type ModalKind =
   | null
@@ -95,10 +96,7 @@ useEffect(() => {
   );
 
   function formatTime(ts: number) {
-    return new Date(ts).toLocaleTimeString("it-IT", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTimeUI(ts);
   }
 
   function openModal(kind: Exclude<ModalKind, null>) {
@@ -461,12 +459,7 @@ useEffect(() => {
               onClick={openDatePicker}
               aria-label="Seleziona data"
             >
-              {day.toLocaleDateString("it-IT", {
-                weekday: "long",
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              })}
+              {formatDateUI(day)}
             </button>
             <input
               ref={datePickerRef}

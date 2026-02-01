@@ -15,6 +15,7 @@ import AutistiEventoModal from "../components/AutistiEventoModal";
 import AutistiImportantEventsModal, {
   type ImportantAutistiEventItem,
 } from "../components/AutistiImportantEventsModal";
+import { formatDateInput, formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import {
   applyAlertAction,
   createEmptyAlertsState,
@@ -472,30 +473,15 @@ function parseDateFlexible(value: string | null | undefined): Date | null {
 }
 
 function formatDateForDisplay(date: Date | null): string {
-  if (!date) return "-";
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day} ${month} ${year}`;
+  return formatDateUI(date);
 }
 
 function formatDateForInput(date: Date | null): string {
-  if (!date) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatDateInput(date);
 }
 
 function formatDateTimeForDisplay(ts?: number | null): string {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleString("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts ?? null);
 }
 
 function buildSegnalazioneTarga(r: SegnalazioneRecord): string {

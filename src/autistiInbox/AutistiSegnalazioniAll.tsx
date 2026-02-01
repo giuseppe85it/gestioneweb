@@ -2,6 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { generateSegnalazionePDF } from "../utils/pdfEngine";
+import { formatDateTimeUI } from "../utils/dateFormat";
 import "./AutistiSegnalazioniAll.css";
 
 type SegnalazioneRecord = {
@@ -35,14 +36,7 @@ type SegnalazioneView = SegnalazioneRecord & {
 };
 
 function formatDateTime(ts?: number | null) {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleString("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts ?? null);
 }
 
 function normTarga(value?: string | null) {

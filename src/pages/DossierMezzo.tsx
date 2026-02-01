@@ -4,6 +4,7 @@ import { doc, getDoc, collection, getDocs, setDoc, deleteDoc } from "firebase/fi
 import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
 import { generateDossierMezzoPDF } from "../utils/pdfEngine";
+import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import "./DossierMezzo.css";
 
 // Normalizza la targa togliendo spazi, simboli e differenze
@@ -225,6 +226,7 @@ const DossierMezzo: React.FC = () => {
 const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 const [showPreviewModal, setShowPreviewModal] = useState(false);
 const [showLibrettoModal, setShowLibrettoModal] = useState(false);
+const [librettoLoadErrors, setLibrettoLoadErrors] = useState<Record<string, boolean>>({});
 const openDocumento = (url: string) => {
   setPreviewUrl(url);
   setShowPreviewModal(true);
@@ -678,6 +680,12 @@ setState({
     .filter((u): u is string => typeof u === "string")
     .map((u) => u.trim())
     .filter(Boolean);
+  const librettoArchiveLink = `/ia/libretto?archive=1&targa=${encodeURIComponent(
+    mezzo.targa ?? targa ?? ""
+  )}`;
+  const librettoViewerLink = `/ia/libretto?open=1&targa=${encodeURIComponent(
+    mezzo.targa ?? targa ?? ""
+  )}`;
 
   const totaleLitri = state.rifornimenti.reduce(
     (sum, r) => sum + (r.litri || 0),
@@ -686,14 +694,7 @@ setState({
   void totaleLitri;
 
   const formatDateTime = (ts?: number | null) => {
-    if (!ts) return "-";
-    return new Date(ts).toLocaleString("it-IT", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTimeUI(ts ?? null);
   };
 
   const parseItalianDate = (d?: string): number => {
@@ -912,6 +913,15 @@ return (
                   >
                     Vai a IA Libretto
                   </button>
+                  <button
+                    className="dossier-button"
+                    type="button"
+                    onClick={() =>
+                      navigate(librettoArchiveLink)
+                    }
+                  >
+                    Cerca in Archivio IA
+                  </button>
                 </div>
               </div>
             ) : (
@@ -937,11 +947,23 @@ return (
                     </>
                   ) : (
                     <div className="dossier-libretto-image-wrap">
-                      <img
-                        src={url}
-                        className="dossier-libretto-img"
-                        alt={`Libretto ${index + 1}`}
-                      />
+                      {librettoLoadErrors[url] ? (
+                        <div className="dossier-empty">
+                          Impossibile caricare la foto.
+                        </div>
+                      ) : (
+                        <img
+                          src={url}
+                          className="dossier-libretto-img"
+                          alt={`Libretto ${index + 1}`}
+                          onError={() =>
+                            setLibrettoLoadErrors((prev) => ({
+                              ...prev,
+                              [url]: true,
+                            }))
+                          }
+                        />
+                      )}
                       <div className="dossier-libretto-actions">
                         <a
                           className="dossier-button"
@@ -951,6 +973,15 @@ return (
                         >
                           Apri immagine
                         </a>
+                        {librettoLoadErrors[url] && (
+                          <button
+                            className="dossier-button"
+                            type="button"
+                            onClick={() => navigate(librettoArchiveLink)}
+                          >
+                            Cerca in Archivio IA
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1005,7 +1036,9 @@ return (
   <button
     className="dossier-button"
     type="button"
-    onClick={() => setShowLibrettoModal(true)}
+    onClick={() => {
+      navigate(librettoUrls.length === 0 ? librettoArchiveLink : librettoViewerLink);
+    }}
   >
     LIBRETTO
   </button>
@@ -1104,11 +1137,11 @@ return (
               <ul>
                 <li>
                   <span>Immatricolazione</span>
-                  <strong>{mezzo.dataImmatricolazione || "-"}</strong>
+                  <strong>{formatDateUI(mezzo.dataImmatricolazione)}</strong>
                 </li>
                 <li>
                   <span>Revisione</span>
-                  <strong>{mezzo.dataScadenzaRevisione || "-"}</strong>
+                  <strong>{formatDateUI(mezzo.dataScadenzaRevisione)}</strong>
                 </li>
                 <li>
                   <span>Note</span>
@@ -1130,8 +1163,8 @@ return (
     <li>
       <span>Periodo</span>
       <strong>
-        {(mezzo as any).manutenzioneDataInizio || "-"} →{" "}
-        {(mezzo as any).manutenzioneDataFine || "-"}
+        {formatDateUI((mezzo as any).manutenzioneDataInizio)} →{" "}
+        {formatDateUI((mezzo as any).manutenzioneDataFine)}
       </strong>
     </li>
     <li>

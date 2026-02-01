@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { generateLavoriPDF } from "../utils/pdfEngine"; // <--- PDF ENGINE UNIVERSALE
 import type { Lavoro, TipoLavoro, Urgenza } from "../types/lavori";
+import { formatDateUI } from "../utils/dateFormat";
 
 import "./LavoriInAttesa.css";
 
@@ -99,13 +100,7 @@ const LavoriInAttesa: React.FC = () => {
   };
 
   const formatDateShort = (value?: string) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    return formatDateUI(value ?? null);
   };
 
   // -----------------------------------------

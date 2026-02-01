@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
+import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 
 type TipoRifornimento = "caravate" | "distributore";
 type MetodoPagamento = "piccadilly" | "eni" | "contanti";
@@ -23,9 +24,7 @@ function genId() {
 }
 
 function formatDateString(ts: number) {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("it-IT");
+  return formatDateUI(ts);
 }
 
 function toNumberOrNull(value: any) {
@@ -321,10 +320,7 @@ export default function Rifornimento() {
         />
         {errors.litri && <div className="rf-error">{errors.litri}</div>}
 
-        <div className="rf-date">
-          Data: {data.toLocaleDateString("it-IT")} -{" "}
-          {data.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
-        </div>
+        <div className="rf-date">Data: {formatDateTimeUI(data)}</div>
       </div>
 
       {tipo === "distributore" && (

@@ -9,6 +9,7 @@ import {
   generateRifornimentoPDF,
   generateSegnalazionePDF,
 } from "../utils/pdfEngine";
+import { formatDateTimeUI } from "../utils/dateFormat";
 import "../autistiInbox/AutistiInboxHome.css";
 import TargaPicker from "./TargaPicker";
 
@@ -113,14 +114,7 @@ export default function AutistiEventoModal({
   }
 
   function formatDateTime(ts?: number) {
-    if (!ts) return "-";
-    return new Date(ts).toLocaleString("it-IT", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTimeUI(ts ?? null);
   }
 
   function handleExportPdf(e: HomeEvent) {

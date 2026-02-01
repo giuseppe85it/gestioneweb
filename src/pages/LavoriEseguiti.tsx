@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { generateTablePDF } from "../utils/pdfEngine";     // <── PDF ENGINE
 import type { Lavoro, Urgenza } from "../types/lavori";
+import { formatDateUI } from "../utils/dateFormat";
 import "./LavoriEseguiti.css";
 
 interface LavoroGroup {
@@ -12,21 +13,11 @@ interface LavoroGroup {
 }
 
 const formatDate = (iso?: string) => {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "-";
-  return `${String(d.getDate()).padStart(2, "0")}/${String(
-    d.getMonth() + 1
-  ).padStart(2, "0")}/${d.getFullYear()}`;
+  return formatDateUI(iso ?? null);
 };
 
 const formatDateGGMMYYYY = (iso?: string) => {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "-";
-  return `${String(d.getDate()).padStart(2, "0")} ${String(
-    d.getMonth() + 1
-  ).padStart(2, "0")} ${d.getFullYear()}`;
+  return formatDateUI(iso ?? null);
 };
 
 const getWeekRange = (iso?: string) => {
@@ -41,9 +32,7 @@ const getWeekRange = (iso?: string) => {
   sunday.setDate(monday.getDate() + 6);
 
   const fmt = (d: Date) =>
-    `${String(d.getDate()).padStart(2, "0")}/${String(
-      d.getMonth() + 1
-    ).padStart(2, "0")}/${d.getFullYear()}`;
+    formatDateUI(d);
 
   return `${fmt(monday)} - ${fmt(sunday)}`;
 };

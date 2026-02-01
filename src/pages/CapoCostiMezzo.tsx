@@ -4,6 +4,7 @@ import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generatePreventiviCapoPDF } from "../utils/pdfEngine";
+import { formatDateUI } from "../utils/dateFormat";
 import "./CapoCostiMezzo.css";
 
 type CostRecord = {
@@ -161,11 +162,7 @@ const renderAmountWithCurrency = (
 
 const formatDateShort = (value?: string): string => {
   const dateValue = parseDateAny(value);
-  if (!dateValue) return "Data n/d";
-  const dd = String(dateValue.getDate()).padStart(2, "0");
-  const mm = String(dateValue.getMonth() + 1).padStart(2, "0");
-  const yyyy = dateValue.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return formatDateUI(dateValue);
 };
 
 const buildApprovalKey = (targaKey: string, record: CostRecord): string => {

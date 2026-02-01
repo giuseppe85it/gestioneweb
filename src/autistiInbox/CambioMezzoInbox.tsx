@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./CambioMezzoInbox.css";
 import { loadHomeEvents, type HomeEvent } from "../utils/homeEvents";
+import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 
 function formatDateInputValue(value: Date) {
   const year = value.getFullYear();
@@ -30,20 +31,11 @@ function normTarga(value?: string | null) {
 }
 
 function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString("it-IT", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts);
 }
 
 function formatDateTime(ts: number) {
-  return new Date(ts).toLocaleString("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts);
 }
 
 function getAutistaInfo(e: HomeEvent) {
@@ -246,12 +238,7 @@ export default function CambioMezzoInbox() {
               onClick={openDatePicker}
               aria-label="Seleziona data"
             >
-              {day.toLocaleDateString("it-IT", {
-                weekday: "long",
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              })}
+              {formatDateUI(day)}
             </button>
             <input
               ref={datePickerRef}

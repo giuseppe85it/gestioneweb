@@ -15,6 +15,7 @@ import { getItemSync, setItemSync } from "../utils/storageSync";
 import { generateControlloPDF, generateSegnalazionePDF } from "../utils/pdfEngine";
 import { buildTargheList } from "../utils/targhe";
 import TargaPicker from "../components/TargaPicker";
+import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -71,32 +72,11 @@ function formatDayLabel(d: Date) {
     "Venerdì",
     "Sabato",
   ];
-  const mesi = [
-    "Gennaio",
-    "Febbraio",
-    "Marzo",
-    "Aprile",
-    "Maggio",
-    "Giugno",
-    "Luglio",
-    "Agosto",
-    "Settembre",
-    "Ottobre",
-    "Novembre",
-    "Dicembre",
-  ];
-  return `${giorni[d.getDay()]} ${String(d.getDate()).padStart(
-    2,
-    "0"
-  )} ${mesi[d.getMonth()]} ${d.getFullYear()}`;
+  return `${giorni[d.getDay()] ?? ""} ${formatDateUI(d)}`;
 }
 
 function formatHHMM(ts: number) {
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(
-    2,
-    "0"
-  )}`;
+  return formatDateTimeUI(ts);
 }
 
 function toTs(v: any): number | null {
@@ -118,9 +98,7 @@ function toStrOrNull(v: any): string | null {
 }
 
 function formatDateString(ts: number) {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("it-IT");
+  return formatDateUI(ts);
 }
 
 function toNumberOrNull(value: any) {
@@ -155,14 +133,7 @@ function buildDossierItem(record: any) {
 }
 
 function formatDateTime(ts: number) {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleString("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts ?? null);
 }
 
 function normalizeMezzi(raw: any): any[] {

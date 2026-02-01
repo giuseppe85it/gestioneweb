@@ -4,6 +4,7 @@ import "../autisti/autisti.css";
 import "./RichiestaAttrezzatureAll.css";
 import { getItemSync } from "../utils/storageSync";
 import { generateRichiestaAttrezzaturePDF } from "../utils/pdfEngine";
+import { formatDateTimeUI } from "../utils/dateFormat";
 
 const KEY_RICHIESTE = "@richieste_attrezzature_autisti_tmp";
 
@@ -22,14 +23,7 @@ type RichiestaAttrezzatureRecord = {
 };
 
 function formatDateTime(ts?: number | null) {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleString("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts ?? null);
 }
 
 function getFotoList(r: RichiestaAttrezzatureRecord) {

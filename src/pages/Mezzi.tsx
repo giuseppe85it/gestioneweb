@@ -7,6 +7,7 @@ import "./Mezzi.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
+import { formatDateInput, formatDateUI } from "../utils/dateFormat";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const COLLEGHI_KEY = "@colleghi";
@@ -103,19 +104,11 @@ function parseDateFlexible(value: string | null | undefined): Date | null {
 }
 
 function formatDateForDisplay(date: Date | null): string {
-  if (!date) return "-";
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day} ${month} ${year}`;
+  return formatDateUI(date);
 }
 
 function formatDateForInput(date: Date | null): string {
-  if (!date) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatDateInput(date);
 }
 
 function normalizeTarga(value: string | null | undefined): string {

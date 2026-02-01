@@ -7,7 +7,7 @@ import { generaPDFconIA } from "./aiCore";
 
 
 /**
- * Formato data ufficiale: gg mm aaaa
+ * Formato data ufficiale: gg/MM/aaaa
  */
 export const formatGGMMYYYY = (iso: string): string => {
   if (!iso) return "";
@@ -18,11 +18,11 @@ export const formatGGMMYYYY = (iso: string): string => {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
 
-  return `${gg} ${mm} ${yyyy}`;
+  return `${gg}/${mm}/${yyyy}`;
 };
 
 /**
- * Formato data + ora (gg mm aaaa – HH:MM)
+ * Formato data + ora (gg/MM/aaaa HH:MM)
  */
 export const formatGGMMYYYY_HHMM = (iso: string): string => {
   if (!iso) return "";
@@ -33,7 +33,7 @@ export const formatGGMMYYYY_HHMM = (iso: string): string => {
   const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
 
-  return `${ggmm} – ${hh}:${mi}`;
+  return `${ggmm} ${hh}:${mi}`;
 };
 
 export const formatDateTime = (input: number | string | Date): string => {

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { getItemSync } from "../utils/storageSync";
 import type { HomeEvent } from "../utils/homeEvents";
 import AutistiEventoModal from "../components/AutistiEventoModal";
+import { formatDateTimeUI } from "../utils/dateFormat";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const SEGNALAZIONI_KEY = "@segnalazioni_autisti_tmp";
@@ -156,15 +157,7 @@ function pad2(value: number): string {
 }
 
 function formatDateLabel(ts: number): string {
-  if (!ts) return "Data non disponibile";
-  const date = new Date(ts);
-  if (Number.isNaN(date.getTime())) return "Data non disponibile";
-  const day = pad2(date.getDate());
-  const month = pad2(date.getMonth() + 1);
-  const year = date.getFullYear();
-  const hours = pad2(date.getHours());
-  const minutes = pad2(date.getMinutes());
-  return `${day} ${month} ${year} ${hours}:${minutes}`;
+  return formatDateTimeUI(ts);
 }
 
 function getStringFromRecord(record: any, keys: string[]): string {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { formatDateUI } from "../utils/dateFormat";
 import {
   ResponsiveContainer,
   XAxis,
@@ -97,24 +98,19 @@ const parseDateFlex = (value: unknown): Date | null => {
 
 const formatDateLabel = (value: unknown): string => {
   const d = parseDateFlex(value);
-  if (!d) return "-";
-  return d.toLocaleDateString("it-IT");
+  if (!d) return "—";
+  return formatDateUI(d);
 };
 
-const formatDayShort = (value: Date): string =>
-  `${String(value.getDate()).padStart(2, "0")}/${String(
-    value.getMonth() + 1
-  ).padStart(2, "0")}`;
+const formatDayShort = (value: Date): string => formatDateUI(value);
 
 const formatDayKeyShort = (dayKey: string): string => {
-  const [yyyy, mm, dd] = dayKey.split("-");
-  if (!yyyy || !mm || !dd) return dayKey;
-  return `${dd}/${mm}`;
+  return formatDayKeyLong(dayKey);
 };
 
 const formatDayKeyLong = (dayKey: string): string => {
   const [yyyy, mm, dd] = dayKey.split("-");
-  if (!yyyy || !mm || !dd) return dayKey;
+  if (!yyyy || !mm || !dd) return "—";
   return `${dd}/${mm}/${yyyy}`;
 };
 
@@ -379,9 +375,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
     for (let i = monthsCount - 1; i >= 0; i -= 1) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const label = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(
-        d.getFullYear()
-      ).slice(-2)}`;
+      const label = formatDateUI(d);
       months.push({ key, label });
     }
 
@@ -484,7 +478,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
       data.push({
         dayKey: key,
         labelShort: formatDayShort(cursor),
-        labelLong: cursor.toLocaleDateString("it-IT"),
+        labelLong: formatDateUI(cursor),
         litri: entry?.litri ?? 0,
         kmMin: entry?.kmMin ?? null,
         kmMax: entry?.kmMax ?? null,
@@ -555,9 +549,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const key = getDayKey(d);
-      const label = `${String(d.getDate()).padStart(2, "0")}/${String(
-        d.getMonth() + 1
-      ).padStart(2, "0")}`;
+      const label = formatDateUI(d);
       labelByKey[key] = label;
       keyByLabel[label] = key;
       dayBuckets.push({ key, label });

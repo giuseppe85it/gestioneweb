@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
@@ -14,6 +14,7 @@ import "./IALibretto.css";
 
 const IALibretto: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [apiKeyExists, setApiKeyExists] = useState<boolean | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -21,6 +22,36 @@ const IALibretto: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [archiveMezzi, setArchiveMezzi] = useState<any[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveFilter, setArchiveFilter] = useState("");
+  const archiveRef = useRef<HTMLDivElement | null>(null);
+  const openHandledRef = useRef(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerTarga, setViewerTarga] = useState<string | null>(null);
+  const [viewerRotate, setViewerRotate] = useState(0);
+  const [viewerZoom, setViewerZoom] = useState(1);
+  const [viewerError, setViewerError] = useState<string | null>(null);
+
+  const normalizeTarga = (value: string | null | undefined) =>
+    String(value ?? "").trim().toUpperCase();
+
+  const openViewer = (url: string, targa?: string | null) => {
+    setViewerUrl(url);
+    setViewerTarga(targa ? normalizeTarga(targa) : null);
+    setViewerRotate(0);
+    setViewerZoom(1);
+    setViewerError(null);
+    setViewerOpen(true);
+  };
+
+  const closeViewer = () => {
+    setViewerOpen(false);
+    setViewerUrl(null);
+    setViewerError(null);
+  };
 
   // 1. Verifica API KEY GEMINI
   useEffect(() => {
@@ -41,6 +72,105 @@ const IALibretto: React.FC = () => {
     };
     void loadApiKey();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const targaParam = params.get("targa");
+    if (targaParam) setArchiveFilter(targaParam);
+    if (params.get("archive")) {
+      setTimeout(() => {
+        archiveRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("open") !== "1") {
+      openHandledRef.current = false;
+      return;
+    }
+    if (openHandledRef.current) return;
+
+    const urlParam = params.get("url");
+    const targaParam = params.get("targa");
+
+    if (urlParam) {
+      openViewer(urlParam, targaParam);
+      openHandledRef.current = true;
+      return;
+    }
+
+    if (targaParam && archiveMezzi.length > 0) {
+      const target = normalizeTarga(targaParam);
+      const mezzo = archiveMezzi.find((m) => {
+        const targa = normalizeTarga(m?.targa);
+        const librettoUrl =
+          typeof m?.librettoUrl === "string" ? m.librettoUrl.trim() : "";
+        return targa === target && Boolean(librettoUrl);
+      });
+
+      const librettoUrl =
+        typeof mezzo?.librettoUrl === "string" ? mezzo.librettoUrl.trim() : "";
+      if (librettoUrl) {
+        openViewer(librettoUrl, target);
+        openHandledRef.current = true;
+      }
+    }
+  }, [location.search, archiveMezzi]);
+
+  useEffect(() => {
+    let alive = true;
+    const loadArchive = async () => {
+      try {
+        setArchiveLoading(true);
+        setArchiveError(null);
+        const refMezzi = doc(db, "storage", "@mezzi_aziendali");
+        const snap = await getDoc(refMezzi);
+        const list = snap.exists() ? snap.data().value || [] : [];
+        if (!alive) return;
+        setArchiveMezzi(Array.isArray(list) ? list : []);
+      } catch (err: any) {
+        if (!alive) return;
+        setArchiveError(
+          err?.message || "Errore caricamento archivio libretti."
+        );
+      } finally {
+        if (alive) setArchiveLoading(false);
+      }
+    };
+    void loadArchive();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const archiveGroups = useMemo(() => {
+    const key = normalizeTarga(archiveFilter);
+    const groups = new Map<
+      string,
+      Array<{ fotoUrl: string; pdfUrl: string | null }>
+    >();
+
+    archiveMezzi.forEach((mezzo) => {
+      const targa = normalizeTarga(mezzo?.targa);
+      const fotoUrl =
+        typeof mezzo?.librettoUrl === "string" ? mezzo.librettoUrl.trim() : "";
+      if (!targa || !fotoUrl) return;
+      if (key && !targa.includes(key)) return;
+
+      const items = groups.get(targa) ?? [];
+      items.push({
+        fotoUrl,
+        pdfUrl: null,
+      });
+      groups.set(targa, items);
+    });
+
+    return Array.from(groups.entries())
+      .map(([targa, items]) => ({ targa, items }))
+      .sort((a, b) => a.targa.localeCompare(b.targa));
+  }, [archiveMezzi, archiveFilter]);
 
   // Upload immagine
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -377,6 +507,193 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
             )}
           </div>
         </div>
+
+        <div ref={archiveRef} className="ialibretto-panel">
+          <div className="ia-panel-head">
+            <h2>Archivio libretti IA</h2>
+            <span>Libretti salvati in precedenza, raggruppati per targa.</span>
+          </div>
+
+          <div className="ialibretto-field">
+            <label>Filtra per targa</label>
+            <input
+              value={archiveFilter}
+              onChange={(e) => setArchiveFilter(e.target.value)}
+              placeholder="Inserisci targa..."
+            />
+          </div>
+
+          {archiveLoading ? (
+            <div className="ialibretto-empty">Caricamento archivio...</div>
+          ) : archiveError ? (
+            <div className="ialibretto-error">{archiveError}</div>
+          ) : archiveGroups.length === 0 ? (
+            <div className="ialibretto-empty">Nessun libretto trovato.</div>
+          ) : (
+            archiveGroups.map((group) => (
+              <div key={group.targa} className="ialibretto-results">
+                <h2>{group.targa}</h2>
+                {group.items.map((item, index) => (
+                  <div
+                    key={`${group.targa}_${index}`}
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 12,
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700 }}>Libretto {index + 1}</div>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      <span>Foto: {item.fotoUrl ? "Si" : "No"}</span>
+                      <span>PDF: {item.pdfUrl ? "Si" : "No"}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        className="ia-btn outline"
+                        type="button"
+                        disabled={!item.fotoUrl}
+                        onClick={() => item.fotoUrl && openViewer(item.fotoUrl, group.targa)}
+                      >
+                        Apri Foto
+                      </button>
+                      <button
+                        className="ia-btn outline"
+                        type="button"
+                        disabled={!item.pdfUrl}
+                        onClick={() => item.pdfUrl && window.open(item.pdfUrl, "_blank")}
+                      >
+                        Apri PDF
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+
+        {viewerOpen && viewerUrl && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 24,
+              zIndex: 9999,
+            }}
+            onClick={closeViewer}
+          >
+            <div
+              className="ialibretto-panel"
+              style={{ maxWidth: 980, width: "100%", maxHeight: "90vh" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="ia-panel-head"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <h2>Viewer libretto</h2>
+                <button className="ia-btn outline" type="button" onClick={closeViewer}>
+                  Chiudi
+                </button>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <button
+                  className="ia-btn outline"
+                  type="button"
+                  onClick={() => setViewerRotate((d) => (d + 90) % 360)}
+                >
+                  Ruota 90°
+                </button>
+                <button
+                  className="ia-btn outline"
+                  type="button"
+                  onClick={() => {
+                    setViewerRotate(0);
+                    setViewerZoom(1);
+                  }}
+                >
+                  Reset
+                </button>
+                <button
+                  className="ia-btn outline"
+                  type="button"
+                  onClick={() =>
+                    setViewerZoom((z) => Math.min(3, Number((z + 0.25).toFixed(2))))
+                  }
+                >
+                  Zoom +
+                </button>
+                <button
+                  className="ia-btn outline"
+                  type="button"
+                  onClick={() =>
+                    setViewerZoom((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))
+                  }
+                >
+                  Zoom -
+                </button>
+              </div>
+
+              {viewerError ? (
+                <div className="ialibretto-error">
+                  <div>Impossibile caricare la foto.</div>
+                  {viewerTarga && (
+                    <div style={{ marginTop: 12 }}>
+                      <button
+                        className="ia-btn outline"
+                        type="button"
+                        onClick={() => {
+                          navigate(
+                            `/ia/libretto?archive=1&targa=${encodeURIComponent(viewerTarga)}`
+                          );
+                        }}
+                      >
+                        Cerca in Archivio IA
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: "1px solid #e6e6e6",
+                    borderRadius: 14,
+                    padding: 12,
+                    background: "#fff",
+                    maxHeight: "70vh",
+                    overflow: "auto",
+                  }}
+                >
+                  <img
+                    src={viewerUrl}
+                    alt="Libretto"
+                    onError={() => setViewerError("Impossibile caricare la foto.")}
+                    style={{
+                      transform: `rotate(${viewerRotate}deg) scale(${viewerZoom})`,
+                      transformOrigin: "center center",
+                      display: "block",
+                      margin: "0 auto",
+                      maxWidth: "100%",
+                      height: "auto",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

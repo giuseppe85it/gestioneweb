@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateAnalisiEconomicaPDF } from "../utils/pdfEngine";
+import { formatDateTimeUI } from "../utils/dateFormat";
 import GommeEconomiaSection from "./GommeEconomiaSection";
 import RifornimentiEconomiaSection from "./RifornimentiEconomiaSection";
 import "./DossierMezzo.css"; // riusa lo stile premium del dossier
@@ -840,15 +841,7 @@ const AnalisiEconomica: React.FC = () => {
 
   let updatedAtLabel = "";
   if (analisiIA?.updatedAt && analisiIA.updatedAt.toDate) {
-    updatedAtLabel = analisiIA.updatedAt
-      .toDate()
-      .toLocaleString("it-IT", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+    updatedAtLabel = formatDateTimeUI(analisiIA.updatedAt.toDate());
   }
 
   return (

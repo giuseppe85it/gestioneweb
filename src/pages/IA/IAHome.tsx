@@ -79,6 +79,19 @@ export default function IAHome() {
               <p>Leggi automaticamente i dati del mezzo dal libretto.</p>
             </div>
 
+            {/* Archivio Libretti */}
+            <div
+              className={`ia-card ${!apiKeyOk ? "disabled" : ""}`}
+              onClick={() => handleNav("/ia/libretto?archive=1")}
+            >
+              <span className={`ia-card-status ${apiKeyOk ? "on" : "off"}`}>
+                {toolStatus}
+              </span>
+              <img src="/icons/ia/libretto.png" alt="Archivio" className="ia-icon" />
+              <h3>Archivio Libretti</h3>
+              <p>Consulta i libretti gia scansionati per targa.</p>
+            </div>
+
             {/* Documenti IA */}
             <div
               className={`ia-card ${!apiKeyOk ? "disabled" : ""}`}

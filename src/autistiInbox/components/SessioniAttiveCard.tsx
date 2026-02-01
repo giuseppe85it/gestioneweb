@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { ActiveSession } from "../../utils/homeEvents";
+import { formatDateTimeUI } from "../../utils/dateFormat";
 
 type Props = {
   sessions: ActiveSession[];
@@ -31,22 +32,11 @@ function compareByTimestampDesc(a: ActiveSession, b: ActiveSession) {
 }
 
 function formatTime(ts: number | null) {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleTimeString("it-IT", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts ?? null);
 }
 
 function formatDateTime(ts: number | null) {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleString("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeUI(ts ?? null);
 }
 
 function formatAutistaLabel(session: ActiveSession) {
