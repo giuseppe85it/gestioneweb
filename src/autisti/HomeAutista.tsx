@@ -20,6 +20,45 @@ import {
 } from "./autistiStorage";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
+const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
+
+type EventoOperativo = {
+  id: string;
+  tipo: string;
+  timestamp: number;
+  badgeAutista?: string;
+  nomeAutista?: string;
+  autistaNome?: string;
+  autista?: string;
+  prima?: {
+    targaMotrice: string | null;
+    targaRimorchio: string | null;
+    motrice?: string | null;
+    rimorchio?: string | null;
+  };
+  dopo?: {
+    targaMotrice: string | null;
+    targaRimorchio: string | null;
+    motrice?: string | null;
+    rimorchio?: string | null;
+  };
+  luogo?: string | null;
+  statoCarico?: string | null;
+  condizioni?: unknown;
+  source?: string;
+};
+
+async function appendEventoOperativo(evt: EventoOperativo) {
+  const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+  const list: EventoOperativo[] = Array.isArray(raw)
+    ? raw
+    : raw?.value && Array.isArray(raw.value)
+    ? raw.value
+    : [];
+  if (list.some((e) => e?.id === evt.id)) return;
+  list.push(evt);
+  await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
+}
 
 export default function HomeAutista() {
   const navigate = useNavigate();
@@ -27,6 +66,13 @@ export default function HomeAutista() {
   const [autista, setAutista] = useState<any>(null);
   const [mezzo, setMezzo] = useState<any>(null);
   const [gommeOpen, setGommeOpen] = useState(false);
+  const [sgancioOpen, setSgancioOpen] = useState(false);
+  const [sgancioLuogoPreset, setSgancioLuogoPreset] = useState<
+    "STABIO" | "MEV" | "ALTRO"
+  >("STABIO");
+  const [sgancioLuogoAltro, setSgancioLuogoAltro] = useState("");
+  const [sgancioErrore, setSgancioErrore] = useState<string | null>(null);
+  const [sgancioLoading, setSgancioLoading] = useState(false);
 
   // ======================================================
   // REVOCHE + COERENZA LIVE/LOCALE
@@ -176,6 +222,22 @@ export default function HomeAutista() {
     const a = getAutistaLocal();
     if (!a?.badge) return;
 
+    try {
+      const now = Date.now();
+      await appendEventoOperativo({
+        id: `LOGOUT_AUTISTA-${a.badge}-${now}`,
+        tipo: "LOGOUT_AUTISTA",
+        timestamp: now,
+        badgeAutista: a.badge,
+        nomeAutista: a.nome ?? "",
+        autistaNome: a.nome ?? "",
+        autista: a.nome ?? "",
+        source: "AUTISTI",
+      });
+    } catch (err) {
+      console.warn("Logout autista: impossibile scrivere evento", err);
+    }
+
     // opzionale: pulizia sessione attiva lato Firestore (non usata per gating)
     const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
     const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
@@ -188,6 +250,91 @@ export default function HomeAutista() {
     removeMezzoLocal();
 
     navigate("/autisti/login", { replace: true });
+  }
+
+  async function handleSgancioMotriceConfirm() {
+    if (sgancioLoading) return;
+    if (sgancioLuogoPreset === "ALTRO" && !sgancioLuogoAltro.trim()) {
+      setSgancioErrore("Inserisci dove lasci la motrice.");
+      return;
+    }
+
+    const a = getAutistaLocal();
+    const m = getMezzoLocal();
+    if (!a?.badge || !m?.targaCamion) {
+      setSgancioErrore("Sessione non valida.");
+      return;
+    }
+
+    setSgancioErrore(null);
+    setSgancioLoading(true);
+
+    const now = Date.now();
+    const prima = {
+      targaMotrice: m?.targaCamion ?? null,
+      targaRimorchio: m?.targaRimorchio ?? null,
+    };
+    const dopo = {
+      targaMotrice: null,
+      targaRimorchio: m?.targaRimorchio ?? null,
+    };
+    const luogoFinale =
+      sgancioLuogoPreset === "ALTRO"
+        ? sgancioLuogoAltro.trim().toUpperCase()
+        : sgancioLuogoPreset;
+
+    try {
+      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
+      const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
+      const aggiornate = sessioni.map((s: any) => {
+        if (s?.badgeAutista !== a.badge) return s;
+        return { ...s, targaMotrice: null };
+      });
+      await setItemSync(SESSIONI_KEY, aggiornate);
+
+      await appendEventoOperativo({
+        id: `CAMBIO_ASSETTO-${a.badge}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
+        tipo: "CAMBIO_ASSETTO",
+        timestamp: now,
+        badgeAutista: a.badge,
+        nomeAutista: a.nome ?? "",
+        autistaNome: a.nome ?? "",
+        autista: a.nome ?? "",
+        prima: {
+          targaMotrice: prima.targaMotrice,
+          targaRimorchio: prima.targaRimorchio,
+          motrice: prima.targaMotrice,
+          rimorchio: prima.targaRimorchio,
+        },
+        dopo: {
+          targaMotrice: dopo.targaMotrice,
+          targaRimorchio: dopo.targaRimorchio,
+          motrice: dopo.targaMotrice,
+          rimorchio: dopo.targaRimorchio,
+        },
+        luogo: luogoFinale,
+        statoCarico: null,
+        condizioni: null,
+        source: "AUTISTI",
+      });
+
+      const updatedLocal = {
+        ...m,
+        targaCamion: null,
+        timestamp: now,
+      };
+      saveMezzoLocal(updatedLocal);
+      setMezzo(updatedLocal);
+      setSgancioOpen(false);
+      setSgancioLuogoPreset("STABIO");
+      setSgancioLuogoAltro("");
+      navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
+    } catch (err) {
+      console.warn("Sgancio motrice: errore", err);
+      setSgancioErrore("Errore durante lo sgancio. Riprova.");
+    } finally {
+      setSgancioLoading(false);
+    }
   }
 
   if (!autista || !mezzo) return null;
@@ -247,10 +394,98 @@ export default function HomeAutista() {
           </button>
         )}
 
+        {mezzo.targaCamion && (
+          <button onClick={() => setSgancioOpen(true)}>
+            SGANCIA MOTRICE
+          </button>
+        )}
+
         <button onClick={() => navigate("/autisti/cambio-mezzo")}>
           Cambio mezzo
         </button>
       </div>
+
+      {sgancioOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#fff",
+              borderRadius: 12,
+              padding: 20,
+              boxShadow: "0 12px 30px rgba(0,0,0,0.2)",
+              textAlign: "left",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Sgancio motrice</h3>
+            <div style={{ marginBottom: 12 }}>
+              <label className="autisti-label">Dove la lascio?</label>
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                {(["STABIO", "MEV", "ALTRO"] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    className="autisti-button secondary"
+                    style={{
+                      width: "auto",
+                      padding: "10px 14px",
+                      fontSize: 14,
+                      background: sgancioLuogoPreset === opt ? "#2e7d32" : undefined,
+                      color: sgancioLuogoPreset === opt ? "#fff" : undefined,
+                    }}
+                    onClick={() => setSgancioLuogoPreset(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              {sgancioLuogoPreset === "ALTRO" && (
+                <input
+                  className="autisti-input"
+                  type="text"
+                  placeholder="Inserisci luogo"
+                  value={sgancioLuogoAltro}
+                  onChange={(e) => setSgancioLuogoAltro(e.target.value)}
+                />
+              )}
+            </div>
+            {sgancioErrore && <div className="autisti-error">{sgancioErrore}</div>}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="autisti-button"
+                onClick={handleSgancioMotriceConfirm}
+                disabled={sgancioLoading}
+              >
+                {sgancioLoading ? "Salvataggio..." : "CONFERMA"}
+              </button>
+              <button
+                className="autisti-button secondary"
+                onClick={() => {
+                  setSgancioOpen(false);
+                  setSgancioLuogoPreset("STABIO");
+                  setSgancioLuogoAltro("");
+                  setSgancioErrore(null);
+                }}
+                disabled={sgancioLoading}
+              >
+                ANNULLA
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <GommeAutistaModal open={gommeOpen} onClose={() => setGommeOpen(false)} />
     </div>

@@ -8,6 +8,7 @@ import RifornimentiCard from "./components/RifornimentiCard";
 import SessioniAttiveCard from "./components/SessioniAttiveCard";
 import AutistiEventoModal from "../components/AutistiEventoModal";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
+import { getItemSync } from "../utils/storageSync";
 
 type ModalKind =
   | null
@@ -23,6 +24,14 @@ type ActiveTab =
   | "controlli"
   | "cambi"
   | "attrezzature";
+
+const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
+const LOG_TYPES = new Set([
+  "LOGIN_AUTISTA",
+  "LOGOUT_AUTISTA",
+  "INIZIO_ASSETTO",
+  "CAMBIO_ASSETTO",
+]);
 
 export default function AutistiInboxHome() {
   const navigate = useNavigate();
@@ -47,6 +56,7 @@ useEffect(() => {
   const [modal, setModal] = useState<ModalKind>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("rifornimenti");
   const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
+  const [logAccessi, setLogAccessi] = useState<any[]>([]);
 
   const rifornimentiRef = useRef<HTMLDivElement | null>(null);
   const segnalazioniRef = useRef<HTMLDivElement | null>(null);
@@ -59,6 +69,23 @@ useEffect(() => {
     loadHomeEvents(day).then(setEvents);
     loadActiveSessions().then(setActiveSessions).catch(() => setActiveSessions([]));
   }, [day]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const raw = await getItemSync(KEY_STORICO_EVENTI_OPERATIVI);
+      const list = Array.isArray(raw)
+        ? raw
+        : raw?.value && Array.isArray(raw.value)
+        ? raw.value
+        : [];
+      if (!alive) return;
+      setLogAccessi(list);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const rifornimenti = useMemo(
     () => events.filter((e) => e.tipo === "rifornimento"),
@@ -94,6 +121,33 @@ useEffect(() => {
       }).length,
     [gomme]
   );
+
+  const logPreview = useMemo(() => {
+    const toTs = (value: unknown): number | null => {
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value === "string") {
+        const parsed = Date.parse(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      if (value && typeof value === "object" && typeof (value as any).toMillis === "function") {
+        const parsed = (value as any).toMillis();
+        return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+    const items = logAccessi
+      .map((r: any) => {
+        const tipo = String(r?.tipo ?? "").trim().toUpperCase();
+        if (!LOG_TYPES.has(tipo)) return null;
+        const ts = toTs(r?.timestamp);
+        const badge = String(r?.badgeAutista ?? r?.badge ?? "—").trim() || "—";
+        const nome =
+          String(r?.nomeAutista ?? r?.autistaNome ?? r?.autista ?? "—").trim() || "—";
+        return { tipo, ts, badge, nome };
+      })
+      .filter(Boolean) as Array<{ tipo: string; ts: number | null; badge: string; nome: string }>;
+    return items.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0)).slice(0, 3);
+  }, [logAccessi]);
 
   function formatTime(ts: number) {
     return formatDateTimeUI(ts);
@@ -661,6 +715,31 @@ useEffect(() => {
                     </div>
                   );
                 })
+              )}
+            </div>
+
+            {/* LOG ACCESSI */}
+            <div className="daily-card">
+              <div className="daily-card-head">
+                <h2>Log Accessi</h2>
+                <button
+                  className="daily-more"
+                  type="button"
+                  onClick={() => navigate("/autisti-inbox/log-accessi")}
+                  title="Vedi tutto"
+                >
+                  Vedi tutto
+                </button>
+              </div>
+              {logPreview.length === 0 ? (
+                <div className="daily-item empty">Nessun evento</div>
+              ) : (
+                logPreview.map((item, index) => (
+                  <div key={`log-${index}`} className="daily-item">
+                    {formatDateTimeUI(item.ts ?? null)} - {item.tipo} - {item.badge} -{" "}
+                    {item.nome}
+                  </div>
+                ))
               )}
             </div>
 

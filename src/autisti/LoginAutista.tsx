@@ -1,8 +1,33 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./autisti.css";
-import { getItemSync } from "../utils/storageSync";
+import { getItemSync, setItemSync } from "../utils/storageSync";
 import { getAutistaLocal, getMezzoLocal, saveAutistaLocal } from "./autistiStorage";
+
+const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
+
+type EventoOperativo = {
+  id: string;
+  tipo: string;
+  timestamp: number;
+  badgeAutista?: string;
+  nomeAutista?: string;
+  autistaNome?: string;
+  autista?: string;
+  source?: string;
+};
+
+async function appendEventoOperativo(evt: EventoOperativo) {
+  const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
+  const list: EventoOperativo[] = Array.isArray(raw)
+    ? raw
+    : raw?.value && Array.isArray(raw.value)
+    ? raw.value
+    : [];
+  if (list.some((e) => e?.id === evt.id)) return;
+  list.push(evt);
+  await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
+}
 
 export default function LoginAutista() {
   const navigate = useNavigate();
@@ -52,6 +77,22 @@ export default function LoginAutista() {
 
       // 🔹 SALVATAGGIO LOCALE PER SESSIONE
       saveAutistaLocal(autista);
+
+      try {
+        const now = Date.now();
+        await appendEventoOperativo({
+          id: `LOGIN_AUTISTA-${autista.badge}-${now}`,
+          tipo: "LOGIN_AUTISTA",
+          timestamp: now,
+          badgeAutista: autista.badge,
+          nomeAutista: autista.nome,
+          autistaNome: autista.nome,
+          autista: autista.nome,
+          source: "AUTISTI",
+        });
+      } catch (err) {
+        console.warn("Login autista: impossibile scrivere evento", err);
+      }
 
       navigate("/autisti/setup-mezzo");
     } catch (e) {

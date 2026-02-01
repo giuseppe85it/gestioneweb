@@ -97,9 +97,9 @@ export default function AutistiGate() {
       const revocata = await checkRevoca(autista, mezzo);
       if (cancelled || revocata) return;
 
-      // 2) Nessun mezzo locale o nessuna motrice -> setup
+      // 2) Nessun mezzo locale o nessuna motrice -> setup motrice
       if (!mezzo || !mezzo.targaCamion) {
-        navigate("/autisti/setup-mezzo", { replace: true });
+        navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
         return;
       }
 
