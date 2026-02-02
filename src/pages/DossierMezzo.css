@@ -200,12 +200,50 @@
 }
 
 .dossier-mezzo-photo {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  border-radius: 14px;
-  object-fit: cover;
-  min-height: 220px;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.dossier-mezzo-photo-frame {
+  position: relative;
+  width: 100%;
   max-height: 280px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+  overflow: hidden;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+}
+
+.dossier-mezzo-photo-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(16px);
+  transform: scale(1.1);
+  opacity: 0.55;
+}
+
+.dossier-photo-thumb {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  cursor: pointer;
+}
+
+.dossier-photo-thumb:focus-visible {
+  outline: 2px solid rgba(58, 53, 43, 0.35);
+  outline-offset: 4px;
+  border-radius: 16px;
 }
 
 .dossier-photo-placeholder {
@@ -467,6 +505,37 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+/* ============================== */
+/* MODALE FOTO MEZZO              */
+/* ============================== */
+
+.dossier-photo-modal {
+  width: 95%;
+  max-width: 980px;
+  max-height: 90vh;
+  padding: 22px;
+  overflow: hidden;
+}
+
+.dossier-photo-modal-body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+.dossier-photo-modal-img {
+  max-width: 90vw;
+  max-height: 85vh;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
 }
 /* ============================== */
 /* MODALE PDF GRANDE (NUOVA)      */

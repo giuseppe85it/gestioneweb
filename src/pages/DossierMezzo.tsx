@@ -227,15 +227,39 @@ const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 const [showPreviewModal, setShowPreviewModal] = useState(false);
 const [showLibrettoModal, setShowLibrettoModal] = useState(false);
 const [librettoLoadErrors, setLibrettoLoadErrors] = useState<Record<string, boolean>>({});
+const [showPhotoModal, setShowPhotoModal] = useState(false);
+const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
 const openDocumento = (url: string) => {
   setPreviewUrl(url);
   setShowPreviewModal(true);
+};
+
+const openPhotoViewer = (url: string) => {
+  setPhotoModalUrl(url);
+  setShowPhotoModal(true);
+};
+
+const closePhotoViewer = () => {
+  setShowPhotoModal(false);
+  setPhotoModalUrl(null);
 };
 
 const isPdfUrl = (url: string) => {
   const u = String(url || "").toLowerCase();
   return u.includes(".pdf") || u.includes("application/pdf");
 };
+
+useEffect(() => {
+  if (!showPhotoModal) return;
+  const handleKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setShowPhotoModal(false);
+      setPhotoModalUrl(null);
+    }
+  };
+  window.addEventListener("keydown", handleKey);
+  return () => window.removeEventListener("keydown", handleKey);
+}, [showPhotoModal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -998,6 +1022,33 @@ return (
       </div>
     )}
 
+    {showPhotoModal && photoModalUrl && (
+      <div className="dossier-modal-overlay" onClick={closePhotoViewer}>
+        <div
+          className="dossier-modal dossier-photo-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="dossier-modal-header">
+            <h2>Foto mezzo</h2>
+            <button
+              className="dossier-button"
+              type="button"
+              onClick={closePhotoViewer}
+            >
+              Chiudi
+            </button>
+          </div>
+          <div className="dossier-modal-body dossier-photo-modal-body">
+            <img
+              src={photoModalUrl}
+              alt={`Foto mezzo ${mezzo.targa}`}
+              className="dossier-photo-modal-img"
+            />
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="dossier-header-bar">
       <button className="dossier-button ghost" onClick={handleBack}>
         ⟵ Mezzi
@@ -1192,11 +1243,31 @@ return (
 
           <div className="dossier-card-body dossier-photo-body">
             {mezzo.fotoUrl ? (
-              <img
-                src={mezzo.fotoUrl}
-                alt={mezzo.targa}
-                className="dossier-mezzo-photo"
-              />
+              <div
+                className="dossier-photo-thumb"
+                role="button"
+                tabIndex={0}
+                aria-label="Apri foto mezzo"
+                onClick={() => openPhotoViewer(mezzo.fotoUrl!)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openPhotoViewer(mezzo.fotoUrl!);
+                  }
+                }}
+              >
+                <div className="dossier-mezzo-photo-frame">
+                  <div
+                    className="dossier-mezzo-photo-bg"
+                    style={{ backgroundImage: `url(${mezzo.fotoUrl})` }}
+                  />
+                  <img
+                    src={mezzo.fotoUrl}
+                    alt={mezzo.targa}
+                    className="dossier-mezzo-photo"
+                  />
+                </div>
+              </div>
             ) : (
               <div className="dossier-photo-placeholder">
                 Nessuna foto caricata
