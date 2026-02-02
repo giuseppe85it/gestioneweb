@@ -44,6 +44,7 @@ import IAHome from "./pages/IA/IAHome";
 import IAApiKey from "./pages/IA/IAApiKey";
 import IALibretto from "./pages/IA/IALibretto";
 import IADocumenti from "./pages/IA/IADocumenti";
+import IACoperturaLibretti from "./pages/IA/IACoperturaLibretti";
 
 /* ==================== APP AUTISTI ==================== */
 import LoginAutista from "./autisti/LoginAutista";
@@ -136,6 +137,7 @@ function App() {
         <Route path="/ia/apikey" element={<IAApiKey />} />
         <Route path="/ia/libretto" element={<IALibretto />} />
         <Route path="/ia/documenti" element={<IADocumenti />} />
+        <Route path="/ia/copertura-libretti" element={<IACoperturaLibretti />} />
 
         {/* ==================== APP AUTISTI ==================== */}
         <Route path="/autisti" element={<AutistiGate />} />

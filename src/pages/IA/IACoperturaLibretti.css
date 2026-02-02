@@ -1,0 +1,169 @@
+.iacover-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, #f2f7f7 0%, #eef4f5 40%, #e6eef1 100%),
+    linear-gradient(120deg, #f7fafb 0%, #e5eef1 70%);
+  color: #0f2c32;
+  font-family: "Gill Sans", "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.iacover-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+.iacover-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #d7e2e5;
+  box-shadow: 0 12px 24px rgba(18, 40, 48, 0.08);
+}
+
+.iacover-title {
+  margin: 0 0 18px;
+  text-align: center;
+  font-size: 20px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.iacover-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.iacover-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.iacover-control label {
+  font-size: 12px;
+  color: #4a646b;
+}
+
+.iacover-input,
+.iacover-select {
+  border: 1px solid #cfdade;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #0f2c32;
+}
+
+.iacover-input:focus,
+.iacover-select:focus {
+  outline: 2px solid rgba(47, 92, 102, 0.18);
+  border-color: #98b0b6;
+}
+
+.iacover-state {
+  text-align: center;
+  color: #4a646b;
+  padding: 24px;
+  border: 1px dashed #d7e2e5;
+  border-radius: 12px;
+  background: #f8fbfc;
+}
+
+.iacover-state.error {
+  border-color: rgba(178, 59, 46, 0.45);
+  background: #fff1f1;
+  color: #7a2020;
+}
+
+.iacover-table-wrap {
+  overflow-x: auto;
+}
+
+.iacover-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.iacover-table thead th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #4a646b;
+  padding: 10px 8px;
+  border-bottom: 1px solid #d7e2e5;
+}
+
+.iacover-table tbody td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #eef3f5;
+  vertical-align: middle;
+}
+
+.iacover-strong {
+  font-weight: 700;
+}
+
+.iacover-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid #cfdade;
+  background: #f2f6f7;
+  color: #4a646b;
+}
+
+.iacover-badge.ok {
+  border-color: #9fb2b8;
+  background: #e8f3ef;
+  color: #1b5a3b;
+}
+
+.iacover-badge.ko {
+  border-color: rgba(178, 59, 46, 0.5);
+  background: #fff1f1;
+  color: #7a2020;
+}
+
+.iacover-action {
+  border: 1px solid #b9c8cc;
+  background: #f7fafb;
+  color: #1f3b41;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.iacover-action:hover {
+  transform: translateY(-1px);
+  border-color: #9fb2b8;
+}
+
+.iacover-muted {
+  color: #9aa7ab;
+}
+
+@media (max-width: 640px) {
+  .iacover-shell {
+    padding: 20px 16px 50px;
+  }
+
+  .iacover-title {
+    font-size: 18px;
+    letter-spacing: 0.1em;
+  }
+}

@@ -92,6 +92,19 @@ export default function IAHome() {
               <p>Consulta i libretti gia scansionati per targa.</p>
             </div>
 
+            {/* Copertura Libretti + Foto */}
+            <div
+              className={`ia-card ${!apiKeyOk ? "disabled" : ""}`}
+              onClick={() => handleNav("/ia/copertura-libretti")}
+            >
+              <span className={`ia-card-status ${apiKeyOk ? "on" : "off"}`}>
+                {toolStatus}
+              </span>
+              <img src="/icons/ia/libretto.png" alt="Copertura" className="ia-icon" />
+              <h3>Copertura Libretti + Foto</h3>
+              <p>Verifica i mezzi con libretto o foto mancanti.</p>
+            </div>
+
             {/* Documenti IA */}
             <div
               className={`ia-card ${!apiKeyOk ? "disabled" : ""}`}
