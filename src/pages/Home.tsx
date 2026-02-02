@@ -1795,7 +1795,7 @@ function Home() {
     return { rimorchiDaMostrare, motriciTrattoriDaMostrare };
   }, [mezzi, sessioni, eventi]);
 
-  const sessioniAttive = useMemo(() => sessioni.slice(0, 6), [sessioni]);
+  const sessioniAttive = useMemo(() => sessioni, [sessioni]);
 
   const revisioni = useMemo(() => {
     return mezzi.map((m) => {
@@ -2612,7 +2612,7 @@ function Home() {
                   <div className="panel-head home-card__head">
                     <div>
                       <h2 className="home-card__title">Sessioni attive</h2>
-                      <span className="home-card__subtitle">Ultime 6 sessioni live</span>
+                      <span className="home-card__subtitle">Sessioni live</span>
                     </div>
                   </div>
                   <div className="panel-body home-card__body">
