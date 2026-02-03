@@ -613,6 +613,7 @@ const handleChangeAutista = (value: string) => {
     "trattore stradale",
     "semirimorchio asse fisso",
     "semirimorchio asse sterzante",
+    "porta silo container",
     "pianale",
     "biga",
     "centina",
@@ -742,6 +743,9 @@ const handleChangeAutista = (value: string) => {
                       </option>
                       <option value="semirimorchio asse sterzante">
                         Semirimorchio asse sterzante
+                      </option>
+                      <option value="porta silo container">
+                        Porta silo container
                       </option>
                       <option value="pianale">Pianale</option>
                       <option value="biga">Biga</option>

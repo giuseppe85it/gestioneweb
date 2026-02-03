@@ -93,6 +93,7 @@ function buildConfig(categoria?: string): ConfigGomme {
     };
   } else if (
     cat.includes("rimorchio") ||
+    cat.includes("porta silo container") ||
     cat.includes("pianale") ||
     cat.includes("centina") ||
     cat.includes("vasca")
@@ -122,6 +123,7 @@ function resolveWheelGeomKey(categoria?: string): WheelGeomKey | undefined {
   if (cat.includes("pianale")) return "pianale";
   if (cat.includes("vasca")) return "vasca";
   if (cat.includes("centina")) return "centina";
+  if (cat.includes("porta silo container")) return "semirimorchioSterzante";
   if (cat.includes("semirimorchio") && cat.includes("sterz"))
     return "semirimorchioSterzante";
   if (cat.includes("semirimorchio")) return "semirimorchioFissi";
