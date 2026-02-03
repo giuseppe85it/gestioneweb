@@ -29,6 +29,7 @@ import {
   type AlertMeta,
   type AlertsState,
 } from "../utils/alertsState";
+import { generateTablePDF } from "../utils/pdfEngine";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
@@ -195,6 +196,9 @@ type HomeAlertCandidate = {
   severity: HomeAlertSeverity;
   sortBucket: number;
   sortValue: number;
+  categoria?: string;
+  targa?: string | null;
+  dataLabel?: string;
 };
 
 type QuickLink = {
@@ -701,6 +705,20 @@ function sanitizeBookingText(value: string): string {
     .trim();
 }
 
+function extractTextFromNode(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) {
+    return node
+      .map((item) => extractTextFromNode(item))
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (!isValidElement(node)) return "";
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  return extractTextFromNode(element.props?.children);
+}
+
 function extractTargaFromNode(node: ReactNode): string | null {
   if (node == null || typeof node === "boolean") return null;
   if (typeof node === "string" || typeof node === "number") return null;
@@ -739,6 +757,11 @@ function stripTargaFromNode(node: ReactNode): ReactNode {
   if (className.split(" ").includes("targa")) return null;
   const children = stripTargaFromNode(element.props?.children);
   return cloneElement(element, element.props, children as ReactNode);
+}
+
+function getAlertDetailText(detail: ReactNode): string {
+  const stripped = stripTargaFromNode(detail);
+  return normalizeFreeText(extractTextFromNode(stripped));
 }
 
 function truncateText(value: string, maxLen: number): string {
@@ -2013,6 +2036,9 @@ function Home() {
           severity: "danger",
           sortBucket: 0,
           sortValue: giorni,
+          categoria: "Revisione",
+          targa: r.targa ?? null,
+          dataLabel: formatDateForDisplay(r.scadenza),
         });
       });
 
@@ -2075,6 +2101,9 @@ function Home() {
         severity: "warning",
         sortBucket: 1,
         sortValue: -(ts || 0),
+        categoria: "Segnalazione",
+        targa,
+        dataLabel: formatDateTimeForDisplay(ts),
       });
     });
 
@@ -2088,6 +2117,7 @@ function Home() {
         importantItems.map((item) => `${item.id}:${item.ts || 0}`).join("|")
       );
       const meta: AlertMeta = { type: "segnalazione", ref: `v1:${metaRef}` };
+      const topTs = topItems[0]?.ts ?? null;
       candidates.push({
         id: "autisti-eventi-importanti",
         meta,
@@ -2142,6 +2172,9 @@ function Home() {
         severity: hasKo ? "danger" : "warning",
         sortBucket: 1,
         sortValue: -(topItems[0]?.ts || 0),
+        categoria: "Eventi autisti",
+        targa: "VARIE",
+        dataLabel: formatDateTimeForDisplay(topTs),
       });
     }
 
@@ -2203,6 +2236,8 @@ function Home() {
         severity: "danger",
         sortBucket: 0,
         sortValue: -1,
+        categoria: "Conflitto",
+        targa: targaId,
       });
     };
 
@@ -2268,6 +2303,8 @@ function Home() {
     });
   }, [alertCandidates, alertsNow, alertsState]);
 
+  const exportAlerts = visibleAlerts;
+
   const handleAlertAction = (candidate: HomeAlertCandidate, action: AlertAction) => {
     const now = Date.now();
     const base = alertsStateRef.current ?? alertsState ?? createEmptyAlertsState();
@@ -2275,6 +2312,107 @@ function Home() {
     setAlertsState(next);
     alertsStateRef.current = next;
     void setItemSync(ALERTS_STATE_KEY, next);
+  };
+
+  const canExportAlerts = !loading && (visibleAlerts.length > 0 || missingAlertVisible);
+
+  const handleExportAlertsPdf = async () => {
+    if (!canExportAlerts) {
+      window.alert("Nessun alert da esportare.");
+      return;
+    }
+
+    const grouped = new Map<
+      string,
+      Array<{
+        categoria: string;
+        targa: string;
+        descrizione: string;
+        data: string;
+      }>
+    >();
+
+    const pushRow = (
+      categoriaInput: string | null | undefined,
+      row: { targa: string; descrizione: string; data: string }
+    ) => {
+      const categoria = String(categoriaInput ?? "").trim() || "SENZA CATEGORIA";
+      const list = grouped.get(categoria) ?? [];
+      list.push({
+        categoria,
+        targa: row.targa,
+        descrizione: row.descrizione,
+        data: row.data,
+      });
+      grouped.set(categoria, list);
+    };
+
+    if (missingAlertVisible) {
+      pushRow("Dossier", {
+        targa: "SENZA TARGA",
+        descrizione: "Dati mancanti nel Dossier. Alcuni mezzi hanno dati incompleti.",
+        data: "",
+      });
+    }
+
+    const autistiAlertVisible = exportAlerts.some(
+      (alert) => alert.categoria === "Eventi autisti"
+    );
+
+    exportAlerts.forEach((alert) => {
+      if (alert.categoria === "Eventi autisti") return;
+      const targa = String(alert.targa ?? "").trim() || "SENZA TARGA";
+      const detailText = getAlertDetailText(alert.detail);
+      const descrizione = detailText ? `${alert.title} - ${detailText}` : alert.title;
+      const data = String(alert.dataLabel ?? "").trim();
+      pushRow(alert.categoria, { targa, descrizione, data });
+    });
+
+    if (autistiAlertVisible) {
+      const maxRows = 15;
+      const total = importantAutistiItems.length;
+      const slice = importantAutistiItems.slice(0, maxRows);
+
+      slice.forEach((item) => {
+        const targa = String(item.targa ?? "").trim() || "SENZA TARGA";
+        const tipo = normalizeFreeText(item.tipo ?? "");
+        const preview = normalizeFreeText(item.preview ?? "");
+        const descrizione = [tipo, preview].filter(Boolean).join(" - ") || "Evento autisti";
+        const data = formatDateTimeForDisplay(item.ts);
+        pushRow("Eventi autisti", { targa, descrizione, data });
+      });
+
+      const remaining = total - slice.length;
+      if (remaining > 0) {
+        pushRow("Eventi autisti", {
+          targa: "",
+          descrizione: `... +${remaining} altri (vedi Home)`,
+          data: "",
+        });
+      }
+    }
+
+    const rows: string[][] = [];
+    const categories = Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
+    categories.forEach((categoria) => {
+      rows.push([`--- ${categoria.toUpperCase()} ---`, "", "", ""]);
+      const list = grouped.get(categoria) ?? [];
+      list.sort((a, b) => a.targa.localeCompare(b.targa));
+      list.forEach((item) => {
+        rows.push([item.categoria, item.targa, item.descrizione, item.data]);
+      });
+    });
+
+    try {
+      await generateTablePDF("Alert Home", rows, [
+        "Categoria",
+        "Targa",
+        "Descrizione",
+        "Data",
+      ]);
+    } catch (err) {
+      window.alert("Errore durante l'esportazione PDF.");
+    }
   };
 
   return (
@@ -2470,6 +2608,14 @@ function Home() {
                         Revisioni, segnalazioni non lette, conflitti agganci e dati mancanti
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      className="alert-action"
+                      onClick={handleExportAlertsPdf}
+                      disabled={!canExportAlerts}
+                    >
+                      ESPORTA PDF
+                    </button>
                   </div>
                   <div className="panel-body alerts-list home-card__body">
                     {loading || !alertsState ? (
