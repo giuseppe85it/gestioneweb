@@ -383,6 +383,7 @@ const QUICK_LINKS_OPERATIVO = buildQuickLinks([
   { to: "/ia", label: "IA" },
   { to: "/ia/libretto", label: "IA Libretto" },
   { to: "/ia/documenti", label: "IA Documenti" },
+  { to: "/cisterna", label: "Cisterna Caravate" },
 ]);
 
 const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([

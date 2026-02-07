@@ -1,0 +1,227 @@
+.cisterna-page {
+  min-height: 100vh;
+  padding: 20px;
+  background: linear-gradient(165deg, #edf5fb 0%, #f8f1e8 100%);
+}
+
+.cisterna-shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.cisterna-head {
+  border: 1px solid #d4deea;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.cisterna-head h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.cisterna-head p {
+  margin: 8px 0 0;
+  color: #4c5f75;
+}
+
+.cisterna-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cisterna-head-actions button {
+  border: 1px solid #c3d2e5;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.cisterna-controls {
+  border: 1px solid #d4deea;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cisterna-controls label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.cisterna-controls input[type="month"] {
+  min-width: 180px;
+}
+
+.cisterna-cambio-box {
+  display: grid;
+  gap: 8px;
+  min-width: 300px;
+}
+
+.cisterna-cambio-title {
+  font-weight: 700;
+}
+
+.cisterna-cambio-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cisterna-cambio-row input {
+  flex: 1;
+}
+
+.cisterna-cambio-row button {
+  border: 0;
+  border-radius: 10px;
+  background: #0d5da6;
+  color: #ffffff;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.cisterna-cambio-status {
+  color: #1f5f34;
+  font-size: 13px;
+}
+
+.cisterna-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cisterna-tabs button {
+  border: 1px solid #c7d5e7;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.cisterna-tabs button.active {
+  background: #0d5da6;
+  color: #ffffff;
+  border-color: #0d5da6;
+}
+
+.cisterna-card {
+  border: 1px solid #d4deea;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.cisterna-card h2 {
+  margin: 0 0 12px;
+}
+
+.cisterna-subtitle {
+  margin: 16px 0 10px;
+  font-size: 16px;
+}
+
+.cisterna-table-wrap {
+  overflow-x: auto;
+}
+
+.cisterna-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.cisterna-table th,
+.cisterna-table td {
+  border-bottom: 1px solid #e2ebf5;
+  text-align: left;
+  padding: 10px 8px;
+  font-size: 14px;
+}
+
+.cisterna-table th {
+  color: #486079;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cisterna-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.cisterna-kpi-grid article {
+  border: 1px solid #dce7f3;
+  border-radius: 12px;
+  background: #f7fbff;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.cisterna-kpi-grid span {
+  font-size: 13px;
+  color: #4a6078;
+}
+
+.cisterna-kpi-grid strong {
+  font-size: 24px;
+}
+
+.cisterna-note {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #4a6078;
+}
+
+.cisterna-note code {
+  background: #eef3fa;
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
+.cisterna-error {
+  background: #fff3f3;
+  border: 1px solid #f0c2c2;
+  color: #8e2c2c;
+  border-radius: 10px;
+  padding: 10px;
+  margin: 8px 0;
+}
+
+@media (max-width: 768px) {
+  .cisterna-page {
+    padding: 12px;
+  }
+
+  .cisterna-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cisterna-controls {
+    flex-direction: column;
+  }
+
+  .cisterna-cambio-box {
+    min-width: 0;
+    width: 100%;
+  }
+}

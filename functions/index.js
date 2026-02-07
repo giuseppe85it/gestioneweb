@@ -102,6 +102,7 @@ function buildStampedPath(originalPath, status) {
  * https://us-central1-<PROJECT_ID>.cloudfunctions.net/estrazione_libretto
  */
 exports.estrazioneDocumenti = require("./estrazioneDocumenti").estrazioneDocumenti;
+exports.ia_cisterna_extract = require("./iaCisternaExtract").ia_cisterna_extract;
 exports.analisi_economica_mezzo = analisiEconomica.analisi_economica_mezzo;
 exports.stamp_pdf = functions.https.onRequest(async (req, res) => {
   if (req.method === "OPTIONS") {

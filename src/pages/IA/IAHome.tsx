@@ -118,6 +118,19 @@ export default function IAHome() {
               <p>Estrai dati da preventivi, fatture e documenti.</p>
             </div>
 
+            {/* Cisterna Caravate IA */}
+            <div
+              className={`ia-card ${!apiKeyOk ? "disabled" : ""}`}
+              onClick={() => handleNav("/cisterna/ia")}
+            >
+              <span className={`ia-card-status ${apiKeyOk ? "on" : "off"}`}>
+                {toolStatus}
+              </span>
+              <img src="/cisterna.png" alt="Cisterna" className="ia-icon" />
+              <h3>Cisterna Caravate IA</h3>
+              <p>Carica documenti cisterna e salva in archivio dedicato.</p>
+            </div>
+
             {/* API Key */}
             <div className="ia-card" onClick={() => handleNav("/ia/apikey")}>
               <span className="ia-card-status on">ATTIVO</span>

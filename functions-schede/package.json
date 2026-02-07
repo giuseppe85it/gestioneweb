@@ -1,0 +1,15 @@
+{
+  "name": "functions-schede",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "firebase-admin": "latest",
+    "firebase-functions": "latest",
+    "node-fetch": "^2.6.12",
+    "sharp": "^0.34.5"
+  }
+}
