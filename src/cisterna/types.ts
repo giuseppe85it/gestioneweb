@@ -44,6 +44,17 @@ export interface RifornimentoAutistaRecord {
   badgeAutista?: string | null;
 }
 
+export interface CisternaAutistaEvent {
+  id?: string;
+  originId?: string;
+  targa: string;
+  data: string;
+  dataOra?: string;
+  ora?: string;
+  litri: number | null;
+  timestamp?: number;
+}
+
 export type CisternaSchedaFieldFlags = Record<string, "LOW_CONFIDENCE">;
 
 export interface CisternaSchedaRow {

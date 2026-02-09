@@ -9,6 +9,7 @@
   margin: 0 auto;
   display: grid;
   gap: 16px;
+  padding-bottom: 96px;
 }
 
 .cisterna-schede-head {
@@ -20,6 +21,19 @@
   justify-content: space-between;
   gap: 16px;
   align-items: center;
+}
+
+.cisterna-schede-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cisterna-schede-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  cursor: pointer;
 }
 
 .cisterna-schede-head h1 {
@@ -44,6 +58,119 @@
   border-radius: 10px;
   padding: 8px 12px;
   cursor: pointer;
+}
+
+.cisterna-schede-monthbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #d7e1ef;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+
+.cisterna-schede-month-label {
+  font-weight: 600;
+  color: #2b3a4a;
+}
+
+.cisterna-schede-month-select {
+  border: 1px solid #c4d2e4;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  min-width: 180px;
+}
+
+.cisterna-schede-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cisterna-schede-tabs button {
+  border: 1px solid #c4d2e4;
+  background: #f4f8ff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #2b3a4a;
+}
+
+.cisterna-schede-tabs button.active {
+  background: #0b5cab;
+  color: #ffffff;
+  border-color: #0b5cab;
+}
+
+.cisterna-schede-edit-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #f9fbff;
+  border: 1px solid #d7e1ef;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.cisterna-schede-edit-badge {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #fff4e5;
+  color: #8a4b00;
+  border: 1px solid #f0d1a7;
+}
+
+.cisterna-schede-edit-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cisterna-schede-edit-error button {
+  border: 1px solid #c4d2e4;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cisterna-schede-manual-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.cisterna-schede-manual-head h2 {
+  margin: 0;
+}
+
+.cisterna-schede-manual-head p {
+  margin: 6px 0 0;
+  color: #526173;
+}
+
+.cisterna-schede-manual-head button {
+  border: 0;
+  background: #0b5cab;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.cisterna-schede-manual-head button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .cisterna-schede-card {
@@ -89,6 +216,130 @@
   cursor: not-allowed;
 }
 
+.cisterna-schede-input {
+  width: 100%;
+  border: 1px solid #cfd9e7;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.cisterna-schede-input.invalid {
+  border-color: #e6a5a5;
+  background: #fff5f5;
+}
+
+.cisterna-schede-cell-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cisterna-schede-cell-edit--date {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.cisterna-date-cell {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.cisterna-date-cell .cisterna-schede-input {
+  flex: 1 1 140px;
+  width: auto;
+}
+
+.cisterna-schede-date-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.cisterna-schede-date-tools button {
+  border: 1px solid #c4d2e4;
+  background: #f4f8ff;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 54px;
+}
+
+.cisterna-schede-date-tools button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cisterna-schede-row-verify td {
+  background: #eef6ff;
+}
+
+.cisterna-row-invalid td {
+  background: #fff1f1;
+}
+
+.cisterna-row-error {
+  margin-top: 6px;
+  color: #8e2c2c;
+  font-size: 12px;
+}
+
+.cisterna-schede-manual-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cisterna-schede-manual-actions button {
+  border: 1px solid #c4d2e4;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.cisterna-schede-manual-actions button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cisterna-schede-manual-actions button.secondary {
+  background: #f2f4f8;
+  color: #2b3a4a;
+}
+
+.cisterna-suggest {
+  position: relative;
+  width: 100%;
+}
+
+.cisterna-suggest-portal {
+  background: #ffffff;
+  border: 1px solid #d7e1ef;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  display: grid;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.cisterna-suggest-item {
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.cisterna-suggest-item.active,
+.cisterna-suggest-item:hover {
+  background: #eef6ff;
+}
+
 .cisterna-schede-error {
   margin-top: 12px;
   background: #fff1f1;
@@ -113,12 +364,65 @@
   overflow: hidden;
   border: 1px solid #dce7f3;
   background: #f7fbff;
+  position: relative;
 }
 
 .cisterna-schede-preview img {
   width: 100%;
   display: block;
   object-fit: contain;
+}
+
+.cisterna-schede-calib-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cisterna-schede-calib-svg.active {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.cisterna-schede-calib-poly {
+  fill: rgba(46, 204, 113, 0.18);
+  stroke: rgba(46, 204, 113, 0.8);
+  stroke-width: 0.004;
+}
+
+.cisterna-schede-calib-poly.targa {
+  fill: rgba(52, 152, 219, 0.2);
+  stroke: rgba(52, 152, 219, 0.8);
+}
+
+.cisterna-schede-calib-poly.litri {
+  fill: rgba(243, 156, 18, 0.2);
+  stroke: rgba(243, 156, 18, 0.85);
+}
+
+.cisterna-schede-calib-poly.active {
+  stroke-width: 0.006;
+}
+
+.cisterna-schede-calib-point {
+  fill: #ffffff;
+  stroke: #0b5cab;
+  stroke-width: 0.003;
+}
+
+.cisterna-schede-calib-point.targa {
+  stroke: #3498db;
+}
+
+.cisterna-schede-calib-point.litri {
+  stroke: #f39c12;
+}
+
+.cisterna-schede-grid-line {
+  stroke: rgba(15, 76, 129, 0.35);
+  stroke-width: 0.002;
 }
 
 .cisterna-schede-crop {
@@ -136,12 +440,110 @@
   overflow: hidden;
 }
 
+.cisterna-schede-crop-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.cisterna-schede-crop-frame img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  max-height: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.cisterna-schede-mask {
+  position: absolute;
+  background: rgba(6, 12, 20, 0.55);
+  pointer-events: none;
+}
+
+.cisterna-schede-crop-rect {
+  position: absolute;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: move;
+}
+
+.cisterna-schede-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #ffffff;
+  border-radius: 50%;
+  border: 2px solid #0b5cab;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  touch-action: none;
+}
+
+.cisterna-schede-handle.nw {
+  top: -8px;
+  left: -8px;
+  cursor: nwse-resize;
+}
+
+.cisterna-schede-handle.ne {
+  top: -8px;
+  right: -8px;
+  cursor: nesw-resize;
+}
+
+.cisterna-schede-handle.sw {
+  bottom: -8px;
+  left: -8px;
+  cursor: nesw-resize;
+}
+
+.cisterna-schede-handle.se {
+  bottom: -8px;
+  right: -8px;
+  cursor: nwse-resize;
+}
+
 .cisterna-schede-crop-controls {
   margin-top: 12px;
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.cisterna-schede-rowcount {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.cisterna-schede-rowcount input {
+  width: 100px;
+}
+
+.cisterna-schede-calib-tools {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.cisterna-schede-calib-tools button {
+  border: 1px solid #c4d2e4;
+  background: #ffffff;
+  color: #2b3a4a;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.cisterna-schede-calib-tools button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .cisterna-schede-zoom {
@@ -196,14 +598,38 @@
   color: #4e627a;
 }
 
+.cisterna-schede-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #2b3a4a;
+}
+
+.cisterna-schede-calib-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #2a3a4a;
+  background: #f0f7ff;
+  border: 1px solid #d6e6fb;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
 .cisterna-schede-table-wrap {
   overflow-x: auto;
+  overflow-y: visible;
 }
 
 .cisterna-schede-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 900px;
+}
+
+.cisterna-schede-table--manual {
+  min-width: 1100px;
 }
 
 .cisterna-schede-table th,
@@ -221,6 +647,54 @@
   letter-spacing: 0.05em;
 }
 
+.cisterna-schede-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cisterna-schede-cell-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cisterna-schede-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+}
+
+.cisterna-schede-badge.ok {
+  background: #e7f7ee;
+  color: #1f6b38;
+  border-color: #bfe5c9;
+}
+
+.cisterna-schede-badge.incerto {
+  background: #fff4d8;
+  color: #7b4a00;
+  border-color: #f1d18a;
+}
+
+.cisterna-schede-badge.vuoto {
+  background: #f2f4f8;
+  color: #4a5a6a;
+  border-color: #d6dde8;
+}
+
+.cisterna-schede-cell img {
+  width: 84px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #d8e3f2;
+  background: #ffffff;
+}
+
 .cisterna-schede-separator td {
   background: #f0f4fb;
   border-top: 2px solid #cfd9e7;
@@ -234,6 +708,227 @@
   font-weight: 600;
 }
 
+.cisterna-schede-row-dubious td {
+  background: #fff8ea;
+}
+
+.cisterna-schede-autisti {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #2b3a4a;
+}
+
+.cisterna-schede-autisti-list {
+  display: grid;
+  gap: 4px;
+}
+
+.cisterna-schede-autisti-item {
+  display: flex;
+  justify-content: space-between;
+  background: #f7fbff;
+  border: 1px solid #dce8f6;
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.cisterna-schede-autisti-item strong {
+  font-weight: 700;
+}
+
+.cisterna-schede-autisti-meta {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #4e627a;
+}
+
+.cisterna-schede-suggest-btn {
+  border: 1px solid #c4d2e4;
+  background: #f4f8ff;
+  color: #2b3a4a;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cisterna-schede-suggest-btn:hover {
+  background: #e8f1ff;
+}
+
+.cisterna-schede-suggest-btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cisterna-schede-autisti-empty {
+  color: #6b7a8c;
+}
+
+.cisterna-schede-autisti-toggle {
+  border: 0;
+  background: transparent;
+  color: #0b5cab;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.cisterna-schede-thumb-btn {
+  border: 1px solid #d8e3f2;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.cisterna-schede-thumb-btn img {
+  display: block;
+  width: 120px;
+  height: 60px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.cisterna-schede-verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #2b3a4a;
+}
+
+.cisterna-schede-savebar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-top: 1px solid #d7e1ef;
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.08);
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  z-index: 40;
+}
+
+.cisterna-schede-savebar strong {
+  display: block;
+  font-size: 14px;
+}
+
+.cisterna-schede-savebar span {
+  color: #526173;
+  font-size: 12px;
+}
+
+.cisterna-schede-savebar button {
+  border: 0;
+  background: #0b5cab;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+
+.cisterna-schede-savebar button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cisterna-schede-confirm .cisterna-schede-modal-inner {
+  max-width: min(680px, 92vw);
+}
+
+.cisterna-schede-confirm-body {
+  display: grid;
+  gap: 12px;
+}
+
+.cisterna-schede-warning {
+  background: #fff4d8;
+  border: 1px solid #f1d18a;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #7b4a00;
+  font-size: 13px;
+}
+
+.cisterna-schede-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cisterna-schede-confirm-actions button {
+  border: 0;
+  background: #0b5cab;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.cisterna-schede-confirm-actions button.secondary {
+  background: #f2f4f8;
+  color: #2b3a4a;
+  border: 1px solid #d2dbe8;
+}
+
+.cisterna-schede-confirm-actions button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cisterna-schede-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 15, 24, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 16px;
+}
+
+.cisterna-schede-modal-inner {
+  background: #ffffff;
+  border-radius: 12px;
+  max-width: min(960px, 94vw);
+  width: 100%;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.cisterna-schede-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cisterna-schede-modal-head button {
+  border: 1px solid #cfd9e7;
+  background: #f5f7fb;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.cisterna-schede-modal img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid #e3ebf5;
+}
+
 .cisterna-schede-raw {
   color: #4c5f75;
   font-size: 12px;
@@ -245,6 +940,20 @@
   }
 
   .cisterna-schede-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cisterna-schede-title {
+    width: 100%;
+  }
+
+  .cisterna-schede-manual-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cisterna-schede-savebar {
     flex-direction: column;
     align-items: flex-start;
   }

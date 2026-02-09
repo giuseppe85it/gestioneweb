@@ -13,6 +13,7 @@ import {
   CISTERNA_DOCUMENTI_COLLECTION,
   CISTERNA_PARAMETRI_COLLECTION,
   CISTERNA_REFUEL_TAG,
+  CISTERNA_SCHEDE_COLLECTION,
   currentMonthKey,
   monthLabel,
   monthKeyFromDate,
@@ -26,6 +27,24 @@ import type {
 import "./CisternaCaravatePage.css";
 
 type TabKey = "archivio" | "report" | "targhe";
+
+type CisternaSchedaRow = {
+  data?: string | null;
+  targa?: string | null;
+  litri?: number | null;
+  nome?: string | null;
+};
+
+type CisternaSchedaDoc = {
+  id: string;
+  createdAt?: unknown;
+  source?: "manual" | "ia" | string | null;
+  rowCount?: number | null;
+  rows?: CisternaSchedaRow[] | null;
+  needsReview?: boolean;
+  mese?: string | null;
+  yearMonth?: string | null;
+};
 
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -116,6 +135,45 @@ function getRefuelAutista(record: RifornimentoAutistaRecord): string {
   return direct || "—";
 }
 
+function formatLitri(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  const rounded = Math.round(value * 100) / 100;
+  const text = rounded.toFixed(2);
+  return text.replace(/\.?0+$/, "");
+}
+
+function getSchedaDate(docItem: CisternaSchedaDoc): Date | null {
+  const fromCreated = toDateFromUnknown(docItem.createdAt);
+  if (fromCreated) return fromCreated;
+  const firstRow = Array.isArray(docItem.rows) ? docItem.rows[0] : null;
+  if (firstRow?.data) return toDateFromUnknown(firstRow.data);
+  return null;
+}
+
+function getSchedaTarga(docItem: CisternaSchedaDoc): string {
+  const firstRow = Array.isArray(docItem.rows) ? docItem.rows[0] : null;
+  return String(firstRow?.targa ?? "").trim().toUpperCase();
+}
+
+function isFatturaDoc(docItem: CisternaDocumento): boolean {
+  const tipo = String(docItem.tipoDocumento ?? "").trim().toLowerCase();
+  const nomeFile = String(docItem.nomeFile ?? "").trim().toLowerCase();
+  return tipo.includes("fattur") || nomeFile.includes("fattur");
+}
+
+function isBollettinoDoc(docItem: CisternaDocumento): boolean {
+  const tipo = String(docItem.tipoDocumento ?? "").trim().toLowerCase();
+  const nomeFile = String(docItem.nomeFile ?? "").trim().toLowerCase();
+  return (
+    tipo.includes("bollett") ||
+    tipo.includes("bolla") ||
+    tipo.includes("ddt") ||
+    nomeFile.includes("bollett") ||
+    nomeFile.includes("bolla") ||
+    nomeFile.includes("ddt")
+  );
+}
+
 export default function CisternaCaravatePage() {
   const navigate = useNavigate();
 
@@ -129,6 +187,10 @@ export default function CisternaCaravatePage() {
   const [refuels, setRefuels] = useState<RifornimentoAutistaRecord[]>([]);
   const [refuelsLoading, setRefuelsLoading] = useState<boolean>(true);
   const [refuelsError, setRefuelsError] = useState<string>("");
+
+  const [schedeDocs, setSchedeDocs] = useState<CisternaSchedaDoc[]>([]);
+  const [schedeLoading, setSchedeLoading] = useState<boolean>(true);
+  const [schedeError, setSchedeError] = useState<string>("");
 
   const [cambioInput, setCambioInput] = useState<string>("");
   const [savingCambio, setSavingCambio] = useState<boolean>(false);
@@ -217,6 +279,49 @@ export default function CisternaCaravatePage() {
   useEffect(() => {
     let cancelled = false;
 
+    const loadSchede = async () => {
+      setSchedeLoading(true);
+      setSchedeError("");
+      try {
+        const snap = await getDocs(collection(db, CISTERNA_SCHEDE_COLLECTION));
+        const rows: CisternaSchedaDoc[] = [];
+        snap.forEach((docSnap) => {
+          const raw = docSnap.data() as Partial<CisternaSchedaDoc>;
+          rows.push({
+            id: docSnap.id,
+            ...raw,
+          });
+        });
+
+        rows.sort((a, b) => {
+          const aMs = getSchedaDate(a)?.getTime() ?? 0;
+          const bMs = getSchedaDate(b)?.getTime() ?? 0;
+          if (bMs !== aMs) return bMs - aMs;
+          return getSchedaTarga(a).localeCompare(getSchedaTarga(b));
+        });
+
+        if (!cancelled) {
+          setSchedeDocs(rows);
+          setSchedeLoading(false);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setSchedeError(err?.message || "Errore caricamento schede carburante.");
+          setSchedeLoading(false);
+        }
+      }
+    };
+
+    void loadSchede();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     const loadCambio = async () => {
       setCambioStatus("");
       try {
@@ -265,6 +370,69 @@ export default function CisternaCaravatePage() {
     });
   }, [refuels, selectedMonth]);
 
+  const refuelsMonthlyRows = useMemo(() => {
+    return [...refuelsCaravateOfMonth]
+      .map((item, index) => {
+        const d = getRefuelDate(item);
+        const dateLabel = d ? d.toLocaleDateString("it-CH") : "-";
+        return {
+          id: String(item.id ?? `${index}_${dateLabel}_${getRefuelTarga(item)}`),
+          date: d,
+          dateLabel,
+          targa: getRefuelTarga(item) || "NON INDICATA",
+          litri: toNumberOrNull(item.litri) ?? 0,
+          autista: getRefuelAutista(item),
+        };
+      })
+      .sort((a, b) => {
+        const aMs = a.date?.getTime() ?? 0;
+        const bMs = b.date?.getTime() ?? 0;
+        if (bMs !== aMs) return bMs - aMs;
+        return a.targa.localeCompare(b.targa);
+      });
+  }, [refuelsCaravateOfMonth]);
+
+  const schedeOfMonth = useMemo(() => {
+    return schedeDocs.filter((item) => {
+      const ym = String(item.yearMonth ?? item.mese ?? "").trim();
+      if (ym) return ym === selectedMonth;
+      const d = getSchedaDate(item);
+      if (!d) return false;
+      return monthKeyFromDate(d) === selectedMonth;
+    });
+  }, [schedeDocs, selectedMonth]);
+
+  const schedeOfMonthSorted = useMemo(() => {
+    return [...schedeOfMonth].sort((a, b) => {
+      const aMs = getSchedaDate(a)?.getTime() ?? 0;
+      const bMs = getSchedaDate(b)?.getTime() ?? 0;
+      if (bMs !== aMs) return bMs - aMs;
+      return getSchedaTarga(a).localeCompare(getSchedaTarga(b));
+    });
+  }, [schedeOfMonth]);
+
+  const fattureDocs = useMemo(() => {
+    return docsOfMonth
+      .filter((docItem) => isFatturaDoc(docItem))
+      .sort((a, b) => {
+        const aMs = getDocDate(a)?.getTime() ?? 0;
+        const bMs = getDocDate(b)?.getTime() ?? 0;
+        if (bMs !== aMs) return bMs - aMs;
+        return String(a.fornitore ?? "").localeCompare(String(b.fornitore ?? ""));
+      });
+  }, [docsOfMonth]);
+
+  const bollettiniDocs = useMemo(() => {
+    return docsOfMonth
+      .filter((docItem) => isBollettinoDoc(docItem))
+      .sort((a, b) => {
+        const aMs = getDocDate(a)?.getTime() ?? 0;
+        const bMs = getDocDate(b)?.getTime() ?? 0;
+        if (bMs !== aMs) return bMs - aMs;
+        return String(a.fornitore ?? "").localeCompare(String(b.fornitore ?? ""));
+      });
+  }, [docsOfMonth]);
+
   const litriCaricati = useMemo(
     () =>
       docsOfMonth.reduce((sum, item) => sum + (toNumberOrNull(item.litri15C) ?? 0), 0),
@@ -299,11 +467,12 @@ export default function CisternaCaravatePage() {
       .sort((a, b) => {
         const aMs = getRefuelDate(a)?.getTime() ?? 0;
         const bMs = getRefuelDate(b)?.getTime() ?? 0;
-        return bMs - aMs;
+        if (bMs !== aMs) return bMs - aMs;
+        return getRefuelTarga(a).localeCompare(getRefuelTarga(b));
       })
       .map((item) => {
         const d = getRefuelDate(item);
-        const dateLabel = d ? d.toLocaleDateString("it-CH") : "—";
+        const dateLabel = d ? d.toLocaleDateString("it-CH") : "-";
         return {
           id: String(item.id ?? `${dateLabel}_${getRefuelTarga(item)}_${item.litri ?? ""}`),
           data: dateLabel,
@@ -350,7 +519,12 @@ export default function CisternaCaravatePage() {
             <button type="button" onClick={() => navigate("/cisterna/ia")}>
               Apri IA Cisterna
             </button>
-            <button type="button" onClick={() => navigate("/cisterna/schede-test")}>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/cisterna/schede-test?month=${encodeURIComponent(selectedMonth)}`)
+              }
+            >
               Test Scheda (IA)
             </button>
             <button type="button" onClick={() => navigate("/")}>
@@ -417,9 +591,141 @@ export default function CisternaCaravatePage() {
           </button>
         </nav>
 
-        {activeTab === "archivio" ? (
+                        {activeTab === "archivio" ? (
           <section className="cisterna-card">
-            <h2>Archivio documenti - {monthLabel(selectedMonth)}</h2>
+            <h2>Archivio mensile - {monthLabel(selectedMonth)}</h2>
+            <div className="cisterna-archivio-grid">
+              <article className="cisterna-archivio-block">
+                <div className="cisterna-archivio-head">
+                  <h3>Rifornimenti autisti</h3>
+                  <span className="cisterna-archivio-count">
+                    {refuelsMonthlyRows.length}
+                  </span>
+                </div>
+                <p className="cisterna-archivio-note">
+                  Supporto archivio: quando presente, fa fede la scheda manuale.
+                </p>
+                {refuelsLoading ? <div>Caricamento rifornimenti...</div> : null}
+                {refuelsError ? (
+                  <div className="cisterna-error">{refuelsError}</div>
+                ) : null}
+                {!refuelsLoading && !refuelsError && refuelsMonthlyRows.length === 0 ? (
+                  <div>Nessun rifornimento autisti per questo mese.</div>
+                ) : null}
+                {!refuelsLoading && !refuelsError && refuelsMonthlyRows.length > 0 ? (
+                  <ul className="cisterna-archivio-list">
+                    {refuelsMonthlyRows.map((row) => (
+                      <li key={row.id} className="cisterna-archivio-item">
+                        <div className="cisterna-archivio-main">
+                          <strong>{row.dateLabel}</strong>
+                          <span>{row.targa}</span>
+                        </div>
+                        <div className="cisterna-archivio-meta">
+                          <span>{formatLitri(row.litri)} L</span>
+                          <span>{row.autista}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+
+              <article className="cisterna-archivio-block">
+                <div className="cisterna-archivio-head">
+                  <h3>Fatture</h3>
+                  <span className="cisterna-archivio-count">
+                    {fattureDocs.length}
+                  </span>
+                </div>
+                {docsLoading ? <div>Caricamento documenti...</div> : null}
+                {docsError ? <div className="cisterna-error">{docsError}</div> : null}
+                {!docsLoading && !docsError && fattureDocs.length === 0 ? (
+                  <div>Nessuna fattura per questo mese.</div>
+                ) : null}
+                {!docsLoading && !docsError && fattureDocs.length > 0 ? (
+                  <ul className="cisterna-archivio-list">
+                    {fattureDocs.map((item) => {
+                      const d = getDocDate(item);
+                      const dateLabel = d ? d.toLocaleDateString("it-CH") : "-";
+                      return (
+                        <li key={item.id} className="cisterna-archivio-item">
+                          <div className="cisterna-archivio-main">
+                            <strong>{dateLabel}</strong>
+                            <span>{item.fornitore || "-"}</span>
+                            <span>{item.prodotto || "-"}</span>
+                          </div>
+                          <div className="cisterna-archivio-meta">
+                            <span>{formatLitri(item.litri15C ?? null)} L</span>
+                            {item.fileUrl ? (
+                              <a
+                                className="cisterna-archivio-link"
+                                href={item.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Apri
+                              </a>
+                            ) : (
+                              <span>-</span>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </article>
+
+              <article className="cisterna-archivio-block">
+                <div className="cisterna-archivio-head">
+                  <h3>Bollettini</h3>
+                  <span className="cisterna-archivio-count">
+                    {bollettiniDocs.length}
+                  </span>
+                </div>
+                {docsLoading ? <div>Caricamento documenti...</div> : null}
+                {docsError ? <div className="cisterna-error">{docsError}</div> : null}
+                {!docsLoading && !docsError && bollettiniDocs.length === 0 ? (
+                  <div>Nessun bollettino per questo mese.</div>
+                ) : null}
+                {!docsLoading && !docsError && bollettiniDocs.length > 0 ? (
+                  <ul className="cisterna-archivio-list">
+                    {bollettiniDocs.map((item) => {
+                      const d = getDocDate(item);
+                      const dateLabel = d ? d.toLocaleDateString("it-CH") : "-";
+                      return (
+                        <li key={item.id} className="cisterna-archivio-item">
+                          <div className="cisterna-archivio-main">
+                            <strong>{dateLabel}</strong>
+                            <span>{item.fornitore || "-"}</span>
+                            <span>{item.prodotto || "-"}</span>
+                          </div>
+                          <div className="cisterna-archivio-meta">
+                            <span>{formatLitri(item.litri15C ?? null)} L</span>
+                            {item.fileUrl ? (
+                              <a
+                                className="cisterna-archivio-link"
+                                href={item.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Apri
+                              </a>
+                            ) : (
+                              <span>-</span>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </article>
+            </div>
+
+            <h3 className="cisterna-subtitle">
+              Archivio documenti - {monthLabel(selectedMonth)}
+            </h3>
             {docsLoading ? <div>Caricamento documenti...</div> : null}
             {docsError ? <div className="cisterna-error">{docsError}</div> : null}
             {!docsLoading && !docsError && docsOfMonth.length === 0 ? (
@@ -466,6 +772,71 @@ export default function CisternaCaravatePage() {
                   </tbody>
                 </table>
               </div>
+            ) : null}
+
+            <h3 className="cisterna-subtitle">
+              Schede carburante - {monthLabel(selectedMonth)}
+            </h3>
+            {schedeLoading ? <div>Caricamento schede...</div> : null}
+            {schedeError ? (
+              <div className="cisterna-error">{schedeError}</div>
+            ) : null}
+            {!schedeLoading && !schedeError && schedeOfMonthSorted.length === 0 ? (
+              <div>Nessuna scheda per questo mese.</div>
+            ) : null}
+            {!schedeLoading && !schedeError && schedeOfMonthSorted.length > 0 ? (
+              <ul className="cisterna-archivio-list">
+                {schedeOfMonthSorted.map((item) => {
+                  const created = getSchedaDate(item);
+                  const dateLabel = created
+                    ? created.toLocaleString("it-CH")
+                    : item.yearMonth || item.mese || "-";
+                  const sourceLabel =
+                    item.source === "manual"
+                      ? "Manuale"
+                      : item.source === "ia"
+                      ? "IA"
+                      : item.source || "-";
+                  const rowsCount =
+                    item.rowCount ?? (Array.isArray(item.rows) ? item.rows.length : 0);
+                  return (
+                    <li key={item.id} className="cisterna-archivio-item">
+                      <div className="cisterna-archivio-main">
+                        <strong>{dateLabel}</strong>
+                        <span>
+                          {sourceLabel} - {rowsCount} righe
+                        </span>
+                        {getSchedaTarga(item) ? (
+                          <span>Targa: {getSchedaTarga(item)}</span>
+                        ) : null}
+                      </div>
+                      <div className="cisterna-archivio-meta">
+                        <span
+                          className={`cisterna-archivio-badge ${
+                            item.needsReview ? "warn" : "ok"
+                          }`}
+                        >
+                          {item.needsReview ? "Da verificare" : "OK"}
+                        </span>
+                        <div className="cisterna-archivio-actions">
+                          <button
+                            type="button"
+                            className="cisterna-archivio-action"
+                            onClick={() =>
+                              navigate(
+                                `/cisterna/schede-test?edit=${encodeURIComponent(item.id)}&month=${encodeURIComponent(selectedMonth)}`
+                              )
+                            }
+                            title="Apri o modifica questa scheda"
+                          >
+                            Apri/Modifica
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : null}
           </section>
         ) : null}

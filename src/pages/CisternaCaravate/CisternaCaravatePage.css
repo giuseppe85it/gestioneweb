@@ -131,6 +131,131 @@
   margin: 0 0 12px;
 }
 
+.cisterna-archivio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cisterna-archivio-block {
+  border: 1px solid #dce7f3;
+  border-radius: 12px;
+  background: #f9fbff;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.cisterna-archivio-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.cisterna-archivio-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.cisterna-archivio-count {
+  border: 1px solid #cfe0f7;
+  background: #eaf2ff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #27405d;
+}
+
+.cisterna-archivio-note {
+  margin: 0;
+  font-size: 12px;
+  color: #4a6078;
+}
+
+.cisterna-archivio-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.cisterna-archivio-item {
+  border: 1px solid #e1ecf6;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cisterna-archivio-main {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.cisterna-archivio-main strong {
+  font-size: 14px;
+}
+
+.cisterna-archivio-meta {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+  font-size: 12px;
+  color: #4a6078;
+}
+
+.cisterna-archivio-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.cisterna-archivio-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  text-align: center;
+  border: 1px solid transparent;
+}
+
+.cisterna-archivio-badge.ok {
+  background: #eaf7ef;
+  border-color: #bfe6cb;
+  color: #1f5f34;
+}
+
+.cisterna-archivio-badge.warn {
+  background: #fff4e5;
+  border-color: #f0d1a7;
+  color: #8a4b00;
+}
+
+.cisterna-archivio-action {
+  border: 1px solid #c3d2e5;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cisterna-archivio-link {
+  color: #0d5da6;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.cisterna-archivio-link:hover {
+  text-decoration: underline;
+}
+
 .cisterna-subtitle {
   margin: 16px 0 10px;
   font-size: 16px;
