@@ -693,6 +693,12 @@
   border-color: #f1d18a;
 }
 
+.cisterna-schede-badge.warn {
+  background: #ffecec;
+  color: #8c2b2b;
+  border-color: #f3bebe;
+}
+
 .cisterna-schede-badge.vuoto {
   background: #f2f4f8;
   color: #4a5a6a;

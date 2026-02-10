@@ -30,6 +30,7 @@ import type {
 import "./CisternaCaravatePage.css";
 
 type TabKey = "archivio" | "report" | "targhe";
+type AziendaKey = "cementi" | "import";
 
 type CisternaSchedaRow = {
   data?: string | null;
@@ -58,7 +59,7 @@ type VeritaRow = {
   litri: number;
   nome: string;
   autista: string;
-  azienda: string;
+  azienda: AziendaKey;
   timestamp: number;
   source: "manuale" | "autisti";
 };
@@ -235,6 +236,25 @@ function normalizeCurrency(value: unknown): "CHF" | "EUR" | "UNKNOWN" {
   if (raw.includes("CHF") || raw.includes("FR")) return "CHF";
   if (raw.includes("EUR") || raw.includes("EURO")) return "EUR";
   return "UNKNOWN";
+}
+
+function normalizeAziendaKey(value: unknown): AziendaKey {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "import" || raw === "ghielmiimport" || raw === "ghielmimport") {
+    return "import";
+  }
+  return "cementi";
+}
+
+function formatAziendaLabel(value: AziendaKey): string {
+  return value === "import" ? "GHIELMIIMPORT" : "GHIELMICEMENTI";
+}
+
+function getAziendaClassFromLabel(label: string): "cementi" | "import" | "neutral" {
+  const raw = String(label ?? "").toLowerCase();
+  if (raw.includes("import")) return "import";
+  if (raw.includes("cement")) return "cementi";
+  return "neutral";
 }
 
 function isManualScheda(docItem: CisternaSchedaDoc): boolean {
@@ -580,7 +600,7 @@ export default function CisternaCaravatePage() {
           litri: toNumberOrNull(item.litri) ?? 0,
           nome: "",
           autista: getRefuelAutista(item),
-          azienda: "-",
+          azienda: "cementi" as AziendaKey,
           timestamp: dateObj?.getTime() ?? 0,
           source: "autisti" as const,
         };
@@ -622,7 +642,7 @@ export default function CisternaCaravatePage() {
           litri,
           nome: String(row.nome ?? "").trim(),
           autista: "",
-          azienda: String(row.azienda ?? "GHIELMICEMENTI").trim() || "GHIELMICEMENTI",
+          azienda: normalizeAziendaKey(row.azienda),
           timestamp,
           source: "manuale" as const,
         };
@@ -924,24 +944,87 @@ export default function CisternaCaravatePage() {
   };
 
   const litriPerTarga = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<
+      string,
+      { litri: number; litriCementi: number; litriImport: number }
+    >();
     datasetVeritaRows.forEach((row) => {
-      map.set(row.targa, (map.get(row.targa) ?? 0) + row.litri);
+      const current = map.get(row.targa) ?? {
+        litri: 0,
+        litriCementi: 0,
+        litriImport: 0,
+      };
+      current.litri += row.litri;
+      if (row.azienda === "import") {
+        current.litriImport += row.litri;
+      } else {
+        current.litriCementi += row.litri;
+      }
+      map.set(row.targa, current);
     });
     return Array.from(map.entries())
-      .map(([targa, litri]) => ({
-        targa,
-        litri,
-        costoStimatoValuta:
-          fatturaCostData.costoPerLitroValuta == null
-            ? null
-            : litri * fatturaCostData.costoPerLitroValuta,
-        costoStimatoChf:
-          fatturaCostData.costoPerLitroChf == null
-            ? null
-            : litri * fatturaCostData.costoPerLitroChf,
-      }))
+      .map(([targa, stats]) => {
+        const aziendaLabel =
+          stats.litriImport > 0 && stats.litriCementi > 0
+            ? "MISTA"
+            : stats.litriImport > 0
+            ? formatAziendaLabel("import")
+            : formatAziendaLabel("cementi");
+        return {
+          targa,
+          litri: stats.litri,
+          aziendaLabel,
+          costoStimatoValuta:
+            fatturaCostData.costoPerLitroValuta == null
+              ? null
+              : stats.litri * fatturaCostData.costoPerLitroValuta,
+          costoStimatoChf:
+            fatturaCostData.costoPerLitroChf == null
+              ? null
+              : stats.litri * fatturaCostData.costoPerLitroChf,
+        };
+      })
       .sort((a, b) => a.targa.localeCompare(b.targa));
+  }, [datasetVeritaRows, fatturaCostData.costoPerLitroValuta, fatturaCostData.costoPerLitroChf]);
+
+  const ripartizioneAzienda = useMemo(() => {
+    let litriCementi = 0;
+    let litriImport = 0;
+    datasetVeritaRows.forEach((row) => {
+      if (row.azienda === "import") {
+        litriImport += row.litri;
+      } else {
+        litriCementi += row.litri;
+      }
+    });
+    const costoCementiValuta =
+      fatturaCostData.costoPerLitroValuta == null
+        ? null
+        : litriCementi * fatturaCostData.costoPerLitroValuta;
+    const costoImportValuta =
+      fatturaCostData.costoPerLitroValuta == null
+        ? null
+        : litriImport * fatturaCostData.costoPerLitroValuta;
+    const costoCementiChf =
+      fatturaCostData.costoPerLitroChf == null
+        ? null
+        : litriCementi * fatturaCostData.costoPerLitroChf;
+    const costoImportChf =
+      fatturaCostData.costoPerLitroChf == null
+        ? null
+        : litriImport * fatturaCostData.costoPerLitroChf;
+    return {
+      cementi: {
+        litri: litriCementi,
+        costoValuta: costoCementiValuta,
+        costoChf: costoCementiChf,
+      },
+      import: {
+        litri: litriImport,
+        costoValuta: costoImportValuta,
+        costoChf: costoImportChf,
+      },
+    };
   }, [datasetVeritaRows, fatturaCostData.costoPerLitroValuta, fatturaCostData.costoPerLitroChf]);
 
   const supportByDateTarga = useMemo(() => {
@@ -969,7 +1052,7 @@ export default function CisternaCaravatePage() {
         litri: row.litri,
         nome: row.nome,
         autista: row.autista,
-        azienda: row.azienda,
+        aziendaLabel: formatAziendaLabel(row.azienda),
         supportLitri: support?.litri ?? null,
         supportCount: support?.count ?? 0,
         supportStatus: support ? (isMatch ? "MATCH" : "DIFFERENZA") : "-",
@@ -1000,21 +1083,6 @@ export default function CisternaCaravatePage() {
     }
   };
 
-  const formatEstimatedCostLabel = (row: {
-    costoStimatoValuta: number | null;
-    costoStimatoChf: number | null;
-  }): string => {
-    if (!fatturaCostData.baseCurrency) return "N/D";
-    const costoValuta =
-      row.costoStimatoValuta == null
-        ? "N/D"
-        : formatMoney(row.costoStimatoValuta, fatturaCostData.baseCurrency);
-    if (fatturaCostData.baseCurrency === "CHF") return costoValuta;
-    const costoChf =
-      row.costoStimatoChf == null ? "N/D" : formatMoney(row.costoStimatoChf, "CHF");
-    return `${costoValuta} / ${costoChf}`;
-  };
-
   const handleExportReportPdf = async () => {
     const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -1039,8 +1107,8 @@ export default function CisternaCaravatePage() {
       [
         "Fonte litri",
         hasManualTruth
-          ? "Scheda manuale"
-          : "Autisti (nessuna scheda manuale nel mese)",
+          ? "Scheda carburante"
+          : "Autisti (nessuna scheda carburante nel mese)",
       ],
       ["Litri totali mese", `${litriTotaliMese.toFixed(2)} L`],
       [
@@ -1080,16 +1148,69 @@ export default function CisternaCaravatePage() {
     const afterSummaryY = (pdf as any).lastAutoTable?.finalY
       ? (pdf as any).lastAutoTable.finalY + 16
       : y + 120;
+    autoTable(pdf, {
+      startY: afterSummaryY,
+      margin: { left: marginX, right: marginX },
+      head: [["Ripartizione per azienda", "Litri", "Costo (valuta)", "Costo (CHF)"]],
+      body: [
+        [
+          formatAziendaLabel("cementi"),
+          `${ripartizioneAzienda.cementi.litri.toFixed(2)} L`,
+          fatturaCostData.baseCurrency
+            ? formatMoney(
+                ripartizioneAzienda.cementi.costoValuta,
+                fatturaCostData.baseCurrency
+              )
+            : "N/D",
+          formatMoney(ripartizioneAzienda.cementi.costoChf, "CHF"),
+        ],
+        [
+          formatAziendaLabel("import"),
+          `${ripartizioneAzienda.import.litri.toFixed(2)} L`,
+          fatturaCostData.baseCurrency
+            ? formatMoney(
+                ripartizioneAzienda.import.costoValuta,
+                fatturaCostData.baseCurrency
+              )
+            : "N/D",
+          formatMoney(ripartizioneAzienda.import.costoChf, "CHF"),
+        ],
+      ],
+      headStyles: { fillColor: [13, 93, 166], textColor: [255, 255, 255] },
+      styles: {
+        font: "helvetica",
+        fontSize: 10,
+        cellPadding: 6,
+        lineColor: [220, 227, 238],
+      },
+      alternateRowStyles: { fillColor: [250, 252, 255] },
+      didParseCell: (hookData: any) => {
+        if (hookData.section !== "body") return;
+        const rowIndex = hookData.row?.index;
+        if (rowIndex === 0) {
+          hookData.cell.styles.fillColor = [234, 247, 239];
+          hookData.cell.styles.textColor = [31, 95, 52];
+        } else if (rowIndex === 1) {
+          hookData.cell.styles.fillColor = [238, 244, 255];
+          hookData.cell.styles.textColor = [47, 79, 143];
+        }
+      },
+    });
+
+    const afterRipartizioneY = (pdf as any).lastAutoTable?.finalY
+      ? (pdf as any).lastAutoTable.finalY + 16
+      : afterSummaryY + 120;
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(12);
-    pdf.text("Tabella targhe", marginX, afterSummaryY);
+    pdf.text("Tabella targhe", marginX, afterRipartizioneY);
 
     autoTable(pdf, {
-      startY: afterSummaryY + 8,
+      startY: afterRipartizioneY + 8,
       margin: { left: marginX, right: marginX },
-      head: [["Targa", "Litri", "Costo stimato (valuta)", "Costo stimato (CHF)"]],
+      head: [["Targa", "Azienda", "Litri", "Costo stimato (valuta)", "Costo stimato (CHF)"]],
       body: litriPerTarga.map((row) => [
         row.targa,
+        row.aziendaLabel,
         `${row.litri.toFixed(2)} L`,
         fatturaCostData.baseCurrency
           ? formatMoney(row.costoStimatoValuta, fatturaCostData.baseCurrency)
@@ -1104,6 +1225,22 @@ export default function CisternaCaravatePage() {
         lineColor: [220, 227, 238],
       },
       alternateRowStyles: { fillColor: [250, 252, 255] },
+      didParseCell: (hookData: any) => {
+        if (hookData.section !== "body") return;
+        if (hookData.column?.index !== 1) return;
+        const label = String(hookData.cell?.raw ?? "");
+        const aziendaClass = getAziendaClassFromLabel(label);
+        if (aziendaClass === "cementi") {
+          hookData.cell.styles.fillColor = [234, 247, 239];
+          hookData.cell.styles.textColor = [31, 95, 52];
+        } else if (aziendaClass === "import") {
+          hookData.cell.styles.fillColor = [238, 244, 255];
+          hookData.cell.styles.textColor = [47, 79, 143];
+        } else {
+          hookData.cell.styles.fillColor = [243, 246, 251];
+          hookData.cell.styles.textColor = [79, 96, 117];
+        }
+      },
     });
 
     const footerY = pdf.internal.pageSize.getHeight() - 24;
@@ -1138,7 +1275,7 @@ export default function CisternaCaravatePage() {
                 navigate(`/cisterna/schede-test?month=${encodeURIComponent(selectedMonth)}`)
               }
             >
-              Test Scheda (IA)
+              Scheda carburante
             </button>
             <button type="button" onClick={() => navigate("/")}>
               Home
@@ -1221,7 +1358,7 @@ export default function CisternaCaravatePage() {
                   </span>
                 </div>
                 <p className="cisterna-archivio-note">
-                  Supporto archivio: quando presente, fa fede la scheda manuale.
+                  Supporto archivio: quando presente, fa fede la scheda carburante.
                 </p>
                 {refuelsLoading ? <div>Caricamento rifornimenti...</div> : null}
                 {refuelsError ? (
@@ -1578,9 +1715,15 @@ export default function CisternaCaravatePage() {
             <p className="cisterna-source-banner">
               Fonte litri:{" "}
               {hasManualTruth
-                ? "Scheda manuale"
-                : "Autisti (nessuna scheda manuale nel mese)"}
+                ? "Scheda carburante"
+                : "Autisti (nessuna scheda carburante nel mese)"}
             </p>
+            {!hasManualTruth ? (
+              <p className="cisterna-note">
+                In assenza di scheda carburante, i litri del mese sono attribuiti a{" "}
+                {formatAziendaLabel("cementi")}.
+              </p>
+            ) : null}
             <div className="cisterna-kpi-grid">
               <article>
                 <span>Litri totali mese (verita)</span>
@@ -1619,10 +1762,53 @@ export default function CisternaCaravatePage() {
               </article>
             </div>
             <p className="cisterna-report-summary-line">{costoSummaryLine}</p>
+            <div className="cisterna-company-split">
+              <h3>Ripartizione per azienda</h3>
+              <div className="cisterna-table-wrap">
+                <table className="cisterna-table">
+                  <thead>
+                    <tr>
+                      <th>Azienda</th>
+                      <th>Litri</th>
+                      <th>Costo (valuta)</th>
+                      <th>Costo (CHF)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="cisterna-company-box cementi">
+                      <td>{formatAziendaLabel("cementi")}</td>
+                      <td>{ripartizioneAzienda.cementi.litri.toFixed(2)} L</td>
+                      <td>
+                        {fatturaCostData.baseCurrency
+                          ? formatMoney(
+                              ripartizioneAzienda.cementi.costoValuta,
+                              fatturaCostData.baseCurrency
+                            )
+                          : "N/D"}
+                      </td>
+                      <td>{formatMoney(ripartizioneAzienda.cementi.costoChf, "CHF")}</td>
+                    </tr>
+                    <tr className="cisterna-company-box import">
+                      <td>{formatAziendaLabel("import")}</td>
+                      <td>{ripartizioneAzienda.import.litri.toFixed(2)} L</td>
+                      <td>
+                        {fatturaCostData.baseCurrency
+                          ? formatMoney(
+                              ripartizioneAzienda.import.costoValuta,
+                              fatturaCostData.baseCurrency
+                            )
+                          : "N/D"}
+                      </td>
+                      <td>{formatMoney(ripartizioneAzienda.import.costoChf, "CHF")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
             {hasManualTruth ? (
               <p className="cisterna-note">
                 Supporto autisti: {litriSupportoMese.toFixed(2)} L. Differenza con
-                scheda manuale: {deltaLitriSupporto.toFixed(2)} L.
+                scheda carburante: {deltaLitriSupporto.toFixed(2)} L.
               </p>
             ) : null}
             {!fatturaCostData.hasFatture ? (
@@ -1668,8 +1854,8 @@ export default function CisternaCaravatePage() {
             <p className="cisterna-source-banner">
               Fonte litri:{" "}
               {hasManualTruth
-                ? "Scheda manuale"
-                : "Autisti (nessuna scheda manuale nel mese)"}
+                ? "Scheda carburante"
+                : "Autisti (nessuna scheda carburante nel mese)"}
             </p>
             {litriPerTarga.length === 0 ? (
               <div>Nessun dato disponibile nel mese selezionato.</div>
@@ -1679,16 +1865,32 @@ export default function CisternaCaravatePage() {
                   <thead>
                     <tr>
                       <th>Targa</th>
+                      <th>Azienda</th>
                       <th>Litri</th>
-                      <th>Costo stimato</th>
+                      <th>Costo stimato (valuta)</th>
+                      <th>Costo stimato (CHF)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {litriPerTarga.map((row) => (
                       <tr key={row.targa}>
                         <td>{row.targa}</td>
+                        <td>
+                          <span
+                            className={`company-pill ${getAziendaClassFromLabel(
+                              row.aziendaLabel
+                            )}`}
+                          >
+                            {row.aziendaLabel}
+                          </span>
+                        </td>
                         <td>{row.litri.toFixed(2)} L</td>
-                        <td>{formatEstimatedCostLabel(row)}</td>
+                        <td>
+                          {fatturaCostData.baseCurrency
+                            ? formatMoney(row.costoStimatoValuta, fatturaCostData.baseCurrency)
+                            : "N/D"}
+                        </td>
+                        <td>{formatMoney(row.costoStimatoChf, "CHF")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1708,7 +1910,7 @@ export default function CisternaCaravatePage() {
                       <th>Targa</th>
                       <th>Litri</th>
                       <th>Nome/Autista</th>
-                      {hasManualTruth ? <th>Azienda</th> : null}
+                      <th>Azienda</th>
                       {hasManualTruth ? <th>Autisti (supporto)</th> : null}
                     </tr>
                   </thead>
@@ -1719,7 +1921,15 @@ export default function CisternaCaravatePage() {
                         <td>{row.targa}</td>
                         <td>{row.litri.toFixed(2)} L</td>
                         <td>{row.nome || row.autista || "-"}</td>
-                        {hasManualTruth ? <td>{row.azienda || "-"}</td> : null}
+                        <td>
+                          <span
+                            className={`company-pill ${getAziendaClassFromLabel(
+                              row.aziendaLabel
+                            )}`}
+                          >
+                            {row.aziendaLabel}
+                          </span>
+                        </td>
                         {hasManualTruth ? (
                           <td>
                             {row.supportLitri == null ? (

@@ -159,9 +159,17 @@ function toDateFromUnknown(value: unknown): Date | null {
   return null;
 }
 
-function validateRows(rows: RowLike[]) {
+function validateRows(
+  rows: RowLike[],
+  options?: {
+    isTargaKnown?: (targa: string) => boolean;
+    isAziendaConfirmed?: (row: RowLike, isTargaKnown: boolean) => boolean;
+  }
+) {
   const invalidRowIndexes: number[] = [];
   const reasonsByRow: Record<number, string[]> = {};
+  const isTargaKnown = options?.isTargaKnown;
+  const isAziendaConfirmed = options?.isAziendaConfirmed;
 
   rows.forEach((row, index) => {
     const dataValue = String(row.data ?? "").trim();
@@ -194,6 +202,13 @@ function validateRows(rows: RowLike[]) {
       reasons.push("Litri non validi");
     }
 
+    if (isTargaKnown && isAziendaConfirmed && targaValue) {
+      const targaKnown = isTargaKnown(targaValue);
+      if (!targaKnown && !isAziendaConfirmed(row, targaKnown)) {
+        reasons.push("Azienda obbligatoria per targa non in elenco");
+      }
+    }
+
     if (reasons.length > 0) {
       invalidRowIndexes.push(index);
       reasonsByRow[index] = reasons;
@@ -220,6 +235,7 @@ function buildValidationMessage(
   const invalid: string[] = [];
   if (allReasons.has("Data non valida")) invalid.push("Data");
   if (allReasons.has("Litri non validi")) invalid.push("Litri");
+  const needsAzienda = allReasons.has("Azienda obbligatoria per targa non in elenco");
 
   let message = `Errore: controlla le righe ${rowsLabel}.`;
   if (missing.length > 0) {
@@ -227,6 +243,9 @@ function buildValidationMessage(
   }
   if (invalid.length > 0) {
     message += ` Valori non validi: ${invalid.join("/")}.`;
+  }
+  if (needsAzienda) {
+    message += " Se la targa non e in elenco, seleziona l'azienda.";
   }
   return message;
 }
@@ -399,7 +418,8 @@ type ManualRow = {
   targa: string;
   nome: string;
   litri: string;
-  azienda: "GHIELMICEMENTI" | "GHIELMIMPORT";
+  azienda: "cementi" | "import";
+  aziendaConfirmed: boolean;
 };
 
 type IaEditableRow = {
@@ -440,7 +460,7 @@ type PendingSave = {
     targa: string;
     litri: number | null;
     nome?: string;
-    azienda?: "GHIELMICEMENTI" | "GHIELMIMPORT";
+    azienda?: "cementi" | "import";
     statoRevisione: "verificato" | "da_verificare";
   }>;
   rowCount: number;
@@ -479,16 +499,23 @@ type RowLike = {
   targa?: string | null;
   litri?: string | number | null;
   nome?: string | null;
+  azienda?: string | null;
+  aziendaConfirmed?: boolean;
 };
 
 const DATE_REGEX = /^\d{2}\/\d{2}\/\d{4}$/;
 const MAX_SUGGESTIONS = 8;
-const AZIENDE_OPTIONS = ["GHIELMICEMENTI", "GHIELMIMPORT"] as const;
-type AziendaOption = (typeof AZIENDE_OPTIONS)[number];
+const AZIENDE_OPTIONS = [
+  { value: "cementi", label: "GHIELMICEMENTI" },
+  { value: "import", label: "GHIELMIIMPORT" },
+] as const;
+type AziendaOption = (typeof AZIENDE_OPTIONS)[number]["value"];
 
 function normalizeAzienda(value: unknown): AziendaOption {
-  const raw = String(value ?? "").trim().toUpperCase();
-  return raw === "GHIELMIMPORT" ? "GHIELMIMPORT" : "GHIELMICEMENTI";
+  const raw = String(value ?? "").trim().toLowerCase();
+  return raw === "import" || raw === "ghielmiimport" || raw === "ghielmimport"
+    ? "import"
+    : "cementi";
 }
 
 function makeRowId(): string {
@@ -502,7 +529,8 @@ function createEmptyManualRow(): ManualRow {
     targa: "",
     nome: "",
     litri: "",
-    azienda: "GHIELMICEMENTI",
+    azienda: "cementi",
+    aziendaConfirmed: false,
   };
 }
 
@@ -513,7 +541,8 @@ function makeInitialRows(count: number, seedDate = ""): ManualRow[] {
     targa: "",
     nome: "",
     litri: "",
-    azienda: "GHIELMICEMENTI",
+    azienda: "cementi",
+    aziendaConfirmed: false,
   }));
 }
 
@@ -957,7 +986,8 @@ export default function CisternaSchedeTest() {
       targa: "",
       nome: "",
       litri: "",
-      azienda: "GHIELMICEMENTI",
+      azienda: "cementi",
+      aziendaConfirmed: false,
       ...seed,
     };
     setManualRows((prev) => [...prev, next]);
@@ -978,6 +1008,14 @@ export default function CisternaSchedeTest() {
     updateManualRow(id, { data: normalizeDateInput(value) });
   };
 
+  const handleManualTargaChange = (row: ManualRow, value: string) => {
+    const known = isTargaKnown(value);
+    updateManualRow(row.id, {
+      targa: value,
+      aziendaConfirmed: known ? row.aziendaConfirmed : false,
+    });
+  };
+
   const duplicateManualRow = (index: number) => {
     const base = manualRows[index];
     if (!base) return;
@@ -987,6 +1025,7 @@ export default function CisternaSchedeTest() {
       targa: base.targa,
       litri: base.litri,
       azienda: base.azienda,
+      aziendaConfirmed: base.aziendaConfirmed,
     });
   };
 
@@ -1010,7 +1049,15 @@ export default function CisternaSchedeTest() {
     return manualRows.filter((row) => !isManualRowEmpty(row));
   }, [manualRows]);
 
-  const manualValidation = useMemo(() => validateRows(manualRows), [manualRows]);
+  const manualValidation = useMemo(
+    () =>
+      validateRows(manualRows, {
+        isTargaKnown,
+        isAziendaConfirmed: (row, isKnown) =>
+          isKnown ? true : Boolean(row.aziendaConfirmed),
+      }),
+    [manualRows, targaLookup]
+  );
   const iaValidation = useMemo(() => validateRows(iaRows), [iaRows]);
 
   const manualRowValidity = useMemo(() => {
@@ -1023,12 +1070,14 @@ export default function CisternaSchedeTest() {
         !isEmpty && Boolean(row.targa.trim()) && !isTargaKnown(row.targa);
       const nomeMismatch =
         !isEmpty && Boolean(row.nome.trim()) && !isNomeKnown(row.nome);
+      const aziendaMissingForUnknown = !isEmpty && targaMismatch && !row.aziendaConfirmed;
       return {
         id: row.id,
         dataValid,
         litriValid,
         targaMismatch,
         nomeMismatch,
+        aziendaMissingForUnknown,
       };
     });
   }, [manualRows, targaLookup, nomeLookup]);
@@ -1123,6 +1172,7 @@ export default function CisternaSchedeTest() {
             nome: String(row.nome ?? "").trim(),
             litri: row.litri == null ? "" : String(row.litri),
             azienda: normalizeAzienda(row.azienda),
+            aziendaConfirmed: true,
           }));
           setResults(null);
           setIaRows([]);
@@ -1729,7 +1779,11 @@ export default function CisternaSchedeTest() {
   };
 
   const handleSaveManual = () => {
-    const validation = validateRows(manualRows);
+    const validation = validateRows(manualRows, {
+      isTargaKnown,
+      isAziendaConfirmed: (row, isKnown) =>
+        isKnown ? true : Boolean(row.aziendaConfirmed),
+    });
     if (validation.invalidRowIndexes.length > 0) {
       setManualError(
         buildValidationMessage(
@@ -2030,7 +2084,8 @@ export default function CisternaSchedeTest() {
             targa,
             nome: nome ?? "",
             litri: String(litri),
-            azienda: "GHIELMICEMENTI" as AziendaOption,
+            azienda: "cementi" as AziendaOption,
+            aziendaConfirmed: true,
             ts: dateValue.getTime(),
             idx: index,
           };
@@ -2288,6 +2343,9 @@ export default function CisternaSchedeTest() {
                     const targaIssue = invalidReasons?.some((reason) =>
                       reason.startsWith("Targa")
                     );
+                    const aziendaIssue = invalidReasons?.some((reason) =>
+                      reason.startsWith("Azienda")
+                    );
                     const litriIssue = invalidReasons?.some((reason) =>
                       reason.startsWith("Litri")
                     );
@@ -2358,7 +2416,7 @@ export default function CisternaSchedeTest() {
                           <div className="cisterna-schede-cell-edit">
                             <AutosuggestInput
                               value={row.targa}
-                              onChange={(value) => updateManualRow(row.id, { targa: value })}
+                              onChange={(value) => handleManualTargaChange(row, value)}
                               suggestions={targaSuggestions}
                               placeholder="Targa"
                               className={`cisterna-schede-input ${
@@ -2369,7 +2427,7 @@ export default function CisternaSchedeTest() {
                             />
                             {validity?.targaMismatch ? (
                               <span className="cisterna-schede-badge incerto">
-                                DA VERIFICARE
+                                NON IN ELENCO
                               </span>
                             ) : null}
                           </div>
@@ -2393,22 +2451,30 @@ export default function CisternaSchedeTest() {
                           </div>
                         </td>
                         <td>
-                          <select
-                            className="cisterna-schede-input"
-                            value={row.azienda}
-                            onChange={(event) =>
-                              updateManualRow(row.id, {
-                                azienda: normalizeAzienda(event.target.value),
-                              })
-                            }
-                            disabled={manualSaving}
-                          >
-                            {AZIENDE_OPTIONS.map((azienda) => (
-                              <option key={azienda} value={azienda}>
-                                {azienda}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="cisterna-schede-cell-edit">
+                            <select
+                              className={`cisterna-schede-input ${aziendaIssue ? "invalid" : ""}`}
+                              value={row.azienda}
+                              onChange={(event) =>
+                                updateManualRow(row.id, {
+                                  azienda: normalizeAzienda(event.target.value),
+                                  aziendaConfirmed: true,
+                                })
+                              }
+                              disabled={manualSaving}
+                            >
+                              {AZIENDE_OPTIONS.map((azienda) => (
+                                <option key={azienda.value} value={azienda.value}>
+                                  {azienda.label}
+                                </option>
+                              ))}
+                            </select>
+                            {validity?.aziendaMissingForUnknown ? (
+                              <span className="cisterna-schede-badge warn">
+                                SELEZIONA AZIENDA
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td>
                           <div className="cisterna-schede-cell-edit">

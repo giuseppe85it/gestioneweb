@@ -1,4 +1,13 @@
 .cisterna-page {
+  --cisterna-cementi-bg: #eaf7ef;
+  --cisterna-cementi-border: #b9e0c5;
+  --cisterna-cementi-text: #1f5f34;
+  --cisterna-import-bg: #eef4ff;
+  --cisterna-import-border: #c9d8ff;
+  --cisterna-import-text: #2f4f8f;
+  --cisterna-company-neutral-bg: #f3f6fb;
+  --cisterna-company-neutral-border: #d2dbe7;
+  --cisterna-company-neutral-text: #4f6075;
   min-height: 100vh;
   padding: 20px;
   background: linear-gradient(165deg, #edf5fb 0%, #f8f1e8 100%);
@@ -464,6 +473,61 @@
   background: #f9fbff;
   color: #2f4f6f;
   font-size: 12px;
+}
+
+.cisterna-company-split {
+  margin-top: 12px;
+  border: 1px solid #dce7f3;
+  border-radius: 12px;
+  background: #f9fbff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.cisterna-company-split h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #2f4f6f;
+}
+
+.company-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.company-pill.cementi {
+  background: var(--cisterna-cementi-bg);
+  border-color: var(--cisterna-cementi-border);
+  color: var(--cisterna-cementi-text);
+}
+
+.company-pill.import {
+  background: var(--cisterna-import-bg);
+  border-color: var(--cisterna-import-border);
+  color: var(--cisterna-import-text);
+}
+
+.company-pill.neutral {
+  background: var(--cisterna-company-neutral-bg);
+  border-color: var(--cisterna-company-neutral-border);
+  color: var(--cisterna-company-neutral-text);
+}
+
+.cisterna-company-box.cementi td {
+  background: var(--cisterna-cementi-bg);
+}
+
+.cisterna-company-box.import td {
+  background: var(--cisterna-import-bg);
 }
 
 .cisterna-source-banner {
