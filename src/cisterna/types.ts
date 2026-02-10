@@ -1,18 +1,43 @@
 export type Currency = "EUR" | "CHF" | "UNKNOWN";
+export type CisternaDocumentoTipo = "fattura" | "bollettino";
+export type CisternaValuta = "EUR" | "CHF";
+
+export interface CisternaDocumentoExtractData {
+  tipoDocumento: CisternaDocumentoTipo | null;
+  fornitore: string | null;
+  destinatario: string | null;
+  numeroDocumento: string | null;
+  dataDocumento: string | null;
+  yearMonth: string | null;
+  litriTotali: number | null;
+  totaleDocumento: number | null;
+  valuta: CisternaValuta | null;
+  prodotto: string | null;
+  testo: string | null;
+  daVerificare: boolean;
+  motivoVerifica: string | null;
+}
 
 export interface CisternaDocumento {
   id: string;
   tipoDocumento?: string | null;
   dataDocumento?: string | null;
   fornitore?: string | null;
+  destinatario?: string | null;
   luogoConsegna?: string | null;
   prodotto?: string | null;
+  litriTotali?: number | null;
   litri15C?: number | null;
   litriAmbiente?: number | null;
   valuta?: string | null;
   currency?: string | null;
-  totaleDocumento?: string | number | null;
+  totaleDocumento?: number | null;
   numeroDocumento?: string | null;
+  yearMonth?: string | null;
+  dupGroupKey?: string | null;
+  dupChosen?: boolean;
+  dupIgnored?: boolean;
+  updatedAt?: unknown;
   testo?: string | null;
   fileUrl?: string | null;
   nomeFile?: string | null;

@@ -24,8 +24,9 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../firebase";
-import type { CisternaAutistaEvent } from "../../cisterna/types";
+import type { CisternaAutistaEvent, RifornimentoAutistaRecord } from "../../cisterna/types";
 import {
+  CISTERNA_REFUEL_TAG,
   CISTERNA_SCHEDE_COLLECTION,
   currentMonthKey,
   getAutistiEventsFor,
@@ -398,6 +399,7 @@ type ManualRow = {
   targa: string;
   nome: string;
   litri: string;
+  azienda: "GHIELMICEMENTI" | "GHIELMIMPORT";
 };
 
 type IaEditableRow = {
@@ -436,8 +438,9 @@ type PendingSave = {
   rows: Array<{
     data: string;
     targa: string;
-    litri: number;
+    litri: number | null;
     nome?: string;
+    azienda?: "GHIELMICEMENTI" | "GHIELMIMPORT";
     statoRevisione: "verificato" | "da_verificare";
   }>;
   rowCount: number;
@@ -450,6 +453,7 @@ type StoredSchedaRow = {
   targa?: string | null;
   litri?: number | string | null;
   nome?: string | null;
+  azienda?: string | null;
   statoRevisione?: "verificato" | "da_verificare" | string | null;
   data_status?: string | null;
   targa_status?: string | null;
@@ -479,13 +483,27 @@ type RowLike = {
 
 const DATE_REGEX = /^\d{2}\/\d{2}\/\d{4}$/;
 const MAX_SUGGESTIONS = 8;
+const AZIENDE_OPTIONS = ["GHIELMICEMENTI", "GHIELMIMPORT"] as const;
+type AziendaOption = (typeof AZIENDE_OPTIONS)[number];
+
+function normalizeAzienda(value: unknown): AziendaOption {
+  const raw = String(value ?? "").trim().toUpperCase();
+  return raw === "GHIELMIMPORT" ? "GHIELMIMPORT" : "GHIELMICEMENTI";
+}
 
 function makeRowId(): string {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function createEmptyManualRow(): ManualRow {
-  return { id: makeRowId(), data: "", targa: "", nome: "", litri: "" };
+  return {
+    id: makeRowId(),
+    data: "",
+    targa: "",
+    nome: "",
+    litri: "",
+    azienda: "GHIELMICEMENTI",
+  };
 }
 
 function makeInitialRows(count: number, seedDate = ""): ManualRow[] {
@@ -495,6 +513,7 @@ function makeInitialRows(count: number, seedDate = ""): ManualRow[] {
     targa: "",
     nome: "",
     litri: "",
+    azienda: "GHIELMICEMENTI",
   }));
 }
 
@@ -763,6 +782,7 @@ export default function CisternaSchedeTest() {
   const [autistiEvents, setAutistiEvents] = useState<CisternaAutistaEvent[]>([]);
   const [autistiError, setAutistiError] = useState<string>("");
   const [autistiLoading, setAutistiLoading] = useState(false);
+  const [prefillLoading, setPrefillLoading] = useState(false);
   const [autistiExpanded, setAutistiExpanded] = useState<Record<string, boolean>>(
     {}
   );
@@ -937,6 +957,7 @@ export default function CisternaSchedeTest() {
       targa: "",
       nome: "",
       litri: "",
+      azienda: "GHIELMICEMENTI",
       ...seed,
     };
     setManualRows((prev) => [...prev, next]);
@@ -965,6 +986,7 @@ export default function CisternaSchedeTest() {
       nome: base.nome,
       targa: base.targa,
       litri: base.litri,
+      azienda: base.azienda,
     });
   };
 
@@ -1100,6 +1122,7 @@ export default function CisternaSchedeTest() {
             targa: String(row.targa ?? "").trim(),
             nome: String(row.nome ?? "").trim(),
             litri: row.litri == null ? "" : String(row.litri),
+            azienda: normalizeAzienda(row.azienda),
           }));
           setResults(null);
           setIaRows([]);
@@ -1726,12 +1749,13 @@ export default function CisternaSchedeTest() {
       const dataValue = row.data.trim();
       const targaValue = row.targa.trim();
       const nomeValue = row.nome.trim();
+      const aziendaValue = normalizeAzienda(row.azienda);
       const litriValue = parseLitri(row.litri);
       const dataValid = isValidDate(dataValue);
       const litriValid = litriValue !== null && litriValue > 0;
       const targaMismatch = Boolean(targaValue) && !isTargaKnown(targaValue);
       const nomeMismatch = Boolean(nomeValue) && !isNomeKnown(nomeValue);
-      const statoRevisione =
+      const statoRevisione: "verificato" | "da_verificare" =
         dataValid && litriValid && !targaMismatch && !nomeMismatch
           ? "verificato"
           : "da_verificare";
@@ -1739,6 +1763,7 @@ export default function CisternaSchedeTest() {
         data: dataValue,
         targa: targaValue,
         nome: nomeValue,
+        azienda: aziendaValue,
         litri: litriValue ?? null,
         statoRevisione,
       };
@@ -1788,7 +1813,7 @@ export default function CisternaSchedeTest() {
       const litriValue = parseLitri(row.litri);
       const dataValid = isValidDate(dataValue);
       const litriValid = litriValue !== null && litriValue > 0;
-      const statoRevisione =
+      const statoRevisione: "verificato" | "da_verificare" =
         row.verified && dataValid && litriValid ? "verificato" : "da_verificare";
       return {
         data: dataValue,
@@ -1949,6 +1974,107 @@ export default function CisternaSchedeTest() {
     }
   };
 
+  const handlePrefillFromAutisti = async () => {
+    if (!isValidYearMonth(selectedYearMonth)) {
+      setManualError("Mese scheda non valido.");
+      return;
+    }
+    setPrefillLoading(true);
+    setManualError("");
+    setManualSavedId("");
+    setPendingSave(null);
+    try {
+      const ref = doc(db, "storage", RIFORNIMENTI_AUTISTI_KEY);
+      const snap = await getDoc(ref);
+      const raw = snap.exists() ? snap.data() : {};
+      const list = Array.isArray(raw?.value)
+        ? raw.value
+        : Array.isArray(raw)
+        ? raw
+        : [];
+
+      const mappedRows = (list as RifornimentoAutistaRecord[])
+        .map((record, index) => {
+          const tipo = String(record.tipo ?? "").trim().toLowerCase();
+          if (tipo !== CISTERNA_REFUEL_TAG) return null;
+          const dateValue =
+            toDateFromUnknown(record.data) || toDateFromUnknown(record.timestamp);
+          if (!dateValue) return null;
+          const monthKey = `${dateValue.getFullYear()}-${String(
+            dateValue.getMonth() + 1
+          ).padStart(2, "0")}`;
+          if (monthKey !== selectedYearMonth) return null;
+
+          const targa = String(
+            record.targaCamion ?? record.targaMotrice ?? record.mezzoTarga ?? ""
+          )
+            .trim()
+            .toUpperCase();
+          const litri = parseLitri(String(record.litri ?? ""));
+          if (!targa || litri == null || litri <= 0) return null;
+
+          const nome = [
+            record.autistaNome,
+            record.nomeAutista,
+            typeof record.autista === "string" ? record.autista : "",
+            typeof record.autista === "object" && record.autista
+              ? record.autista.nome
+              : "",
+          ]
+            .map((item) => String(item ?? "").trim())
+            .find((item) => item !== "");
+
+          return {
+            id: makeRowId(),
+            data: formatDateDmYyyy(dateValue),
+            targa,
+            nome: nome ?? "",
+            litri: String(litri),
+            azienda: "GHIELMICEMENTI" as AziendaOption,
+            ts: dateValue.getTime(),
+            idx: index,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+        .sort((a, b) => {
+          if (b.ts !== a.ts) return b.ts - a.ts;
+          if (a.targa !== b.targa) return a.targa.localeCompare(b.targa);
+          return a.idx - b.idx;
+        })
+        .map(({ ts, idx, ...row }) => row);
+
+      if (mappedRows.length === 0) {
+        setManualRows(makeInitialRows(20));
+        manualSeededRef.current = true;
+        setManualError(
+          `Nessun rifornimento autisti trovato per ${monthLabel(selectedYearMonth)}.`
+        );
+        return;
+      }
+
+      const rowsWithPadding =
+        mappedRows.length >= 20
+          ? mappedRows
+          : [
+              ...mappedRows,
+              ...Array.from({ length: 20 - mappedRows.length }, () =>
+                createEmptyManualRow()
+              ),
+            ];
+      setMode("manual");
+      setManualRows(rowsWithPadding);
+      setAutistiExpanded({});
+      setPendingFocusId(rowsWithPadding[0]?.id ?? null);
+      manualSeededRef.current = true;
+    } catch (err: any) {
+      setManualError(
+        err?.message || "Errore durante la precompilazione da autisti."
+      );
+    } finally {
+      setPrefillLoading(false);
+    }
+  };
+
   const handleQuickTest = async () => {
     if (!croppedPreview) {
       setError("Nessun ritaglio disponibile per l'estrazione rapida.");
@@ -2085,9 +2211,25 @@ export default function CisternaSchedeTest() {
                 <h2>Inserimento manuale</h2>
                 <p>Compila la scheda carburante come da modulo cartaceo.</p>
               </div>
-              <button type="button" onClick={() => addManualRow()} disabled={manualSaving}>
-                Aggiungi riga
-              </button>
+              <div className="cisterna-schede-manual-head-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handlePrefillFromAutisti}
+                  disabled={manualSaving || prefillLoading}
+                >
+                  {prefillLoading
+                    ? "Precompilazione..."
+                    : "Precompila da Autisti (supporto)"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addManualRow()}
+                  disabled={manualSaving}
+                >
+                  Aggiungi riga
+                </button>
+              </div>
             </div>
 
             {suggestionsError ? (
@@ -2118,6 +2260,7 @@ export default function CisternaSchedeTest() {
                     <th>Data</th>
                     <th>Targa</th>
                     <th>Nome</th>
+                    <th>Azienda</th>
                     <th>Litri</th>
                     <th>Autisti (dettaglio)</th>
                     <th>Azioni</th>
@@ -2248,6 +2391,24 @@ export default function CisternaSchedeTest() {
                               </span>
                             ) : null}
                           </div>
+                        </td>
+                        <td>
+                          <select
+                            className="cisterna-schede-input"
+                            value={row.azienda}
+                            onChange={(event) =>
+                              updateManualRow(row.id, {
+                                azienda: normalizeAzienda(event.target.value),
+                              })
+                            }
+                            disabled={manualSaving}
+                          >
+                            {AZIENDE_OPTIONS.map((azienda) => (
+                              <option key={azienda} value={azienda}>
+                                {azienda}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td>
                           <div className="cisterna-schede-cell-edit">

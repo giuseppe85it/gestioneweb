@@ -1,18 +1,27 @@
-import type { CisternaDocumento, CisternaSchedaExtractResult } from "./types";
+import type {
+  CisternaDocumento,
+  CisternaDocumentoExtractData,
+  CisternaSchedaExtractResult,
+} from "./types";
 
 const CISTERNA_EXTRACT_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/ia_cisterna_extract";
 const CISTERNA_SCHEDE_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneSchedaCisterna";
+const CISTERNA_DOCUMENTI_EXTRACT_ENDPOINT =
+  "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/cisterna_documenti_extract";
 
 type IAResponse = {
   success?: boolean;
-  data?: CisternaDocumento;
+  data?: CisternaDocumento | CisternaDocumentoExtractData;
   error?: string;
 };
 
 type IASchedeResponse = {
   success?: boolean;
+  ok?: boolean;
+  needsReview?: boolean;
+  rows?: unknown[];
   data?: CisternaSchedaExtractResult | Record<string, unknown>;
   error?: string;
   details?: string;
@@ -47,7 +56,70 @@ export async function extractCisternaFromFileUrl(input: {
     throw new Error(parsed?.error || "Risposta IA cisterna non valida.");
   }
 
-  return parsed.data;
+  return parsed.data as CisternaDocumento;
+}
+
+export async function extractCisternaDocumento(input: {
+  fileUrl?: string;
+  fileBase64?: string;
+  mimeType: string;
+  nomeFile?: string;
+}): Promise<CisternaDocumentoExtractData> {
+  const response = await fetch(CISTERNA_DOCUMENTI_EXTRACT_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  const text = await response.text();
+  let parsed: IAResponse | null = null;
+
+  try {
+    parsed = JSON.parse(text) as IAResponse;
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(parsed?.error || `Errore IA cisterna: HTTP ${response.status}`);
+  }
+
+  if (!parsed?.success || !parsed.data) {
+    throw new Error(parsed?.error || "Risposta IA cisterna non valida.");
+  }
+
+  return parsed.data as CisternaDocumentoExtractData;
+}
+
+export async function extractCisternaLegacyFromFileUrl(input: {
+  fileUrl: string;
+  mimeType?: string;
+  nomeFile?: string;
+}): Promise<CisternaDocumento> {
+  const response = await fetch(CISTERNA_EXTRACT_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  const text = await response.text();
+  let parsed: IAResponse | null = null;
+
+  try {
+    parsed = JSON.parse(text) as IAResponse;
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(parsed?.error || `Errore IA cisterna: HTTP ${response.status}`);
+  }
+
+  if (!parsed?.success || !parsed.data) {
+    throw new Error(parsed?.error || "Risposta IA cisterna non valida.");
+  }
+
+  return parsed.data as CisternaDocumento;
 }
 
 export async function callEstrattiSchedaCisterna(input: {
