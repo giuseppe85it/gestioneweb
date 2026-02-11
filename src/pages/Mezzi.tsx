@@ -11,6 +11,7 @@ import { formatDateInput, formatDateUI } from "../utils/dateFormat";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const COLLEGHI_KEY = "@colleghi";
+const IA_LIBRETTO_URL = "https://estrazione-libretto-7bo6jdsreq-uc.a.run.app";
 
 
 
@@ -113,6 +114,57 @@ function formatDateForInput(date: Date | null): string {
 
 function normalizeTarga(value: string | null | undefined): string {
   return String(value || "").trim().toUpperCase();
+}
+
+function pickFirstNonEmpty(
+  source: Record<string, unknown>,
+  aliases: string[]
+): string | null {
+  const lowered: Record<string, unknown> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    lowered[key.toLowerCase()] = value;
+  });
+
+  for (const alias of aliases) {
+    const candidates = [source[alias], lowered[alias.toLowerCase()]];
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) continue;
+      const text = String(candidate).trim();
+      if (text) return text;
+    }
+  }
+  return null;
+}
+
+function normalizeToDateInput(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+
+  const parseIso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (parseIso) {
+    const date = buildDate(parseIso[1], parseIso[2], parseIso[3]);
+    return date ? formatDateForInput(date) : null;
+  }
+
+  const parseDmy = /^(\d{2})[./-](\d{2})[./-](\d{4})$/.exec(text);
+  if (parseDmy) {
+    const date = buildDate(parseDmy[3], parseDmy[2], parseDmy[1]);
+    return date ? formatDateForInput(date) : null;
+  }
+
+  const isoLoose = /(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (isoLoose) {
+    const date = buildDate(isoLoose[1], isoLoose[2], isoLoose[3]);
+    return date ? formatDateForInput(date) : null;
+  }
+
+  const dmyLoose = /(\d{2})[./-](\d{2})[./-](\d{4})/.exec(text);
+  if (dmyLoose) {
+    const date = buildDate(dmyLoose[3], dmyLoose[2], dmyLoose[1]);
+    return date ? formatDateForInput(date) : null;
+  }
+
+  return null;
 }
 
 
@@ -234,8 +286,13 @@ const Mezzi: React.FC = () => {
   const [dataImmatricolazione, setDataImmatricolazione] = useState("");
   const [dataScadenzaRevisione, setDataScadenzaRevisione] = useState("");
   const [dataUltimoCollaudo, setDataUltimoCollaudo] = useState("");
+  const [lastAutoProssimoCollaudo, setLastAutoProssimoCollaudo] = useState("");
   const [manutenzioneProgrammata, setManutenzioneProgrammata] = useState(false);
   const [note, setNote] = useState("");
+  const [iaLibrettoFile, setIaLibrettoFile] = useState<File | null>(null);
+  const [iaLoading, setIaLoading] = useState(false);
+  const [iaError, setIaError] = useState<string | null>(null);
+  const [iaOverwrite, setIaOverwrite] = useState(false);
 
   // FOTO
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
@@ -300,12 +357,17 @@ const Mezzi: React.FC = () => {
     setDataImmatricolazione("");
     setDataScadenzaRevisione("");
     setDataUltimoCollaudo("");
+    setLastAutoProssimoCollaudo("");
     setManutenzioneProgrammata(false);
     setManutenzioneDataInizio("");
     setManutenzioneDataFine("");
     setManutenzioneKmMax("");
     setManutenzioneContratto("");
     setNote("");
+    setIaLibrettoFile(null);
+    setIaLoading(false);
+    setIaError(null);
+    setIaOverwrite(false);
 
     setFotoPreview(null);
     setFotoDirty(false);
@@ -332,6 +394,7 @@ const Mezzi: React.FC = () => {
     setDataImmatricolazione(m.dataImmatricolazione || "");
     setDataScadenzaRevisione(m.dataScadenzaRevisione || "");
     setDataUltimoCollaudo(m.dataUltimoCollaudo || "");
+    setLastAutoProssimoCollaudo("");
     setManutenzioneProgrammata(!!m.manutenzioneProgrammata);
     setManutenzioneDataInizio(m.manutenzioneDataInizio || "");
     setManutenzioneDataFine(m.manutenzioneDataFine || "");
@@ -406,6 +469,176 @@ const handleChangeAutista = (value: string) => {
 
   const handleOpenFotoPicker = () => {
     fotoInputRef.current?.click();
+  };
+
+  const handleIaLibrettoFileChange: React.ChangeEventHandler<HTMLInputElement> = (
+    e
+  ) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setIaLibrettoFile(null);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setIaLibrettoFile(null);
+      setIaError("Carica solo immagini (JPG o PNG).");
+      return;
+    }
+
+    setIaLibrettoFile(file);
+    setIaError(null);
+  };
+
+  const fileToJpegBase64DataUrl = async (file: File): Promise<string> => {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+        } else {
+          reject(new Error("Immagine non letta correttamente."));
+        }
+      };
+      reader.onerror = () => reject(new Error("Errore lettura immagine."));
+      reader.readAsDataURL(file);
+    });
+
+    if (!base64) {
+      throw new Error("Immagine non letta correttamente.");
+    }
+
+    return base64.startsWith("data:image/png")
+      ? base64.replace("data:image/png", "data:image/jpeg")
+      : base64;
+  };
+
+  const shouldApplyIAValue = (currentValue: string, nextValue: string | null) => {
+    if (!nextValue) return false;
+    if (iaOverwrite) return true;
+    return !String(currentValue || "").trim();
+  };
+
+  const handleAnalyzeLibrettoWithIA = async () => {
+    if (!iaLibrettoFile) {
+      setIaError("Carica una foto del libretto prima di analizzare.");
+      return;
+    }
+
+    setIaLoading(true);
+    setIaError(null);
+
+    try {
+      const jpegBase64 = await fileToJpegBase64DataUrl(iaLibrettoFile);
+
+      const response = await fetch(IA_LIBRETTO_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base64Image: jpegBase64,
+          mimeType: "image/jpeg",
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Errore HTTP ${response.status}: ${text}`);
+      }
+
+      const json: any = await response.json();
+      if (!json?.success || typeof json?.data !== "object" || !json.data) {
+        throw new Error(json?.error || "Risposta IA non valida.");
+      }
+
+      const results = json.data as Record<string, unknown>;
+      const warnings: string[] = [];
+
+      const maybeSetTextField = (
+        aliases: string[],
+        currentValue: string,
+        setter: (value: string) => void
+      ) => {
+        const raw = pickFirstNonEmpty(results, aliases);
+        if (!raw) return;
+        if (shouldApplyIAValue(currentValue, raw)) {
+          setter(raw);
+        }
+      };
+
+      const maybeSetDateField = (
+        aliases: string[],
+        currentValue: string,
+        setter: (value: string) => void,
+        fieldLabel: string
+      ) => {
+        const raw = pickFirstNonEmpty(results, aliases);
+        if (!raw) return;
+        const normalized = normalizeToDateInput(raw);
+        if (!normalized) {
+          warnings.push(`${fieldLabel}: formato data non riconosciuto (${raw}).`);
+          return;
+        }
+        if (shouldApplyIAValue(currentValue, normalized)) {
+          setter(normalized);
+        }
+      };
+
+      const rawTarga = pickFirstNonEmpty(results, ["targa"]);
+      if (rawTarga) {
+        const normalizedTarga = normalizeTarga(rawTarga).replace(/\s+/g, "");
+        if (shouldApplyIAValue(targa, normalizedTarga)) {
+          setTarga(normalizedTarga);
+        }
+      }
+
+      maybeSetTextField(["marca"], marca, setMarca);
+      maybeSetTextField(["modello"], modello, setModello);
+      maybeSetTextField(["telaio"], telaio, setTelaio);
+      maybeSetTextField(["colore"], colore, setColore);
+      maybeSetTextField(["categoria"], categoria, setCategoria);
+      maybeSetTextField(["potenza"], potenza, setPotenza);
+      maybeSetTextField(
+        ["pesoTotale", "massaComplessiva"],
+        massaComplessiva,
+        setMassaComplessiva
+      );
+      maybeSetTextField(["cilindrica", "cilindrata"], cilindrata, setCilindrata);
+      maybeSetTextField(["proprietario"], proprietario, setProprietario);
+      maybeSetTextField(["assicurazione"], assicurazione, setAssicurazione);
+      maybeSetTextField(["note"], note, setNote);
+
+      maybeSetDateField(
+        ["immatricolazione", "dataImmatricolazione"],
+        dataImmatricolazione,
+        setDataImmatricolazione,
+        "Data immatricolazione"
+      );
+      maybeSetDateField(
+        ["revisione", "ultimoCollaudo", "dataUltimoCollaudo"],
+        dataUltimoCollaudo,
+        setDataUltimoCollaudo,
+        "Data ultimo collaudo"
+      );
+      maybeSetDateField(
+        ["dataScadenzaRevisione", "scadenzaRevisione"],
+        dataScadenzaRevisione,
+        setDataScadenzaRevisione,
+        "Prossima revisione"
+      );
+
+      if (warnings.length > 0) {
+        setIaError(`Analisi completata con avvisi: ${warnings.join(" ")}`);
+      } else {
+        setIaError(null);
+      }
+    } catch (err: any) {
+      setIaError(
+        err?.message ||
+          "Errore durante l'analisi. Controlla la connessione e riprova."
+      );
+    } finally {
+      setIaLoading(false);
+    }
   };
 
   // ---------------------------------------------
@@ -717,6 +950,52 @@ const handleChangeAutista = (value: string) => {
                 />
               </div>
 
+              <div className="section-block">
+                <div className="section-header">
+                  <h2>LIBRETTO (IA)</h2>
+                  <p>
+                    Carica una foto del libretto e compila il form automaticamente.
+                  </p>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group full-width">
+                    <label>Immagine libretto</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleIaLibrettoFileChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group full-width">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={iaOverwrite}
+                        onChange={(e) => setIaOverwrite(e.target.checked)}
+                      />
+                      Sovrascrivi campi già compilati
+                    </label>
+                  </div>
+                </div>
+
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleAnalyzeLibrettoWithIA}
+                    disabled={!iaLibrettoFile || iaLoading}
+                  >
+                    {iaLoading ? "Analisi in corso..." : "Analizza Libretto con IA"}
+                  </button>
+                </div>
+
+                {iaError && <div className="alert alert-error">{iaError}</div>}
+              </div>
+
               {/* FORM */}
               <div className="section-block form-section">
                 <h2>Dati generali</h2>
@@ -921,18 +1200,32 @@ const handleChangeAutista = (value: string) => {
                         const newVal = e.target.value;
                         setDataUltimoCollaudo(newVal);
                         if (newVal) {
-                          const calculated = calculaProssimaRevisione(
-                            parseDateFlexible(dataImmatricolazione),
-                            parseDateFlexible(newVal)
-                          );
-                          setDataScadenzaRevisione(formatDateForInput(calculated));
+                          const parsed = parseDateFlexible(newVal);
+                          if (!parsed) return;
+
+                          const nextDate = new Date(parsed);
+                          nextDate.setHours(12, 0, 0, 0);
+                          nextDate.setFullYear(nextDate.getFullYear() + 1);
+                          const nextAuto = formatDateForInput(nextDate);
+
+                          const currentScadenza = String(
+                            dataScadenzaRevisione || ""
+                          ).trim();
+                          const lastAuto = String(
+                            lastAutoProssimoCollaudo || ""
+                          ).trim();
+
+                          if (!currentScadenza || currentScadenza === lastAuto) {
+                            setDataScadenzaRevisione(nextAuto);
+                            setLastAutoProssimoCollaudo(nextAuto);
+                          }
                         }
                       }}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Prossima revisione</label>
+                    <label>Prossimo collaudo</label>
                     <input
                       type="date"
                       value={dataScadenzaRevisione}

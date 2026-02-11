@@ -31,6 +31,19 @@
   align-items: center;
 }
 
+.cisterna-head-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cisterna-head-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  cursor: pointer;
+}
+
 .cisterna-head h1 {
   margin: 0;
   font-size: 26px;
@@ -72,8 +85,95 @@
   font-weight: 600;
 }
 
-.cisterna-controls input[type="month"] {
-  min-width: 180px;
+.cisterna-month-picker {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.cisterna-month-picker-label {
+  font-size: 14px;
+  color: #27405d;
+}
+
+.cisterna-month-picker-trigger {
+  min-width: 210px;
+  border: 1px solid #c7d6e8;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(16, 52, 88, 0.08);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.cisterna-month-picker-icon {
+  font-size: 14px;
+}
+
+.cisterna-month-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 290px;
+  z-index: 20;
+  border: 1px solid #c7d6e8;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 28px rgba(21, 52, 87, 0.16);
+  padding: 10px;
+}
+
+.cisterna-month-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: #1f3f61;
+}
+
+.cisterna-month-nav {
+  border: 1px solid #c7d6e8;
+  background: #f5f9ff;
+  color: #1f3f61;
+  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cisterna-month-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cisterna-month-cell {
+  border: 1px solid #d4deea;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 7px 8px;
+  text-transform: capitalize;
+  font-size: 12px;
+  color: #24405f;
+  cursor: pointer;
+}
+
+.cisterna-month-cell:hover {
+  background: #f1f7ff;
+  border-color: #b6cde8;
+}
+
+.cisterna-month-cell.is-selected {
+  background: #0d5da6;
+  color: #ffffff;
+  border-color: #0d5da6;
 }
 
 .cisterna-cambio-box {
@@ -435,6 +535,26 @@
   letter-spacing: 0.05em;
 }
 
+.cisterna-th-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cisterna-th-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #b7c9dd;
+  background: #f4f8fd;
+  color: #34577a;
+  font-size: 11px;
+  cursor: help;
+}
+
 .cisterna-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -590,6 +710,15 @@
 
   .cisterna-controls {
     flex-direction: column;
+  }
+
+  .cisterna-month-picker-trigger {
+    width: 100%;
+  }
+
+  .cisterna-month-popover {
+    width: 100%;
+    max-width: 330px;
   }
 
   .cisterna-cambio-box {

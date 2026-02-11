@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   collection,
@@ -333,6 +333,11 @@ export default function CisternaCaravatePage() {
 
   const [activeTab, setActiveTab] = useState<TabKey>("archivio");
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthKey());
+  const [monthPickerOpen, setMonthPickerOpen] = useState<boolean>(false);
+  const [monthPickerYear, setMonthPickerYear] = useState<number>(
+    Number(currentMonthKey().slice(0, 4))
+  );
+  const monthPickerRef = useRef<HTMLDivElement | null>(null);
 
   const [docs, setDocs] = useState<CisternaDocumento[]>([]);
   const [docsLoading, setDocsLoading] = useState<boolean>(true);
@@ -358,6 +363,32 @@ export default function CisternaCaravatePage() {
   const [dupErrorByGroup, setDupErrorByGroup] = useState<Record<string, string>>(
     {}
   );
+  const monthNames = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) =>
+        new Date(2000, index, 1).toLocaleDateString("it-CH", { month: "long" })
+      ),
+    []
+  );
+
+  useEffect(() => {
+    const year = Number(String(selectedMonth || "").slice(0, 4));
+    if (Number.isFinite(year) && year > 1900 && year < 3000) {
+      setMonthPickerYear(year);
+    }
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    if (!monthPickerOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (monthPickerRef.current?.contains(target)) return;
+      setMonthPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [monthPickerOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1259,11 +1290,19 @@ export default function CisternaCaravatePage() {
     <div className="cisterna-page">
       <div className="cisterna-shell">
         <header className="cisterna-head">
-          <div>
+          <div className="cisterna-head-title">
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="cisterna-head-logo"
+              onClick={() => navigate("/")}
+            />
+            <div>
             <h1>Cisterna Caravate</h1>
             <p>
               Archivio separato documenti e report quantitativo mensile.
             </p>
+            </div>
           </div>
           <div className="cisterna-head-actions">
             <button type="button" onClick={() => navigate("/cisterna/ia")}>
@@ -1284,14 +1323,64 @@ export default function CisternaCaravatePage() {
         </header>
 
         <section className="cisterna-controls">
-          <label>
-            Mese
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-            />
-          </label>
+          <div className="cisterna-month-picker" ref={monthPickerRef}>
+            <span className="cisterna-month-picker-label">Mese</span>
+            <button
+              type="button"
+              className="cisterna-month-picker-trigger"
+              onClick={() => setMonthPickerOpen((prev) => !prev)}
+              aria-haspopup="dialog"
+              aria-expanded={monthPickerOpen}
+            >
+              <span>{monthLabel(selectedMonth)}</span>
+              <span aria-hidden className="cisterna-month-picker-icon">
+                📅
+              </span>
+            </button>
+
+            {monthPickerOpen ? (
+              <div className="cisterna-month-popover" role="dialog" aria-label="Selettore mese">
+                <div className="cisterna-month-popover-head">
+                  <button
+                    type="button"
+                    className="cisterna-month-nav"
+                    onClick={() => setMonthPickerYear((prev) => prev - 1)}
+                    aria-label="Anno precedente"
+                  >
+                    ‹
+                  </button>
+                  <strong>{monthPickerYear}</strong>
+                  <button
+                    type="button"
+                    className="cisterna-month-nav"
+                    onClick={() => setMonthPickerYear((prev) => prev + 1)}
+                    aria-label="Anno successivo"
+                  >
+                    ›
+                  </button>
+                </div>
+                <div className="cisterna-month-grid">
+                  {monthNames.map((name, index) => {
+                    const monthKey = `${monthPickerYear}-${String(index + 1).padStart(2, "0")}`;
+                    const isSelected = monthKey === selectedMonth;
+                    return (
+                      <button
+                        key={monthKey}
+                        type="button"
+                        className={`cisterna-month-cell ${isSelected ? "is-selected" : ""}`}
+                        onClick={() => {
+                          setSelectedMonth(monthKey);
+                          setMonthPickerOpen(false);
+                        }}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
 
           <div className="cisterna-cambio-box">
             <div className="cisterna-cambio-title">{"Cambio EUR->CHF (manuale)"}</div>
@@ -1911,7 +2000,19 @@ export default function CisternaCaravatePage() {
                       <th>Litri</th>
                       <th>Nome/Autista</th>
                       <th>Azienda</th>
-                      {hasManualTruth ? <th>Autisti (supporto)</th> : null}
+                      {hasManualTruth ? (
+                        <th>
+                          <span className="cisterna-th-with-help">
+                            Scheda carburante (confronto)
+                            <span
+                              className="cisterna-th-help"
+                              title="Confronto con scheda carburante per stessa data e targa. MATCH = nessuna differenza. DIFF = scostamento litri."
+                            >
+                              ⓘ
+                            </span>
+                          </span>
+                        </th>
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody>
