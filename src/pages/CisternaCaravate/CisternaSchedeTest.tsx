@@ -110,12 +110,6 @@ async function getCroppedBlob(imageSrc: string, pixelCrop: CropArea): Promise<Bl
   });
 }
 
-function toNumber(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const n = Number(String(value).replace(",", "."));
-  return Number.isFinite(n) ? n : null;
-}
-
 function toStringValue(value: unknown): string {
   if (value == null) return "";
   return String(value).trim();
@@ -294,39 +288,8 @@ function clampValue(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-
-function lerpPoint(a: CalibPoint, b: CalibPoint, t: number): CalibPoint {
-  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
-}
-
-function distance(a: CalibPoint, b: CalibPoint) {
-  return Math.hypot(b.x - a.x, b.y - a.y);
-}
-
-function denormalizePoint(point: CalibPoint, width: number, height: number): CalibPoint {
-  return { x: point.x * width, y: point.y * height };
-}
-
 function isColumnComplete(points?: CalibPoint[]): points is CalibColumn {
   return Array.isArray(points) && points.length === 4;
-}
-
-function getRowQuad(
-  columnPoints: CalibColumn,
-  rowIndex: number,
-  rowCount: number
-): CalibColumn {
-  const [tl, tr, br, bl] = columnPoints;
-  const t0 = rowIndex / rowCount;
-  const t1 = (rowIndex + 1) / rowCount;
-  const leftTop = lerpPoint(tl, bl, t0);
-  const rightTop = lerpPoint(tr, br, t0);
-  const leftBottom = lerpPoint(tl, bl, t1);
-  const rightBottom = lerpPoint(tr, br, t1);
-  return [leftTop, rightTop, rightBottom, leftBottom];
 }
 
 function getColumnBounds(points: CalibPoint[]) {
@@ -334,58 +297,6 @@ function getColumnBounds(points: CalibPoint[]) {
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   return { x1: minX, x2: maxX };
-}
-
-function warpQuadToRect(
-  img: HTMLImageElement,
-  quad: CalibColumn,
-  outWidth: number,
-  outHeight: number,
-  sliceCount = 20
-): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(outWidth));
-  canvas.height = Math.max(1, Math.round(outHeight));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return "";
-
-  const slices = Math.max(6, Math.min(30, Math.round(sliceCount)));
-  const maxW = img.naturalWidth || img.width;
-  const maxH = img.naturalHeight || img.height;
-  for (let i = 0; i < slices; i += 1) {
-    const t0 = i / slices;
-    const t1 = (i + 1) / slices;
-    const topLeft = lerpPoint(quad[0], quad[3], t0);
-    const topRight = lerpPoint(quad[1], quad[2], t0);
-    const bottomLeft = lerpPoint(quad[0], quad[3], t1);
-    const bottomRight = lerpPoint(quad[1], quad[2], t1);
-
-    const srcXRaw = Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x);
-    const srcYRaw = Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y);
-    const srcMaxX = Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x);
-    const srcMaxY = Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y);
-    const srcX = clampValue(srcXRaw, 0, Math.max(0, maxW - 1));
-    const srcY = clampValue(srcYRaw, 0, Math.max(0, maxH - 1));
-    const srcW = clampValue(srcMaxX - srcX, 1, Math.max(1, maxW - srcX));
-    const srcH = clampValue(srcMaxY - srcY, 1, Math.max(1, maxH - srcY));
-
-    const destY = Math.round((i / slices) * canvas.height);
-    const destH = Math.max(1, Math.round(canvas.height / slices));
-
-    ctx.drawImage(
-      img,
-      srcX,
-      srcY,
-      srcW,
-      srcH,
-      0,
-      destY,
-      canvas.width,
-      destH
-    );
-  }
-
-  return canvas.toDataURL("image/jpeg", 0.82);
 }
 
 async function buildStripImage(images: string[]): Promise<string> {
