@@ -150,6 +150,7 @@ export default function SetupMezzo() {
       return (
         cat.includes("semirimorchio") ||
         cat.includes("rimorchio") ||
+        cat.includes("porta silo container") ||
         cat.includes("pianale") ||
         cat.includes("biga") ||
         cat.includes("centina") ||
