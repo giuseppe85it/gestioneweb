@@ -609,6 +609,46 @@ export default function AutistiAdmin() {
     return list;
   }
 
+  function buildPdfSafeSegnalazioneRecord(
+    record: any,
+    thumbnailUrls: string[] | string | null | undefined
+  ) {
+    const pdfSafe: any = { ...(record || {}) };
+    delete pdfSafe.foto;
+    delete pdfSafe.fotoUrl;
+    delete pdfSafe.fotoUrls;
+    delete pdfSafe.fotoDataUrl;
+    delete pdfSafe.fotoStoragePath;
+    delete pdfSafe.fotoStoragePaths;
+    const thumbList = Array.isArray(thumbnailUrls)
+      ? thumbnailUrls
+      : thumbnailUrls
+      ? [thumbnailUrls]
+      : [];
+    const normalizedThumbs = Array.from(
+      new Set(
+        thumbList
+          .map((u) => String(u ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+    const fotoUrls = normalizedThumbs.filter((u) => u.startsWith("http"));
+    if (fotoUrls.length) {
+      pdfSafe.fotoUrls = fotoUrls;
+      return pdfSafe;
+    }
+    const originalDataUrl =
+      typeof record?.fotoDataUrl === "string" && record.fotoDataUrl.startsWith("data:image/")
+        ? String(record.fotoDataUrl)
+        : null;
+    const thumbDataUrl =
+      normalizedThumbs.find((u) => u.startsWith("data:image/")) || null;
+    if (originalDataUrl || thumbDataUrl) {
+      pdfSafe.fotoDataUrl = originalDataUrl || thumbDataUrl;
+    }
+    return pdfSafe;
+  }
+
   function getFotoStoragePaths(record: any) {
     const paths: string[] = [];
     if (record?.fotoStoragePath) paths.push(String(record.fotoStoragePath));
@@ -2193,7 +2233,8 @@ export default function AutistiAdmin() {
                         type="button"
                         className="edit"
                         onClick={() => {
-                          void generateSegnalazionePDF(r);
+                          const pdfSafe = buildPdfSafeSegnalazioneRecord(r, fotoList);
+                          void generateSegnalazionePDF(pdfSafe);
                         }}
                       >
                         PDF

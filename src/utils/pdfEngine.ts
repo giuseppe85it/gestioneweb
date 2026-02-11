@@ -819,6 +819,33 @@ async function decodeImageBlob(blob: Blob): Promise<NormalizedImage | null> {
 async function normalizeImageFromUrl(url: string): Promise<NormalizedImage | null> {
   const blob = await fetchImageBlob(url);
   if (!blob) return null;
+
+  if (typeof createImageBitmap === "function") {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      try {
+        const bitmap = await createImageBitmap(blob);
+        const width = bitmap.width || 0;
+        const height = bitmap.height || 0;
+        if (width && height) {
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(bitmap, 0, 0);
+          if (typeof bitmap.close === "function") bitmap.close();
+          return {
+            dataUrl: canvas.toDataURL("image/jpeg", 0.92),
+            width,
+            height,
+          };
+        }
+        if (typeof bitmap.close === "function") bitmap.close();
+      } catch {
+        // fallback below
+      }
+    }
+  }
+
   return await decodeImageBlob(blob);
 }
 

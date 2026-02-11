@@ -67,6 +67,47 @@ function getFotoList(r: SegnalazioneRecord) {
   return list;
 }
 
+function buildPdfSafeSegnalazioneRecord(
+  record: SegnalazioneRecord,
+  thumbnailUrls: string[] | string | null | undefined
+) {
+  const pdfSafe: any = { ...((record as any) || {}) };
+  delete pdfSafe.foto;
+  delete pdfSafe.fotoUrl;
+  delete pdfSafe.fotoUrls;
+  delete pdfSafe.fotoDataUrl;
+  delete pdfSafe.fotoStoragePath;
+  delete pdfSafe.fotoStoragePaths;
+  const thumbList = Array.isArray(thumbnailUrls)
+    ? thumbnailUrls
+    : thumbnailUrls
+    ? [thumbnailUrls]
+    : [];
+  const normalizedThumbs = Array.from(
+    new Set(
+      thumbList
+        .map((u) => String(u ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+  const fotoUrls = normalizedThumbs.filter((u) => u.startsWith("http"));
+  if (fotoUrls.length) {
+    pdfSafe.fotoUrls = fotoUrls;
+    return pdfSafe;
+  }
+  const originalDataUrl =
+    typeof (record as any)?.fotoDataUrl === "string" &&
+    (record as any).fotoDataUrl.startsWith("data:image/")
+      ? String((record as any).fotoDataUrl)
+      : null;
+  const thumbDataUrl =
+    normalizedThumbs.find((u) => u.startsWith("data:image/")) || null;
+  if (originalDataUrl || thumbDataUrl) {
+    pdfSafe.fotoDataUrl = originalDataUrl || thumbDataUrl;
+  }
+  return pdfSafe;
+}
+
 export default function AutistiSegnalazioniAll() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<SegnalazioneRecord[]>([]);
@@ -223,7 +264,8 @@ export default function AutistiSegnalazioniAll() {
                         style={{ padding: "4px 8px", fontSize: "12px" }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void generateSegnalazionePDF(r);
+                          const pdfSafe = buildPdfSafeSegnalazioneRecord(r, r.fotoList);
+                          void generateSegnalazionePDF(pdfSafe);
                         }}
                       >
                         PDF
