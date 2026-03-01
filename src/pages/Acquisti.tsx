@@ -100,6 +100,7 @@ type ImportBozzaRiga = {
 
 type PreventivoMatch = {
   prezzoUnitario: number;
+  valuta?: Valuta | null;
   unita: string;
   preventivoId: string;
   numeroPreventivo: string;
@@ -252,6 +253,61 @@ function normalizeDescrizione(v: string) {
 
 function normalizeUnita(v: string) {
   return String(v || "").toUpperCase().trim();
+}
+
+function parseConversionFactor(note: string | null | undefined): number | null {
+  const raw = String(note || "");
+  if (!raw.trim()) return null;
+  const match = raw.match(/(?:^|[\s|;,])conv\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+  if (!match) return null;
+  const parsed = Number(String(match[1]).replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function upsertConversionFactorInNote(note: string | null | undefined, factorRaw: string): string {
+  const cleanNote = String(note || "").trim();
+  const cleanFactor = String(factorRaw || "").trim();
+  const withoutToken = cleanNote
+    .replace(/(?:^|[\s|;,])conv\s*:\s*[0-9]+(?:[.,][0-9]+)?/gi, " ")
+    .replace(/\s+\|\s+\|/g, " | ")
+    .replace(/\s+/g, " ")
+    .replace(/(^[|;,]\s*|\s*[|;,]$)/g, "")
+    .trim();
+
+  const factor = Number(cleanFactor.replace(",", "."));
+  if (!Number.isFinite(factor) || factor <= 0) {
+    return withoutToken;
+  }
+  const token = `conv:${factor.toString().replace(".", ",")}`;
+  if (!withoutToken) return token;
+  return `${withoutToken} | ${token}`.trim();
+}
+
+function computeLineTotal(params: {
+  qty: number;
+  unitPrice: number;
+  selectedUom: string | null | undefined;
+  priceUom: string | null | undefined;
+  note?: string | null;
+}) {
+  const qty = Number(params.qty);
+  const unitPrice = Number(params.unitPrice);
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+    return { total: null as number | null, status: "ok" as const, factor: null as number | null };
+  }
+
+  const selected = normalizeUnita(String(params.selectedUom || ""));
+  const source = normalizeUnita(String(params.priceUom || selected));
+  if (!selected || !source || selected === source) {
+    return { total: qty * unitPrice, status: "ok" as const, factor: null as number | null };
+  }
+
+  const factor = parseConversionFactor(params.note);
+  if (!factor) {
+    return { total: null as number | null, status: "needs_factor" as const, factor: null as number | null };
+  }
+
+  return { total: qty * factor * unitPrice, status: "ok" as const, factor };
 }
 
 function normalizeUom(uom: string): "PZ" | "NR" | "MT" | "LT" | "KG" | "M" {
@@ -428,6 +484,7 @@ function OrdineMaterialiView(props: {
   const [descrizione, setDescrizione] = useState("");
   const [quantita, setQuantita] = useState("");
   const [unita, setUnita] = useState<UnitaMisura>("pz");
+  const [conversionFactorInput, setConversionFactorInput] = useState("");
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [fotoFile, setFotoFile] = useState<File | null>(null);
   const descrizioneInputRef = useRef<HTMLInputElement | null>(null);
@@ -501,6 +558,7 @@ function OrdineMaterialiView(props: {
         quantita?: string;
         unita?: UnitaMisura;
         newMaterialeNota?: string;
+        conversionFactorInput?: string;
       };
       if (draft.fornitoreId) setFornitoreId(draft.fornitoreId);
       if (typeof draft.fornitoreNome === "string") setFornitoreNome(draft.fornitoreNome);
@@ -515,6 +573,7 @@ function OrdineMaterialiView(props: {
       if (typeof draft.quantita === "string") setQuantita(draft.quantita);
       if (typeof draft.unita === "string") setUnita(draft.unita as UnitaMisura);
       if (typeof draft.newMaterialeNota === "string") setNewMaterialeNota(draft.newMaterialeNota);
+      if (typeof draft.conversionFactorInput === "string") setConversionFactorInput(draft.conversionFactorInput);
     } catch (err) {
       console.error("Errore ripristino bozza ordine:", err);
     }
@@ -537,6 +596,7 @@ function OrdineMaterialiView(props: {
           quantita,
           unita,
           newMaterialeNota,
+          conversionFactorInput,
           timestamp: Date.now(),
         };
         sessionStorage.setItem(ORDER_DRAFT_STORAGE_KEY, JSON.stringify(payload));
@@ -560,6 +620,7 @@ function OrdineMaterialiView(props: {
     quantita,
     unita,
     newMaterialeNota,
+    conversionFactorInput,
   ]);
 
   const handleSelectFornitore = (id: string) => {
@@ -673,6 +734,7 @@ function OrdineMaterialiView(props: {
     setDescrizione(voce.articoloCanonico);
     const autoUnita = normalizeUom(String(voce.unita || ""));
     setUnita(autoUnita.toLowerCase() as UnitaMisura);
+    setConversionFactorInput("");
     setSelectedListinoVoce(voce);
     setShowSuggest(false);
   };
@@ -686,6 +748,7 @@ function OrdineMaterialiView(props: {
     setSelectedListinoVoce(null);
     setShowSuggest(false);
     setNewMaterialeNota("");
+    setConversionFactorInput("");
   };
 
   const clearDraftStorage = () => {
@@ -737,9 +800,10 @@ function OrdineMaterialiView(props: {
       fotoUrl,
       fotoStoragePath,
     };
+    const noteConFattore = upsertConversionFactorInNote(newMaterialeNota, conversionFactorInput);
     setMateriali((p) => [...p, nuovo]);
-    if (newMaterialeNota.trim()) {
-      setNoteByMaterialeId((prev) => ({ ...prev, [id]: newMaterialeNota.trim() }));
+    if (noteConFattore.trim()) {
+      setNoteByMaterialeId((prev) => ({ ...prev, [id]: noteConFattore.trim() }));
     }
     setFornitoreByMaterialeId((prev) => ({
       ...prev,
@@ -753,6 +817,7 @@ function OrdineMaterialiView(props: {
       const listinoImageUrls = asStringArray((selectedListinoVoce.fonteAttuale as any)?.imageUrls);
       const info: PreventivoMatch = {
         prezzoUnitario: selectedListinoVoce.prezzoAttuale,
+        valuta: selectedListinoVoce.valuta,
         unita: selectedListinoVoce.unita,
         preventivoId: selectedListinoVoce.fonteAttuale.preventivoId,
         numeroPreventivo: selectedListinoVoce.fonteAttuale.numeroPreventivo,
@@ -858,6 +923,11 @@ function OrdineMaterialiView(props: {
             );
             const candidate: PreventivoMatch = {
               prezzoUnitario: Number(r.prezzoUnitario || 0),
+              valuta: inferValuta({
+                descrizione: r.descrizione,
+                note: r.note,
+                numeroPreventivo: p.numeroPreventivo,
+              }),
               unita: r.unita,
               preventivoId: p.id,
               numeroPreventivo: p.numeroPreventivo,
@@ -894,17 +964,58 @@ function OrdineMaterialiView(props: {
     return map;
   }, [materiali, listinoSourceByMaterialeId, matchByMaterialeId]);
 
-  const totaleStimato = useMemo(() => {
-    return materiali.reduce((acc, m) => {
-      const match = prezzoSourceByMaterialeId.get(m.id);
-      if (!match) return acc;
-      return acc + m.quantita * match.prezzoUnitario;
-    }, 0);
-  }, [materiali, prezzoSourceByMaterialeId]);
+  const calcoloTotaliOrdine = useMemo(() => {
+    const totalsByValuta: Record<Valuta, number> = { CHF: 0, EUR: 0 };
+    let totaleSenzaValuta = 0;
+    let prezziMancanti = 0;
+    let udmDaVerificare = 0;
 
-  const prezziMancanti = useMemo(() => {
-    return materiali.reduce((acc, m) => (prezzoSourceByMaterialeId.get(m.id) ? acc : acc + 1), 0);
-  }, [materiali, prezzoSourceByMaterialeId]);
+    materiali.forEach((m) => {
+      const match = prezzoSourceByMaterialeId.get(m.id);
+      if (!match || !Number.isFinite(match.prezzoUnitario) || match.prezzoUnitario <= 0) {
+        prezziMancanti += 1;
+        return;
+      }
+      const note = noteByMaterialeId[m.id] || String((m as any)?.note || "");
+      const line = computeLineTotal({
+        qty: m.quantita,
+        unitPrice: match.prezzoUnitario,
+        selectedUom: m.unita,
+        priceUom: match.unita,
+        note,
+      });
+      if (line.status === "needs_factor") {
+        udmDaVerificare += 1;
+        return;
+      }
+      if (line.total === null) return;
+      const valuta = normalizeExtractCurrency((match as any)?.valuta ?? null);
+      if (!valuta) {
+        totaleSenzaValuta += line.total;
+        return;
+      }
+      totalsByValuta[valuta] += line.total;
+    });
+
+    const usedValute = (["CHF", "EUR"] as Valuta[]).filter((v) => totalsByValuta[v] > 0);
+    return {
+      totale: totalsByValuta.CHF + totalsByValuta.EUR + totaleSenzaValuta,
+      totalsByValuta,
+      totaleSenzaValuta,
+      usedValute,
+      mixedValute: usedValute.length > 1,
+      prezziMancanti,
+      udmDaVerificare,
+    };
+  }, [materiali, prezzoSourceByMaterialeId, noteByMaterialeId]);
+
+  const totaleStimato = calcoloTotaliOrdine.totale;
+  const totalsByValuta = calcoloTotaliOrdine.totalsByValuta;
+  const usedValute = calcoloTotaliOrdine.usedValute;
+  const mixedValute = calcoloTotaliOrdine.mixedValute;
+  const totaleSenzaValuta = calcoloTotaliOrdine.totaleSenzaValuta;
+  const prezziMancanti = calcoloTotaliOrdine.prezziMancanti;
+  const udmDaVerificare = calcoloTotaliOrdine.udmDaVerificare;
 
   const readNumberFromAny = (value: unknown): number | null => {
     if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -977,6 +1088,13 @@ function OrdineMaterialiView(props: {
 
     onOpenManualListino(row);
   };
+
+  const selectedUomNorm = normalizeUom(String(unita || ""));
+  const selectedPriceUom = selectedListinoVoce ? normalizeUom(String(selectedListinoVoce.unita || "")) : null;
+  const needsConversionFactorInput = !!selectedListinoVoce && !!selectedPriceUom && selectedUomNorm !== selectedPriceUom;
+  const parsedConversionFactorInput = Number(String(conversionFactorInput || "").replace(",", "."));
+  const hasValidConversionFactorInput =
+    Number.isFinite(parsedConversionFactorInput) && parsedConversionFactorInput > 0;
 
   const canSaveOrdine = !loading && materiali.length > 0 && (!!fornitoreNome || !!nomeFornitorePersonalizzato.trim());
 
@@ -1111,7 +1229,22 @@ function OrdineMaterialiView(props: {
                     </div>
                   </td>
                   <td className="mdo-insert-cell mdo-insert-cell--qty">
-                    <input className="mdo-table-input mdo-table-input--qty" type="number" placeholder="0" value={quantita} onChange={(e) => setQuantita(e.target.value)} />
+                    <div className="mdo-qty-stack">
+                      <input className="mdo-table-input mdo-table-input--qty" type="number" placeholder="0" value={quantita} onChange={(e) => setQuantita(e.target.value)} />
+                      {needsConversionFactorInput && (
+                        <input
+                          className="mdo-table-input mdo-table-input--factor"
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          min="0"
+                          placeholder="Fattore"
+                          value={conversionFactorInput}
+                          onChange={(e) => setConversionFactorInput(e.target.value)}
+                          title={`UDM prezzo ${selectedPriceUom} diversa da UDM ordine ${selectedUomNorm}. Inserisci fattore conv:n`}
+                        />
+                      )}
+                    </div>
                   </td>
                   <td className="mdo-insert-cell mdo-insert-cell--unita">
                     <select
@@ -1120,9 +1253,6 @@ function OrdineMaterialiView(props: {
                       onChange={(e) => {
                         const next = normalizeUom(e.target.value);
                         setUnita(next.toLowerCase() as UnitaMisura);
-                        if (selectedListinoVoce && normalizeUom(next) !== normalizeUom(String(selectedListinoVoce.unita || ""))) {
-                          setSelectedListinoVoce(null);
-                        }
                       }}
                     >
                       <option value="PZ">PZ</option>
@@ -1142,6 +1272,9 @@ function OrdineMaterialiView(props: {
                         ? `${selectedListinoVoce.prezzoAttuale.toFixed(2)} ${selectedListinoVoce.valuta}/${normalizeUom(String(selectedListinoVoce.unita || ""))}`
                         : "-"}
                     </span>
+                    {needsConversionFactorInput && !hasValidConversionFactorInput && (
+                      <div className="mdo-row-warning">UDM diverse: totale bloccato finche non inserisci fattore.</div>
+                    )}
                   </td>
                   <td className="mdo-insert-cell mdo-insert-cell--preventivo">
                     <span className="mdo-table-muted">
@@ -1212,7 +1345,7 @@ function OrdineMaterialiView(props: {
                       <td>{fornitoreDisplay}</td>
                       <td>
                         {prezzoInfo
-                          ? `${prezzoInfo.prezzoUnitario.toFixed(2)} CHF/${String(prezzoInfo.unita || m.unita).toLowerCase()}`
+                          ? `${prezzoInfo.prezzoUnitario.toFixed(2)} ${normalizeExtractCurrency(prezzoInfo.valuta ?? null) || "-"}/${String(prezzoInfo.unita || m.unita).toLowerCase()}`
                           : "-"}
                       </td>
                       <td>
@@ -1275,8 +1408,20 @@ function OrdineMaterialiView(props: {
           <div className="mdo-card-footer-bar">
             <div className="mdo-sticky-info"><span>Fornitore</span><strong>{isNuovoFornitore ? nomeFornitorePersonalizzato.trim() || "Nuovo fornitore" : fornitoreNome || "Non selezionato"}</strong></div>
             <div className="mdo-sticky-info"><span>Materiali temporanei</span><strong>{materiali.length}</strong></div>
-            <div className="mdo-sticky-info"><span>Totale stimato</span><strong>CHF {totaleStimato.toFixed(2)}</strong></div>
+            <div className="mdo-sticky-info">
+              <span>{prezziMancanti > 0 || udmDaVerificare > 0 ? "Totale parziale" : "Totale stimato"}</span>
+              <strong>
+                {mixedValute
+                  ? `CHF ${totalsByValuta.CHF.toFixed(2)} / EUR ${totalsByValuta.EUR.toFixed(2)}`
+                  : usedValute.length === 1
+                    ? `${usedValute[0]} ${totalsByValuta[usedValute[0]].toFixed(2)}`
+                    : totaleSenzaValuta > 0
+                      ? `${totaleStimato.toFixed(2)} -`
+                      : "-"}
+              </strong>
+            </div>
             <div className="mdo-sticky-info"><span>Prezzi mancanti</span><strong>{prezziMancanti}</strong></div>
+            <div className="mdo-sticky-info"><span>UDM da verificare</span><strong>{udmDaVerificare}</strong></div>
             <label className="acq-order-note">
               <span>Note ordine (solo bozza/PDF)</span>
               <textarea
@@ -1289,6 +1434,12 @@ function OrdineMaterialiView(props: {
               <button type="button" className="mdo-header-button mdo-header-button--secondary" onClick={clearAllDraftState}>Pulisci bozza</button>
               <button type="button" className="mdo-header-button" onClick={salvaOrdine} disabled={!canSaveOrdine}>{loading ? "SALVO..." : "CONFERMA ORDINE"}</button>
             </div>
+            {(prezziMancanti > 0 || udmDaVerificare > 0) && (
+              <div className="mdo-footer-warning">
+                Totale parziale: {prezziMancanti > 0 ? `${prezziMancanti} righe senza prezzo.` : ""}{" "}
+                {udmDaVerificare > 0 ? `${udmDaVerificare} righe con UDM diverse da verificare.` : ""}
+              </div>
+            )}
             {draftSavedAt && <div className="acq-draft-indicator">Bozza salvata</div>}
           </div>
         </section>
@@ -3907,6 +4058,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
       {
         prezzoUnitario: number;
         valuta: Valuta;
+        unitaPrezzo: string;
         fonte: string;
         numeroPreventivo?: string;
         dataPreventivo?: string;
@@ -3933,6 +4085,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
         map.set(m.id, {
           prezzoUnitario: manualPrice,
           valuta: manualValuta,
+          unitaPrezzo: String(m.unita || ""),
           fonte: "MANUALE",
           numeroPreventivo: "MANUALE",
           dataPreventivo: ordine.dataOrdine || oggiDettaglio(),
@@ -3959,6 +4112,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
         map.set(m.id, {
           prezzoUnitario: Number(bestListino.prezzoAttuale || 0),
           valuta: bestListino.valuta,
+          unitaPrezzo: String(bestListino.unita || m.unita || ""),
           fonte: `LISTINO ${bestListino.fonteAttuale.numeroPreventivo}`,
           numeroPreventivo: bestListino.fonteAttuale.numeroPreventivo,
           dataPreventivo: bestListino.fonteAttuale.dataPreventivo,
@@ -3966,7 +4120,14 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
         return;
       }
 
-      let bestPreventivo: { prezzoUnitario: number; valuta: Valuta; rank: number; numero: string; data: string } | null = null;
+      let bestPreventivo: {
+        prezzoUnitario: number;
+        valuta: Valuta;
+        unitaPrezzo: string;
+        rank: number;
+        numero: string;
+        data: string;
+      } | null = null;
       for (const p of preventiviRef) {
         if (fornitoreIdOrdine && String(p.fornitoreId || "").trim() !== fornitoreIdOrdine) continue;
         for (const r of p.righe || []) {
@@ -3983,6 +4144,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
               const candidate = {
                 prezzoUnitario: Number(r.prezzoUnitario || 0),
                 valuta,
+                unitaPrezzo: String(r.unita || m.unita || ""),
                 rank,
                 numero: p.numeroPreventivo,
                 data: p.dataPreventivo,
@@ -3997,6 +4159,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
         map.set(m.id, {
           prezzoUnitario: bestPreventivo.prezzoUnitario,
           valuta: bestPreventivo.valuta,
+          unitaPrezzo: bestPreventivo.unitaPrezzo,
           fonte: `PREV ${bestPreventivo.numero}`,
           numeroPreventivo: bestPreventivo.numero,
           dataPreventivo: bestPreventivo.data,
@@ -4013,17 +4176,32 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
   const riepilogoTotali = useMemo(() => {
     const totals: Record<Valuta, number> = { CHF: 0, EUR: 0 };
     let missing = 0;
+    let udmDaVerificare = 0;
     materials.forEach((m) => {
       const info = priceInfoByMaterialeId.get(m.id);
       if (!info || !Number.isFinite(info.prezzoUnitario) || info.prezzoUnitario <= 0) {
         missing += 1;
         return;
       }
-      totals[info.valuta] += m.quantita * info.prezzoUnitario;
+      const note = noteByMaterialeId[m.id] || String((m as any)?.note || "");
+      const line = computeLineTotal({
+        qty: m.quantita,
+        unitPrice: info.prezzoUnitario,
+        selectedUom: m.unita,
+        priceUom: info.unitaPrezzo || m.unita,
+        note,
+      });
+      if (line.status === "needs_factor") {
+        udmDaVerificare += 1;
+        return;
+      }
+      if (line.total !== null) {
+        totals[info.valuta] += line.total;
+      }
     });
     const usedValute = (["CHF", "EUR"] as Valuta[]).filter((v) => totals[v] > 0);
-    return { totals, missing, usedValute, mixed: usedValute.length > 1 };
-  }, [materials, priceInfoByMaterialeId]);
+    return { totals, missing, udmDaVerificare, usedValute, mixed: usedValute.length > 1 };
+  }, [materials, noteByMaterialeId, priceInfoByMaterialeId]);
 
   const handlePdfFornitoriDettaglio = async () => {
     if (!ordine) return;
@@ -4048,15 +4226,33 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     if (!ordine) return;
     const rows: Array<Record<string, string>> = [];
     let missing = 0;
+    let udmDaVerificare = 0;
     const totals: Record<Valuta, number> = { CHF: 0, EUR: 0 };
 
     ordine.materiali.forEach((m) => {
       const info = priceInfoByMaterialeId.get(m.id);
-      const hasPrice = !!info && Number.isFinite(info.prezzoUnitario) && info.prezzoUnitario > 0;
-      if (!hasPrice) missing += 1;
-      const valuta = info?.valuta ?? "CHF";
-      const totalRow = hasPrice ? m.quantita * info!.prezzoUnitario : 0;
-      if (hasPrice) totals[valuta] += totalRow;
+      const hasPriceInfo = !!info && Number.isFinite(info.prezzoUnitario) && info.prezzoUnitario > 0;
+      const note = String(noteByMaterialeId[m.id] || "").trim() || "-";
+      if (!hasPriceInfo) {
+        missing += 1;
+      }
+      const line = hasPriceInfo
+        ? computeLineTotal({
+            qty: m.quantita,
+            unitPrice: info.prezzoUnitario,
+            selectedUom: m.unita,
+            priceUom: info.unitaPrezzo || m.unita,
+            note: noteByMaterialeId[m.id] || String((m as any)?.note || ""),
+          })
+        : { total: null as number | null, status: "ok" as const };
+      if (hasPriceInfo && line.status === "needs_factor") {
+        udmDaVerificare += 1;
+      }
+      const hasComputablePrice = hasPriceInfo && line.status !== "needs_factor" && line.total !== null;
+      const valuta = hasPriceInfo ? info.valuta : null;
+      if (hasComputablePrice && valuta) {
+        totals[valuta] += line.total!;
+      }
       const ref = info?.numeroPreventivo
         ? `N. ${info.numeroPreventivo}${info.dataPreventivo ? ` del ${info.dataPreventivo}` : ""}`
         : "-";
@@ -4065,9 +4261,9 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
         descrizione: m.descrizione,
         quantita: String(m.quantita),
         unita: m.unita,
-        note: String(noteByMaterialeId[m.id] || "").trim() || "-",
-        prezzoUnitario: hasPrice ? `${info!.prezzoUnitario.toFixed(2)} ${valuta}` : "-",
-        totaleRiga: hasPrice ? `${totalRow.toFixed(2)} ${valuta}` : "-",
+        note,
+        prezzoUnitario: hasPriceInfo ? `${info!.prezzoUnitario.toFixed(2)} ${valuta || "-"}` : "-",
+        totaleRiga: hasComputablePrice ? `${line.total!.toFixed(2)} ${valuta || "-"}` : line.status === "needs_factor" ? "DA VERIFICARE UDM" : "-",
         preventivo: ref,
       });
     });
@@ -4101,7 +4297,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     } else {
       const single = used[0];
       rows.push({
-        descrizione: missing > 0 ? "TOTALE PARZIALE" : "TOTALE ORDINE",
+        descrizione: missing > 0 || udmDaVerificare > 0 ? "TOTALE PARZIALE" : "TOTALE ORDINE",
         quantita: "",
         unita: "",
         prezzoUnitario: "",
@@ -4112,6 +4308,15 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     rows.push({
       descrizione: "PREZZI MANCANTI",
       quantita: String(missing),
+      unita: "",
+      note: "",
+      prezzoUnitario: "",
+      totaleRiga: "",
+      preventivo: "",
+    });
+    rows.push({
+      descrizione: "UDM DA VERIFICARE",
+      quantita: String(udmDaVerificare),
       unita: "",
       note: "",
       prezzoUnitario: "",
@@ -4388,13 +4593,14 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
             </>
           ) : (
             <strong>
-              {riepilogoTotali.missing > 0 ? "Totale parziale: " : "Totale ordine: "}
+              {riepilogoTotali.missing > 0 || riepilogoTotali.udmDaVerificare > 0 ? "Totale parziale: " : "Totale ordine: "}
               {riepilogoTotali.usedValute.length === 0
                 ? "-"
                 : `${riepilogoTotali.usedValute[0]} ${riepilogoTotali.totals[riepilogoTotali.usedValute[0]].toFixed(2)}`}
             </strong>
           )}
           {riepilogoTotali.missing > 0 && <span className="acq-pill">Prezzi mancanti: {riepilogoTotali.missing}</span>}
+          {riepilogoTotali.udmDaVerificare > 0 && <span className="acq-pill is-warn">UDM da verificare: {riepilogoTotali.udmDaVerificare}</span>}
         </div>
       </div>
 
@@ -4505,8 +4711,17 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
                   {(() => {
                     const info = priceInfoByMaterialeId.get(m.id);
                     if (!info) return "-";
-                    const rowTotal = m.quantita * info.prezzoUnitario;
-                    return `${info.valuta} ${rowTotal.toFixed(2)}`;
+                    const note = noteByMaterialeId[m.id] || String((m as any)?.note || "");
+                    const line = computeLineTotal({
+                      qty: m.quantita,
+                      unitPrice: info.prezzoUnitario,
+                      selectedUom: m.unita,
+                      priceUom: info.unitaPrezzo || m.unita,
+                      note,
+                    });
+                    if (line.status === "needs_factor") return "DA VERIFICARE UDM";
+                    if (line.total === null) return "-";
+                    return `${info.valuta} ${line.total.toFixed(2)}`;
                   })()}
                 </td>
                 <td>{editing && <button type="button" className="acq-btn acq-btn--danger acq-btn--small" onClick={() => eliminaMateriale(m.id)}>Elimina</button>}</td>
