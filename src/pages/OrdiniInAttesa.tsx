@@ -1,22 +1,23 @@
 // src/pages/OrdiniInAttesa.tsx
 
-import  { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import type { Ordine } from "../types/ordini";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import "./OrdiniInAttesa.css";
 
-const OrdiniInAttesa: React.FC = () => {
+interface OrdiniInAttesaProps {
+  embedded?: boolean;
+}
+
+const OrdiniInAttesa: React.FC<OrdiniInAttesaProps> = ({ embedded = false }) => {
   const navigate = useNavigate();
 
   const [ordini, setOrdini] = useState<Ordine[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ---------------------------------------------------------
-  // CARICA ORDINI IN ATTESA
-  // ---------------------------------------------------------
   useEffect(() => {
     const loadOrdini = async () => {
       try {
@@ -26,7 +27,6 @@ const OrdiniInAttesa: React.FC = () => {
         const ordiniRaw = await getItemSync("@ordini");
         const arr = Array.isArray(ordiniRaw) ? (ordiniRaw as Ordine[]) : [];
 
-        // Filtra SOLO ordini con almeno un materiale NON arrivato
         const inAttesa = arr.filter((ordine) =>
           ordine.materiali.some((m) => !m.arrivato)
         );
@@ -47,61 +47,55 @@ const OrdiniInAttesa: React.FC = () => {
     navigate(`/dettaglio-ordine/${id}`);
   };
 
-  // ---------------------------------------------------------
-  // ESPORTA PDF SINGOLO ORDINE
-  // ---------------------------------------------------------
   const esportaPDF = async (ordine: Ordine) => {
-  // Filtra TUTTI gli ordini di questo fornitore
-  const ordiniFornitore = ordini.filter(
-    (o) => o.nomeFornitore === ordine.nomeFornitore
-  );
+    const ordiniFornitore = ordini.filter(
+      (o) => o.nomeFornitore === ordine.nomeFornitore
+    );
 
-  // Costruisci righe tabella per il PDF
-  const rows = ordiniFornitore.flatMap((o) =>
-    o.materiali.map((m) => ({
-      fornitore: o.nomeFornitore,
-      dataOrdine: o.dataOrdine,
-      descrizione: m.descrizione,
-      quantita: `${m.quantita} ${m.unita}`,
-      stato: m.arrivato ? "ARRIVATO" : "IN ATTESA",
-      dataArrivo: m.arrivato && m.dataArrivo ? m.dataArrivo : "",
-    }))
-  );
+    const rows = ordiniFornitore.flatMap((o) =>
+      o.materiali.map((m) => ({
+        fornitore: o.nomeFornitore,
+        dataOrdine: o.dataOrdine,
+        descrizione: m.descrizione,
+        quantita: `${m.quantita} ${m.unita}`,
+        stato: m.arrivato ? "ARRIVATO" : "IN ATTESA",
+        dataArrivo: m.arrivato && m.dataArrivo ? m.dataArrivo : "",
+      }))
+    );
 
-  await generateSmartPDF({
-    kind: "table",
-    title: `Ordini – ${ordine.nomeFornitore}`,
-    columns: ["fornitore", "dataOrdine", "descrizione", "quantita", "stato", "dataArrivo"],
-    rows,
-  });
-};
+    await generateSmartPDF({
+      kind: "table",
+      title: `Ordini - ${ordine.nomeFornitore}`,
+      columns: ["fornitore", "dataOrdine", "descrizione", "quantita", "stato", "dataArrivo"],
+      rows,
+    });
+  };
 
-  // ---------------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------------
   if (loading) {
     return (
-      <div className="ordini-attesa-page">
+      <div className={`ordini-attesa-page${embedded ? " ordini-attesa-page--embedded" : ""}`}>
         <div className="ordini-attesa-card">
-          <p>Caricamento ordini…</p>
+          <p>Caricamento ordini...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="ordini-attesa-page">
-      <header className="ordini-attesa-header">
-        <img
-          src="/logo.png"
-          alt="Logo"
-          className="ordini-attesa-logo"
-          onClick={() => navigate("/")}
-        />
-        <h1>Ordini in Attesa</h1>
-      </header>
+    <div className={`ordini-attesa-page${embedded ? " ordini-attesa-page--embedded" : ""}`}>
+      {!embedded && (
+        <header className="ordini-attesa-header">
+          <img
+            src="/logo.png"
+            alt="Logo"
+            className="ordini-attesa-logo"
+            onClick={() => navigate("/")}
+          />
+          <h1>Ordini in Attesa</h1>
+        </header>
+      )}
 
-      <div className="ordini-attesa-wrapper">
+      <div className={`ordini-attesa-wrapper${embedded ? " ordini-attesa-wrapper--embedded" : ""}`}>
         {error && <p className="error-alert">{error}</p>}
 
         {ordini.length === 0 ? (
@@ -142,7 +136,6 @@ const OrdiniInAttesa: React.FC = () => {
                       Dettaglio ordine
                     </button>
 
-                    {/* TASTO PDF */}
                     <button
                       className="btn-secondary"
                       onClick={() => esportaPDF(ordine)}

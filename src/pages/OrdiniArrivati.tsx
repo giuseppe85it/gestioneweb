@@ -1,22 +1,23 @@
 // src/pages/OrdiniArrivati.tsx
 
-import  { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import type { Ordine } from "../types/ordini";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import "./OrdiniInAttesa.css"; // riuso lo stesso layout di OrdiniInAttesa
 
-const OrdiniArrivati: React.FC = () => {
+interface OrdiniArrivatiProps {
+  embedded?: boolean;
+}
+
+const OrdiniArrivati: React.FC<OrdiniArrivatiProps> = ({ embedded = false }) => {
   const navigate = useNavigate();
 
   const [ordini, setOrdini] = useState<Ordine[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ---------------------------------------------------------
-  // CARICA ORDINI ARRIVATI
-  // ---------------------------------------------------------
   useEffect(() => {
     const loadOrdini = async () => {
       try {
@@ -26,7 +27,6 @@ const OrdiniArrivati: React.FC = () => {
         const ordiniRaw = await getItemSync("@ordini");
         const arr = Array.isArray(ordiniRaw) ? (ordiniRaw as Ordine[]) : [];
 
-        // Ordini che hanno almeno un materiale arrivato
         const arrivati = arr.filter((ordine) =>
           ordine.materiali.some((m) => m.arrivato)
         );
@@ -47,16 +47,11 @@ const OrdiniArrivati: React.FC = () => {
     navigate(`/dettaglio-ordine/${id}`);
   };
 
-  // ---------------------------------------------------------
-  // ESPORTA PDF PER FORNITORE (solo materiali arrivati)
-  // ---------------------------------------------------------
   const esportaPDF = async (ordine: Ordine) => {
-    // tutti gli ordini di questo fornitore
     const ordiniFornitore = ordini.filter(
       (o) => o.nomeFornitore === ordine.nomeFornitore
     );
 
-    // solo materiali arrivati
     const rows = ordiniFornitore.flatMap((o) =>
       o.materiali
         .filter((m) => m.arrivato)
@@ -69,45 +64,41 @@ const OrdiniArrivati: React.FC = () => {
         }))
     );
 
-    if (rows.length === 0) {
-      // nessun materiale arrivato effettivo (caso limite)
-      return;
-    }
+    if (rows.length === 0) return;
 
     await generateSmartPDF({
       kind: "table",
-      title: `Ordini Arrivati – ${ordine.nomeFornitore}`,
+      title: `Ordini Arrivati - ${ordine.nomeFornitore}`,
       columns: ["fornitore", "dataOrdine", "descrizione", "quantita", "dataArrivo"],
       rows,
     });
   };
 
-  // ---------------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------------
   if (loading) {
     return (
-      <div className="ordini-attesa-page">
+      <div className={`ordini-attesa-page${embedded ? " ordini-attesa-page--embedded" : ""}`}>
         <div className="ordini-attesa-card">
-          <p>Caricamento ordini arrivati…</p>
+          <p>Caricamento ordini arrivati...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="ordini-attesa-page">
-      <header className="ordini-attesa-header">
-        <img
-          src="/logo.png"
-          alt="Logo"
-          className="ordini-attesa-logo"
-          onClick={() => navigate("/")}
-        />
-        <h1>Ordini Arrivati</h1>
-      </header>
+    <div className={`ordini-attesa-page${embedded ? " ordini-attesa-page--embedded" : ""}`}>
+      {!embedded && (
+        <header className="ordini-attesa-header">
+          <img
+            src="/logo.png"
+            alt="Logo"
+            className="ordini-attesa-logo"
+            onClick={() => navigate("/")}
+          />
+          <h1>Ordini Arrivati</h1>
+        </header>
+      )}
 
-      <div className="ordini-attesa-wrapper">
+      <div className={`ordini-attesa-wrapper${embedded ? " ordini-attesa-wrapper--embedded" : ""}`}>
         {error && <p className="error-alert">{error}</p>}
 
         {ordini.length === 0 ? (

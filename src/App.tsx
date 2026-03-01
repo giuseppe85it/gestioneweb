@@ -23,6 +23,7 @@ import CapoMezzi from "./pages/CapoMezzi";
 import CapoCostiMezzo from "./pages/CapoCostiMezzo";
 
 import MaterialiDaOrdinare from "./pages/MaterialiDaOrdinare";
+import Acquisti from "./pages/Acquisti";
 import MaterialiConsegnati from "./pages/MaterialiConsegnati";
 import Inventario from "./pages/Inventario";
 import AttrezzatureCantieri from "./pages/AttrezzatureCantieri";
@@ -113,6 +114,8 @@ function App() {
         <Route path="/capo/costi/:targa" element={<CapoCostiMezzo />} />
 
         {/* MATERIALI */}
+        <Route path="/acquisti" element={<Acquisti />} />
+        <Route path="/acquisti/dettaglio/:ordineId" element={<Acquisti />} />
         <Route path="/materiali-da-ordinare" element={<MaterialiDaOrdinare />} />
         <Route path="/materiali-consegnati" element={<MaterialiConsegnati />} />
         <Route path="/inventario" element={<Inventario />} />

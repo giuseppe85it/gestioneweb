@@ -149,3 +149,74 @@
     justify-content: flex-start;
   }
 }
+
+.ordini-attesa-card {
+  width: 100%;
+  max-width: 900px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.ordini-attesa-page .btn-secondary {
+  background: #ffffff;
+  color: #0f3057;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid #cfdbea;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.ordini-attesa-page .btn-secondary:hover {
+  background: #f7fbff;
+}
+
+.ordini-attesa-page--embedded {
+  min-height: auto;
+  background: transparent;
+  padding: 0;
+  align-items: stretch;
+}
+
+.ordini-attesa-wrapper--embedded {
+  max-width: none;
+}
+
+.ordini-attesa-page--embedded .no-orders-card {
+  background: #f8fafc;
+  border: 1px dashed #cfdbea;
+  box-shadow: none;
+}
+
+.ordini-attesa-page--embedded .order-card {
+  background: #ffffff;
+  border-color: #d8e0ea;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+}
+
+.ordini-attesa-page--embedded .order-title {
+  color: #0f172a;
+}
+
+.ordini-attesa-page--embedded .btn-primary {
+  background: linear-gradient(135deg, #0f4c81 0%, #146c94 100%);
+  box-shadow: 0 4px 12px rgba(15, 76, 129, 0.22);
+}
+
+.ordini-attesa-page--embedded .btn-primary:hover {
+  background: linear-gradient(135deg, #0d4270 0%, #125f84 100%);
+}
+
+.ordini-attesa-page--embedded .btn-secondary {
+  margin-left: 0;
+}
+
+.ordini-attesa-page--embedded .order-actions {
+  gap: 8px;
+  flex-wrap: wrap;
+}

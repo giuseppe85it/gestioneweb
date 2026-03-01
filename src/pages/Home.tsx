@@ -375,7 +375,7 @@ const QUICK_LINKS_OPERATIVO = buildQuickLinks([
   { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire" },
   { to: "/lavori-eseguiti", label: "Lavori Eseguiti" },
   { to: "/lavori-in-attesa", label: "Lavori In Attesa" },
-  { to: "/materiali-da-ordinare", label: "Materiali Da Ordinare" },
+  { to: "/acquisti", label: "Materiali Da Ordinare" },
   { to: "/materiali-consegnati", label: "Materiali Consegnati" },
   { to: "/inventario", label: "Inventario" },
   { to: "/ordini-arrivati", label: "Ordini Arrivati" },
