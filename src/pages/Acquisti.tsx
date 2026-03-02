@@ -5,6 +5,15 @@ import type { MaterialeOrdine, Ordine, UnitaMisura } from "../types/ordini";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { uploadMaterialImage, deleteMaterialImage } from "../utils/materialImages";
 import { generateSmartPDF, generateSmartPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText as buildPdfShareMessage,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { deleteObject, getDownloadURL, listAll, ref, uploadBytes } from "firebase/storage";
@@ -5419,28 +5428,9 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
 
   useEffect(() => {
     return () => {
-      if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(pdfPreviewUrl);
-      }
+      revokePdfPreviewUrl(pdfPreviewUrl);
     };
   }, [pdfPreviewUrl]);
-
-  useEffect(() => {
-    if (!pdfPreviewOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPdfPreviewOpen(false);
-        setPdfPreviewBlob(null);
-        setPdfShareHint(null);
-        if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
-          URL.revokeObjectURL(pdfPreviewUrl);
-        }
-        setPdfPreviewUrl(null);
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [pdfPreviewOpen, pdfPreviewUrl]);
 
   const oggiDettaglio = () => {
     const n = new Date();
@@ -5454,16 +5444,17 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     setPdfPreviewOpen(false);
     setPdfPreviewBlob(null);
     setPdfShareHint(null);
-    if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
-      URL.revokeObjectURL(pdfPreviewUrl);
-    }
+    revokePdfPreviewUrl(pdfPreviewUrl);
     setPdfPreviewUrl(null);
   };
 
   const buildPdfShareText = () => {
-    const link = pdfPreviewUrl && !pdfPreviewUrl.startsWith("blob:") ? ` ${pdfPreviewUrl}` : "";
-    if (link) return `Riepilogo ordine interno (${ordine?.dataOrdine || ""}):${link}`;
-    return `Riepilogo ordine interno (${ordine?.dataOrdine || ""}) - file ${pdfPreviewFileName}. Apri l'anteprima, scarica il PDF e invialo su WhatsApp.`;
+    return buildPdfShareMessage({
+      contextLabel: "Riepilogo ordine interno",
+      dateLabel: ordine?.dataOrdine || "",
+      fileName: pdfPreviewFileName || "riepilogo-ordine-interno.pdf",
+      url: pdfPreviewUrl,
+    });
   };
 
   const materials = ordine ? [...ordine.materiali].sort((a, b) => (a.arrivato === b.arrivato ? 0 : a.arrivato ? 1 : -1)) : [];
@@ -5766,89 +5757,77 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     await generateSmartPDF(payload);
   };
 
-  const handleAnteprimaPdfInterno = async () => {
+  const ensurePdfPreviewReady = async () => {
     const payload = buildPdfInternoPayload();
-    if (!payload) return;
+    if (!payload) return null;
     try {
-      const { blob, fileName } = await generateSmartPDFBlob(payload);
-      if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(pdfPreviewUrl);
-      }
-      const nextUrl = URL.createObjectURL(blob);
-      setPdfPreviewBlob(blob);
-      setPdfPreviewFileName(fileName);
-      setPdfPreviewUrl(nextUrl);
-      setPdfShareHint(null);
-      setPdfPreviewOpen(true);
+      const preview = await openPreview({
+        source: async () => generateSmartPDFBlob(payload),
+        fileName: "riepilogo-ordine-interno.pdf",
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewUrl(preview.url);
+      return preview;
     } catch (err) {
       console.error("Errore anteprima PDF interno:", err);
       window.alert("Impossibile generare l'anteprima PDF.");
+      return null;
     }
+  };
+
+  const handleAnteprimaPdfInterno = async () => {
+    const preview = await ensurePdfPreviewReady();
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
   };
 
   const handleCondividiPdfInterno = async () => {
     let blobToShare = pdfPreviewBlob;
     let fileNameToShare = pdfPreviewFileName || "riepilogo-ordine-interno.pdf";
     if (!blobToShare) {
-      const payload = buildPdfInternoPayload();
-      if (!payload) return;
-      try {
-        const generated = await generateSmartPDFBlob(payload);
-        blobToShare = generated.blob;
-        fileNameToShare = generated.fileName;
-        if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
-          URL.revokeObjectURL(pdfPreviewUrl);
-        }
-        const nextUrl = URL.createObjectURL(generated.blob);
-        setPdfPreviewBlob(generated.blob);
-        setPdfPreviewFileName(generated.fileName);
-        setPdfPreviewUrl(nextUrl);
-        setPdfPreviewOpen(true);
-      } catch (err) {
-        console.error("Errore generazione PDF per condivisione:", err);
-        setPdfShareHint("Impossibile preparare il PDF da condividere.");
-        return;
-      }
+      const preview = await ensurePdfPreviewReady();
+      if (!preview) return;
+      blobToShare = preview.blob;
+      fileNameToShare = preview.fileName;
+      setPdfPreviewOpen(true);
     }
 
-    const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
-    const shareFile = new File([blobToShare], fileNameToShare, { type: "application/pdf" });
-    try {
-      if (typeof nav.share === "function") {
-        const canShareFiles = typeof nav.canShare !== "function" || nav.canShare({ files: [shareFile] });
-        if (canShareFiles) {
-          await nav.share({
-            title: "Riepilogo ordine interno",
-            text: `Condivisione ${fileNameToShare}`,
-            files: [shareFile],
-          });
-          setPdfShareHint("PDF condiviso.");
-          return;
-        }
-      }
-      setPdfShareHint("Condivisione file non disponibile su questo dispositivo. Usa Copia link o Apri WhatsApp.");
-    } catch (err) {
-      const maybe = err as { name?: string };
-      if (maybe?.name === "AbortError") return;
-      console.error("Errore condivisione PDF interno:", err);
-      setPdfShareHint("Condivisione non riuscita. Usa Copia link o Apri WhatsApp.");
+    const result = await sharePdfFile({
+      blob: blobToShare,
+      fileName: fileNameToShare,
+      title: "Riepilogo ordine interno",
+      text: `Condivisione ${fileNameToShare}`,
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
     }
+    if (result.status === "aborted") return;
+    if (result.status === "unsupported") {
+      setPdfShareHint("Condivisione file non disponibile su questo dispositivo. Usa Copia link o Apri WhatsApp.");
+      return;
+    }
+    console.error("Errore condivisione PDF interno:", result.error);
+    setPdfShareHint("Condivisione non riuscita. Usa Copia link o Apri WhatsApp.");
   };
 
   const handleCopyPdfInternoLink = async () => {
     const text = buildPdfShareText();
-    try {
-      await navigator.clipboard.writeText(text);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
       setPdfShareHint("Testo copiato negli appunti.");
-    } catch (err) {
-      console.error("Errore copia testo condivisione PDF:", err);
+    } else {
       setPdfShareHint("Impossibile copiare automaticamente. Copia il testo manualmente.");
     }
   };
 
   const handleOpenWhatsAppPdfInterno = () => {
     const text = buildPdfShareText();
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const url = buildWhatsAppShareUrl(text);
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
@@ -6249,50 +6228,17 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
         </table>
       </div>
 
-      {pdfPreviewOpen && (
-        <div
-          className="acq-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Anteprima PDF ordine interno"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closePdfPreview();
-          }}
-        >
-          <div className="acq-modal-card acq-pdf-preview-modal">
-            <div className="acq-pdf-preview-head">
-              <h4>Anteprima PDF interno</h4>
-              <button type="button" className="acq-btn" onClick={closePdfPreview}>Chiudi</button>
-            </div>
-            <div className="acq-pdf-preview-body">
-              <div className="acq-pdf-preview-viewer">
-                {pdfPreviewUrl ? (
-                  <iframe title="Anteprima PDF ordine interno" src={pdfPreviewUrl} />
-                ) : (
-                  <div className="acq-pdf-preview-empty">Anteprima non disponibile.</div>
-                )}
-              </div>
-            </div>
-            <div className="acq-pdf-preview-actions">
-              {pdfShareHint && <span className="acq-pdf-preview-hint">{pdfShareHint}</span>}
-              <button type="button" className="acq-btn" onClick={handleCondividiPdfInterno}>
-                Condividi
-              </button>
-              <button type="button" className="acq-btn" onClick={handleCopyPdfInternoLink}>
-                Copia link
-              </button>
-              <button type="button" className="acq-btn" onClick={handleOpenWhatsAppPdfInterno}>
-                Apri WhatsApp
-              </button>
-              {pdfPreviewUrl && (
-                <a className="acq-btn acq-btn--primary" href={pdfPreviewUrl} download={pdfPreviewFileName}>
-                  Scarica
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title="Anteprima PDF interno"
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleCondividiPdfInterno}
+        onCopyLink={handleCopyPdfInternoLink}
+        onWhatsApp={handleOpenWhatsAppPdfInterno}
+      />
     </div>
   );
 }
