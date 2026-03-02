@@ -1175,7 +1175,7 @@ async function generateDocFromModel(model: PdfDocModel): Promise<void> {
 // --------------------------------------------------------
 // ENTRYPOINT GENERALE
 // --------------------------------------------------------
-export async function generateSmartPDF(input: PdfInput): Promise<void> {
+async function buildSmartPdfDocument(input: PdfInput): Promise<{ doc: jsPDF; fileName: string }> {
   const kind = detectKind(input);
   const orientation = (input as any)?.orientation;
   const doc = orientation ? new jsPDF({ orientation }) : new jsPDF();
@@ -1199,7 +1199,21 @@ export async function generateSmartPDF(input: PdfInput): Promise<void> {
       ? "Mezzo"
       : "Report");
 
-  doc.save(`${baseName}_${datePart}.pdf`);
+  return {
+    doc,
+    fileName: `${sanitizeFileName(baseName)}_${datePart}.pdf`,
+  };
+}
+
+export async function generateSmartPDF(input: PdfInput): Promise<void> {
+  const { doc, fileName } = await buildSmartPdfDocument(input);
+  doc.save(fileName);
+}
+
+export async function generateSmartPDFBlob(input: PdfInput): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildSmartPdfDocument(input);
+  const blob = doc.output("blob") as Blob;
+  return { blob, fileName };
 }
 
 // --------------------------------------------------------

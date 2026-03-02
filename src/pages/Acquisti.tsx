@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { MaterialeOrdine, Ordine, UnitaMisura } from "../types/ordini";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { uploadMaterialImage, deleteMaterialImage } from "../utils/materialImages";
-import { generateSmartPDF } from "../utils/pdfEngine";
+import { generateSmartPDF, generateSmartPDFBlob } from "../utils/pdfEngine";
 import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { deleteObject, getDownloadURL, listAll, ref, uploadBytes } from "firebase/storage";
@@ -557,6 +557,8 @@ function OrdineMaterialiView(props: {
     Record<string, { fornitoreId: string; fornitoreNome: string }>
   >({});
   const [listinoSourceByMaterialeId, setListinoSourceByMaterialeId] = useState<Record<string, PreventivoMatch>>({});
+  const [openMaterialMenuId, setOpenMaterialMenuId] = useState<string | null>(null);
+  const [openMaterialMenuPosition, setOpenMaterialMenuPosition] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -745,6 +747,32 @@ function OrdineMaterialiView(props: {
       window.removeEventListener("scroll", onLayoutChange, true);
     };
   }, [showSuggest]);
+
+  useEffect(() => {
+    if (!openMaterialMenuId) return;
+    const closeMenu = () => {
+      setOpenMaterialMenuId(null);
+      setOpenMaterialMenuPosition(null);
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-menu-root="ordini-materiali-riga"]')) return;
+      closeMenu();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [openMaterialMenuId]);
 
   const handleDescrizioneBlur = () => {
     setTimeout(() => {
@@ -1414,47 +1442,96 @@ function OrdineMaterialiView(props: {
                           : "-"}
                       </td>
                       <td className="mdo-col-actions">
-                        <div className="mdo-row-actions">
-                          {prezzoInfo && hasAnyDocumentRef(prezzoInfo) && (
+                        <div className="om-row-actions-menu">
+                          <div className="acq-kebab om-row-kebab" data-menu-root="ordini-materiali-riga">
                             <button
                               type="button"
-                              className="mdo-chip-button"
-                              onClick={() =>
-                                onOpenPreventivo({
-                                  preventivoId: prezzoInfo.preventivoId,
-                                  pdfUrl: prezzoInfo.pdfUrl,
-                                  pdfStoragePath: prezzoInfo.pdfStoragePath || null,
-                                  imageUrls: prezzoInfo.imageUrls || [],
-                                  imageStoragePaths: prezzoInfo.imageStoragePaths || [],
-                                })
-                              }
+                              className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon om-row-kebab-trigger"
+                              aria-label={`Azioni riga ${m.descrizione}`}
+                              onClick={(e) => {
+                                if (openMaterialMenuId === m.id) {
+                                  setOpenMaterialMenuId(null);
+                                  setOpenMaterialMenuPosition(null);
+                                  return;
+                                }
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                const menuWidth = 210;
+                                const menuHeight = 220;
+                                const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
+                                const openUp = rect.bottom + menuHeight > window.innerHeight - 8;
+                                const top = openUp ? Math.max(8, rect.top - 8) : rect.bottom + 8;
+                                setOpenMaterialMenuId(m.id);
+                                setOpenMaterialMenuPosition({ top, left, openUp });
+                              }}
                             >
-                              DOCUMENTO
+                              ⋮
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            className="mdo-chip-button"
-                            onClick={() => {
-                              const current = noteByMaterialeId[m.id] || "";
-                              const next = window.prompt("Nota materiale", current);
-                              if (next === null) return;
-                              const trimmed = next.trim();
-                              setNoteByMaterialeId((prev) => ({ ...prev, [m.id]: trimmed }));
-                            }}
-                          >
-                            Note
-                          </button>
-                          {!prezzoInfo && (
-                            <button
-                              type="button"
-                              className="mdo-chip-button mdo-chip-button--listino"
-                              onClick={() => openBozzaListinoManuale(m)}
-                            >
-                              + LISTINO
-                            </button>
-                          )}
-                          <button type="button" className="mdo-delete" onClick={() => eliminaMateriale(m.id)} aria-label={`Elimina ${m.descrizione}`}>Elimina</button>
+                            {openMaterialMenuId === m.id && openMaterialMenuPosition && (
+                              <div
+                                className={`acq-kebab-menu acq-kebab-menu--fixed${openMaterialMenuPosition.openUp ? " is-up" : ""}`}
+                                style={{ top: `${openMaterialMenuPosition.top}px`, left: `${openMaterialMenuPosition.left}px` }}
+                              >
+                                {prezzoInfo && hasAnyDocumentRef(prezzoInfo) && (
+                                  <button
+                                    type="button"
+                                    className="acq-kebab-item"
+                                    onClick={() => {
+                                      onOpenPreventivo({
+                                        preventivoId: prezzoInfo.preventivoId,
+                                        pdfUrl: prezzoInfo.pdfUrl,
+                                        pdfStoragePath: prezzoInfo.pdfStoragePath || null,
+                                        imageUrls: prezzoInfo.imageUrls || [],
+                                        imageStoragePaths: prezzoInfo.imageStoragePaths || [],
+                                      });
+                                      setOpenMaterialMenuId(null);
+                                      setOpenMaterialMenuPosition(null);
+                                    }}
+                                  >
+                                    Apri documento
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="acq-kebab-item"
+                                  onClick={() => {
+                                    const current = noteByMaterialeId[m.id] || "";
+                                    const next = window.prompt("Nota materiale", current);
+                                    if (next === null) return;
+                                    const trimmed = next.trim();
+                                    setNoteByMaterialeId((prev) => ({ ...prev, [m.id]: trimmed }));
+                                    setOpenMaterialMenuId(null);
+                                    setOpenMaterialMenuPosition(null);
+                                  }}
+                                >
+                                  Note
+                                </button>
+                                {!prezzoInfo && (
+                                  <button
+                                    type="button"
+                                    className="acq-kebab-item"
+                                    onClick={() => {
+                                      openBozzaListinoManuale(m);
+                                      setOpenMaterialMenuId(null);
+                                      setOpenMaterialMenuPosition(null);
+                                    }}
+                                  >
+                                    + Listino
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="acq-kebab-item acq-kebab-item--danger"
+                                  onClick={() => {
+                                    eliminaMateriale(m.id);
+                                    setOpenMaterialMenuId(null);
+                                    setOpenMaterialMenuPosition(null);
+                                  }}
+                                >
+                                  Elimina
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -4034,6 +4111,7 @@ function PreventiviView(props: {
                       <tbody>
                         {group.items.map((p) => {
                           const status = getImportStatus(p);
+                          const canOpenDocument = hasAnyDocumentRef(getPreventivoDocumentSource(p));
                           return (
                             <tr key={p.id}>
                               <td>{p.dataPreventivo}</td>
@@ -4055,29 +4133,20 @@ function PreventiviView(props: {
                                 </div>
                               </td>
                               <td>
-                                <div className="acq-prev-list-actions">
-                                  <button type="button" className="acq-btn" onClick={() => void openPreventivoDocumento(p)}>
-                                    {LABELS_IT.menu.openDocument}
-                                  </button>
-                                  <button type="button" className="acq-btn" onClick={() => void openLinkFotoModal(p)}>
-                                    COLLEGA FOTO
-                                  </button>
-                                  {status.total === 0 ? (
-                                    <span className="acq-pill">Nessuna riga</span>
-                                  ) : status.className === "full" ? (
-                                    <span className="acq-pill is-ok">IMPORTATO</span>
-                                  ) : (
-                                    <button type="button" className="acq-btn acq-btn--primary" onClick={() => startImportListino(p)}>
-                                      {status.className === "partial" ? "IMPORTA MANCANTI" : LABELS_IT.menu.import}
-                                    </button>
-                                  )}
-                                  <button type="button" className="acq-btn" onClick={() => openDettaglio(p)}>
-                                    {LABELS_IT.menu.open}
+                                <div className="acq-prev-list-actions acq-prev-list-actions--compact">
+                                  <button
+                                    type="button"
+                                    className="acq-btn"
+                                    onClick={() => void openPreventivoDocumento(p)}
+                                    disabled={!canOpenDocument}
+                                    title={canOpenDocument ? LABELS_IT.menu.openDocument : "Nessun documento collegato"}
+                                  >
+                                    APRI DOCUMENTO
                                   </button>
                                   <div className="acq-kebab" data-menu-root="preventivi">
                                     <button
                                       type="button"
-                                      className="acq-btn acq-kebab-trigger"
+                                      className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon"
                                       aria-label="Altre azioni"
                                       onClick={(e) => {
                                         const key = `preventivo:${p.id}`;
@@ -4087,8 +4156,8 @@ function PreventiviView(props: {
                                           return;
                                         }
                                         const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                        const menuWidth = 190;
-                                        const menuHeight = 120;
+                                        const menuWidth = 220;
+                                        const menuHeight = 290;
                                         const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
                                         const openUp = rect.bottom + menuHeight > window.innerHeight - 8;
                                         const top = openUp ? Math.max(8, rect.top - 8) : rect.bottom + 8;
@@ -4096,13 +4165,72 @@ function PreventiviView(props: {
                                         setOpenMenuPosition({ top, left, openUp });
                                       }}
                                     >
-                                      {LABELS_IT.menu.trigger}
+                                      ⋮
                                     </button>
                                     {openMenuKey === `preventivo:${p.id}` && openMenuPosition && (
                                       <div
                                         className={`acq-kebab-menu acq-kebab-menu--fixed${openMenuPosition.openUp ? " is-up" : ""}`}
                                         style={{ top: `${openMenuPosition.top}px`, left: `${openMenuPosition.left}px` }}
                                       >
+                                        <button
+                                          type="button"
+                                          className="acq-kebab-item"
+                                          onClick={() => {
+                                            void openPreventivoDocumento(p);
+                                            setOpenMenuKey(null);
+                                            setOpenMenuPosition(null);
+                                          }}
+                                        >
+                                          Apri documento
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="acq-kebab-item"
+                                          onClick={() => {
+                                            void openLinkFotoModal(p);
+                                            setOpenMenuKey(null);
+                                            setOpenMenuPosition(null);
+                                          }}
+                                        >
+                                          Collega foto
+                                        </button>
+                                        {status.total > 0 && status.className !== "full" && (
+                                          <button
+                                            type="button"
+                                            className="acq-kebab-item"
+                                            onClick={() => {
+                                              startImportListino(p);
+                                              setOpenMenuKey(null);
+                                              setOpenMenuPosition(null);
+                                            }}
+                                          >
+                                            {status.className === "partial" ? "Importa mancanti" : LABELS_IT.menu.import}
+                                          </button>
+                                        )}
+                                        {status.className === "partial" && (
+                                          <button
+                                            type="button"
+                                            className="acq-kebab-item"
+                                            onClick={() => {
+                                              setMissingRowsForPreventivoId(p.id);
+                                              setOpenMenuKey(null);
+                                              setOpenMenuPosition(null);
+                                            }}
+                                          >
+                                            Vedi mancanti
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          className="acq-kebab-item"
+                                          onClick={() => {
+                                            openDettaglio(p);
+                                            setOpenMenuKey(null);
+                                            setOpenMenuPosition(null);
+                                          }}
+                                        >
+                                          {LABELS_IT.menu.open}
+                                        </button>
                                         <button
                                           type="button"
                                           className="acq-kebab-item"
@@ -4932,7 +5060,7 @@ function ListinoPrezziView() {
                   <td>{`N. ${renderSafeText(v.fonteAttuale.numeroPreventivo)}`}</td>
                   <td>{renderSafeText(v.fonteAttuale.dataPreventivo || formatDataIt(v.updatedAt))}</td>
                   <td>
-                    <div className="acq-prev-list-actions">
+                    <div className="acq-prev-list-actions acq-prev-list-actions--compact">
                       <button
                         type="button"
                         className="acq-btn acq-btn--primary"
@@ -4941,17 +5069,10 @@ function ListinoPrezziView() {
                       >
                         APRI DOCUMENTO
                       </button>
-                      <button
-                        type="button"
-                        className="acq-btn"
-                        onClick={() => openEditVoce(v)}
-                      >
-                        MODIFICA
-                      </button>
                       <div className="acq-kebab" data-menu-root="listino">
                         <button
                           type="button"
-                          className="acq-btn acq-kebab-trigger"
+                          className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon"
                           aria-label="Altre azioni"
                           onClick={(e) => {
                             if (openMenuId === v.id) {
@@ -4960,8 +5081,8 @@ function ListinoPrezziView() {
                               return;
                             }
                             const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                            const menuWidth = 190;
-                            const menuHeight = 120;
+                            const menuWidth = 210;
+                            const menuHeight = 180;
                             const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
                             const openUp = rect.bottom + menuHeight > window.innerHeight - 8;
                             const top = openUp ? Math.max(8, rect.top - 8) : rect.bottom + 8;
@@ -4969,13 +5090,31 @@ function ListinoPrezziView() {
                             setOpenMenuPosition({ top, left, openUp });
                           }}
                         >
-                          {LABELS_IT.menu.trigger}
+                          ⋮
                         </button>
                         {openMenuId === v.id && openMenuPosition && (
                           <div
                             className={`acq-kebab-menu acq-kebab-menu--fixed${openMenuPosition.openUp ? " is-up" : ""}`}
                             style={{ top: `${openMenuPosition.top}px`, left: `${openMenuPosition.left}px` }}
                           >
+                            <button
+                              type="button"
+                              className="acq-kebab-item"
+                              onClick={() => {
+                                void apriVoceListino(v);
+                                setOpenMenuId(null);
+                                setOpenMenuPosition(null);
+                              }}
+                            >
+                              Apri documento
+                            </button>
+                            <button
+                              type="button"
+                              className="acq-kebab-item"
+                              onClick={() => openEditVoce(v)}
+                            >
+                              Modifica
+                            </button>
                             <button
                               type="button"
                               className="acq-kebab-item acq-kebab-item--danger"
@@ -5131,6 +5270,11 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
   const [ordineNote, setOrdineNote] = useState("");
   const [detailSuggestOpen, setDetailSuggestOpen] = useState(false);
   const [selectedDetailListino, setSelectedDetailListino] = useState<ListinoVoce | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("riepilogo-ordine-interno.pdf");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -5164,12 +5308,53 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     void load();
   }, [ordineId]);
 
+  useEffect(() => {
+    return () => {
+      if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(pdfPreviewUrl);
+      }
+    };
+  }, [pdfPreviewUrl]);
+
+  useEffect(() => {
+    if (!pdfPreviewOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPdfPreviewOpen(false);
+        setPdfPreviewBlob(null);
+        setPdfShareHint(null);
+        if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(pdfPreviewUrl);
+        }
+        setPdfPreviewUrl(null);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pdfPreviewOpen, pdfPreviewUrl]);
+
   const oggiDettaglio = () => {
     const n = new Date();
     const gg = String(n.getDate()).padStart(2, "0");
     const mm = String(n.getMonth() + 1).padStart(2, "0");
     const yy = n.getFullYear();
     return `${gg} ${mm} ${yy}`;
+  };
+
+  const closePdfPreview = () => {
+    setPdfPreviewOpen(false);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+    if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(pdfPreviewUrl);
+    }
+    setPdfPreviewUrl(null);
+  };
+
+  const buildPdfShareText = () => {
+    const link = pdfPreviewUrl && !pdfPreviewUrl.startsWith("blob:") ? ` ${pdfPreviewUrl}` : "";
+    if (link) return `Riepilogo ordine interno (${ordine?.dataOrdine || ""}):${link}`;
+    return `Riepilogo ordine interno (${ordine?.dataOrdine || ""}) - file ${pdfPreviewFileName}. Apri l'anteprima, scarica il PDF e invialo su WhatsApp.`;
   };
 
   const materials = ordine ? [...ordine.materiali].sort((a, b) => (a.arrivato === b.arrivato ? 0 : a.arrivato ? 1 : -1)) : [];
@@ -5366,7 +5551,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     });
   };
 
-  const handlePdfDirezioneDettaglio = async () => {
+  const buildPdfInternoPayload = () => {
     if (!ordine) return;
     const rows: Array<Record<string, string>> = [];
     let missing = 0;
@@ -5450,12 +5635,104 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
       totaleRiga: "",
     });
 
-    await generateSmartPDF({
+    return {
       kind: "table",
-      title: `DIREZIONE ${ordine.nomeFornitore} - ORDINE ${ordine.dataOrdine}`,
+      title: `RIEPILOGO ORDINE INTERNO - ${ordine.dataOrdine}`,
       columns: ["descrizione", "quantita", "prezzoUnitario", "totaleRiga"],
       rows,
-    });
+    } as const;
+  };
+
+  const handlePdfDirezioneDettaglio = async () => {
+    const payload = buildPdfInternoPayload();
+    if (!payload) return;
+    await generateSmartPDF(payload);
+  };
+
+  const handleAnteprimaPdfInterno = async () => {
+    const payload = buildPdfInternoPayload();
+    if (!payload) return;
+    try {
+      const { blob, fileName } = await generateSmartPDFBlob(payload);
+      if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(pdfPreviewUrl);
+      }
+      const nextUrl = URL.createObjectURL(blob);
+      setPdfPreviewBlob(blob);
+      setPdfPreviewFileName(fileName);
+      setPdfPreviewUrl(nextUrl);
+      setPdfShareHint(null);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF interno:", err);
+      window.alert("Impossibile generare l'anteprima PDF.");
+    }
+  };
+
+  const handleCondividiPdfInterno = async () => {
+    let blobToShare = pdfPreviewBlob;
+    let fileNameToShare = pdfPreviewFileName || "riepilogo-ordine-interno.pdf";
+    if (!blobToShare) {
+      const payload = buildPdfInternoPayload();
+      if (!payload) return;
+      try {
+        const generated = await generateSmartPDFBlob(payload);
+        blobToShare = generated.blob;
+        fileNameToShare = generated.fileName;
+        if (pdfPreviewUrl && pdfPreviewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(pdfPreviewUrl);
+        }
+        const nextUrl = URL.createObjectURL(generated.blob);
+        setPdfPreviewBlob(generated.blob);
+        setPdfPreviewFileName(generated.fileName);
+        setPdfPreviewUrl(nextUrl);
+        setPdfPreviewOpen(true);
+      } catch (err) {
+        console.error("Errore generazione PDF per condivisione:", err);
+        setPdfShareHint("Impossibile preparare il PDF da condividere.");
+        return;
+      }
+    }
+
+    const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
+    const shareFile = new File([blobToShare], fileNameToShare, { type: "application/pdf" });
+    try {
+      if (typeof nav.share === "function") {
+        const canShareFiles = typeof nav.canShare !== "function" || nav.canShare({ files: [shareFile] });
+        if (canShareFiles) {
+          await nav.share({
+            title: "Riepilogo ordine interno",
+            text: `Condivisione ${fileNameToShare}`,
+            files: [shareFile],
+          });
+          setPdfShareHint("PDF condiviso.");
+          return;
+        }
+      }
+      setPdfShareHint("Condivisione file non disponibile su questo dispositivo. Usa Copia link o Apri WhatsApp.");
+    } catch (err) {
+      const maybe = err as { name?: string };
+      if (maybe?.name === "AbortError") return;
+      console.error("Errore condivisione PDF interno:", err);
+      setPdfShareHint("Condivisione non riuscita. Usa Copia link o Apri WhatsApp.");
+    }
+  };
+
+  const handleCopyPdfInternoLink = async () => {
+    const text = buildPdfShareText();
+    try {
+      await navigator.clipboard.writeText(text);
+      setPdfShareHint("Testo copiato negli appunti.");
+    } catch (err) {
+      console.error("Errore copia testo condivisione PDF:", err);
+      setPdfShareHint("Impossibile copiare automaticamente. Copia il testo manualmente.");
+    }
+  };
+
+  const handleOpenWhatsAppPdfInterno = () => {
+    const text = buildPdfShareText();
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const toggleArrivatoOrdine = async () => {
@@ -5692,12 +5969,21 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
             </button>
             <button
               type="button"
+              className="acq-btn"
+              onClick={handleAnteprimaPdfInterno}
+              disabled={!ordine}
+              title={!ordine ? "Ordine non disponibile" : "Anteprima riepilogo ordine interno"}
+            >
+              ANTEPRIMA PDF
+            </button>
+            <button
+              type="button"
               className="acq-btn acq-btn--primary"
               onClick={handlePdfDirezioneDettaglio}
               disabled={!ordine}
-              title={!ordine ? "Ordine non disponibile" : "PDF con prezzi e riferimenti"}
+              title={!ordine ? "Ordine non disponibile" : "PDF interno con prezzi e riferimenti"}
             >
-              PDF Direzione
+              PDF Interno
             </button>
           </div>
           {riepilogoTotali.mixed ? (
@@ -5845,6 +6131,49 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
           </tbody>
         </table>
       </div>
+
+      {pdfPreviewOpen && (
+        <div
+          className="acq-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Anteprima PDF ordine interno"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closePdfPreview();
+          }}
+        >
+          <div className="acq-modal-card acq-pdf-preview-modal">
+            <div className="acq-pdf-preview-head">
+              <h4>Anteprima PDF interno</h4>
+              <button type="button" className="acq-btn" onClick={closePdfPreview}>Chiudi</button>
+            </div>
+            <div className="acq-pdf-preview-viewer">
+              {pdfPreviewUrl ? (
+                <iframe title="Anteprima PDF ordine interno" src={pdfPreviewUrl} />
+              ) : (
+                <div className="acq-pdf-preview-empty">Anteprima non disponibile.</div>
+              )}
+            </div>
+            <div className="acq-pdf-preview-actions">
+              {pdfShareHint && <span className="acq-pdf-preview-hint">{pdfShareHint}</span>}
+              <button type="button" className="acq-btn" onClick={handleCondividiPdfInterno}>
+                Condividi
+              </button>
+              <button type="button" className="acq-btn" onClick={handleCopyPdfInternoLink}>
+                Copia link
+              </button>
+              <button type="button" className="acq-btn" onClick={handleOpenWhatsAppPdfInterno}>
+                Apri WhatsApp
+              </button>
+              {pdfPreviewUrl && (
+                <a className="acq-btn acq-btn--primary" href={pdfPreviewUrl} download={pdfPreviewFileName}>
+                  Scarica
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
