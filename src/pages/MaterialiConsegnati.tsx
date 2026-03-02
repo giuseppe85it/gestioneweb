@@ -2,7 +2,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generateSmartPDF } from "../utils/pdfEngine";
+import { generateSmartPDF, generateSmartPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText as buildPdfShareMessage,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import type { InventarioItem } from "./Inventario";
 import "./MaterialiConsegnati.css";
 
@@ -92,6 +101,13 @@ const MaterialiConsegnati: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [selectedDest, setSelectedDest] = useState<string | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("materiali-consegnati.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF");
+  const [pdfShareContext, setPdfShareContext] = useState("Materiali consegnati");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   // Carica inventario + consegne + mezzi + colleghi
   useEffect(() => {
@@ -167,6 +183,12 @@ const MaterialiConsegnati: React.FC = () => {
 
     void loadAll();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   const persistInventario = async (items: InventarioItem[]) => {
     setInventario(items);
@@ -432,16 +454,10 @@ const MaterialiConsegnati: React.FC = () => {
     return list.reduce((sum, c) => sum + c.quantita, 0);
   };
 
-  // PDF per destinatario (con fornitore)
-  const exportPDFPerDestinatario = async (destRefId: string) => {
+  const buildPdfPayloadPerDestinatario = (destRefId: string) => {
     const list = consegne
       .filter((c) => c.destinatario.refId === destRefId)
       .sort((a, b) => a.data.localeCompare(b.data));
-
-    if (!list.length) {
-      alert("Nessun materiale consegnato per questo destinatario.");
-      return;
-    }
 
     const destLabel = list[0]?.destinatario.label || "Destinatario";
 
@@ -454,21 +470,16 @@ const MaterialiConsegnati: React.FC = () => {
       motivo: c.motivo || "",
     }));
 
-    await generateSmartPDF({
+    return {
       kind: "table",
       title: `Materiali consegnati a ${destLabel}`,
       columns: ["data", "descrizione", "fornitore", "quantita", "unita", "motivo"],
       rows,
-    });
+      destLabel,
+    } as const;
   };
 
-  // PDF globale (con fornitore)
-  const exportPDFGlobale = async () => {
-    if (!consegne.length) {
-      alert("Nessun materiale consegnato.");
-      return;
-    }
-
+  const buildPdfPayloadGlobale = () => {
     const rows = consegne
       .slice()
       .sort((a, b) => a.data.localeCompare(b.data))
@@ -482,7 +493,7 @@ const MaterialiConsegnati: React.FC = () => {
         motivo: c.motivo || "",
       }));
 
-    await generateSmartPDF({
+    return {
       kind: "table",
       title: "Storico materiali consegnati",
       columns: [
@@ -495,7 +506,140 @@ const MaterialiConsegnati: React.FC = () => {
         "motivo",
       ],
       rows,
+    } as const;
+  };
+
+  const closePdfPreview = () => {
+    setPdfPreviewOpen(false);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
+  };
+
+  const ensurePdfPreviewReady = async (params: {
+    source: () => Promise<{ blob: Blob; fileName: string }>;
+    fileName: string;
+    title: string;
+    contextLabel: string;
+  }) => {
+    try {
+      const preview = await openPreview({
+        source: async () => params.source(),
+        fileName: params.fileName,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(params.title);
+      setPdfShareContext(params.contextLabel);
+      setPdfPreviewUrl(preview.url);
+      return preview;
+    } catch (err) {
+      console.error("Errore anteprima PDF materiali consegnati:", err);
+      alert("Impossibile generare l'anteprima PDF.");
+      return null;
+    }
+  };
+
+  const buildPreviewShareText = () => {
+    return buildPdfShareMessage({
+      contextLabel: pdfShareContext || "Materiali consegnati",
+      fileName: pdfPreviewFileName || "materiali-consegnati.pdf",
+      url: pdfPreviewUrl,
     });
+  };
+
+  const handleSharePDF = async () => {
+    let blob = pdfPreviewBlob;
+    let fileName = pdfPreviewFileName || "materiali-consegnati.pdf";
+
+    if (!blob) {
+      setPdfShareHint("Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob,
+      fileName,
+      title: pdfPreviewTitle || "Anteprima PDF",
+      text: `Condivisione ${fileName}`,
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+    if (result.status === "unsupported") {
+      setPdfShareHint("Condivisione file non disponibile su questo dispositivo. Usa Copia link o Apri WhatsApp.");
+      return;
+    }
+    setPdfShareHint("Condivisione non riuscita. Usa Copia link o Apri WhatsApp.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const ok = await copyTextToClipboard(buildPreviewShareText());
+    setPdfShareHint(ok ? "Testo copiato negli appunti." : "Impossibile copiare automaticamente. Copia il testo manualmente.");
+  };
+
+  const handleOpenWhatsApp = () => {
+    const url = buildWhatsAppShareUrl(buildPreviewShareText());
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  // PDF per destinatario (con fornitore)
+  const exportPDFPerDestinatario = async (destRefId: string) => {
+    const payload = buildPdfPayloadPerDestinatario(destRefId);
+    if (!payload.rows.length) {
+      alert("Nessun materiale consegnato per questo destinatario.");
+      return;
+    }
+    await generateSmartPDF(payload);
+  };
+
+  const previewPDFPerDestinatario = async (destRefId: string) => {
+    const payload = buildPdfPayloadPerDestinatario(destRefId);
+    if (!payload.rows.length) {
+      alert("Nessun materiale consegnato per questo destinatario.");
+      return;
+    }
+    const preview = await ensurePdfPreviewReady({
+      source: async () => generateSmartPDFBlob(payload),
+      fileName: `materiali-consegnati-${payload.destLabel || "destinatario"}.pdf`,
+      title: `Anteprima PDF - ${payload.destLabel || "Destinatario"}`,
+      contextLabel: `Materiali consegnati a ${payload.destLabel || "Destinatario"}`,
+    });
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
+  };
+
+  // PDF globale (con fornitore)
+  const exportPDFGlobale = async () => {
+    const payload = buildPdfPayloadGlobale();
+    if (!payload.rows.length) {
+      alert("Nessun materiale consegnato.");
+      return;
+    }
+    await generateSmartPDF(payload);
+  };
+
+  const previewPDFGlobale = async () => {
+    const payload = buildPdfPayloadGlobale();
+    if (!payload.rows.length) {
+      alert("Nessun materiale consegnato.");
+      return;
+    }
+    const preview = await ensurePdfPreviewReady({
+      source: async () => generateSmartPDFBlob(payload),
+      fileName: "storico-materiali-consegnati.pdf",
+      title: "Anteprima PDF storico materiali consegnati",
+      contextLabel: "Storico materiali consegnati",
+    });
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
   };
 
   return (
@@ -518,9 +662,18 @@ const MaterialiConsegnati: React.FC = () => {
             </div>
           </div>
 
-          <button className="mc-pdf-global-btn" onClick={exportPDFGlobale}>
-            PDF Storico
-          </button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              className="mc-pdf-global-btn"
+              onClick={previewPDFGlobale}
+              style={{ background: "#2d6a4f", color: "#fdfaf4" }}
+            >
+              Anteprima PDF
+            </button>
+            <button className="mc-pdf-global-btn" onClick={exportPDFGlobale}>
+              Scarica PDF
+            </button>
+          </div>
         </div>
 
         {/* FORM NUOVA CONSEGNA */}
@@ -787,12 +940,21 @@ const MaterialiConsegnati: React.FC = () => {
                         Storico materiali consegnati
                       </p>
                     </div>
-                    <button
-                      className="mc-pdf-btn"
-                      onClick={() => exportPDFPerDestinatario(selectedDest)}
-                    >
-                      PDF
-                    </button>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        className="mc-pdf-btn"
+                        onClick={() => previewPDFPerDestinatario(selectedDest)}
+                        style={{ background: "#2d6a4f", color: "#fdfaf4" }}
+                      >
+                        Anteprima
+                      </button>
+                      <button
+                        className="mc-pdf-btn"
+                        onClick={() => exportPDFPerDestinatario(selectedDest)}
+                      >
+                        Scarica PDF
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mc-detail-list">
@@ -826,6 +988,18 @@ const MaterialiConsegnati: React.FC = () => {
             </>
           )}
         </div>
+
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPDFText}
+          onWhatsApp={handleOpenWhatsApp}
+        />
       </div>
     </div>
   );

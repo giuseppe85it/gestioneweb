@@ -5,7 +5,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generateSmartPDF } from "../utils/pdfEngine";
+import { generateSmartPDF, generateSmartPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText as buildPdfShareMessage,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import "./Inventario.css";
 import { storage, db } from "../firebase";
 
@@ -43,6 +52,11 @@ const Inventario: React.FC = () => {
   // ---------------------------
   const [editItem, setEditItem] = useState<InventarioItem | null>(null);
   const [editFotoFile, setEditFotoFile] = useState<File | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("inventario-magazzino.pdf");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   // ---------------------------
   // CARICAMENTO
@@ -72,6 +86,12 @@ const Inventario: React.FC = () => {
     };
     void load();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   // ---------------------------
   // SALVA
@@ -203,12 +223,7 @@ const Inventario: React.FC = () => {
   // ---------------------------
   // PDF
   // ---------------------------
-  const exportPDF = async () => {
-    if (inventario.length === 0) {
-      alert("Inventario vuoto.");
-      return;
-    }
-
+  const buildInventarioPdfPayload = () => {
     const rows = inventario.map((item) => ({
       descrizione: item.descrizione,
       fornitore: item.fornitore || "",
@@ -217,12 +232,105 @@ const Inventario: React.FC = () => {
       foto: item.fotoUrl ? "SI" : "",
     }));
 
-    await generateSmartPDF({
-      kind: "table",
+    return {
+      kind: "table" as const,
       title: "Inventario Magazzino",
       columns: ["descrizione", "fornitore", "quantita", "unita", "foto"],
       rows,
+    };
+  };
+
+  const exportPDF = async () => {
+    if (inventario.length === 0) {
+      alert("Inventario vuoto.");
+      return;
+    }
+    await generateSmartPDF(buildInventarioPdfPayload());
+  };
+
+  const ensurePdfPreviewReady = async () => {
+    if (inventario.length === 0) {
+      alert("Inventario vuoto.");
+      return null;
+    }
+    try {
+      const preview = await openPreview({
+        source: async () => generateSmartPDFBlob(buildInventarioPdfPayload()),
+        fileName: "inventario-magazzino.pdf",
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewUrl(preview.url);
+      return preview;
+    } catch (err) {
+      console.error("Errore anteprima PDF inventario:", err);
+      alert("Impossibile generare l'anteprima PDF.");
+      return null;
+    }
+  };
+
+  const handleAnteprimaPDF = async () => {
+    const preview = await ensurePdfPreviewReady();
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
+  };
+
+  const buildPreviewShareText = () => {
+    return buildPdfShareMessage({
+      contextLabel: "Inventario Magazzino",
+      fileName: pdfPreviewFileName || "inventario-magazzino.pdf",
+      url: pdfPreviewUrl,
     });
+  };
+
+  const handleSharePDF = async () => {
+    let blob = pdfPreviewBlob;
+    let fileName = pdfPreviewFileName || "inventario-magazzino.pdf";
+    if (!blob) {
+      const preview = await ensurePdfPreviewReady();
+      if (!preview) return;
+      blob = preview.blob;
+      fileName = preview.fileName;
+      setPdfPreviewOpen(true);
+    }
+
+    const result = await sharePdfFile({
+      blob,
+      fileName,
+      title: "Inventario Magazzino",
+      text: `Condivisione ${fileName}`,
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+    if (result.status === "unsupported") {
+      setPdfShareHint("Condivisione file non disponibile su questo dispositivo. Usa Copia link o Apri WhatsApp.");
+      return;
+    }
+    setPdfShareHint("Condivisione non riuscita. Usa Copia link o Apri WhatsApp.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const ok = await copyTextToClipboard(buildPreviewShareText());
+    setPdfShareHint(ok ? "Testo copiato negli appunti." : "Impossibile copiare automaticamente. Copia il testo manualmente.");
+  };
+
+  const handleOpenWhatsApp = () => {
+    const url = buildWhatsAppShareUrl(buildPreviewShareText());
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const closePdfPreview = () => {
+    setPdfPreviewOpen(false);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
   };
 
   // ======================================================
@@ -246,9 +354,18 @@ const Inventario: React.FC = () => {
             </div>
           </div>
 
-          <button className="inventario-pdf-button" onClick={exportPDF}>
-            Esporta PDF
-          </button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              className="inventario-pdf-button"
+              onClick={handleAnteprimaPDF}
+              style={{ background: "#2d6a4f", color: "#fdfaf4" }}
+            >
+              Anteprima PDF
+            </button>
+            <button className="inventario-pdf-button" onClick={exportPDF}>
+              Scarica PDF
+            </button>
+          </div>
         </div>
 
         {/* FORM */}
@@ -530,6 +647,18 @@ const Inventario: React.FC = () => {
             </div>
           </div>
         )}
+
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title="Anteprima PDF inventario"
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPDFText}
+          onWhatsApp={handleOpenWhatsApp}
+        />
       </div>
     </div>
   );
