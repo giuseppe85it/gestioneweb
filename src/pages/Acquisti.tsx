@@ -1933,14 +1933,18 @@ function PreventiviView(props: {
         return descV === descKey;
       });
       const availablePool = matchingPool.filter((v) => !usedListinoIds.has(v.id));
-      const pool = availablePool;
 
-      if (pool.length === 0) {
+      if (matchingPool.length === 0) {
         missingRows.push(r);
         return;
       }
 
-      const matched = [...pool].sort((a, b) => getScore(b) - getScore(a))[0];
+      if (availablePool.length === 0) {
+        imported += 1;
+        return;
+      }
+
+      const matched = [...availablePool].sort((a, b) => getScore(b) - getScore(a))[0];
       if (!matched) {
         missingRows.push(r);
         return;
