@@ -6264,12 +6264,14 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
               <h4>Anteprima PDF interno</h4>
               <button type="button" className="acq-btn" onClick={closePdfPreview}>Chiudi</button>
             </div>
-            <div className="acq-pdf-preview-viewer">
-              {pdfPreviewUrl ? (
-                <iframe title="Anteprima PDF ordine interno" src={pdfPreviewUrl} />
-              ) : (
-                <div className="acq-pdf-preview-empty">Anteprima non disponibile.</div>
-              )}
+            <div className="acq-pdf-preview-body">
+              <div className="acq-pdf-preview-viewer">
+                {pdfPreviewUrl ? (
+                  <iframe title="Anteprima PDF ordine interno" src={pdfPreviewUrl} />
+                ) : (
+                  <div className="acq-pdf-preview-empty">Anteprima non disponibile.</div>
+                )}
+              </div>
             </div>
             <div className="acq-pdf-preview-actions">
               {pdfShareHint && <span className="acq-pdf-preview-hint">{pdfShareHint}</span>}
