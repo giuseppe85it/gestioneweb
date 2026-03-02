@@ -4,7 +4,16 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import type { Ordine } from "../types/ordini";
-import { generateSmartPDF } from "../utils/pdfEngine";
+import { generateSmartPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import "./OrdiniInAttesa.css";
 
 interface OrdiniInAttesaProps {
@@ -17,6 +26,12 @@ const OrdiniInAttesa: React.FC<OrdiniInAttesaProps> = ({ embedded = false }) => 
   const [ordini, setOrdini] = useState<Ordine[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("ordini-in-attesa.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF ordini in attesa");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
     const loadOrdini = async () => {
@@ -47,6 +62,70 @@ const OrdiniInAttesa: React.FC<OrdiniInAttesaProps> = ({ embedded = false }) => 
     navigate(`/dettaglio-ordine/${id}`);
   };
 
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Ordini in attesa",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "ordini-in-attesa.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "ordini-in-attesa.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF ordini in attesa",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
+
   const esportaPDF = async (ordine: Ordine) => {
     const ordiniFornitore = ordini.filter(
       (o) => o.nomeFornitore === ordine.nomeFornitore
@@ -63,12 +142,30 @@ const OrdiniInAttesa: React.FC<OrdiniInAttesaProps> = ({ embedded = false }) => 
       }))
     );
 
-    await generateSmartPDF({
-      kind: "table",
-      title: `Ordini - ${ordine.nomeFornitore}`,
-      columns: ["fornitore", "dataOrdine", "descrizione", "quantita", "stato", "dataArrivo"],
-      rows,
-    });
+    try {
+      const fileDate = formatFileDate();
+      const preview = await openPreview({
+        source: async () =>
+          generateSmartPDFBlob({
+            kind: "table",
+            title: `Ordini - ${ordine.nomeFornitore}`,
+            columns: ["fornitore", "dataOrdine", "descrizione", "quantita", "stato", "dataArrivo"],
+            rows,
+          }),
+        fileName: `ordini-in-attesa-${(ordine.nomeFornitore || "fornitore").replace(/\s+/g, "-")}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF ordini in attesa - ${ordine.nomeFornitore}`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF ordini in attesa:", err);
+      setError("Errore durante la generazione dell'anteprima PDF.");
+    }
   };
 
   if (loading) {
@@ -140,7 +237,7 @@ const OrdiniInAttesa: React.FC<OrdiniInAttesaProps> = ({ embedded = false }) => 
                       className="btn-secondary"
                       onClick={() => esportaPDF(ordine)}
                     >
-                      PDF
+                      Anteprima PDF
                     </button>
                   </div>
                 </div>
@@ -149,6 +246,17 @@ const OrdiniInAttesa: React.FC<OrdiniInAttesaProps> = ({ embedded = false }) => 
           </div>
         )}
       </div>
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleSharePDF}
+        onCopyLink={handleCopyPDFText}
+        onWhatsApp={handleWhatsAppPDF}
+      />
     </div>
   );
 };

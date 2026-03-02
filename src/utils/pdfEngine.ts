@@ -1193,14 +1193,14 @@ async function renderBlocks(
   return currentY;
 }
 
-async function generateDocFromModel(model: PdfDocModel): Promise<void> {
+async function buildDocFromModel(model: PdfDocModel): Promise<{ doc: jsPDF; fileName: string }> {
   const doc = new jsPDF();
   let currentY = await drawStandardHeader(doc, model);
   currentY = await renderBlocks(doc, model, currentY);
   addStandardFooter(doc, model.footerSign);
 
   const name = sanitizeFileName(`${model.title || "Documento"}_${model.docId || ""}`);
-  doc.save(`${name}.pdf`);
+  return { doc, fileName: `${name}.pdf` };
 }
 
 // --------------------------------------------------------
@@ -1258,6 +1258,14 @@ export async function generateLavoriPDF(
   await generateSmartPDF({ kind: "lavori", title, lavori, groupLabel });
 }
 
+export async function generateLavoriPDFBlob(
+  title: string,
+  lavori: LavoroLike[],
+  groupLabel?: string
+): Promise<{ blob: Blob; fileName: string }> {
+  return generateSmartPDFBlob({ kind: "lavori", title, lavori, groupLabel });
+}
+
 export async function generateTablePDF(
   title: string,
   rows: any[],
@@ -1266,12 +1274,28 @@ export async function generateTablePDF(
   await generateSmartPDF({ kind: "table", title, rows, columns });
 }
 
+export async function generateTablePDFBlob(
+  title: string,
+  rows: any[],
+  columns?: string[]
+): Promise<{ blob: Blob; fileName: string }> {
+  return generateSmartPDFBlob({ kind: "table", title, rows, columns });
+}
+
 export async function generateMezzoPDF(
   title: string,
   mezzo: MezzoLike,
   domande?: DomandaLike[]
 ) {
   await generateSmartPDF({ kind: "mezzo", title, mezzo, domande });
+}
+
+export async function generateMezzoPDFBlob(
+  title: string,
+  mezzo: MezzoLike,
+  domande?: DomandaLike[]
+): Promise<{ blob: Blob; fileName: string }> {
+  return generateSmartPDFBlob({ kind: "mezzo", title, mezzo, domande });
 }
 
 function getFotoUrlsFromRecord(record: any): string[] {
@@ -1334,7 +1358,9 @@ function formatCondizioni(cond: any): string {
   return parts.join(" | ");
 }
 
-export async function generateSegnalazionePDF(record: any): Promise<void> {
+async function buildSegnalazionePdfDocument(
+  record: any
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = buildDocId("SEG");
   const targaMotrice = fmtTarga(record?.targaCamion || record?.targa || "");
   const targaRimorchio = fmtTarga(record?.targaRimorchio || "");
@@ -1404,7 +1430,7 @@ export async function generateSegnalazionePDF(record: any): Promise<void> {
     });
   }
 
-  await generateDocFromModel({
+  return buildDocFromModel({
     docId,
     title: "Segnalazione",
     dateTimeLabel,
@@ -1414,7 +1440,21 @@ export async function generateSegnalazionePDF(record: any): Promise<void> {
   });
 }
 
-export async function generateControlloPDF(record: any): Promise<void> {
+export async function generateSegnalazionePDF(record: any): Promise<void> {
+  const { doc, fileName } = await buildSegnalazionePdfDocument(record);
+  doc.save(fileName);
+}
+
+export async function generateSegnalazionePDFBlob(
+  record: any
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildSegnalazionePdfDocument(record);
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
+async function buildControlloPdfDocument(
+  record: any
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = buildDocId("CTRL");
   const targaMotrice = fmtTarga(record?.targaCamion || "");
   const targaRimorchio = fmtTarga(record?.targaRimorchio || "");
@@ -1472,7 +1512,7 @@ export async function generateControlloPDF(record: any): Promise<void> {
     });
   }
 
-  await generateDocFromModel({
+  return buildDocFromModel({
     docId,
     title: "Controllo mezzo",
     dateTimeLabel,
@@ -1482,7 +1522,21 @@ export async function generateControlloPDF(record: any): Promise<void> {
   });
 }
 
-export async function generateRichiestaAttrezzaturePDF(record: any): Promise<void> {
+export async function generateControlloPDF(record: any): Promise<void> {
+  const { doc, fileName } = await buildControlloPdfDocument(record);
+  doc.save(fileName);
+}
+
+export async function generateControlloPDFBlob(
+  record: any
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildControlloPdfDocument(record);
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
+async function buildRichiestaAttrezzaturePdfDocument(
+  record: any
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = buildDocId("ATT");
   const targaMotrice = fmtTarga(record?.targaCamion || "");
   const targaRimorchio = fmtTarga(record?.targaRimorchio || "");
@@ -1530,7 +1584,7 @@ export async function generateRichiestaAttrezzaturePDF(record: any): Promise<voi
     });
   }
 
-  await generateDocFromModel({
+  return buildDocFromModel({
     docId,
     title: "Richiesta attrezzature",
     dateTimeLabel,
@@ -1540,7 +1594,21 @@ export async function generateRichiestaAttrezzaturePDF(record: any): Promise<voi
   });
 }
 
-export async function generateRifornimentoPDF(record: any): Promise<void> {
+export async function generateRichiestaAttrezzaturePDF(record: any): Promise<void> {
+  const { doc, fileName } = await buildRichiestaAttrezzaturePdfDocument(record);
+  doc.save(fileName);
+}
+
+export async function generateRichiestaAttrezzaturePDFBlob(
+  record: any
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildRichiestaAttrezzaturePdfDocument(record);
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
+async function buildRifornimentoPdfDocument(
+  record: any
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = buildDocId("RIF");
   const targaMotrice = fmtTarga(record?.targaCamion || record?.targaMotrice || "");
   const targaRimorchio = fmtTarga(record?.targaRimorchio || "");
@@ -1586,7 +1654,7 @@ export async function generateRifornimentoPDF(record: any): Promise<void> {
     });
   }
 
-  await generateDocFromModel({
+  return buildDocFromModel({
     docId,
     title: "Rifornimento",
     dateTimeLabel,
@@ -1596,7 +1664,21 @@ export async function generateRifornimentoPDF(record: any): Promise<void> {
   });
 }
 
-export async function generateCambioMezzoPDF(record: any): Promise<void> {
+export async function generateRifornimentoPDF(record: any): Promise<void> {
+  const { doc, fileName } = await buildRifornimentoPdfDocument(record);
+  doc.save(fileName);
+}
+
+export async function generateRifornimentoPDFBlob(
+  record: any
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildRifornimentoPdfDocument(record);
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
+async function buildCambioMezzoPdfDocument(
+  record: any
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = buildDocId("CAMB");
   const dateTimeLabel = formatDateTime(record?.timestamp ?? Date.now());
 
@@ -1650,13 +1732,25 @@ export async function generateCambioMezzoPDF(record: any): Promise<void> {
     });
   }
 
-  await generateDocFromModel({
+  return buildDocFromModel({
     docId,
     title: "Cambio mezzo",
     dateTimeLabel,
     blocks,
     footerSign: { leftLabel: "Firma Autista", rightLabel: "Firma Admin" },
   });
+}
+
+export async function generateCambioMezzoPDF(record: any): Promise<void> {
+  const { doc, fileName } = await buildCambioMezzoPdfDocument(record);
+  doc.save(fileName);
+}
+
+export async function generateCambioMezzoPDFBlob(
+  record: any
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildCambioMezzoPdfDocument(record);
+  return { blob: doc.output("blob") as Blob, fileName };
 }
 
 type DossierPdfData = {
@@ -1672,7 +1766,9 @@ type DossierPdfData = {
   targa?: string;
 };
 
-export async function generateDossierMezzoPDF(data: DossierPdfData): Promise<void> {
+async function buildDossierMezzoPdfDocument(
+  data: DossierPdfData
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = buildDocId("DOS");
   const mezzo = data?.mezzo || {};
   const targa = fmtTarga(mezzo?.targa || data?.targa || "");
@@ -1868,7 +1964,19 @@ export async function generateDossierMezzoPDF(data: DossierPdfData): Promise<voi
   addStandardFooter(doc, model.footerSign);
 
   const name = sanitizeFileName(`${model.title || "Documento"}_${model.docId || ""}`);
-  doc.save(`${name}.pdf`);
+  return { doc, fileName: `${name}.pdf` };
+}
+
+export async function generateDossierMezzoPDF(data: DossierPdfData): Promise<void> {
+  const { doc, fileName } = await buildDossierMezzoPdfDocument(data);
+  doc.save(fileName);
+}
+
+export async function generateDossierMezzoPDFBlob(
+  data: DossierPdfData
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildDossierMezzoPdfDocument(data);
+  return { blob: doc.output("blob") as Blob, fileName };
 }
 
 type AnalisiEconomicaPdfSection = {
@@ -1886,9 +1994,9 @@ type AnalisiEconomicaPdfInput = {
   sezioniOpzionali?: AnalisiEconomicaPdfSection[];
 };
 
-export async function generateAnalisiEconomicaPDF(
+async function buildAnalisiEconomicaPdfDocument(
   input: AnalisiEconomicaPdfInput
-): Promise<void> {
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = input?.docId || buildDocId("IAE");
   const mezzo = input?.mezzoInfo || {};
   const targa = fmtTarga(input?.targa || mezzo?.targa || "");
@@ -1936,7 +2044,7 @@ export async function generateAnalisiEconomicaPDF(
     }
   });
 
-  await generateDocFromModel({
+  return buildDocFromModel({
     docId,
     title: "Analisi economica",
     dateTimeLabel,
@@ -1944,6 +2052,20 @@ export async function generateAnalisiEconomicaPDF(
     blocks,
     footerSign: { leftLabel: "Firma Admin", rightLabel: "Firma Admin" },
   });
+}
+
+export async function generateAnalisiEconomicaPDF(
+  input: AnalisiEconomicaPdfInput
+): Promise<void> {
+  const { doc, fileName } = await buildAnalisiEconomicaPdfDocument(input);
+  doc.save(fileName);
+}
+
+export async function generateAnalisiEconomicaPDFBlob(
+  input: AnalisiEconomicaPdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildAnalisiEconomicaPdfDocument(input);
+  return { blob: doc.output("blob") as Blob, fileName };
 }
 
 type PreventiviCapoPdfItem = {
@@ -1961,9 +2083,9 @@ type PreventiviCapoPdfInput = {
   listaPreventivi: PreventiviCapoPdfItem[];
 };
 
-export async function generatePreventiviCapoPDF(
+async function buildPreventiviCapoPdfDocument(
   input: PreventiviCapoPdfInput
-): Promise<void> {
+): Promise<{ doc: jsPDF; fileName: string }> {
   const docId = buildDocId("PRV");
   const targa = fmtTarga(input?.targa || "");
   const title = targa ? `Preventivi Mezzo - ${targa}` : "Preventivi Mezzo";
@@ -2080,7 +2202,21 @@ export async function generatePreventiviCapoPDF(
   }
 
   const name = sanitizeFileName(`${title}_${docId}`);
-  doc.save(`${name}.pdf`);
+  return { doc, fileName: `${name}.pdf` };
+}
+
+export async function generatePreventiviCapoPDF(
+  input: PreventiviCapoPdfInput
+): Promise<void> {
+  const { doc, fileName } = await buildPreventiviCapoPdfDocument(input);
+  doc.save(fileName);
+}
+
+export async function generatePreventiviCapoPDFBlob(
+  input: PreventiviCapoPdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildPreventiviCapoPdfDocument(input);
+  return { blob: doc.output("blob") as Blob, fileName };
 }
 
 type StampOriginalPdfParams = {

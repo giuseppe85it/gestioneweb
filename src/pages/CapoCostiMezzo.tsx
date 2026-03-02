@@ -3,7 +3,16 @@ import { useNavigate, useParams } from "react-router-dom";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generatePreventiviCapoPDF } from "../utils/pdfEngine";
+import { generatePreventiviCapoPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { formatDateUI } from "../utils/dateFormat";
 import "./CapoCostiMezzo.css";
 
@@ -185,6 +194,99 @@ const CapoCostiMezzo: React.FC = () => {
   const now = useMemo(() => new Date(), []);
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("preventivi-mezzo.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF");
+  const [pdfShareContext, setPdfShareContext] = useState("Costi mezzo");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+
+  const formatFileDate = () => {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const resolveUrlFileName = (url: string, fallback: string) => {
+    try {
+      const parsed = new URL(url);
+      const candidate = parsed.pathname.split("/").pop();
+      if (!candidate) return fallback;
+      return decodeURIComponent(candidate);
+    } catch {
+      return fallback;
+    }
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const openPdfUrlPreview = (url: string, title: string, contextLabel: string) => {
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewBlob(null);
+    setPdfPreviewTitle(title);
+    setPdfShareContext(contextLabel);
+    setPdfPreviewFileName(resolveUrlFileName(url, `documento-${formatFileDate()}.pdf`));
+    setPdfPreviewUrl(url);
+    setPdfPreviewOpen(true);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: pdfShareContext || "Costi mezzo",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "preventivi-mezzo.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "preventivi-mezzo.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -549,7 +651,7 @@ const CapoCostiMezzo: React.FC = () => {
 
   const handleExportPreventivi = async () => {
     const targaKey = normalizeTarga(targa);
-    await generatePreventiviCapoPDF({
+    const payload = {
       targa: targaKey,
       anno: selectedYear,
       mese: exportAllYear ? undefined : selectedMonth,
@@ -559,12 +661,31 @@ const CapoCostiMezzo: React.FC = () => {
         importo: item.importo,
         status: item.status || "",
       })),
-    });
+    };
+
+    try {
+      const fileDate = formatFileDate();
+      const preview = await openPreview({
+        source: async () => generatePreventiviCapoPDFBlob(payload),
+        fileName: `preventivi-mezzo-${targaKey || "targa"}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF preventivi ${targaKey || ""}`.trim());
+      setPdfShareContext(`Preventivi mezzo ${targaKey || ""}`.trim());
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF preventivi:", err);
+      window.alert("Errore durante la generazione dell'anteprima PDF.");
+    }
   };
 
   const handleDownloadStamped = async (item: any) => {
     if (!item.fileUrl) {
-      window.alert("Errore scaricamento PDF timbrato.");
+      window.alert("Errore anteprima PDF timbrato.");
       return;
     }
     const status =
@@ -602,8 +723,11 @@ const CapoCostiMezzo: React.FC = () => {
       if (!data?.stampedUrl) {
         throw new Error("stamp_pdf missing stampedUrl");
       }
-
-      window.open(data.stampedUrl, "_blank", "noopener,noreferrer");
+      openPdfUrlPreview(
+        data.stampedUrl,
+        `Anteprima PDF timbrato ${status}`,
+        `Preventivo timbrato ${status}`
+      );
     } catch (err) {
       console.error(err);
       window.alert("Errore timbro");
@@ -752,7 +876,7 @@ const CapoCostiMezzo: React.FC = () => {
                     className="capo-button"
                     onClick={handleExportPreventivi}
                   >
-                    ESPORTA PDF PREVENTIVI
+                    ANTEPRIMA PDF PREVENTIVI
                   </button>
                 </div>
               </div>
@@ -813,16 +937,26 @@ const CapoCostiMezzo: React.FC = () => {
                       <div className="capo-approvazioni-footer">
                         {item.fileUrl ? (
                           <>
-                            <a className="capo-button" href={item.fileUrl} target="_blank" rel="noreferrer">
-                              APRI PDF
-                            </a>
+                            <button
+                              type="button"
+                              className="capo-button"
+                              onClick={() =>
+                                openPdfUrlPreview(
+                                  String(item.fileUrl),
+                                  "Anteprima PDF documento",
+                                  "Documento preventivo"
+                                )
+                              }
+                            >
+                              ANTEPRIMA PDF
+                            </button>
                             {item.approvalStatus !== "pending" && (
                               <button
                                 type="button"
                                 className="capo-button secondary"
                                 onClick={() => handleDownloadStamped(item)}
                               >
-                                SCARICA TIMBRATO
+                                ANTEPRIMA TIMBRATO
                               </button>
                             )}
                           </>
@@ -890,9 +1024,19 @@ const CapoCostiMezzo: React.FC = () => {
 
                         <div className="capo-doc-actions">
                           {item.fileUrl ? (
-                            <a className="capo-button" href={item.fileUrl} target="_blank" rel="noreferrer">
-                              APRI PDF
-                            </a>
+                            <button
+                              type="button"
+                              className="capo-button"
+                              onClick={() =>
+                                openPdfUrlPreview(
+                                  String(item.fileUrl),
+                                  "Anteprima PDF documento",
+                                  "Documento costi mezzo"
+                                )
+                              }
+                            >
+                              ANTEPRIMA PDF
+                            </button>
                           ) : (
                             <span className="capo-meta-muted">Nessun PDF</span>
                           )}
@@ -905,6 +1049,17 @@ const CapoCostiMezzo: React.FC = () => {
             </section>
           </>
         )}
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPDFText}
+          onWhatsApp={handleWhatsAppPDF}
+        />
       </div>
     </div>
   );

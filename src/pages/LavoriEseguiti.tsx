@@ -2,7 +2,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
-import { generateTablePDF } from "../utils/pdfEngine"; // <-- PDF ENGINE
+import { generateTablePDFBlob } from "../utils/pdfEngine"; // <-- PDF ENGINE
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import type { Lavoro, Urgenza } from "../types/lavori";
 import { formatDateUI } from "../utils/dateFormat";
 import { isLavoroEseguito } from "../utils/lavoriSelectors";
@@ -63,12 +72,82 @@ const LavoriEseguiti: React.FC = () => {
   const [openMagazzino, setOpenMagazzino] = useState(false);
   const targaFilterParam = (searchParams.get("targa") || "").trim();
   const [searchTarga, setSearchTarga] = useState(targaFilterParam);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("lavori-eseguiti.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF lavori eseguiti");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (targaFilterParam) {
       setSearchTarga(targaFilterParam);
     }
   }, [targaFilterParam]);
+
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Lavori eseguiti",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "lavori-eseguiti.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "lavori-eseguiti.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF lavori eseguiti",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   const loadLavori = async () => {
     const json = await getItemSync("@lavori");
@@ -242,7 +321,22 @@ const LavoriEseguiti: React.FC = () => {
     // colonne opzionali
     const columns = ["Descrizione", "Targa", "Esecutore", "Inserimento", "Esecuzione"];
 
-    await generateTablePDF(titolo, rows, columns);
+    try {
+      const fileDate = formatFileDate();
+      const preview = await openPreview({
+        source: async () => generateTablePDFBlob(titolo, rows, columns),
+        fileName: `lavori-eseguiti-${titolo.replace(/\s+/g, "-")}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF lavori eseguiti - ${titolo}`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF lavori eseguiti:", err);
+    }
   };
 
   const getUrgencyClass = (urgenza?: Urgenza) => {
@@ -321,7 +415,7 @@ const LavoriEseguiti: React.FC = () => {
                         handleExportPDF(group.items, group.label);
                       }}
                     >
-                      PDF
+                      Anteprima PDF
                     </button>
                     <span
                       className={`mezzo-chevron ${isOpen ? "is-open" : ""}`}
@@ -369,7 +463,7 @@ const LavoriEseguiti: React.FC = () => {
                       handleExportPDF(magazzinoItems, "MAGAZZINO");
                     }}
                   >
-                    PDF
+                    Anteprima PDF
                   </button>
                   <span
                     className={`mezzo-chevron ${openMagazzino ? "is-open" : ""}`}
@@ -404,6 +498,17 @@ const LavoriEseguiti: React.FC = () => {
         <button className="le-back-btn lavori-btn is-primary" onClick={() => navigate(-1)}>
           TORNA INDIETRO
         </button>
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPDFText}
+          onWhatsApp={handleWhatsAppPDF}
+        />
       </div>
     </div>
   );

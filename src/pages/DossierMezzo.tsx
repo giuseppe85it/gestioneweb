@@ -3,7 +3,16 @@ import { useParams, useNavigate } from "react-router-dom";
 import { doc, getDoc, collection, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getItemSync } from "../utils/storageSync";
-import { generateDossierMezzoPDF } from "../utils/pdfEngine";
+import { generateDossierMezzoPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import "./DossierMezzo.css";
 
@@ -223,16 +232,58 @@ const DossierMezzo: React.FC = () => {
   const [showAttesaModal, setShowAttesaModal] = useState(false);
   const [showEseguitiModal, setShowEseguitiModal] = useState(false);
   const [showManutenzioniModal, setShowManutenzioniModal] = useState(false);
-const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-const [showPreviewModal, setShowPreviewModal] = useState(false);
-const [showLibrettoModal, setShowLibrettoModal] = useState(false);
-const [librettoLoadErrors, setLibrettoLoadErrors] = useState<Record<string, boolean>>({});
-const [showPhotoModal, setShowPhotoModal] = useState(false);
-const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
-const openDocumento = (url: string) => {
-  setPreviewUrl(url);
-  setShowPreviewModal(true);
-};
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("dossier-mezzo.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF dossier mezzo");
+  const [pdfShareContext, setPdfShareContext] = useState("Dossier mezzo");
+  const [pdfShareDate, setPdfShareDate] = useState<string | null>(null);
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const [showLibrettoModal, setShowLibrettoModal] = useState(false);
+  const [librettoLoadErrors, setLibrettoLoadErrors] = useState<Record<string, boolean>>({});
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
+
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const resolveFileNameFromUrl = (url: string, fallback: string) => {
+    try {
+      const parsed = new URL(url);
+      const candidate = parsed.pathname.split("/").pop();
+      if (!candidate) return fallback;
+      return decodeURIComponent(candidate);
+    } catch {
+      return fallback;
+    }
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const openDocumento = (url: string) => {
+    const fallbackName = `documento-mezzo-${formatFileDate()}.pdf`;
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewBlob(null);
+    setPdfPreviewFileName(resolveFileNameFromUrl(url, fallbackName));
+    setPdfPreviewTitle("Anteprima PDF documento mezzo");
+    setPdfShareContext("Documento mezzo");
+    setPdfShareDate(null);
+    setPdfPreviewUrl(url);
+    setPdfPreviewOpen(true);
+  };
 
 const openPhotoViewer = (url: string) => {
   setPhotoModalUrl(url);
@@ -260,6 +311,12 @@ useEffect(() => {
   window.addEventListener("keydown", handleKey);
   return () => window.removeEventListener("keydown", handleKey);
 }, [showPhotoModal]);
+
+useEffect(() => {
+  return () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+  };
+}, [pdfPreviewUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -588,24 +645,85 @@ setState({
     navigate("/mezzi");
   };
 
+  const buildDossierPdfPayload = () => ({
+    mezzo: state.mezzo,
+    mezzoFotoUrl: state.mezzo?.fotoUrl ?? null,
+    mezzoFotoStoragePath:
+      (state.mezzo as any)?.fotoStoragePath ?? (state.mezzo as any)?.fotoPath ?? null,
+    lavoriDaEseguire: state.lavoriDaEseguire,
+    lavoriInAttesa: state.lavoriInAttesa,
+    lavoriEseguiti: state.lavoriEseguiti,
+    rifornimenti: state.rifornimenti,
+    segnalazioni: null,
+    controlli: null,
+    targa,
+  });
+
   const handleOpenPdf = async () => {
     try {
-      await generateDossierMezzoPDF({
-        mezzo: state.mezzo,
-        mezzoFotoUrl: state.mezzo?.fotoUrl ?? null,
-        mezzoFotoStoragePath: (state.mezzo as any)?.fotoStoragePath ?? (state.mezzo as any)?.fotoPath ?? null,
-        lavoriDaEseguire: state.lavoriDaEseguire,
-        lavoriInAttesa: state.lavoriInAttesa,
-        lavoriEseguiti: state.lavoriEseguiti,
-        rifornimenti: state.rifornimenti,
-        segnalazioni: null,
-        controlli: null,
-        targa,
+      const fileDate = formatFileDate();
+      const targaLabel = fmtTarga(state.mezzo?.targa || targa || "mezzo") || "mezzo";
+      const preview = await openPreview({
+        source: async () => generateDossierMezzoPDFBlob(buildDossierPdfPayload()),
+        fileName: `dossier-mezzo-${targaLabel}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
       });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF dossier ${targaLabel}`);
+      setPdfShareContext(`Dossier mezzo ${targaLabel}`);
+      setPdfShareDate(fileDate);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
     } catch (err) {
       console.error("Errore generazione PDF dossier:", err);
-      alert("Errore durante la generazione del PDF.");
+      alert("Errore durante la generazione dell'anteprima PDF.");
     }
+  };
+
+  const buildPdfShareMessage = () => {
+    return buildPdfShareText({
+      contextLabel: pdfShareContext || "Dossier mezzo",
+      dateLabel: pdfShareDate,
+      fileName: pdfPreviewFileName || "dossier-mezzo.pdf",
+      url: pdfPreviewUrl,
+    });
+  };
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "dossier-mezzo.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF dossier mezzo",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPdfText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPdf = () => {
+    const shareText = buildPdfShareMessage();
+    const url = buildWhatsAppShareUrl(shareText);
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const deletePreventivo = async (p: FatturaPreventivo) => {
@@ -646,28 +764,6 @@ setState({
   if (loading) {
     return (
       <div className="dossier-wrapper">
-        {showPreviewModal && previewUrl && (
-  <div className="dossier-modal-overlay">
-    <div className="dossier-modal dossier-pdf-modal">
-      <div className="dossier-modal-header">
-        <h2>Documento PDF</h2>
-        <button
-          className="dossier-button"
-          onClick={() => setShowPreviewModal(false)}
-        >
-          Chiudi
-        </button>
-      </div>
-
-      <div className="dossier-modal-body">
-        <iframe
-          src={previewUrl}
-          style={{ width: "100%", height: "80vh", border: "none" }}
-        />
-      </div>
-    </div>
-  </div>
-)}
         <div className="dossier-loading">Caricamento dossier in corso…</div>
       </div>
     );
@@ -879,28 +975,17 @@ const trovaPrezzoUnitario = (descrMov?: string): number | null => {
 return (
   <div className="dossier-wrapper">
 
-    {showPreviewModal && previewUrl && (
-      <div className="dossier-modal-overlay">
-        <div className="dossier-modal dossier-pdf-modal">
-          <div className="dossier-modal-header">
-            <h2>Documento PDF</h2>
-            <button
-              className="dossier-button"
-              onClick={() => setShowPreviewModal(false)}
-            >
-              Chiudi
-            </button>
-          </div>
-
-          <div className="dossier-modal-body">
-            <iframe
-              src={previewUrl}
-              style={{ width: "100%", height: "80vh", border: "none" }}
-            />
-          </div>
-        </div>
-      </div>
-    )}
+    <PdfPreviewModal
+      open={pdfPreviewOpen}
+      title={pdfPreviewTitle}
+      pdfUrl={pdfPreviewUrl}
+      fileName={pdfPreviewFileName}
+      hint={pdfShareHint}
+      onClose={closePdfPreview}
+      onShare={handleSharePDF}
+      onCopyLink={handleCopyPdfText}
+      onWhatsApp={handleWhatsAppPdf}
+    />
 
     {showLibrettoModal && (
       <div
@@ -964,14 +1049,13 @@ return (
                         title={`Libretto PDF ${index + 1}`}
                       />
                       <div className="dossier-libretto-actions">
-                        <a
+                        <button
+                          type="button"
                           className="dossier-button"
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
+                          onClick={() => openDocumento(url)}
                         >
-                          Apri PDF
-                        </a>
+                          Anteprima PDF
+                        </button>
                       </div>
                     </>
                   ) : (
@@ -1104,7 +1188,7 @@ return (
     type="button"
     onClick={handleOpenPdf}
   >
-    Esporta PDF
+    Anteprima PDF
   </button>
 </div>
     </div>
@@ -1552,7 +1636,7 @@ return (
   type="button"
   onClick={() => openDocumento(d.fileUrl!)}
 >
-  Apri PDF
+  Anteprima PDF
 </button>
   )}
 <button
@@ -1616,7 +1700,7 @@ return (
   type="button"
   onClick={() => openDocumento(d.fileUrl!)}
 >
-  Apri PDF
+  Anteprima PDF
 </button>
   )}
 </div>

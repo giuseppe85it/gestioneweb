@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
-import { generateControlloPDF } from "../utils/pdfEngine";
+import { generateControlloPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { formatDateTimeUI } from "../utils/dateFormat";
 import "./AutistiControlliAll.css";
 
@@ -55,6 +64,12 @@ export default function AutistiControlliAll() {
   const [records, setRecords] = useState<ControlloRecord[]>([]);
   const [filterTarga, setFilterTarga] = useState("");
   const [onlyKo, setOnlyKo] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("controllo-mezzo.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF controllo mezzo");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -111,6 +126,70 @@ export default function AutistiControlliAll() {
   const koList = useMemo(() => filtered.filter((r) => r.isKO), [filtered]);
   const okList = useMemo(() => filtered.filter((r) => !r.isKO), [filtered]);
 
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Controllo mezzo autisti",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "controllo-mezzo.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "controllo-mezzo.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF controllo mezzo",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
+
   const renderRow = (r: ControlloView, index: number) => {
     const autista = r.autistaNome ?? "-";
     const badge = r.badgeAutista ? `(${r.badgeAutista})` : "";
@@ -140,11 +219,26 @@ export default function AutistiControlliAll() {
               type="button"
               className="aic-back"
               style={{ padding: "4px 8px", fontSize: "12px" }}
-              onClick={() => {
-                void generateControlloPDF(r);
+              onClick={async () => {
+                try {
+                  const fileDate = formatFileDate();
+                  const preview = await openPreview({
+                    source: async () => generateControlloPDFBlob(r),
+                    fileName: `controllo-mezzo-${fileDate}.pdf`,
+                    previousUrl: pdfPreviewUrl,
+                  });
+                  setPdfShareHint(null);
+                  setPdfPreviewBlob(preview.blob);
+                  setPdfPreviewFileName(preview.fileName);
+                  setPdfPreviewTitle(`Anteprima PDF controllo ${r.targaLabel || ""}`.trim());
+                  setPdfPreviewUrl(preview.url);
+                  setPdfPreviewOpen(true);
+                } catch (err) {
+                  console.error("Errore anteprima PDF controllo:", err);
+                }
               }}
             >
-              PDF
+              Anteprima PDF
             </button>
           </div>
           {r.note ? <div className="aic-note">{r.note}</div> : null}
@@ -221,6 +315,17 @@ export default function AutistiControlliAll() {
           </div>
         </div>
       </div>
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleSharePDF}
+        onCopyLink={handleCopyPDFText}
+        onWhatsApp={handleWhatsAppPDF}
+      />
     </div>
   );
 }

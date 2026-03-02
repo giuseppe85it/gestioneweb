@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generateTablePDF } from "../utils/pdfEngine";
+import { generateTablePDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { uploadMaterialImage, deleteMaterialImage } from "../utils/materialImages";
 import "./AttrezzatureCantieri.css";
 
@@ -140,6 +149,75 @@ export default function AttrezzatureCantieri() {
   const [filterCategoria, setFilterCategoria] = useState("tutte");
   const [showAllStato, setShowAllStato] = useState(false);
   const [showAllRegistro, setShowAllRegistro] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("attrezzature-cantieri.pdf");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Attrezzature cantieri",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "attrezzature-cantieri.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "attrezzature-cantieri.pdf",
+      title: "Anteprima PDF attrezzature cantieri",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   useEffect(() => {
     const load = async () => {
@@ -574,10 +652,20 @@ export default function AttrezzatureCantieri() {
     });
 
     try {
-      await generateTablePDF("Attrezzature cantieri", rows, columns);
+      const fileDate = formatFileDate();
+      const preview = await openPreview({
+        source: async () => generateTablePDFBlob("Attrezzature cantieri", rows, columns),
+        fileName: `attrezzature-cantieri-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
     } catch (err) {
-      console.error("Errore export PDF:", err);
-      setError("Errore durante export PDF.");
+      console.error("Errore anteprima PDF:", err);
+      setError("Errore durante anteprima PDF.");
     }
   };
 
@@ -608,7 +696,7 @@ export default function AttrezzatureCantieri() {
               Gestione Operativa
             </button>
             <button className="ac-primary-btn" type="button" onClick={handleExportPdf}>
-              Esporta PDF
+              Anteprima PDF
             </button>
           </div>
         </div>
@@ -1360,6 +1448,17 @@ export default function AttrezzatureCantieri() {
           </div>
         </div>
       )}
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title="Anteprima PDF attrezzature cantieri"
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleSharePDF}
+        onCopyLink={handleCopyPDFText}
+        onWhatsApp={handleWhatsAppPDF}
+      />
     </div>
   );
 }

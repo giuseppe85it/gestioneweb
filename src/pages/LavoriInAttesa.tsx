@@ -4,7 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getItemSync } from "../utils/storageSync";
-import { generateLavoriPDF } from "../utils/pdfEngine"; // <--- PDF ENGINE UNIVERSALE
+import { generateLavoriPDFBlob } from "../utils/pdfEngine"; // <--- PDF ENGINE UNIVERSALE
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import type { Lavoro, Urgenza } from "../types/lavori";
 import { formatDateUI } from "../utils/dateFormat";
 import { isLavoroInAttesaGlobal } from "../utils/lavoriSelectors";
@@ -59,6 +68,12 @@ const LavoriInAttesa: React.FC = () => {
   const [openMagazzino, setOpenMagazzino] = useState(false);
   const targaFilterParam = (searchParams.get("targa") || "").trim();
   const [searchTarga, setSearchTarga] = useState(targaFilterParam);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("lavori-in-attesa.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF lavori in attesa");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (targaFilterParam) {
@@ -116,11 +131,90 @@ const LavoriInAttesa: React.FC = () => {
     return formatDateUI(value ?? null);
   };
 
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Lavori in attesa",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "lavori-in-attesa.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "lavori-in-attesa.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF lavori in attesa",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
+
   // -----------------------------------------
   // ESPORTA PDF con PDF ENGINE UNIVERSALE
   // -----------------------------------------
   const exportPdf = async (titolo: string, lavori: Lavoro[]) => {
-    await generateLavoriPDF(`Lavori in Attesa - ${titolo}`, lavori, titolo);
+    try {
+      const fileDate = formatFileDate();
+      const preview = await openPreview({
+        source: async () => generateLavoriPDFBlob(`Lavori in Attesa - ${titolo}`, lavori, titolo),
+        fileName: `lavori-in-attesa-${titolo.replace(/\s+/g, "-")}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF lavori in attesa - ${titolo}`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF lavori in attesa:", err);
+    }
   };
 
   const getUrgencyClass = (urgenza?: Urgenza) => {
@@ -319,7 +413,7 @@ const LavoriInAttesa: React.FC = () => {
                         exportPdf(group.label, group.items);
                       }}
                     >
-                      PDF
+                      Anteprima PDF
                     </button>
                     <span
                       className={`mezzo-chevron ${isOpen ? "is-open" : ""}`}
@@ -367,7 +461,7 @@ const LavoriInAttesa: React.FC = () => {
                       exportPdf("MAGAZZINO", magazzinoItems);
                     }}
                   >
-                    PDF
+                    Anteprima PDF
                   </button>
                   <span
                     className={`mezzo-chevron ${openMagazzino ? "is-open" : ""}`}
@@ -405,6 +499,17 @@ const LavoriInAttesa: React.FC = () => {
             TORNA INDIETRO
           </button>
         </div>
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPDFText}
+          onWhatsApp={handleWhatsAppPDF}
+        />
       </div>
     </div>
   );

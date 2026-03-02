@@ -11,7 +11,16 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { generateAnalisiEconomicaPDF } from "../utils/pdfEngine";
+import { generateAnalisiEconomicaPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { formatDateTimeUI } from "../utils/dateFormat";
 import GommeEconomiaSection from "./GommeEconomiaSection";
 import RifornimentiEconomiaSection from "./RifornimentiEconomiaSection";
@@ -269,6 +278,76 @@ const AnalisiEconomica: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [savingIA, setSavingIA] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("analisi-economica.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF analisi economica");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: `Analisi economica ${mezzo?.targa || targa || ""}`.trim(),
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "analisi-economica.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "analisi-economica.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF analisi economica",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -787,12 +866,31 @@ const AnalisiEconomica: React.FC = () => {
       analisiIA?.riepilogoBreve ||
       "";
 
-    await generateAnalisiEconomicaPDF({
-      targa: mezzo?.targa ?? targa ?? "",
-      mezzoInfo: mezzo,
-      testoAnalisi: testoPrincipale,
-      sezioniOpzionali: sezioni,
-    });
+    try {
+      const fileDate = formatFileDate();
+      const targaLabel = mezzo?.targa ?? targa ?? "mezzo";
+      const preview = await openPreview({
+        source: async () =>
+          generateAnalisiEconomicaPDFBlob({
+            targa: mezzo?.targa ?? targa ?? "",
+            mezzoInfo: mezzo,
+            testoAnalisi: testoPrincipale,
+            sezioniOpzionali: sezioni,
+          }),
+        fileName: `analisi-economica-${targaLabel}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF analisi economica ${targaLabel}`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF analisi economica:", err);
+      alert("Impossibile generare l'anteprima PDF.");
+    }
   };
 
   // =========================
@@ -864,7 +962,7 @@ const AnalisiEconomica: React.FC = () => {
 
         <div style={{ display: "flex", gap: "8px" }}>
           <button className="dossier-button" onClick={handleExportPdf}>
-            Esporta PDF
+            Anteprima PDF
           </button>
           <button
             className="dossier-button primary"
@@ -1083,6 +1181,17 @@ const AnalisiEconomica: React.FC = () => {
           </div>
         </section>
       </div>
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleSharePDF}
+        onCopyLink={handleCopyPDFText}
+        onWhatsApp={handleWhatsAppPDF}
+      />
     </div>
   );
 };

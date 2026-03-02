@@ -3,7 +3,16 @@ import { useNavigate } from "react-router-dom";
 import "../autisti/autisti.css";
 import "./RichiestaAttrezzatureAll.css";
 import { getItemSync } from "../utils/storageSync";
-import { generateRichiestaAttrezzaturePDF } from "../utils/pdfEngine";
+import { generateRichiestaAttrezzaturePDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { formatDateTimeUI } from "../utils/dateFormat";
 
 const KEY_RICHIESTE = "@richieste_attrezzature_autisti_tmp";
@@ -50,6 +59,12 @@ export default function RichiestaAttrezzatureAll() {
   const [records, setRecords] = useState<RichiestaAttrezzatureRecord[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("richiesta-attrezzature.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF richiesta attrezzature");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -97,6 +112,70 @@ export default function RichiestaAttrezzatureAll() {
     const nuove = list.filter((item) => item.isNuova).length;
     return { totale, nuove };
   }, [list]);
+
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Richieste attrezzature",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "richiesta-attrezzature.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "richiesta-attrezzature.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF richiesta attrezzature",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   return (
     <div className="richiesta-inbox-page">
@@ -182,11 +261,26 @@ export default function RichiestaAttrezzatureAll() {
                         type="button"
                         className="richiesta-back-btn"
                         style={{ padding: "4px 8px", fontSize: "12px", marginTop: "8px" }}
-                        onClick={() => {
-                          void generateRichiestaAttrezzaturePDF(item.record);
+                        onClick={async () => {
+                          try {
+                            const fileDate = formatFileDate();
+                            const preview = await openPreview({
+                              source: async () => generateRichiestaAttrezzaturePDFBlob(item.record),
+                              fileName: `richiesta-attrezzature-${fileDate}.pdf`,
+                              previousUrl: pdfPreviewUrl,
+                            });
+                            setPdfShareHint(null);
+                            setPdfPreviewBlob(preview.blob);
+                            setPdfPreviewFileName(preview.fileName);
+                            setPdfPreviewTitle(`Anteprima PDF richiesta ${item.autista}`);
+                            setPdfPreviewUrl(preview.url);
+                            setPdfPreviewOpen(true);
+                          } catch (err) {
+                            console.error("Errore anteprima PDF richiesta attrezzature:", err);
+                          }
                         }}
                       >
-                        PDF
+                        Anteprima PDF
                       </button>
                     </div>
                   ) : null}
@@ -213,6 +307,17 @@ export default function RichiestaAttrezzatureAll() {
           />
         </div>
       ) : null}
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleSharePDF}
+        onCopyLink={handleCopyPDFText}
+        onWhatsApp={handleWhatsAppPDF}
+      />
     </div>
   );
 }

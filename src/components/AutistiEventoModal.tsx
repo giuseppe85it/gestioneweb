@@ -4,12 +4,21 @@ import type { HomeEvent } from "../utils/homeEvents";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { useTarghe } from "../utils/targhe";
 import {
-  generateCambioMezzoPDF,
-  generateControlloPDF,
-  generateRichiestaAttrezzaturePDF,
-  generateRifornimentoPDF,
-  generateSegnalazionePDF,
+  generateCambioMezzoPDFBlob,
+  generateControlloPDFBlob,
+  generateRichiestaAttrezzaturePDFBlob,
+  generateRifornimentoPDFBlob,
+  generateSegnalazionePDFBlob,
 } from "../utils/pdfEngine";
+import PdfPreviewModal from "./PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { formatDateTimeUI } from "../utils/dateFormat";
 import "../autistiInbox/AutistiInboxHome.css";
 import TargaPicker from "./TargaPicker";
@@ -46,6 +55,12 @@ export default function AutistiEventoModal({
   const [createTipo, setCreateTipo] = useState<"targa" | "magazzino">("targa");
   const [createNote, setCreateNote] = useState("");
   const [createAlsoRimorchio, setCreateAlsoRimorchio] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("evento-autista.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF evento");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
   const targhe = useTarghe();
 
   useEffect(() => {
@@ -119,26 +134,106 @@ export default function AutistiEventoModal({
     return formatDateTimeUI(ts ?? null);
   }
 
-  function handleExportPdf(e: HomeEvent) {
+  function formatFileDate() {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  function closePdfPreview() {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  }
+
+  function buildPdfShareMessage() {
+    return buildPdfShareText({
+      contextLabel: event ? `Evento autista ${getTipoLabel(event.tipo)}` : "Evento autista",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "evento-autista.pdf",
+      url: pdfPreviewUrl,
+    });
+  }
+
+  async function handleSharePDF() {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "evento-autista.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF evento",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  }
+
+  async function handleCopyPDFText() {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  }
+
+  function handleWhatsAppPDF() {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  }
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
+
+  function getEventPdfBlobSource(e: HomeEvent) {
     const p: any = e.payload || {};
     switch (e.tipo) {
       case "segnalazione":
-        void generateSegnalazionePDF(p);
-        return;
+        return () => generateSegnalazionePDFBlob(p);
       case "controllo":
-        void generateControlloPDF(p);
-        return;
+        return () => generateControlloPDFBlob(p);
       case "richiesta_attrezzature":
-        void generateRichiestaAttrezzaturePDF(p);
-        return;
+        return () => generateRichiestaAttrezzaturePDFBlob(p);
       case "rifornimento":
-        void generateRifornimentoPDF(p);
-        return;
+        return () => generateRifornimentoPDFBlob(p);
       case "cambio_mezzo":
-        void generateCambioMezzoPDF(p);
-        return;
+        return () => generateCambioMezzoPDFBlob(p);
       default:
-        return;
+        return null;
+    }
+  }
+
+  async function handleExportPdf(e: HomeEvent) {
+    const source = getEventPdfBlobSource(e);
+    if (!source) return;
+    try {
+      const preview = await openPreview({
+        source,
+        fileName: `evento-autista-${e.tipo}-${formatFileDate()}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF ${getTipoLabel(e.tipo)}`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF evento:", err);
     }
   }
 
@@ -823,7 +918,7 @@ export default function AutistiEventoModal({
                     className="aix-create-btn"
                     onClick={() => handleExportPdf(event)}
                   >
-                    ESPORTA PDF
+                    ANTEPRIMA PDF
                   </button>
                 </div>
               </div>
@@ -986,6 +1081,18 @@ export default function AutistiEventoModal({
           </div>
         </div>
       )}
+
+      <PdfPreviewModal
+        open={pdfPreviewOpen}
+        title={pdfPreviewTitle}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfPreviewFileName}
+        hint={pdfShareHint}
+        onClose={closePdfPreview}
+        onShare={handleSharePDF}
+        onCopyLink={handleCopyPDFText}
+        onWhatsApp={handleWhatsAppPDF}
+      />
 
       {lightboxSrc && (
         <div className="aix-lightbox" onClick={() => setLightboxSrc(null)}>

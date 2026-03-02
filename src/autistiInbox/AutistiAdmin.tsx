@@ -12,7 +12,16 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { deleteObject, ref } from "firebase/storage";
 import { db, storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generateControlloPDF, generateSegnalazionePDF } from "../utils/pdfEngine";
+import { generateControlloPDFBlob, generateSegnalazionePDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import { buildTargheList } from "../utils/targhe";
 import TargaPicker from "../components/TargaPicker";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
@@ -241,6 +250,113 @@ export default function AutistiAdmin() {
   const [ctrlOnlyKo, setCtrlOnlyKo] = useState(true);
   const [gommeFilterTarga, setGommeFilterTarga] = useState("");
   const [gommeOnlyNuove, setGommeOnlyNuove] = useState(true);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("evento-autisti-admin.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF evento autisti");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: "Autisti inbox admin",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "evento-autisti-admin.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "evento-autisti-admin.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF evento autisti",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  const openSegnalazionePdfPreview = async (record: any, fotoList: string[]) => {
+    try {
+      const pdfSafe = buildPdfSafeSegnalazioneRecord(record, fotoList);
+      const preview = await openPreview({
+        source: async () => generateSegnalazionePDFBlob(pdfSafe),
+        fileName: `segnalazione-autisti-admin-${formatFileDate()}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle("Anteprima PDF segnalazione autista");
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF segnalazione (admin):", err);
+    }
+  };
+
+  const openControlloPdfPreview = async (record: any) => {
+    try {
+      const preview = await openPreview({
+        source: async () => generateControlloPDFBlob(record),
+        fileName: `controllo-autisti-admin-${formatFileDate()}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle("Anteprima PDF controllo mezzo");
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore anteprima PDF controllo (admin):", err);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   useEffect(() => {
     let alive = true;
@@ -2233,11 +2349,10 @@ export default function AutistiAdmin() {
                         type="button"
                         className="edit"
                         onClick={() => {
-                          const pdfSafe = buildPdfSafeSegnalazioneRecord(r, fotoList);
-                          void generateSegnalazionePDF(pdfSafe);
+                          void openSegnalazionePdfPreview(r, fotoList);
                         }}
                       >
-                        PDF
+                        ANTEPRIMA PDF
                       </button>
                       <button
                         type="button"
@@ -2360,10 +2475,10 @@ export default function AutistiAdmin() {
                           type="button"
                           className="edit"
                           onClick={() => {
-                            void generateControlloPDF(r);
+                            void openControlloPdfPreview(r);
                           }}
                         >
-                          PDF
+                          ANTEPRIMA PDF
                         </button>
                         <button
                           type="button"
@@ -3338,6 +3453,17 @@ export default function AutistiAdmin() {
             </div>
           </div>
         )}
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPDFText}
+          onWhatsApp={handleWhatsAppPDF}
+        />
         {lightboxSrc ? (
           <div className="admin-lightbox" onClick={() => setLightboxSrc(null)}>
             <button
