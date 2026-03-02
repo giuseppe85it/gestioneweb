@@ -7,7 +7,7 @@ import { uploadMaterialImage, deleteMaterialImage } from "../utils/materialImage
 import { generateSmartPDF } from "../utils/pdfEngine";
 import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { deleteObject, getDownloadURL, listAll, ref, uploadBytes } from "firebase/storage";
 import { db, functions, storage } from "../firebase";
 import "./Acquisti.css";
 import "./MaterialiDaOrdinare.css";
@@ -48,6 +48,7 @@ type ListinoVoce = {
   fornitoreNome: string;
   articoloCanonico: string;
   codiceArticolo?: string;
+  note?: string;
   unita: string;
   valuta: Valuta;
   prezzoAttuale: number;
@@ -55,6 +56,7 @@ type ListinoVoce = {
     preventivoId: string;
     numeroPreventivo: string;
     dataPreventivo: string;
+    note?: string;
     pdfUrl: string | null;
     pdfStoragePath: string | null;
     imageStoragePaths?: string[];
@@ -65,6 +67,7 @@ type ListinoVoce = {
     preventivoId: string;
     numeroPreventivo: string;
     dataPreventivo: string;
+    note?: string;
     imageStoragePaths?: string[];
     imageUrls?: string[];
   };
@@ -85,6 +88,8 @@ type ImportBozzaRiga = {
   prezzoNuovo: number;
   prezzoPrecedente?: number;
   trend: "down" | "up" | "same" | "new";
+  existingListinoId?: string;
+  importMode?: "default" | "link_source";
   fonte: {
     preventivoId: string;
     numeroPreventivo: string;
@@ -154,12 +159,35 @@ type PreventivoExtractPayload =
   | { pdfStoragePath: string; originalFileName?: string | null }
   | { imageStoragePaths: string[]; originalFileName?: string | null };
 
+type IaStorageImageFile = {
+  path: string;
+  name: string;
+  updatedLabel: string;
+};
+
+type IaStorageAttachmentFile = {
+  path: string;
+  name: string;
+  fileType: "image" | "pdf";
+  updatedLabel: string;
+};
+
 type AcquistiTab = "Ordine materiali" | "Ordini" | "Arrivi" | "Prezzi & Preventivi" | "Listino Prezzi";
 type ListKind = "attesa" | "arrivi";
+
+type PreventivoImportAnalysis = {
+  total: number;
+  imported: number;
+  missingRows: PreventivoRiga[];
+  verifyRows: Array<{ row: PreventivoRiga; reason: string }>;
+  linkOnlyRows: Array<{ row: PreventivoRiga; voce: ListinoVoce; reason: string }>;
+  actionableCount: number;
+};
 
 const TABS: AcquistiTab[] = ["Ordine materiali", "Ordini", "Arrivi", "Prezzi & Preventivi", "Listino Prezzi"];
 const UNITA_OPTIONS = ["PZ", "NR", "MT", "LT", "KG", "GR", "CF", "SC", "PA", "H", "ALTRO"] as const;
 const UNITA_OPTIONS_SET = new Set<string>(UNITA_OPTIONS);
+const LISTINO_EDIT_UNITA_OPTIONS = ["PZ", "MT", "KG", "LT", "NR", "ALTRO"] as const;
 const ORDINI_DOC_ID = "@ordini";
 const PREVENTIVI_DOC_ID = "@preventivi";
 const LISTINO_DOC_ID = "@listino_prezzi";
@@ -343,6 +371,21 @@ function inferValuta(input: { descrizione?: string; note?: string; numeroPrevent
   return "CHF";
 }
 
+function extractValutaFromNote(note: string | null | undefined): Valuta | null {
+  const text = String(note || "").toUpperCase();
+  if (!text) return null;
+  if (/(^|\W)(EUR|EURO)(\W|$)/.test(text)) return "EUR";
+  if (/(^|\W)(CHF|FR\.?\s*SVI|FRANCHI?\s*SVIZZERI?)(\W|$)/.test(text)) return "CHF";
+  return null;
+}
+
+function extractArticleCodeFromNote(note: string | null | undefined): string {
+  const text = String(note || "");
+  if (!text) return "";
+  const match = text.match(/(?:\bcode\b|\bcodice\b)\s*[:=]\s*([A-Za-z0-9._/-]+)/i);
+  return match ? String(match[1] || "").trim().toUpperCase() : "";
+}
+
 function listinoKey(input: {
   fornitoreId: string;
   articoloCanonico: string;
@@ -439,9 +482,13 @@ async function openDocumentRef(source: unknown) {
     return true;
   }
   if (refs.pdfStoragePath) {
-    const url = await getDownloadURL(ref(storage, refs.pdfStoragePath));
-    window.open(url, "_blank", "noopener,noreferrer");
-    return true;
+    try {
+      const url = await getDownloadURL(ref(storage, refs.pdfStoragePath));
+      window.open(url, "_blank", "noopener,noreferrer");
+      return true;
+    } catch (err) {
+      console.warn("PDF non apribile, tento fallback su immagini:", refs.pdfStoragePath, err);
+    }
   }
   if (refs.imageUrls.length > 0) {
     window.open(refs.imageUrls[0], "_blank", "noopener,noreferrer");
@@ -451,7 +498,13 @@ async function openDocumentRef(source: unknown) {
     return true;
   }
   if (refs.imageStoragePaths.length > 0) {
-    const urls = await Promise.all(refs.imageStoragePaths.map((path) => getDownloadURL(ref(storage, path))));
+    const settled = await Promise.allSettled(
+      refs.imageStoragePaths.map((path) => getDownloadURL(ref(storage, path)))
+    );
+    const urls = settled
+      .filter((entry): entry is PromiseFulfilledResult<string> => entry.status === "fulfilled")
+      .map((entry) => entry.value)
+      .filter((url) => String(url || "").trim().length > 0);
     if (urls.length === 0) return false;
     window.open(urls[0], "_blank", "noopener,noreferrer");
     if (urls.length > 1 && window.confirm(`Sono presenti ${urls.length} immagini. Aprire anche le altre?`)) {
@@ -498,7 +551,7 @@ function OrdineMaterialiView(props: {
   const [searchText, setSearchText] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestDirection, setSuggestDirection] = useState<"up" | "down">("down");
-  const [suggestPanelStyle, setSuggestPanelStyle] = useState<CSSProperties | null>(null);
+  const [, setSuggestPanelStyle] = useState<CSSProperties | null>(null);
   const [selectedListinoVoce, setSelectedListinoVoce] = useState<ListinoVoce | null>(null);
   const [fornitoreByMaterialeId, setFornitoreByMaterialeId] = useState<
     Record<string, { fornitoreId: string; fornitoreNome: string }>
@@ -644,10 +697,10 @@ function OrdineMaterialiView(props: {
     const rect = input.getBoundingClientRect();
     const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
     const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
-    const panelH = viewportW <= 760 ? 240 : 320;
+    const panelH = viewportW <= 760 ? 240 : 300;
     const gap = 8;
-    const below = viewportH - rect.bottom - gap;
-    const above = rect.top - gap;
+    const below = viewportH - rect.bottom - gap - 8;
+    const above = rect.top - gap - 8;
     const shouldOpenUp = below < panelH && above > below;
     if (shouldOpenUp) {
       setSuggestDirection("up");
@@ -655,15 +708,18 @@ function OrdineMaterialiView(props: {
       setSuggestDirection("down");
     }
 
-    const preferredWidth = Math.min(720, viewportW * 0.7);
-    const panelWidth = Math.max(rect.width, preferredWidth);
+    const minWidth = viewportW <= 760 ? 300 : 420;
+    const panelWidth = Math.min(Math.max(rect.width, minWidth), Math.max(320, viewportW - 16));
     const maxLeft = Math.max(8, viewportW - panelWidth - 8);
     const left = Math.min(Math.max(8, rect.left), maxLeft);
     const top = shouldOpenUp ? Math.max(8, rect.top - panelH - gap) : rect.bottom + gap;
+    const availableHeight = shouldOpenUp ? Math.max(160, above) : Math.max(160, below);
+    const maxHeight = Math.max(160, Math.min(panelH, availableHeight));
     setSuggestPanelStyle({
       left: `${left}px`,
       top: `${top}px`,
       width: `${panelWidth}px`,
+      maxHeight: `${maxHeight}px`,
     });
   };
 
@@ -1112,8 +1168,8 @@ function OrdineMaterialiView(props: {
   return (
     <div className="mdo-page mdo-page--embedded mdo-page--single">
       <div className="mdo-card mdo-card--embedded mdo-card--single">
-        <section className="mdo-single-card">
-          <div className="mdo-single-toolbar">
+        <section className="mdo-single-card om-wrap">
+          <div className="mdo-single-toolbar om-filters">
             <div className="mdo-single-toolbar-main">
               <div className="mdo-field">
                 <label>Fornitore</label>
@@ -1151,7 +1207,9 @@ function OrdineMaterialiView(props: {
             <div className="mdo-single-toolbar-side" />
           </div>
 
-          <div className="mdo-table-wrap mdo-table-wrap--single">
+          <div className="om-content om-grid">
+            <div className="om-main om-left">
+          <div className="mdo-table-wrap mdo-table-wrap--single om-list om-leftCard">
             <table className="mdo-table">
               <colgroup>
                 <col className="mdo-col-descrizione" />
@@ -1162,27 +1220,27 @@ function OrdineMaterialiView(props: {
                 <col className="mdo-col-preventivo" />
                 <col className="mdo-col-azioni" />
               </colgroup>
-              <thead>
+              <thead className="om-head">
                 <tr>
                   <th>Descrizione</th>
-                  <th>Q.ta</th>
-                  <th>Unita</th>
+                  <th>Quantità</th>
+                  <th>Unità</th>
                   <th>Fornitore</th>
-                  <th>Prezzo</th>
-                  <th>Preventivo</th>
+                  <th>Prezzo unitario</th>
+                  <th>Rif. preventivo</th>
                   <th className="mdo-col-actions">Azioni</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="mdo-insert-row">
-                  <td className="mdo-insert-cell mdo-insert-cell--desc">
-                    <div className="mdo-insert-desc">
+                <tr className="mdo-insert-row om-entry-row om-entryRow">
+                  <td className="mdo-insert-cell mdo-insert-cell--desc om-desc">
+                    <div className="mdo-insert-desc om-descWrap">
                       <div className="mdo-item-photo mdo-item-photo--insert">
                         {fotoPreview ? <img src={fotoPreview} alt="Anteprima materiale" /> : <div className="mdo-photo-placeholder small">Foto</div>}
                       </div>
                       <input
                         ref={descrizioneInputRef}
-                        className="mdo-table-input"
+                        className="mdo-table-input om-descInput"
                         type="text"
                         placeholder="Descrizione materiale"
                         value={descrizione}
@@ -1194,7 +1252,7 @@ function OrdineMaterialiView(props: {
                         onBlur={handleDescrizioneBlur}
                       />
                       <input
-                        className="mdo-table-input"
+                        className="mdo-table-input om-noteInput"
                         type="text"
                         placeholder="Nota riga (opzionale)"
                         value={newMaterialeNota}
@@ -1205,8 +1263,7 @@ function OrdineMaterialiView(props: {
                       )}
                       {fornitoreAttivoId && showSuggest && suggestListino.length > 0 && (
                         <div
-                          className={`acq-suggest-panel acq-suggest-panel--fixed ${suggestDirection === "up" ? "openUp" : "openDown"}`}
-                          style={suggestPanelStyle || undefined}
+                          className={`acq-suggest-panel om-suggest ${suggestDirection === "up" ? "openUp" : "openDown"}`}
                           onWheel={handleSuggestWheel}
                         >
                           {suggestListino.map((v) => (
@@ -1228,9 +1285,9 @@ function OrdineMaterialiView(props: {
                       )}
                     </div>
                   </td>
-                  <td className="mdo-insert-cell mdo-insert-cell--qty">
+                  <td className="mdo-insert-cell mdo-insert-cell--qty om-qty">
                     <div className="mdo-qty-stack">
-                      <input className="mdo-table-input mdo-table-input--qty" type="number" placeholder="0" value={quantita} onChange={(e) => setQuantita(e.target.value)} />
+                      <input className="mdo-table-input mdo-table-input--qty" type="number" placeholder="Quantita" value={quantita} onChange={(e) => setQuantita(e.target.value)} />
                       {needsConversionFactorInput && (
                         <input
                           className="mdo-table-input mdo-table-input--factor"
@@ -1246,7 +1303,7 @@ function OrdineMaterialiView(props: {
                       )}
                     </div>
                   </td>
-                  <td className="mdo-insert-cell mdo-insert-cell--unita">
+                  <td className="mdo-insert-cell mdo-insert-cell--unita om-uom">
                     <select
                       className="mdo-table-input"
                       value={normalizeUom(String(unita || ""))}
@@ -1256,17 +1313,16 @@ function OrdineMaterialiView(props: {
                       }}
                     >
                       <option value="PZ">PZ</option>
-                      <option value="NR">NR</option>
                       <option value="MT">MT</option>
                       <option value="M">M</option>
                       <option value="KG">KG</option>
                       <option value="LT">LT</option>
                     </select>
                   </td>
-                  <td className="mdo-insert-cell mdo-insert-cell--fornitore">
+                  <td className="mdo-insert-cell mdo-insert-cell--fornitore om-fornitore">
                     <div className="mdo-table-muted">{isNuovoFornitore ? nomeFornitorePersonalizzato.trim() || "Nuovo fornitore" : fornitoreNome || "Seleziona sopra"}</div>
                   </td>
-                  <td className="mdo-insert-cell mdo-insert-cell--prezzo">
+                  <td className="mdo-insert-cell mdo-insert-cell--prezzo om-prezzo">
                     <span className="mdo-table-muted">
                       {selectedListinoVoce
                         ? `${selectedListinoVoce.prezzoAttuale.toFixed(2)} ${selectedListinoVoce.valuta}/${normalizeUom(String(selectedListinoVoce.unita || ""))}`
@@ -1276,37 +1332,37 @@ function OrdineMaterialiView(props: {
                       <div className="mdo-row-warning">UDM diverse: totale bloccato finche non inserisci fattore.</div>
                     )}
                   </td>
-                  <td className="mdo-insert-cell mdo-insert-cell--preventivo">
+                  <td className="mdo-insert-cell mdo-insert-cell--preventivo om-prev">
                     <span className="mdo-table-muted">
                       {selectedListinoVoce
                         ? `N. ${selectedListinoVoce.fonteAttuale.numeroPreventivo} del ${selectedListinoVoce.fonteAttuale.dataPreventivo}`
                         : "-"}
                     </span>
+                    {selectedListinoVoce && hasAnyDocumentRef({
+                      pdfUrl: selectedListinoVoce.fonteAttuale.pdfUrl,
+                      pdfStoragePath: selectedListinoVoce.fonteAttuale.pdfStoragePath,
+                      imageUrls: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageUrls),
+                      imageStoragePaths: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageStoragePaths),
+                    }) && (
+                      <button
+                        type="button"
+                        className="mdo-chip-button mdo-chip-button--doc-inline"
+                        onClick={() =>
+                          onOpenPreventivo({
+                            preventivoId: selectedListinoVoce.fonteAttuale.preventivoId,
+                            pdfUrl: selectedListinoVoce.fonteAttuale.pdfUrl,
+                            pdfStoragePath: selectedListinoVoce.fonteAttuale.pdfStoragePath,
+                            imageUrls: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageUrls),
+                            imageStoragePaths: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageStoragePaths),
+                          })
+                        }
+                      >
+                        Documento
+                      </button>
+                    )}
                   </td>
-                  <td className="mdo-insert-cell mdo-col-actions">
+                  <td className="mdo-insert-cell mdo-col-actions om-entry-actions om-actions">
                     <div className="mdo-row-actions mdo-row-actions--insert">
-                      {selectedListinoVoce && hasAnyDocumentRef({
-                        pdfUrl: selectedListinoVoce.fonteAttuale.pdfUrl,
-                        pdfStoragePath: selectedListinoVoce.fonteAttuale.pdfStoragePath,
-                        imageUrls: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageUrls),
-                        imageStoragePaths: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageStoragePaths),
-                      }) && (
-                        <button
-                          type="button"
-                          className="mdo-chip-button"
-                          onClick={() =>
-                            onOpenPreventivo({
-                              preventivoId: selectedListinoVoce.fonteAttuale.preventivoId,
-                              pdfUrl: selectedListinoVoce.fonteAttuale.pdfUrl,
-                              pdfStoragePath: selectedListinoVoce.fonteAttuale.pdfStoragePath,
-                              imageUrls: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageUrls),
-                              imageStoragePaths: asStringArray((selectedListinoVoce as any)?.fonteAttuale?.imageStoragePaths),
-                            })
-                          }
-                        >
-                          DOCUMENTO
-                        </button>
-                      )}
                       <button type="button" className="mdo-chip-button mdo-chip-upload" onClick={() => fotoInputRef.current?.click()}>Foto</button>
                       <input ref={fotoInputRef} type="file" accept="image/*" capture="environment" className="mdo-hidden-file" onChange={handleFileChange} />
                       <button type="button" className="mdo-chip-button" onClick={() => { setFotoFile(null); setFotoPreview(null); }}>Pulisci</button>
@@ -1326,8 +1382,11 @@ function OrdineMaterialiView(props: {
                     const prezzoInfo = prezzoSourceByMaterialeId.get(m.id);
                     const fornitoreLocale = fornitoreByMaterialeId[m.id];
                     const fornitoreDisplay = fornitoreLocale?.fornitoreNome || getOptionalText(m, ["fornitoreScelto", "fornitore", "nomeFornitore"]);
+                    const isUdmMismatch = prezzoInfo
+                      ? normalizeUom(String(m.unita || "")) !== normalizeUom(String(prezzoInfo.unita || m.unita || ""))
+                      : false;
                     return (
-                    <tr key={m.id}>
+                    <tr key={m.id} className="om-row">
                       <td>
                         <div className="mdo-desc-cell">
                           <div className="mdo-item-photo">
@@ -1347,6 +1406,7 @@ function OrdineMaterialiView(props: {
                         {prezzoInfo
                           ? `${prezzoInfo.prezzoUnitario.toFixed(2)} ${normalizeExtractCurrency(prezzoInfo.valuta ?? null) || "-"}/${String(prezzoInfo.unita || m.unita).toLowerCase()}`
                           : "-"}
+                        {isUdmMismatch && <span className="om-badge om-badge--warn">UDM da verificare</span>}
                       </td>
                       <td>
                         {prezzoInfo
@@ -1404,11 +1464,13 @@ function OrdineMaterialiView(props: {
               </tbody>
             </table>
           </div>
+            </div>
 
-          <div className="mdo-card-footer-bar">
-            <div className="mdo-sticky-info"><span>Fornitore</span><strong>{isNuovoFornitore ? nomeFornitorePersonalizzato.trim() || "Nuovo fornitore" : fornitoreNome || "Non selezionato"}</strong></div>
-            <div className="mdo-sticky-info"><span>Materiali temporanei</span><strong>{materiali.length}</strong></div>
-            <div className="mdo-sticky-info">
+          <div className="mdo-card-footer-bar om-side om-right om-rightCard">
+            <div className="om-side-cards om-kpiGrid">
+            <div className="mdo-sticky-info om-stat-card om-kpiCard"><span>Fornitore</span><strong>{isNuovoFornitore ? nomeFornitorePersonalizzato.trim() || "Nuovo fornitore" : fornitoreNome || "Non selezionato"}</strong></div>
+            <div className="mdo-sticky-info om-stat-card om-kpiCard"><span>Materiali temporanei</span><strong>{materiali.length}</strong></div>
+            <div className="mdo-sticky-info om-stat-card om-kpiCard">
               <span>{prezziMancanti > 0 || udmDaVerificare > 0 ? "Totale parziale" : "Totale stimato"}</span>
               <strong>
                 {mixedValute
@@ -1420,9 +1482,10 @@ function OrdineMaterialiView(props: {
                       : "-"}
               </strong>
             </div>
-            <div className="mdo-sticky-info"><span>Prezzi mancanti</span><strong>{prezziMancanti}</strong></div>
-            <div className="mdo-sticky-info"><span>UDM da verificare</span><strong>{udmDaVerificare}</strong></div>
-            <label className="acq-order-note">
+            <div className="mdo-sticky-info om-stat-card om-kpiCard"><span>Prezzi mancanti</span><strong>{prezziMancanti}</strong></div>
+            <div className="mdo-sticky-info om-stat-card om-kpiCard"><span>UDM da verificare</span><strong>{udmDaVerificare}</strong></div>
+            </div>
+            <label className="acq-order-note om-order-note om-notes">
               <span>Note ordine (solo bozza/PDF)</span>
               <textarea
                 value={ordineNote}
@@ -1430,7 +1493,7 @@ function OrdineMaterialiView(props: {
                 placeholder="Inserisci note generali ordine"
               />
             </label>
-            <div className="mdo-sticky-actions">
+            <div className="mdo-sticky-actions om-side-actions om-footerActions">
               <button type="button" className="mdo-header-button mdo-header-button--secondary" onClick={clearAllDraftState}>Pulisci bozza</button>
               <button type="button" className="mdo-header-button" onClick={salvaOrdine} disabled={!canSaveOrdine}>{loading ? "SALVO..." : "CONFERMA ORDINE"}</button>
             </div>
@@ -1441,6 +1504,7 @@ function OrdineMaterialiView(props: {
               </div>
             )}
             {draftSavedAt && <div className="acq-draft-indicator">Bozza salvata</div>}
+          </div>
           </div>
         </section>
       </div>
@@ -1453,6 +1517,8 @@ function OrdiniListView(props: { kind: ListKind; onOpenDettaglio: (id: string, f
   const [ordini, setOrdini] = useState<Ordine[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [openMenuPosition, setOpenMenuPosition] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
 
   const formatDataIt = (raw: string | undefined) => {
     const value = String(raw || "").trim();
@@ -1518,6 +1584,32 @@ function OrdiniListView(props: { kind: ListKind; onOpenDettaglio: (id: string, f
     };
     void loadOrdini();
   }, [kind]);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const closeMenu = () => {
+      setOpenMenuId(null);
+      setOpenMenuPosition(null);
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-menu-root="ordini"]')) return;
+      closeMenu();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [openMenuId]);
 
   const fromTab: AcquistiTab = kind === "attesa" ? "Ordini" : "Arrivi";
 
@@ -1593,21 +1685,61 @@ function OrdiniListView(props: { kind: ListKind; onOpenDettaglio: (id: string, f
                     <td>
                       <div className="acq-orders-actions-inline">
                         <button type="button" className="acq-btn acq-btn--primary" onClick={() => onOpenDettaglio(ordine.id, fromTab)}>Apri</button>
-                        <details className="acq-kebab">
-                          <summary className="acq-btn acq-kebab-trigger" aria-label="Altre azioni">{LABELS_IT.menu.trigger}</summary>
-                          <div className="acq-kebab-menu">
-                            <button type="button" className="acq-kebab-item" onClick={() => onOpenDettaglio(ordine.id, fromTab)}>{LABELS_IT.menu.edit}</button>
+                        <div className="acq-kebab" data-menu-root="ordini">
+                          <button
+                            type="button"
+                            className="acq-btn acq-kebab-trigger"
+                            aria-label="Altre azioni"
+                            onClick={(e) => {
+                              if (openMenuId === ordine.id) {
+                                setOpenMenuId(null);
+                                setOpenMenuPosition(null);
+                                return;
+                              }
+                              const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                              const menuWidth = 190;
+                              const menuHeight = 120;
+                              const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
+                              const openUp = rect.bottom + menuHeight > window.innerHeight - 8;
+                              const top = openUp ? Math.max(8, rect.top - 8) : rect.bottom + 8;
+                              setOpenMenuId(ordine.id);
+                              setOpenMenuPosition({ top, left, openUp });
+                            }}
+                          >
+                            {LABELS_IT.menu.trigger}
+                          </button>
+                          {openMenuId === ordine.id && openMenuPosition && (
+                            <div
+                              className={`acq-kebab-menu acq-kebab-menu--fixed${openMenuPosition.openUp ? " is-up" : ""}`}
+                              style={{ top: `${openMenuPosition.top}px`, left: `${openMenuPosition.left}px` }}
+                            >
+                            <button
+                              type="button"
+                              className="acq-kebab-item"
+                              onClick={() => {
+                                onOpenDettaglio(ordine.id, fromTab);
+                                setOpenMenuId(null);
+                                setOpenMenuPosition(null);
+                              }}
+                            >
+                              {LABELS_IT.menu.edit}
+                            </button>
                             <button
                               type="button"
                               className="acq-kebab-item acq-kebab-item--danger"
-                              onClick={() => eliminaOrdine(ordine)}
+                              onClick={async () => {
+                                await eliminaOrdine(ordine);
+                                setOpenMenuId(null);
+                                setOpenMenuPosition(null);
+                              }}
                               disabled={!canDelete}
                               title={!canDelete ? "Non eliminabile: presenti materiali arrivati" : "Elimina ordine"}
                             >
                               Elimina
                             </button>
-                          </div>
-                        </details>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -1679,6 +1811,21 @@ function PreventiviView(props: {
   const [openMenuPosition, setOpenMenuPosition] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
   const [openGroupKeys, setOpenGroupKeys] = useState<Record<string, boolean>>({});
   const [missingRowsForPreventivoId, setMissingRowsForPreventivoId] = useState<string | null>(null);
+  const [linkFotoPreventivoId, setLinkFotoPreventivoId] = useState<string | null>(null);
+  const [iaStorageFiles, setIaStorageFiles] = useState<IaStorageImageFile[]>([]);
+  const [iaStorageLoading, setIaStorageLoading] = useState(false);
+  const [iaStorageError, setIaStorageError] = useState<string | null>(null);
+  const [iaStorageSearch, setIaStorageSearch] = useState("");
+  const [iaStorageOnlyRecent, setIaStorageOnlyRecent] = useState(true);
+  const [iaStorageSelectedPaths, setIaStorageSelectedPaths] = useState<string[]>([]);
+  const [cleanupIaModalOpen, setCleanupIaModalOpen] = useState(false);
+  const [cleanupIaFiles, setCleanupIaFiles] = useState<IaStorageAttachmentFile[]>([]);
+  const [cleanupIaSelectedPaths, setCleanupIaSelectedPaths] = useState<string[]>([]);
+  const [cleanupIaLoading, setCleanupIaLoading] = useState(false);
+  const [cleanupIaDeleting, setCleanupIaDeleting] = useState(false);
+  const [cleanupIaError, setCleanupIaError] = useState<string | null>(null);
+  const [cleanupIaResult, setCleanupIaResult] = useState<string | null>(null);
+  const [cleanupIaConfirmText, setCleanupIaConfirmText] = useState("");
 
   const getPreventivoDocumentSource = (p: Preventivo | null | undefined) => {
     if (!p) return { pdfUrl: null, pdfStoragePath: null, imageUrls: [], imageStoragePaths: [] as string[] };
@@ -1690,14 +1837,14 @@ function PreventiviView(props: {
     };
   };
 
-  const hasDocumentForPreventivo = (p: Preventivo | null | undefined) => hasAnyDocumentRef(getPreventivoDocumentSource(p));
-
   const openPreventivoDocumento = async (p: Preventivo | null | undefined) => {
     if (!p) return;
+    setError(null);
     try {
       const opened = await openDocumentRef(getPreventivoDocumentSource(p));
       if (!opened) {
-        setError("Documento non disponibile per questo preventivo.");
+        setError("Nessun documento collegato");
+        window.alert("Nessun documento collegato");
       }
     } catch (err) {
       console.error("Errore apertura documento preventivo:", err);
@@ -1721,74 +1868,172 @@ function PreventiviView(props: {
     () => preventivi.find((p) => p.id === selectedId) || null,
     [preventivi, selectedId]
   );
+  const linkFotoPreventivo = useMemo(
+    () => preventivi.find((p) => p.id === linkFotoPreventivoId) || null,
+    [preventivi, linkFotoPreventivoId]
+  );
 
-  const importedCountByPreventivoId = useMemo(() => {
-    const map = new Map<string, number>();
-    listinoVoci.forEach((v) => {
-      const id = String((v as any)?.fonteAttuale?.preventivoId || "").trim();
-      if (!id) return;
-      map.set(id, (map.get(id) || 0) + 1);
+  const getListinoDocumentSource = (voce: ListinoVoce | null | undefined) => {
+    if (!voce) return { pdfUrl: null, pdfStoragePath: null, imageUrls: [], imageStoragePaths: [] as string[] };
+    return {
+      pdfUrl: (voce as any)?.fonteAttuale?.pdfUrl || null,
+      pdfStoragePath: (voce as any)?.fonteAttuale?.pdfStoragePath || null,
+      imageUrls: asStringArray((voce as any)?.fonteAttuale?.imageUrls),
+      imageStoragePaths: asStringArray((voce as any)?.fonteAttuale?.imageStoragePaths),
+    };
+  };
+
+  const hasListinoDocumentRef = (voce: ListinoVoce | null | undefined) => hasAnyDocumentRef(getListinoDocumentSource(voce));
+
+  const buildImportAnalysisForPreventivo = (p: Preventivo): PreventivoImportAnalysis => {
+    const righe = Array.isArray(p.righe) ? p.righe : [];
+    const total = righe.length;
+    if (total === 0) {
+      return { total: 0, imported: 0, missingRows: [], verifyRows: [], linkOnlyRows: [], actionableCount: 0 };
+    }
+
+    const fornitoreIdNorm = String(p.fornitoreId || "").trim();
+    const fornitoreNomeNorm = normalizeDescrizione(String(p.fornitoreNome || ""));
+    const supplierListino = listinoVoci.filter((v) => {
+      const id = String(v.fornitoreId || "").trim();
+      if (fornitoreIdNorm) return id === fornitoreIdNorm;
+      if (id) return false;
+      return normalizeDescrizione(String(v.fornitoreNome || "")) === fornitoreNomeNorm;
+    });
+
+    const preventivoHasSource = hasAnyDocumentRef(getPreventivoDocumentSource(p));
+    const usedListinoIds = new Set<string>();
+    const linkOnlyByListinoId = new Map<string, { row: PreventivoRiga; voce: ListinoVoce; reason: string }>();
+    const missingRows: PreventivoRiga[] = [];
+    const verifyRows: Array<{ row: PreventivoRiga; reason: string }> = [];
+    let imported = 0;
+
+    righe.forEach((r) => {
+      const descKey = normalizeArticoloCanonico(String(r.descrizione || ""));
+      const codeKey = extractArticleCodeFromNote(r.note);
+      const rowUom = normalizeUnita(String(r.unita || ""));
+      const rowValuta = extractValutaFromNote(r.note);
+
+      const getScore = (v: ListinoVoce) => {
+        const codiceV = String(v.codiceArticolo || "").trim().toUpperCase();
+        const descV = normalizeArticoloCanonico(String(v.articoloCanonico || ""));
+        let score = 0;
+        if (codeKey && codiceV === codeKey) score += 100;
+        if (descV === descKey) score += 80;
+        if (rowUom && normalizeUnita(String(v.unita || "")) === rowUom) score += 10;
+        if (rowValuta && v.valuta === rowValuta) score += 5;
+        if (String((v as any)?.fonteAttuale?.preventivoId || "").trim() === String(p.id || "").trim()) score += 3;
+        return score;
+      };
+
+      const matchingPool = supplierListino.filter((v) => {
+        const codiceV = String(v.codiceArticolo || "").trim().toUpperCase();
+        const descV = normalizeArticoloCanonico(String(v.articoloCanonico || ""));
+        if (codeKey && codiceV === codeKey) return true;
+        return descV === descKey;
+      });
+      const availablePool = matchingPool.filter((v) => !usedListinoIds.has(v.id));
+      const pool = availablePool;
+
+      if (pool.length === 0) {
+        missingRows.push(r);
+        return;
+      }
+
+      const matched = [...pool].sort((a, b) => getScore(b) - getScore(a))[0];
+      if (!matched) {
+        missingRows.push(r);
+        return;
+      }
+
+      usedListinoIds.add(matched.id);
+      imported += 1;
+
+      const rowUomNorm = normalizeUnita(String(r.unita || ""));
+      const listinoUomNorm = normalizeUnita(String(matched.unita || ""));
+      if (rowUomNorm && listinoUomNorm && rowUomNorm !== listinoUomNorm) {
+        verifyRows.push({
+          row: r,
+          reason: `UDM diversa: preventivo ${rowUomNorm}, listino ${listinoUomNorm}`,
+        });
+      }
+
+      if (rowValuta && matched.valuta !== rowValuta) {
+        verifyRows.push({
+          row: r,
+          reason: `Valuta diversa: preventivo ${rowValuta}, listino ${matched.valuta}`,
+        });
+      }
+
+      if (preventivoHasSource && !hasListinoDocumentRef(matched)) {
+        linkOnlyByListinoId.set(matched.id, {
+          row: r,
+          voce: matched,
+          reason: "Fonte documento assente in listino",
+        });
+      }
+    });
+
+    const linkOnlyRows = Array.from(linkOnlyByListinoId.values());
+    return {
+      total,
+      imported,
+      missingRows,
+      verifyRows,
+      linkOnlyRows,
+      actionableCount: missingRows.length + linkOnlyRows.length,
+    };
+  };
+
+  const importAnalysisByPreventivoId = useMemo(() => {
+    const map = new Map<string, PreventivoImportAnalysis>();
+    preventivi.forEach((p) => {
+      map.set(p.id, buildImportAnalysisForPreventivo(p));
     });
     return map;
-  }, [listinoVoci]);
+  }, [preventivi, listinoVoci]);
 
   const missingRowsByPreventivoId = useMemo(() => {
-    const result = new Map<string, { rows: PreventivoRiga[]; fallback: boolean }>();
-
-    preventivi.forEach((p) => {
-      const importedVoci = listinoVoci.filter((v) => String(v.fonteAttuale?.preventivoId || "").trim() === String(p.id || "").trim());
-      const countByKey = new Map<string, number>();
-      const countByKeyNoVal = new Map<string, number>();
-
-      importedVoci.forEach((v) => {
-        const noValKey = `${normalizeDescrizione(String(v.articoloCanonico || ""))}|${normalizeUnita(String(v.unita || ""))}`;
-        const fullKey = `${noValKey}|${String(v.valuta || "").toUpperCase().trim()}`;
-        countByKey.set(fullKey, (countByKey.get(fullKey) || 0) + 1);
-        countByKeyNoVal.set(noValKey, (countByKeyNoVal.get(noValKey) || 0) + 1);
+    const result = new Map<string, { rows: PreventivoRiga[]; fallback: boolean; verifyRows: Array<{ row: PreventivoRiga; reason: string }>; linkOnlyCount: number }>();
+    importAnalysisByPreventivoId.forEach((analysis, preventivoId) => {
+      result.set(preventivoId, {
+        rows: analysis.missingRows,
+        fallback: false,
+        verifyRows: analysis.verifyRows,
+        linkOnlyCount: analysis.linkOnlyRows.length,
       });
-
-      const missingRows: PreventivoRiga[] = [];
-      const righe = Array.isArray(p.righe) ? p.righe : [];
-      righe.forEach((r) => {
-        const noValKey = `${normalizeDescrizione(String(r.descrizione || ""))}|${normalizeUnita(String(r.unita || ""))}`;
-        const noteVal = String(r.note || "").toUpperCase();
-        const valuta = noteVal.includes("EUR") ? "EUR" : noteVal.includes("CHF") ? "CHF" : "";
-        const fullKey = valuta ? `${noValKey}|${valuta}` : "";
-
-        if (fullKey) {
-          const availableFull = countByKey.get(fullKey) || 0;
-          if (availableFull > 0) {
-            countByKey.set(fullKey, availableFull - 1);
-            countByKeyNoVal.set(noValKey, Math.max(0, (countByKeyNoVal.get(noValKey) || 0) - 1));
-            return;
-          }
-        }
-
-        const availableNoVal = countByKeyNoVal.get(noValKey) || 0;
-        if (availableNoVal > 0) {
-          countByKeyNoVal.set(noValKey, availableNoVal - 1);
-          return;
-        }
-
-        missingRows.push(r);
-      });
-
-      const imported = importedCountByPreventivoId.get(p.id) || 0;
-      const total = righe.length;
-      const fallback = imported > 0 && imported < total && missingRows.length === 0;
-      result.set(p.id, { rows: missingRows, fallback });
     });
-
     return result;
-  }, [preventivi, listinoVoci, importedCountByPreventivoId]);
+  }, [importAnalysisByPreventivoId]);
 
   const getImportStatus = (p: Preventivo) => {
-    const total = Array.isArray(p.righe) ? p.righe.length : 0;
-    const imported = importedCountByPreventivoId.get(p.id) || 0;
-    if (total === 0) return { imported, total, label: LABELS_IT.import.zeroRows, className: "neutral" as const };
-    if (imported === 0) return { imported, total, label: LABELS_IT.import.not, className: "not" as const };
-    if (imported < total) return { imported, total, label: LABELS_IT.import.partial, className: "partial" as const };
-    return { imported, total, label: LABELS_IT.import.full, className: "full" as const };
+    const analysis = importAnalysisByPreventivoId.get(p.id) || {
+      total: Array.isArray(p.righe) ? p.righe.length : 0,
+      imported: 0,
+      missingRows: [],
+      verifyRows: [],
+      linkOnlyRows: [],
+      actionableCount: 0,
+    };
+    const total = analysis.total;
+    const imported = analysis.imported;
+    const missingCount = analysis.missingRows.length;
+    const linkOnlyCount = analysis.linkOnlyRows.length;
+    const verifyCount = analysis.verifyRows.length;
+    if (total === 0) {
+      return { imported, total, missingCount, linkOnlyCount, verifyCount, actionableCount: 0, label: LABELS_IT.import.zeroRows, className: "neutral" as const };
+    }
+    if (imported === 0) {
+      return { imported, total, missingCount, linkOnlyCount, verifyCount, actionableCount: analysis.actionableCount, label: LABELS_IT.import.not, className: "not" as const };
+    }
+    if (analysis.actionableCount > 0) {
+      const label = missingCount === 0 && linkOnlyCount > 0 ? "FONTE DA COLLEGARE" : LABELS_IT.import.partial;
+      return { imported, total, missingCount, linkOnlyCount, verifyCount, actionableCount: analysis.actionableCount, label, className: "partial" as const };
+    }
+    if (verifyCount > 0) {
+      return { imported, total, missingCount, linkOnlyCount, verifyCount, actionableCount: 0, label: `IMPORTATO (DA VERIFICARE ${verifyCount})`, className: "full" as const };
+    }
+    return { imported, total, missingCount, linkOnlyCount, verifyCount, actionableCount: 0, label: LABELS_IT.import.full, className: "full" as const };
   };
 
   const groupedPreventivi = useMemo(() => {
@@ -1814,7 +2059,7 @@ function PreventiviView(props: {
         .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0)),
     }));
     return arr.filter((g) => g.items.length > 0).sort((a, b) => a.fornitoreNome.localeCompare(b.fornitoreNome, "it"));
-  }, [preventivi, soloNonImportati, importedCountByPreventivoId, fornitoreListFilter, searchPreventivi]);
+  }, [preventivi, soloNonImportati, importAnalysisByPreventivoId, fornitoreListFilter, searchPreventivi]);
 
   const fornitoriPreventiviOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -1863,6 +2108,24 @@ function PreventiviView(props: {
       window.removeEventListener("resize", closeMenu);
     };
   }, [openMenuKey]);
+
+  useEffect(() => {
+    if (!linkFotoPreventivoId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeLinkFotoModal();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [linkFotoPreventivoId]);
+
+  useEffect(() => {
+    if (!cleanupIaModalOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeCleanupIaModal();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [cleanupIaModalOpen]);
 
   const estraiPreventivoIA = useMemo(
     () => httpsCallable<PreventivoExtractPayload, PreventivoExtractResult>(functions, "estraiPreventivoIA"),
@@ -2064,6 +2327,333 @@ function PreventiviView(props: {
       .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
       .map((r) => r.value)
       .filter((url) => String(url || "").trim().length > 0);
+  };
+
+  const iaStorageFilePrefix = (fileName: string) => {
+    const match = String(fileName || "").match(/^(\d{8,})/);
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const normalizeStoragePath = (value: unknown) => String(value || "").trim().replace(/^\/+/, "");
+
+  const compareIaStorageFileNames = (aName: string, bName: string) => {
+    const aPrefix = iaStorageFilePrefix(aName);
+    const bPrefix = iaStorageFilePrefix(bName);
+    if (aPrefix !== null && bPrefix !== null) return bPrefix - aPrefix;
+    if (aPrefix !== null && bPrefix === null) return -1;
+    if (aPrefix === null && bPrefix !== null) return 1;
+    return aName.localeCompare(bName, "it");
+  };
+
+  const loadIaStorageFiles = async () => {
+    setIaStorageLoading(true);
+    setIaStorageError(null);
+    try {
+      const dirRef = ref(storage, "preventivi/ia");
+      const listed = await listAll(dirRef);
+      const files: IaStorageImageFile[] = listed.items
+        .map((item) => {
+          const name = String(item.name || "").trim();
+          const fullPath = normalizeStoragePath(item.fullPath);
+          return {
+            path: fullPath || normalizeStoragePath(`preventivi/ia/${name}`),
+            name,
+            updatedLabel: "—",
+          };
+        })
+        .filter((item) => /\.(jpe?g|png|webp)$/i.test(item.name));
+
+      files.sort((a, b) => compareIaStorageFileNames(a.name, b.name));
+
+      setIaStorageFiles(files);
+    } catch (err) {
+      console.error("Errore caricamento file preventivi/ia:", err);
+      setIaStorageError("Impossibile leggere i file in preventivi/ia.");
+      setIaStorageFiles([]);
+    } finally {
+      setIaStorageLoading(false);
+    }
+  };
+
+  function closeLinkFotoModal() {
+    setLinkFotoPreventivoId(null);
+    setIaStorageSearch("");
+    setIaStorageOnlyRecent(true);
+    setIaStorageSelectedPaths([]);
+    setIaStorageError(null);
+  }
+
+  const collectUsedIaPathsFromSources = (preventiviSource: Preventivo[], listinoSource: ListinoVoce[]) => {
+    const used = new Set<string>();
+    const addPath = (value: unknown) => {
+      const path = normalizeStoragePath(value);
+      if (!path.startsWith("preventivi/ia/")) return;
+      used.add(path);
+    };
+
+    preventiviSource.forEach((p) => {
+      addPath((p as any)?.pdfStoragePath);
+      asStringArray((p as any)?.imageStoragePaths).forEach(addPath);
+    });
+
+    listinoSource.forEach((v) => {
+      const fonteAttuale = ((v as any)?.fonteAttuale || {}) as Record<string, unknown>;
+      const fontePrecedente = ((v as any)?.fontePrecedente || {}) as Record<string, unknown>;
+      addPath(fonteAttuale.pdfStoragePath);
+      asStringArray(fonteAttuale.imageStoragePaths).forEach(addPath);
+      addPath(fontePrecedente.pdfStoragePath);
+      asStringArray(fontePrecedente.imageStoragePaths).forEach(addPath);
+    });
+
+    return used;
+  };
+
+  const loadUsedIaPathsFromFirestore = async () => {
+    try {
+      const prevRef = doc(collection(db, "storage"), PREVENTIVI_DOC_ID);
+      const listinoRef = doc(collection(db, "storage"), LISTINO_DOC_ID);
+      const [prevSnap, listinoSnap] = await Promise.all([getDoc(prevRef), getDoc(listinoRef)]);
+      const prevData = prevSnap.data() as any;
+      const listinoData = listinoSnap.data() as any;
+      const preventiviSource = prevSnap.exists()
+        ? (Array.isArray(prevData?.preventivi)
+            ? prevData.preventivi
+            : Array.isArray(prevData?.value?.preventivi)
+              ? prevData.value.preventivi
+              : [])
+        : preventivi;
+      const listinoSource = listinoSnap.exists()
+        ? (Array.isArray(listinoData?.voci)
+            ? listinoData.voci
+            : Array.isArray(listinoData?.value?.voci)
+              ? listinoData.value.voci
+              : [])
+        : listinoVoci;
+      return collectUsedIaPathsFromSources(
+        Array.isArray(preventiviSource) ? (preventiviSource as Preventivo[]) : preventivi,
+        Array.isArray(listinoSource) ? (listinoSource as ListinoVoce[]) : listinoVoci
+      );
+    } catch {
+      return collectUsedIaPathsFromSources(preventivi, listinoVoci);
+    }
+  };
+
+  const loadIaOrphanFiles = async () => {
+    setCleanupIaLoading(true);
+    setCleanupIaError(null);
+    setCleanupIaResult(null);
+    try {
+      const usedPaths = await loadUsedIaPathsFromFirestore();
+      const dirRef = ref(storage, "preventivi/ia");
+      const listed = await listAll(dirRef);
+      const files: IaStorageAttachmentFile[] = listed.items
+        .map((item) => {
+          const name = String(item.name || "").trim();
+          const fullPath = normalizeStoragePath(item.fullPath) || normalizeStoragePath(`preventivi/ia/${name}`);
+          const fileType: "image" | "pdf" = /\.pdf$/i.test(name) ? "pdf" : "image";
+          return {
+            path: fullPath,
+            name,
+            fileType,
+            updatedLabel: "—",
+          };
+        })
+        .filter((item) => /\.(pdf|jpe?g|png|webp)$/i.test(item.name))
+        .filter((item) => !usedPaths.has(item.path))
+        .sort((a, b) => compareIaStorageFileNames(a.name, b.name));
+
+      setCleanupIaFiles(files);
+      setCleanupIaSelectedPaths([]);
+      setCleanupIaConfirmText("");
+    } catch (err) {
+      console.error("Errore caricamento allegati IA orfani:", err);
+      setCleanupIaError("Impossibile leggere gli allegati IA da Storage.");
+      setCleanupIaFiles([]);
+      setCleanupIaSelectedPaths([]);
+    } finally {
+      setCleanupIaLoading(false);
+    }
+  };
+
+  function closeCleanupIaModal() {
+    setCleanupIaModalOpen(false);
+    setCleanupIaSelectedPaths([]);
+    setCleanupIaConfirmText("");
+    setCleanupIaError(null);
+    setCleanupIaResult(null);
+  }
+
+  const openCleanupIaModal = async () => {
+    setCleanupIaModalOpen(true);
+    setCleanupIaSelectedPaths([]);
+    setCleanupIaConfirmText("");
+    setCleanupIaError(null);
+    setCleanupIaResult(null);
+    await loadIaOrphanFiles();
+  };
+
+  const toggleCleanupIaPath = (path: string) => {
+    const normalized = normalizeStoragePath(path);
+    if (!normalized) return;
+    setCleanupIaSelectedPaths((prev) =>
+      prev.includes(normalized) ? prev.filter((x) => x !== normalized) : [...prev, normalized]
+    );
+  };
+
+  const openCleanupIaPreview = async (path: string) => {
+    const normalized = normalizeStoragePath(path);
+    if (!normalized) return;
+    try {
+      const url = await getDownloadURL(ref(storage, normalized));
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("Errore anteprima allegato IA:", err);
+      setCleanupIaError("Impossibile aprire l'anteprima del file selezionato.");
+    }
+  };
+
+  const eliminaAllegatiIaSelezionati = async () => {
+    const selected = Array.from(
+      new Set(
+        cleanupIaSelectedPaths
+          .map((path) => normalizeStoragePath(path))
+          .filter((path) => path.length > 0)
+      )
+    );
+    if (selected.length === 0) {
+      setCleanupIaError("Seleziona almeno un allegato orfano.");
+      return;
+    }
+    if (String(cleanupIaConfirmText || "").trim().toUpperCase() !== "ELIMINA") {
+      setCleanupIaError("Per confermare l'operazione digita ELIMINA.");
+      return;
+    }
+
+    const currentOrphans = new Set(cleanupIaFiles.map((f) => f.path));
+    const usedPathsNow = await loadUsedIaPathsFromFirestore();
+    const safePaths = selected.filter(
+      (path) => path.startsWith("preventivi/ia/") && currentOrphans.has(path) && !usedPathsNow.has(path)
+    );
+    const skippedCount = selected.length - safePaths.length;
+    if (safePaths.length === 0) {
+      setCleanupIaError(skippedCount > 0
+        ? "I file selezionati non risultano piu orfani. Ricarica la lista."
+        : "Nessun allegato eliminabile selezionato.");
+      return;
+    }
+
+    const firstConfirm = window.confirm(`Eliminare ${safePaths.length} allegati IA orfani selezionati?`);
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm("Conferma definitiva: questa operazione e irreversibile.");
+    if (!secondConfirm) return;
+
+    setCleanupIaDeleting(true);
+    setCleanupIaError(null);
+    setCleanupIaResult(null);
+    try {
+      const settled = await Promise.allSettled(
+        safePaths.map((fullPath) => deleteObject(ref(storage, fullPath)))
+      );
+      const deletedPaths: string[] = [];
+      let failed = 0;
+      settled.forEach((res, idx) => {
+        if (res.status === "fulfilled") deletedPaths.push(safePaths[idx]);
+        else failed += 1;
+      });
+      const deletedSet = new Set(deletedPaths);
+      setCleanupIaFiles((prev) => prev.filter((item) => !deletedSet.has(item.path)));
+      setCleanupIaSelectedPaths((prev) => prev.filter((path) => !deletedSet.has(path)));
+      setCleanupIaConfirmText("");
+      const resultParts = [`Eliminati ${deletedPaths.length}`];
+      if (failed > 0) resultParts.push(`falliti ${failed}`);
+      if (skippedCount > 0) resultParts.push(`saltati ${skippedCount} (non piu orfani)`);
+      setCleanupIaResult(resultParts.join(" - "));
+      if (failed > 0) {
+        setCleanupIaError("Alcuni file non sono stati eliminati. Riprova o verifica i permessi.");
+      }
+    } catch (err) {
+      console.error("Errore eliminazione allegati IA orfani:", err);
+      setCleanupIaError("Errore durante l'eliminazione degli allegati IA.");
+    } finally {
+      setCleanupIaDeleting(false);
+    }
+  };
+
+  const openLinkFotoModal = async (p: Preventivo) => {
+    setLinkFotoPreventivoId(p.id);
+    setIaStorageSearch("");
+    setIaStorageOnlyRecent(true);
+    setIaStorageSelectedPaths(asStringArray((p as any)?.imageStoragePaths));
+    await loadIaStorageFiles();
+  };
+
+  const toggleIaStoragePath = (path: string) => {
+    const normalized = String(path || "").trim();
+    if (!normalized) return;
+    setIaStorageSelectedPaths((prev) =>
+      prev.includes(normalized) ? prev.filter((x) => x !== normalized) : [...prev, normalized]
+    );
+  };
+
+  const openIaStoragePreview = async (path: string) => {
+    const normalized = String(path || "").trim();
+    if (!normalized) return;
+    try {
+      const url = await getDownloadURL(ref(storage, normalized));
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("Errore anteprima immagine storage:", err);
+      setIaStorageError("Impossibile aprire l'anteprima dell'immagine selezionata.");
+    }
+  };
+
+  const filteredIaStorageFiles = useMemo(() => {
+    const q = iaStorageSearch.trim().toLowerCase();
+    const filtered = q
+      ? iaStorageFiles.filter((f) => f.name.toLowerCase().includes(q))
+      : iaStorageFiles;
+    return iaStorageOnlyRecent ? filtered.slice(0, 50) : filtered;
+  }, [iaStorageFiles, iaStorageOnlyRecent, iaStorageSearch]);
+
+  const salvaCollegamentoFotoPreventivo = async () => {
+    if (!linkFotoPreventivo) return;
+    const nextPaths = Array.from(new Set(iaStorageSelectedPaths.map((p) => String(p || "").trim()).filter(Boolean)));
+    if (nextPaths.length === 0) {
+      setIaStorageError("Seleziona almeno una foto da collegare.");
+      return;
+    }
+
+    setSaving(true);
+    setIaStorageError(null);
+    setError(null);
+    try {
+      const resolvedUrls = await resolveDownloadUrlsSafe(nextPaths);
+      const now = Date.now();
+      const next = preventivi
+        .map((p) =>
+          p.id === linkFotoPreventivo.id
+            ? {
+                ...p,
+                imageStoragePaths: nextPaths,
+                imageUrls: resolvedUrls,
+                updatedAt: now,
+              }
+            : p
+        )
+        .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
+
+      await persistPreventivi(next);
+      setPreventivi(next);
+      closeLinkFotoModal();
+      window.alert("Collegamento foto salvato.");
+    } catch (err) {
+      console.error("Errore salvataggio collegamento foto:", err);
+      setIaStorageError("Errore durante il salvataggio del collegamento foto.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const resolveFornitoreFromExtract = (supplierName: string | null) => {
@@ -2507,21 +3097,21 @@ function PreventiviView(props: {
       let pdfStoragePath: string | null = null;
       let imageStoragePaths: string[] = [];
       let imageUrls: string[] = [];
-      const hasIaDocumentRefs =
-        !!iaPreview &&
-        (!!iaUploadedRefs.pdfStoragePath || iaUploadedRefs.imageStoragePaths.length > 0);
+      const iaPdfStoragePath = String(iaUploadedRefs.pdfStoragePath || "").trim() || null;
+      const iaImageStoragePaths = asStringArray(iaUploadedRefs.imageStoragePaths);
+      const hasIaDocumentRefs = !!iaPdfStoragePath || iaImageStoragePaths.length > 0;
 
       if (pdfFile) {
         pdfStoragePath = `preventivi/${id}.pdf`;
         const r = ref(storage, pdfStoragePath);
         await uploadBytes(r, pdfFile, { contentType: "application/pdf" });
         pdfUrl = await getDownloadURL(r);
-      } else if (hasIaDocumentRefs && iaUploadedRefs.pdfStoragePath) {
-        pdfStoragePath = iaUploadedRefs.pdfStoragePath;
+      } else if (hasIaDocumentRefs && iaPdfStoragePath) {
+        pdfStoragePath = iaPdfStoragePath;
       }
 
-      if (hasIaDocumentRefs) {
-        imageStoragePaths = asStringArray(iaUploadedRefs.imageStoragePaths);
+      if (hasIaDocumentRefs && iaImageStoragePaths.length > 0) {
+        imageStoragePaths = iaImageStoragePaths;
       }
 
       if (!pdfUrl && pdfStoragePath) {
@@ -2594,36 +3184,78 @@ function PreventiviView(props: {
   };
 
   const startImportListino = (p: Preventivo) => {
-      const rows: ImportBozzaRiga[] = (p.righe || []).map((r) => {
+    const analysis = importAnalysisByPreventivoId.get(p.id) || buildImportAnalysisForPreventivo(p);
+    const sourceImageStoragePaths = asStringArray((p as any)?.imageStoragePaths);
+    const sourceImageUrls = asStringArray((p as any)?.imageUrls);
+
+    const missingRows = analysis.missingRows;
+    const linkOnlyRows = analysis.linkOnlyRows;
+
+    const rowsFromMissing: ImportBozzaRiga[] = missingRows.map((r) => {
       const valuta = inferValuta({
         descrizione: r.descrizione,
         note: r.note,
         numeroPreventivo: p.numeroPreventivo,
       });
-        const base: ImportBozzaRiga = {
+      const base: ImportBozzaRiga = {
         id: generaId(),
         fornitoreId: p.fornitoreId,
         fornitoreNome: p.fornitoreNome,
         articoloCanonico: normalizeArticoloCanonico(r.descrizione),
-        codiceArticolo: "",
+        codiceArticolo: extractArticleCodeFromNote(r.note) || "",
         unita: normalizeUnita(r.unita),
         valuta,
         prezzoNuovo: Number(r.prezzoUnitario || 0),
         trend: "new",
-          fonte: {
-            preventivoId: p.id,
-            numeroPreventivo: p.numeroPreventivo,
-            dataPreventivo: p.dataPreventivo,
-            pdfUrl: p.pdfUrl || null,
-            pdfStoragePath: p.pdfStoragePath || null,
-            imageStoragePaths: asStringArray((p as any)?.imageStoragePaths),
-            imageUrls: asStringArray((p as any)?.imageUrls),
-          },
-          daVerificare: true,
-          note: r.note,
-        };
+        importMode: "default",
+        fonte: {
+          preventivoId: p.id,
+          numeroPreventivo: p.numeroPreventivo,
+          dataPreventivo: p.dataPreventivo,
+          pdfUrl: p.pdfUrl || null,
+          pdfStoragePath: p.pdfStoragePath || null,
+          imageStoragePaths: sourceImageStoragePaths,
+          imageUrls: sourceImageUrls,
+        },
+        daVerificare: true,
+        note: r.note,
+      };
       return rehydrateBozzaRow(base);
     });
+
+    const rowsFromLinkOnly: ImportBozzaRiga[] = linkOnlyRows.map(({ voce }) => {
+      const base: ImportBozzaRiga = {
+        id: generaId(),
+        fornitoreId: voce.fornitoreId,
+        fornitoreNome: voce.fornitoreNome,
+        articoloCanonico: normalizeArticoloCanonico(voce.articoloCanonico),
+        codiceArticolo: String(voce.codiceArticolo || "").trim() || "",
+        unita: normalizeUnita(voce.unita),
+        valuta: voce.valuta,
+        prezzoNuovo: Number(voce.prezzoAttuale || 0),
+        trend: "same",
+        existingListinoId: voce.id,
+        importMode: "link_source",
+        fonte: {
+          preventivoId: p.id,
+          numeroPreventivo: p.numeroPreventivo,
+          dataPreventivo: p.dataPreventivo,
+          pdfUrl: p.pdfUrl || null,
+          pdfStoragePath: p.pdfStoragePath || null,
+          imageStoragePaths: sourceImageStoragePaths,
+          imageUrls: sourceImageUrls,
+        },
+        daVerificare: false,
+        note: "Collegamento fonte documento",
+      };
+      return rehydrateBozzaRow(base);
+    });
+
+    const rows: ImportBozzaRiga[] = [...rowsFromMissing, ...rowsFromLinkOnly];
+    if (rows.length === 0) {
+      window.alert("Nessuna riga da importare.");
+      return;
+    }
 
     setBozzaSourcePreventivo(p);
     setBozzaImportRows(rows);
@@ -2642,7 +3274,7 @@ function PreventiviView(props: {
         !String(r.unita || "").trim() ||
         !String(r.valuta || "").trim() ||
         !Number.isFinite(r.prezzoNuovo) ||
-        Number(r.prezzoNuovo) <= 0
+        (r.importMode !== "link_source" && Number(r.prezzoNuovo) <= 0)
     );
     if (invalid) {
       setError("Bozza incompleta: compila Articolo, Unita, Valuta e Prezzo (> 0) prima della conferma.");
@@ -2665,49 +3297,70 @@ function PreventiviView(props: {
       const now = Date.now();
 
       bozzaImportRows.forEach((r) => {
-        const key = listinoKey({
-          fornitoreId: r.fornitoreId,
-          articoloCanonico: r.articoloCanonico,
-          unita: r.unita,
-          valuta: r.valuta,
-        });
-
-        const idx = next.findIndex((v) => listinoKey({
-          fornitoreId: v.fornitoreId,
-          articoloCanonico: v.articoloCanonico,
-          unita: v.unita,
-          valuta: v.valuta,
-        }) === key);
+        let idx = -1;
+        if (r.existingListinoId) {
+          idx = next.findIndex((v) => v.id === r.existingListinoId);
+        }
+        if (idx < 0) {
+          const key = listinoKey({
+            fornitoreId: r.fornitoreId,
+            articoloCanonico: r.articoloCanonico,
+            unita: r.unita,
+            valuta: r.valuta,
+          });
+          idx = next.findIndex((v) => listinoKey({
+            fornitoreId: v.fornitoreId,
+            articoloCanonico: v.articoloCanonico,
+            unita: v.unita,
+            valuta: v.valuta,
+          }) === key);
+        }
 
         if (idx >= 0) {
           const prev = next[idx];
-          const trendData = computeTrend(r.prezzoNuovo, prev.prezzoAttuale);
           const sourceImageStoragePaths = asStringArray(r.fonte.imageStoragePaths);
           const sourceImageUrls = asStringArray(r.fonte.imageUrls);
+          const prevImageStoragePaths = asStringArray(prev.fonteAttuale.imageStoragePaths);
+          const prevImageUrls = asStringArray(prev.fonteAttuale.imageUrls);
+          const nextFonteAttuale = {
+            preventivoId: String(r.fonte.preventivoId || "").trim() || prev.fonteAttuale.preventivoId,
+            numeroPreventivo: String(r.fonte.numeroPreventivo || "").trim() || prev.fonteAttuale.numeroPreventivo,
+            dataPreventivo: String(r.fonte.dataPreventivo || "").trim() || prev.fonteAttuale.dataPreventivo,
+            note: String(prev.fonteAttuale.note || "").trim() || String(prev.note || "").trim() || undefined,
+            pdfUrl: r.fonte.pdfUrl || prev.fonteAttuale.pdfUrl || null,
+            pdfStoragePath: r.fonte.pdfStoragePath || prev.fonteAttuale.pdfStoragePath || null,
+            imageStoragePaths: sourceImageStoragePaths.length > 0 ? sourceImageStoragePaths : prevImageStoragePaths,
+            imageUrls: sourceImageUrls.length > 0 ? sourceImageUrls : prevImageUrls,
+          };
+
+          if (r.importMode === "link_source") {
+            next[idx] = {
+              ...prev,
+              fonteAttuale: nextFonteAttuale,
+              updatedAt: now,
+            };
+            return;
+          }
+
+          const trendData = computeTrend(r.prezzoNuovo, prev.prezzoAttuale);
           next[idx] = {
             ...prev,
             articoloCanonico: r.articoloCanonico,
             codiceArticolo: r.codiceArticolo || undefined,
             unita: normalizeUnita(r.unita),
             valuta: r.valuta,
+            note: String(r.note || "").trim() || prev.note || undefined,
             prezzoPrecedente: prev.prezzoAttuale,
             fontePrecedente: {
               preventivoId: prev.fonteAttuale.preventivoId,
               numeroPreventivo: prev.fonteAttuale.numeroPreventivo,
               dataPreventivo: prev.fonteAttuale.dataPreventivo,
+              note: String(prev.fonteAttuale.note || "").trim() || String(prev.note || "").trim() || undefined,
               imageStoragePaths: asStringArray(prev.fonteAttuale.imageStoragePaths),
               imageUrls: asStringArray(prev.fonteAttuale.imageUrls),
             },
             prezzoAttuale: r.prezzoNuovo,
-            fonteAttuale: {
-              preventivoId: r.fonte.preventivoId,
-              numeroPreventivo: r.fonte.numeroPreventivo,
-              dataPreventivo: r.fonte.dataPreventivo,
-              pdfUrl: r.fonte.pdfUrl,
-              pdfStoragePath: r.fonte.pdfStoragePath,
-              imageStoragePaths: sourceImageStoragePaths,
-              imageUrls: sourceImageUrls,
-            },
+            fonteAttuale: nextFonteAttuale,
             trend: trendData.trend,
             deltaAbs: trendData.deltaAbs,
             deltaPct: trendData.deltaPct,
@@ -2724,11 +3377,13 @@ function PreventiviView(props: {
             codiceArticolo: r.codiceArticolo || undefined,
             unita: normalizeUnita(r.unita),
             valuta: r.valuta,
+            note: String(r.note || "").trim() || undefined,
             prezzoAttuale: r.prezzoNuovo,
             fonteAttuale: {
               preventivoId: r.fonte.preventivoId,
               numeroPreventivo: r.fonte.numeroPreventivo,
               dataPreventivo: r.fonte.dataPreventivo,
+              note: String(r.note || "").trim() || undefined,
               pdfUrl: r.fonte.pdfUrl,
               pdfStoragePath: r.fonte.pdfStoragePath,
               imageStoragePaths: sourceImageStoragePaths,
@@ -3252,6 +3907,14 @@ function PreventiviView(props: {
             <button
               type="button"
               className="acq-btn"
+              onClick={() => void openCleanupIaModal()}
+              disabled={cleanupIaLoading || cleanupIaDeleting}
+            >
+              PULISCI ALLEGATI IA
+            </button>
+            <button
+              type="button"
+              className="acq-btn"
               onClick={() =>
                 setOpenGroupKeys((prev) => {
                   const next: Record<string, boolean> = { ...prev };
@@ -3389,14 +4052,21 @@ function PreventiviView(props: {
                               </td>
                               <td>
                                 <div className="acq-prev-list-actions">
-                                  {hasDocumentForPreventivo(p) && (
-                                    <button type="button" className="acq-btn" onClick={() => void openPreventivoDocumento(p)}>
-                                      {LABELS_IT.menu.openDocument}
+                                  <button type="button" className="acq-btn" onClick={() => void openPreventivoDocumento(p)}>
+                                    {LABELS_IT.menu.openDocument}
+                                  </button>
+                                  <button type="button" className="acq-btn" onClick={() => void openLinkFotoModal(p)}>
+                                    COLLEGA FOTO
+                                  </button>
+                                  {status.total === 0 ? (
+                                    <span className="acq-pill">Nessuna riga</span>
+                                  ) : status.className === "full" ? (
+                                    <span className="acq-pill is-ok">IMPORTATO</span>
+                                  ) : (
+                                    <button type="button" className="acq-btn acq-btn--primary" onClick={() => startImportListino(p)}>
+                                      {status.className === "partial" ? "IMPORTA MANCANTI" : LABELS_IT.menu.import}
                                     </button>
                                   )}
-                                  <button type="button" className="acq-btn acq-btn--primary" onClick={() => startImportListino(p)}>
-                                    {LABELS_IT.menu.import}
-                                  </button>
                                   <button type="button" className="acq-btn" onClick={() => openDettaglio(p)}>
                                     {LABELS_IT.menu.open}
                                   </button>
@@ -3475,7 +4145,9 @@ function PreventiviView(props: {
           <div className="acq-modal-card acq-missing-modal">
             {(() => {
               const selectedPreventivo = preventivi.find((p) => p.id === missingRowsForPreventivoId) || null;
-              const info = selectedPreventivo ? (missingRowsByPreventivoId.get(selectedPreventivo.id) || { rows: [], fallback: true }) : { rows: [], fallback: true };
+              const info = selectedPreventivo
+                ? (missingRowsByPreventivoId.get(selectedPreventivo.id) || { rows: [], fallback: false, verifyRows: [], linkOnlyCount: 0 })
+                : { rows: [], fallback: false, verifyRows: [], linkOnlyCount: 0 };
               return (
                 <>
                   <h4>Righe non importate</h4>
@@ -3513,7 +4185,14 @@ function PreventiviView(props: {
                     </div>
                   ) : (
                     <div className="acq-prev-empty">
-                      <span>1 riga non importata (dettagli non determinabili).</span>
+                      {info.linkOnlyCount > 0
+                        ? <span>Nessuna riga mancante: {info.linkOnlyCount} voce/i listino da collegare alla fonte documento.</span>
+                        : <span>Nessuna riga mancante rilevata.</span>}
+                    </div>
+                  )}
+                  {info.verifyRows.length > 0 && (
+                    <div className="acq-list-error">
+                      {info.verifyRows.length} riga/e con UDM/valuta diversa (da verificare, ma non considerate mancanti).
                     </div>
                   )}
                   {info.fallback && (
@@ -3529,6 +4208,242 @@ function PreventiviView(props: {
         </div>
       )}
 
+      {linkFotoPreventivo && (
+        <div
+          className="acq-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Collega foto al preventivo"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeLinkFotoModal();
+          }}
+        >
+          <div className="acq-modal-card acq-link-foto-modal">
+            <div className="acq-link-foto-head">
+              <div>
+                <h4>Collega foto al preventivo</h4>
+                <p className="acq-prev-draft-meta">
+                  {linkFotoPreventivo.fornitoreNome} - {linkFotoPreventivo.numeroPreventivo} - {linkFotoPreventivo.dataPreventivo}
+                </p>
+              </div>
+              <button type="button" className="acq-btn acq-btn--small" onClick={closeLinkFotoModal} aria-label="Chiudi">
+                X
+              </button>
+            </div>
+
+            <div className="acq-link-foto-tools">
+              <label className="acq-prev-field">
+                <span>Cerca file</span>
+                <input
+                  type="text"
+                  value={iaStorageSearch}
+                  onChange={(e) => setIaStorageSearch(e.target.value)}
+                  placeholder="Nome file"
+                />
+              </label>
+              <label className="acq-prev-filter-check">
+                <input
+                  type="checkbox"
+                  checked={iaStorageOnlyRecent}
+                  onChange={(e) => setIaStorageOnlyRecent(e.target.checked)}
+                />
+                Mostra solo ultimi 50
+              </label>
+              <button type="button" className="acq-btn" onClick={() => void loadIaStorageFiles()} disabled={iaStorageLoading}>
+                {iaStorageLoading ? "Carico..." : "Ricarica lista"}
+              </button>
+            </div>
+
+            {iaStorageError && <div className="acq-list-error">{iaStorageError}</div>}
+
+            <div className="acq-prev-table-wrap">
+              <table className="acq-prev-table acq-link-foto-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>File</th>
+                    <th>Data/Ora</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {iaStorageLoading ? (
+                    <tr>
+                      <td colSpan={4}>Caricamento file...</td>
+                    </tr>
+                  ) : filteredIaStorageFiles.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>Nessuna immagine trovata in preventivi/ia.</td>
+                    </tr>
+                  ) : (
+                    filteredIaStorageFiles.map((file) => {
+                      const checked = iaStorageSelectedPaths.includes(file.path);
+                      return (
+                        <tr key={file.path}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleIaStoragePath(file.path)}
+                              aria-label={`Seleziona ${file.name}`}
+                            />
+                          </td>
+                          <td>{file.name}</td>
+                          <td>{file.updatedLabel}</td>
+                          <td>
+                            <button type="button" className="acq-btn acq-btn--small" onClick={() => void openIaStoragePreview(file.path)}>
+                              Anteprima
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="acq-link-foto-footer">
+              <span className="acq-prev-draft-meta">
+                Selezionate: {iaStorageSelectedPaths.length}
+              </span>
+              <div className="acq-prev-actions">
+                <button type="button" className="acq-btn" onClick={closeLinkFotoModal}>Annulla</button>
+                <button
+                  type="button"
+                  className="acq-btn acq-btn--primary"
+                  disabled={iaStorageSelectedPaths.length === 0 || saving}
+                  onClick={() => void salvaCollegamentoFotoPreventivo()}
+                >
+                  {saving ? "SALVATAGGIO..." : "SALVA COLLEGAMENTO"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cleanupIaModalOpen && (
+        <div
+          className="acq-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pulisci allegati IA orfani"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCleanupIaModal();
+          }}
+        >
+          <div className="acq-modal-card acq-ia-clean-modal">
+            <div className="acq-link-foto-head">
+              <div>
+                <h4>Pulisci allegati IA orfani</h4>
+                <p className="acq-prev-draft-meta">Storage: preventivi/ia</p>
+              </div>
+              <button type="button" className="acq-btn acq-btn--small" onClick={closeCleanupIaModal} aria-label="Chiudi">
+                X
+              </button>
+            </div>
+
+            <div className="acq-ia-clean-tools">
+              <span className="acq-prev-draft-meta">Totale orfani: <strong>{cleanupIaFiles.length}</strong></span>
+              <span className="acq-prev-draft-meta">Selezionati: <strong>{cleanupIaSelectedPaths.length}</strong></span>
+              <button
+                type="button"
+                className="acq-btn"
+                onClick={() => void loadIaOrphanFiles()}
+                disabled={cleanupIaLoading || cleanupIaDeleting}
+              >
+                {cleanupIaLoading ? "Carico..." : "Ricarica orfani"}
+              </button>
+            </div>
+
+            {cleanupIaResult && <div className="acq-clean-result">{cleanupIaResult}</div>}
+            {cleanupIaError && <div className="acq-list-error">{cleanupIaError}</div>}
+
+            <div className="acq-prev-table-wrap">
+              <table className="acq-prev-table acq-ia-clean-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>File</th>
+                    <th>Tipo</th>
+                    <th>Data/Ora</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cleanupIaLoading ? (
+                    <tr>
+                      <td colSpan={5}>Caricamento allegati orfani...</td>
+                    </tr>
+                  ) : cleanupIaFiles.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>Nessun allegato IA orfano trovato.</td>
+                    </tr>
+                  ) : (
+                    cleanupIaFiles.map((file) => {
+                      const checked = cleanupIaSelectedPaths.includes(file.path);
+                      return (
+                        <tr key={file.path}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleCleanupIaPath(file.path)}
+                              aria-label={`Seleziona ${file.name}`}
+                            />
+                          </td>
+                          <td>{file.name}</td>
+                          <td>{file.fileType === "pdf" ? "PDF" : "Immagine"}</td>
+                          <td>{file.updatedLabel}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="acq-btn acq-btn--small"
+                              onClick={() => void openCleanupIaPreview(file.path)}
+                            >
+                              Anteprima
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="acq-ia-clean-confirm">
+              <label className="acq-prev-field">
+                <span>Conferma forte</span>
+                <input
+                  type="text"
+                  value={cleanupIaConfirmText}
+                  onChange={(e) => setCleanupIaConfirmText(e.target.value)}
+                  placeholder={"Digita \"ELIMINA\" per abilitare l'operazione"}
+                />
+              </label>
+            </div>
+
+            <div className="acq-link-foto-footer">
+              <div className="acq-prev-actions">
+                <button type="button" className="acq-btn" onClick={closeCleanupIaModal} disabled={cleanupIaDeleting}>
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  className="acq-btn acq-btn--danger"
+                  disabled={cleanupIaSelectedPaths.length === 0 || cleanupIaDeleting}
+                  onClick={() => void eliminaAllegatiIaSelezionati()}
+                >
+                  {cleanupIaDeleting ? "ELIMINAZIONE..." : "ELIMINA SELEZIONATI"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selected && (
         <div className="acq-prev-card">
           <div className="acq-prev-detail-head">
@@ -3537,15 +4452,20 @@ function PreventiviView(props: {
               <p>{selected.fornitoreNome} - {selected.numeroPreventivo} - {selected.dataPreventivo}</p>
             </div>
             <div className="acq-prev-list-actions">
-              {hasDocumentForPreventivo(selected) && (
-                <button
-                  type="button"
-                  className="acq-btn"
-                  onClick={() => void openPreventivoDocumento(selected)}
-                >
-                  Apri documento
-                </button>
-              )}
+              <button
+                type="button"
+                className="acq-btn"
+                onClick={() => void openPreventivoDocumento(selected)}
+              >
+                Apri documento
+              </button>
+              <button
+                type="button"
+                className="acq-btn"
+                onClick={() => void openLinkFotoModal(selected)}
+              >
+                COLLEGA FOTO
+              </button>
               {!editing ? (
                 <button type="button" className="acq-btn acq-btn--primary" onClick={startEdit}>Modifica</button>
               ) : (
@@ -3682,7 +4602,17 @@ function ListinoPrezziView() {
   const [search, setSearch] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [openMenuPosition, setOpenMenuPosition] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
-  const menuRootRef = useRef<HTMLDivElement | null>(null);
+  const [editVoceId, setEditVoceId] = useState<string | null>(null);
+  const [editDesc, setEditDesc] = useState("");
+  const [editCodice, setEditCodice] = useState("");
+  const [editUnitaSelected, setEditUnitaSelected] = useState<(typeof LISTINO_EDIT_UNITA_OPTIONS)[number]>("PZ");
+  const [editUnitaCustom, setEditUnitaCustom] = useState("");
+  const [editValuta, setEditValuta] = useState<Valuta>("CHF");
+  const [editPrezzo, setEditPrezzo] = useState("");
+  const [editData, setEditData] = useState(oggi());
+  const [editNote, setEditNote] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const apriVoceListino = async (v: ListinoVoce) => {
     const source = {
@@ -3694,11 +4624,127 @@ function ListinoPrezziView() {
     try {
       const opened = await openDocumentRef(source);
       if (!opened) {
-        window.alert("Nessun documento disponibile");
+        window.alert("Nessun documento collegato");
       }
     } catch (err) {
       console.error("Errore apertura documento listino:", err);
-      window.alert("Nessun documento disponibile");
+      window.alert("Nessun documento collegato");
+    }
+  };
+
+  const hasDocumentoListino = (v: ListinoVoce) =>
+    hasAnyDocumentRef({
+      pdfUrl: v.fonteAttuale.pdfUrl,
+      pdfStoragePath: v.fonteAttuale.pdfStoragePath,
+      imageUrls: asStringArray((v as any)?.fonteAttuale?.imageUrls),
+      imageStoragePaths: asStringArray((v as any)?.fonteAttuale?.imageStoragePaths),
+    });
+
+  const normalizeDataInput = (value: string, fallback: string) => {
+    const raw = String(value || "").trim();
+    if (!raw) return fallback;
+    const match = raw.match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{4})$/);
+    if (!match) return fallback;
+    const gg = String(Number(match[1])).padStart(2, "0");
+    const mm = String(Number(match[2])).padStart(2, "0");
+    const yyyy = match[3];
+    return `${gg} ${mm} ${yyyy}`;
+  };
+
+  const openEditVoce = (voce: ListinoVoce) => {
+    const unit = normalizeUnita(String(voce.unita || ""));
+    const isKnownUnit = unit === "PZ" || unit === "MT" || unit === "KG" || unit === "LT" || unit === "NR";
+    const sourceDate = String(voce.fonteAttuale?.dataPreventivo || "").trim() || formatDataIt(voce.updatedAt);
+    setEditVoceId(voce.id);
+    setEditDesc(String(voce.articoloCanonico || ""));
+    setEditCodice(String(voce.codiceArticolo || ""));
+    setEditUnitaSelected(isKnownUnit ? (unit as (typeof LISTINO_EDIT_UNITA_OPTIONS)[number]) : "ALTRO");
+    setEditUnitaCustom(isKnownUnit ? "" : unit);
+    setEditValuta(voce.valuta === "EUR" ? "EUR" : "CHF");
+    setEditPrezzo(Number(voce.prezzoAttuale || 0).toFixed(2));
+    setEditData(normalizeDataInput(sourceDate, oggi()));
+    setEditNote(String((voce as any)?.note || (voce.fonteAttuale as any)?.note || ""));
+    setEditError(null);
+    setOpenMenuId(null);
+    setOpenMenuPosition(null);
+  };
+
+  const closeEditVoce = () => {
+    setEditVoceId(null);
+    setEditDesc("");
+    setEditCodice("");
+    setEditUnitaSelected("PZ");
+    setEditUnitaCustom("");
+    setEditValuta("CHF");
+    setEditPrezzo("");
+    setEditData(oggi());
+    setEditNote("");
+    setEditError(null);
+  };
+
+  const saveEditVoce = async () => {
+    if (!editVoceId) return;
+    const current = voci.find((item) => item.id === editVoceId);
+    if (!current) {
+      setEditError("Voce listino non trovata.");
+      return;
+    }
+    const articolo = normalizeArticoloCanonico(editDesc);
+    if (!articolo) {
+      setEditError("La descrizione e obbligatoria.");
+      return;
+    }
+    const prezzoNum = Number(String(editPrezzo || "").replace(",", "."));
+    if (!Number.isFinite(prezzoNum) || prezzoNum <= 0) {
+      setEditError("Il prezzo deve essere un numero maggiore di zero.");
+      return;
+    }
+    const unitaFinal =
+      editUnitaSelected === "ALTRO"
+        ? normalizeUnita(editUnitaCustom || "")
+        : normalizeUnita(editUnitaSelected);
+    if (!unitaFinal) {
+      setEditError("Seleziona unita valida.");
+      return;
+    }
+    const dataPreventivo = normalizeDataInput(editData, String(current.fonteAttuale?.dataPreventivo || "").trim() || oggi());
+    const noteSanitized = String(editNote || "").trim();
+    const trendData = computeTrend(prezzoNum, current.prezzoAttuale);
+
+    setEditSaving(true);
+    setEditError(null);
+    setError(null);
+    try {
+      const now = Date.now();
+      const updated: ListinoVoce = {
+        ...current,
+        articoloCanonico: articolo,
+        codiceArticolo: String(editCodice || "").trim() || undefined,
+        unita: unitaFinal,
+        valuta: editValuta,
+        prezzoAttuale: prezzoNum,
+        note: noteSanitized || undefined,
+        fonteAttuale: {
+          ...current.fonteAttuale,
+          dataPreventivo,
+          note: noteSanitized || undefined,
+        },
+        trend: trendData.trend,
+        deltaAbs: trendData.deltaAbs,
+        deltaPct: trendData.deltaPct,
+        updatedAt: now,
+      };
+      const next = voci
+        .map((item) => (item.id === updated.id ? updated : item))
+        .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+      await persistListino(next);
+      setVoci(next);
+      closeEditVoce();
+    } catch (err) {
+      console.error("Errore salvataggio voce listino:", err);
+      setEditError("Errore durante il salvataggio della voce listino.");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -3810,10 +4856,19 @@ function ListinoPrezziView() {
     };
   }, [openMenuId]);
 
+  useEffect(() => {
+    if (!editVoceId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeEditVoce();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [editVoceId]);
+
   if (loading) return <div className="acq-list-empty">Caricamento listino prezzi...</div>;
 
   return (
-    <div className="acq-listino-shell" ref={menuRootRef}>
+    <div className="acq-listino-shell">
       {error && <div className="acq-list-error">{error}</div>}
       <div className="acq-listino-filters">
         <label className="acq-prev-field">
@@ -3877,25 +4932,17 @@ function ListinoPrezziView() {
                       <button
                         type="button"
                         className="acq-btn acq-btn--primary"
-                        disabled={!hasAnyDocumentRef({
-                          pdfUrl: v.fonteAttuale.pdfUrl,
-                          pdfStoragePath: v.fonteAttuale.pdfStoragePath,
-                          imageUrls: asStringArray((v as any)?.fonteAttuale?.imageUrls),
-                          imageStoragePaths: asStringArray((v as any)?.fonteAttuale?.imageStoragePaths),
-                        })}
                         onClick={() => void apriVoceListino(v)}
-                        title={
-                          !hasAnyDocumentRef({
-                            pdfUrl: v.fonteAttuale.pdfUrl,
-                            pdfStoragePath: v.fonteAttuale.pdfStoragePath,
-                            imageUrls: asStringArray((v as any)?.fonteAttuale?.imageUrls),
-                            imageStoragePaths: asStringArray((v as any)?.fonteAttuale?.imageStoragePaths),
-                          })
-                            ? "Documento non disponibile"
-                            : "Apri documento"
-                        }
+                        title={hasDocumentoListino(v) ? "Apri documento" : "Nessun documento collegato"}
                       >
-                        {LABELS_IT.menu.openDocument.toUpperCase()}
+                        APRI DOCUMENTO
+                      </button>
+                      <button
+                        type="button"
+                        className="acq-btn"
+                        onClick={() => openEditVoce(v)}
+                      >
+                        MODIFICA
                       </button>
                       <div className="acq-kebab" data-menu-root="listino">
                         <button
@@ -3927,23 +4974,6 @@ function ListinoPrezziView() {
                           >
                             <button
                               type="button"
-                              className="acq-kebab-item"
-                              disabled={!hasAnyDocumentRef({
-                                pdfUrl: v.fonteAttuale.pdfUrl,
-                                pdfStoragePath: v.fonteAttuale.pdfStoragePath,
-                                imageUrls: asStringArray((v as any)?.fonteAttuale?.imageUrls),
-                                imageStoragePaths: asStringArray((v as any)?.fonteAttuale?.imageStoragePaths),
-                              })}
-                              onClick={async () => {
-                                await apriVoceListino(v);
-                                setOpenMenuId(null);
-                                setOpenMenuPosition(null);
-                              }}
-                            >
-                              {LABELS_IT.menu.openDocument}
-                            </button>
-                            <button
-                              type="button"
                               className="acq-kebab-item acq-kebab-item--danger"
                               onClick={async () => {
                                 await eliminaVoceListino(v);
@@ -3964,6 +4994,116 @@ function ListinoPrezziView() {
           </tbody>
         </table>
       </div>
+
+      {editVoceId && (() => {
+        const selected = voci.find((item) => item.id === editVoceId) || null;
+        if (!selected) return null;
+        const hasDoc = hasDocumentoListino(selected);
+        return (
+          <div
+            className="acq-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modifica voce listino"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeEditVoce();
+            }}
+          >
+            <div className="acq-modal-card acq-listino-edit-modal">
+              <div className="acq-link-foto-head">
+                <div>
+                  <h4>Modifica voce listino</h4>
+                  <p className="acq-prev-draft-meta">{selected.fornitoreNome}</p>
+                </div>
+                <button type="button" className="acq-btn acq-btn--small" onClick={closeEditVoce} aria-label="Chiudi">
+                  X
+                </button>
+              </div>
+
+              <div className="acq-modal-grid">
+                <label className="acq-prev-field">
+                  <span>Descrizione</span>
+                  <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+                </label>
+                <label className="acq-prev-field">
+                  <span>Codice articolo (opzionale)</span>
+                  <input type="text" value={editCodice} onChange={(e) => setEditCodice(e.target.value)} />
+                </label>
+                <label className="acq-prev-field">
+                  <span>Unita</span>
+                  <select
+                    value={editUnitaSelected}
+                    onChange={(e) => setEditUnitaSelected(e.target.value as (typeof LISTINO_EDIT_UNITA_OPTIONS)[number])}
+                  >
+                    {LISTINO_EDIT_UNITA_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                  {editUnitaSelected === "ALTRO" && (
+                    <input
+                      type="text"
+                      value={editUnitaCustom}
+                      onChange={(e) => setEditUnitaCustom(e.target.value)}
+                      placeholder="Unita personalizzata"
+                    />
+                  )}
+                </label>
+                <label className="acq-prev-field">
+                  <span>Valuta</span>
+                  <select value={editValuta} onChange={(e) => setEditValuta(e.target.value as Valuta)}>
+                    <option value="CHF">CHF</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </label>
+                <label className="acq-prev-field">
+                  <span>Prezzo</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={editPrezzo}
+                    onChange={(e) => setEditPrezzo(e.target.value)}
+                  />
+                </label>
+                <label className="acq-prev-field">
+                  <span>Data (gg mm aaaa)</span>
+                  <input
+                    type="text"
+                    value={editData}
+                    onChange={(e) => setEditData(e.target.value)}
+                    placeholder="gg mm aaaa"
+                  />
+                </label>
+              </div>
+
+              <label className="acq-prev-field">
+                <span>Note</span>
+                <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="Note voce listino" />
+              </label>
+
+              <div className="acq-listino-edit-doc">
+                {hasDoc ? (
+                  <button type="button" className="acq-btn" onClick={() => void apriVoceListino(selected)}>
+                    APRI DOCUMENTO
+                  </button>
+                ) : (
+                  <span className="acq-prev-draft-meta">Nessun documento collegato</span>
+                )}
+              </div>
+
+              {editError && <div className="acq-list-error">{editError}</div>}
+
+              <div className="acq-prev-actions">
+                <button type="button" className="acq-btn" onClick={closeEditVoce} disabled={editSaving}>Annulla</button>
+                <button type="button" className="acq-btn acq-btn--primary" onClick={() => void saveEditVoce()} disabled={editSaving}>
+                  {editSaving ? "Salvataggio..." : "Salva modifica"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -4232,7 +5372,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     ordine.materiali.forEach((m) => {
       const info = priceInfoByMaterialeId.get(m.id);
       const hasPriceInfo = !!info && Number.isFinite(info.prezzoUnitario) && info.prezzoUnitario > 0;
-      const note = String(noteByMaterialeId[m.id] || "").trim() || "-";
+      const note = String(noteByMaterialeId[m.id] || String((m as any)?.note || "")).trim();
       if (!hasPriceInfo) {
         missing += 1;
       }
@@ -4253,92 +5393,63 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
       if (hasComputablePrice && valuta) {
         totals[valuta] += line.total!;
       }
-      const ref = info?.numeroPreventivo
-        ? `N. ${info.numeroPreventivo}${info.dataPreventivo ? ` del ${info.dataPreventivo}` : ""}`
-        : "-";
+      const descrizioneConNota = note ? `${m.descrizione}\nNota: ${note}` : m.descrizione;
 
       rows.push({
-        descrizione: m.descrizione,
+        descrizione: descrizioneConNota,
         quantita: String(m.quantita),
-        unita: m.unita,
-        note,
         prezzoUnitario: hasPriceInfo ? `${info!.prezzoUnitario.toFixed(2)} ${valuta || "-"}` : "-",
         totaleRiga: hasComputablePrice ? `${line.total!.toFixed(2)} ${valuta || "-"}` : line.status === "needs_factor" ? "DA VERIFICARE UDM" : "-",
-        preventivo: ref,
       });
     });
 
     const used = (["CHF", "EUR"] as Valuta[]).filter((v) => totals[v] > 0);
     if (used.length > 1) {
-      rows.push({
-        descrizione: "TOTALE CHF",
-        quantita: "",
-        unita: "",
-        prezzoUnitario: "",
-        totaleRiga: `${totals.CHF.toFixed(2)} CHF`,
-        preventivo: "",
-      });
-      rows.push({
-        descrizione: "TOTALE EUR",
-        quantita: "",
-        unita: "",
-        prezzoUnitario: "",
-        totaleRiga: `${totals.EUR.toFixed(2)} EUR`,
-        preventivo: "",
-      });
-      rows.push({
-        descrizione: "VALUTE",
-        quantita: "",
-        unita: "",
-        prezzoUnitario: "",
-        totaleRiga: "MISTE",
-        preventivo: "",
+      used.forEach((currency) => {
+        rows.push({
+          descrizione: `TOTALE ORDINE (${currency})`,
+          quantita: "",
+          prezzoUnitario: "",
+          totaleRiga: `${totals[currency].toFixed(2)} ${currency}`,
+        });
       });
     } else {
       const single = used[0];
       rows.push({
         descrizione: missing > 0 || udmDaVerificare > 0 ? "TOTALE PARZIALE" : "TOTALE ORDINE",
         quantita: "",
-        unita: "",
         prezzoUnitario: "",
         totaleRiga: single ? `${totals[single].toFixed(2)} ${single}` : "-",
-        preventivo: "",
       });
     }
-    rows.push({
-      descrizione: "PREZZI MANCANTI",
-      quantita: String(missing),
-      unita: "",
-      note: "",
-      prezzoUnitario: "",
-      totaleRiga: "",
-      preventivo: "",
-    });
-    rows.push({
-      descrizione: "UDM DA VERIFICARE",
-      quantita: String(udmDaVerificare),
-      unita: "",
-      note: "",
-      prezzoUnitario: "",
-      totaleRiga: "",
-      preventivo: "",
-    });
+
     if (ordineNote.trim()) {
       rows.push({
-        descrizione: "NOTE ORDINE",
+        descrizione: `NOTE ORDINE: ${ordineNote.trim()}`,
         quantita: "",
-        unita: "",
-        note: ordineNote.trim(),
         prezzoUnitario: "",
         totaleRiga: "",
-        preventivo: "",
       });
     }
+    if (missing > 0 || udmDaVerificare > 0) {
+      rows.push({
+        descrizione: `ATTENZIONE: ${missing} righe senza prezzo, ${udmDaVerificare} righe da verificare per UDM.`,
+        quantita: "",
+        prezzoUnitario: "",
+        totaleRiga: "",
+      });
+    }
+    rows.push({
+      descrizione: "I prezzi indicati sono informativi e basati sull'ultima quotazione disponibile; eventuali variazioni di fornitura/prezzo saranno confermate dal fornitore.",
+      quantita: "",
+      prezzoUnitario: "",
+      totaleRiga: "",
+    });
 
     await generateSmartPDF({
       kind: "table",
       title: `DIREZIONE ${ordine.nomeFornitore} - ORDINE ${ordine.dataOrdine}`,
-      columns: ["descrizione", "quantita", "unita", "note", "prezzoUnitario", "totaleRiga", "preventivo"],
+      columns: ["descrizione", "quantita", "prezzoUnitario", "totaleRiga"],
       rows,
     });
   };
