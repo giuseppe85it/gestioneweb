@@ -4,13 +4,11 @@
  */
 
 const functions = require("firebase-functions");
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
 const cors = require("cors")({ origin: true });
 const fetch = require("node-fetch"); // NECESSARIO
 
-initializeApp();
-const db = getFirestore();
+const db = admin.firestore();
 
 /**
  * Recupero API key da Firestore (come fa estrazione_libretto)
