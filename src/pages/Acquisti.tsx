@@ -550,8 +550,6 @@ function OrdineMaterialiView(props: {
   const [openMaterialMenuId, setOpenMaterialMenuId] = useState<string | null>(null);
   const [openMaterialMenuPosition, setOpenMaterialMenuPosition] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
   const [showEntryDetails, setShowEntryDetails] = useState(false);
-  const [manualPrezzoInput, setManualPrezzoInput] = useState("");
-  const [manualValuta, setManualValuta] = useState<Valuta>("CHF");
 
   useEffect(() => {
     const load = async () => {
@@ -811,8 +809,6 @@ function OrdineMaterialiView(props: {
     setDescrizione(voce.articoloCanonico);
     const autoUnita = normalizeUom(String(voce.unita || ""));
     setUnita(autoUnita.toLowerCase() as UnitaMisura);
-    setManualPrezzoInput(Number(voce.prezzoAttuale || 0).toFixed(2));
-    setManualValuta(voce.valuta === "EUR" ? "EUR" : "CHF");
     setConversionFactorInput("");
     setSelectedListinoVoce(voce);
     setShowSuggest(false);
@@ -822,8 +818,6 @@ function OrdineMaterialiView(props: {
     setDescrizione("");
     setQuantita("");
     setUnita("pz");
-    setManualPrezzoInput("");
-    setManualValuta("CHF");
     setFotoFile(null);
     setFotoPreview(null);
     setSelectedListinoVoce(null);
@@ -911,24 +905,6 @@ function OrdineMaterialiView(props: {
         rank: selectedListinoVoce.updatedAt,
       };
       setListinoSourceByMaterialeId((prev) => ({ ...prev, [id]: info }));
-    } else {
-      const prezzoManuale = Number(String(manualPrezzoInput || "").replace(",", "."));
-      if (Number.isFinite(prezzoManuale) && prezzoManuale > 0) {
-        const info: PreventivoMatch = {
-          prezzoUnitario: prezzoManuale,
-          valuta: manualValuta,
-          unita: (unita || "pz") as string,
-          preventivoId: `MANUALE-${id}`,
-          numeroPreventivo: "MANUALE",
-          dataPreventivo: oggi(),
-          pdfUrl: null,
-          pdfStoragePath: null,
-          imageStoragePaths: [],
-          imageUrls: [],
-          rank: Date.now(),
-        };
-        setListinoSourceByMaterialeId((prev) => ({ ...prev, [id]: info }));
-      }
     }
     resetMateriale();
   };
@@ -1357,30 +1333,18 @@ function OrdineMaterialiView(props: {
                 {showEntryDetails && (
                   <div className="om-entry-details">
                     <div className="om-entry-details-grid">
-                      <label className="om-entry-detail-field">
-                        <span>Prezzo unitario</span>
-                        <input
-                          className="mdo-table-input"
-                          type="number"
-                          inputMode="decimal"
-                          min="0"
-                          step="0.01"
-                          placeholder={selectedListinoVoce ? String(selectedListinoVoce.prezzoAttuale) : "0.00"}
-                          value={manualPrezzoInput}
-                          onChange={(e) => setManualPrezzoInput(e.target.value)}
-                        />
-                      </label>
-                      <label className="om-entry-detail-field">
+                      <div className="om-entry-detail-field om-entry-detail-readonly">
+                        <span>Prezzo da listino</span>
+                        <strong className="om-entry-readonly-value">
+                          {selectedListinoVoce ? selectedListinoVoce.prezzoAttuale.toFixed(2) : "—"}
+                        </strong>
+                      </div>
+                      <div className="om-entry-detail-field om-entry-detail-readonly">
                         <span>Valuta</span>
-                        <select
-                          className="mdo-table-input"
-                          value={manualValuta}
-                          onChange={(e) => setManualValuta(e.target.value === "EUR" ? "EUR" : "CHF")}
-                        >
-                          <option value="CHF">CHF</option>
-                          <option value="EUR">EUR</option>
-                        </select>
-                      </label>
+                        <strong className="om-entry-readonly-value">
+                          {selectedListinoVoce ? selectedListinoVoce.valuta : "—"}
+                        </strong>
+                      </div>
                       <label className="om-entry-detail-field">
                         <span>UDM</span>
                         <select
