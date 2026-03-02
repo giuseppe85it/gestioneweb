@@ -561,6 +561,17 @@ async function generateTablePdf(
     columns = Object.keys(firstRow);
   }
 
+  const isInternalOrderSummary =
+    String(title || "").trim().toUpperCase().startsWith("RIEPILOGO ORDINE INTERNO");
+  const supplierRowPrefix = "FORNITORE PREZZI DI RIFERIMENTO:";
+  const supplierRowPattern = /^(Fornitore prezzi di riferimento:\s*)(.*)$/i;
+  const readFirstCellRaw = (data: any): string => {
+    const rowRaw = data?.row?.raw;
+    if (Array.isArray(rowRaw)) return String(rowRaw[0] ?? "");
+    const firstCellRaw = data?.row?.cells?.[0]?.raw;
+    return String(firstCellRaw ?? "");
+  };
+
   autoTable(doc, {
     startY: currentY,
     margin: { left: 14, right: 14 },
@@ -584,6 +595,44 @@ async function generateTablePdf(
     },
     alternateRowStyles: {
       fillColor: COLORS.rowAlt,
+    },
+    didParseCell: (data) => {
+      if (!isInternalOrderSummary || data.section !== "body") return;
+      const firstRaw = readFirstCellRaw(data).trim();
+      if (!firstRaw.toUpperCase().startsWith(supplierRowPrefix)) return;
+
+      data.cell.styles.fillColor = [255, 250, 236];
+      data.cell.styles.textColor = COLORS.textBlack;
+
+      if (data.column.index === 0) {
+        data.cell.styles.fontStyle = "normal";
+        data.cell.styles.fontSize = 10;
+        data.cell.text = [firstRaw];
+        return;
+      }
+
+      data.cell.text = [""];
+    },
+    didDrawCell: (data) => {
+      if (!isInternalOrderSummary || data.section !== "body" || data.column.index !== 0) return;
+      const firstRaw = readFirstCellRaw(data).trim();
+      if (!firstRaw.toUpperCase().startsWith(supplierRowPrefix)) return;
+
+      const match = firstRaw.match(supplierRowPattern);
+      const label = (match?.[1] || "Fornitore prezzi di riferimento: ").trimEnd() + " ";
+      const supplier = (match?.[2] || "—").trim() || "—";
+      const fontSize = 10;
+      const textX = data.cell.x + 3;
+      const textY = data.cell.y + data.cell.height / 2 + fontSize * 0.35;
+
+      doc.setTextColor(...COLORS.textBlack);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(fontSize);
+      doc.text(label, textX, textY);
+
+      const labelWidth = doc.getTextWidth(label);
+      doc.setFont("helvetica", "bold");
+      doc.text(supplier, textX + labelWidth, textY);
     },
     ...(input.columnStyles ? { columnStyles: input.columnStyles } : {}),
     ...(input.tableWidth ? { tableWidth: input.tableWidth } : {}),
