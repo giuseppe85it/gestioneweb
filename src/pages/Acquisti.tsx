@@ -5663,9 +5663,17 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
   const buildPdfInternoPayload = () => {
     if (!ordine) return;
     const rows: Array<Record<string, string>> = [];
+    const fornitorePrezziRiferimento = String(ordine.nomeFornitore || "").trim() || "—";
     let missing = 0;
     let udmDaVerificare = 0;
     const totals: Record<Valuta, number> = { CHF: 0, EUR: 0 };
+
+    rows.push({
+      descrizione: `Fornitore prezzi di riferimento: ${fornitorePrezziRiferimento}`,
+      quantita: "",
+      prezzoUnitario: "",
+      totaleRiga: "",
+    });
 
     ordine.materiali.forEach((m) => {
       const info = priceInfoByMaterialeId.get(m.id);
@@ -6294,7 +6302,6 @@ const Acquisti = () => {
 
   const derivedTab = keyToTab(searchParams.get("tab"), ordineId ? "Ordini" : "Ordine materiali");
   const [activeTab, setActiveTab] = useState<AcquistiTab>(derivedTab);
-  const [headerSearch, setHeaderSearch] = useState("");
   const [focusPreventivoId, setFocusPreventivoId] = useState<string | null>(null);
   const [manualImportRequest, setManualImportRequest] = useState<{ requestId: string; row: ImportBozzaRiga } | null>(null);
 
@@ -6358,12 +6365,6 @@ const Acquisti = () => {
             <p className="acq-eyebrow">Gestione Acquisti</p>
             <h1 className="acq-title">Acquisti</h1>
             <p className="acq-subtitle">Modulo unico: ordine materiali, liste ordini e dettaglio ordine.</p>
-          </div>
-          <div className="acq-header-actions">
-            <label className="acq-search">
-              <span>Cerca</span>
-              <input type="search" placeholder="Ricerca UI (placeholder)" value={headerSearch} onChange={(e) => setHeaderSearch(e.target.value)} />
-            </label>
           </div>
         </header>
 
