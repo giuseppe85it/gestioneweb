@@ -6310,7 +6310,14 @@ const Acquisti = () => {
       <div className="acq-shell">
         <header className="acq-header">
           <div className="acq-header-brand">
-            <img src="/logo.png" alt="Logo" className="acq-header-logo" />
+            <button
+              type="button"
+              className="acq-logo-link"
+              aria-label="Torna alla Home"
+              onClick={() => navigate("/")}
+            >
+              <img src="/logo.png" alt="Logo" className="acq-header-logo" />
+            </button>
             <div className="acq-header-copy">
               <p className="acq-eyebrow">Gestione Acquisti</p>
               <h1 className="acq-title">Acquisti</h1>

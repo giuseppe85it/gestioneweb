@@ -53,6 +53,23 @@
   flex-shrink: 0;
 }
 
+.acq-logo-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  text-decoration: none;
+  border-radius: 999px;
+}
+
+.acq-logo-link:focus-visible {
+  outline: 2px solid rgba(58, 53, 43, 0.35);
+  outline-offset: 2px;
+}
+
 .acq-header-copy {
   min-width: 0;
 }
