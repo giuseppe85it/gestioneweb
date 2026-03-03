@@ -1080,6 +1080,8 @@ function Home() {
           id,
           tipo: "CAMBIO_ASSETTO",
           timestamp: now,
+          badgeAutista: "ADMIN",
+          autistaNome: "UFFICIO",
           luogo: luogoValue || null,
           prima: { ...assetto },
           dopo: { ...assetto },
