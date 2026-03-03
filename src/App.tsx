@@ -46,6 +46,7 @@ import IAApiKey from "./pages/IA/IAApiKey";
 import IALibretto from "./pages/IA/IALibretto";
 import IADocumenti from "./pages/IA/IADocumenti";
 import IACoperturaLibretti from "./pages/IA/IACoperturaLibretti";
+import LibrettiExport from "./pages/LibrettiExport";
 import CisternaCaravatePage from "./pages/CisternaCaravate/CisternaCaravatePage";
 import CisternaCaravateIA from "./pages/CisternaCaravate/CisternaCaravateIA";
 import CisternaSchedeTest from "./pages/CisternaCaravate/CisternaSchedeTest";
@@ -144,6 +145,7 @@ function App() {
         <Route path="/ia/libretto" element={<IALibretto />} />
         <Route path="/ia/documenti" element={<IADocumenti />} />
         <Route path="/ia/copertura-libretti" element={<IACoperturaLibretti />} />
+        <Route path="/libretti-export" element={<LibrettiExport />} />
         <Route path="/cisterna" element={<CisternaCaravatePage />} />
         <Route path="/cisterna/ia" element={<CisternaCaravateIA />} />
         <Route path="/cisterna/schede-test" element={<CisternaSchedeTest />} />

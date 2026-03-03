@@ -105,6 +105,19 @@ export default function IAHome() {
               <p>Verifica i mezzi con libretto o foto mancanti.</p>
             </div>
 
+            {/* Libretti Export PDF */}
+            <div
+              className={`ia-card ${!apiKeyOk ? "disabled" : ""}`}
+              onClick={() => handleNav("/libretti-export")}
+            >
+              <span className={`ia-card-status ${apiKeyOk ? "on" : "off"}`}>
+                {toolStatus}
+              </span>
+              <img src="/icons/ia/libretto.png" alt="Libretti Export PDF" className="ia-icon" />
+              <h3>Libretti (Export PDF)</h3>
+              <p>Seleziona piu targhe e genera un PDF unico con anteprima.</p>
+            </div>
+
             {/* Documenti IA */}
             <div
               className={`ia-card ${!apiKeyOk ? "disabled" : ""}`}

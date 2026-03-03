@@ -192,38 +192,12 @@ async function loadLogoBase64(): Promise<string | null> {
 // Header comune
 // --------------------------------------------------------
 async function drawHeader(doc: jsPDF, title: string): Promise<number> {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-
-  doc.setFillColor(...COLORS.bg);
-  doc.rect(0, 0, pageWidth, 297, "F");
-
-  doc.setFillColor(...COLORS.headerBg);
-  doc.rect(0, 0, pageWidth, 26, "F");
-  doc.setDrawColor(...COLORS.headerLine);
-  doc.line(margin, 26, pageWidth - margin, 26);
-
-  const logoBase64 = await loadLogoBase64();
-  if (logoBase64) {
-    doc.addImage(logoBase64, "PNG", margin, 4, 20, 18);
-  }
-
-  doc.setTextColor(...COLORS.textBlack);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("GHIELMI CEMENTI SA", margin + 26, 12);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text("Sistema Gestione Manutenzione", margin + 26, 18);
-
-  const now = new Date();
-  const dateStr = formatGGMMYYYY_HHMM(now.toISOString());
-  doc.setFontSize(9);
-  doc.text(dateStr, pageWidth - margin, 10, { align: "right" });
-  doc.text(title, pageWidth - margin, 18, { align: "right" });
-
-  return 36;
+  return await drawStandardHeader(doc, {
+    docId: "",
+    title,
+    dateTimeLabel: formatDateTime(new Date()),
+    blocks: [],
+  });
 }
 
 // --------------------------------------------------------
@@ -948,8 +922,8 @@ async function drawStandardHeader(doc: jsPDF, model: PdfDocModel): Promise<numbe
 
   doc.setTextColor(...COLORS.textBlack);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("GHIELMI CEMENTI SA", PDF_MARGIN_X + 26, 12);
+  doc.setFontSize(18);
+  doc.text("GHIELMICEMENTI SA", PDF_MARGIN_X + 26, 12);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -1296,6 +1270,268 @@ export async function generateMezzoPDFBlob(
   domande?: DomandaLike[]
 ): Promise<{ blob: Blob; fileName: string }> {
   return generateSmartPDFBlob({ kind: "mezzo", title, mezzo, domande });
+}
+
+export type LibrettiPhotosImageRef =
+  | string
+  | {
+      url?: string | null;
+      storagePath?: string | null;
+    };
+
+export type LibrettiPhotosSection = {
+  targa: string;
+  label?: string | null;
+  images: LibrettiPhotosImageRef[];
+};
+
+export type LibrettiPhotosPdfInput = {
+  title?: string;
+  sections: LibrettiPhotosSection[];
+  fileName?: string;
+};
+
+function normalizeLibrettiImageRefs(images: LibrettiPhotosImageRef[]): string[] {
+  const out: string[] = [];
+  images.forEach((item) => {
+    if (typeof item === "string") {
+      const value = String(item).trim();
+      if (value) out.push(value);
+      return;
+    }
+    const url = String(item?.url || "").trim();
+    const storagePath = String(item?.storagePath || "").trim();
+    if (url) out.push(url);
+    if (storagePath) out.push(storagePath);
+  });
+  return Array.from(new Set(out));
+}
+
+const LIBRETTI_HEADER_HEIGHT = Math.round(PDF_HEADER_HEIGHT * 0.8);
+
+async function drawLibrettiCompactHeader(
+  doc: jsPDF,
+  model: {
+    title: string;
+    dateTimeLabel?: string;
+    headerRight?: string;
+    docId?: string;
+  }
+): Promise<number> {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(...COLORS.bg);
+  doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+  doc.setFillColor(...COLORS.headerBg);
+  doc.rect(0, 0, pageWidth, LIBRETTI_HEADER_HEIGHT, "F");
+  doc.setDrawColor(...COLORS.headerLine);
+  doc.line(
+    PDF_MARGIN_X,
+    LIBRETTI_HEADER_HEIGHT,
+    pageWidth - PDF_MARGIN_X,
+    LIBRETTI_HEADER_HEIGHT
+  );
+
+  const logoBase64 = await loadLogoCached();
+  const logoX = PDF_MARGIN_X;
+  const logoY = 3;
+  const logoW = 16;
+  const logoH = 14;
+  if (logoBase64) {
+    doc.addImage(logoBase64, "PNG", logoX, logoY, logoW, logoH);
+  }
+
+  const textStartX = logoBase64 ? logoX + logoW + 5 : PDF_MARGIN_X;
+  doc.setTextColor(...COLORS.textBlack);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text("GHIELMICEMENTI SA", textStartX, 9.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("Sistema Gestione Manutenzione", textStartX, 14.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(
+    model.dateTimeLabel || formatDateTime(new Date()),
+    pageWidth - PDF_MARGIN_X,
+    8.5,
+    { align: "right" }
+  );
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text(model.title || "Documento", pageWidth - PDF_MARGIN_X, 14.5, {
+    align: "right",
+  });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  if (model.headerRight) {
+    doc.text(model.headerRight, pageWidth - PDF_MARGIN_X, 18.5, { align: "right" });
+  }
+  if (model.docId) {
+    doc.text(`ID: ${model.docId}`, pageWidth - PDF_MARGIN_X, 22, { align: "right" });
+  }
+
+  return LIBRETTI_HEADER_HEIGHT + 6;
+}
+
+function renderFullPageImage(
+  doc: jsPDF,
+  imageData: NormalizedImage | null,
+  startY: number
+): void {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 16;
+  const boxX = marginX;
+  const boxY = startY;
+  const boxW = pageWidth - marginX * 2;
+  const boxH = pageHeight - boxY - PDF_BOTTOM_MARGIN;
+
+  if (!imageData?.dataUrl || !imageData.width || !imageData.height) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Immagine non disponibile", boxX, boxY + 8);
+    return;
+  }
+
+  const fit = containBox(boxW, boxH, imageData.width, imageData.height);
+  doc.addImage(
+    imageData.dataUrl,
+    getImageFormatFromDataUrl(imageData.dataUrl),
+    boxX + fit.offsetX,
+    boxY + fit.offsetY,
+    fit.width,
+    fit.height,
+    undefined,
+    "FAST"
+  );
+}
+
+function drawLibrettiCoverSummary(
+  doc: jsPDF,
+  sections: Array<{ targa: string; label: string; images: string[] }>
+) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const boxX = PDF_MARGIN_X;
+  const boxY = LIBRETTI_HEADER_HEIGHT + 16;
+  const boxW = pageWidth - PDF_MARGIN_X * 2;
+  const boxH = pageHeight - boxY - PDF_BOTTOM_MARGIN;
+
+  doc.setDrawColor(...COLORS.headerLine);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(boxX, boxY, boxW, boxH, 3, 3, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(21);
+  doc.setTextColor(...COLORS.textBlack);
+  doc.text("Libretti mezzi", boxX + 8, boxY + 16);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Data export: ${formatDateTime(new Date())}`, boxX + 8, boxY + 24);
+  doc.text(`Targhe incluse: ${sections.length}`, boxX + 8, boxY + 30);
+
+  const summary = sections.slice(0, 20).map((section, index) => {
+    const suffix = section.label ? ` - ${section.label}` : "";
+    return `${index + 1}. ${section.targa}${suffix} (${section.images.length} foto)`;
+  });
+  if (sections.length > 20) {
+    summary.push(`...altre ${sections.length - 20} targhe`);
+  }
+
+  const lines = doc.splitTextToSize(summary.join("\n"), boxW - 16);
+  doc.text(lines, boxX + 8, boxY + 40);
+}
+
+async function buildLibrettiPhotosPdfDocument(
+  input: LibrettiPhotosPdfInput
+): Promise<{ doc: jsPDF; fileName: string }> {
+  const now = new Date();
+  const doc = new jsPDF();
+  const title = safeStr(input?.title) || "Libretti mezzi";
+  const sectionsRaw = Array.isArray(input?.sections) ? input.sections : [];
+
+  const sections = sectionsRaw
+    .map((section) => {
+      const targa = fmtTarga(section?.targa);
+      const label = safeStr(section?.label);
+      const images = normalizeLibrettiImageRefs(section?.images || []);
+      return { targa, label, images };
+    })
+    .filter((section) => section.targa && section.images.length > 0);
+
+  const modelBase = {
+    docId: buildDocId("LIB"),
+    dateTimeLabel: formatDateTime(now),
+  };
+
+  await drawLibrettiCompactHeader(doc, {
+    ...modelBase,
+    title,
+    headerRight: `Targhe: ${sections.length}`,
+  });
+  drawLibrettiCoverSummary(doc, sections);
+
+  for (const section of sections) {
+    doc.addPage();
+    const headerY = await drawLibrettiCompactHeader(doc, {
+      ...modelBase,
+      title: `Libretto ${section.targa}`,
+      headerRight: section.label || undefined,
+    });
+
+    const titleY = headerY + 3;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(...COLORS.textBlack);
+    doc.text(section.targa, PDF_MARGIN_X, titleY);
+
+    let imageStartY = titleY + 6;
+    if (section.label) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(section.label, PDF_MARGIN_X, titleY + 5);
+      imageStartY = titleY + 8;
+    }
+
+    let normalized: NormalizedImage | null = null;
+    for (const imageRef of section.images) {
+      normalized = await normalizeImageFromRef(imageRef);
+      if (normalized) break;
+    }
+
+    renderFullPageImage(doc, normalized, imageStartY);
+  }
+
+  addStandardFooter(doc);
+
+  const datePart = formatGGMMYYYY(now.toISOString()).replace(/\//g, "-");
+  const requestedName = safeStr(input?.fileName).replace(/\.pdf$/i, "");
+  const fallbackName = `libretti_${datePart}_${sections.length}`;
+  const fileName = `${sanitizeFileName(requestedName || fallbackName)}.pdf`;
+  return { doc, fileName };
+}
+
+export async function generateLibrettiPhotosPDF(
+  input: LibrettiPhotosPdfInput
+): Promise<void> {
+  const { doc, fileName } = await buildLibrettiPhotosPdfDocument(input);
+  doc.save(fileName);
+}
+
+export async function generateLibrettiPhotosPDFBlob(
+  input: LibrettiPhotosPdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildLibrettiPhotosPdfDocument(input);
+  return { blob: doc.output("blob") as Blob, fileName };
 }
 
 function getFotoUrlsFromRecord(record: any): string[] {

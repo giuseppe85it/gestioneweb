@@ -1,0 +1,195 @@
+.libretti-export-page {
+  min-height: 100%;
+}
+
+.libretti-export-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.libretti-export-header {
+  background: #ffffff;
+  border: 1px solid #e3d9c6;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 6px 16px rgba(87, 70, 37, 0.07);
+}
+
+.libretti-export-header h1 {
+  margin: 6px 0;
+  font-size: 1.45rem;
+  color: #2f2517;
+}
+
+.libretti-export-header p {
+  margin: 0;
+  color: #5a4a2f;
+}
+
+.libretti-export-back {
+  border: 1px solid #cdb88e;
+  background: #fff8ea;
+  color: #43341e;
+  padding: 7px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.libretti-export-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.libretti-export-meta {
+  display: flex;
+  gap: 12px;
+  color: #4f422b;
+  font-weight: 600;
+}
+
+.libretti-export-cta {
+  border: none;
+  background: #7a5a2e;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.libretti-export-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.libretti-export-state {
+  border: 1px dashed #ccb791;
+  border-radius: 12px;
+  padding: 22px;
+  background: #fff;
+  color: #5b4b2f;
+  text-align: center;
+}
+
+.libretti-export-state--error {
+  border-color: #cd6a6a;
+  color: #8b2f2f;
+}
+
+.libretti-export-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.libretti-export-group {
+  display: grid;
+  gap: 10px;
+}
+
+.libretti-export-group-title {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  color: #5a4523;
+}
+
+.libretti-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e5d6ba;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.libretti-card input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.libretti-card-check {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #8d7548;
+  border-radius: 4px;
+  background: #fff;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.libretti-card.is-selected {
+  border-color: #7a5a2e;
+  box-shadow: 0 8px 18px rgba(122, 90, 46, 0.18);
+}
+
+.libretti-card.is-selected .libretti-card-check {
+  background: #7a5a2e;
+  position: relative;
+}
+
+.libretti-card.is-selected .libretti-card-check::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.libretti-card-body {
+  min-width: 0;
+}
+
+.libretti-card-targa {
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  font-weight: 800;
+  color: #2e2416;
+}
+
+.libretti-card-label {
+  margin-top: 3px;
+  color: #5f4f32;
+}
+
+.libretti-card-badge {
+  display: inline-block;
+  margin-top: 9px;
+  border: 1px solid #8ba45c;
+  color: #36531c;
+  background: #eef8df;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+@media (max-width: 680px) {
+  .libretti-export-shell {
+    padding: 14px;
+  }
+
+  .libretti-export-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .libretti-export-cta {
+    width: 100%;
+  }
+}

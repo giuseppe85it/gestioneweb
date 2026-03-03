@@ -37,6 +37,9 @@ const IALibretto: React.FC = () => {
 
   const normalizeTarga = (value: string | null | undefined) =>
     String(value ?? "").trim().toUpperCase();
+  const normalizeTargaKey = (value: string | null | undefined) =>
+    normalizeTarga(value).replace(/[^A-Z0-9]/g, "");
+  const debugSaveEnabled = import.meta.env.DEV;
 
   const openViewer = (url: string, targa?: string | null) => {
     setViewerUrl(url);
@@ -264,16 +267,57 @@ const handleSave = async () => {
   setErrorMessage("");
 
   try {
-    const targa = results.targa.toUpperCase().replace(/\s+/g, "");
+    const firestorePath = "storage/@mezzi_aziendali";
+    const targaKey = normalizeTargaKey(results.targa);
+    const targa = normalizeTarga(results.targa).replace(/\s+/g, "");
+    if (debugSaveEnabled) {
+      console.log("[IALibretto][SAVE] START", {
+        resultsTargaRaw: results.targa,
+        resultsTargaKey: targaKey,
+      });
+    }
+    if (!targaKey) {
+      throw new Error("Targa non valida per il salvataggio.");
+    }
+
 const refMezzi = doc(db, "storage", "@mezzi_aziendali");
     const snap = await getDoc(refMezzi);
 
     let mezzi = snap.exists() ? snap.data().value || [] : [];
+    mezzi = Array.isArray(mezzi) ? mezzi : [];
+    if (debugSaveEnabled) {
+      console.log("[IALibretto][SAVE] DATASET", {
+        firestorePath,
+        mezzoCount: mezzi.length,
+      });
+    }
 
     // 1) Cerca mezzo esistente
-    const index = mezzi.findIndex(
-      (m: any) => m.targa?.toUpperCase() === targa
+    const foundIndex = mezzi.findIndex(
+      (m: any) => normalizeTargaKey(m?.targa) === targaKey
     );
+    if (debugSaveEnabled) {
+      if (foundIndex === -1) {
+        console.warn("[IALibretto][SAVE] INDEX NOT FOUND", {
+          index: foundIndex,
+          resultsTargaRaw: results.targa,
+          resultsTargaKey: targaKey,
+        });
+      } else {
+        const foundMezzo = mezzi[foundIndex];
+        console.log("[IALibretto][SAVE] INDEX FOUND", {
+          index: foundIndex,
+          mezzoTargaRaw: foundMezzo?.targa ?? "",
+          mezzoTargaKey: normalizeTargaKey(foundMezzo?.targa),
+          librettoUrlBefore:
+            typeof foundMezzo?.librettoUrl === "string"
+              ? foundMezzo.librettoUrl
+              : null,
+        });
+      }
+    }
+
+    let index = foundIndex;
 
     let mezzo;
 
@@ -315,9 +359,28 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
       };
 
       mezzi.push(mezzo);
+      index = mezzi.length - 1;
+      if (debugSaveEnabled) {
+        console.warn("[IALibretto][SAVE] FALLBACK NEW MEZZO", {
+          index,
+          mezzoTargaRaw: mezzo.targa,
+          mezzoTargaKey: normalizeTargaKey(mezzo.targa),
+        });
+      }
     }
 
     // 2) MAPPA DEFINITIVA IA → MEZZI
+    const librettoUrlBefore =
+      typeof mezzo?.librettoUrl === "string" ? mezzo.librettoUrl : null;
+    if (debugSaveEnabled) {
+      console.log("[IALibretto][SAVE] TARGET BEFORE", {
+        index,
+        mezzoTargaRaw: mezzo?.targa ?? "",
+        mezzoTargaKey: normalizeTargaKey(mezzo?.targa),
+        librettoUrlBefore,
+      });
+    }
+
     const mappaCampi: Record<string, string> = {
       marca: "marca",
       modello: "modello",
@@ -366,11 +429,20 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
 
     // 6) Salvataggio foto libretto
     if (preview) {
-      const path = `mezzi_aziendali/${mezzo.id}/libretto.jpg`;
+      const mezzoId = String(mezzo.id || `MEZZO-${Date.now()}`);
+      mezzo.id = mezzoId;
+      const path = `mezzi_aziendali/${mezzoId}/libretto.jpg`;
       const storageRef = ref(storage, path);
       await uploadString(storageRef, preview, "data_url");
       const url = await getDownloadURL(storageRef);
       mezzo.librettoUrl = url;
+      mezzo.librettoStoragePath = path;
+      if (debugSaveEnabled) {
+        console.log("[IALibretto][SAVE] UPLOAD OK", {
+          storagePath: path,
+          librettoUrlAfter: mezzo.librettoUrl,
+        });
+      }
     }
 
     // 7) Sanitizzazione per Firestore
@@ -378,16 +450,52 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
       if (mezzo[k] === undefined) mezzo[k] = null;
     });
 
-    // 8) Riscrivi array mezzi
-    mezzi[index >= 0 ? index : mezzi.length - 1] = mezzo;
+    // 8) Riscrivi array mezzi (sempre sul mezzo associato alla targa normalizzata)
+    if (index < 0 || index >= mezzi.length) {
+      throw new Error("Impossibile associare il libretto al mezzo corretto.");
+    }
+    mezzi[index] = mezzo;
+    if (debugSaveEnabled) {
+      console.log("[IALibretto][SAVE] WRITE REQUEST", {
+        firestorePath,
+        functionUsed: "setDoc",
+        payloadShape: "{ value: mezzi[] }",
+        mezzoCount: mezzi.length,
+        index,
+        librettoUrlBefore,
+        librettoUrlAfter:
+          typeof mezzo?.librettoUrl === "string" ? mezzo.librettoUrl : null,
+      });
+    }
 
-    await setDoc(refMezzi, { value: mezzi });
+    try {
+      await setDoc(refMezzi, { value: mezzi });
+      if (debugSaveEnabled) {
+        console.log("[IALibretto][SAVE] WRITE OK", {
+          firestorePath,
+          functionUsed: "setDoc",
+          mezzoCount: mezzi.length,
+          index,
+        });
+      }
+    } catch (writeErr) {
+      console.error("[IALibretto][SAVE] WRITE ERROR", {
+        firestorePath,
+        functionUsed: "setDoc",
+        mezzoCount: mezzi.length,
+        index,
+        error: writeErr,
+      });
+      throw writeErr;
+    }
 
     alert("Dati libretto salvati correttamente.");
 
   } catch (err: any) {
     console.error("Errore salvataggio:", err);
-    setErrorMessage(err.message || "Errore durante il salvataggio.");
+    const message = err?.message || "Errore durante il salvataggio.";
+    setErrorMessage(message);
+    alert(`Salvataggio libretto non completato: ${message}`);
   } finally {
     setLoading(false);
   }
