@@ -28,6 +28,7 @@ import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
+const KEY_COLLEGHI = "@colleghi";
 const KEY_CONTROLLI = "@controlli_mezzo_autisti";
 const KEY_RIFORNIMENTI = "@rifornimenti_autisti_tmp";
 const DOSSIER_RIFORNIMENTI_KEY = "@rifornimenti";
@@ -197,6 +198,7 @@ export default function AutistiAdmin() {
   const [, setRimorchiLive] = useState<RimorchioStatus[]>([]);
   const [sessioniRaw, setSessioniRaw] = useState<any[]>([]);
   const [mezziAziendali, setMezziAziendali] = useState<any[]>([]);
+  const [colleghiRaw, setColleghiRaw] = useState<any[]>([]);
   const [segnalazioniRaw, setSegnalazioniRaw] = useState<any[]>([]);
   const [controlliRaw, setControlliRaw] = useState<any[]>([]);
   const [gommeRaw, setGommeRaw] = useState<any[]>([]);
@@ -219,6 +221,7 @@ export default function AutistiAdmin() {
   );
   const [forceCambioTarga, setForceCambioTarga] = useState("");
   const [adminEditOpen, setAdminEditOpen] = useState(false);
+  const [adminEditCreateMode, setAdminEditCreateMode] = useState(false);
   const [adminEditKind, setAdminEditKind] = useState<
     | "rifornimento"
     | "segnalazione"
@@ -377,6 +380,13 @@ export default function AutistiAdmin() {
         const mezziRaw = await getItemSync(KEY_MEZZI);
         const mezziArr = normalizeMezzi(mezziRaw);
 
+        const colleghi = await getItemSync(KEY_COLLEGHI);
+        const colleghiArr = Array.isArray(colleghi)
+          ? colleghi
+          : Array.isArray(colleghi?.value)
+          ? colleghi.value
+          : [];
+
         const segnalazioni = await getItemSync(KEY_SEGNALAZIONI);
         const segnalazioniArr = Array.isArray(segnalazioni)
           ? segnalazioni
@@ -404,6 +414,7 @@ export default function AutistiAdmin() {
         setRimorchiLive(live);
         setSessioniRaw(sessArr);
         setMezziAziendali(mezziArr);
+        setColleghiRaw(colleghiArr);
         setSegnalazioniRaw(segnalazioniArr);
         setControlliRaw(controlliArr);
         setGommeRaw(gommeArr);
@@ -600,6 +611,24 @@ export default function AutistiAdmin() {
   }, [mezziAziendali]);
 
   const targhe = useMemo(() => buildTargheList(mezziAziendali), [mezziAziendali]);
+  const colleghiOptions = useMemo(() => {
+    const unique = new Map<string, { id: string; nome: string; badge: string | null }>();
+    colleghiRaw.forEach((c: any) => {
+      const id = String(c?.id ?? "").trim();
+      if (!id) return;
+      const nome = String(c?.nome ?? "").trim();
+      const cognome = String(c?.cognome ?? "").trim();
+      const nomeLabel = `${nome}${cognome ? ` ${cognome}` : ""}`.trim();
+      const badge = String(c?.badge ?? "").trim() || null;
+      unique.set(id, {
+        id,
+        nome: nomeLabel || "-",
+        badge,
+      });
+    });
+    return Array.from(unique.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [colleghiRaw]);
+  const isAdminCreateRifornimento = adminEditCreateMode && adminEditKind === "rifornimento";
 
   function getCategoria(targa?: string | null) {
     const key = String(targa ?? "").trim().toUpperCase();
@@ -1149,6 +1178,35 @@ export default function AutistiAdmin() {
     return <div className="admin-edit-cat">cat. {cat}</div>;
   }
 
+  function openCreateRifornimento() {
+    const now = Date.now();
+    setAdminEditKind("rifornimento");
+    setAdminEditCreateMode(true);
+    setAdminEditId(null);
+    setAdminEditOriginal({});
+    setAdminEditForm({
+      autistaId: "",
+      autistaNome: "",
+      badgeAutista: "",
+      targaCamion: "",
+      targaRimorchio: "",
+      tipo: "caravate",
+      metodoPagamento: "",
+      paese: "",
+      km: "",
+      litri: "",
+      importo: "",
+      note: "",
+      flagVerifica: false,
+      motivoVerifica: "",
+      dataOra: toDateTimeLocal(now),
+    });
+    setAdminEditNote("INSERIMENTO MANUALE (ADMIN)");
+    setAdminEditFotos([]);
+    setAdminEditFotoDataUrl(null);
+    setAdminEditOpen(true);
+  }
+
   function openAdminEdit(
     kind:
       | "rifornimento"
@@ -1168,9 +1226,11 @@ export default function AutistiAdmin() {
     const specifiche = condizioni.specifiche || {};
 
     setAdminEditKind(kind);
+    setAdminEditCreateMode(false);
     setAdminEditId(id || null);
     setAdminEditOriginal(base);
     setAdminEditForm({
+      autistaId: String(base.autistaId ?? ""),
       autistaNome: String(base.autista ?? base.autistaNome ?? base.nomeAutista ?? ""),
       badgeAutista: String(base.badgeAutista ?? ""),
       targaCamion: String(base.targaCamion ?? base.targaMotrice ?? ""),
@@ -1226,6 +1286,7 @@ export default function AutistiAdmin() {
 
   function closeAdminEdit() {
     setAdminEditOpen(false);
+    setAdminEditCreateMode(false);
     setAdminEditKind(null);
     setAdminEditId(null);
     setAdminEditOriginal(null);
@@ -1598,7 +1659,118 @@ export default function AutistiAdmin() {
   }
 
   async function saveAdminEdit() {
-    if (!adminEditKind || !adminEditId) return;
+    if (!adminEditKind) return;
+
+    if (isAdminCreateRifornimento) {
+      const autistaId = String(adminEditForm.autistaId ?? "").trim();
+      const collega = colleghiOptions.find((c) => c.id === autistaId) || null;
+      const autistaNome =
+        String(adminEditForm.autistaNome ?? collega?.nome ?? "").trim() || null;
+      const badgeAutista =
+        String(adminEditForm.badgeAutista ?? collega?.badge ?? "").trim() || null;
+      const targaCamion = String(adminEditForm.targaCamion ?? "").trim() || null;
+      const targaRimorchio = String(adminEditForm.targaRimorchio ?? "").trim() || null;
+      const dataOra = fromDateTimeLocal(String(adminEditForm.dataOra ?? ""));
+      const kmRaw = String(adminEditForm.km ?? "").replace(",", ".").trim();
+      const litriRaw = String(adminEditForm.litri ?? "").replace(",", ".").trim();
+      const km = kmRaw ? Number(kmRaw) : NaN;
+      const litri = litriRaw ? Number(litriRaw) : NaN;
+
+      if (!autistaId || !collega) {
+        window.alert("Seleziona un autista valido.");
+        return;
+      }
+      if (!targaCamion) {
+        window.alert("Inserisci la targa motrice.");
+        return;
+      }
+      if (!Number.isFinite(km)) {
+        window.alert("Inserisci un valore KM valido.");
+        return;
+      }
+      if (!Number.isFinite(litri)) {
+        window.alert("Inserisci un valore litri valido.");
+        return;
+      }
+      if (!dataOra) {
+        window.alert("Inserisci data e ora.");
+        return;
+      }
+
+      const tipoValue = String(adminEditForm.tipo ?? "").trim().toLowerCase();
+      const tipo = tipoValue === "distributore" ? "distributore" : "caravate";
+      const metodoPagamento =
+        tipo === "distributore"
+          ? String(adminEditForm.metodoPagamento ?? "").trim() || null
+          : null;
+      const paese =
+        tipo === "distributore"
+          ? String(adminEditForm.paese ?? "").trim() || null
+          : null;
+      const importoRaw = String(adminEditForm.importo ?? "").replace(",", ".").trim();
+      const importoNum = importoRaw ? Number(importoRaw) : NaN;
+      const importo =
+        metodoPagamento === "contanti" && Number.isFinite(importoNum) ? importoNum : null;
+      const note = String(adminEditForm.note ?? "").trim() || null;
+      const adminNote = adminEditNote.trim() || "INSERIMENTO MANUALE (ADMIN)";
+
+      const record = {
+        id: genId(),
+        autistaId,
+        autistaNome,
+        badgeAutista,
+        targaCamion,
+        targaRimorchio,
+        tipo,
+        metodoPagamento,
+        paese,
+        km,
+        litri,
+        importo,
+        note,
+        data: dataOra,
+        flagVerifica: false,
+        motivoVerifica: null,
+        confermatoAutista: true,
+        timestamp: dataOra,
+        adminEdit: {
+          edited: true,
+          editedAt: Date.now(),
+          editedBy: "admin",
+          note: adminNote,
+          patch: { created: true },
+        },
+      };
+
+      const raw = (await getItemSync(KEY_RIFORNIMENTI)) || [];
+      const list = Array.isArray(raw) ? raw : [];
+      const updated = [...list, record];
+      await setItemSync(KEY_RIFORNIMENTI, updated);
+
+      const dossierRef = doc(db, "storage", DOSSIER_RIFORNIMENTI_KEY);
+      const dossierSnap = await getDoc(dossierRef);
+      const dossierRaw = dossierSnap.exists() ? dossierSnap.data() : {};
+      const dossier = dossierRaw && typeof dossierRaw === "object" ? dossierRaw : {};
+      const items = Array.isArray((dossier as any).items)
+        ? (dossier as any).items
+        : Array.isArray((dossier as any)?.value?.items)
+        ? (dossier as any).value.items
+        : [];
+      const item = buildDossierItem(record);
+      const i = items.findIndex((it: any) => String(it?.id ?? "") === String(item.id));
+      const updatedItems =
+        i >= 0
+          ? items.map((it: any, index: number) => (index === i ? item : it))
+          : [...items, item];
+      await setDoc(dossierRef, { ...(dossier as any), items: updatedItems });
+
+      const e = await loadHomeEvents(day);
+      setEvents(e);
+      closeAdminEdit();
+      return;
+    }
+
+    if (!adminEditId) return;
 
     const key =
       adminEditKind === "rifornimento"
@@ -2219,7 +2391,14 @@ export default function AutistiAdmin() {
                 ? "Cambio mezzo (storico canonico)"
                 : tab.toUpperCase()}
             </h2>
-            {loading && <span className="loading">Caricamento...</span>}
+            <div className="row-actions">
+              {tab === "rifornimenti" ? (
+                <button type="button" className="edit" onClick={openCreateRifornimento}>
+                  + Nuovo rifornimento
+                </button>
+              ) : null}
+              {loading && <span className="loading">Caricamento...</span>}
+            </div>
           </div>
 
           {!loading && tab === "segnalazioni" && segnalazioniFiltered.length === 0 && (
@@ -2800,7 +2979,9 @@ export default function AutistiAdmin() {
             <div className="aix-modal admin-edit-modal" onMouseDown={(e) => e.stopPropagation()}>
               <div className="aix-head">
                 <h3>
-                  {adminEditKind === "rifornimento"
+                  {isAdminCreateRifornimento
+                    ? "Nuovo rifornimento"
+                    : adminEditKind === "rifornimento"
                     ? "Modifica rifornimento"
                     : adminEditKind === "segnalazione"
                     ? "Modifica segnalazione"
@@ -2822,11 +3003,39 @@ export default function AutistiAdmin() {
                   <div className="admin-edit-section">
                     <h4>Autista</h4>
                     <div className="admin-edit-grid">
+                      {isAdminCreateRifornimento ? (
+                        <label className="admin-edit-full">
+                          Autista
+                          <select
+                            value={adminEditForm.autistaId ?? ""}
+                            onChange={(e) => {
+                              const id = String(e.target.value ?? "");
+                              const selected =
+                                colleghiOptions.find((c) => c.id === id) || null;
+                              setAdminEditForm((prev: any) => ({
+                                ...prev,
+                                autistaId: id,
+                                autistaNome: selected?.nome ?? "",
+                                badgeAutista: selected?.badge ?? "",
+                              }));
+                            }}
+                          >
+                            <option value="">Seleziona autista</option>
+                            {colleghiOptions.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nome}
+                                {c.badge ? ` (badge ${c.badge})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
                       <label>
                         Nome
                         <input
                           value={adminEditForm.autistaNome ?? ""}
                           onChange={(e) => updateAdminForm("autistaNome", e.target.value)}
+                          readOnly={isAdminCreateRifornimento}
                         />
                       </label>
                       <label>
@@ -2834,6 +3043,7 @@ export default function AutistiAdmin() {
                         <input
                           value={adminEditForm.badgeAutista ?? "-"}
                           onChange={(e) => updateAdminForm("badgeAutista", e.target.value)}
+                          readOnly={isAdminCreateRifornimento}
                         />
                       </label>
                     </div>
@@ -3226,9 +3436,11 @@ export default function AutistiAdmin() {
                   <button className="edit" type="button" onClick={closeAdminEdit}>
                     ANNULLA
                   </button>
-                  <button className="edit danger" type="button" onClick={deleteAdminEdit}>
-                    ELIMINA
-                  </button>
+                  {!isAdminCreateRifornimento ? (
+                    <button className="edit danger" type="button" onClick={deleteAdminEdit}>
+                      ELIMINA
+                    </button>
+                  ) : null}
                   <button className="edit" type="button" onClick={saveAdminEdit}>
                     SALVA
                   </button>
