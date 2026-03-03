@@ -6309,10 +6309,13 @@ const Acquisti = () => {
     <div className={`acq-page${ordineId ? " is-detail" : ""}`}>
       <div className="acq-shell">
         <header className="acq-header">
-          <div>
-            <p className="acq-eyebrow">Gestione Acquisti</p>
-            <h1 className="acq-title">Acquisti</h1>
-            <p className="acq-subtitle">Modulo unico: ordine materiali, liste ordini e dettaglio ordine.</p>
+          <div className="acq-header-brand">
+            <img src="/logo.png" alt="Logo" className="acq-header-logo" />
+            <div className="acq-header-copy">
+              <p className="acq-eyebrow">Gestione Acquisti</p>
+              <h1 className="acq-title">Acquisti</h1>
+              <p className="acq-subtitle">Modulo unico: ordine materiali, liste ordini e dettaglio ordine.</p>
+            </div>
           </div>
         </header>
 

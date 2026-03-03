@@ -36,6 +36,27 @@
   gap: 12px;
 }
 
+.acq-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.acq-header-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  object-fit: contain;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.acq-header-copy {
+  min-width: 0;
+}
+
 .acq-eyebrow {
   margin: 0 0 4px;
   font-size: 11px;
@@ -255,6 +276,11 @@
 
   .acq-title {
     font-size: 18px;
+  }
+
+  .acq-header-logo {
+    width: 42px;
+    height: 42px;
   }
 
   .acq-tab {
