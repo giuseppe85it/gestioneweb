@@ -211,7 +211,7 @@ textarea {
 
 /* ---------- LISTA MEZZI (COLONNA DESTRA) ---------- */
 
-.mezzi-list-card {
+.mezzi-page .mezzi-list-card {
   width: 430px;
   background: #f8f4e8;
   border-radius: 14px;
@@ -219,7 +219,7 @@ textarea {
   box-shadow: 0 0 12px rgba(0,0,0,0.16);
 }
 
-.mezzi-categorie-wrapper {
+.mezzi-page .mezzi-categorie-wrapper {
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -227,13 +227,13 @@ textarea {
 
 /* ---------- CATEGORIA ---------- */
 
-.categoria-mezzo-block {
+.mezzi-page .categoria-mezzo-block {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.categoria-header {
+.mezzi-page .categoria-header {
   background: #fff;
   border-radius: 10px;
   padding: 14px;
@@ -241,11 +241,11 @@ textarea {
   cursor: pointer;
 }
 
-.mezzo-list-item .mezzo-list-header {
+.mezzi-page .mezzo-list-item .mezzo-list-header {
   margin-bottom: 6px;
 }
 
-.mezzo-list-meta {
+.mezzi-page .mezzo-list-meta {
   display: flex;
   gap: 10px;
   white-space: nowrap;
@@ -253,7 +253,7 @@ textarea {
 
 /* ---------- CARD MEZZO ---------- */
 
-.mezzo-card {
+.mezzi-page .mezzo-card {
   background: #fff;
   border-radius: 10px;
   padding: 14px;
@@ -263,14 +263,14 @@ textarea {
   gap: 12px;
 }
 
-.mezzo-card-row {
+.mezzi-page .mezzo-card-row {
   display: flex;
   gap: 12px;
 }
 
 /* MINI FOTO */
 
-.mezzo-thumb {
+.mezzi-page .mezzo-thumb {
   width: 95px;
   height: 70px;
   border-radius: 8px;
@@ -278,7 +278,7 @@ textarea {
   background: #ddd;
 }
 
-.mezzo-thumb img {
+.mezzi-page .mezzo-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -286,18 +286,18 @@ textarea {
 
 /* TESTI CARD MEZZO */
 
-.mezzo-info {
+.mezzi-page .mezzo-info {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.mezzo-info-title {
+.mezzi-page .mezzo-info-title {
   font-size: 16px;
   font-weight: 700;
 }
 
-.mezzo-info-line {
+.mezzi-page .mezzo-info-line {
   font-size: 13px;
   color: #444;
 }
@@ -326,7 +326,7 @@ textarea {
 
 /* BOTTONI NELLA CARD MEZZO */
 
-.mezzo-card-actions {
+.mezzi-page .mezzo-card-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -342,7 +342,7 @@ textarea {
   padding: 10px;
 }
 
-.empty-text {
+.mezzi-page .empty-text {
   text-align: center;
   color: #666;
   font-size: 14px;
@@ -359,36 +359,49 @@ textarea {
 
 /* FIX FINALI */
 
-.mezzo-marca-modello {
+.mezzi-page .mezzo-marca-modello {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
 
-.mezzo-scadenze {
+.mezzi-page .mezzo-scadenze {
   text-transform: none !important;
   letter-spacing: 0 !important;
   font-variant-ligatures: none !important;
   font-variant-numeric: normal !important;
   font-feature-settings: "liga" 0, "kern" 0 !important;
 }
-.form-row .form-group input {
+.mezzi-page .form-row .form-group input {
   max-width: 100%;
 }
 /* Applica il grid solo quando ci sono 3 input dentro una form-row */
-.form-row:nth-child(6) {
+.mezzi-page .form-row:nth-child(6) {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 /* Fix universale: impedisce overflow delle date */
-.form-row {
+.mezzi-page .form-row {
   display: flex;
   flex-wrap: wrap;
 }
 
-.form-row .form-group {
+.mezzi-page .form-row .form-group {
   flex: 1 1 calc(33.33% - 12px);
   min-width: 0;
+}
+
+.mezzi-page .mezzi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: visible;
+  max-height: none;
+}
+
+.mezzi-page .mezzi-list-card .card-body {
+  overflow: visible;
+  max-height: none;
 }

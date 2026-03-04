@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../firebase";
-import { getItemSync } from "../../utils/storageSync";
+import { getItemSync, setItemSync } from "../../utils/storageSync";
 import "./IACoperturaLibretti.css";
 
 type FilterMode = "ALL" | "MISSING_LIBRETTO" | "MISSING_FOTO" | "MISSING_BOTH";
@@ -14,6 +14,8 @@ type MezzoRecord = {
   librettoUrl?: string | null;
   librettoStoragePath?: string | null;
   fotoUrl?: string | null;
+  fotoStoragePath?: string | null;
+  fotoPath?: string | null;
 };
 
 type RowItem = {
@@ -27,9 +29,22 @@ type RowItem = {
   hasFoto: boolean;
   librettoUrl: string;
   librettoStoragePath: string;
+  fotoUrl: string;
+  fotoStoragePath: string;
+  librettoReason: string;
+  fotoReason: string;
 };
 
 type UrlReachabilityStatus = "idle" | "checking" | "ok" | "broken404" | "error";
+type RepairStatus = "OK" | "ID_NON_TROVATO" | "URL_ERROR";
+
+type RepairReportRow = {
+  folderId: string;
+  matchMezzoId: string;
+  targa: string;
+  status: RepairStatus;
+  note: string;
+};
 
 const URL_CHECK_TIMEOUT_MS = 7000;
 
@@ -98,6 +113,7 @@ export default function IACoperturaLibretti() {
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("ALL");
   const [debugEnabled, setDebugEnabled] = useState(false);
+  const [debugRowId, setDebugRowId] = useState<string>("");
   const [uploadingRowId, setUploadingRowId] = useState<string | null>(null);
   const [uploadTarget, setUploadTarget] = useState<RowItem | null>(null);
   const [uploadMode, setUploadMode] = useState<"upload" | "repair">("upload");
@@ -105,6 +121,9 @@ export default function IACoperturaLibretti() {
     Record<string, UrlReachabilityStatus>
   >({});
   const [rowErrorById, setRowErrorById] = useState<Record<string, string>>({});
+  const [repairIdsInput, setRepairIdsInput] = useState("");
+  const [repairing, setRepairing] = useState(false);
+  const [repairReport, setRepairReport] = useState<RepairReportRow[]>([]);
   const urlStatusCacheRef = useRef<Record<string, UrlReachabilityStatus>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -144,8 +163,13 @@ export default function IACoperturaLibretti() {
       const targaRaw =
         typeof mezzo?.targa === "string" ? mezzo.targa : "";
       const targaNorm = normalizeTarga(targaRaw);
-      const hasLibretto = hasValue(mezzo?.librettoUrl);
-      const hasFoto = hasValue(mezzo?.fotoUrl);
+      const fotoUrl =
+        typeof mezzo?.fotoUrl === "string" ? mezzo.fotoUrl.trim() : "";
+      const fotoStoragePath = hasValue(mezzo?.fotoStoragePath)
+        ? String(mezzo?.fotoStoragePath).trim()
+        : hasValue(mezzo?.fotoPath)
+        ? String(mezzo?.fotoPath).trim()
+        : "";
       const categoria =
         typeof mezzo?.categoria === "string" ? mezzo.categoria : "";
       const librettoUrl =
@@ -156,6 +180,18 @@ export default function IACoperturaLibretti() {
         typeof mezzo?.librettoStoragePath === "string"
           ? mezzo.librettoStoragePath.trim()
           : "";
+      const hasLibretto = hasValue(librettoUrl) || hasValue(librettoStoragePath);
+      const hasFoto = hasValue(fotoUrl) || hasValue(fotoStoragePath);
+      const librettoReason = hasValue(librettoUrl)
+        ? "librettoUrl valorizzato"
+        : hasValue(librettoStoragePath)
+        ? "solo librettoStoragePath valorizzato"
+        : "mancano librettoUrl e librettoStoragePath";
+      const fotoReason = hasValue(fotoUrl)
+        ? "fotoUrl valorizzato"
+        : hasValue(fotoStoragePath)
+        ? "solo fotoStoragePath/fotoPath valorizzato"
+        : "mancano fotoUrl e fotoStoragePath/fotoPath";
 
       return {
         id: String(mezzo?.id ?? `${targaNorm}_${index}`),
@@ -168,6 +204,10 @@ export default function IACoperturaLibretti() {
         hasFoto,
         librettoUrl,
         librettoStoragePath,
+        fotoUrl,
+        fotoStoragePath,
+        librettoReason,
+        fotoReason,
       };
     });
   }, [mezzi]);
@@ -272,10 +312,26 @@ export default function IACoperturaLibretti() {
       .map((row) => ({
         id: row.id,
         targa: row.targa,
-        hasLibretto: Boolean(row.librettoUrl && row.librettoUrl.trim()),
+        targaNorm: row.targaNorm,
+        hasLibretto: row.hasLibretto,
+        hasFoto: row.hasFoto,
+        fotoUrl: row.fotoUrl,
+        fotoStoragePath: row.fotoStoragePath,
+        librettoUrl: row.librettoUrl,
+        librettoStoragePath: row.librettoStoragePath,
+        librettoReason: row.librettoReason,
+        fotoReason: row.fotoReason,
         librettoUrlShort: row.librettoUrl ? row.librettoUrl.slice(0, 60) : "",
       }));
   }, [rows]);
+  const debugSelectedRow =
+    debugRows.find((row) => row.id === debugRowId) ?? debugRows[0] ?? null;
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+    if (debugRowId && debugRows.some((row) => row.id === debugRowId)) return;
+    setDebugRowId(debugRows[0]?.id ?? "");
+  }, [debugEnabled, debugRowId, debugRows]);
 
   const handleOpenLibretto = (url: string) => {
     if (!url) return;
@@ -287,6 +343,118 @@ export default function IACoperturaLibretti() {
     setUploadMode(mode);
     setUploadTarget(row);
     fileInputRef.current?.click();
+  };
+
+  const buildCandidateMezzoIds = (folderId: string) => {
+    const raw = String(folderId || "").trim();
+    const out: string[] = [];
+    if (!raw) return out;
+
+    out.push(raw);
+    if (/^\d+$/.test(raw)) {
+      out.push(`MEZZO-${raw}`);
+    } else if (/^MEZZO-/i.test(raw)) {
+      out.push(raw.replace(/^MEZZO-/i, ""));
+    }
+
+    return Array.from(new Set(out.map((v) => String(v || "").trim()).filter(Boolean)));
+  };
+
+  const handleRepairFromIdList = async () => {
+    const folderIds = Array.from(
+      new Set(
+        repairIdsInput
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (folderIds.length === 0) {
+      alert("Incolla almeno un ID (uno per riga).");
+      return;
+    }
+
+    setRepairing(true);
+    setError(null);
+    setRepairReport([]);
+
+    try {
+      const raw = await getItemSync("@mezzi_aziendali");
+      const base = Array.isArray(raw)
+        ? raw
+        : raw && Array.isArray((raw as any).value)
+        ? (raw as any).value
+        : [];
+
+      const mezziList = [...base] as MezzoRecord[];
+      const indexById = new Map<string, number>();
+      mezziList.forEach((m, idx) => {
+        const id = String((m as any)?.id ?? "").trim();
+        if (id && !indexById.has(id)) indexById.set(id, idx);
+      });
+
+      const report: RepairReportRow[] = [];
+
+      for (const folderId of folderIds) {
+        const candidates = buildCandidateMezzoIds(folderId);
+        let matchedIndex = -1;
+        let matchedCandidate = "";
+
+        for (const candidate of candidates) {
+          const idx = indexById.get(candidate);
+          if (idx === undefined) continue;
+          matchedIndex = idx;
+          matchedCandidate = candidate;
+          break;
+        }
+
+        if (matchedIndex < 0 || matchedIndex >= mezziList.length) {
+          report.push({
+            folderId,
+            matchMezzoId: "",
+            targa: "",
+            status: "ID_NON_TROVATO",
+            note: "Nessun mezzo con id compatibile",
+          });
+          continue;
+        }
+
+        const mezzo = { ...(mezziList[matchedIndex] || {}) } as MezzoRecord & { id?: string };
+        const path = `mezzi_aziendali/${folderId}/libretto.jpg`;
+        mezzo.librettoStoragePath = path;
+
+        let status: RepairStatus = "OK";
+        let note = `match=${matchedCandidate}`;
+        try {
+          const url = await getDownloadURL(ref(storage, path));
+          mezzo.librettoUrl = url;
+          note = `${note}; url_ok`;
+        } catch (err: any) {
+          status = "URL_ERROR";
+          const msg = String(err?.message || "getDownloadURL fallita");
+          note = `${note}; ${msg}`;
+        }
+
+        mezziList[matchedIndex] = mezzo;
+        report.push({
+          folderId,
+          matchMezzoId: String(mezzo.id ?? ""),
+          targa: String(mezzo.targa ?? ""),
+          status,
+          note,
+        });
+      }
+
+      await setItemSync("@mezzi_aziendali", mezziList);
+      setMezzi(mezziList);
+      setRepairReport(report);
+    } catch (err: any) {
+      console.error("Errore riparazione libretti da lista ID:", err);
+      setError(err?.message || "Errore durante la riparazione da lista ID.");
+    } finally {
+      setRepairing(false);
+    }
   };
 
   const handleUploadSelected = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -354,7 +522,7 @@ export default function IACoperturaLibretti() {
       mezziList[index] = mezzo;
 
       try {
-        await setDoc(refMezzi, { value: mezziList });
+        await setItemSync("@mezzi_aziendali", mezziList);
       } catch (writeErr) {
         console.error("Errore salvataggio libretto su Firestore:", writeErr);
         throw new Error("Salvataggio libretto su Firestore fallito.");
@@ -450,9 +618,111 @@ export default function IACoperturaLibretti() {
             )}
           </div>
 
+          <div className="iacover-state" style={{ textAlign: "left", marginBottom: 12 }}>
+            <strong>Ripara libretti da lista ID</strong>
+            <div style={{ marginTop: 8 }}>
+              <textarea
+                value={repairIdsInput}
+                onChange={(e) => setRepairIdsInput(e.target.value)}
+                placeholder={"Incolla gli ID cartella (uno per riga)\nEsempio:\n1765650279666\nMEZZO-1764192368638"}
+                rows={6}
+                style={{ width: "100%", resize: "vertical" }}
+              />
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="iacover-action"
+                onClick={handleRepairFromIdList}
+                disabled={repairing}
+              >
+                {repairing ? "Riparazione in corso..." : "ESEGUI RIPARAZIONE"}
+              </button>
+            </div>
+            {repairReport.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  Report riparazione ({repairReport.length})
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="iacover-table">
+                    <thead>
+                      <tr>
+                        <th>folderId</th>
+                        <th>matchMezzoId</th>
+                        <th>targa</th>
+                        <th>status</th>
+                        <th>note</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {repairReport.map((r, idx) => (
+                        <tr key={`${r.folderId}_${idx}`}>
+                          <td>{r.folderId}</td>
+                          <td>{r.matchMezzoId || "-"}</td>
+                          <td>{r.targa || "-"}</td>
+                          <td>{r.status}</td>
+                          <td>{r.note || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
           {debugAvailable && debugEnabled && (
             <div className="iacover-state" style={{ textAlign: "left" }}>
               <strong>DEBUG dataset mezzi (@mezzi_aziendali)</strong>
+              <div style={{ margin: "8px 0" }}>
+                <label htmlFor="iacover-debug-row" style={{ marginRight: 8 }}>
+                  Riga debug:
+                </label>
+                <select
+                  id="iacover-debug-row"
+                  value={debugSelectedRow?.id ?? ""}
+                  onChange={(e) => setDebugRowId(e.target.value)}
+                >
+                  {debugRows.map((row) => (
+                    <option key={`dbg_opt_${row.id}`} value={row.id}>
+                      {row.targa} ({row.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {debugSelectedRow && (
+                <div style={{ marginBottom: 10, lineHeight: 1.45 }}>
+                  <div>
+                    <strong>targa originale:</strong> {debugSelectedRow.targa}
+                  </div>
+                  <div>
+                    <strong>targa normalizzata:</strong> {debugSelectedRow.targaNorm}
+                  </div>
+                  <div>
+                    <strong>fotoUrl:</strong> {debugSelectedRow.fotoUrl || "-"}
+                  </div>
+                  <div>
+                    <strong>fotoStoragePath:</strong>{" "}
+                    {debugSelectedRow.fotoStoragePath || "-"}
+                  </div>
+                  <div>
+                    <strong>librettoUrl:</strong> {debugSelectedRow.librettoUrl || "-"}
+                  </div>
+                  <div>
+                    <strong>librettoStoragePath:</strong>{" "}
+                    {debugSelectedRow.librettoStoragePath || "-"}
+                  </div>
+                  <div>
+                    <strong>matcher foto:</strong> {debugSelectedRow.fotoReason} (hasFoto=
+                    {String(debugSelectedRow.hasFoto)})
+                  </div>
+                  <div>
+                    <strong>matcher libretto:</strong> {debugSelectedRow.librettoReason}{" "}
+                    (hasLibretto={String(debugSelectedRow.hasLibretto)})
+                  </div>
+                </div>
+              )}
               {debugRows.map((row) => (
                 <div key={`debug_${row.id}`}>
                   {row.targa} | haLibretto={String(row.hasLibretto)} | librettoUrl=
@@ -521,6 +791,15 @@ export default function IACoperturaLibretti() {
                             disabled={uploadingRowId !== null}
                           >
                             {uploadingRowId === row.id ? "Caricamento..." : "Carica libretto"}
+                          </button>
+                        ) : !row.librettoUrl ? (
+                          <button
+                            type="button"
+                            className="iacover-action"
+                            onClick={() => openUploadPicker(row, "repair")}
+                            disabled={uploadingRowId !== null}
+                          >
+                            {uploadingRowId === row.id ? "Caricamento..." : "Ripara libretto"}
                           </button>
                         ) : urlStatusByRowId[row.id] === "broken404" ? (
                           <button

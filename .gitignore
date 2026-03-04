@@ -20,3 +20,7 @@ yarn-error.log*
 Thumbs.db
 
 deploy_debug.txt
+GoogleCloudSDKInstaller.exe
+gsutil.zip
+gsutil/
+tools/

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 import {
   ref,
@@ -10,6 +10,7 @@ import {
 } from "firebase/storage";
 
 import { db, storage } from "../../firebase";
+import { setItemSync } from "../../utils/storageSync";
 import "./IALibretto.css";
 
 const IALibretto: React.FC = () => {
@@ -458,7 +459,7 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
     if (debugSaveEnabled) {
       console.log("[IALibretto][SAVE] WRITE REQUEST", {
         firestorePath,
-        functionUsed: "setDoc",
+        functionUsed: "setItemSync",
         payloadShape: "{ value: mezzi[] }",
         mezzoCount: mezzi.length,
         index,
@@ -469,11 +470,11 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
     }
 
     try {
-      await setDoc(refMezzi, { value: mezzi });
+      await setItemSync("@mezzi_aziendali", mezzi);
       if (debugSaveEnabled) {
         console.log("[IALibretto][SAVE] WRITE OK", {
           firestorePath,
-          functionUsed: "setDoc",
+          functionUsed: "setItemSync",
           mezzoCount: mezzi.length,
           index,
         });
@@ -481,7 +482,7 @@ const refMezzi = doc(db, "storage", "@mezzi_aziendali");
     } catch (writeErr) {
       console.error("[IALibretto][SAVE] WRITE ERROR", {
         firestorePath,
-        functionUsed: "setDoc",
+        functionUsed: "setItemSync",
         mezzoCount: mezzi.length,
         index,
         error: writeErr,

@@ -1,7 +1,7 @@
 // ==========  INIZIO FILE COMPLETO PULITO  ==========
 // src/pages/Mezzi.tsx
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./Mezzi.css";
 import { getItemSync, setItemSync } from "../utils/storageSync";
@@ -252,6 +252,9 @@ function giorniDaOggi(target: Date | null): number | null {
 const Mezzi: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const debugEnvEnabled =
+    Boolean(import.meta.env?.DEV) ||
+    String(import.meta.env?.VITE_DEBUG_MEZZI || "") === "1";
 
   const [mezzi, setMezzi] = useState<Mezzo[]>([]);
   const [colleghi, setColleghi] = useState<Collega[]>([]);
@@ -303,6 +306,9 @@ const Mezzi: React.FC = () => {
   const categoriaSelectRef = useRef<HTMLSelectElement | null>(null);
   const autistaSelectRef = useRef<HTMLSelectElement | null>(null);
   const preselectRef = useRef(false);
+  const missingCardLogRef = useRef<Set<string>>(new Set());
+  const pianaleCardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const [debugMezziOpen, setDebugMezziOpen] = useState(false);
   const [categoriaEspansa, setCategoriaEspansa] = useState<string | null>(null);
 
   // ---------------------------------------------
@@ -799,7 +805,10 @@ const handleChangeAutista = (value: string) => {
 
     try {
       const updated = mezzi.filter((m) => m.id !== id);
-      await setItemSync(MEZZI_KEY, updated);
+      await setItemSync(MEZZI_KEY, updated, {
+        allowRemovals: true,
+        removedIds: [id],
+      });
       setMezzi(updated);
 
       if (editingId === id) {
@@ -854,26 +863,241 @@ const handleChangeAutista = (value: string) => {
     "Senza categoria",
   ];
 
-  const normalizzaCategoria = (value: string | undefined | null): string => {
-    if (!value || !value.trim()) return "Senza categoria";
-    return value.trim();
+  const CATEGORIA_ALTRI = "ALTRI";
+  const CATEGORIE_NOTE_SET = new Set(CATEGORIE_ORDINATE);
+  const CATEGORIE_CANONICHE_MAP: Record<string, string> = CATEGORIE_ORDINATE.reduce(
+    (acc, cat) => {
+      const key = cat.trim().replace(/\s+/g, " ").toLowerCase();
+      acc[key] = cat;
+      return acc;
+    },
+    {} as Record<string, string>
+  );
+
+  const normalizeCategoria = (cat: string | undefined | null): string => {
+    const normalized = String(cat ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+    if (!normalized) return "Senza categoria";
+
+    const aliases: Record<string, string> = {
+      pianale: "pianale",
+    };
+    const lookupKey = aliases[normalized] ?? normalized;
+    return CATEGORIE_CANONICHE_MAP[lookupKey] ?? lookupKey;
   };
 
   const mezziPerCategoria: Record<string, Mezzo[]> = {};
+  const mezziAltri: Mezzo[] = [];
   mezzi.forEach((m) => {
-    const key = normalizzaCategoria(m.categoria);
-    if (!mezziPerCategoria[key]) {
-      mezziPerCategoria[key] = [];
+    const key = normalizeCategoria(m.categoria);
+    if (CATEGORIE_NOTE_SET.has(key)) {
+      if (!mezziPerCategoria[key]) {
+        mezziPerCategoria[key] = [];
+      }
+      mezziPerCategoria[key].push(m);
+      return;
     }
-    mezziPerCategoria[key].push(m);
+    mezziAltri.push(m);
   });
 
-  const categoriePresenti = CATEGORIE_ORDINATE.filter(
+  const categorieNotePresenti = CATEGORIE_ORDINATE.filter(
     (cat) => mezziPerCategoria[cat] && mezziPerCategoria[cat].length > 0
   );
+  const categoriePresenti = mezziAltri.length
+    ? [...categorieNotePresenti, CATEGORIA_ALTRI]
+    : categorieNotePresenti;
+  const isPianaleExpanded = String(categoriaEspansa ?? "").trim().toLowerCase() === "pianale";
+  const pianaleMirrorList = mezziPerCategoria["pianale"] || [];
+
+  const debugMezziData = useMemo(() => {
+    const normalizeTargaDebug = (value: unknown) =>
+      String(value ?? "")
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+
+    const pianaleList = mezzi.filter((m) => {
+      const raw = String(m?.categoria ?? "");
+      return raw.trim().toLowerCase() === "pianale";
+    });
+
+    const idCount = new Map<string, number>();
+    mezzi.forEach((m) => {
+      const key = String(m?.id ?? "");
+      if (!key) return;
+      idCount.set(key, (idCount.get(key) || 0) + 1);
+    });
+    const dupId = Array.from(idCount.entries())
+      .filter(([, count]) => count > 1)
+      .map(([id, count]) => ({ id, count }));
+
+    const targaCount = new Map<string, number>();
+    mezzi.forEach((m) => {
+      const key = normalizeTargaDebug(m?.targa);
+      if (!key) return;
+      targaCount.set(key, (targaCount.get(key) || 0) + 1);
+    });
+    const dupTarga = Array.from(targaCount.entries())
+      .filter(([, count]) => count > 1)
+      .map(([targaNorm, count]) => ({ targaNorm, count }));
+
+    const pianaleRows = pianaleList.map((m) => {
+      const missingFields = ["id", "targa", "marca", "modello", "categoria"].filter(
+        (k) => (m as any)?.[k] == null
+      );
+      return {
+        id: m?.id ?? null,
+        targa: m?.targa ?? null,
+        marca: m?.marca ?? null,
+        modello: m?.modello ?? null,
+        categoriaRaw: m?.categoria ?? null,
+        hasNullish: missingFields.length > 0,
+        missingFields,
+      };
+    });
+
+    return {
+      total: mezzi.length,
+      pianaleCount: pianaleList.length,
+      pianaleRows,
+      dupId,
+      dupTarga,
+      activeUiState: {
+        ricerca: null,
+        categoriaEspansa: categoriaEspansa ?? null,
+        loading,
+        categorieRenderizzate: categoriePresenti,
+        highlightMissing,
+        highlightMissingActive,
+      },
+    };
+  }, [
+    categoriePresenti,
+    categoriaEspansa,
+    highlightMissing,
+    highlightMissingActive,
+    loading,
+    mezzi,
+  ]);
+
+  useEffect(() => {
+    if (!(debugEnvEnabled && debugMezziOpen && isPianaleExpanded)) return;
+    pianaleMirrorList.forEach((m, index) => {
+      const refKey = `${String(m?.id ?? "no-id")}::${String(m?.targa ?? "")}::${index}`;
+      const el = pianaleCardRefs.current.get(refKey);
+      if (!el) {
+        console.warn(
+          `[MEZZI][RECT] targa=${String(m?.targa ?? "")} missingRef=true key=${refKey}`
+        );
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      console.log(
+        `[MEZZI][RECT] targa=${String(m?.targa ?? "")} rect=${JSON.stringify({
+          top: Math.round(rect.top),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        })} display=${style.display} visibility=${style.visibility} opacity=${style.opacity} zIndex=${style.zIndex}`
+      );
+    });
+  }, [debugEnvEnabled, debugMezziOpen, isPianaleExpanded, pianaleMirrorList]);
 
   return (
-    <div className="page-container mezzi-page">
+    <div className="mezzi-page">
+      <div className="page-container mezzi-page">
+      {debugEnvEnabled && (
+        <div
+          style={{
+            marginBottom: 12,
+            border: "1px solid #d9d9d9",
+            borderRadius: 10,
+            padding: 12,
+            background: "#fffdf5",
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setDebugMezziOpen((prev) => !prev)}
+          >
+            DEBUG MEZZI {debugMezziOpen ? "ON" : "OFF"}
+          </button>
+
+          {debugMezziOpen && (
+            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.4 }}>
+              <div>totale mezzi letti: {debugMezziData.total}</div>
+              <div>totale pianale (trim+lowercase): {debugMezziData.pianaleCount}</div>
+              <div>filtri UI attivi: {JSON.stringify(debugMezziData.activeUiState)}</div>
+
+              {debugMezziData.dupId.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  dupId: {JSON.stringify(debugMezziData.dupId)}
+                </div>
+              )}
+              {debugMezziData.dupTarga.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  dupTarga: {JSON.stringify(debugMezziData.dupTarga)}
+                </div>
+              )}
+
+              <div style={{ marginTop: 8 }}>pianale list:</div>
+              <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+                {JSON.stringify(debugMezziData.pianaleRows, null, 2)}
+              </pre>
+
+              {isPianaleExpanded && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
+                    DEBUG MIRROR PIANALE
+                  </div>
+                  {pianaleMirrorList.map((m, index) => {
+                    const refKey = `${String(m?.id ?? "no-id")}::${String(
+                      m?.targa ?? ""
+                    )}::${index}`;
+                    const targaText = String(m?.targa ?? "");
+                    return (
+                      <div
+                        key={`mirror-${refKey}`}
+                        style={{
+                          border: "3px solid red",
+                          padding: 12,
+                          marginBottom: 12,
+                          background: "#fff",
+                        }}
+                      >
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>{targaText}</div>
+                        <div>id={String(m?.id ?? "")}</div>
+                        <div>marca={String(m?.marca ?? "")}</div>
+                        <div>modello={String(m?.modello ?? "")}</div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ marginTop: 8 }}
+                          onClick={() => {
+                            const target = pianaleCardRefs.current.get(refKey);
+                            if (!target) {
+                              console.warn(
+                                `[MEZZI][SCROLL_TO] target-missing targa=${targaText} key=${refKey}`
+                              );
+                              return;
+                            }
+                            target.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }}
+                        >
+                          SCROLL TO {targaText || "N/A"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <div className="mezzi-grid">
         {/* FORM + INFO */}
         <div className="left-column">
@@ -1360,8 +1584,19 @@ const handleChangeAutista = (value: string) => {
             {!loading && mezzi.length > 0 && (
               <div className="mezzi-categorie-wrapper">
                 {categoriePresenti.map((cat) => {
-                  const lista = mezziPerCategoria[cat] || [];
+                  const lista =
+                    cat === CATEGORIA_ALTRI
+                      ? mezziAltri
+                      : mezziPerCategoria[cat] || [];
                   const aperta = categoriaEspansa === cat;
+                  const isDebugPianale =
+                    debugEnvEnabled &&
+                    debugMezziOpen &&
+                    cat.trim().toLowerCase() === "pianale";
+                  const toRender = isDebugPianale ? [...lista] : [];
+                  const debugTarghe = isDebugPianale
+                    ? toRender.map((m) => String(m?.targa ?? ""))
+                    : [];
 
                   return (
                     <div key={cat} className="categoria-mezzo-block">
@@ -1391,8 +1626,22 @@ const handleChangeAutista = (value: string) => {
 
                       {aperta && (
                         <div style={{ marginTop: 14, marginBottom: 16 }}>
+                          {isDebugPianale && (
+                            <div
+                              style={{
+                                marginBottom: 10,
+                                padding: 8,
+                                border: "1px solid #f59e0b",
+                                background: "#fffbeb",
+                                fontWeight: 700,
+                              }}
+                            >
+                              PIANALE renderCount={toRender.length} targhe=
+                              {debugTarghe.join(", ")}
+                            </div>
+                          )}
                           <div className="mezzi-list">
-                            {lista.map((m) => {
+                            {lista.map((m, index) => {
                               const scadenzaPrimaria = parseDateFlexible(
                                 m.dataScadenzaRevisione || ""
                               );
@@ -1433,8 +1682,60 @@ const handleChangeAutista = (value: string) => {
                                 else if (giorniProg !== null && giorniProg <= 30)
                                   classeProg = "deadline-low";
                               }
+                              const debugMarcaRaw = (m as any)?.marca;
+                              const debugModelloRaw = (m as any)?.modello;
+                              const debugTargaRaw = (m as any)?.targa;
+                              const debugMissing = ["marca", "modello", "targa"].filter(
+                                (field) =>
+                                  !String((m as any)?.[field] ?? "")
+                                    .trim()
+                              );
+                              if (debugEnvEnabled && debugMissing.length > 0) {
+                                const logKey = `${String(m?.id ?? "no-id")}::${debugMissing.join(",")}`;
+                                if (!missingCardLogRef.current.has(logKey)) {
+                                  missingCardLogRef.current.add(logKey);
+                                  console.warn(
+                                    `[MEZZI][CARD_DATA_MISSING] id=${String(
+                                      m?.id ?? ""
+                                    )} targa=${String(m?.targa ?? "")} missing=${debugMissing.join("/")}`
+                                  );
+                                }
+                              }
+                              if (isDebugPianale) {
+                                console.log(
+                                  `[MEZZI][RENDER_CARD] cat=pianale id=${String(
+                                    m?.id ?? ""
+                                  )} targa=${String(m?.targa ?? "")}`
+                                );
+                              }
+                              const pianaleRefKey = `${String(m?.id ?? "no-id")}::${String(
+                                m?.targa ?? ""
+                              )}::${index}`;
 return (
-  <div key={m.id} className="mezzo-card">
+  <div
+    key={m.id}
+    className="mezzo-card"
+    style={isDebugPianale ? { outline: "3px solid red" } : undefined}
+    ref={
+      isDebugPianale
+        ? (el) => {
+            pianaleCardRefs.current.set(pianaleRefKey, el);
+          }
+        : undefined
+    }
+  >
+    {isDebugPianale && (
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 800,
+          color: "#b91c1c",
+          marginBottom: 6,
+        }}
+      >
+        DEBUG CARD {String(m?.targa ?? "")}
+      </div>
+    )}
 
     {/* MINIATURA + INFO */}
     <div className="mezzo-card-row">
@@ -1449,15 +1750,23 @@ return (
       {/* Informazioni testuali */}
       <div className="mezzo-info">
         <div className="mezzo-info-title">
-          {m.marca.toUpperCase()} {m.modello.toUpperCase()}
+          {debugEnvEnabled
+            ? String(debugMarcaRaw ?? "").toUpperCase()
+            : m.marca.toUpperCase()}{" "}
+          {debugEnvEnabled
+            ? String(debugModelloRaw ?? "").toUpperCase()
+            : m.modello.toUpperCase()}
         </div>
 
         <div className="mezzo-info-line">
-          Targa: {m.targa.toUpperCase()}
+          Targa:{" "}
+          {debugEnvEnabled
+            ? String(debugTargaRaw ?? "").toUpperCase()
+            : m.targa.toUpperCase()}
         </div>
 
         <div className="mezzo-info-line">
-          Categoria: {normalizzaCategoria(m.categoria)}
+          Categoria: {normalizeCategoria(m.categoria)}
         </div>
 
         <div className={`mezzo-info-line ${classeRev}`}>
@@ -1511,6 +1820,7 @@ return (
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
