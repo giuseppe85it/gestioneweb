@@ -1,0 +1,250 @@
+.debug-panel {
+  margin-top: 22px;
+  border: 1px solid #e2d5bc;
+  background: linear-gradient(180deg, #fffdf8 0%, #f8f1e4 100%);
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(103, 76, 34, 0.08);
+  padding: 16px;
+}
+
+.debug-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.debug-panel__title {
+  margin: 0;
+  color: #3f2e15;
+  font-size: 20px;
+}
+
+.debug-panel__subtitle {
+  margin: 4px 0 0;
+  color: #6a5943;
+  font-size: 13px;
+}
+
+.debug-panel__toggle {
+  border: 1px solid #c2a877;
+  color: #4d3413;
+  background: #fff7e6;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.debug-panel__body {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.debug-panel__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.debug-panel__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4f412f;
+  font-size: 13px;
+}
+
+.debug-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.debug-panel__input {
+  flex: 1 1 320px;
+  min-width: 220px;
+  padding: 9px 11px;
+  border: 1px solid #ceb488;
+  border-radius: 10px;
+  background: #fffef9;
+}
+
+.debug-panel__btn {
+  border: 1px solid #c2a877;
+  color: #4d3413;
+  background: #fff7e6;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.debug-panel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.debug-panel__btn--primary {
+  background: #866436;
+  border-color: #78582f;
+  color: #fff8eb;
+}
+
+.debug-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #5f4f39;
+  font-size: 12px;
+}
+
+.debug-panel__summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.debug-card {
+  border-radius: 10px;
+  padding: 10px;
+  border: 1px solid #d8c6a2;
+  background: #fffaf0;
+}
+
+.debug-card__label {
+  color: #6a5943;
+  font-size: 12px;
+}
+
+.debug-card__value {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #3f2e15;
+}
+
+.debug-card--high {
+  border-color: #cf8e8e;
+}
+
+.debug-card--medium {
+  border-color: #cfb58e;
+}
+
+.debug-card--low {
+  border-color: #96be9a;
+}
+
+.debug-panel__codes {
+  border: 1px solid #d9c7a6;
+  border-radius: 10px;
+  background: #fffdf9;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.debug-code-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #efe4d1;
+  font-size: 13px;
+}
+
+.debug-code-row:last-child {
+  border-bottom: none;
+}
+
+.debug-code-row__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
+  color: #523816;
+}
+
+.debug-code-row__count {
+  font-weight: 700;
+  color: #3f2e15;
+}
+
+.debug-panel__issues {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.debug-issue {
+  border-radius: 10px;
+  border: 1px solid #d9c7a6;
+  background: #fffef9;
+  padding: 10px;
+}
+
+.debug-issue--alto {
+  border-left: 5px solid #c0392b;
+}
+
+.debug-issue--medio {
+  border-left: 5px solid #b9770e;
+}
+
+.debug-issue--basso {
+  border-left: 5px solid #1e8449;
+}
+
+.debug-issue__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.debug-issue__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 12px;
+  color: #4b3518;
+  font-weight: 700;
+}
+
+.debug-issue__severity {
+  font-size: 12px;
+  color: #5d4c37;
+  font-weight: 700;
+}
+
+.debug-issue__meta {
+  font-size: 12px;
+  color: #65563f;
+}
+
+.debug-issue__details {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #4e3d25;
+}
+
+.debug-panel__empty {
+  padding: 10px;
+  color: #6f624f;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .debug-panel {
+    padding: 12px;
+  }
+
+  .debug-panel__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .debug-panel__toggle {
+    width: 100%;
+  }
+}

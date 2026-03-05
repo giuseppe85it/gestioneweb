@@ -3,6 +3,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../firebase";
 import { getItemSync, setItemSync } from "../../utils/storageSync";
+import ControlloDebug from "./ControlloDebug";
 import "./IACoperturaLibretti.css";
 
 type FilterMode = "ALL" | "MISSING_LIBRETTO" | "MISSING_FOTO" | "MISSING_BOTH";
@@ -845,6 +846,8 @@ export default function IACoperturaLibretti() {
               </table>
             </div>
           )}
+
+          <ControlloDebug mezzi={mezzi} />
         </div>
       </div>
     </div>
