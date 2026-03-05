@@ -165,8 +165,8 @@ const GestioneOperativa: React.FC = () => {
               </button>
             </div>
 
-            {/* Registra manutenzione */}
-           <div className="go-action-card manutenzione">
+             {/* Registra manutenzione */}
+            <div className="go-action-card manutenzione">
               <h3>Registra manutenzione</h3>
               <p>Inserisci un intervento su mezzo</p>
               <button
@@ -174,6 +174,17 @@ const GestioneOperativa: React.FC = () => {
                 onClick={() => navigate("/manutenzioni")}
               >
                 Vai a manutenzioni
+              </button>
+            </div>
+
+            <div className="go-action-card">
+              <h3>Centro Controllo</h3>
+              <p>Monitora manutenzioni programmate e report rifornimenti mensili</p>
+              <button
+                className="go-primary-btn"
+                onClick={() => navigate("/centro-controllo")}
+              >
+                Apri Centro Controllo
               </button>
             </div>
 

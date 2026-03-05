@@ -2304,6 +2304,196 @@ export async function generateAnalisiEconomicaPDFBlob(
   return { blob: doc.output("blob") as Blob, fileName };
 }
 
+export type RifornimentiMensiliPdfItem = {
+  data?: string | null;
+  targa?: string | null;
+  autistaNome?: string | null;
+  litri?: number | string | null;
+  km?: number | string | null;
+  costo?: number | string | null;
+  distributore?: string | null;
+  note?: string | null;
+  source?: string | null;
+};
+
+export type RifornimentiMensiliPdfInput = {
+  mese: number;
+  anno: number;
+  items: RifornimentiMensiliPdfItem[];
+  filters?: {
+    targa?: string | null;
+  };
+};
+
+const MONTHS_IT = [
+  "Gennaio",
+  "Febbraio",
+  "Marzo",
+  "Aprile",
+  "Maggio",
+  "Giugno",
+  "Luglio",
+  "Agosto",
+  "Settembre",
+  "Ottobre",
+  "Novembre",
+  "Dicembre",
+] as const;
+
+const toFinitePdfNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Number(String(value).replace(",", ".").replace(/[^\d.\-]/g, "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatPdfNumber = (value: unknown, decimals = 2): string => {
+  const n = toFinitePdfNumber(value);
+  if (n === null) return "-";
+  return n.toLocaleString("it-IT", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+};
+
+const buildRifornimentiMensiliPayload = (input: RifornimentiMensiliPdfInput) => {
+  const monthNum = Number(input?.mese);
+  const month = Number.isFinite(monthNum) && monthNum >= 1 && monthNum <= 12 ? monthNum : 1;
+  const yearNum = Number(input?.anno);
+  const year = Number.isFinite(yearNum) ? yearNum : new Date().getFullYear();
+
+  const targaFilter = fmtTarga(input?.filters?.targa || "");
+  const periodLabel = `${MONTHS_IT[month - 1]} ${year}`;
+  const title = targaFilter
+    ? `Report Rifornimenti Mensili - ${periodLabel} - Targa ${targaFilter}`
+    : `Report Rifornimenti Mensili - ${periodLabel}`;
+
+  const list = Array.isArray(input?.items) ? input.items : [];
+  const totalLitri = list.reduce((sum, item) => sum + (toFinitePdfNumber(item?.litri) ?? 0), 0);
+  const totalCosto = list.reduce((sum, item) => sum + (toFinitePdfNumber(item?.costo) ?? 0), 0);
+
+  const rows = list.map((item) => [
+    safeStr(item?.data) || "-",
+    fmtTarga(item?.targa) || "-",
+    safeStr(item?.autistaNome) || "—",
+    formatPdfNumber(item?.litri, 2),
+    formatPdfNumber(item?.km, 0),
+    formatPdfNumber(item?.costo, 2),
+    safeStr(item?.distributore || item?.source) || "-",
+    safeStr(item?.note) || "-",
+  ]);
+
+  if (rows.length === 0) {
+    rows.push(["-", "-", "—", "-", "-", "-", "-", "Nessun rifornimento nel periodo selezionato"]);
+  }
+
+  rows.push(["", "", "", "", "", "", "", ""]);
+  rows.push(["TOTALE RIFORNIMENTI", String(list.length), "", "", "", "", "", ""]);
+  rows.push(["TOTALE LITRI", "", "", formatPdfNumber(totalLitri, 2), "", "", "", ""]);
+  rows.push(["TOTALE COSTO", "", "", "", "", formatPdfNumber(totalCosto, 2), "", ""]);
+
+  return {
+    title,
+    columns: ["Data", "Targa", "Autista", "Litri", "Km", "Costo", "Distributore/Fonte", "Note"],
+    rows,
+  };
+};
+
+export async function generateRifornimentiMensiliPDF(
+  input: RifornimentiMensiliPdfInput
+): Promise<void> {
+  const payload = buildRifornimentiMensiliPayload(input);
+  await generateSmartPDF({
+    kind: "table",
+    title: payload.title,
+    orientation: "landscape",
+    rows: payload.rows,
+    columns: payload.columns,
+    fontSize: 8,
+    tableWidth: "auto",
+  });
+}
+
+export async function generateRifornimentiMensiliPDFBlob(
+  input: RifornimentiMensiliPdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const payload = buildRifornimentiMensiliPayload(input);
+  return generateSmartPDFBlob({
+    kind: "table",
+    title: payload.title,
+    orientation: "landscape",
+    rows: payload.rows,
+    columns: payload.columns,
+    fontSize: 8,
+    tableWidth: "auto",
+  });
+}
+
+export type ManutenzioneProgrammataPdfItem = {
+  targa?: string | null;
+  dataFine?: string | null;
+  kmMax?: string | number | null;
+  contratto?: string | null;
+  revisione?: string | null;
+};
+
+export type ManutenzioniProgrammatePdfInput = {
+  items: ManutenzioneProgrammataPdfItem[];
+  titolo?: string | null;
+  dataReport?: string | null;
+};
+
+const buildManutenzioniProgrammatePayload = (input: ManutenzioniProgrammatePdfInput) => {
+  const title = safeStr(input?.titolo) || "Manutenzioni programmate";
+  const reportDate = safeStr(input?.dataReport) || formatGGMMYYYY(new Date().toISOString());
+  const list = Array.isArray(input?.items) ? input.items : [];
+
+  const rows = list.map((item) => {
+    const dataFine = safeStr(item?.dataFine) || "DATA MANCANTE";
+    return [
+      fmtTarga(item?.targa) || "-",
+      dataFine,
+      safeStr(item?.kmMax) || "—",
+      safeStr(item?.contratto) || "—",
+      safeStr(item?.revisione) || "—",
+    ];
+  });
+
+  if (rows.length === 0) {
+    rows.push(["-", "-", "-", "-", "Nessun mezzo selezionato"]);
+  }
+
+  const missingDateCount = list.reduce((acc, item) => {
+    return safeStr(item?.dataFine) ? acc : acc + 1;
+  }, 0);
+
+  rows.push(["", "", "", "", ""]);
+  rows.push(["SELEZIONATI", String(list.length), "", "", ""]);
+  rows.push(["CON DATA MANCANTE", String(missingDateCount), "", "", ""]);
+  rows.push(["DATA REPORT", reportDate, "", "", ""]);
+
+  return {
+    title,
+    columns: ["TARGA", "DATA FINE", "KM MAX", "CONTRATTO", "REVISIONE"],
+    rows,
+  };
+};
+
+export async function generateManutenzioniProgrammatePDFBlob(
+  input: ManutenzioniProgrammatePdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const payload = buildManutenzioniProgrammatePayload(input);
+  return generateSmartPDFBlob({
+    kind: "table",
+    title: payload.title,
+    orientation: "landscape",
+    rows: payload.rows,
+    columns: payload.columns,
+    fontSize: 8,
+    tableWidth: "auto",
+  });
+}
+
 type PreventiviCapoPdfItem = {
   data?: string;
   fornitore?: string;

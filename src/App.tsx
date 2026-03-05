@@ -11,6 +11,7 @@ import LavoriDaEseguire from "./pages/LavoriDaEseguire";
 import LavoriEseguiti from "./pages/LavoriEseguiti";
 import LavoriInAttesa from "./pages/LavoriInAttesa";
 import GestioneOperativa from "./pages/GestioneOperativa";
+import CentroControllo from "./pages/CentroControllo";
 
 import DossierLista from "./pages/DossierLista";
 import DossierMezzo from "./pages/DossierMezzo";
@@ -137,6 +138,7 @@ function App() {
         <Route path="/dettagliolavori" element={<DettaglioLavoro />} />
         <Route path="/dettaglio-ordine/:ordineId" element={<DettaglioOrdine />} />
         <Route path="/gestione-operativa" element={<GestioneOperativa />} />
+        <Route path="/centro-controllo" element={<CentroControllo />} />
         <Route path="/attrezzature-cantieri" element={<AttrezzatureCantieri />} />
 
         {/* IA */}
