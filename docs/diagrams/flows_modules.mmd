@@ -1,0 +1,128 @@
+flowchart TB
+  classDef module fill:#eef4ff,stroke:#375a9e,stroke-width:1px;
+  classDef key fill:#fff8e8,stroke:#9a6a00,stroke-width:1px;
+  classDef svc fill:#eaf9ef,stroke:#2f7d4e,stroke-width:1px;
+
+  subgraph M1["Modulo Autisti (mobile)"]
+    A1["/autisti/login"]:::module
+    A2["/autisti/setup-mezzo"]:::module
+    A3["/autisti/home"]:::module
+    A4["/autisti/rifornimento"]:::module
+    A5["/autisti/controllo"]:::module
+    A6["/autisti/segnalazioni"]:::module
+    A7["/autisti/richiesta-attrezzature"]:::module
+    A8["Gomme modal + /autisti/cambio-mezzo"]:::module
+
+    A1 --> A2 --> A3
+    A3 --> A4
+    A3 --> A5
+    A3 --> A6
+    A3 --> A7
+    A3 --> A8
+  end
+
+  subgraph M2["Modulo Inbox + Rettifica Autisti (admin)"]
+    I1["/autisti-inbox"]:::module
+    I2["Liste: segnalazioni/controlli/gomme/richieste/log/cambi"]:::module
+    I3["/autisti-admin (rettifica + import)"]:::module
+    I1 --> I2 --> I3
+  end
+
+  subgraph M3["Modulo Operativa (acquisti/magazzino/lavori)"]
+    O1["/lavori-da-eseguire -> /lavori-in-attesa -> /lavori-eseguiti -> /dettagliolavori"]:::module
+    O2["/acquisti (+ dettaglio ordine)"]:::module
+    O3["/materiali-da-ordinare, /ordini-*, /dettaglio-ordine"]:::module
+    O4["/inventario + /materiali-consegnati + /attrezzature-cantieri"]:::module
+    O5["/gestione-operativa + /centro-controllo"]:::module
+    O1 --> O5
+    O2 --> O3 --> O4 --> O5
+  end
+
+  subgraph M4["Modulo Flotta / Dossier / Capo"]
+    F1["/mezzi + /dossiermezzi"]:::module
+    F2["/dossier/:targa (+ gomme/rifornimenti)"]:::module
+    F3["/mezzo-360/:targa + /autista-360"]:::module
+    F4["/manutenzioni + /analisi-economica/:targa"]:::module
+    F5["/capo/mezzi + /capo/costi/:targa"]:::module
+    F1 --> F2 --> F3
+    F1 --> F4
+    F2 --> F5
+  end
+
+  subgraph M5["Modulo IA / Documenti / Cisterna"]
+    IA1["/ia (menu)"]:::module
+    IA2["/ia/apikey"]:::module
+    IA3["/ia/documenti"]:::module
+    IA4["/ia/libretto + /ia/copertura-libretti + /libretti-export"]:::module
+    IA5["/cisterna + /cisterna/ia + /cisterna/schede-test"]:::module
+    IA1 --> IA2
+    IA1 --> IA3
+    IA1 --> IA4
+    IA1 --> IA5
+  end
+
+  K1["@autisti_sessione_attive"]:::key
+  K2["@storico_eventi_operativi"]:::key
+  K3["@rifornimenti_autisti_tmp + @rifornimenti"]:::key
+  K4["@segnalazioni_autisti_tmp"]:::key
+  K5["@controlli_mezzo_autisti"]:::key
+  K6["@richieste_attrezzature_autisti_tmp"]:::key
+  K7["@cambi_gomme_autisti_tmp + @gomme_eventi"]:::key
+  K8["@lavori"]:::key
+  K9["@ordini + @preventivi + @listino_prezzi"]:::key
+  K10["@inventario + @materialiconsegnati + @attrezzature_cantieri"]:::key
+  K11["@mezzi_aziendali + @manutenzioni + @costiMezzo + @preventivi_approvazioni"]:::key
+  K12["@documenti_mezzi + @documenti_magazzino + @documenti_generici"]:::key
+  K13["@documenti_cisterna + @cisterna_schede_ia + @cisterna_parametri_mensili"]:::key
+  K14["@impostazioni_app/gemini"]:::key
+
+  S1["Firebase Storage (foto/PDF)"]:::svc
+  S2["Cloud Functions: aiCore/pdf_ia"]:::svc
+  S3["Cloud Functions: estrazioneDocumenti + cisterna_*"]:::svc
+  S4["pdfEngine (anteprima/export/share)"]:::svc
+
+  M1 --> K1
+  M1 --> K2
+  M1 --> K3
+  M1 --> K4
+  M1 --> K5
+  M1 --> K6
+  M1 --> K7
+  M1 --> S1
+
+  M2 --> K1
+  M2 --> K2
+  M2 --> K3
+  M2 --> K4
+  M2 --> K5
+  M2 --> K6
+  M2 --> K7
+  M2 --> K8
+  M2 --> S1
+  M2 --> S4
+
+  M3 --> K8
+  M3 --> K9
+  M3 --> K10
+  M3 --> K11
+  M3 --> S1
+  M3 --> S2
+  M3 --> S3
+  M3 --> S4
+
+  M4 --> K8
+  M4 --> K10
+  M4 --> K11
+  M4 --> K12
+  M4 --> K3
+  M4 --> S2
+  M4 --> S4
+
+  M5 --> K11
+  M5 --> K12
+  M5 --> K13
+  M5 --> K14
+  M5 --> K10
+  M5 --> S1
+  M5 --> S2
+  M5 --> S3

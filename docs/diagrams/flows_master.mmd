@@ -1,0 +1,95 @@
+flowchart LR
+  classDef actor fill:#f4f4f4,stroke:#333,stroke-width:1px;
+  classDef ui fill:#e8f0ff,stroke:#3156a6,stroke-width:1px;
+  classDef data fill:#fff7e6,stroke:#946300,stroke-width:1px;
+  classDef svc fill:#e9f9ee,stroke:#2c7a4b,stroke-width:1px;
+
+  AUTISTA["Autista"]:::actor
+  ADMIN["Admin Operativo"]:::actor
+  CAPO["Capo Mezzi"]:::actor
+  IAUSER["Ufficio Documenti / IA"]:::actor
+
+  subgraph UI_AUTISTI["UI Autisti (/autisti/*)"]
+    A_LOGIN["Login + Gate"]:::ui
+    A_SETUP["Setup Mezzo"]:::ui
+    A_HOME["Home Autista"]:::ui
+    A_OPS["Rifornimento / Controllo / Segnalazioni / Gomme / Richiesta Attrezzature / Cambio Mezzo"]:::ui
+  end
+
+  subgraph UI_AUTISTI_ADMIN["UI Inbox + Rettifica (/autisti-inbox/*, /autisti-admin)"]
+    I_HOME["Autisti Inbox Home"]:::ui
+    I_LISTE["Liste eventi (segnalazioni, controlli, gomme, richieste, log, cambi)"]:::ui
+    I_ADMIN["Centro rettifica dati"]:::ui
+  end
+
+  subgraph UI_ADMIN["UI Admin Web"]
+    H_HOME["Home + Alert"]:::ui
+    H_LAVORI["Lavori"]:::ui
+    H_ACQ["Acquisti / Ordini / Inventario / Consegne"]:::ui
+    H_DOSSIER["Mezzi / Dossier / 360 / Manutenzioni"]:::ui
+    H_CAPO["Capo Mezzi / Costi"]:::ui
+    H_IA["IA Documenti / Libretti / Cisterna"]:::ui
+  end
+
+  subgraph DATA["Layer Dati"]
+    D_STORAGE["Firestore storage/<@key>"]:::data
+    D_DOCS["Firestore collezioni @documenti_*"]:::data
+    D_CISTERNA["Firestore @documenti_cisterna + @cisterna_schede_ia + @cisterna_parametri_mensili"]:::data
+    D_CFG["Firestore @impostazioni_app/gemini"]:::data
+    D_FILES["Firebase Storage (foto/PDF)"]:::data
+    D_LOCAL["LocalStorage autista/sessione UI"]:::data
+  end
+
+  subgraph SERVICES["Servizi"]
+    S_AICORE["Cloud Functions aiCore (task pdf_ia)"]:::svc
+    S_DOC_EXTRACT["Cloud Functions estrazioneDocumenti + cisterna_*"]:::svc
+    S_PDF["pdfEngine (preview/export/share)"]:::svc
+  end
+
+  AUTISTA --> A_LOGIN --> A_SETUP --> A_HOME --> A_OPS
+  ADMIN --> I_HOME --> I_LISTE --> I_ADMIN
+  ADMIN --> H_HOME
+  ADMIN --> H_LAVORI
+  ADMIN --> H_ACQ
+  ADMIN --> H_DOSSIER
+  CAPO --> H_CAPO
+  IAUSER --> H_IA
+
+  A_OPS -- "write @rifornimenti_autisti_tmp, @segnalazioni_autisti_tmp, @controlli_mezzo_autisti, @richieste_attrezzature_autisti_tmp, @cambi_gomme_autisti_tmp, @storico_eventi_operativi" --> D_STORAGE
+  A_SETUP -- "write @autisti_sessione_attive" --> D_STORAGE
+  A_LOGIN -- "write evento LOGIN/LOGOUT su @storico_eventi_operativi" --> D_STORAGE
+  A_OPS -- "upload foto" --> D_FILES
+  A_LOGIN -- "autista locale + mezzo locale" --> D_LOCAL
+  A_SETUP -- "mezzo locale" --> D_LOCAL
+  A_HOME -- "read revoche/sessione" --> D_STORAGE
+
+  I_HOME -- "read eventi aggregati" --> D_STORAGE
+  I_LISTE -- "read + export PDF eventi" --> D_STORAGE
+  I_ADMIN -- "rettifica + import gomme + crea lavori" --> D_STORAGE
+  I_ADMIN -- "delete allegati evento" --> D_FILES
+  I_ADMIN -- "sync rifornimenti in @rifornimenti" --> D_STORAGE
+
+  H_HOME -- "read alert da mezzi/sessioni/eventi" --> D_STORAGE
+  H_LAVORI -- "CRUD @lavori" --> D_STORAGE
+  H_ACQ -- "CRUD @ordini/@inventario/@materialiconsegnati/@preventivi/@listino_prezzi" --> D_STORAGE
+  H_ACQ -- "upload PDF/foto preventivi/materiali" --> D_FILES
+  H_DOSSIER -- "read @mezzi_aziendali/@manutenzioni/@lavori/@materialiconsegnati + @documenti_*" --> D_STORAGE
+  H_DOSSIER -- "read docs IA" --> D_DOCS
+  H_CAPO -- "read @costiMezzo + @preventivi_approvazioni + @documenti_*" --> D_STORAGE
+  H_CAPO -- "read docs IA" --> D_DOCS
+  H_IA -- "read/write documenti IA" --> D_DOCS
+  H_IA -- "read/write supporto su @mezzi_aziendali/@inventario" --> D_STORAGE
+  H_IA -- "upload PDF/foto/libretti/schede" --> D_FILES
+  H_IA -- "cisterne" --> D_CISTERNA
+  H_IA -- "check API key" --> D_CFG
+
+  H_IA --> S_DOC_EXTRACT
+  H_ACQ --> S_DOC_EXTRACT
+  H_DOSSIER --> S_AICORE
+  H_ACQ --> S_AICORE
+  H_LAVORI --> S_PDF
+  H_ACQ --> S_PDF
+  H_DOSSIER --> S_PDF
+  H_CAPO --> S_PDF
+  I_LISTE --> S_PDF
+  I_ADMIN --> S_PDF
