@@ -1,0 +1,45 @@
+flowchart LR
+  classDef center fill:#155d47,color:#ffffff,stroke:#0f3e31,stroke-width:2px;
+  classDef block fill:#e9f9ee,stroke:#2c7a4b,stroke-width:1px;
+  classDef data fill:#fff8e6,stroke:#8f6500,stroke-width:1px;
+  classDef note fill:#fff1f0,stroke:#c62828,stroke-width:1px;
+
+  APP["AUTISTI APP (Gate/Sessione)"]:::center
+
+  SETUP["Setup Mezzo"]:::block
+  CTRL["Controllo"]:::block
+  SEG["Segnalazioni"]:::block
+  RIF["Rifornimenti"]:::block
+  RICH["Richiesta Attrezzature"]:::block
+  CAMBIO["Cambio Mezzo / Assetto"]:::block
+
+  K_SESS["@autisti_sessione_attive"]:::data
+  K_STOR["@storico_eventi_operativi"]:::data
+  K_TMP["@rifornimenti_autisti_tmp / @segnalazioni_autisti_tmp / @controlli_mezzo_autisti / @richieste_attrezzature_autisti_tmp / @cambi_gomme_autisti_tmp"]:::data
+  K_CANON["@rifornimenti / @gomme_eventi / @lavori (rettifica/import)"]:::data
+
+  VIS_ADMIN["Visibilita Admin<br/>Centro Controllo / Inbox / Log"]:::block
+  VIS_DOS["Visibilita Dossier/360<br/>Mezzo360 / Autista360"]:::block
+  VIS_DOS_DIR["DossierMezzo diretto da @storico_eventi_operativi<br/>DA VERIFICARE"]:::note
+
+  APP --> SETUP
+  APP --> CTRL
+  APP --> SEG
+  APP --> RIF
+  APP --> RICH
+  APP --> CAMBIO
+
+  SETUP --> K_SESS
+  SETUP --> K_STOR
+  CAMBIO --> K_STOR
+  CTRL --> K_TMP
+  SEG --> K_TMP
+  RIF --> K_TMP
+  RICH --> K_TMP
+  CAMBIO --> K_TMP
+
+  K_STOR --> VIS_ADMIN
+  K_STOR --> VIS_DOS
+  K_TMP --> VIS_ADMIN
+  VIS_ADMIN --> K_CANON
+  K_STOR -.-> VIS_DOS_DIR

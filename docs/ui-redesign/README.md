@@ -28,6 +28,18 @@ Questa cartella contiene la base tecnica per rifare la UI senza toccare la logic
 - Mantenere i flussi principali in massimo 3-4 step visivi.
 - Esporre chiaramente gli stati record (`nuovo`, `letto`, `rettificato`, `importato`).
 
+## Mappe mentali
+- `docs/ui-redesign/system_map_admin.mmd`
+  Mappa macro del sistema lato Admin con nodo centrale "CENTRO DI CONTROLLO (Admin)", viste operative, Dossier e PDF.
+- `docs/ui-redesign/system_map_autisti.mmd`
+  Mappa macro del sistema lato Autisti con Gate/Sessione, operazioni e propagazione eventi verso area Admin/360.
+- `docs/ui-redesign/control_center_map.mmd`
+  Mappa operativa del Centro Controllo: priorita, code, azioni rapide, ricerca globale, fonti dati e click-flow.
+
+Note di lettura:
+- Le incoerenze confermate sono evidenziate nei diagrammi come note dedicate.
+- I collegamenti non confermabili dai documenti correnti sono marcati `DA VERIFICARE`.
+
 ## Checklist di handoff (design -> sviluppo)
 - Journey coperti: inserimento lavoro, esecuzione lavoro, ordini, consegne, eventi autisti, IA documenti, export PDF.
 - Ruoli separati: shell Admin distinta da shell Autisti.

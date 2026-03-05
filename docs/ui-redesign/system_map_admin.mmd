@@ -1,0 +1,53 @@
+flowchart LR
+  classDef center fill:#1f3b5b,color:#ffffff,stroke:#0f2238,stroke-width:2px;
+  classDef block fill:#eef4ff,stroke:#3a5ea0,stroke-width:1px;
+  classDef data fill:#fff8e6,stroke:#8f6500,stroke-width:1px;
+  classDef note fill:#fff1f0,stroke:#c62828,stroke-width:1px;
+
+  CC["CENTRO DI CONTROLLO (Admin)"]:::center
+
+  LAV["Lavori<br/>(Da eseguire / In attesa / Eseguiti)"]:::block
+  MAT["Materiali / Ordini / Inventario"]:::block
+  DOCIA["Documenti / IA"]:::block
+  RIF["Rifornimenti"]:::block
+  SEG["Segnalazioni"]:::block
+  DOS["Dossier Mezzo / 360"]:::block
+  PDF["PDF (preview/export/share)"]:::block
+
+  K_LAV["@lavori"]:::data
+  K_MAG["@ordini / @inventario / @materialiconsegnati / @attrezzature_cantieri"]:::data
+  K_DOC["@documenti_mezzi / @documenti_magazzino / @documenti_generici"]:::data
+  K_EVT["@storico_eventi_operativi + feed tmp autisti"]:::data
+  K_PDF["Firebase Storage + pdfEngine"]:::data
+
+  CC --> LAV
+  CC --> MAT
+  CC --> DOCIA
+  CC --> RIF
+  CC --> SEG
+  CC --> DOS
+  CC --> PDF
+
+  LAV --> DOS
+  MAT --> DOS
+  DOCIA --> DOS
+  RIF --> DOS
+  SEG --> DOS
+  DOS --> PDF
+
+  LAV --> K_LAV
+  MAT --> K_MAG
+  DOCIA --> K_DOC
+  RIF --> K_EVT
+  SEG --> K_EVT
+  PDF --> K_PDF
+
+  N_EVT["INCOERENZA<br/>autisti_eventi vs @storico_eventi_operativi"]:::note
+  N_PREV["INCOERENZA<br/>allegati preventivi:<br/>preventivi/ia/* vs preventivi/{id}.pdf"]:::note
+  N_ROUTE["INCOERENZA<br/>route legacy:<br/>/dossiermezzi/:targa vs /dossier/:targa<br/>/acquisti/dettaglio/:ordineId vs /dettaglio-ordine/:ordineId<br/>route canonica: DA VERIFICARE"]:::note
+
+  RIF -.-> N_EVT
+  SEG -.-> N_EVT
+  MAT -.-> N_PREV
+  DOS -.-> N_ROUTE
+  MAT -.-> N_ROUTE
