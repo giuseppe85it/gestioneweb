@@ -7,6 +7,7 @@
 - **Stato documentazione**: struttura madre disponibile, documenti core rinominati in italiano, indice e guida di ingresso presenti.
 - **Stato processo Codex/report**: regole operative attive (`AGENTS.md`, `REGOLE_LAVORO_CODEX.md`) + template/report di change e continuity gia presenti.
 - **Protocollo sicurezza modifiche**: attivo tramite `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`; ogni patch deve passare da analisi impatto prima dell'applicazione.
+- **Audit repo vs docs**: eseguito con report dedicato in `docs/audit/`; emerse differenze ad alta priorita su endpoint IA/PDF, policy dati/sicurezza effettive e route legacy ancora attive.
 
 ## 2. Decisioni architetturali confermate
 - Nuova app in parallelo alla legacy.
@@ -56,7 +57,7 @@ Per ogni nuova patch e obbligatorio applicare anche:
 6. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
 
 ## 7. Prossimo passo consigliato
-Chiudere in ordine i punti aperti ad alto impatto (eventi autisti, matrice permessi, policy Firestore), aggiornando subito `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un punto passa da aperto a confermato.
+Chiudere in ordine i punti aperti ad alto impatto emersi/rafforzati dall'audit (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF), aggiornando subito `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un punto passa da aperto a confermato.
 
 ## 8. Stato documento
 - **STATO: CURRENT**

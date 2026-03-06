@@ -12,6 +12,7 @@ Serve a non perdere temi importanti tra task diversi e tra chat diverse.
 | Matrice ruoli/permessi definitiva | DA VERIFICARE | Distinzione finale tra `admin`, `capo`, `account gestionale` non chiusa | Alto | `docs/security/SICUREZZA_E_PERMESSI.md`, `docs/STRUTTURA_COMPLETA_GESTIONALE.md`, `docs/product/STORICO_DECISIONI_PROGETTO.md` | Punto bloccante per sicurezza e rollout nuova app. |
 | Policy Firestore effettive | DA VERIFICARE | `firestore.rules` non presente nel repository | Alto | `docs/security/SICUREZZA_E_PERMESSI.md`, `docs/data/REGOLE_STRUTTURA_DATI.md` | Verificare policy reali deployate e allinearle alla matrice permessi. |
 | Governance endpoint IA multipli | DA VERIFICARE | Coesistenza endpoint IA diversi da consolidare a livello governance | Medio | `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`, `docs/architecture/FUNZIONI_TRASVERSALI.md`, `docs/product/STORICO_DECISIONI_PROGETTO.md` | Definire ownership, fallback e comportamento canonico. |
+| Policy Storage effettive | DA VERIFICARE | `storage.rules` nel repo blocca read/write (`allow read, write: if false`) ma il client usa upload/download/delete Storage in flussi operativi reali | Alto | `docs/security/SICUREZZA_E_PERMESSI.md`, `docs/audit/VERIFICA_ALLINEAMENTO_REPO_E_DOCUMENTI.md` | Verificare regole Storage realmente deployate e riallineare repo+documentazione per evitare regressioni silenziose. |
 
 ## Regola di aggiornamento
 - Ogni punto chiuso o modificato va aggiornato qui nello stesso task.
