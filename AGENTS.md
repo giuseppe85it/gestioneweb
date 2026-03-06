@@ -8,6 +8,13 @@
 - Prima di qualsiasi task nuovo, leggere sempre `docs/STATO_ATTUALE_PROGETTO.md`.
 - Se il task cambia in modo importante lo stato del progetto (decisioni, priorita, punti aperti, fase), suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
 
+## Protocollo sicurezza modifiche (obbligatorio)
+- Prima di patchare, applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
+- Controllare sempre: stato progetto, mappa dati e punti aperti (`REGISTRO_PUNTI_DA_VERIFICARE`).
+- Se rischio **ELEVATO** o **EXTRA ELEVATO**, non patchare alla cieca.
+- In caso di rischio alto: spiegare rischio + proporre soluzione sicura + proporre alternative operative.
+- Se un task chiude o apre dubbi architetturali/dati/sicurezza, suggerire aggiornamento di `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`.
+
 ## Ruoli fissi del progetto
 - **Utente** = LOGICA / BUSINESS / realta operativa
 - **ChatGPT** = CTO / ARCHITETTO / struttura / strategia / prompt per Codex
@@ -19,6 +26,8 @@
 3. Non modificare codice applicativo se il task e documentale.
 4. Non inventare: se un fatto non e dimostrabile, scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
 5. Seguire sempre il blueprint ufficiale prima di proporre o applicare modifiche.
+6. Fare analisi impatto prima di ogni patch (moduli, dati, contratti, rischio, legacy/next).
+7. Se la modifica impatta lo stato reale del progetto, suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
 
 ## Documenti da leggere prima di toccare codice
 1. `docs/STATO_ATTUALE_PROGETTO.md`
@@ -27,7 +36,8 @@
 4. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
 5. `docs/data/MAPPA_COMPLETA_DATI.md`
 6. `docs/security/SICUREZZA_E_PERMESSI.md`
-7. altri documenti rilevanti in `docs/` in base al task
+7. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
+8. altri documenti rilevanti in `docs/` in base al task
 
 ## Regola whitelist (bloccante)
 - Se per implementare serve toccare file fuori whitelist, fermarsi subito e dichiarare solo:
@@ -64,7 +74,8 @@ Ogni task deve restare coerente con:
 ## Formato risposta atteso in chat
 - sintesi breve
 - file toccati
-- eventuali rischi
+- rischio + impatto sintetico
+- eventuali rischi residui
 - eventuale hash commit
 - nessun dump completo di codice/file
 

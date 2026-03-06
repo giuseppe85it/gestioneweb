@@ -25,6 +25,25 @@
 - <impatto funzionale/documentale>
 - <impatto su moduli/dati/sicurezza se rilevante>
 
+## Rischio modifica
+- <BASSO / NORMALE / ELEVATO / EXTRA ELEVATO>
+
+## Moduli impattati
+- <modulo 1>
+- <modulo 2>
+
+## Contratti dati toccati?
+- <SI / NO / PARZIALE>
+
+## Punto aperto collegato?
+- <NO> oppure <SI: nome punto da `REGISTRO_PUNTI_DA_VERIFICARE`>
+
+## Legacy o Next?
+- <LEGACY / NEXT / ENTRAMBI>
+
+## Necessita aggiornamento stato progetto?
+- <SI / NO>
+
 ## Rischi / attenzione
 - <rischio 1>
 - <rischio 2>

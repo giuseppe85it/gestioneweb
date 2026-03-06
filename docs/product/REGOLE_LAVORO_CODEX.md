@@ -19,6 +19,8 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 4. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
 5. Non cambiare codice applicativo se il task e documentale.
 6. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
+7. Prima di ogni patch applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
+8. Se rischio ELEVATO/EXTRA ELEVATO: niente patch cieche; obbligo di analisi impatto + proposta soluzione + alternative.
 
 ---
 
@@ -29,9 +31,15 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
    - Fatti: [CONFERMATO]
    - Ipotesi aperte: [DA VERIFICARE] / [NON DIMOSTRATO]
    - Target: [RACCOMANDAZIONE]
-4. **Applicare patch solo dopo allineamento al blueprint**.
-5. **Verificare output** (coerenza file whitelist, eventuali test/comandi richiesti).
-6. **Chiudere con report breve** (file toccati, punti aperti, commit hash se richiesto).
+4. **Analisi impatto obbligatoria prima della patch**:
+   - cosa puo rompersi
+   - moduli impattati
+   - contratti dati toccati o no
+   - legacy o next
+   - punti aperti collegati
+5. **Applicare patch solo dopo allineamento al blueprint**.
+6. **Verificare output** (coerenza file whitelist, eventuali test/comandi richiesti).
+7. **Chiudere con report breve** (file toccati, punti aperti, commit hash se richiesto).
 
 ---
 
@@ -43,7 +51,7 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 
 ### B) Logica business
 - Obiettivo: comportamento moduli/flow.
-- Vincolo: citare impatto su data contract e flussi cross-modulo.
+- Vincolo: citare impatto su data contract e flussi cross-modulo, distinguendo legacy vs next.
 
 ### C) Refactor tecnico
 - Obiettivo: migliorare struttura codice.
@@ -81,23 +89,38 @@ Se una richiesta rompe coerenza con questi documenti:
 
 ---
 
-## 6) Regola patch
+## 6) Protocollo sicurezza modifiche (obbligatorio)
+- Nei task rischiosi Codex deve rispondere con formato:
+  - `RISCHIO`
+  - `IMPATTO`
+  - `SOLUZIONE CONSIGLIATA`
+  - `ALTERNATIVE`
+  - `DECISIONE OPERATIVA`
+- Se manca base chiara nei documenti e rischio alto, Codex si ferma e non patcha alla cieca.
+- Se serve toccare file fuori whitelist: `SERVE FILE EXTRA: <path>`.
+
+---
+
+## 7) Regola patch
 - Patch codice ampie solo dopo blueprint confermata.
 - Prima fase preferita: read-only + documentazione + chiusura `DA VERIFICARE`.
 - Evoluzione nuova app: progressiva e in parallelo alla legacy.
+- Se la patch cambia stato reale/progressione progetto: suggerire aggiornamento `docs/STATO_ATTUALE_PROGETTO.md`.
+- Se la patch apre o chiude un dubbio: suggerire aggiornamento `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`.
 
 ---
 
-## 7) Formato risposta Codex (raccomandato)
+## 8) Formato risposta Codex (raccomandato)
 1. File creati/modificati.
 2. Cosa e stato coperto (sezioni/moduli).
-3. Punti ancora `DA VERIFICARE` o `NON DIMOSTRATO`.
-4. Comandi di verifica eseguiti (se richiesti).
-5. Commit hash (se richiesto).
+3. Rischio e impatto.
+4. Punti ancora `DA VERIFICARE` o `NON DIMOSTRATO`.
+5. Comandi di verifica eseguiti (se richiesti).
+6. Commit hash (se richiesto).
 
 ---
 
-## 8) Template prompt minimo (riuso)
+## 9) Template prompt minimo (riuso)
 ```
 MODE = OPERAIO
 
