@@ -1,0 +1,60 @@
+flowchart LR
+  DM["DOSSIER MEZZO"]
+
+  CC["Centro di Controllo"]
+  FL["Flotta"]
+  OP["Operatività"]
+  MG["Magazzino"]
+  AN["Analisi"]
+  AU["Autisti"]
+  SS["Sistema / Supporto"]
+  LEG["Legacy / Esclusi"]
+
+  ACC_CORE["Home<br/>CentroControllo<br/>GestioneOperativa<br/>DossierLista<br/>IAHome"] --> CC
+
+  FL_GLOB["Mezzi"] --> FL
+  FL_DOS["Manutenzioni<br/>LavoriDaEseguire<br/>LavoriInAttesa<br/>LavoriEseguiti<br/>DettaglioLavoro<br/>CapoMezzi<br/>CapoCostiMezzo"] --> DM
+
+  DOS_CORE["DossierMezzo<br/>DossierGomme<br/>DossierRifornimenti<br/>Mezzo360"] --> DM
+  DOS_IA["IALibretto<br/>IACoperturaLibretti<br/>ControlloDebug<br/>LibrettiExport"] --> DM
+
+  OP_CORE["Acquisti<br/>MaterialiDaOrdinare<br/>OrdiniInAttesa<br/>OrdiniArrivati<br/>DettaglioOrdine"] --> OP
+  OP_ANAG["Colleghi<br/>Fornitori<br/>AttrezzatureCantieri"] --> OP
+  OP_IA["IADocumenti<br/>CisternaCaravatePage<br/>CisternaCaravateIA"] --> OP
+
+  MG_CORE["Inventario<br/>MaterialiConsegnati"] --> MG
+
+  AN_DOS["AnalisiEconomica<br/>GommeEconomiaSection<br/>RifornimentiEconomiaSection"] --> DM
+  AN_GLOB["Autista360"] --> AN
+
+  AU_CORE["AutistiGate<br/>LoginAutista<br/>SetupMezzo<br/>HomeAutista<br/>CambioMezzoAutista<br/>Rifornimento<br/>ControlloMezzo<br/>Segnalazioni<br/>RichiestaAttrezzature"] --> AU
+  AU_INBOX["AutistiInboxHome<br/>CambioMezzoInbox<br/>AutistiControlliAll<br/>AutistiSegnalazioniAll<br/>RichiestaAttrezzatureAll<br/>AutistiGommeAll<br/>AutistiLogAccessiAll<br/>AutistiAdmin"] --> AU
+
+  SS_UI["IAApiKey<br/>PdfPreviewModal<br/>TargaPicker<br/>ModalGomme<br/>AutistiEventoModal<br/>AutistiImportantEventsModal<br/>SessioniAttiveCard<br/>RifornimentiCard<br/>CisternaSchedeTest"] --> SS
+  SS_UTILS["storageSync<br/>homeEvents<br/>pdfEngine<br/>pdfPreview<br/>aiCore<br/>alertsState<br/>cisterna collections<br/>firebase config"] --> SS
+  SS_BE["Functions entry<br/>Functions estrazioneDocumenti<br/>Functions analisiEconomica<br/>Functions iaCisternaExtract<br/>Functions-schede entry<br/>Functions-schede estrazioneScheda<br/>Functions-schede documenti"] --> SS
+
+  LEG_ALIAS["Route alias dossier<br/>Route alias acquisti dettaglio"] --> LEG
+  LEG_MISC["API Vercel pdf-ai-enhance<br/>AutistiInboxHome.tsx.bak2<br/>main.zip<br/>rcautistiSetupMezzo.tsx"] --> LEG
+
+  CC -. accesso .-> DM
+  FL -. lookup mezzo .-> DM
+  OP -. dati trasversali .-> DM
+  MG -. movimenti materiali .-> DM
+  AN -. indicatori mezzo .-> DM
+  AU -. eventi campo .-> DM
+  SS -. servizi tecnici .-> DM
+
+  classDef dossier fill:#dff3df,stroke:#2e7d32,color:#123c12;
+  classDef globale fill:#e3eeff,stroke:#2456a6,color:#0d2b57;
+  classDef accesso fill:#fff3cd,stroke:#b08a00,color:#5c4300;
+  classDef autisti fill:#ede3ff,stroke:#5e35b1,color:#2f1a5e;
+  classDef supporto fill:#eceff1,stroke:#546e7a,color:#263238;
+  classDef legacy fill:#ffe3e3,stroke:#b71c1c,color:#5a1010;
+
+  class DM,FL_DOS,DOS_CORE,DOS_IA,AN_DOS dossier;
+  class FL_GLOB,OP_CORE,OP_ANAG,OP_IA,MG_CORE,AN_GLOB globale;
+  class ACC_CORE accesso;
+  class AU_CORE,AU_INBOX autisti;
+  class SS_UI,SS_UTILS,SS_BE supporto;
+  class LEG_ALIAS,LEG_MISC legacy;
