@@ -13,11 +13,12 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 ---
 
 ## 2) Regole non negoziabili per Codex
-1. Leggere tutto il repository quando serve contesto completo.
-2. Modificare solo i file ammessi dal prompt (whitelist).
-3. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
-4. Non cambiare codice applicativo se il task e documentale.
-5. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
+1. Ogni nuovo prompt/patch/task deve partire leggendo `docs/STATO_ATTUALE_PROGETTO.md`.
+2. Leggere tutto il repository quando serve contesto completo.
+3. Modificare solo i file ammessi dal prompt (whitelist).
+4. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
+5. Non cambiare codice applicativo se il task e documentale.
+6. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
 
 ---
 
@@ -65,13 +66,14 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 ## 5) Allineamento al blueprint ufficiale
 
 Documenti baseline da rispettare:
-1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
-2. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
-3. `docs/data/MAPPA_COMPLETA_DATI.md`
-4. `docs/data/REGOLE_STRUTTURA_DATI.md`
-5. `docs/security/SICUREZZA_E_PERMESSI.md`
-6. `docs/architecture/FUNZIONI_TRASVERSALI.md`
-7. `docs/product/STORICO_DECISIONI_PROGETTO.md`
+1. `docs/STATO_ATTUALE_PROGETTO.md`
+2. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
+3. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
+4. `docs/data/MAPPA_COMPLETA_DATI.md`
+5. `docs/data/REGOLE_STRUTTURA_DATI.md`
+6. `docs/security/SICUREZZA_E_PERMESSI.md`
+7. `docs/architecture/FUNZIONI_TRASVERSALI.md`
+8. `docs/product/STORICO_DECISIONI_PROGETTO.md`
 
 Se una richiesta rompe coerenza con questi documenti:
 - Codex deve segnalarlo esplicitamente prima di patchare.

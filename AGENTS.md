@@ -4,6 +4,10 @@
 - **MODE = OPERAIO** e il default per i task operativi su questo repository.
 - Se il prompt specifica un altro mode, seguire il prompt.
 
+## Regola di ingresso obbligatoria
+- Prima di qualsiasi task nuovo, leggere sempre `docs/STATO_ATTUALE_PROGETTO.md`.
+- Se il task cambia in modo importante lo stato del progetto (decisioni, priorita, punti aperti, fase), suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
+
 ## Ruoli fissi del progetto
 - **Utente** = LOGICA / BUSINESS / realta operativa
 - **ChatGPT** = CTO / ARCHITETTO / struttura / strategia / prompt per Codex
@@ -17,12 +21,13 @@
 5. Seguire sempre il blueprint ufficiale prima di proporre o applicare modifiche.
 
 ## Documenti da leggere prima di toccare codice
-1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
-2. `docs/product/STORICO_DECISIONI_PROGETTO.md`
-3. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
-4. `docs/data/MAPPA_COMPLETA_DATI.md`
-5. `docs/security/SICUREZZA_E_PERMESSI.md`
-6. altri documenti rilevanti in `docs/` in base al task
+1. `docs/STATO_ATTUALE_PROGETTO.md`
+2. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
+3. `docs/product/STORICO_DECISIONI_PROGETTO.md`
+4. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
+5. `docs/data/MAPPA_COMPLETA_DATI.md`
+6. `docs/security/SICUREZZA_E_PERMESSI.md`
+7. altri documenti rilevanti in `docs/` in base al task
 
 ## Regola whitelist (bloccante)
 - Se per implementare serve toccare file fuori whitelist, fermarsi subito e dichiarare solo:

@@ -2,7 +2,10 @@
 
 Questo file e il punto di ingresso piu semplice per capire il progetto.
 
-Se devi orientarti velocemente, leggi questi 5 documenti in questo ordine:
+Prima di tutto leggi sempre:
+1. `docs/STATO_ATTUALE_PROGETTO.md`
+
+Poi, per orientarti velocemente, leggi questi documenti in questo ordine:
 1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
 2. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
 3. `docs/data/MAPPA_COMPLETA_DATI.md`
