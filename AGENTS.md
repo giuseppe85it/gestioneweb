@@ -17,11 +17,11 @@
 5. Seguire sempre il blueprint ufficiale prima di proporre o applicare modifiche.
 
 ## Documenti da leggere prima di toccare codice
-1. `docs/PROJECT_MASTER_BLUEPRINT.md`
-2. `docs/product/PROJECT_DECISIONS_LOG.md`
-3. `docs/architecture/NEXT_APP_ARCHITECTURE.md`
-4. `docs/data/DATA_MASTER_MAP.md`
-5. `docs/security/SECURITY_AND_PERMISSIONS_BLUEPRINT.md`
+1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
+2. `docs/product/STORICO_DECISIONI_PROGETTO.md`
+3. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
+4. `docs/data/MAPPA_COMPLETA_DATI.md`
+5. `docs/security/SICUREZZA_E_PERMESSI.md`
 6. altri documenti rilevanti in `docs/` in base al task
 
 ## Regola whitelist (bloccante)
@@ -62,3 +62,4 @@ Ogni task deve restare coerente con:
 - eventuali rischi
 - eventuale hash commit
 - nessun dump completo di codice/file
+

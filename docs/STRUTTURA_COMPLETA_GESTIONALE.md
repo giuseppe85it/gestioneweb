@@ -1,4 +1,4 @@
-# PROJECT MASTER BLUEPRINT
+# STRUTTURA COMPLETA GESTIONALE
 
 Versione: 2026-03-06  
 Stato: Documento madre definitivo (fonte di verita architetturale del repository)
@@ -100,7 +100,7 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
   - Questi moduli non sono confinati a una singola targa.
 
 ## 8. Dati / storage / chiavi / collezioni
-- **Fonte completa**: `docs/data/DATA_MASTER_MAP.md` [CONFERMATO].
+- **Fonte completa**: `docs/data/MAPPA_COMPLETA_DATI.md` [CONFERMATO].
 - **Vincolo architetturale** [CONFERMATO]:
   - Non cambiare naming key/collection senza piano di migrazione esplicito.
 - **Incoerenze note da gestire in target** [CONFERMATO]:
@@ -144,10 +144,10 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
 - **Come compare in UI** [RACCOMANDAZIONE]:
   - Widget priorita giornaliere + badge stato + reminder timeline per mezzo.
 - **Memoria esterna strutturata** [RACCOMANDAZIONE]:
-  - Registro decisioni (`PROJECT_DECISIONS_LOG`) e audit eventi.
+  - Registro decisioni (`STORICO_DECISIONI_PROGETTO`) e audit eventi.
 
 ## 12. Sicurezza / ruoli / permessi
-- **Fonte completa**: `docs/security/SECURITY_AND_PERMISSIONS_BLUEPRINT.md` [CONFERMATO].
+- **Fonte completa**: `docs/security/SICUREZZA_E_PERMESSI.md` [CONFERMATO].
 - **Punto attuale** [CONFERMATO]:
   - Routing app non dimostra guard ruoli admin/capo.
   - Storage rules correnti bloccano tutto (`allow read, write: if false`).
@@ -190,9 +190,10 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
 ---
 
 ## Fonte di verita (ordine)
-1. `docs/PROJECT_MASTER_BLUEPRINT.md` (questo file)
-2. `docs/architecture/NEXT_APP_ARCHITECTURE.md`
-3. `docs/data/DATA_MASTER_MAP.md`
-4. `docs/data/DATA_CONTRACT_MASTER.md`
-5. `docs/security/SECURITY_AND_PERMISSIONS_BLUEPRINT.md`
-6. `docs/product/PROJECT_DECISIONS_LOG.md`
+1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md` (questo file)
+2. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
+3. `docs/data/MAPPA_COMPLETA_DATI.md`
+4. `docs/data/REGOLE_STRUTTURA_DATI.md`
+5. `docs/security/SICUREZZA_E_PERMESSI.md`
+6. `docs/product/STORICO_DECISIONI_PROGETTO.md`
+

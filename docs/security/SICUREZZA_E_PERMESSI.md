@@ -1,4 +1,4 @@
-# SECURITY AND PERMISSIONS BLUEPRINT
+# SICUREZZA E PERMESSI
 
 Versione: 2026-03-06  
 Scopo: blueprint sicurezza/permessi per la nuova app GestioneManutenzione.
@@ -130,4 +130,5 @@ Template minimo richiesta:
 3. Introdurre audit log trasversale [ALTA].
 4. Governare segreti IA lato server [ALTA].
 5. Consolidare policy delete/restore e retention [MEDIA].
+
 

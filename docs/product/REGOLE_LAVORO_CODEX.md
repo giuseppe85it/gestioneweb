@@ -1,4 +1,4 @@
-# CODEX WORKING RULES
+# REGOLE LAVORO CODEX
 
 Versione: 2026-03-06  
 Scopo: regole operative per futuri task Codex su GestioneManutenzione.
@@ -65,17 +65,17 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 ## 5) Allineamento al blueprint ufficiale
 
 Documenti baseline da rispettare:
-1. `docs/PROJECT_MASTER_BLUEPRINT.md`
-2. `docs/architecture/NEXT_APP_ARCHITECTURE.md`
-3. `docs/data/DATA_MASTER_MAP.md`
-4. `docs/data/DATA_CONTRACT_MASTER.md`
-5. `docs/security/SECURITY_AND_PERMISSIONS_BLUEPRINT.md`
-6. `docs/architecture/CROSS_CUTTING_CONCERNS.md`
-7. `docs/product/PROJECT_DECISIONS_LOG.md`
+1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
+2. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
+3. `docs/data/MAPPA_COMPLETA_DATI.md`
+4. `docs/data/REGOLE_STRUTTURA_DATI.md`
+5. `docs/security/SICUREZZA_E_PERMESSI.md`
+6. `docs/architecture/FUNZIONI_TRASVERSALI.md`
+7. `docs/product/STORICO_DECISIONI_PROGETTO.md`
 
 Se una richiesta rompe coerenza con questi documenti:
 - Codex deve segnalarlo esplicitamente prima di patchare.
-- Se il cambio e voluto, va prima registrata decisione in `PROJECT_DECISIONS_LOG`.
+- Se il cambio e voluto, va prima registrata decisione in `STORICO_DECISIONI_PROGETTO`.
 
 ---
 
@@ -121,3 +121,4 @@ PASSI FINALI
 RISPOSTA ATTESA IN CHAT (BREVE)
 - <elenco richiesto>
 ```
+

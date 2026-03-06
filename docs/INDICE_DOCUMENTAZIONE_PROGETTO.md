@@ -1,25 +1,25 @@
-# README PROJECT MAP
+# INDICE DOCUMENTAZIONE PROGETTO
 
 Indice dei documenti architetturali/dati/sicurezza che costituiscono la base del progetto GestioneManutenzione.
 
 ## 1) Fonte di verita (ordine ufficiale)
-1. `docs/PROJECT_MASTER_BLUEPRINT.md`  
+1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`  
    Documento madre: visione, architettura attuale/target, regole centrali.
-2. `docs/architecture/NEXT_APP_ARCHITECTURE.md`  
+2. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`  
    Architettura pratica area-per-area della nuova app.
-3. `docs/architecture/NEXT_APP_INFORMATION_ARCHITECTURE.mmd`  
+3. `docs/architecture/DIAGRAMMA_STRUTTURA_NUOVA_APP.mmd`  
    Mappa mermaid dei collegamenti tra aree principali.
-4. `docs/data/DATA_MASTER_MAP.md`  
+4. `docs/data/MAPPA_COMPLETA_DATI.md`  
    Mappa completa key/collection/storage path + writer/reader.
-5. `docs/data/DATA_CONTRACT_MASTER.md`  
+5. `docs/data/REGOLE_STRUTTURA_DATI.md`  
    Contratto dati globale (entita, campi, relazioni, regole).
-6. `docs/security/SECURITY_AND_PERMISSIONS_BLUEPRINT.md`  
+6. `docs/security/SICUREZZA_E_PERMESSI.md`  
    Blueprint sicurezza, ruoli, permessi, audit.
-7. `docs/architecture/CROSS_CUTTING_CONCERNS.md`  
+7. `docs/architecture/FUNZIONI_TRASVERSALI.md`  
    Regole trasversali (PDF, IA, ricerca, sicurezza, navigazione mezzo, report).
-8. `docs/product/PROJECT_DECISIONS_LOG.md`  
+8. `docs/product/STORICO_DECISIONI_PROGETTO.md`  
    Registro decisioni architetturali con stato confermato/da verificare.
-9. `docs/product/CODEX_WORKING_RULES.md`  
+9. `docs/product/REGOLE_LAVORO_CODEX.md`  
    Regole operative per futuri prompt Codex.
 
 ## 2) Documenti di base gia prodotti (supporto)
@@ -35,12 +35,12 @@ Indice dei documenti architetturali/dati/sicurezza che costituiscono la base del
   Convergenza moduli nel Dossier Mezzo.
 
 ## 3) Come usare questi documenti
-1. Parti sempre da `PROJECT_MASTER_BLUEPRINT`.
-2. Verifica che la modifica richiesta sia coerente con `NEXT_APP_ARCHITECTURE`.
-3. Prima di toccare dati, consulta `DATA_MASTER_MAP` e `DATA_CONTRACT_MASTER`.
-4. Prima di toccare accessi/sicurezza, consulta `SECURITY_AND_PERMISSIONS_BLUEPRINT`.
-5. Registra nuove scelte in `PROJECT_DECISIONS_LOG`.
-6. Applica le regole operative in `CODEX_WORKING_RULES`.
+1. Parti sempre da `STRUTTURA_COMPLETA_GESTIONALE`.
+2. Verifica che la modifica richiesta sia coerente con `NUOVA_STRUTTURA_GESTIONALE`.
+3. Prima di toccare dati, consulta `MAPPA_COMPLETA_DATI` e `REGOLE_STRUTTURA_DATI`.
+4. Prima di toccare accessi/sicurezza, consulta `SICUREZZA_E_PERMESSI`.
+5. Registra nuove scelte in `STORICO_DECISIONI_PROGETTO`.
+6. Applica le regole operative in `REGOLE_LAVORO_CODEX`.
 
 ## 4) Convenzioni di stato (obbligatorie nei docs)
 - `CONFERMATO`: dimostrato dal repository.
@@ -53,3 +53,4 @@ Questa cartella documentale deve sostituire la dipendenza dalla memoria della ch
 - contesto tecnico stabile nel repository,
 - decisioni tracciate,
 - regole di coerenza per evoluzioni future.
+

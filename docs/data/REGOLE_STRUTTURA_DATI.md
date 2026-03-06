@@ -1,4 +1,4 @@
-# DATA CONTRACT MASTER
+# REGOLE STRUTTURA DATI
 
 Versione: 2026-03-06  
 Scopo: contratto dati globale ad alto livello per evitare incoerenze nelle evoluzioni future.
@@ -126,8 +126,9 @@ Scopo: contratto dati globale ad alto livello per evitare incoerenze nelle evolu
 ---
 
 ## 6) Fonti di riferimento
-- `docs/data/DATA_MASTER_MAP.md`
+- `docs/data/MAPPA_COMPLETA_DATI.md`
 - `docs/ui-redesign/verification_closure.md`
 - `docs/diagrams/flows_data_contract.md`
 - `src/utils/storageSync.ts`
 - `src/App.tsx`
+

@@ -1,7 +1,7 @@
-# PROJECT DECISIONS LOG
+# STORICO DECISIONI PROGETTO
 
 Registro decisionale architetturale del progetto GestioneManutenzione.  
-Fonte di verita: usare questo file insieme a `docs/PROJECT_MASTER_BLUEPRINT.md`.
+Fonte di verita: usare questo file insieme a `docs/STRUTTURA_COMPLETA_GESTIONALE.md`.
 
 ## Legenda stato
 - `confermato`: decisione supportata da documentazione/repository e adottata nel blueprint.
@@ -39,3 +39,4 @@ Qualsiasi nuova decisione architetturale deve essere aggiunta qui con:
 2. motivo concreto,
 3. impatto su moduli/dati/sicurezza,
 4. stato `confermato` o `da verificare`.
+

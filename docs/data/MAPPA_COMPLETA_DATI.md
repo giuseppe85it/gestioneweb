@@ -1,4 +1,4 @@
-# DATA MASTER MAP
+# MAPPA COMPLETA DATI
 
 Versione: 2026-03-06  
 Scopo: mappa unificata delle sorgenti dati del progetto GestioneManutenzione.
@@ -115,3 +115,4 @@ Nota: la sessione locale non sostituisce i dati operativi su Firestore; il mirro
 - `src/pages/DossierMezzo.tsx`
 - `src/pages/Acquisti.tsx`
 - `src/utils/homeEvents.ts`
+

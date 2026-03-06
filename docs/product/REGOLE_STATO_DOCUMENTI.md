@@ -1,4 +1,4 @@
-# DOCUMENT STATUS RULES
+# REGOLE STATO DOCUMENTI
 
 Versione: 2026-03-06  
 Scopo: uniformare lo stato dei documenti architetturali e ridurre ambiguita tra sistema attuale, legacy e target.
@@ -52,7 +52,7 @@ Scopo: uniformare lo stato dei documenti architetturali e ridurre ambiguita tra 
 1. Ogni sezione critica deve indicare almeno uno stato: `LEGACY`, `TARGET`, `CURRENT`, `IN TRANSIZIONE`.
 2. Se mancano prove oggettive, aggiungere anche `DA VERIFICARE`.
 3. Evitare mix ambiguo nello stesso paragrafo senza distinzione stato.
-4. Aggiornare `PROJECT_DECISIONS_LOG` quando uno stato cambia in modo ufficiale.
+4. Aggiornare `STORICO_DECISIONI_PROGETTO` quando uno stato cambia in modo ufficiale.
 
 ## Beneficio operativo
 Questa tassonomia evita confusione tra:
@@ -60,3 +60,4 @@ Questa tassonomia evita confusione tra:
 - stato reale oggi (CURRENT),
 - architettura desiderata (TARGET),
 - fase di migrazione controllata (IN TRANSIZIONE).
+

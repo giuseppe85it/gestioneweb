@@ -1,4 +1,4 @@
-# CROSS CUTTING CONCERNS
+# FUNZIONI TRASVERSALI
 
 Versione: 2026-03-06  
 Scopo: regole trasversali della nuova app, valide su tutte le aree funzionali.
@@ -103,3 +103,4 @@ Scopo: regole trasversali della nuova app, valide su tutte le aree funzionali.
 1. Stream eventi autisti canonico unico [DA VERIFICARE].
 2. Contratto definitivo allegati preventivi [DA VERIFICARE].
 3. Permission matrix applicata end-to-end (route + data) [DA VERIFICARE].
+

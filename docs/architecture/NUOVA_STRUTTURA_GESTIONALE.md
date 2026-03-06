@@ -1,7 +1,7 @@
-# NEXT APP ARCHITECTURE
+# NUOVA STRUTTURA GESTIONALE
 
 Blueprint pratico della nuova applicazione (target), coerente con:
-- `docs/PROJECT_MASTER_BLUEPRINT.md`
+- `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
 - `docs/ui-redesign/sitemap_proposed.md`
 - `docs/ui-redesign/dossier_convergence_map.md`
 - `docs/diagrams/flows_data_contract.md`
@@ -125,3 +125,4 @@ Blueprint pratico della nuova applicazione (target), coerente con:
 - Stream eventi autisti canonico.
 - Matrice permessi ruoli (admin/capo/autista).
 - Contratto definitivo allegati preventivi.
+
