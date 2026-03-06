@@ -1,144 +1,64 @@
-# AGENTS.md — Regole operative per Codex (Gestione Web)
+# AGENTS.md - Guida Operativa Permanente Codex (GestioneManutenzione)
 
-## Principio base
-Codex deve fare SOLO quello che è scritto nel prompt corrente.
-Se una cosa non è richiesta esplicitamente, NON va fatta.
+## Regola iniziale
+- **MODE = OPERAIO** e il default per i task operativi su questo repository.
+- Se il prompt specifica un altro mode, seguire il prompt.
 
----
+## Ruoli fissi del progetto
+- **Utente** = LOGICA / BUSINESS / realta operativa
+- **ChatGPT** = CTO / ARCHITETTO / struttura / strategia / prompt per Codex
+- **Codex** = OPERAIO che verifica il repo, legge la documentazione ufficiale e applica patch in modo controllato
 
-## MODE (obbligatorio)
-Ogni prompt deve iniziare con: `MODE = ...`
+## Principi non negoziabili
+1. Leggere tutto il repository quando serve contesto completo.
+2. Modificare solo i file autorizzati dal prompt corrente (whitelist).
+3. Non modificare codice applicativo se il task e documentale.
+4. Non inventare: se un fatto non e dimostrabile, scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
+5. Seguire sempre il blueprint ufficiale prima di proporre o applicare modifiche.
 
-### MODE = AUDIT (read-only)
-Scopo: analisi e report.
-- SOLO lettura del repository.
-- Output SOLO in chat.
-- VIETATO creare/modificare file, anche dentro docs/** o tools/**.
-- VIETATO eseguire script/command che spostano o cancellano file (ovunque).
+## Documenti da leggere prima di toccare codice
+1. `docs/PROJECT_MASTER_BLUEPRINT.md`
+2. `docs/product/PROJECT_DECISIONS_LOG.md`
+3. `docs/architecture/NEXT_APP_ARCHITECTURE.md`
+4. `docs/data/DATA_MASTER_MAP.md`
+5. `docs/security/SECURITY_AND_PERMISSIONS_BLUEPRINT.md`
+6. altri documenti rilevanti in `docs/` in base al task
 
-### MODE = RELAZIONE (screenshot + PDF)
-Scopo: documentazione e PDF presentazione.
-- Puoi LEGGERE tutto il repository.
-- Puoi SCRIVERE/CREARE file SOLO in:
-  - docs/presentazione/**
-  - tools/**
-  - AGENTS.md (solo questo file)
-- VIETATO modificare qualsiasi file in src/**.
-- Ammessa esecuzione di tool per screenshot/diagrammi/PDF SOLO se:
-  - non modifica src/**
-  - non sposta/cancella file fuori repo
-  - usa di default SOLO localhost (http://localhost:5173)
+## Regola whitelist (bloccante)
+- Se per implementare serve toccare file fuori whitelist, fermarsi subito e dichiarare solo:
+  - `SERVE FILE EXTRA: <path>`
+- Non eseguire altre modifiche finche la whitelist non viene aggiornata.
 
-### MODE = OPERAIO (patch controllate)
-Scopo: modifiche al codice (mirate).
-- Puoi LEGGERE tutto il repository.
-- Puoi MODIFICARE SOLO i file indicati nel prompt (WHITELIST).
-- In MODE=OPERAIO è CONSENTITO modificare file in src/** SOLO se inclusi in WHITELIST nel prompt.
-- Vietato modificare qualunque altro file fuori whitelist.
-- Vietato:
-  - refactor globali
-  - rename massivi
-  - format globale
-  - upgrade dipendenze
-  - cambi routing/chiavi Firestore/storageSync/logiche core, salvo richiesta esplicita nel prompt
-- Se serve un file extra non in whitelist: scrivere SOLO
-  - `SERVE FILE EXTRA: <path> — motivo`
-  e STOP senza altre modifiche.
-- Vietato eseguire script/command che spostano o cancellano file fuori dal repository.
+## Classificazione rischio modifiche
+- **BASSO**: typo, import, path, fix minori non logici
+- **NORMALE**: UI/CSS e composizione visuale
+- **ELEVATO**: logica dati, `storageSync`, Firestore, sessioni, sincronizzazioni
+- **EXTRA ELEVATO**: refactor architetturale, nuove chiavi dati, migrazioni, cambi contract cross-modulo
 
----
+## Divieti operativi
+- Vietato inventare regole, flussi o strutture dati non dimostrate dal repository.
+- Vietato fare search-and-replace massivi o modifiche globali distruttive.
+- Vietato introdurre cambi non richiesti in routing, contratti dati, IA, PDF o sicurezza.
 
-## Divieti assoluti (sempre)
-- VIETATO spostare/cancellare file al di fuori del repository (qualsiasi disco/cartella esterna).
-- VIETATO operare su cartelle di sistema (Windows/Program Files/Driver) salvo richiesta esplicita e motivata nel prompt.
-- Se un’azione è rischiosa o irreversibile: STOP e chiedere istruzione nel prompt successivo (non improvvisare).
+## Coerenza obbligatoria
+Ogni task deve restare coerente con:
+- moduli e architettura target
+- data contract e mappa dati
+- regole trasversali PDF
+- integrazione IA
+- blueprint sicurezza/permessi
+- decision log ufficiale
 
----
+## Obbligo report post-task
+- Dopo ogni task, creare report secondo:
+  - `docs/product/CODEX_CHANGE_REPORT_RULES.md`
+  - `docs/change-reports/_TEMPLATE_CHANGE_REPORT.md`
+  - `docs/product/CONTEXT_REPORT_WORKFLOW.md`
+  - `docs/continuity-reports/_TEMPLATE_CONTINUITY_REPORT.md`
 
-## Network
-- Default: NO chiamate esterne.
-- Eccezione: solo se il prompt lo richiede esplicitamente.
-- Per RELAZIONE: consentito SOLO localhost (BASE_URL) salvo istruzioni diverse.
-
----
-
-## RELAZIONE — Struttura e requisiti (solo MODE=RELAZIONE)
-
-### Output finale obbligatorio
-- docs/presentazione/Relazione_Gestionale.pdf
-
-### Struttura cartelle
-docs/presentazione/
-  README.md
-  data_contract.md
-  annotations.json
-  screens/
-    raw/
-    annotated/
-  diagrams/
-  build/
-tools/
-  capture_screenshots.js
-  render_diagrams.mjs
-  annotate_screenshots.py
-  build_pdf.py
-
-### Screenshot
-- Base URL default: http://localhost:5173 (override con env BASE_URL)
-- Viewport 1440x900
-- Screenshot fullPage PNG
-- Salvare in docs/presentazione/screens/raw/
-
-### Annotazioni
-- Box, frecce, callout numerati.
-- Sorgente: docs/presentazione/annotations.json
-- Output: docs/presentazione/screens/annotated/
-
-### Diagrammi (PNG in docs/presentazione/diagrams/)
-1) Architettura (Vite/React, Firestore, Storage, Functions, Autisti)
-2) Flusso operativo (Autisti → Inbox/Admin → Import → Dossier)
-3) Data Contract (KEY → writer → reader → schema → note)
-
-### Impaginazione PDF (stile presentazione)
-Ogni pagina “schermata” a 2 colonne:
-- SINISTRA: screenshot annotato
-- DESTRA: testo semplice + lista callout numerati (1,2,3...)
-
-Regole testo:
-- Frasi corte, parole comuni.
-- Spiega cosa vede l’utente e cosa succede quando preme.
-- Evita termini tecnici, se servono spiegali in 1 riga.
-
-Il PDF deve includere:
-- Copertina + indice
-- Sezioni per moduli (Home, Gestione Operativa, Mezzi, Dossier, Autisti, IA, ecc.)
-- Screenshot annotati + diagrammi
-- Tabella “Data Contract” da docs/presentazione/data_contract.md
-- Capitolo “Portabilità e migrazione” + rischi (targa, date, token URL, dedup, permessi)
-
----
-
-## Contenuti obbligatori (solo MODE=RELAZIONE)
-
-### Flussi
-Sezione “Flussi” con:
-- Autisti (login → mezzo attivo → azioni → scrittura eventi)
-- Admin/Inbox (lettura → revisione → import → storico)
-- Dossier (lettura dati → filtri targa → aggregazione → viste)
-- Documenti IA (upload → estrazione → verifica → salvataggio)
-Ogni flusso:
-- diagramma (Mermaid o PlantUML) + 5–10 bullet in italiano semplice.
-
-### Data Contract (chiavi)
-Tabella:
-KEY → Scopo → Writer → Reader → Schema JSON → Note/Rischi
-+ diagramma data-flow per macro-aree:
-Autisti, Admin/Inbox, Operativa, Dossier, IA, Documenti.
-
-### Roadmap
-Sezione “Possibili implementazioni”:
-- cosa si può aggiungere
-- impatto (basso/medio/alto)
-- prerequisiti
-- rischio principale
-Solo documentazione.
+## Formato risposta atteso in chat
+- sintesi breve
+- file toccati
+- eventuali rischi
+- eventuale hash commit
+- nessun dump completo di codice/file
