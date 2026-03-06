@@ -1,0 +1,138 @@
+﻿flowchart LR
+
+%% ================= AREE =================
+subgraph CC[Centro di Controllo]
+  HOME[Home Dashboard Admin]
+  GO[Gestione Operativa]
+  CCTRL[Centro Controllo]
+end
+
+subgraph FL[Flotta]
+  MEZZI[Mezzi]
+  MAN[Manutenzioni]
+  LAV[Lavori (Da eseguire/In attesa/Eseguiti)]
+  CAPO[Capo Mezzi + Capo Costi]
+end
+
+subgraph DOS[Dossier Mezzo]
+  DL[Dossier Lista]
+  DM[Dossier Mezzo]
+  M360[Mezzo 360]
+  A360[Autista 360]
+  DG[Sezioni Dossier Gomme/Rifornimenti]
+end
+
+subgraph OP[Operativita]
+  ACQ[Acquisti]
+  ORD[Ordini + Dettaglio Ordine]
+  ANAG[Colleghi + Fornitori]
+  ATT[Attrezzature Cantieri]
+end
+
+subgraph MAG[Magazzino]
+  INV[Inventario]
+  CONS[Materiali Consegnati]
+end
+
+subgraph ANA[Analisi]
+  AE[Analisi Economica]
+  GE[GommeEconomiaSection]
+  RE[RifornimentiEconomiaSection]
+end
+
+subgraph AUT[Autisti]
+  AG[Autisti Gate/Login/Setup]
+  AH[Home Autista + Cambio Mezzo]
+  AR[Rifornimento/Controllo/Segnalazioni/Richieste]
+  AI[Autisti Inbox + Admin + pagine All]
+end
+
+subgraph IA[IA]
+  IAH[IA Home + API Key]
+  IAL[IA Libretto + Copertura + ControlloDebug]
+  IAD[IA Documenti]
+  LEXP[Libretti Export]
+  CIS[Cisterna (Page/IA/Schede)]
+end
+
+subgraph SYS[Sistema / Supporto]
+  SS[storageSync + homeEvents + alertsState]
+  PDFE[pdfEngine + pdfPreview + PdfPreviewModal]
+  UIC[TargaPicker + AutistiEventoModal + ModalGomme]
+  BE[Functions Firebase + Functions-Schede + api/pdf-ai-enhance]
+end
+
+PDF[(PDF Export / Preview)]
+
+%% ================= RELAZIONI CORE =================
+HOME --> GO
+HOME --> CCTRL
+HOME --> MEZZI
+HOME --> DM
+HOME --> AI
+
+GO --> INV
+GO --> CONS
+GO --> MAN
+GO --> CCTRL
+
+MEZZI --> DM
+MAN --> DM
+LAV --> DM
+CONS --> DM
+AE --> DM
+DG --> DM
+M360 --> DM
+A360 --> DM
+
+ACQ --> ORD
+ACQ --> INV
+ACQ --> ANAG
+ORD --> INV
+CONS --> INV
+MAN --> CONS
+
+AUT --> AI
+AR --> DM
+AR --> RE
+AR --> M360
+AR --> A360
+
+IAD --> DM
+IAL --> MEZZI
+IAH --> IAL
+IAH --> IAD
+LEXP --> PDF
+CIS --> IA
+
+CAPO --> AE
+CAPO --> DM
+AE --> GE
+AE --> RE
+
+%% ================= INFRASTRUTTURA =================
+SS --> MEZZI
+SS --> MAN
+SS --> INV
+SS --> AUT
+SS --> DM
+PDFE --> PDF
+PDFE --> ACQ
+PDFE --> MAN
+PDFE --> ORD
+PDFE --> DM
+PDFE --> CCTRL
+PDFE --> AUT
+UIC --> AUT
+UIC --> HOME
+BE --> IA
+BE --> PDF
+BE --> AE
+
+%% ================= NOTE LEGACY =================
+LEG1[/Alias route: /dossiermezzi/:targa == /dossier/:targa/]
+LEG2[/Alias route: /acquisti/dettaglio/:ordineId -> Acquisti/]
+LEG3[/Legacy file: AutistiInboxHome.tsx.bak2, src/main.zip, rcautistiSetupMezzo.tsx/]
+LEG1 -.-> DM
+LEG2 -.-> ACQ
+LEG3 -.-> SYS
