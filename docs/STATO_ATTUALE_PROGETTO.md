@@ -8,6 +8,7 @@
 - **Stato processo Codex/report**: regole operative attive (`AGENTS.md`, `REGOLE_LAVORO_CODEX.md`) + template/report di change e continuity gia presenti.
 - **Protocollo sicurezza modifiche**: attivo tramite `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`; ogni patch deve passare da analisi impatto prima dell'applicazione.
 - **Audit repo vs docs**: eseguito con report dedicato in `docs/audit/`; emerse differenze ad alta priorita su endpoint IA/PDF, policy dati/sicurezza effettive e route legacy ancora attive.
+- **Verifica infrastrutturale Firebase/Backend (2026-03-07)**: eseguita in sola lettura; criticita reali confermate su Storage se toccato senza analisi e su canali backend IA/PDF non canonici (`aiCore` non esportata nel repo backend, libretto su Cloud Run esterno); `estraiPreventivoIA` e `stamp_pdf` risultano invece flussi reali da consolidare/documentare.
 
 ## 2. Decisioni architetturali confermate
 - Nuova app in parallelo alla legacy.
@@ -36,6 +37,7 @@
 - Policy Firestore effettive (file `firestore.rules` non presente nel repo).
 - Governance finale endpoint IA multipli.
 - Dettaglio e stato aggiornato: `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`.
+- Esito dettagliato verifica infrastrutturale: `docs/audit/VERIFICA_INFRASTRUTTURA_FIREBASE_BACKEND.md`.
 
 ## 5. Ultimi avanzamenti importanti
 - Creata documentazione madre completa del progetto.
@@ -44,6 +46,7 @@
 - Struttura `change-reports` creata con regole e template.
 - Struttura `continuity-reports` creata con regole e template.
 - Creato `REGISTRO_PUNTI_DA_VERIFICARE` per memoria fissa dei temi aperti.
+- Completata verifica reale Firebase/Backend con chiarimento di rischi immediati, futuri e solo documentali.
 
 ## 6. Regola operativa obbligatoria
 Prima di ogni nuovo task bisogna leggere almeno:
