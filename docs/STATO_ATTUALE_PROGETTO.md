@@ -12,6 +12,7 @@
 - **Audit UI/Grafica repo (2026-03-07)**: eseguito in sola lettura; confermate basi forti da riusare per la NEXT (`Dossier`, `CentroControllo`, `Acquisti`, `AutistiInbox/Admin`, `Capo*`) e moduli legacy/transitori da superare o unificare (`Mezzi`, CRUD generici, `MaterialiDaOrdinare` standalone); criticita prevalente architetturale/documentale, non un bug operativo immediato.
 - **Blueprint grafico NEXT (2026-03-07)**: creati blueprint visivo, design system, wireframe logici e mappa pattern da riusare in `docs/ui-blueprint/`; la fase successiva sara trasformare questo impianto documentale in shell UI reale della nuova app, lasciando invariata la legacy.
 - **Registro ufficiale migrazione NEXT (2026-03-07)**: creato `docs/product/STATO_MIGRAZIONE_NEXT.md`; da ora ogni task futuro che tocca la nuova app deve aggiornarlo per tracciare shell, read-only, scrittura, parti legacy e blocchi, senza perdere contesto tra chat o sessioni.
+- **Mappa maestra flussi gestionale (2026-03-07)**: creati `docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md`, `docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.mmd` e `docs/flow-master/FLUSSI_OPERATIVI_CRITICI.md`; il progetto dispone ora di una vista unificata del funzionamento reale del gestionale prima della shell NEXT.
 
 ## 2. Decisioni architetturali confermate
 - Nuova app in parallelo alla legacy.
@@ -57,6 +58,7 @@
 - Completato audit UI/grafica del repo con distinzione tra pattern da mantenere, rifinire, unificare o superare per la progettazione NEXT.
 - Creato il blueprint grafico ufficiale della NEXT con design system e wireframe logici, pronto per guidare la futura costruzione della shell UI reale.
 - Creato il registro ufficiale di migrazione della NEXT per tracciare in modo permanente cosa e shell, read-only, scrivente, legacy o ancora da verificare.
+- Creata la mappa maestra dei flussi del gestionale con evidenza delle convergenze verso Dossier, moduli globali, capability trasversali e flussi critici.
 
 ## 6. Regola operativa obbligatoria
 Prima di ogni nuovo task bisogna leggere almeno:
@@ -73,7 +75,7 @@ Se il task tocca la NEXT, bisogna inoltre leggere e aggiornare:
 7. `docs/product/STATO_MIGRAZIONE_NEXT.md`
 
 ## 7. Prossimo passo consigliato
-Chiudere in ordine i punti aperti ad alto impatto emersi/rafforzati dagli audit (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF) e avviare la traduzione del blueprint grafico NEXT in shell UI reale read-only, aggiornando subito `docs/product/STATO_MIGRAZIONE_NEXT.md`, `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando uno stato passa da ipotesi a implementazione reale.
+Usare la mappa maestra dei flussi come base di lettura obbligatoria prima di avviare la shell NEXT, chiudere in ordine i punti aperti ad alto impatto (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF, coerenza inventario/materiali) e aggiornare subito `docs/product/STATO_MIGRAZIONE_NEXT.md`, `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un flusso passa da mappato a implementato nella nuova app.
 
 ## 8. Stato documento
 - **STATO: CURRENT**

@@ -1,0 +1,100 @@
+flowchart LR
+  classDef core fill:#e8f1ff,stroke:#275dad,stroke-width:1.5px,color:#0f172a;
+  classDef dossier fill:#e7f7ee,stroke:#1f7a4c,stroke-width:2px,color:#0f172a;
+  classDef cross fill:#fff7df,stroke:#a16207,stroke-width:1.5px,color:#0f172a;
+  classDef warning fill:#fff1f2,stroke:#be123c,stroke-width:1.5px,color:#0f172a;
+
+  subgraph G1["Moduli globali admin"]
+    HC["Home / Centro di Controllo"]
+    FL["Flotta"]
+    OP["Operativita / Lavori / Manutenzioni"]
+    MG["Magazzino / Acquisti / Inventario"]
+    AN["Analisi / Capo Costi"]
+    SYS["Sistema / Supporto"]
+  end
+
+  subgraph G2["Convergenza mezzo-centrica"]
+    DOS["Dossier Mezzo"]
+  end
+
+  subgraph G3["Area autisti"]
+    AUT["App Autisti"]
+    INB["Autisti Inbox / Admin"]
+  end
+
+  subgraph G4["Capability trasversali"]
+    IA["IA"]
+    PDF["PDF"]
+    AL["Scadenze / Alert / Priorita"]
+    SEC["Permessi / Sicurezza"]
+    AUD["Audit log"]
+  end
+
+  EVTQ{{"Stream eventi autisti\ncanonico?"}}
+  PREQ{{"Contratto allegati\npreventivi?"}}
+  INVQ{{"Coerenza writer\ninventario/materiali?"}}
+
+  FL --> DOS
+  OP --> DOS
+  MG -. "movimenti targa-correlati" .-> DOS
+  AN <--> DOS
+  HC --> FL
+  HC --> OP
+  HC --> MG
+  HC --> AN
+  HC --> DOS
+
+  AUT --> EVTQ
+  EVTQ --> INB
+  EVTQ --> HC
+  EVTQ -. "eventi targa-correlati" .-> DOS
+
+  AUT --> INB
+  INB --> OP
+  INB --> DOS
+  INB --> HC
+
+  MG --> PREQ
+  IA --> PREQ
+  PREQ --> MG
+  PREQ -. "preventivi / PDF / allegati" .-> AN
+
+  MG --> INVQ
+  OP --> INVQ
+  IA --> INVQ
+  INVQ --> MG
+  INVQ -. "consumi / consegne / arrivi" .-> DOS
+
+  IA --> DOS
+  IA --> AN
+  IA --> MG
+  IA --> SYS
+
+  PDF --> HC
+  PDF --> DOS
+  PDF --> MG
+  PDF --> INB
+  PDF --> AN
+
+  AL --> HC
+  AL --> FL
+  AL -. "scadenze mezzo" .-> DOS
+  AL --> OP
+
+  SEC --> HC
+  SEC --> OP
+  SEC --> MG
+  SEC --> AN
+  SEC --> INB
+  SEC --> SYS
+
+  AUD -. "target trasversale" .-> HC
+  AUD -. "target trasversale" .-> OP
+  AUD -. "target trasversale" .-> MG
+  AUD -. "target trasversale" .-> DOS
+  AUD -. "target trasversale" .-> INB
+
+  class HC,FL,OP,MG,AN,SYS,AUT,INB core;
+  class DOS dossier;
+  class IA,PDF,AL,SEC,AUD cross;
+  class EVTQ,PREQ,INVQ warning;
