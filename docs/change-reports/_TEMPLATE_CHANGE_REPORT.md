@@ -41,6 +41,18 @@
 ## Legacy o Next?
 - <LEGACY / NEXT / ENTRAMBI>
 
+## Modulo/area NEXT coinvolta
+- <nessuna / shell globale / home / dossier / flotta / operativita / magazzino / analisi / sistema / altro>
+
+## Stato migrazione prima
+- <NON INIZIATO / SHELL CREATA / IMPORTATO SOLO UI / IMPORTATO READ-ONLY / IMPORTATO CON SCRITTURA / DA VERIFICARE / COMPLETATO / RIMANE LEGACY / N/A>
+
+## Stato migrazione dopo
+- <NON INIZIATO / SHELL CREATA / IMPORTATO SOLO UI / IMPORTATO READ-ONLY / IMPORTATO CON SCRITTURA / DA VERIFICARE / COMPLETATO / RIMANE LEGACY / N/A>
+
+## Aggiornato STATO_MIGRAZIONE_NEXT.md?
+- <SI / NO>
+
 ## Necessita aggiornamento stato progetto?
 - <SI / NO>
 

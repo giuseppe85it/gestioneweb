@@ -7,6 +7,7 @@
 ## Regola di ingresso obbligatoria
 - Prima di qualsiasi task nuovo, leggere sempre `docs/STATO_ATTUALE_PROGETTO.md`.
 - Se il task cambia in modo importante lo stato del progetto (decisioni, priorita, punti aperti, fase), suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
+- Se il task tocca la NEXT (shell, pagine, moduli, importazioni, stato read-only/scrittura), leggere e aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`.
 
 ## Protocollo sicurezza modifiche (obbligatorio)
 - Prima di patchare, applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
@@ -28,6 +29,8 @@
 5. Seguire sempre il blueprint ufficiale prima di proporre o applicare modifiche.
 6. Fare analisi impatto prima di ogni patch (moduli, dati, contratti, rischio, legacy/next).
 7. Se la modifica impatta lo stato reale del progetto, suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
+8. Ogni task che tocca la NEXT deve aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`; se il modulo/area cambia stato, Codex deve registrarlo.
+9. Se un task NEXT non aggiorna `docs/product/STATO_MIGRAZIONE_NEXT.md`, Codex deve spiegare esplicitamente perche.
 
 ## Documenti da leggere prima di toccare codice
 1. `docs/STATO_ATTUALE_PROGETTO.md`
@@ -38,6 +41,7 @@
 6. `docs/security/SICUREZZA_E_PERMESSI.md`
 7. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
 8. altri documenti rilevanti in `docs/` in base al task
+9. `docs/product/STATO_MIGRAZIONE_NEXT.md` quando il task tocca la nuova app NEXT
 
 ## Regola whitelist (bloccante)
 - Se per implementare serve toccare file fuori whitelist, fermarsi subito e dichiarare solo:
@@ -70,6 +74,7 @@ Ogni task deve restare coerente con:
   - `docs/change-reports/_TEMPLATE_CHANGE_REPORT.md`
   - `docs/product/CONTEXT_REPORT_WORKFLOW.md`
   - `docs/continuity-reports/_TEMPLATE_CONTINUITY_REPORT.md`
+- Nei task NEXT, change report e continuity report non sostituiscono il registro permanente `docs/product/STATO_MIGRAZIONE_NEXT.md`.
 
 ## Formato risposta atteso in chat
 - sintesi breve

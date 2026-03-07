@@ -14,6 +14,15 @@
 ## Legacy o Next
 - <LEGACY / NEXT / ENTRAMBI>
 
+## Stato area/modulo nella NEXT
+- <NON INIZIATO / SHELL CREATA / IMPORTATO SOLO UI / IMPORTATO READ-ONLY / IMPORTATO CON SCRITTURA / DA VERIFICARE / COMPLETATO / RIMANE LEGACY / N/A>
+
+## Cosa e gia stato importato/migrato
+- <shell / UI / lettura dati / scrittura / niente / altro>
+
+## Prossimo step di migrazione
+- <step concreto consigliato sulla NEXT oppure N/A>
+
 ## Moduli impattati
 - <modulo 1>
 - <modulo 2>

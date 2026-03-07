@@ -14,13 +14,15 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 
 ## 2) Regole non negoziabili per Codex
 1. Ogni nuovo prompt/patch/task deve partire leggendo `docs/STATO_ATTUALE_PROGETTO.md`.
-2. Leggere tutto il repository quando serve contesto completo.
-3. Modificare solo i file ammessi dal prompt (whitelist).
-4. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
-5. Non cambiare codice applicativo se il task e documentale.
-6. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
-7. Prima di ogni patch applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
-8. Se rischio ELEVATO/EXTRA ELEVATO: niente patch cieche; obbligo di analisi impatto + proposta soluzione + alternative.
+2. Se il task tocca la NEXT, leggere anche `docs/product/STATO_MIGRAZIONE_NEXT.md`.
+3. Leggere tutto il repository quando serve contesto completo.
+4. Modificare solo i file ammessi dal prompt (whitelist).
+5. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
+6. Non cambiare codice applicativo se il task e documentale.
+7. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
+8. Prima di ogni patch applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
+9. Se rischio ELEVATO/EXTRA ELEVATO: niente patch cieche; obbligo di analisi impatto + proposta soluzione + alternative.
+10. Ogni task che tocca la NEXT deve aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`; se non viene aggiornato, il motivo va dichiarato esplicitamente.
 
 ---
 
@@ -39,7 +41,8 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
    - punti aperti collegati
 5. **Applicare patch solo dopo allineamento al blueprint**.
 6. **Verificare output** (coerenza file whitelist, eventuali test/comandi richiesti).
-7. **Chiudere con report breve** (file toccati, punti aperti, commit hash se richiesto).
+7. **Se il task tocca la NEXT, aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`** prima della chiusura del task.
+8. **Chiudere con report breve** (file toccati, punti aperti, commit hash se richiesto).
 
 ---
 
@@ -107,10 +110,24 @@ Se una richiesta rompe coerenza con questi documenti:
 - Evoluzione nuova app: progressiva e in parallelo alla legacy.
 - Se la patch cambia stato reale/progressione progetto: suggerire aggiornamento `docs/STATO_ATTUALE_PROGETTO.md`.
 - Se la patch apre o chiude un dubbio: suggerire aggiornamento `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`.
+- Se la patch o il task modifica lo stato di una area NEXT (shell, UI, read-only, scrittura, legacy temporaneo), aggiornare subito `docs/product/STATO_MIGRAZIONE_NEXT.md`.
 
 ---
 
-## 8) Formato risposta Codex (raccomandato)
+## 8) Distinzione obbligatoria tra stato progetto, tracker NEXT e report task
+- `docs/STATO_ATTUALE_PROGETTO.md`: quadro generale del progetto, fase corrente, priorita e rischi trasversali.
+- `docs/product/STATO_MIGRAZIONE_NEXT.md`: registro permanente dell'avanzamento della nuova app NEXT per area/modulo.
+- `docs/change-reports/_TEMPLATE_CHANGE_REPORT.md`: traccia del singolo task svolto.
+- `docs/continuity-reports/_TEMPLATE_CONTINUITY_REPORT.md`: passaggio di contesto tra sessioni o task successivi.
+
+Questi documenti non sono intercambiabili:
+- aggiornare solo il change report non basta a tenere allineato lo stato della NEXT;
+- aggiornare solo `STATO_ATTUALE_PROGETTO` non basta a sapere quali moduli NEXT sono shell, read-only o scriventi;
+- il tracker NEXT deve restare il riferimento operativo per la migrazione.
+
+---
+
+## 9) Formato risposta Codex (raccomandato)
 1. File creati/modificati.
 2. Cosa e stato coperto (sezioni/moduli).
 3. Rischio e impatto.
@@ -120,7 +137,7 @@ Se una richiesta rompe coerenza con questi documenti:
 
 ---
 
-## 9) Template prompt minimo (riuso)
+## 10) Template prompt minimo (riuso)
 ```
 MODE = OPERAIO
 

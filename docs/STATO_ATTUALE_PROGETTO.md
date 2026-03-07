@@ -11,6 +11,7 @@
 - **Verifica infrastrutturale Firebase/Backend (2026-03-07)**: eseguita in sola lettura; criticita reali confermate su Storage se toccato senza analisi e su canali backend IA/PDF non canonici (`aiCore` non esportata nel repo backend, libretto su Cloud Run esterno); `estraiPreventivoIA` e `stamp_pdf` risultano invece flussi reali da consolidare/documentare.
 - **Audit UI/Grafica repo (2026-03-07)**: eseguito in sola lettura; confermate basi forti da riusare per la NEXT (`Dossier`, `CentroControllo`, `Acquisti`, `AutistiInbox/Admin`, `Capo*`) e moduli legacy/transitori da superare o unificare (`Mezzi`, CRUD generici, `MaterialiDaOrdinare` standalone); criticita prevalente architetturale/documentale, non un bug operativo immediato.
 - **Blueprint grafico NEXT (2026-03-07)**: creati blueprint visivo, design system, wireframe logici e mappa pattern da riusare in `docs/ui-blueprint/`; la fase successiva sara trasformare questo impianto documentale in shell UI reale della nuova app, lasciando invariata la legacy.
+- **Registro ufficiale migrazione NEXT (2026-03-07)**: creato `docs/product/STATO_MIGRAZIONE_NEXT.md`; da ora ogni task futuro che tocca la nuova app deve aggiornarlo per tracciare shell, read-only, scrittura, parti legacy e blocchi, senza perdere contesto tra chat o sessioni.
 
 ## 2. Decisioni architetturali confermate
 - Nuova app in parallelo alla legacy.
@@ -31,6 +32,7 @@
 4. `docs/data/MAPPA_COMPLETA_DATI.md`
 5. `docs/security/SICUREZZA_E_PERMESSI.md`
 6. `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+7. `docs/product/STATO_MIGRAZIONE_NEXT.md` per qualsiasi task che tocca la nuova app NEXT
 
 ## 4. Punti aperti da non dimenticare
 - Stream eventi autisti canonico (`@storico_eventi_operativi` vs `autisti_eventi`).
@@ -54,6 +56,7 @@
 - Completata verifica reale Firebase/Backend con chiarimento di rischi immediati, futuri e solo documentali.
 - Completato audit UI/grafica del repo con distinzione tra pattern da mantenere, rifinire, unificare o superare per la progettazione NEXT.
 - Creato il blueprint grafico ufficiale della NEXT con design system e wireframe logici, pronto per guidare la futura costruzione della shell UI reale.
+- Creato il registro ufficiale di migrazione della NEXT per tracciare in modo permanente cosa e shell, read-only, scrivente, legacy o ancora da verificare.
 
 ## 6. Regola operativa obbligatoria
 Prima di ogni nuovo task bisogna leggere almeno:
@@ -66,8 +69,11 @@ Prima di ogni nuovo task bisogna leggere almeno:
 Per ogni nuova patch e obbligatorio applicare anche:
 6. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
 
+Se il task tocca la NEXT, bisogna inoltre leggere e aggiornare:
+7. `docs/product/STATO_MIGRAZIONE_NEXT.md`
+
 ## 7. Prossimo passo consigliato
-Chiudere in ordine i punti aperti ad alto impatto emersi/rafforzati dagli audit (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF) e avviare la traduzione del blueprint grafico NEXT in shell UI reale read-only, aggiornando subito `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un punto passa da aperto a confermato.
+Chiudere in ordine i punti aperti ad alto impatto emersi/rafforzati dagli audit (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF) e avviare la traduzione del blueprint grafico NEXT in shell UI reale read-only, aggiornando subito `docs/product/STATO_MIGRAZIONE_NEXT.md`, `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando uno stato passa da ipotesi a implementazione reale.
 
 ## 8. Stato documento
 - **STATO: CURRENT**
