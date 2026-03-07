@@ -10,6 +10,7 @@
 - **Audit repo vs docs**: eseguito con report dedicato in `docs/audit/`; emerse differenze ad alta priorita su endpoint IA/PDF, policy dati/sicurezza effettive e route legacy ancora attive.
 - **Verifica infrastrutturale Firebase/Backend (2026-03-07)**: eseguita in sola lettura; criticita reali confermate su Storage se toccato senza analisi e su canali backend IA/PDF non canonici (`aiCore` non esportata nel repo backend, libretto su Cloud Run esterno); `estraiPreventivoIA` e `stamp_pdf` risultano invece flussi reali da consolidare/documentare.
 - **Audit UI/Grafica repo (2026-03-07)**: eseguito in sola lettura; confermate basi forti da riusare per la NEXT (`Dossier`, `CentroControllo`, `Acquisti`, `AutistiInbox/Admin`, `Capo*`) e moduli legacy/transitori da superare o unificare (`Mezzi`, CRUD generici, `MaterialiDaOrdinare` standalone); criticita prevalente architetturale/documentale, non un bug operativo immediato.
+- **Blueprint grafico NEXT (2026-03-07)**: creati blueprint visivo, design system, wireframe logici e mappa pattern da riusare in `docs/ui-blueprint/`; la fase successiva sara trasformare questo impianto documentale in shell UI reale della nuova app, lasciando invariata la legacy.
 
 ## 2. Decisioni architetturali confermate
 - Nuova app in parallelo alla legacy.
@@ -37,10 +38,11 @@
 - Matrice ruoli/permessi definitiva (distinzione admin/capo/account gestionale).
 - Policy Firestore effettive (file `firestore.rules` non presente nel repo).
 - Governance finale endpoint IA multipli.
-- Standard UI canonico cross-modulo per la NEXT.
+- Standard UI canonico cross-modulo per la NEXT (ora definito a livello documentale, da tradurre in shell UI reale).
 - Dettaglio e stato aggiornato: `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`.
 - Esito dettagliato verifica infrastrutturale: `docs/audit/VERIFICA_INFRASTRUTTURA_FIREBASE_BACKEND.md`.
 - Esito dettagliato audit UI repo: `docs/ui-audit/AUDIT_GRAFICA_ATTUALE.md`.
+- Esito dettagliato blueprint UI NEXT: `docs/ui-blueprint/BLUEPRINT_GRAFICO_NEXT.md`.
 
 ## 5. Ultimi avanzamenti importanti
 - Creata documentazione madre completa del progetto.
@@ -51,6 +53,7 @@
 - Creato `REGISTRO_PUNTI_DA_VERIFICARE` per memoria fissa dei temi aperti.
 - Completata verifica reale Firebase/Backend con chiarimento di rischi immediati, futuri e solo documentali.
 - Completato audit UI/grafica del repo con distinzione tra pattern da mantenere, rifinire, unificare o superare per la progettazione NEXT.
+- Creato il blueprint grafico ufficiale della NEXT con design system e wireframe logici, pronto per guidare la futura costruzione della shell UI reale.
 
 ## 6. Regola operativa obbligatoria
 Prima di ogni nuovo task bisogna leggere almeno:
@@ -64,7 +67,7 @@ Per ogni nuova patch e obbligatorio applicare anche:
 6. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
 
 ## 7. Prossimo passo consigliato
-Chiudere in ordine i punti aperti ad alto impatto emersi/rafforzati dagli audit (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF, standard UI canonico NEXT), aggiornando subito `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un punto passa da aperto a confermato.
+Chiudere in ordine i punti aperti ad alto impatto emersi/rafforzati dagli audit (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF) e avviare la traduzione del blueprint grafico NEXT in shell UI reale read-only, aggiornando subito `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un punto passa da aperto a confermato.
 
 ## 8. Stato documento
 - **STATO: CURRENT**
