@@ -15,14 +15,17 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 ## 2) Regole non negoziabili per Codex
 1. Ogni nuovo prompt/patch/task deve partire leggendo `docs/STATO_ATTUALE_PROGETTO.md`.
 2. Se il task tocca la NEXT, leggere anche `docs/product/STATO_MIGRAZIONE_NEXT.md`.
-3. Leggere tutto il repository quando serve contesto completo.
-4. Modificare solo i file ammessi dal prompt (whitelist).
-5. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
-6. Non cambiare codice applicativo se il task e documentale.
-7. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
-8. Prima di ogni patch applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
-9. Se rischio ELEVATO/EXTRA ELEVATO: niente patch cieche; obbligo di analisi impatto + proposta soluzione + alternative.
-10. Ogni task che tocca la NEXT deve aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`; se non viene aggiornato, il motivo va dichiarato esplicitamente.
+3. Prima di importare, ricostruire o migrare un modulo nella NEXT, verificare il dominio corrispondente in `docs/data/DOMINI_DATI_CANONICI.md`.
+4. Se il dominio non e mappato, e incoerente o ha stato `SENSIBILE`, `DA VERIFICARE` o `BLOCCANTE PER IMPORTAZIONE`, fermarsi e dichiararlo prima di patchare.
+5. Distinguere sempre dominio logico, dataset fisico, writer/reader legacy e target NEXT.
+6. Leggere tutto il repository quando serve contesto completo.
+7. Modificare solo i file ammessi dal prompt (whitelist).
+8. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
+9. Non cambiare codice applicativo se il task e documentale.
+10. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
+11. Prima di ogni patch applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
+12. Se rischio ELEVATO/EXTRA ELEVATO: niente patch cieche; obbligo di analisi impatto + proposta soluzione + alternative.
+13. Ogni task che tocca la NEXT deve aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`; se non viene aggiornato, il motivo va dichiarato esplicitamente.
 
 ---
 
@@ -79,12 +82,13 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 Documenti baseline da rispettare:
 1. `docs/STATO_ATTUALE_PROGETTO.md`
 2. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
-3. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
-4. `docs/data/MAPPA_COMPLETA_DATI.md`
-5. `docs/data/REGOLE_STRUTTURA_DATI.md`
-6. `docs/security/SICUREZZA_E_PERMESSI.md`
-7. `docs/architecture/FUNZIONI_TRASVERSALI.md`
-8. `docs/product/STORICO_DECISIONI_PROGETTO.md`
+3. `docs/data/DOMINI_DATI_CANONICI.md`
+4. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
+5. `docs/data/MAPPA_COMPLETA_DATI.md`
+6. `docs/data/REGOLE_STRUTTURA_DATI.md`
+7. `docs/security/SICUREZZA_E_PERMESSI.md`
+8. `docs/architecture/FUNZIONI_TRASVERSALI.md`
+9. `docs/product/STORICO_DECISIONI_PROGETTO.md`
 
 Se una richiesta rompe coerenza con questi documenti:
 - Codex deve segnalarlo esplicitamente prima di patchare.

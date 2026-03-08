@@ -1,9 +1,9 @@
 # STATO ATTUALE DEL PROGETTO
 
 ## 1. Situazione generale
-- **Fase attuale del progetto**: consolidamento documentazione e regole operative, con allineamento tra legacy e architettura target.
+- **Fase attuale del progetto**: consolidamento documentazione/regole operative e avvio dei primi ingressi `read-only` reali nella NEXT, incluso il primo Dossier Mezzo con convergenza tecnica minima.
 - **Stato app legacy**: attiva e riferimento operativo corrente.
-- **Stato nuova app next**: definita a livello architetturale/documentale, impostata per evoluzione progressiva e partenza read-only.
+- **Stato nuova app next**: shell runtime separata attiva, 5 macro-aree presenti, elenco mezzi `read-only` attivo e Dossier Mezzo NEXT iniziale gia leggibile con primo blocco tecnico `D02` in sola lettura.
 - **Stato documentazione**: struttura madre disponibile, documenti core rinominati in italiano, indice e guida di ingresso presenti.
 - **Stato processo Codex/report**: regole operative attive (`AGENTS.md`, `REGOLE_LAVORO_CODEX.md`) + template/report di change e continuity gia presenti.
 - **Protocollo sicurezza modifiche**: attivo tramite `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`; ogni patch deve passare da analisi impatto prima dell'applicazione.
@@ -22,6 +22,9 @@
 - **Terza area reale NEXT oltre il placeholder generico (2026-03-08)**: la macro-area `/next/operativita-globale` e stata trasformata in una shell UI strutturata, `read-only`, che chiarisce domini globali non mezzo-centrici, confine con il Dossier, collocazione futura di `Acquisti & Magazzino` e rapporto con IA futura, senza importare ancora logiche operative legacy.
 - **Seconda area reale NEXT oltre il placeholder generico (2026-03-08)**: la macro-area `/next/centro-controllo` e stata trasformata in una shell UI strutturata, `read-only`, che chiarisce cabina di regia, priorita, alert, scadenze, convergenza dei flussi e collegamento con Dossier e IA futura, senza importare ancora logiche della Home legacy.
 - **Prima area reale NEXT oltre il placeholder generico (2026-03-08)**: la macro-area `/next/mezzi-dossier` e stata trasformata in una shell UI strutturata, `read-only`, che chiarisce ingresso area mezzi, centralita del Dossier, convergenze mezzo-centriche e distinzione da `Operativita Globale`, senza importare ancora logiche business legacy.
+- **Primo import reale dati nella NEXT (2026-03-08)**: `/next/mezzi-dossier` legge ora `storage/@mezzi_aziendali` tramite reader canonico dedicato al dominio `Anagrafiche flotta e persone`, limitato a campi stabili (`id`, `targa`, `categoria`, `marca`, `modello`, `autistaNome`), senza scritture e senza importare ancora il Dossier completo.
+- **Primo Dossier Mezzo NEXT iniziale (2026-03-08)**: `/next/mezzi-dossier/:targa` espone ora un dettaglio mezzo `read-only` basato solo sul dominio `Anagrafiche flotta e persone`; mostra identita mezzo, stato di importazione e convergenze future, senza leggere ancora lavori, rifornimenti, documenti o costi.
+- **Primo blocco tecnico reale nel Dossier NEXT (2026-03-08)**: il dettaglio `/next/mezzi-dossier/:targa` converge ora anche una porzione minima `read-only` del dominio `Operativita tecnica mezzo`, tramite reader canonico dedicato su `@lavori` e `@manutenzioni`, limitato a backlog lavori, lavori chiusi e manutenzioni essenziali per `targa`, senza writer, materiali, costi o ricostruzioni complete della logica legacy.
 
 ## 2. Decisioni architetturali confermate
 - Nuova app in parallelo alla legacy.
@@ -86,6 +89,9 @@
 - Trasformata `/next/operativita-globale` nel terzo caso di area NEXT realmente strutturata oltre il placeholder iniziale, come shell workflow globale che distingue domini condivisi, confine con Dossier e collocazione futura di `Acquisti & Magazzino`.
 - Trasformata `/next/centro-controllo` nel secondo caso di area NEXT realmente strutturata oltre il placeholder iniziale, come cockpit `read-only` che esplicita priorita, alert, scadenze, destinazioni modulo e spazio futuro per l'IA Business v1.
 - Trasformata `/next/mezzi-dossier` nel primo caso di area NEXT realmente strutturata oltre il placeholder iniziale, con shell `detail-first` centrata sul Dossier e predisposta ai futuri import `read-only`.
+- Avviato il primo import reale dati della NEXT sul dominio `Anagrafiche flotta e persone`: `/next/mezzi-dossier` espone ora un elenco mezzi `read-only` basato su `storage/@mezzi_aziendali`, con reader canonico dedicato e senza introdurre scritture o reader improvvisati da chiavi sparse.
+- Attivato il primo Dossier Mezzo NEXT iniziale: dall'elenco mezzi si apre ora un dettaglio `read-only` su route dedicata `/next/mezzi-dossier/:targa`, sempre basato solo sul dominio stabile `D01` e costruito per preparare le future convergenze verso il Dossier senza clonare la legacy.
+- Attivata la prima convergenza tecnica reale del Dossier NEXT: lo stesso dettaglio mezzo legge ora anche una porzione minima e controllata di `D02 Operativita tecnica mezzo`, tramite reader canonico dedicato su `@lavori` e `@manutenzioni`, mantenendo il Dossier `read-only` e separato da writer, materiali e costi legacy.
 
 ## 6. Regola operativa obbligatoria
 Prima di ogni nuovo task bisogna leggere almeno:
@@ -102,7 +108,7 @@ Se il task tocca la NEXT, bisogna inoltre leggere e aggiornare:
 7. `docs/product/STATO_MIGRAZIONE_NEXT.md`
 
 ## 7. Prossimo passo consigliato
-Usare la shell NEXT, il gating frontend e le cinque macro-aree ormai strutturate `Centro di Controllo`, `Mezzi / Dossier`, `Operativita Globale`, `IA Gestionale` e `Strumenti Trasversali` come base per i primi import `read-only` reali del cockpit, del Dossier, dei domini globali e dei servizi condivisi, mantenere la legacy intatta sulle route correnti, non confondere ancora il cockpit con la `Home` legacy, l'area mezzi con una migrazione completa della logica dossier, `Operativita Globale` con il clone di `Acquisti`/`Inventario`, `IA Gestionale` con una IA runtime gia collegata o `Strumenti Trasversali` con tool gia attivi, tenere separata l'esperienza autista dalla shell admin, non scambiare la simulazione ruolo attuale per auth reale, chiudere in ordine i punti aperti ad alto impatto (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF, coerenza inventario/materiali, matrice permessi definitiva) e aggiornare subito `docs/product/STATO_MIGRAZIONE_NEXT.md`, `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un flusso o una macro-area passa da shell a implementazione reale.
+Usare la shell NEXT, il gating frontend e le cinque macro-aree ormai strutturate `Centro di Controllo`, `Mezzi / Dossier`, `Operativita Globale`, `IA Gestionale` e `Strumenti Trasversali` come base per gli ingressi `read-only` reali gia avviati su flotta e Dossier, mantenere la legacy intatta sulle route correnti, non confondere ancora il cockpit con la `Home` legacy, l'area mezzi con una migrazione completa della logica dossier, `Operativita Globale` con il clone di `Acquisti`/`Inventario`, `IA Gestionale` con una IA runtime gia collegata o `Strumenti Trasversali` con tool gia attivi, tenere separata l'esperienza autista dalla shell admin, non scambiare la simulazione ruolo attuale per auth reale, estendere il Dossier solo dominio per dominio con reader canonici dedicati, chiudere in ordine i punti aperti ad alto impatto (`aiCore` canonico, policy Storage/Firestore effettive, governance endpoint IA/PDF, coerenza inventario/materiali, matrice permessi definitiva) e aggiornare subito `docs/product/STATO_MIGRAZIONE_NEXT.md`, `REGISTRO_PUNTI_DA_VERIFICARE` e questo file quando un flusso o una macro-area passa da shell a implementazione reale.
 
 ## 8. Stato documento
 - **STATO: CURRENT**

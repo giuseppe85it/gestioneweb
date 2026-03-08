@@ -37,13 +37,23 @@ Scopo: contratto dati globale ad alto livello per evitare incoerenze nelle evolu
 - **Reader**: GestioneOperativa, Dossier, Mezzo360, GommeEconomia.
 - **Nota**: obbligatorieta dedotta dal client UI, non da schema server [DA VERIFICARE lato regole backend].
 
-### 1.4 Rifornimento (tmp + canonico) [CONFERMATO]
+### 1.4 Rifornimento (tmp + canonico) [CONFERMATO + TARGET NORMALIZZATO]
 - **Tmp**: `@rifornimenti_autisti_tmp`
-- **Canonico**: `@rifornimenti`
-- **Campi tipici**: `id`, `targa/targaCamion/targaMotrice`, `litri`, `km?`, `importo/costo?`, `data/timestamp`, `source?`.
-- **Writer**: App autisti + rettifiche admin.
-- **Reader**: Inbox/Home/CentroControllo/Dossier/Sezioni economiche.
-- **Problema**: shape non uniforme su `@rifornimenti` (array vs oggetto con `items/value`) [INCOERENTE].
+- **Canonico business target**: `@rifornimenti`
+- **Ruolo del tmp**: intake/staging operativo; non deve alimentare reader business NEXT.
+- **Shape target `@rifornimenti`**: oggetto unico con `items: RifornimentoCanonico[]` [TARGET].
+- **Chiave mezzo canonica**: `mezzoTarga` [TARGET].
+- **Alias legacy da normalizzare in ingresso**: `targa`, `targaCamion`, `targaMotrice`.
+- **Temporale canonico target**: `timestamp` numerico; eventuale `dataLabel` solo UI [TARGET].
+- **Economico canonico target**: `costo`; `importo` resta alias di intake [TARGET].
+- **Campi minimi canonici target**: `id`, `mezzoTarga`, `timestamp`, `litri`, `km`, `costo`, `source`, `validation`.
+- **Writer attuali**: App autisti + rettifiche admin.
+- **Reader legacy attuali**: Inbox/Home/CentroControllo/Dossier/Sezioni economiche.
+- **Problemi verificati**:
+  - `@rifornimenti` letto come `items` o `value.items`;
+  - `DossierMezzo` legge ancora `@rifornimenti_autisti_tmp`;
+  - `RifornimentiEconomiaSection` fa merge euristico tra canonico e tmp per recuperare `km`.
+- **Regola target**: un record e business-canonico solo se e presente in `@rifornimenti.items` con shape target e `validation.status` esplicito; niente merge reader-side nella NEXT.
 
 ### 1.5 Documento IA (`@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`) [CONFERMATO]
 - **Campi chiave**: `tipoDocumento`, `targa?`, `dataDocumento?`, `fornitore?`, `totaleDocumento?`, `valuta/currency?`, `fileUrl`, `testo?`, `createdAt`.
@@ -115,6 +125,8 @@ Scopo: contratto dati globale ad alto livello per evitare incoerenze nelle evolu
    Preferire soft delete dove il rischio operativo e alto.
 6. **Separazione writer/reader nel Dossier** [RACCOMANDAZIONE]  
    Dossier aggrega e visualizza; non diventa writer generalista.
+7. **D04: nessun merge tmp/canonico lato reader** [RACCOMANDAZIONE]  
+   `@rifornimenti_autisti_tmp` resta staging; Dossier, consumi e NEXT leggono solo `@rifornimenti.items` con `source` e `validation`.
 
 ---
 

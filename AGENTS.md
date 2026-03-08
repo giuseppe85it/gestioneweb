@@ -9,6 +9,17 @@
 - Se il task cambia in modo importante lo stato del progetto (decisioni, priorita, punti aperti, fase), suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
 - Se il task tocca la NEXT (shell, pagine, moduli, importazioni, stato read-only/scrittura), leggere e aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`.
 
+## Regola dominio-centrica per la NEXT (obbligatoria)
+- Prima di importare, ricostruire o migrare qualsiasi modulo nella NEXT, verificare sempre il dominio corrispondente in `docs/data/DOMINI_DATI_CANONICI.md`.
+- Se il dominio non e mappato, e incoerente, e segnato `SENSIBILE`, `DA VERIFICARE` o `BLOCCANTE PER IMPORTAZIONE`, fermarsi e dichiararlo esplicitamente prima di patchare o importare.
+- Non importare nella NEXT strutture dati legacy incoerenti senza normalizzazione documentata.
+- Distinguere sempre:
+  - dominio logico
+  - dataset fisico
+  - writer/reader legacy
+  - target NEXT
+- `docs/data/MAPPA_COMPLETA_DATI.md` e `docs/data/REGOLE_STRUTTURA_DATI.md` vanno usati dopo il controllo dominio-centrico, non al suo posto.
+
 ## Protocollo sicurezza modifiche (obbligatorio)
 - Prima di patchare, applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
 - Controllare sempre: stato progetto, mappa dati e punti aperti (`REGISTRO_PUNTI_DA_VERIFICARE`).
@@ -35,13 +46,15 @@
 ## Documenti da leggere prima di toccare codice
 1. `docs/STATO_ATTUALE_PROGETTO.md`
 2. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
-3. `docs/product/STORICO_DECISIONI_PROGETTO.md`
-4. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
-5. `docs/data/MAPPA_COMPLETA_DATI.md`
-6. `docs/security/SICUREZZA_E_PERMESSI.md`
-7. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
-8. altri documenti rilevanti in `docs/` in base al task
-9. `docs/product/STATO_MIGRAZIONE_NEXT.md` quando il task tocca la nuova app NEXT
+3. `docs/data/DOMINI_DATI_CANONICI.md`
+4. `docs/product/STORICO_DECISIONI_PROGETTO.md`
+5. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
+6. `docs/data/MAPPA_COMPLETA_DATI.md`
+7. `docs/data/REGOLE_STRUTTURA_DATI.md`
+8. `docs/security/SICUREZZA_E_PERMESSI.md`
+9. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
+10. altri documenti rilevanti in `docs/` in base al task
+11. `docs/product/STATO_MIGRAZIONE_NEXT.md` quando il task tocca la nuova app NEXT
 
 ## Regola whitelist (bloccante)
 - Se per implementare serve toccare file fuori whitelist, fermarsi subito e dichiarare solo:
@@ -62,6 +75,7 @@
 ## Coerenza obbligatoria
 Ogni task deve restare coerente con:
 - moduli e architettura target
+- domini dati canonici
 - data contract e mappa dati
 - regole trasversali PDF
 - integrazione IA

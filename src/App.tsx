@@ -9,6 +9,7 @@ import NextIAGestionalePage from "./next/NextIAGestionalePage";
 import NextOperativitaGlobalePage from "./next/NextOperativitaGlobalePage";
 import NextShell from "./next/NextShell";
 import NextDriverExperiencePage from "./next/NextDriverExperiencePage";
+import NextDossierMezzoPage from "./next/NextDossierMezzoPage";
 import NextMezziDossierPage from "./next/NextMezziDossierPage";
 import NextStrumentiTrasversaliPage from "./next/NextStrumentiTrasversaliPage";
 import NextRoleGuard from "./next/NextRoleGuard";
@@ -115,6 +116,14 @@ function App() {
           element={
             <NextRoleGuard areaId="mezzi-dossier">
               <NextMezziDossierPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="mezzi-dossier/:targa"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextDossierMezzoPage />
             </NextRoleGuard>
           }
         />
