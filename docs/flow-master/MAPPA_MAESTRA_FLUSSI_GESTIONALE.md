@@ -35,6 +35,13 @@ La logica generale oggi e questa:
 - **Autisti** [CONFERMATO]: genera eventi di campo che finiscono in Home, inbox admin, Dossier e viste 360.
 - **Sistema / Supporto** [CONFERMATO]: contiene funzioni trasversali come `storageSync`, `homeEvents`, `pdfEngine`, preview PDF, integrazioni IA e configurazioni.
 
+Lettura target della shell NEXT [RACCOMANDAZIONE]:
+- `Centro di Controllo`
+- `Mezzi / Dossier`
+- `Operativita Globale`
+- `IA Gestionale`
+- `Strumenti Trasversali`
+
 Regola di lettura del sistema:
 - se un dato ha una **targa forte**, tende a convergere nel **Dossier Mezzo**;
 - se un dato e di **governo generale** o di **stock condiviso**, tende a restare globale;
@@ -218,7 +225,18 @@ Regola di lettura del sistema:
   - estrazione su documenti, libretti, analisi economica e cisterna;
   - consumo dei risultati in Dossier, Analisi, Acquisti/Magazzino.
 - **Punto chiave**:
-  - IA non e un modulo isolato, ma una capability trasversale [CONFERMATO come decisione architetturale].
+  - nella NEXT l'IA non e solo una capability trasversale, ma anche una macro-area visibile chiamata concettualmente `IA Gestionale / Assistente Gestionale` [RACCOMANDAZIONE].
+- **Cosa deve aiutare a fare** [RACCOMANDAZIONE]:
+  - scadenze, anomalie, suggerimenti operativi;
+  - dossier, ordini, inventario, rifornimenti, segnalazioni, lavori, collaudi, documenti;
+  - PDF intelligenti e report assistiti;
+  - in prospettiva, lettura repository e confronto tra moduli/docs/contratti dati per segnalare incoerenze.
+- **Governance** [RACCOMANDAZIONE]:
+  - la IA segnala e motiva;
+  - l'utente decide;
+  - ChatGPT fa analisi e strategia;
+  - Codex applica le patch;
+  - nessuna autonomia di patch o nuova scrittura rischiosa in questa fase.
 - **Punti aperti**:
   - endpoint multipli e canale canonico non ancora consolidato [DA VERIFICARE].
 
@@ -229,6 +247,9 @@ Regola di lettura del sistema:
   - `pdfEngine` + `pdfPreview`.
 - **Eccezione** [CONFERMATO]:
   - il dominio cisterna usa anche generazione locale con `jsPDF` / `autoTable`.
+- **Distinzione target** [RACCOMANDAZIONE]:
+  - `PDF standard` = strumento trasversale tecnico.
+  - `PDF intelligenti / report assistiti` = funzioni dell'area `IA Gestionale`.
 - **Punto aperto**:
   - standard PDF unico cross-modulo ancora da consolidare [DA VERIFICARE].
 

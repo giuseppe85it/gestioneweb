@@ -4,6 +4,15 @@ import { auth } from "./firebase";
 
 import { Routes, Route, Outlet } from "react-router-dom";
 import "./App.css";
+import NextCentroControlloPage from "./next/NextCentroControlloPage";
+import NextIAGestionalePage from "./next/NextIAGestionalePage";
+import NextOperativitaGlobalePage from "./next/NextOperativitaGlobalePage";
+import NextShell from "./next/NextShell";
+import NextDriverExperiencePage from "./next/NextDriverExperiencePage";
+import NextMezziDossierPage from "./next/NextMezziDossierPage";
+import NextStrumentiTrasversaliPage from "./next/NextStrumentiTrasversaliPage";
+import NextRoleGuard from "./next/NextRoleGuard";
+import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
 
 /* ==================== APP PRINCIPALE ==================== */
 import Home from "./pages/Home";
@@ -91,6 +100,52 @@ function App() {
 
   return (
     <Routes>
+      <Route path="/next" element={<NextShell />}>
+        <Route index element={<NextRoleLandingRedirect />} />
+        <Route
+          path="centro-controllo"
+          element={
+            <NextRoleGuard areaId="centro-controllo">
+              <NextCentroControlloPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="mezzi-dossier"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextMezziDossierPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="operativita-globale"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextOperativitaGlobalePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia-gestionale"
+          element={
+            <NextRoleGuard areaId="ia-gestionale">
+              <NextIAGestionalePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="strumenti-trasversali"
+          element={
+            <NextRoleGuard areaId="strumenti-trasversali">
+              <NextStrumentiTrasversaliPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route path="autista" element={<NextDriverExperiencePage />} />
+        <Route path="*" element={<NextRoleLandingRedirect />} />
+      </Route>
+
       {/* HOME */}
       <Route path="/" element={<div className="app-shell app-shell--homeWide"><Home /></div>} />
 

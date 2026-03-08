@@ -21,6 +21,7 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
   - Ridurre frammentazione UI e route duplicate.
   - Rendere la Home un vero Centro di Controllo.
   - Rendere il Dossier Mezzo il cuore operativo e analitico per targa.
+  - Rendere `IA Gestionale / Assistente Gestionale` una macro-area visibile della NEXT, non un modulo marginale.
   - Mantenere compatibilita progressiva con legacy fino a convergenza completata.
 
 ## 2. Ruoli fissi
@@ -47,6 +48,15 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
   - Controlli ruolo admin/capo a livello route non dimostrati.
 
 ## 4. Architettura target della nuova app
+- **Macro-aree shell NEXT** [RACCOMANDAZIONE]:
+  - `Centro di Controllo`
+  - `Mezzi / Dossier`
+  - `Operativita Globale`
+  - `IA Gestionale`
+  - `Strumenti Trasversali`
+- **Nota di lettura** [RACCOMANDAZIONE]:
+  - Queste 5 macro-aree sono la lettura top-level della shell NEXT.
+  - I moduli interni restano piu granulari e continuano a esistere come viste o sottosezioni.
 - **Home / Centro di Controllo** [RACCOMANDAZIONE]:
   - Priorita giornaliere, code operative, azioni rapide, ricerca globale.
 - **Flotta** [RACCOMANDAZIONE]:
@@ -59,10 +69,12 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
   - Inventario, movimenti, consegne, attrezzature cantieri.
 - **Analisi** [RACCOMANDAZIONE]:
   - KPI economici mezzo/flotta, trend rifornimenti/gomme/costi.
+- **IA Gestionale / Assistente Gestionale** [RACCOMANDAZIONE]:
+  - Macro-area visibile della shell NEXT dedicata a supporto intelligente, lettura contestuale dei moduli e report assistiti.
 - **Autisti** [RACCOMANDAZIONE]:
   - Area separata (app campo + inbox/rettifica admin).
-- **Sistema / Supporto** [RACCOMANDAZIONE]:
-  - Config, permessi, audit, strumenti tecnici.
+- **Strumenti Trasversali / Supporto** [RACCOMANDAZIONE]:
+  - Config, permessi, audit, PDF standard, ricerca, notifiche, strumenti tecnici.
 
 ## 5. Regola centrale
 - **Home = Centro di Controllo** [RACCOMANDAZIONE]:
@@ -93,9 +105,10 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
   - Acquisti/ordini/listino.
   - Inventario/materiali consegnati/attrezzature.
   - Anagrafiche colleghi/fornitori.
-  - IA documentale intake multi-dominio.
   - Dominio cisterna specialistico.
   - Sistema, sicurezza, configurazioni, supporto tecnico.
+- **Nota IA** [RACCOMANDAZIONE]:
+  - L'intake IA non scompare, ma nella NEXT viene letto dentro la macro-area `IA Gestionale` con agganci trasversali ai moduli.
 - **Motivazione** [CONFERMATO]:
   - Questi moduli non sono confinati a una singola targa.
 
@@ -117,21 +130,58 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
   - Anteprima, export, condivisione (share/copia/WhatsApp in vari moduli).
 - **Motore unico** [CONFERMATO]:
   - `pdfEngine` deve restare la base comune; evitare motori paralleli.
+- **Distinzione target** [RACCOMANDAZIONE]:
+  - `PDF standard` = strumento trasversale tecnico.
+  - `PDF intelligenti / report assistiti` = funzioni guidate dall'area `IA Gestionale`.
 
 ## 10. IA
-- **Dove vive** [CONFERMATO]:
+- **Dove vive oggi** [CONFERMATO]:
   - IA documentale e libretti in area IA; supporto da Functions (`aiCore`, `estrazioneDocumenti`, pipeline cisterna).
+- **Decisione target** [RACCOMANDAZIONE]:
+  - Nella NEXT la IA diventa `IA Gestionale / Assistente Gestionale`, cioe sia macro-area visibile sia motore trasversale.
+- **Perimetro reale V1** [RACCOMANDAZIONE]:
+  - La prima versione sensata della `IA Business` nella NEXT deve restare `read-only`.
+  - Le prime superfici da presidiare sono `Dossier Mezzo` e `Centro di Controllo`.
+  - L'obiettivo iniziale e aiutare a leggere meglio il sistema, non introdurre nuove scritture.
 - **Come si integra** [CONFERMATO+RACCOMANDAZIONE]:
   - Intake documenti globale, consumo dati in dossier/analisi/operativita.
+  - Supporto a scadenze, anomalie, suggerimenti operativi, dossier, ordini, inventario, rifornimenti, segnalazioni, lavori, collaudi, documenti e report intelligenti.
+- **Output minimo richiesto alla IA Business v1** [RACCOMANDAZIONE]:
+  - Riassunto stato mezzo o stato sistema.
+  - Evidenza di scadenze, anomalie, priorita e suggerimenti motivati.
+  - Spiegabilita obbligatoria: `fonte dati`, `modulo sorgente`, `periodo`.
+  - Marcatura `DA VERIFICARE` quando l'affidabilita del dato o del collegamento non e piena.
+- **Punto di arrivo** [RACCOMANDAZIONE]:
+  - L'area `IA Gestionale` resta piu ampia della V1.
+  - In prospettiva puo estendersi a documenti, PDF intelligenti, report assistiti, acquisti, inventario e supporto trasversale ai moduli.
+  - Il rollout deve restare progressivo e controllato.
 - **IA documentale** [CONFERMATO]:
   - Salvataggio su `@documenti_mezzi/@documenti_magazzino/@documenti_generici`.
 - **IA dossier** [RACCOMANDAZIONE]:
   - Sintesi e assistenza contestuale per targa dentro Dossier Mezzo.
 - **IA analisi** [CONFERMATO]:
   - Analisi economica per mezzo gia presente, da consolidare nella UX target.
+- **Separazione capability** [RACCOMANDAZIONE]:
+  - `IA Business NEXT`: assistenza runtime dentro la nuova app, orientata ai dati operativi e alle decisioni utente.
+  - `IA Audit Tecnico`: capability distinta, piu vicina ad audit di repository, documentazione e contratti dati.
+  - Le due capability possono convergere in futuro sul piano strategico, ma non vanno confuse nella V1.
+- **IA di controllo architetturale / dati** [RACCOMANDAZIONE]:
+  - In prospettiva potra leggere repository, confrontare moduli/docs/contratti dati, segnalare incoerenze e aiutare a localizzare il problema.
+  - Questa capacita appartiene al perimetro `IA Audit Tecnico`, non alla V1 runtime della `IA Business`.
 - **Chat IA interna** [NON DIMOSTRATO]:
   - Nel repository non c'e una chat IA interna general-purpose gia operativa.
-  - **[RACCOMANDAZIONE]** introdurla in fase successiva con scope e permessi chiari.
+  - **[RACCOMANDAZIONE]** introdurla solo in fase successiva, con scope e permessi chiari, evitando di partire da una chat "onnisciente" su tutti i moduli.
+- **Governance** [RACCOMANDAZIONE]:
+  - La IA segnala, motiva e propone.
+  - L'utente decide.
+  - ChatGPT analizza e struttura.
+  - Codex applica le patch.
+  - La IA non deve patchare liberamente da sola e non autorizza nuove scritture o refactor rischiosi in questa fase.
+- **Cose da non fare subito** [RACCOMANDAZIONE]:
+  - Nessuna scrittura automatica.
+  - Nessuna correzione dati autonoma.
+  - Nessun audit repo/docs/dati dentro la stessa runtime UI della NEXT.
+  - Nessun supporto dichiarato come completo su flussi non ancora canonici.
 
 ## 11. Scadenze / promemoria / memoria esterna
 - **Stato attuale** [CONFERMATO]:
@@ -175,6 +225,7 @@ Stato: Documento madre definitivo (fonte di verita architetturale del repository
   - Allegati preventivi.
   - Permessi/ruoli.
   - Route legacy e bookmark.
+  - Governance reale della IA rispetto a backend, PDF intelligenti e automazioni future.
 
 ## 15. Stato progetto e prossimi step
 - **Stato attuale** [CONFERMATO]:

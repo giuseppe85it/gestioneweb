@@ -17,6 +17,17 @@ Un flusso e considerato critico quando vale almeno una di queste condizioni:
 - usa Storage, IA o PDF;
 - puo rompere operativita o coerenza dati se modificato male.
 
+## Ruolo futuro della IA sui flussi critici
+Nella NEXT questi flussi potranno essere letti anche dalla macro-area `IA Gestionale / Assistente Gestionale` per:
+- segnalare anomalie e scadenze;
+- suggerire azioni operative o controlli;
+- costruire report assistiti e PDF intelligenti;
+- confrontare dati, moduli e documenti per aiutare a capire dove nasce il problema.
+
+Limite di governance:
+- questa e una decisione architetturale/documentale;
+- non autorizza patch autonome, nuove scritture o automazioni rischiose sulla legacy.
+
 ## Flussi critici principali
 
 ### 1. Creazione e gestione lavori da area admin

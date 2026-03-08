@@ -17,13 +17,22 @@ Scopo: regole trasversali della nuova app, valide su tutte le aree funzionali.
   - Usare `pdfEngine` come motore unico [CONFERMATO].
   - Uniformare naming export e metadata PDF [RACCOMANDAZIONE].
   - Tracciare export in audit log [RACCOMANDAZIONE].
+  - Distinguere `PDF standard` da `PDF intelligenti / report assistiti` [RACCOMANDAZIONE].
+  - I PDF intelligenti e i report assistiti rientrano nella macro-area `IA Gestionale`, non nel solo tooling tecnico [RACCOMANDAZIONE].
 
 ## 2) IA
 - **Perche trasversale**: IA agisce su documenti, libretti, analisi, dominio cisterna.
-- **Aree coinvolte**: IA&Documenti, Dossier, Analisi, Sistema/Supporto.
+- **Aree coinvolte**: IA Gestionale, Dossier, Analisi, Operativita, Magazzino, Sistema/Supporto.
 - **Regole**:
-  - IA e capability, non modulo isolato [RACCOMANDAZIONE].
+  - Nella NEXT la IA e sia macro-area visibile sia capability trasversale [RACCOMANDAZIONE].
+  - La `IA Business NEXT` v1 deve restare `read-only` [RACCOMANDAZIONE].
+  - Le prime superfici della `IA Business NEXT` v1 sono `Dossier Mezzo` e `Centro di Controllo` [RACCOMANDAZIONE].
   - Separare intake IA globale da consumo dati nel Dossier [RACCOMANDAZIONE].
+  - L'IA deve poter aiutare su scadenze, anomalie, suggerimenti operativi, dossier, ordini, inventario, rifornimenti, segnalazioni, lavori, collaudi, documenti e report intelligenti [RACCOMANDAZIONE].
+  - Ogni risposta IA della V1 deve indicare almeno `fonte dati`, `modulo sorgente`, `periodo` e marcare `DA VERIFICARE` quando l'affidabilita non e piena [RACCOMANDAZIONE].
+  - In prospettiva puo leggere repository, confrontare moduli/docs/contratti dati e segnalare incoerenze, ma questa non e una funzione implementata gia dimostrata e va trattata come capability distinta di `IA Audit Tecnico` [RACCOMANDAZIONE].
+  - La IA segnala e motiva; l'utente decide; ChatGPT struttura l'analisi; Codex applica; nessuna patch autonoma o scrittura rischiosa [RACCOMANDAZIONE].
+  - Non partire subito con IA onnisciente su tutti i moduli, audit repo nella stessa runtime business, scritture automatiche o correzioni dati [RACCOMANDAZIONE].
   - Governance endpoint multipli da consolidare [DA VERIFICARE].
 
 ## 3) Scadenze / Promemoria
