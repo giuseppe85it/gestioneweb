@@ -23,6 +23,9 @@ import {
 import {
   NEXT_RIFORNIMENTI_CONSUMI_DOMAIN,
   type NextMezzoRifornimentiSnapshot,
+  type NextRifornimentoFieldQuality,
+  type NextRifornimentoMatchStrategy,
+  type NextRifornimentoProvenienza,
   type NextRifornimentoReadOnlyItem,
   readNextMezzoRifornimentiSnapshot,
 } from "./nextRifornimentiConsumiDomain";
@@ -107,9 +110,21 @@ function renderRefuelStatusLabel(
     case "loading":
       return "Caricamento D04";
     case "success":
-      return snapshot?.datasetShape === "items"
-        ? "Canonico ridotto attivo"
-        : "Dataset non conforme";
+      if (!snapshot) return "In attesa";
+      if (snapshot.counts.total > 0) return "Ricostruzione controllata attiva";
+      if (
+        snapshot.datasetShapes.business === "missing" &&
+        snapshot.datasetShapes.field === "missing"
+      ) {
+        return "Dataset D04 assenti";
+      }
+      if (
+        snapshot.datasetShapes.business === "unsupported" &&
+        snapshot.datasetShapes.field === "unsupported"
+      ) {
+        return "Dataset D04 non conformi";
+      }
+      return "Nessun rifornimento per mezzo";
     case "error":
       return "Reader D04 in errore";
     default:
@@ -117,10 +132,52 @@ function renderRefuelStatusLabel(
   }
 }
 
+function renderRefuelQualityLabel(value: NextRifornimentoFieldQuality) {
+  switch (value) {
+    case "certo":
+      return "dato certo";
+    case "ricostruito":
+      return "dato ricostruito";
+    default:
+      return "non disponibile";
+  }
+}
+
+function renderRefuelProvenienzaLabel(value: NextRifornimentoProvenienza) {
+  switch (value) {
+    case "business":
+      return "Business";
+    case "campo":
+      return "Campo";
+    default:
+      return "Ricostruito";
+  }
+}
+
+function renderRefuelMatchLabel(value: NextRifornimentoMatchStrategy) {
+  switch (value) {
+    case "match_origin_id":
+      return "Match origin id";
+    case "match_euristica_10_minuti":
+      return "Match euristico 10 min";
+    case "match_euristica_stesso_giorno":
+      return "Match euristico giorno";
+    case "solo_campo":
+      return "Solo feed campo";
+    default:
+      return "Solo business";
+  }
+}
+
 function renderRifornimentoMeta(item: NextRifornimentoReadOnlyItem) {
   const parts = [
-    item.data ? `Data ${item.data}` : "Data display non valorizzata",
+    item.dataDisplay ? `Data ${item.dataDisplay}` : "Data non disponibile",
     item.litri !== null ? `${formatLitriValue(item.litri)} L` : null,
+    item.autistaNome
+      ? `Autista ${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}`
+      : item.badgeAutista
+      ? `Badge ${item.badgeAutista}`
+      : null,
   ].filter(Boolean);
 
   return parts.join(" | ");
@@ -254,10 +311,13 @@ function NextDossierMezzoPage() {
   const manutenzioniPreview = manutenzioni.slice(0, 3);
   const refuels = refuelSnapshot?.items ?? [];
   const refuelsPreview = refuels.slice(0, 5);
-  const isRefuelContractActive = refuelSnapshot?.datasetShape === "items";
-  const refuelCount = isRefuelContractActive ? (refuelSnapshot?.counts.total ?? 0) : null;
-  const refuelTotalLitri = isRefuelContractActive ? (refuelSnapshot?.totals.litri ?? null) : null;
-  const refuelCountWithKm = isRefuelContractActive ? (refuelSnapshot?.counts.withKm ?? 0) : null;
+  const refuelCount = refuelSnapshot?.counts.total ?? null;
+  const refuelTotalLitri = refuelSnapshot?.totals.litri ?? null;
+  const refuelCountWithKm = refuelSnapshot?.counts.withKm ?? null;
+  const refuelCountWithAutista = refuelSnapshot?.counts.withAutista ?? null;
+  const refuelCountReconstructed = refuelSnapshot?.counts.reconstructed ?? null;
+  const refuelCountWithCosto = refuelSnapshot?.counts.withCosto ?? null;
+  const refuelTotalCosto = refuelSnapshot?.totals.costo ?? null;
 
   return (
     <section className="next-page next-dossier-shell">
@@ -271,8 +331,9 @@ function NextDossierMezzoPage() {
           <p className="next-page__description">
             Primo Dossier Mezzo NEXT realmente convergente. Questa vista resta `read-only`, usa
             il dominio stabile `Anagrafiche flotta e persone`, aggiunge il primo blocco tecnico
-            reale di `Operativita tecnica mezzo` e introduce il primo layer di normalizzazione
-            `D04` per i rifornimenti, confinato nel perimetro NEXT.
+            reale di `Operativita tecnica mezzo` e porta `D04` nel Dossier tramite una
+            `RICOSTRUZIONE CONTROLLATA NEXT`: stesso risultato utile del madre, ma con tutta la
+            complessita legacy confinata in un solo layer read-only.
           </p>
         </div>
 
@@ -287,7 +348,7 @@ function NextDossierMezzoPage() {
             Ruolo simulato: {NEXT_ROLE_PRESETS[role].shortLabel}
           </span>
           <span className="next-chip next-chip--accent">D01 stabile + D02 minimo</span>
-          <span className="next-chip next-chip--success">D04 canonico ridotto</span>
+          <span className="next-chip next-chip--success">D04 ricostruzione controllata</span>
           <span className="next-chip next-chip--warning">D02 sensibile</span>
           <span className="next-chip next-chip--warning">D04 sensibile</span>
           <span className="next-chip next-chip--warning">Nessuna scrittura</span>
@@ -344,11 +405,11 @@ function NextDossierMezzoPage() {
 
             <article className="next-summary-card next-tone next-tone--warning">
               <p className="next-summary-card__label">Stato dossier</p>
-              <strong className="next-summary-card__value">D01 + D02 + D04 ridotto</strong>
+              <strong className="next-summary-card__value">D01 + D02 + D04 ricostruito</strong>
               <p className="next-summary-card__meta">
                 Identita mezzo stabile, blocco tecnico iniziale e primo blocco rifornimenti
-                normalizzato in NEXT. Restano fuori consumi calcolati, documenti, PDF e IA
-                contestuale.
+                ricostruito in NEXT. Restano fuori consumi calcolati, documenti, PDF e IA
+                contestuale runtime.
               </p>
             </article>
           </section>
@@ -407,9 +468,8 @@ function NextDossierMezzoPage() {
                 {refuelStatus === "success" ? formatIntegerValue(refuelCount) : "--"}
               </strong>
               <p className="next-summary-card__meta">
-                Record letti dal layer `D04` solo da
-                {" "}
-                `{NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset}.items`.
+                Record utili ricostruiti dal layer `D04` a partire da dataset business e feed
+                campo legacy, senza spargere merge o fallback in UI.
               </p>
             </article>
 
@@ -421,19 +481,18 @@ function NextDossierMezzoPage() {
                   : "--"}
               </strong>
               <p className="next-summary-card__meta">
-                Somma solo dei `litri` presenti nel dataset canonico ridotto, senza recuperi da
-                staging o merge legacy.
+                Somma dei `litri` del modello pulito D04, dopo ricostruzione controllata nel
+                layer NEXT.
               </p>
             </article>
 
             <article className="next-summary-card next-tone next-tone--accent">
-              <p className="next-summary-card__label">Record con km</p>
+              <p className="next-summary-card__label">Record con autista</p>
               <strong className="next-summary-card__value">
-                {refuelStatus === "success" ? formatIntegerValue(refuelCountWithKm) : "--"}
+                {refuelStatus === "success" ? formatIntegerValue(refuelCountWithAutista) : "--"}
               </strong>
               <p className="next-summary-card__meta">
-                `km` resta campo opzionale e non garantito: la card mostra solo quanti record lo
-                espongono gia nel canonico.
+                Autista e badge vengono esposti solo se certi o ricostruibili nel layer D04.
               </p>
             </article>
 
@@ -443,7 +502,8 @@ function NextDossierMezzoPage() {
                 {renderRefuelStatusLabel(refuelStatus, refuelSnapshot)}
               </strong>
               <p className="next-summary-card__meta">
-                Nessuna lettura `tmp`, nessun fallback `value.items`, nessun merge reader-side.
+                Righe ricostruite:{" "}
+                {refuelStatus === "success" ? formatIntegerValue(refuelCountReconstructed) : "--"}.
               </p>
             </article>
           </section>
@@ -499,14 +559,14 @@ function NextDossierMezzoPage() {
                 </div>
                 <p className="next-panel__description">
                   Il Dossier usa ora due reader canonici separati: `D01` per l&apos;identita mezzo
-                  e `D02` per il primo blocco tecnico reale, piu un layer `D04` che normalizza il
-                  canonico rifornimenti senza toccare il runtime legacy.
+                  e `D02` per il primo blocco tecnico reale, piu un layer `D04` che ricostruisce
+                  il risultato utile dei rifornimenti senza toccare il runtime legacy.
                 </p>
                 <ul className="next-panel__list">
                   <li>`id`, `targa`, `categoria`, `marca`, `modello`, `autistaNome`</li>
                   <li>`lavori` minimi: `descrizione`, `eseguito`, `urgenza`, `dataInserimento`</li>
                   <li>`manutenzioni` minime: `descrizione`, `tipo`, `data`, `km`, `ore`</li>
-                  <li>`rifornimenti` minimi: `id`, `mezzoTarga`, `data`, `litri`, `distributore`, `note`</li>
+                  <li>`rifornimenti` D04: `id`, `mezzoTarga`, `dataDisplay`, `timestampRicostruito?`, `litri`, `km?`, `costo?`, `autista?`, `badge?`, `provenienza`, `qualita`</li>
                   <li>route pulita `/next/mezzi-dossier/:targa`</li>
                   <li>nessuna dipendenza da `DossierMezzo` legacy come sorgente funzionale</li>
                 </ul>
@@ -522,7 +582,7 @@ function NextDossierMezzoPage() {
                 </p>
                 <ul className="next-panel__list">
                   <li>nessun dettaglio workflow lavori, presa in carico o scrittura manutenzioni</li>
-                  <li>nessun merge `tmp/canonico`, nessun autista/badge o `timestamp` in D04</li>
+                  <li>nessuna complessita legacy D04 in UI: il Dossier legge solo il modello pulito del layer</li>
                   <li>nessun consumo calcolato o analisi economica sui rifornimenti</li>
                   <li>nessun documento, PDF o IA contestuale</li>
                 </ul>
@@ -688,26 +748,23 @@ function NextDossierMezzoPage() {
           <section className="next-dossier-layout">
             <article className="next-panel next-dossier-main next-tone next-tone--success">
               <div className="next-panel__header">
-                <h2>Rifornimenti normalizzati</h2>
-                <span className="next-chip next-chip--success">D04 canonico ridotto</span>
+                <h2>Rifornimenti ricostruiti</h2>
+                <span className="next-chip next-chip--success">
+                  D04 ricostruzione controllata
+                </span>
               </div>
               <p className="next-panel__description">
-                Primo ingresso `D04` nel Dossier NEXT. Questo blocco non copia il comportamento del
-                madre: legge solo il dataset business target
-                {" "}
-                <code>{NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset}.items</code>,
-                normalizza i campi nel layer dedicato e porta in UI solo il modello pulito
-                risultante.
+                Primo ingresso `D04` con parita utile verso il madre. Il blocco usa una
+                ricostruzione controllata confinata nel layer NEXT: base business, feed campo solo
+                se serve, merge confinato, modello pulito unico in output.
               </p>
 
               {refuelStatus === "loading" ? (
                 <div className="next-data-state next-tone next-tone--accent">
                   <strong>Caricamento blocco rifornimenti</strong>
                   <span>
-                    Sto leggendo il dataset canonico ridotto
-                    {" "}
-                    <code>{NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset}.items</code>
-                    {" "}senza toccare `tmp`.
+                    Sto leggendo il layer `D04` che ricostruisce i rifornimenti in sola lettura
+                    per questo mezzo.
                   </span>
                 </div>
               ) : null}
@@ -719,37 +776,23 @@ function NextDossierMezzoPage() {
                 </div>
               ) : null}
 
-              {refuelStatus === "success" && !isRefuelContractActive ? (
-                <div className="next-data-state next-tone next-tone--warning">
-                  <strong>Contratto dataset non conforme</strong>
-                  <span>
-                    Il layer `D04` accetta solo
-                    {" "}
-                    <code>{NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset}.items</code>
-                    {" "}top-level. Nessun fallback legacy e stato applicato.
-                  </span>
-                </div>
-              ) : null}
-
-              {refuelStatus === "success" && isRefuelContractActive ? (
+              {refuelStatus === "success" ? (
                 <>
                   <div className="next-data-state next-tone">
-                    <strong>Sorgente attiva del blocco</strong>
+                    <strong>Strategia attiva del blocco</strong>
                     <span>
-                      Dataset fisico:
-                      {" "}
-                      <code>storage/{NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset}</code>
-                      {" "}con shape accettata <code>items[]</code>. `data` resta una label
-                      display; `km` e `costo` restano opzionali e non garantiti.
+                      Layer `D04`: {NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.normalizationStrategy}. Il
+                      Dossier non conosce dataset raw, tmp, shape legacy o fallback: legge solo
+                      il risultato pulito prodotto dal layer.
                     </span>
                   </div>
 
                   {refuelsPreview.length === 0 ? (
                     <div className="next-data-state">
-                      <strong>Nessun rifornimento canonico letto</strong>
+                      <strong>Nessun rifornimento ricostruito</strong>
                       <span>
-                        Il layer `D04` non ha trovato record compatibili per questa targa nel
-                        dataset canonico ridotto.
+                        Il layer `D04` non ha trovato record utili per questa targa dopo la
+                        ricostruzione controllata.
                       </span>
                     </div>
                   ) : (
@@ -757,23 +800,29 @@ function NextDossierMezzoPage() {
                       {refuelsPreview.map((item) => (
                         <div key={item.id} className="next-control-list__item">
                           <div className="next-global-pillbar">
+                            <span className="next-chip next-chip--success">
+                              {renderRefuelProvenienzaLabel(item.provenienza)}
+                            </span>
                             <span className="next-chip next-chip--accent">
-                              {item.data ?? "Data non valorizzata"}
+                              {item.dataDisplay ?? "Data non disponibile"}
                             </span>
                             <span className="next-chip next-chip--subtle">
                               {item.litri !== null
                                 ? `${formatLitriValue(item.litri)} L`
-                                : "Litri non valorizzati"}
+                                : "Litri non disponibili"}
                             </span>
                             <span className="next-chip next-chip--subtle">
                               {item.km !== null
                                 ? `${formatIntegerValue(item.km)} km`
-                                : "km opzionale"}
+                                : "km non disponibile"}
                             </span>
                             <span className="next-chip next-chip--subtle">
                               {item.costo !== null
                                 ? formatCurrencyValue(item.costo)
-                                : "costo opzionale"}
+                                : "costo non disponibile"}
+                            </span>
+                            <span className="next-chip next-chip--subtle">
+                              {renderRefuelMatchLabel(item.matchStrategy)}
                             </span>
                           </div>
                           <strong>
@@ -786,8 +835,20 @@ function NextDossierMezzoPage() {
                           <span>
                             {renderOptionalLabel(
                               item.note,
-                              "Nessuna nota dossier nel canonico ridotto."
+                              "Nessuna nota disponibile nel modello D04."
                             )}
+                          </span>
+                          <span>
+                            Timestamp:{" "}
+                            {item.timestampRicostruito !== null
+                              ? renderRefuelQualityLabel(item.fieldQuality.timestampRicostruito)
+                              : "non disponibile"}
+                            {" | "}
+                            Autista: {renderRefuelQualityLabel(item.fieldQuality.autistaNome)}
+                            {" | "}
+                            KM: {renderRefuelQualityLabel(item.fieldQuality.km)}
+                            {" | "}
+                            Costo: {renderRefuelQualityLabel(item.fieldQuality.costo)}
                           </span>
                         </div>
                       ))}
@@ -803,25 +864,26 @@ function NextDossierMezzoPage() {
                   <h2>Contratto D04 importato</h2>
                 </div>
                 <p className="next-panel__description">
-                  Il blocco rifornimenti e volutamente stretto: usa solo il sottoinsieme ritenuto
-                  abbastanza leggibile del canonico reale.
+                  Il blocco rifornimenti non esporta piu la shape legacy. Espone un solo modello
+                  pulito D04 con provenienza e qualita del dato.
                 </p>
                 <ul className="next-panel__list">
+                  <li>campi chiave: `id`, `mezzoTarga`, `dataDisplay`, `timestampRicostruito?`, `litri`</li>
+                  <li>campi opzionali: `km`, `costo`, `distributore`, `note`, `autistaNome`, `badgeAutista`</li>
+                  <li>provenienza pulita: `business`, `campo`, `ricostruito`</li>
                   <li>
-                    dataset fisico: `storage/{NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset}`
-                  </li>
-                  <li>shape accettata: `items[]` top-level</li>
-                  <li>campi certi: `id`, `mezzoTarga`, `data`, `litri`, `distributore`, `note`</li>
-                  <li>campi opzionali: `km`, `costo`</li>
-                  <li>
-                    copertura attuale: {formatIntegerValue(refuelCountWithKm)} record con `km`,
+                    copertura attuale: {formatIntegerValue(refuelCountWithAutista)} record con
+                    `autista`, {formatIntegerValue(refuelCountWithKm)} con `km`,
                     {" "}
-                    {formatIntegerValue(
-                      isRefuelContractActive ? (refuelSnapshot?.counts.withCosto ?? 0) : null
-                    )}{" "}
-                    record con `costo`
+                    {formatIntegerValue(refuelCountWithCosto)} con `costo`
                   </li>
-                  <li>normalizzazione confinata solo nel layer NEXT `D04`</li>
+                  <li>totale costo leggibile: {formatCurrencyValue(refuelTotalCosto)}</li>
+                  <li>
+                    mix sorgenti pulito: {formatIntegerValue(refuelSnapshot?.counts.businessOnly ?? null)}
+                    {" "}solo business, {formatIntegerValue(refuelSnapshot?.counts.fieldOnly ?? null)}
+                    {" "}solo campo, {formatIntegerValue(refuelCountReconstructed)} ricostruiti
+                  </li>
+                  <li>normalizzazione, merge e shape legacy confinati solo nel layer NEXT `D04`</li>
                 </ul>
               </article>
 
@@ -830,14 +892,14 @@ function NextDossierMezzoPage() {
                   <h2>Cosa resta fuori da D04</h2>
                 </div>
                 <p className="next-panel__description">
-                  La vista non finge parita totale con il madre. Il contratto resta ridotto e
-                  controllato finche il dominio non verra ulteriormente consolidato.
+                  La vista raggiunge il risultato utile del madre sui rifornimenti, ma non finge un
+                  dominio gia consolidato o analitico completo.
                 </p>
                 <ul className="next-panel__list">
-                  <li>nessuna lettura `@rifornimenti_autisti_tmp`</li>
-                  <li>nessun fallback `value.items` o merge reader-side</li>
-                  <li>nessun `timestamp`, `autistaNome`, `badgeAutista`, `source`, `validation`</li>
-                  <li>nessun calcolo consumi o report economico derivato</li>
+                  {refuelSnapshot?.limitations.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                  <li>nessun calcolo consumi avanzato o report economico derivato nel Dossier NEXT</li>
                 </ul>
               </article>
             </div>
@@ -854,7 +916,7 @@ function NextDossierMezzoPage() {
               </p>
               <ul className="next-panel__list">
                 <li>estensione controllata di `D02` oltre il riepilogo iniziale</li>
-                <li>estensione controllata di `D04` oltre il canonico ridotto</li>
+                <li>estensione controllata di `D04` oltre la ricostruzione read-only attuale</li>
                 <li>`D07` Documentale IA e libretti</li>
                 <li>`D08` Costi e analisi economica</li>
               </ul>
@@ -866,12 +928,12 @@ function NextDossierMezzoPage() {
               </div>
               <p className="next-panel__description">
                 Il Dossier e iniziato davvero, ma resta intenzionalmente stretto: identita mezzo,
-                primo blocco tecnico, primo blocco rifornimenti normalizzato e base visiva pronta a
+                primo blocco tecnico, primo blocco rifornimenti ricostruito e base visiva pronta a
                 ricevere convergenze future.
               </p>
               <ul className="next-panel__list">
                 <li>read-only puro</li>
-                <li>`D01` stabile + `D02` minimo + `D04` canonico ridotto</li>
+                <li>`D01` stabile + `D02` minimo + `D04` ricostruzione controllata</li>
                 <li>nessun dominio extra importato per riempimento</li>
               </ul>
             </article>
@@ -888,7 +950,7 @@ function NextDossierMezzoPage() {
                 <li>dominio logico: `D01`</li>
                 <li>dataset fisico: `storage/@mezzi_aziendali`</li>
                 <li>dominio logico: `D02` su `@lavori` e `@manutenzioni`</li>
-                <li>dominio logico: `D04` su `storage/@rifornimenti.items`</li>
+                <li>dominio logico: `D04` su un solo layer NEXT che ricostruisce business + feed campo</li>
               </ul>
             </article>
           </section>

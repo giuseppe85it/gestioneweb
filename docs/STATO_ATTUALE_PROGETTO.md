@@ -1,9 +1,9 @@
 # STATO ATTUALE DEL PROGETTO
 
 ## 1. Situazione generale
-- **Fase attuale del progetto**: consolidamento documentazione/regole operative e avvio dei primi ingressi `read-only` reali nella NEXT, incluso il primo Dossier Mezzo con convergenza tecnica minima e primo layer di normalizzazione dati `D04` confinato nella NEXT.
+- **Fase attuale del progetto**: consolidamento documentazione/regole operative e avvio dei primi ingressi `read-only` reali nella NEXT, incluso il primo Dossier Mezzo con convergenza tecnica minima e un layer `D04` di ricostruzione controllata confinato nella NEXT.
 - **Stato app legacy**: attiva e riferimento operativo corrente.
-- **Stato nuova app next**: shell runtime separata attiva, 5 macro-aree presenti, elenco mezzi `read-only` attivo e Dossier Mezzo NEXT gia leggibile con blocco tecnico `D02` in sola lettura e primo blocco rifornimenti `D04` tramite layer di normalizzazione NEXT a `canonico ridotto`.
+- **Stato nuova app next**: shell runtime separata attiva, 5 macro-aree presenti, elenco mezzi `read-only` attivo e Dossier Mezzo NEXT gia leggibile con blocco tecnico `D02` in sola lettura e blocco rifornimenti `D04` tramite layer unico di `RICOSTRUZIONE CONTROLLATA NEXT`, che raggiunge il risultato utile del madre senza toccare legacy o writer.
 - **Stato documentazione**: struttura madre disponibile, documenti core rinominati in italiano, indice e guida di ingresso presenti.
 - **Stato processo Codex/report**: regole operative attive (`AGENTS.md`, `REGOLE_LAVORO_CODEX.md`) + template/report di change e continuity gia presenti.
 - **Protocollo sicurezza modifiche**: attivo tramite `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`; ogni patch deve passare da analisi impatto prima dell'applicazione.
@@ -25,7 +25,7 @@
 - **Primo import reale dati nella NEXT (2026-03-08)**: `/next/mezzi-dossier` legge ora `storage/@mezzi_aziendali` tramite reader canonico dedicato al dominio `Anagrafiche flotta e persone`, limitato a campi stabili (`id`, `targa`, `categoria`, `marca`, `modello`, `autistaNome`), senza scritture e senza importare ancora il Dossier completo.
 - **Primo Dossier Mezzo NEXT iniziale (2026-03-08)**: `/next/mezzi-dossier/:targa` espone ora un dettaglio mezzo `read-only` basato solo sul dominio `Anagrafiche flotta e persone`; mostra identita mezzo, stato di importazione e convergenze future, senza leggere ancora lavori, rifornimenti, documenti o costi.
 - **Primo blocco tecnico reale nel Dossier NEXT (2026-03-08)**: il dettaglio `/next/mezzi-dossier/:targa` converge ora anche una porzione minima `read-only` del dominio `Operativita tecnica mezzo`, tramite reader canonico dedicato su `@lavori` e `@manutenzioni`, limitato a backlog lavori, lavori chiusi e manutenzioni essenziali per `targa`, senza writer, materiali, costi o ricostruzioni complete della logica legacy.
-- **Primo layer di normalizzazione NEXT su `D04 Rifornimenti e consumi` (2026-03-08)**: il Dossier Mezzo NEXT legge ora anche un blocco rifornimenti minimale tramite layer dedicato `D04`, confinato nella NEXT, che accetta solo `storage/@rifornimenti.items`, non usa `@rifornimenti_autisti_tmp`, non applica merge reader-side e dichiara esplicitamente `km` e `costo` come campi opzionali/non garantiti.
+- **Layer `D04` di ricostruzione controllata NEXT (2026-03-09)**: il Dossier Mezzo NEXT legge ora i rifornimenti tramite un solo layer dedicato `D04`, confinato nella NEXT, che usa internamente `@rifornimenti` e `@rifornimenti_autisti_tmp`, normalizza shape legacy, ricostruisce autista/badge/km/costo/timestamp quando possibile e consegna al Dossier solo un modello pulito con provenienza e qualita del dato.
 
 ## 2. Decisioni architetturali confermate
 - Nuova app in parallelo alla legacy.
@@ -93,7 +93,7 @@
 - Avviato il primo import reale dati della NEXT sul dominio `Anagrafiche flotta e persone`: `/next/mezzi-dossier` espone ora un elenco mezzi `read-only` basato su `storage/@mezzi_aziendali`, con reader canonico dedicato e senza introdurre scritture o reader improvvisati da chiavi sparse.
 - Attivato il primo Dossier Mezzo NEXT iniziale: dall'elenco mezzi si apre ora un dettaglio `read-only` su route dedicata `/next/mezzi-dossier/:targa`, sempre basato solo sul dominio stabile `D01` e costruito per preparare le future convergenze verso il Dossier senza clonare la legacy.
 - Attivata la prima convergenza tecnica reale del Dossier NEXT: lo stesso dettaglio mezzo legge ora anche una porzione minima e controllata di `D02 Operativita tecnica mezzo`, tramite reader canonico dedicato su `@lavori` e `@manutenzioni`, mantenendo il Dossier `read-only` e separato da writer, materiali e costi legacy.
-- Attivato il primo layer di normalizzazione NEXT sul dominio `D04 Rifornimenti e consumi`: il Dossier Mezzo legge ora un blocco rifornimenti minimale e `read-only` dal solo `storage/@rifornimenti.items`, con modello pulito interno NEXT, nessuna lettura `tmp` e nessun merge fuori dal layer dedicato.
+- Attivato il layer `D04` di ricostruzione controllata NEXT sul dominio `Rifornimenti e consumi`: il Dossier Mezzo legge ora un blocco rifornimenti `read-only` che usa internamente dataset business e feed campo legacy, ma espone in pagina solo un modello pulito unico con provenienza e qualita del dato, senza modificare il madre.
 
 ## 6. Regola operativa obbligatoria
 Prima di ogni nuovo task bisogna leggere almeno:
