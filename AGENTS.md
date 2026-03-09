@@ -32,6 +32,24 @@
 - Se Codex propone una modifica al runtime legacy invece del layer NEXT, deve motivare in modo esplicito perche la normalizzazione NEXT non basta.
 - La parita utile col madre va ottenuta nella NEXT tramite mapping e normalizzazione controllata, non copiando fallback, merge euristici o shape sporche dentro UI e Dossier NEXT.
 
+## Regola aggregatore Dossier / import moduli NEXT (obbligatoria)
+- Quando si importa un modulo nella NEXT, non basta analizzare il modulo isolato.
+- Prima di patchare bisogna sempre verificare:
+  1. cosa mostra davvero il modulo madre;
+  2. da quali sorgenti reali legge;
+  3. a quali altri moduli, wrapper o sezioni e collegato;
+  4. quali dipendenze vanno dichiarate esplicitamente;
+  5. quale layer NEXT `read-only` deve normalizzare i dati sporchi;
+  6. quale copertura funzionale coerente col madre va mantenuta nella NEXT;
+  7. quali sottosezioni o funzioni reali del madre non devono andare perse.
+- Se il modulo entra nel `Dossier Mezzo` o in un altro aggregatore, Codex deve analizzare anche:
+  - pagina aggregatrice principale;
+  - eventuali wrapper/sottopagine dedicate;
+  - viste 360 o blocchi laterali che riusano gli stessi dati;
+  - documentazione repo gia esistente sulla convergenza del modulo.
+- La UI NEXT e la IA NEXT devono leggere solo il layer pulito prodotto da questa analisi; merge, fallback e caos legacy non devono finire dentro i componenti React.
+- Se l'analisi aggregata non e stata fatta, l'importazione NEXT va considerata incompleta e Codex deve dichiararlo prima di procedere.
+
 ## Protocollo sicurezza modifiche (obbligatorio)
 - Prima di patchare, applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
 - Controllare sempre: stato progetto, mappa dati e punti aperti (`REGISTRO_PUNTI_DA_VERIFICARE`).
