@@ -20,6 +20,18 @@
   - target NEXT
 - `docs/data/MAPPA_COMPLETA_DATI.md` e `docs/data/REGOLE_STRUTTURA_DATI.md` vanno usati dopo il controllo dominio-centrico, non al suo posto.
 
+## Regola layer di normalizzazione NEXT (obbligatoria)
+- Se un flusso del gestionale madre funziona gia in produzione e non va rotto, la prima scelta NON deve essere modificare il runtime legacy.
+- La prima scelta deve essere verificare se la NEXT puo leggere i dati reali del madre tramite un reader/layer di normalizzazione dedicato e separato.
+- Il layer NEXT deve distinguere sempre:
+  - sorgente legacy reale
+  - regole di normalizzazione
+  - modello pulito interno NEXT
+  - UI/Dossier/IA che leggono solo il modello pulito
+- Un dominio con dati legacy sporchi NON va bloccato automaticamente se esiste una normalizzazione NEXT possibile, controllata e documentabile senza toccare il madre.
+- Se Codex propone una modifica al runtime legacy invece del layer NEXT, deve motivare in modo esplicito perche la normalizzazione NEXT non basta.
+- La parita utile col madre va ottenuta nella NEXT tramite mapping e normalizzazione controllata, non copiando fallback, merge euristici o shape sporche dentro UI e Dossier NEXT.
+
 ## Protocollo sicurezza modifiche (obbligatorio)
 - Prima di patchare, applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
 - Controllare sempre: stato progetto, mappa dati e punti aperti (`REGISTRO_PUNTI_DA_VERIFICARE`).

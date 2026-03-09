@@ -18,14 +18,18 @@ Questi ruoli sono **fonte di verita operativa** e non vanno reinterpretati caso 
 3. Prima di importare, ricostruire o migrare un modulo nella NEXT, verificare il dominio corrispondente in `docs/data/DOMINI_DATI_CANONICI.md`.
 4. Se il dominio non e mappato, e incoerente o ha stato `SENSIBILE`, `DA VERIFICARE` o `BLOCCANTE PER IMPORTAZIONE`, fermarsi e dichiararlo prima di patchare.
 5. Distinguere sempre dominio logico, dataset fisico, writer/reader legacy e target NEXT.
-6. Leggere tutto il repository quando serve contesto completo.
-7. Modificare solo i file ammessi dal prompt (whitelist).
-8. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
-9. Non cambiare codice applicativo se il task e documentale.
-10. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
-11. Prima di ogni patch applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
-12. Se rischio ELEVATO/EXTRA ELEVATO: niente patch cieche; obbligo di analisi impatto + proposta soluzione + alternative.
-13. Ogni task che tocca la NEXT deve aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`; se non viene aggiornato, il motivo va dichiarato esplicitamente.
+6. Se un flusso del gestionale madre funziona gia in produzione e non va rotto, la prima scelta NON deve essere modificare il runtime legacy ma verificare un layer di normalizzazione dedicato nella NEXT.
+7. La NEXT deve leggere i dati reali del madre, normalizzarli in un modello pulito interno e far leggere solo quel modello a UI, Dossier e IA.
+8. Un dominio con sorgenti legacy sporche non va bloccato automaticamente se esiste una normalizzazione NEXT possibile, controllata e documentata senza toccare il madre.
+9. Se si propone una modifica al runtime legacy, bisogna motivare chiaramente perche il layer di normalizzazione NEXT non basta.
+10. Leggere tutto il repository quando serve contesto completo.
+11. Modificare solo i file ammessi dal prompt (whitelist).
+12. Non inventare: se un fatto non e dimostrabile scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
+13. Non cambiare codice applicativo se il task e documentale.
+14. Non introdurre cambi architetturali in conflitto con blueprint ufficiale.
+15. Prima di ogni patch applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
+16. Se rischio ELEVATO/EXTRA ELEVATO: niente patch cieche; obbligo di analisi impatto + proposta soluzione + alternative.
+17. Ogni task che tocca la NEXT deve aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`; se non viene aggiornato, il motivo va dichiarato esplicitamente.
 
 ---
 
