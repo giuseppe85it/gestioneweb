@@ -1,343 +1,241 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { buildNextPathWithRole, getNextRoleFromSearch } from "./nextAccess";
-import { NEXT_AREAS } from "./nextData";
-import {
-  type NextProcurementOrderItem,
-  type NextProcurementOrderState,
-  type NextProcurementSnapshot,
-  readNextProcurementSnapshot,
-} from "./domain/nextProcurementDomain";
+// ======================================================
+// GESTIONE OPERATIVA — SCHERMATA HUB
+// Percorso: src/pages/GestioneOperativa.tsx
+// ------------------------------------------------------
+// Questa schermata NON implementa logica di business.
+// Serve solo a orchestrare:
+// - Inventario
+// - Materiali Consegnati
+// - Manutenzioni
+//
+// Vincoli progettuali:
+// - Nessuna modifica alle chiavi di lettura/scrittura dei moduli
+// - Nessuna duplicazione di logica (solo preview + link)
+// - Stile premium coerente con Dossier (CSS dedicato)
+// ======================================================
 
-function renderOrderStateLabel(value: NextProcurementOrderState): string {
-  switch (value) {
-    case "arrivato":
-      return "Arrivato";
-    case "parziale":
-      return "Parziale";
-    default:
-      return "In attesa";
-  }
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { getItemSync } from "../utils/storageSync";
+import "../pages/GestioneOperativa.css";
+import "./next-shell.css";
+
+// ------------------------------------------------------
+// Chiavi STORAGE (SOLO LETTURA)
+// Nota: non cambiamo le chiavi esistenti dei moduli.
+// ------------------------------------------------------
+const KEY_INVENTARIO = "@inventario";
+const KEY_CONSEGNATI = "@materialiconsegnati";
+const KEY_MANUTENZIONI = "@manutenzioni";
+
+// ------------------------------------------------------
+// Tipi MINIMI per preview (solo campi usati qui)
+// ------------------------------------------------------
+interface InventarioPreview {
+  id: string;
+  descrizione: string;
+  quantita: number;
+  unita: string;
 }
 
-function renderOrderStateClassName(value: NextProcurementOrderState): string {
-  switch (value) {
-    case "arrivato":
-      return "next-chip next-chip--success";
-    case "parziale":
-      return "next-chip next-chip--accent";
-    default:
-      return "next-chip next-chip--warning";
-  }
+interface ConsegnaPreview {
+  id: string;
+  descrizione: string;
+  quantita: number;
+  data: string;
 }
 
-function renderOrderMeta(item: NextProcurementOrderItem): string {
-  const parts = [
-    item.orderDateLabel ? `Ordine ${item.orderDateLabel}` : "Data ordine non disponibile",
-    `${item.totalRows} righe`,
-    `${item.arrivedRows} arrivate`,
-    item.latestArrivalLabel ? `Ultimo arrivo ${item.latestArrivalLabel}` : null,
-  ].filter(Boolean);
-
-  return parts.join(" | ");
+interface ManutenzionePreview {
+  id: string;
+  targa: string;
+  descrizione: string;
+  data: string;
 }
 
-function renderOrderCard(item: NextProcurementOrderItem) {
-  return (
-    <div key={item.id} className="next-order-card">
-      <div className="next-global-pillbar">
-        <span className={renderOrderStateClassName(item.state)}>
-          {renderOrderStateLabel(item.state)}
-        </span>
-      </div>
-      <strong>{item.supplierName}</strong>
-      <span>{renderOrderMeta(item)}</span>
-      <span>
-        Materiali:{" "}
-        {item.materialPreview.length > 0
-          ? item.materialPreview.join(", ")
-          : "anteprima non disponibile"}
-      </span>
-    </div>
-  );
-}
+const GestioneOperativa: React.FC = () => {
+  const navigate = useNavigate();
+  const openReadOnlyTarget = (path: string) => {
+    if (path === "/next/centro-controllo") {
+      navigate(path);
+    }
+  };
 
-function NextOperativitaGlobalePage() {
-  const location = useLocation();
-  const role = getNextRoleFromSearch(location.search);
-  const area = NEXT_AREAS["operativita-globale"];
-  const [snapshot, setSnapshot] = useState<NextProcurementSnapshot | null>(null);
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [error, setError] = useState<string | null>(null);
+  // Stato locale SOLO per preview
+  const [inventario, setInventario] = useState<InventarioPreview[]>([]);
+  const [consegne, setConsegne] = useState<ConsegnaPreview[]>([]);
+  const [manutenzioni, setManutenzioni] = useState<ManutenzionePreview[]>([]);
 
+  // Caricamento iniziale (solo snapshot per dashboard)
   useEffect(() => {
-    let active = true;
-
     const load = async () => {
       try {
-        setStatus("loading");
-        setError(null);
-        const nextSnapshot = await readNextProcurementSnapshot();
-        if (!active) return;
-        setSnapshot(nextSnapshot);
-        setStatus("success");
-      } catch {
-        if (!active) return;
-        setSnapshot(null);
-        setStatus("error");
-        setError("Impossibile leggere il banco ordini.");
+        const invRaw = await getItemSync(KEY_INVENTARIO);
+        const consRaw = await getItemSync(KEY_CONSEGNATI);
+        const manRaw = await getItemSync(KEY_MANUTENZIONI);
+
+        const invArr = Array.isArray(invRaw) ? invRaw : invRaw?.value || [];
+        const consArr = Array.isArray(consRaw) ? consRaw : consRaw?.value || [];
+        const manArr = Array.isArray(manRaw) ? manRaw : manRaw?.value || [];
+
+        // Preview inventario: pochi elementi (alto valore informativo)
+        setInventario(invArr.slice(0, 6));
+
+        // Preview consegne: ultime (per badge/contesto)
+        setConsegne(consArr.slice(-5).reverse());
+
+        // Preview manutenzioni: ultime
+        setManutenzioni(manArr.slice(0, 5));
+      } catch (err) {
+        console.error("Errore caricamento Gestione Operativa:", err);
       }
     };
 
-    void load();
-
-    return () => {
-      active = false;
-    };
+    load();
   }, []);
 
-  const counts = snapshot?.counts;
+  // Indicatori sintetici (badge header)
+  const materialiCritici = useMemo(() => {
+    return inventario.filter((i) => i.quantita <= 0).length;
+  }, [inventario]);
+
+  // Uso minimo consegne (evita warning e dà info utile)
+  const numeroConsegne = consegne.length;
 
   return (
-    <section className="next-page next-operations-shell">
-      <header className="next-page__hero">
-        <div className="next-page__hero-copy">
-          <p className="next-page__eyebrow">{area.eyebrow}</p>
-          <h1>{area.title}</h1>
-          <p className="next-page__description">
-            Banco operativo degli ordini: vedi cosa e fermo, cosa e parziale e cosa puo essere
-            chiuso senza confondere quest'area con il Dossier mezzo.
-          </p>
-        </div>
+    <div className="go-page">
+      <div className="go-card">
+        {/* ================= HEADER ================= */}
+        <div className="go-header">
+          <div className="go-logo-title">
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="go-logo"
+              onClick={() => navigate("/next/centro-controllo")}
+            />
+            <div>
+              <h1 className="go-title">Gestione Operativa</h1>
+              <p className="go-subtitle">
+                Centro di controllo magazzino e manutenzioni
+              </p>
+            </div>
+          </div>
 
-        <div className="next-page__hero-actions">
-          <div className="next-access-page__actions">
-            <Link
-              className="next-action-link next-action-link--primary"
-              to={buildNextPathWithRole("/next/centro-controllo", role, location.search)}
-            >
-              Torna alla Home
-            </Link>
-            <Link
-              className="next-action-link"
-              to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
-            >
-              Vai ai Dossier
-            </Link>
+          <div className="go-badges">
+            {materialiCritici > 0 && (
+              <span className="go-badge danger">
+                {materialiCritici} materiali critici
+              </span>
+            )}
+
+            {numeroConsegne > 0 && (
+              <span className="go-badge">{numeroConsegne} consegne registrate</span>
+            )}
           </div>
         </div>
-      </header>
 
-      {status === "loading" ? (
-        <div className="next-data-state next-tone next-tone--accent">
-          <strong>Caricamento ordini</strong>
-          <span>Sto preparando il banco operativo.</span>
-        </div>
-      ) : null}
+        {/* ================= STATO MAGAZZINO ================= */}
+        <div className="go-section">
+          <h2 className="go-section-title">Stato magazzino</h2>
 
-      {status === "error" ? (
-        <div className="next-data-state next-tone next-tone--warning">
-          <strong>Operativita non disponibile</strong>
-          <span>{error}</span>
-        </div>
-      ) : null}
-
-      {status === "success" && snapshot ? (
-        <>
-          <section className="next-summary-grid next-summary-grid--compact">
-            <article className="next-summary-card next-tone next-tone--accent">
-              <p className="next-summary-card__label">Ordini in attesa</p>
-              <strong className="next-summary-card__value">
-                {counts?.pendingOrders ?? 0}
-              </strong>
-              <p className="next-summary-card__meta">
-                Ordini con righe ancora tutte da ricevere.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone">
-              <p className="next-summary-card__label">Ordini parziali</p>
-              <strong className="next-summary-card__value">
-                {counts?.partialOrders ?? 0}
-              </strong>
-              <p className="next-summary-card__meta">
-                Flusso aperto che richiede completamento.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--warning">
-              <p className="next-summary-card__label">Ordini arrivati</p>
-              <strong className="next-summary-card__value">
-                {counts?.arrivedOrders ?? 0}
-              </strong>
-              <p className="next-summary-card__meta">
-                Pratiche completate e pronte da chiudere.
-              </p>
-            </article>
-          </section>
-
-          <section className="next-panel next-tone next-tone--accent">
-            <div className="next-panel__header">
-              <div>
-                <h2>Stato ordini</h2>
-                <span className="next-summary-card__label">
-                  Cosa sollecitare, completare o chiudere
+          <div className="go-inventario-preview">
+            {inventario.map((i) => (
+              <div key={i.id} className="go-inventario-row">
+                <span className="go-inv-desc">{i.descrizione}</span>
+                <span className="go-inv-qty">
+                  {i.quantita} {i.unita}
                 </span>
               </div>
+            ))}
+          </div>
+
+          <button
+            className="go-link-btn next-clone-button-disabled"
+            type="button"
+            disabled
+            title="Non disponibile nel clone read-only"
+          >
+            Apri inventario completo
+          </button>
+        </div>
+
+        {/* ================= AZIONI OPERATIVE (SEZIONE DEDICATA) ================= */}
+        <div className="go-actions-section">
+          <div className="go-actions-title">AZIONI OPERATIVE</div>
+
+          <div className="go-actions">
+            {/* Usa materiale */}
+           <div className="go-action-card use-materiale">
+              <h3>Usa materiale</h3>
+              <p>Registra un’uscita dal magazzino</p>
+              <button
+                className="go-primary-btn"
+                type="button"
+                disabled
+                title="Non disponibile nel clone read-only"
+              >
+                Vai a materiali consegnati
+              </button>
             </div>
-            <p className="next-panel__description">
-              La pagina segue una logica semplice: vedi lo stato del flusso, apri il fornitore
-              giusto e scendi sul mezzo solo se serve davvero.
-            </p>
 
-            <div className="next-workbench-grid">
-              <div className="next-workbench-column">
-                <div className="next-panel__header">
-                  <h3>In attesa</h3>
-                  <span className="next-chip next-chip--warning">
-                    {snapshot.groups.pending.length}
-                  </span>
-                </div>
-                {snapshot.groups.pending.length === 0 ? (
-                  <div className="next-data-state">
-                    <strong>Nessun ordine in attesa</strong>
-                    <span>Non risultano ordini completamente pendenti.</span>
-                  </div>
-                ) : (
-                  <div className="next-status-board">
-                    {snapshot.groups.pending.slice(0, 4).map((item) => renderOrderCard(item))}
-                  </div>
-                )}
-              </div>
-
-              <div className="next-workbench-column">
-                <div className="next-panel__header">
-                  <h3>Parziali</h3>
-                  <span className="next-chip next-chip--accent">
-                    {snapshot.groups.partial.length}
-                  </span>
-                </div>
-                {snapshot.groups.partial.length === 0 ? (
-                  <div className="next-data-state">
-                    <strong>Nessun ordine parziale</strong>
-                    <span>Non risultano pratiche in stato intermedio.</span>
-                  </div>
-                ) : (
-                  <div className="next-status-board">
-                    {snapshot.groups.partial.slice(0, 4).map((item) => renderOrderCard(item))}
-                  </div>
-                )}
-              </div>
-
-              <div className="next-workbench-column">
-                <div className="next-panel__header">
-                  <h3>Arrivati</h3>
-                  <span className="next-chip next-chip--success">
-                    {snapshot.groups.arrived.length}
-                  </span>
-                </div>
-                {snapshot.groups.arrived.length === 0 ? (
-                  <div className="next-data-state">
-                    <strong>Nessun ordine arrivato</strong>
-                    <span>Non risultano ordini completamente completati.</span>
-                  </div>
-                ) : (
-                  <div className="next-status-board">
-                    {snapshot.groups.arrived.slice(0, 4).map((item) => renderOrderCard(item))}
-                  </div>
-                )}
-              </div>
+             {/* Registra manutenzione */}
+            <div className="go-action-card manutenzione">
+              <h3>Registra manutenzione</h3>
+              <p>Inserisci un intervento su mezzo</p>
+              <button
+                className="go-primary-btn"
+                type="button"
+                disabled
+                title="Non disponibile nel clone read-only"
+              >
+                Vai a manutenzioni
+              </button>
             </div>
-          </section>
 
-          <section className="next-global-layout">
-            <article className="next-panel next-global-main">
-              <div className="next-panel__header">
-                <h2>Azioni operative</h2>
-              </div>
-              <p className="next-panel__description">
-                Ingresso rapido alle aree collegate senza confondere la regia globale con il lavoro
-                sul singolo mezzo.
-              </p>
-              <div className="next-portfolio-grid">
-                <div className="next-portfolio-card">
-                  <strong>Inventario</strong>
-                  <span>Area ancora da collegare nella NEXT.</span>
-                </div>
-                <div className="next-portfolio-card">
-                  <strong>Materiali consegnati</strong>
-                  <span>Resta fuori finche il cluster non entra in modo coerente.</span>
-                </div>
-                <div className="next-portfolio-card">
-                  <strong>Manutenzioni</strong>
-                  <span>Da leggere dal Dossier quando il lavoro riguarda un mezzo preciso.</span>
-                </div>
-              </div>
-            </article>
-
-            <div className="next-global-side">
-              <article className="next-panel next-tone next-tone--success">
-                <div className="next-panel__header">
-                  <h2>Accessi rapidi</h2>
-                </div>
-                <p className="next-panel__description">
-                  Usa il Centro per il quadro generale e il Dossier quando un ordine porta a un
-                  mezzo preciso.
-                </p>
-                <div className="next-access-page__actions">
-                  <Link
-                    className="next-action-link next-action-link--primary"
-                    to={buildNextPathWithRole("/next/centro-controllo", role, location.search)}
-                  >
-                    Centro di Controllo
-                  </Link>
-                  <Link
-                    className="next-action-link"
-                    to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
-                  >
-                    Mezzi / Dossier
-                  </Link>
-                  <Link
-                    className="next-action-link"
-                    to={buildNextPathWithRole("/next/strumenti-trasversali", role, location.search)}
-                  >
-                    Strumenti
-                  </Link>
-                </div>
-              </article>
-
-              <article className="next-panel next-tone">
-                <div className="next-panel__header">
-                  <h2>Ultime pratiche</h2>
-                </div>
-                {[
-                  ...snapshot.groups.pending,
-                  ...snapshot.groups.partial,
-                  ...snapshot.groups.arrived,
-                ].slice(0, 5).length === 0 ? (
-                  <div className="next-data-state">
-                    <strong>Nessuna pratica letta</strong>
-                    <span>Non risultano ordini leggibili nel quadro attuale.</span>
-                  </div>
-                ) : (
-                  <div className="next-control-list">
-                    {[...snapshot.groups.pending, ...snapshot.groups.partial, ...snapshot.groups.arrived]
-                      .slice(0, 5)
-                      .map((item) => (
-                        <div key={item.id} className="next-control-list__item next-control-list__item--soft">
-                          <strong>{item.supplierName}</strong>
-                          <span>{renderOrderMeta(item)}</span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </article>
+            <div className="go-action-card">
+              <h3>Centro Controllo</h3>
+              <p>Monitora manutenzioni programmate e report rifornimenti mensili</p>
+              <button
+                className="go-primary-btn"
+                type="button"
+                onClick={() => openReadOnlyTarget("/next/centro-controllo")}
+              >
+                Apri Centro Controllo
+              </button>
             </div>
-          </section>
-        </>
-      ) : null}
-    </section>
+
+            <div className="go-action-card">
+              <h3>Attrezzature cantieri</h3>
+              <p>Registra consegne, spostamenti e ritiro attrezzature</p>
+              <button
+                className="go-primary-btn"
+                type="button"
+                disabled
+                title="Non disponibile nel clone read-only"
+              >
+                Vai ad attrezzature cantieri
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ================= STORICO ================= */}
+        <div className="go-section">
+          <h2 className="go-section-title">Ultime attività</h2>
+
+          <div className="go-storico">
+            {manutenzioni.map((m) => (
+              <div key={m.id} className="go-storico-row">
+                <span>{m.data}</span>
+                <span>{m.targa}</span>
+                <span>{m.descrizione}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
-}
+};
 
-export default NextOperativitaGlobalePage;
+export default GestioneOperativa;

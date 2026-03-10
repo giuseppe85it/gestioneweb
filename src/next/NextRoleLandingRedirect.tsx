@@ -1,16 +1,7 @@
-import { Navigate, useLocation } from "react-router-dom";
-import {
-  buildNextPathWithRole,
-  getNextRoleFromSearch,
-  getNextRoleLandingPath,
-} from "./nextAccess";
+import { Navigate } from "react-router-dom";
 
 function NextRoleLandingRedirect() {
-  const location = useLocation();
-  const role = getNextRoleFromSearch(location.search);
-  const targetPath = buildNextPathWithRole(getNextRoleLandingPath(role), role, location.search);
-
-  return <Navigate to={targetPath} replace />;
+  return <Navigate to="/next/centro-controllo" replace />;
 }
 
 export default NextRoleLandingRedirect;

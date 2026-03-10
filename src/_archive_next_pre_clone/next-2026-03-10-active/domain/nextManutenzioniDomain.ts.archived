@@ -56,7 +56,6 @@ export type NextMaintenanceHistoryItem = {
   km: number | null;
   ore: number | null;
   eseguitoLabel: string | null;
-  fornitoreLabel: string | null;
   materialiCount: number;
   isCambioGommeDerived: boolean;
   sourceDataset: typeof MANUTENZIONI_KEY;
@@ -216,10 +215,6 @@ function toHistoryItem(
     km: normalizeNumber(raw.km),
     ore: normalizeNumber(raw.ore),
     eseguitoLabel: normalizeOptionalText(raw.eseguito),
-    fornitoreLabel:
-      normalizeOptionalText(raw.fornitore) ??
-      normalizeOptionalText(raw.fornitoreLabel) ??
-      normalizeOptionalText(raw.eseguito),
     materialiCount: materiali.length,
     isCambioGommeDerived: isGomme,
     sourceDataset: MANUTENZIONI_KEY,

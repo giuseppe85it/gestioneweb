@@ -1,1162 +1,1560 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase";
+import { generateDossierMezzoPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import NextAnalisiEconomicaPage from "./NextAnalisiEconomicaPage";
+import NextDossierGommePage from "./NextDossierGommePage";
+import NextDossierRifornimentiPage from "./NextDossierRifornimentiPage";
+import { readNextMezzoRifornimentiSnapshot } from "./domain/nextRifornimentiDomain";
 import {
-  NEXT_ROLE_PRESETS,
-  buildNextPathWithRole,
-  getNextRoleFromSearch,
-} from "./nextAccess";
-import { NEXT_AREAS } from "./nextData";
-import { normalizeNextMezzoTarga, type NextMezzoListItem } from "./nextAnagraficheFlottaDomain";
-import {
-  type NextMaintenanceHistoryItem,
-  type NextScheduledMaintenance,
-  type NextScheduledMaintenanceStatus,
-} from "./domain/nextManutenzioniDomain";
-import {
-  type NextDossierMezzoCompositeSnapshot,
-  readNextDossierMezzoCompositeSnapshot,
-} from "./domain/nextDossierMezzoDomain";
-import {
-  type NextMezzoRifornimentiSnapshot,
-  type NextRifornimentoFieldQuality,
-  type NextRifornimentoMatchStrategy,
-  type NextRifornimentoProvenienza,
-  type NextRifornimentoReadOnlyItem,
-} from "./nextRifornimentiConsumiDomain";
-import {
+  mapNextDocumentiCostiItemsToLegacyView,
+  readNextMezzoDocumentiCostiSnapshot,
   type NextDocumentiCostiCurrency,
-  type NextDocumentiCostiReadOnlyItem,
-  type NextMezzoDocumentiCostiSnapshot,
+  type NextDocumentiMagazzinoSupportDocument,
 } from "./domain/nextDocumentiCostiDomain";
+import {
+  mapNextManutenzioniItemsToLegacyView,
+  readNextMezzoManutenzioniGommeSnapshot,
+} from "./domain/nextManutenzioniGommeDomain";
+import type { NextScheduledMaintenance } from "./domain/nextManutenzioniDomain";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
+import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
+import "../pages/DossierMezzo.css";
+import "./next-shell.css";
 
-const INTEGER_FORMATTER = new Intl.NumberFormat("it-IT", {
-  maximumFractionDigits: 0,
+const CLONE_READ_ONLY_TITLE = "Non disponibile nel clone read-only";
+
+// Normalizza la targa togliendo spazi, simboli e differenze
+const normalizeTarga = (t?: unknown) => {
+  if (typeof t !== "string") return "";
+  return t.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+};
+
+type Currency = NextDocumentiCostiCurrency;
+
+
+interface Mezzo {
+  id?: string;
+  targa: string;
+  anno?: string;
+  categoria?: string;
+  massaComplessiva?: string;
+  dataImmatricolazione?: string;
+  dataScadenzaRevisione?: string;
+  marca?: string;
+  modello?: string;
+  marcaModello?: string;
+  colore?: string;
+  telaio?: string;
+  proprietario?: string;
+  assicurazione?: string;
+  cilindrata?: string;
+  potenza?: string;
+  note?: string;
+  fotoUrl?: string | null;
+  manutenzioneContratto?: string;
+  manutenzioneDataInizio?: string;
+  manutenzioneDataFine?: string;
+  manutenzioneKmMax?: string;
+  manutenzioneProgrammata?: boolean;
+  librettoUrl?: string | null;
+}
+
+interface Lavoro {
+  id: string;
+  targa?: string;
+  mezzoTarga?: string;
+  descrizione: string;
+  dettagli?: string;
+  dataInserimento?: string;
+  eseguito?: boolean;
+  urgenza?: string;
+  gruppoId?: string;
+}
+
+interface MovimentoMateriale {
+  id: string;
+  mezzoTarga?: string;
+  destinatario?: { type: string; refId: string; label: string };
+  materialeLabel?: string;
+  descrizione?: string;
+  fornitore?: string;
+  motivo?: string;
+  quantita?: number;
+  unita?: string;
+  direzione?: "IN" | "OUT";
+  data?: string;
+  fornitoreLabel?: string;
+}
+
+interface Rifornimento {
+  id: string;
+  targaCamion?: string | null;
+  data?: number | null;
+  litri?: number | null;
+  km?: number | null;
+  tipo?: string | null;
+  autistaNome?: string | null;
+  badgeAutista?: string | null;
+}
+
+interface FatturaPreventivo {
+  id: string;
+  mezzoTarga?: string;
+  tipo: "PREVENTIVO" | "FATTURA";
+  data?: string;
+  timestamp?: number | null;
+  descrizione?: string;
+  importo?: number;
+  valuta?: Currency;
+  currency?: Currency;
+  fornitoreLabel?: string;
+  fileUrl?: string | null;   // <── AGGIUNTO
+  sourceKey?: string;
+  sourceDocId?: string | null;
+}
+
+interface Manutenzione {
+  id: string;
+  targa?: string;
+  tipo?: string;
+  data?: string;
+  timestamp?: number | null;
+  km?: number;
+  ore?: number;
+  descrizione?: string;
+}
+
+interface DossierState {
+  mezzo: Mezzo | null;
+  lavoriDaEseguire: Lavoro[];
+  lavoriInAttesa: Lavoro[];
+  lavoriEseguiti: Lavoro[];
+  movimentiMateriali: MovimentoMateriale[];
+  rifornimenti: Rifornimento[];
+  documentiCosti: FatturaPreventivo[];
+  documentiMagazzino: NextDocumentiMagazzinoSupportDocument[];
+}
+
+const DossierMezzo: React.FC = () => {
+  const { targa } = useParams<{ targa: string }>();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const activeView = searchParams.get("view");
+
+ const [state, setState] = useState<DossierState>({
+  mezzo: null,
+  lavoriDaEseguire: [],
+  lavoriInAttesa: [],
+  lavoriEseguiti: [],
+  movimentiMateriali: [],
+  rifornimenti: [],
+  documentiCosti: [],
+  documentiMagazzino: [],   // <── AGGIUNTO
 });
 
-const LITERS_FORMATTER = new Intl.NumberFormat("it-IT", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 1,
-});
 
-const CURRENCY_FORMATTER = new Intl.NumberFormat("it-IT", {
-  style: "currency",
-  currency: "EUR",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-const CHF_CURRENCY_FORMATTER = new Intl.NumberFormat("it-IT", {
-  style: "currency",
-  currency: "CHF",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-const DECIMAL_FORMATTER = new Intl.NumberFormat("it-IT", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function renderMarcaModello(item: NextMezzoListItem) {
-  const value = [item.marca, item.modello].filter(Boolean).join(" ");
-  return value || "Marca / modello non valorizzati";
-}
-
-function renderOptionalLabel(
-  value: string | null,
-  fallback: string = "Dato non valorizzato"
-) {
-  return value || fallback;
-}
-
-function formatIntegerValue(value: number | null): string {
-  return value === null ? "--" : INTEGER_FORMATTER.format(value);
-}
-
-function formatLitriValue(value: number | null): string {
-  return value === null ? "--" : LITERS_FORMATTER.format(value);
-}
-
-function formatCurrencyValue(value: number | null): string {
-  return value === null ? "--" : CURRENCY_FORMATTER.format(value);
-}
-
-function formatDocumentAmountValue(
-  value: number | null,
-  currency: NextDocumentiCostiCurrency
-): string {
-  if (value === null) return "--";
-  if (currency === "CHF") return CHF_CURRENCY_FORMATTER.format(value);
-  if (currency === "EUR") return CURRENCY_FORMATTER.format(value);
-  return `${DECIMAL_FORMATTER.format(value)} (valuta da verificare)`;
-}
-
-function renderLavoroMeta(item: { dataInserimento: string | null }) {
-  return item.dataInserimento
-    ? `Inserito ${item.dataInserimento}`
-    : "Lavoro tecnico senza data inserimento valorizzata.";
-}
-
-function renderRefuelStatusLabel(
-  status: "idle" | "loading" | "success" | "error",
-  snapshot: NextMezzoRifornimentiSnapshot | null
-) {
-  switch (status) {
-    case "loading":
-      return "Caricamento rifornimenti";
-    case "success":
-      if (!snapshot) return "In attesa";
-      if (snapshot.counts.total > 0) return "Rifornimenti disponibili";
-      if (
-        snapshot.datasetShapes.business === "missing" &&
-        snapshot.datasetShapes.field === "missing"
-      ) {
-        return "Dati rifornimenti assenti";
-      }
-      if (
-        snapshot.datasetShapes.business === "unsupported" &&
-        snapshot.datasetShapes.field === "unsupported"
-      ) {
-        return "Formato dati non leggibile";
-      }
-      return "Nessun rifornimento per mezzo";
-    case "error":
-      return "Rifornimenti non disponibili";
-    default:
-      return "In attesa";
-  }
-}
-
-function renderDocumentCostStatusLabel(
-  status: "idle" | "loading" | "success" | "error",
-  snapshot: NextMezzoDocumentiCostiSnapshot | null
-) {
-  switch (status) {
-    case "loading":
-      return "Caricamento documenti";
-    case "success":
-      if (!snapshot) return "In attesa";
-      if (snapshot.counts.total > 0) return "Documenti disponibili";
-      if (snapshot.datasetShapes.costiMezzo === "missing") {
-        return "Dati costi assenti";
-      }
-      if (snapshot.datasetShapes.costiMezzo === "unsupported") {
-        return "Formato dati non leggibile";
-      }
-      return "Nessun documento o costo per mezzo";
-    case "error":
-      return "Documenti non disponibili";
-    default:
-      return "In attesa";
-  }
-}
-
-function renderRefuelQualityLabel(value: NextRifornimentoFieldQuality) {
-  switch (value) {
-    case "certo":
-      return "dato certo";
-    case "ricostruito":
-      return "dato ricostruito";
-    default:
-      return "non disponibile";
-  }
-}
-
-function renderRefuelProvenienzaLabel(value: NextRifornimentoProvenienza) {
-  switch (value) {
-    case "business":
-      return "Business";
-    case "campo":
-      return "Campo";
-    default:
-      return "Ricostruito";
-  }
-}
-
-function renderRefuelMatchLabel(value: NextRifornimentoMatchStrategy) {
-  switch (value) {
-    case "match_origin_id":
-      return "Match origin id";
-    case "match_euristica_10_minuti":
-      return "Match euristico 10 min";
-    case "match_euristica_stesso_giorno":
-      return "Match euristico giorno";
-    case "solo_campo":
-      return "Solo feed campo";
-    default:
-      return "Solo business";
-  }
-}
-
-function renderRifornimentoMeta(item: NextRifornimentoReadOnlyItem) {
-  const parts = [
-    item.dataDisplay ? `Data ${item.dataDisplay}` : "Data non disponibile",
-    item.litri !== null ? `${formatLitriValue(item.litri)} L` : null,
-    item.autistaNome
-      ? `Autista ${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}`
-      : item.badgeAutista
-      ? `Badge ${item.badgeAutista}`
-      : null,
-  ].filter(Boolean);
-
-  return parts.join(" | ");
-}
-
-function renderDocumentTotalsSummary(
-  totals: NextMezzoDocumentiCostiSnapshot["totals"]["preventivi"] | null
-) {
-  if (!totals || totals.withAmount === 0) {
-    return "Totali prudenziali non disponibili";
-  }
-
-  const parts = [];
-  if (totals.eur > 0) parts.push(CURRENCY_FORMATTER.format(totals.eur));
-  if (totals.chf > 0) parts.push(CHF_CURRENCY_FORMATTER.format(totals.chf));
-  if (totals.unknownCount > 0) {
-    parts.push(`valuta da verificare: ${formatIntegerValue(totals.unknownCount)}`);
-  }
-
-  return parts.join(" | ");
-}
-
-function renderDocumentCostMeta(item: NextDocumentiCostiReadOnlyItem) {
-  const parts = [
-    item.dateLabel ? `Data ${item.dateLabel}` : "Data non disponibile",
-    item.supplier ? `Fornitore ${item.supplier}` : null,
-    `Origine ${item.sourceLabel}`,
-  ].filter(Boolean);
-
-  return parts.join(" | ");
-}
-
-function renderDocumentCostReadOnlyCard(item: NextDocumentiCostiReadOnlyItem) {
-  return (
-    <div key={item.id} className="next-control-list__item">
-      <div className="next-global-pillbar">
-        <span
-          className={
-            item.category === "fattura"
-              ? "next-chip next-chip--warning"
-              : item.category === "preventivo"
-              ? "next-chip next-chip--accent"
-              : "next-chip next-chip--success"
-          }
-        >
-          {item.documentTypeLabel}
-        </span>
-        <span className="next-chip next-chip--subtle">{item.sourceLabel}</span>
-        <span className="next-chip next-chip--subtle">
-          {item.amount !== null
-            ? formatDocumentAmountValue(item.amount, item.currency)
-            : "importo non disponibile"}
-        </span>
-      </div>
-      <strong>{item.title}</strong>
-      <span>{renderDocumentCostMeta(item)}</span>
-      <span>
-        File: {item.fileUrl ? "presente" : "non disponibile"}
-        {" | "}Importo: {item.fieldQuality.amount === "non_disponibile" ? "non leggibile" : item.fieldQuality.amount}
-        {" | "}Data: {item.fieldQuality.date === "non_disponibile" ? "non leggibile" : item.fieldQuality.date}
-      </span>
-    </div>
-  );
-}
-
-function renderScheduledMaintenanceStatusLabel(value: NextScheduledMaintenanceStatus) {
-  switch (value) {
-    case "scaduta":
-      return "Scaduta";
-    case "in_scadenza":
-      return "In scadenza";
-    case "pianificata":
-      return "Pianificata";
-    case "data_mancante":
-      return "Data mancante";
-    default:
-      return "Non attiva";
-  }
-}
-
-function getScheduledMaintenanceToneClassName(value: NextScheduledMaintenanceStatus) {
-  switch (value) {
-    case "scaduta":
-      return "next-chip next-chip--warning";
-    case "in_scadenza":
-      return "next-chip next-chip--accent";
-    case "pianificata":
-      return "next-chip next-chip--success";
-    case "data_mancante":
-      return "next-chip next-chip--warning";
-    default:
-      return "next-chip next-chip--subtle";
-  }
-}
-
-function renderScheduledMaintenanceMeta(item: NextScheduledMaintenance) {
-  if (!item.enabled) {
-    return "Nessuna pianificazione manutentiva attiva sul mezzo.";
-  }
-
-  if (item.daysToDeadline === null) {
-    return item.status === "data_mancante"
-      ? "La pianificazione e attiva ma non ha una data fine parsabile."
-      : "Pianificazione attiva senza scadenza calcolabile.";
-  }
-
-  if (item.daysToDeadline < 0) {
-    const days = Math.abs(item.daysToDeadline);
-    return `Scaduta da ${formatIntegerValue(days)} giorni.`;
-  }
-
-  return `Scadenza tra ${formatIntegerValue(item.daysToDeadline)} giorni.`;
-}
-
-function renderMaintenanceHistoryMeta(item: NextMaintenanceHistoryItem) {
-  const parts = [
-    item.dataRaw ? `Data ${item.dataRaw}` : "Data non disponibile",
-    item.tipo ? `Tipo ${item.tipo}` : null,
-    item.km !== null ? `${formatIntegerValue(item.km)} km` : null,
-    item.ore !== null ? `${formatIntegerValue(item.ore)} h` : null,
-    item.materialiCount > 0 ? `Materiali ${formatIntegerValue(item.materialiCount)}` : null,
-    item.eseguitoLabel ? `Eseguito ${item.eseguitoLabel}` : null,
-  ].filter(Boolean);
-
-  return parts.join(" | ");
-}
-
-function renderRefuelReadOnlyCard(item: NextRifornimentoReadOnlyItem) {
-  return (
-    <div key={item.id} className="next-control-list__item">
-      <div className="next-global-pillbar">
-        <span className="next-chip next-chip--success">
-          {renderRefuelProvenienzaLabel(item.provenienza)}
-        </span>
-        <span className="next-chip next-chip--accent">
-          {item.dataDisplay ?? "Data non disponibile"}
-        </span>
-        <span className="next-chip next-chip--subtle">
-          {item.litri !== null ? `${formatLitriValue(item.litri)} L` : "Litri non disponibili"}
-        </span>
-        <span className="next-chip next-chip--subtle">
-          {item.km !== null ? `${formatIntegerValue(item.km)} km` : "km non disponibile"}
-        </span>
-        <span className="next-chip next-chip--subtle">
-          {item.costo !== null ? formatCurrencyValue(item.costo) : "costo non disponibile"}
-        </span>
-        <span className="next-chip next-chip--subtle">
-          {renderRefuelMatchLabel(item.matchStrategy)}
-        </span>
-      </div>
-      <strong>{renderOptionalLabel(item.distributore, "Distributore non valorizzato")}</strong>
-      <span>{renderRifornimentoMeta(item)}</span>
-      <span>{renderOptionalLabel(item.note, "Nessuna nota disponibile.")}</span>
-      <span>
-        Timestamp:{" "}
-        {item.timestampRicostruito !== null
-          ? renderRefuelQualityLabel(item.fieldQuality.timestampRicostruito)
-          : "non disponibile"}
-        {" | "}
-        Autista: {renderRefuelQualityLabel(item.fieldQuality.autistaNome)}
-        {" | "}
-        KM: {renderRefuelQualityLabel(item.fieldQuality.km)}
-        {" | "}
-        Costo: {renderRefuelQualityLabel(item.fieldQuality.costo)}
-      </span>
-    </div>
-  );
-}
-
-function NextDossierMezzoPage() {
-  const { targa: routeTarga } = useParams();
-  const location = useLocation();
-  const role = getNextRoleFromSearch(location.search);
-  const area = NEXT_AREAS["mezzi-dossier"];
-  const normalizedTarga = normalizeNextMezzoTarga(routeTarga);
-
-  const [dossierSnapshot, setDossierSnapshot] =
-    useState<NextDossierMezzoCompositeSnapshot | null>(null);
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error" | "not-found">(
-    "idle"
-  );
+  const [manutenzioni, setManutenzioni] = useState<Manutenzione[]>([]);
+  const [scheduledMaintenance, setScheduledMaintenance] = useState<NextScheduledMaintenance | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAllMaintenance, setShowAllMaintenance] = useState(false);
-  const [showAllRefuels, setShowAllRefuels] = useState(false);
 
-  const listPath = buildNextPathWithRole("/next/mezzi-dossier", role, location.search);
+  const [showAttesaModal, setShowAttesaModal] = useState(false);
+  const [showEseguitiModal, setShowEseguitiModal] = useState(false);
+  const [showManutenzioniModal, setShowManutenzioniModal] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("dossier-mezzo.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF dossier mezzo");
+  const [pdfShareContext, setPdfShareContext] = useState("Dossier mezzo");
+  const [pdfShareDate, setPdfShareDate] = useState<string | null>(null);
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const [showLibrettoModal, setShowLibrettoModal] = useState(false);
+  const [librettoLoadErrors, setLibrettoLoadErrors] = useState<Record<string, boolean>>({});
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
+
+  const formatFileDate = () => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, "0");
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const resolveFileNameFromUrl = (url: string, fallback: string) => {
+    try {
+      const parsed = new URL(url);
+      const candidate = parsed.pathname.split("/").pop();
+      if (!candidate) return fallback;
+      return decodeURIComponent(candidate);
+    } catch {
+      return fallback;
+    }
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const openDocumento = (url: string) => {
+    const fallbackName = `documento-mezzo-${formatFileDate()}.pdf`;
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewBlob(null);
+    setPdfPreviewFileName(resolveFileNameFromUrl(url, fallbackName));
+    setPdfPreviewTitle("Anteprima PDF documento mezzo");
+    setPdfShareContext("Documento mezzo");
+    setPdfShareDate(null);
+    setPdfPreviewUrl(url);
+    setPdfPreviewOpen(true);
+  };
+
+const openPhotoViewer = (url: string) => {
+  setPhotoModalUrl(url);
+  setShowPhotoModal(true);
+};
+
+const closePhotoViewer = () => {
+  setShowPhotoModal(false);
+  setPhotoModalUrl(null);
+};
+
+const isPdfUrl = (url: string) => {
+  const u = String(url || "").toLowerCase();
+  return u.includes(".pdf") || u.includes("application/pdf");
+};
+
+useEffect(() => {
+  if (!showPhotoModal) return;
+  const handleKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setShowPhotoModal(false);
+      setPhotoModalUrl(null);
+    }
+  };
+  window.addEventListener("keydown", handleKey);
+  return () => window.removeEventListener("keydown", handleKey);
+}, [showPhotoModal]);
+
+useEffect(() => {
+  return () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+  };
+}, [pdfPreviewUrl]);
 
   useEffect(() => {
-    let active = true;
+    let cancelled = false;
 
-    const load = async () => {
-      if (!normalizedTarga) {
-        setStatus("error");
-        setError("Parametro targa non valido per il Dossier NEXT.");
-        setDossierSnapshot(null);
-        setShowAllMaintenance(false);
-        setShowAllRefuels(false);
+    const loadData = async () => {
+      if (!targa) {
+        setError("Targa non specificata.");
+        setLoading(false);
         return;
       }
 
       try {
-        setStatus("loading");
+        setLoading(true);
         setError(null);
-        setDossierSnapshot(null);
-        setShowAllMaintenance(false);
-        setShowAllRefuels(false);
 
-        const snapshot = await readNextDossierMezzoCompositeSnapshot(normalizedTarga);
-        if (!active) return;
+        const mezziDocRef = doc(db, "storage", "@mezzi_aziendali");
+        const mezziSnap = await getDoc(mezziDocRef);
+        const mezziData = mezziSnap.data() || {};
+        const mezziArray = (mezziData.value || []) as Mezzo[];
 
-        if (!snapshot) {
-          setStatus("not-found");
-          setError(
-            `Il mezzo ${normalizedTarga} non e presente nel dataset canonico di identita mezzo.`
-          );
-          return;
+        const mezzo = mezziArray.find(
+          (m) => m.targa?.toUpperCase().trim() === targa.toUpperCase().trim()
+        );
+
+        const lavoriDocRef = doc(db, "storage", "@lavori");
+        const lavoriSnap = await getDoc(lavoriDocRef);
+        const lavoriData = lavoriSnap.data() || {};
+        const lavoriArray = (lavoriData.value || []) as Lavoro[];
+
+        const lavoriPerMezzo = lavoriArray.filter((l) => {
+          const t = (l.targa || l.mezzoTarga || "").toUpperCase().trim();
+          return t === targa.toUpperCase().trim();
+        });
+
+        const lavoriDaEseguire = lavoriPerMezzo.filter((l) => l.eseguito === false);
+        const lavoriEseguiti = lavoriPerMezzo.filter((l) => l.eseguito === true);
+        const lavoriInAttesa = lavoriDaEseguire.filter(
+          (l) => l.gruppoId && !l.eseguito
+        );
+
+        const movimentiDocRef = doc(db, "storage", "@materialiconsegnati");
+        const movimentiSnap = await getDoc(movimentiDocRef);
+        const movimentiData = movimentiSnap.data() || {};
+        const movimentiArray =
+          (movimentiData.value || []) as MovimentoMateriale[];
+
+        const movimentiPerMezzo = movimentiArray.filter(
+          (m) => m.destinatario?.label === targa
+        );
+
+        movimentiPerMezzo.sort((a, b) => {
+          const parse = (d?: string) => {
+            if (!d) return 0;
+            const [gg, mm, yyyy] = d.split(" ");
+            return new Date(`${yyyy}-${mm}-${gg}`).getTime();
+          };
+          return parse(b.data) - parse(a.data);
+        });
+
+        const rifornimentiSnapshot = await readNextMezzoRifornimentiSnapshot(targa);
+        const rifornimentiPerMezzo: Rifornimento[] = rifornimentiSnapshot.items.map((entry) => ({
+          id: entry.id,
+          targaCamion: entry.targa,
+          data: entry.timestamp,
+          litri: entry.litri,
+          km: entry.km,
+          tipo: entry.tipo,
+          autistaNome: entry.autista,
+          badgeAutista: entry.badgeAutista,
+        }));
+let docsMag: NextDocumentiMagazzinoSupportDocument[] = [];
+
+        const documentiCostiSnapshot = await readNextMezzoDocumentiCostiSnapshot(targa);
+        const documentiCostiReadOnly = mapNextDocumentiCostiItemsToLegacyView(
+          documentiCostiSnapshot.items
+        );
+        docsMag = documentiCostiSnapshot.materialCostSupport.documents;
+
+        const manutenzioniGommeSnapshot = await readNextMezzoManutenzioniGommeSnapshot(targa);
+        const manArray = mapNextManutenzioniItemsToLegacyView(
+          manutenzioniGommeSnapshot.maintenanceItems
+        );
+
+        if (!cancelled) {
+setState({
+  mezzo: mezzo || null,
+  lavoriDaEseguire,
+  lavoriInAttesa,
+  lavoriEseguiti,
+  movimentiMateriali: movimentiPerMezzo,
+  rifornimenti: rifornimentiPerMezzo,
+  documentiCosti: documentiCostiReadOnly,
+  documentiMagazzino: docsMag,   // <── AGGIUNTO
+});
+          setManutenzioni(manArray);
+          setScheduledMaintenance(manutenzioniGommeSnapshot.scheduledMaintenance);
+          setLoading(false);
         }
-
-        setDossierSnapshot(snapshot);
-        setStatus("success");
-      } catch {
-        if (!active) return;
-
-        setStatus("error");
-        setError("Impossibile leggere il Dossier NEXT dal layer mezzo-centrico.");
-        setDossierSnapshot(null);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || "Errore durante il caricamento del dossier.");
+          setLoading(false);
+        }
       }
     };
 
-    void load();
-
+    loadData();
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [normalizedTarga]);
+  }, [targa]);
 
-  const mezzo = dossierSnapshot?.mezzo ?? null;
-  const overview = dossierSnapshot?.overview ?? null;
-  const technicalState = dossierSnapshot?.technical ?? {
-    status: "idle",
-    snapshot: null,
-    error: null,
-  };
-  const maintenanceState = dossierSnapshot?.maintenance ?? {
-    status: "idle",
-    snapshot: null,
-    error: null,
-  };
-  const refuelState = dossierSnapshot?.refuels ?? {
-    status: "idle",
-    snapshot: null,
-    error: null,
-  };
-  const documentCostsState = dossierSnapshot?.documentCosts ?? {
-    status: "idle",
-    snapshot: null,
-    error: null,
+  const handleBack = () => {
+    navigate("/next/mezzi-dossier");
   };
 
-  const technicalSnapshot = technicalState.snapshot;
-  const maintenanceSnapshot = maintenanceState.snapshot;
-  const refuelSnapshot = refuelState.snapshot;
-  const documentCostsSnapshot = documentCostsState.snapshot;
+  const buildDossierPdfPayload = () => ({
+    mezzo: state.mezzo,
+    mezzoFotoUrl: state.mezzo?.fotoUrl ?? null,
+    mezzoFotoStoragePath:
+      (state.mezzo as any)?.fotoStoragePath ?? (state.mezzo as any)?.fotoPath ?? null,
+    lavoriDaEseguire: state.lavoriDaEseguire,
+    lavoriInAttesa: state.lavoriInAttesa,
+    lavoriEseguiti: state.lavoriEseguiti,
+    rifornimenti: state.rifornimenti,
+    segnalazioni: null,
+    controlli: null,
+    targa,
+  });
 
-  const lavoriAperti = technicalSnapshot?.lavoriAperti ?? [];
-  const lavoriChiusi = technicalSnapshot?.lavoriChiusi ?? [];
-  const lavoriApertiPreview = lavoriAperti.slice(0, 3);
-  const lavoriChiusiPreview = lavoriChiusi.slice(0, 3);
+  const handleOpenPdf = async () => {
+    try {
+      const fileDate = formatFileDate();
+      const targaLabel = normalizeTarga(state.mezzo?.targa || targa || "mezzo") || "mezzo";
+      const preview = await openPreview({
+        source: async () => generateDossierMezzoPDFBlob(buildDossierPdfPayload()),
+        fileName: `dossier-mezzo-${targaLabel}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF dossier ${targaLabel}`);
+      setPdfShareContext(`Dossier mezzo ${targaLabel}`);
+      setPdfShareDate(fileDate);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch (err) {
+      console.error("Errore generazione PDF dossier:", err);
+      alert("Errore durante la generazione dell'anteprima PDF.");
+    }
+  };
 
-  const scheduledMaintenance = maintenanceSnapshot?.scheduledMaintenance ?? null;
-  const maintenanceHistory = maintenanceSnapshot?.historyItems ?? [];
-  const maintenanceHistoryPreview = maintenanceHistory.slice(0, 3);
-  const maintenanceCounts = maintenanceSnapshot?.counts ?? null;
-  const hasMaintenanceFullView = maintenanceHistory.length > maintenanceHistoryPreview.length;
+  const buildPdfShareMessage = () => {
+    return buildPdfShareText({
+      contextLabel: pdfShareContext || "Dossier mezzo",
+      dateLabel: pdfShareDate,
+      fileName: pdfPreviewFileName || "dossier-mezzo.pdf",
+      url: pdfPreviewUrl,
+    });
+  };
 
-  const refuels = refuelSnapshot?.items ?? [];
-  const refuelsPreview = refuels.slice(0, 5);
-  const hasRefuelFullView = refuels.length > refuelsPreview.length;
-  const preventiviPreview = documentCostsSnapshot?.groups.preventivi.slice(0, 3) ?? [];
-  const fatturePreview = documentCostsSnapshot?.groups.fatture.slice(0, 3) ?? [];
-  const documentiUtiliPreview = documentCostsSnapshot?.groups.documentiUtili.slice(0, 3) ?? [];
-  const dossierStatusItems = [
-    "scheda mezzo unica con dati principali gia leggibili",
-    "lavori, manutenzioni, rifornimenti e documenti restano nello stesso contesto",
-    "nessuna modifica dati e nessun workflow tecnico portato qui dentro",
-    "Mezzo360 resta fuori da questa vista e verra deciso separatamente",
-  ];
-  const supportToneClassName = (tone: "accent" | "success" | "warning" | "default") =>
-    tone === "accent"
-      ? "next-panel next-panel--secondary next-tone next-tone--accent"
-      : tone === "success"
-      ? "next-panel next-panel--secondary next-tone next-tone--success"
-      : tone === "warning"
-      ? "next-panel next-panel--secondary next-tone next-tone--warning"
-      : "next-panel next-panel--secondary";
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
 
-  return (
-    <section className="next-page next-dossier-shell">
-      <header className="next-page__hero">
-        <div>
-          <Link className="next-back-link" to={listPath}>
-            Torna all&apos;elenco mezzi
-          </Link>
-          <p className="next-page__eyebrow">{area.eyebrow}</p>
-          <h1>{mezzo ? `Dossier ${mezzo.targa}` : "Dossier mezzo"}</h1>
-          <p className="next-page__description">
-            Quadro unico del mezzo: dati principali, stato tecnico, manutenzioni, rifornimenti e
-            documenti gia leggibili nella stessa scheda.
-          </p>
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "dossier-mezzo.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF dossier mezzo",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPdfText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPdf = () => {
+    const shareText = buildPdfShareMessage();
+    const url = buildWhatsAppShareUrl(shareText);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const deletePreventivo = async (p: FatturaPreventivo) => {
+    void p;
+    return;
+  };
+  void deletePreventivo;
+
+  if (activeView === "analisi") {
+    return <NextAnalisiEconomicaPage />;
+  }
+
+  if (activeView === "gomme") {
+    return <NextDossierGommePage />;
+  }
+
+  if (activeView === "rifornimenti") {
+    return <NextDossierRifornimentiPage />;
+  }
+
+
+  if (loading) {
+    return (
+      <div className="dossier-wrapper">
+        <div className="dossier-loading">Caricamento dossier in corso…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="dossier-wrapper">
+        <div className="dossier-error">
+          <p>{error}</p>
+          <button className="dossier-button" onClick={handleBack}>
+            Torna all’elenco mezzi
+          </button>
         </div>
+      </div>
+    );
+  }
 
-        <div className="next-page__meta">
-          <span className="next-chip next-chip--success">Sola lettura</span>
-          <span className="next-chip next-chip--subtle">
-            Ruolo simulato: {NEXT_ROLE_PRESETS[role].shortLabel}
-          </span>
-          <span className="next-chip next-chip--accent">
-            {overview?.statusLabel ?? "Quadro mezzo in caricamento"}
-          </span>
-          <span className="next-chip next-chip--warning">Nessuna scrittura</span>
+  if (!state.mezzo) {
+    return (
+      <div className="dossier-wrapper">
+        <div className="dossier-error">
+          <p>Nessun mezzo trovato per la targa: {targa}</p>
+          <button className="dossier-button" onClick={handleBack}>
+            Torna all’elenco mezzi
+          </button>
         </div>
-      </header>
+      </div>
+    );
+  }
 
-      {status === "loading" ? (
-        <div className="next-data-state next-tone next-tone--accent">
-          <strong>Caricamento Dossier mezzo</strong>
-          <span>Sto preparando la scheda completa del mezzo.</span>
-        </div>
-      ) : null}
+  const { mezzo } = state;
+  const librettoUrls = [mezzo.librettoUrl]
+    .filter((u): u is string => typeof u === "string")
+    .map((u) => u.trim())
+    .filter(Boolean);
 
-      {status === "error" || status === "not-found" ? (
-        <div className="next-data-state next-tone next-tone--warning">
-          <strong>Dossier non disponibile</strong>
-          <span>{error}</span>
-          <Link className="next-inline-link" to={listPath}>
-            Torna all&apos;elenco mezzi
-          </Link>
-        </div>
-      ) : null}
-
-      {status === "success" && mezzo && overview ? (
-        <>
-          <section className="next-dossier-actionbar">
-            <Link className="next-action-link" to={listPath}>
-              Mezzi
-            </Link>
-            <a className="next-action-link" href="#lavori">
-              Lavori
-            </a>
-            <a className="next-action-link" href="#manutenzioni">
-              Manutenzioni
-            </a>
-            <a className="next-action-link" href="#materiali">
-              Materiali
-            </a>
-            <a className="next-action-link" href="#rifornimenti">
-              Rifornimenti
-            </a>
-            <a className="next-action-link" href="#documenti">
-              Documenti e costi
-            </a>
-          </section>
-
-          <section className="next-dossier-hero-card next-tone">
-            <div className="next-dossier-hero-card__main">
-              <div className="next-panel__header">
-                <div>
-                  <p className="next-page__eyebrow">Dati tecnici</p>
-                  <h2>{mezzo.targa}</h2>
-                </div>
-                <Link className="next-inline-link" to={listPath}>
-                  Elenco mezzi
-                </Link>
-              </div>
-              <p className="next-panel__description">
-                Scheda tecnica del mezzo con dati principali e stato generale gia leggibile.
-              </p>
-
-              <div className="next-dossier-hero-card__identity">
-                <div className="next-dossier-map__row">
-                  <strong>Targa</strong>
-                  <span>{mezzo.targa}</span>
-                </div>
-                <div className="next-dossier-map__row">
-                  <strong>Marca / modello</strong>
-                  <span>{renderMarcaModello(mezzo)}</span>
-                </div>
-                <div className="next-dossier-map__row">
-                  <strong>Categoria</strong>
-                  <span>{mezzo.categoria}</span>
-                </div>
-                <div className="next-dossier-map__row">
-                  <strong>Autista anagrafico</strong>
-                  <span>{mezzo.autistaNome ?? "Non valorizzato"}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="next-dossier-hero-card__side">
-              <div className="next-data-state next-tone next-tone--accent">
-                <strong>Stato scheda</strong>
-                <span>{overview.statusMeta}</span>
-              </div>
-              <div className="next-control-list">
-                {overview.keySignals.map((item) => (
-                  <div key={item} className="next-control-list__item next-control-list__item--soft">
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section id="lavori" className="next-panel next-dossier-section-card next-tone next-tone--accent">
-              <div className="next-panel__header">
-                <h2>Lavori</h2>
-              </div>
-              <p className="next-panel__description">
-                Lavori aperti ed eseguiti del mezzo.
-              </p>
-
-              {technicalState.status === "error" ? (
-                <div className="next-data-state next-tone next-tone--warning">
-                  <strong>Blocco lavori non disponibile</strong>
-                  <span>{technicalState.error}</span>
-                </div>
-              ) : null}
-
-              {technicalState.status === "success" ? (
-                <>
-                  <div className="next-dossier-section-intro">
-                    <article className="next-data-state next-tone">
-                      <strong>Quadro lavori</strong>
-                      <span>
-                        Lavori aperti: {formatIntegerValue(technicalSnapshot?.counts.lavoriAperti ?? null)}
-                        {" | "}Lavori chiusi: {formatIntegerValue(technicalSnapshot?.counts.lavoriChiusi ?? null)}
-                      </span>
-                    </article>
-                  </div>
-                  <div className="next-inline-grid">
-                    <article className="next-inline-panel">
-                      <h3>Lavori aperti</h3>
-                      <p>Backlog tecnico del mezzo da aprire per primo.</p>
-                      {technicalState.status !== "success" || lavoriApertiPreview.length === 0 ? (
-                        <div className="next-data-state">
-                          <strong>Nessun lavoro aperto</strong>
-                          <span>
-                            {technicalState.status === "success"
-                              ? "Non risultano lavori aperti per questa targa."
-                              : "Il backlog aperto non e disponibile nel quadro attuale."}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="next-control-list">
-                          {lavoriApertiPreview.map((item) => (
-                            <div key={item.id} className="next-control-list__item">
-                              <div className="next-global-pillbar">
-                                <span className="next-chip next-chip--accent">Aperto</span>
-                                {item.urgenza ? (
-                                  <span className="next-chip next-chip--warning">
-                                    Urgenza {item.urgenza}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <strong>{renderOptionalLabel(item.descrizione)}</strong>
-                              <span>{renderLavoroMeta(item)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </article>
-
-                    <article className="next-inline-panel">
-                      <h3>Lavori chiusi</h3>
-                      <p>Ultimi esiti tecnici gia chiusi sul mezzo.</p>
-                      {technicalState.status !== "success" || lavoriChiusiPreview.length === 0 ? (
-                        <div className="next-data-state">
-                          <strong>Nessun lavoro chiuso</strong>
-                          <span>
-                            {technicalState.status === "success"
-                              ? "Non risultano lavori chiusi per questa targa."
-                              : "Il riepilogo lavori chiusi non e disponibile nel quadro attuale."}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="next-control-list">
-                          {lavoriChiusiPreview.map((item) => (
-                            <div key={item.id} className="next-control-list__item">
-                              <div className="next-global-pillbar">
-                                <span className="next-chip next-chip--success">Eseguito</span>
-                              </div>
-                              <strong>{renderOptionalLabel(item.descrizione)}</strong>
-                              <span>{renderLavoroMeta(item)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </article>
-                  </div>
-                </>
-              ) : (
-                <div className="next-data-state">
-                  <strong>Lavori non disponibili</strong>
-                  <span>Il blocco lavori non e leggibile per questa targa.</span>
-                </div>
-              )}
-          </section>
-
-          <section id="manutenzioni" className="next-panel next-dossier-section-card next-tone">
-            <div className="next-panel__header">
-              <h2>Manutenzioni</h2>
-            </div>
-            <p className="next-panel__description">
-              Manutenzione programmata e storico interventi del mezzo.
-            </p>
-
-            {maintenanceState.status === "error" ? (
-              <div className="next-data-state next-tone next-tone--warning">
-                <strong>Blocco manutenzioni non disponibile</strong>
-                <span>{maintenanceState.error}</span>
-              </div>
-            ) : null}
-
-            {maintenanceState.status === "success" ? (
-              <>
-                <div className="next-inline-grid">
-                  <article className="next-inline-panel">
-                    <h3>Manutenzione programmata</h3>
-                    <p>Stato della pianificazione manutentiva del mezzo.</p>
-                    {!scheduledMaintenance ? (
-                      <div className="next-data-state">
-                        <strong>Stato programmato non disponibile</strong>
-                        <span>La pianificazione manutentiva non risulta disponibile per il mezzo.</span>
-                      </div>
-                    ) : (
-                      <div className="next-control-list">
-                        <div className="next-control-list__item">
-                          <div className="next-global-pillbar">
-                            <span
-                              className={getScheduledMaintenanceToneClassName(
-                                scheduledMaintenance.status
-                              )}
-                            >
-                              {renderScheduledMaintenanceStatusLabel(scheduledMaintenance.status)}
-                            </span>
-                            <span className="next-chip next-chip--subtle">
-                              {scheduledMaintenance.dataFine ?? "Data fine non valorizzata"}
-                            </span>
-                          </div>
-                          <strong>
-                            {scheduledMaintenance.enabled
-                              ? "Pianificazione manutentiva attiva"
-                              : "Nessuna manutenzione programmata attiva"}
-                          </strong>
-                          <span>{renderScheduledMaintenanceMeta(scheduledMaintenance)}</span>
-                          <span>
-                            Inizio:{" "}
-                            {renderOptionalLabel(scheduledMaintenance.dataInizio, "non valorizzato")}
-                            {" | "}KM max:{" "}
-                            {renderOptionalLabel(scheduledMaintenance.kmMax, "non valorizzato")}
-                            {" | "}Contratto:{" "}
-                            {renderOptionalLabel(scheduledMaintenance.contratto, "non valorizzato")}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </article>
-
-                  <article className="next-inline-panel">
-                    <h3>Ultime manutenzioni</h3>
-                    <p>Storico interventi del mezzo in ordine recente.</p>
-                    {maintenanceHistoryPreview.length === 0 ? (
-                      <div className="next-data-state">
-                        <strong>Nessuna manutenzione letta</strong>
-                        <span>Non risulta storico manutentivo per questa targa.</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="next-data-state next-tone">
-                          <strong>
-                            Anteprima dossier: ultime{" "}
-                            {formatIntegerValue(maintenanceHistoryPreview.length)} manutenzioni
-                          </strong>
-                          <span>
-                            Totale storico ricostruito per questo mezzo:{" "}
-                            {formatIntegerValue(maintenanceHistory.length)}.
-                          </span>
-                          <div className="next-access-page__actions">
-                            {hasMaintenanceFullView ? (
-                              <button
-                                type="button"
-                                className="next-action-link next-action-link--primary"
-                                onClick={() => setShowAllMaintenance(true)}
-                              >
-                                Vedi tutte
-                              </button>
-                            ) : null}
-                            {showAllMaintenance ? (
-                              <button
-                                type="button"
-                                className="next-action-link"
-                                onClick={() => setShowAllMaintenance(false)}
-                              >
-                                Chiudi vista completa
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <div className="next-control-list">
-                          {maintenanceHistoryPreview.map((item) => (
-                            <div key={item.id} className="next-control-list__item">
-                              <div className="next-global-pillbar">
-                                <span className="next-chip next-chip--subtle">
-                                  {item.dataRaw ?? "Data non disponibile"}
-                                </span>
-                                {item.tipo ? (
-                                  <span className="next-chip next-chip--subtle">{item.tipo}</span>
-                                ) : null}
-                                {item.isCambioGommeDerived ? (
-                                  <span className="next-chip next-chip--warning">Gomme</span>
-                                ) : null}
-                              </div>
-                              <strong>{renderOptionalLabel(item.descrizione)}</strong>
-                              <span>{renderMaintenanceHistoryMeta(item)}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {showAllMaintenance ? (
-                          <div className="next-inline-panel">
-                            <div className="next-panel__header">
-                              <h3>Vista completa manutenzioni</h3>
-                              <span className="next-chip next-chip--accent">
-                                {formatIntegerValue(maintenanceHistory.length)} record
-                              </span>
-                            </div>
-                            <p>Vista completa dello storico manutenzioni del mezzo.</p>
-                            <div className="next-control-list">
-                              {maintenanceHistory.map((item) => (
-                                <div key={item.id} className="next-control-list__item">
-                                  <div className="next-global-pillbar">
-                                    <span className="next-chip next-chip--subtle">
-                                      {item.dataRaw ?? "Data non disponibile"}
-                                    </span>
-                                    {item.tipo ? (
-                                      <span className="next-chip next-chip--subtle">
-                                        {item.tipo}
-                                      </span>
-                                    ) : null}
-                                    {item.isCambioGommeDerived ? (
-                                      <span className="next-chip next-chip--warning">Gomme</span>
-                                    ) : null}
-                                  </div>
-                                  <strong>{renderOptionalLabel(item.descrizione)}</strong>
-                                  <span>{renderMaintenanceHistoryMeta(item)}</span>
-                                  <span>
-                                    Origine: {item.sourceOrigin} {" | "}Dataset: {item.sourceDataset}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </>
-                    )}
-                  </article>
-                </div>
-              </>
-            ) : null}
-          </section>
-
-          <section id="materiali" className="next-panel next-dossier-section-card">
-            <div className="next-panel__header">
-              <h2>Materiali e movimenti inventario</h2>
-            </div>
-            <p className="next-panel__description">
-              Sezione gia prevista nel Dossier, ma non ancora collegata in modo pulito nella NEXT.
-            </p>
-            <div className="next-data-state">
-              <strong>Blocco non ancora collegato</strong>
-              <span>
-                Il cluster materiali resta strutturato ma non viene riempito finche il reader
-                mezzo-centrico non entra senza portare logiche sporche in UI.
-              </span>
-            </div>
-          </section>
-
-          <section id="rifornimenti" className="next-panel next-dossier-section-card next-tone next-tone--success">
-              <div className="next-panel__header">
-                <h2>Rifornimenti del mezzo</h2>
-                <span className="next-chip next-chip--success">
-                  {renderRefuelStatusLabel(refuelState.status, refuelSnapshot)}
-                </span>
-              </div>
-              <p className="next-panel__description">
-                Qui vedi i rifornimenti utili del mezzo in ordine recente.
-              </p>
-
-              {refuelState.status === "error" ? (
-                <div className="next-data-state next-tone next-tone--warning">
-                  <strong>Blocco rifornimenti non disponibile</strong>
-                  <span>{refuelState.error}</span>
-                </div>
-              ) : null}
-
-              {refuelState.status === "success" ? (
-                <>
-                  <div className="next-data-state next-tone">
-                    <strong>Quadro rifornimenti del mezzo</strong>
-                    <span>
-                      Totale rifornimenti utili: {formatIntegerValue(refuelSnapshot?.counts.total ?? null)}
-                      {" | "}Litri leggibili: {formatLitriValue(refuelSnapshot?.totals.litri ?? null)} L
-                      {" | "}Costo leggibile: {formatCurrencyValue(refuelSnapshot?.totals.costo ?? null)}
-                    </span>
-                  </div>
-
-                  {refuelsPreview.length === 0 ? (
-                    <div className="next-data-state">
-                      <strong>Nessun rifornimento ricostruito</strong>
-                      <span>
-                        Non risultano rifornimenti utili per questa targa.
-                      </span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="next-data-state next-tone next-tone--accent">
-                        <strong>
-                          Anteprima dossier: ultimi {formatIntegerValue(refuelsPreview.length)} rifornimenti
-                        </strong>
-                          <span>
-                          Il Dossier mostra i 5 record piu recenti. Totale letto per questo mezzo:{" "}
-                          {formatIntegerValue(refuels.length)}.
-                        </span>
-                        <div className="next-access-page__actions">
-                          {hasRefuelFullView ? (
-                            <button
-                              type="button"
-                              className="next-action-link next-action-link--primary"
-                              onClick={() => setShowAllRefuels(true)}
-                            >
-                              Vedi tutti
-                            </button>
-                          ) : null}
-                          {showAllRefuels ? (
-                            <button
-                              type="button"
-                              className="next-action-link"
-                              onClick={() => setShowAllRefuels(false)}
-                            >
-                              Chiudi vista completa
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="next-control-list">
-                        {refuelsPreview.map((item) => renderRefuelReadOnlyCard(item))}
-                      </div>
-
-                      {showAllRefuels ? (
-                        <div className="next-inline-panel">
-                          <div className="next-panel__header">
-                            <h3>Vista completa rifornimenti</h3>
-                            <span className="next-chip next-chip--accent">
-                              {formatIntegerValue(refuels.length)} record
-                            </span>
-                          </div>
-                          <p>
-                            Vista completa dei rifornimenti del mezzo.
-                          </p>
-                          <div className="next-control-list">
-                            {refuels.map((item) => renderRefuelReadOnlyCard(item))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-                </>
-              ) : null}
-          </section>
-
-          <section id="documenti" className="next-panel next-dossier-section-card next-tone next-tone--accent">
-              <div className="next-panel__header">
-                <h2>Documenti e costi</h2>
-                <span className="next-chip next-chip--accent">
-                  {renderDocumentCostStatusLabel(documentCostsState.status, documentCostsSnapshot)}
-                </span>
-              </div>
-              <p className="next-panel__description">
-                Preventivi, fatture e altri documenti utili letti in modo mezzo-centrico.
-              </p>
-
-              {documentCostsState.status === "error" ? (
-                <div className="next-data-state next-tone next-tone--warning">
-                  <strong>Blocco documenti e costi non disponibile</strong>
-                  <span>{documentCostsState.error}</span>
-                </div>
-              ) : null}
-
-              {documentCostsState.status === "success" ? (
-                <>
-                  <div className="next-data-state next-tone">
-                    <strong>Quadro documenti e costi del mezzo</strong>
-                    <span>
-                      Preventivi: {formatIntegerValue(documentCostsSnapshot?.counts.preventivi ?? null)}
-                      {" | "}Fatture: {formatIntegerValue(documentCostsSnapshot?.counts.fatture ?? null)}
-                      {" | "}Documenti utili:{" "}
-                      {formatIntegerValue(documentCostsSnapshot?.counts.documentiUtili ?? null)}
-                    </span>
-                  </div>
-
-                  <div className="next-section-grid">
-                    <article className="next-inline-panel">
-                      <h3>Ultimi preventivi</h3>
-                      <p>
-                        Ultimi preventivi collegati alla targa.
-                      </p>
-                      {preventiviPreview.length === 0 ? (
-                        <div className="next-data-state">
-                          <strong>Nessun preventivo letto</strong>
-                          <span>
-                            Non risultano preventivi utili per questa targa.
-                          </span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="next-data-state next-tone next-tone--accent">
-                            <strong>
-                              Anteprima dossier: ultimi {formatIntegerValue(preventiviPreview.length)}{" "}
-                              preventivi
-                            </strong>
-                            <span>
-                              Totali prudenti:{" "}
-                              {renderDocumentTotalsSummary(
-                                documentCostsSnapshot?.totals.preventivi ?? null
-                              )}
-                            </span>
-                          </div>
-                          <div className="next-control-list">
-                            {preventiviPreview.map((item) => renderDocumentCostReadOnlyCard(item))}
-                          </div>
-                        </>
-                      )}
-                    </article>
-
-                    <article className="next-inline-panel">
-                      <h3>Ultime fatture</h3>
-                      <p>
-                        Preview sintetica delle fatture correlate al mezzo, con importi solo quando
-                        davvero leggibili.
-                      </p>
-                      {fatturePreview.length === 0 ? (
-                        <div className="next-data-state">
-                          <strong>Nessuna fattura letta</strong>
-                          <span>
-                            Non risultano fatture utili per questa targa.
-                          </span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="next-data-state next-tone next-tone--warning">
-                            <strong>
-                              Anteprima dossier: ultime {formatIntegerValue(fatturePreview.length)}{" "}
-                              fatture
-                            </strong>
-                            <span>
-                              Totali prudenti:{" "}
-                              {renderDocumentTotalsSummary(
-                                documentCostsSnapshot?.totals.fatture ?? null
-                              )}
-                            </span>
-                          </div>
-                          <div className="next-control-list">
-                            {fatturePreview.map((item) => renderDocumentCostReadOnlyCard(item))}
-                          </div>
-                        </>
-                      )}
-                    </article>
-
-                    <article className="next-inline-panel">
-                      <h3>Altri documenti utili</h3>
-                      <p>
-                        Documenti collegati alla targa e utili dentro il contesto del mezzo.
-                      </p>
-                      {documentiUtiliPreview.length === 0 ? (
-                        <div className="next-data-state">
-                          <strong>Nessun documento utile letto</strong>
-                          <span>
-                            Nessun altro documento utile risulta leggibile per questa targa.
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="next-control-list">
-                          {documentiUtiliPreview.map((item) => renderDocumentCostReadOnlyCard(item))}
-                        </div>
-                      )}
-                    </article>
-                  </div>
-                </>
-              ) : null}
-          </section>
-
-          <section className="next-section-grid next-section-grid--support">
-            <article className={supportToneClassName("success")}>
-              <div className="next-panel__header">
-                <h2>Riepilogo scheda</h2>
-              </div>
-              <p className="next-panel__description">
-                Contatori sintetici dei blocchi gia leggibili nel Dossier.
-              </p>
-              <ul className="next-panel__list">
-                <li>lavori aperti: {formatIntegerValue(technicalSnapshot?.counts.lavoriAperti ?? null)}</li>
-                <li>lavori chiusi: {formatIntegerValue(technicalSnapshot?.counts.lavoriChiusi ?? null)}</li>
-                <li>storico manutenzioni: {formatIntegerValue(maintenanceCounts?.totaleStorico ?? null)}</li>
-                <li>record con materiali: {formatIntegerValue(maintenanceCounts?.conMateriali ?? null)}</li>
-                <li>rifornimenti: {formatIntegerValue(refuelSnapshot?.counts.total ?? null)}</li>
-                <li>documenti/costi: {formatIntegerValue(documentCostsSnapshot?.counts.total ?? null)}</li>
-              </ul>
-            </article>
-
-            <article className={supportToneClassName("warning")}>
-              <div className="next-panel__header">
-                <h2>Limiti attuali</h2>
-              </div>
-              <p className="next-panel__description">
-                Limiti attuali del Dossier, tenuti in fondo pagina.
-              </p>
-              <ul className="next-panel__list">
-                {overview.technicalLimitations.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-                {overview.refuelLimitations.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-                {overview.documentCostLimitations.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-                <li>nessun PDF runtime nuovo, nessun upload, nessuna delete e nessuna modale della madre</li>
-              </ul>
-            </article>
-
-            <article className={supportToneClassName("success")}>
-              <div className="next-panel__header">
-                <h2>Stato della scheda</h2>
-              </div>
-              <p className="next-panel__description">
-                Promemoria sintetico della copertura disponibile oggi.
-              </p>
-              <ul className="next-panel__list">
-                {dossierStatusItems.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </article>
-          </section>
-        </>
-      ) : null}
-    </section>
+  const totaleLitri = state.rifornimenti.reduce(
+    (sum, r) => sum + (r.litri || 0),
+    0
   );
-}
+  void totaleLitri;
 
-export default NextDossierMezzoPage;
+  const formatDateTime = (ts?: number | null) => {
+    return formatDateTimeUI(ts ?? null);
+  };
+
+  const parseItalianDate = (d?: string): number => {
+    if (!d) return 0;
+    const parts = d.split(" ");
+    if (parts.length < 3) return 0;
+    const [gg, mm, yyyy] = parts;
+    return new Date(`${yyyy}-${mm}-${gg}`).getTime();
+  };
+
+const preventivi = state.documentiCosti
+  .filter((d) => d.tipo === "PREVENTIVO")
+  .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+
+const fatture = state.documentiCosti
+  .filter((d) => d.tipo === "FATTURA")
+  .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+
+  const sumByCurrency = (items: FatturaPreventivo[]) => {
+    let chf = 0;
+    let eur = 0;
+    let unknown = 0;
+    items.forEach((d) => {
+      const imp = typeof d.importo === "number" && !Number.isNaN(d.importo)
+        ? d.importo
+        : null;
+      if (imp == null) return;
+      const curr = d.valuta ?? "UNKNOWN";
+      if (curr === "CHF") chf += imp;
+      else if (curr === "EUR") eur += imp;
+      else unknown += 1;
+    });
+    return { chf, eur, unknown };
+  };
+
+  const preventiviTotals = sumByCurrency(preventivi);
+  const fattureTotals = sumByCurrency(fatture);
+
+  const renderAmountWithCurrency = (
+    value: number | undefined,
+    currency: Currency
+  ) => {
+    if (typeof value !== "number" || Number.isNaN(value)) return "Importo n/d";
+    if (currency === "UNKNOWN") {
+      return (
+        <>
+          {value.toFixed(2)}
+          <span className="dossier-badge badge-info" style={{ marginLeft: "6px" }}>
+            VALUTA DA VERIFICARE
+          </span>
+        </>
+      );
+    }
+    return `${value.toFixed(2)} ${currency}`;
+  };
+
+ 
+  const urgenzaRank = (u?: string): number => {
+    switch ((u || "").toUpperCase()) {
+      case "ALTA":
+        return 3;
+      case "MEDIA":
+        return 2;
+      case "BASSA":
+        return 1;
+      default:
+        return 0;
+    }
+  };
+
+  const lavoriInAttesaMostrati = [...state.lavoriInAttesa]
+    .sort((a, b) => {
+      const rankDiff = urgenzaRank(b.urgenza) - urgenzaRank(a.urgenza);
+      if (rankDiff !== 0) return rankDiff;
+      return (
+        parseItalianDate(b.dataInserimento) -
+        parseItalianDate(a.dataInserimento)
+      );
+    })
+    .slice(0, 3);
+
+  const lavoriEseguitiMostrati = [...state.lavoriEseguiti]
+    .sort(
+      (a, b) =>
+        parseItalianDate(b.dataInserimento) -
+        parseItalianDate(a.dataInserimento)
+    )
+    .slice(0, 3);
+
+  const tg = mezzo.targa.toUpperCase().trim();
+
+  const manutenzioniPerTarga = manutenzioni
+    .filter((m) => (m.targa || "").toUpperCase().trim() === tg)
+    .sort(
+      (a, b) =>
+        (b.timestamp ?? parseItalianDate(b.data)) -
+        (a.timestamp ?? parseItalianDate(a.data))
+    );
+
+  const manutenzioniMostrate = manutenzioniPerTarga.slice(0, 3);
+
+  const manutenzioneProgrammataAttiva =
+    scheduledMaintenance?.enabled ?? Boolean((mezzo as any).manutenzioneProgrammata);
+  const manutenzioneContratto =
+    scheduledMaintenance?.contratto ?? (mezzo as any).manutenzioneContratto ?? "-";
+  const manutenzioneDataInizio =
+    scheduledMaintenance?.dataInizio ?? (mezzo as any).manutenzioneDataInizio ?? null;
+  const manutenzioneDataFine =
+    scheduledMaintenance?.dataFine ?? (mezzo as any).manutenzioneDataFine ?? null;
+  const manutenzioneKmMax =
+    scheduledMaintenance?.kmMax ?? (mezzo as any).manutenzioneKmMax ?? "-";
+
+  const formatKmOre = (m: Manutenzione): string => {
+    const tipo = (m.tipo || "").toLowerCase();
+    if (tipo === "mezzo" && m.km != null) {
+      return `${m.km} KM`;
+    }
+    if (tipo === "altro" && m.ore != null) {
+      return `${m.ore} ORE`;
+    }
+    if (m.km != null) {
+      return `${m.km} KM`;
+    }
+    if (m.ore != null) {
+      return `${m.ore} ORE`;
+    }
+    return "-";
+  };
+  // ========================
+// Trova prezzo unitario dai documenti magazzino
+// ========================
+const trovaPrezzoUnitario = (descrMov?: string): number | null => {
+  if (!descrMov) return null;
+
+  const target = descrMov.toUpperCase().trim();
+
+  for (const doc of state.documentiMagazzino || []) {
+    const righe = Array.isArray(doc.voci) ? doc.voci : [];
+
+    for (const r of righe) {
+      const desc = (r.descrizione || "").toUpperCase().trim();
+      if (!desc) continue;
+
+      // match morbido
+      if (desc.includes(target) || target.includes(desc)) {
+        // 1) prezzoUnitario già estratto
+        if (r.prezzoUnitario != null) {
+          return Number(r.prezzoUnitario);
+        }
+
+        // 2) importo + quantita → calcolo
+        const imp = Number(r.importo);
+        const q = Number(r.quantita);
+        if (imp > 0 && q > 0) {
+          return imp / q;
+        }
+
+        return null;
+      }
+    }
+  }
+
+  return null;
+};
+
+return (
+  <div className="dossier-wrapper">
+
+    <PdfPreviewModal
+      open={pdfPreviewOpen}
+      title={pdfPreviewTitle}
+      pdfUrl={pdfPreviewUrl}
+      fileName={pdfPreviewFileName}
+      hint={pdfShareHint}
+      onClose={closePdfPreview}
+      onShare={handleSharePDF}
+      onCopyLink={handleCopyPdfText}
+      onWhatsApp={handleWhatsAppPdf}
+    />
+
+    {showLibrettoModal && (
+      <div
+        className="dossier-modal-overlay"
+        onClick={() => setShowLibrettoModal(false)}
+      >
+        <div
+          className="dossier-modal dossier-libretto-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="dossier-modal-header">
+            <h2>Libretto - {mezzo.targa}</h2>
+            <button
+              className="dossier-button"
+              type="button"
+              onClick={() => setShowLibrettoModal(false)}
+            >
+              Chiudi
+            </button>
+          </div>
+
+          <div className="dossier-modal-body dossier-libretto-body">
+            {librettoUrls.length === 0 ? (
+              <div className="dossier-empty">
+                Nessun libretto associato.
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    className="dossier-button"
+                    type="button"
+                    disabled
+                    title={CLONE_READ_ONLY_TITLE}
+                  >
+                    Vai a IA Libretto
+                  </button>
+                  <button
+                    className="dossier-button"
+                    type="button"
+                    disabled
+                    title={CLONE_READ_ONLY_TITLE}
+                  >
+                    Cerca in Archivio IA
+                  </button>
+                </div>
+              </div>
+            ) : (
+              librettoUrls.map((url, index) => (
+                <div key={`${url}_${index}`} className="dossier-libretto-item">
+                  {isPdfUrl(url) ? (
+                    <>
+                      <iframe
+                        src={url}
+                        className="dossier-libretto-frame"
+                        title={`Libretto PDF ${index + 1}`}
+                      />
+                      <div className="dossier-libretto-actions">
+                        <button
+                          type="button"
+                          className="dossier-button"
+                          onClick={() => openDocumento(url)}
+                        >
+                          Anteprima PDF
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="dossier-libretto-image-wrap">
+                      {librettoLoadErrors[url] ? (
+                        <div className="dossier-empty">
+                          Impossibile caricare la foto.
+                        </div>
+                      ) : (
+                        <img
+                          src={url}
+                          className="dossier-libretto-img"
+                          alt={`Libretto ${index + 1}`}
+                          onError={() =>
+                            setLibrettoLoadErrors((prev) => ({
+                              ...prev,
+                              [url]: true,
+                            }))
+                          }
+                        />
+                      )}
+                      <div className="dossier-libretto-actions">
+                        <a
+                          className="dossier-button"
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Apri immagine
+                        </a>
+                        {librettoLoadErrors[url] && (
+                          <button
+                            className="dossier-button"
+                            type="button"
+                            disabled
+                            title={CLONE_READ_ONLY_TITLE}
+                          >
+                            Cerca in Archivio IA
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {showPhotoModal && photoModalUrl && (
+      <div className="dossier-modal-overlay" onClick={closePhotoViewer}>
+        <div
+          className="dossier-modal dossier-photo-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="dossier-modal-header">
+            <h2>Foto mezzo</h2>
+            <button
+              className="dossier-button"
+              type="button"
+              onClick={closePhotoViewer}
+            >
+              Chiudi
+            </button>
+          </div>
+          <div className="dossier-modal-body dossier-photo-modal-body">
+            <img
+              src={photoModalUrl}
+              alt={`Foto mezzo ${mezzo.targa}`}
+              className="dossier-photo-modal-img"
+            />
+          </div>
+        </div>
+      </div>
+    )}
+
+    <div className="dossier-header-bar">
+      <button className="dossier-button ghost" onClick={handleBack}>
+        ⟵ Mezzi
+      </button>
+
+      <div className="dossier-header-center">
+        <img src="/logo.png" alt="Logo" className="dossier-logo" />
+        <div className="dossier-header-text">
+          <span className="dossier-header-label">DOSSIER MEZZO</span>
+          <h1 className="dossier-header-title">
+            {mezzo.marca} {mezzo.modello} — {mezzo.targa}
+          </h1>
+        </div>
+      </div>
+
+<div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+  <button
+    className="dossier-button"
+    type="button"
+    onClick={() => navigate(`/next/mezzi-dossier/${encodeURIComponent(mezzo.targa)}?view=analisi`)}
+  >
+    Analisi Economica
+  </button>
+
+  <button
+    className="dossier-button"
+    type="button"
+    onClick={() => navigate(`/next/mezzi-dossier/${encodeURIComponent(mezzo.targa)}?view=gomme`)}
+  >
+    Gomme
+  </button>
+
+  <button
+    className="dossier-button"
+    type="button"
+    onClick={() => navigate(`/next/mezzi-dossier/${encodeURIComponent(mezzo.targa)}?view=rifornimenti`)}
+  >
+    Rifornimenti (dettaglio)
+  </button>
+
+  <button
+    className="dossier-button"
+    type="button"
+    onClick={() => setShowLibrettoModal(true)}
+  >
+    LIBRETTO
+  </button>
+
+  <button
+    className="dossier-button primary"
+    type="button"
+    onClick={handleOpenPdf}
+  >
+    Anteprima PDF
+  </button>
+</div>
+    </div>
+
+    <div className="dossier-grid">
+      {/* DATI TECNICI */}
+      <section className="dossier-card dossier-card-large">
+        <div className="dossier-card-header">
+          <h2>Dati tecnici</h2>
+        </div>
+
+        <div className="dossier-card-body dossier-tech-grid">
+          <div className="dossier-tech-block">
+            <h3>Identificazione</h3>
+            <ul>
+              <li>
+                <span>Proprietario</span>
+                <strong>{mezzo.proprietario || "-"}</strong>
+              </li>
+              <li>
+                <span>Targa</span>
+                <strong>{mezzo.targa}</strong>
+              </li>
+              <li>
+  <span>Autista abituale</span>
+  <strong>{(mezzo as any).autistaNome || "-"}</strong>
+</li>
+
+              <li>
+                <span>Telaio / VIN</span>
+                <strong>{mezzo.telaio || "-"}</strong>
+              </li>
+              <li>
+                <span>Assicurazione</span>
+                <strong>{mezzo.assicurazione || "-"}</strong>
+              </li>
+            </ul>
+          </div>
+
+          <div className="dossier-tech-block">
+            <h3>Caratteristiche</h3>
+            <ul>
+              <li>
+                <span>Marca</span>
+                <strong>{mezzo.marca || "-"}</strong>
+              </li>
+              <li>
+                <span>Modello</span>
+                <strong>{mezzo.modello || "-"}</strong>
+              </li>
+              <li>
+                <span>Categoria</span>
+                <strong>{mezzo.categoria || "-"}</strong>
+              </li>
+              <li>
+                <span>Colore</span>
+                <strong>{mezzo.colore || "-"}</strong>
+              </li>
+            </ul>
+          </div>
+
+            <div className="dossier-tech-block">
+              <h3>Motore e massa</h3>
+              <ul>
+                <li>
+                  <span>Cilindrata</span>
+                  <strong>{mezzo.cilindrata || "-"}</strong>
+                </li>
+                <li>
+                  <span>Potenza</span>
+                  <strong>{mezzo.potenza || "-"}</strong>
+                </li>
+                <li>
+                  <span>Massa complessiva</span>
+                  <strong>{mezzo.massaComplessiva || "-"}</strong>
+                </li>
+                <li>
+                  <span>Anno</span>
+                  <strong>{mezzo.anno || "-"}</strong>
+                </li>
+              </ul>
+            </div>
+
+            <div className="dossier-tech-block">
+              <h3>Scadenze</h3>
+              <ul>
+                <li>
+                  <span>Immatricolazione</span>
+                  <strong>{formatDateUI(mezzo.dataImmatricolazione)}</strong>
+                </li>
+                <li>
+                  <span>Revisione</span>
+                  <strong>{formatDateUI(mezzo.dataScadenzaRevisione)}</strong>
+                </li>
+                <li>
+                  <span>Note</span>
+                  <strong style={{ whiteSpace: "pre-line" }}>{mezzo.note || "-"}</strong>
+                </li>
+                <li>
+  <span>Manutenzione programmata</span>
+  <strong>
+    {manutenzioneProgrammataAttiva ? "ATTIVA" : "NON ATTIVA"}
+  </strong>
+</li>
+
+{manutenzioneProgrammataAttiva && (
+  <>
+    <li>
+      <span>Contratto</span>
+      <strong>{manutenzioneContratto}</strong>
+    </li>
+    <li>
+      <span>Periodo</span>
+      <strong>
+        {formatDateUI(manutenzioneDataInizio)} &rarr;{" "}
+        {formatDateUI(manutenzioneDataFine)}
+      </strong>
+    </li>
+    <li>
+      <span>KM massimi</span>
+      <strong>{manutenzioneKmMax}</strong>
+    </li>
+  </>
+)}
+
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* FOTO MEZZO */}
+        <section className="dossier-card dossier-photo-card">
+          <div className="dossier-card-header">
+            <h2>Foto mezzo</h2>
+          </div>
+
+          <div className="dossier-card-body dossier-photo-body">
+            {mezzo.fotoUrl ? (
+              <div
+                className="dossier-photo-thumb"
+                role="button"
+                tabIndex={0}
+                aria-label="Apri foto mezzo"
+                onClick={() => openPhotoViewer(mezzo.fotoUrl!)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openPhotoViewer(mezzo.fotoUrl!);
+                  }
+                }}
+              >
+                <div className="dossier-mezzo-photo-frame">
+                  <div
+                    className="dossier-mezzo-photo-bg"
+                    style={{ backgroundImage: `url(${mezzo.fotoUrl})` }}
+                  />
+                  <img
+                    src={mezzo.fotoUrl}
+                    alt={mezzo.targa}
+                    className="dossier-mezzo-photo"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="dossier-photo-placeholder">
+                Nessuna foto caricata
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* LAVORI */}
+        <section className="dossier-card">
+          <div className="dossier-card-header">
+            <h2>Lavori</h2>
+          </div>
+
+          <div className="dossier-card-body dossier-work-grid">
+            <div>
+              <h3>In attesa</h3>
+
+              {lavoriInAttesaMostrati.length === 0 ? (
+                <p className="dossier-empty">Nessun lavoro in attesa.</p>
+              ) : (
+                <ul className="dossier-list">
+                  {lavoriInAttesaMostrati.map((l) => (
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      title={CLONE_READ_ONLY_TITLE}
+                      style={{ cursor: "default" }}
+                    >
+                      <div className="dossier-list-main">
+                        <span className="dossier-badge badge-info">
+                          IN ATTESA
+                        </span>
+                        <strong>{l.descrizione}</strong>
+                      </div>
+                      <div className="dossier-list-meta">
+                        <span>{l.dettagli}</span>
+                        <span>{l.dataInserimento}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <button
+                className="dossier-button"
+                type="button"
+                onClick={() => setShowAttesaModal(true)}
+                style={{ marginTop: "12px" }}
+              >
+                Mostra tutti
+              </button>
+            </div>
+
+            <div>
+              <h3>Eseguiti</h3>
+
+              {lavoriEseguitiMostrati.length === 0 ? (
+                <p className="dossier-empty">Nessun lavoro eseguito.</p>
+              ) : (
+                <ul className="dossier-list">
+                  {lavoriEseguitiMostrati.map((l) => (
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      title={CLONE_READ_ONLY_TITLE}
+                      style={{ cursor: "default" }}
+                    >
+                      <div className="dossier-list-main">
+                        <span className="dossier-badge badge-success">
+                          ESEGUITO
+                        </span>
+                        <strong>{l.descrizione}</strong>
+                      </div>
+                      <div className="dossier-list-meta">
+                        <span>{l.dettagli}</span>
+                        <span>{l.dataInserimento}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <button
+                className="dossier-button"
+                type="button"
+                onClick={() => setShowEseguitiModal(true)}
+                style={{ marginTop: "12px" }}
+              >
+                Mostra tutti
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* MANUTENZIONI */}
+        <section className="dossier-card">
+          <div className="dossier-card-header">
+            <h2>Manutenzioni</h2>
+            <button
+              className="dossier-button"
+              type="button"
+              onClick={() => setShowManutenzioniModal(true)}
+            >
+              Mostra tutti
+            </button>
+          </div>
+
+          <div className="dossier-card-body">
+            {manutenzioniMostrate.length === 0 ? (
+              <p className="dossier-empty">
+                Nessuna manutenzione registrata per questo mezzo.
+              </p>
+            ) : (
+              <ul className="dossier-list">
+                {manutenzioniMostrate.map((m) => (
+                  <li key={m.id} className="dossier-list-item">
+                    <div className="dossier-list-main">
+                      <strong>{m.descrizione || "-"}</strong>
+                    </div>
+                    <div className="dossier-list-meta">
+                      <span>{m.data || "-"}</span>
+                      <span>{formatKmOre(m)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        {/* MATERIALI */}
+        <section className="dossier-card dossier-card-full">
+          <div className="dossier-card-header">
+            <h2>Materiali e movimenti inventario</h2>
+          </div>
+
+          <div className="dossier-card-body">
+            {state.movimentiMateriali.length === 0 ? (
+              <p className="dossier-empty">
+                Nessun movimento materiali registrato per questo mezzo.
+              </p>
+            ) : (
+              <div className="dossier-table-wrapper">
+                <table className="dossier-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Descrizione</th>
+                      <th>Q.tà</th>
+                      <th>Destinatario</th>
+                      <th>Fornitore</th>
+                      <th>Motivo</th>
+                            <th>Costo</th>
+
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {state.movimentiMateriali.map((m) => (
+                      <tr key={m.id}>
+                        <td>{m.data || "-"}</td>
+                        <td>{m.descrizione || m.materialeLabel || "-"}</td>
+                        <td>
+                          {m.quantita} {m.unita}
+                        </td>
+                        <td>{m.destinatario?.label || "-"}</td>
+                        <td>{m.fornitore || m.fornitoreLabel || "-"}</td>
+                        <td>{m.motivo || "-"}</td>
+<td>
+  {(() => {
+    const label = m.descrizione || m.materialeLabel || "";
+    const pu = trovaPrezzoUnitario(label);
+    if (pu == null) return "–";
+
+    const qty = Number(m.quantita) || 0;
+    const totale = pu * qty;
+
+    return renderAmountWithCurrency(totale, "UNKNOWN");
+  })()}
+</td>
+
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* RIFORNIMENTI */}
+        <section className="dossier-card">
+          <div className="dossier-card-header">
+            <h2>Rifornimenti</h2>
+          </div>
+
+          <div className="dossier-card-body">
+            {state.rifornimenti.length === 0 ? (
+              <p className="dossier-empty">
+                Nessun rifornimento registrato per questo mezzo.
+              </p>
+            ) : (
+              <div className="dossier-table-wrapper">
+                <table className="dossier-table">
+                  <thead>
+                    <tr>
+                      <th>Data/Ora</th>
+                      <th>Litri</th>
+                      <th>Km</th>
+                      <th>Tipo</th>
+                      <th>Autista</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.rifornimenti.map((r) => (
+                      <tr key={r.id}>
+                        <td>{formatDateTime(r.data)}</td>
+                        <td>{r.litri ?? "-"}</td>
+                        <td>{r.km ?? "-"}</td>
+                        <td>{r.tipo ?? "-"}</td>
+                        <td>
+                          {r.autistaNome
+                            ? `${r.autistaNome}${
+                                r.badgeAutista ? ` (${r.badgeAutista})` : ""
+                              }`
+                            : r.badgeAutista ?? "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* COSTI */}
+        {/* PREVENTIVI */}
+        <section className="dossier-card">
+          <div className="dossier-card-header">
+            <h2>Preventivi</h2>
+
+            <div className="dossier-chip">
+              Totale preventivi:{" "}
+              <strong>CHF {preventiviTotals.chf.toFixed(2)}</strong>
+              <span style={{ marginLeft: "8px" }}>
+                EUR {preventiviTotals.eur.toFixed(2)}
+              </span>
+              {preventiviTotals.unknown > 0 && (
+                <span className="dossier-badge badge-info" style={{ marginLeft: "8px" }}>
+                  VALUTA DA VERIFICARE ({preventiviTotals.unknown})
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="dossier-card-body">
+            {preventivi.length === 0 ? (
+              <p className="dossier-empty">
+                Nessun preventivo registrato.
+              </p>
+            ) : (
+              <ul className="dossier-list">
+                {preventivi.map((d) => (
+                  <li key={d.id} className="dossier-list-item">
+                    <div className="dossier-list-main">
+                      <span className="dossier-badge badge-info">
+                        {d.tipo}
+                      </span>
+                      <strong>{d.descrizione || "-"}</strong>
+                    </div>
+
+<div className="dossier-list-meta">
+  <span>{d.data}</span>
+  <span>{renderAmountWithCurrency(d.importo, d.valuta ?? "UNKNOWN")}</span>
+  <span>{d.fornitoreLabel || "-"}</span>
+
+  {d.fileUrl && (
+<button
+  className="dossier-button"
+  type="button"
+  onClick={() => openDocumento(d.fileUrl!)}
+>
+  Anteprima PDF
+</button>
+  )}
+<button
+  className="dossier-button"
+  type="button"
+  disabled
+  title="Clone read-only"
+>
+  Elimina
+</button>
+</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        {/* FATTURE */}
+        <section className="dossier-card">
+          <div className="dossier-card-header">
+            <h2>Fatture</h2>
+
+            <div className="dossier-chip">
+              Totale fatture:{" "}
+              <strong>CHF {fattureTotals.chf.toFixed(2)}</strong>
+              <span style={{ marginLeft: "8px" }}>
+                EUR {fattureTotals.eur.toFixed(2)}
+              </span>
+              {fattureTotals.unknown > 0 && (
+                <span className="dossier-badge badge-info" style={{ marginLeft: "8px" }}>
+                  VALUTA DA VERIFICARE ({fattureTotals.unknown})
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="dossier-card-body">
+            {fatture.length === 0 ? (
+              <p className="dossier-empty">
+                Nessuna fattura registrata.
+              </p>
+            ) : (
+              <ul className="dossier-list">
+                {fatture.map((d) => (
+                  <li key={d.id} className="dossier-list-item">
+                    <div className="dossier-list-main">
+                      <span className="dossier-badge badge-danger">
+                        {d.tipo}
+                      </span>
+                      <strong>{d.descrizione || "-"}</strong>
+                    </div>
+
+<div className="dossier-list-meta">
+  <span>{d.data}</span>
+  <span>{renderAmountWithCurrency(d.importo, d.valuta ?? "UNKNOWN")}</span>
+  <span>{d.fornitoreLabel || "-"}</span>
+
+  {d.fileUrl && (
+<button
+  className="dossier-button"
+  type="button"
+  onClick={() => openDocumento(d.fileUrl!)}
+>
+  Anteprima PDF
+</button>
+  )}
+</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+       </div>    
+
+      {/* MODALI */}
+      {showAttesaModal && (
+        <div className="dossier-modal-overlay">
+          <div className="dossier-modal">
+            <div className="dossier-modal-header">
+              <h2>Lavori in attesa — {targa}</h2>
+              <button
+                className="dossier-button"
+                onClick={() => setShowAttesaModal(false)}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div className="dossier-modal-body">
+              {state.lavoriInAttesa.length === 0 ? (
+                <p>Nessun lavoro in attesa.</p>
+              ) : (
+                <ul className="dossier-list">
+                  {state.lavoriInAttesa.map((l) => (
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      title={CLONE_READ_ONLY_TITLE}
+                      style={{ cursor: "default" }}
+                    >
+                      <div className="dossier-list-main">
+                        <span className="dossier-badge badge-info">
+                          IN ATTESA
+                        </span>
+                        <strong>{l.descrizione}</strong>
+                      </div>
+                      <div className="dossier-list-meta">
+                        <span>{l.dettagli}</span>
+                        <span>{l.dataInserimento}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEseguitiModal && (
+        <div className="dossier-modal-overlay">
+          <div className="dossier-modal">
+            <div className="dossier-modal-header">
+              <h2>Lavori eseguiti — {targa}</h2>
+              <button
+                className="dossier-button"
+                onClick={() => setShowEseguitiModal(false)}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div className="dossier-modal-body">
+              {state.lavoriEseguiti.length === 0 ? (
+                <p>Nessun lavoro eseguito.</p>
+              ) : (
+                <ul className="dossier-list">
+                  {state.lavoriEseguiti.map((l) => (
+                    <li
+                      key={l.id}
+                      className="dossier-list-item"
+                      title={CLONE_READ_ONLY_TITLE}
+                      style={{ cursor: "default" }}
+                    >
+                      <div className="dossier-list-main">
+                        <span className="dossier-badge badge-success">
+                          ESEGUITO
+                        </span>
+                        <strong>{l.descrizione}</strong>
+                      </div>
+                      <div className="dossier-list-meta">
+                        <span>{l.dettagli}</span>
+                        <span>{l.dataInserimento}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showManutenzioniModal && (
+        <div className="dossier-modal-overlay">
+          <div className="dossier-modal">
+            <div className="dossier-modal-header">
+              <h2>Manutenzioni — {targa}</h2>
+              <button
+                className="dossier-button"
+                onClick={() => setShowManutenzioniModal(false)}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div className="dossier-modal-body">
+              {manutenzioniPerTarga.length === 0 ? (
+                <p>Nessuna manutenzione registrata.</p>
+              ) : (
+                <ul className="dossier-list">
+                  {manutenzioniPerTarga.map((m) => (
+                    <li key={m.id} className="dossier-list-item">
+                      <div className="dossier-list-main">
+                        <strong>{m.descrizione || "-"}</strong>
+                      </div>
+                      <div className="dossier-list-meta">
+                        <span>{m.data || "-"}</span>
+                        <span>{formatKmOre(m)}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+     </div>
+  );
+}  
+
+export default DossierMezzo;
+
+
+
+

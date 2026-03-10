@@ -1,160 +1,59 @@
 # STATO MIGRAZIONE NEXT
 
 ## 1. Scopo del documento
-Questo documento e il registro ufficiale e permanente dello stato di migrazione della nuova app NEXT.
+Questo documento resta il registro ufficiale dello stato della NEXT, ma dal `2026-03-10` segue una strategia diversa rispetto alla versione precedente.
 
 Serve a:
-- capire in pochi minuti cosa esiste davvero nella NEXT e cosa no;
-- evitare lavoro duplicato, importazioni parziali dimenticate e perdita di contesto tra chat/sessioni;
-- distinguere chiaramente shell, UI importata, read-only, scrittura attiva e parti che restano legacy;
-- lasciare una traccia stabile per ogni avanzamento reale su shell, pagine, moduli o integrazioni.
+- capire in pochi minuti quale strategia NEXT e attiva davvero;
+- distinguere la NEXT sperimentale sospesa dal nuovo clone `read-only` della madre;
+- tracciare l'archiviazione della NEXT attuale e l'avvio del clone fedele;
+- segnare quando, in fase successiva, verranno innestati layer puliti, IA e tracking sopra il clone;
+- lavorare insieme al registro permanente delle patch clone `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
 
-Va aggiornato ogni volta che un task tocca la NEXT e modifica anche solo uno di questi aspetti:
-- stato di migrazione;
-- livello di lettura/scrittura dati;
-- decisione di mantenere una parte in legacy;
-- rischi o blocchi emersi durante la migrazione.
+## 2. Nota di continuita
+- La strategia NEXT precedente e sospesa.
+- Snapshot archiviate della situazione precedente:
+  - `docs/_archive/2026-03-10-next-strategia-pre-clone/MATRICE_ESECUTIVA_NEXT.pre-clone-2026-03-10.md`
+  - `docs/_archive/2026-03-10-next-strategia-pre-clone/STATO_MIGRAZIONE_NEXT.pre-clone-2026-03-10.md`
+- La madre resta il gestionale operativo principale e non viene toccata.
 
-## 2. Regole di lettura
-Questo documento serve a capire, per ogni area/modulo della NEXT:
-- se esiste gia qualcosa nel repo oppure no;
-- se e presente solo una shell;
-- se e stata importata solo la UI;
-- se legge dati reali;
-- se scrive dati reali;
-- se resta in legacy;
-- se una parte e ancora `DA VERIFICARE`.
+## 3. Strategia ufficiale attiva
+- La NEXT attuale viene considerata esperimento sospeso e da archiviare.
+- La nuova priorita e costruire in `src/next/*` un clone fedele `read-only` della madre.
+- Il clone deve:
+  - usare la stessa UX pratica della madre;
+  - leggere gli stessi dati reali;
+  - bloccare completamente scritture, delete, upload, import e side effect.
+- Layer puliti dedicati, IA e tracking NON sono piu il primo passo: verranno innestati solo dopo che il clone `read-only` sara stabile.
 
-Importante:
-- questo documento non sostituisce `docs/STATO_ATTUALE_PROGETTO.md`;
-- questo documento non sostituisce i change report del singolo task;
-- questo documento non sostituisce i continuity report tra sessioni;
-- questo documento traccia solo lo stato di avanzamento della NEXT e il suo rapporto con la legacy.
-- alcune righe rappresentano macro-aree shell della NEXT, altre rappresentano moduli o domini funzionali interni.
+## 4. Stati standard usati in questa fase
+- `SOSPESO`: parte o strategia non piu da estendere nel ramo attivo.
+- `DA ARCHIVIARE`: parte presente nel repo ma da spostare fuori dal percorso attivo.
+- `NON INIZIATO`: il nuovo clone non e ancora stato costruito.
+- `IN PREPARAZIONE`: documentazione/regole allineate, ma nessuna patch runtime ancora applicata.
+- `IMPORTATO READ-ONLY`: clone o blocco clone gia operativo in sola lettura.
 
-## 3. Stati standard di migrazione
+## 5. Tabella sintetica aggiornata
 
-### `NON INIZIATO`
-Significa che nel repo non e dimostrata alcuna implementazione reale della parte NEXT.
+| Elemento | Stato | Note operative | Ultimo aggiornamento |
+| --- | --- | --- | --- |
+| Strategia NEXT precedente | SOSPESO | Non e piu la base del progetto; non va estesa | 2026-03-10 |
+| Snapshot NEXT precedente | IMPORTATO READ-ONLY | Archivio creato in `src/_archive_next_pre_clone/next-2026-03-10-active/` per recuperabilita completa del ramo sperimentale precedente | 2026-03-10 |
+| Clone fedele `read-only` della madre | IMPORTATO READ-ONLY | Avviato su `Home`, `Gestione Operativa`, `Mezzi`, `Dossier Mezzo`, `Dossier Gomme`, `Dossier Rifornimenti` e `Analisi Economica`, usando UX madre e azioni bloccate | 2026-03-10 |
+| Blocco totale scritture nel clone | IMPORTATO READ-ONLY | Hardening rafforzato su `NextCentroControlloPage`, `NextDossierMezzoPage`, `NextMezziDossierPage` e shell `/next`: bloccati writer, persistenze locali che simulavano workflow, uscite legacy pericolose e azioni IA/upload | 2026-03-10 |
+| Lettura dati reali nel clone | IMPORTATO READ-ONLY | Il clone legge gia gli stessi dataset reali della madre nelle aree prioritarie, compresi `@manutenzioni`, `@mezzi_aziendali`, `@rifornimenti`, `@rifornimenti_autisti_tmp`, `@costiMezzo`, `@analisi_economica_mezzi`, `@alerts_state`, `@autisti_sessione_attive`, `@storico_eventi_operativi`, `@segnalazioni_autisti_tmp`, `@controlli_mezzo_autisti` e collezioni documentali IA; dal `2026-03-10` rifornimenti, documenti/costi, manutenzioni/gomme e Centro di Controllo passano pero attraverso layer dedicati read-only che normalizzano merge, dedup, parsing, shape sporche e aggregazioni solo nel dominio | 2026-03-10 |
+| Layer puliti dedicati NEXT | IMPORTATO READ-ONLY | Layer clone attivi su `Rifornimenti`, `Documenti + Costi`, `Manutenzioni + Gomme` e `Centro di Controllo / Eventi`: `src/next/domain/nextRifornimentiDomain.ts`, `src/next/domain/nextDocumentiCostiDomain.ts`, `src/next/domain/nextManutenzioniGommeDomain.ts` e `src/next/domain/nextCentroControlloDomain.ts`, collegati a Dossier Rifornimenti, Dossier Gomme, blocco manutenzioni del Dossier Mezzo, Analisi Economica clone e `NextCentroControlloPage`, senza cambiare la UX | 2026-03-10 |
+| IA sopra layer puliti | IN PREPARAZIONE | Rinviata a fase successiva, sopra il clone | 2026-03-10 |
+| Tracking d'uso NEXT | IN PREPARAZIONE | Rinviato a fase successiva, sopra il clone | 2026-03-10 |
 
-Usarlo quando:
-- esiste solo documentazione o blueprint;
-- non esiste ancora shell, route o modulo NEXT verificabile.
+## 6. Regole di aggiornamento per il nuovo corso
+Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
+1. cosa del clone e stato archiviato, creato o modificato;
+2. quali schermate madre sono gia state replicate in `read-only`;
+3. come sono state bloccate le scritture;
+4. quali letture reali sono gia state mantenute;
+5. quali parti restano ancora fuori dal clone;
+6. aggiungere anche la voce corrispondente in `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
 
-### `SHELL CREATA`
-Significa che esiste il contenitore/base della schermata o area NEXT, ma senza una migrazione funzionale reale.
-
-Usarlo quando:
-- la shell e presente;
-- la pagina puo anche essere navigabile;
-- i contenuti sono placeholder, incompleti o non ancora importati.
-
-### `IMPORTATO SOLO UI`
-Significa che la struttura visiva e stata portata nella NEXT, ma senza lettura reale dei dati o con dati finti/mock/statici.
-
-Usarlo quando:
-- la UI e stata importata o ricostruita;
-- non c'e ancora integrazione affidabile con dati reali.
-
-### `IMPORTATO READ-ONLY`
-Significa che il modulo NEXT legge dati reali ma non scrive.
-
-Usarlo quando:
-- il modulo e operativo in consultazione;
-- eventuali azioni di modifica sono assenti o volutamente disattivate.
-
-### `IMPORTATO CON SCRITTURA`
-Significa che il modulo NEXT legge dati reali e abilita anche scrittura reale.
-
-Usarlo quando:
-- la scrittura e attiva almeno per una parte del flusso;
-- la responsabilita sul dato non e piu solo legacy.
-
-### `DA VERIFICARE`
-Significa che non ci sono prove sufficienti per classificare con certezza lo stato reale.
-
-Usarlo quando:
-- il repo o i documenti non permettono di dimostrare il livello reale di migrazione;
-- esistono segnali contraddittori o incompleti.
-
-### `COMPLETATO`
-Significa che, per il perimetro deciso, il modulo e considerato migrato nella NEXT.
-
-Usarlo quando:
-- shell, UI, dati e comportamento previsti risultano presenti nel perimetro concordato;
-- eventuali dipendenze residue dalla legacy sono note e dichiarate.
-
-### `RIMANE LEGACY`
-Significa che la parte non viene migrata nella NEXT in questa fase e resta intenzionalmente sulla legacy.
-
-Usarlo quando:
-- la scelta e esplicita;
-- la NEXT si limita eventualmente a un collegamento, una vista sintetica o un'integrazione.
-
-## 4. Tipi standard di migrazione
-
-### `RIUSO QUASI DIRETTO`
-Usarlo quando la parte attuale e gia abbastanza solida da essere riportata quasi integralmente nella NEXT con adattamenti minimi.
-
-### `RIUSO LOGICA + UI NUOVA`
-Usarlo quando si intende conservare logica/contratti/struttura funzionale ma ricostruire la UI in modo coerente con la shell NEXT.
-
-### `RISCRITTURA PULITA`
-Usarlo quando conviene ricostruire il modulo in modo pulito invece di importarlo dal legacy.
-
-### `LEGACY TEMPORANEO`
-Usarlo quando la parte resta attiva nella legacy e la NEXT, per ora, non la sostituisce.
-
-### `DA DECIDERE`
-Usarlo quando il tipo di migrazione non e ancora dimostrabile o non e ancora stato deciso.
-
-## 5. Tabella principale di avanzamento
-
-Nota iniziale:
-- questa versione del registro e aggiornata allo stato reale del repo al `2026-03-09`;
-- nel repository e ora dimostrata una shell NEXT runtime separata, raggiungibile con route dedicate `/next/*`;
-- le macro-aree NEXT restano separate dalla legacy; al momento `Flotta` legge dati reali in `read-only` tramite reader canonico `D01`, il `Dossier Mezzo` combina `D01`, un primo blocco tecnico `D02` minimo e `read-only`, un layer `D04` di `RICOSTRUZIONE CONTROLLATA NEXT` e ora anche un layer dedicato `D07/D08` per `Documenti e costi` read-only, `Centro di Controllo` legge un layer `D10` read-only di stato operativo/alert/promemoria e `Operativita Globale` legge ora un primo layer `D06` read-only sugli ordini; `IA Gestionale` e `Strumenti Trasversali` restano shell/UI strutturate senza servizi runtime attivi;
-- la shell NEXT include ora anche una struttura frontend centralizzata di visibilita/accesso per ruolo con simulazione tecnica `admin` / `gestionale` / `autista`, senza auth reale o backend dedicato.
-- la macro-area `/next/strumenti-trasversali` non e piu solo placeholder generico: e ora una shell UI reale che chiarisce PDF standard, utility comuni, servizi condivisi, richiamo cross-area e distinzione da `IA Gestionale`, sempre senza servizi runtime.
-- la macro-area `/next/ia-gestionale` non e piu solo placeholder generico: e ora una shell UI reale che chiarisce missione dell'assistente business, perimetro v1 `read-only`, superfici iniziali `Dossier` + `Centro di Controllo`, spiegabilita obbligatoria, limiti iniziali e separazione dalla `IA Audit Tecnico`, sempre senza dati runtime.
-- la macro-area `/next/centro-controllo` non e piu solo placeholder generico: e ora una prima vista runtime read-only che legge il layer `D10` della NEXT, ricostruisce alert/focus/counters da dataset legacy ammessi e mostra solo output pulito, senza portare nella pagina il caos della Home legacy.
-- la macro-area `/next/operativita-globale` non e piu solo placeholder generico: e ora una shell UI reale che chiarisce domini globali, confine con il Dossier, flussi condivisi e spazio futuro per la IA sui moduli globali, sempre senza dati runtime.
-- la macro-area `/next/mezzi-dossier` non e piu solo placeholder generico: ospita ora sia l'elenco mezzi NEXT `read-only` basato su `D01` sia un primo Dossier Mezzo read-only che combina `D01`, una convergenza minima `D02` su `@lavori` e `@manutenzioni`, un layer `D04` di `RICOSTRUZIONE CONTROLLATA NEXT` e un layer dedicato `D07/D08` per preview `Documenti e costi`, sempre senza writer.
-- `D04 Rifornimenti e consumi` entra nella NEXT dal `2026-03-09` come layer unico di ricostruzione controllata e confinata: legge internamente `@rifornimenti` e `@rifornimenti_autisti_tmp`, normalizza shape legacy, ricostruisce autista/badge/km/costo/timestamp quando possibile e consegna al Dossier solo un modello pulito con provenienza e qualita del dato. Nessuna scrittura nuova, nessuna modifica legacy e nessuna complessita D04 fuori dal layer. Il Dossier mostra ora un'anteprima di 5 record con azione `Vedi tutti`, sempre nello stesso perimetro read-only e sempre consumando solo il modello pulito del layer.
-
-| Area / Modulo | Stato migrazione | Tipo migrazione | Dati reali letti? | Scrittura attiva? | Legacy o Next? | File/moduli di riferimento attuali | Note / rischi | Ultimo aggiornamento | Commit hash |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Shell globale NEXT | SHELL CREATA | RISCRITTURA PULITA | si | no | NEXT | `src/App.tsx`; `src/next/NextShell.tsx`; `src/next/NextAreaPage.tsx`; `src/next/NextCentroControlloPage.tsx`; `src/next/NextMezziDossierPage.tsx`; `src/next/NextDossierMezzoPage.tsx`; `src/next/nextAnagraficheFlottaDomain.ts`; `src/next/nextOperativitaTecnicaDomain.ts`; `src/next/nextRifornimentiConsumiDomain.ts`; `src/next/domain/nextDocumentiCostiDomain.ts`; `src/next/domain/nextProcurementDomain.ts`; `src/next/NextOperativitaGlobalePage.tsx`; `src/next/NextIAGestionalePage.tsx`; `src/next/NextStrumentiTrasversaliPage.tsx`; `src/next/nextData.ts`; `src/next/nextAccess.ts`; `src/next/NextRoleGuard.tsx`; `src/next/NextAccessDeniedPage.tsx`; `src/next/NextDriverExperiencePage.tsx`; `src/next/NextRoleLandingRedirect.tsx`; `src/next/next-shell.css` | Shell runtime separata e navigabile creata sotto `/next/*`. Legacy invariata: nessuna route legacy sostituita e nessun writer NEXT attivo. La shell e ora piu vicina all'ossatura finale: `Centro di Controllo` funziona come home NEXT con fascia IA + cabina D10, `Mezzi / Dossier` e l'ingresso finale mezzo-centrico con Dossier read-only gia convergente e `Operativita Globale` ospita ora anche un primo blocco `D06` read-only sugli ordini. `IA Gestionale` e `Strumenti Trasversali` restano shell/UI strutturate e pronte ai servizi futuri, senza runtime attivo. | 2026-03-09 | N/A - patch locale ossatura-finale-next |
-| Home / Centro di Controllo | IMPORTATO READ-ONLY | RIUSO LOGICA + UI NUOVA | si | no | NEXT | `src/next/NextCentroControlloPage.tsx`; `src/next/domain/nextStatoOperativoDomain.ts`; `src/next/nextAnagraficheFlottaDomain.ts`; `src/next/next-shell.css`; `docs/ui-blueprint/WIREFRAME_LOGICI_NEXT.md`; `docs/ui-blueprint/DESIGN_SYSTEM_NEXT.md` | `/next/centro-controllo` legge il layer runtime `D10` read-only e ora si comporta come vera home NEXT: fascia IA in alto, Centro di Comando sotto e portfolio manageriale laterale. Usa `@alerts_state`, `@mezzi_aziendali`, `@autisti_sessione_attive`, `@segnalazioni_autisti_tmp` e `@controlli_mezzo_autisti`, ricostruisce alert/focus/counters nel layer NEXT e mantiene fuori `homeEvents.ts`, `autisti_eventi`, rifornimenti, gomme, richieste attrezzature e qualunque scrittura nuova. | 2026-03-09 | N/A - patch locale home-next-finale |
-| Flotta | IMPORTATO READ-ONLY | RIUSO LOGICA + UI NUOVA | si | no | NEXT | `src/next/NextMezziDossierPage.tsx`; `src/next/nextAnagraficheFlottaDomain.ts`; `src/next/next-shell.css`; `docs/data/DOMINI_DATI_CANONICI.md` | `/next/mezzi-dossier` mostra ora l'elenco mezzi NEXT `read-only`: legge solo `storage/@mezzi_aziendali`, usa un mapping canonico minimo (`id`, `targa`, `categoria`, `marca`, `modello`, `autistaNome`), abilita ricerca/filtro locali e apre il Dossier iniziale tramite route `/next/mezzi-dossier/:targa`. `@colleghi` resta nel dominio ma non viene letto in questo step. Nessun writer e nessun dominio extra importato. | 2026-03-08 | N/A - patch locale next dossier-iniziale read-only |
-| Dossier Mezzo | IMPORTATO READ-ONLY | RIUSO LOGICA + UI NUOVA | si | no | NEXT | `src/next/NextDossierMezzoPage.tsx`; `src/next/nextAnagraficheFlottaDomain.ts`; `src/next/nextOperativitaTecnicaDomain.ts`; `src/next/nextRifornimentiConsumiDomain.ts`; `src/next/domain/nextDocumentiCostiDomain.ts`; `src/App.tsx`; `src/next/next-shell.css`; `docs/data/DOMINI_DATI_CANONICI.md`; `docs/data/FLUSSO_REALE_RIFORNIMENTI.md` | `/next/mezzi-dossier/:targa` ospita ora un Dossier Mezzo NEXT `read-only` a quattro ingressi controllati: identita mezzo su `D01`, primo blocco tecnico reale su `D02`, blocco rifornimenti `D04` tramite un solo layer NEXT di `RICOSTRUZIONE CONTROLLATA` e nuovo cluster `Documenti e costi` su layer dedicato `D07/D08`. Il nuovo layer legge `@costiMezzo` e le collezioni `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, normalizza shape multiple di `@costiMezzo`, classifica in modo prudente `preventivi`, `fatture` e `documenti utili`, mantiene `sourceCollection/sourceDocId/sourceRecordId/sourceType` e consegna alla pagina solo preview pulite mezzo-centriche con provenienza esplicita. Restano fuori `@preventivi`, approvazioni, writer, delete, upload, PDF runtime nuovi e analisi economica completa. Nessun clone del dossier legacy e nessuna complessita D07/D08 fuori dal layer. | 2026-03-09 | N/A - patch locale next documenti-costi read-only |
-| Operativita | IMPORTATO READ-ONLY | RIUSO LOGICA + UI NUOVA | si | no | NEXT | `src/next/NextOperativitaGlobalePage.tsx`; `src/next/domain/nextProcurementDomain.ts`; `src/next/next-shell.css`; `docs/ui-blueprint/WIREFRAME_LOGICI_NEXT.md`; `docs/ui-blueprint/MAPPA_PATTERN_DA_RIUSARE.md` | `/next/operativita-globale` non e piu solo shell: espone ora un primo workbench globale read-only su `D06`, limitato a `@ordini`, che mostra stati ordini e righe aggregate senza importare `Acquisti` 1:1 e senza toccare `@inventario`, `@preventivi`, allegati o writer. Restano strutturati ma non popolati `D05`, intake documentale globale e dominio cisterna specialistico. | 2026-03-09 | N/A - patch locale d06-ordini-read-only |
-| IA Gestionale | IMPORTATO SOLO UI | RIUSO LOGICA + UI NUOVA | no | no | NEXT | `src/next/NextIAGestionalePage.tsx`; `src/next/next-shell.css`; `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`; `docs/architecture/FUNZIONI_TRASVERSALI.md` | `/next/ia-gestionale` chiarisce ora il ruolo dell'assistente business read-only: missione, perimetro v1, superfici iniziali `Dossier` + `Centro di Controllo`, spiegabilita obbligatoria, limiti iniziali, rollout progressivo e separazione dalla `IA Audit Tecnico`. Nessun backend, modello, documento o dato runtime collegato. | 2026-03-08 | N/A - patch locale ia-gestionale next |
-| Strumenti Trasversali | IMPORTATO SOLO UI | RISCRITTURA PULITA | no | no | NEXT | `src/next/NextStrumentiTrasversaliPage.tsx`; `src/next/next-shell.css`; `docs/architecture/FUNZIONI_TRASVERSALI.md`; `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md` | `/next/strumenti-trasversali` chiarisce ora il ruolo dei servizi condivisi della piattaforma: PDF standard, utility comuni, supporto tecnico e richiami cross-area. Esplicita anche il confine con i moduli business e con `IA Gestionale`. Nessun servizio runtime, nessun export reale e nessuna logica legacy importata. | 2026-03-08 | N/A - patch locale strumenti-trasversali next |
-| Magazzino | NON INIZIATO | RIUSO LOGICA + UI NUOVA | no | no | NEXT | `src/pages/Acquisti.tsx`; `src/pages/Inventario.tsx`; `src/pages/MaterialiDaOrdinare.tsx`; `src/pages/MaterialiConsegnati.tsx` | `MaterialiDaOrdinare` trattato come funzione valida ma da collocare nella shell nuova, non come shell autonoma da trascinare. | 2026-03-07 | N/A - inizializzazione registro |
-| Analisi | NON INIZIATO | RIUSO LOGICA + UI NUOVA | no | no | NEXT | `src/pages/AnalisiEconomica.tsx`; `src/pages/CapoCostiMezzo.tsx` | Buona base analitica legacy, ma nessuna area analisi NEXT attiva e dimostrata. | 2026-03-07 | N/A - inizializzazione registro |
-| Sistema / Utenti e permessi | SHELL CREATA | RISCRITTURA PULITA | no | no | NEXT | `docs/security/SICUREZZA_E_PERMESSI.md`; `src/next/nextAccess.ts`; `src/next/NextRoleGuard.tsx`; `src/next/NextAccessDeniedPage.tsx`; `src/next/NextDriverExperiencePage.tsx` | La NEXT ha ora una prima struttura frontend di visibilita/accesso: preset `admin`, `gestionale`, `autista`; menu condizionale; route guard leggere; separazione concettuale autista. Mancano ancora auth reale, pannello permessi e matrice finale per singolo utente. | 2026-03-08 | N/A - patch locale ruolo/accesso next |
-| Area Autisti (integrazione/collegamento) | RIMANE LEGACY | LEGACY TEMPORANEO | no | no | LEGACY | `src/autisti/HomeAutista.tsx`; `src/autistiInbox/AutistiInboxHome.tsx`; `src/autistiInbox/AutistiAdmin.tsx`; `src/next/NextDriverExperiencePage.tsx` | Area attiva lato legacy; la shell NEXT espone ora solo una vista tecnica separata per ribadire che l'autista non entra nel backoffice admin come utente ridotto. Nessuna riscrittura autisti avviata. | 2026-03-08 | N/A - patch locale ruolo/accesso next |
-
-## 6. Regole di aggiornamento
-Regola operativa:
-- ogni task futuro che tocca la NEXT deve aggiornare questo documento;
-- ogni importazione o migrazione di modulo deve lasciare una traccia qui;
-- se una parte passa da read-only a scrittura, l'aggiornamento va fatto subito;
-- se una parte resta legacy, va segnato chiaramente;
-- se emerge un blocco tecnico, architetturale o documentale, va scritto nelle note/rischi.
-
-Aggiornamento minimo richiesto per ogni task NEXT:
-1. individuare la riga o le righe coinvolte;
-2. aggiornare almeno stato, note/rischi, data e hash commit quando il task cambia davvero lo stato della migrazione;
-3. se il task non cambia lo stato ma chiarisce qualcosa di rilevante, aggiornare almeno le note;
-4. se eccezionalmente il file non viene aggiornato, Codex deve spiegarlo esplicitamente in chat e nel change report.
-
-## 7. Distinzione tra Legacy e Next
-- La legacy resta il sistema attivo, stabile e operativo corrente.
-- La NEXT cresce in parallelo, senza cancellare o riscrivere alla cieca la legacy.
-- Questo documento traccia solo la nuova costruzione NEXT e il suo rapporto con i moduli legacy di origine.
-- Il fatto che un modulo legacy sia una buona base non significa che sia gia migrato.
-
-## 8. Stato documento
+## 7. Stato documento
 - **STATO: CURRENT**

@@ -32,42 +32,6 @@ export type NextDocumentiCostiCurrency = "EUR" | "CHF" | "UNKNOWN";
 
 export type NextDocumentiCostiFieldQuality = "certo" | "ricostruito" | "non_disponibile";
 
-export type NextDocumentiCostiLegacyViewItem = {
-  id: string;
-  mezzoTarga: string;
-  targa: string;
-  tipo: "PREVENTIVO" | "FATTURA";
-  data: string;
-  timestamp: number | null;
-  descrizione: string;
-  importo?: number;
-  valuta: NextDocumentiCostiCurrency;
-  currency: NextDocumentiCostiCurrency;
-  fornitoreLabel: string;
-  fileUrl: string | null;
-  sourceKey: string;
-  sourceDocId: string | null;
-  quality: NextDocumentiCostiFieldQuality;
-  flags: string[];
-  dedupGroup: string | null;
-};
-
-export type NextDocumentiMagazzinoSupportRow = {
-  descrizione: string | null;
-  prezzoUnitario: number | null;
-  importo: number | null;
-  quantita: number | null;
-};
-
-export type NextDocumentiMagazzinoSupportDocument = {
-  id: string;
-  sourceCollection: "@documenti_magazzino";
-  sourceDocId: string;
-  fornitore: string | null;
-  data: string | null;
-  voci: NextDocumentiMagazzinoSupportRow[];
-};
-
 export const NEXT_DOCUMENTI_COSTI_DOMAIN = {
   code: "D07-D08",
   name: "Documenti e costi mezzo",
@@ -90,25 +54,16 @@ export const NEXT_DOCUMENTI_COSTI_DOMAIN = {
 export type NextDocumentiCostiReadOnlyItem = {
   id: string;
   mezzoTarga: string;
-  targa: string;
   category: NextDocumentiCostiCategory;
-  categoria: NextDocumentiCostiCategory;
   documentTypeLabel: string;
-  tipoDocumento: string;
   title: string;
-  descrizione: string;
   supplier: string | null;
   dateLabel: string | null;
-  data: string | null;
   sortTimestamp: number | null;
-  timestamp: number | null;
   amount: number | null;
-  importo: number | null;
   currency: NextDocumentiCostiCurrency;
-  valuta: NextDocumentiCostiCurrency;
   fileUrl: string | null;
   sourceCollection: string;
-  sourceKey: string;
   sourceDocId: string | null;
   sourceRecordId: string | null;
   sourceType: NextDocumentiCostiSourceType;
@@ -120,8 +75,6 @@ export type NextDocumentiCostiReadOnlyItem = {
     supplier: NextDocumentiCostiFieldQuality;
     fileUrl: NextDocumentiCostiFieldQuality;
   };
-  quality: NextDocumentiCostiFieldQuality;
-  dedupGroup: string | null;
   flags: string[];
 };
 
@@ -143,7 +96,6 @@ export type NextMezzoDocumentiCostiSnapshot = {
   datasetShapes: {
     costiMezzo: NextLegacyDatasetShape;
   };
-  items: NextDocumentiCostiReadOnlyItem[];
   groups: {
     preventivi: NextDocumentiCostiReadOnlyItem[];
     fatture: NextDocumentiCostiReadOnlyItem[];
@@ -171,11 +123,6 @@ export type NextMezzoDocumentiCostiSnapshot = {
     documentiMezzo: number;
     documentiMagazzino: number;
     documentiGenerici: number;
-  };
-  materialCostSupport: {
-    documents: NextDocumentiMagazzinoSupportDocument[];
-    documentCount: number;
-    rowCount: number;
   };
   limitations: string[];
 };
@@ -335,39 +282,6 @@ function toTimestamp(value: unknown): number | null {
   return parsed ? parsed.getTime() : null;
 }
 
-function formatLegacyDateLabel(timestamp: number | null): string | null {
-  if (timestamp === null) return null;
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(date.getFullYear());
-  return `${dd} ${mm} ${yyyy}`;
-}
-
-function resolveDateFields(args: {
-  primary: unknown;
-  fallbacks?: unknown[];
-}): {
-  dateLabel: string | null;
-  sortTimestamp: number | null;
-  quality: NextDocumentiCostiFieldQuality;
-} {
-  const { primary, fallbacks = [] } = args;
-  const sortTimestamp = [primary, ...fallbacks]
-    .map((value) => toTimestamp(value))
-    .find((value): value is number => value !== null) ?? null;
-  const rawDateLabel = normalizeOptionalText(primary);
-  const dateLabel = rawDateLabel ?? formatLegacyDateLabel(sortTimestamp);
-
-  return {
-    dateLabel,
-    sortTimestamp,
-    quality: rawDateLabel ? "certo" : sortTimestamp !== null ? "ricostruito" : "non_disponibile",
-  };
-}
-
 function unwrapStorageArray(
   rawDoc: Record<string, unknown> | null
 ): { datasetShape: NextLegacyDatasetShape; items: unknown[] } {
@@ -451,203 +365,6 @@ function buildItemTitle(args: {
   return fallbackName || categoryLabel;
 }
 
-function deriveRecordQuality(fieldQuality: {
-  date: NextDocumentiCostiFieldQuality;
-  amount: NextDocumentiCostiFieldQuality;
-  supplier: NextDocumentiCostiFieldQuality;
-  fileUrl: NextDocumentiCostiFieldQuality;
-}): NextDocumentiCostiFieldQuality {
-  const values = Object.values(fieldQuality);
-  if (values.every((value) => value === "certo")) {
-    return "certo";
-  }
-
-  if (values.some((value) => value === "certo" || value === "ricostruito")) {
-    return "ricostruito";
-  }
-
-  return "non_disponibile";
-}
-
-function normalizeUrlDedupKey(value: string | null): string | null {
-  if (!value) return null;
-
-  try {
-    const parsed = new URL(value);
-    return `${parsed.origin}${parsed.pathname}`.toLowerCase();
-  } catch {
-    return value.trim().toLowerCase().split("?")[0] || null;
-  }
-}
-
-function buildSafeCrossSourceDedupKey(item: NextDocumentiCostiReadOnlyItem): string | null {
-  const sourceRecordId =
-    item.sourceRecordId && !item.sourceRecordId.startsWith("costo-mezzo:")
-      ? item.sourceRecordId
-      : null;
-  if (sourceRecordId) {
-    return `record:${item.mezzoTarga}:${item.category}:${sourceRecordId}`;
-  }
-
-  const fileKey = normalizeUrlDedupKey(item.fileUrl);
-  if (fileKey) {
-    return `file:${item.mezzoTarga}:${item.category}:${fileKey}`;
-  }
-
-  return null;
-}
-
-function buildPotentialDedupGroup(item: NextDocumentiCostiReadOnlyItem): string {
-  const supplier = (item.supplier ?? "").trim().toUpperCase() || "NO_SUPPLIER";
-  const amount = item.amount !== null ? item.amount.toFixed(2) : "NO_AMOUNT";
-  const dateKey =
-    item.sortTimestamp !== null
-      ? new Date(item.sortTimestamp).toISOString().slice(0, 10)
-      : "NO_DATE";
-  return `${item.mezzoTarga}:${item.category}:${dateKey}:${amount}:${supplier}`;
-}
-
-function preferDocumentSource(sourceType: NextDocumentiCostiSourceType): number {
-  switch (sourceType) {
-    case "documento_mezzo":
-      return 0;
-    case "documento_magazzino":
-      return 1;
-    case "documento_generico":
-      return 2;
-    default:
-      return 3;
-  }
-}
-
-function pickPreferredItem(items: NextDocumentiCostiReadOnlyItem[]): NextDocumentiCostiReadOnlyItem {
-  return [...items].sort((left, right) => {
-    const sourceRank = preferDocumentSource(left.sourceType) - preferDocumentSource(right.sourceType);
-    if (sourceRank !== 0) return sourceRank;
-
-    const fileRank = Number(Boolean(right.fileUrl)) - Number(Boolean(left.fileUrl));
-    if (fileRank !== 0) return fileRank;
-
-    const amountRank = Number(right.amount !== null) - Number(left.amount !== null);
-    if (amountRank !== 0) return amountRank;
-
-    const supplierRank = Number(Boolean(right.supplier)) - Number(Boolean(left.supplier));
-    if (supplierRank !== 0) return supplierRank;
-
-    const dateRank = Number(right.sortTimestamp !== null) - Number(left.sortTimestamp !== null);
-    if (dateRank !== 0) return dateRank;
-
-    return right.id.localeCompare(left.id, "it", { sensitivity: "base" });
-  })[0];
-}
-
-function mergeDuplicateGroup(
-  items: NextDocumentiCostiReadOnlyItem[],
-  dedupGroup: string
-): NextDocumentiCostiReadOnlyItem {
-  const preferred = pickPreferredItem(items);
-  const merged = { ...preferred };
-
-  for (const candidate of items) {
-    if (candidate.id === preferred.id) continue;
-
-    if (!merged.supplier && candidate.supplier) {
-      merged.supplier = candidate.supplier;
-      merged.fieldQuality = { ...merged.fieldQuality, supplier: candidate.fieldQuality.supplier };
-    }
-
-    if (!merged.fileUrl && candidate.fileUrl) {
-      merged.fileUrl = candidate.fileUrl;
-      merged.fieldQuality = { ...merged.fieldQuality, fileUrl: candidate.fieldQuality.fileUrl };
-    }
-
-    if (!merged.dateLabel && candidate.dateLabel) {
-      merged.dateLabel = candidate.dateLabel;
-      merged.data = candidate.data;
-      merged.sortTimestamp = candidate.sortTimestamp;
-      merged.timestamp = candidate.timestamp;
-      merged.fieldQuality = { ...merged.fieldQuality, date: candidate.fieldQuality.date };
-    }
-
-    if (
-      (merged.amount === null && candidate.amount !== null) ||
-      (merged.currency === "UNKNOWN" &&
-        candidate.amount !== null &&
-        candidate.currency !== "UNKNOWN")
-    ) {
-      merged.amount = candidate.amount;
-      merged.importo = candidate.importo;
-      merged.currency = candidate.currency;
-      merged.valuta = candidate.valuta;
-      merged.fieldQuality = { ...merged.fieldQuality, amount: candidate.fieldQuality.amount };
-    }
-  }
-
-  const mergedFlags = Array.from(
-    new Set([
-      ...items.flatMap((item) => item.flags),
-      dedupGroup.startsWith("record:")
-        ? "merged_cross_source_record_id"
-        : "merged_cross_source_file_url",
-    ])
-  );
-
-  return {
-    ...merged,
-    quality: deriveRecordQuality(merged.fieldQuality),
-    dedupGroup,
-    flags: mergedFlags,
-  };
-}
-
-function mapMaterialSupportDocument(
-  raw: RawRecord,
-  sourceDocId: string
-): NextDocumentiMagazzinoSupportDocument | null {
-  const rawRows = Array.isArray(raw.voci) ? raw.voci : [];
-  if (rawRows.length === 0) return null;
-
-  const dateFields = resolveDateFields({
-    primary: raw.dataDocumento,
-    fallbacks: [raw.createdAt, raw.updatedAt],
-  });
-
-  const voci = rawRows
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
-      const row = entry as RawRecord;
-      const importo = parseAmountAny(row.importo);
-      const quantita = parseAmountAny(row.quantita);
-      const prezzoUnitario =
-        parseAmountAny(row.prezzoUnitario) ??
-        (importo !== null && quantita !== null && quantita > 0 ? importo / quantita : null);
-      const descrizione = normalizeOptionalText(row.descrizione);
-
-      if (!descrizione && importo === null && quantita === null && prezzoUnitario === null) {
-        return null;
-      }
-
-      return {
-        descrizione,
-        prezzoUnitario,
-        importo,
-        quantita,
-      } satisfies NextDocumentiMagazzinoSupportRow;
-    })
-    .filter((entry): entry is NextDocumentiMagazzinoSupportRow => Boolean(entry));
-
-  if (voci.length === 0) return null;
-
-  return {
-    id: `@documenti_magazzino:${sourceDocId}`,
-    sourceCollection: "@documenti_magazzino",
-    sourceDocId,
-    fornitore: normalizeOptionalText(raw.fornitore),
-    data: dateFields.dateLabel,
-    voci,
-  };
-}
-
 function sortItems(items: NextDocumentiCostiReadOnlyItem[]): NextDocumentiCostiReadOnlyItem[] {
   return [...items].sort((left, right) => {
     const byTimestamp = (right.sortTimestamp ?? 0) - (left.sortTimestamp ?? 0);
@@ -691,7 +408,8 @@ function mapCostoMezzoRecord(
 
   const tipoDocumento = normalizeTipoDocumento(raw.tipo);
   const category = classifyCategory(tipoDocumento);
-  const dateFields = resolveDateFields({ primary: raw.data });
+  const dateLabel = normalizeOptionalText(raw.data);
+  const sortTimestamp = toTimestamp(raw.data);
   const amount = parseAmountAny(raw.importo);
   const supplier = normalizeOptionalText(raw.fornitoreLabel ?? raw.fornitore);
   const fileUrl = normalizeOptionalText(raw.fileUrl);
@@ -703,44 +421,31 @@ function mapCostoMezzoRecord(
     supplier,
     fallbackName: normalizeOptionalText(raw.descrizione),
   });
-  const fieldQuality = {
-    date: dateFields.quality,
-    amount: amount !== null ? "certo" : "non_disponibile",
-    supplier: supplier ? "certo" : "non_disponibile",
-    fileUrl: fileUrl ? "certo" : "non_disponibile",
-  } satisfies NextDocumentiCostiReadOnlyItem["fieldQuality"];
-  const currency = resolveCurrencyFromRecord(raw);
 
   return {
     id: sourceRecordId,
     mezzoTarga,
-    targa: mezzoTarga,
     category,
-    categoria: category,
     documentTypeLabel: tipoDocumento || "Documento costo",
-    tipoDocumento: tipoDocumento || "DOCUMENTO_COSTO",
     title,
-    descrizione: title,
     supplier,
-    dateLabel: dateFields.dateLabel,
-    data: dateFields.dateLabel,
-    sortTimestamp: dateFields.sortTimestamp,
-    timestamp: dateFields.sortTimestamp,
+    dateLabel,
+    sortTimestamp,
     amount,
-    importo: amount,
-    currency,
-    valuta: currency,
+    currency: resolveCurrencyFromRecord(raw),
     fileUrl,
     sourceCollection: `${STORAGE_COLLECTION}/${COSTI_DATASET_KEY}`,
-    sourceKey: "@costiMezzo",
     sourceDocId,
     sourceRecordId,
     sourceType: "costo_mezzo",
     sourceLabel: getSourceLabel("costo_mezzo"),
     archiveCategory: null,
-    fieldQuality,
-    quality: deriveRecordQuality(fieldQuality),
-    dedupGroup: null,
+    fieldQuality: {
+      date: dateLabel ? "certo" : sortTimestamp !== null ? "ricostruito" : "non_disponibile",
+      amount: amount !== null ? "certo" : "non_disponibile",
+      supplier: supplier ? "certo" : "non_disponibile",
+      fileUrl: fileUrl ? "certo" : "non_disponibile",
+    },
     flags: [
       "source_storage_costi_mezzo",
       category === "documento_utile" ? "tipo_non_standard_da_costi" : "tipo_standard_costi",
@@ -761,10 +466,11 @@ function mapDocumentoRecord(args: {
   const tipoDocumento = normalizeTipoDocumento(raw.tipoDocumento);
   const category = classifyCategory(tipoDocumento);
   const sourceType = getSourceTypeFromCollection(collectionKey);
-  const dateFields = resolveDateFields({
-    primary: raw.dataDocumento,
-    fallbacks: [raw.createdAt, raw.updatedAt],
-  });
+  const dateLabel = normalizeOptionalText(raw.dataDocumento);
+  const sortTimestamp =
+    toTimestamp(raw.dataDocumento) ??
+    toTimestamp(raw.createdAt) ??
+    toTimestamp(raw.updatedAt);
   const amount = extractImportoFromRaw(raw);
   const supplier = normalizeOptionalText(raw.fornitore);
   const fileUrl = normalizeOptionalText(raw.fileUrl);
@@ -788,98 +494,45 @@ function mapDocumentoRecord(args: {
   if (normalizeOptionalText(raw.motivoVerifica)) {
     flags.push("motivo_verifica_presente");
   }
-  const fieldQuality = {
-    date: dateFields.quality,
-    amount: amount !== null ? "certo" : "non_disponibile",
-    supplier: supplier ? "certo" : "non_disponibile",
-    fileUrl: fileUrl ? "certo" : "non_disponibile",
-  } satisfies NextDocumentiCostiReadOnlyItem["fieldQuality"];
-  const currency = resolveCurrencyFromRecord(raw);
 
   return {
     id: `${collectionKey}:${sourceDocId}`,
     mezzoTarga,
-    targa: mezzoTarga,
     category,
-    categoria: category,
     documentTypeLabel:
       tipoDocumento ||
       (category === "documento_utile" ? "Documento utile" : "Documento costo"),
-    tipoDocumento:
-      tipoDocumento || (category === "documento_utile" ? "DOCUMENTO_UTILE" : "DOCUMENTO_COSTO"),
     title,
-    descrizione: title,
     supplier,
-    dateLabel: dateFields.dateLabel,
-    data: dateFields.dateLabel,
-    sortTimestamp: dateFields.sortTimestamp,
-    timestamp: dateFields.sortTimestamp,
+    dateLabel,
+    sortTimestamp,
     amount,
-    importo: amount,
-    currency,
-    valuta: currency,
+    currency: resolveCurrencyFromRecord(raw),
     fileUrl,
     sourceCollection: collectionKey,
-    sourceKey: collectionKey,
     sourceDocId,
     sourceRecordId,
     sourceType,
     sourceLabel: getSourceLabel(sourceType),
     archiveCategory,
-    fieldQuality,
-    quality: deriveRecordQuality(fieldQuality),
-    dedupGroup: null,
+    fieldQuality: {
+      date: dateLabel ? "certo" : sortTimestamp !== null ? "ricostruito" : "non_disponibile",
+      amount: amount !== null ? "certo" : "non_disponibile",
+      supplier: supplier ? "certo" : "non_disponibile",
+      fileUrl: fileUrl ? "certo" : "non_disponibile",
+    },
     flags,
   };
 }
 
 function dedupItems(items: NextDocumentiCostiReadOnlyItem[]): NextDocumentiCostiReadOnlyItem[] {
   const seen = new Set<string>();
-  const exactDeduped = items.filter((item) => {
+  return items.filter((item) => {
     const key = `${item.sourceCollection}:${item.sourceDocId ?? item.sourceRecordId ?? item.id}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-
-  const safeGroups = new Map<string, NextDocumentiCostiReadOnlyItem[]>();
-  const passthrough: NextDocumentiCostiReadOnlyItem[] = [];
-
-  for (const item of exactDeduped) {
-    const safeKey = buildSafeCrossSourceDedupKey(item);
-    if (!safeKey) {
-      passthrough.push({
-        ...item,
-        dedupGroup: buildPotentialDedupGroup(item),
-      });
-      continue;
-    }
-
-    const group = safeGroups.get(safeKey) ?? [];
-    group.push(item);
-    safeGroups.set(safeKey, group);
-  }
-
-  const merged = [
-    ...passthrough,
-    ...Array.from(safeGroups.entries()).map(([safeKey, group]) =>
-      group.length === 1
-        ? {
-            ...group[0],
-            dedupGroup: safeKey,
-          }
-        : mergeDuplicateGroup(group, safeKey)
-    ),
-  ];
-
-  return merged.map((item) =>
-    item.dedupGroup
-      ? item
-      : {
-          ...item,
-          dedupGroup: buildPotentialDedupGroup(item),
-        }
-  );
 }
 
 function buildLimitations(args: {
@@ -887,10 +540,8 @@ function buildLimitations(args: {
   groups: NextMezzoDocumentiCostiSnapshot["groups"];
   counts: NextMezzoDocumentiCostiSnapshot["counts"];
   sourceCounts: NextMezzoDocumentiCostiSnapshot["sourceCounts"];
-  materialCostSupport: NextMezzoDocumentiCostiSnapshot["materialCostSupport"];
-  readFailures: string[];
 }): string[] {
-  const { datasetShape, groups, counts, sourceCounts, materialCostSupport, readFailures } = args;
+  const { datasetShape, groups, counts, sourceCounts } = args;
 
   return [
     "Il layer legge solo `@costiMezzo` e le collezioni `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, sempre con filtro targa e output mezzo-centrico pulito.",
@@ -902,18 +553,12 @@ function buildLimitations(args: {
     sourceCounts.documentiMagazzino > 0
       ? "I documenti magazzino entrano solo come lettura documentale correlata al mezzo: nessun ingresso del dominio stock/movimenti nel Dossier."
       : null,
-    materialCostSupport.documentCount > 0
-      ? "Per il costo materiali del Dossier il layer espone anche un supporto read-only derivato dalle righe `voci` di `@documenti_magazzino`, senza aprire il dominio ordini/inventario."
-      : null,
     counts.withAmount < groups.preventivi.length + groups.fatture.length
       ? "Una parte di preventivi o fatture non espone un importo parsabile: i totali restano prudenziali e non forzano ricostruzioni."
       : null,
     datasetShape === "unsupported"
       ? "Il dataset `@costiMezzo` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
       : null,
-    ...readFailures.map(
-      (entry) => `Lettura parziale: la sorgente ${entry} non e stata letta dal layer e viene trattata come non disponibile.`
-    ),
   ].filter((entry): entry is string => Boolean(entry));
 }
 
@@ -930,26 +575,10 @@ export async function readNextMezzoDocumentiCostiSnapshot(
   targa: string
 ): Promise<NextMezzoDocumentiCostiSnapshot> {
   const mezzoTarga = normalizeTarga(targa);
-  const [costiResult, ...documentResults] = await Promise.allSettled([
+  const [costiDataset, ...documentSnapshots] = await Promise.all([
     readCostiMezzoDataset(),
     ...DOCUMENTI_COLLECTION_KEYS.map((collectionKey) => getDocs(collection(db, collectionKey))),
   ]);
-  const readFailures: string[] = [];
-  const costiDataset =
-    costiResult.status === "fulfilled"
-      ? costiResult.value
-      : ((readFailures.push("storage/@costiMezzo"), {
-          datasetShape: "missing",
-          items: [],
-        }) as { datasetShape: NextLegacyDatasetShape; items: unknown[] });
-  const documentSnapshots = documentResults.map((result, index) => {
-    if (result.status === "fulfilled") {
-      return result.value;
-    }
-
-    readFailures.push(DOCUMENTI_COLLECTION_KEYS[index]);
-    return null;
-  });
 
   const costiItems = costiDataset.items
     .map((entry, index) => {
@@ -959,7 +588,6 @@ export async function readNextMezzoDocumentiCostiSnapshot(
     .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
 
   const documentItems = documentSnapshots.flatMap((snapshot, index) => {
-    if (!snapshot) return [];
     const collectionKey = DOCUMENTI_COLLECTION_KEYS[index];
     return snapshot.docs
       .map((docSnapshot) =>
@@ -972,11 +600,6 @@ export async function readNextMezzoDocumentiCostiSnapshot(
       )
       .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
   });
-  const materialSupportDocuments = (documentSnapshots[1]?.docs ?? [])
-    .map((docSnapshot) =>
-      mapMaterialSupportDocument((docSnapshot.data() ?? {}) as RawRecord, docSnapshot.id)
-    )
-    .filter((entry): entry is NextDocumentiMagazzinoSupportDocument => Boolean(entry));
 
   const items = sortItems(dedupItems([...costiItems, ...documentItems]));
   const groups = {
@@ -1000,11 +623,6 @@ export async function readNextMezzoDocumentiCostiSnapshot(
     documentiMagazzino: items.filter((item) => item.sourceType === "documento_magazzino").length,
     documentiGenerici: items.filter((item) => item.sourceType === "documento_generico").length,
   };
-  const materialCostSupport = {
-    documents: materialSupportDocuments,
-    documentCount: materialSupportDocuments.length,
-    rowCount: materialSupportDocuments.reduce((total, entry) => total + entry.voci.length, 0),
-  };
 
   return {
     domainCode: NEXT_DOCUMENTI_COSTI_DOMAIN.code,
@@ -1017,7 +635,6 @@ export async function readNextMezzoDocumentiCostiSnapshot(
     datasetShapes: {
       costiMezzo: costiDataset.datasetShape,
     },
-    items,
     groups,
     counts,
     totals: {
@@ -1030,40 +647,11 @@ export async function readNextMezzoDocumentiCostiSnapshot(
       documentoUtile: groups.documentiUtili[0]?.dateLabel ?? null,
     },
     sourceCounts,
-    materialCostSupport,
     limitations: buildLimitations({
       datasetShape: costiDataset.datasetShape,
       groups,
       counts,
       sourceCounts,
-      materialCostSupport,
-      readFailures,
     }),
   };
-}
-
-export function mapNextDocumentiCostiItemsToLegacyView(
-  items: NextDocumentiCostiReadOnlyItem[]
-): NextDocumentiCostiLegacyViewItem[] {
-  return items
-    .filter((item) => item.category === "preventivo" || item.category === "fattura")
-    .map((item) => ({
-      id: item.id,
-      mezzoTarga: item.mezzoTarga,
-      targa: item.targa,
-      tipo: item.category === "preventivo" ? "PREVENTIVO" : "FATTURA",
-      data: item.data ?? "",
-      timestamp: item.timestamp,
-      descrizione: item.descrizione,
-      importo: item.importo ?? undefined,
-      valuta: item.valuta,
-      currency: item.valuta,
-      fornitoreLabel: item.supplier ?? "",
-      fileUrl: item.fileUrl,
-      sourceKey: item.sourceKey,
-      sourceDocId: item.sourceDocId,
-      quality: item.quality,
-      flags: [...item.flags],
-      dedupGroup: item.dedupGroup,
-    }));
 }

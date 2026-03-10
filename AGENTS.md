@@ -9,7 +9,31 @@
 - Se il task cambia in modo importante lo stato del progetto (decisioni, priorita, punti aperti, fase), suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
 - Se il task tocca la NEXT (shell, pagine, moduli, importazioni, stato read-only/scrittura), leggere e aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`.
 
+## Registro permanente modifiche clone (obbligatorio)
+- Il registro ufficiale centrale del clone `read-only` e `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
+- Qualsiasi patch futura che modifica il clone deve aggiornare automaticamente anche questo registro.
+- Per "modifica del clone" si intende almeno:
+  - modifica a `src/next/*`;
+  - modifica documentale che cambia stato, regole, perimetro o tracciabilita del clone;
+  - attivazione, blocco o rimozione di schermate, badge, guard-rail o azioni `read-only` del clone.
+- Nessuna patch clone e considerata completa se non aggiorna anche `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
+- Se un task tocca il clone ma il registro non viene aggiornato, Codex deve fermarsi e dichiararlo esplicitamente prima di chiudere il task.
+
+## Sospensione strategia NEXT precedente (2026-03-10)
+- La strategia NEXT precedente basata su shell autonoma, import dominio-centrica progressiva e divieto di clone UX legacy e sospesa.
+- Fino a nuova decisione, la strategia ufficiale NEXT e:
+  1. archiviare la NEXT attuale;
+  2. ricreare `src/next/*` come clone fedele della madre;
+  3. mantenere il clone in sola lettura;
+  4. bloccare tutte le scritture, delete, upload, import e side effect nel clone;
+  5. leggere gli stessi dati reali della madre;
+  6. innestare solo in fase successiva layer puliti, IA e tracking sopra il clone.
+- Le regole NEXT precedenti su `dominio prima della pagina`, `no clone legacy`, `importazione modulo per modulo` e `shell target reinterpretata` sono sospese come criterio primario fino a nuova decisione.
+- Restano invece pienamente attive: madre intoccabile, zero nuove scritture business, whitelist, analisi impatto, prudenza su rischio elevato, tracciabilita documentale e aggiornamento dello stato progetto.
+
 ## Regola dominio-centrica per la NEXT (obbligatoria)
+- Questa regola e sospesa come criterio primario nella fase di clone read-only della madre.
+- Torna criterio primario solo dopo che il clone fedele e stato creato e stabilizzato.
 - Prima di importare, ricostruire o migrare qualsiasi modulo nella NEXT, verificare sempre il dominio corrispondente in `docs/data/DOMINI_DATI_CANONICI.md`.
 - Se il dominio non e mappato, e incoerente, e segnato `SENSIBILE`, `DA VERIFICARE` o `BLOCCANTE PER IMPORTAZIONE`, fermarsi e dichiararlo esplicitamente prima di patchare o importare.
 - Non importare nella NEXT strutture dati legacy incoerenti senza normalizzazione documentata.
@@ -21,6 +45,8 @@
 - `docs/data/MAPPA_COMPLETA_DATI.md` e `docs/data/REGOLE_STRUTTURA_DATI.md` vanno usati dopo il controllo dominio-centrico, non al suo posto.
 
 ## Regola layer di normalizzazione NEXT (obbligatoria)
+- Questa regola resta valida, ma non blocca piu il primo passo di clone read-only fedele della madre.
+- Nella fase attuale il clone puo partire anche riusando la lettura reale del madre, purche la scrittura sia completamente neutralizzata e la madre resti intatta.
 - Se un flusso del gestionale madre funziona gia in produzione e non va rotto, la prima scelta NON deve essere modificare il runtime legacy.
 - La prima scelta deve essere verificare se la NEXT puo leggere i dati reali del madre tramite un reader/layer di normalizzazione dedicato e separato.
 - Il layer NEXT deve distinguere sempre:
@@ -33,6 +59,8 @@
 - La parita utile col madre va ottenuta nella NEXT tramite mapping e normalizzazione controllata, non copiando fallback, merge euristici o shape sporche dentro UI e Dossier NEXT.
 
 ## Regola aggregatore Dossier / import moduli NEXT (obbligatoria)
+- Questa regola resta riferimento di qualita, ma non blocca la fase di clone UX read-only fedele della madre.
+- Durante il clone la priorita e mantenere copertura funzionale e ordine reale del madre, rinviando la pulizia completa dei layer alla fase successiva.
 - Quando si importa un modulo nella NEXT, non basta analizzare il modulo isolato.
 - Prima di patchare bisogna sempre verificare:
   1. cosa mostra davvero il modulo madre;
@@ -118,7 +146,7 @@ Ogni task deve restare coerente con:
   - `docs/change-reports/_TEMPLATE_CHANGE_REPORT.md`
   - `docs/product/CONTEXT_REPORT_WORKFLOW.md`
   - `docs/continuity-reports/_TEMPLATE_CONTINUITY_REPORT.md`
-- Nei task NEXT, change report e continuity report non sostituiscono il registro permanente `docs/product/STATO_MIGRAZIONE_NEXT.md`.
+- Nei task NEXT, change report e continuity report non sostituiscono i registri permanenti `docs/product/STATO_MIGRAZIONE_NEXT.md` e `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
 
 ## Formato risposta atteso in chat
 - sintesi breve

@@ -1,9 +1,10 @@
 # STATO ATTUALE DEL PROGETTO
 
 ## 1. Situazione generale
-- **Fase attuale del progetto**: consolidamento documentazione/regole operative e avvio dei primi ingressi `read-only` reali nella NEXT, incluso il primo Dossier Mezzo con convergenza tecnica minima e un layer `D04` di ricostruzione controllata confinato nella NEXT.
+- **Fase attuale del progetto**: inversione ufficiale della strategia NEXT e preparazione del reset verso un clone `read-only` fedele della madre.
 - **Stato app legacy**: attiva e riferimento operativo corrente.
-- **Stato nuova app next**: shell runtime separata attiva, 5 macro-aree presenti, elenco mezzi `read-only` attivo e Dossier Mezzo NEXT gia leggibile con blocco tecnico `D02` in sola lettura e blocco rifornimenti `D04` tramite layer unico di `RICOSTRUZIONE CONTROLLATA NEXT`, che raggiunge il risultato utile del madre senza toccare legacy o writer.
+- **Stato nuova app next**: l'implementazione NEXT attuale e ora considerata un esperimento sospeso; non va piu estesa secondo la regia precedente e dovra essere archiviata per lasciare spazio a un clone `read-only` fedele della madre in `src/next/*`.
+- **Inversione strategica NEXT (2026-03-10)**: la regia precedente basata su shell reinterpretata e ingressi dominio-centrici progressivi e sospesa; la nuova strategia ufficiale e creare prima un clone UX 1:1 della madre, in sola lettura, con blocco totale delle scritture, e innestare solo in fase successiva layer puliti, IA e tracking sopra quel clone.
 - **Stato documentazione**: struttura madre disponibile, documenti core rinominati in italiano, indice e guida di ingresso presenti.
 - **Stato processo Codex/report**: regole operative attive (`AGENTS.md`, `REGOLE_LAVORO_CODEX.md`) + template/report di change e continuity gia presenti.
 - **Protocollo sicurezza modifiche**: attivo tramite `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`; ogni patch deve passare da analisi impatto prima dell'applicazione.
@@ -28,6 +29,8 @@
 - **Layer `D04` di ricostruzione controllata NEXT (2026-03-09)**: il Dossier Mezzo NEXT legge ora i rifornimenti tramite un solo layer dedicato `D04`, confinato nella NEXT, che usa internamente `@rifornimenti` e `@rifornimenti_autisti_tmp`, normalizza shape legacy, ricostruisce autista/badge/km/costo/timestamp quando possibile e consegna al Dossier solo un modello pulito con provenienza e qualita del dato.
 
 ## 2. Decisioni architetturali confermate
+- Dal `2026-03-10` e sospesa la strategia NEXT precedente basata su shell autonoma, import dominio-prima-pagina e divieto di clone UX legacy.
+- Dal `2026-03-10` la strategia ufficiale NEXT diventa: clone fedele `read-only` della madre in `src/next/*`, madre intoccabile, scritture bloccate nel clone e successivo innesto di layer puliti e IA.
 - Nuova app in parallelo alla legacy.
 - Stessa base dati iniziale (senza duplicazione DB in partenza).
 - Fase iniziale next in read-only.

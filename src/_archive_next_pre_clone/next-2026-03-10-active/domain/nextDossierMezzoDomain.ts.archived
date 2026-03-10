@@ -11,7 +11,7 @@ import {
 import {
   type NextMezzoRifornimentiSnapshot,
   readNextMezzoRifornimentiSnapshot,
-} from "./nextRifornimentiDomain";
+} from "../nextRifornimentiConsumiDomain";
 import {
   type NextMezzoManutenzioniSnapshot,
   readNextMezzoManutenzioniSnapshot,
