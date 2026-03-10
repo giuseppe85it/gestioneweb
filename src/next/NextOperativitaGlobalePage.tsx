@@ -106,7 +106,7 @@ function NextOperativitaGlobalePage() {
           <h1>{area.title}</h1>
           <p className="next-page__description">
             Banco operativo degli ordini: vedi cosa e fermo, cosa e parziale e cosa puo essere
-            chiuso senza confondere questa area con il Dossier mezzo.
+            chiuso senza confondere quest'area con il Dossier mezzo.
           </p>
         </div>
 
@@ -144,34 +144,6 @@ function NextOperativitaGlobalePage() {
 
       {status === "success" && snapshot ? (
         <>
-          <section className="next-home-ia-band next-tone next-tone--accent">
-            <div className="next-home-ia-band__main">
-              <p className="next-summary-card__label">Ordini</p>
-              <h2>Vedi subito cosa sollecitare, completare o chiudere</h2>
-              <p className="next-panel__description">
-                La pagina e impostata come workbench: colonne chiare, stati leggibili e azioni
-                rapide per spostarti dove serve davvero.
-              </p>
-            </div>
-
-            <div className="next-home-ia-band__side">
-              <div className="next-control-list">
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>In attesa</strong>
-                  <span>Ordini da sbloccare o sollecitare.</span>
-                </div>
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>Parziali</strong>
-                  <span>Consegne aperte da completare.</span>
-                </div>
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>Arrivati</strong>
-                  <span>Ordini pronti da chiudere e archiviare.</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <section className="next-summary-grid next-summary-grid--compact">
             <article className="next-summary-card next-tone next-tone--accent">
               <p className="next-summary-card__label">Ordini in attesa</p>
@@ -179,7 +151,7 @@ function NextOperativitaGlobalePage() {
                 {counts?.pendingOrders ?? 0}
               </strong>
               <p className="next-summary-card__meta">
-                Ordini con arrivi ancora tutti da ricevere.
+                Ordini con righe ancora tutte da ricevere.
               </p>
             </article>
 
@@ -204,72 +176,101 @@ function NextOperativitaGlobalePage() {
             </article>
           </section>
 
+          <section className="next-panel next-tone next-tone--accent">
+            <div className="next-panel__header">
+              <div>
+                <h2>Stato ordini</h2>
+                <span className="next-summary-card__label">
+                  Cosa sollecitare, completare o chiudere
+                </span>
+              </div>
+            </div>
+            <p className="next-panel__description">
+              La pagina segue una logica semplice: vedi lo stato del flusso, apri il fornitore
+              giusto e scendi sul mezzo solo se serve davvero.
+            </p>
+
+            <div className="next-workbench-grid">
+              <div className="next-workbench-column">
+                <div className="next-panel__header">
+                  <h3>In attesa</h3>
+                  <span className="next-chip next-chip--warning">
+                    {snapshot.groups.pending.length}
+                  </span>
+                </div>
+                {snapshot.groups.pending.length === 0 ? (
+                  <div className="next-data-state">
+                    <strong>Nessun ordine in attesa</strong>
+                    <span>Non risultano ordini completamente pendenti.</span>
+                  </div>
+                ) : (
+                  <div className="next-status-board">
+                    {snapshot.groups.pending.slice(0, 4).map((item) => renderOrderCard(item))}
+                  </div>
+                )}
+              </div>
+
+              <div className="next-workbench-column">
+                <div className="next-panel__header">
+                  <h3>Parziali</h3>
+                  <span className="next-chip next-chip--accent">
+                    {snapshot.groups.partial.length}
+                  </span>
+                </div>
+                {snapshot.groups.partial.length === 0 ? (
+                  <div className="next-data-state">
+                    <strong>Nessun ordine parziale</strong>
+                    <span>Non risultano pratiche in stato intermedio.</span>
+                  </div>
+                ) : (
+                  <div className="next-status-board">
+                    {snapshot.groups.partial.slice(0, 4).map((item) => renderOrderCard(item))}
+                  </div>
+                )}
+              </div>
+
+              <div className="next-workbench-column">
+                <div className="next-panel__header">
+                  <h3>Arrivati</h3>
+                  <span className="next-chip next-chip--success">
+                    {snapshot.groups.arrived.length}
+                  </span>
+                </div>
+                {snapshot.groups.arrived.length === 0 ? (
+                  <div className="next-data-state">
+                    <strong>Nessun ordine arrivato</strong>
+                    <span>Non risultano ordini completamente completati.</span>
+                  </div>
+                ) : (
+                  <div className="next-status-board">
+                    {snapshot.groups.arrived.slice(0, 4).map((item) => renderOrderCard(item))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
           <section className="next-global-layout">
-            <article className="next-panel next-global-main next-tone next-tone--accent">
+            <article className="next-panel next-global-main">
               <div className="next-panel__header">
-                <h2>Workbench ordini</h2>
+                <h2>Azioni operative</h2>
               </div>
               <p className="next-panel__description">
-                Le colonne restano semplici: stato del flusso, fornitore, materiali principali e
-                avanzamento.
+                Ingresso rapido alle aree collegate senza confondere la regia globale con il lavoro
+                sul singolo mezzo.
               </p>
-
-              <div className="next-workbench-grid">
-                <div className="next-workbench-column">
-                  <div className="next-panel__header">
-                    <h3>In attesa</h3>
-                    <span className="next-chip next-chip--warning">
-                      {snapshot.groups.pending.length}
-                    </span>
-                  </div>
-                  {snapshot.groups.pending.length === 0 ? (
-                    <div className="next-data-state">
-                      <strong>Nessun ordine in attesa</strong>
-                      <span>Non risultano ordini completamente pendenti.</span>
-                    </div>
-                  ) : (
-                    <div className="next-status-board">
-                      {snapshot.groups.pending.slice(0, 4).map((item) => renderOrderCard(item))}
-                    </div>
-                  )}
+              <div className="next-portfolio-grid">
+                <div className="next-portfolio-card">
+                  <strong>Inventario</strong>
+                  <span>Area ancora da collegare nella NEXT.</span>
                 </div>
-
-                <div className="next-workbench-column">
-                  <div className="next-panel__header">
-                    <h3>Parziali</h3>
-                    <span className="next-chip next-chip--accent">
-                      {snapshot.groups.partial.length}
-                    </span>
-                  </div>
-                  {snapshot.groups.partial.length === 0 ? (
-                    <div className="next-data-state">
-                      <strong>Nessun ordine parziale</strong>
-                      <span>Non risultano pratiche in stato intermedio.</span>
-                    </div>
-                  ) : (
-                    <div className="next-status-board">
-                      {snapshot.groups.partial.slice(0, 4).map((item) => renderOrderCard(item))}
-                    </div>
-                  )}
+                <div className="next-portfolio-card">
+                  <strong>Materiali consegnati</strong>
+                  <span>Resta fuori finche il cluster non entra in modo coerente.</span>
                 </div>
-
-                <div className="next-workbench-column">
-                  <div className="next-panel__header">
-                    <h3>Arrivati</h3>
-                    <span className="next-chip next-chip--success">
-                      {snapshot.groups.arrived.length}
-                    </span>
-                  </div>
-                  {snapshot.groups.arrived.length === 0 ? (
-                    <div className="next-data-state">
-                      <strong>Nessun ordine arrivato</strong>
-                      <span>Non risultano ordini completamente completati.</span>
-                    </div>
-                  ) : (
-                    <div className="next-status-board">
-                      {snapshot.groups.arrived.slice(0, 4).map((item) => renderOrderCard(item))}
-                    </div>
-                  )}
+                <div className="next-portfolio-card">
+                  <strong>Manutenzioni</strong>
+                  <span>Da leggere dal Dossier quando il lavoro riguarda un mezzo preciso.</span>
                 </div>
               </div>
             </article>
@@ -280,7 +281,7 @@ function NextOperativitaGlobalePage() {
                   <h2>Accessi rapidi</h2>
                 </div>
                 <p className="next-panel__description">
-                  Usa la home per il quadro generale e il Dossier quando un ordine porta a un
+                  Usa il Centro per il quadro generale e il Dossier quando un ordine porta a un
                   mezzo preciso.
                 </p>
                 <div className="next-access-page__actions">
@@ -307,17 +308,29 @@ function NextOperativitaGlobalePage() {
 
               <article className="next-panel next-tone">
                 <div className="next-panel__header">
-                  <h2>Quando passare al Dossier</h2>
+                  <h2>Ultime pratiche</h2>
                 </div>
-                <p className="next-panel__description">
-                  Tieni qui la regia globale. Scendi nel Dossier solo quando l'ordine richiede un
-                  approfondimento sul singolo mezzo.
-                </p>
-                <ul className="next-panel__list">
-                  <li>mezzo identificato e da verificare</li>
-                  <li>documento o costo collegato alla targa</li>
-                  <li>storico tecnico da consultare prima di decidere</li>
-                </ul>
+                {[
+                  ...snapshot.groups.pending,
+                  ...snapshot.groups.partial,
+                  ...snapshot.groups.arrived,
+                ].slice(0, 5).length === 0 ? (
+                  <div className="next-data-state">
+                    <strong>Nessuna pratica letta</strong>
+                    <span>Non risultano ordini leggibili nel quadro attuale.</span>
+                  </div>
+                ) : (
+                  <div className="next-control-list">
+                    {[...snapshot.groups.pending, ...snapshot.groups.partial, ...snapshot.groups.arrived]
+                      .slice(0, 5)
+                      .map((item) => (
+                        <div key={item.id} className="next-control-list__item next-control-list__item--soft">
+                          <strong>{item.supplierName}</strong>
+                          <span>{renderOrderMeta(item)}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </article>
             </div>
           </section>

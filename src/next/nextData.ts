@@ -82,13 +82,13 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     navLabel: "Centro di Controllo",
     shortLabel: "Centro",
     eyebrow: "Cockpit operativo",
-    title: "Centro di Controllo NEXT",
+    title: "Centro di Controllo",
     description:
-      "Shell reale e separata per il cockpit amministrativo della nuova app. In questa fase resta un contenitore read-only, pronto a ospitare priorita, alert, code operative e ricerca globale senza sostituire la home legacy.",
+      "Home operativa per priorita, alert, scadenze e accessi rapidi alle aree di lavoro.",
     phase: "V1 shell read-only",
     primaryGrammar: "Centro di controllo",
     searchPlaceholder: "Targa, badge, alert, ordine",
-    shellFocus: "Home NEXT = IA in alto + Centro di Comando sotto",
+    shellFocus: "Priorita, dossier e accessi rapidi",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -150,13 +150,13 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     navLabel: "Mezzi / Dossier",
     shortLabel: "Dossier",
     eyebrow: "Area mezzo-centrica",
-    title: "Mezzi / Dossier NEXT",
+    title: "Mezzi / Dossier",
     description:
-      "Macro-area combinata che rende visibile da subito il cuore mezzo-centrico della NEXT. La shell separa overview flotta, accesso rapido al Dossier e blocchi contestuali senza importare ancora i moduli legacy.",
+      "Area mezzo-centrica per cercare la flotta, aprire il Dossier e leggere i blocchi principali del mezzo.",
     phase: "V1 shell read-only",
     primaryGrammar: "Dossier",
     searchPlaceholder: "Targa, categoria, autista",
-    shellFocus: "D01 attivo, Dossier dettaglio-first, convergenze pulite",
+    shellFocus: "Ricerca flotta e apertura Dossier",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -213,13 +213,13 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     navLabel: "Operativita Globale",
     shortLabel: "Operativita",
     eyebrow: "Workflow e code",
-    title: "Operativita Globale NEXT",
+    title: "Operativita Globale",
     description:
-      "Area separata per workflow, task e code operative. La shell prepara liste, gruppi stato e pannelli dettaglio senza migrare ancora lavori, manutenzioni o flussi materiali.",
+      "Area globale per ordini, code e attivita condivise che non vanno confuse con il Dossier mezzo.",
     phase: "V1 shell read-only",
     primaryGrammar: "Materiali da ordinare",
     searchPlaceholder: "Fornitore, ordine, materiale",
-    shellFocus: "Workbench globale per procurement, stock e intake",
+    shellFocus: "Ordini, fornitori e code operative",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -270,13 +270,13 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     navLabel: "IA Gestionale",
     shortLabel: "IA",
     eyebrow: "Assistente business",
-    title: "IA Gestionale NEXT",
+    title: "IA Gestionale",
     description:
-      "Questa macro-area rende finalmente visibile la futura IA Business della NEXT. La shell espone il perimetro reale della v1 e separa chiaramente cio che appartiene all'assistenza runtime da cio che restera audit tecnico su repo, docs e dati.",
+      "Ingresso unico per domande, sintesi e passaggio rapido ai record utili del gestionale.",
     phase: "V1 shell read-only",
     primaryGrammar: "Centro di controllo",
     searchPlaceholder: "Superficie, sorgente, periodo",
-    shellFocus: "Motore unico sopra layer puliti e spiegabili",
+    shellFocus: "Domande, sintesi e link ai record",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -334,13 +334,13 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     navLabel: "Strumenti Trasversali",
     shortLabel: "Strumenti",
     eyebrow: "Supporto tecnico e governance",
-    title: "Strumenti Trasversali NEXT",
+    title: "Strumenti Trasversali",
     description:
-      "Area placeholder per PDF standard, ricerca globale, scadenze, audit log, visibilita moduli e strumenti di supporto. La shell e predisposta per governance e permessi futuri, senza introdurre ancora enforcement o funzioni runtime nuove.",
+      "Servizi condivisi, PDF standard e strumenti di supporto che aiutano il lavoro quotidiano senza occupare le aree operative.",
     phase: "V1 shell read-only",
     primaryGrammar: "Area Capo",
     searchPlaceholder: "Servizio, permesso, PDF",
-    shellFocus: "Governance tecnica, PDF standard, routing e accessi",
+    shellFocus: "Servizi comuni e percorsi di supporto",
     visibility: ["Super Admin", "Account gestionale"],
     cards: [
       {

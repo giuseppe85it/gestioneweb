@@ -10,9 +10,9 @@ import {
 
 const dossierHighlights = [
   "Identita mezzo e dati principali",
-  "Storico tecnico e manutenzioni",
-  "Rifornimenti recenti",
-  "Documenti e costi utili",
+  "Lavori, manutenzioni e stato tecnico",
+  "Rifornimenti recenti del mezzo",
+  "Documenti e costi collegati alla targa",
 ];
 
 const entryTips = [
@@ -119,8 +119,7 @@ function NextMezziDossierPage() {
           <p className="next-page__eyebrow">{area.eyebrow}</p>
           <h1>{area.title}</h1>
           <p className="next-page__description">
-            Cerca il mezzo, apri il Dossier giusto e vai subito al contesto che serve senza
-            passaggi intermedi.
+            Cerca il mezzo, apri il Dossier giusto e vai subito al contesto che serve.
           </p>
         </div>
 
@@ -150,10 +149,10 @@ function NextMezziDossierPage() {
       <section className="next-home-ia-band next-tone next-tone--accent">
         <div className="next-home-ia-band__main">
           <p className="next-summary-card__label">Area mezzi</p>
-          <h2>Apri il Dossier corretto senza perdere il contesto del mezzo</h2>
+          <h2>Entra in flotta e apri il mezzo corretto al primo colpo</h2>
           <p className="next-panel__description">
-            Da qui la ricerca e semplice: targa, categoria, marca, modello o autista. Il passo
-            successivo e sempre il Dossier del mezzo selezionato.
+            La logica resta semplice come nella madre: trovi la targa, apri la scheda e lavori da
+            li.
           </p>
         </div>
 
@@ -174,9 +173,9 @@ function NextMezziDossierPage() {
           <strong className="next-summary-card__value">
             {status === "success" ? mezzi.length : "--"}
           </strong>
-          <p className="next-summary-card__meta">
+              <p className="next-summary-card__meta">
             Mezzi pronti da aprire direttamente in Dossier.
-          </p>
+              </p>
         </article>
 
         <article className="next-summary-card next-tone">
@@ -184,9 +183,9 @@ function NextMezziDossierPage() {
           <strong className="next-summary-card__value">
             {status === "success" ? mezziConAutista : "--"}
           </strong>
-          <p className="next-summary-card__meta">
-            Mezzi con riferimento autista visibile in scheda.
-          </p>
+              <p className="next-summary-card__meta">
+            Mezzi con riferimento autista gia visibile in scheda.
+              </p>
         </article>
 
         <article className="next-summary-card next-tone next-tone--warning">
@@ -194,9 +193,9 @@ function NextMezziDossierPage() {
           <strong className="next-summary-card__value">
             {status === "success" ? mezziSenzaMarcaModello : "--"}
           </strong>
-          <p className="next-summary-card__meta">
-            Dati da completare prima di una lettura piena del mezzo.
-          </p>
+              <p className="next-summary-card__meta">
+            Schede da completare per una lettura piu piena del mezzo.
+              </p>
         </article>
       </section>
 
@@ -206,7 +205,7 @@ function NextMezziDossierPage() {
             <h2>Flotta</h2>
           </div>
           <p className="next-panel__description">
-            Cerca il mezzo e apri il suo Dossier dalla scheda senza passare da pagine intermedie.
+            Cerca il mezzo e apri il suo Dossier dalla scheda, senza passaggi intermedi.
           </p>
 
           <div className="next-data-toolbar">
@@ -309,7 +308,7 @@ function NextMezziDossierPage() {
               <h2>Nel Dossier trovi</h2>
             </div>
             <p className="next-panel__description">
-              Una volta aperta la scheda del mezzo, queste sono le letture principali gia utili.
+              Una volta aperta la scheda del mezzo, queste sono le letture gia disponibili oggi.
             </p>
             <ul className="next-panel__list">
               {dossierHighlights.map((item) => (
@@ -323,7 +322,7 @@ function NextMezziDossierPage() {
               <h2>Portfolio flotta</h2>
             </div>
             <p className="next-panel__description">
-              Supporto laterale per capire da quali categorie arriva la maggior parte dei mezzi.
+              Colpo d'occhio sulle categorie piu presenti in flotta.
             </p>
             <div className="next-control-list">
               {categoryBreakdown.map((entry) => (

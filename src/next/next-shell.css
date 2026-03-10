@@ -225,6 +225,14 @@
   gap: 16px;
 }
 
+.next-topbar__context,
+.next-page__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 .next-topbar__shortcuts {
   display: flex;
   flex-wrap: wrap;
@@ -622,6 +630,167 @@
   border-color: rgba(23, 33, 38, 0.1);
 }
 
+.next-dossier-hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  gap: 18px;
+  padding: 22px;
+  border-radius: 28px;
+  border: 1px solid var(--next-border);
+  background: var(--next-panel);
+  box-shadow: 0 14px 32px rgba(23, 33, 38, 0.05);
+}
+
+.next-dossier-hero-card__main,
+.next-dossier-hero-card__side {
+  display: grid;
+  gap: 16px;
+}
+
+.next-dossier-hero-card__identity {
+  display: grid;
+  gap: 10px;
+}
+
+.next-dossier-map__row {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(31, 52, 63, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.next-dossier-map__row strong {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--next-text-soft);
+}
+
+.next-dossier-map__row span {
+  line-height: 1.5;
+}
+
+.next-summary-card--spotlight {
+  min-height: 150px;
+}
+
+.next-summary-card--compact {
+  min-height: 0;
+}
+
+.next-dossier-section-card {
+  min-height: 0;
+}
+
+.next-section-grid--technical {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.next-panel--secondary {
+  min-height: 0;
+}
+
+.next-dossier-section-intro {
+  display: grid;
+  gap: 12px;
+}
+
+.next-dossier-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.next-control-list__item--link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.next-control-list__item--link:hover {
+  border-color: rgba(15, 106, 120, 0.22);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.next-mother-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 18px;
+  padding: 22px;
+  border-radius: 28px;
+  border: 1px solid var(--next-border);
+  background:
+    linear-gradient(135deg, rgba(15, 106, 120, 0.08), transparent 58%),
+    var(--next-panel);
+  box-shadow: 0 14px 32px rgba(23, 33, 38, 0.05);
+}
+
+.next-mother-hero__main {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.next-mother-hero__logo {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  min-width: 78px;
+  height: 78px;
+  border-radius: 22px;
+  border: 1px solid rgba(31, 52, 63, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.next-mother-hero__logo img {
+  max-width: 52px;
+  max-height: 52px;
+  object-fit: contain;
+}
+
+.next-hero-link-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.next-hero-link-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(31, 52, 63, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.next-hero-link-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 106, 120, 0.22);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.next-hero-link-card span {
+  color: var(--next-text-soft);
+  line-height: 1.5;
+}
+
+.next-home-dashboard-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.next-home-search-card {
+  grid-column: span 2;
+}
+
 .next-data-toolbar {
   display: grid;
   gap: 14px;
@@ -792,6 +961,8 @@
   }
 
   .next-dossier-layout,
+  .next-mother-hero,
+  .next-dossier-hero-card,
   .next-home-ia-band,
   .next-cockpit-layout,
   .next-global-layout {
@@ -804,6 +975,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .next-home-dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .next-home-search-card {
+    grid-column: span 2;
+  }
+
   .next-vehicle-grid {
     grid-template-columns: 1fr;
   }
@@ -813,6 +992,7 @@
   .next-summary-grid--wide,
   .next-summary-grid--compact,
   .next-section-grid,
+  .next-section-grid--technical,
   .next-section-grid--wide,
   .next-section-grid--support,
   .next-driver-grid {
@@ -831,9 +1011,11 @@
   .next-dossier-spotlight-grid,
   .next-summary-grid--wide,
   .next-summary-grid--compact,
+  .next-home-dashboard-grid,
   .next-home-ia-band__stats,
   .next-portfolio-grid,
   .next-section-grid,
+  .next-section-grid--technical,
   .next-section-grid--wide,
   .next-section-grid--support,
   .next-inline-grid,
@@ -844,6 +1026,14 @@
   }
 
   .next-topbar__actions {
+    flex-direction: column;
+  }
+
+  .next-topbar__context {
+    justify-content: flex-start;
+  }
+
+  .next-mother-hero__main {
     flex-direction: column;
   }
 

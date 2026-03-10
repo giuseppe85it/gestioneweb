@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import "./next-shell.css";
 import { NEXT_AREAS, NEXT_NAV_ITEMS, type NextAreaId } from "./nextData";
@@ -8,6 +9,7 @@ import {
   getNextRoleFromSearch,
   getVisibleNextAreaIds,
 } from "./nextAccess";
+import { trackNextPageVisit } from "./nextUsageTracking";
 
 const activeAreaFromPath = (pathname: string): NextAreaId | null => {
   const item = NEXT_NAV_ITEMS.find((entry) => pathname.startsWith(entry.path));
@@ -15,12 +17,54 @@ const activeAreaFromPath = (pathname: string): NextAreaId | null => {
 };
 
 const SHELL_PAGE_DESCRIPTIONS: Record<NextAreaId, string> = {
-  "centro-controllo": "Priorita del giorno, alert e accessi rapidi alle aree operative.",
-  "mezzi-dossier": "Ricerca mezzi, apertura del Dossier e lettura dell'area flotta.",
-  "operativita-globale": "Ordini, avanzamento e workbench delle attivita condivise.",
-  "ia-gestionale": "Richieste guidate, sintesi contestuali e collegamenti ai record utili.",
-  "strumenti-trasversali": "Servizi comuni e supporto di piattaforma, senza rumore operativo.",
+  "centro-controllo": "Priorita del giorno, revisioni, segnalazioni e ingressi rapidi alle aree operative.",
+  "mezzi-dossier": "Ricerca mezzi, apertura del Dossier e lettura dei blocchi gia pronti del mezzo.",
+  "operativita-globale": "Ordini e coda operativa globale, separati dal lavoro sul singolo mezzo.",
+  "ia-gestionale": "Domande, sintesi e passaggio rapido al record utile.",
+  "strumenti-trasversali": "PDF, percorsi usati e strumenti di servizio della piattaforma.",
 };
+
+function getTrackingMeta(pathname: string, activeAreaId: NextAreaId | null) {
+  if (pathname.startsWith("/next/mezzi-dossier/")) {
+    const mezzoTarga = decodeURIComponent(pathname.replace("/next/mezzi-dossier/", "")).trim();
+    return {
+      areaId: "mezzi-dossier",
+      areaLabel: "Mezzi / Dossier",
+      pathKey: "/next/mezzi-dossier/:targa",
+      pathLabel: "Dossier mezzo",
+      pageLabel: mezzoTarga ? `Dossier ${mezzoTarga}` : "Dossier mezzo",
+    };
+  }
+
+  if (pathname.startsWith(NEXT_DRIVER_EXPERIENCE_PATH)) {
+    return {
+      areaId: "autista",
+      areaLabel: "Esperienza Autista",
+      pathKey: NEXT_DRIVER_EXPERIENCE_PATH,
+      pathLabel: "Esperienza Autista",
+      pageLabel: "Esperienza Autista",
+    };
+  }
+
+  if (activeAreaId) {
+    const area = NEXT_AREAS[activeAreaId];
+    return {
+      areaId: activeAreaId,
+      areaLabel: area.navLabel,
+      pathKey: pathname,
+      pathLabel: area.navLabel,
+      pageLabel: area.navLabel,
+    };
+  }
+
+  return {
+    areaId: "next",
+    areaLabel: "NEXT",
+    pathKey: pathname,
+    pathLabel: "NEXT",
+    pageLabel: "NEXT",
+  };
+}
 
 function NextShell() {
   const location = useLocation();
@@ -36,16 +80,24 @@ function NextShell() {
     : activeAreaId
       ? SHELL_PAGE_DESCRIPTIONS[activeAreaId]
       : "Aree operative, dossier e strumenti condivisi.";
-  const searchPlaceholder = activeArea?.searchPlaceholder ?? "Cerca targa, ordine o fornitore";
   const quickLinks = visibleNavItems.filter((item) => item.id !== activeAreaId).slice(0, 2);
+
+  useEffect(() => {
+    const meta = getTrackingMeta(location.pathname, activeAreaId);
+    trackNextPageVisit({
+      ...meta,
+      actualPath: location.pathname,
+      role,
+    });
+  }, [activeAreaId, location.pathname, role]);
 
   return (
     <div className="next-app">
       <aside className="next-sidebar">
         <div className="next-brand">
           <span className="next-brand__eyebrow">GestioneManutenzione</span>
-          <strong>Area gestionale</strong>
-          <p>Accessi principali della nuova interfaccia operativa.</p>
+          <strong>Backoffice operativo</strong>
+          <p>La stessa logica di lavoro del gestionale, con letture piu ordinate.</p>
         </div>
 
         <div className="next-role-switch">
@@ -65,7 +117,7 @@ function NextShell() {
               </Link>
             ))}
           </div>
-          <p className="next-role-switch__hint">Cambio rapido del profilo visibile.</p>
+          <p className="next-role-switch__hint">Profilo simulato solo per visibilita della NEXT.</p>
         </div>
 
         <nav className="next-nav" aria-label="Navigazione NEXT">
@@ -113,16 +165,14 @@ function NextShell() {
           </div>
 
           <div className="next-topbar__actions">
-            <label className="next-search">
-              <span className="next-search__label">Ricerca globale</span>
-              <input
-                type="text"
-                value=""
-                readOnly
-                placeholder={searchPlaceholder}
-                aria-label="Ricerca globale NEXT placeholder"
-              />
-            </label>
+            <div className="next-topbar__context">
+              <span className="next-chip next-chip--accent">
+                Profilo {NEXT_ROLE_PRESETS[role].shortLabel}
+              </span>
+              {activeArea?.shellFocus ? (
+                <span className="next-chip next-chip--subtle">{activeArea.shellFocus}</span>
+              ) : null}
+            </div>
             <div className="next-topbar__shortcuts">
               {quickLinks.map((item) => (
                 <Link

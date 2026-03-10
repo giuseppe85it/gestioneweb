@@ -62,6 +62,7 @@ function NextCentroControlloPage() {
   const area = NEXT_AREAS["centro-controllo"];
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
   const [fleetSnapshot, setFleetSnapshot] = useState<NextAnagraficheFlottaSnapshot | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -102,6 +103,21 @@ function NextCentroControlloPage() {
   const counters = snapshot?.counters;
   const fleetItems = fleetSnapshot?.items ?? [];
   const focusItems = snapshot?.focusItems ?? [];
+  const normalizedQuery = searchQuery.trim().toUpperCase();
+  const mezziTotali = fleetItems.length;
+  const mezziConAutista = fleetItems.filter((item) => Boolean(item.autistaNome)).length;
+  const dossierIncompleti = focusItems.filter((item) => item.kind === "mezzo_incompleto").length;
+  const revisionAlerts = (snapshot?.alerts ?? []).filter((item) => item.kind === "revisione").slice(0, 4);
+  const visibleAlerts = (snapshot?.alerts ?? []).slice(0, 6);
+  const filteredFleet = fleetItems
+    .filter((item) => {
+      if (!normalizedQuery) return true;
+      const haystack = [item.targa, item.categoria, item.marca, item.modello, item.autistaNome ?? ""]
+        .join(" ")
+        .toUpperCase();
+      return haystack.includes(normalizedQuery);
+    })
+    .slice(0, 6);
   const firstDossierPath =
     fleetItems.length > 0
       ? buildNextPathWithRole(
@@ -130,6 +146,13 @@ function NextCentroControlloPage() {
     return null;
   };
 
+  const buildDossierPath = (mezzoTarga: string) =>
+    buildNextPathWithRole(
+      `/next/mezzi-dossier/${encodeURIComponent(mezzoTarga)}`,
+      role,
+      location.search
+    );
+
   const renderAlertActionLabel = (item: D10AlertItem): string => {
     if (item.targetRouteKind === "dossier") {
       return "Apri Dossier";
@@ -149,8 +172,8 @@ function NextCentroControlloPage() {
           <p className="next-page__eyebrow">{area.eyebrow}</p>
           <h1>{area.title}</h1>
           <p className="next-page__description">
-            Qui vedi subito cosa richiede attenzione oggi, quali mezzi aprire e da dove entrare
-            nelle aree operative della giornata.
+            Parti dalle priorita reali della giornata, apri il Dossier giusto e scendi nelle aree
+            operative solo quando serve.
           </p>
         </div>
 
@@ -194,118 +217,128 @@ function NextCentroControlloPage() {
 
       {status === "success" && snapshot && fleetSnapshot ? (
         <>
-          <section className="next-home-ia-band next-tone next-tone--accent">
-            <div className="next-home-ia-band__main">
-              <p className="next-summary-card__label">IA in primo piano</p>
-              <h2>Chiedi una sintesi della giornata prima di aprire i moduli</h2>
-              <p className="next-panel__description">
-                Parti da domande semplici e contestuali, poi apri subito la pagina corretta per
-                agire.
-              </p>
-              <div className="next-control-list">
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>Quali mezzi richiedono attenzione oggi?</strong>
-                  <span>Usa la coda prioritaria del Centro di Controllo.</span>
-                </div>
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>Quali revisioni sono piu urgenti?</strong>
-                  <span>Parti dagli alert e apri direttamente il Dossier corretto.</span>
-                </div>
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>Da dove conviene iniziare il lavoro di oggi?</strong>
-                  <span>Ottieni una vista rapida delle priorita e dei collegamenti utili.</span>
-                </div>
+          <section className="next-mother-hero">
+            <div className="next-mother-hero__main">
+              <div className="next-mother-hero__logo">
+                <img src="/logo.png" alt="Logo" />
+              </div>
+              <div>
+                <p className="next-page__eyebrow">Centrale operativa</p>
+                <h2>Dashboard Admin</h2>
+                <p className="next-panel__description">
+                  Panoramica rapida su mezzi, alert e revisioni. Tutti i pannelli portano alle
+                  sezioni operative della NEXT.
+                </p>
               </div>
             </div>
 
-            <div className="next-home-ia-band__side">
-              <div className="next-control-list">
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>Parti dal Centro</strong>
-                  <span>Alert, revisioni e segnalazioni della giornata.</span>
-                </div>
-                <div className="next-control-list__item next-control-list__item--soft">
-                  <strong>Scendi nel Dossier</strong>
-                  <span>Apri subito il mezzo coinvolto quando serve dettaglio.</span>
-                </div>
-              </div>
-
-              <div className="next-access-page__actions">
-                <Link
-                  className="next-action-link next-action-link--primary"
-                  to={buildNextPathWithRole("/next/ia-gestionale", role, location.search)}
-                >
-                  Apri IA Gestionale
+            <div className="next-hero-link-grid">
+              <Link
+                className="next-hero-link-card"
+                to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
+              >
+                <strong>Mezzi</strong>
+                <span>Anagrafiche e Dossier mezzo</span>
+              </Link>
+              <Link
+                className="next-hero-link-card"
+                to={buildNextPathWithRole("/next/operativita-globale", role, location.search)}
+              >
+                <strong>Operativita</strong>
+                <span>Ordini e code globali</span>
+              </Link>
+              <Link
+                className="next-hero-link-card"
+                to={buildNextPathWithRole("/next/ia-gestionale", role, location.search)}
+              >
+                <strong>IA Gestionale</strong>
+                <span>Sintesi e passaggio al record giusto</span>
+              </Link>
+              <Link
+                className="next-hero-link-card"
+                to={buildNextPathWithRole("/next/strumenti-trasversali", role, location.search)}
+              >
+                <strong>Strumenti</strong>
+                <span>PDF e servizi condivisi</span>
+              </Link>
+              {firstDossierPath ? (
+                <Link className="next-hero-link-card" to={firstDossierPath}>
+                  <strong>Apri Dossier</strong>
+                  <span>Entra subito su un mezzo gia disponibile</span>
                 </Link>
-                <Link
-                  className="next-action-link"
-                  to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
-                >
-                  Apri Mezzi / Dossier
-                </Link>
-                {firstDossierPath ? (
-                  <Link className="next-action-link" to={firstDossierPath}>
-                    Apri un Dossier
-                  </Link>
-                ) : null}
-              </div>
+              ) : null}
             </div>
           </section>
 
-          <section className="next-summary-grid next-summary-grid--compact">
-            <article className="next-summary-card next-tone next-tone--accent">
-              <p className="next-summary-card__label">Alert visibili</p>
-              <strong className="next-summary-card__value">
-                {counters?.alertsVisible ?? 0}
-              </strong>
-              <p className="next-summary-card__meta">Priorita da presidiare subito.</p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--warning">
-              <p className="next-summary-card__label">Revisioni vicine</p>
-              <strong className="next-summary-card__value">
-                {(counters?.revisioniScadute ?? 0) + (counters?.revisioniInScadenza ?? 0)}
-              </strong>
-              <p className="next-summary-card__meta">
-                {counters?.revisioniScadute ?? 0} scadute, {counters?.revisioniInScadenza ?? 0} in
-                scadenza.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--success">
-              <p className="next-summary-card__label">Segnalazioni nuove</p>
-              <strong className="next-summary-card__value">
-                {counters?.segnalazioniNuove ?? 0}
-              </strong>
-              <p className="next-summary-card__meta">
-                Nuovi elementi emersi da controllare.
-              </p>
-            </article>
-          </section>
-
-          <section className="next-cockpit-layout">
-            <article className="next-panel next-cockpit-main next-tone next-tone--accent">
+          <section className="next-home-dashboard-grid">
+            <section className="next-panel next-home-search-card">
               <div className="next-panel__header">
-                <h2>Priorita di oggi</h2>
-                <span className="next-chip next-chip--accent">
-                  {snapshot.alerts.length} alert attivi
-                </span>
+                <div>
+                  <h2>Ricerca mezzi</h2>
+                  <span className="next-summary-card__label">
+                    Cerca targa o autista e apri il Dossier
+                  </span>
+                </div>
               </div>
-              <p className="next-panel__description">
-                Qui trovi la coda di lavoro da aprire per prima. Ogni elemento porta subito al
-                record corretto quando disponibile.
-              </p>
+              <label className="next-data-search">
+                <span className="next-search__label">Ricerca 360</span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Cerca targa, categoria, marca, modello o autista"
+                  aria-label="Ricerca mezzi dal Centro di Controllo NEXT"
+                />
+              </label>
+              <div className="next-control-list">
+                {!normalizedQuery ? (
+                  <div className="next-data-state">
+                    <strong>Digita per cercare</strong>
+                    <span>La ricerca apre direttamente il Dossier del mezzo selezionato.</span>
+                  </div>
+                ) : filteredFleet.length === 0 ? (
+                  <div className="next-data-state">
+                    <strong>Nessun risultato</strong>
+                    <span>Nessun mezzo corrisponde alla ricerca inserita.</span>
+                  </div>
+                ) : (
+                  filteredFleet.map((item) => (
+                    <Link
+                      key={item.id}
+                      className="next-control-list__item next-control-list__item--link"
+                      to={buildDossierPath(item.targa)}
+                    >
+                      <strong>{item.targa}</strong>
+                      <span>
+                        {[item.categoria, item.marca, item.modello].filter(Boolean).join(" | ") ||
+                          "Scheda mezzo"}
+                      </span>
+                      <span>{item.autistaNome ? `Autista: ${item.autistaNome}` : "Autista: -"}</span>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </section>
 
-              {snapshot.alerts.length === 0 ? (
+            <section className="next-panel next-tone next-tone--accent">
+              <div className="next-panel__header">
+                <div>
+                  <h2>Alert</h2>
+                  <span className="next-summary-card__label">
+                    Revisioni, segnalazioni e conflitti da leggere subito
+                  </span>
+                </div>
+                <span className="next-chip next-chip--accent">{counters?.alertsVisible ?? 0}</span>
+              </div>
+              {visibleAlerts.length === 0 ? (
                 <div className="next-data-state">
                   <strong>Nessun alert attivo</strong>
                   <span>Non risultano priorita aperte in questo momento.</span>
                 </div>
               ) : (
                 <div className="next-control-list">
-                  {snapshot.alerts.map((item) => {
+                  {visibleAlerts.map((item) => {
                     const itemPath = buildItemPath(item.targetRouteKind, item.mezzoTarga);
-
                     return (
                       <div key={item.id} className="next-control-list__item">
                         <div className="next-global-pillbar">
@@ -315,13 +348,9 @@ function NextCentroControlloPage() {
                           <span className="next-chip next-chip--subtle">
                             {renderAlertKindLabel(item)}
                           </span>
-                          {item.dateLabel ? (
-                            <span className="next-chip next-chip--subtle">{item.dateLabel}</span>
-                          ) : null}
                         </div>
-                        <strong>{item.title}</strong>
+                        <strong>{item.mezzoTarga ?? item.title}</strong>
                         <span>{item.detailText}</span>
-                        {item.mezzoTarga ? <span>Targa: {item.mezzoTarga}</span> : null}
                         {itemPath ? (
                           <Link className="next-inline-link" to={itemPath}>
                             {renderAlertActionLabel(item)}
@@ -332,84 +361,114 @@ function NextCentroControlloPage() {
                   })}
                 </div>
               )}
-            </article>
+            </section>
 
-            <div className="next-cockpit-side">
-              <article className="next-panel next-tone next-tone--success">
-                <div className="next-panel__header">
-                  <h2>Da seguire oggi</h2>
+            <section className="next-panel">
+              <div className="next-panel__header">
+                <div>
+                  <h2>Sessioni e follow-up</h2>
+                  <span className="next-summary-card__label">Focus operativi da seguire</span>
                 </div>
-                <p className="next-panel__description">
-                  Segnali secondari da tenere d'occhio dopo la coda prioritaria.
-                </p>
-
-                {focusItems.length === 0 ? (
-                  <div className="next-data-state">
-                    <strong>Nessun focus operativo</strong>
-                    <span>Non risultano elementi secondari da seguire adesso.</span>
-                  </div>
-                ) : (
-                  <div className="next-control-list">
-                    {focusItems.slice(0, 4).map((item) => {
-                      const itemPath = buildItemPath(item.targetRouteKind, item.mezzoTarga);
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="next-control-list__item next-control-list__item--soft"
-                        >
-                          <div className="next-global-pillbar">
-                            <span className={toneClassName(item.severity)}>
-                              {renderSeverityLabel(item.severity)}
-                            </span>
-                            <span className="next-chip next-chip--subtle">
-                              {renderFocusKindLabel(item)}
-                            </span>
-                          </div>
-                          <strong>{item.title}</strong>
-                          <span>{item.detailText}</span>
-                          {itemPath ? (
-                            <Link className="next-inline-link" to={itemPath}>
-                              Apri dettaglio
-                            </Link>
-                          ) : null}
+              </div>
+              {focusItems.length === 0 ? (
+                <div className="next-data-state">
+                  <strong>Nessun focus operativo</strong>
+                  <span>Non risultano elementi secondari da seguire adesso.</span>
+                </div>
+              ) : (
+                <div className="next-control-list">
+                  {focusItems.slice(0, 5).map((item) => {
+                    const itemPath = buildItemPath(item.targetRouteKind, item.mezzoTarga);
+                    return (
+                      <div key={item.id} className="next-control-list__item next-control-list__item--soft">
+                        <div className="next-global-pillbar">
+                          <span className={toneClassName(item.severity)}>
+                            {renderSeverityLabel(item.severity)}
+                          </span>
+                          <span className="next-chip next-chip--subtle">
+                            {renderFocusKindLabel(item)}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </article>
+                        <strong>{item.title}</strong>
+                        <span>{item.detailText}</span>
+                        {itemPath ? (
+                          <Link className="next-inline-link" to={itemPath}>
+                            Apri dettaglio
+                          </Link>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-              <article className="next-panel next-tone">
-                <div className="next-panel__header">
-                  <h2>Accessi operativi</h2>
+            <section className="next-panel next-tone next-tone--warning">
+              <div className="next-panel__header">
+                <div>
+                  <h2>Revisioni</h2>
+                  <span className="next-summary-card__label">
+                    Allarmi su scadenze e mezzi da aprire
+                  </span>
                 </div>
-                <p className="next-panel__description">
-                  Vai direttamente all'area che serve senza passare da pannelli tecnici o stati di
-                  sistema.
-                </p>
-                <div className="next-access-page__actions">
-                  <Link
-                    className="next-action-link next-action-link--primary"
-                    to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
-                  >
-                    Mezzi / Dossier
-                  </Link>
-                  <Link
-                    className="next-action-link"
-                    to={buildNextPathWithRole("/next/operativita-globale", role, location.search)}
-                  >
-                    Operativita
-                  </Link>
-                  <Link
-                    className="next-action-link"
-                    to={buildNextPathWithRole("/next/strumenti-trasversali", role, location.search)}
-                  >
-                    Strumenti
-                  </Link>
+              </div>
+              <div className="next-summary-grid next-summary-grid--compact">
+                <article className="next-summary-card next-tone next-tone--warning">
+                  <p className="next-summary-card__label">Scadute</p>
+                  <strong className="next-summary-card__value">{counters?.revisioniScadute ?? 0}</strong>
+                </article>
+                <article className="next-summary-card next-tone next-tone--accent">
+                  <p className="next-summary-card__label">In scadenza</p>
+                  <strong className="next-summary-card__value">{counters?.revisioniInScadenza ?? 0}</strong>
+                </article>
+              </div>
+              {revisionAlerts.length === 0 ? (
+                <div className="next-data-state">
+                  <strong>Nessuna revisione imminente</strong>
+                  <span>Non risultano revisioni vicine nel perimetro attuale.</span>
                 </div>
-              </article>
-            </div>
+              ) : (
+                <div className="next-control-list">
+                  {revisionAlerts.map((item) => {
+                    const itemPath = buildItemPath(item.targetRouteKind, item.mezzoTarga);
+                    return (
+                      <div key={item.id} className="next-control-list__item next-control-list__item--soft">
+                        <strong>{item.mezzoTarga ?? item.title}</strong>
+                        <span>{item.detailText}</span>
+                        {itemPath ? (
+                          <Link className="next-inline-link" to={itemPath}>
+                            Apri Dossier
+                          </Link>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="next-panel">
+              <div className="next-panel__header">
+                <div>
+                  <h2>Flotta</h2>
+                  <span className="next-summary-card__label">Situazione sintetica mezzi</span>
+                </div>
+              </div>
+              <div className="next-control-list">
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Mezzi letti</strong>
+                  <span>{mezziTotali} mezzi presenti in flotta.</span>
+                </div>
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Con autista</strong>
+                  <span>{mezziConAutista} mezzi con autista anagrafico visibile.</span>
+                </div>
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Schede da completare</strong>
+                  <span>{dossierIncompleti} mezzi con campi da completare nel Dossier.</span>
+                </div>
+              </div>
+            </section>
           </section>
         </>
       ) : null}

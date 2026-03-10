@@ -59,41 +59,33 @@ function buildOverview(args: {
 }): NextDossierMezzoOverview {
   const { mezzo, technical, maintenance, refuels, documentCosts } = args;
   const importedBlockLabels = [
-    `D01 identita mezzo da ${mezzo.sourceCollection}/${mezzo.sourceKey}`,
-    technical.status === "success"
-      ? "D02 backlog lavori aperti e chiusi in sola lettura"
-      : null,
-    maintenance.status === "success"
-      ? "Storico manutenzioni e manutenzione programmata in layer dedicato"
-      : null,
-    refuels.status === "success"
-      ? "D04 rifornimenti ricostruiti con modello pulito unico"
-      : null,
-    documentCosts.status === "success"
-      ? "D07 + D08 documenti e costi read-only con preview mezzo-centrica pulita"
-      : null,
+    "Scheda identita mezzo",
+    technical.status === "success" ? "Lavori aperti e chiusi del mezzo" : null,
+    maintenance.status === "success" ? "Storico manutenzioni e pianificazione mezzo" : null,
+    refuels.status === "success" ? "Rifornimenti recenti del mezzo" : null,
+    documentCosts.status === "success" ? "Documenti e costi collegati alla targa" : null,
   ].filter((entry): entry is string => Boolean(entry));
 
   const excludedBlockLabels = [
-    "nessun writer, modale o workflow della madre",
-    "nessun uso di dataset tmp o raw direttamente nella UI",
-    "nessuna migrazione 1:1 di DossierMezzo o Mezzo360 legacy",
-    "nessun archivio globale `@preventivi`, nessuna approvazione preventivi e nessuna analisi economica completa nel Dossier",
+    "nessuna modifica dati",
+    "nessun workflow tecnico della madre",
+    "nessuna vista eventi/autisti stile Mezzo360",
+    "nessuna analisi economica completa del mezzo",
   ];
 
   const nextConvergenceLabels = [
-    "stabilizzare il quadro mezzo-centrico unico D01 + D02 + D04 + D07/D08",
-    "estendere la copertura documentale mezzo verso libretti e altri allegati utili senza toccare l'intake globale",
-    "chiarire il confine con `@preventivi` e allegati procurement senza globalizzare il Dossier",
-    "preparazione input IA Business v1 su Dossier senza backend runtime",
+    "allargare i documenti collegati al mezzo",
+    "chiarire il confine con preventivi e ordini globali",
+    "completare i collegamenti verso PDF e sintesi assistite",
+    "preparare la lettura IA del Dossier senza toccare il runtime della madre",
   ];
 
   const readerLabels = [
-    `D01 -> ${NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.activeReadOnlyDataset}`,
-    "D02 -> @lavori + @manutenzioni con filtro targa",
-    "D02-MAN -> @manutenzioni + @mezzi_aziendali",
-    "D04 -> @rifornimenti + @rifornimenti_autisti_tmp confinati nel layer NEXT",
-    "D07/D08 -> @costiMezzo + @documenti_mezzi + @documenti_magazzino + @documenti_generici",
+    `Identita mezzo: ${NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.activeReadOnlyDataset}`,
+    "Lavori: @lavori",
+    "Manutenzioni: @manutenzioni + @mezzi_aziendali",
+    "Rifornimenti: ricostruzione da @rifornimenti e feed campo",
+    "Documenti e costi: @costiMezzo + collezioni documentali",
   ];
 
   const keySignals = [
@@ -109,14 +101,14 @@ function buildOverview(args: {
       : "Stato manutentivo non ancora leggibile nel Dossier.",
     refuels.status === "success"
       ? refuels.snapshot?.counts.total
-        ? `Rifornimenti letti dal modello D04: ${refuels.snapshot.counts.total} record utili.`
-        : "Nessun rifornimento utile letto dal modello D04."
-      : "Rifornimenti D04 non ancora leggibili nel Dossier.",
+        ? `Rifornimenti letti: ${refuels.snapshot.counts.total} record utili.`
+        : "Nessun rifornimento utile letto per questa targa."
+      : "Rifornimenti non ancora disponibili nel Dossier.",
     documentCosts.status === "success"
       ? documentCosts.snapshot?.counts.total
-        ? `Documenti e costi letti dal layer D07/D08: ${documentCosts.snapshot.counts.total} record mezzo-centrici.`
-        : "Nessun documento o costo utile letto dal layer D07/D08."
-      : "Documenti e costi non ancora leggibili nel Dossier.",
+        ? `Documenti e costi letti: ${documentCosts.snapshot.counts.total} record collegati al mezzo.`
+        : "Nessun documento o costo utile letto per questa targa."
+      : "Documenti e costi non ancora disponibili nel Dossier.",
   ];
 
   const successfulBlocks = [technical, maintenance, refuels, documentCosts].filter(
@@ -125,21 +117,21 @@ function buildOverview(args: {
 
   const statusLabel =
     successfulBlocks === 4
-      ? "D01 consolidato + quadro mezzo attivo"
+      ? "Quadro mezzo completo"
       : successfulBlocks > 0
-      ? "D01 attivo con convergenze parziali"
-      : "D01 attivo, convergenze in caricamento";
+      ? "Quadro mezzo parziale"
+      : "Scheda mezzo in caricamento";
 
   const statusMeta =
     successfulBlocks === 4
-      ? "Identita mezzo, stato tecnico, manutenzioni, rifornimenti e cluster documenti/costi sono gia composti in un solo Dossier read-only."
-      : "Il Dossier resta mezzo-centrico anche quando una convergenza parziale non e disponibile: nessun fallback raw viene portato in UI.";
+      ? "Scheda mezzo, stato tecnico, manutenzioni, rifornimenti e documenti sono gia leggibili in un solo Dossier."
+      : "Il Dossier resta mezzo-centrico anche quando un blocco non e disponibile.";
 
   const technicalLimitations = [
     technical.status === "error" ? technical.error : null,
     maintenance.status === "error" ? maintenance.error : null,
     ...(maintenance.snapshot?.limitations ?? []),
-    "Il blocco tecnico resta read-only: nessun dettaglio workflow lavori, nessun writer e nessun merge con costi o magazzino.",
+    "Il blocco tecnico resta in sola lettura: nessun dettaglio workflow lavori e nessun merge con costi o magazzino.",
   ].filter((entry): entry is string => Boolean(entry));
 
   const refuelLimitations = [
