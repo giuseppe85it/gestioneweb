@@ -1,17 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  NEXT_AREA_ACCESS,
-  NEXT_ROLE_PRESETS,
-  buildNextPathWithRole,
-  getNextRoleFromSearch,
-} from "./nextAccess";
+import { buildNextPathWithRole, getNextRoleFromSearch } from "./nextAccess";
 import { NEXT_AREAS } from "./nextData";
 import {
-  NEXT_STATO_OPERATIVO_DOMAIN,
+  type NextAnagraficheFlottaSnapshot,
+  readNextAnagraficheFlottaSnapshot,
+} from "./nextAnagraficheFlottaDomain";
+import {
   type D10AlertItem,
   type D10FocusItem,
-  type D10Quality,
   type D10Severity,
   type D10Snapshot,
   readNextStatoOperativoSnapshot,
@@ -39,17 +36,6 @@ function renderSeverityLabel(value: D10Severity): string {
   }
 }
 
-function renderQualityLabel(value: D10Quality): string {
-  switch (value) {
-    case "source_direct":
-      return "Dato diretto";
-    case "derived_acceptable":
-      return "Dato derivato";
-    default:
-      return "Fuori v1";
-  }
-}
-
 function renderAlertKindLabel(item: D10AlertItem): string {
   switch (item.kind) {
     case "revisione":
@@ -74,9 +60,8 @@ function NextCentroControlloPage() {
   const location = useLocation();
   const role = getNextRoleFromSearch(location.search);
   const area = NEXT_AREAS["centro-controllo"];
-  const access = NEXT_AREA_ACCESS["centro-controllo"];
-  const allowedRoleLabels = access.allowedRoles.map((entry) => NEXT_ROLE_PRESETS[entry].label);
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
+  const [fleetSnapshot, setFleetSnapshot] = useState<NextAnagraficheFlottaSnapshot | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -87,15 +72,23 @@ function NextCentroControlloPage() {
       try {
         setStatus("loading");
         setError(null);
-        const result = await readNextStatoOperativoSnapshot();
+        const [d10Snapshot, d01Snapshot] = await Promise.all([
+          readNextStatoOperativoSnapshot(),
+          readNextAnagraficheFlottaSnapshot(),
+        ]);
+
         if (!active) return;
-        setSnapshot(result);
+
+        setSnapshot(d10Snapshot);
+        setFleetSnapshot(d01Snapshot);
         setStatus("success");
       } catch {
         if (!active) return;
+
         setSnapshot(null);
+        setFleetSnapshot(null);
         setStatus("error");
-        setError("Impossibile leggere il layer D10 read-only del Centro di Controllo.");
+        setError("Impossibile leggere i dati necessari al Centro di Controllo.");
       }
     };
 
@@ -107,87 +100,169 @@ function NextCentroControlloPage() {
   }, []);
 
   const counters = snapshot?.counters;
-  const focusStats = useMemo(() => {
-    const items = snapshot?.focusItems ?? [];
-    return {
-      total: items.length,
-      controlliKo: items.filter((item) => item.kind === "controllo_ko").length,
-      mezziIncompleti: items.filter((item) => item.kind === "mezzo_incompleto").length,
-    };
-  }, [snapshot?.focusItems]);
+  const fleetItems = fleetSnapshot?.items ?? [];
+  const focusItems = snapshot?.focusItems ?? [];
+  const firstDossierPath =
+    fleetItems.length > 0
+      ? buildNextPathWithRole(
+          `/next/mezzi-dossier/${encodeURIComponent(fleetItems[0].targa)}`,
+          role,
+          location.search
+        )
+      : null;
 
-  const buildItemPath = useMemo(() => {
-    return (targetRouteKind: D10AlertItem["targetRouteKind"], mezzoTarga: string | null) => {
-      if (targetRouteKind === "dossier" && mezzoTarga) {
-        return buildNextPathWithRole(`/next/mezzi-dossier/${mezzoTarga}`, role, location.search);
-      }
+  const buildItemPath = (
+    targetRouteKind: D10AlertItem["targetRouteKind"],
+    mezzoTarga: string | null
+  ) => {
+    if (targetRouteKind === "dossier" && mezzoTarga) {
+      return buildNextPathWithRole(
+        `/next/mezzi-dossier/${encodeURIComponent(mezzoTarga)}`,
+        role,
+        location.search
+      );
+    }
 
-      if (targetRouteKind === "mezzi") {
-        return buildNextPathWithRole("/next/mezzi-dossier", role, location.search);
-      }
+    if (targetRouteKind === "mezzi") {
+      return buildNextPathWithRole("/next/mezzi-dossier", role, location.search);
+    }
 
-      return null;
-    };
-  }, [location.search, role]);
+    return null;
+  };
+
+  const renderAlertActionLabel = (item: D10AlertItem): string => {
+    if (item.targetRouteKind === "dossier") {
+      return "Apri Dossier";
+    }
+
+    if (item.targetRouteKind === "mezzi") {
+      return "Apri Mezzi";
+    }
+
+    return "Apri dettaglio";
+  };
 
   return (
     <section className="next-page next-control-center-shell">
       <header className="next-page__hero">
-        <div>
+        <div className="next-page__hero-copy">
           <p className="next-page__eyebrow">{area.eyebrow}</p>
           <h1>{area.title}</h1>
           <p className="next-page__description">
-            Primo ingresso runtime reale del dominio {NEXT_STATO_OPERATIVO_DOMAIN.code} nella
-            NEXT. La pagina legge uno snapshot read-only pulito del Centro di Controllo, senza
-            copiare in React la logica sporca della Home legacy.
+            Qui vedi subito cosa richiede attenzione oggi, quali mezzi aprire e da dove entrare
+            nelle aree operative della giornata.
           </p>
         </div>
 
-        <div className="next-page__meta">
-          <span className="next-chip next-chip--success">D10 READ-ONLY</span>
-          {allowedRoleLabels.map((scope) => (
-            <span key={scope} className="next-chip">
-              {scope}
-            </span>
-          ))}
-          <span className="next-chip next-chip--subtle">
-            Ruolo simulato: {NEXT_ROLE_PRESETS[role].shortLabel}
-          </span>
-          <span className="next-chip next-chip--accent">
-            Layer pulito: {NEXT_STATO_OPERATIVO_DOMAIN.code}
-          </span>
+        <div className="next-page__hero-actions">
+          <div className="next-access-page__actions">
+            <Link
+              className="next-action-link next-action-link--primary"
+              to={buildNextPathWithRole("/next/ia-gestionale", role, location.search)}
+            >
+              Apri IA Gestionale
+            </Link>
+            <Link
+              className="next-action-link"
+              to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
+            >
+              Apri Mezzi / Dossier
+            </Link>
+            <Link
+              className="next-action-link"
+              to={buildNextPathWithRole("/next/operativita-globale", role, location.search)}
+            >
+              Apri Operativita
+            </Link>
+          </div>
         </div>
       </header>
 
       {status === "loading" ? (
         <div className="next-data-state next-tone next-tone--accent">
-          <strong>Caricamento Centro di Controllo</strong>
-          <span>Sto leggendo il layer D10 read-only della NEXT.</span>
+          <strong>Caricamento home</strong>
+          <span>Sto preparando priorita, flotta e accessi rapidi.</span>
         </div>
       ) : null}
 
       {status === "error" ? (
         <div className="next-data-state next-tone next-tone--warning">
-          <strong>Centro di Controllo non disponibile</strong>
+          <strong>Home non disponibile</strong>
           <span>{error}</span>
         </div>
       ) : null}
 
-      {status === "success" && snapshot ? (
+      {status === "success" && snapshot && fleetSnapshot ? (
         <>
-          <section className="next-summary-grid next-summary-grid--wide">
+          <section className="next-home-ia-band next-tone next-tone--accent">
+            <div className="next-home-ia-band__main">
+              <p className="next-summary-card__label">IA in primo piano</p>
+              <h2>Chiedi una sintesi della giornata prima di aprire i moduli</h2>
+              <p className="next-panel__description">
+                Parti da domande semplici e contestuali, poi apri subito la pagina corretta per
+                agire.
+              </p>
+              <div className="next-control-list">
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Quali mezzi richiedono attenzione oggi?</strong>
+                  <span>Usa la coda prioritaria del Centro di Controllo.</span>
+                </div>
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Quali revisioni sono piu urgenti?</strong>
+                  <span>Parti dagli alert e apri direttamente il Dossier corretto.</span>
+                </div>
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Da dove conviene iniziare il lavoro di oggi?</strong>
+                  <span>Ottieni una vista rapida delle priorita e dei collegamenti utili.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="next-home-ia-band__side">
+              <div className="next-control-list">
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Parti dal Centro</strong>
+                  <span>Alert, revisioni e segnalazioni della giornata.</span>
+                </div>
+                <div className="next-control-list__item next-control-list__item--soft">
+                  <strong>Scendi nel Dossier</strong>
+                  <span>Apri subito il mezzo coinvolto quando serve dettaglio.</span>
+                </div>
+              </div>
+
+              <div className="next-access-page__actions">
+                <Link
+                  className="next-action-link next-action-link--primary"
+                  to={buildNextPathWithRole("/next/ia-gestionale", role, location.search)}
+                >
+                  Apri IA Gestionale
+                </Link>
+                <Link
+                  className="next-action-link"
+                  to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
+                >
+                  Apri Mezzi / Dossier
+                </Link>
+                {firstDossierPath ? (
+                  <Link className="next-action-link" to={firstDossierPath}>
+                    Apri un Dossier
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section className="next-summary-grid next-summary-grid--compact">
             <article className="next-summary-card next-tone next-tone--accent">
               <p className="next-summary-card__label">Alert visibili</p>
               <strong className="next-summary-card__value">
                 {counters?.alertsVisible ?? 0}
               </strong>
-              <p className="next-summary-card__meta">
-                Alert attivi dopo il filtro read-only di ack e snooze del legacy.
-              </p>
+              <p className="next-summary-card__meta">Priorita da presidiare subito.</p>
             </article>
 
             <article className="next-summary-card next-tone next-tone--warning">
-              <p className="next-summary-card__label">Revisioni</p>
+              <p className="next-summary-card__label">Revisioni vicine</p>
               <strong className="next-summary-card__value">
                 {(counters?.revisioniScadute ?? 0) + (counters?.revisioniInScadenza ?? 0)}
               </strong>
@@ -197,22 +272,13 @@ function NextCentroControlloPage() {
               </p>
             </article>
 
-            <article className="next-summary-card next-tone next-tone--warning">
-              <p className="next-summary-card__label">Conflitti sessione</p>
+            <article className="next-summary-card next-tone next-tone--success">
+              <p className="next-summary-card__label">Segnalazioni nuove</p>
               <strong className="next-summary-card__value">
-                {counters?.conflittiSessione ?? 0}
+                {counters?.segnalazioniNuove ?? 0}
               </strong>
               <p className="next-summary-card__meta">
-                Sessioni multiple rilevate sulla stessa motrice o sullo stesso rimorchio.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--success">
-              <p className="next-summary-card__label">Focus operativi</p>
-              <strong className="next-summary-card__value">{focusStats.total}</strong>
-              <p className="next-summary-card__meta">
-                {focusStats.controlliKo} controlli KO, {focusStats.mezziIncompleti} mezzi
-                incompleti.
+                Nuovi elementi emersi da controllare.
               </p>
             </article>
           </section>
@@ -220,20 +286,20 @@ function NextCentroControlloPage() {
           <section className="next-cockpit-layout">
             <article className="next-panel next-cockpit-main next-tone next-tone--accent">
               <div className="next-panel__header">
-                <h2>Alert D10</h2>
+                <h2>Priorita di oggi</h2>
                 <span className="next-chip next-chip--accent">
-                  {snapshot.alerts.length} attivi
+                  {snapshot.alerts.length} alert attivi
                 </span>
               </div>
               <p className="next-panel__description">
-                Coda primaria del Centro di Controllo v1: revisioni, conflitti sessione e
-                segnalazioni nuove normalizzate nel layer NEXT.
+                Qui trovi la coda di lavoro da aprire per prima. Ogni elemento porta subito al
+                record corretto quando disponibile.
               </p>
 
               {snapshot.alerts.length === 0 ? (
                 <div className="next-data-state">
                   <strong>Nessun alert attivo</strong>
-                  <span>Il layer D10 non ha trovato alert visibili per questa lettura.</span>
+                  <span>Non risultano priorita aperte in questo momento.</span>
                 </div>
               ) : (
                 <div className="next-control-list">
@@ -249,23 +315,16 @@ function NextCentroControlloPage() {
                           <span className="next-chip next-chip--subtle">
                             {renderAlertKindLabel(item)}
                           </span>
-                          <span className="next-chip next-chip--subtle">
-                            {renderQualityLabel(item.quality)}
-                          </span>
                           {item.dateLabel ? (
                             <span className="next-chip next-chip--subtle">{item.dateLabel}</span>
                           ) : null}
                         </div>
                         <strong>{item.title}</strong>
                         <span>{item.detailText}</span>
-                        <span>
-                          Dataset: {item.sourceDataset}
-                          {item.sourceRecordId ? ` | Record: ${item.sourceRecordId}` : ""}
-                          {item.mezzoTarga ? ` | Targa: ${item.mezzoTarga}` : ""}
-                        </span>
+                        {item.mezzoTarga ? <span>Targa: {item.mezzoTarga}</span> : null}
                         {itemPath ? (
                           <Link className="next-inline-link" to={itemPath}>
-                            Apri Dossier
+                            {renderAlertActionLabel(item)}
                           </Link>
                         ) : null}
                       </div>
@@ -278,27 +337,27 @@ function NextCentroControlloPage() {
             <div className="next-cockpit-side">
               <article className="next-panel next-tone next-tone--success">
                 <div className="next-panel__header">
-                  <h2>Focus operativi</h2>
-                  <span className="next-chip next-chip--success">
-                    {snapshot.focusItems.length} elementi
-                  </span>
+                  <h2>Da seguire oggi</h2>
                 </div>
                 <p className="next-panel__description">
-                  Elenco secondario read-only: controlli KO e mezzi incompleti.
+                  Segnali secondari da tenere d'occhio dopo la coda prioritaria.
                 </p>
 
-                {snapshot.focusItems.length === 0 ? (
+                {focusItems.length === 0 ? (
                   <div className="next-data-state">
                     <strong>Nessun focus operativo</strong>
-                    <span>Il layer D10 non ha trovato elementi focus per questa lettura.</span>
+                    <span>Non risultano elementi secondari da seguire adesso.</span>
                   </div>
                 ) : (
                   <div className="next-control-list">
-                    {snapshot.focusItems.map((item) => {
+                    {focusItems.slice(0, 4).map((item) => {
                       const itemPath = buildItemPath(item.targetRouteKind, item.mezzoTarga);
 
                       return (
-                        <div key={item.id} className="next-control-list__item">
+                        <div
+                          key={item.id}
+                          className="next-control-list__item next-control-list__item--soft"
+                        >
                           <div className="next-global-pillbar">
                             <span className={toneClassName(item.severity)}>
                               {renderSeverityLabel(item.severity)}
@@ -306,15 +365,12 @@ function NextCentroControlloPage() {
                             <span className="next-chip next-chip--subtle">
                               {renderFocusKindLabel(item)}
                             </span>
-                            <span className="next-chip next-chip--subtle">
-                              {renderQualityLabel(item.quality)}
-                            </span>
                           </div>
                           <strong>{item.title}</strong>
                           <span>{item.detailText}</span>
                           {itemPath ? (
                             <Link className="next-inline-link" to={itemPath}>
-                              Apri Dossier
+                              Apri dettaglio
                             </Link>
                           ) : null}
                         </div>
@@ -326,24 +382,32 @@ function NextCentroControlloPage() {
 
               <article className="next-panel next-tone">
                 <div className="next-panel__header">
-                  <h2>Limiti dichiarati</h2>
+                  <h2>Accessi operativi</h2>
                 </div>
                 <p className="next-panel__description">
-                  Il Centro di Controllo v1 resta stretto: mostra solo cio che il layer D10 puo
-                  ricostruire in modo prudente e spiegabile.
+                  Vai direttamente all'area che serve senza passare da pannelli tecnici o stati di
+                  sistema.
                 </p>
-                {(snapshot.limitations ?? []).length === 0 ? (
-                  <div className="next-data-state">
-                    <strong>Nessun limite dichiarato</strong>
-                    <span>Il layer D10 non ha restituito limitazioni aggiuntive.</span>
-                  </div>
-                ) : (
-                  <ul className="next-panel__list">
-                    {(snapshot.limitations ?? []).map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                )}
+                <div className="next-access-page__actions">
+                  <Link
+                    className="next-action-link next-action-link--primary"
+                    to={buildNextPathWithRole("/next/mezzi-dossier", role, location.search)}
+                  >
+                    Mezzi / Dossier
+                  </Link>
+                  <Link
+                    className="next-action-link"
+                    to={buildNextPathWithRole("/next/operativita-globale", role, location.search)}
+                  >
+                    Operativita
+                  </Link>
+                  <Link
+                    className="next-action-link"
+                    to={buildNextPathWithRole("/next/strumenti-trasversali", role, location.search)}
+                  >
+                    Strumenti
+                  </Link>
+                </div>
               </article>
             </div>
           </section>

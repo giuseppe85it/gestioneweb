@@ -1,25 +1,30 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  NEXT_AREA_ACCESS,
-  NEXT_ROLE_PRESETS,
-  buildNextPathWithRole,
-  getNextRoleFromSearch,
-} from "./nextAccess";
+import { buildNextPathWithRole, getNextRoleFromSearch } from "./nextAccess";
 import { NEXT_AREAS } from "./nextData";
 import {
-  NEXT_ANAGRAFICHE_FLOTTA_DOMAIN,
   type NextAnagraficheFlottaSnapshot,
   type NextMezzoListItem,
   readNextAnagraficheFlottaSnapshot,
 } from "./nextAnagraficheFlottaDomain";
 
+const dossierHighlights = [
+  "Identita mezzo e dati principali",
+  "Storico tecnico e manutenzioni",
+  "Rifornimenti recenti",
+  "Documenti e costi utili",
+];
+
+const entryTips = [
+  "Cerca per targa o autista",
+  "Filtra per categoria",
+  "Apri il Dossier dalla scheda del mezzo",
+];
+
 function NextMezziDossierPage() {
   const location = useLocation();
   const role = getNextRoleFromSearch(location.search);
   const area = NEXT_AREAS["mezzi-dossier"];
-  const access = NEXT_AREA_ACCESS["mezzi-dossier"];
-  const allowedRoleLabels = access.allowedRoles.map((entry) => NEXT_ROLE_PRESETS[entry].label);
   const [snapshot, setSnapshot] = useState<NextAnagraficheFlottaSnapshot | null>(null);
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Tutte");
@@ -41,7 +46,7 @@ function NextMezziDossierPage() {
         if (!active) return;
         setSnapshot(null);
         setStatus("error");
-        setError("Impossibile leggere il dataset canonico dei mezzi.");
+        setError("Impossibile leggere l'elenco mezzi.");
       }
     };
 
@@ -82,6 +87,15 @@ function NextMezziDossierPage() {
   const mezziSenzaMarcaModello = mezzi.filter(
     (item) => !item.marca.trim() && !item.modello.trim()
   ).length;
+  const categoryBreakdown = Array.from(
+    mezzi.reduce<Map<string, number>>((accumulator, item) => {
+      accumulator.set(item.categoria, (accumulator.get(item.categoria) ?? 0) + 1);
+      return accumulator;
+    }, new Map())
+  )
+    .map(([categoria, total]) => ({ categoria, total }))
+    .sort((left, right) => right.total - left.total)
+    .slice(0, 4);
 
   const renderVehicleTitle = (item: NextMezzoListItem) => {
     const title = [item.marca, item.modello].filter(Boolean).join(" ");
@@ -95,73 +109,93 @@ function NextMezziDossierPage() {
       location.search
     );
 
+  const firstDossierPath =
+    filteredMezzi.length > 0 ? buildDossierPath(filteredMezzi[0]) : null;
+
   return (
     <section className="next-page next-dossier-shell">
       <header className="next-page__hero">
-        <div>
+        <div className="next-page__hero-copy">
           <p className="next-page__eyebrow">{area.eyebrow}</p>
           <h1>{area.title}</h1>
           <p className="next-page__description">
-            Primo ingresso dati reale della NEXT sul dominio `Anagrafiche flotta e persone`.
-            L&apos;elenco mezzi legge solo `storage/@mezzi_aziendali`, usa un mapping minimo,
-            apre il primo Dossier NEXT iniziale per targa e resta interamente `read-only`.
+            Cerca il mezzo, apri il Dossier giusto e vai subito al contesto che serve senza
+            passaggi intermedi.
           </p>
         </div>
 
-        <div className="next-page__meta">
-          <span className="next-chip next-chip--success">IMPORTATO READ-ONLY</span>
-          {allowedRoleLabels.map((scope) => (
-            <span key={scope} className="next-chip">
-              {scope}
-            </span>
-          ))}
-          <span className="next-chip next-chip--subtle">
-            Ruolo simulato: {NEXT_ROLE_PRESETS[role].shortLabel}
-          </span>
-          <span className="next-chip next-chip--accent">Fonte legacy normalizzata</span>
-          <span className="next-chip next-chip--warning">Nessuna scrittura</span>
+        <div className="next-page__hero-actions">
+          <div className="next-access-page__actions">
+            {firstDossierPath ? (
+              <Link className="next-action-link next-action-link--primary" to={firstDossierPath}>
+                Apri primo Dossier
+              </Link>
+            ) : null}
+            <Link
+              className="next-action-link"
+              to={buildNextPathWithRole("/next/centro-controllo", role, location.search)}
+            >
+              Torna alla Home
+            </Link>
+            <Link
+              className="next-action-link"
+              to={buildNextPathWithRole("/next/ia-gestionale", role, location.search)}
+            >
+              Apri IA Gestionale
+            </Link>
+          </div>
         </div>
       </header>
 
-      <section className="next-summary-grid next-summary-grid--wide">
-        <article className="next-summary-card next-tone next-tone--accent">
-          <p className="next-summary-card__label">Dataset attivo</p>
-          <strong className="next-summary-card__value">
-            {NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.activeReadOnlyDataset}
-          </strong>
-          <p className="next-summary-card__meta">
-            Primo reader canonico NEXT. `@colleghi` resta nel dominio ma non viene letto finche
-            una vista futura non ne ha bisogno davvero.
+      <section className="next-home-ia-band next-tone next-tone--accent">
+        <div className="next-home-ia-band__main">
+          <p className="next-summary-card__label">Area mezzi</p>
+          <h2>Apri il Dossier corretto senza perdere il contesto del mezzo</h2>
+          <p className="next-panel__description">
+            Da qui la ricerca e semplice: targa, categoria, marca, modello o autista. Il passo
+            successivo e sempre il Dossier del mezzo selezionato.
           </p>
-        </article>
+        </div>
 
+        <div className="next-home-ia-band__side">
+          <div className="next-control-list">
+            {entryTips.map((item) => (
+              <div key={item} className="next-control-list__item next-control-list__item--soft">
+                <strong>{item}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="next-summary-grid next-summary-grid--compact">
         <article className="next-summary-card next-tone next-tone--success">
-          <p className="next-summary-card__label">Mezzi letti</p>
+          <p className="next-summary-card__label">Mezzi trovati</p>
           <strong className="next-summary-card__value">
             {status === "success" ? mezzi.length : "--"}
           </strong>
           <p className="next-summary-card__meta">
-            Ordinati per categoria e targa, senza importare altri domini mezzo-centrici.
+            Mezzi pronti da aprire direttamente in Dossier.
           </p>
         </article>
 
         <article className="next-summary-card next-tone">
-          <p className="next-summary-card__label">Autista valorizzato</p>
+          <p className="next-summary-card__label">Con autista</p>
           <strong className="next-summary-card__value">
             {status === "success" ? mezziConAutista : "--"}
           </strong>
           <p className="next-summary-card__meta">
-            Campo usato solo come orientamento anagrafico. Nessuna sessione live, nessun feed autisti.
+            Mezzi con riferimento autista visibile in scheda.
           </p>
         </article>
 
         <article className="next-summary-card next-tone next-tone--warning">
-          <p className="next-summary-card__label">Campi incompleti</p>
+          <p className="next-summary-card__label">Schede incomplete</p>
           <strong className="next-summary-card__value">
             {status === "success" ? mezziSenzaMarcaModello : "--"}
           </strong>
           <p className="next-summary-card__meta">
-            I dati mancanti restano visibili. La NEXT non inventa e non corregge il dataset.
+            Dati da completare prima di una lettura piena del mezzo.
           </p>
         </article>
       </section>
@@ -169,11 +203,10 @@ function NextMezziDossierPage() {
       <section className="next-dossier-layout">
         <article className="next-panel next-dossier-main next-tone">
           <div className="next-panel__header">
-            <h2>Elenco mezzi NEXT read-only</h2>
+            <h2>Flotta</h2>
           </div>
           <p className="next-panel__description">
-            La lista usa solo i campi stabili dichiarati per questa fase:
-            <code> {NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.nextListFields.join(", ")}</code>.
+            Cerca il mezzo e apri il suo Dossier dalla scheda senza passare da pagine intermedie.
           </p>
 
           <div className="next-data-toolbar">
@@ -211,14 +244,14 @@ function NextMezziDossierPage() {
 
           {status === "loading" ? (
             <div className="next-data-state next-tone next-tone--accent">
-              <strong>Caricamento reader canonico</strong>
-              <span>Sto leggendo `storage/@mezzi_aziendali` in sola lettura.</span>
+              <strong>Caricamento flotta</strong>
+              <span>Sto leggendo l'elenco mezzi disponibile.</span>
             </div>
           ) : null}
 
           {status === "error" ? (
             <div className="next-data-state next-tone next-tone--warning">
-              <strong>Reader non disponibile</strong>
+              <strong>Elenco non disponibile</strong>
               <span>{error}</span>
             </div>
           ) : null}
@@ -227,7 +260,7 @@ function NextMezziDossierPage() {
             filteredMezzi.length === 0 ? (
               <div className="next-data-state">
                 <strong>Nessun mezzo trovato</strong>
-                <span>Modifica ricerca o filtro categoria per rileggere il dominio.</span>
+                <span>Modifica ricerca o filtro categoria per continuare.</span>
               </div>
             ) : (
               <div className="next-vehicle-grid">
@@ -245,25 +278,22 @@ function NextMezziDossierPage() {
 
                     <dl className="next-vehicle-card__meta">
                       <div>
-                        <dt>Dominio</dt>
-                        <dd>{NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.code}</dd>
-                      </div>
-                      <div>
-                        <dt>Fonte</dt>
-                        <dd>
-                          {item.sourceCollection}/{item.sourceKey}
-                        </dd>
-                      </div>
-                      <div>
                         <dt>Autista</dt>
                         <dd>{item.autistaNome ?? "Non valorizzato"}</dd>
+                      </div>
+                      <div>
+                        <dt>Stato scheda</dt>
+                        <dd>
+                          {!item.marca.trim() && !item.modello.trim()
+                            ? "Da completare"
+                            : "Pronta"}
+                        </dd>
                       </div>
                     </dl>
 
                     <div className="next-vehicle-card__footer">
-                      <span className="next-chip next-chip--success">Read-only</span>
                       <Link className="next-inline-link" to={buildDossierPath(item)}>
-                        Apri Dossier iniziale
+                        Apri Dossier
                       </Link>
                     </div>
                   </article>
@@ -276,77 +306,38 @@ function NextMezziDossierPage() {
         <div className="next-dossier-side">
           <article className="next-panel next-tone next-tone--success">
             <div className="next-panel__header">
-              <h2>Reader canonico NEXT</h2>
+              <h2>Nel Dossier trovi</h2>
             </div>
             <p className="next-panel__description">
-              La pagina non usa `Mezzi.tsx` come sorgente funzionale. La lettura passa da
-              un reader dedicato al dominio `D01`, separato dalla UI legacy e senza writer.
+              Una volta aperta la scheda del mezzo, queste sono le letture principali gia utili.
             </p>
             <ul className="next-panel__list">
-              <li>Dominio logico: `Anagrafiche flotta e persone`</li>
-              <li>Dataset fisico attivo: `storage/@mezzi_aziendali`</li>
-              <li>Dataset mappato ma non letto ora: `@colleghi`</li>
+              {dossierHighlights.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
           </article>
 
-          <article className="next-panel next-tone next-tone--warning">
+          <article className="next-panel next-tone">
             <div className="next-panel__header">
-              <h2>Perimetro escluso</h2>
+              <h2>Portfolio flotta</h2>
             </div>
             <p className="next-panel__description">
-              La lista usa solo `D01`, mentre il dettaglio ha ora un primo blocco tecnico `D02`
-              minimale. Restano fuori colleghi, sessioni live, writer e i domini ancora
-              sensibili o bloccanti oltre questo ingresso controllato.
+              Supporto laterale per capire da quali categorie arriva la maggior parte dei mezzi.
             </p>
+            <div className="next-control-list">
+              {categoryBreakdown.map((entry) => (
+                <div
+                  key={entry.categoria}
+                  className="next-control-list__item next-control-list__item--soft"
+                >
+                  <strong>{entry.categoria}</strong>
+                  <span>{entry.total} mezzi presenti in elenco.</span>
+                </div>
+              ))}
+            </div>
           </article>
         </div>
-      </section>
-
-      <section className="next-section-grid">
-        <article className="next-panel">
-          <div className="next-panel__header">
-            <h2>Che cosa cambia davvero</h2>
-          </div>
-          <p className="next-panel__description">
-            `/next/mezzi-dossier` non e piu solo shell: ora legge dati reali e apre un primo
-            Dossier NEXT pulito, ma resta nel punto piu stabile e controllabile del dominio.
-          </p>
-          <ul className="next-panel__list">
-            <li>ingresso flotta reale</li>
-            <li>ricerca, filtro e accesso al dettaglio</li>
-            <li>nessuna azione scrivente</li>
-          </ul>
-        </article>
-
-        <article className="next-panel next-tone next-tone--success">
-          <div className="next-panel__header">
-            <h2>Dossier iniziale attivo</h2>
-          </div>
-          <p className="next-panel__description">
-            La targa e gia letta in modo pulito e stabile. Il dettaglio ora combina il nucleo
-            anagrafico `D01` con un primo blocco tecnico `D02` minimale, sempre in `read-only`.
-          </p>
-          <ul className="next-panel__list">
-            <li>targa come pivot forte</li>
-            <li>lista separata dal Dossier</li>
-            <li>primo blocco tecnico reale nel dettaglio mezzo</li>
-          </ul>
-        </article>
-
-        <article className="next-panel next-tone next-tone--warning">
-          <div className="next-panel__header">
-            <h2>Non ancora incluso</h2>
-          </div>
-          <p className="next-panel__description">
-            Il Dossier non e completo: dopo il primo ingresso di `D02`, i prossimi blocchi
-            dovranno arrivare dominio per dominio e con reader separati.
-          </p>
-          <ul className="next-panel__list">
-            <li>rifornimenti, documenti, costi, PDF e IA contestuale ancora fuori</li>
-            <li>no clone della legacy</li>
-            <li>no scorciatoie sporche</li>
-          </ul>
-        </article>
       </section>
     </section>
   );

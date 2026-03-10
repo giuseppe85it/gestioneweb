@@ -6,7 +6,6 @@ import {
   NEXT_ROLE_PRESETS,
   buildNextPathWithRole,
   getNextRoleFromSearch,
-  getNextSimulatedAccessProfile,
   getVisibleNextAreaIds,
 } from "./nextAccess";
 
@@ -15,33 +14,42 @@ const activeAreaFromPath = (pathname: string): NextAreaId | null => {
   return (item?.id as NextAreaId | undefined) ?? null;
 };
 
+const SHELL_PAGE_DESCRIPTIONS: Record<NextAreaId, string> = {
+  "centro-controllo": "Priorita del giorno, alert e accessi rapidi alle aree operative.",
+  "mezzi-dossier": "Ricerca mezzi, apertura del Dossier e lettura dell'area flotta.",
+  "operativita-globale": "Ordini, avanzamento e workbench delle attivita condivise.",
+  "ia-gestionale": "Richieste guidate, sintesi contestuali e collegamenti ai record utili.",
+  "strumenti-trasversali": "Servizi comuni e supporto di piattaforma, senza rumore operativo.",
+};
+
 function NextShell() {
   const location = useLocation();
   const role = getNextRoleFromSearch(location.search);
-  const roleProfile = getNextSimulatedAccessProfile(role);
   const activeAreaId = activeAreaFromPath(location.pathname);
   const activeArea = activeAreaId ? NEXT_AREAS[activeAreaId] : null;
   const visibleAreaIds = new Set(getVisibleNextAreaIds(role));
   const visibleNavItems = NEXT_NAV_ITEMS.filter((item) => visibleAreaIds.has(item.id));
   const isDriverExperience = location.pathname.startsWith(NEXT_DRIVER_EXPERIENCE_PATH);
   const pageTitle = isDriverExperience ? "Esperienza Autista" : activeArea?.navLabel ?? "NEXT";
+  const pageDescription = isDriverExperience
+    ? "Area separata dedicata all'operativita autista."
+    : activeAreaId
+      ? SHELL_PAGE_DESCRIPTIONS[activeAreaId]
+      : "Aree operative, dossier e strumenti condivisi.";
+  const searchPlaceholder = activeArea?.searchPlaceholder ?? "Cerca targa, ordine o fornitore";
+  const quickLinks = visibleNavItems.filter((item) => item.id !== activeAreaId).slice(0, 2);
 
   return (
     <div className="next-app">
       <aside className="next-sidebar">
         <div className="next-brand">
           <span className="next-brand__eyebrow">GestioneManutenzione</span>
-          <strong>NEXT</strong>
-          <p>Shell separata, navigabile e pronta per la migrazione progressiva.</p>
-        </div>
-
-        <div className="next-sidebar__meta">
-          <span className="next-chip next-chip--accent">Ruolo simulato: {roleProfile.shortLabel}</span>
-          <p>{roleProfile.futureNote}</p>
+          <strong>Area gestionale</strong>
+          <p>Accessi principali della nuova interfaccia operativa.</p>
         </div>
 
         <div className="next-role-switch">
-          <span className="next-role-switch__label">Simulazione ruolo</span>
+          <span className="next-role-switch__label">Vista</span>
           <div className="next-role-switch__group">
             {Object.values(NEXT_ROLE_PRESETS).map((preset) => (
               <Link
@@ -57,14 +65,11 @@ function NextShell() {
               </Link>
             ))}
           </div>
-          <p className="next-role-switch__hint">
-            Simulazione solo frontend. Nessuna auth reale, nessun backend, nessuna
-            scrittura dati.
-          </p>
+          <p className="next-role-switch__hint">Cambio rapido del profilo visibile.</p>
         </div>
 
         <nav className="next-nav" aria-label="Navigazione NEXT">
-          <p className="next-nav__eyebrow">Macro-aree visibili</p>
+          <p className="next-nav__eyebrow">Aree operative</p>
           {visibleNavItems.map((item) => (
             <NavLink
               key={item.id}
@@ -86,35 +91,25 @@ function NextShell() {
               }
             >
               <span>Esperienza Autista</span>
-              <small>Separata dal gestionale principale</small>
+              <small>Area dedicata</small>
             </NavLink>
           ) : null}
 
           {!visibleNavItems.length ? (
             <div className="next-empty-nav">
-              <strong>Nessuna macro-area gestionale visibile</strong>
-              <p>
-                Questo comportamento e intenzionale: il ruolo autista non entra nella
-                shell admin come versione ridotta del backoffice.
-              </p>
+              <strong>Nessuna area disponibile</strong>
+              <p>Apri l'esperienza dedicata per continuare.</p>
             </div>
           ) : null}
         </nav>
-
-        <div className="next-sidebar__footer">
-          <span className="next-chip next-chip--success">Legacy invariata</span>
-          <span className="next-chip next-chip--accent">Route separate /next/*</span>
-          <span className="next-chip">Gating frontend per ruolo</span>
-          <span className="next-chip next-chip--warning">No data writes</span>
-        </div>
       </aside>
 
       <div className="next-main">
         <header className="next-topbar">
           <div>
-            <p className="next-topbar__eyebrow">Nuova applicazione parallela</p>
+            <p className="next-topbar__eyebrow">Area attiva</p>
             <h1>{pageTitle}</h1>
-            <p className="next-topbar__description">{roleProfile.description}</p>
+            <p className="next-topbar__description">{pageDescription}</p>
           </div>
 
           <div className="next-topbar__actions">
@@ -124,15 +119,28 @@ function NextShell() {
                 type="text"
                 value=""
                 readOnly
-                placeholder="Placeholder shell"
+                placeholder={searchPlaceholder}
                 aria-label="Ricerca globale NEXT placeholder"
               />
             </label>
-            <div className="next-topbar__pills">
-              <span className="next-chip">Read-only</span>
-              <span className="next-chip">Ruolo: {roleProfile.shortLabel}</span>
-              <span className="next-chip">Permessi per utente: pronti</span>
-              <span className="next-chip next-chip--subtle">Nessun impatto sulla legacy</span>
+            <div className="next-topbar__shortcuts">
+              {quickLinks.map((item) => (
+                <Link
+                  key={item.id}
+                  className="next-action-link"
+                  to={buildNextPathWithRole(item.path, role, location.search)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+              {activeAreaId !== "centro-controllo" && visibleAreaIds.has("centro-controllo") ? (
+                <Link
+                  className="next-action-link next-action-link--primary"
+                  to={buildNextPathWithRole("/next/centro-controllo", role, location.search)}
+                >
+                  Vai alla Home
+                </Link>
+              ) : null}
             </div>
           </div>
         </header>

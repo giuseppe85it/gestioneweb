@@ -7,36 +7,29 @@ import {
   getNextRoleFromSearch,
 } from "./nextAccess";
 import { NEXT_AREAS } from "./nextData";
+import { normalizeNextMezzoTarga, type NextMezzoListItem } from "./nextAnagraficheFlottaDomain";
 import {
-  NEXT_ANAGRAFICHE_FLOTTA_DOMAIN,
-  type NextMezzoListItem,
-  normalizeNextMezzoTarga,
-  readNextMezzoByTarga,
-} from "./nextAnagraficheFlottaDomain";
+  type NextMaintenanceHistoryItem,
+  type NextManutenzioneQuality,
+  type NextScheduledMaintenance,
+  type NextScheduledMaintenanceStatus,
+} from "./domain/nextManutenzioniDomain";
 import {
-  NEXT_OPERATIVITA_TECNICA_DOMAIN,
-  type NextLavoroTecnicoItem,
-  type NextMezzoOperativitaTecnicaSnapshot,
-  readNextMezzoOperativitaTecnicaSnapshot,
-} from "./nextOperativitaTecnicaDomain";
+  type NextDossierMezzoCompositeSnapshot,
+  readNextDossierMezzoCompositeSnapshot,
+} from "./domain/nextDossierMezzoDomain";
 import {
-  NEXT_RIFORNIMENTI_CONSUMI_DOMAIN,
   type NextMezzoRifornimentiSnapshot,
   type NextRifornimentoFieldQuality,
   type NextRifornimentoMatchStrategy,
   type NextRifornimentoProvenienza,
   type NextRifornimentoReadOnlyItem,
-  readNextMezzoRifornimentiSnapshot,
 } from "./nextRifornimentiConsumiDomain";
 import {
-  NEXT_MANUTENZIONI_DOMAIN,
-  type NextMaintenanceHistoryItem,
-  type NextManutenzioneQuality,
-  type NextMezzoManutenzioniSnapshot,
-  type NextScheduledMaintenance,
-  type NextScheduledMaintenanceStatus,
-  readNextMezzoManutenzioniSnapshot,
-} from "./domain/nextManutenzioniDomain";
+  type NextDocumentiCostiCurrency,
+  type NextDocumentiCostiReadOnlyItem,
+  type NextMezzoDocumentiCostiSnapshot,
+} from "./domain/nextDocumentiCostiDomain";
 
 const INTEGER_FORMATTER = new Intl.NumberFormat("it-IT", {
   maximumFractionDigits: 0,
@@ -54,6 +47,18 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("it-IT", {
   maximumFractionDigits: 2,
 });
 
+const CHF_CURRENCY_FORMATTER = new Intl.NumberFormat("it-IT", {
+  style: "currency",
+  currency: "CHF",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const DECIMAL_FORMATTER = new Intl.NumberFormat("it-IT", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 function renderMarcaModello(item: NextMezzoListItem) {
   const value = [item.marca, item.modello].filter(Boolean).join(" ");
   return value || "Marca / modello non valorizzati";
@@ -66,12 +71,6 @@ function renderOptionalLabel(
   return value || fallback;
 }
 
-function renderLavoroMeta(item: NextLavoroTecnicoItem) {
-  return item.dataInserimento
-    ? `Inserito ${item.dataInserimento}`
-    : "Lavoro tecnico senza data inserimento valorizzata.";
-}
-
 function formatIntegerValue(value: number | null): string {
   return value === null ? "--" : INTEGER_FORMATTER.format(value);
 }
@@ -82,6 +81,22 @@ function formatLitriValue(value: number | null): string {
 
 function formatCurrencyValue(value: number | null): string {
   return value === null ? "--" : CURRENCY_FORMATTER.format(value);
+}
+
+function formatDocumentAmountValue(
+  value: number | null,
+  currency: NextDocumentiCostiCurrency
+): string {
+  if (value === null) return "--";
+  if (currency === "CHF") return CHF_CURRENCY_FORMATTER.format(value);
+  if (currency === "EUR") return CURRENCY_FORMATTER.format(value);
+  return `${DECIMAL_FORMATTER.format(value)} (valuta da verificare)`;
+}
+
+function renderLavoroMeta(item: { dataInserimento: string | null }) {
+  return item.dataInserimento
+    ? `Inserito ${item.dataInserimento}`
+    : "Lavoro tecnico senza data inserimento valorizzata.";
 }
 
 function renderRefuelStatusLabel(
@@ -111,6 +126,43 @@ function renderRefuelStatusLabel(
       return "Reader D04 in errore";
     default:
       return "In attesa";
+  }
+}
+
+function renderDocumentCostStatusLabel(
+  status: "idle" | "loading" | "success" | "error",
+  snapshot: NextMezzoDocumentiCostiSnapshot | null
+) {
+  switch (status) {
+    case "loading":
+      return "Caricamento D07/D08";
+    case "success":
+      if (!snapshot) return "In attesa";
+      if (snapshot.counts.total > 0) return "Preview documenti e costi attiva";
+      if (snapshot.datasetShapes.costiMezzo === "missing") {
+        return "Dataset costi assente";
+      }
+      if (snapshot.datasetShapes.costiMezzo === "unsupported") {
+        return "Dataset costi non conforme";
+      }
+      return "Nessun documento o costo per mezzo";
+    case "error":
+      return "Reader D07/D08 in errore";
+    default:
+      return "In attesa";
+  }
+}
+
+function renderSummaryToneClassName(tone: "accent" | "success" | "warning" | "default") {
+  switch (tone) {
+    case "accent":
+      return "next-summary-card next-tone next-tone--accent";
+    case "success":
+      return "next-summary-card next-tone next-tone--success";
+    case "warning":
+      return "next-summary-card next-tone next-tone--warning";
+    default:
+      return "next-summary-card next-tone";
   }
 }
 
@@ -163,6 +215,66 @@ function renderRifornimentoMeta(item: NextRifornimentoReadOnlyItem) {
   ].filter(Boolean);
 
   return parts.join(" | ");
+}
+
+function renderDocumentTotalsSummary(
+  totals: NextMezzoDocumentiCostiSnapshot["totals"]["preventivi"] | null
+) {
+  if (!totals || totals.withAmount === 0) {
+    return "Totali prudenziali non disponibili";
+  }
+
+  const parts = [];
+  if (totals.eur > 0) parts.push(CURRENCY_FORMATTER.format(totals.eur));
+  if (totals.chf > 0) parts.push(CHF_CURRENCY_FORMATTER.format(totals.chf));
+  if (totals.unknownCount > 0) {
+    parts.push(`valuta da verificare: ${formatIntegerValue(totals.unknownCount)}`);
+  }
+
+  return parts.join(" | ");
+}
+
+function renderDocumentCostMeta(item: NextDocumentiCostiReadOnlyItem) {
+  const parts = [
+    item.dateLabel ? `Data ${item.dateLabel}` : "Data non disponibile",
+    item.supplier ? `Fornitore ${item.supplier}` : null,
+    `Origine ${item.sourceLabel}`,
+  ].filter(Boolean);
+
+  return parts.join(" | ");
+}
+
+function renderDocumentCostReadOnlyCard(item: NextDocumentiCostiReadOnlyItem) {
+  return (
+    <div key={item.id} className="next-control-list__item">
+      <div className="next-global-pillbar">
+        <span
+          className={
+            item.category === "fattura"
+              ? "next-chip next-chip--warning"
+              : item.category === "preventivo"
+              ? "next-chip next-chip--accent"
+              : "next-chip next-chip--success"
+          }
+        >
+          {item.documentTypeLabel}
+        </span>
+        <span className="next-chip next-chip--subtle">{item.sourceLabel}</span>
+        <span className="next-chip next-chip--subtle">
+          {item.amount !== null
+            ? formatDocumentAmountValue(item.amount, item.currency)
+            : "importo non disponibile"}
+        </span>
+      </div>
+      <strong>{item.title}</strong>
+      <span>{renderDocumentCostMeta(item)}</span>
+      <span>
+        File: {item.fileUrl ? "presente" : "non disponibile"}
+        {" | "}Importo: {item.fieldQuality.amount === "non_disponibile" ? "non leggibile" : item.fieldQuality.amount}
+        {" | "}Data: {item.fieldQuality.date === "non_disponibile" ? "non leggibile" : item.fieldQuality.date}
+      </span>
+    </div>
+  );
 }
 
 function renderMaintenanceQualityLabel(value: NextManutenzioneQuality) {
@@ -288,26 +400,13 @@ function NextDossierMezzoPage() {
   const access = NEXT_AREA_ACCESS["mezzi-dossier"];
   const allowedRoleLabels = access.allowedRoles.map((entry) => NEXT_ROLE_PRESETS[entry].label);
   const normalizedTarga = normalizeNextMezzoTarga(routeTarga);
-  const [mezzo, setMezzo] = useState<NextMezzoListItem | null>(null);
+
+  const [dossierSnapshot, setDossierSnapshot] =
+    useState<NextDossierMezzoCompositeSnapshot | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error" | "not-found">(
     "idle"
   );
   const [error, setError] = useState<string | null>(null);
-  const [technicalSnapshot, setTechnicalSnapshot] =
-    useState<NextMezzoOperativitaTecnicaSnapshot | null>(null);
-  const [technicalStatus, setTechnicalStatus] =
-    useState<"idle" | "loading" | "success" | "error">("idle");
-  const [technicalError, setTechnicalError] = useState<string | null>(null);
-  const [refuelSnapshot, setRefuelSnapshot] = useState<NextMezzoRifornimentiSnapshot | null>(null);
-  const [refuelStatus, setRefuelStatus] = useState<"idle" | "loading" | "success" | "error">(
-    "idle"
-  );
-  const [refuelError, setRefuelError] = useState<string | null>(null);
-  const [maintenanceSnapshot, setMaintenanceSnapshot] =
-    useState<NextMezzoManutenzioniSnapshot | null>(null);
-  const [maintenanceStatus, setMaintenanceStatus] =
-    useState<"idle" | "loading" | "success" | "error">("idle");
-  const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
   const [showAllMaintenance, setShowAllMaintenance] = useState(false);
   const [showAllRefuels, setShowAllRefuels] = useState(false);
 
@@ -320,16 +419,7 @@ function NextDossierMezzoPage() {
       if (!normalizedTarga) {
         setStatus("error");
         setError("Parametro targa non valido per il Dossier NEXT.");
-        setMezzo(null);
-        setTechnicalSnapshot(null);
-        setTechnicalStatus("idle");
-        setTechnicalError(null);
-        setRefuelSnapshot(null);
-        setRefuelStatus("idle");
-        setRefuelError(null);
-        setMaintenanceSnapshot(null);
-        setMaintenanceStatus("idle");
-        setMaintenanceError(null);
+        setDossierSnapshot(null);
         setShowAllMaintenance(false);
         setShowAllRefuels(false);
         return;
@@ -338,91 +428,29 @@ function NextDossierMezzoPage() {
       try {
         setStatus("loading");
         setError(null);
-        setTechnicalSnapshot(null);
-        setTechnicalStatus("idle");
-        setTechnicalError(null);
-        setRefuelSnapshot(null);
-        setRefuelStatus("idle");
-        setRefuelError(null);
-        setMaintenanceSnapshot(null);
-        setMaintenanceStatus("idle");
-        setMaintenanceError(null);
+        setDossierSnapshot(null);
         setShowAllMaintenance(false);
         setShowAllRefuels(false);
 
-        const record = await readNextMezzoByTarga(normalizedTarga);
+        const snapshot = await readNextDossierMezzoCompositeSnapshot(normalizedTarga);
         if (!active) return;
 
-        if (!record) {
+        if (!snapshot) {
           setStatus("not-found");
           setError(
-            `Il mezzo ${normalizedTarga} non e presente nel dataset canonico ${NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.activeReadOnlyDataset}.`
+            `Il mezzo ${normalizedTarga} non e presente nel dataset canonico di identita mezzo.`
           );
-          setMezzo(null);
           return;
         }
 
-        setMezzo(record);
+        setDossierSnapshot(snapshot);
         setStatus("success");
-        setTechnicalStatus("loading");
-        setMaintenanceStatus("loading");
-        setRefuelStatus("loading");
-
-        const [technicalResult, maintenanceResult, refuelResult] = await Promise.allSettled([
-          readNextMezzoOperativitaTecnicaSnapshot(normalizedTarga),
-          readNextMezzoManutenzioniSnapshot(normalizedTarga),
-          readNextMezzoRifornimentiSnapshot(normalizedTarga),
-        ]);
-
-        if (!active) return;
-
-        if (technicalResult.status === "fulfilled") {
-          setTechnicalSnapshot(technicalResult.value);
-          setTechnicalStatus("success");
-        } else {
-          setTechnicalSnapshot(null);
-          setTechnicalStatus("error");
-          setTechnicalError(
-            "Impossibile leggere il primo blocco tecnico dal reader canonico `D02`."
-          );
-        }
-
-        if (maintenanceResult.status === "fulfilled") {
-          setMaintenanceSnapshot(maintenanceResult.value);
-          setMaintenanceStatus("success");
-        } else {
-          setMaintenanceSnapshot(null);
-          setMaintenanceStatus("error");
-          setMaintenanceError(
-            "Impossibile leggere il blocco manutenzioni dal layer read-only dedicato."
-          );
-        }
-
-        if (refuelResult.status === "fulfilled") {
-          setRefuelSnapshot(refuelResult.value);
-          setRefuelStatus("success");
-        } else {
-          setRefuelSnapshot(null);
-          setRefuelStatus("error");
-          setRefuelError(
-            "Impossibile leggere il blocco rifornimenti dal layer di normalizzazione `D04`."
-          );
-        }
       } catch {
         if (!active) return;
 
         setStatus("error");
-        setError("Impossibile leggere il Dossier NEXT dal reader canonico.");
-        setMezzo(null);
-        setTechnicalSnapshot(null);
-        setTechnicalStatus("idle");
-        setTechnicalError(null);
-        setMaintenanceSnapshot(null);
-        setMaintenanceStatus("idle");
-        setMaintenanceError(null);
-        setRefuelSnapshot(null);
-        setRefuelStatus("idle");
-        setRefuelError(null);
+        setError("Impossibile leggere il Dossier NEXT dal layer mezzo-centrico.");
+        setDossierSnapshot(null);
       }
     };
 
@@ -433,25 +461,270 @@ function NextDossierMezzoPage() {
     };
   }, [normalizedTarga]);
 
+  const mezzo = dossierSnapshot?.mezzo ?? null;
+  const overview = dossierSnapshot?.overview ?? null;
+  const technicalState = dossierSnapshot?.technical ?? {
+    status: "idle",
+    snapshot: null,
+    error: null,
+  };
+  const maintenanceState = dossierSnapshot?.maintenance ?? {
+    status: "idle",
+    snapshot: null,
+    error: null,
+  };
+  const refuelState = dossierSnapshot?.refuels ?? {
+    status: "idle",
+    snapshot: null,
+    error: null,
+  };
+  const documentCostsState = dossierSnapshot?.documentCosts ?? {
+    status: "idle",
+    snapshot: null,
+    error: null,
+  };
+
+  const technicalSnapshot = technicalState.snapshot;
+  const maintenanceSnapshot = maintenanceState.snapshot;
+  const refuelSnapshot = refuelState.snapshot;
+  const documentCostsSnapshot = documentCostsState.snapshot;
+
   const lavoriAperti = technicalSnapshot?.lavoriAperti ?? [];
   const lavoriChiusi = technicalSnapshot?.lavoriChiusi ?? [];
   const lavoriApertiPreview = lavoriAperti.slice(0, 3);
   const lavoriChiusiPreview = lavoriChiusi.slice(0, 3);
+
   const scheduledMaintenance = maintenanceSnapshot?.scheduledMaintenance ?? null;
   const maintenanceHistory = maintenanceSnapshot?.historyItems ?? [];
   const maintenanceHistoryPreview = maintenanceHistory.slice(0, 3);
   const maintenanceCounts = maintenanceSnapshot?.counts ?? null;
   const hasMaintenanceFullView = maintenanceHistory.length > maintenanceHistoryPreview.length;
+  const latestMaintenanceDate = maintenanceHistory[0]?.dataRaw ?? null;
+
   const refuels = refuelSnapshot?.items ?? [];
   const refuelsPreview = refuels.slice(0, 5);
   const hasRefuelFullView = refuels.length > refuelsPreview.length;
-  const refuelCount = refuelSnapshot?.counts.total ?? null;
-  const refuelTotalLitri = refuelSnapshot?.totals.litri ?? null;
-  const refuelCountWithKm = refuelSnapshot?.counts.withKm ?? null;
-  const refuelCountWithAutista = refuelSnapshot?.counts.withAutista ?? null;
-  const refuelCountReconstructed = refuelSnapshot?.counts.reconstructed ?? null;
-  const refuelCountWithCosto = refuelSnapshot?.counts.withCosto ?? null;
-  const refuelTotalCosto = refuelSnapshot?.totals.costo ?? null;
+  const latestRefuelDate = refuels[0]?.dataDisplay ?? null;
+  const preventiviPreview = documentCostsSnapshot?.groups.preventivi.slice(0, 3) ?? [];
+  const fatturePreview = documentCostsSnapshot?.groups.fatture.slice(0, 3) ?? [];
+  const documentiUtiliPreview = documentCostsSnapshot?.groups.documentiUtili.slice(0, 3) ?? [];
+  const dossierStatusItems = [
+    "vista unica del mezzo, non somma di mini-import",
+    "identita chiara, backlog leggibile, manutenzioni leggibili, rifornimenti leggibili, documenti e costi leggibili",
+    "nessun dominio extra importato per riempimento",
+    "`Mezzo360` resta target futuro assistito, non pagina da migrare",
+  ];
+  const primaryHeroCards = [
+    {
+      label: "Lavori aperti",
+      value: technicalState.status === "success" ? formatIntegerValue(lavoriAperti.length) : "--",
+      meta:
+        technicalState.status === "success"
+          ? "Backlog tecnico pronto alla lettura."
+          : technicalState.error ?? "Blocco tecnico non leggibile.",
+      tone: lavoriAperti.length > 0 ? ("warning" as const) : ("success" as const),
+    },
+    {
+      label: "Manutenzione",
+      value:
+        maintenanceState.status === "success" && scheduledMaintenance
+          ? renderScheduledMaintenanceStatusLabel(scheduledMaintenance.status)
+          : "--",
+      meta:
+        maintenanceState.status === "success"
+          ? scheduledMaintenance
+            ? renderScheduledMaintenanceMeta(scheduledMaintenance)
+            : "Nessuna pianificazione manutentiva attiva sul mezzo."
+          : maintenanceState.error ?? "Layer manutenzioni non leggibile.",
+      tone:
+        maintenanceState.status === "success" && scheduledMaintenance?.status === "scaduta"
+          ? ("warning" as const)
+          : ("accent" as const),
+    },
+    {
+      label: "Rifornimenti",
+      value:
+        refuelState.status === "success"
+          ? formatIntegerValue(refuelSnapshot?.counts.total ?? 0)
+          : "--",
+      meta:
+        refuelState.status === "success"
+          ? `Ultimo dato letto: ${latestRefuelDate ?? "non disponibile"}.`
+          : refuelState.error ?? "Blocco D04 non leggibile.",
+      tone: "success" as const,
+    },
+    {
+      label: "Documenti e costi",
+      value:
+        documentCostsState.status === "success"
+          ? formatIntegerValue(documentCostsSnapshot?.counts.total ?? 0)
+          : "--",
+      meta:
+        documentCostsState.status === "success"
+          ? `${formatIntegerValue(documentCostsSnapshot?.counts.preventivi ?? 0)} preventivi, ${formatIntegerValue(documentCostsSnapshot?.counts.fatture ?? 0)} fatture.`
+          : documentCostsState.error ?? "Cluster D07/D08 non leggibile.",
+      tone: "accent" as const,
+    },
+  ];
+
+  const summaryCards = [
+    {
+      label: "Stato dossier",
+      value: overview?.statusLabel ?? "--",
+      meta:
+        overview?.statusMeta ??
+        "Il quadro mezzo-centrico verra mostrato quando il Dossier sara leggibile.",
+      tone: "accent" as const,
+    },
+    {
+      label: "Lavori aperti",
+      value: technicalState.status === "success" ? formatIntegerValue(lavoriAperti.length) : "--",
+      meta:
+        technicalState.status === "success"
+          ? "Backlog tecnico letto dal layer D02 senza workflow legacy."
+          : technicalState.error ?? "Il blocco tecnico non e ancora leggibile.",
+      tone: lavoriAperti.length > 0 ? ("warning" as const) : ("success" as const),
+    },
+    {
+      label: "Manutenzione programmata",
+      value:
+        maintenanceState.status === "success" && scheduledMaintenance
+          ? renderScheduledMaintenanceStatusLabel(scheduledMaintenance.status)
+          : "--",
+      meta:
+        maintenanceState.status === "success"
+          ? "Stato ricostruito dal layer manutenzioni dedicato, sempre read-only."
+          : maintenanceState.error ?? "Il layer manutenzioni non e ancora leggibile.",
+      tone:
+        maintenanceState.status === "success" && scheduledMaintenance?.status === "scaduta"
+          ? ("warning" as const)
+          : ("default" as const),
+    },
+    {
+      label: "Rifornimenti letti",
+      value:
+        refuelState.status === "success"
+          ? formatIntegerValue(refuelSnapshot?.counts.total ?? 0)
+          : "--",
+      meta:
+        refuelState.status === "success"
+          ? "Record utili prodotti dal modello pulito D04."
+          : refuelState.error ?? "Il blocco rifornimenti non e ancora leggibile.",
+      tone:
+        refuelState.status === "success" && (refuelSnapshot?.counts.reconstructed ?? 0) > 0
+          ? ("success" as const)
+          : ("default" as const),
+    },
+    {
+      label: "Storico manutenzioni",
+      value:
+        maintenanceState.status === "success"
+          ? formatIntegerValue(maintenanceCounts?.totaleStorico ?? 0)
+          : "--",
+      meta: latestMaintenanceDate
+        ? `Ultimo intervento letto: ${latestMaintenanceDate}.`
+        : "Nessun storico manutentivo letto per questa targa.",
+      tone: "default" as const,
+    },
+    {
+      label: "Litri leggibili D04",
+      value:
+        refuelState.status === "success"
+          ? `${formatLitriValue(refuelSnapshot?.totals.litri ?? null)} L`
+          : "--",
+      meta: latestRefuelDate
+        ? `Ultimo rifornimento letto: ${latestRefuelDate}.`
+        : "Nessun rifornimento disponibile nel modello D04.",
+      tone: "default" as const,
+    },
+    {
+      label: "Autista anagrafico",
+      value: mezzo?.autistaNome ?? "Non valorizzato",
+      meta: "Dato D01: supporta il contesto mezzo ma non equivale a sessione live.",
+      tone: "success" as const,
+    },
+    {
+      label: "Costo leggibile D04",
+      value:
+        refuelState.status === "success"
+          ? formatCurrencyValue(refuelSnapshot?.totals.costo ?? null)
+          : "--",
+      meta:
+        refuelState.status === "success"
+          ? `Copertura con autista: ${formatIntegerValue(refuelSnapshot?.counts.withAutista ?? null)} record.`
+          : "Costo non disponibile finche D04 non e leggibile.",
+      tone: "default" as const,
+    },
+    {
+      label: "Preventivi letti",
+      value:
+        documentCostsState.status === "success"
+          ? formatIntegerValue(documentCostsSnapshot?.counts.preventivi ?? 0)
+          : "--",
+      meta:
+        documentCostsState.status === "success"
+          ? renderDocumentTotalsSummary(documentCostsSnapshot?.totals.preventivi ?? null)
+          : documentCostsState.error ?? "Il blocco documenti e costi non e ancora leggibile.",
+      tone:
+        documentCostsState.status === "success" &&
+        (documentCostsSnapshot?.counts.preventivi ?? 0) > 0
+          ? ("accent" as const)
+          : ("default" as const),
+    },
+    {
+      label: "Fatture lette",
+      value:
+        documentCostsState.status === "success"
+          ? formatIntegerValue(documentCostsSnapshot?.counts.fatture ?? 0)
+          : "--",
+      meta:
+        documentCostsState.status === "success"
+          ? renderDocumentTotalsSummary(documentCostsSnapshot?.totals.fatture ?? null)
+          : documentCostsState.error ?? "Il blocco documenti e costi non e ancora leggibile.",
+      tone:
+        documentCostsState.status === "success" &&
+        (documentCostsSnapshot?.counts.fatture ?? 0) > 0
+          ? ("warning" as const)
+          : ("default" as const),
+    },
+  ];
+  const secondarySummaryCards = summaryCards.filter(
+    (card) => !["Lavori aperti", "Manutenzione programmata", "Rifornimenti letti"].includes(card.label)
+  );
+  const supportCards = [
+    {
+      title: "Convergenza attiva",
+      description: "Blocchi davvero attivi nel Dossier, con peso informativo secondario.",
+      items: overview?.importedBlockLabels ?? [],
+      tone: "success" as const,
+    },
+    {
+      title: "Perimetro escluso",
+      description: "Cosa resta volutamente fuori dalla pagina e dal perimetro v1.",
+      items: overview?.excludedBlockLabels ?? [],
+      tone: "default" as const,
+    },
+    {
+      title: "Reader e layer",
+      description: "Base tecnica usata dalla pagina, senza logica raw lato UI.",
+      items: overview?.readerLabels ?? [],
+      tone: "accent" as const,
+    },
+    {
+      title: "Prossime convergenze",
+      description: "Passi ammessi dalla matrice, tenuti in fascia bassa e non come CTA dominante.",
+      items: overview?.nextConvergenceLabels ?? [],
+      tone: "default" as const,
+    },
+  ];
+  const supportToneClassName = (tone: "accent" | "success" | "warning" | "default") =>
+    tone === "accent"
+      ? "next-panel next-panel--secondary next-tone next-tone--accent"
+      : tone === "success"
+      ? "next-panel next-panel--secondary next-tone next-tone--success"
+      : tone === "warning"
+      ? "next-panel next-panel--secondary next-tone next-tone--warning"
+      : "next-panel next-panel--secondary";
 
   return (
     <section className="next-page next-dossier-shell">
@@ -463,11 +736,10 @@ function NextDossierMezzoPage() {
           <p className="next-page__eyebrow">{area.eyebrow}</p>
           <h1>{mezzo ? `Dossier ${mezzo.targa}` : "Dossier Mezzo NEXT"}</h1>
           <p className="next-page__description">
-            Primo Dossier Mezzo NEXT realmente convergente. Questa vista resta `read-only`, usa
-            il dominio stabile `Anagrafiche flotta e persone`, aggiunge il primo blocco tecnico
-            reale di `Operativita tecnica mezzo` e porta `D04` nel Dossier tramite una
-            `RICOSTRUZIONE CONTROLLATA NEXT`: stesso risultato utile del madre, ma con tutta la
-            complessita legacy confinata in un solo layer read-only.
+            Vista mezzo-centrica unica del mezzo. Il Dossier resta `read-only`, consolida `D01`,
+            `D02`, il blocco manutenzioni dedicato, `D04` e il cluster `Documenti e costi` in un
+            solo quadro operativo, senza toccare la madre e senza portare raw, tmp o fallback nella
+            UI.
           </p>
         </div>
 
@@ -481,18 +753,20 @@ function NextDossierMezzoPage() {
           <span className="next-chip next-chip--subtle">
             Ruolo simulato: {NEXT_ROLE_PRESETS[role].shortLabel}
           </span>
-          <span className="next-chip next-chip--accent">D01 stabile + D02 minimo</span>
-          <span className="next-chip next-chip--success">D04 ricostruzione controllata</span>
-          <span className="next-chip next-chip--warning">D02 sensibile</span>
-          <span className="next-chip next-chip--warning">D04 sensibile</span>
+          <span className="next-chip next-chip--accent">
+            {overview?.statusLabel ?? "Quadro mezzo-centrico in caricamento"}
+          </span>
           <span className="next-chip next-chip--warning">Nessuna scrittura</span>
         </div>
       </header>
 
       {status === "loading" ? (
         <div className="next-data-state next-tone next-tone--accent">
-          <strong>Caricamento Dossier iniziale</strong>
-          <span>Sto leggendo il mezzo richiesto dal reader canonico `D01`.</span>
+          <strong>Caricamento Dossier mezzo</strong>
+          <span>
+            Sto componendo il quadro mezzo-centrico unico a partire dai layer D01, D02, D04 e
+            D07/D08.
+          </span>
         </div>
       ) : null}
 
@@ -506,168 +780,25 @@ function NextDossierMezzoPage() {
         </div>
       ) : null}
 
-      {status === "success" && mezzo ? (
+      {status === "success" && mezzo && overview ? (
         <>
-          <section className="next-summary-grid next-summary-grid--wide">
-            <article className="next-summary-card next-tone next-tone--accent">
-              <p className="next-summary-card__label">Targa pivot</p>
-              <strong className="next-summary-card__value">{mezzo.targa}</strong>
-              <p className="next-summary-card__meta">
-                Chiave logica forte del primo Dossier NEXT. Tutte le convergenze future dovranno
-                mantenere questa normalizzazione.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone">
-              <p className="next-summary-card__label">Categoria</p>
-              <strong className="next-summary-card__value">{mezzo.categoria}</strong>
-              <p className="next-summary-card__meta">
-                Campo anagrafico gia stabile e utile per contestualizzare il mezzo.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--success">
-              <p className="next-summary-card__label">Autista nome</p>
-              <strong className="next-summary-card__value">
-                {mezzo.autistaNome ?? "Non valorizzato"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Informazione anagrafica e non operativa: non equivale a sessione live o
-                assegnazione runtime.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--warning">
-              <p className="next-summary-card__label">Stato dossier</p>
-              <strong className="next-summary-card__value">D01 + D02 + D04 ricostruito</strong>
-              <p className="next-summary-card__meta">
-                Identita mezzo stabile, blocco tecnico iniziale e primo blocco rifornimenti
-                ricostruito in NEXT. Restano fuori consumi calcolati, documenti, PDF e IA
-                contestuale runtime.
-              </p>
-            </article>
-          </section>
-
-          <section className="next-summary-grid next-summary-grid--wide">
-            <article className="next-summary-card next-tone next-tone--accent">
-              <p className="next-summary-card__label">Lavori aperti</p>
-              <strong className="next-summary-card__value">
-                {technicalStatus === "success" ? lavoriAperti.length : "--"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Backlog tecnico letto da `{NEXT_OPERATIVITA_TECNICA_DOMAIN.logicalDatasets[0]}`
-                con filtro per `targa` normalizzata.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--success">
-              <p className="next-summary-card__label">Lavori chiusi</p>
-              <strong className="next-summary-card__value">
-                {technicalStatus === "success" ? lavoriChiusi.length : "--"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Conteggio iniziale dei lavori segnati come `eseguito = true`, senza importare il
-                dettaglio workflow legacy.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone">
-              <p className="next-summary-card__label">Manutenzioni lette</p>
-              <strong className="next-summary-card__value">
-                {maintenanceStatus === "success"
-                  ? formatIntegerValue(maintenanceCounts?.totaleStorico ?? 0)
-                  : "--"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Storico interventi letto dal layer manutenzioni dedicato, con filtro per `targa`
-                e ordinamento prudente per data.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--warning">
-              <p className="next-summary-card__label">Manutenzione programmata</p>
-              <strong className="next-summary-card__value">
-                {maintenanceStatus === "success" && scheduledMaintenance
-                  ? renderScheduledMaintenanceStatusLabel(scheduledMaintenance.status)
-                  : "--"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Stato ricostruito dai campi del mezzo in `@mezzi_aziendali`, senza writer o
-                logiche UI implicite.
-              </p>
-            </article>
-          </section>
-
-          <section className="next-summary-grid next-summary-grid--wide">
-            <article className="next-summary-card next-tone next-tone--success">
-              <p className="next-summary-card__label">Rifornimenti letti</p>
-              <strong className="next-summary-card__value">
-                {refuelStatus === "success" ? formatIntegerValue(refuelCount) : "--"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Record utili ricostruiti dal layer `D04` a partire da dataset business e feed
-                campo legacy, senza spargere merge o fallback in UI.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone">
-              <p className="next-summary-card__label">Litri leggibili</p>
-              <strong className="next-summary-card__value">
-                {refuelStatus === "success" && refuelTotalLitri !== null
-                  ? `${formatLitriValue(refuelTotalLitri)} L`
-                  : "--"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Somma dei `litri` del modello pulito D04, dopo ricostruzione controllata nel
-                layer NEXT.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--accent">
-              <p className="next-summary-card__label">Record con autista</p>
-              <strong className="next-summary-card__value">
-                {refuelStatus === "success" ? formatIntegerValue(refuelCountWithAutista) : "--"}
-              </strong>
-              <p className="next-summary-card__meta">
-                Autista e badge vengono esposti solo se certi o ricostruibili nel layer D04.
-              </p>
-            </article>
-
-            <article className="next-summary-card next-tone next-tone--warning">
-              <p className="next-summary-card__label">Blocco rifornimenti</p>
-              <strong className="next-summary-card__value">
-                {renderRefuelStatusLabel(refuelStatus, refuelSnapshot)}
-              </strong>
-              <p className="next-summary-card__meta">
-                Righe ricostruite:{" "}
-                {refuelStatus === "success" ? formatIntegerValue(refuelCountReconstructed) : "--"}.
-              </p>
-            </article>
-          </section>
-
-          <section className="next-dossier-layout">
-            <article className="next-panel next-dossier-main next-tone">
+          <section className="next-dossier-hero-card next-tone">
+            <div className="next-dossier-hero-card__main">
               <div className="next-panel__header">
-                <h2>Identita mezzo e nucleo dossier</h2>
+                <div>
+                  <p className="next-page__eyebrow">Pivot mezzo</p>
+                  <h2>{mezzo.targa}</h2>
+                </div>
                 <Link className="next-inline-link" to={listPath}>
                   Elenco mezzi
                 </Link>
               </div>
               <p className="next-panel__description">
-                Questa pagina parte dal reader canonico di `Anagrafiche flotta e persone`. Il
-                Dossier continua a nascere dal mezzo come identita leggibile e non da una fusione
-                anticipata di domini ancora instabili.
+                Il Dossier parte dal mezzo come pivot stabile e compone un quadro manageriale unico:
+                identita, stato sintetico e primi segnali decisionali in un solo colpo d&apos;occhio.
               </p>
 
-              <div className="next-dossier-map">
-                <div className="next-dossier-map__row">
-                  <strong>ID mezzo</strong>
-                  <span>{mezzo.id}</span>
-                </div>
-                <div className="next-dossier-map__row">
-                  <strong>Targa</strong>
-                  <span>{mezzo.targa}</span>
-                </div>
+              <div className="next-dossier-hero-card__identity">
                 <div className="next-dossier-map__row">
                   <strong>Categoria</strong>
                   <span>{mezzo.categoria}</span>
@@ -677,7 +808,7 @@ function NextDossierMezzoPage() {
                   <span>{renderMarcaModello(mezzo)}</span>
                 </div>
                 <div className="next-dossier-map__row">
-                  <strong>Autista nome</strong>
+                  <strong>Autista anagrafico</strong>
                   <span>{mezzo.autistaNome ?? "Non valorizzato"}</span>
                 </div>
                 <div className="next-dossier-map__row">
@@ -687,272 +818,207 @@ function NextDossierMezzoPage() {
                   </span>
                 </div>
               </div>
-            </article>
+            </div>
 
-            <div className="next-dossier-side">
-              <article className="next-panel next-tone next-tone--success">
-                <div className="next-panel__header">
-                  <h2>Cosa e gia importato</h2>
-                </div>
-                <p className="next-panel__description">
-                  Il Dossier usa ora due reader canonici separati: `D01` per l&apos;identita mezzo
-                  e `D02` per il primo blocco tecnico reale, piu un layer `D04` che ricostruisce
-                  il risultato utile dei rifornimenti senza toccare il runtime legacy.
-                </p>
-                <ul className="next-panel__list">
-                  <li>`id`, `targa`, `categoria`, `marca`, `modello`, `autistaNome`</li>
-                  <li>`lavori` minimi: `descrizione`, `eseguito`, `urgenza`, `dataInserimento`</li>
-                  <li>`manutenzioni` minime: `descrizione`, `tipo`, `data`, `km`, `ore`</li>
-                  <li>`rifornimenti` D04: `id`, `mezzoTarga`, `dataDisplay`, `timestampRicostruito?`, `litri`, `km?`, `costo?`, `autista?`, `badge?`, `provenienza`, `qualita`</li>
-                  <li>route pulita `/next/mezzi-dossier/:targa`</li>
-                  <li>nessuna dipendenza da `DossierMezzo` legacy come sorgente funzionale</li>
-                </ul>
-              </article>
-
-              <article className="next-panel next-tone next-tone--warning">
-                <div className="next-panel__header">
-                  <h2>Perimetro escluso per ora</h2>
-                </div>
-                <p className="next-panel__description">
-                  Il Dossier non simula completezza. I blocchi assenti sono espliciti e verranno
-                  importati solo quando i rispettivi domini saranno pronti.
-                </p>
-                <ul className="next-panel__list">
-                  <li>nessun dettaglio workflow lavori, presa in carico o scrittura manutenzioni</li>
-                  <li>nessuna complessita legacy D04 in UI: il Dossier legge solo il modello pulito del layer</li>
-                  <li>nessun consumo calcolato o analisi economica sui rifornimenti</li>
-                  <li>nessun documento, PDF o IA contestuale</li>
-                </ul>
-              </article>
+            <div className="next-dossier-hero-card__side">
+              <div className="next-data-state next-tone next-tone--accent">
+                <strong>{overview.statusLabel}</strong>
+                <span>{overview.statusMeta}</span>
+              </div>
+              <div className="next-control-list">
+                {overview.keySignals.map((item) => (
+                  <div key={item} className="next-control-list__item next-control-list__item--soft">
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
 
-          <section className="next-dossier-layout">
-            <article className="next-panel next-dossier-main next-tone next-tone--accent">
+          <section className="next-dossier-spotlight-grid">
+            {primaryHeroCards.map((card) => (
+              <article key={card.label} className={`${renderSummaryToneClassName(card.tone)} next-summary-card--spotlight`}>
+                <p className="next-summary-card__label">{card.label}</p>
+                <strong className="next-summary-card__value">{card.value}</strong>
+                <p className="next-summary-card__meta">{card.meta}</p>
+              </article>
+            ))}
+          </section>
+
+          <section className="next-summary-grid next-summary-grid--compact">
+            {secondarySummaryCards.map((card) => (
+              <article key={card.label} className={`${renderSummaryToneClassName(card.tone)} next-summary-card--compact`}>
+                <p className="next-summary-card__label">{card.label}</p>
+                <strong className="next-summary-card__value">{card.value}</strong>
+                <p className="next-summary-card__meta">{card.meta}</p>
+              </article>
+            ))}
+          </section>
+
+          <section className="next-panel next-dossier-section-card next-tone next-tone--accent">
               <div className="next-panel__header">
-                <h2>Blocco tecnico iniziale</h2>
-                <span className="next-chip next-chip--warning">D02 read-only minimo</span>
+                <h2>Stato tecnico del mezzo</h2>
+                <span className="next-chip next-chip--accent">D02 + manutenzioni read-only</span>
               </div>
               <p className="next-panel__description">
-                Primo ingresso tecnico reale del Dossier NEXT. Il blocco legge solo i dataset
-                dichiarati per `Operativita tecnica mezzo`, filtra per `targa` e mostra un
-                riepilogo pulito dei lavori senza importare route, writer o logiche di
-                orchestrazione legacy.
+                Backlog lavori, storico manutenzioni e manutenzione programmata sono letti come un
+                solo quadro tecnico del mezzo. La UI non importa workflow, writer o route della
+                madre: legge solo output puliti dei layer NEXT.
               </p>
 
-              {technicalStatus === "loading" ? (
-                <div className="next-data-state next-tone next-tone--accent">
-                  <strong>Caricamento blocco tecnico</strong>
-                  <span>
-                    Sto leggendo
-                    {" "}
-                    <code>{NEXT_OPERATIVITA_TECNICA_DOMAIN.logicalDatasets.join(", ")}</code>
-                    {" "}con filtro per <code>targa</code>.
-                  </span>
-                </div>
-              ) : null}
-
-              {technicalStatus === "error" ? (
+              {technicalState.status === "error" ? (
                 <div className="next-data-state next-tone next-tone--warning">
-                  <strong>Blocco tecnico non disponibile</strong>
-                  <span>{technicalError}</span>
+                  <strong>Blocco lavori non disponibile</strong>
+                  <span>{technicalState.error}</span>
                 </div>
               ) : null}
 
-              {technicalStatus === "success" ? (
-                <div className="next-section-grid">
-                  <article className="next-inline-panel">
-                    <h3>Lavori aperti</h3>
-                    <p>
-                      Backlog tecnico mezzo-centrico. In questa fase ogni record aperto viene letto
-                      solo come `eseguito != true`.
-                    </p>
-                    {lavoriApertiPreview.length === 0 ? (
-                      <div className="next-data-state">
-                        <strong>Nessun lavoro aperto</strong>
-                        <span>Il reader `D02` non ha trovato backlog tecnico per questa targa.</span>
-                      </div>
-                    ) : (
-                      <div className="next-control-list">
-                        {lavoriApertiPreview.map((item) => (
-                          <div key={item.id} className="next-control-list__item">
-                            <div className="next-global-pillbar">
-                              <span className="next-chip next-chip--accent">Aperto</span>
-                              {item.urgenza ? (
-                                <span className="next-chip next-chip--warning">
-                                  Urgenza {item.urgenza}
-                                </span>
-                              ) : null}
-                            </div>
-                            <strong>{renderOptionalLabel(item.descrizione)}</strong>
-                            <span>{renderLavoroMeta(item)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </article>
-
-                  <article className="next-inline-panel">
-                    <h3>Lavori chiusi</h3>
-                    <p>
-                      Primi record eseguiti del mezzo. Nessun dettaglio di workflow o presa in
-                      carico viene importato in questo step.
-                    </p>
-                    {lavoriChiusiPreview.length === 0 ? (
-                      <div className="next-data-state">
-                        <strong>Nessun lavoro chiuso</strong>
-                        <span>Il reader `D02` non ha trovato lavori segnati come eseguiti.</span>
-                      </div>
-                    ) : (
-                      <div className="next-control-list">
-                        {lavoriChiusiPreview.map((item) => (
-                          <div key={item.id} className="next-control-list__item">
-                            <div className="next-global-pillbar">
-                              <span className="next-chip next-chip--success">Eseguito</span>
-                            </div>
-                            <strong>{renderOptionalLabel(item.descrizione)}</strong>
-                            <span>{renderLavoroMeta(item)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </article>
-
-                </div>
-              ) : null}
-            </article>
-
-            <div className="next-dossier-side">
-              <article className="next-panel next-tone next-tone--success">
-                <div className="next-panel__header">
-                  <h2>Cosa e importato davvero</h2>
-                </div>
-                <p className="next-panel__description">
-                  Il blocco tecnico non porta tutta `Operativita tecnica mezzo`: importa solo il
-                  sottoinsieme piu stabile e utile al contesto del Dossier.
-                </p>
-                <ul className="next-panel__list">
-                  <li>filtro mezzo-centrico per `targa` normalizzata</li>
-                  <li>lettura `@lavori` solo come aperti/chiusi</li>
-                  <li>nessun writer e nessun dettaglio route legacy</li>
-                </ul>
-              </article>
-
-              <article className="next-panel next-tone next-tone--warning">
-                <div className="next-panel__header">
-                  <h2>Cosa resta fuori da D02</h2>
-                </div>
-                <p className="next-panel__description">
-                  Il dominio resta `SENSIBILE`, quindi questa pagina non maschera ancora le sue
-                  incoerenze residue.
-                </p>
-                <ul className="next-panel__list">
-                  <li>nessun writer, nessuna modifica stato, nessun dettaglio lavoro</li>
-                  <li>nessun collegamento a materiali, inventario o costo finale</li>
-                  <li>le manutenzioni hanno ora un layer read-only dedicato separato</li>
-                </ul>
-              </article>
-            </div>
-          </section>
-
-          <section className="next-dossier-layout">
-            <article className="next-panel next-dossier-main next-tone next-tone--accent">
-              <div className="next-panel__header">
-                <h2>Manutenzioni read-only</h2>
-                <span className="next-chip next-chip--accent">
-                  {NEXT_MANUTENZIONI_DOMAIN.code} dedicato
-                </span>
-              </div>
-              <p className="next-panel__description">
-                Il blocco manutenzioni legge solo `@manutenzioni` e `@mezzi_aziendali`, isola la
-                distinzione tra storico interventi e manutenzione programmata in un layer NEXT
-                dedicato e restituisce al Dossier solo output pulito.
-              </p>
-
-              {maintenanceStatus === "loading" ? (
-                <div className="next-data-state next-tone next-tone--accent">
-                  <strong>Caricamento blocco manutenzioni</strong>
-                  <span>
-                    Sto leggendo <code>{NEXT_MANUTENZIONI_DOMAIN.logicalDatasets.join(", ")}</code>{" "}
-                    con filtro per <code>targa</code>.
-                  </span>
-                </div>
-              ) : null}
-
-              {maintenanceStatus === "error" ? (
+              {maintenanceState.status === "error" ? (
                 <div className="next-data-state next-tone next-tone--warning">
                   <strong>Blocco manutenzioni non disponibile</strong>
-                  <span>{maintenanceError}</span>
+                  <span>{maintenanceState.error}</span>
                 </div>
               ) : null}
 
-              {maintenanceStatus === "success" && scheduledMaintenance ? (
+              {technicalState.status === "success" || maintenanceState.status === "success" ? (
                 <>
-                  <div className="next-section-grid">
+                  <div className="next-dossier-section-intro">
+                    <article className="next-data-state next-tone">
+                      <strong>Quadro tecnico sintetico</strong>
+                      <span>
+                        Lavori aperti: {formatIntegerValue(technicalSnapshot?.counts.lavoriAperti ?? null)}
+                        {" | "}Storico manutenzioni: {formatIntegerValue(maintenanceCounts?.totaleStorico ?? null)}
+                        {" | "}Ultima manutenzione: {latestMaintenanceDate ?? "non disponibile"}
+                      </span>
+                    </article>
+                  </div>
+                  <div className="next-section-grid next-section-grid--technical">
                     <article className="next-inline-panel">
-                      <h3>Manutenzione programmata</h3>
-                      <p>
-                        Stato letto dal record mezzo, senza ricostruzioni da altri dataset e senza
-                        importare writer della madre.
-                      </p>
-                      <div className="next-control-list">
-                        <div className="next-control-list__item">
-                          <div className="next-global-pillbar">
-                            <span
-                              className={getScheduledMaintenanceToneClassName(
-                                scheduledMaintenance.status
-                              )}
-                            >
-                              {renderScheduledMaintenanceStatusLabel(
-                                scheduledMaintenance.status
-                              )}
-                            </span>
-                            <span className="next-chip next-chip--subtle">
-                              {renderMaintenanceQualityLabel(scheduledMaintenance.quality)}
-                            </span>
-                            <span className="next-chip next-chip--subtle">
-                              {scheduledMaintenance.dataFine ?? "Data fine non valorizzata"}
-                            </span>
-                          </div>
-                          <strong>
-                            {scheduledMaintenance.enabled
-                              ? "Pianificazione manutentiva attiva"
-                              : "Nessuna manutenzione programmata attiva"}
-                          </strong>
-                          <span>{renderScheduledMaintenanceMeta(scheduledMaintenance)}</span>
+                      <h3>Lavori aperti</h3>
+                      <p>Backlog tecnico mezzo-centrico letto dal layer D02.</p>
+                      {technicalState.status !== "success" || lavoriApertiPreview.length === 0 ? (
+                        <div className="next-data-state">
+                          <strong>Nessun lavoro aperto</strong>
                           <span>
-                            Inizio:{" "}
-                            {renderOptionalLabel(
-                              scheduledMaintenance.dataInizio,
-                              "non valorizzato"
-                            )}
-                            {" | "}KM max:{" "}
-                            {renderOptionalLabel(
-                              scheduledMaintenance.kmMax,
-                              "non valorizzato"
-                            )}
-                            {" | "}Contratto:{" "}
-                            {renderOptionalLabel(
-                              scheduledMaintenance.contratto,
-                              "non valorizzato"
-                            )}
+                            {technicalState.status === "success"
+                              ? "Il layer D02 non ha trovato backlog tecnico per questa targa."
+                              : "Il backlog aperto non e disponibile nel quadro attuale."}
                           </span>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="next-control-list">
+                          {lavoriApertiPreview.map((item) => (
+                            <div key={item.id} className="next-control-list__item">
+                              <div className="next-global-pillbar">
+                                <span className="next-chip next-chip--accent">Aperto</span>
+                                {item.urgenza ? (
+                                  <span className="next-chip next-chip--warning">
+                                    Urgenza {item.urgenza}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <strong>{renderOptionalLabel(item.descrizione)}</strong>
+                              <span>{renderLavoroMeta(item)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+
+                    <article className="next-inline-panel">
+                      <h3>Lavori chiusi</h3>
+                      <p>Primi esiti tecnici letti dal layer D02 senza importare il workflow legacy.</p>
+                      {technicalState.status !== "success" || lavoriChiusiPreview.length === 0 ? (
+                        <div className="next-data-state">
+                          <strong>Nessun lavoro chiuso</strong>
+                          <span>
+                            {technicalState.status === "success"
+                              ? "Il layer D02 non ha trovato lavori segnati come eseguiti."
+                              : "Il riepilogo lavori chiusi non e disponibile nel quadro attuale."}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="next-control-list">
+                          {lavoriChiusiPreview.map((item) => (
+                            <div key={item.id} className="next-control-list__item">
+                              <div className="next-global-pillbar">
+                                <span className="next-chip next-chip--success">Eseguito</span>
+                              </div>
+                              <strong>{renderOptionalLabel(item.descrizione)}</strong>
+                              <span>{renderLavoroMeta(item)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+
+                    <article className="next-inline-panel">
+                      <h3>Manutenzione programmata</h3>
+                      <p>Stato letto dal layer manutenzioni dedicato, senza writer della madre.</p>
+                      {maintenanceState.status !== "success" || !scheduledMaintenance ? (
+                        <div className="next-data-state">
+                          <strong>Stato programmato non disponibile</strong>
+                          <span>Il layer manutenzioni non ha restituito la pianificazione del mezzo.</span>
+                        </div>
+                      ) : (
+                        <div className="next-control-list">
+                          <div className="next-control-list__item">
+                            <div className="next-global-pillbar">
+                              <span
+                                className={getScheduledMaintenanceToneClassName(
+                                  scheduledMaintenance.status
+                                )}
+                              >
+                                {renderScheduledMaintenanceStatusLabel(scheduledMaintenance.status)}
+                              </span>
+                              <span className="next-chip next-chip--subtle">
+                                {renderMaintenanceQualityLabel(scheduledMaintenance.quality)}
+                              </span>
+                              <span className="next-chip next-chip--subtle">
+                                {scheduledMaintenance.dataFine ?? "Data fine non valorizzata"}
+                              </span>
+                            </div>
+                            <strong>
+                              {scheduledMaintenance.enabled
+                                ? "Pianificazione manutentiva attiva"
+                                : "Nessuna manutenzione programmata attiva"}
+                            </strong>
+                            <span>{renderScheduledMaintenanceMeta(scheduledMaintenance)}</span>
+                            <span>
+                              Inizio:{" "}
+                              {renderOptionalLabel(
+                                scheduledMaintenance.dataInizio,
+                                "non valorizzato"
+                              )}
+                              {" | "}KM max:{" "}
+                              {renderOptionalLabel(
+                                scheduledMaintenance.kmMax,
+                                "non valorizzato"
+                              )}
+                              {" | "}Contratto:{" "}
+                              {renderOptionalLabel(
+                                scheduledMaintenance.contratto,
+                                "non valorizzato"
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </article>
 
                     <article className="next-inline-panel">
                       <h3>Ultime manutenzioni</h3>
                       <p>
-                        Storico interventi mezzo-centrico. Il Dossier mostra solo i record prodotti
-                        dal layer dedicato, con badge gomme solo quando il pattern nella
-                        descrizione e chiaro.
+                        Storico interventi mezzo-centrico. Il Dossier mostra solo i record del
+                        layer dedicato, senza aprire costi o magazzino.
                       </p>
-                      {maintenanceHistoryPreview.length === 0 ? (
+                      {maintenanceState.status !== "success" || maintenanceHistoryPreview.length === 0 ? (
                         <div className="next-data-state">
                           <strong>Nessuna manutenzione letta</strong>
                           <span>
-                            Il layer dedicato non ha trovato storico manutentivo per questa targa.
+                            {maintenanceState.status === "success"
+                              ? "Il layer dedicato non ha trovato storico manutentivo per questa targa."
+                              : "Lo storico manutenzioni non e disponibile nel quadro attuale."}
                           </span>
                         </div>
                       ) : (
@@ -1045,8 +1111,7 @@ function NextDossierMezzoPage() {
                                     <strong>{renderOptionalLabel(item.descrizione)}</strong>
                                     <span>{renderMaintenanceHistoryMeta(item)}</span>
                                     <span>
-                                      Origine: {item.sourceOrigin} {" | "}Dataset:{" "}
-                                      {item.sourceDataset}
+                                      Origine: {item.sourceOrigin} {" | "}Dataset: {item.sourceDataset}
                                     </span>
                                   </div>
                                 ))}
@@ -1059,87 +1124,35 @@ function NextDossierMezzoPage() {
                   </div>
                 </>
               ) : null}
-            </article>
-
-            <div className="next-dossier-side">
-              <article className="next-panel next-tone next-tone--success">
-                <div className="next-panel__header">
-                  <h2>Contatori manutenzioni</h2>
-                </div>
-                <p className="next-panel__description">
-                  Contatori sobri del layer manutenzioni, utili al Dossier senza aprire il tema
-                  costi o magazzino.
-                </p>
-                <ul className="next-panel__list">
-                  <li>storico totale: {formatIntegerValue(maintenanceCounts?.totaleStorico ?? 0)}</li>
-                  <li>record con materiali: {formatIntegerValue(maintenanceCounts?.conMateriali ?? 0)}</li>
-                  <li>cambi gomme derivati: {formatIntegerValue(maintenanceCounts?.cambioGommeDerivati ?? 0)}</li>
-                </ul>
-              </article>
-
-              <article className="next-panel next-tone next-tone--warning">
-                <div className="next-panel__header">
-                  <h2>Limiti del blocco</h2>
-                </div>
-                <p className="next-panel__description">
-                  La v1 manutenzioni resta prudente e mezzo-centrica: nessuna scrittura, nessun
-                  merge economico, nessuna dipendenza da workflow autisti.
-                </p>
-                {(maintenanceSnapshot?.limitations ?? []).length === 0 ? (
-                  <div className="next-data-state">
-                    <strong>Nessun limite aggiuntivo dichiarato</strong>
-                    <span>Il layer non ha restituito limitazioni aggiuntive per questo mezzo.</span>
-                  </div>
-                ) : (
-                  <ul className="next-panel__list">
-                    {(maintenanceSnapshot?.limitations ?? []).map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                )}
-              </article>
-            </div>
           </section>
 
-          <section className="next-dossier-layout">
-            <article className="next-panel next-dossier-main next-tone next-tone--success">
+          <section className="next-panel next-dossier-section-card next-tone next-tone--success">
               <div className="next-panel__header">
-                <h2>Rifornimenti ricostruiti</h2>
+                <h2>Rifornimenti del mezzo</h2>
                 <span className="next-chip next-chip--success">
-                  D04 ricostruzione controllata
+                  {renderRefuelStatusLabel(refuelState.status, refuelSnapshot)}
                 </span>
               </div>
               <p className="next-panel__description">
-                Primo ingresso `D04` con parita utile verso il madre. Il blocco usa una
-                ricostruzione controllata confinata nel layer NEXT: base business, feed campo solo
-                se serve, merge confinato, modello pulito unico in output.
+                Il Dossier mostra i rifornimenti solo tramite il modello D04 pulito. Dataset raw,
+                tmp, shape legacy e merge controllati restano confinati nel layer NEXT.
               </p>
 
-              {refuelStatus === "loading" ? (
-                <div className="next-data-state next-tone next-tone--accent">
-                  <strong>Caricamento blocco rifornimenti</strong>
-                  <span>
-                    Sto leggendo il layer `D04` che ricostruisce i rifornimenti in sola lettura
-                    per questo mezzo.
-                  </span>
-                </div>
-              ) : null}
-
-              {refuelStatus === "error" ? (
+              {refuelState.status === "error" ? (
                 <div className="next-data-state next-tone next-tone--warning">
                   <strong>Blocco rifornimenti non disponibile</strong>
-                  <span>{refuelError}</span>
+                  <span>{refuelState.error}</span>
                 </div>
               ) : null}
 
-              {refuelStatus === "success" ? (
+              {refuelState.status === "success" ? (
                 <>
                   <div className="next-data-state next-tone">
-                    <strong>Strategia attiva del blocco</strong>
+                    <strong>Quadro D04 del mezzo</strong>
                     <span>
-                      Layer `D04`: {NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.normalizationStrategy}. Il
-                      Dossier non conosce dataset raw, tmp, shape legacy o fallback: legge solo
-                      il risultato pulito prodotto dal layer.
+                      Totale rifornimenti utili: {formatIntegerValue(refuelSnapshot?.counts.total ?? null)}
+                      {" | "}Litri leggibili: {formatLitriValue(refuelSnapshot?.totals.litri ?? null)} L
+                      {" | "}Costo leggibile: {formatCurrencyValue(refuelSnapshot?.totals.costo ?? null)}
                     </span>
                   </div>
 
@@ -1147,7 +1160,7 @@ function NextDossierMezzoPage() {
                     <div className="next-data-state">
                       <strong>Nessun rifornimento ricostruito</strong>
                       <span>
-                        Il layer `D04` non ha trovato record utili per questa targa dopo la
+                        Il layer D04 non ha trovato record utili per questa targa dopo la
                         ricostruzione controllata.
                       </span>
                     </div>
@@ -1155,12 +1168,11 @@ function NextDossierMezzoPage() {
                     <>
                       <div className="next-data-state next-tone next-tone--accent">
                         <strong>
-                          Anteprima dossier: ultimi {formatIntegerValue(refuelsPreview.length)}{" "}
-                          rifornimenti
+                          Anteprima dossier: ultimi {formatIntegerValue(refuelsPreview.length)} rifornimenti
                         </strong>
                         <span>
-                          Il Dossier mostra solo i 5 record piu recenti. Totale ricostruito per
-                          questo mezzo: {formatIntegerValue(refuels.length)}.
+                          Il Dossier mostra i 5 record piu recenti. Totale ricostruito per questo mezzo:{" "}
+                          {formatIntegerValue(refuels.length)}.
                         </span>
                         <div className="next-access-page__actions">
                           {hasRefuelFullView ? (
@@ -1189,7 +1201,7 @@ function NextDossierMezzoPage() {
                       </div>
 
                       {showAllRefuels ? (
-                        <div id="next-dossier-d04-full-view" className="next-inline-panel">
+                        <div className="next-inline-panel">
                           <div className="next-panel__header">
                             <h3>Vista completa D04</h3>
                             <span className="next-chip next-chip--accent">
@@ -1198,8 +1210,7 @@ function NextDossierMezzoPage() {
                           </div>
                           <p>
                             Vista completa read-only del mezzo. Anche qui la pagina consuma solo
-                            il modello pulito prodotto dal layer `D04`, senza letture legacy
-                            dirette.
+                            il modello pulito prodotto dal layer D04.
                           </p>
                           <div className="next-control-list">
                             {refuels.map((item) => renderRefuelReadOnlyCard(item))}
@@ -1210,101 +1221,203 @@ function NextDossierMezzoPage() {
                   )}
                 </>
               ) : null}
-            </article>
-
-            <div className="next-dossier-side">
-              <article className="next-panel next-tone next-tone--success">
-                <div className="next-panel__header">
-                  <h2>Contratto D04 importato</h2>
-                </div>
-                <p className="next-panel__description">
-                  Il blocco rifornimenti non esporta piu la shape legacy. Espone un solo modello
-                  pulito D04 con provenienza e qualita del dato.
-                </p>
-                <ul className="next-panel__list">
-                  <li>campi chiave: `id`, `mezzoTarga`, `dataDisplay`, `timestampRicostruito?`, `litri`</li>
-                  <li>campi opzionali: `km`, `costo`, `distributore`, `note`, `autistaNome`, `badgeAutista`</li>
-                  <li>provenienza pulita: `business`, `campo`, `ricostruito`</li>
-                  <li>
-                    copertura attuale: {formatIntegerValue(refuelCountWithAutista)} record con
-                    `autista`, {formatIntegerValue(refuelCountWithKm)} con `km`,
-                    {" "}
-                    {formatIntegerValue(refuelCountWithCosto)} con `costo`
-                  </li>
-                  <li>totale costo leggibile: {formatCurrencyValue(refuelTotalCosto)}</li>
-                  <li>
-                    mix sorgenti pulito: {formatIntegerValue(refuelSnapshot?.counts.businessOnly ?? null)}
-                    {" "}solo business, {formatIntegerValue(refuelSnapshot?.counts.fieldOnly ?? null)}
-                    {" "}solo campo, {formatIntegerValue(refuelCountReconstructed)} ricostruiti
-                  </li>
-                  <li>normalizzazione, merge e shape legacy confinati solo nel layer NEXT `D04`</li>
-                </ul>
-              </article>
-
-              <article className="next-panel next-tone next-tone--warning">
-                <div className="next-panel__header">
-                  <h2>Cosa resta fuori da D04</h2>
-                </div>
-                <p className="next-panel__description">
-                  La vista raggiunge il risultato utile del madre sui rifornimenti, ma non finge un
-                  dominio gia consolidato o analitico completo.
-                </p>
-                <ul className="next-panel__list">
-                  {refuelSnapshot?.limitations.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                  <li>nessun calcolo consumi avanzato o report economico derivato nel Dossier NEXT</li>
-                </ul>
-              </article>
-            </div>
           </section>
 
-          <section className="next-section-grid">
-            <article className="next-panel">
+          <section className="next-panel next-dossier-section-card next-tone next-tone--accent">
               <div className="next-panel__header">
-                <h2>Cosa convergera qui</h2>
+                <h2>Documenti e costi</h2>
+                <span className="next-chip next-chip--accent">
+                  {renderDocumentCostStatusLabel(documentCostsState.status, documentCostsSnapshot)}
+                </span>
               </div>
               <p className="next-panel__description">
-                Il Dossier resta il cuore mezzo-centrico, ma i prossimi ingressi dovranno arrivare
-                dominio per dominio e con reader separati.
+                Il Dossier mostra un solo cluster mezzo-centrico di preventivi, fatture e altri
+                documenti utili. La complessita legacy resta nel layer D07/D08: la UI NEXT legge
+                solo record puliti con provenienza esplicita.
+              </p>
+
+              {documentCostsState.status === "error" ? (
+                <div className="next-data-state next-tone next-tone--warning">
+                  <strong>Blocco documenti e costi non disponibile</strong>
+                  <span>{documentCostsState.error}</span>
+                </div>
+              ) : null}
+
+              {documentCostsState.status === "success" ? (
+                <>
+                  <div className="next-data-state next-tone">
+                    <strong>Quadro D07/D08 del mezzo</strong>
+                    <span>
+                      Preventivi: {formatIntegerValue(documentCostsSnapshot?.counts.preventivi ?? null)}
+                      {" | "}Fatture: {formatIntegerValue(documentCostsSnapshot?.counts.fatture ?? null)}
+                      {" | "}Documenti utili:{" "}
+                      {formatIntegerValue(documentCostsSnapshot?.counts.documentiUtili ?? null)}
+                    </span>
+                  </div>
+
+                  <div className="next-section-grid">
+                    <article className="next-inline-panel">
+                      <h3>Ultimi preventivi</h3>
+                      <p>
+                        Preview read-only dei preventivi mezzo-centrici letti dal layer, senza
+                        workflow approvativo o UI legacy.
+                      </p>
+                      {preventiviPreview.length === 0 ? (
+                        <div className="next-data-state">
+                          <strong>Nessun preventivo letto</strong>
+                          <span>
+                            Il layer D07/D08 non ha trovato preventivi mezzo-centrici utili per
+                            questa targa.
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="next-data-state next-tone next-tone--accent">
+                            <strong>
+                              Anteprima dossier: ultimi {formatIntegerValue(preventiviPreview.length)}{" "}
+                              preventivi
+                            </strong>
+                            <span>
+                              Totali prudenti:{" "}
+                              {renderDocumentTotalsSummary(
+                                documentCostsSnapshot?.totals.preventivi ?? null
+                              )}
+                            </span>
+                          </div>
+                          <div className="next-control-list">
+                            {preventiviPreview.map((item) => renderDocumentCostReadOnlyCard(item))}
+                          </div>
+                        </>
+                      )}
+                    </article>
+
+                    <article className="next-inline-panel">
+                      <h3>Ultime fatture</h3>
+                      <p>
+                        Preview sintetica delle fatture correlate al mezzo, con importi solo quando
+                        davvero leggibili.
+                      </p>
+                      {fatturePreview.length === 0 ? (
+                        <div className="next-data-state">
+                          <strong>Nessuna fattura letta</strong>
+                          <span>
+                            Il layer D07/D08 non ha trovato fatture mezzo-centriche utili per
+                            questa targa.
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="next-data-state next-tone next-tone--warning">
+                            <strong>
+                              Anteprima dossier: ultime {formatIntegerValue(fatturePreview.length)}{" "}
+                              fatture
+                            </strong>
+                            <span>
+                              Totali prudenti:{" "}
+                              {renderDocumentTotalsSummary(
+                                documentCostsSnapshot?.totals.fatture ?? null
+                              )}
+                            </span>
+                          </div>
+                          <div className="next-control-list">
+                            {fatturePreview.map((item) => renderDocumentCostReadOnlyCard(item))}
+                          </div>
+                        </>
+                      )}
+                    </article>
+
+                    <article className="next-inline-panel">
+                      <h3>Altri documenti utili</h3>
+                      <p>
+                        Il Dossier include solo documenti realmente targa-correlati letti nelle
+                        collezioni documentali, senza trasformare l&apos;intake globale in pagina
+                        dossierizzata.
+                      </p>
+                      {documentiUtiliPreview.length === 0 ? (
+                        <div className="next-data-state">
+                          <strong>Nessun documento utile letto</strong>
+                          <span>
+                            Nessun documento mezzo-correlato extra e risultato leggibile nel
+                            perimetro attuale.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="next-control-list">
+                          {documentiUtiliPreview.map((item) => renderDocumentCostReadOnlyCard(item))}
+                        </div>
+                      )}
+                    </article>
+                  </div>
+                </>
+              ) : null}
+          </section>
+
+          <section className="next-section-grid next-section-grid--support">
+            <article className={supportToneClassName("success")}>
+              <div className="next-panel__header">
+                <h2>Coperture dossier</h2>
+              </div>
+              <p className="next-panel__description">
+                Contatori di copertura tenuti in fascia secondaria per non competere con i dati
+                principali del mezzo.
               </p>
               <ul className="next-panel__list">
-                <li>estensione controllata di `D02` oltre il riepilogo iniziale</li>
-                <li>estensione controllata di `D04` oltre la ricostruzione read-only attuale</li>
-                <li>`D07` Documentale IA e libretti</li>
-                <li>`D08` Costi e analisi economica</li>
+                <li>lavori aperti: {formatIntegerValue(technicalSnapshot?.counts.lavoriAperti ?? null)}</li>
+                <li>lavori chiusi: {formatIntegerValue(technicalSnapshot?.counts.lavoriChiusi ?? null)}</li>
+                <li>storico manutenzioni: {formatIntegerValue(maintenanceCounts?.totaleStorico ?? null)}</li>
+                <li>record con materiali: {formatIntegerValue(maintenanceCounts?.conMateriali ?? null)}</li>
+                <li>rifornimenti D04: {formatIntegerValue(refuelSnapshot?.counts.total ?? null)}</li>
+                <li>documenti/costi: {formatIntegerValue(documentCostsSnapshot?.counts.total ?? null)}</li>
               </ul>
             </article>
 
-            <article className="next-panel next-tone next-tone--accent">
+            <article className={supportToneClassName("warning")}>
               <div className="next-panel__header">
-                <h2>Stato attuale del Dossier NEXT</h2>
+                <h2>Limiti attuali</h2>
               </div>
               <p className="next-panel__description">
-                Il Dossier e iniziato davvero, ma resta intenzionalmente stretto: identita mezzo,
-                primo blocco tecnico, primo blocco rifornimenti ricostruito e base visiva pronta a
-                ricevere convergenze future.
+                Limiti e perimetro restano disponibili, ma con peso visivo ridotto e concentrati in
+                fondo pagina.
               </p>
               <ul className="next-panel__list">
-                <li>read-only puro</li>
-                <li>`D01` stabile + `D02` minimo + `D04` ricostruzione controllata</li>
-                <li>nessun dominio extra importato per riempimento</li>
+                {overview.technicalLimitations.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+                {overview.refuelLimitations.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+                {overview.documentCostLimitations.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+                <li>nessun PDF runtime nuovo, nessun upload, nessuna delete e nessuna modale legacy</li>
               </ul>
             </article>
 
-            <article className="next-panel next-tone next-tone--success">
+            {supportCards.map((card) => (
+              <article key={card.title} className={supportToneClassName(card.tone)}>
+                <div className="next-panel__header">
+                  <h2>{card.title}</h2>
+                </div>
+                <p className="next-panel__description">{card.description}</p>
+                <ul className="next-panel__list">
+                  {card.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+
+            <article className={supportToneClassName("success")}>
               <div className="next-panel__header">
-                <h2>Reader canonico usato</h2>
+                <h2>Stato del perimetro</h2>
               </div>
               <p className="next-panel__description">
-                Il dettaglio non legge chiavi sparse e non replica la logica legacy: usa reader
-                dedicati per dominio e seleziona il mezzo sempre per `targa`.
+                Promemoria sintetico del perimetro Dossier raggiunto oggi.
               </p>
               <ul className="next-panel__list">
-                <li>dominio logico: `D01`</li>
-                <li>dataset fisico: `storage/@mezzi_aziendali`</li>
-                <li>dominio logico: `D02` su `@lavori` e `@manutenzioni`</li>
-                <li>dominio logico: `D04` su un solo layer NEXT che ricostruisce business + feed campo</li>
+                {dossierStatusItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </article>
           </section>

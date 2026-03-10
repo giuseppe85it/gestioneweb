@@ -7,6 +7,12 @@ export type NextAreaId =
 
 export type NextAreaTone = "default" | "accent" | "warning" | "success";
 
+export type NextUiGrammar =
+  | "Centro di controllo"
+  | "Dossier"
+  | "Materiali da ordinare"
+  | "Area Capo";
+
 export type NextSummaryCard = {
   label: string;
   value: string;
@@ -29,6 +35,9 @@ export type NextAreaConfig = {
   title: string;
   description: string;
   phase: string;
+  primaryGrammar: NextUiGrammar;
+  searchPlaceholder: string;
+  shellFocus: string;
   visibility: string[];
   cards: NextSummaryCard[];
   sections: NextSection[];
@@ -77,6 +86,9 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     description:
       "Shell reale e separata per il cockpit amministrativo della nuova app. In questa fase resta un contenitore read-only, pronto a ospitare priorita, alert, code operative e ricerca globale senza sostituire la home legacy.",
     phase: "V1 shell read-only",
+    primaryGrammar: "Centro di controllo",
+    searchPlaceholder: "Targa, badge, alert, ordine",
+    shellFocus: "Home NEXT = IA in alto + Centro di Comando sotto",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -142,6 +154,9 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     description:
       "Macro-area combinata che rende visibile da subito il cuore mezzo-centrico della NEXT. La shell separa overview flotta, accesso rapido al Dossier e blocchi contestuali senza importare ancora i moduli legacy.",
     phase: "V1 shell read-only",
+    primaryGrammar: "Dossier",
+    searchPlaceholder: "Targa, categoria, autista",
+    shellFocus: "D01 attivo, Dossier dettaglio-first, convergenze pulite",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -202,6 +217,9 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     description:
       "Area separata per workflow, task e code operative. La shell prepara liste, gruppi stato e pannelli dettaglio senza migrare ancora lavori, manutenzioni o flussi materiali.",
     phase: "V1 shell read-only",
+    primaryGrammar: "Materiali da ordinare",
+    searchPlaceholder: "Fornitore, ordine, materiale",
+    shellFocus: "Workbench globale per procurement, stock e intake",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -256,6 +274,9 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     description:
       "Questa macro-area rende finalmente visibile la futura IA Business della NEXT. La shell espone il perimetro reale della v1 e separa chiaramente cio che appartiene all'assistenza runtime da cio che restera audit tecnico su repo, docs e dati.",
     phase: "V1 shell read-only",
+    primaryGrammar: "Centro di controllo",
+    searchPlaceholder: "Superficie, sorgente, periodo",
+    shellFocus: "Motore unico sopra layer puliti e spiegabili",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
@@ -317,6 +338,9 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     description:
       "Area placeholder per PDF standard, ricerca globale, scadenze, audit log, visibilita moduli e strumenti di supporto. La shell e predisposta per governance e permessi futuri, senza introdurre ancora enforcement o funzioni runtime nuove.",
     phase: "V1 shell read-only",
+    primaryGrammar: "Area Capo",
+    searchPlaceholder: "Servizio, permesso, PDF",
+    shellFocus: "Governance tecnica, PDF standard, routing e accessi",
     visibility: ["Super Admin", "Account gestionale"],
     cards: [
       {
