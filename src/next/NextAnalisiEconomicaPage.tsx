@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
 import { useNavigate, useParams } from "react-router-dom";
-import { db } from "../firebase";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { formatDateTimeUI } from "../utils/dateFormat";
 import { generateAnalisiEconomicaPDFBlob } from "../utils/pdfEngine";
@@ -16,54 +14,20 @@ import {
 import NextGommeEconomiaSection from "./NextGommeEconomiaSection";
 import NextRifornimentiEconomiaSection from "./NextRifornimentiEconomiaSection";
 import {
-  mapNextDocumentiCostiItemsToLegacyView,
-  readNextMezzoDocumentiCostiSnapshot,
-  type NextDocumentiCostiCurrency,
-  type NextDocumentiCostiLegacyViewItem,
-} from "./domain/nextDocumentiCostiDomain";
+  buildNextAnalisiEconomicaLegacyView,
+  readNextDossierMezzoCompositeSnapshot,
+  type NextDossierAnalisiEconomicaSavedRecord,
+  type NextDossierFatturaPreventivoLegacyItem,
+  type NextDossierMezzoIdentity,
+} from "./domain/nextDossierMezzoDomain";
+import type { NextDocumentiCostiCurrency } from "./domain/nextDocumentiCostiDomain";
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 
 type Currency = NextDocumentiCostiCurrency;
-
-type Mezzo = {
-  id?: string;
-  targa: string;
-  anno?: string;
-  categoria?: string;
-  massaComplessiva?: string;
-  dataImmatricolazione?: string;
-  dataScadenzaRevisione?: string;
-  marca?: string;
-  modello?: string;
-  marcaModello?: string;
-  colore?: string;
-  telaio?: string;
-  proprietario?: string;
-  assicurazione?: string;
-  cilindrata?: string;
-  potenza?: string;
-  note?: string;
-  fotoUrl?: string | null;
-  manutenzioneContratto?: string;
-  manutenzioneDataInizio?: string;
-  manutenzioneDataFine?: string;
-  manutenzioneKmMax?: string;
-  manutenzioneProgrammata?: boolean;
-};
-
-type FatturaPreventivo = NextDocumentiCostiLegacyViewItem;
-
-type AnalisiEconomicaIA = {
-  riepilogoBreve?: string;
-  analisiCosti?: string;
-  anomalie?: string;
-  fornitoriNotevoli?: string;
-  updatedAt?: {
-    toDate?: () => Date;
-  };
-  targa?: string;
-};
+type Mezzo = NextDossierMezzoIdentity;
+type FatturaPreventivo = NextDossierFatturaPreventivoLegacyItem;
+type AnalisiEconomicaIA = NextDossierAnalisiEconomicaSavedRecord;
 
 type FornitoreAggregato = {
   nome: string;
@@ -192,27 +156,22 @@ export default function NextAnalisiEconomicaPage() {
       try {
         setLoading(true);
         setError(null);
-
-        const mezziSnap = await getDoc(doc(db, "storage", "@mezzi_aziendali"));
-        const mezziData = mezziSnap.data() || {};
-        const mezziArray = (mezziData.value || []) as Mezzo[];
-        const mezzoFound =
-          mezziArray.find(
-            (entry) => entry.targa?.toUpperCase().trim() === targa.toUpperCase().trim()
-          ) || null;
-
-        const documentiCostiSnapshot = await readNextMezzoDocumentiCostiSnapshot(targa);
-        const costiPerMezzoDedup = mapNextDocumentiCostiItemsToLegacyView(
-          documentiCostiSnapshot.items
-        );
-        const analisiSnap = await getDoc(doc(db, "@analisi_economica_mezzi", documentiCostiSnapshot.mezzoTarga));
-        const analisiData = analisiSnap.exists() ? (analisiSnap.data() as AnalisiEconomicaIA) : null;
+        const snapshot = await readNextDossierMezzoCompositeSnapshot(targa);
 
         if (cancelled) return;
 
-        setMezzo(mezzoFound);
-        setDocumentiCosti(costiPerMezzoDedup);
-        setAnalisiIA(analisiData);
+        if (!snapshot) {
+          setMezzo(null);
+          setDocumentiCosti([]);
+          setAnalisiIA(null);
+          setLoading(false);
+          return;
+        }
+
+        const view = buildNextAnalisiEconomicaLegacyView(snapshot);
+        setMezzo(view.mezzo);
+        setDocumentiCosti(view.documentiCosti);
+        setAnalisiIA(view.analisiIA);
         setLoading(false);
       } catch (loadError: any) {
         console.error("Errore caricamento AnalisiEconomica NEXT:", loadError);
@@ -462,8 +421,8 @@ export default function NextAnalisiEconomicaPage() {
   }
 
   const updatedAtLabel =
-    analisiIA?.updatedAt && typeof analisiIA.updatedAt.toDate === "function"
-      ? formatDateTimeUI(analisiIA.updatedAt.toDate())
+    analisiIA?.updatedAtTimestamp != null
+      ? formatDateTimeUI(analisiIA.updatedAtTimestamp)
       : "";
 
   return (

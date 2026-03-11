@@ -14,6 +14,10 @@ import NextMezziDossierPage from "./next/NextMezziDossierPage";
 import NextStrumentiTrasversaliPage from "./next/NextStrumentiTrasversaliPage";
 import NextRoleGuard from "./next/NextRoleGuard";
 import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
+import NextCapoMezziPage from "./next/NextCapoMezziPage";
+import NextCapoCostiMezzoPage from "./next/NextCapoCostiMezzoPage";
+import NextColleghiPage from "./next/NextColleghiPage";
+import NextFornitoriPage from "./next/NextFornitoriPage";
 
 /* ==================== APP PRINCIPALE ==================== */
 import Home from "./pages/Home";
@@ -124,6 +128,38 @@ function App() {
           element={
             <NextRoleGuard areaId="mezzi-dossier">
               <NextDossierMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="capo/mezzi"
+          element={
+            <NextRoleGuard areaId="area-capo">
+              <NextCapoMezziPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="capo/costi/:targa"
+          element={
+            <NextRoleGuard areaId="area-capo">
+              <NextCapoCostiMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="colleghi"
+          element={
+            <NextRoleGuard areaId="colleghi">
+              <NextColleghiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="fornitori"
+          element={
+            <NextRoleGuard areaId="fornitori">
+              <NextFornitoriPage />
             </NextRoleGuard>
           }
         />

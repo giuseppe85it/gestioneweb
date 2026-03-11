@@ -31,6 +31,277 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-11 21
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Apertura clone-safe Colleghi e Fornitori read-only
+- OBIETTIVO: Aprire nel clone i due moduli reali `Colleghi` e `Fornitori` con route dedicate, quick link realmente navigabili e lettura confinata in reader/domain read-only, senza usare il placeholder `Strumenti Trasversali`.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextColleghiPage.tsx`
+  - `src/next/NextFornitoriPage.tsx`
+  - `src/next/domain/nextColleghiDomain.ts`
+  - `src/next/domain/nextFornitoriDomain.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunte in `src/App.tsx` le route clone dedicate `/next/colleghi` e `/next/fornitori`, mantenendo il pattern del routing `/next`.
+  - Creati `src/next/domain/nextColleghiDomain.ts` e `src/next/domain/nextFornitoriDomain.ts` come reader piccoli read-only per `storage/@colleghi` e `storage/@fornitori`, con supporto shape `array/items/value/value.items`, modello pulito, `quality`, `flags` e limiti espliciti.
+  - Create `src/next/NextColleghiPage.tsx` e `src/next/NextFornitoriPage.tsx` come pagine clone read-only fedeli alla madre nel perimetro utile: stessa struttura pratica di form + lista, dettaglio informativo per `Colleghi` e nessuna lettura raw nella UI.
+  - Aggiornato `src/next/NextCentroControlloPage.tsx` per mappare i quick link `/colleghi` e `/fornitori` alle nuove route clone-safe, rimuovendo il buco di navigazione esistente nel clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Colleghi` e `Fornitori` sono ora pagine clone realmente apribili e navigabili dal `Centro Controllo`, senza passare dal placeholder `Strumenti Trasversali`.
+  - Lettura: la UI clone non legge raw `@colleghi` o `@fornitori`; tutta la normalizzazione resta confinata nei due domain dedicati.
+  - Blocco scritture: aggiunta, modifica, eliminazione e PDF restano visibili ma disabilitati con motivazione esplicita; nessun writer o runtime esterno della madre viene riattivato.
+- COME VERIFICARE:
+  - Aprire `/next/centro-controllo` e verificare che i quick link `Colleghi` e `Fornitori` portino rispettivamente a `/next/colleghi` e `/next/fornitori`.
+  - Aprire `/next/colleghi` e verificare lista, dettaglio read-only e blocco delle azioni `Aggiungi`, `Modifica`, `PDF`, `Elimina`.
+  - Aprire `/next/fornitori` e verificare lista read-only e blocco delle azioni `Aggiungi`, `Modifica`, `PDF`, `Elimina`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il placeholder `/next/strumenti-trasversali` non viene promosso ne riusato in questa patch; i moduli reali restano aperti direttamente con route proprie.
+
+### Voce 2026-03-10 20
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Apertura clone-safe Area Capo read-only con route dedicate
+- OBIETTIVO: Aprire nel clone la famiglia manageriale `Capo Mezzi` / `Capo Costi Mezzo` in sola lettura, mantenendo la UX pratica della madre dove sicura, senza riattivare approvazioni, PDF timbrati o altri side effect.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextCapoMezziPage.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/domain/nextCapoDomain.ts`
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunte in `src/App.tsx` le route clone dedicate `/next/capo/mezzi` e `/next/capo/costi/:targa`, mantenendo il pattern del routing `/next`.
+  - Creata `src/next/NextCapoMezziPage.tsx` come lista manageriale mezzi read-only, fedele alla madre nel perimetro utile e collegata al dettaglio costi clone-safe per targa.
+  - Creata `src/next/NextCapoCostiMezzoPage.tsx` come dettaglio manageriale costi/documenti read-only, con KPI, filtri mese/anno, lista documenti del periodo e stato approvazione mostrato solo come badge informativo.
+  - Creato `src/next/domain/nextCapoDomain.ts` per aggregare in sola lettura flotta, costi/documenti e approvazioni legacy, senza portare writer o logiche sporche in UI.
+  - Esteso `src/next/domain/nextDocumentiCostiDomain.ts` con una lettura globale flotta-costi clone-safe, cosi `Capo Mezzi` riusa la stessa normalizzazione gia attiva nel clone invece di leggere raw in pagina.
+  - Aggiornato `src/next/NextCentroControlloPage.tsx` per rendere cliccabile la card `Area Capo` e farla atterrare nelle nuove route clone-safe.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Area Capo` non e piu un placeholder nel clone; si apre con due pagine dedicate e navigazione coerente con la madre.
+  - Lettura: la UI clone non legge raw `@mezzi_aziendali`, `@costiMezzo`, `@documenti_*` o `@preventivi_approvazioni`; tutto passa da layer/domain read-only dedicati.
+  - Blocco scritture: `APPROVA`, `RIFIUTA`, `DA VALUTARE`, `stamp_pdf`, PDF timbrati ed export approvativi restano visibili ma bloccati con motivazione esplicita.
+- COME VERIFICARE:
+  - Aprire `/next/centro-controllo` e verificare che la card `Area Capo` porti a `/next/capo/mezzi`.
+  - Aprire `/next/capo/mezzi`, verificare ricerca targa, card mezzi, costi sintetici e apertura al dettaglio `/next/capo/costi/:targa`.
+  - Aprire `/next/capo/costi/<TARGA>` e verificare KPI, filtri, lista documenti, badge approvazione read-only e blocco esplicito delle azioni approvative/PDF timbrati.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il clone usa anche `@preventivi_approvazioni`, ma solo in lettura; nessun writer o workflow approvativo della madre viene riattivato.
+
+### Voce 2026-03-10 19
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Apertura e bonifica clone-safe area Inventario / Materiali consegnati / Attrezzature cantieri
+- OBIETTIVO: Completare nel clone il blocco magazzino read-only dentro `Gestione Operativa`, togliendo la lettura raw di `@inventario`, aprendo `Attrezzature cantieri` e rendendo davvero usabili in sola lettura le tre aree della madre senza side effect.
+- FILE TOCCATI:
+  - `src/next/domain/nextInventarioDomain.ts`
+  - `src/next/domain/nextAttrezzatureCantieriDomain.ts`
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `src/next/domain/nextOperativitaGlobaleDomain.ts`
+  - `src/next/NextInventarioReadOnlyPanel.tsx`
+  - `src/next/NextMaterialiConsegnatiReadOnlyPanel.tsx`
+  - `src/next/NextAttrezzatureCantieriReadOnlyPanel.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Estratto `src/next/domain/nextInventarioDomain.ts` come reader read-only dedicato per `@inventario`, con normalizzazione shape `array/items/value/value.items`, articoli, foto esistenti, fornitore, quantita, `quality`, `flags` e limiti espliciti.
+  - Creato `src/next/domain/nextAttrezzatureCantieriDomain.ts` come reader read-only dedicato per `@attrezzature_cantieri`, con normalizzazione movimenti, stato attuale cantieri, registro filtrabile, `quality`, `flags` e limiti espliciti.
+  - Esteso `src/next/domain/nextMaterialiMovimentiDomain.ts` con una vista read-only per destinatario, cosi il clone puo mostrare lista + dettaglio di `Materiali consegnati` senza ricostruzioni sporche in UI.
+  - Riallineato `src/next/domain/nextOperativitaGlobaleDomain.ts` per usare i nuovi layer inventario/attrezzature, mantenere `@materialiconsegnati` sul layer pulito esistente e dichiarare in modo esplicito la navigabilita clone-safe delle tre aree.
+  - Aperte in `src/next/NextOperativitaGlobalePage.tsx` tre viste realmente usabili dentro `/next/operativita-globale`: `Inventario` con ricerca e dettagli base, `Materiali consegnati` con lista destinatari + dettaglio storico, `Attrezzature cantieri` con `Stato attuale` e `Registro movimenti`.
+  - Aggiornato `NextCentroControlloPage` per far atterrare anche il quick link `/attrezzature-cantieri` nel nuovo perimetro clone-safe.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Gestione Operativa` resta il contenitore madre del clone, ma ora le tre aree magazzino sono davvero apribili e consultabili in sola lettura, senza placeholder vuoti o pulsanti morti.
+  - Lettura: `@inventario` non e piu letto raw nell'aggregatore pagina; inventario, materiali consegnati e attrezzature passano tutti da layer dedicati o da builder read-only confinati nel dominio.
+  - Blocco scritture: invariato e reso piu esplicito; nuovo materiale, modifica, delete, variazione quantita, upload foto, nuova consegna, scarico inventario, nuovo movimento attrezzature e rimozione foto restano visibili ma bloccati nel clone.
+- COME VERIFICARE:
+  - Aprire `/next/operativita-globale?section=inventario` e verificare ricerca, foto, stock list e azioni bloccate.
+  - Aprire `/next/operativita-globale?section=materiali` e verificare lista destinatari, dettaglio storico e blocco di nuova consegna/delete.
+  - Aprire `/next/operativita-globale?section=attrezzature` e verificare `Stato attuale`, `Registro movimenti`, filtri e blocco delle azioni scriventi.
+  - Aprire `/next/centro-controllo` e verificare che il quick link `Attrezzature Cantieri` atterri ora nel clone.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il clone resta prudente sul dominio D05: non riattiva PDF, import IA, foto, save o writer incrociati su `@inventario` e `@materialiconsegnati`.
+
+### Voce 2026-03-10 18
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Apertura e bonifica clone-safe area Procurement / Acquisti / Materiali da Ordinare / Ordini
+- OBIETTIVO: Aprire nel clone un blocco procurement davvero navigabile e read-only, togliendo la logica sporca dalla UI e mantenendo fedele la UX madre dove il perimetro clone-safe lo consente.
+- FILE TOCCATI:
+  - `src/next/domain/nextProcurementDomain.ts`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `src/next/domain/nextOperativitaGlobaleDomain.ts`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Ricreato e consolidato `src/next/domain/nextProcurementDomain.ts` come reader clone-safe del procurement, limitato a `@ordini`, con normalizzazione shape `array/items/value/value.items`, ordini, righe materiali, stati, viste legacy `Ordini`/`Arrivi`, dettaglio ordine read-only, `quality`, `flags` e limiti espliciti.
+  - Aperto in `src/next/NextOperativitaGlobalePage.tsx` un pannello `Acquisti` embedded e navigabile dentro `/next/operativita-globale`, con tab fedeli alla madre: `Ordine materiali`, `Ordini`, `Arrivi`, `Prezzi & Preventivi`, `Listino Prezzi`, piu `Dettaglio ordine` quando si apre un ordine.
+  - Resi realmente usabili nel clone i tab `Ordini`, `Arrivi` e `Dettaglio ordine` in sola lettura; lasciati cliccabili ma bloccati con motivazione esplicita `Ordine materiali`, `Prezzi & Preventivi` e `Listino Prezzi` perche ancora writer-heavy o sensibili.
+  - Aggiornata `NextCentroControlloPage` per far atterrare i quick link `/acquisti`, `/ordini-in-attesa` e `/ordini-arrivati` nel nuovo perimetro procurement clone-safe.
+  - Allineato `nextOperativitaGlobaleDomain.ts` al nuovo perimetro, dichiarando che nel clone il procurement apre solo ordini/arrivi/dettaglio read-only e tiene bloccati preventivi, listino e workflow scriventi.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il clone mostra ora un blocco `Acquisti` realmente apribile e navigabile senza cambiare l'impianto madre; le parti non sicure restano visibili ma bloccate con motivo esplicito.
+  - Lettura: tutta la logica procurement attiva sta nel layer read-only; la UI clone non legge piu raw `@ordini` in modo sparso.
+  - Blocco scritture: invariato; nessun writer su `@ordini`, `@preventivi`, `@listino_prezzi`, `@fornitori`, `@inventario`, Storage o funzioni IA viene riattivato.
+- COME VERIFICARE:
+  - Aprire `/next/operativita-globale?section=procurement&tab=ordini` e verificare che la lista ordini sia leggibile e che `Apri` porti al dettaglio ordine read-only.
+  - Aprire `/next/operativita-globale?section=procurement&tab=arrivi` e verificare la lista arrivi read-only.
+  - Aprire `/next/operativita-globale?section=procurement&tab=ordine-materiali` e verificare che la scheda resti bloccata con motivo esplicito.
+  - Verificare dal `Centro Controllo` che i quick link `Materiali Da Ordinare`, `Ordini In Attesa` e `Ordini Arrivati` atterrino ora nel nuovo blocco clone-safe.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il procurement clone-safe resta volutamente stretto a `@ordini`; `@preventivi`, `@listino_prezzi`, allegati, approvazioni, IA di estrazione e import restano fuori dal perimetro aperto in questo task.
+
+### Voce 2026-03-10 17
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Bonifica Gestione Operativa clone e apertura sezioni navigabili read-only
+- OBIETTIVO: Togliere da `NextOperativitaGlobalePage` le ultime letture raw sparse, collegarla a un layer read-only unico e rendere davvero cliccabili nel clone le sezioni sicure di inventario, materiali, manutenzioni e ordini.
+- FILE TOCCATI:
+  - `src/next/domain/nextOperativitaGlobaleDomain.ts`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Creato `src/next/domain/nextOperativitaGlobaleDomain.ts` come aggregatore read-only della schermata, con normalizzazione di `@inventario` e `@manutenzioni`, riuso del layer `@materialiconsegnati` e collegamento del workbench ordini gia read-only su `@ordini`.
+  - Collegata `NextOperativitaGlobalePage` al nuovo snapshot unico, rimuovendo dalla pagina clone le letture raw dirette di `@inventario` e `@manutenzioni`.
+  - Resa la schermata clone realmente usabile senza nuove route fuori whitelist: i pulsanti di inventario, materiali consegnati, manutenzioni e ordini aprono ora sezioni deep-linkabili sulla stessa route `/next/operativita-globale`.
+  - Aggiornato `NextCentroControlloPage` per rendere cliccabili nel clone i quick link sicuri verso inventario, materiali, manutenzioni e ordini, facendoli atterrare sulle nuove sezioni read-only di `Gestione Operativa`.
+  - Lasciato esplicitamente bloccato `Attrezzature cantieri`, con motivazione visibile, perche nel clone non esiste ancora un reader read-only dedicato e non e stata aperta una route sicura.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata nell'impianto; `Gestione Operativa` resta la stessa schermata hub della madre, ma le azioni sicure non sono piu solo decorative o bloccate.
+  - Lettura: piu stabile e tracciabile; shape sporche di inventario/manutenzioni, conteggi e limiti restano confinati nel layer.
+  - Blocco scritture: invariato; nessun writer di inventario, manutenzioni, materiali, ordini o attrezzature viene riattivato nel clone.
+- COME VERIFICARE:
+  - Aprire `/next/operativita-globale` e verificare che inventario, materiali e manutenzioni si carichino senza letture raw locali.
+  - Verificare che i pulsanti "Apri inventario completo", "Vai a materiali consegnati" e "Vai a manutenzioni" portino alle rispettive sezioni read-only nella stessa route clone.
+  - Aprire `/next/centro-controllo` e verificare che i quick link clone-safe verso inventario, materiali, manutenzioni e ordini diventino cliccabili e atterrino in `Gestione Operativa`.
+  - Verificare che `Attrezzature cantieri` resti bloccato con motivazione esplicita.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - La sezione ordini del clone resta volutamente stretta a `@ordini`: nessun preventivo, allegato, listino o workflow approvativo viene promosso in `Gestione Operativa`.
+
+### Voce 2026-03-10 16
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Normalizzazione lettura Mezzi / Anagrafica flotta nel clone
+- OBIETTIVO: Togliere da `NextMezziDossierPage` le letture raw dirette di `@mezzi_aziendali` e `@colleghi`, cablando un reader unico read-only della flotta senza cambiare la UX del clone.
+- FILE TOCCATI:
+  - `src/next/nextAnagraficheFlottaDomain.ts`
+  - `src/next/NextMezziDossierPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Consolidato `src/next/nextAnagraficheFlottaDomain.ts` come reader unico read-only per `@mezzi_aziendali` e `@colleghi`, con supporto shape `array/items/value/value.items`.
+  - Esteso il modello clone della flotta con id, targa, categoria normalizzata, dati anagrafici usati dal form read-only, foto/libretto se presenti, date/scadenze con timestamp normalizzati, `quality`, `flags` e limiti espliciti.
+  - Spostato nel layer anche il solo join prudente collega -> mezzo basato su `autistaId`, per risolvere `autistaNome` quando il dato manca sul mezzo ma il riferimento collega e leggibile.
+  - Collegata `NextMezziDossierPage` al nuovo snapshot pulito, eliminando dalla pagina clone la lettura diretta di `@mezzi_aziendali` e `@colleghi`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata; stessa schermata clone `Mezzi`, stesso ordine blocchi, stessa resa read-only.
+  - Lettura: piu stabile e tracciabile; shape sporche, alias categoria, parse date e lookup collega restano confinati nel layer.
+  - Blocco scritture: invariato; nessun writer, upload foto o flusso IA libretto viene riattivato nel clone.
+- COME VERIFICARE:
+  - Aprire `/next/mezzi-dossier` e verificare che elenco mezzi, form read-only e selezione mezzo continuino a funzionare.
+  - Verificare che i mezzi con `autistaId` ma `autistaNome` assente nel record vengano comunque letti in modo coerente quando il collega esiste in `@colleghi`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il layer resta prudente: nessun match debole collega/nome libero e nessuna inferenza nuova oltre i riferimenti gia dimostrati nel repo.
+
+### Voce 2026-03-10 15
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Consolidamento aggregatore clone Dossier Mezzo + Analisi
+- OBIETTIVO: Trasformare `src/next/domain/nextDossierMezzoDomain.ts` nel vero aggregatore read-only unico del clone per Dossier Mezzo e Analisi Economica, togliendo dalle due pagine le ultime letture raw attive nel percorso di caricamento.
+- FILE TOCCATI:
+  - `src/next/domain/nextDossierMezzoDomain.ts`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/NextAnalisiEconomicaPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Esteso `src/next/domain/nextDossierMezzoDomain.ts` per leggere e normalizzare in un solo snapshot clone: anagrafica mezzo, lavori, materiali/movimenti, manutenzioni/gomme, rifornimenti, documenti/costi e supporto Analisi Economica con l'eventuale record legacy salvato in `@analisi_economica_mezzi`.
+  - Aggiunti nel layer i mapper read-only per le due pagine clone, cosi che `NextDossierMezzoPage` e `NextAnalisiEconomicaPage` leggano solo l'aggregatore e non ricostruiscano piu i dati localmente.
+  - Spostata nel layer anche la lettura read-only dell'anagrafica estesa del mezzo da `@mezzi_aziendali`, mantenendo espliciti `quality`, `flags` e limiti residue della shape legacy.
+  - Sostituito in `NextAnalisiEconomicaPage` il caricamento diretto di `@mezzi_aziendali` e `@analisi_economica_mezzi` con il nuovo snapshot aggregato clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata; Dossier Mezzo e Analisi Economica mantengono blocchi, ordine e testi esistenti.
+  - Lettura: piu stabile e centralizzata; il clone usa un solo reader aggregato per i due punti principali mezzo-centrici.
+  - Blocco scritture: invariato; nessuna riattivazione di writer, delete, upload o rigenerazioni IA.
+- COME VERIFICARE:
+  - Aprire `/next/mezzi-dossier/:targa` e verificare che il dossier continui a mostrare anagrafica, lavori, materiali, rifornimenti, costi e manutenzioni.
+  - Aprire `/next/mezzi-dossier/:targa?view=analisi` e verificare che l'Analisi Economica mostri costi e analisi IA salvata senza letture raw locali.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il consolidamento resta read-only e prudente: eventuali residui legacy non affidabili restano nel layer come limiti espliciti e non vengono promossi a nuove inferenze.
+
+### Voce 2026-03-10 14
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Normalizzazione lettura materiali / movimenti nel clone
+- OBIETTIVO: Portare la lettura clone di `@materialiconsegnati` dentro un layer read-only dedicato, pulito e unico, senza cambiare la UX del Dossier Mezzo o della preview operativa clone.
+- FILE TOCCATI:
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Creato il layer clone `src/next/domain/nextMaterialiMovimentiDomain.ts` come reader unico read-only per `@materialiconsegnati`, con normalizzazione shape (`value/items/array`), parsing prudente date, destinatario oggetto/stringa, tracciabilita `source`, `quality` e `flags`.
+  - Spostato nel layer il collegamento mezzo read-only, usando solo segnali dimostrati dal repo (`targa`/`mezzoTarga`, `destinatario.label`, `destinatario.refId`) e lasciando espliciti i limiti dove il legacy resta ambiguo.
+  - Spostata nel layer anche la derivazione prudente dei costi materiali dal supporto `@documenti_magazzino`, senza introdurre merge con `@inventario` o nuove inferenze di stock.
+  - Collegati al nuovo reader `NextDossierMezzoPage` e `NextOperativitaGlobalePage`, rimuovendo dal clone le letture dirette sparse di `@materialiconsegnati`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata; il blocco materiali del Dossier e la schermata `Gestione Operativa` del clone mantengono layout, ordine e testi esistenti.
+  - Lettura: piu stabile e tracciabile, con matching mezzo/destinatario e costi confinati nel layer read-only.
+  - Blocco scritture: invariato; nessun writer, delete, import o side effect nuovo.
+- COME VERIFICARE:
+  - Aprire `/next/mezzi-dossier/:targa` e verificare che la tabella "Materiali e movimenti inventario" resti identica ma legga il nuovo layer.
+  - Aprire `/next/gestione-operativa` e verificare che il badge consegne continui a popolarsi senza lettura raw di `@materialiconsegnati`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il layer resta prudente: non ricostruisce movimenti inventariali transazionali e non promuove costi se il match descrittivo con `@documenti_magazzino` non e abbastanza chiaro.
+
+### Voce 2026-03-10 13
+- DATA: 2026-03-10
+- TITOLO MODIFICA: Normalizzazione lettura lavori nel clone
+- OBIETTIVO: Portare la lettura clone di `@lavori` dentro un layer read-only dedicato, pulito e unico, senza cambiare la UX del Dossier Mezzo.
+- FILE TOCCATI:
+  - `src/next/domain/nextLavoriDomain.ts`
+  - `src/next/nextOperativitaTecnicaDomain.ts`
+  - `src/next/domain/nextDossierMezzoDomain.ts`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Creato il layer clone `src/next/domain/nextLavoriDomain.ts` come reader unico read-only per `@lavori`, con normalizzazione shape (`value/items/array`), parsing prudente date, alias `targa`/`mezzoTarga`, tracciabilita `source`, `quality` e `flags`.
+  - Spostata nel layer tutta la classificazione dei lavori: backlog aperto (`eseguito !== true`), vista Dossier `In attesa` (solo aperti con `gruppoId`) e chiusi, mantenendo esplicito il limite dei lavori aperti senza `gruppoId`.
+  - Riallineato `src/next/nextOperativitaTecnicaDomain.ts` per riusare il nuovo normalizer Lavori invece di mantenere logiche duplicate nel clone.
+  - Collegato `NextDossierMezzoPage` al nuovo snapshot lavori e rimosso dalla pagina il reader diretto di `@lavori`, lasciando invariata la UI.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata; il blocco lavori del Dossier clone mantiene ordine, badge e modali della madre.
+  - Lettura: piu stabile e tracciabile, con classificazione e limiti confinati nel layer read-only.
+  - Blocco scritture: invariato; nessun writer, delete, import o side effect nuovo.
+- COME VERIFICARE:
+  - Aprire `/next/mezzi-dossier/:targa` e verificare che il blocco lavori e le due modali restino uguali nel clone.
+  - Verificare che i lavori eseguiti e quelli in attesa continuino a popolarsi senza letture dirette della pagina da `@lavori`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il layer resta prudente: non ricostruisce stati avanzamento da `sottoElementi` e non promuove automaticamente a `In attesa` i lavori aperti privi di `gruppoId`.
+
 ### Voce 2026-03-10 12
 - DATA: 2026-03-10
 - TITOLO MODIFICA: Normalizzazione lettura Centro di Controllo ed eventi nel clone

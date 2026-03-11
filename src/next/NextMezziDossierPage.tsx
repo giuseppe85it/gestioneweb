@@ -5,62 +5,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../pages/Mezzi.css";
 import "./next-shell.css";
-import { getItemSync } from "../utils/storageSync";
 import { formatDateInput, formatDateUI } from "../utils/dateFormat";
-
-const MEZZI_KEY = "@mezzi_aziendali";
-const COLLEGHI_KEY = "@colleghi";
+import {
+  normalizeNextMezzoCategoria,
+  readNextAnagraficheFlottaSnapshot,
+  type NextAnagraficheFlottaCollegaItem,
+  type NextAnagraficheFlottaMezzoItem,
+} from "./nextAnagraficheFlottaDomain";
 
 const CLONE_READ_ONLY_TITLE = "Clone read-only: operazione bloccata";
 const CLONE_READ_ONLY_ERROR = "Clone read-only: operazione non disponibile.";
 
-
-interface Collega {
-  id: string;
-  nome: string;
-  cognome?: string;
-}
-
-
-
-interface Mezzo {
-  id: string;
-
-  tipo?: "motrice" | "cisterna";
-
-  categoria?: string;
-
-  targa: string;
-  marca: string;
-  modello: string;
-  telaio: string;
-  colore: string;
-  cilindrata: string;
-  potenza: string;
-  massaComplessiva: string;
-  proprietario: string;
-  assicurazione: string;
-  dataImmatricolazione: string;
-  dataScadenzaRevisione: string;
-  dataUltimoCollaudo: string;
-
-  manutenzioneProgrammata: boolean;
-
-  manutenzioneDataInizio?: string;
-  manutenzioneDataFine?: string;
-  manutenzioneKmMax?: string;
-  manutenzioneContratto?: string;
-
-  note: string;
-
-  autistaId?: string | null;
-  autistaNome?: string | null;
-
-  marcaModello?: string;
-
-  fotoUrl?: string | null;
-  fotoPath?: string | null;
-}
+type Collega = NextAnagraficheFlottaCollegaItem;
+type Mezzo = NextAnagraficheFlottaMezzoItem;
 
 function buildDate(yyyyStr: string, mmStr: string, ddStr: string): Date | null {
   const yyyy = Number(yyyyStr);
@@ -259,19 +216,13 @@ const Mezzi: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const rawMezzi = await getItemSync(MEZZI_KEY);
-        const arrMezzi: Mezzo[] = Array.isArray(rawMezzi)
-          ? rawMezzi
-          : rawMezzi?.value ?? [];
-        setMezzi(arrMezzi);
-
-        const rawColleghi = await getItemSync(COLLEGHI_KEY);
-        const arrColl: Collega[] = Array.isArray(rawColleghi)
-          ? rawColleghi
-          : rawColleghi?.value ?? [];
-        setColleghi(arrColl);
+        const snapshot = await readNextAnagraficheFlottaSnapshot();
+        setMezzi(snapshot.items);
+        setColleghi(snapshot.colleghi);
       } catch (err) {
         setError("Impossibile caricare i dati.");
+        setMezzi([]);
+        setColleghi([]);
       } finally {
         setLoading(false);
       }
@@ -665,17 +616,8 @@ const handleChangeAutista = (value: string) => {
   );
 
   const normalizeCategoria = (cat: string | undefined | null): string => {
-    const normalized = String(cat ?? "")
-      .trim()
-      .replace(/\s+/g, " ")
-      .toLowerCase();
-    if (!normalized) return "Senza categoria";
-
-    const aliases: Record<string, string> = {
-      pianale: "pianale",
-    };
-    const lookupKey = aliases[normalized] ?? normalized;
-    return CATEGORIE_CANONICHE_MAP[lookupKey] ?? lookupKey;
+    const normalized = normalizeNextMezzoCategoria(cat);
+    return CATEGORIE_CANONICHE_MAP[normalized.toLowerCase()] ?? normalized;
   };
 
   const mezziPerCategoria: Record<string, Mezzo[]> = {};
@@ -1439,15 +1381,18 @@ const handleChangeAutista = (value: string) => {
                           )}
                           <div className="mezzi-list">
                             {lista.map((m, index) => {
-                              const scadenzaPrimaria = parseDateFlexible(
-                                m.dataScadenzaRevisione || ""
-                              );
-                              const immDate = parseDateFlexible(
-                                m.dataImmatricolazione || ""
-                              );
-                              const collaudoDate = parseDateFlexible(
-                                m.dataUltimoCollaudo || ""
-                              );
+                              const scadenzaPrimaria =
+                                m.dataScadenzaRevisioneTimestamp !== null
+                                  ? new Date(m.dataScadenzaRevisioneTimestamp)
+                                  : null;
+                              const immDate =
+                                m.dataImmatricolazioneTimestamp !== null
+                                  ? new Date(m.dataImmatricolazioneTimestamp)
+                                  : null;
+                              const collaudoDate =
+                                m.dataUltimoCollaudoTimestamp !== null
+                                  ? new Date(m.dataUltimoCollaudoTimestamp)
+                                  : null;
                               const computed = calculaProssimaRevisione(
                                 immDate,
                                 collaudoDate
@@ -1455,9 +1400,11 @@ const handleChangeAutista = (value: string) => {
                               const scadenzaDate = scadenzaPrimaria ?? computed;
                               const revDisplay = formatDateForDisplay(scadenzaDate);
 
-                              const progDate = m.manutenzioneProgrammata
-                                ? parseDateFlexible(m.manutenzioneDataFine || "")
-                                : null;
+                              const progDate =
+                                m.manutenzioneProgrammata &&
+                                m.manutenzioneDataFineTimestamp !== null
+                                  ? new Date(m.manutenzioneDataFineTimestamp)
+                                  : null;
                               const progDisplay = m.manutenzioneProgrammata
                                 ? formatDateForDisplay(progDate)
                                 : null;

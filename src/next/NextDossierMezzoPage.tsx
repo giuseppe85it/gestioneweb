@@ -9,6 +9,13 @@ import NextDossierGommePage from "./NextDossierGommePage";
 import NextDossierRifornimentiPage from "./NextDossierRifornimentiPage";
 import { readNextMezzoRifornimentiSnapshot } from "./domain/nextRifornimentiDomain";
 import {
+  buildNextDossierMezzoLegacyView,
+  readNextDossierMezzoCompositeSnapshot,
+  type NextDossierMezzoIdentity,
+  type NextDossierMezzoLegacyViewState,
+  type NextDossierRifornimentoLegacyItem,
+} from "./domain/nextDossierMezzoDomain";
+import {
   mapNextDocumentiCostiItemsToLegacyView,
   readNextMezzoDocumentiCostiSnapshot,
   type NextDocumentiCostiCurrency,
@@ -19,6 +26,15 @@ import {
   readNextMezzoManutenzioniGommeSnapshot,
 } from "./domain/nextManutenzioniGommeDomain";
 import type { NextScheduledMaintenance } from "./domain/nextManutenzioniDomain";
+import {
+  buildNextLavoriLegacyDossierView,
+  readNextMezzoLavoriSnapshot,
+} from "./domain/nextLavoriDomain";
+import {
+  buildNextMaterialiMovimentiLegacyDossierView,
+  buildNextMezzoMaterialiMovimentiSnapshot,
+  readNextMaterialiMovimentiSnapshot,
+} from "./domain/nextMaterialiMovimentiDomain";
 import {
   buildPdfShareText,
   buildWhatsAppShareUrl,
@@ -42,70 +58,9 @@ const normalizeTarga = (t?: unknown) => {
 type Currency = NextDocumentiCostiCurrency;
 
 
-interface Mezzo {
-  id?: string;
-  targa: string;
-  anno?: string;
-  categoria?: string;
-  massaComplessiva?: string;
-  dataImmatricolazione?: string;
-  dataScadenzaRevisione?: string;
-  marca?: string;
-  modello?: string;
-  marcaModello?: string;
-  colore?: string;
-  telaio?: string;
-  proprietario?: string;
-  assicurazione?: string;
-  cilindrata?: string;
-  potenza?: string;
-  note?: string;
-  fotoUrl?: string | null;
-  manutenzioneContratto?: string;
-  manutenzioneDataInizio?: string;
-  manutenzioneDataFine?: string;
-  manutenzioneKmMax?: string;
-  manutenzioneProgrammata?: boolean;
-  librettoUrl?: string | null;
-}
+type Mezzo = NextDossierMezzoIdentity;
 
-interface Lavoro {
-  id: string;
-  targa?: string;
-  mezzoTarga?: string;
-  descrizione: string;
-  dettagli?: string;
-  dataInserimento?: string;
-  eseguito?: boolean;
-  urgenza?: string;
-  gruppoId?: string;
-}
-
-interface MovimentoMateriale {
-  id: string;
-  mezzoTarga?: string;
-  destinatario?: { type: string; refId: string; label: string };
-  materialeLabel?: string;
-  descrizione?: string;
-  fornitore?: string;
-  motivo?: string;
-  quantita?: number;
-  unita?: string;
-  direzione?: "IN" | "OUT";
-  data?: string;
-  fornitoreLabel?: string;
-}
-
-interface Rifornimento {
-  id: string;
-  targaCamion?: string | null;
-  data?: number | null;
-  litri?: number | null;
-  km?: number | null;
-  tipo?: string | null;
-  autistaNome?: string | null;
-  badgeAutista?: string | null;
-}
+type Rifornimento = NextDossierRifornimentoLegacyItem;
 
 interface FatturaPreventivo {
   id: string;
@@ -134,24 +89,14 @@ interface Manutenzione {
   descrizione?: string;
 }
 
-interface DossierState {
-  mezzo: Mezzo | null;
-  lavoriDaEseguire: Lavoro[];
-  lavoriInAttesa: Lavoro[];
-  lavoriEseguiti: Lavoro[];
-  movimentiMateriali: MovimentoMateriale[];
-  rifornimenti: Rifornimento[];
-  documentiCosti: FatturaPreventivo[];
+type DossierState = Omit<
+  NextDossierMezzoLegacyViewState,
+  "manutenzioni" | "scheduledMaintenance"
+> & {
   documentiMagazzino: NextDocumentiMagazzinoSupportDocument[];
-}
+};
 
-const DossierMezzo: React.FC = () => {
-  const { targa } = useParams<{ targa: string }>();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const activeView = searchParams.get("view");
-
- const [state, setState] = useState<DossierState>({
+const EMPTY_DOSSIER_STATE: DossierState = {
   mezzo: null,
   lavoriDaEseguire: [],
   lavoriInAttesa: [],
@@ -159,10 +104,20 @@ const DossierMezzo: React.FC = () => {
   movimentiMateriali: [],
   rifornimenti: [],
   documentiCosti: [],
+  documentiMagazzino: [],
+};
+
+const DossierMezzo: React.FC = () => {
+  const { targa } = useParams<{ targa: string }>();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const activeView = searchParams.get("view");
+
+  const [state, setState] = useState<DossierState>(EMPTY_DOSSIER_STATE); /*
   documentiMagazzino: [],   // <── AGGIUNTO
 });
 
-
+  */
   const [manutenzioni, setManutenzioni] = useState<Manutenzione[]>([]);
   const [scheduledMaintenance, setScheduledMaintenance] = useState<NextScheduledMaintenance | null>(null);
   const [loading, setLoading] = useState(true);
@@ -261,6 +216,10 @@ useEffect(() => {
     let cancelled = false;
 
     const loadData = async () => {
+      if (activeView) {
+        return;
+      }
+
       if (!targa) {
         setError("Targa non specificata.");
         setLoading(false);
@@ -270,52 +229,64 @@ useEffect(() => {
       try {
         setLoading(true);
         setError(null);
+        const snapshot = await readNextDossierMezzoCompositeSnapshot(targa);
+
+        if (!cancelled) {
+          if (!snapshot) {
+            setState(EMPTY_DOSSIER_STATE);
+            setManutenzioni([]);
+            setScheduledMaintenance(null);
+            setLoading(false);
+            return;
+          }
+
+          const view = buildNextDossierMezzoLegacyView(snapshot);
+          const {
+            manutenzioni: manutenzioniView,
+            scheduledMaintenance: scheduledMaintenanceView,
+            ...dossierState
+          } = view;
+
+          setState({
+            ...dossierState,
+            documentiMagazzino: [],
+          });
+          setManutenzioni(manutenzioniView);
+          setScheduledMaintenance(scheduledMaintenanceView);
+          setLoading(false);
+          return;
+        }
+
+        return;
 
         const mezziDocRef = doc(db, "storage", "@mezzi_aziendali");
         const mezziSnap = await getDoc(mezziDocRef);
         const mezziData = mezziSnap.data() || {};
         const mezziArray = (mezziData.value || []) as Mezzo[];
+        const legacyTarga = targa ?? "";
 
         const mezzo = mezziArray.find(
-          (m) => m.targa?.toUpperCase().trim() === targa.toUpperCase().trim()
+          (m) => m.targa?.toUpperCase().trim() === legacyTarga.toUpperCase().trim()
         );
 
-        const lavoriDocRef = doc(db, "storage", "@lavori");
-        const lavoriSnap = await getDoc(lavoriDocRef);
-        const lavoriData = lavoriSnap.data() || {};
-        const lavoriArray = (lavoriData.value || []) as Lavoro[];
-
-        const lavoriPerMezzo = lavoriArray.filter((l) => {
-          const t = (l.targa || l.mezzoTarga || "").toUpperCase().trim();
-          return t === targa.toUpperCase().trim();
-        });
-
-        const lavoriDaEseguire = lavoriPerMezzo.filter((l) => l.eseguito === false);
-        const lavoriEseguiti = lavoriPerMezzo.filter((l) => l.eseguito === true);
-        const lavoriInAttesa = lavoriDaEseguire.filter(
-          (l) => l.gruppoId && !l.eseguito
-        );
-
-        const movimentiDocRef = doc(db, "storage", "@materialiconsegnati");
-        const movimentiSnap = await getDoc(movimentiDocRef);
-        const movimentiData = movimentiSnap.data() || {};
-        const movimentiArray =
-          (movimentiData.value || []) as MovimentoMateriale[];
-
-        const movimentiPerMezzo = movimentiArray.filter(
-          (m) => m.destinatario?.label === targa
-        );
-
-        movimentiPerMezzo.sort((a, b) => {
-          const parse = (d?: string) => {
-            if (!d) return 0;
-            const [gg, mm, yyyy] = d.split(" ");
-            return new Date(`${yyyy}-${mm}-${gg}`).getTime();
-          };
-          return parse(b.data) - parse(a.data);
-        });
-
-        const rifornimentiSnapshot = await readNextMezzoRifornimentiSnapshot(targa);
+        const [
+          lavoriSnapshot,
+          materialiMovimentiSnapshot,
+          rifornimentiSnapshot,
+          documentiCostiSnapshot,
+          manutenzioniGommeSnapshot,
+        ] = await Promise.all([
+          readNextMezzoLavoriSnapshot(legacyTarga),
+          readNextMaterialiMovimentiSnapshot(),
+          readNextMezzoRifornimentiSnapshot(legacyTarga),
+          readNextMezzoDocumentiCostiSnapshot(legacyTarga),
+          readNextMezzoManutenzioniGommeSnapshot(legacyTarga),
+        ]);
+        const {
+          lavoriDaEseguire,
+          lavoriInAttesa,
+          lavoriEseguiti,
+        } = buildNextLavoriLegacyDossierView(lavoriSnapshot);
         const rifornimentiPerMezzo: Rifornimento[] = rifornimentiSnapshot.items.map((entry) => ({
           id: entry.id,
           targaCamion: entry.targa,
@@ -328,13 +299,19 @@ useEffect(() => {
         }));
 let docsMag: NextDocumentiMagazzinoSupportDocument[] = [];
 
-        const documentiCostiSnapshot = await readNextMezzoDocumentiCostiSnapshot(targa);
         const documentiCostiReadOnly = mapNextDocumentiCostiItemsToLegacyView(
           documentiCostiSnapshot.items
         );
         docsMag = documentiCostiSnapshot.materialCostSupport.documents;
+        const movimentiPerMezzo = buildNextMaterialiMovimentiLegacyDossierView(
+          buildNextMezzoMaterialiMovimentiSnapshot({
+            baseSnapshot: materialiMovimentiSnapshot,
+            targa: legacyTarga,
+            mezzoId: mezzo?.id ?? null,
+            materialCostSupportDocuments: docsMag,
+          })
+        );
 
-        const manutenzioniGommeSnapshot = await readNextMezzoManutenzioniGommeSnapshot(targa);
         const manArray = mapNextManutenzioniItemsToLegacyView(
           manutenzioniGommeSnapshot.maintenanceItems
         );
@@ -366,7 +343,7 @@ setState({
     return () => {
       cancelled = true;
     };
-  }, [targa]);
+  }, [activeView, targa]);
 
   const handleBack = () => {
     navigate("/next/mezzi-dossier");
@@ -376,7 +353,7 @@ setState({
     mezzo: state.mezzo,
     mezzoFotoUrl: state.mezzo?.fotoUrl ?? null,
     mezzoFotoStoragePath:
-      (state.mezzo as any)?.fotoStoragePath ?? (state.mezzo as any)?.fotoPath ?? null,
+      state.mezzo?.fotoStoragePath ?? state.mezzo?.fotoPath ?? null,
     lavoriDaEseguire: state.lavoriDaEseguire,
     lavoriInAttesa: state.lavoriInAttesa,
     lavoriEseguiti: state.lavoriEseguiti,
@@ -452,12 +429,6 @@ setState({
     const url = buildWhatsAppShareUrl(shareText);
     window.open(url, "_blank", "noopener,noreferrer");
   };
-
-  const deletePreventivo = async (p: FatturaPreventivo) => {
-    void p;
-    return;
-  };
-  void deletePreventivo;
 
   if (activeView === "analisi") {
     return <NextAnalisiEconomicaPage />;
@@ -622,15 +593,15 @@ const fatture = state.documentiCosti
   const manutenzioniMostrate = manutenzioniPerTarga.slice(0, 3);
 
   const manutenzioneProgrammataAttiva =
-    scheduledMaintenance?.enabled ?? Boolean((mezzo as any).manutenzioneProgrammata);
+    scheduledMaintenance?.enabled ?? Boolean(mezzo.manutenzioneProgrammata);
   const manutenzioneContratto =
-    scheduledMaintenance?.contratto ?? (mezzo as any).manutenzioneContratto ?? "-";
+    scheduledMaintenance?.contratto ?? mezzo.manutenzioneContratto ?? "-";
   const manutenzioneDataInizio =
-    scheduledMaintenance?.dataInizio ?? (mezzo as any).manutenzioneDataInizio ?? null;
+    scheduledMaintenance?.dataInizio ?? mezzo.manutenzioneDataInizio ?? null;
   const manutenzioneDataFine =
-    scheduledMaintenance?.dataFine ?? (mezzo as any).manutenzioneDataFine ?? null;
+    scheduledMaintenance?.dataFine ?? mezzo.manutenzioneDataFine ?? null;
   const manutenzioneKmMax =
-    scheduledMaintenance?.kmMax ?? (mezzo as any).manutenzioneKmMax ?? "-";
+    scheduledMaintenance?.kmMax ?? mezzo.manutenzioneKmMax ?? "-";
 
   const formatKmOre = (m: Manutenzione): string => {
     const tipo = (m.tipo || "").toLowerCase();
@@ -651,7 +622,7 @@ const fatture = state.documentiCosti
   // ========================
 // Trova prezzo unitario dai documenti magazzino
 // ========================
-const trovaPrezzoUnitario = (descrMov?: string): number | null => {
+const trovaPrezzoUnitarioLegacy = (descrMov?: string): number | null => {
   if (!descrMov) return null;
 
   const target = descrMov.toUpperCase().trim();
@@ -684,6 +655,8 @@ const trovaPrezzoUnitario = (descrMov?: string): number | null => {
 
   return null;
 };
+
+void trovaPrezzoUnitarioLegacy;
 
 return (
   <div className="dossier-wrapper">
@@ -926,7 +899,7 @@ return (
               </li>
               <li>
   <span>Autista abituale</span>
-  <strong>{(mezzo as any).autistaNome || "-"}</strong>
+  <strong>{mezzo.autistaNome || "-"}</strong>
 </li>
 
               <li>
@@ -1235,14 +1208,12 @@ return (
                         <td>{m.motivo || "-"}</td>
 <td>
   {(() => {
-    const label = m.descrizione || m.materialeLabel || "";
-    const pu = trovaPrezzoUnitario(label);
+    const pu = m.costoTotale;
     if (pu == null) return "–";
 
-    const qty = Number(m.quantita) || 0;
-    const totale = pu * qty;
+    const totale = pu;
 
-    return renderAmountWithCurrency(totale, "UNKNOWN");
+    return renderAmountWithCurrency(totale, m.costoCurrency ?? "UNKNOWN");
   })()}
 </td>
 

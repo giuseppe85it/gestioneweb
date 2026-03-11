@@ -180,6 +180,44 @@ export type NextMezzoDocumentiCostiSnapshot = {
   limitations: string[];
 };
 
+export type NextDocumentiCostiFleetSnapshot = {
+  domainCode: typeof NEXT_DOCUMENTI_COSTI_DOMAIN.code;
+  domainName: typeof NEXT_DOCUMENTI_COSTI_DOMAIN.name;
+  logicalDatasets: readonly string[];
+  activeReadOnlyDatasets: readonly string[];
+  normalizationStrategy: typeof NEXT_DOCUMENTI_COSTI_DOMAIN.normalizationStrategy;
+  outputContract: typeof NEXT_DOCUMENTI_COSTI_DOMAIN.outputContract;
+  datasetShapes: {
+    costiMezzo: NextLegacyDatasetShape;
+  };
+  items: NextDocumentiCostiReadOnlyItem[];
+  counts: {
+    total: number;
+    mezziConDocumenti: number;
+    preventivi: number;
+    fatture: number;
+    documentiUtili: number;
+    withFile: number;
+    withAmount: number;
+  };
+  totals: {
+    preventivi: NextDocumentiCostiAmountTotals;
+    fatture: NextDocumentiCostiAmountTotals;
+  };
+  sourceCounts: {
+    costiMezzo: number;
+    documentiMezzo: number;
+    documentiMagazzino: number;
+    documentiGenerici: number;
+  };
+  materialCostSupport: {
+    documents: NextDocumentiMagazzinoSupportDocument[];
+    documentCount: number;
+    rowCount: number;
+  };
+  limitations: string[];
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -681,13 +719,12 @@ function buildAmountTotals(items: NextDocumentiCostiReadOnlyItem[]): NextDocumen
   );
 }
 
-function mapCostoMezzoRecord(
+function mapCostoMezzoRecordAny(
   raw: RawRecord,
-  mezzoTarga: string,
   index: number
 ): NextDocumentiCostiReadOnlyItem | null {
   const itemTarga = normalizeTarga(raw.mezzoTarga ?? raw.targa);
-  if (!itemTarga || itemTarga !== mezzoTarga) return null;
+  if (!itemTarga) return null;
 
   const tipoDocumento = normalizeTipoDocumento(raw.tipo);
   const category = classifyCategory(tipoDocumento);
@@ -696,7 +733,7 @@ function mapCostoMezzoRecord(
   const supplier = normalizeOptionalText(raw.fornitoreLabel ?? raw.fornitore);
   const fileUrl = normalizeOptionalText(raw.fileUrl);
   const sourceDocId = normalizeOptionalText(raw.id);
-  const sourceRecordId = sourceDocId ?? `costo-mezzo:${mezzoTarga}:${index}`;
+  const sourceRecordId = sourceDocId ?? `costo-mezzo:${itemTarga}:${index}`;
   const title = buildItemTitle({
     category,
     documentTypeLabel: tipoDocumento || "",
@@ -713,8 +750,8 @@ function mapCostoMezzoRecord(
 
   return {
     id: sourceRecordId,
-    mezzoTarga,
-    targa: mezzoTarga,
+    mezzoTarga: itemTarga,
+    targa: itemTarga,
     category,
     categoria: category,
     documentTypeLabel: tipoDocumento || "Documento costo",
@@ -748,15 +785,14 @@ function mapCostoMezzoRecord(
   };
 }
 
-function mapDocumentoRecord(args: {
+function mapDocumentoRecordAny(args: {
   raw: RawRecord;
-  mezzoTarga: string;
   collectionKey: string;
   sourceDocId: string;
 }): NextDocumentiCostiReadOnlyItem | null {
-  const { raw, mezzoTarga, collectionKey, sourceDocId } = args;
+  const { raw, collectionKey, sourceDocId } = args;
   const itemTarga = normalizeTarga(raw.targa);
-  if (!itemTarga || itemTarga !== mezzoTarga) return null;
+  if (!itemTarga) return null;
 
   const tipoDocumento = normalizeTipoDocumento(raw.tipoDocumento);
   const category = classifyCategory(tipoDocumento);
@@ -798,8 +834,8 @@ function mapDocumentoRecord(args: {
 
   return {
     id: `${collectionKey}:${sourceDocId}`,
-    mezzoTarga,
-    targa: mezzoTarga,
+    mezzoTarga: itemTarga,
+    targa: itemTarga,
     category,
     categoria: category,
     documentTypeLabel:
@@ -830,6 +866,86 @@ function mapDocumentoRecord(args: {
     quality: deriveRecordQuality(fieldQuality),
     dedupGroup: null,
     flags,
+  };
+}
+
+type NextDocumentiCostiSources = {
+  costiDataset: {
+    datasetShape: NextLegacyDatasetShape;
+    items: unknown[];
+  };
+  documentSnapshots: Array<Awaited<ReturnType<typeof getDocs>> | null>;
+  readFailures: string[];
+};
+
+async function readDocumentiCostiSources(): Promise<NextDocumentiCostiSources> {
+  const [costiResult, ...documentResults] = await Promise.allSettled([
+    readCostiMezzoDataset(),
+    ...DOCUMENTI_COLLECTION_KEYS.map((collectionKey) => getDocs(collection(db, collectionKey))),
+  ]);
+  const readFailures: string[] = [];
+  const costiDataset =
+    costiResult.status === "fulfilled"
+      ? costiResult.value
+      : ((readFailures.push("storage/@costiMezzo"), {
+          datasetShape: "missing",
+          items: [],
+        }) as { datasetShape: NextLegacyDatasetShape; items: unknown[] });
+  const documentSnapshots = documentResults.map((result, index) => {
+    if (result.status === "fulfilled") {
+      return result.value;
+    }
+
+    readFailures.push(DOCUMENTI_COLLECTION_KEYS[index]);
+    return null;
+  });
+
+  return {
+    costiDataset,
+    documentSnapshots,
+    readFailures,
+  };
+}
+
+function buildAllDocumentiCostiItems(args: {
+  costiDataset: NextDocumentiCostiSources["costiDataset"];
+  documentSnapshots: NextDocumentiCostiSources["documentSnapshots"];
+}): {
+  items: NextDocumentiCostiReadOnlyItem[];
+  materialSupportDocuments: NextDocumentiMagazzinoSupportDocument[];
+} {
+  const { costiDataset, documentSnapshots } = args;
+
+  const costiItems = costiDataset.items
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      return mapCostoMezzoRecordAny(entry as RawRecord, index);
+    })
+    .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
+
+  const documentItems = documentSnapshots.flatMap((snapshot, index) => {
+    if (!snapshot) return [];
+    const collectionKey = DOCUMENTI_COLLECTION_KEYS[index];
+    return snapshot.docs
+      .map((docSnapshot) =>
+        mapDocumentoRecordAny({
+          raw: (docSnapshot.data() ?? {}) as RawRecord,
+          collectionKey,
+          sourceDocId: docSnapshot.id,
+        })
+      )
+      .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
+  });
+
+  const materialSupportDocuments = (documentSnapshots[1]?.docs ?? [])
+    .map((docSnapshot) =>
+      mapMaterialSupportDocument((docSnapshot.data() ?? {}) as RawRecord, docSnapshot.id)
+    )
+    .filter((entry): entry is NextDocumentiMagazzinoSupportDocument => Boolean(entry));
+
+  return {
+    items: sortItems(dedupItems([...costiItems, ...documentItems])),
+    materialSupportDocuments,
   };
 }
 
@@ -917,6 +1033,38 @@ function buildLimitations(args: {
   ].filter((entry): entry is string => Boolean(entry));
 }
 
+function buildFleetLimitations(args: {
+  datasetShape: NextLegacyDatasetShape;
+  counts: NextDocumentiCostiFleetSnapshot["counts"];
+  sourceCounts: NextDocumentiCostiFleetSnapshot["sourceCounts"];
+  materialCostSupport: NextDocumentiCostiFleetSnapshot["materialCostSupport"];
+  readFailures: string[];
+}): string[] {
+  const { datasetShape, counts, sourceCounts, materialCostSupport, readFailures } = args;
+
+  return [
+    "Il layer globale legge solo `@costiMezzo` e le collezioni `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, sempre in sola lettura.",
+    "La vista flotta aggrega solo record con `targa` leggibile: nessuna inferenza debole da testo libero o file name.",
+    "Il layer non legge `@preventivi`, non apre il workflow Acquisti e non riattiva PDF o approvazioni scriventi.",
+    "Il layer globale non incorpora `@preventivi_approvazioni`: quello stato resta un supporto separato dell'Area Capo e va trattato in sola lettura.",
+    counts.withAmount < counts.preventivi + counts.fatture
+      ? "Una parte di preventivi o fatture non espone un importo parsabile: i totali flotta restano prudenziali e non forzano ricostruzioni."
+      : null,
+    sourceCounts.documentiMagazzino > 0
+      ? "I documenti magazzino entrano solo come lettura documentale/costi correlata al mezzo: nessun ingresso del dominio stock o movimenti."
+      : null,
+    materialCostSupport.documentCount > 0
+      ? "Il supporto righe `voci` di `@documenti_magazzino` resta disponibile solo come ausilio read-only; non apre inventario o procurement."
+      : null,
+    datasetShape === "unsupported"
+      ? "Il dataset `@costiMezzo` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
+      : null,
+    ...readFailures.map(
+      (entry) => `Lettura parziale: la sorgente ${entry} non e stata letta dal layer e viene trattata come non disponibile.`
+    ),
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
 async function readCostiMezzoDataset(): Promise<{
   datasetShape: NextLegacyDatasetShape;
   items: unknown[];
@@ -926,59 +1074,76 @@ async function readCostiMezzoDataset(): Promise<{
   return unwrapStorageArray(rawDoc);
 }
 
+export async function readNextDocumentiCostiFleetSnapshot(): Promise<NextDocumentiCostiFleetSnapshot> {
+  const { costiDataset, documentSnapshots, readFailures } = await readDocumentiCostiSources();
+  const { items, materialSupportDocuments } = buildAllDocumentiCostiItems({
+    costiDataset,
+    documentSnapshots,
+  });
+  const groups = {
+    preventivi: items.filter((item) => item.category === "preventivo"),
+    fatture: items.filter((item) => item.category === "fattura"),
+    documentiUtili: items.filter((item) => item.category === "documento_utile"),
+  };
+  const counts = {
+    total: items.length,
+    mezziConDocumenti: new Set(items.map((item) => item.mezzoTarga)).size,
+    preventivi: groups.preventivi.length,
+    fatture: groups.fatture.length,
+    documentiUtili: groups.documentiUtili.length,
+    withFile: items.filter((item) => Boolean(item.fileUrl)).length,
+    withAmount: items.filter((item) => item.amount !== null).length,
+  };
+  const sourceCounts = {
+    costiMezzo: items.filter((item) => item.sourceType === "costo_mezzo").length,
+    documentiMezzo: items.filter((item) => item.sourceType === "documento_mezzo").length,
+    documentiMagazzino: items.filter((item) => item.sourceType === "documento_magazzino").length,
+    documentiGenerici: items.filter((item) => item.sourceType === "documento_generico").length,
+  };
+  const materialCostSupport = {
+    documents: materialSupportDocuments,
+    documentCount: materialSupportDocuments.length,
+    rowCount: materialSupportDocuments.reduce((total, entry) => total + entry.voci.length, 0),
+  };
+
+  return {
+    domainCode: NEXT_DOCUMENTI_COSTI_DOMAIN.code,
+    domainName: NEXT_DOCUMENTI_COSTI_DOMAIN.name,
+    logicalDatasets: NEXT_DOCUMENTI_COSTI_DOMAIN.logicalDatasets,
+    activeReadOnlyDatasets: NEXT_DOCUMENTI_COSTI_DOMAIN.activeReadOnlyDatasets,
+    normalizationStrategy: NEXT_DOCUMENTI_COSTI_DOMAIN.normalizationStrategy,
+    outputContract: NEXT_DOCUMENTI_COSTI_DOMAIN.outputContract,
+    datasetShapes: {
+      costiMezzo: costiDataset.datasetShape,
+    },
+    items,
+    counts,
+    totals: {
+      preventivi: buildAmountTotals(groups.preventivi),
+      fatture: buildAmountTotals(groups.fatture),
+    },
+    sourceCounts,
+    materialCostSupport,
+    limitations: buildFleetLimitations({
+      datasetShape: costiDataset.datasetShape,
+      counts,
+      sourceCounts,
+      materialCostSupport,
+      readFailures,
+    }),
+  };
+}
+
 export async function readNextMezzoDocumentiCostiSnapshot(
   targa: string
 ): Promise<NextMezzoDocumentiCostiSnapshot> {
   const mezzoTarga = normalizeTarga(targa);
-  const [costiResult, ...documentResults] = await Promise.allSettled([
-    readCostiMezzoDataset(),
-    ...DOCUMENTI_COLLECTION_KEYS.map((collectionKey) => getDocs(collection(db, collectionKey))),
-  ]);
-  const readFailures: string[] = [];
-  const costiDataset =
-    costiResult.status === "fulfilled"
-      ? costiResult.value
-      : ((readFailures.push("storage/@costiMezzo"), {
-          datasetShape: "missing",
-          items: [],
-        }) as { datasetShape: NextLegacyDatasetShape; items: unknown[] });
-  const documentSnapshots = documentResults.map((result, index) => {
-    if (result.status === "fulfilled") {
-      return result.value;
-    }
-
-    readFailures.push(DOCUMENTI_COLLECTION_KEYS[index]);
-    return null;
+  const { costiDataset, documentSnapshots, readFailures } = await readDocumentiCostiSources();
+  const { items: fleetItems, materialSupportDocuments } = buildAllDocumentiCostiItems({
+    costiDataset,
+    documentSnapshots,
   });
-
-  const costiItems = costiDataset.items
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") return null;
-      return mapCostoMezzoRecord(entry as RawRecord, mezzoTarga, index);
-    })
-    .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
-
-  const documentItems = documentSnapshots.flatMap((snapshot, index) => {
-    if (!snapshot) return [];
-    const collectionKey = DOCUMENTI_COLLECTION_KEYS[index];
-    return snapshot.docs
-      .map((docSnapshot) =>
-        mapDocumentoRecord({
-          raw: (docSnapshot.data() ?? {}) as RawRecord,
-          mezzoTarga,
-          collectionKey,
-          sourceDocId: docSnapshot.id,
-        })
-      )
-      .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
-  });
-  const materialSupportDocuments = (documentSnapshots[1]?.docs ?? [])
-    .map((docSnapshot) =>
-      mapMaterialSupportDocument((docSnapshot.data() ?? {}) as RawRecord, docSnapshot.id)
-    )
-    .filter((entry): entry is NextDocumentiMagazzinoSupportDocument => Boolean(entry));
-
-  const items = sortItems(dedupItems([...costiItems, ...documentItems]));
+  const items = fleetItems.filter((item) => item.mezzoTarga === mezzoTarga);
   const groups = {
     preventivi: items.filter((item) => item.category === "preventivo"),
     fatture: items.filter((item) => item.category === "fattura"),

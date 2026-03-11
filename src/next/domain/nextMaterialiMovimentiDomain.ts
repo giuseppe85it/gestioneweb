@@ -1,0 +1,982 @@
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebase";
+import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import type {
+  NextDocumentiCostiCurrency,
+  NextDocumentiMagazzinoSupportDocument,
+} from "./nextDocumentiCostiDomain";
+
+const STORAGE_COLLECTION = "storage";
+const MATERIALI_MOVIMENTI_DATASET_KEY = "@materialiconsegnati";
+
+type RawRecord = Record<string, unknown>;
+
+type NextLegacyDatasetShape =
+  | "items"
+  | "value.items"
+  | "value"
+  | "array"
+  | "missing"
+  | "unsupported";
+
+export type NextMaterialeMovimentoFieldQuality =
+  | "certo"
+  | "ricostruito"
+  | "non_disponibile";
+
+export type NextMaterialeMovimentoRecordQuality =
+  | "certo"
+  | "parziale"
+  | "da_verificare";
+
+export type NextMaterialeMovimentoDestinatarioType =
+  | "MEZZO"
+  | "COLLEGA"
+  | "MAGAZZINO"
+  | null;
+
+export type NextMaterialeMovimentoMezzoMatchKind =
+  | "direct_targa"
+  | "destinatario_label"
+  | "destinatario_ref_id"
+  | null;
+
+export const NEXT_MATERIALI_MOVIMENTI_DOMAIN = {
+  code: "D05-MATERIALI",
+  name: "Materiali e movimenti mezzo-centrici",
+  logicalDatasets: [MATERIALI_MOVIMENTI_DATASET_KEY] as const,
+  activeReadOnlyDataset: MATERIALI_MOVIMENTI_DATASET_KEY,
+  normalizationStrategy: "NORMALIZER DEDICATO NEXT MATERIALI / MOVIMENTI READ-ONLY",
+  outputContract: {
+    certain: ["id", "source", "quality", "flags"] as const,
+    optional: [
+      "targa",
+      "mezzoTarga",
+      "destinatario",
+      "target",
+      "tipoDestinatario",
+      "materiale",
+      "descrizione",
+      "quantita",
+      "unita",
+      "data",
+      "timestamp",
+      "fornitore",
+      "costoUnitario",
+      "costoTotale",
+    ] as const,
+    mezzoMatchKinds: [
+      "direct_targa",
+      "destinatario_label",
+      "destinatario_ref_id",
+    ] as const,
+  },
+} as const;
+
+type NextNormalizedDestinatario = {
+  label: string | null;
+  refId: string | null;
+  type: NextMaterialeMovimentoDestinatarioType;
+  rawShape: "object" | "string" | "missing";
+};
+
+export type NextMaterialeMovimentoReadOnlyItem = {
+  id: string;
+  targa: string | null;
+  mezzoTarga: string | null;
+  destinatario: NextNormalizedDestinatario;
+  target: string | null;
+  tipoDestinatario: NextMaterialeMovimentoDestinatarioType;
+  materiale: string | null;
+  descrizione: string | null;
+  quantita: number | null;
+  unita: string | null;
+  data: string | null;
+  timestamp: number | null;
+  fornitore: string | null;
+  motivo: string | null;
+  direzione: "IN" | "OUT" | null;
+  sourceCollection: typeof STORAGE_COLLECTION;
+  sourceKey: typeof MATERIALI_MOVIMENTI_DATASET_KEY;
+  source: {
+    dataset: typeof MATERIALI_MOVIMENTI_DATASET_KEY;
+    sourceRecordId: string | null;
+    destinatarioShape: NextNormalizedDestinatario["rawShape"];
+  };
+  fieldQuality: {
+    mezzoLink: NextMaterialeMovimentoFieldQuality;
+    destinatario: NextMaterialeMovimentoFieldQuality;
+    descrizione: NextMaterialeMovimentoFieldQuality;
+    quantita: NextMaterialeMovimentoFieldQuality;
+    data: NextMaterialeMovimentoFieldQuality;
+    fornitore: NextMaterialeMovimentoFieldQuality;
+  };
+  quality: NextMaterialeMovimentoRecordQuality;
+  flags: string[];
+};
+
+export type NextMaterialeMovimentoCostSnapshot = {
+  costoUnitario: number | null;
+  costoTotale: number | null;
+  costoCurrency: NextDocumentiCostiCurrency;
+  costoSourceCollection: "@documenti_magazzino" | null;
+  costoSourceDocId: string | null;
+  costoMatchedDescription: string | null;
+  quality: NextMaterialeMovimentoFieldQuality;
+  flags: string[];
+};
+
+export type NextMezzoMaterialeMovimentoReadOnlyItem =
+  NextMaterialeMovimentoReadOnlyItem & {
+    mezzoMatchKind: Exclude<NextMaterialeMovimentoMezzoMatchKind, null>;
+    costoUnitario: number | null;
+    costoTotale: number | null;
+    costoCurrency: NextDocumentiCostiCurrency;
+    costoSourceCollection: "@documenti_magazzino" | null;
+    costoSourceDocId: string | null;
+    costoMatchedDescription: string | null;
+    fieldQuality: NextMaterialeMovimentoReadOnlyItem["fieldQuality"] & {
+      costo: NextMaterialeMovimentoFieldQuality;
+    };
+  };
+
+export type NextMaterialiMovimentiSnapshot = {
+  domainCode: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.code;
+  domainName: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.name;
+  logicalDatasets: readonly string[];
+  activeReadOnlyDataset: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.activeReadOnlyDataset;
+  normalizationStrategy: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.normalizationStrategy;
+  outputContract: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.outputContract;
+  datasetShape: NextLegacyDatasetShape;
+  items: NextMaterialeMovimentoReadOnlyItem[];
+  counts: {
+    total: number;
+    conDestinatarioOggetto: number;
+    conDestinatarioStringa: number;
+    versoMezzo: number;
+    versoCollega: number;
+    versoMagazzino: number;
+    conTargaEsplicita: number;
+    conFornitore: number;
+    conData: number;
+  };
+  limitations: string[];
+};
+
+export type NextMezzoMaterialiMovimentiSnapshot = {
+  domainCode: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.code;
+  domainName: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.name;
+  mezzoTarga: string;
+  mezzoId: string | null;
+  logicalDatasets: readonly string[];
+  activeReadOnlyDataset: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.activeReadOnlyDataset;
+  normalizationStrategy: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.normalizationStrategy;
+  outputContract: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.outputContract;
+  datasetShape: NextLegacyDatasetShape;
+  items: NextMezzoMaterialeMovimentoReadOnlyItem[];
+  counts: {
+    total: number;
+    matchedByExplicitTarga: number;
+    matchedByDestinatarioLabel: number;
+    matchedByDestinatarioRefId: number;
+    withCost: number;
+    withoutCost: number;
+    withFornitore: number;
+  };
+  materialCostSupport: {
+    documentCount: number;
+    rowCount: number;
+  };
+  limitations: string[];
+};
+
+export type NextMaterialiMovimentiLegacyDossierItem = {
+  id: string;
+  targa?: string;
+  mezzoTarga?: string;
+  destinatario?: {
+    type?: string;
+    refId?: string;
+    label?: string;
+  };
+  materialeLabel?: string;
+  descrizione?: string;
+  fornitore?: string;
+  motivo?: string;
+  quantita?: number;
+  unita?: string;
+  direzione?: "IN" | "OUT";
+  data?: string;
+  fornitoreLabel?: string;
+  costoUnitario?: number | null;
+  costoTotale?: number | null;
+  costoCurrency?: NextDocumentiCostiCurrency;
+  flags?: string[];
+};
+
+export type NextMaterialiMovimentiOperativitaPreviewItem = {
+  id: string;
+  descrizione: string;
+  quantita: number | null;
+  data: string | null;
+};
+
+export type NextMaterialiConsegnatiDestinatarioView = {
+  id: string;
+  label: string;
+  type: NextMaterialeMovimentoDestinatarioType;
+  totalQuantita: number;
+  movementCount: number;
+  items: NextMaterialeMovimentoReadOnlyItem[];
+};
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = normalizeText(value);
+  return normalized || null;
+}
+
+function normalizeMatchTarga(value: unknown): string {
+  return normalizeNextMezzoTarga(value).replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    let normalized = value.trim();
+    if (!normalized) return null;
+    normalized = normalized.replace(/\s+/g, "").replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function normalizeDirection(value: unknown): "IN" | "OUT" | null {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "IN" || normalized === "OUT") return normalized;
+  return null;
+}
+
+function normalizeDestinatarioType(value: unknown): NextMaterialeMovimentoDestinatarioType {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "MEZZO" || normalized === "COLLEGA" || normalized === "MAGAZZINO") {
+    return normalized;
+  }
+  return null;
+}
+
+function parseDateFlexible(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const millis = value > 1_000_000_000_000 ? value : value * 1000;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const maybe = value as {
+      toDate?: () => Date;
+      seconds?: number;
+      _seconds?: number;
+    };
+
+    if (typeof maybe.toDate === "function") {
+      const date = maybe.toDate();
+      return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+    }
+
+    if (typeof maybe.seconds === "number") {
+      const date = new Date(maybe.seconds * 1000);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    if (typeof maybe._seconds === "number") {
+      const date = new Date(maybe._seconds * 1000);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const dmyMatch = raw.match(
+    /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/
+  );
+  if (!dmyMatch) return null;
+
+  const yearRaw = Number(dmyMatch[3]);
+  const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
+  const month = Number(dmyMatch[2]) - 1;
+  const day = Number(dmyMatch[1]);
+  const hours = Number(dmyMatch[4] ?? "12");
+  const minutes = Number(dmyMatch[5] ?? "00");
+  const date = new Date(year, month, day, hours, minutes, 0, 0);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toTimestamp(value: unknown): number | null {
+  const parsed = parseDateFlexible(value);
+  return parsed ? parsed.getTime() : null;
+}
+
+function formatLegacyDateLabel(timestamp: number | null): string | null {
+  if (timestamp === null) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(date.getFullYear());
+  return `${dd} ${mm} ${yyyy}`;
+}
+
+function unwrapStorageArray(
+  rawDoc: Record<string, unknown> | unknown[] | null
+): { datasetShape: NextLegacyDatasetShape; items: unknown[] } {
+  if (!rawDoc) {
+    return { datasetShape: "missing", items: [] };
+  }
+
+  if (Array.isArray(rawDoc)) {
+    return { datasetShape: "array", items: rawDoc };
+  }
+
+  if (Array.isArray(rawDoc.items)) {
+    return { datasetShape: "items", items: rawDoc.items };
+  }
+
+  if (Array.isArray((rawDoc.value as { items?: unknown[] } | undefined)?.items)) {
+    return {
+      datasetShape: "value.items",
+      items: (rawDoc.value as { items: unknown[] }).items,
+    };
+  }
+
+  if (Array.isArray(rawDoc.value)) {
+    return { datasetShape: "value", items: rawDoc.value };
+  }
+
+  return { datasetShape: "unsupported", items: [] };
+}
+
+function buildItemId(raw: RawRecord, index: number): string {
+  const directId = normalizeText(raw.id);
+  if (directId) return directId;
+
+  const descrizione = normalizeText(raw.descrizione ?? raw.materialeLabel);
+  const data = normalizeText(raw.data);
+  const destinatario = normalizeText(
+    typeof raw.destinatario === "string"
+      ? raw.destinatario
+      : (raw.destinatario as { label?: unknown } | null | undefined)?.label
+  );
+
+  const fingerprint = [destinatario, descrizione, data].filter(Boolean).join(":");
+  return fingerprint ? `materiale:${fingerprint}:${index}` : `materiale:${index}`;
+}
+
+function parseDestinatario(value: unknown): NextNormalizedDestinatario {
+  if (typeof value === "string") {
+    return {
+      label: normalizeOptionalText(value),
+      refId: null,
+      type: null,
+      rawShape: "string",
+    };
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const raw = value as RawRecord;
+    return {
+      label: normalizeOptionalText(raw.label),
+      refId: normalizeOptionalText(raw.refId),
+      type: normalizeDestinatarioType(raw.type),
+      rawShape: "object",
+    };
+  }
+
+  return {
+    label: null,
+    refId: null,
+    type: null,
+    rawShape: "missing",
+  };
+}
+
+function deriveFieldQuality(item: {
+  explicitTarga: string | null;
+  destinatario: NextNormalizedDestinatario;
+  descrizione: string | null;
+  materiale: string | null;
+  quantita: number | null;
+  hasQuantitaRaw: boolean;
+  data: string | null;
+  hasDataRaw: boolean;
+  fornitore: string | null;
+}): NextMaterialeMovimentoReadOnlyItem["fieldQuality"] {
+  return {
+    mezzoLink: item.explicitTarga
+      ? "certo"
+      : item.destinatario.label || item.destinatario.refId
+      ? "ricostruito"
+      : "non_disponibile",
+    destinatario:
+      item.destinatario.rawShape === "object"
+        ? item.destinatario.label || item.destinatario.refId || item.destinatario.type
+          ? "certo"
+          : "non_disponibile"
+        : item.destinatario.rawShape === "string"
+        ? item.destinatario.label
+          ? "ricostruito"
+          : "non_disponibile"
+        : "non_disponibile",
+    descrizione: item.descrizione
+      ? "certo"
+      : item.materiale
+      ? "ricostruito"
+      : "non_disponibile",
+    quantita:
+      item.quantita !== null
+        ? "certo"
+        : item.hasQuantitaRaw
+        ? "ricostruito"
+        : "non_disponibile",
+    data:
+      item.data !== null
+        ? item.hasDataRaw
+          ? "certo"
+          : "ricostruito"
+        : "non_disponibile",
+    fornitore: item.fornitore ? "certo" : "non_disponibile",
+  };
+}
+
+function deriveRecordQuality(item: {
+  fieldQuality: NextMaterialeMovimentoReadOnlyItem["fieldQuality"];
+  descrizione: string | null;
+  materiale: string | null;
+  quantita: number | null;
+  data: string | null;
+}): NextMaterialeMovimentoRecordQuality {
+  const hasCoreData = Boolean(item.descrizione || item.materiale) && item.quantita !== null && Boolean(item.data);
+
+  if (
+    hasCoreData &&
+    item.fieldQuality.mezzoLink === "certo" &&
+    item.fieldQuality.destinatario === "certo"
+  ) {
+    return "certo";
+  }
+
+  if (hasCoreData || item.fieldQuality.destinatario !== "non_disponibile") {
+    return "parziale";
+  }
+
+  return "da_verificare";
+}
+
+function toNextMaterialeMovimentoReadOnlyItem(
+  raw: RawRecord,
+  index: number
+): NextMaterialeMovimentoReadOnlyItem {
+  const destinatario = parseDestinatario(raw.destinatario ?? raw.target ?? raw.destinatarioLabel);
+  const descrizione = normalizeOptionalText(raw.descrizione);
+  const materiale =
+    normalizeOptionalText(raw.materialeLabel) ??
+    normalizeOptionalText(raw.materiale) ??
+    descrizione;
+  const quantita = normalizeNumber(raw.quantita);
+  const rawDataLabel = normalizeOptionalText(raw.data);
+  const timestamp =
+    [raw.timestamp, raw.data, raw.createdAt, raw.updatedAt]
+      .map((entry) => toTimestamp(entry))
+      .find((entry): entry is number => entry !== null) ?? null;
+  const data = rawDataLabel ?? formatLegacyDateLabel(timestamp);
+  const fornitore =
+    normalizeOptionalText(raw.fornitore) ?? normalizeOptionalText(raw.fornitoreLabel);
+  const explicitTarga =
+    normalizeOptionalText(raw.mezzoTarga)
+      ? normalizeMatchTarga(raw.mezzoTarga)
+      : normalizeOptionalText(raw.targa)
+      ? normalizeMatchTarga(raw.targa)
+      : null;
+  const mezzoTarga = explicitTarga || null;
+  const flags: string[] = [];
+
+  if (destinatario.rawShape === "string") flags.push("destinatario_string_legacy");
+  if (destinatario.rawShape === "missing") flags.push("destinatario_assente");
+  if (!descrizione && !materiale) flags.push("descrizione_assente");
+  if (quantita === null) flags.push("quantita_non_valida");
+  if (!data) flags.push("data_assente");
+  if (!fornitore) flags.push("fornitore_assente");
+  if (!mezzoTarga && (destinatario.label || destinatario.refId)) {
+    flags.push("link_mezzo_da_destinatario");
+  }
+  if (destinatario.type === "COLLEGA") flags.push("destinatario_collega");
+  if (destinatario.type === "MAGAZZINO") flags.push("destinatario_magazzino");
+  if (mezzoTarga) flags.push("targa_esplicita");
+  if (destinatario.type === "MEZZO" && destinatario.refId) {
+    const refIdTarga = normalizeMatchTarga(destinatario.refId);
+    if (!refIdTarga) flags.push("destinatario_refid_non_targa");
+  }
+
+  const fieldQuality = deriveFieldQuality({
+    explicitTarga: mezzoTarga,
+    destinatario,
+    descrizione,
+    materiale,
+    quantita,
+    hasQuantitaRaw: raw.quantita != null,
+    data,
+    hasDataRaw: raw.data != null,
+    fornitore,
+  });
+
+  return {
+    id: buildItemId(raw, index),
+    targa: mezzoTarga,
+    mezzoTarga,
+    destinatario,
+    target: destinatario.label,
+    tipoDestinatario: destinatario.type,
+    materiale,
+    descrizione,
+    quantita,
+    unita: normalizeOptionalText(raw.unita),
+    data,
+    timestamp,
+    fornitore,
+    motivo: normalizeOptionalText(raw.motivo),
+    direzione: normalizeDirection(raw.direzione),
+    sourceCollection: STORAGE_COLLECTION,
+    sourceKey: MATERIALI_MOVIMENTI_DATASET_KEY,
+    source: {
+      dataset: MATERIALI_MOVIMENTI_DATASET_KEY,
+      sourceRecordId: normalizeOptionalText(raw.id),
+      destinatarioShape: destinatario.rawShape,
+    },
+    fieldQuality,
+    quality: deriveRecordQuality({
+      fieldQuality,
+      descrizione,
+      materiale,
+      quantita,
+      data,
+    }),
+    flags,
+  };
+}
+
+function sortItems<T extends { id: string; timestamp: number | null }>(items: T[]): T[] {
+  return [...items].sort((left, right) => {
+    const byTimestamp = (right.timestamp ?? 0) - (left.timestamp ?? 0);
+    if (byTimestamp !== 0) return byTimestamp;
+    return right.id.localeCompare(left.id, "it", { sensitivity: "base" });
+  });
+}
+
+function buildGlobalLimitations(args: {
+  datasetShape: NextLegacyDatasetShape;
+  items: NextMaterialeMovimentoReadOnlyItem[];
+  counts: NextMaterialiMovimentiSnapshot["counts"];
+}): string[] {
+  const { datasetShape, items, counts } = args;
+
+  return [
+    datasetShape === "unsupported"
+      ? "Il dataset `@materialiconsegnati` non espone una shape supportata fuori dai formati `array/value/items`."
+      : null,
+    counts.conDestinatarioStringa > 0
+      ? "Una parte di `@materialiconsegnati` usa ancora `destinatario` come stringa legacy invece che come oggetto strutturato."
+      : null,
+    counts.conTargaEsplicita === 0
+      ? "Il dataset non offre una targa esplicita affidabile sui movimenti: il collegamento mezzo dipende spesso da `destinatario.label` o `destinatario.refId`."
+      : null,
+    items.some((item) => item.flags.includes("destinatario_refid_non_targa"))
+      ? "Il campo `destinatario.refId` non e coerente: in repo puo contenere sia la targa sia l'id mezzo legacy."
+      : null,
+    counts.versoMagazzino > 0
+      ? "Nel dataset convivono movimenti verso mezzo, collega e magazzino: il reader mezzo-centrico espone solo i record collegabili davvero alla targa."
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
+function resolveMezzoMatch(args: {
+  item: NextMaterialeMovimentoReadOnlyItem;
+  mezzoTarga: string;
+  mezzoId: string | null;
+}): NextMaterialeMovimentoMezzoMatchKind {
+  const { item, mezzoTarga, mezzoId } = args;
+
+  if (item.mezzoTarga && normalizeMatchTarga(item.mezzoTarga) === mezzoTarga) {
+    return "direct_targa";
+  }
+
+  if (item.destinatario.label && normalizeMatchTarga(item.destinatario.label) === mezzoTarga) {
+    return "destinatario_label";
+  }
+
+  if (mezzoId && item.destinatario.refId === mezzoId) {
+    return "destinatario_ref_id";
+  }
+
+  if (item.destinatario.refId && normalizeMatchTarga(item.destinatario.refId) === mezzoTarga) {
+    return "destinatario_ref_id";
+  }
+
+  return null;
+}
+
+function normalizeMaterialMatchText(value: unknown): string {
+  return normalizeText(value)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function computeDescriptionMatchScore(left: string, right: string): number {
+  if (!left || !right) return 0;
+  if (left === right) return 300;
+  if (left.includes(right)) return 200;
+  if (right.includes(left)) return 100;
+  return 0;
+}
+
+function resolveMaterialCost(
+  item: NextMaterialeMovimentoReadOnlyItem,
+  supportDocuments: NextDocumentiMagazzinoSupportDocument[]
+): NextMaterialeMovimentoCostSnapshot {
+  const target = normalizeMaterialMatchText(item.descrizione ?? item.materiale ?? "");
+  if (!target || supportDocuments.length === 0) {
+    return {
+      costoUnitario: null,
+      costoTotale: null,
+      costoCurrency: "UNKNOWN",
+      costoSourceCollection: null,
+      costoSourceDocId: null,
+      costoMatchedDescription: null,
+      quality: "non_disponibile",
+      flags: [],
+    };
+  }
+
+  let bestCandidate:
+    | (NextMaterialeMovimentoCostSnapshot & { score: number; timestamp: number | null })
+    | null = null;
+
+  for (const supportDocument of supportDocuments) {
+    const documentTimestamp = toTimestamp(supportDocument.data);
+
+    for (const row of supportDocument.voci) {
+      const rowDescription = normalizeMaterialMatchText(row.descrizione);
+      const score = computeDescriptionMatchScore(target, rowDescription);
+      if (score === 0) continue;
+
+      const costoUnitario =
+        normalizeNumber(row.prezzoUnitario) ??
+        (normalizeNumber(row.importo) !== null &&
+        normalizeNumber(row.quantita) !== null &&
+        normalizeNumber(row.quantita)! > 0
+          ? normalizeNumber(row.importo)! / normalizeNumber(row.quantita)!
+          : null);
+      if (costoUnitario === null) continue;
+
+      const costoTotale =
+        item.quantita !== null ? Number((costoUnitario * item.quantita).toFixed(2)) : null;
+      const candidate: NextMaterialeMovimentoCostSnapshot & {
+        score: number;
+        timestamp: number | null;
+      } = {
+        costoUnitario,
+        costoTotale,
+        costoCurrency: "UNKNOWN",
+        costoSourceCollection: "@documenti_magazzino",
+        costoSourceDocId: supportDocument.sourceDocId,
+        costoMatchedDescription: row.descrizione,
+        quality: "ricostruito",
+        flags: [
+          "costo_da_documento_magazzino",
+          ...(score < 300 ? ["costo_match_descrizione_morbido"] : []),
+        ],
+        score,
+        timestamp: documentTimestamp,
+      };
+
+      if (!bestCandidate) {
+        bestCandidate = candidate;
+        continue;
+      }
+
+      const bestTimestamp = bestCandidate.timestamp ?? 0;
+      const candidateTimestamp = candidate.timestamp ?? 0;
+      if (
+        candidate.score > bestCandidate.score ||
+        (candidate.score === bestCandidate.score && candidateTimestamp > bestTimestamp)
+      ) {
+        bestCandidate = candidate;
+      }
+    }
+  }
+
+  if (!bestCandidate) {
+    return {
+      costoUnitario: null,
+      costoTotale: null,
+      costoCurrency: "UNKNOWN",
+      costoSourceCollection: null,
+      costoSourceDocId: null,
+      costoMatchedDescription: null,
+      quality: "non_disponibile",
+      flags: [],
+    };
+  }
+
+  const { score: _score, timestamp: _timestamp, ...resolved } = bestCandidate;
+  return resolved;
+}
+
+function buildPerMezzoLimitations(args: {
+  items: NextMezzoMaterialeMovimentoReadOnlyItem[];
+  mezzoId: string | null;
+  supportDocuments: NextDocumentiMagazzinoSupportDocument[];
+}): string[] {
+  const { items, mezzoId, supportDocuments } = args;
+
+  return [
+    !mezzoId
+      ? "Il reader mezzo-centrico non ha un id mezzo canonico in input: i match `destinatario.refId` restano limitati ai casi in cui il ref contiene gia la targa."
+      : null,
+    items.some((item) => item.mezzoMatchKind === "destinatario_label")
+      ? "Una parte dei movimenti mezzo viene collegata solo tramite `destinatario.label`, perche `@materialiconsegnati` non espone sempre una targa esplicita."
+      : null,
+    items.some((item) => item.mezzoMatchKind === "destinatario_ref_id")
+      ? "Una parte dei movimenti mezzo viene collegata tramite `destinatario.refId`, che nel repo legacy puo rappresentare sia la targa sia l'id mezzo."
+      : null,
+    supportDocuments.length === 0
+      ? "Nessun supporto `@documenti_magazzino` disponibile per ricostruire i costi materiali del mezzo."
+      : null,
+    items.some((item) => item.costoUnitario !== null)
+      ? "I costi materiali restano derivati da match descrittivo sulle righe `voci` di `@documenti_magazzino`; non sono costi inventariali transazionali."
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
+export async function readNextMaterialiMovimentiSnapshot(): Promise<NextMaterialiMovimentiSnapshot> {
+  const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, MATERIALI_MOVIMENTI_DATASET_KEY));
+  const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
+  const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
+
+  const items = sortItems(
+    rawItems
+      .map((entry, index) => {
+        if (!entry || typeof entry !== "object") return null;
+        return toNextMaterialeMovimentoReadOnlyItem(entry as RawRecord, index);
+      })
+      .filter((entry): entry is NextMaterialeMovimentoReadOnlyItem => Boolean(entry))
+  );
+
+  const counts = {
+    total: items.length,
+    conDestinatarioOggetto: items.filter((item) => item.destinatario.rawShape === "object").length,
+    conDestinatarioStringa: items.filter((item) => item.destinatario.rawShape === "string").length,
+    versoMezzo: items.filter((item) => item.tipoDestinatario === "MEZZO").length,
+    versoCollega: items.filter((item) => item.tipoDestinatario === "COLLEGA").length,
+    versoMagazzino: items.filter((item) => item.tipoDestinatario === "MAGAZZINO").length,
+    conTargaEsplicita: items.filter((item) => Boolean(item.mezzoTarga)).length,
+    conFornitore: items.filter((item) => Boolean(item.fornitore)).length,
+    conData: items.filter((item) => Boolean(item.data)).length,
+  };
+
+  return {
+    domainCode: NEXT_MATERIALI_MOVIMENTI_DOMAIN.code,
+    domainName: NEXT_MATERIALI_MOVIMENTI_DOMAIN.name,
+    logicalDatasets: NEXT_MATERIALI_MOVIMENTI_DOMAIN.logicalDatasets,
+    activeReadOnlyDataset: NEXT_MATERIALI_MOVIMENTI_DOMAIN.activeReadOnlyDataset,
+    normalizationStrategy: NEXT_MATERIALI_MOVIMENTI_DOMAIN.normalizationStrategy,
+    outputContract: NEXT_MATERIALI_MOVIMENTI_DOMAIN.outputContract,
+    datasetShape,
+    items,
+    counts,
+    limitations: buildGlobalLimitations({ datasetShape, items, counts }),
+  };
+}
+
+export function buildNextMezzoMaterialiMovimentiSnapshot(args: {
+  baseSnapshot: NextMaterialiMovimentiSnapshot;
+  targa: string;
+  mezzoId?: string | null;
+  materialCostSupportDocuments?: NextDocumentiMagazzinoSupportDocument[];
+}): NextMezzoMaterialiMovimentiSnapshot {
+  const mezzoTarga = normalizeMatchTarga(args.targa);
+  const mezzoId = normalizeOptionalText(args.mezzoId) ?? null;
+  const supportDocuments = args.materialCostSupportDocuments ?? [];
+
+  const items = sortItems(
+    args.baseSnapshot.items
+      .map((item) => {
+        const mezzoMatchKind = resolveMezzoMatch({ item, mezzoTarga, mezzoId });
+        if (!mezzoMatchKind) return null;
+
+        const cost = resolveMaterialCost(item, supportDocuments);
+        return {
+          ...item,
+          mezzoMatchKind,
+          costoUnitario: cost.costoUnitario,
+          costoTotale: cost.costoTotale,
+          costoCurrency: cost.costoCurrency,
+          costoSourceCollection: cost.costoSourceCollection,
+          costoSourceDocId: cost.costoSourceDocId,
+          costoMatchedDescription: cost.costoMatchedDescription,
+          fieldQuality: {
+            ...item.fieldQuality,
+            costo: cost.quality,
+          },
+          flags: [...new Set([...item.flags, `match_${mezzoMatchKind}`, ...cost.flags])],
+        } satisfies NextMezzoMaterialeMovimentoReadOnlyItem;
+      })
+      .filter((entry): entry is NextMezzoMaterialeMovimentoReadOnlyItem => Boolean(entry))
+  );
+
+  const counts = {
+    total: items.length,
+    matchedByExplicitTarga: items.filter((item) => item.mezzoMatchKind === "direct_targa").length,
+    matchedByDestinatarioLabel: items.filter(
+      (item) => item.mezzoMatchKind === "destinatario_label"
+    ).length,
+    matchedByDestinatarioRefId: items.filter(
+      (item) => item.mezzoMatchKind === "destinatario_ref_id"
+    ).length,
+    withCost: items.filter((item) => item.costoTotale !== null).length,
+    withoutCost: items.filter((item) => item.costoTotale === null).length,
+    withFornitore: items.filter((item) => Boolean(item.fornitore)).length,
+  };
+
+  return {
+    domainCode: NEXT_MATERIALI_MOVIMENTI_DOMAIN.code,
+    domainName: NEXT_MATERIALI_MOVIMENTI_DOMAIN.name,
+    mezzoTarga,
+    mezzoId,
+    logicalDatasets: NEXT_MATERIALI_MOVIMENTI_DOMAIN.logicalDatasets,
+    activeReadOnlyDataset: NEXT_MATERIALI_MOVIMENTI_DOMAIN.activeReadOnlyDataset,
+    normalizationStrategy: NEXT_MATERIALI_MOVIMENTI_DOMAIN.normalizationStrategy,
+    outputContract: NEXT_MATERIALI_MOVIMENTI_DOMAIN.outputContract,
+    datasetShape: args.baseSnapshot.datasetShape,
+    items,
+    counts,
+    materialCostSupport: {
+      documentCount: supportDocuments.length,
+      rowCount: supportDocuments.reduce((total, document) => total + document.voci.length, 0),
+    },
+    limitations: [...args.baseSnapshot.limitations, ...buildPerMezzoLimitations({
+      items,
+      mezzoId,
+      supportDocuments,
+    })],
+  };
+}
+
+export function buildNextMaterialiMovimentiLegacyDossierView(
+  snapshot: NextMezzoMaterialiMovimentiSnapshot
+): NextMaterialiMovimentiLegacyDossierItem[] {
+  return snapshot.items.map((item) => ({
+    id: item.id,
+    targa: item.targa ?? undefined,
+    mezzoTarga: item.mezzoTarga ?? undefined,
+    destinatario:
+      item.destinatario.label || item.destinatario.refId || item.destinatario.type
+        ? {
+            type: item.destinatario.type ?? undefined,
+            refId: item.destinatario.refId ?? undefined,
+            label: item.destinatario.label ?? undefined,
+          }
+        : undefined,
+    materialeLabel: item.materiale ?? undefined,
+    descrizione: item.descrizione ?? undefined,
+    fornitore: item.fornitore ?? undefined,
+    motivo: item.motivo ?? undefined,
+    quantita: item.quantita ?? undefined,
+    unita: item.unita ?? undefined,
+    direzione: item.direzione ?? undefined,
+    data: item.data ?? undefined,
+    fornitoreLabel: item.fornitore ?? undefined,
+    costoUnitario: item.costoUnitario,
+    costoTotale: item.costoTotale,
+    costoCurrency: item.costoCurrency,
+    flags: item.flags,
+  }));
+}
+
+export function buildNextMaterialiMovimentiOperativitaPreview(
+  snapshot: NextMaterialiMovimentiSnapshot,
+  limit = 5
+): NextMaterialiMovimentiOperativitaPreviewItem[] {
+  return snapshot.items.slice(0, Math.max(0, limit)).map((item) => ({
+    id: item.id,
+    descrizione: item.descrizione ?? item.materiale ?? "-",
+    quantita: item.quantita,
+    data: item.data,
+  }));
+}
+
+export function buildNextMaterialiConsegnatiDestinatariView(
+  snapshot: NextMaterialiMovimentiSnapshot
+): NextMaterialiConsegnatiDestinatarioView[] {
+  const groups = new Map<string, NextMaterialiConsegnatiDestinatarioView>();
+
+  snapshot.items.forEach((item) => {
+    const groupId =
+      item.destinatario.refId ??
+      item.destinatario.label ??
+      item.target ??
+      `movimento:${item.id}`;
+    const groupLabel =
+      item.destinatario.label ??
+      item.target ??
+      item.destinatario.refId ??
+      "Destinatario non definito";
+
+    const current =
+      groups.get(groupId) ??
+      ({
+        id: groupId,
+        label: groupLabel,
+        type: item.tipoDestinatario,
+        totalQuantita: 0,
+        movementCount: 0,
+        items: [],
+      } satisfies NextMaterialiConsegnatiDestinatarioView);
+
+    current.items.push(item);
+    current.movementCount += 1;
+    current.totalQuantita += item.quantita ?? 0;
+    groups.set(groupId, current);
+  });
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      items: [...group.items].sort((left, right) => {
+        const byTimestamp = (left.timestamp ?? 0) - (right.timestamp ?? 0);
+        if (byTimestamp !== 0) return byTimestamp;
+        return left.id.localeCompare(right.id, "it", { sensitivity: "base" });
+      }),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, "it", { sensitivity: "base" }));
+}

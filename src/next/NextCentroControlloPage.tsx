@@ -28,7 +28,31 @@ function resolveCloneSafeRoute(path: string): string | null {
   if (path.startsWith("/next/")) return path;
   if (path === "/centro-controllo") return "/next/centro-controllo";
   if (path === "/gestione-operativa") return "/next/operativita-globale";
+  if (path === "/inventario") return "/next/operativita-globale?section=inventario";
+  if (path === "/materiali-consegnati") {
+    return "/next/operativita-globale?section=materiali";
+  }
+  if (path === "/attrezzature-cantieri") {
+    return "/next/operativita-globale?section=attrezzature";
+  }
+  if (path === "/manutenzioni") return "/next/operativita-globale?section=manutenzioni";
+  if (path === "/acquisti") {
+    return "/next/operativita-globale?section=procurement&tab=ordine-materiali";
+  }
+  if (path === "/ordini-in-attesa") {
+    return "/next/operativita-globale?section=procurement&tab=ordini";
+  }
+  if (path === "/ordini-arrivati") {
+    return "/next/operativita-globale?section=procurement&tab=arrivi";
+  }
   if (path === "/mezzi") return "/next/mezzi-dossier";
+  if (path === "/colleghi") return "/next/colleghi";
+  if (path === "/fornitori") return "/next/fornitori";
+  if (path === "/capo/mezzi") return "/next/capo/mezzi";
+  if (path.startsWith("/capo/costi/")) {
+    const targa = path.split("/").pop();
+    return targa ? `/next/capo/costi/${encodeURIComponent(targa)}` : "/next/capo/mezzi";
+  }
   return null;
 }
 
@@ -966,12 +990,12 @@ function Home() {
                 <div className="hero-card-title">Mezzi</div>
                 <div className="hero-card-value">Anagrafiche</div>
               </Link>
-              <div className="hero-card next-clone-card-disabled" title={CLONE_ACTION_BLOCKED_TITLE}>
+              <Link to="/next/capo/mezzi" className="hero-card">
                 <div className="hero-card-title">Area Capo</div>
                 <div className="hero-card-value hero-card-subtext">
                   Costi mezzi, fatture e riepiloghi.
                 </div>
-              </div>
+              </Link>
               <div className="hero-card next-clone-card-disabled" title={CLONE_ACTION_BLOCKED_TITLE}>
                 <div className="hero-card-title">Manutenzioni</div>
                 <div className="hero-card-value">Registro</div>
