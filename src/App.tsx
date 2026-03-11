@@ -2,16 +2,30 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { auth } from "./firebase";
 
-import { Routes, Route, Outlet } from "react-router-dom";
+import { Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
 import "./App.css";
 import NextCentroControlloPage from "./next/NextCentroControlloPage";
-import NextIAGestionalePage from "./next/NextIAGestionalePage";
+import NextIntelligenzaArtificialePage from "./next/NextIntelligenzaArtificialePage";
+import NextLibrettiExportPage from "./next/NextLibrettiExportPage";
+import NextCisternaPage from "./next/NextCisternaPage";
+import NextCisternaIAPage from "./next/NextCisternaIAPage";
+import NextCisternaSchedeTestPage from "./next/NextCisternaSchedeTestPage";
+import NextAutistiInboxCambioMezzoPage from "./next/NextAutistiInboxCambioMezzoPage";
+import NextAutistiInboxLogAccessiPage from "./next/NextAutistiInboxLogAccessiPage";
+import NextAutistiInboxGommePage from "./next/NextAutistiInboxGommePage";
+import NextAutistiInboxControlliPage from "./next/NextAutistiInboxControlliPage";
+import NextAutistiInboxSegnalazioniPage from "./next/NextAutistiInboxSegnalazioniPage";
+import NextAutistiInboxRichiestaAttrezzaturePage from "./next/NextAutistiInboxRichiestaAttrezzaturePage";
+import NextAutistiInboxHomePage from "./next/NextAutistiInboxHomePage";
+import NextLavoriInAttesaPage from "./next/NextLavoriInAttesaPage";
+import NextLavoriEseguitiPage from "./next/NextLavoriEseguitiPage";
+import NextDettaglioLavoroPage from "./next/NextDettaglioLavoroPage";
 import NextOperativitaGlobalePage from "./next/NextOperativitaGlobalePage";
 import NextShell from "./next/NextShell";
 import NextDriverExperiencePage from "./next/NextDriverExperiencePage";
 import NextDossierMezzoPage from "./next/NextDossierMezzoPage";
+import NextAnalisiEconomicaPage from "./next/NextAnalisiEconomicaPage";
 import NextMezziDossierPage from "./next/NextMezziDossierPage";
-import NextStrumentiTrasversaliPage from "./next/NextStrumentiTrasversaliPage";
 import NextRoleGuard from "./next/NextRoleGuard";
 import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
 import NextCapoMezziPage from "./next/NextCapoMezziPage";
@@ -87,6 +101,21 @@ import AutistiSegnalazioniAll from "./autistiInbox/AutistiSegnalazioniAll";
 import RichiestaAttrezzatureAll from "./autistiInbox/RichiestaAttrezzatureAll";
 import AutistiGommeAll from "./autistiInbox/AutistiGommeAll";
 import AutistiLogAccessiAll from "./autistiInbox/AutistiLogAccessiAll";
+
+function NextLegacyIaRedirect() {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      replace
+      to={{
+        pathname: "/next/ia",
+        search: location.search,
+      }}
+    />
+  );
+}
+
 function App() {
   const [authReady, setAuthReady] = useState(false);
 
@@ -132,9 +161,17 @@ function App() {
           }
         />
         <Route
+          path="analisi-economica/:targa"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextAnalisiEconomicaPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
           path="capo/mezzi"
           element={
-            <NextRoleGuard areaId="area-capo">
+            <NextRoleGuard areaId="capo">
               <NextCapoMezziPage />
             </NextRoleGuard>
           }
@@ -142,7 +179,7 @@ function App() {
         <Route
           path="capo/costi/:targa"
           element={
-            <NextRoleGuard areaId="area-capo">
+            <NextRoleGuard areaId="capo">
               <NextCapoCostiMezzoPage />
             </NextRoleGuard>
           }
@@ -172,22 +209,134 @@ function App() {
           }
         />
         <Route
-          path="ia-gestionale"
+          path="lavori-in-attesa"
           element={
-            <NextRoleGuard areaId="ia-gestionale">
-              <NextIAGestionalePage />
+            <NextRoleGuard areaId="operativita-globale">
+              <NextLavoriInAttesaPage />
             </NextRoleGuard>
           }
         />
         <Route
-          path="strumenti-trasversali"
+          path="lavori-eseguiti"
           element={
-            <NextRoleGuard areaId="strumenti-trasversali">
-              <NextStrumentiTrasversaliPage />
+            <NextRoleGuard areaId="operativita-globale">
+              <NextLavoriEseguitiPage />
             </NextRoleGuard>
           }
         />
-        <Route path="autista" element={<NextDriverExperiencePage />} />
+        <Route
+          path="dettagliolavori/:lavoroId"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextDettaglioLavoroPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextIntelligenzaArtificialePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="libretti-export"
+          element={
+            <NextRoleGuard areaId="libretti-export">
+              <NextLibrettiExportPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="cisterna"
+          element={
+            <NextRoleGuard areaId="cisterna">
+              <NextCisternaPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="cisterna/ia"
+          element={
+            <NextRoleGuard areaId="cisterna">
+              <NextCisternaIAPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="cisterna/schede-test"
+          element={
+            <NextRoleGuard areaId="cisterna">
+              <NextCisternaSchedeTestPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-inbox"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiInboxHomePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-inbox/cambio-mezzo"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiInboxCambioMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-inbox/log-accessi"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiInboxLogAccessiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-inbox/gomme"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiInboxGommePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-inbox/controlli"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiInboxControlliPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-inbox/segnalazioni"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiInboxSegnalazioniPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-inbox/richiesta-attrezzature"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiInboxRichiestaAttrezzaturePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route path="ia-gestionale" element={<NextLegacyIaRedirect />} />
+        <Route
+          path="autista"
+          element={
+            <NextRoleGuard areaId="autista-separato">
+              <NextDriverExperiencePage />
+            </NextRoleGuard>
+          }
+        />
         <Route path="*" element={<NextRoleLandingRedirect />} />
       </Route>
 

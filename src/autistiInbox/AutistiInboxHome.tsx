@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { ComponentType } from "react";
 import "./AutistiInboxHome.css";
 
 import { loadActiveSessions, loadHomeEvents } from "../utils/homeEvents";
@@ -33,8 +34,44 @@ const LOG_TYPES = new Set([
   "CAMBIO_ASSETTO",
 ]);
 
-export default function AutistiInboxHome() {
+type AutistiEventoModalLikeProps = {
+  event: HomeEvent | null;
+  onClose: () => void;
+  onAfterGommeImport?: () => void | Promise<void>;
+};
+
+type AutistiInboxHomeCloneConfig = {
+  homePath: string;
+  adminPath?: string | null;
+  segnalazioniPath: string;
+  controlliPath: string;
+  richiestaAttrezzaturePath: string;
+  logAccessiPath: string;
+  gommePath: string;
+  buildCambioMezzoPath: (day: Date) => string;
+};
+
+type AutistiInboxHomeProps = {
+  cloneConfig?: AutistiInboxHomeCloneConfig | null;
+  eventModalComponent?: ComponentType<AutistiEventoModalLikeProps>;
+};
+
+export default function AutistiInboxHome({
+  cloneConfig = null,
+  eventModalComponent: EventModalComponent = AutistiEventoModal,
+}: AutistiInboxHomeProps = {}) {
   const navigate = useNavigate();
+  const homePath = cloneConfig?.homePath ?? "/";
+  const adminPath = cloneConfig?.adminPath ?? "/autisti-admin";
+  const segnalazioniPath = cloneConfig?.segnalazioniPath ?? "/autisti-inbox/segnalazioni";
+  const controlliPath = cloneConfig?.controlliPath ?? "/autisti-inbox/controlli";
+  const richiestaAttrezzaturePath =
+    cloneConfig?.richiestaAttrezzaturePath ?? "/autisti-inbox/richiesta-attrezzature";
+  const logAccessiPath = cloneConfig?.logAccessiPath ?? "/autisti-inbox/log-accessi";
+  const gommePath = cloneConfig?.gommePath ?? "/autisti-inbox/gomme";
+  const buildCambioMezzoPath =
+    cloneConfig?.buildCambioMezzoPath ??
+    ((value: Date) => `/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(value)}`);
  
   const [menuOpen, setMenuOpen] = useState(false);
 const menuRef = useRef<HTMLDivElement | null>(null);
@@ -177,7 +214,7 @@ useEffect(() => {
 
   function handleTabClick(tab: ActiveTab) {
     if (tab === "cambi") {
-      navigate(`/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(day)}`);
+      navigate(buildCambioMezzoPath(day));
       return;
     }
     setActiveTab(tab);
@@ -391,10 +428,11 @@ useEffect(() => {
         {/* HEADER */}
         <div className="autisti-header">
           <div className="autisti-header-left">
-            <img src="/logo.png" alt="Logo" onClick={() => navigate("/")} />
+            <img src="/logo.png" alt="Logo" onClick={() => navigate(homePath)} />
           <div className="autisti-title-row">
   <h1>Autisti Inbox (admin)</h1>
 
+  {adminPath ? (
   <div className="autisti-menu-wrap" ref={menuRef}>
     <button
       type="button"
@@ -415,7 +453,7 @@ useEffect(() => {
   className="autisti-menu-item"
   onClick={() => {
     setMenuOpen(false);
-    navigate("/autisti-admin");
+    navigate(adminPath);
   }}
 >
   Centro rettifica dati (admin)
@@ -424,6 +462,7 @@ useEffect(() => {
       </div>
     )}
   </div>
+  ) : null}
 </div>
 
           </div>
@@ -440,7 +479,7 @@ useEffect(() => {
               Rifornimenti
             </button>
             <button
-              onClick={() => navigate("/autisti-inbox/segnalazioni")}
+              onClick={() => navigate(segnalazioniPath)}
               style={
                 activeTab === "segnalazioni"
                   ? { background: "#2e7d32", color: "#fff" }
@@ -468,7 +507,7 @@ useEffect(() => {
               )}
             </button>
             <button
-              onClick={() => navigate("/autisti-inbox/controlli")}
+              onClick={() => navigate(controlliPath)}
               style={
                 activeTab === "controlli"
                   ? { background: "#2e7d32", color: "#fff" }
@@ -488,7 +527,7 @@ useEffect(() => {
               Cambio mezzo
             </button>
             <button
-              onClick={() => navigate("/autisti-inbox/richiesta-attrezzature")}
+              onClick={() => navigate(richiestaAttrezzaturePath)}
               style={
                 activeTab === "attrezzature"
                   ? { background: "#2e7d32", color: "#fff" }
@@ -552,7 +591,7 @@ useEffect(() => {
                 <h2>Segnalazioni</h2>
                 <button
                   className="daily-more"
-                  onClick={() => navigate("/autisti-inbox/segnalazioni")}
+                  onClick={() => navigate(segnalazioniPath)}
                   title="Vedi tutto"
                 >
                   Vedi tutto
@@ -588,7 +627,7 @@ useEffect(() => {
                 <h2>Controllo mezzo</h2>
                 <button
                   className="daily-more"
-                  onClick={() => navigate("/autisti-inbox/controlli")}
+                  onClick={() => navigate(controlliPath)}
                   title="Vedi tutto"
                 >
                   Vedi tutto
@@ -667,7 +706,7 @@ useEffect(() => {
                 <button
                   className="daily-more"
                   disabled={cambiMezzo.length <= 5}
-                  onClick={() => navigate(`/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(day)}`)}
+                  onClick={() => navigate(buildCambioMezzoPath(day))}
                   title={cambiMezzo.length <= 5 ? "Niente altro" : "Vedi tutto"}
                 >
                   Vedi tutto
@@ -725,7 +764,7 @@ useEffect(() => {
                 <button
                   className="daily-more"
                   type="button"
-                  onClick={() => navigate("/autisti-inbox/log-accessi")}
+                  onClick={() => navigate(logAccessiPath)}
                   title="Vedi tutto"
                 >
                   Vedi tutto
@@ -767,7 +806,7 @@ useEffect(() => {
                 <button
                   className="daily-more"
                   type="button"
-                  onClick={() => navigate("/autisti-inbox/gomme")}
+                  onClick={() => navigate(gommePath)}
                   title="Vedi tutto"
                 >
                   Vedi tutto
@@ -809,7 +848,7 @@ useEffect(() => {
                 <button
                   className="daily-more"
                   type="button"
-                  onClick={() => navigate("/autisti-inbox/richiesta-attrezzature")}
+                  onClick={() => navigate(richiestaAttrezzaturePath)}
                   title={richiesteAttrezzature.length <= 5 ? "Niente altro" : "Vedi tutto"}
                 >
                   Vedi tutto
@@ -886,7 +925,7 @@ useEffect(() => {
             </div>
           </div>
         )}
-        <AutistiEventoModal
+        <EventModalComponent
           event={selectedEvent}
           onClose={closeDetails}
           onAfterGommeImport={async () => {

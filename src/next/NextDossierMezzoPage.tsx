@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateDossierMezzoPDFBlob } from "../utils/pdfEngine";
 import PdfPreviewModal from "../components/PdfPreviewModal";
-import NextAnalisiEconomicaPage from "./NextAnalisiEconomicaPage";
 import NextDossierGommePage from "./NextDossierGommePage";
 import NextDossierRifornimentiPage from "./NextDossierRifornimentiPage";
 import { readNextMezzoRifornimentiSnapshot } from "./domain/nextRifornimentiDomain";
@@ -27,8 +26,10 @@ import {
 } from "./domain/nextManutenzioniGommeDomain";
 import type { NextScheduledMaintenance } from "./domain/nextManutenzioniDomain";
 import {
+  buildNextDettaglioLavoroPath,
   buildNextLavoriLegacyDossierView,
   readNextMezzoLavoriSnapshot,
+  type NextLavoriListaRouteId,
 } from "./domain/nextLavoriDomain";
 import {
   buildNextMaterialiMovimentiLegacyDossierView,
@@ -48,6 +49,7 @@ import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 
 const CLONE_READ_ONLY_TITLE = "Non disponibile nel clone read-only";
+const CLONE_LAVORO_DETAIL_TITLE = "Apri dettaglio clone-safe";
 
 // Normalizza la targa togliendo spazi, simboli e differenze
 const normalizeTarga = (t?: unknown) => {
@@ -349,6 +351,18 @@ setState({
     navigate("/next/mezzi-dossier");
   };
 
+  const openLavoroDetail = (
+    lavoroId: string,
+    from: NextLavoriListaRouteId
+  ) => {
+    navigate(
+      buildNextDettaglioLavoroPath({
+        lavoroId,
+        from,
+      })
+    );
+  };
+
   const buildDossierPdfPayload = () => ({
     mezzo: state.mezzo,
     mezzoFotoUrl: state.mezzo?.fotoUrl ?? null,
@@ -431,7 +445,16 @@ setState({
   };
 
   if (activeView === "analisi") {
-    return <NextAnalisiEconomicaPage />;
+    return (
+      <Navigate
+        replace
+        to={
+          targa
+            ? `/next/analisi-economica/${encodeURIComponent(targa)}`
+            : "/next/mezzi-dossier"
+        }
+      />
+    );
   }
 
   if (activeView === "gomme") {
@@ -839,7 +862,7 @@ return (
   <button
     className="dossier-button"
     type="button"
-    onClick={() => navigate(`/next/mezzi-dossier/${encodeURIComponent(mezzo.targa)}?view=analisi`)}
+    onClick={() => navigate(`/next/analisi-economica/${encodeURIComponent(mezzo.targa)}`)}
   >
     Analisi Economica
   </button>
@@ -1063,8 +1086,18 @@ return (
                     <li
                       key={l.id}
                       className="dossier-list-item"
-                      title={CLONE_READ_ONLY_TITLE}
-                      style={{ cursor: "default" }}
+                      role="button"
+                      tabIndex={0}
+                      title={CLONE_LAVORO_DETAIL_TITLE}
+                      aria-label={`Apri dettaglio lavoro ${l.descrizione}`}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => openLavoroDetail(l.id, "lavori-in-attesa")}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openLavoroDetail(l.id, "lavori-in-attesa");
+                        }
+                      }}
                     >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-info">
@@ -1102,8 +1135,18 @@ return (
                     <li
                       key={l.id}
                       className="dossier-list-item"
-                      title={CLONE_READ_ONLY_TITLE}
-                      style={{ cursor: "default" }}
+                      role="button"
+                      tabIndex={0}
+                      title={CLONE_LAVORO_DETAIL_TITLE}
+                      aria-label={`Apri dettaglio lavoro ${l.descrizione}`}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => openLavoroDetail(l.id, "lavori-eseguiti")}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openLavoroDetail(l.id, "lavori-eseguiti");
+                        }
+                      }}
                     >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-success">
@@ -1419,8 +1462,18 @@ return (
                     <li
                       key={l.id}
                       className="dossier-list-item"
-                      title={CLONE_READ_ONLY_TITLE}
-                      style={{ cursor: "default" }}
+                      role="button"
+                      tabIndex={0}
+                      title={CLONE_LAVORO_DETAIL_TITLE}
+                      aria-label={`Apri dettaglio lavoro ${l.descrizione}`}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => openLavoroDetail(l.id, "lavori-in-attesa")}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openLavoroDetail(l.id, "lavori-in-attesa");
+                        }
+                      }}
                     >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-info">
@@ -1463,8 +1516,18 @@ return (
                     <li
                       key={l.id}
                       className="dossier-list-item"
-                      title={CLONE_READ_ONLY_TITLE}
-                      style={{ cursor: "default" }}
+                      role="button"
+                      tabIndex={0}
+                      title={CLONE_LAVORO_DETAIL_TITLE}
+                      aria-label={`Apri dettaglio lavoro ${l.descrizione}`}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => openLavoroDetail(l.id, "lavori-eseguiti")}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openLavoroDetail(l.id, "lavori-eseguiti");
+                        }
+                      }}
                     >
                       <div className="dossier-list-main">
                         <span className="dossier-badge badge-success">

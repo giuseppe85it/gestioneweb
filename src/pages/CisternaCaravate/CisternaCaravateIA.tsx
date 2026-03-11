@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { collection, serverTimestamp } from "firebase/firestore";
+import { getDownloadURL, ref } from "firebase/storage";
 import { db, storage } from "../../firebase";
 import {
   CISTERNA_DOCUMENTI_COLLECTION,
@@ -9,6 +9,12 @@ import {
 } from "../../cisterna/collections";
 import { extractCisternaDocumento } from "../../cisterna/iaClient";
 import type { CisternaDocumentoExtractData } from "../../cisterna/types";
+import {
+  CloneWriteBlockedError,
+  isCloneRuntime,
+} from "../../utils/cloneWriteBarrier";
+import { addDoc } from "../../utils/firestoreWriteOps";
+import { uploadBytes } from "../../utils/storageWriteOps";
 import "./CisternaCaravateIA.css";
 
 type DocumentoForm = {
@@ -39,6 +45,13 @@ function toErrorMessage(error: unknown, fallback: string): string {
     if (typeof message === "string" && message.trim()) return message;
   }
   return fallback;
+}
+
+function getCloneBarrierMessage(kind: "analyze" | "save"): string {
+  if (kind === "analyze") {
+    return "Nel clone l'upload e l'analisi IA non vengono eseguiti sulla madre.";
+  }
+  return "Nel clone il salvataggio nell'archivio Cisterna resta bloccato.";
 }
 
 function sanitizeForFirestore<T>(value: T, inArray = false): T {
@@ -175,12 +188,15 @@ function buildFormFromExtract(data: CisternaDocumentoExtractData): DocumentoForm
 export default function CisternaCaravateIA() {
   const navigate = useNavigate();
   const location = useLocation();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const monthFromQuery = useMemo(() => {
     const raw = new URLSearchParams(location.search).get("month");
     const value = String(raw ?? "").trim();
     return isValidYearMonth(value) ? value : "";
   }, [location.search]);
   const fallbackYearMonth = monthFromQuery || currentMonthKey();
+  const cisternaPath = cloneRuntime ? "/next/cisterna" : "/cisterna";
+  const iaHubPath = cloneRuntime ? "/next/ia" : "/ia";
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
@@ -254,6 +270,10 @@ export default function CisternaCaravateIA() {
 
       setForm(buildFormFromExtract(extracted));
     } catch (err: unknown) {
+      if (err instanceof CloneWriteBlockedError) {
+        setError(getCloneBarrierMessage("analyze"));
+        return;
+      }
       setError(toErrorMessage(err, "Errore durante analisi IA documento."));
     } finally {
       setLoading(false);
@@ -337,6 +357,10 @@ export default function CisternaCaravateIA() {
       );
       setSavedDocId(savedRef.id);
     } catch (err: unknown) {
+      if (err instanceof CloneWriteBlockedError) {
+        setError(getCloneBarrierMessage("save"));
+        return;
+      }
       setError(toErrorMessage(err, "Errore durante il salvataggio."));
     } finally {
       setSaving(false);
@@ -356,12 +380,18 @@ export default function CisternaCaravateIA() {
               Upload, estrazione e salvataggio in
               <code> @documenti_cisterna</code>.
             </p>
+            {cloneRuntime ? (
+              <p style={{ marginTop: 8, color: "#4a6078" }}>
+                Nel clone la pagina resta navigabile, ma upload, analisi IA e salvataggio
+                archivio vengono fermati dalla barriera no-write.
+              </p>
+            ) : null}
           </div>
           <div className="cisterna-ia-actions">
-            <button type="button" onClick={() => navigate("/cisterna")}>
+            <button type="button" onClick={() => navigate(cisternaPath)}>
               Vai a Cisterna
             </button>
-            <button type="button" onClick={() => navigate("/ia")}>
+            <button type="button" onClick={() => navigate(iaHubPath)}>
               Torna a IA
             </button>
           </div>

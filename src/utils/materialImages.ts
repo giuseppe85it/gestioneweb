@@ -1,6 +1,10 @@
 // src/utils/materialImages.ts
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { app } from "../firebase";
+import {
+  assertCloneWriteAllowed,
+  CloneWriteBlockedError,
+} from "./cloneWriteBarrier";
 
 /**
  * Carica una foto di materiale su Firebase Storage.
@@ -8,6 +12,11 @@ import { app } from "../firebase";
  * @param materialId id del materiale (usato nel path)
  */
 export async function uploadMaterialImage(file: File, materialId: string) {
+  assertCloneWriteAllowed("materialImages.upload", {
+    materialId,
+    fileName: file.name,
+  });
+
   const storage = getStorage(app);
   const path = `materiali/${materialId}-${Date.now()}.${file.name.split(".").pop() || "jpg"}`;
   const storageRef = ref(storage, path);
@@ -29,8 +38,10 @@ export async function deleteMaterialImage(storagePath?: string | null) {
   const storage = getStorage(app);
   const storageRef = ref(storage, storagePath);
   try {
+    assertCloneWriteAllowed("materialImages.delete", { storagePath });
     await deleteObject(storageRef);
   } catch (err) {
+    if (err instanceof CloneWriteBlockedError) return;
     console.error("Errore eliminazione immagine da Storage:", err);
   }
 }

@@ -26,6 +26,7 @@ const CLONE_ACTION_BLOCKED_TITLE = "Clone read-only: azione bloccata";
 
 function resolveCloneSafeRoute(path: string): string | null {
   if (path.startsWith("/next/")) return path;
+  if (path === "/ia") return "/next/ia";
   if (path === "/centro-controllo") return "/next/centro-controllo";
   if (path === "/gestione-operativa") return "/next/operativita-globale";
   if (path === "/inventario") return "/next/operativita-globale?section=inventario";
@@ -45,6 +46,9 @@ function resolveCloneSafeRoute(path: string): string | null {
   if (path === "/ordini-arrivati") {
     return "/next/operativita-globale?section=procurement&tab=arrivi";
   }
+  if (path === "/lavori-in-attesa") return "/next/lavori-in-attesa";
+  if (path === "/lavori-eseguiti") return "/next/lavori-eseguiti";
+  if (path === "/cisterna") return "/next/cisterna";
   if (path === "/mezzi") return "/next/mezzi-dossier";
   if (path === "/colleghi") return "/next/colleghi";
   if (path === "/fornitori") return "/next/fornitori";
@@ -220,7 +224,7 @@ const QUICK_LINKS_OPERATIVO = buildQuickLinks([
   { to: "/inventario", label: "Inventario" },
   { to: "/ordini-arrivati", label: "Ordini Arrivati" },
   { to: "/ordini-in-attesa", label: "Ordini In Attesa" },
-  { to: "/ia", label: "IA" },
+  { to: "/ia", label: "Intelligenza Artificiale" },
   { to: "/ia/libretto", label: "IA Libretto" },
   { to: "/ia/documenti", label: "IA Documenti" },
   { to: "/cisterna", label: "Cisterna Caravate" },

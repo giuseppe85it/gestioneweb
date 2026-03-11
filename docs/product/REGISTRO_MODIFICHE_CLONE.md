@@ -31,6 +31,449 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-11 36
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Correzione minima della regressione letture clone dopo la fetch barrier
+- OBIETTIVO: Ripristinare le letture reali del clone restringendo la fetch barrier ai soli endpoint mutanti applicativi noti, senza rollback dei wrapper no-write gia introdotti.
+- FILE TOCCATI:
+  - `src/utils/cloneWriteBarrier.ts`
+  - `src/utils/storageSync.ts`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Rimossa la regola grezza che nel clone bloccava tutte le `fetch` con metodo diverso da `GET/HEAD`.
+  - Introdotta una regola URL-aware che blocca solo endpoint mutanti applicativi noti del progetto: Cloud Functions/Run IA-PDF gia censiti e eventuali endpoint same-origin sotto `/api/`.
+  - Lasciati invariati i blocchi no-write gia attivi su `storageSync` in scrittura, helper condivisi (`materialImages`, `aiCore`, `cisterna/iaClient`) e wrapper `firestoreWriteOps` / `storageWriteOps`.
+  - Migliorato il logging di `storageSync.getItemSync` per distinguere meglio un errore di lettura da un dataset semplicemente vuoto, senza cambiare il contratto pubblico (`null` su errore).
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna nuova schermata; il clone torna a poter leggere i dati reali senza degradare tutto in “nessun dato”.
+  - Lettura: il traffico infrastrutturale/runtime necessario a Firebase/Auth/SDK non viene piu colpito dalla barriera globale.
+  - Blocco scritture: resta attivo sugli endpoint mutanti applicativi noti e sui punti no-write gia coperti prima della patch.
+- COME VERIFICARE:
+  - Aprire una route `/next/*` che prima mostrava “nessun dato” e verificare il ritorno delle letture reali.
+  - Verificare che nel clone restino bloccati i tentativi verso endpoint IA/PDF mutanti noti del progetto.
+  - Verificare in console che eventuali fallimenti di `getItemSync` logghino `[STORAGE_SYNC_READ_FAILED]`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Patch minima correttiva; non tocca i wrapper Firestore/Storage della Fase 2 e non modifica i moduli business.
+
+### Voce 2026-03-11 35
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Seconda tranche clone-safe dei listati `Autisti Inbox`
+- OBIETTIVO: Aprire nel clone le route reali `Autisti Inbox` di `controlli`, `segnalazioni` e `richiesta-attrezzature`, mantenendo il riuso delle pagine madre e una navigazione clone-safe senza aprire ancora la home inbox.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/autistiInbox/AutistiControlliAll.tsx`
+  - `src/autistiInbox/AutistiSegnalazioniAll.tsx`
+  - `src/autistiInbox/RichiestaAttrezzatureAll.tsx`
+  - `src/next/NextAutistiInboxControlliPage.tsx`
+  - `src/next/NextAutistiInboxSegnalazioniPage.tsx`
+  - `src/next/NextAutistiInboxRichiestaAttrezzaturePage.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunte le route clone `/next/autisti-inbox/controlli`, `/next/autisti-inbox/segnalazioni` e `/next/autisti-inbox/richiesta-attrezzature`.
+  - Creati tre wrapper clone sottili che riusano controllatamente le pagine madre dei listati.
+  - Adeguati logo e pulsanti `INDIETRO` per restare nel subtree `/next`, con fallback a `Centro Controllo` finche la home `Autisti Inbox` non sara pronta nel clone.
+  - Riallineati metadata e access minimi dell'area `operativita-globale` per dichiarare attive anche le tre route della seconda tranche.
+  - Lasciate attive anteprima PDF, share/copia/WhatsApp, immagini e allegati locali, perche non scrivono sulla madre e restano coerenti col perimetro clone-safe.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i tre listati diventano navigabili nel clone con route reali, senza introdurre la home inbox o moduli aggregatori non pronti.
+  - Lettura: i moduli continuano a leggere gli stessi dataset reali della madre per controlli, segnalazioni e richieste attrezzature.
+  - Blocco scritture: invariato; non vengono introdotti writer e non viene montato `AutistiEventoModal`.
+- COME VERIFICARE:
+  - Aprire `/next/autisti-inbox/controlli`, `/next/autisti-inbox/segnalazioni` e `/next/autisti-inbox/richiesta-attrezzature`.
+  - Verificare che logo, back e ritorni restino nel subtree `/next`.
+  - Verificare che anteprima PDF, share/copia/WhatsApp e immagini/allegati locali restino disponibili senza toccare la madre.
+  - Verificare `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - La home `/next/autisti-inbox`, `AutistiEventoModal`, `Autista 360` e `Autisti Admin` restano fuori da questa patch.
+
+### Voce 2026-03-11 34
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Prima tranche clone-safe dei listati `Autisti Inbox`
+- OBIETTIVO: Aprire nel clone le prime tre route reali `Autisti Inbox` piu pulite (`cambio-mezzo`, `log-accessi`, `gomme`) senza introdurre home inbox fittizia, writer o uscite dal subtree `/next`.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/autistiInbox/CambioMezzoInbox.tsx`
+  - `src/autistiInbox/AutistiLogAccessiAll.tsx`
+  - `src/autistiInbox/AutistiGommeAll.tsx`
+  - `src/next/NextAutistiInboxCambioMezzoPage.tsx`
+  - `src/next/NextAutistiInboxLogAccessiPage.tsx`
+  - `src/next/NextAutistiInboxGommePage.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunte le route clone `/next/autisti-inbox/cambio-mezzo`, `/next/autisti-inbox/log-accessi` e `/next/autisti-inbox/gomme`.
+  - Creati tre entrypoint clone sottili che riusano controllatamente le pagine madre dei listati, senza reimplementarle.
+  - Adeguati i ritorni e la navigazione delle tre pagine per restare nel perimetro `/next`, usando `Centro Controllo` come fallback finche la home inbox non sara pronta nel clone.
+  - Riallineati metadata e access minimi dell'area `operativita-globale` per dichiarare la prima tranche `Autisti Inbox` ora attiva.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i tre listati diventano navigabili nel clone con route reali, senza aprire ancora la home `Autisti Inbox`.
+  - Lettura: i listati continuano a leggere gli stessi dataset/event stream della madre.
+  - Blocco scritture: invariato; i tre moduli non introducono writer e non montano `AutistiEventoModal`.
+- COME VERIFICARE:
+  - Aprire direttamente `/next/autisti-inbox/cambio-mezzo`, `/next/autisti-inbox/log-accessi` e `/next/autisti-inbox/gomme`.
+  - Verificare che logo, back e navigazione interna non escano dal subtree `/next`.
+  - Verificare `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - La home `/next/autisti-inbox`, `AutistiEventoModal`, `Autista 360` e la seconda tranche `Inbox` restano fuori da questa patch.
+
+### Voce 2026-03-11 33
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Migrazione clone-safe della route `Cisterna IA`
+- OBIETTIVO: Aprire nel clone la route reale `/next/cisterna/ia`, mantenendo il flusso della madre il piu possibile fedele ma gestendo in modo stabile il blocco no-write su upload, analisi IA e salvataggio.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/pages/CisternaCaravate/CisternaCaravateIA.tsx`
+  - `src/next/NextCisternaPage.tsx`
+  - `src/next/NextCisternaIAPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunta la route clone `/next/cisterna/ia` con wrapper dedicato `NextCisternaIAPage`.
+  - La base `/next/cisterna` apre ora `Cisterna IA` nel clone e smette di trattarlo come azione ancora bloccata.
+  - `CisternaCaravateIA.tsx` riconosce il runtime clone, usa i percorsi clone-safe di ritorno e converte i blocchi della barriera in messaggi utente chiari invece di lasciare errori opachi.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Cisterna IA` e ora raggiungibile dal clone come modulo reale.
+  - Lettura: invariata; la pagina mantiene solo stato locale, selezione file e preview finche non incontra azioni mutanti.
+  - Blocco scritture: attivo; upload, endpoint IA e salvataggio archivio vengono fermati dalla barriera senza toccare la madre.
+- COME VERIFICARE:
+  - Aprire `/next/cisterna` e usare il link `Apri Cisterna IA nel clone`.
+  - Aprire direttamente `/next/cisterna/ia`.
+  - Selezionare un file e verificare che il tentativo di analisi venga fermato con messaggio clone-safe, senza upload o salvataggi reali.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - `Schede Test` resta volutamente fuori da questa patch.
+
+### Voce 2026-03-11 32
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Hardening Fase 2 mirato della barriera no-write per i writer diretti Cisterna
+- OBIETTIVO: Estendere il blocco tecnico del clone ai mutator Firebase/Storage usati direttamente da `Cisterna IA` e `Schede Test`, senza avviare ancora la migrazione dei due moduli e senza rifattorizzare l'intero repo.
+- FILE TOCCATI:
+  - `src/utils/firestoreWriteOps.ts`
+  - `src/utils/storageWriteOps.ts`
+  - `src/pages/CisternaCaravate/CisternaCaravateIA.tsx`
+  - `src/pages/CisternaCaravate/CisternaSchedeTest.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Introdotti wrapper sottili e riusabili per `addDoc`, `updateDoc`, `setDoc`, `deleteDoc`, `uploadBytes`, `uploadString` e `deleteObject`, agganciati alla barriera clone esistente.
+  - `Cisterna IA` e `Cisterna Schede Test` non usano piu direttamente i writer scoperti principali: upload file/crop e salvataggi Firestore passano ora dai wrapper.
+  - Nessun reader e stato toccato e il runtime madre fuori dal subtree `/next` resta in pass-through.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna UI nuova; i tentativi di scrittura da quei moduli, se portati nel clone, verrebbero ora bloccati con messaggio coerente.
+  - Lettura: invariata.
+  - Blocco scritture: rafforzato sui writer diretti piu critici per la futura migrazione di `Cisterna IA` e, in parte, `Schede Test`.
+- COME VERIFICARE:
+  - Eseguire `npm run build`.
+  - Verificare che `CisternaCaravateIA.tsx` e `CisternaSchedeTest.tsx` importino i mutator dai wrapper `firestoreWriteOps` / `storageWriteOps`.
+  - Verificare che i wrapper usino `assertCloneWriteAllowed(...)`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Patch di hardening condiviso, ma introdotta per sbloccare in sicurezza la futura migrazione clone dei writer Cisterna.
+
+### Voce 2026-03-11 31
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Cablaggio clone-safe Dossier Mezzo -> `DettaglioLavoro`
+- OBIETTIVO: Collegare dal Dossier clone il nuovo `DettaglioLavoro` read-only, eliminando il residuo di listati lavori non navigabili nonostante la route clone-safe fosse gia disponibile.
+- FILE TOCCATI:
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Il Dossier clone ora usa `buildNextDettaglioLavoroPath(...)` per aprire `/next/dettagliolavori/:lavoroId` dai lavori `In attesa` e `Eseguiti`.
+  - Il collegamento e stato aggiunto sia nei teaser della card `Lavori` sia nei due modal `Mostra tutti`, mantenendo il perimetro read-only e senza toccare il domain dati.
+  - Rimossi in quel punto i residui di UX “non cliccabile nel clone” sostituendoli con un accesso reale al dettaglio clone-safe.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: dal Dossier clone i lavori del mezzo sono ora navigabili verso il dettaglio clone-safe.
+  - Lettura: invariata; il Dossier continua a leggere tramite i layer NEXT gia esistenti.
+  - Blocco scritture: invariato; nessun link al dettaglio legacy e nessuna azione scrivente aggiunta.
+- COME VERIFICARE:
+  - Aprire `/next/mezzi-dossier/:targa`.
+  - Nella card `Lavori`, cliccare un elemento `In attesa` o `Eseguito` e verificare apertura di `/next/dettagliolavori/:lavoroId`.
+  - Ripetere il controllo anche dai modal `Mostra tutti`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - Il micro-task chiude un residuo locale del Dossier; non apre nuovi moduli e non cambia il perimetro della famiglia `Lavori`.
+
+### Voce 2026-03-11 30
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Fase 1 barriera centrale no-write per il clone `/next`
+- OBIETTIVO: Installare un primo blocco runtime condiviso che impedisca al clone di scrivere tramite `storageSync`, helper di upload/delete, callable IA e `fetch` mutanti, senza toccare il runtime madre e senza pretendere ancora di coprire tutti i writer SDK sparsi.
+- FILE TOCCATI:
+  - `src/main.tsx`
+  - `src/utils/cloneWriteBarrier.ts`
+  - `src/utils/storageSync.ts`
+  - `src/utils/materialImages.ts`
+  - `src/utils/aiCore.ts`
+  - `src/cisterna/iaClient.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Creata `src/utils/cloneWriteBarrier.ts` con riconoscimento runtime clone da pathname `/next`, errore standard `CloneWriteBlockedError`, assert centralizzato e installazione idempotente della fetch barrier.
+  - Installata la fetch barrier il prima possibile in `src/main.tsx`, prima del render React, con blocco nel clone di tutte le `fetch` con metodo diverso da `GET/HEAD`.
+  - Integrato `src/utils/storageSync.ts` per bloccare `setItemSync` e `removeItemSync` nel clone, lasciando invariata la lettura `getItemSync`.
+  - Integrati `src/utils/materialImages.ts`, `src/utils/aiCore.ts` e `src/cisterna/iaClient.ts` per bloccare upload/delete materiali, callable `aiCore` e endpoint HTTP mutanti Cisterna quando il runtime corrente e `/next`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna nuova schermata o route; il clone continua a usare le stesse viste gia aperte.
+  - Lettura: invariata; `getItemSync`, fetch `GET/HEAD` e i reader clone-safe restano operativi.
+  - Blocco scritture: rafforzato centralmente per una parte grossa e concreta dei writer condivisi; i tentativi bloccati nel clone emettono warning leggibili in console.
+- COME VERIFICARE:
+  - Aprire una route `/next/*` e verificare che la navigazione read-only continui a funzionare.
+  - Verificare in console che eventuali tentativi di `setItemSync`, `removeItemSync`, upload materiali, `aiCore`, endpoint Cisterna o `fetch` non `GET/HEAD` nel clone vengano bloccati con `CloneWriteBlockedError`.
+  - Verificare che le stesse azioni fuori dal subtree `/next` continuino a seguire il runtime madre.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Questa e solo la Fase 1: i mutator Firebase SDK importati direttamente nelle pagine e i writer Storage sparsi restano fuori e richiedono hardening dedicato in Fase 2.
+
+### Voce 2026-03-11 29
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Apertura clone-safe route base `Cisterna`
+- OBIETTIVO: Aprire nel clone solo la controparte read-only della route madre `/cisterna`, separando archivio, report mensile e tabelle per targa dai writer della pagina legacy.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/domain/nextCisternaDomain.ts`
+  - `src/next/NextCisternaPage.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunta in `src/App.tsx` la route clone reale `/next/cisterna`, sotto un nuovo perimetro metadata/access dedicato `cisterna`.
+  - Creato `src/next/domain/nextCisternaDomain.ts` per leggere in sola lettura `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili` e `@rifornimenti_autisti_tmp`, applicando in modo deterministico le regole madre su duplicati, scheda manuale e supporto autisti.
+  - Creata `src/next/NextCisternaPage.tsx` come pagina clone read-only con tre sezioni consultive: archivio, report mensile e tabelle per targa / dettaglio mese.
+  - Aggiornato `src/next/NextCentroControlloPage.tsx` per risolvere il quick link gia visibile `/cisterna` verso la nuova route clone-safe.
+  - Riallineati `src/next/nextData.ts` e `src/next/nextAccess.ts` per dichiarare `Cisterna` come modulo specialistico attivo in forma parziale, lasciando fuori `/cisterna/ia` e `/cisterna/schede-test`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il quick link `Cisterna Caravate` del clone apre ora una vera pagina `/next/cisterna` con archivio, report e tabelle consultive.
+  - Lettura: la UI clone non legge raw i dataset Cisterna; tutte le letture e la derivazione dei valori restano confinate in `nextCisternaDomain.ts`.
+  - Blocco scritture: invariato e piu esplicito; restano fuori `Cisterna IA`, `Schede Test`, conferma duplicati, salvataggio cambio EUR/CHF, edit schede, upload ed export PDF.
+- COME VERIFICARE:
+  - Aprire `/next/centro-controllo` e verificare che il quick link `Cisterna Caravate` punti a `/next/cisterna`.
+  - Aprire `/next/cisterna` e verificare la presenza delle sole sezioni consultive `Archivio`, `Report mensile` e `Targhe + dettaglio`.
+  - Verificare che non esistano pulsanti per confermare duplicati, salvare il cambio, esportare PDF o aprire route writer.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Quando i dati del mese non sono pienamente ricostruibili il clone mostra warning e riduce il report, senza introdurre scritture o inferenze non dimostrate.
+
+### Voce 2026-03-11 28
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Apertura clone-safe `DettaglioLavoro` read-only
+- OBIETTIVO: Chiudere lo step 2 della famiglia `Lavori` aprendo una controparte clone-safe del dettaglio, senza riusare la UI madre scrivente e senza introdurre alcuna scrittura su `@lavori`.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/domain/nextLavoriDomain.ts`
+  - `src/next/NextDettaglioLavoroPage.tsx`
+  - `src/next/NextLavoriInAttesaPage.tsx`
+  - `src/next/NextLavoriEseguitiPage.tsx`
+  - `src/next/nextData.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunta in `src/App.tsx` la route clone reale `/next/dettagliolavori/:lavoroId`, mantenuta sotto il perimetro `operativita-globale`.
+  - Esteso `src/next/domain/nextLavoriDomain.ts` con un resolver read-only dedicato al dettaglio per `lavoroId`, che usa il gruppo solo se il `gruppoId` esiste davvero e, quando manca, mostra in modo deterministico solo il record principale senza aggregare tutti gli orfani legacy.
+  - Creata `src/next/NextDettaglioLavoroPage.tsx` come pagina clone dedicata e solo consultiva, senza bottoni `MODIFICA`, `ELIMINA` o `ESEGUI`.
+  - Aggiornate `src/next/NextLavoriInAttesaPage.tsx` e `src/next/NextLavoriEseguitiPage.tsx` per aprire il nuovo dettaglio clone-safe invece di lasciare il drill-down completamente assente.
+  - Riallineato `src/next/nextData.ts` per dichiarare nel catalogo centrale che `operativita-globale` include anche le due liste lavori e il nuovo dettaglio clone-safe.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: dalle due liste clone `Lavori in attesa` e `Lavori eseguiti` e ora possibile aprire un vero dettaglio lavori su route dedicata.
+  - Lettura: la UI clone non legge raw `@lavori`; la risoluzione del record e dell'eventuale gruppo resta confinata nel domain `nextLavoriDomain.ts`.
+  - Blocco scritture: invariato; `LavoriDaEseguire`, `modifica`, `elimina`, `esegui/chiudi` e qualsiasi writer sulla route dettaglio restano fuori perimetro.
+- COME VERIFICARE:
+  - Aprire `/next/lavori-in-attesa` e `/next/lavori-eseguiti`, cliccare una riga e verificare l'apertura del nuovo dettaglio clone-safe.
+  - Aprire direttamente un deep link `/next/dettagliolavori/<lavoroId>` e verificare che il clone mostri il gruppo solo se il `gruppoId` e affidabile, altrimenti il solo record principale.
+  - Verificare che nella pagina non esistano pulsanti di modifica, eliminazione o esecuzione.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - `LavoriDaEseguire` resta volutamente fuori: il suo ruolo reale nella madre continua a essere writer di creazione gruppi.
+
+### Voce 2026-03-11 27
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Apertura route clone dedicata `Analisi Economica`
+- OBIETTIVO: Allineare il clone alla route reale madre `/analisi-economica/:targa`, riusando la pagina clone read-only gia esistente e senza riattivare rigenerazione IA o scritture.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/nextData.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunta in `src/App.tsx` la route clone reale `/next/analisi-economica/:targa`, sotto il perimetro `areaId="mezzi-dossier"`, collegata a `src/next/NextAnalisiEconomicaPage.tsx`.
+  - Aggiornato `src/next/NextDossierMezzoPage.tsx` per aprire `Analisi Economica` sulla nuova route dedicata invece della sola subview `?view=analisi`.
+  - Mantenuta la retrocompatibilita del vecchio deep link interno: se il dossier clone riceve ancora `?view=analisi`, ora effettua redirect tecnico verso `/next/analisi-economica/:targa`, evitando doppio wiring divergente.
+  - Riallineato `src/next/nextData.ts` per chiarire che `Analisi Economica` ha ora una route dedicata, mentre `Gomme` e `Rifornimenti` restano sottoviste interne del dossier.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Analisi Economica` e ora navigabile come route clone reale coerente con la madre e resta raggiungibile anche dal dossier clone.
+  - Lettura: invariata; la pagina continua a usare il domain clone read-only gia esistente e non introduce letture raw nella UI.
+  - Blocco scritture: invariato; rigenerazione IA, writer su `@analisi_economica_mezzi` ed endpoint esterno restano bloccati.
+- COME VERIFICARE:
+  - Aprire `/next/analisi-economica/<targa>` e verificare che la pagina clone si apra correttamente.
+  - Aprire il dossier clone e verificare che il bottone `Analisi Economica` punti alla nuova route dedicata.
+  - Aprire `/next/mezzi-dossier/<targa>?view=analisi` e verificare il redirect tecnico verso la nuova route.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - La patch non modifica `src/next/NextAnalisiEconomicaPage.tsx` nel perimetro funzionale: riusa la pagina clone gia esistente e non tocca le azioni locali PDF/share gia presenti.
+
+### Voce 2026-03-11 26
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Apertura clone-safe `Lavori in attesa` e `Lavori eseguiti`
+- OBIETTIVO: Aprire nel clone le due route reali della madre con perimetro read-only sensato, mantenendo fuori `Lavori Da Eseguire` e `DettaglioLavoro`.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextLavoriInAttesaPage.tsx`
+  - `src/next/NextLavoriEseguitiPage.tsx`
+  - `src/next/domain/nextLavoriDomain.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunte in `src/App.tsx` le route clone reali `/next/lavori-in-attesa` e `/next/lavori-eseguiti`, entrambe sotto il perimetro `operativita-globale`.
+  - Aggiornato `src/next/NextCentroControlloPage.tsx` per risolvere i quick link gia presenti verso le due nuove route clone-safe, lasciando ancora non attivo `Lavori Da Eseguire`.
+  - Creati `src/next/NextLavoriInAttesaPage.tsx` e `src/next/NextLavoriEseguitiPage.tsx` come pagine dedicate solo consultive, con raggruppamento per mezzo / `MAGAZZINO` e senza drill-down, PDF, share o download.
+  - Esteso `src/next/domain/nextLavoriDomain.ts` con snapshot globale read-only delle due liste, includendo anche lavori `MAGAZZINO` o senza targa e mantenendo intatto il reader per-mezzo gia usato dal dossier.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: dal Centro Controllo clone sono ora cliccabili `Lavori In Attesa` e `Lavori Eseguiti`; le due pagine si aprono su route dedicate coerenti con la madre.
+  - Lettura: la UI clone non legge raw `@lavori`; la lettura globale resta confinata nel domain `nextLavoriDomain.ts`, con supporto anche a gruppi `MAGAZZINO`.
+  - Blocco scritture: invariato e piu esplicito; restano fuori creazione, modifica, elimina, esegui/chiudi, dettaglio legacy e PDF/share/download.
+- COME VERIFICARE:
+  - Aprire `/next/centro-controllo` e verificare che i quick link `Lavori In Attesa` e `Lavori Eseguiti` portino alle nuove route clone.
+  - Aprire `/next/lavori-in-attesa` e `/next/lavori-eseguiti`, verificare il raggruppamento per mezzo / `MAGAZZINO` e l'assenza di click verso il dettaglio.
+  - Verificare che `Lavori Da Eseguire` resti non attivo nel clone.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il clone non riusa direttamente le pagine madre `LavoriInAttesa` / `LavoriEseguiti`; mantiene solo il loro ruolo consultivo e lascia fuori tutte le azioni locali o scriventi.
+
+### Voce 2026-03-11 25
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Riallineamento metadata, access map e guard minima del clone alle route gia attive
+- OBIETTIVO: Allineare `src/next/nextData.ts`, `src/next/nextAccess.ts` e `src/next/NextRoleGuard.tsx` al runtime clone realmente aperto, senza introdurre nuovi moduli business e senza cambiare la UX visibile.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `src/next/NextRoleGuard.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Riallineato `src/next/nextData.ts` alle route clone gia vive: aggiunti metadata centrali per `Area Capo`, `Colleghi`, `Fornitori` e `Libretti (Export PDF)`, aggiornate le descrizioni delle aree storiche che erano rimaste ferme alla fase shell e aggiunta una mappa esplicita delle route clone attive, del placeholder autista separato e del redirect tecnico `/next/ia-gestionale`.
+  - Riallineato `src/next/nextAccess.ts` con nuove permission key e access config coerenti con i moduli gia aperti (`capo`, `colleghi`, `fornitori`, `libretti-export`), mantenendo semplice il sistema di visibilita frontend e lasciando separata l'esperienza autista.
+  - Aggiornato `src/next/NextRoleGuard.tsx` per agganciarsi davvero alla registry accessi e ai role preset, restando pero permissivo nel runtime per non rompere il clone read-only; in sviluppo segnala solo i mismatch di accesso simulato.
+  - Sistemato in `src/App.tsx` il cablaggio minimo degli `areaId` gia attivi (`capo`, `libretti-export`, `autista-separato`) senza aprire o chiudere nuove route.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata; nessun modulo nuovo viene esposto e nessuna route gia aperta viene rimossa.
+  - Lettura: invariata; la patch tocca solo metadata, access map e guard minima.
+  - Blocco scritture: invariato; il clone resta completamente read-only.
+- COME VERIFICARE:
+  - Aprire le route gia attive `/next/centro-controllo`, `/next/operativita-globale`, `/next/mezzi-dossier`, `/next/capo/mezzi`, `/next/colleghi`, `/next/fornitori`, `/next/ia`, `/next/libretti-export` e verificare che restino raggiungibili.
+  - Verificare che `/next/ia-gestionale` continui a fare redirect tecnico a `/next/ia`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - La guardia del clone non introduce auth o denial runtime nuovi: il suo scopo in questa patch e restare coerente con la mappa aree gia aperte e non piu scollegata dai metadata centrali.
+
+### Voce 2026-03-11 24
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Apertura clone-safe `Libretti (Export PDF)` con preview locale minima
+- OBIETTIVO: Aprire nel clone il primo sottomodulo reale del hub madre `Intelligenza Artificiale`, limitandolo a lista mezzi con libretto, selezione e anteprima PDF locale, senza riusare la pagina madre e senza attivare share, download o azioni esterne.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextIntelligenzaArtificialePage.tsx`
+  - `src/next/NextLibrettiExportPage.tsx`
+  - `src/next/NextPdfPreviewModal.tsx`
+  - `src/next/domain/nextLibrettiExportDomain.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunta in `src/App.tsx` la route clone `/next/libretti-export`, protetta con lo stesso perimetro `areaId="ia"` del hub clone.
+  - Aggiornato `src/next/NextIntelligenzaArtificialePage.tsx` per rendere cliccabile dal hub `/next/ia` la card reale `Libretti (Export PDF)`, lasciando bloccati tutti gli altri moduli IA non clone-safe.
+  - Creata `src/next/NextLibrettiExportPage.tsx` come pagina clone dedicata, fedele al ruolo della madre ma limitata a lista mezzi con libretto, selezione e anteprima PDF locale.
+  - Creato `src/next/domain/nextLibrettiExportDomain.ts` per leggere in sola lettura i dati necessari da `@mezzi_aziendali`, riusare il layer flotta clone-safe dove possibile ed esporre anche `librettoStoragePath` per il fallback preview, senza letture raw nella UI clone.
+  - Creato `src/next/NextPdfPreviewModal.tsx` come modal clone locale senza share, copia link, WhatsApp o download, evitando il riuso del modal shared della madre che avrebbe mostrato `Scarica`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: dal hub `/next/ia` e ora apribile il solo modulo `Libretti (Export PDF)` in perimetro read-only minimo.
+  - Lettura: la UI clone non legge raw `@mezzi_aziendali`; la normalizzazione resta confinata nel domain dedicato.
+  - Blocco scritture: invariato e piu esplicito; non esistono share, clipboard, WhatsApp, download, upload, salvataggi o runtime IA attivi in questo flusso clone.
+- COME VERIFICARE:
+  - Aprire `/next/ia` e verificare che la card `Libretti (Export PDF)` porti a `/next/libretti-export`.
+  - Aprire `/next/libretti-export`, verificare lista mezzi con libretto, selezione e apertura dell'anteprima PDF locale.
+  - Verificare che nel modal clone siano assenti `Condividi`, `Copia link`, `Apri WhatsApp` e `Scarica`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il clone non riusa direttamente `src/pages/LibrettiExport.tsx`; la pagina madre resta intatta e continua a conservare azioni operative piu ampie rispetto al perimetro clone-safe.
+
+### Voce 2026-03-11 23
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Riallineamento clone dal placeholder `IA Gestionale` al vero hub madre `Intelligenza Artificiale`
+- OBIETTIVO: Eliminare dal runtime clone la semantica concettuale `IA Gestionale`, aprire la route clone-safe del vero hub madre `Intelligenza Artificiale` e mantenere visibili ma bloccati i moduli figli non ancora separati da writer, upload o runtime esterni.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextIntelligenzaArtificialePage.tsx`
+  - `src/next/NextIAGestionalePage.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Sostituita la route clone attiva `/next/ia-gestionale` con `/next/ia`, mantenendo solo un redirect tecnico dal vecchio path al nuovo hub per non rompere ingressi preesistenti.
+  - Eliminato `src/next/NextIAGestionalePage.tsx` e creato `src/next/NextIntelligenzaArtificialePage.tsx` come hub read-only fedele al modulo madre `Intelligenza Artificiale`, senza API key, upload o chiamate esterne.
+  - Riallineati `src/next/nextData.ts` e `src/next/nextAccess.ts` da `ia-gestionale` / `next.ia-gestionale` a `ia` / `next.ia`, rimuovendo dal runtime attivo descrizioni tipo `Assistente business`.
+  - Aggiornato `src/next/NextCentroControlloPage.tsx` per mappare il quick link madre `/ia` alla nuova route clone-safe `/next/ia`; `IA Libretto` e `IA Documenti` restano visibili ma disabilitati.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il clone espone ora un hub reale chiamato `Intelligenza Artificiale`, coerente con la madre, e non piu un placeholder concettuale `IA Gestionale`.
+  - Lettura: nessun dataset nuovo viene letto nella UI clone di questo hub; la pagina resta puramente informativa e navigazionale.
+  - Blocco scritture: invariato e piu esplicito; `IAApiKey`, `IALibretto`, `IADocumenti`, `IACoperturaLibretti`, `Libretti (Export PDF)` e `Cisterna Caravate IA` restano visibili ma non attivi nel clone.
+- COME VERIFICARE:
+  - Aprire `/next/centro-controllo` e verificare che il quick link `Intelligenza Artificiale` porti a `/next/ia`.
+  - Aprire `/next/ia` e verificare che l'hub clone mostri i moduli madre senza attivarli.
+  - Aprire `/next/ia-gestionale` e verificare il redirect a `/next/ia`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - Restano riferimenti storici/documentali a `IA Gestionale` negli archivi e nella documentazione strategica precedente; non fanno parte del runtime clone attivo.
+
+### Voce 2026-03-11 22
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Rimozione residuo clone `Strumenti Trasversali`
+- OBIETTIVO: Eliminare dal clone attivo la route e la promozione UI di `Strumenti Trasversali`, chiarendo che non e un modulo reale della madre e lasciando navigabili solo i moduli reali gia aperti.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `src/next/NextStrumentiTrasversaliPage.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Rimossa da `src/App.tsx` la route clone `/next/strumenti-trasversali` e il relativo import pagina.
+  - Eliminato `src/next/NextStrumentiTrasversaliPage.tsx`, ormai ridondante dopo l'apertura dei moduli reali `Colleghi` e `Fornitori`.
+  - Puliti `src/next/nextData.ts` e `src/next/nextAccess.ts` da `areaId`, metadata navigazione, permission key e access config che trattavano `Strumenti Trasversali` come macro-area reale del clone.
+  - Lasciati invariati i quick link e le route clone-safe dei moduli reali gia aperti.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il clone non espone piu una pagina o una voce runtime chiamata `Strumenti Trasversali`.
+  - Lettura: nessun dataset nuovo o vecchio viene toccato; `Colleghi` e `Fornitori` restano sulle rispettive route clone-safe gia attive.
+  - Blocco scritture: invariato; la patch rimuove solo rumore concettuale dal clone senza riattivare azioni sulla madre.
+- COME VERIFICARE:
+  - Verificare che `/next/strumenti-trasversali` non esista piu nel routing attivo.
+  - Verificare che `Colleghi` e `Fornitori` restino raggiungibili su `/next/colleghi` e `/next/fornitori`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - Restano solo riferimenti storici o architetturali fuori runtime, utili a capire decisioni precedenti o snapshot archiviate.
+
 ### Voce 2026-03-11 21
 - DATA: 2026-03-11
 - TITOLO MODIFICA: Apertura clone-safe Colleghi e Fornitori read-only
@@ -642,3 +1085,83 @@ Serve a:
 - SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
 - NOTE:
   - Voce clone-specifica.
+
+### Voce 2026-03-11 01
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Migrazione clone-safe di `Schede Test` Cisterna
+- OBIETTIVO: Aprire nel clone la route reale `/next/cisterna/schede-test` riusando il modulo madre con adattamenti minimi e barriera no-write attiva.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/pages/CisternaCaravate/CisternaSchedeTest.tsx`
+  - `src/next/NextCisternaPage.tsx`
+  - `src/next/NextCisternaSchedeTestPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Registrata la route clone `/next/cisterna/schede-test`.
+  - Collegato l'ingresso dalla base clone `/next/cisterna`.
+  - Riutilizzata la pagina madre `CisternaSchedeTest` con adattamenti minimi per ritorni clone-safe e gestione chiara dei blocchi barriera su estrazione, upload crop e save/update.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Schede Test` diventa modulo reale navigabile nel clone, senza redesign.
+  - Lettura: restano disponibili storico, caricamento edit mode, form locale, suggerimenti e calibrazione locale.
+  - Blocco scritture: upload, estrazione IA e save/update continuano a essere fermati dalla barriera no-write del clone.
+- COME VERIFICARE:
+  - Aprire `/next/cisterna` e usare il link verso `Schede Test`.
+  - Verificare che `/next/cisterna/schede-test` sia navigabile e che i ritorni restino nel subtree `/next`.
+  - Verificare che tentativi di estrazione, upload o salvataggio mostrino messaggi chiari senza toccare la madre.
+  - Verificare `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - La patch non apre nuovi writer: rende clone-compatible un modulo reale gia coperto dalla barriera no-write.
+
+### Voce 2026-03-11 37
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Variante clone-safe di `AutistiEventoModal`
+- OBIETTIVO: Preparare il prerequisito tecnico corretto per importare in seguito `AutistiInboxHome` e poi `Autista 360`, eliminando dal clone l'ambiguita operativa del modal eventi autisti.
+- FILE TOCCATI:
+  - `src/components/AutistiEventoModal.tsx`
+  - `src/next/components/NextAutistiEventoModal.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Esteso il modal condiviso con una modalita opzionale `cloneSafe`, lasciando invariato il comportamento legacy di default.
+  - Nella variante clone-safe vengono neutralizzate le azioni writer `CREA LAVORO` e `IMPORTA IN DOSSIER`.
+  - La variante clone-safe non apre piu la route legacy `/dettagliolavori?lavoroId=...` e, quando esiste un solo lavoro collegato, usa il dettaglio clone-safe `/next/dettagliolavori/:lavoroId`.
+  - Creato il wrapper dedicato `src/next/components/NextAutistiEventoModal.tsx` per confinare l'uso clone-safe nel subtree `/next`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il clone dispone ora di un modal eventi autisti coerente con il perimetro read-only.
+  - Lettura: resta riusata la resa reale del dettaglio evento, inclusi allegati, JSON e preview PDF dove gia disponibili.
+  - Blocco scritture: nessuna scrittura nuova; le azioni operative ambigue vengono rimosse dal profilo clone-safe invece di affidarsi al falso successo dopo il blocco barriera.
+- COME VERIFICARE:
+  - Importare `NextAutistiEventoModal` in un modulo `/next` e aprire un evento autisti.
+  - Verificare che non compaiano piu `CREA LAVORO`, `IMPORTA IN DOSSIER` o uscite legacy dal modal clone-safe.
+  - Verificare `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - Patch preparatoria: non apre ancora `AutistiInboxHome` o `Autista 360`, ma rimuove il principale blocco UX clone-incompatibile per quei moduli.
+
+### Voce 2026-03-11 38
+- DATA: 2026-03-11
+- TITOLO MODIFICA: Migrazione clone-safe di `AutistiInboxHome`
+- OBIETTIVO: Aprire nel clone la route reale `/next/autisti-inbox` riusando `AutistiInboxHome` con modal clone-safe e routing confinato al subtree `/next`.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/autistiInbox/AutistiInboxHome.tsx`
+  - `src/next/NextAutistiInboxHomePage.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - Registrata la route clone `/next/autisti-inbox`.
+  - Creato il wrapper `NextAutistiInboxHomePage` che riusa la pagina madre con `NextAutistiEventoModal`.
+  - Riallineati nel profilo clone `logo`, ritorni, link ai sei listati gia migrati e menu admin, evitando uscite verso `/`, `/autisti-admin` o `/autisti-inbox/*` legacy.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `AutistiInboxHome` diventa home inbox reale del clone senza redesign.
+  - Lettura: restano letti gli stessi feed reali di eventi e sessioni della madre.
+  - Blocco scritture: il modal clone-safe mantiene fuori `CREA LAVORO`, `IMPORTA IN DOSSIER` e qualsiasi uscita legacy dal perimetro `/next`.
+- COME VERIFICARE:
+  - Aprire `/next/autisti-inbox`.
+  - Verificare che i link interni aprano solo le route clone gia attive della famiglia inbox.
+  - Aprire un evento e verificare che il dettaglio usi `NextAutistiEventoModal`, senza azioni writer ambigue o uscite legacy.
+  - Verificare `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - La patch non apre ancora `Autista 360`, `Autisti Admin` o l'app autisti.

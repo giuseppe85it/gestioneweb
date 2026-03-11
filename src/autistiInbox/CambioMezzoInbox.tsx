@@ -9,6 +9,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "./CambioMezzoInbox.css";
 import { loadHomeEvents, type HomeEvent } from "../utils/homeEvents";
 import { formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 
 function formatDateInputValue(value: Date) {
   const year = value.getFullYear();
@@ -137,10 +138,16 @@ function buildCambioLines(info: {
 export default function CambioMezzoInbox() {
   const navigate = useNavigate();
   const location = useLocation();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const datePickerRef = useRef<HTMLInputElement | null>(null);
   const [day, setDay] = useState<Date>(new Date());
   const [events, setEvents] = useState<HomeEvent[]>([]);
   const [filterTarga, setFilterTarga] = useState("");
+  const homePath = cloneRuntime ? "/next/centro-controllo" : "/";
+  const backPath = cloneRuntime ? "/next/centro-controllo" : "/autisti-inbox";
+  const routeBasePath = cloneRuntime
+    ? "/next/autisti-inbox/cambio-mezzo"
+    : "/autisti-inbox/cambio-mezzo";
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -184,7 +191,7 @@ export default function CambioMezzoInbox() {
 
   function setDayAndUrl(next: Date) {
     setDay(next);
-    navigate(`/autisti-inbox/cambio-mezzo?day=${formatDateInputValue(next)}`, {
+    navigate(`${routeBasePath}?day=${formatDateInputValue(next)}`, {
       replace: true,
     });
   }
@@ -207,11 +214,11 @@ export default function CambioMezzoInbox() {
               src="/logo.png"
               alt="Logo"
               className="aix-logo"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(homePath)}
             />
             <h1>Cambio mezzo</h1>
           </div>
-          <button className="aix-back" onClick={() => navigate("/autisti-inbox")}>
+          <button className="aix-back" onClick={() => navigate(backPath)}>
             INDIETRO
           </button>
         </div>

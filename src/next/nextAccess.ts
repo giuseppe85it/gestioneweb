@@ -4,12 +4,19 @@ export type NextRole = "admin" | "gestionale" | "autista";
 
 export type NextExperienceKind = "gestionale" | "autista-separata";
 
+export type NextSpecialRouteId = "autista-separato";
+export type NextGuardAreaId = NextAreaId | NextSpecialRouteId;
+
 export type NextPermissionKey =
   | "next.centro-controllo"
   | "next.mezzi-dossier"
   | "next.operativita-globale"
-  | "next.ia-gestionale"
-  | "next.strumenti-trasversali"
+  | "next.capo"
+  | "next.colleghi"
+  | "next.fornitori"
+  | "next.ia"
+  | "next.libretti-export"
+  | "next.cisterna"
   | "next.autista-separato";
 
 export type NextPermissionMatrix = Record<NextPermissionKey, boolean>;
@@ -44,7 +51,7 @@ export const NEXT_ROLE_PRESETS: Record<NextRole, NextRolePreset> = {
     label: "Admin",
     shortLabel: "Admin",
     description:
-      "Vede tutte le macro-aree della shell NEXT e governa la futura matrice permessi dal lato gestionale.",
+      "Vede tutte le aree oggi attive del clone read-only e governa la futura matrice permessi dal lato gestionale.",
     landingPath: "/next/centro-controllo",
     experience: "gestionale",
     futureNote:
@@ -55,7 +62,7 @@ export const NEXT_ROLE_PRESETS: Record<NextRole, NextRolePreset> = {
     label: "Utente gestionale",
     shortLabel: "Gestionale",
     description:
-      "Accede solo alle aree operative autorizzate. In questa fase la visibilita e simulata lato frontend e pronta per una matrice futura per singola utenza.",
+      "Accede alle aree operative clone-safe gia aperte. In questa fase la visibilita resta simulata lato frontend.",
     landingPath: "/next/centro-controllo",
     experience: "gestionale",
     futureNote:
@@ -66,7 +73,7 @@ export const NEXT_ROLE_PRESETS: Record<NextRole, NextRolePreset> = {
     label: "Autista",
     shortLabel: "Autista",
     description:
-      "Non entra nella shell gestionale come utente ridotto. La sua esperienza resta concettualmente separata e continuera a vivere su percorsi dedicati.",
+      "Non entra nella shell gestionale come utente ridotto. La sua esperienza resta separata e continua a vivere su percorsi dedicati.",
     landingPath: NEXT_DRIVER_EXPERIENCE_PATH,
     experience: "autista-separata",
     futureNote:
@@ -78,28 +85,62 @@ export const NEXT_AREA_ACCESS: Record<NextAreaId, NextAreaAccessConfig> = {
   "centro-controllo": {
     permissionKey: "next.centro-controllo",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Macro-area operativa ad alta priorita, candidata a permessi granulari per utente.",
+    futureScope: "Cockpit operativo clone-safe con quick link verso i moduli gia aperti o esplicitamente bloccati.",
   },
   "mezzi-dossier": {
     permissionKey: "next.mezzi-dossier",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Area mezzo-centrica da affinare con visibilita dossier, costi e documenti sensibili.",
+    futureScope: "Area mezzo-centrica clone-safe, con dossier e sottoviste interne ancora da riallineare del tutto sulle route madre.",
   },
   "operativita-globale": {
     permissionKey: "next.operativita-globale",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Workflow globali e code operative, pronti per autorizzazioni per modulo/azione.",
+    futureScope: "Workbench globale read-only per inventario, materiali, attrezzature, manutenzioni, liste lavori, home `Autisti Inbox` clone-safe, sei listati inbox gia importati e procurement clone-safe.",
   },
-  "ia-gestionale": {
-    permissionKey: "next.ia-gestionale",
+  "capo": {
+    permissionKey: "next.capo",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Assistente business read-only, con eventuali scope futuri separati da audit tecnico e configurazioni sensibili.",
+    futureScope: "Route capo gia attive nel clone, con consultazione aperta e writer di approvazione ancora bloccati.",
   },
-  "strumenti-trasversali": {
-    permissionKey: "next.strumenti-trasversali",
-    allowedRoles: ["admin"],
-    futureScope: "Area di governance, sistema e strumenti tecnici che non deve comparire a chi non ha potere amministrativo.",
+  "colleghi": {
+    permissionKey: "next.colleghi",
+    allowedRoles: ["admin", "gestionale"],
+    futureScope: "Anagrafica colleghi clone-safe in sola lettura.",
   },
+  "fornitori": {
+    permissionKey: "next.fornitori",
+    allowedRoles: ["admin", "gestionale"],
+    futureScope: "Anagrafica fornitori clone-safe in sola lettura.",
+  },
+  "ia": {
+    permissionKey: "next.ia",
+    allowedRoles: ["admin", "gestionale"],
+    futureScope: "Hub clone read-only del modulo madre Intelligenza Artificiale, con card unsafe ancora bloccate.",
+  },
+  "libretti-export": {
+    permissionKey: "next.libretti-export",
+    allowedRoles: ["admin", "gestionale"],
+    futureScope: "Primo figlio IA clone-safe, limitato a lista, selezione e anteprima PDF locale.",
+  },
+  "cisterna": {
+    permissionKey: "next.cisterna",
+    allowedRoles: ["admin", "gestionale"],
+    futureScope:
+      "Route base clone-safe per archivio cisterna, report mensile e tabelle per targa, con IA, schede-test, export e salvataggi ancora bloccati.",
+  },
+};
+
+export const NEXT_SPECIAL_ROUTE_ACCESS: Record<NextSpecialRouteId, NextAreaAccessConfig> = {
+  "autista-separato": {
+    permissionKey: "next.autista-separato",
+    allowedRoles: ["autista"],
+    futureScope: "Esperienza separata dalla shell admin; nel clone attuale resta un placeholder esplicito.",
+  },
+};
+
+const NEXT_GUARD_AREA_ACCESS: Record<NextGuardAreaId, NextAreaAccessConfig> = {
+  ...NEXT_AREA_ACCESS,
+  ...NEXT_SPECIAL_ROUTE_ACCESS,
 };
 
 const NEXT_BASE_PERMISSIONS: Record<NextRole, NextPermissionMatrix> = {
@@ -107,24 +148,36 @@ const NEXT_BASE_PERMISSIONS: Record<NextRole, NextPermissionMatrix> = {
     "next.centro-controllo": true,
     "next.mezzi-dossier": true,
     "next.operativita-globale": true,
-    "next.ia-gestionale": true,
-    "next.strumenti-trasversali": true,
+    "next.capo": true,
+    "next.colleghi": true,
+    "next.fornitori": true,
+    "next.ia": true,
+    "next.libretti-export": true,
+    "next.cisterna": true,
     "next.autista-separato": false,
   },
   gestionale: {
     "next.centro-controllo": true,
     "next.mezzi-dossier": true,
     "next.operativita-globale": true,
-    "next.ia-gestionale": true,
-    "next.strumenti-trasversali": false,
+    "next.capo": true,
+    "next.colleghi": true,
+    "next.fornitori": true,
+    "next.ia": true,
+    "next.libretti-export": true,
+    "next.cisterna": true,
     "next.autista-separato": false,
   },
   autista: {
     "next.centro-controllo": false,
     "next.mezzi-dossier": false,
     "next.operativita-globale": false,
-    "next.ia-gestionale": false,
-    "next.strumenti-trasversali": false,
+    "next.capo": false,
+    "next.colleghi": false,
+    "next.fornitori": false,
+    "next.ia": false,
+    "next.libretti-export": false,
+    "next.cisterna": false,
     "next.autista-separato": true,
   },
 };
@@ -164,8 +217,16 @@ export const getNextSimulatedAccessProfile = (role: NextRole): NextSimulatedAcce
   permissions: { ...NEXT_BASE_PERMISSIONS[role] },
 });
 
+export const getGuardAreaAccessConfig = (areaId: NextGuardAreaId): NextAreaAccessConfig =>
+  NEXT_GUARD_AREA_ACCESS[areaId];
+
 export const canRoleAccessArea = (role: NextRole, areaId: NextAreaId): boolean => {
   const access = NEXT_AREA_ACCESS[areaId];
+  return getNextSimulatedAccessProfile(role).permissions[access.permissionKey];
+};
+
+export const canRoleAccessGuardArea = (role: NextRole, areaId: NextGuardAreaId): boolean => {
+  const access = getGuardAreaAccessConfig(areaId);
   return getNextSimulatedAccessProfile(role).permissions[access.permissionKey];
 };
 

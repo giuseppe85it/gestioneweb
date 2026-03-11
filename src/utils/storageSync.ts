@@ -1,5 +1,10 @@
 import { db } from "../firebase";
 import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
+import {
+  assertCloneWriteAllowed,
+  CloneWriteBlockedError,
+  isCloneRuntime,
+} from "./cloneWriteBarrier";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 
@@ -24,6 +29,8 @@ export async function setItemSync(
   opts?: SetItemSyncOptions
 ) {
   try {
+    assertCloneWriteAllowed("storageSync.setItemSync", { key });
+
     const ref = doc(db, "storage", key);
 
     // Merge-safe path only for the mezzi document.
@@ -123,6 +130,7 @@ export async function setItemSync(
     await setDoc(ref, { value: value });
     console.log("setItemSync:", key, value);
   } catch (err) {
+    if (err instanceof CloneWriteBlockedError) return;
     console.error("Errore setItemSync:", err);
   }
 }
@@ -133,16 +141,22 @@ export async function getItemSync(key: string) {
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data().value : null;
   } catch (err) {
-    console.error("Errore getItemSync:", err);
+    console.error("[STORAGE_SYNC_READ_FAILED] getItemSync", {
+      key,
+      cloneRuntime: isCloneRuntime(),
+      err,
+    });
     return null;
   }
 }
 
 export async function removeItemSync(key: string) {
   try {
+    assertCloneWriteAllowed("storageSync.removeItemSync", { key });
     await deleteDoc(doc(db, "storage", key));
     console.log("removeItemSync:", key);
   } catch (err) {
+    if (err instanceof CloneWriteBlockedError) return;
     console.error("Errore removeItemSync:", err);
   }
 }

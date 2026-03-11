@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { formatDateTimeUI } from "../utils/dateFormat";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 import "./AutistiSegnalazioniAll.css";
 
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
@@ -60,10 +61,13 @@ function buildNameLabel(value: unknown) {
 
 export default function AutistiLogAccessiAll() {
   const navigate = useNavigate();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const [records, setRecords] = useState<EventoOperativo[]>([]);
   const [typeFilter, setTypeFilter] = useState<"ALL" | "LOGIN" | "LOGOUT" | "INIZIO" | "CAMBIO">(
     "ALL"
   );
+  const homePath = cloneRuntime ? "/next/centro-controllo" : "/";
+  const backPath = cloneRuntime ? "/next/centro-controllo" : "/autisti-inbox";
 
   useEffect(() => {
     let alive = true;
@@ -134,11 +138,11 @@ export default function AutistiLogAccessiAll() {
               src="/logo.png"
               alt="Logo"
               className="aix-logo"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(homePath)}
             />
             <h1>Log accessi</h1>
           </div>
-          <button className="aix-back" onClick={() => navigate("/autisti-inbox")}>
+          <button className="aix-back" onClick={() => navigate(backPath)}>
             INDIETRO
           </button>
         </div>

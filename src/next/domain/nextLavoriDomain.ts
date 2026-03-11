@@ -1,9 +1,14 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import {
+  normalizeNextMezzoTarga,
+  readNextAnagraficheFlottaSnapshot,
+  type NextAnagraficheFlottaMezzoItem,
+} from "../nextAnagraficheFlottaDomain";
 
 const STORAGE_COLLECTION = "storage";
 const LAVORI_DATASET_KEY = "@lavori";
+const MAGAZZINO_GROUP_KEY = "MAGAZZINO";
 
 type RawRecord = Record<string, unknown>;
 
@@ -14,6 +19,10 @@ type NextLegacyDatasetShape =
   | "array"
   | "missing"
   | "unsupported";
+
+type NextLavoriGroupKind = "mezzo" | "magazzino";
+export type NextLavoriListaRouteId = "lavori-in-attesa" | "lavori-eseguiti";
+export type NextLavoriDetailResolution = "group-by-gruppo-id" | "single-record";
 
 export type NextLavoroFieldQuality = "certo" | "ricostruito" | "non_disponibile";
 export type NextLavoroRecordQuality = "certo" | "parziale" | "da_verificare";
@@ -44,11 +53,11 @@ export const NEXT_LAVORI_DOMAIN = {
   },
 } as const;
 
-export type NextLavoroReadOnlyItem = {
+type NextLavoroBaseReadOnlyItem = {
   id: string;
   gruppoId: string | null;
-  mezzoTarga: string;
-  targa: string;
+  mezzoTarga: string | null;
+  targa: string | null;
   descrizione: string | null;
   dettagli: string | null;
   tipo: NextLavoroTipo;
@@ -65,6 +74,9 @@ export type NextLavoroReadOnlyItem = {
   statoVista: NextLavoroStatoVista;
   matchesGlobalOpenView: boolean;
   matchesDossierInAttesaView: boolean;
+  groupKind: NextLavoriGroupKind;
+  groupKey: string;
+  groupLabel: string;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof LAVORI_DATASET_KEY;
   source: {
@@ -84,6 +96,12 @@ export type NextLavoroReadOnlyItem = {
   };
   quality: NextLavoroRecordQuality;
   flags: string[];
+};
+
+export type NextLavoroReadOnlyItem = NextLavoroBaseReadOnlyItem & {
+  mezzoTarga: string;
+  targa: string;
+  groupKind: "mezzo";
 };
 
 export type NextLavoriLegacyViewItem = {
@@ -124,6 +142,110 @@ export type NextMezzoLavoriSnapshot = {
     withChiHaEseguito: number;
     sourceSegnalazioni: number;
     sourceControlli: number;
+  };
+  limitations: string[];
+};
+
+export type NextLavoriListaRow = {
+  id: string;
+  gruppoId: string | null;
+  targa: string | null;
+  mezzoTarga: string | null;
+  descrizione: string;
+  dettagli: string | null;
+  dataInserimento: string | null;
+  timestampInserimento: number | null;
+  dataEsecuzione: string | null;
+  timestampEsecuzione: number | null;
+  eseguito: boolean;
+  urgenza: NextLavoroUrgenza;
+  segnalatoDa: string | null;
+  chiHaEseguito: string | null;
+  sottoElementiCount: number;
+  quality: NextLavoroRecordQuality;
+  flags: string[];
+};
+
+export type NextLavoriListaGroup = {
+  key: string;
+  label: string;
+  kind: NextLavoriGroupKind;
+  mezzo: {
+    targa: string;
+    categoria: string | null;
+    marcaModello: string | null;
+    fotoUrl: string | null;
+  } | null;
+  items: NextLavoriListaRow[];
+  counts: {
+    total: number;
+    alta: number;
+    media: number;
+    bassa: number;
+  };
+};
+
+export type NextLavoriListaSnapshot = {
+  domainCode: typeof NEXT_LAVORI_DOMAIN.code;
+  domainName: typeof NEXT_LAVORI_DOMAIN.name;
+  routeId: NextLavoriListaRouteId;
+  title: string;
+  logicalDatasets: readonly string[];
+  activeReadOnlyDataset: typeof NEXT_LAVORI_DOMAIN.activeReadOnlyDataset;
+  normalizationStrategy: typeof NEXT_LAVORI_DOMAIN.normalizationStrategy;
+  outputContract: typeof NEXT_LAVORI_DOMAIN.outputContract;
+  datasetShape: NextLegacyDatasetShape;
+  groups: NextLavoriListaGroup[];
+  counts: {
+    totalLavori: number;
+    totalGruppi: number;
+    gruppiMezzo: number;
+    gruppiMagazzino: number;
+    conTarga: number;
+    senzaTarga: number;
+  };
+  limitations: string[];
+};
+
+export type NextLavoriDetailItem = NextLavoriListaRow & {
+  groupKind: NextLavoriGroupKind;
+  groupKey: string;
+  groupLabel: string;
+  isPrimary: boolean;
+};
+
+export type NextLavoriDetailSnapshot = {
+  domainCode: typeof NEXT_LAVORI_DOMAIN.code;
+  domainName: typeof NEXT_LAVORI_DOMAIN.name;
+  routePattern: "/next/dettagliolavori/:lavoroId";
+  lavoroId: string;
+  logicalDatasets: readonly string[];
+  activeReadOnlyDataset: typeof NEXT_LAVORI_DOMAIN.activeReadOnlyDataset;
+  normalizationStrategy: typeof NEXT_LAVORI_DOMAIN.normalizationStrategy;
+  outputContract: typeof NEXT_LAVORI_DOMAIN.outputContract;
+  datasetShape: NextLegacyDatasetShape;
+  target: NextLavoriDetailItem;
+  items: NextLavoriDetailItem[];
+  detailGroup: {
+    resolution: NextLavoriDetailResolution;
+    gruppoId: string | null;
+    key: string;
+    label: string;
+    kind: NextLavoriGroupKind;
+    mezzo: {
+      targa: string;
+      categoria: string | null;
+      marcaModello: string | null;
+      fotoUrl: string | null;
+    } | null;
+    warnings: string[];
+  };
+  counts: {
+    totalItems: number;
+    aperti: number;
+    eseguiti: number;
+    conDettagli: number;
+    senzaTarga: number;
   };
   limitations: string[];
 };
@@ -250,7 +372,7 @@ function unwrapStorageArray(
   return { datasetShape: "unsupported", items: [] };
 }
 
-function buildLavoroId(raw: RawRecord, mezzoTarga: string, index: number): string {
+function buildLavoroId(raw: RawRecord, mezzoTarga: string | null, index: number): string {
   const id = normalizeText(raw.id);
   if (id) return id;
   if (mezzoTarga) return `lavoro:${mezzoTarga}:${index}`;
@@ -270,16 +392,16 @@ function deriveRecordQuality(item: {
   chiHaEseguito: string | null;
   gruppoId: string | null;
   sourceQuality: NextLavoroFieldQuality;
+  groupKind: NextLavoriGroupKind;
 }): NextLavoroRecordQuality {
   const hasCoreData =
     Boolean(item.descrizione) &&
-    item.targaQuality !== "non_disponibile" &&
+    (item.groupKind === "magazzino" || item.targaQuality !== "non_disponibile") &&
     Boolean(item.dataInserimento);
 
-  const executionGap =
-    item.eseguito && !item.dataEsecuzione && !item.chiHaEseguito;
+  const executionGap = item.eseguito && !item.dataEsecuzione && !item.chiHaEseguito;
 
-  if (hasCoreData && !executionGap && item.gruppoId) {
+  if (hasCoreData && !executionGap && (item.groupKind === "magazzino" || item.gruppoId)) {
     return item.sourceQuality === "non_disponibile" ? "parziale" : "certo";
   }
 
@@ -290,15 +412,35 @@ function deriveRecordQuality(item: {
   return "da_verificare";
 }
 
-function toNextLavoroReadOnlyItem(
+function normalizeGroupKind(
+  tipo: NextLavoroTipo,
+  mezzoTarga: string | null
+): NextLavoriGroupKind {
+  if (tipo === "magazzino" || !mezzoTarga) return "magazzino";
+  return "mezzo";
+}
+
+function normalizeGroupKey(kind: NextLavoriGroupKind, mezzoTarga: string | null): string {
+  if (kind === "magazzino") return MAGAZZINO_GROUP_KEY;
+  return mezzoTarga || MAGAZZINO_GROUP_KEY;
+}
+
+function normalizeGroupLabel(kind: NextLavoriGroupKind, mezzoTarga: string | null): string {
+  if (kind === "magazzino") return "MAGAZZINO";
+  return mezzoTarga || "MAGAZZINO";
+}
+
+function toBaseLavoroReadOnlyItem(
   raw: RawRecord,
   index: number
-): NextLavoroReadOnlyItem | null {
+): NextLavoroBaseReadOnlyItem {
   const targaDirect = normalizeNextMezzoTarga(raw.targa);
   const targaAlias = normalizeNextMezzoTarga(raw.mezzoTarga);
-  const mezzoTarga = targaDirect || targaAlias;
-  if (!mezzoTarga) return null;
-
+  const mezzoTarga = targaDirect || targaAlias || null;
+  const tipo = normalizeTipoLavoro(raw.tipo);
+  const groupKind = normalizeGroupKind(tipo, mezzoTarga);
+  const groupKey = normalizeGroupKey(groupKind, mezzoTarga);
+  const groupLabel = normalizeGroupLabel(groupKind, mezzoTarga);
   const descrizione = normalizeOptionalText(raw.descrizione);
   const dettagli = normalizeOptionalText(raw.dettagli);
   const dataInserimento = normalizeOptionalText(raw.dataInserimento);
@@ -317,11 +459,12 @@ function toNextLavoroReadOnlyItem(
   if (!gruppoId) flags.push("missing_gruppo_id");
   if (!sourceRecord) flags.push("source_non_tracciata");
   if (targaDirect === "" && targaAlias !== "") flags.push("targa_da_mezzoTarga");
+  if (!mezzoTarga) flags.push("missing_targa");
+  if (groupKind === "magazzino") flags.push("grouped_as_magazzino");
   if (!eseguito && !gruppoId) flags.push("aperto_senza_gruppo");
   if (eseguito && !dataEsecuzione) flags.push("eseguito_senza_data");
   if (eseguito && !normalizeOptionalText(raw.chiHaEseguito)) flags.push("eseguito_senza_esecutore");
 
-  const tipo = normalizeTipoLavoro(raw.tipo);
   if (!tipo && raw.tipo != null) flags.push("tipo_non_standard");
 
   const urgenza = normalizeUrgenza(raw.urgenza);
@@ -345,7 +488,7 @@ function toNextLavoroReadOnlyItem(
     dataEsecuzione: dataEsecuzione ? "certo" : "non_disponibile",
     urgenza: urgenza ? "certo" : raw.urgenza != null ? "ricostruito" : "non_disponibile",
     source: sourceQuality,
-  } satisfies NextLavoroReadOnlyItem["fieldQuality"];
+  } satisfies NextLavoroBaseReadOnlyItem["fieldQuality"];
 
   return {
     id: buildLavoroId(raw, mezzoTarga, index),
@@ -365,9 +508,13 @@ function toNextLavoroReadOnlyItem(
     chiHaEseguito: normalizeOptionalText(raw.chiHaEseguito),
     sottoElementiCount,
     sottoElementiPresent: sottoElementiCount > 0,
-    statoVista: eseguito ? "eseguito" : gruppoId ? "in_attesa" : "da_eseguire",
+    statoVista: eseguito ? "eseguito" : groupKind === "mezzo" && gruppoId ? "in_attesa" : "da_eseguire",
     matchesGlobalOpenView: eseguito !== true,
-    matchesDossierInAttesaView: eseguito !== true && Boolean(gruppoId),
+    matchesDossierInAttesaView:
+      eseguito !== true && groupKind === "mezzo" && Boolean(gruppoId),
+    groupKind,
+    groupKey,
+    groupLabel,
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: LAVORI_DATASET_KEY,
     source: {
@@ -386,9 +533,14 @@ function toNextLavoroReadOnlyItem(
       chiHaEseguito: normalizeOptionalText(raw.chiHaEseguito),
       gruppoId,
       sourceQuality,
+      groupKind,
     }),
     flags,
   };
+}
+
+function isMezzoScopedLavoro(item: NextLavoroBaseReadOnlyItem): item is NextLavoroReadOnlyItem {
+  return item.groupKind === "mezzo" && Boolean(item.mezzoTarga) && Boolean(item.targa);
 }
 
 function getUrgenzaWeight(value: NextLavoroUrgenza): number {
@@ -404,7 +556,9 @@ function getUrgenzaWeight(value: NextLavoroUrgenza): number {
   }
 }
 
-function sortOpenItems(items: NextLavoroReadOnlyItem[]): NextLavoroReadOnlyItem[] {
+function sortOpenItems<T extends { urgenza: NextLavoroUrgenza; timestampInserimento: number | null }>(
+  items: T[]
+): T[] {
   return [...items].sort((left, right) => {
     const byUrgenza = getUrgenzaWeight(right.urgenza) - getUrgenzaWeight(left.urgenza);
     if (byUrgenza !== 0) return byUrgenza;
@@ -413,11 +567,18 @@ function sortOpenItems(items: NextLavoroReadOnlyItem[]): NextLavoroReadOnlyItem[
   });
 }
 
-function sortExecutedItems(items: NextLavoroReadOnlyItem[]): NextLavoroReadOnlyItem[] {
+function sortExecutedItems<
+  T extends {
+    urgenza: NextLavoroUrgenza;
+    timestampInserimento: number | null;
+    timestampEsecuzione: number | null;
+  },
+>(items: T[]): T[] {
   return [...items].sort((left, right) => {
     const rightTs = right.timestampEsecuzione ?? right.timestampInserimento ?? 0;
     const leftTs = left.timestampEsecuzione ?? left.timestampInserimento ?? 0;
-    return rightTs - leftTs;
+    if (rightTs !== leftTs) return rightTs - leftTs;
+    return getUrgenzaWeight(right.urgenza) - getUrgenzaWeight(left.urgenza);
   });
 }
 
@@ -443,6 +604,28 @@ function buildLimitations(snapshot: {
   ].filter((entry): entry is string => Boolean(entry));
 }
 
+function buildListaLimitations(args: {
+  routeId: NextLavoriListaRouteId;
+  datasetShape: NextLegacyDatasetShape;
+  counts: NextLavoriListaSnapshot["counts"];
+}): string[] {
+  const routeLabel =
+    args.routeId === "lavori-in-attesa" ? "Lavori in attesa" : "Lavori eseguiti";
+
+  return [
+    `La lista clone \`${routeLabel}\` legge solo \`@lavori\` tramite il layer NEXT e apre il dettaglio solo sulla controparte clone-safe dedicata.`,
+    args.counts.senzaTarga > 0
+      ? "I record senza targa o marcati `magazzino` vengono raggruppati sotto `MAGAZZINO`, come nelle viste legacy della madre."
+      : null,
+    args.datasetShape === "unsupported"
+      ? "Il dataset `@lavori` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
+      : null,
+    args.routeId === "lavori-in-attesa"
+      ? "La madre usa `/lavori-da-eseguire` come writer di creazione; questa lista clone apre solo il backlog globale read-only (`eseguito !== true`)."
+      : "La lista clone espone solo consultazione dei lavori chiusi e lascia fuori PDF, share e qualsiasi drill-down legacy scrivente.",
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
 async function readLavoriDataset(): Promise<{
   datasetShape: NextLegacyDatasetShape;
   items: unknown[];
@@ -455,19 +638,322 @@ async function readLavoriDataset(): Promise<{
   return unwrapStorageArray(rawDoc);
 }
 
+async function readNormalizedLavoriDataset(): Promise<{
+  datasetShape: NextLegacyDatasetShape;
+  items: NextLavoroBaseReadOnlyItem[];
+}> {
+  const dataset = await readLavoriDataset();
+  const items = dataset.items
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      return toBaseLavoroReadOnlyItem(entry as RawRecord, index);
+    })
+    .filter((entry): entry is NextLavoroBaseReadOnlyItem => Boolean(entry));
+
+  return {
+    datasetShape: dataset.datasetShape,
+    items,
+  };
+}
+
+function toListaRow(item: NextLavoroBaseReadOnlyItem): NextLavoriListaRow {
+  return {
+    id: item.id,
+    gruppoId: item.gruppoId,
+    targa: item.targa,
+    mezzoTarga: item.mezzoTarga,
+    descrizione: item.descrizione ?? "-",
+    dettagli: item.dettagli,
+    dataInserimento: item.dataInserimento,
+    timestampInserimento: item.timestampInserimento,
+    dataEsecuzione: item.dataEsecuzione,
+    timestampEsecuzione: item.timestampEsecuzione,
+    eseguito: item.eseguito,
+    urgenza: item.urgenza,
+    segnalatoDa: item.segnalatoDa,
+    chiHaEseguito: item.chiHaEseguito,
+    sottoElementiCount: item.sottoElementiCount,
+    quality: item.quality,
+    flags: item.flags,
+  };
+}
+
+function toDetailItem(item: NextLavoroBaseReadOnlyItem, targetId: string): NextLavoriDetailItem {
+  return {
+    ...toListaRow(item),
+    groupKind: item.groupKind,
+    groupKey: item.groupKey,
+    groupLabel: item.groupLabel,
+    isPrimary: item.id === targetId,
+  };
+}
+
+function buildMezzoIndex(
+  items: NextAnagraficheFlottaMezzoItem[]
+): Map<string, NextAnagraficheFlottaMezzoItem> {
+  const index = new Map<string, NextAnagraficheFlottaMezzoItem>();
+  items.forEach((item) => {
+    const targa = normalizeNextMezzoTarga(item.targa);
+    if (!targa || index.has(targa)) return;
+    index.set(targa, item);
+  });
+  return index;
+}
+
+function sortListaGroups(groups: NextLavoriListaGroup[]): NextLavoriListaGroup[] {
+  return [...groups].sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "mezzo" ? -1 : 1;
+    }
+    return left.label.localeCompare(right.label, "it", { sensitivity: "base" });
+  });
+}
+
+function sortDetailItems(items: NextLavoroBaseReadOnlyItem[]): NextLavoroBaseReadOnlyItem[] {
+  return [...items].sort((left, right) => {
+    const leftTs = left.timestampInserimento ?? Number.MAX_SAFE_INTEGER;
+    const rightTs = right.timestampInserimento ?? Number.MAX_SAFE_INTEGER;
+    if (leftTs !== rightTs) return leftTs - rightTs;
+
+    const leftDate = left.dataInserimento ?? "";
+    const rightDate = right.dataInserimento ?? "";
+    const byDate = leftDate.localeCompare(rightDate, "it", { sensitivity: "base" });
+    if (byDate !== 0) return byDate;
+
+    return left.id.localeCompare(right.id, "it", { sensitivity: "base" });
+  });
+}
+
+function buildDetailLimitations(args: {
+  datasetShape: NextLegacyDatasetShape;
+  resolution: NextLavoriDetailResolution;
+  target: NextLavoroBaseReadOnlyItem;
+  groupWarnings: string[];
+}): string[] {
+  return [
+    "Il dettaglio clone legge solo `@lavori` tramite il layer NEXT e non riusa la pagina legacy scrivente.",
+    args.resolution === "single-record"
+      ? "Il record non espone un `gruppoId` affidabile: il clone mostra solo il lavoro richiesto e non aggrega altri record senza gruppo."
+      : "Il gruppo viene ricostruito solo quando il `gruppoId` e presente nel dato legacy.",
+    args.target.groupKind === "magazzino"
+      ? "Il lavoro appartiene al raggruppamento `MAGAZZINO` o non espone una targa affidabile."
+      : null,
+    args.datasetShape === "unsupported"
+      ? "Il dataset `@lavori` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
+      : null,
+    ...args.groupWarnings,
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
+async function readNextLavoriListaSnapshot(
+  routeId: NextLavoriListaRouteId
+): Promise<NextLavoriListaSnapshot> {
+  const [{ datasetShape, items }, anagrafiche] = await Promise.all([
+    readNormalizedLavoriDataset(),
+    readNextAnagraficheFlottaSnapshot(),
+  ]);
+
+  const mezzoIndex = buildMezzoIndex(anagrafiche.items);
+  const relevantItems =
+    routeId === "lavori-in-attesa"
+      ? sortOpenItems(items.filter((item) => item.matchesGlobalOpenView))
+      : sortExecutedItems(items.filter((item) => item.eseguito === true));
+
+  const groupsMap = new Map<string, NextLavoroBaseReadOnlyItem[]>();
+  relevantItems.forEach((item) => {
+    const list = groupsMap.get(item.groupKey) ?? [];
+    list.push(item);
+    groupsMap.set(item.groupKey, list);
+  });
+
+  const groups = sortListaGroups(
+    Array.from(groupsMap.entries()).map(([key, groupItems]) => {
+      const first = groupItems[0];
+      const mezzo =
+        first.groupKind === "mezzo" && first.mezzoTarga
+          ? mezzoIndex.get(first.mezzoTarga) ?? null
+          : null;
+
+      return {
+        key,
+        label: first.groupLabel,
+        kind: first.groupKind,
+        mezzo: mezzo
+          ? {
+              targa: mezzo.targa,
+              categoria: normalizeOptionalText(mezzo.categoria),
+              marcaModello: normalizeOptionalText(mezzo.marcaModello),
+              fotoUrl: mezzo.fotoUrl ?? null,
+            }
+          : null,
+        items: groupItems.map(toListaRow),
+        counts: {
+          total: groupItems.length,
+          alta: groupItems.filter((item) => item.urgenza === "alta").length,
+          media: groupItems.filter((item) => item.urgenza === "media" || item.urgenza == null).length,
+          bassa: groupItems.filter((item) => item.urgenza === "bassa").length,
+        },
+      } satisfies NextLavoriListaGroup;
+    })
+  );
+
+  const counts = {
+    totalLavori: relevantItems.length,
+    totalGruppi: groups.length,
+    gruppiMezzo: groups.filter((group) => group.kind === "mezzo").length,
+    gruppiMagazzino: groups.filter((group) => group.kind === "magazzino").length,
+    conTarga: relevantItems.filter((item) => Boolean(item.mezzoTarga)).length,
+    senzaTarga: relevantItems.filter((item) => !item.mezzoTarga).length,
+  };
+
+  return {
+    domainCode: NEXT_LAVORI_DOMAIN.code,
+    domainName: NEXT_LAVORI_DOMAIN.name,
+    routeId,
+    title: routeId === "lavori-in-attesa" ? "Lavori in attesa" : "Lavori eseguiti",
+    logicalDatasets: NEXT_LAVORI_DOMAIN.logicalDatasets,
+    activeReadOnlyDataset: NEXT_LAVORI_DOMAIN.activeReadOnlyDataset,
+    normalizationStrategy: NEXT_LAVORI_DOMAIN.normalizationStrategy,
+    outputContract: NEXT_LAVORI_DOMAIN.outputContract,
+    datasetShape,
+    groups,
+    counts,
+    limitations: buildListaLimitations({ routeId, datasetShape, counts }),
+  };
+}
+
+export async function readNextLavoriInAttesaSnapshot(): Promise<NextLavoriListaSnapshot> {
+  return readNextLavoriListaSnapshot("lavori-in-attesa");
+}
+
+export async function readNextLavoriEseguitiSnapshot(): Promise<NextLavoriListaSnapshot> {
+  return readNextLavoriListaSnapshot("lavori-eseguiti");
+}
+
+export function buildNextDettaglioLavoroPath(args: {
+  lavoroId: string;
+  search?: string;
+  from?: NextLavoriListaRouteId;
+}): string {
+  const encodedId = encodeURIComponent(args.lavoroId);
+  const params = new URLSearchParams(args.search ?? "");
+  if (args.from) {
+    params.set("from", args.from);
+  } else {
+    params.delete("from");
+  }
+
+  const serialized = params.toString();
+  return serialized
+    ? `/next/dettagliolavori/${encodedId}?${serialized}`
+    : `/next/dettagliolavori/${encodedId}`;
+}
+
+export async function readNextDettaglioLavoroSnapshot(
+  lavoroId: string
+): Promise<NextLavoriDetailSnapshot | null> {
+  const normalizedLavoroId = normalizeOptionalText(lavoroId);
+  if (!normalizedLavoroId) return null;
+
+  const [{ datasetShape, items }, anagrafiche] = await Promise.all([
+    readNormalizedLavoriDataset(),
+    readNextAnagraficheFlottaSnapshot(),
+  ]);
+
+  const target = items.find((item) => item.id === normalizedLavoroId);
+  if (!target) return null;
+
+  const mezzoIndex = buildMezzoIndex(anagrafiche.items);
+  const resolution: NextLavoriDetailResolution = target.gruppoId
+    ? "group-by-gruppo-id"
+    : "single-record";
+
+  // Se il gruppo non e esplicitato nel dato legacy, il clone resta deterministico
+  // e mostra solo il record richiesto invece di aggregare tutti gli "orfani".
+  const relatedItems =
+    resolution === "group-by-gruppo-id"
+      ? sortDetailItems(items.filter((item) => item.gruppoId === target.gruppoId))
+      : [target];
+
+  const detailItems = relatedItems.map((item) => toDetailItem(item, target.id));
+  const uniqueGroupKeys = new Set(relatedItems.map((item) => item.groupKey));
+  const uniqueKinds = new Set(relatedItems.map((item) => item.groupKind));
+  const uniqueTarghe = new Set(relatedItems.map((item) => item.mezzoTarga ?? MAGAZZINO_GROUP_KEY));
+  const mezzo =
+    target.groupKind === "mezzo" && target.mezzoTarga
+      ? mezzoIndex.get(target.mezzoTarga) ?? null
+      : null;
+
+  const groupWarnings = [
+    uniqueGroupKeys.size > 1
+      ? "Il gruppo espone chiavi di raggruppamento eterogenee nel dato legacy: il clone mantiene il gruppo solo per `gruppoId` senza dedurre ulteriori relazioni."
+      : null,
+    uniqueKinds.size > 1
+      ? "Il gruppo contiene record sia mezzo-centrici sia `MAGAZZINO`: il clone li mostra insieme solo perche condividono lo stesso `gruppoId`."
+      : null,
+    uniqueTarghe.size > 1
+      ? "Il gruppo contiene piu targhe o record senza targa: il clone non forza un mezzo principale diverso dal record richiesto."
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const detailGroupLabel =
+    resolution === "single-record"
+      ? target.groupLabel
+      : uniqueGroupKeys.size === 1
+        ? target.groupLabel
+        : "Gruppo lavoro";
+
+  return {
+    domainCode: NEXT_LAVORI_DOMAIN.code,
+    domainName: NEXT_LAVORI_DOMAIN.name,
+    routePattern: "/next/dettagliolavori/:lavoroId",
+    lavoroId: target.id,
+    logicalDatasets: NEXT_LAVORI_DOMAIN.logicalDatasets,
+    activeReadOnlyDataset: NEXT_LAVORI_DOMAIN.activeReadOnlyDataset,
+    normalizationStrategy: NEXT_LAVORI_DOMAIN.normalizationStrategy,
+    outputContract: NEXT_LAVORI_DOMAIN.outputContract,
+    datasetShape,
+    target: detailItems.find((item) => item.isPrimary) ?? detailItems[0],
+    items: detailItems,
+    detailGroup: {
+      resolution,
+      gruppoId: target.gruppoId,
+      key: resolution === "group-by-gruppo-id" ? target.gruppoId ?? target.id : target.id,
+      label: detailGroupLabel,
+      kind: target.groupKind,
+      mezzo: mezzo
+        ? {
+            targa: mezzo.targa,
+            categoria: normalizeOptionalText(mezzo.categoria),
+            marcaModello: normalizeOptionalText(mezzo.marcaModello),
+            fotoUrl: mezzo.fotoUrl ?? null,
+          }
+        : null,
+      warnings: groupWarnings,
+    },
+    counts: {
+      totalItems: detailItems.length,
+      aperti: detailItems.filter((item) => !item.eseguito).length,
+      eseguiti: detailItems.filter((item) => item.eseguito).length,
+      conDettagli: detailItems.filter((item) => Boolean(item.dettagli)).length,
+      senzaTarga: detailItems.filter((item) => !item.targa).length,
+    },
+    limitations: buildDetailLimitations({
+      datasetShape,
+      resolution,
+      target,
+      groupWarnings,
+    }),
+  };
+}
+
 export async function readNextMezzoLavoriSnapshot(
   targa: string
 ): Promise<NextMezzoLavoriSnapshot> {
   const mezzoTarga = normalizeNextMezzoTarga(targa);
-  const dataset = await readLavoriDataset();
+  const dataset = await readNormalizedLavoriDataset();
 
-  const items = dataset.items
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") return null;
-      return toNextLavoroReadOnlyItem(entry as RawRecord, index);
-    })
-    .filter((entry): entry is NextLavoroReadOnlyItem => Boolean(entry))
-    .filter((entry) => entry.mezzoTarga === mezzoTarga);
+  const items = dataset.items.filter(isMezzoScopedLavoro).filter((entry) => entry.mezzoTarga === mezzoTarga);
 
   const daEseguire = sortOpenItems(items.filter((entry) => entry.matchesGlobalOpenView));
   const inAttesa = sortOpenItems(items.filter((entry) => entry.matchesDossierInAttesaView));

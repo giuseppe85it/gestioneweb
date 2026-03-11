@@ -11,7 +11,6 @@ import {
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
@@ -20,9 +19,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  updateDoc,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { getDownloadURL, ref } from "firebase/storage";
 import { db, storage } from "../../firebase";
 import type { CisternaAutistaEvent, RifornimentoAutistaRecord } from "../../cisterna/types";
 import {
@@ -37,10 +35,34 @@ import {
   RIFORNIMENTI_AUTISTI_KEY,
 } from "../../cisterna/collections";
 import { callEstrattiSchedaCisternaCells } from "../../cisterna/iaClient";
+import {
+  CloneWriteBlockedError,
+  isCloneRuntime,
+} from "../../utils/cloneWriteBarrier";
+import { addDoc, updateDoc } from "../../utils/firestoreWriteOps";
+import { uploadBytes } from "../../utils/storageWriteOps";
 import "./CisternaSchedeTest.css";
 
 function sanitizeFileName(name: string): string {
   return name.replace(/[^\w.\-]+/g, "_");
+}
+
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+}
+
+function getCloneBarrierMessage(kind: "extract" | "crop" | "save"): string {
+  if (kind === "extract") {
+    return "Nel clone l'estrazione IA delle schede viene fermata prima di toccare la madre.";
+  }
+  if (kind === "crop") {
+    return "Nel clone il salvataggio del ritaglio su archivio resta bloccato.";
+  }
+  return "Nel clone il salvataggio della scheda resta bloccato.";
 }
 
 function createImage(url: string): Promise<HTMLImageElement> {
@@ -692,6 +714,7 @@ function AutosuggestInput({
 export default function CisternaSchedeTest() {
   const navigate = useNavigate();
   const location = useLocation();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const editDocId = useMemo(() => {
     const param = new URLSearchParams(location.search).get("edit");
     return param ? param.trim() : "";
@@ -823,6 +846,9 @@ export default function CisternaSchedeTest() {
       ? `Modifica scheda (${editMonthLabel})`
       : "Modifica scheda"
     : "Schede Carburante (Cisterna Caravate)";
+  const homePath = cloneRuntime ? "/next/centro-controllo" : "/";
+  const cisternaPath = cloneRuntime ? "/next/cisterna" : "/cisterna";
+  const cisternaIaPath = cloneRuntime ? "/next/cisterna/ia" : "/cisterna/ia";
   const canSaveIa = Boolean(
     results && isSuccess && hasRowsArray && (isEditMode || fileUrl)
   );
@@ -1678,8 +1704,12 @@ export default function CisternaSchedeTest() {
         );
       }
       setResults(extracted);
-    } catch (err: any) {
-      setError(err?.message || "Errore estrazione scheda cisterna.");
+    } catch (err: unknown) {
+      if (err instanceof CloneWriteBlockedError) {
+        setError(getCloneBarrierMessage("extract"));
+      } else {
+        setError(toErrorMessage(err, "Errore estrazione scheda cisterna."));
+      }
     } finally {
       setLoading(false);
     }
@@ -1863,11 +1893,13 @@ export default function CisternaSchedeTest() {
         }
       }
       setPendingSave(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const blockedMessage =
+        err instanceof CloneWriteBlockedError ? getCloneBarrierMessage("save") : null;
       if (pendingSave.mode === "manual") {
-        setManualError(err?.message || "Errore salvataggio scheda.");
+        setManualError(blockedMessage ?? toErrorMessage(err, "Errore salvataggio scheda."));
       } else {
-        setError(err?.message || "Errore salvataggio scheda.");
+        setError(blockedMessage ?? toErrorMessage(err, "Errore salvataggio scheda."));
       }
     } finally {
       if (pendingSave.mode === "manual") {
@@ -2080,8 +2112,12 @@ export default function CisternaSchedeTest() {
         URL.revokeObjectURL(croppedPreview);
       }
       setCroppedPreview(URL.createObjectURL(blob));
-    } catch (err: any) {
-      setCropError(err?.message || "Errore salvataggio ritaglio.");
+    } catch (err: unknown) {
+      if (err instanceof CloneWriteBlockedError) {
+        setCropError(getCloneBarrierMessage("crop"));
+      } else {
+        setCropError(toErrorMessage(err, "Errore salvataggio ritaglio."));
+      }
     } finally {
       setCropSaving(false);
     }
@@ -2096,25 +2132,32 @@ export default function CisternaSchedeTest() {
               src="/logo.png"
               alt="Logo"
               className="cisterna-schede-logo"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(homePath)}
             />
             <div>
               <h1>{pageTitle}</h1>
               <p>
                 Inserimento manuale e digitalizzazione da foto con correzione assistita.
               </p>
+              {cloneRuntime ? (
+                <p style={{ marginTop: 8, color: "#4a6078" }}>
+                  Nel clone restano disponibili storico, form locale, calibrazione e routing
+                  reale, ma estrazione IA, upload ritaglio e save/update vengono fermati
+                  dalla barriera no-write.
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="cisterna-schede-actions">
             {isEditMode ? (
-              <button type="button" onClick={() => navigate("/cisterna")}>
+              <button type="button" onClick={() => navigate(cisternaPath)}>
                 Annulla
               </button>
             ) : null}
-            <button type="button" onClick={() => navigate("/cisterna")}>
+            <button type="button" onClick={() => navigate(cisternaPath)}>
               Torna a Cisterna
             </button>
-            <button type="button" onClick={() => navigate("/cisterna/ia")}>
+            <button type="button" onClick={() => navigate(cisternaIaPath)}>
               IA Cisterna
             </button>
           </div>
@@ -2145,7 +2188,7 @@ export default function CisternaSchedeTest() {
             {editError ? (
               <div className="cisterna-schede-edit-error">
                 <span>{editError}</span>
-                <button type="button" onClick={() => navigate("/cisterna")}>
+                <button type="button" onClick={() => navigate(cisternaPath)}>
                   Torna a Archivio
                 </button>
               </div>

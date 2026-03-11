@@ -12,6 +12,7 @@ import {
   sharePdfFile,
 } from "../utils/pdfPreview";
 import { formatDateTimeUI } from "../utils/dateFormat";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 import "./AutistiControlliAll.css";
 
 type ControlloRecord = {
@@ -61,6 +62,7 @@ function buildTargaLabel(record: ControlloRecord) {
 
 export default function AutistiControlliAll() {
   const navigate = useNavigate();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const [records, setRecords] = useState<ControlloRecord[]>([]);
   const [filterTarga, setFilterTarga] = useState("");
   const [onlyKo, setOnlyKo] = useState(false);
@@ -70,6 +72,8 @@ export default function AutistiControlliAll() {
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("controllo-mezzo.pdf");
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF controllo mezzo");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const homePath = cloneRuntime ? "/next/centro-controllo" : "/";
+  const backPath = cloneRuntime ? "/next/centro-controllo" : "/autisti-inbox";
 
   useEffect(() => {
     let alive = true;
@@ -256,11 +260,11 @@ export default function AutistiControlliAll() {
               src="/logo.png"
               alt="Logo"
               className="aic-logo"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(homePath)}
             />
             <h1>Tutti i controlli</h1>
           </div>
-          <button className="aic-back" onClick={() => navigate("/autisti-inbox")}>
+          <button className="aic-back" onClick={() => navigate(backPath)}>
             INDIETRO
           </button>
         </div>

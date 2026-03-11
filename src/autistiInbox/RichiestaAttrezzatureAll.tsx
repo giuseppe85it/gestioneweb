@@ -14,6 +14,7 @@ import {
   sharePdfFile,
 } from "../utils/pdfPreview";
 import { formatDateTimeUI } from "../utils/dateFormat";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 
 const KEY_RICHIESTE = "@richieste_attrezzature_autisti_tmp";
 
@@ -56,6 +57,7 @@ function getFotoList(r: RichiestaAttrezzatureRecord) {
 
 export default function RichiestaAttrezzatureAll() {
   const navigate = useNavigate();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const [records, setRecords] = useState<RichiestaAttrezzatureRecord[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -65,6 +67,7 @@ export default function RichiestaAttrezzatureAll() {
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("richiesta-attrezzature.pdf");
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF richiesta attrezzature");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const backPath = cloneRuntime ? "/next/centro-controllo" : "/autisti-inbox";
 
   useEffect(() => {
     let alive = true;
@@ -184,7 +187,7 @@ export default function RichiestaAttrezzatureAll() {
           <button
             className="richiesta-back-btn"
             type="button"
-            onClick={() => navigate("/autisti-inbox")}
+            onClick={() => navigate(backPath)}
           >
             INDIETRO
           </button>

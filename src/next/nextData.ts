@@ -2,16 +2,32 @@ export type NextAreaId =
   | "centro-controllo"
   | "mezzi-dossier"
   | "operativita-globale"
-  | "ia-gestionale"
-  | "strumenti-trasversali";
+  | "capo"
+  | "colleghi"
+  | "fornitori"
+  | "ia"
+  | "libretti-export"
+  | "cisterna";
+
+export type NextRouteModuleId = NextAreaId | "autista-separato" | "ia-legacy-redirect";
+
+export type NextRouteModuleStatus =
+  | "ACTIVE"
+  | "ACTIVE_PARTIAL"
+  | "SEPARATE_EXPERIENCE"
+  | "TECHNICAL_REDIRECT";
 
 export type NextAreaTone = "default" | "accent" | "warning" | "success";
 
 export type NextUiGrammar =
   | "Centro di controllo"
   | "Dossier"
-  | "Materiali da ordinare"
-  | "Area Capo";
+  | "Workflow operativo"
+  | "Area Capo"
+  | "Anagrafica"
+  | "Modulo IA"
+  | "Export PDF"
+  | "Modulo specialistico";
 
 export type NextSummaryCard = {
   label: string;
@@ -29,6 +45,8 @@ export type NextSection = {
 
 export type NextAreaConfig = {
   id: NextAreaId;
+  routePath: string;
+  relatedPaths?: string[];
   navLabel: string;
   shortLabel: string;
   eyebrow: string;
@@ -43,6 +61,16 @@ export type NextAreaConfig = {
   sections: NextSection[];
 };
 
+export type NextRouteModuleEntry = {
+  id: NextRouteModuleId;
+  path: string;
+  label: string;
+  status: NextRouteModuleStatus;
+  note: string;
+};
+
+// Ingressi top-level della shell clone. Non coincidono con l'intero catalogo delle
+// route attive, che e descritto in NEXT_ROUTE_MODULES.
 export const NEXT_NAV_ITEMS = [
   {
     id: "centro-controllo",
@@ -63,325 +91,565 @@ export const NEXT_NAV_ITEMS = [
     scope: "Workflow e code",
   },
   {
-    id: "ia-gestionale",
-    path: "/next/ia-gestionale",
-    label: "IA Gestionale",
-    scope: "Assistente business",
-  },
-  {
-    id: "strumenti-trasversali",
-    path: "/next/strumenti-trasversali",
-    label: "Strumenti Trasversali",
-    scope: "Sistema e governance",
+    id: "ia",
+    path: "/next/ia",
+    label: "Intelligenza Artificiale",
+    scope: "Hub madre + sotto-moduli clone-safe",
   },
 ] as const;
+
+export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
+  {
+    id: "centro-controllo",
+    path: "/next/centro-controllo",
+    label: "Centro di Controllo",
+    status: "ACTIVE",
+    note: "Home clone read-only realmente navigabile.",
+  },
+  {
+    id: "operativita-globale",
+    path: "/next/operativita-globale",
+    label: "Operativita Globale",
+    status: "ACTIVE_PARTIAL",
+    note: "Contenitore principale per inventario, materiali, attrezzature, manutenzioni, liste lavori, relativo dettaglio clone-safe, home `Autisti Inbox` clone-safe e i sei listati inbox gia importati (`cambio-mezzo`, `log-accessi`, `gomme`, `controlli`, `segnalazioni`, `richiesta-attrezzature`).",
+  },
+  {
+    id: "mezzi-dossier",
+    path: "/next/mezzi-dossier",
+    label: "Mezzi / Dossier",
+    status: "ACTIVE",
+    note: "Lista flotta clone-safe e ingresso al dossier mezzo.",
+  },
+  {
+    id: "capo",
+    path: "/next/capo/mezzi",
+    label: "Area Capo",
+    status: "ACTIVE_PARTIAL",
+    note: "Route attive per overview mezzi e costi, con approvazioni e PDF timbrati ancora bloccati.",
+  },
+  {
+    id: "colleghi",
+    path: "/next/colleghi",
+    label: "Colleghi",
+    status: "ACTIVE",
+    note: "Anagrafica clone read-only realmente consultabile.",
+  },
+  {
+    id: "fornitori",
+    path: "/next/fornitori",
+    label: "Fornitori",
+    status: "ACTIVE",
+    note: "Anagrafica clone read-only realmente consultabile.",
+  },
+  {
+    id: "ia",
+    path: "/next/ia",
+    label: "Intelligenza Artificiale",
+    status: "ACTIVE_PARTIAL",
+    note: "Hub reale della madre, con card unsafe visibili ma bloccate.",
+  },
+  {
+    id: "libretti-export",
+    path: "/next/libretti-export",
+    label: "Libretti (Export PDF)",
+    status: "ACTIVE_PARTIAL",
+    note: "Perimetro clone-safe minimo: lista, selezione e anteprima PDF locale.",
+  },
+  {
+    id: "cisterna",
+    path: "/next/cisterna",
+    label: "Cisterna",
+    status: "ACTIVE_PARTIAL",
+    note: "Route base clone-safe con archivio, report mensile e ripartizioni per targa; IA, schede-test, export e salvataggi restano bloccati.",
+  },
+  {
+    id: "autista-separato",
+    path: "/next/autista",
+    label: "Area Autista",
+    status: "SEPARATE_EXPERIENCE",
+    note: "Route tecnica separata dal clone admin, lasciata come placeholder esplicito.",
+  },
+  {
+    id: "ia-legacy-redirect",
+    path: "/next/ia-gestionale",
+    label: "Redirect legacy IA",
+    status: "TECHNICAL_REDIRECT",
+    note: "Redirect tecnico verso /next/ia per non lasciare il vecchio path rotto.",
+  },
+];
 
 export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
   "centro-controllo": {
     id: "centro-controllo",
+    routePath: "/next/centro-controllo",
     navLabel: "Centro di Controllo",
     shortLabel: "Centro",
     eyebrow: "Cockpit operativo",
     title: "Centro di Controllo",
     description:
-      "Home operativa per priorita, alert, scadenze e accessi rapidi alle aree di lavoro.",
-    phase: "V1 shell read-only",
+      "Home clone read-only che legge dati reali, mostra priorita operative e collega i moduli clone-safe gia aperti.",
+    phase: "Importato read-only",
     primaryGrammar: "Centro di controllo",
     searchPlaceholder: "Targa, badge, alert, ordine",
-    shellFocus: "Priorita, dossier e accessi rapidi",
+    shellFocus: "Priorita, quick link e ponte al dossier",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
-        label: "Priorita oggi",
-        value: "Placeholder",
-        meta: "Banda alta per alert, scadenze e code da presidiare",
+        label: "Stato runtime",
+        value: "Attivo",
+        meta: "Il clone espone una home realmente navigabile, non piu una shell puramente statica.",
         tone: "accent",
       },
       {
-        label: "Ponte al Dossier",
-        value: "Sempre visibile",
-        meta: "Ogni record targa-correlato dovra aprire il Dossier Mezzo",
+        label: "Dati reali",
+        value: "Letture attive",
+        meta: "La pagina usa snapshot clone-safe su eventi, alert, flotta e code operative.",
         tone: "success",
       },
       {
-        label: "Dati reali",
-        value: "Non collegati",
-        meta: "La pagina non legge ancora dataset runtime",
+        label: "Scritture",
+        value: "0",
+        meta: "Quick link e azioni restano bloccati quando il modulo madre non e ancora clone-safe.",
         tone: "warning",
       },
     ],
     sections: [
       {
-        title: "Blocchi shell gia predisposti",
+        title: "Ruolo reale nel clone",
         description:
-          "Header globale, metrica rapida, coda prioritaria, accessi rapidi e report table placeholder in linea con blueprint e wireframe.",
+          "Resta il cockpit principale del clone admin e la fonte di accesso ai moduli gia aperti o dichiaratamente bloccati.",
         items: [
-          "Ricerca globale pronta ad accogliere targa, badge, id lavoro e id ordine",
-          "Area alert/scadenze separata dai blocchi di report",
-          "Toolbar contestuale pronta per filtri rapidi ed export PDF standard",
+          "Accesso rapido ai moduli clone-safe",
+          "Quick link disabilitati per aree ancora non aperte",
+          "Ponte diretto al dossier mezzo e alle code operative",
         ],
       },
       {
-        title: "Perche partire da qui",
+        title: "Moduli gia collegati",
         description:
-          "Il Centro di Controllo e una delle due superfici ufficiali della IA Business v1. Qui la shell serve a fissare gerarchie, densita e navigazione senza introdurre logica nuova.",
+          "Dal Centro di Controllo sono gia risolti gli ingressi verso Dossier, Operativita Globale, Area Capo, Colleghi, Fornitori e hub IA.",
         tone: "accent",
-        items: [
-          "Sintesi stato sistema",
-          "Priorita e anomalie",
-          "Ingressi rapidi ai futuri moduli NEXT",
-        ],
       },
       {
-        title: "Non ancora incluso",
+        title: "Gap ancora espliciti",
         description:
-          "La pagina non sostituisce la home attuale e non implementa writer, scadenze reali o ricerca globale funzionante.",
+          "Restano visibili ma non risolti i quick link verso `Lavori Da Eseguire`, figli IA unsafe, la home `Autisti Inbox` e le aree autisti separate.",
         tone: "warning",
-        items: [
-          "Nessun collegamento a dataset runtime",
-          "Nessuna nuova scrittura",
-          "Nessun rimpiazzo della home legacy",
-        ],
       },
     ],
   },
   "mezzi-dossier": {
     id: "mezzi-dossier",
+    routePath: "/next/mezzi-dossier",
+    relatedPaths: ["/next/mezzi-dossier/:targa", "/next/analisi-economica/:targa"],
     navLabel: "Mezzi / Dossier",
     shortLabel: "Dossier",
     eyebrow: "Area mezzo-centrica",
     title: "Mezzi / Dossier",
     description:
-      "Area mezzo-centrica per cercare la flotta, aprire il Dossier e leggere i blocchi principali del mezzo.",
-    phase: "V1 shell read-only",
+      "Area clone read-only per flotta, dossier mezzo, route dedicata di Analisi Economica e sottoviste collegate a gomme e rifornimenti.",
+    phase: "Importato read-only",
     primaryGrammar: "Dossier",
     searchPlaceholder: "Targa, categoria, autista",
-    shellFocus: "Ricerca flotta e apertura Dossier",
+    shellFocus: "Lista flotta e apertura del dossier mezzo",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
-        label: "Pivot primario",
-        value: "Targa / mezzo",
-        meta: "La targa resta il cardine informativo dell'area admin",
+        label: "Flotta",
+        value: "Attiva",
+        meta: "La lista mezzi legge il dataset reale e apre il dossier dedicato per targa.",
         tone: "accent",
       },
       {
         label: "Dossier",
-        value: "Cuore del sistema",
-        meta: "Header mezzo, overview, scadenze e pannelli contestuali",
+        value: "Attivo",
+        meta: "Il clone aggrega anagrafica, lavori, materiali, manutenzioni, rifornimenti, documenti e costi in sola lettura.",
         tone: "success",
       },
       {
-        label: "Modulo reale",
-        value: "Non importato",
-        meta: "Questa pagina prepara la shell, non migra ancora i reader legacy",
+        label: "Parita routing",
+        value: "Parziale",
+        meta: "Analisi Economica ha ora una route dedicata; gomme e rifornimenti restano ancora sottoviste interne del dossier.",
         tone: "warning",
       },
     ],
     sections: [
       {
-        title: "Struttura visiva prevista",
+        title: "Copertura reale",
         description:
-          "La shell espone fascia overview, reminder/scadenze, ponte a documenti, costi e timeline, con enfasi sul contesto mezzo e su CTA ridotte ma leggibili.",
+          "Il clone copre lista flotta, dossier mezzo e viste interne piu importanti usando layer read-only dedicati.",
         items: [
-          "Header mezzo forte e banda stato",
-          "Blocchi overview prima del dettaglio storico",
-          "Azioni contestuali per PDF e IA senza trasformarle in moduli isolati",
+          "Lista mezzi clone-safe",
+          "Dossier mezzo read-only",
+          "Route clone dedicata per Analisi Economica",
+          "Sottoviste interne per gomme e rifornimenti",
         ],
       },
       {
-        title: "Predisposizione IA v1",
+        title: "Blocchi ancora attivi",
         description:
-          "Il Dossier e la prima superficie prevista per la IA Business v1. La shell chiarisce dove collocheremo riassunto stato mezzo, anomalie, scadenze e suggerimenti motivati.",
+          "Il clone mantiene tutte le azioni scriventi fuori perimetro e lascia bloccati gli output che richiedono approvazioni o side effect.",
         tone: "accent",
-        items: [
-          "Output read-only e spiegabile",
-          "Fonti dati e periodo espliciti",
-          "Marcatura DA VERIFICARE quando il collegamento non e pienamente affidabile",
-        ],
       },
       {
-        title: "Limiti iniziali",
+        title: "Differenza dal madre",
         description:
-          "Nessuna timeline reale, nessun costo letto, nessuna manutenzione importata. La pagina fissa solo la grammatica visiva della futura area mezzo-centrica.",
+          "La copertura funzionale e ampia, ma alcune route madre dedicate sono ancora riassorbite nel contenitore dossier clone.",
         tone: "warning",
       },
     ],
   },
   "operativita-globale": {
     id: "operativita-globale",
+    routePath: "/next/operativita-globale",
+    relatedPaths: [
+      "/next/operativita-globale?section=inventario",
+      "/next/operativita-globale?section=materiali",
+      "/next/operativita-globale?section=attrezzature",
+      "/next/operativita-globale?section=manutenzioni",
+      "/next/operativita-globale?section=procurement",
+      "/next/lavori-in-attesa",
+      "/next/lavori-eseguiti",
+      "/next/dettagliolavori/:lavoroId",
+      "/next/autisti-inbox",
+      "/next/autisti-inbox/cambio-mezzo",
+      "/next/autisti-inbox/log-accessi",
+      "/next/autisti-inbox/gomme",
+      "/next/autisti-inbox/controlli",
+      "/next/autisti-inbox/segnalazioni",
+      "/next/autisti-inbox/richiesta-attrezzature",
+    ],
     navLabel: "Operativita Globale",
     shortLabel: "Operativita",
     eyebrow: "Workflow e code",
     title: "Operativita Globale",
     description:
-      "Area globale per ordini, code e attivita condivise che non vanno confuse con il Dossier mezzo.",
-    phase: "V1 shell read-only",
-    primaryGrammar: "Materiali da ordinare",
+      "Workbench clone read-only che riunisce inventario, materiali, attrezzature, manutenzioni, backlog lavori, relativo dettaglio clone-safe, home `Autisti Inbox` clone-safe e i sei listati inbox gia importati.",
+    phase: "Importato read-only",
+    primaryGrammar: "Workflow operativo",
     searchPlaceholder: "Fornitore, ordine, materiale",
-    shellFocus: "Ordini, fornitori e code operative",
+    shellFocus: "Code operative, workbench procurement e ponte al dossier",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
-        label: "Famiglia layout",
-        value: "Workflow shell",
-        meta: "Ispirata a Acquisti, CentroControllo e inbox operative",
+        label: "Sezioni attive",
+        value: "7+",
+        meta: "Inventario, materiali, attrezzature, manutenzioni, procurement, liste lavori e dettaglio clone-safe sono navigabili in sola lettura.",
         tone: "accent",
       },
       {
-        label: "Ponte al mezzo",
-        value: "Previsto",
-        meta: "Ogni task targa-correlato dovra offrire accesso diretto al Dossier",
+        label: "Procurement clone-safe",
+        value: "Ordini / Arrivi / Dettaglio",
+        meta: "Le viste leggibili sono aperte; i tab writer-heavy restano bloccati.",
         tone: "success",
+      },
+      {
+        label: "Parita route",
+        value: "Parziale",
+        meta: "La madre usa piu route dedicate; il clone le ricompone in una vista unica con deep link query-based.",
+        tone: "warning",
+      },
+    ],
+    sections: [
+      {
+        title: "Copertura reale",
+        description:
+          "La pagina non e piu una shell astratta: legge snapshot reali e rende navigabili i principali domini globali gia bonificati, compresi il dettaglio lavori clone-safe, la home `Autisti Inbox` clone-safe e i suoi primi sei listati.",
+      },
+      {
+        title: "Tab ancora bloccati",
+        description:
+          "Ordine materiali, Prezzi & Preventivi e Listino Prezzi restano visibili ma bloccati finche non esiste una copertura read-only separata dai writer.",
+        tone: "accent",
+      },
+      {
+        title: "Differenza dal madre",
+        description:
+          "Inventario, materiali consegnati, attrezzature, manutenzioni e acquisti non hanno ancora una route clone dedicata 1:1.",
+        tone: "warning",
+      },
+    ],
+  },
+  "capo": {
+    id: "capo",
+    routePath: "/next/capo/mezzi",
+    relatedPaths: ["/next/capo/costi/:targa"],
+    navLabel: "Area Capo",
+    shortLabel: "Capo",
+    eyebrow: "Controllo costi e approvazioni",
+    title: "Area Capo",
+    description:
+      "Controparte clone read-only delle route madre capo, con overview mezzi, costi e approvazioni ancora bloccate nei punti scriventi.",
+    phase: "Importato read-only parziale",
+    primaryGrammar: "Area Capo",
+    searchPlaceholder: "Targa, costo, preventivo",
+    shellFocus: "Overview mezzi, costi e anteprime non scriventi",
+    visibility: ["Account gestionale", "Super Admin"],
+    cards: [
+      {
+        label: "Route attive",
+        value: "2",
+        meta: "Sono aperte le route clone per overview mezzi e costi per targa.",
+        tone: "accent",
+      },
+      {
+        label: "Preview",
+        value: "Locale",
+        meta: "Le anteprime PDF leggibili restano disponibili senza riattivare approvazioni o PDF timbrati.",
+        tone: "success",
+      },
+      {
+        label: "Blocchi",
+        value: "Approvazioni e PDF timbrati",
+        meta: "Le azioni operative della madre restano esplicitamente disabilitate nel clone.",
+        tone: "warning",
+      },
+    ],
+    sections: [
+      {
+        title: "Copertura reale",
+        description:
+          "Il clone apre la dashboard capo e la vista costi per mezzo, mantenendo il ruolo di supervisione in sola lettura.",
+      },
+      {
+        title: "Perche la copertura resta parziale",
+        description:
+          "La route madre mescola consultazione, approvazione stati e PDF timbrati: il clone conserva solo il perimetro leggibile.",
+        tone: "accent",
+      },
+    ],
+  },
+  "colleghi": {
+    id: "colleghi",
+    routePath: "/next/colleghi",
+    navLabel: "Colleghi",
+    shortLabel: "Colleghi",
+    eyebrow: "Anagrafica persone",
+    title: "Colleghi",
+    description:
+      "Modulo clone read-only per consultare l'anagrafica colleghi senza riattivare creazione, modifica, delete o PDF.",
+    phase: "Importato read-only",
+    primaryGrammar: "Anagrafica",
+    searchPlaceholder: "Nome, badge, ruolo",
+    shellFocus: "Consultazione anagrafica e dettagli non scriventi",
+    visibility: ["Account gestionale", "Super Admin"],
+    cards: [
+      {
+        label: "Anagrafica",
+        value: "Attiva",
+        meta: "La lista e il dettaglio sono gia consultabili nel clone.",
+        tone: "accent",
+      },
+      {
+        label: "Writer",
+        value: "0",
+        meta: "Aggiunta, modifica, eliminazione e PDF restano bloccati.",
+        tone: "warning",
+      },
+    ],
+    sections: [
+      {
+        title: "Copertura reale",
+        description:
+          "Il clone mantiene il modulo madre come anagrafica consultabile, senza introdurre azioni operative nuove.",
+      },
+    ],
+  },
+  "fornitori": {
+    id: "fornitori",
+    routePath: "/next/fornitori",
+    navLabel: "Fornitori",
+    shortLabel: "Fornitori",
+    eyebrow: "Anagrafica fornitori",
+    title: "Fornitori",
+    description:
+      "Modulo clone read-only per consultare l'anagrafica fornitori senza riattivare creazione, modifica, delete o PDF.",
+    phase: "Importato read-only",
+    primaryGrammar: "Anagrafica",
+    searchPlaceholder: "Fornitore, categoria, contatto",
+    shellFocus: "Consultazione anagrafica e dettagli non scriventi",
+    visibility: ["Account gestionale", "Super Admin"],
+    cards: [
+      {
+        label: "Anagrafica",
+        value: "Attiva",
+        meta: "La lista e il dettaglio sono gia consultabili nel clone.",
+        tone: "accent",
+      },
+      {
+        label: "Writer",
+        value: "0",
+        meta: "Aggiunta, modifica, eliminazione e PDF restano bloccati.",
+        tone: "warning",
+      },
+    ],
+    sections: [
+      {
+        title: "Copertura reale",
+        description:
+          "Il clone mantiene il modulo madre come anagrafica consultabile, senza introdurre azioni operative nuove.",
+      },
+    ],
+  },
+  "ia": {
+    id: "ia",
+    routePath: "/next/ia",
+    relatedPaths: ["/next/libretti-export"],
+    navLabel: "Intelligenza Artificiale",
+    shortLabel: "IA",
+    eyebrow: "Modulo IA",
+    title: "Intelligenza Artificiale",
+    description:
+      "Hub clone read-only del modulo madre, riallineato alla titolazione reale e ai sotto-moduli effettivamente attivi o bloccati.",
+    phase: "Hub + primo modulo clone-safe",
+    primaryGrammar: "Modulo IA",
+    searchPlaceholder: "Strumento IA",
+    shellFocus: "Hub madre, blocchi unsafe e primo figlio clone-safe",
+    visibility: ["Account gestionale", "Super Admin"],
+    cards: [
+      {
+        label: "Modulo madre",
+        value: "Intelligenza Artificiale",
+        meta: "Il clone espone il vero hub della madre, senza residui semantici concettuali.",
+        tone: "accent",
+      },
+      {
+        label: "Perimetro clone",
+        value: "Hub + Libretti Export",
+        meta: "E aperto il solo figlio clone-safe; gli altri moduli IA restano visibili ma bloccati.",
+        tone: "success",
+      },
+      {
+        label: "Side effect",
+        value: "0",
+        meta: "Nessuna API key, upload o chiamata IA viene eseguita dal clone.",
+        tone: "warning",
+      },
+    ],
+    sections: [
+      {
+        title: "Ingressi mostrati nel clone",
+        description:
+          "Il clone mostra le card reali del modulo madre e rende attivo solo `Libretti (Export PDF)` nel perimetro read-only minimo.",
+      },
+      {
+        title: "Perche i moduli figli restano bloccati",
+        description:
+          "I moduli figli non vengono aperti finche non saranno separati da configurazione sensibile, upload, salvataggi Firestore/Storage e runtime esterni.",
+        tone: "accent",
+        items: [
+          "API key Gemini",
+          "Upload libretto e documenti",
+          "Scritture su dataset documentali e mezzi",
+          "Runtime IA esterni o funzioni writer-heavy",
+        ],
+      },
+      {
+        title: "Differenza minima dal madre",
+        description:
+          "Il clone mantiene il ruolo del hub e il sotto-modulo clone-safe, ma lascia bloccate tutte le funzioni operative con side effect.",
+        tone: "warning",
+      },
+    ],
+  },
+  "libretti-export": {
+    id: "libretti-export",
+    routePath: "/next/libretti-export",
+    navLabel: "Libretti (Export PDF)",
+    shortLabel: "Libretti Export",
+    eyebrow: "Modulo documentale",
+    title: "Libretti (Export PDF)",
+    description:
+      "Controparte clone-safe della route madre dedicata ai libretti, limitata a lista mezzi con libretto, selezione e anteprima PDF locale.",
+    phase: "Importato read-only parziale",
+    primaryGrammar: "Export PDF",
+    searchPlaceholder: "Targa, categoria, libretto",
+    shellFocus: "Lista mezzi, selezione e anteprima locale",
+    visibility: ["Account gestionale", "Super Admin"],
+    cards: [
+      {
+        label: "Flusso attivo",
+        value: "Lista + selezione + preview",
+        meta: "Il clone apre la pagina dedicata e genera un'anteprima PDF locale senza attivare azioni esterne.",
+        tone: "accent",
+      },
+      {
+        label: "Azioni esterne",
+        value: "Bloccate",
+        meta: "Condivisione, copia link, WhatsApp e download restano fuori dal primo step clone-safe.",
+        tone: "warning",
       },
       {
         label: "Scritture",
         value: "0",
-        meta: "Nessun task o workflow attivo in questa fase",
-        tone: "warning",
+        meta: "Nessuna mutazione dataset, nessun upload e nessun runtime IA vengono attivati.",
+        tone: "success",
       },
     ],
     sections: [
       {
-        title: "Blocchi shell",
+        title: "Perimetro aperto",
         description:
-          "Titolo area, KPI code, toolbar filtri rapidi, lista task, pannello dettaglio e azioni contestuali sono gia separati e pronti a evolvere in veri moduli.",
+          "La pagina clone riusa il ruolo del modulo madre ma non il suo runtime completo: solo lista mezzi, selezione e anteprima PDF locale.",
       },
       {
-        title: "Cosa ci entrera dopo",
+        title: "Differenza dal madre",
         description:
-          "Lavori, monitor backlog, presa in carico, lettura eventi autisti e collegamenti a magazzino. Tutto pero restera in read-only finche i contratti critici non saranno consolidati.",
-        items: [
-          "Lavori e manutenzioni",
-          "Code operative giornaliere",
-          "Drill-down verso record targa-correlati",
-        ],
-      },
-      {
-        title: "Perimetro attuale",
-        description:
-          "Solo shell navigabile. Nessun import di logica, nessun writer, nessun cambio ai workflow legacy.",
+          "La route madre supporta anche azioni locali piu ampie; nel clone restano escluse per mantenere un perimetro read-only minimo e sicuro.",
         tone: "warning",
       },
     ],
   },
-  "ia-gestionale": {
-    id: "ia-gestionale",
-    navLabel: "IA Gestionale",
-    shortLabel: "IA",
-    eyebrow: "Assistente business",
-    title: "IA Gestionale",
+  "cisterna": {
+    id: "cisterna",
+    routePath: "/next/cisterna",
+    navLabel: "Cisterna",
+    shortLabel: "Cisterna",
+    eyebrow: "Modulo specialistico",
+    title: "Cisterna",
     description:
-      "Ingresso unico per domande, sintesi e passaggio rapido ai record utili del gestionale.",
-    phase: "V1 shell read-only",
-    primaryGrammar: "Centro di controllo",
-    searchPlaceholder: "Superficie, sorgente, periodo",
-    shellFocus: "Domande, sintesi e link ai record",
+      "Controparte clone-safe della route madre base `/cisterna`, limitata ad archivio documenti, report mensile e tabelle per targa in sola lettura.",
+    phase: "Importato read-only parziale",
+    primaryGrammar: "Modulo specialistico",
+    searchPlaceholder: "Mese, documento, targa cisterna",
+    shellFocus: "Archivio, report mensile e dettaglio per targa",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
-        label: "Perimetro v1",
-        value: "Read-only",
-        meta: "Nessuna scrittura, nessuna patch, nessuna correzione dati",
-        tone: "warning",
+        label: "Perimetro aperto",
+        value: "Archivio + report + targhe",
+        meta: "La route base madre e ora leggibile nel clone senza importare editor, upload o workflow IA.",
+        tone: "accent",
       },
       {
-        label: "Superfici iniziali",
-        value: "Dossier + Centro",
-        meta: "Le due aree piu sensate per partire senza rompere il sistema",
+        label: "Regole di derivazione",
+        value: "Deterministiche",
+        meta: "Il clone usa `dupChosen` persistito, altrimenti fallback al bollettino con piu litri, e privilegia l'ultima scheda manuale del mese.",
         tone: "success",
       },
       {
-        label: "Capability separata",
-        value: "Audit tecnico fuori runtime",
-        meta: "Repo/docs/dati non vanno fusi nella stessa UX business",
-        tone: "accent",
-      },
-    ],
-    sections: [
-      {
-        title: "Cosa dovra fare la v1",
-        description:
-          "Riassunto stato mezzo o stato sistema, scadenze, anomalie, priorita e suggerimenti motivati con spiegabilita obbligatoria della risposta.",
-        items: [
-          "Fonte dati esplicita",
-          "Modulo sorgente esplicito",
-          "Periodo letto",
-          "Marcatura DA VERIFICARE se l'affidabilita non e piena",
-        ],
-      },
-      {
-        title: "Punto di arrivo",
-        description:
-          "L'area restera estendibile a documenti, PDF intelligenti, acquisti, inventario e report assistiti, ma solo con rollout progressivo e controllato.",
-        tone: "accent",
-      },
-      {
-        title: "Non fare subito",
-        description:
-          "Questa shell fissa anche i confini: niente IA onnisciente su tutti i moduli, niente audit repo nella stessa runtime business, niente patch autonome, niente scritture.",
-        tone: "warning",
-        items: [
-          "No audit repo/docs dentro l'esperienza utente NEXT",
-          "No automazioni rischiose",
-          "No supporto dichiarato come completo su flussi non canonici",
-        ],
-      },
-    ],
-  },
-  "strumenti-trasversali": {
-    id: "strumenti-trasversali",
-    navLabel: "Strumenti Trasversali",
-    shortLabel: "Strumenti",
-    eyebrow: "Supporto tecnico e governance",
-    title: "Strumenti Trasversali",
-    description:
-      "Servizi condivisi, PDF standard e strumenti di supporto che aiutano il lavoro quotidiano senza occupare le aree operative.",
-    phase: "V1 shell read-only",
-    primaryGrammar: "Area Capo",
-    searchPlaceholder: "Servizio, permesso, PDF",
-    shellFocus: "Servizi comuni e percorsi di supporto",
-    visibility: ["Super Admin", "Account gestionale"],
-    cards: [
-      {
-        label: "PDF standard",
-        value: "Capability tecnica",
-        meta: "Separati dai PDF intelligenti dell'IA Gestionale",
-        tone: "success",
-      },
-      {
-        label: "Permessi",
-        value: "Predisposizione UI",
-        meta: "Scope visibili ma nessun gating applicato in questa fase",
-        tone: "accent",
-      },
-      {
-        label: "Audit tecnico",
-        value: "Separato",
-        meta: "Non confuso con la IA Business runtime della NEXT",
+        label: "Blocchi attivi",
+        value: "IA, schede, export e salvataggi",
+        meta: "Restano fuori `Cisterna IA`, `Schede Test`, conferma duplicati, cambio EUR/CHF ed export PDF.",
         tone: "warning",
       },
     ],
     sections: [
       {
-        title: "Cosa deve vivere qui",
+        title: "Copertura reale",
         description:
-          "Ricerca globale, notifiche, PDF standard, supporto tecnico, configurazioni e strumenti di sistema che non devono sporcare le aree business.",
+          "Il clone apre solo il sotto-perimetro consultivo gia verificato nella madre: archivio, report mensile e ripartizione per targa del mese selezionato.",
       },
       {
-        title: "Predisposizione permessi",
+        title: "Blocchi ancora attivi",
         description:
-          "La shell mostra in modo esplicito scope previsti per le macro-aree, ma non introduce ancora guard o enforcement server-side.",
-        items: [
-          "Visibilita modulo per ruolo",
-          "Scope su dati sensibili",
-          "Area tecnica distinta dal flusso operativo",
-        ],
+          "Le sottoroute `/cisterna/ia` e `/cisterna/schede-test` restano fuori, insieme a conferma duplicati, salvataggio cambio, edit schede ed export PDF.",
+        tone: "accent",
       },
       {
-        title: "Limiti attuali",
+        title: "Gestione incompleti",
         description:
-          "Nessun audit log reale, nessuna ricerca globale funzionante, nessun pannello permessi. Solo struttura pronta ad accogliere questi moduli in seguito.",
+          "Quando la derivazione non e pienamente ricostruibile il clone mostra warning e riduce il report, senza introdurre scritture o inferenze non dimostrate.",
         tone: "warning",
       },
     ],

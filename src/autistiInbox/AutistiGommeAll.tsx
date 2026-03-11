@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync } from "../utils/storageSync";
 import { formatDateTimeUI } from "../utils/dateFormat";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 import "./AutistiGommeAll.css";
 
 type GommeRecord = {
@@ -57,11 +58,14 @@ function buildAutistaLabel(record: GommeRecord) {
 
 export default function AutistiGommeAll() {
   const navigate = useNavigate();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const [records, setRecords] = useState<GommeRecord[]>([]);
   const [filterTarga, setFilterTarga] = useState("");
   const [onlyNuove, setOnlyNuove] = useState(true);
   const [onlyNonImportati, setOnlyNonImportati] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  const homePath = cloneRuntime ? "/next/centro-controllo" : "/";
+  const backPath = cloneRuntime ? "/next/centro-controllo" : "/autisti-inbox";
 
   useEffect(() => {
     let alive = true;
@@ -129,11 +133,11 @@ export default function AutistiGommeAll() {
               src="/logo.png"
               alt="Logo"
               className="aig-logo"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(homePath)}
             />
             <h1>Tutte le gomme</h1>
           </div>
-          <button className="aig-back" onClick={() => navigate("/autisti-inbox")}>
+          <button className="aig-back" onClick={() => navigate(backPath)}>
             INDIETRO
           </button>
         </div>

@@ -3,6 +3,7 @@ import type {
   CisternaDocumentoExtractData,
   CisternaSchedaExtractResult,
 } from "./types";
+import { assertCloneWriteAllowed } from "../utils/cloneWriteBarrier";
 
 const CISTERNA_EXTRACT_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/ia_cisterna_extract";
@@ -33,6 +34,10 @@ export async function extractCisternaFromFileUrl(input: {
   mimeType?: string;
   nomeFile?: string;
 }): Promise<CisternaDocumento> {
+  assertCloneWriteAllowed("cisterna.ia.extract-file-url", {
+    endpoint: "ia_cisterna_extract",
+  });
+
   const response = await fetch(CISTERNA_EXTRACT_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -65,6 +70,10 @@ export async function extractCisternaDocumento(input: {
   mimeType: string;
   nomeFile?: string;
 }): Promise<CisternaDocumentoExtractData> {
+  assertCloneWriteAllowed("cisterna.ia.documenti-extract", {
+    endpoint: "cisterna_documenti_extract",
+  });
+
   const response = await fetch(CISTERNA_DOCUMENTI_EXTRACT_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -96,6 +105,10 @@ export async function extractCisternaLegacyFromFileUrl(input: {
   mimeType?: string;
   nomeFile?: string;
 }): Promise<CisternaDocumento> {
+  assertCloneWriteAllowed("cisterna.ia.extract-legacy", {
+    endpoint: "ia_cisterna_extract",
+  });
+
   const response = await fetch(CISTERNA_EXTRACT_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -127,6 +140,10 @@ export async function callEstrattiSchedaCisterna(input: {
   rows?: Array<Record<string, unknown>>;
   mode?: string;
 }): Promise<Response> {
+  assertCloneWriteAllowed("cisterna.schede-test.extract", {
+    endpoint: "estrazioneSchedaCisterna",
+  });
+
   return fetch(CISTERNA_SCHEDE_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -235,6 +252,10 @@ export async function callEstrattiSchedaCisternaCells(input: {
   }>;
   meta?: Record<string, unknown>;
 }): Promise<any> {
+  assertCloneWriteAllowed("cisterna.schede-test.extract-cells", {
+    endpoint: "estrazioneSchedaCisterna",
+  });
+
   const response = await fetch(CISTERNA_SCHEDE_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

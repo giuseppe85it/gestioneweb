@@ -12,6 +12,7 @@ import {
   sharePdfFile,
 } from "../utils/pdfPreview";
 import { formatDateTimeUI } from "../utils/dateFormat";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 import "./AutistiSegnalazioniAll.css";
 
 type SegnalazioneRecord = {
@@ -119,6 +120,7 @@ function buildPdfSafeSegnalazioneRecord(
 
 export default function AutistiSegnalazioniAll() {
   const navigate = useNavigate();
+  const cloneRuntime = useMemo(() => isCloneRuntime(), []);
   const [records, setRecords] = useState<SegnalazioneRecord[]>([]);
   const [filterTarga, setFilterTarga] = useState("");
   const [filterAmbito, setFilterAmbito] = useState<"tutti" | "motrice" | "rimorchio">("tutti");
@@ -131,6 +133,8 @@ export default function AutistiSegnalazioniAll() {
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("segnalazione-autista.pdf");
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF segnalazione");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+  const homePath = cloneRuntime ? "/next/centro-controllo" : "/";
+  const backPath = cloneRuntime ? "/next/centro-controllo" : "/autisti-inbox";
 
   useEffect(() => {
     let alive = true;
@@ -267,11 +271,11 @@ export default function AutistiSegnalazioniAll() {
               src="/logo.png"
               alt="Logo"
               className="aix-logo"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(homePath)}
             />
             <h1>Tutte le segnalazioni</h1>
           </div>
-          <button className="aix-back" onClick={() => navigate("/autisti-inbox")}>
+          <button className="aix-back" onClick={() => navigate(backPath)}>
             INDIETRO
           </button>
         </div>
