@@ -53,7 +53,7 @@ function NextColleghiPage() {
               src="/logo.png"
               className="coll-logo"
               alt="logo"
-              onClick={() => navigate("/next/centro-controllo")}
+              onClick={() => navigate("/next")}
             />
             <h1 className="coll-title">Colleghi</h1>
           </div>
@@ -217,7 +217,7 @@ function NextColleghiPage() {
                 src="/logo.png"
                 alt="logo"
                 className="modal-logo"
-                onClick={() => navigate("/next/centro-controllo")}
+                onClick={() => navigate("/next")}
               />
               <h2 className="modal-title">Dettagli collega</h2>
             </div>

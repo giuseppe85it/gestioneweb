@@ -253,8 +253,8 @@ function NextCisternaPage() {
     [location.search],
   );
   const backToHome = location.search
-    ? `/next/centro-controllo${location.search}`
-    : "/next/centro-controllo";
+    ? `/next${location.search}`
+    : "/next";
 
   const [activeTab, setActiveTab] = useState<TabKey>("archivio");
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);

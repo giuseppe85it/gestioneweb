@@ -9,7 +9,14 @@ export type NextAreaId =
   | "libretti-export"
   | "cisterna";
 
-export type NextRouteModuleId = NextAreaId | "autista-separato" | "ia-legacy-redirect";
+export type NextRouteModuleId =
+  | "home"
+  | NextAreaId
+  | "autisti-inbox"
+  | "autisti-admin"
+  | "autista-separato"
+  | "autista-legacy-redirect"
+  | "ia-legacy-redirect";
 
 export type NextRouteModuleStatus =
   | "ACTIVE"
@@ -73,52 +80,113 @@ export type NextRouteModuleEntry = {
 // route attive, che e descritto in NEXT_ROUTE_MODULES.
 export const NEXT_NAV_ITEMS = [
   {
-    id: "centro-controllo",
-    path: "/next/centro-controllo",
-    label: "Centro di Controllo",
-    scope: "Cockpit operativo",
+    id: "home",
+    path: "/next",
+    label: "Home",
+    scope: "Dashboard madre",
   },
   {
-    id: "mezzi-dossier",
-    path: "/next/mezzi-dossier",
-    label: "Mezzi / Dossier",
-    scope: "Area mezzo-centrica",
+    id: "centro-controllo",
+    path: "/next/centro-controllo",
+    label: "Centro Controllo",
+    scope: "Pagina madre dedicata",
   },
   {
     id: "operativita-globale",
-    path: "/next/operativita-globale",
-    label: "Operativita Globale",
+    path: "/next/gestione-operativa",
+    label: "Gestione Operativa",
     scope: "Workflow e code",
+  },
+  {
+    id: "mezzi-dossier",
+    path: "/next/mezzi",
+    label: "Mezzi",
+    scope: "Anagrafiche flotta",
+  },
+  {
+    id: "dossier-lista",
+    path: "/next/dossiermezzi",
+    label: "Dossier Mezzi",
+    scope: "Ingresso dossier madre-like",
   },
   {
     id: "ia",
     path: "/next/ia",
-    label: "Intelligenza Artificiale",
+    label: "IA",
     scope: "Hub madre + sotto-moduli clone-safe",
+  },
+  {
+    id: "libretti-export",
+    path: "/next/libretti-export",
+    label: "Libretti Export",
+    scope: "Export PDF clone-safe",
+  },
+  {
+    id: "cisterna",
+    path: "/next/cisterna",
+    label: "Cisterna",
+    scope: "Archivio, report e moduli clone-safe",
+  },
+  {
+    id: "colleghi",
+    path: "/next/colleghi",
+    label: "Colleghi",
+    scope: "Anagrafica persone",
+  },
+  {
+    id: "fornitori",
+    path: "/next/fornitori",
+    label: "Fornitori",
+    scope: "Anagrafica fornitori",
+  },
+  {
+    id: "autisti-inbox",
+    path: "/next/autisti-inbox",
+    label: "Autisti Inbox",
+    scope: "Home inbox e listati admin",
+  },
+  {
+    id: "autisti-admin",
+    path: "/next/autisti-admin",
+    label: "Autisti Admin",
+    scope: "Centro rettifica dati reader-first",
+  },
+  {
+    id: "autista-separato",
+    path: "/next/autisti",
+    label: "App Autisti",
+    scope: "Esperienza autista clone-safe separata",
   },
 ] as const;
 
 export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
   {
+    id: "home",
+    path: "/next",
+    label: "Home",
+    status: "ACTIVE",
+    note: "Controparte clone autonoma della Home madre, separata dal Centro Controllo.",
+  },
+  {
     id: "centro-controllo",
     path: "/next/centro-controllo",
     label: "Centro di Controllo",
     status: "ACTIVE",
-    note: "Home clone read-only realmente navigabile.",
+    note: "Controparte clone autonoma della pagina madre `CentroControllo`, separata dalla Home clone.",
   },
   {
     id: "operativita-globale",
-    path: "/next/operativita-globale",
+    path: "/next/gestione-operativa",
     label: "Operativita Globale",
     status: "ACTIVE_PARTIAL",
-    note: "Contenitore principale per inventario, materiali, attrezzature, manutenzioni, liste lavori, relativo dettaglio clone-safe, home `Autisti Inbox` clone-safe e i sei listati inbox gia importati (`cambio-mezzo`, `log-accessi`, `gomme`, `controlli`, `segnalazioni`, `richiesta-attrezzature`).",
+    note: "Famiglia clone read-only riallineata a route autonome per `Gestione Operativa`, `Inventario`, `Materiali Consegnati`, `Attrezzature Cantieri`, `Manutenzioni`, `Acquisti`, `Materiali Da Ordinare`, `Ordini`, `Dettaglio Ordine`, liste lavori, `Autisti Inbox` e `Autisti Admin` reader-first.",
   },
   {
     id: "mezzi-dossier",
-    path: "/next/mezzi-dossier",
+    path: "/next/mezzi",
     label: "Mezzi / Dossier",
     status: "ACTIVE",
-    note: "Lista flotta clone-safe e ingresso al dossier mezzo.",
+    note: "Famiglia clone read-only riallineata su `Mezzi`, `Dossier Mezzi`, dossier dettaglio, `Dossier Gomme`, `Dossier Rifornimenti` e `Analisi Economica` come route autonome.",
   },
   {
     id: "capo",
@@ -142,11 +210,25 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     note: "Anagrafica clone read-only realmente consultabile.",
   },
   {
+    id: "autisti-inbox",
+    path: "/next/autisti-inbox",
+    label: "Autisti Inbox",
+    status: "ACTIVE",
+    note: "Home inbox clone-safe con `NextAutistiEventoModal` e sei listati dedicati (`cambio-mezzo`, `log-accessi`, `gomme`, `controlli`, `segnalazioni`, `richiesta-attrezzature`).",
+  },
+  {
+    id: "autisti-admin",
+    path: "/next/autisti-admin",
+    label: "Autisti Admin",
+    status: "ACTIVE_PARTIAL",
+    note: "Controparte reader-first del centro rettifica dati: tabs, filtri, foto e PDF in consultazione, senza rettifiche, `crea lavoro` o delete allegati.",
+  },
+  {
     id: "ia",
     path: "/next/ia",
     label: "Intelligenza Artificiale",
     status: "ACTIVE_PARTIAL",
-    note: "Hub reale della madre, con card unsafe visibili ma bloccate.",
+    note: "Hub clone strutturalmente riallineato alla madre, con child route autonome per `apikey`, `libretto`, `documenti`, `copertura-libretti` e `Libretti Export`, tutte con scritture neutralizzate.",
   },
   {
     id: "libretti-export",
@@ -160,14 +242,21 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     path: "/next/cisterna",
     label: "Cisterna",
     status: "ACTIVE_PARTIAL",
-    note: "Route base clone-safe con archivio, report mensile e ripartizioni per targa; IA, schede-test, export e salvataggi restano bloccati.",
+    note: "Route base clone-safe con archivio, report mensile e ripartizioni per targa; anche `Cisterna IA` e `Schede Test` sono ora navigabili, ma upload, analisi, save/update ed export restano bloccati.",
   },
   {
     id: "autista-separato",
-    path: "/next/autista",
+    path: "/next/autisti",
     label: "Area Autista",
-    status: "SEPARATE_EXPERIENCE",
-    note: "Route tecnica separata dal clone admin, lasciata come placeholder esplicito.",
+    status: "ACTIVE_PARTIAL",
+    note: "Terza tranche clone-safe completata sui tre moduli auditati: `AutistiGate`, `LoginAutista`, `SetupMezzo`, `ControlloMezzo`, `HomeAutista`, `CambioMezzoAutista`, `Rifornimento` clone-local, `Segnalazioni` con foto solo locali, `RichiestaAttrezzature` con foto solo locali e flusso `Gomme` raggiungibile dalla home clone, con sessione locale namespaced, route legacy riscritte su `/next/autisti/*` e scritture madre esplicitamente non sincronizzate.",
+  },
+  {
+    id: "autista-legacy-redirect",
+    path: "/next/autista",
+    label: "Redirect legacy area autista",
+    status: "TECHNICAL_REDIRECT",
+    note: "Redirect tecnico verso `/next/autisti` per non lasciare rotto il vecchio placeholder autista separato.",
   },
   {
     id: "ia-legacy-redirect",
@@ -187,7 +276,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     eyebrow: "Cockpit operativo",
     title: "Centro di Controllo",
     description:
-      "Home clone read-only che legge dati reali, mostra priorita operative e collega i moduli clone-safe gia aperti.",
+      "Controparte clone autonoma della pagina madre `CentroControllo`, separata dalla Home clone e collegata ai moduli gia aperti.",
     phase: "Importato read-only",
     primaryGrammar: "Centro di controllo",
     searchPlaceholder: "Targa, badge, alert, ordine",
@@ -197,7 +286,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         label: "Stato runtime",
         value: "Attivo",
-        meta: "Il clone espone una home realmente navigabile, non piu una shell puramente statica.",
+        meta: "La pagina esiste ora come route autonoma distinta dalla Home clone.",
         tone: "accent",
       },
       {
@@ -217,7 +306,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Ruolo reale nel clone",
         description:
-          "Resta il cockpit principale del clone admin e la fonte di accesso ai moduli gia aperti o dichiaratamente bloccati.",
+          "Replica la pagina madre di controllo operativo e resta distinta dalla Home clone principale.",
         items: [
           "Accesso rapido ai moduli clone-safe",
           "Quick link disabilitati per aree ancora non aperte",
@@ -227,27 +316,34 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Moduli gia collegati",
         description:
-          "Dal Centro di Controllo sono gia risolti gli ingressi verso Dossier, Operativita Globale, Area Capo, Colleghi, Fornitori e hub IA.",
+          "Dal Centro di Controllo sono gia risolti gli ingressi verso Dossier, Operativita Globale, Area Capo, Colleghi, Fornitori, hub IA, Cisterna, `Autisti Inbox`, `Autisti Admin` e app autisti separata.",
         tone: "accent",
       },
       {
         title: "Gap ancora espliciti",
         description:
-          "Restano visibili ma non risolti i quick link verso `Lavori Da Eseguire`, figli IA unsafe, la home `Autisti Inbox` e le aree autisti separate.",
+          "Restano visibili ma non risolti i quick link verso `Lavori Da Eseguire` e i figli IA ancora unsafe; le aree autisti gia attive sono ora riallineate al perimetro clone.",
         tone: "warning",
       },
     ],
   },
   "mezzi-dossier": {
     id: "mezzi-dossier",
-    routePath: "/next/mezzi-dossier",
-    relatedPaths: ["/next/mezzi-dossier/:targa", "/next/analisi-economica/:targa"],
+    routePath: "/next/mezzi",
+    relatedPaths: [
+      "/next/dossiermezzi",
+      "/next/dossiermezzi/:targa",
+      "/next/dossier/:targa",
+      "/next/dossier/:targa/gomme",
+      "/next/dossier/:targa/rifornimenti",
+      "/next/analisi-economica/:targa",
+    ],
     navLabel: "Mezzi / Dossier",
     shortLabel: "Dossier",
     eyebrow: "Area mezzo-centrica",
     title: "Mezzi / Dossier",
     description:
-      "Area clone read-only per flotta, dossier mezzo, route dedicata di Analisi Economica e sottoviste collegate a gomme e rifornimenti.",
+      "Area clone read-only riallineata a `Mezzi`, `Dossier Mezzi`, dossier dettaglio, `Dossier Gomme`, `Dossier Rifornimenti` e `Analisi Economica` come route vere.",
     phase: "Importato read-only",
     primaryGrammar: "Dossier",
     searchPlaceholder: "Targa, categoria, autista",
@@ -268,21 +364,21 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       },
       {
         label: "Parita routing",
-        value: "Parziale",
-        meta: "Analisi Economica ha ora una route dedicata; gomme e rifornimenti restano ancora sottoviste interne del dossier.",
-        tone: "warning",
+        value: "Route vere",
+        meta: "Mezzi, Dossier Lista, Dossier dettaglio, Gomme, Rifornimenti e Analisi Economica sono tutti raggiungibili come pagine autonome.",
+        tone: "success",
       },
     ],
     sections: [
       {
         title: "Copertura reale",
         description:
-          "Il clone copre lista flotta, dossier mezzo e viste interne piu importanti usando layer read-only dedicati.",
+          "Il clone copre lista flotta, lista dossier, dossier mezzo e sottopagine dedicate usando layer read-only dedicati.",
         items: [
           "Lista mezzi clone-safe",
+          "Lista dossier mezzi clone-safe",
           "Dossier mezzo read-only",
-          "Route clone dedicata per Analisi Economica",
-          "Sottoviste interne per gomme e rifornimenti",
+          "Route clone dedicate per Gomme, Rifornimenti e Analisi Economica",
         ],
       },
       {
@@ -294,20 +390,26 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Differenza dal madre",
         description:
-          "La copertura funzionale e ampia, ma alcune route madre dedicate sono ancora riassorbite nel contenitore dossier clone.",
-        tone: "warning",
+          "La copertura strutturale delle route madre e ora riallineata; restano bloccate solo le azioni scriventi o distruttive.",
+        tone: "accent",
       },
     ],
   },
   "operativita-globale": {
     id: "operativita-globale",
-    routePath: "/next/operativita-globale",
+    routePath: "/next/gestione-operativa",
     relatedPaths: [
-      "/next/operativita-globale?section=inventario",
-      "/next/operativita-globale?section=materiali",
-      "/next/operativita-globale?section=attrezzature",
-      "/next/operativita-globale?section=manutenzioni",
-      "/next/operativita-globale?section=procurement",
+      "/next/inventario",
+      "/next/materiali-consegnati",
+      "/next/attrezzature-cantieri",
+      "/next/manutenzioni",
+      "/next/acquisti",
+      "/next/acquisti/dettaglio/:ordineId",
+      "/next/materiali-da-ordinare",
+      "/next/ordini-in-attesa",
+      "/next/ordini-arrivati",
+      "/next/dettaglio-ordine/:ordineId",
+      "/next/lavori-da-eseguire",
       "/next/lavori-in-attesa",
       "/next/lavori-eseguiti",
       "/next/dettagliolavori/:lavoroId",
@@ -318,13 +420,14 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       "/next/autisti-inbox/controlli",
       "/next/autisti-inbox/segnalazioni",
       "/next/autisti-inbox/richiesta-attrezzature",
+      "/next/autisti-admin",
     ],
     navLabel: "Operativita Globale",
     shortLabel: "Operativita",
     eyebrow: "Workflow e code",
     title: "Operativita Globale",
     description:
-      "Workbench clone read-only che riunisce inventario, materiali, attrezzature, manutenzioni, backlog lavori, relativo dettaglio clone-safe, home `Autisti Inbox` clone-safe e i sei listati inbox gia importati.",
+      "Famiglia clone read-only riallineata alla madre con pagine autonome per inventario, materiali, attrezzature, manutenzioni, procurement, backlog lavori, `Autisti Inbox` e `Autisti Admin` reader-first.",
     phase: "Importato read-only",
     primaryGrammar: "Workflow operativo",
     searchPlaceholder: "Fornitore, ordine, materiale",
@@ -333,8 +436,8 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     cards: [
       {
         label: "Sezioni attive",
-        value: "7+",
-        meta: "Inventario, materiali, attrezzature, manutenzioni, procurement, liste lavori e dettaglio clone-safe sono navigabili in sola lettura.",
+        value: "8+",
+        meta: "Inventario, materiali, attrezzature, manutenzioni, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin` reader-first sono navigabili in sola lettura.",
         tone: "accent",
       },
       {
@@ -345,16 +448,16 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       },
       {
         label: "Parita route",
-        value: "Parziale",
-        meta: "La madre usa piu route dedicate; il clone le ricompone in una vista unica con deep link query-based.",
-        tone: "warning",
+        value: "Route vere",
+        meta: "Le principali pagine madre sono ora raggiungibili come route autonome invece che come sezioni query-driven.",
+        tone: "success",
       },
     ],
     sections: [
       {
         title: "Copertura reale",
         description:
-          "La pagina non e piu una shell astratta: legge snapshot reali e rende navigabili i principali domini globali gia bonificati, compresi il dettaglio lavori clone-safe, la home `Autisti Inbox` clone-safe e i suoi primi sei listati.",
+          "La famiglia non e piu compressa in una sola route: il clone legge snapshot reali e rende navigabili le principali pagine globali della madre come route autonome.",
       },
       {
         title: "Tab ancora bloccati",
@@ -365,8 +468,8 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Differenza dal madre",
         description:
-          "Inventario, materiali consegnati, attrezzature, manutenzioni e acquisti non hanno ancora una route clone dedicata 1:1.",
-        tone: "warning",
+          "La struttura di pagine e ora allineata; restano fuori solo i writer veri e alcuni tab procurement ancora neutralizzati.",
+        tone: "accent",
       },
     ],
   },
@@ -494,14 +597,20 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
   "ia": {
     id: "ia",
     routePath: "/next/ia",
-    relatedPaths: ["/next/libretti-export"],
+    relatedPaths: [
+      "/next/ia/apikey",
+      "/next/ia/libretto",
+      "/next/ia/documenti",
+      "/next/ia/copertura-libretti",
+      "/next/libretti-export",
+    ],
     navLabel: "Intelligenza Artificiale",
     shortLabel: "IA",
     eyebrow: "Modulo IA",
     title: "Intelligenza Artificiale",
     description:
-      "Hub clone read-only del modulo madre, riallineato alla titolazione reale e ai sotto-moduli effettivamente attivi o bloccati.",
-    phase: "Hub + primo modulo clone-safe",
+      "Hub clone read-only del modulo madre, riallineato anche sulla famiglia di child route autonome.",
+    phase: "Hub + child route strutturali",
     primaryGrammar: "Modulo IA",
     searchPlaceholder: "Strumento IA",
     shellFocus: "Hub madre, blocchi unsafe e primo figlio clone-safe",
@@ -515,8 +624,8 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       },
       {
         label: "Perimetro clone",
-        value: "Hub + Libretti Export",
-        meta: "E aperto il solo figlio clone-safe; gli altri moduli IA restano visibili ma bloccati.",
+        value: "Hub + child route IA",
+        meta: "Le pagine figlie si aprono davvero; il clone neutralizza configurazione, upload, analisi e salvataggi.",
         tone: "success",
       },
       {
@@ -530,12 +639,12 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Ingressi mostrati nel clone",
         description:
-          "Il clone mostra le card reali del modulo madre e rende attivo solo `Libretti (Export PDF)` nel perimetro read-only minimo.",
+          "Il clone mostra le card reali del modulo madre e apre l'intera famiglia di child route strutturali, con perimetro read-only.",
       },
       {
         title: "Perche i moduli figli restano bloccati",
         description:
-          "I moduli figli non vengono aperti finche non saranno separati da configurazione sensibile, upload, salvataggi Firestore/Storage e runtime esterni.",
+          "Le pagine figlie sono strutturalmente presenti, ma il clone continua a neutralizzare configurazione sensibile, upload, salvataggi Firestore/Storage e runtime esterni.",
         tone: "accent",
         items: [
           "API key Gemini",
@@ -547,7 +656,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Differenza minima dal madre",
         description:
-          "Il clone mantiene il ruolo del hub e il sotto-modulo clone-safe, ma lascia bloccate tutte le funzioni operative con side effect.",
+          "Il clone mantiene il ruolo del hub e delle sue pagine figlie, ma lascia bloccate tutte le funzioni operative con side effect.",
         tone: "warning",
       },
     ],
@@ -603,6 +712,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
   "cisterna": {
     id: "cisterna",
     routePath: "/next/cisterna",
+    relatedPaths: ["/next/cisterna/ia", "/next/cisterna/schede-test"],
     navLabel: "Cisterna",
     shortLabel: "Cisterna",
     eyebrow: "Modulo specialistico",
@@ -618,19 +728,19 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         label: "Perimetro aperto",
         value: "Archivio + report + targhe",
-        meta: "La route base madre e ora leggibile nel clone senza importare editor, upload o workflow IA.",
+        meta: "La route base madre e ora leggibile nel clone senza importare editor o writer.",
         tone: "accent",
       },
       {
-        label: "Regole di derivazione",
-        value: "Deterministiche",
-        meta: "Il clone usa `dupChosen` persistito, altrimenti fallback al bollettino con piu litri, e privilegia l'ultima scheda manuale del mese.",
+        label: "Sottoroute attive",
+        value: "IA + Schede Test",
+        meta: "Le due sottoroute clone-safe sono navigabili, ma restano protette su upload, analisi e salvataggi.",
         tone: "success",
       },
       {
         label: "Blocchi attivi",
-        value: "IA, schede, export e salvataggi",
-        meta: "Restano fuori `Cisterna IA`, `Schede Test`, conferma duplicati, cambio EUR/CHF ed export PDF.",
+        value: "Upload, export e salvataggi",
+        meta: "Restano bloccati conferma duplicati, cambio EUR/CHF, export PDF e ogni mutazione su archivio o schede.",
         tone: "warning",
       },
     ],
@@ -643,7 +753,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Blocchi ancora attivi",
         description:
-          "Le sottoroute `/cisterna/ia` e `/cisterna/schede-test` restano fuori, insieme a conferma duplicati, salvataggio cambio, edit schede ed export PDF.",
+          "Le sottoroute `/cisterna/ia` e `/cisterna/schede-test` sono navigabili nel clone, ma restano bloccati conferma duplicati, salvataggio cambio, analisi IA, edit schede ed export PDF.",
         tone: "accent",
       },
       {

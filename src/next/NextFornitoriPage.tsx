@@ -52,7 +52,7 @@ function NextFornitoriPage() {
               src="/logo.png"
               className="forn-logo"
               alt="logo"
-              onClick={() => navigate("/next/centro-controllo")}
+              onClick={() => navigate("/next")}
             />
             <h1 className="forn-title">Fornitori</h1>
           </div>

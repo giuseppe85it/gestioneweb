@@ -1,4 +1,5 @@
 import type { NextAreaId } from "./nextData";
+import { NEXT_HOME_PATH } from "./nextStructuralPaths";
 
 export type NextRole = "admin" | "gestionale" | "autista";
 
@@ -43,7 +44,7 @@ export type NextSimulatedAccessProfile = NextRolePreset & {
 
 export const NEXT_ROLE_QUERY_PARAM = "role";
 export const NEXT_DEFAULT_ROLE: NextRole = "admin";
-export const NEXT_DRIVER_EXPERIENCE_PATH = "/next/autista";
+export const NEXT_DRIVER_EXPERIENCE_PATH = "/next/autisti";
 
 export const NEXT_ROLE_PRESETS: Record<NextRole, NextRolePreset> = {
   admin: {
@@ -52,7 +53,7 @@ export const NEXT_ROLE_PRESETS: Record<NextRole, NextRolePreset> = {
     shortLabel: "Admin",
     description:
       "Vede tutte le aree oggi attive del clone read-only e governa la futura matrice permessi dal lato gestionale.",
-    landingPath: "/next/centro-controllo",
+    landingPath: NEXT_HOME_PATH,
     experience: "gestionale",
     futureNote:
       "Base corretta per Super Admin e governo permessi, ma ancora senza auth reale o pannello backend.",
@@ -63,7 +64,7 @@ export const NEXT_ROLE_PRESETS: Record<NextRole, NextRolePreset> = {
     shortLabel: "Gestionale",
     description:
       "Accede alle aree operative clone-safe gia aperte. In questa fase la visibilita resta simulata lato frontend.",
-    landingPath: "/next/centro-controllo",
+    landingPath: NEXT_HOME_PATH,
     experience: "gestionale",
     futureNote:
       "La visibilita attuale e un preset tecnico; in seguito verra sostituita o raffinata da permessi granulari per nick/utenza.",
@@ -73,11 +74,11 @@ export const NEXT_ROLE_PRESETS: Record<NextRole, NextRolePreset> = {
     label: "Autista",
     shortLabel: "Autista",
     description:
-      "Non entra nella shell gestionale come utente ridotto. La sua esperienza resta separata e continua a vivere su percorsi dedicati.",
+      "La sua esperienza resta separata dalla shell gestionale e passa ora da una tranche clone-safe dedicata sotto `/next/autisti`, con `Rifornimento`, `Segnalazioni` e `RichiestaAttrezzature` locali al clone.",
     landingPath: NEXT_DRIVER_EXPERIENCE_PATH,
     experience: "autista-separata",
     futureNote:
-      "Questa simulazione ribadisce la separazione tra area autisti e backoffice; non implementa la UX finale dell'app autisti.",
+      "Terza tranche clone-safe chiusa sui moduli auditati: `AutistiGate`, `LoginAutista`, `SetupMezzo`, `ControlloMezzo`, `HomeAutista`, `CambioMezzoAutista`, `Rifornimento` clone-local, `Segnalazioni` con allegati locali, `RichiestaAttrezzature` con allegati locali e flusso `Gomme` clone-safe; i moduli avanzati restano fuori perimetro.",
   },
 };
 
@@ -90,12 +91,12 @@ export const NEXT_AREA_ACCESS: Record<NextAreaId, NextAreaAccessConfig> = {
   "mezzi-dossier": {
     permissionKey: "next.mezzi-dossier",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Area mezzo-centrica clone-safe, con dossier e sottoviste interne ancora da riallineare del tutto sulle route madre.",
+    futureScope: "Area mezzo-centrica clone-safe, ora riallineata su `Mezzi`, `Dossier Mezzi`, `Dossier Gomme`, `Dossier Rifornimenti` e `Analisi Economica` come route autonome.",
   },
   "operativita-globale": {
     permissionKey: "next.operativita-globale",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Workbench globale read-only per inventario, materiali, attrezzature, manutenzioni, liste lavori, home `Autisti Inbox` clone-safe, sei listati inbox gia importati e procurement clone-safe.",
+    futureScope: "Famiglia clone read-only di `Gestione Operativa`, ora riallineata anche in route autonome per inventario, materiali consegnati, attrezzature cantieri, manutenzioni, acquisti, materiali da ordinare, ordini, dettaglio ordine, liste lavori, `Autisti Inbox` e `Autisti Admin` reader-first.",
   },
   "capo": {
     permissionKey: "next.capo",
@@ -115,7 +116,7 @@ export const NEXT_AREA_ACCESS: Record<NextAreaId, NextAreaAccessConfig> = {
   "ia": {
     permissionKey: "next.ia",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Hub clone read-only del modulo madre Intelligenza Artificiale, con card unsafe ancora bloccate.",
+    futureScope: "Hub clone read-only del modulo madre Intelligenza Artificiale, ora riallineato anche sulle child route strutturali (`apikey`, `libretto`, `documenti`, `copertura-libretti`) con scritture neutralizzate.",
   },
   "libretti-export": {
     permissionKey: "next.libretti-export",
@@ -134,7 +135,8 @@ export const NEXT_SPECIAL_ROUTE_ACCESS: Record<NextSpecialRouteId, NextAreaAcces
   "autista-separato": {
     permissionKey: "next.autista-separato",
     allowedRoles: ["autista"],
-    futureScope: "Esperienza separata dalla shell admin; nel clone attuale resta un placeholder esplicito.",
+    futureScope:
+      "Esperienza separata dalla shell admin, ora estesa anche a `Rifornimento` clone-local, `Segnalazioni` con allegati locali e `RichiestaAttrezzature` con allegati locali su `/next/autisti`, con gate/login/setup/controllo/home/cambio-mezzo e flusso gomme raggiungibile.",
   },
 };
 

@@ -18,6 +18,33 @@ import {
   type D10PreCollaudo,
   type D10Snapshot,
 } from "./domain/nextCentroControlloDomain";
+import {
+  buildNextDossierPath,
+  NEXT_AUTISTI_ADMIN_PATH,
+  NEXT_AUTISTI_INBOX_PATH,
+  NEXT_CENTRO_CONTROLLO_PATH,
+  NEXT_CISTERNA_IA_PATH,
+  NEXT_CISTERNA_PATH,
+  NEXT_CISTERNA_SCHEDE_TEST_PATH,
+  NEXT_DOSSIER_LISTA_PATH,
+  NEXT_GESTIONE_OPERATIVA_PATH,
+  NEXT_IA_APIKEY_PATH,
+  NEXT_IA_COPERTURA_LIBRETTI_PATH,
+  NEXT_IA_DOCUMENTI_PATH,
+  NEXT_IA_LIBRETTO_PATH,
+  NEXT_IA_PATH,
+  NEXT_INVENTARIO_PATH,
+  NEXT_LIBRETTI_EXPORT_PATH,
+  NEXT_LAVORI_DA_ESEGUIRE_PATH,
+  NEXT_LAVORI_ESEGUITI_PATH,
+  NEXT_LAVORI_IN_ATTESA_PATH,
+  NEXT_MANUTENZIONI_PATH,
+  NEXT_MATERIALI_CONSEGNATI_PATH,
+  NEXT_MATERIALI_DA_ORDINARE_PATH,
+  NEXT_MEZZI_PATH,
+  NEXT_ORDINI_ARRIVATI_PATH,
+  NEXT_ORDINI_IN_ATTESA_PATH,
+} from "./nextStructuralPaths";
 
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
@@ -26,30 +53,35 @@ const CLONE_ACTION_BLOCKED_TITLE = "Clone read-only: azione bloccata";
 
 function resolveCloneSafeRoute(path: string): string | null {
   if (path.startsWith("/next/")) return path;
-  if (path === "/ia") return "/next/ia";
-  if (path === "/centro-controllo") return "/next/centro-controllo";
-  if (path === "/gestione-operativa") return "/next/operativita-globale";
-  if (path === "/inventario") return "/next/operativita-globale?section=inventario";
-  if (path === "/materiali-consegnati") {
-    return "/next/operativita-globale?section=materiali";
+  if (path === "/autisti-inbox" || path.startsWith("/autisti-inbox/")) {
+    return `/next${path}`;
   }
-  if (path === "/attrezzature-cantieri") {
-    return "/next/operativita-globale?section=attrezzature";
-  }
-  if (path === "/manutenzioni") return "/next/operativita-globale?section=manutenzioni";
-  if (path === "/acquisti") {
-    return "/next/operativita-globale?section=procurement&tab=ordine-materiali";
-  }
-  if (path === "/ordini-in-attesa") {
-    return "/next/operativita-globale?section=procurement&tab=ordini";
-  }
-  if (path === "/ordini-arrivati") {
-    return "/next/operativita-globale?section=procurement&tab=arrivi";
-  }
-  if (path === "/lavori-in-attesa") return "/next/lavori-in-attesa";
-  if (path === "/lavori-eseguiti") return "/next/lavori-eseguiti";
-  if (path === "/cisterna") return "/next/cisterna";
-  if (path === "/mezzi") return "/next/mezzi-dossier";
+  if (path === "/autisti-admin") return NEXT_AUTISTI_ADMIN_PATH;
+  if (path === "/autisti" || path.startsWith("/autisti/")) return `/next${path}`;
+  if (path === "/ia") return NEXT_IA_PATH;
+  if (path === "/ia/apikey") return NEXT_IA_APIKEY_PATH;
+  if (path === "/ia/libretto") return NEXT_IA_LIBRETTO_PATH;
+  if (path === "/ia/documenti") return NEXT_IA_DOCUMENTI_PATH;
+  if (path === "/ia/copertura-libretti") return NEXT_IA_COPERTURA_LIBRETTI_PATH;
+  if (path === "/libretti-export") return NEXT_LIBRETTI_EXPORT_PATH;
+  if (path === "/centro-controllo") return NEXT_CENTRO_CONTROLLO_PATH;
+  if (path === "/gestione-operativa") return NEXT_GESTIONE_OPERATIVA_PATH;
+  if (path === "/inventario") return NEXT_INVENTARIO_PATH;
+  if (path === "/materiali-consegnati") return NEXT_MATERIALI_CONSEGNATI_PATH;
+  if (path === "/attrezzature-cantieri") return "/next/attrezzature-cantieri";
+  if (path === "/manutenzioni") return NEXT_MANUTENZIONI_PATH;
+  if (path === "/acquisti") return "/next/acquisti";
+  if (path === "/materiali-da-ordinare") return NEXT_MATERIALI_DA_ORDINARE_PATH;
+  if (path === "/ordini-in-attesa") return NEXT_ORDINI_IN_ATTESA_PATH;
+  if (path === "/ordini-arrivati") return NEXT_ORDINI_ARRIVATI_PATH;
+  if (path === "/lavori-da-eseguire") return NEXT_LAVORI_DA_ESEGUIRE_PATH;
+  if (path === "/lavori-in-attesa") return NEXT_LAVORI_IN_ATTESA_PATH;
+  if (path === "/lavori-eseguiti") return NEXT_LAVORI_ESEGUITI_PATH;
+  if (path === "/cisterna") return NEXT_CISTERNA_PATH;
+  if (path === "/cisterna/ia") return NEXT_CISTERNA_IA_PATH;
+  if (path === "/cisterna/schede-test") return NEXT_CISTERNA_SCHEDE_TEST_PATH;
+  if (path === "/mezzi") return NEXT_MEZZI_PATH;
+  if (path === "/dossiermezzi") return NEXT_DOSSIER_LISTA_PATH;
   if (path === "/colleghi") return "/next/colleghi";
   if (path === "/fornitori") return "/next/fornitori";
   if (path === "/capo/mezzi") return "/next/capo/mezzi";
@@ -219,20 +251,20 @@ const QUICK_LINKS_OPERATIVO = buildQuickLinks([
   { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire" },
   { to: "/lavori-eseguiti", label: "Lavori Eseguiti" },
   { to: "/lavori-in-attesa", label: "Lavori In Attesa" },
-  { to: "/acquisti", label: "Materiali Da Ordinare" },
+  { to: "/materiali-da-ordinare", label: "Materiali Da Ordinare" },
   { to: "/materiali-consegnati", label: "Materiali Consegnati" },
   { to: "/inventario", label: "Inventario" },
   { to: "/ordini-arrivati", label: "Ordini Arrivati" },
   { to: "/ordini-in-attesa", label: "Ordini In Attesa" },
   { to: "/ia", label: "Intelligenza Artificiale" },
-  { to: "/ia/libretto", label: "IA Libretto" },
+  { to: "/libretti-export", label: "Libretti Export" },
   { to: "/ia/documenti", label: "IA Documenti" },
   { to: "/cisterna", label: "Cisterna Caravate" },
 ]);
 
 const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([
   { to: "/mezzi", label: "Mezzi" },
-  { to: "/next/mezzi-dossier", label: "Dossier Mezzi" },
+  { to: "/dossiermezzi", label: "Dossier Mezzi" },
   { to: "/colleghi", label: "Colleghi" },
   { to: "/fornitori", label: "Fornitori" },
   {
@@ -833,8 +865,11 @@ function Home() {
 
       QUICK_LINKS_OPERATIVO.forEach((link) => {
         if (
+          link.to === "/autisti" ||
+          link.to.startsWith("/autisti/") ||
           link.to.startsWith("/autisti-inbox") ||
-          link.to.startsWith("/autisti-admin")
+          link.to.startsWith("/autisti-admin") ||
+          link.to.startsWith("/next/autisti-admin")
         ) {
           autisti.push(link);
           return;
@@ -856,7 +891,11 @@ function Home() {
           materiali.push(link);
           return;
         }
-        if (link.to.startsWith("/ia")) {
+        if (
+          link.to.startsWith("/ia") ||
+          link.to.startsWith("/libretti-export") ||
+          link.to.startsWith("/cisterna")
+        ) {
           ia.push(link);
           return;
         }
@@ -956,7 +995,7 @@ function Home() {
     params.set("highlightMissing", "1");
     setMissingModalOpen(false);
     const query = params.toString();
-    navigate(`/next/mezzi-dossier${query ? `?${query}` : ""}`);
+    navigate(NEXT_DOSSIER_LISTA_PATH + (query ? `?${query}` : ""));
   };
 
   const canExportAlerts = false;
@@ -984,13 +1023,13 @@ function Home() {
               </div>
             </div>
             <div className="home-hero-right homeTopRight">
-              <div className="hero-card next-clone-card-disabled" title={CLONE_ACTION_BLOCKED_TITLE}>
+              <Link to={NEXT_AUTISTI_ADMIN_PATH} className="hero-card">
                 <div className="hero-card-title">Centro rettifica dati (admin)</div>
                 <div className="hero-card-value hero-card-subtext">
                   Correggi dati e risolvi anomalie operative.
                 </div>
-              </div>
-              <Link to="/next/mezzi-dossier" className="hero-card">
+              </Link>
+              <Link to={NEXT_MEZZI_PATH} className="hero-card">
                 <div className="hero-card-title">Mezzi</div>
                 <div className="hero-card-value">Anagrafiche</div>
               </Link>
@@ -1000,16 +1039,16 @@ function Home() {
                   Costi mezzi, fatture e riepiloghi.
                 </div>
               </Link>
-              <div className="hero-card next-clone-card-disabled" title={CLONE_ACTION_BLOCKED_TITLE}>
+              <Link to={NEXT_MANUTENZIONI_PATH} className="hero-card">
                 <div className="hero-card-title">Manutenzioni</div>
                 <div className="hero-card-value">Registro</div>
-              </div>
-              <div className="hero-card next-clone-card-disabled" title={CLONE_ACTION_BLOCKED_TITLE}>
+              </Link>
+              <Link to={NEXT_AUTISTI_INBOX_PATH} className="hero-card">
                 <div className="hero-card-title">Autisti Inbox (admin)</div>
                 <div className="hero-card-value hero-card-subtext">
                   Vedi e gestisci cio che arriva dagli autisti.
                 </div>
-              </div>
+              </Link>
             </div>
           </div>
         </header>
@@ -1049,7 +1088,7 @@ function Home() {
                         return (
                           <Link
                             key={`${r.targa}-${idx}`}
-                            to={`/next/mezzi-dossier/${encodeURIComponent(r.targa)}`}
+                            to={buildNextDossierPath(r.targa)}
                             className="search-item"
                           >
                             <div className="search-item-main">
@@ -1464,8 +1503,8 @@ function Home() {
                             ? "-"
                             : `${r.giorni > 0 ? "+" : ""}${r.giorni}g`;
                         const dossierPath = r.targa
-                          ? `/next/mezzi-dossier/${encodeURIComponent(r.targa)}`
-                          : "/next/mezzi-dossier";
+                          ? buildNextDossierPath(r.targa)
+                          : NEXT_DOSSIER_LISTA_PATH;
                         const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
                         const prenotazione = mezzo?.prenotazioneCollaudo ?? null;
                         const preCollaudo = mezzo?.preCollaudo ?? null;
@@ -1971,8 +2010,8 @@ function Home() {
                       ? "-"
                       : `${r.giorni > 0 ? "+" : ""}${r.giorni}g`;
                   const dossierPath = r.targa
-                    ? `/next/mezzi-dossier/${encodeURIComponent(r.targa)}`
-                    : "/next/mezzi-dossier";
+                    ? buildNextDossierPath(r.targa)
+                    : NEXT_DOSSIER_LISTA_PATH;
                   const mezzo = mezzoByTarga.get(fmtTarga(r.targa));
                   const prenotazione = mezzo?.prenotazioneCollaudo ?? null;
                   const prenData = prenotazione?.data ? String(prenotazione.data).trim() : "";

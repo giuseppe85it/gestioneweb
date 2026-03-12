@@ -4,12 +4,27 @@ import { auth } from "./firebase";
 
 import { Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
 import "./App.css";
-import NextCentroControlloPage from "./next/NextCentroControlloPage";
+import NextHomePage from "./next/NextHomePage";
+import NextCentroControlloClonePage from "./next/NextCentroControlloClonePage";
 import NextIntelligenzaArtificialePage from "./next/NextIntelligenzaArtificialePage";
+import NextIAApiKeyPage from "./next/NextIAApiKeyPage";
+import NextIALibrettoPage from "./next/NextIALibrettoPage";
+import NextIADocumentiPage from "./next/NextIADocumentiPage";
+import NextIACoperturaLibrettiPage from "./next/NextIACoperturaLibrettiPage";
 import NextLibrettiExportPage from "./next/NextLibrettiExportPage";
 import NextCisternaPage from "./next/NextCisternaPage";
 import NextCisternaIAPage from "./next/NextCisternaIAPage";
 import NextCisternaSchedeTestPage from "./next/NextCisternaSchedeTestPage";
+import NextAutistiCloneLayout from "./next/autisti/NextAutistiCloneLayout";
+import NextAutistiGatePage from "./next/NextAutistiGatePage";
+import NextAutistiLoginPage from "./next/NextAutistiLoginPage";
+import NextAutistiHomePage from "./next/NextAutistiHomePage";
+import NextAutistiSetupMezzoPage from "./next/NextAutistiSetupMezzoPage";
+import NextAutistiCambioMezzoPage from "./next/NextAutistiCambioMezzoPage";
+import NextAutistiControlloPage from "./next/NextAutistiControlloPage";
+import NextAutistiRifornimentoPage from "./next/autisti/NextAutistiRifornimentoPage";
+import NextAutistiRichiestaAttrezzaturePage from "./next/autisti/NextAutistiRichiestaAttrezzaturePage";
+import NextAutistiSegnalazioniPage from "./next/autisti/NextAutistiSegnalazioniPage";
 import NextAutistiInboxCambioMezzoPage from "./next/NextAutistiInboxCambioMezzoPage";
 import NextAutistiInboxLogAccessiPage from "./next/NextAutistiInboxLogAccessiPage";
 import NextAutistiInboxGommePage from "./next/NextAutistiInboxGommePage";
@@ -17,17 +32,36 @@ import NextAutistiInboxControlliPage from "./next/NextAutistiInboxControlliPage"
 import NextAutistiInboxSegnalazioniPage from "./next/NextAutistiInboxSegnalazioniPage";
 import NextAutistiInboxRichiestaAttrezzaturePage from "./next/NextAutistiInboxRichiestaAttrezzaturePage";
 import NextAutistiInboxHomePage from "./next/NextAutistiInboxHomePage";
+import NextAutistiAdminPage from "./next/NextAutistiAdminPage";
 import NextLavoriInAttesaPage from "./next/NextLavoriInAttesaPage";
 import NextLavoriEseguitiPage from "./next/NextLavoriEseguitiPage";
+import NextLavoriDaEseguirePage from "./next/NextLavoriDaEseguirePage";
 import NextDettaglioLavoroPage from "./next/NextDettaglioLavoroPage";
-import NextOperativitaGlobalePage from "./next/NextOperativitaGlobalePage";
+import NextGestioneOperativaPage from "./next/NextGestioneOperativaPage";
+import NextInventarioPage from "./next/NextInventarioPage";
+import NextMaterialiConsegnatiPage from "./next/NextMaterialiConsegnatiPage";
+import NextAttrezzatureCantieriPage from "./next/NextAttrezzatureCantieriPage";
+import NextManutenzioniPage from "./next/NextManutenzioniPage";
+import NextAcquistiPage from "./next/NextAcquistiPage";
+import NextMaterialiDaOrdinarePage from "./next/NextMaterialiDaOrdinarePage";
+import NextOrdiniInAttesaPage from "./next/NextOrdiniInAttesaPage";
+import NextOrdiniArrivatiPage from "./next/NextOrdiniArrivatiPage";
+import NextDettaglioOrdinePage from "./next/NextDettaglioOrdinePage";
 import NextShell from "./next/NextShell";
-import NextDriverExperiencePage from "./next/NextDriverExperiencePage";
 import NextDossierMezzoPage from "./next/NextDossierMezzoPage";
+import NextDossierGommePage from "./next/NextDossierGommePage";
+import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
 import NextAnalisiEconomicaPage from "./next/NextAnalisiEconomicaPage";
-import NextMezziDossierPage from "./next/NextMezziDossierPage";
+import NextMezziPage from "./next/NextMezziPage";
+import NextDossierListaPage from "./next/NextDossierListaPage";
 import NextRoleGuard from "./next/NextRoleGuard";
 import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
+import {
+  NextDettaglioLavoroLegacyRedirect,
+  NextMezziDossierDetailLegacyRedirect,
+  NextMezziDossierLegacyRedirect,
+  NextOperativitaLegacyRedirect,
+} from "./next/NextLegacyStructuralRedirects";
 import NextCapoMezziPage from "./next/NextCapoMezziPage";
 import NextCapoCostiMezzoPage from "./next/NextCapoCostiMezzoPage";
 import NextColleghiPage from "./next/NextColleghiPage";
@@ -134,37 +168,140 @@ function App() {
 
   return (
     <Routes>
+      <Route
+        path="/next/autisti"
+        element={
+          <NextRoleGuard areaId="autista-separato">
+            <NextAutistiCloneLayout />
+          </NextRoleGuard>
+        }
+      >
+        <Route index element={<NextAutistiGatePage />} />
+        <Route path="login" element={<NextAutistiLoginPage />} />
+        <Route path="home" element={<NextAutistiHomePage />} />
+        <Route path="setup-mezzo" element={<NextAutistiSetupMezzoPage />} />
+        <Route path="cambio-mezzo" element={<NextAutistiCambioMezzoPage />} />
+        <Route path="controllo" element={<NextAutistiControlloPage />} />
+        <Route path="rifornimento" element={<NextAutistiRifornimentoPage />} />
+        <Route path="segnalazioni" element={<NextAutistiSegnalazioniPage />} />
+        <Route
+          path="richiesta-attrezzature"
+          element={<NextAutistiRichiestaAttrezzaturePage />}
+        />
+        <Route path="*" element={<Navigate replace to="/next/autisti" />} />
+      </Route>
+      <Route path="/next/autista" element={<Navigate replace to="/next/autisti" />} />
       <Route path="/next" element={<NextShell />}>
-        <Route index element={<NextRoleLandingRedirect />} />
+        <Route index element={<NextHomePage />} />
         <Route
           path="centro-controllo"
           element={
             <NextRoleGuard areaId="centro-controllo">
-              <NextCentroControlloPage />
+              <NextCentroControlloClonePage />
             </NextRoleGuard>
           }
         />
         <Route
-          path="mezzi-dossier"
+          path="gestione-operativa"
           element={
-            <NextRoleGuard areaId="mezzi-dossier">
-              <NextMezziDossierPage />
+            <NextRoleGuard areaId="operativita-globale">
+              <NextGestioneOperativaPage />
             </NextRoleGuard>
           }
         />
         <Route
-          path="mezzi-dossier/:targa"
+          path="operativita-globale"
           element={
-            <NextRoleGuard areaId="mezzi-dossier">
-              <NextDossierMezzoPage />
+            <NextRoleGuard areaId="operativita-globale">
+              <NextOperativitaLegacyRedirect />
             </NextRoleGuard>
           }
         />
         <Route
-          path="analisi-economica/:targa"
+          path="inventario"
           element={
-            <NextRoleGuard areaId="mezzi-dossier">
-              <NextAnalisiEconomicaPage />
+            <NextRoleGuard areaId="operativita-globale">
+              <NextInventarioPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="materiali-consegnati"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextMaterialiConsegnatiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="attrezzature-cantieri"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAttrezzatureCantieriPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="manutenzioni"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextManutenzioniPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="acquisti"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAcquistiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="acquisti/dettaglio/:ordineId"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextDettaglioOrdinePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="materiali-da-ordinare"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextMaterialiDaOrdinarePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ordini-in-attesa"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextOrdiniInAttesaPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ordini-arrivati"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextOrdiniArrivatiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dettaglio-ordine/:ordineId"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextDettaglioOrdinePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="lavori-da-eseguire"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextLavoriDaEseguirePage />
             </NextRoleGuard>
           }
         />
@@ -201,14 +338,6 @@ function App() {
           }
         />
         <Route
-          path="operativita-globale"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextOperativitaGlobalePage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
           path="lavori-in-attesa"
           element={
             <NextRoleGuard areaId="operativita-globale">
@@ -229,6 +358,86 @@ function App() {
           element={
             <NextRoleGuard areaId="operativita-globale">
               <NextDettaglioLavoroPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dettagliolavori"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextDettaglioLavoroLegacyRedirect />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="mezzi"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextMezziPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dossiermezzi"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextDossierListaPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dossiermezzi/:targa"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextDossierMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dossier/:targa"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextDossierMezzoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dossier/:targa/gomme"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextDossierGommePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="dossier/:targa/rifornimenti"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextDossierRifornimentiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="mezzi-dossier"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextMezziDossierLegacyRedirect />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="mezzi-dossier/:targa"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextMezziDossierDetailLegacyRedirect />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="analisi-economica/:targa"
+          element={
+            <NextRoleGuard areaId="mezzi-dossier">
+              <NextAnalisiEconomicaPage />
             </NextRoleGuard>
           }
         />
@@ -328,15 +537,47 @@ function App() {
             </NextRoleGuard>
           }
         />
-        <Route path="ia-gestionale" element={<NextLegacyIaRedirect />} />
         <Route
-          path="autista"
+          path="ia/apikey"
           element={
-            <NextRoleGuard areaId="autista-separato">
-              <NextDriverExperiencePage />
+            <NextRoleGuard areaId="ia">
+              <NextIAApiKeyPage />
             </NextRoleGuard>
           }
         />
+        <Route
+          path="ia/libretto"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextIALibrettoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/documenti"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextIADocumentiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/copertura-libretti"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextIACoperturaLibrettiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="autisti-admin"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextAutistiAdminPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route path="ia-gestionale" element={<NextLegacyIaRedirect />} />
         <Route path="*" element={<NextRoleLandingRedirect />} />
       </Route>
 

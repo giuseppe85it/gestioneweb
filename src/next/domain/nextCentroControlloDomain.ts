@@ -513,7 +513,7 @@ function unwrapObjectValue(raw: unknown): Record<string, unknown> | null {
 }
 
 function getDossierRoute(targa: string | null): string | null {
-  return targa ? `/next/mezzi-dossier/${encodeURIComponent(targa)}` : "/next/mezzi-dossier";
+  return targa ? `/next/dossier/${encodeURIComponent(targa)}` : "/next/dossiermezzi";
 }
 
 function getMezzoId(record: MezzoRecord, index: number): string {
@@ -991,7 +991,7 @@ function buildMissingMezzi(mezzi: D10MezzoItem[]): D10MissingMezzoItem[] {
         missing,
         quality: "source_direct" as const,
         flags: [...mezzo.flags],
-        targetRoute: getDossierRoute(mezzo.targa) ?? "/next/mezzi-dossier",
+        targetRoute: getDossierRoute(mezzo.targa) ?? "/next/dossiermezzi",
       };
     })
     .filter((mezzo) => mezzo.missing.targa || mezzo.missing.categoria || mezzo.missing.autista)
@@ -1120,7 +1120,7 @@ function buildAssetLocationLists(
       sourceDataset: `${MEZZI_KEY}+${EVENTI_KEY}`,
       quality: luogoInfo ? "derived_acceptable" : "source_direct",
       flags: luogoInfo ? [] : ["missing_storico_luogo"],
-      targetRoute: getDossierRoute(targa) ?? "/next/mezzi-dossier",
+      targetRoute: getDossierRoute(targa) ?? "/next/dossiermezzi",
     };
 
     if (rimorchio) rimorchiDaMostrare.push(entry);

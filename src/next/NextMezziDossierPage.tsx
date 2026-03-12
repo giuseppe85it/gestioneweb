@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { buildNextDossierPath, NEXT_HOME_PATH } from "./nextStructuralPaths";
 import "../pages/Mezzi.css";
 import "./next-shell.css";
 import { formatDateInput, formatDateUI } from "../utils/dateFormat";
@@ -840,7 +841,7 @@ const handleChangeAutista = (value: string) => {
     src="/logo.png"
     alt="Logo Ghielmi Cementi"
     className="logo-mezzi"
-    onClick={() => navigate("/next/centro-controllo")}
+    onClick={() => navigate(NEXT_HOME_PATH)}
   />
 
   <div className="card-header-text">
@@ -1538,7 +1539,7 @@ return (
       <button
         type="button"
         className="btn btn-small btn-primary"
-        onClick={() => navigate(`/next/mezzi-dossier/${m.targa}`)}
+        onClick={() => navigate(buildNextDossierPath(m.targa))}
       >
         Dossier Mezzo
       </button>

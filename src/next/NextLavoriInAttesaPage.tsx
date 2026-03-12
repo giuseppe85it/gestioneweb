@@ -134,8 +134,8 @@ function NextLavoriInAttesaPage() {
   const routeId: NextLavoriListaRouteId = "lavori-in-attesa";
   const location = useLocation();
   const backToHome = location.search
-    ? `/next/centro-controllo${location.search}`
-    : "/next/centro-controllo";
+    ? `/next${location.search}`
+    : "/next";
   const [groups, setGroups] = useState<NextLavoriListaGroup[]>([]);
   const [totalLavori, setTotalLavori] = useState(0);
   const [totalGruppi, setTotalGruppi] = useState(0);

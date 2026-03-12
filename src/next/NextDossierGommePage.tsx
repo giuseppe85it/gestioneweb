@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import NextGommeEconomiaSection from "./NextGommeEconomiaSection";
+import { buildNextDossierPath, NEXT_DOSSIER_LISTA_PATH } from "./nextStructuralPaths";
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 
@@ -9,11 +10,11 @@ export default function NextDossierGommePage() {
 
   const handleBack = () => {
     if (!targa) {
-      navigate("/next/mezzi-dossier");
+      navigate(NEXT_DOSSIER_LISTA_PATH);
       return;
     }
 
-    navigate(`/next/mezzi-dossier/${encodeURIComponent(targa)}`);
+    navigate(buildNextDossierPath(targa));
   };
 
   return (

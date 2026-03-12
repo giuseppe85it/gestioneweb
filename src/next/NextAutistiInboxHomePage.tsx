@@ -5,8 +5,8 @@ export default function NextAutistiInboxHomePage() {
   return (
     <AutistiInboxHome
       cloneConfig={{
-        homePath: "/next/centro-controllo",
-        adminPath: null,
+        homePath: "/next",
+        adminPath: "/next/autisti-admin",
         segnalazioniPath: "/next/autisti-inbox/segnalazioni",
         controlliPath: "/next/autisti-inbox/controlli",
         richiestaAttrezzaturePath: "/next/autisti-inbox/richiesta-attrezzature",

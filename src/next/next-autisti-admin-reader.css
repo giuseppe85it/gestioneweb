@@ -1,0 +1,41 @@
+.autisti-admin-reader-notice p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.autisti-admin-reader-notice p + p {
+  margin-top: 8px;
+}
+
+.autisti-admin-reader-muted {
+  opacity: 0.8;
+}
+
+.autisti-admin-reader-lock {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(239, 226, 197, 0.85);
+  border: 1px solid rgba(211, 192, 154, 0.9);
+  color: #4a3b22;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.autisti-admin-reader-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .autisti-admin-reader-actions {
+    justify-content: flex-start;
+  }
+}

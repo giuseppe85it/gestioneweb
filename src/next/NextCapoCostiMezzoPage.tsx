@@ -270,7 +270,7 @@ export default function NextCapoCostiMezzoPage() {
             <button
               type="button"
               className="capo-logo-button"
-              onClick={() => navigate("/next/centro-controllo")}
+              onClick={() => navigate("/next")}
               aria-label="Vai alla Home clone"
             >
               <img src="/logo.png" alt="Logo" />

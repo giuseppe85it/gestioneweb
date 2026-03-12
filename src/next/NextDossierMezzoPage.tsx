@@ -4,8 +4,11 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { generateDossierMezzoPDFBlob } from "../utils/pdfEngine";
 import PdfPreviewModal from "../components/PdfPreviewModal";
-import NextDossierGommePage from "./NextDossierGommePage";
-import NextDossierRifornimentiPage from "./NextDossierRifornimentiPage";
+import {
+  buildNextDossierGommePath,
+  buildNextDossierRifornimentiPath,
+  NEXT_DOSSIER_LISTA_PATH,
+} from "./nextStructuralPaths";
 import { readNextMezzoRifornimentiSnapshot } from "./domain/nextRifornimentiDomain";
 import {
   buildNextDossierMezzoLegacyView,
@@ -348,7 +351,7 @@ setState({
   }, [activeView, targa]);
 
   const handleBack = () => {
-    navigate("/next/mezzi-dossier");
+    navigate(NEXT_DOSSIER_LISTA_PATH);
   };
 
   const openLavoroDetail = (
@@ -451,18 +454,28 @@ setState({
         to={
           targa
             ? `/next/analisi-economica/${encodeURIComponent(targa)}`
-            : "/next/mezzi-dossier"
+            : NEXT_DOSSIER_LISTA_PATH
         }
       />
     );
   }
 
   if (activeView === "gomme") {
-    return <NextDossierGommePage />;
+    return (
+      <Navigate
+        replace
+        to={targa ? buildNextDossierGommePath(targa) : NEXT_DOSSIER_LISTA_PATH}
+      />
+    );
   }
 
   if (activeView === "rifornimenti") {
-    return <NextDossierRifornimentiPage />;
+    return (
+      <Navigate
+        replace
+        to={targa ? buildNextDossierRifornimentiPath(targa) : NEXT_DOSSIER_LISTA_PATH}
+      />
+    );
   }
 
 
@@ -870,7 +883,7 @@ return (
   <button
     className="dossier-button"
     type="button"
-    onClick={() => navigate(`/next/mezzi-dossier/${encodeURIComponent(mezzo.targa)}?view=gomme`)}
+    onClick={() => navigate(buildNextDossierGommePath(mezzo.targa))}
   >
     Gomme
   </button>
@@ -878,7 +891,7 @@ return (
   <button
     className="dossier-button"
     type="button"
-    onClick={() => navigate(`/next/mezzi-dossier/${encodeURIComponent(mezzo.targa)}?view=rifornimenti`)}
+    onClick={() => navigate(buildNextDossierRifornimentiPath(mezzo.targa))}
   >
     Rifornimenti (dettaglio)
   </button>
