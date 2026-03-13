@@ -116,7 +116,7 @@ export const NEXT_AREA_ACCESS: Record<NextAreaId, NextAreaAccessConfig> = {
   "ia": {
     permissionKey: "next.ia",
     allowedRoles: ["admin", "gestionale"],
-    futureScope: "Hub clone read-only del modulo madre Intelligenza Artificiale, ora riallineato anche sulle child route strutturali (`apikey`, `libretto`, `documenti`, `copertura-libretti`) con scritture neutralizzate.",
+    futureScope: "Hub clone read-only del modulo madre Intelligenza Artificiale, ora riallineato anche sulle child route strutturali (`apikey`, `libretto`, `documenti`, `copertura-libretti`) e sul subtree isolato `/next/ia/interna*` per il sottosistema IA interno, sempre con scritture neutralizzate.",
   },
   "libretti-export": {
     permissionKey: "next.libretti-export",

@@ -7,6 +7,7 @@ import "./App.css";
 import NextHomePage from "./next/NextHomePage";
 import NextCentroControlloClonePage from "./next/NextCentroControlloClonePage";
 import NextIntelligenzaArtificialePage from "./next/NextIntelligenzaArtificialePage";
+import NextInternalAiPage from "./next/NextInternalAiPage";
 import NextIAApiKeyPage from "./next/NextIAApiKeyPage";
 import NextIALibrettoPage from "./next/NextIALibrettoPage";
 import NextIADocumentiPage from "./next/NextIADocumentiPage";
@@ -446,6 +447,46 @@ function App() {
           element={
             <NextRoleGuard areaId="ia">
               <NextIntelligenzaArtificialePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/interna"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextInternalAiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/interna/sessioni"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextInternalAiPage sectionId="sessions" />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/interna/richieste"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextInternalAiPage sectionId="requests" />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/interna/artifacts"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextInternalAiPage sectionId="artifacts" />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/interna/audit"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextInternalAiPage sectionId="audit" />
             </NextRoleGuard>
           }
         />

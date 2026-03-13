@@ -1,13 +1,14 @@
-import  { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { setItemSync, getItemSync } from "../utils/storageSync";
 import type { Lavoro } from "../types/lavori";
 import "./DettaglioLavoro.css";
 
 const DettaglioLavoro = () => {
   const navigate = useNavigate();
+  const { lavoroId: lavoroIdParam } = useParams<{ lavoroId?: string }>();
   const [searchParams] = useSearchParams();
-  const lavoroId = searchParams.get("lavoroId") || "";
+  const lavoroId = searchParams.get("lavoroId") || lavoroIdParam || "";
 
   const [lavoriGruppo, setLavoriGruppo] = useState<Lavoro[]>([]);
   const [modalVisible, setModalVisible] = useState(false);

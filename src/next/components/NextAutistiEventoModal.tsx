@@ -11,7 +11,6 @@ function NextAutistiEventoModal(props: NextAutistiEventoModalProps) {
   return (
     <AutistiEventoModal
       {...props}
-      cloneSafe
       buildCloneLavoroDetailPath={(lavoroId) =>
         lavoroId ? `/next/dettagliolavori/${encodeURIComponent(lavoroId)}` : null
       }

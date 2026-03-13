@@ -1,8 +1,13 @@
 # LINEE GUIDA SOTTOSISTEMA IA INTERNA
 
 Versione: 2026-03-11  
-Stato: baseline architetturale iniziale dopo audit repository  
+Stato: baseline architetturale iniziale dopo audit repository, con scaffolding V1 isolato avviato il 2026-03-12  
 Scopo: riferimento operativo permanente per progettare una IA interna al gestionale in modo isolato, controllato, reversibile e non distruttivo.
+
+## Regola operativa collegata
+- La checklist operativa unica del sottosistema IA interno e `docs/product/CHECKLIST_IA_INTERNA.md`.
+- Questo documento definisce principi, vincoli e roadmap; la checklist unica traccia lo stato operativo aggiornato.
+- Ogni futuro task relativo alla IA interna deve aggiornare obbligatoriamente la checklist unica; in caso contrario il task e incompleto.
 
 ## Legenda
 - **CONFERMATO**: dimostrato dal repository o dalla documentazione ufficiale gia presente.
@@ -85,8 +90,8 @@ Scopo: riferimento operativo permanente per progettare una IA interna al gestion
 ### 5.1 Blocchi logici
 | Blocco | Ruolo | Stato nel repo |
 |---|---|---|
-| UI IA interna | chat, preview, approvazione, archivio | NON TROVATO come sottosistema dedicato |
-| Orchestratore IA | coordina richieste, retrieval, preview, approvazione | NON TROVATO |
+| UI IA interna | chat, preview, approvazione, archivio | PARZIALE: subtree `/next/ia/interna*` con preview, archivio locale e chat controllata |
+| Orchestratore IA | coordina richieste, retrieval, preview, approvazione | PARZIALE: orchestratore locale/mock per intenti sicuri |
 | Access layer GitHub | sola lettura repo, branch isolati, PR controllate | NON TROVATO |
 | Access layer Firebase | lettura controllata Firestore/Storage via backend | NON TROVATO |
 | Codebase intelligence | indicizzazione file, route, componenti, pattern | NON TROVATO |
@@ -95,7 +100,7 @@ Scopo: riferimento operativo permanente per progettare una IA interna al gestion
 | Approval workflow | approva / chiedi modifiche / scarta | NON TROVATO |
 | Rollback manager | revert codice, dati e configurazioni | NON TROVATO |
 | Usage tracking persistente | memoria operativa e preferenze | PARZIALE: esiste solo traccia locale NEXT |
-| Archivio report e analisi | persistenza ricercabile di report/artifact | NON TROVATO |
+| Archivio report e analisi | persistenza ricercabile di report/artifact | PARZIALE: archivio locale isolato nel clone |
 | Analytics & prediction engine | anomalie, costi, manutenzioni, alert | NON TROVATO |
 | Notification gateway | alert in-app, poi email/WhatsApp | NON TROVATO |
 
@@ -110,6 +115,9 @@ Scopo: riferimento operativo permanente per progettare una IA interna al gestion
 - **Persistenza IA separata** [RACCOMANDAZIONE]:
   - collezioni/path dedicati per sessioni, richieste, artifact, audit log e tracking;
   - nessuna scrittura diretta sui dataset business finche non esiste un workflow di approvazione e rollback verificato.
+- **Stato sicuro oggi verificato nel repo** [CONFERMATO]:
+  - il primo livello di persistenza ammesso e un archivio locale isolato e namespaced nel clone;
+  - Firestore/Storage dedicati restano da rimandare finche policy effettive e identita reali non sono chiuse.
 
 ## 6. Principi di isolamento
 - La IA legge il sistema, ma non entra nei writer legacy.
@@ -284,19 +292,10 @@ Scopo: riferimento operativo permanente per progettare una IA interna al gestion
 - **Fase 9**: alert automatici in-app e predisposizione notifiche.
 
 ## 16. Checklist operativa
-- [x] Audit iniziale del repository completato.
-- [x] Perimetro piu sicuro identificato: UI clone + backend IA separato.
-- [x] Divieto formalizzato di riuso runtime delle funzioni IA legacy.
-- [ ] Definire ownership del backend IA dedicato.
-- [ ] Definire modello autorizzativo e identita utente non anonima.
-- [ ] Definire contratti dati di sola lettura ammessi alla V1.
-- [ ] Definire collezioni/path IA dedicati.
-- [ ] Disegnare workflow preview / approvazione / rollback con audit log.
-- [ ] Definire strategia GitHub read-only, branch isolato e PR controllate.
-- [ ] Progettare archivio persistente di report e artifact.
-- [ ] Progettare tracking persistente, non solo locale.
-- [ ] Validare policy Firestore effettive.
-- [ ] Validare policy Storage effettive.
-- [ ] Validare governance endpoint IA/PDF attuali.
-- [ ] Aprire il primo task di scaffolding isolato senza runtime business attivo.
-
+- La checklist operativa unica e `docs/product/CHECKLIST_IA_INTERNA.md`.
+- Usare quella checklist come fonte di verita per:
+  - stato `FATTO`, `IN CORSO`, `NON FATTO`, `BLOCCATO`;
+  - retrospettiva dei task gia chiusi;
+  - dipendenze e blocchi;
+  - filoni futuri, incluso `Modello camion con IA`.
+- Questo documento non deve piu ospitare una checklist duplicata da mantenere a mano.

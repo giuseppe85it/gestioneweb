@@ -31,6 +31,351 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-13 53
+- DATA: 2026-03-13
+- TITOLO MODIFICA: Memoria operativa locale IA e tracking persistente non invasivo nel clone
+- OBIETTIVO: Introdurre la prima memoria operativa locale e il primo tracking persistente del sottosistema IA interna, limitati al solo perimetro `/next/ia/interna*` e senza toccare i dati business del gestionale.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiTracking.ts`
+  - `src/next/internal-ai/internalAiMockRepository.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_0018_patch_memoria-operativa-locale-ia.md`
+  - `docs/continuity-reports/2026-03-13_0018_continuity_memoria-operativa-locale-ia.md`
+- COSA E STATO CAMBIATO:
+  - Esteso il tracking IA interno con persistenza locale namespaced e snapshot stabile, separato dai dati business.
+  - La memoria conserva ora ultime targhe cercate, prompt recenti, artifact recenti, intenti usati e ultimo stato di lavoro del modulo.
+  - Collegati al tracking solo eventi del perimetro IA: visite sezione, selezione targa, preview report, prompt chat e azioni artifact.
+  - Aggiornata la UI overview con una sezione minima di memoria recente, utile per riprendere il lavoro nel modulo.
+  - Aggiornato il riepilogo dello scaffolding IA per dichiarare che il tracking non e piu solo in RAM ma puo persistere localmente nel browser del clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il modulo IA interno diventa piu pratico da riaprire, mostrando memoria recente e ultimo stato di lavoro.
+  - Lettura: nessuna nuova lettura business fuori dai layer NEXT gia esistenti; la persistenza riguarda solo memoria locale del modulo IA.
+  - Blocco scritture: nessuna scrittura Firestore/Storage business, nessun tracking globale del gestionale, nessun riuso runtime IA legacy.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`, eseguire una ricerca targa, inviare un prompt chat e salvare o aprire un artifact.
+  - Ricaricare la pagina e verificare che la sezione di memoria recente mostri ancora gli ultimi elementi del modulo.
+  - Aprire `/next/ia/interna/audit` e verificare conteggi visite/eventi e modalita di memoria locale persistente.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiTracking.ts src/next/internal-ai/internalAiMockRepository.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Questa non e ancora memoria operativa completa del gestionale: resta confinata al solo sottosistema IA interno del clone.
+
+### Voce 2026-03-12 52
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Ricerca guidata mezzi con autosuggest targhe reali nel sottosistema IA interno
+- OBIETTIVO: Rendere piu affidabile il use case `report targa in anteprima` usando l'elenco mezzi reale del gestionale in sola lettura, con autosuggest, selezione guidata e messaggi chiari su match, ambiguita ed esiti.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiVehicleLookup.ts`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-12_2307_patch_autosuggest-targhe-ia-interna.md`
+  - `docs/continuity-reports/2026-03-12_2307_continuity_autosuggest-targhe-ia-interna.md`
+- COSA E STATO CAMBIATO:
+  - Introdotto un catalogo locale/read-only dei mezzi reali del gestionale, costruito dal layer NEXT delle anagrafiche flotta.
+  - Aggiunto autosuggest targhe nella UI IA interna con contesto minimo del mezzo: marca/modello, categoria ed eventuale autista.
+  - La preview report parte ora solo da mezzo selezionato o da match esatto; in caso di input ambiguo o incompleto la UI chiede esplicitamente una selezione guidata.
+  - Resi piu chiari gli stati della ricerca: input vuoto, nessun match, corrispondenza precisa, corrispondenza possibile, mezzo selezionato.
+  - La chat mock non e stata riallineata nello stesso task per evitare accoppiamento tra patch separate.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il flusso `report targa` e piu pratico, con riduzione degli errori di digitazione e maggiore visibilita sul mezzo reale usato per la preview.
+  - Lettura: il nuovo autosuggest riusa solo `@mezzi_aziendali` e `@colleghi` tramite il layer anagrafico NEXT gia normalizzato.
+  - Blocco scritture: nessuna scrittura Firestore/Storage business e nessun riuso runtime IA legacy.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna` e digitare una targa reale nel blocco `Anteprima report per targa`.
+  - Verificare la comparsa dei suggerimenti con targa e contesto minimo del mezzo.
+  - Provare un input ambiguo o parziale e verificare che la UI chieda una selezione prima della preview.
+  - Selezionare un mezzo suggerito e generare l'anteprima report.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiVehicleLookup.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il perimetro resta confinato al clone `/next/ia/interna*`.
+  - Nessuna integrazione con la chat mock nello stesso task.
+
+### Voce 2026-03-12 51
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Prima chat interna controllata con orchestratore locale/mock nel sottosistema IA
+- OBIETTIVO: Introdurre nel subtree `/next/ia/interna*` una prima chat coerente col gestionale, capace di instradare richieste sicure e riusare il report targa in anteprima senza backend reale, senza IA legacy e senza scritture business.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/next/NextIntelligenzaArtificialePage.tsx`
+  - `src/next/nextData.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-12_2244_patch_chat-interna-controllata.md`
+  - `docs/continuity-reports/2026-03-12_2244_continuity_chat-interna-controllata.md`
+- COSA E STATO CAMBIATO:
+  - Aggiunta nella panoramica del sottosistema IA una sezione chat interna con messaggi utente/assistente, suggerimenti iniziali, stato di elaborazione e invio controllato.
+  - Definiti model locali per messaggi, intenti, stato esecuzione e riferimenti a preview/artifact.
+  - Introdotto un orchestratore locale/mock che riconosce solo intenti sicuri: aiuto/capacita, report targa in anteprima e richieste non supportate.
+  - L'intento `report targa` riusa il facade read-only gia esistente e aggiorna la stessa preview del report targa e il relativo archivio artifact locale.
+  - I messaggi della chat restano solo in memoria nella pagina corrente; nessuna persistenza business o backend IA reale viene attivato.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il sottosistema IA interno inizia a presentarsi come nucleo del modulo con una chat controllata, ma ancora non operativa verso backend o provider reali.
+  - Lettura: il solo use case eseguibile resta il report targa in preview, che legge esclusivamente dai layer NEXT read-only gia normalizzati.
+  - Blocco scritture: nessuna scrittura Firestore/Storage business, nessun riuso runtime IA legacy, nessuna automazione distruttiva.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna` e controllare la presenza della sezione `Chat interna controllata`.
+  - Inviare `cosa puoi fare` e verificare la risposta in italiano con le sole capacita reali del modulo.
+  - Inviare `crea report targa TI123456` con una targa reale e verificare la risposta assistente e l'aggiornamento della preview targa.
+  - Inviare una richiesta non supportata come `salva in produzione` e verificare la risposta esplicita di funzione non disponibile.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/NextIntelligenzaArtificialePage.tsx src/next/nextData.ts src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiMockRepository.ts src/next/internal-ai/internalAiTracking.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - La chat e deliberatamente mock e locale: niente LLM reale, niente provider esterni, niente persistenza dei messaggi oltre la pagina corrente.
+
+### Voce 2026-03-12 50
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Archivio artifact IA persistente solo locale per il sottosistema interno
+- OBIETTIVO: Sostituire il repository artifact solo mock con una persistenza minima, isolata e reversibile per il sottosistema IA interno, senza toccare dataset o path business.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/internal-ai/internalAiMockRepository.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/next/NextIntelligenzaArtificialePage.tsx`
+  - `src/next/nextData.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-12_2232_patch_archivio-artifact-ia-locale.md`
+  - `docs/continuity-reports/2026-03-12_2232_continuity_archivio-artifact-ia-locale.md`
+- COSA E STATO CAMBIATO:
+  - Verificata come non sicura una persistenza reale Firestore/Storage per il sottosistema IA interno allo stato del repo.
+  - Introdotto un archivio artifact persistente solo locale, namespaced e confinato al clone, con fallback in memoria se `localStorage` non e disponibile.
+  - Esteso il modello artifact con metadati minimi, payload preview, fonti lette, versioni, tag e stati `preview` / `draft` / `archiviato`.
+  - Aggiornata la UI IA interna per salvare, vedere, aprire e archiviare localmente gli artifact del report targa.
+  - Aggiornata la checklist unica IA per segnare l'archivio persistente artifact come `IN CORSO`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il sottosistema IA interno ha ora un archivio artifact base realmente persistente sul solo dispositivo clone.
+  - Lettura: il report targa continua a leggere solo i layer NEXT gia normalizzati e read-only.
+  - Blocco scritture: nessuna scrittura su Firestore/Storage business; nessun riuso runtime dei moduli IA legacy.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`, generare una anteprima report per targa e salvarla come draft nell'archivio IA.
+  - Aprire `/next/ia/interna/artifacts` e verificare che l'artifact compaia con stato `draft`, storage locale e pulsante di apertura.
+  - Portare l'artifact allo stato `archiviato` e verificarne l'aggiornamento nell'archivio.
+  - Ricaricare la pagina e confermare che gli artifact persistiti localmente restino visibili.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/NextIntelligenzaArtificialePage.tsx src/next/nextData.ts src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiMockRepository.ts src/next/internal-ai/internalAiTracking.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Firestore/Storage dedicati restano bloccati per mancanza di prove sulle policy effettive e sull'identity reale.
+
+### Voce 2026-03-12 49
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Checklist unica IA interna e riallineamento documentale di governo
+- OBIETTIVO: Creare una fonte operativa unica per il sottosistema IA interno, ricostruire retroattivamente lo stato gia verificato e fissare la regola di aggiornamento obbligatorio per tutti i futuri task IA.
+- FILE TOCCATI:
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-12_2219_docs_checklist-ia-interna-unica.md`
+  - `docs/continuity-reports/2026-03-12_2219_continuity_checklist-ia-interna-unica.md`
+- COSA E STATO CAMBIATO:
+  - Creata la checklist unica della IA interna come fonte di verita operativa.
+  - Popolata retroattivamente la checklist con i blocchi gia chiusi o aperti, usando solo fatti verificabili dai documenti e dalle patch gia presenti nel repo.
+  - Inserito il filone futuro `Modello camion con IA` come blocco `NON FATTO`.
+  - Allineati i documenti di stato e linee guida per evitare doppia verita incoerente e imporre l'aggiornamento obbligatorio della checklist nei futuri task IA.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - Nessun impatto runtime: task solo documentale.
+  - Migliora la tracciabilita del sottosistema IA interno e il governo del lavoro sul clone/NEXT.
+  - Nessuna lettura o scrittura business aggiuntiva.
+- COME VERIFICARE:
+  - Aprire `docs/product/CHECKLIST_IA_INTERNA.md` e verificare la presenza delle macrofasi, degli stati ammessi e del blocco `Modello camion con IA`.
+  - Verificare che `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`, `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md` e `docs/product/STATO_MIGRAZIONE_NEXT.md` referenzino la checklist unica come fonte operativa.
+  - Verificare che in tutti i documenti aggiornati sia esplicita la regola: ogni futuro task IA deve aggiornare la checklist unica.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - Nessuna modifica runtime, nessuna build necessaria.
+
+### Voce 2026-03-12 48
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Primo use case reale ma sicuro IA interna clone per report targa in anteprima
+- OBIETTIVO: Permettere nel subtree `/next/ia/interna*` la ricerca per targa, la lettura in sola lettura dei dati gia normalizzati nella NEXT e la costruzione di una anteprima report senza scritture business.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/internal-ai/internalAiMockRepository.ts`
+  - `src/next/internal-ai/internalAiVehicleReportFacade.ts`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/change-reports/2026-03-12_2208_patch_ia-interna-report-targa-preview.md`
+  - `docs/continuity-reports/2026-03-12_2208_continuity_ia-interna-report-targa-preview.md`
+- COSA E STATO CAMBIATO:
+  - Creato un facade read-only isolato del sottosistema IA interno che riceve una targa e riusa il composito `readNextDossierMezzoCompositeSnapshot` e i relativi layer NEXT gia normalizzati.
+  - Estesa la pagina `/next/ia/interna` con ricerca targa, stato caricamento, esito non trovato, anteprima report, fonti lette, dati mancanti ed evidenze.
+  - Introdotto un modello locale di report preview per targa con sezioni, fonti, stato anteprima e stato approvazione solo mock.
+  - Esteso il repository mock del sottosistema IA per salvare la preview solo come bozza simulata locale, senza Firestore/Storage business.
+  - Riallineati in italiano i testi visibili del subtree IA interno.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - La UI IA interna ora ha un primo caso d'uso reale: report targa in sola lettura dentro il clone.
+  - Le letture riusano solo reader NEXT gia esistenti e non toccano writer business o backend IA legacy.
+  - Il salvataggio resta confinato a sessioni/richieste/bozze simulate nel repository locale del sottosistema IA.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`.
+  - Cercare una targa presente nel clone e verificare la costruzione dell'anteprima report.
+  - Verificare blocchi `Fonti lette`, `Dati mancanti o da completare`, `Evidenze e segnali`.
+  - Salvare una bozza simulata e controllare l'aggiornamento di `Sessioni`, `Richieste`, `Archivio bozze` e `Registro audit`.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiMockRepository.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiTracking.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Nessuna scrittura su dataset business.
+  - Nessun riuso runtime di IA legacy.
+  - Tutti i testi visibili del subtree IA interno sono stati riallineati in italiano.
+
+### Voce 2026-03-12 47
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Fix crash `NextInternalAiPage` per snapshot tracking non stabile
+- OBIETTIVO: Correggere il loop di render introdotto nello scaffolding IA interna clone, mantenendo tracking e mock repository isolati e non invasivi.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiTracking.ts`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/change-reports/2026-03-12_2148_fix_crash-ia-interna-tracking-snapshot.md`
+  - `docs/continuity-reports/2026-03-12_2148_continuity_fix-ia-interna-crash.md`
+- COSA E STATO CAMBIATO:
+  - Corretto `readInternalAiTrackingSummary()` per restituire uno snapshot cached/stabile invece di creare un nuovo oggetto a ogni render.
+  - Allineato l'aggiornamento dello snapshot cached a `emitChange()`, cosi `useSyncExternalStore` riceve un valore stabile finche il tracking non cambia davvero.
+  - Riviste le liste renderizzate nel subtree IA interno: le mappe presenti hanno gia key stabili e non e stato necessario allargare la patch oltre il fix del tracking.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - La pagina `/next/ia/interna*` non entra piu in loop di render.
+  - Tracking e mock repository restano solo locali al sottosistema IA interno, senza impatto sui moduli business.
+  - Nessuna scrittura o lettura business aggiuntiva viene introdotta dal fix.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna` e navigare le sottoroute `sessioni`, `richieste`, `artifacts`, `audit`.
+  - Confermare l'assenza dei warning `getSnapshot should be cached` e `Maximum update depth exceeded`.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTracking.ts src/next/internal-ai/internalAiMockRepository.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - Fix confinato al subtree IA clone, senza toccare madre, business, IA legacy o backend.
+
+### Voce 2026-03-12 46
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Avvio scaffolding isolato del nuovo sottosistema IA interno sotto `/next/ia/interna*`
+- OBIETTIVO: Predisporre un primo perimetro IA interno non operativo, preview-first e safe mode dentro il clone, senza riuso runtime dei moduli IA legacy e senza scritture su dataset business.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/NextIntelligenzaArtificialePage.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/nextStructuralPaths.ts`
+  - `src/next/nextData.ts`
+  - `src/next/nextAccess.ts`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/internal-ai/internalAiMockRepository.ts`
+  - `src/next/internal-ai/internalAiTracking.ts`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/change-reports/2026-03-12_2133_patch_scaffolding-ia-interna-isolata.md`
+  - `docs/continuity-reports/2026-03-12_2133_continuity_ia-interna-scaffolding.md`
+- COSA E STATO CAMBIATO:
+  - Creato un nuovo subtree isolato `/next/ia/interna*` con route dedicate per overview, sessioni, richieste, artifacts e audit.
+  - Aggiunti model/types locali per `ai_sessions`, `ai_requests`, `analysis_artifacts`, `ai_audit_log` e stati di preview/approval, senza alcun writer reale.
+  - Predisposti contratti stub per chat/orchestrator, retrieval codice/dati, artifact repository, audit log e approval workflow.
+  - Inserito un repository mock locale e un tracking d'uso solo in-memory, confinato al perimetro IA interno e non attivo globalmente.
+  - Aggiornato l'hub `/next/ia` per esporre l'ingresso al nuovo scaffolding senza toccare le pagine madre o i backend IA legacy.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - La UI IA clone ora ospita un'area dedicata di scaffolding interno chiaramente marcata come non operativa.
+  - Nessuna lettura o scrittura su dataset business viene introdotta dalla patch.
+  - L'archivio artifact e presente solo come shell/model/mock repository locale; nessuna persistenza reale o storage condiviso.
+- COME VERIFICARE:
+  - Aprire `/next/ia` e verificare la card `IA Interna (scaffolding)`.
+  - Navigare `/next/ia/interna`, `/next/ia/interna/sessioni`, `/next/ia/interna/richieste`, `/next/ia/interna/artifacts`, `/next/ia/interna/audit`.
+  - Confermare che le pagine mostrino solo dati mock/stub locali e nessun backend reale.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Scelta deliberata piu isolata: nessun riuso runtime di `aiCore`, `estrazioneDocumenti`, `analisi_economica_mezzo`, `stamp_pdf`, Cloud Run libretto o tracking legacy.
+  - L'archivio artifact e considerato sicuro in questo step solo come mock repository non persistente.
+
+### Voce 2026-03-12 45
+- DATA: 2026-03-12
+- TITOLO MODIFICA: Patch finale di parita UI reale clone = madre con riuso diretto pagine legacy su `/next`
+- OBIETTIVO: Chiudere i principali gap di parita visiva/UI del clone eliminando scaffold e reader custom nelle aree prioritarie, riusando direttamente la UI madre e lasciando nel clone solo il blocco delle azioni scriventi.
+- FILE TOCCATI:
+  - `src/next/NextShell.tsx`
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/NextMotherPage.tsx`
+  - `src/next/nextCloneNavigation.ts`
+  - `src/next/NextHomePage.tsx`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `src/next/NextInventarioPage.tsx`
+  - `src/next/NextMaterialiConsegnatiPage.tsx`
+  - `src/next/NextAttrezzatureCantieriPage.tsx`
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextAcquistiPage.tsx`
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextOrdiniInAttesaPage.tsx`
+  - `src/next/NextOrdiniArrivatiPage.tsx`
+  - `src/next/NextDettaglioOrdinePage.tsx`
+  - `src/next/NextDettaglioLavoroPage.tsx`
+  - `src/next/NextAutistiAdminPage.tsx`
+  - `src/next/NextIAApiKeyPage.tsx`
+  - `src/next/NextIALibrettoPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/NextIACoperturaLibrettiPage.tsx`
+  - `src/next/NextCisternaPage.tsx`
+  - `src/next/NextMezziPage.tsx`
+  - `src/next/NextDossierListaPage.tsx`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/NextAnalisiEconomicaPage.tsx`
+  - `src/next/components/NextAutistiEventoModal.tsx`
+  - `src/components/AutistiEventoModal.tsx`
+  - `src/pages/DettaglioLavoro.tsx`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO:
+  - La shell clone admin e la shell clone autisti hanno perso il chrome clone-only piu invasivo e si appoggiano ora al layout madre con notice minimi.
+  - Le pagine clone prioritarie non usano piu workbench, pannelli reader-first o scaffold custom: su `/next` montano direttamente `Home`, `Gestione Operativa`, `Inventario`, `Materiali Consegnati`, `Attrezzature Cantieri`, `Manutenzioni`, `Acquisti`, `Materiali Da Ordinare`, `Ordini In Attesa`, `Ordini Arrivati`, `Dettaglio Ordine`, `Dettaglio Lavoro`, `Autisti Admin`, `IA ApiKey`, `IA Libretto`, `IA Documenti`, `IA Copertura Libretti`, `Cisterna`, `Mezzi`, `Dossier Lista`, `Dossier Mezzo` e `Analisi Economica`.
+  - E stato introdotto `NextMotherPage`, wrapper clone-side che lascia intatta la UI madre ma marca/disabilita selettivamente i writer, blocca submit, file input e CTA distruttive, e mantiene la navigazione dentro `/next` tramite `nextCloneNavigation`.
+  - `DettaglioLavoro` madre ora accetta anche il param route `:lavoroId`, cosi il clone puo usare la stessa pagina madre anche sulle route `/next/dettagliolavori/:lavoroId`.
+  - Il modal eventi autisti non nasconde piu i blocchi madre nel clone: `CREA LAVORO`, `IMPORTA IN DOSSIER` e il modale di creazione restano visibili, mentre la conferma finale viene neutralizzata nel runtime clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il clone torna a usare la stessa faccia della madre nelle aree operative prioritarie; le differenze rimaste sono soprattutto di blocco scrittura, non di struttura visiva.
+  - Lettura: il clone continua a leggere gli stessi dati gia usati dalla madre, senza introdurre dataset paralleli per le pagine riallineate.
+  - Blocco scritture: i writer restano bloccati lato clone con guard DOM, submit interception, input disabilitati e neutralizzazione delle CTA scriventi; la madre non viene riattivata per nessun side effect.
+- COME VERIFICARE:
+  - Aprire `/next` e verificare che `Home` sia quella madre, senza topbar clone dedicata.
+  - Aprire le route `/next/inventario`, `/next/materiali-consegnati`, `/next/attrezzature-cantieri`, `/next/manutenzioni`, `/next/acquisti`, `/next/materiali-da-ordinare`, `/next/ordini-in-attesa`, `/next/ordini-arrivati`, `/next/dettaglio-ordine/:ordineId`, `/next/dettagliolavori/:lavoroId`, `/next/autisti-admin`, `/next/ia/apikey`, `/next/ia/libretto`, `/next/ia/documenti`, `/next/ia/copertura-libretti`, `/next/cisterna`, `/next/mezzi`, `/next/dossiermezzi`, `/next/dossier/:targa` e `/next/analisi-economica/:targa`.
+  - Verificare che i pulsanti scriventi restino visibili ma disabilitati o neutralizzati, mentre PDF, drill-down e navigazione read-only restano utilizzabili.
+  - Aprire un evento autisti dal clone e verificare che il modale mostri `CREA LAVORO` e il modale di creazione, ma con conferma finale disabilitata.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - La patch non affronta `Autista 360` o `Mezzo 360`: le loro entry restano fuori perimetro parita 1:1 e non sono state forzate dentro il clone.
+
 ### Voce 2026-03-11 44
 - DATA: 2026-03-11
 - TITOLO MODIFICA: Parita UI clone con shell estesa, quick link riallineati e metadata aggiornati

@@ -228,7 +228,7 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     path: "/next/ia",
     label: "Intelligenza Artificiale",
     status: "ACTIVE_PARTIAL",
-    note: "Hub clone strutturalmente riallineato alla madre, con child route autonome per `apikey`, `libretto`, `documenti`, `copertura-libretti` e `Libretti Export`, tutte con scritture neutralizzate.",
+    note: "Hub clone strutturalmente riallineato alla madre, con child route autonome per `apikey`, `libretto`, `documenti`, `copertura-libretti` e `Libretti Export`, piu subtree isolato `/next/ia/interna*` per il nuovo sottosistema IA interno in scaffolding stub-only; tutte le scritture restano neutralizzate.",
   },
   {
     id: "libretti-export",
@@ -639,18 +639,19 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Ingressi mostrati nel clone",
         description:
-          "Il clone mostra le card reali del modulo madre e apre l'intera famiglia di child route strutturali, con perimetro read-only.",
+          "Il clone mostra le card reali del modulo madre, apre l'intera famiglia di child route strutturali e ospita anche un primo subtree IA interno isolato sotto `/next/ia/interna*`.",
       },
       {
         title: "Perche i moduli figli restano bloccati",
         description:
-          "Le pagine figlie sono strutturalmente presenti, ma il clone continua a neutralizzare configurazione sensibile, upload, salvataggi Firestore/Storage e runtime esterni.",
+          "Le pagine figlie sono strutturalmente presenti, ma il clone continua a neutralizzare configurazione sensibile, upload, salvataggi Firestore/Storage, runtime esterni e il nuovo sottosistema IA interno resta confinato a chat controllata, preview e archivio locale isolato.",
         tone: "accent",
         items: [
           "API key Gemini",
           "Upload libretto e documenti",
           "Scritture su dataset documentali e mezzi",
           "Runtime IA esterni o funzioni writer-heavy",
+          "Chat/orchestratore locale controllato, retrieval read-only, archivio artifact IA e approval workflow solo mock",
         ],
       },
       {

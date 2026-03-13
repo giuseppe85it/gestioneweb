@@ -1,6 +1,10 @@
-import NextMezziDossierPage from "./NextMezziDossierPage";
+import Mezzi from "../pages/Mezzi";
+import NextMotherPage from "./NextMotherPage";
 
 export default function NextMezziPage() {
-  return <NextMezziDossierPage />;
+  return (
+    <NextMotherPage pageId="mezzi">
+      <Mezzi />
+    </NextMotherPage>
+  );
 }
-

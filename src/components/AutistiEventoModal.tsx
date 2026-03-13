@@ -19,6 +19,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../utils/pdfPreview";
+import { isCloneRuntime } from "../utils/cloneWriteBarrier";
 import { formatDateTimeUI } from "../utils/dateFormat";
 import "../autistiInbox/AutistiInboxHome.css";
 import TargaPicker from "./TargaPicker";
@@ -66,6 +67,7 @@ export default function AutistiEventoModal({
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF evento");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
   const targhe = useTarghe();
+  const effectiveCloneSafe = cloneSafe || isCloneRuntime();
 
   useEffect(() => {
     let active = true;
@@ -377,7 +379,7 @@ export default function AutistiEventoModal({
   }
 
   async function handleImportGomme(selected: HomeEvent) {
-    if (cloneSafe) return;
+    if (effectiveCloneSafe) return;
     const payload = selected.payload || {};
     if (!payload?.id) return;
     await importGommeRecord(payload);
@@ -415,8 +417,10 @@ export default function AutistiEventoModal({
   }
 
   function openCloneLavoroDetail(lavoroId: string) {
-    if (!cloneSafe || !buildCloneLavoroDetailPath) return;
-    const path = buildCloneLavoroDetailPath(lavoroId);
+    if (!effectiveCloneSafe) return;
+    const path =
+      buildCloneLavoroDetailPath?.(lavoroId) ??
+      (lavoroId ? `/next/dettagliolavori/${encodeURIComponent(lavoroId)}` : null);
     if (!path) return;
     navigate(path);
   }
@@ -473,7 +477,7 @@ export default function AutistiEventoModal({
   }
 
   async function confirmCreateLavoro() {
-    if (cloneSafe) return;
+    if (effectiveCloneSafe) return;
     if (!createFrom) return;
     const p = createFrom.payload || {};
     const descrizione = createDescrizione.trim();
@@ -835,10 +839,9 @@ export default function AutistiEventoModal({
   const isGomme = event.tipo === "gomme";
   const linkedLavoroIds = getLinkedLavoroIds(p);
   const linkedCloneLavoroPath =
-    cloneSafe &&
-    linkedLavoroIds.length === 1 &&
-    buildCloneLavoroDetailPath
-      ? buildCloneLavoroDetailPath(linkedLavoroIds[0])
+    effectiveCloneSafe && linkedLavoroIds.length === 1
+      ? buildCloneLavoroDetailPath?.(linkedLavoroIds[0]) ??
+        `/next/dettagliolavori/${encodeURIComponent(linkedLavoroIds[0])}`
       : null;
 
   return (
@@ -960,6 +963,15 @@ export default function AutistiEventoModal({
                     {hasLinkedLavoro(p) ? "GIÀ CREATO" : "CREA LAVORO"}
                   </button>
                   )}
+                  {!cloneSafe && effectiveCloneSafe && linkedCloneLavoroPath ? (
+                    <button
+                      type="button"
+                      className="aix-create-btn"
+                      onClick={() => openCloneLavoroDetail(linkedLavoroIds[0])}
+                    >
+                      APRI DETTAGLIO CLONE
+                    </button>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -993,6 +1005,12 @@ export default function AutistiEventoModal({
                   <button
                     type="button"
                     className="aix-create-btn"
+                    disabled={effectiveCloneSafe}
+                    title={
+                      effectiveCloneSafe
+                        ? "Clone read-only: importazione disponibile solo nella madre"
+                        : undefined
+                    }
                     onClick={() => void handleImportGomme(event)}
                   >
                     IMPORTA IN DOSSIER
@@ -1049,7 +1067,7 @@ export default function AutistiEventoModal({
         </div>
       </div>
 
-      {!cloneSafe && createOpen && createFrom && (
+      {createOpen && createFrom && (
         <div className="aix-create-backdrop" onClick={() => setCreateOpen(false)}>
           <div className="aix-create-modal" onClick={(e) => e.stopPropagation()}>
             <div className="aix-create-head">
@@ -1122,6 +1140,11 @@ export default function AutistiEventoModal({
                     <span>Crea anche per rimorchio</span>
                   </label>
                 )}
+              {effectiveCloneSafe ? (
+                <div className="aix-row-bot">
+                  Clone read-only: la conferma resta visibile ma disabilitata.
+                </div>
+              ) : null}
               <div className="aix-create-actions">
                 <button
                   type="button"
@@ -1133,6 +1156,12 @@ export default function AutistiEventoModal({
                 <button
                   type="button"
                   className="aix-create-confirm"
+                  disabled={effectiveCloneSafe}
+                  title={
+                    effectiveCloneSafe
+                      ? "Clone read-only: conferma disponibile solo nella madre"
+                      : undefined
+                  }
                   onClick={confirmCreateLavoro}
                 >
                   Conferma

@@ -46,6 +46,107 @@ Serve a:
 | IA sopra layer puliti | IN PREPARAZIONE | Rinviata a fase successiva, sopra il clone | 2026-03-10 |
 | Tracking d'uso NEXT | IN PREPARAZIONE | Rinviato a fase successiva, sopra il clone | 2026-03-10 |
 
+## 5.1 Aggiornamento 2026-03-12 - Parita UI reale clone/madre
+- La shell `/next` e la shell `/next/autisti/*` sono state alleggerite dal chrome clone-only: il clone presenta ora la stessa percezione base della madre, con notice minimi e senza topbar clone dedicata.
+- Le principali pagine clone non usano piu pannelli custom o reader-first: su `/next` vengono montate direttamente le pagine madre reali per `Home`, `Gestione Operativa`, procurement, `Dettaglio Lavoro`, `Autisti Admin`, child route IA prioritarie, `Cisterna`, `Mezzi`, `Dossier Lista`, `Dossier Mezzo` e `Analisi Economica`.
+- Il blocco no-write resta confinato al clone tramite `NextMotherPage` e `nextCloneNavigation`: i writer madre restano visibili ma vengono disabilitati o neutralizzati nel subtree `/next`, senza riaprire scritture vere.
+- Il modal eventi autisti non e piu impoverito nel clone: CTA e modale madre restano visibili, ma la conferma finale e bloccata nel runtime clone.
+- Restano esplicitamente fuori dalla parita 1:1 di questa patch `Autista 360` e `Mezzo 360`, che rimangono bucket di rifondazione e non semplice riallineamento.
+
+## 5.2 Aggiornamento 2026-03-12 - Scaffolding IA interna isolato
+- Sotto la famiglia clone IA e stato aperto il nuovo subtree `/next/ia/interna*`, dedicato al futuro sottosistema IA interno ma non operativo.
+- Il nuovo perimetro vive solo nel clone/NEXT e non modifica i flussi madre o i moduli business correnti.
+- Lo scaffolding include:
+  - route UI isolate per overview, sessioni, richieste, artifacts e audit;
+  - model/types locali per `ai_sessions`, `ai_requests`, `analysis_artifacts`, `ai_audit_log` e stati `preview` / `approval`;
+  - contratti stub per orchestrator, retrieval, artifact repository, audit log e approval workflow;
+  - repository mock locale e tracking d'uso solo in-memory, confinato al subtree IA interno.
+- L'archivio artifact in questo step e ammesso solo come shell + model + mock repository non persistente; non usa Storage, Firestore o path business.
+- Non vengono riusati a runtime i moduli IA/PDF legacy (`aiCore`, `estrazioneDocumenti`, `analisi_economica_mezzo`, `stamp_pdf`, Cloud Run libretto, `server.js`).
+- Nessun segreto lato client, nessuna scrittura business e nessun hook globale invasivo sono stati introdotti dalla patch.
+
+## 5.3 Aggiornamento 2026-03-12 - Fix crash subtree IA interno
+- Corretto un loop di render nel nuovo subtree `/next/ia/interna*` causato dal tracking in-memory cablato con `useSyncExternalStore`.
+- La causa era uno snapshot non cached: `readInternalAiTrackingSummary()` restituiva un nuovo oggetto a ogni render, facendo scattare il warning React su `getSnapshot` e il conseguente `Maximum update depth exceeded`.
+- Il fix resta confinato al tracking locale del sottosistema IA interno e non modifica route, backend, business data o moduli legacy.
+- Le liste renderizzate del subtree IA sono state ricontrollate: le mappe attive usano gia key stabili e non e stato necessario introdurre altre modifiche strutturali.
+
+## 5.4 Aggiornamento 2026-03-12 - Primo use case IA interna: report targa in anteprima
+- Il subtree `/next/ia/interna*` ospita ora il primo use case reale ma sicuro del sottosistema IA interno: ricerca per targa, lettura in sola lettura e composizione di una anteprima report dentro il clone.
+- La lettura riusa il composito `readNextDossierMezzoCompositeSnapshot` e i relativi layer NEXT gia normalizzati per:
+  - anagrafica flotta;
+  - lavori;
+  - manutenzioni e gomme;
+  - rifornimenti;
+  - movimenti materiali;
+  - documenti/costi;
+  - eventuale analisi economica legacy salvata.
+- Il nuovo facade del sottosistema IA vive solo nel perimetro clone/NEXT e non introduce:
+  - writer Firestore/Storage business;
+  - backend IA reale;
+  - riuso runtime di moduli IA legacy;
+  - segreti lato client.
+- La bozza del report puo essere salvata solo come sessione/richiesta/bozza simulata nel repository locale del sottosistema IA; nessuna persistenza business viene toccata.
+- I testi visibili del subtree IA interno sono stati riallineati in italiano.
+
+## 5.5 Aggiornamento 2026-03-12 - Checklist unica IA interna
+- Creata `docs/product/CHECKLIST_IA_INTERNA.md` come fonte operativa unica del sottosistema IA interno.
+- La checklist ricostruisce retroattivamente i passaggi gia chiusi:
+  - audit architetturale;
+  - innesto sul clone/NEXT;
+  - linee guida;
+  - stato avanzamento;
+  - scaffolding isolato;
+  - model/types;
+  - contracts/repository mock;
+  - tracking sicuro;
+  - fix crash tracking snapshot;
+  - primo use case report targa in anteprima.
+- La checklist registra anche il filone futuro `Modello camion con IA`, oggi allo stato `NON FATTO`.
+- Da ora ogni task relativo al sottosistema IA interno sotto `/next/ia/interna*` deve aggiornare obbligatoriamente la checklist unica.
+
+## 5.6 Aggiornamento 2026-03-12 - Archivio artifact IA persistente solo locale
+- Il subtree `/next/ia/interna*` usa ora un archivio artifact persistente solo locale, namespaced e confinato al clone.
+- La decisione e stata presa dopo verifica di sicurezza: Firestore/Storage dedicati non sono ancora dimostrabili come contenitori sicuri nel repo perche restano aperti `firestore.rules`, policy Storage effettive e auth anonima.
+- Il use case `report targa in anteprima` continua a leggere solo dai layer NEXT in sola lettura e puo ora:
+  - salvare il report come `draft`;
+  - ritrovare l'artifact nell'archivio IA interno;
+  - distinguerlo da `preview` e `archiviato`;
+  - riaprirlo nella UI IA interna.
+- Nessun dataset business e nessun path Storage business vengono toccati da questa persistenza.
+
+## 5.7 Aggiornamento 2026-03-12 - Chat interna controllata del sottosistema IA
+- La panoramica `/next/ia/interna` espone ora una prima chat interna controllata, locale e reversibile, coerente con la UI del gestionale.
+- La chat non usa provider reali, backend IA, moduli IA legacy, Cloud Run o endpoint esistenti del repo.
+- Gli intenti oggi supportati sono solo:
+  - aiuto/capacita reali del sottosistema;
+  - report targa in anteprima;
+  - risposta esplicita alle richieste non ancora supportate o non sicure.
+- L'intento `report targa` riusa il facade read-only gia esistente del sottosistema IA e aggiorna la stessa sezione preview/artifact senza introdurre writer business.
+- I messaggi restano solo in memoria nella pagina corrente; non viene introdotta nessuna persistenza business o server-side.
+
+## 5.8 Aggiornamento 2026-03-12 - Ricerca guidata mezzi per il report targa IA interno
+- Il use case `/next/ia/interna` per la preview report targa legge ora l'elenco mezzi reali dal layer NEXT `readNextAnagraficheFlottaSnapshot`, gia usato dal clone per la flotta in sola lettura.
+- La UI espone un autosuggest leggero e locale che filtra mentre si scrive e mostra, oltre alla targa, anche il minimo contesto gia disponibile nei readers puliti:
+  - marca/modello;
+  - categoria;
+  - eventuale autista.
+- La preview parte solo da un mezzo selezionato o da una corrispondenza esatta; le ricerche incomplete o ambigue chiedono esplicitamente una selezione guidata prima di leggere il report.
+- Nessun writer business, nessun backend IA reale e nessun modulo IA legacy vengono toccati da questo affinamento.
+- La chat interna mock non e stata intrecciata a questo autosuggest nello stesso task, per mantenere il perimetro delle patch separato e reversibile.
+
+## 5.9 Aggiornamento 2026-03-13 - Memoria operativa locale e tracking persistente del modulo IA
+- Il subtree `/next/ia/interna*` usa ora una memoria operativa locale namespaced e persistente nel browser del clone, separata dai dataset business.
+- La memoria conserva solo elementi del modulo IA:
+  - ultime targhe cercate;
+  - prompt recenti della chat;
+  - artifact recenti aperti, salvati o archiviati;
+  - intenti usati;
+  - ultimo stato di lavoro del sottosistema.
+- Il tracking resta non invasivo e confinato alle sole azioni del modulo IA interno, senza agganciare navigazione o comportamento del gestionale fuori da `/next/ia/interna*`.
+- La UI overview espone una sezione minima di memoria recente, utile per riprendere il lavoro nel modulo senza introdurre memoria operativa globale del gestionale.
+- Nessun backend reale, nessun provider IA, nessun writer Firestore/Storage business e nessun modulo IA legacy vengono coinvolti da questa patch.
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;
@@ -54,6 +155,7 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 4. quali letture reali sono gia state mantenute;
 5. quali parti restano ancora fuori dal clone;
 6. aggiungere anche la voce corrispondente in `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
+7. se il task tocca il sottosistema IA interno, aggiornare anche `docs/product/CHECKLIST_IA_INTERNA.md`.
 
 ## 7. Stato documento
 - **STATO: CURRENT**

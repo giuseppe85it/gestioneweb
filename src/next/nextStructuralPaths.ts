@@ -22,6 +22,11 @@ export const NEXT_DOSSIER_PREFIX = "/next/dossier";
 export const NEXT_MEZZI_DOSSIER_LEGACY_PATH = "/next/mezzi-dossier";
 export const NEXT_ANALISI_ECONOMICA_PREFIX = "/next/analisi-economica";
 export const NEXT_IA_PATH = "/next/ia";
+export const NEXT_INTERNAL_AI_PATH = "/next/ia/interna";
+export const NEXT_INTERNAL_AI_SESSIONS_PATH = "/next/ia/interna/sessioni";
+export const NEXT_INTERNAL_AI_REQUESTS_PATH = "/next/ia/interna/richieste";
+export const NEXT_INTERNAL_AI_ARTIFACTS_PATH = "/next/ia/interna/artifacts";
+export const NEXT_INTERNAL_AI_AUDIT_PATH = "/next/ia/interna/audit";
 export const NEXT_IA_APIKEY_PATH = "/next/ia/apikey";
 export const NEXT_IA_LIBRETTO_PATH = "/next/ia/libretto";
 export const NEXT_IA_DOCUMENTI_PATH = "/next/ia/documenti";
@@ -93,4 +98,3 @@ export function resolveNextOperativitaLegacyPath(
 
   return NEXT_GESTIONE_OPERATIVA_PATH;
 }
-

@@ -1,6 +1,10 @@
-import NextProcurementStandalonePage from "./NextProcurementStandalonePage";
+import OrdiniInAttesa from "../pages/OrdiniInAttesa";
+import NextMotherPage from "./NextMotherPage";
 
 export default function NextOrdiniInAttesaPage() {
-  return <NextProcurementStandalonePage mode="ordini" />;
+  return (
+    <NextMotherPage pageId="ordini-in-attesa">
+      <OrdiniInAttesa />
+    </NextMotherPage>
+  );
 }
-

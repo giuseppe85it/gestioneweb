@@ -1,7 +1,8 @@
 import { Navigate, useLocation } from "react-router-dom";
+import Home from "../pages/Home";
 import { getNextRoleFromSearch } from "./nextAccess";
+import NextMotherPage from "./NextMotherPage";
 import { NEXT_AUTISTI_APP_PATH } from "./nextStructuralPaths";
-import LegacyHomeClonePage from "./NextCentroControlloPage";
 
 export default function NextHomePage() {
   const location = useLocation();
@@ -11,6 +12,9 @@ export default function NextHomePage() {
     return <Navigate replace to={`${NEXT_AUTISTI_APP_PATH}${location.search || ""}`} />;
   }
 
-  return <LegacyHomeClonePage />;
+  return (
+    <NextMotherPage pageId="home">
+      <Home />
+    </NextMotherPage>
+  );
 }
-

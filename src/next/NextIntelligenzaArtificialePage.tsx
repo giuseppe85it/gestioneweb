@@ -7,6 +7,7 @@ import {
   NEXT_IA_APIKEY_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
+  NEXT_INTERNAL_AI_PATH,
   NEXT_IA_LIBRETTO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
 } from "./nextStructuralPaths";
@@ -22,6 +23,15 @@ type CloneHubCard = {
 };
 
 const ACTIVE_TOOLS: CloneHubCard[] = [
+  {
+    title: "IA Interna (scaffolding)",
+    description: "Workspace isolato preview-first per il futuro sottosistema IA interno.",
+    note: "Subtree clone-side sicuro sotto /next/ia/interna*: chat controllata locale, preview/approval state, archivio artifact locale isolato e tracking in-memory; nessun backend reale.",
+    iconSrc: "/icons/ia/futuro.png",
+    iconAlt: "IA Interna",
+    status: "SCAFFOLDING",
+    to: NEXT_INTERNAL_AI_PATH,
+  },
   {
     title: "Estrazione Libretto",
     description: "Leggi automaticamente i dati del mezzo dal libretto.",
@@ -168,6 +178,11 @@ function NextIntelligenzaArtificialePage() {
             L&apos;hub clone mantiene ora la stessa famiglia di pagine della madre: le child route
             si aprono davvero, ma configurazioni sensibili, upload, analisi e scritture restano
             neutralizzati.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            Da questo hub e ora raggiungibile anche un primo scaffolding isolato del futuro
+            sottosistema IA interno sotto <code>/next/ia/interna*</code>, in safe mode e senza
+            collegamenti runtime ai moduli IA legacy.
           </p>
           <p style={{ marginTop: 12 }}>
             <Link to={NEXT_HOME_PATH}>Torna alla Home clone</Link>

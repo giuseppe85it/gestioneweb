@@ -1,6 +1,10 @@
-import NextProcurementStandalonePage from "./NextProcurementStandalonePage";
+import Acquisti from "../pages/Acquisti";
+import NextMotherPage from "./NextMotherPage";
 
 export default function NextAcquistiPage() {
-  return <NextProcurementStandalonePage mode="acquisti" />;
+  return (
+    <NextMotherPage pageId="acquisti">
+      <Acquisti />
+    </NextMotherPage>
+  );
 }
-

@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import "./next-autisti-clone.css";
 import {
   NEXT_AUTISTI_BASE_PATH,
@@ -17,58 +17,6 @@ type PatchedHistory = History & {
   pushState: History["pushState"];
   replaceState: History["replaceState"];
 };
-
-const NAV_ITEMS = [
-  { to: NEXT_AUTISTI_BASE_PATH, label: "Gate" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/login`, label: "Login" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/setup-mezzo`, label: "Setup mezzo" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/controllo`, label: "Controllo" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/home`, label: "Home" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/rifornimento`, label: "Rifornimento" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/segnalazioni`, label: "Segnalazioni" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/richiesta-attrezzature`, label: "Richiesta attrezzature" },
-  { to: `${NEXT_AUTISTI_BASE_PATH}/cambio-mezzo`, label: "Cambio mezzo" },
-] as const;
-
-function getCurrentStepLabel(pathname: string): string {
-  if (pathname === NEXT_AUTISTI_BASE_PATH) {
-    return "Gate";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/login`)) {
-    return "Login autista";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo`)) {
-    return "Setup mezzo";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/controllo`)) {
-    return "Controllo mezzo";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/home`)) {
-    return "Home autista";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/rifornimento`)) {
-    return "Rifornimento";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/segnalazioni`)) {
-    return "Segnalazioni";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/richiesta-attrezzature`)) {
-    return "Richiesta attrezzature";
-  }
-
-  if (pathname.startsWith(`${NEXT_AUTISTI_BASE_PATH}/cambio-mezzo`)) {
-    return "Cambio mezzo";
-  }
-
-  return "App autisti";
-}
 
 function isGommeModalSaveButton(button: HTMLButtonElement): boolean {
   if (normalizeAutistiButtonLabel(button.textContent) !== "SALVA") {
@@ -92,8 +40,6 @@ function NextAutistiCloneLayout() {
   const location = useLocation();
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const currentStep = useMemo(() => getCurrentStepLabel(location.pathname), [location.pathname]);
 
   useEffect(() => {
     if (!notice) {
@@ -291,43 +237,10 @@ function NextAutistiCloneLayout() {
 
   return (
     <div className="next-autisti-clone">
-      <header className="next-autisti-clone__header">
-        <div>
-          <div className="next-autisti-clone__badge">Clone read-only</div>
-          <h1 className="next-autisti-clone__title">App Autisti</h1>
-          <p className="next-autisti-clone__subtitle">
-            Tranche clone-safe attive: {currentStep}. Nessuna uscita verso la madre.
-          </p>
-        </div>
-
-        <nav className="next-autisti-clone__nav" aria-label="Navigazione clone app autisti">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === NEXT_AUTISTI_BASE_PATH}
-              className={({ isActive }) =>
-                isActive
-                  ? "next-autisti-clone__nav-link next-autisti-clone__nav-link--active"
-                  : "next-autisti-clone__nav-link"
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
-
-      <main className="next-autisti-clone__body">
-        <div className="next-autisti-clone__banner">
-          Sessione, mezzo attivo, controllo, cambio mezzo, rifornimento, segnalazioni e richiesta attrezzature restano confinati a <code>/next/autisti</code>.
-          Rifornimento, segnalazioni e richiesta attrezzature salvano solo nel clone; foto e allegati non vengono caricati sulla madre.
-        </div>
-        {notice ? <div className="next-autisti-clone__banner next-autisti-clone__banner--notice">{notice}</div> : null}
-        <section className="next-autisti-clone__page">
-          <Outlet />
-        </section>
-      </main>
+      {notice ? (
+        <div className="next-autisti-clone__banner next-autisti-clone__banner--notice">{notice}</div>
+      ) : null}
+      <Outlet />
     </div>
   );
 }
