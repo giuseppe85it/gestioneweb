@@ -1256,6 +1256,214 @@ export async function generateTablePDFBlob(
   return generateSmartPDFBlob({ kind: "table", title, rows, columns });
 }
 
+export type AttrezzatureCantieriPdfStateRow = {
+  cantiere: string;
+  materiale: string;
+  quantita: string;
+};
+
+export type AttrezzatureCantieriPdfMovementRow = {
+  data: string;
+  tipo: string;
+  destinazione: string;
+  materiale: string;
+  quantita: string;
+  origine?: string;
+  note?: string;
+};
+
+export type AttrezzatureCantieriPdfInput = {
+  title?: string;
+  generatedAt?: string;
+  exportScopeLabel: string;
+  filtersLabel?: string;
+  statoRows?: AttrezzatureCantieriPdfStateRow[];
+  movimentoRows?: AttrezzatureCantieriPdfMovementRow[];
+  statoCantieriCount?: number;
+  statoMaterialiCount?: number;
+  movimentiCount?: number;
+  fileName?: string;
+};
+
+function drawAttrezzatureSectionTitle(
+  doc: jsPDF,
+  title: string,
+  subtitle: string,
+  startY: number
+) {
+  doc.setFillColor(...COLORS.headerBg);
+  doc.roundedRect(14, startY, 182, 12, 3, 3, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(title, 18, startY + 7.5);
+
+  doc.setTextColor(...COLORS.textBlack);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(subtitle, 14, startY + 17);
+  return startY + 22;
+}
+
+async function buildAttrezzatureCantieriPdfDocument(
+  input: AttrezzatureCantieriPdfInput
+): Promise<{ doc: jsPDF; fileName: string }> {
+  const doc = new jsPDF();
+  const title = safeStr(input.title) || "Attrezzature cantieri";
+  const generatedAt = safeStr(input.generatedAt) || formatDateTime(new Date());
+  const exportScopeLabel = safeStr(input.exportScopeLabel) || "Stato attuale + movimenti";
+  const filtersLabel = safeStr(input.filtersLabel) || "Nessun filtro attivo";
+  const statoRows = Array.isArray(input.statoRows) ? input.statoRows : [];
+  const movimentoRows = Array.isArray(input.movimentoRows) ? input.movimentoRows : [];
+
+  let currentY = await drawHeader(doc, title);
+
+  doc.setDrawColor(...COLORS.headerLine);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(14, currentY, 182, 33, 4, 4, "FD");
+
+  doc.setTextColor(...COLORS.textBlack);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Riepilogo export", 18, currentY + 8);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const summaryLines = [
+    `Ambito: ${exportScopeLabel}`,
+    `Generato il: ${generatedAt}`,
+    `Filtri registro: ${filtersLabel}`,
+    `Contenuti: ${input.statoCantieriCount || 0} cantieri / ${
+      input.statoMaterialiCount || 0
+    } materiali - ${input.movimentiCount || 0} movimenti`,
+  ];
+  const wrappedSummary = doc.splitTextToSize(summaryLines.join("\n"), 174);
+  doc.text(wrappedSummary, 18, currentY + 15);
+
+  currentY += 40;
+
+  if (statoRows.length > 0) {
+    currentY = drawAttrezzatureSectionTitle(
+      doc,
+      "Stato attuale",
+      `Situazione ricostruita sull'ambito export selezionato (${statoRows.length} righe).`,
+      currentY
+    );
+
+    autoTable(doc, {
+      startY: currentY,
+      margin: { left: 14, right: 14 },
+      head: [["Cantiere", "Materiale", "Quantita"]],
+      body: statoRows.map((row) => [row.cantiere, row.materiale, row.quantita]),
+      styles: {
+        font: "helvetica",
+        fontSize: 9,
+        cellPadding: 3,
+        overflow: "linebreak",
+      },
+      headStyles: {
+        fillColor: COLORS.tableHeaderBg,
+        textColor: COLORS.tableHeaderText,
+        fontStyle: "bold",
+      },
+      alternateRowStyles: {
+        fillColor: COLORS.rowAlt,
+      },
+      columnStyles: {
+        0: { cellWidth: 58 },
+        1: { cellWidth: 92 },
+        2: { cellWidth: 24, halign: "right" },
+      },
+    });
+
+    currentY =
+      ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || currentY) +
+      10;
+  }
+
+  if (movimentoRows.length > 0) {
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = await drawHeader(doc, title);
+    }
+
+    currentY = drawAttrezzatureSectionTitle(
+      doc,
+      "Movimenti",
+      `Registro filtrato pronto per anteprima, condivisione o invio (${movimentoRows.length} righe).`,
+      currentY
+    );
+
+    const hasOrigine = movimentoRows.some((row) => safeStr(row.origine) && row.origine !== "-");
+    const hasNote = movimentoRows.some((row) => safeStr(row.note));
+    const movementHead = [["Data", "Tipo", "Destinazione", "Materiale", "Quantita"]];
+    if (hasOrigine) movementHead[0].push("Origine");
+    if (hasNote) movementHead[0].push("Note");
+
+    const movementBody = movimentoRows.map((row) => {
+      const cells = [row.data, row.tipo, row.destinazione, row.materiale, row.quantita];
+      if (hasOrigine) cells.push(safeStr(row.origine) || "-");
+      if (hasNote) cells.push(safeStr(row.note) || "-");
+      return cells;
+    });
+
+    const columnStyles: Record<number, any> = {
+      0: { cellWidth: 20 },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 40 },
+      3: { cellWidth: 54 },
+      4: { cellWidth: 20, halign: "right" },
+    };
+    let nextIndex = 5;
+    if (hasOrigine) {
+      columnStyles[nextIndex] = { cellWidth: 26 };
+      nextIndex += 1;
+    }
+    if (hasNote) {
+      columnStyles[nextIndex] = { cellWidth: 26 };
+    }
+
+    autoTable(doc, {
+      startY: currentY,
+      margin: { left: 14, right: 14 },
+      head: movementHead,
+      body: movementBody,
+      styles: {
+        font: "helvetica",
+        fontSize: 8,
+        cellPadding: 2.6,
+        overflow: "linebreak",
+      },
+      headStyles: {
+        fillColor: COLORS.tableHeaderBg,
+        textColor: COLORS.tableHeaderText,
+        fontStyle: "bold",
+      },
+      alternateRowStyles: {
+        fillColor: COLORS.rowAlt,
+      },
+      columnStyles,
+    });
+  }
+
+  addStandardFooter(doc);
+
+  const datePart = formatGGMMYYYY(new Date().toISOString()).replace(/\//g, "-");
+  const requestedName = safeStr(input.fileName).replace(/\.pdf$/i, "");
+  const fallbackName = `attrezzature_cantieri_${datePart}`;
+  return {
+    doc,
+    fileName: `${sanitizeFileName(requestedName || fallbackName)}.pdf`,
+  };
+}
+
+export async function generateAttrezzatureCantieriPDFBlob(
+  input: AttrezzatureCantieriPdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildAttrezzatureCantieriPdfDocument(input);
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
 export async function generateMezzoPDF(
   title: string,
   mezzo: MezzoLike,

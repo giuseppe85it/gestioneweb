@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   NEXT_HOME_PATH,
   NEXT_IA_PATH,
@@ -16,6 +16,20 @@ import {
 } from "./internal-ai/internalAiMockRepository";
 import { runInternalAiChatTurn } from "./internal-ai/internalAiChatOrchestrator";
 import {
+  findInternalAiExactDriverMatch,
+  matchInternalAiDriverLookupCandidates,
+  normalizeInternalAiDriverLookupQuery,
+  readInternalAiDriverLookupCatalog,
+} from "./internal-ai/internalAiDriverLookup";
+import {
+  readInternalAiDriverReportPreview,
+  type InternalAiDriverReportReadResult,
+} from "./internal-ai/internalAiDriverReportFacade";
+import {
+  readInternalAiCombinedReportPreview,
+  type InternalAiCombinedReportReadResult,
+} from "./internal-ai/internalAiCombinedReportFacade";
+import {
   readInternalAiVehicleReportPreview,
   type InternalAiVehicleReportReadResult,
 } from "./internal-ai/internalAiVehicleReportFacade";
@@ -26,7 +40,15 @@ import {
   readInternalAiVehicleLookupCatalog,
 } from "./internal-ai/internalAiVehicleLookup";
 import {
+  createDefaultInternalAiReportPeriodInput,
+  resolveInternalAiReportPeriodContext,
+} from "./internal-ai/internalAiReportPeriod";
+import {
   readInternalAiTrackingSummary,
+  rememberInternalAiArtifactArchiveState,
+  trackInternalAiCombinedSearch,
+  trackInternalAiDriverSearch,
+  trackInternalAiDriverSelection,
   subscribeInternalAiTracking,
   trackInternalAiArtifactAction,
   trackInternalAiChatPrompt,
@@ -36,9 +58,20 @@ import {
 } from "./internal-ai/internalAiTracking";
 import type {
   InternalAiApprovalState,
+  InternalAiArtifact,
+  InternalAiArtifactFamily,
+  InternalAiArtifactStatus,
+  InternalAiCombinedMatchReliability,
+  InternalAiCombinedReportPreview,
   InternalAiChatExecutionStatus,
+  InternalAiDriverLookupCandidate,
+  InternalAiDriverReportPreview,
+  InternalAiReportPreview,
+  InternalAiReportPeriodInput,
+  InternalAiReportPeriodPreset,
   InternalAiChatMessage,
   InternalAiPreviewState,
+  InternalAiReportType,
   InternalAiVehicleLookupCandidate,
   InternalAiVehicleLookupMatchState,
   InternalAiVehicleReportPreview,
@@ -51,30 +84,22 @@ type NextInternalAiPageProps = {
   sectionId?: NextInternalAiSectionId;
 };
 
-type ReportSearchState =
+type ReportRequestState =
   | {
       status: "idle";
       message: string | null;
-      report: null;
-      draftMessage: string | null;
     }
   | {
       status: "loading";
       message: string;
-      report: null;
-      draftMessage: string | null;
     }
   | {
       status: "invalid_query" | "not_found" | "error";
       message: string;
-      report: null;
-      draftMessage: string | null;
     }
   | {
       status: "ready";
       message: string;
-      report: InternalAiVehicleReportPreview;
-      draftMessage: string | null;
     };
 
 type LookupCatalogState =
@@ -93,6 +118,11 @@ type LookupCatalogState =
       items: InternalAiVehicleLookupCandidate[];
       message: string;
     };
+
+type ActiveReportState = {
+  report: InternalAiReportPreview | null;
+  draftMessage: string | null;
+};
 
 const SECTION_CONFIGS: Record<
   NextInternalAiSectionId,
@@ -167,8 +197,8 @@ const SESSION_STATUS_LABELS: Record<string, string> = {
 };
 
 const ARTIFACT_STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  preview: "Preview",
+  draft: "Bozza",
+  preview: "Anteprima",
   archived: "Archiviato",
 };
 
@@ -214,8 +244,10 @@ const CHAT_STATUS_LABELS: Record<InternalAiChatExecutionStatus, string> = {
 
 const CHAT_SUGGESTIONS = [
   "Cosa puoi fare",
-  "Crea report targa AB123CD",
-  "Fammi una preview per la targa TI123456",
+  "Crea report targa AB123CD ultimi 30 giorni",
+  "Fammi un report per l'autista Mario Rossi",
+  "Fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni",
+  "Fammi una preview per la targa TI123456 ultimi 90 giorni",
   "Analizza il mezzo AA111AA",
 ];
 
@@ -228,6 +260,33 @@ const LOOKUP_MATCH_LABELS: Record<InternalAiVehicleLookupMatchState, string> = {
   multiple_matches: "Selezione richiesta",
   selected: "Mezzo selezionato",
   error: "Errore",
+};
+
+const PERIOD_PRESET_LABELS: Record<InternalAiReportPeriodPreset, string> = {
+  all: "Tutto",
+  last_30_days: "Ultimi 30 giorni",
+  last_90_days: "Ultimi 90 giorni",
+  last_full_month: "Ultimo mese",
+  custom: "Personalizzato",
+};
+
+const PERIOD_STATUS_LABELS: Record<string, string> = {
+  nessun_filtro: "Nessun filtro",
+  applicato: "Filtro applicato",
+  non_applicabile: "Fuori filtro",
+  non_disponibile: "Periodo non disponibile",
+};
+
+const REPORT_TYPE_LABELS: Record<InternalAiReportType, string> = {
+  targa: "Report targa",
+  autista: "Report autista",
+  combinato: "Report combinato",
+};
+
+const COMBINED_RELIABILITY_LABELS: Record<InternalAiCombinedMatchReliability, string> = {
+  forte: "Legame forte",
+  plausibile: "Legame plausibile",
+  non_dimostrabile: "Legame non dimostrabile",
 };
 
 const VEHICLE_SEARCH_SOURCE_LABELS: Record<string, string> = {
@@ -243,10 +302,58 @@ const VEHICLE_SEARCH_RESULT_LABELS: Record<string, string> = {
   invalid_query: "Query non valida",
 };
 
+const DRIVER_SEARCH_SOURCE_LABELS: Record<string, string> = {
+  manuale: "Manuale",
+  selezione_guidata: "Selezione guidata",
+  chat: "Chat",
+};
+
+const DRIVER_SEARCH_RESULT_LABELS: Record<string, string> = {
+  selected: "Selezionato",
+  ready: "Anteprima eseguita",
+  not_found: "Non trovato",
+  invalid_query: "Query non valida",
+};
+
 const ARTIFACT_ACTION_LABELS: Record<string, string> = {
   saved: "Salvato",
-  opened: "Aperto",
+  opened: "Riaperto",
   archived: "Archiviato",
+};
+
+const ARTIFACT_FAMILY_LABELS: Record<InternalAiArtifactFamily, string> = {
+  operativo: "Operativo",
+  manutenzioni: "Manutenzioni",
+  rifornimenti: "Rifornimenti",
+  costi: "Costi",
+  documenti: "Documenti",
+  misto: "Misto",
+  non_classificato: "Non classificato",
+};
+
+const ARCHIVE_TYPE_FILTER_LABELS: Record<InternalAiReportType | "tutti", string> = {
+  tutti: "Tutti i tipi",
+  targa: "Report mezzo",
+  autista: "Report autista",
+  combinato: "Report combinato",
+};
+
+const ARCHIVE_STATUS_FILTER_LABELS: Record<InternalAiArtifactStatus | "tutti", string> = {
+  tutti: "Tutti gli stati",
+  draft: "Bozza",
+  preview: "Anteprima",
+  archived: "Archiviato",
+};
+
+const ARCHIVE_FAMILY_FILTER_LABELS: Record<InternalAiArtifactFamily | "tutte", string> = {
+  tutte: "Tutti gli ambiti",
+  operativo: "Operativo",
+  manutenzioni: "Manutenzioni",
+  rifornimenti: "Rifornimenti",
+  costi: "Costi",
+  documenti: "Documenti",
+  misto: "Misto",
+  non_classificato: "Non classificato",
 };
 
 function statusToneClass(status: string) {
@@ -325,8 +432,8 @@ function createWelcomeChatMessage(): InternalAiChatMessage {
     status: "completed",
     text:
       "Chat interna controllata attiva.\n\n" +
-      "Posso aiutarti con richieste sicure gia supportate dal sottosistema IA interno, in particolare la preview report per targa in sola lettura.\n\n" +
-      'Prova con: "crea report targa AB123CD" oppure "cosa puoi fare".',
+      "Posso aiutarti con richieste sicure gia supportate dal sottosistema IA interno, in particolare la preview report per targa, per autista o combinata mezzo + autista in sola lettura.\n\n" +
+      'Prova con: "crea report targa AB123CD ultimi 30 giorni", "fammi un report per l\'autista Mario Rossi ultimo mese", "fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni" oppure "cosa puoi fare".',
     references: [
       {
         type: "safe_mode_notice",
@@ -347,12 +454,127 @@ function formatVehicleLookupDescription(candidate: InternalAiVehicleLookupCandid
     .join(" - ");
 }
 
+function formatDriverLookupDescription(candidate: InternalAiDriverLookupCandidate) {
+  return [
+    candidate.badge ? `Badge ${candidate.badge}` : null,
+    candidate.telefono ? `Tel. ${candidate.telefono}` : null,
+    candidate.mezziAssociatiCount
+      ? `${candidate.mezziAssociatiCount} mezzi associati`
+      : "Nessun mezzo associato",
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function getReportTypeLabel(report: InternalAiReportPreview) {
+  return REPORT_TYPE_LABELS[report.reportType] ?? report.reportType;
+}
+
+function getReportTargetChip(report: InternalAiReportPreview) {
+  if (report.reportType === "autista") {
+    return `Autista ${report.header.nomeCompleto}`;
+  }
+
+  if (report.reportType === "combinato") {
+    return `Mezzo ${report.header.targa} con ${report.header.nomeCompletoAutista}`;
+  }
+
+  return `Targa ${report.header.targa}`;
+}
+
+function getReportHeaderMetaChip(report: InternalAiReportPreview) {
+  if (report.reportType === "targa") {
+    return `Categoria ${report.header.categoria ?? "non disponibile"}`;
+  }
+
+  if (report.reportType === "autista") {
+    return `Badge ${report.header.badge ?? "non disponibile"}`;
+  }
+
+  return COMBINED_RELIABILITY_LABELS[report.header.affidabilitaLegame];
+}
+
+function getArtifactTargetLabel(args: {
+  reportType: InternalAiReportType | null;
+  targetLabel: string | null;
+  mezzoTarga: string | null;
+}) {
+  if (args.reportType && args.targetLabel) {
+    return `${REPORT_TYPE_LABELS[args.reportType] ?? args.reportType} ${args.targetLabel}`;
+  }
+
+  return args.mezzoTarga ?? "non applicabile";
+}
+
+function normalizeArchiveFilterValue(value: string): string {
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function getArtifactFamilyLabel(artifact: InternalAiArtifact): string {
+  if (!artifact.reportType) {
+    return "Tecnico";
+  }
+
+  return ARTIFACT_FAMILY_LABELS[artifact.primaryFamily ?? "non_classificato"];
+}
+
+function buildArtifactScopeSummary(artifact: InternalAiArtifact): string {
+  if (artifact.reportFamilies.length === 0) {
+    return getArtifactFamilyLabel(artifact);
+  }
+
+  if (artifact.primaryFamily === "misto") {
+    return artifact.reportFamilies
+      .map((family) => ARTIFACT_FAMILY_LABELS[family] ?? family)
+      .join(" + ");
+  }
+
+  return getArtifactFamilyLabel(artifact);
+}
+
+function buildArchiveFilterSummary(args: {
+  query: string;
+  reportType: InternalAiReportType | "tutti";
+  status: InternalAiArtifactStatus | "tutti";
+  family: InternalAiArtifactFamily | "tutte";
+  targa: string;
+  autista: string;
+  period: string;
+}): string {
+  const parts: string[] = [];
+  if (args.query.trim()) parts.push(`ricerca ${args.query.trim()}`);
+  if (args.reportType !== "tutti") parts.push(ARCHIVE_TYPE_FILTER_LABELS[args.reportType]);
+  if (args.status !== "tutti") parts.push(ARCHIVE_STATUS_FILTER_LABELS[args.status]);
+  if (args.family !== "tutte") parts.push(ARCHIVE_FAMILY_FILTER_LABELS[args.family]);
+  if (args.targa.trim()) parts.push(`targa ${args.targa.trim()}`);
+  if (args.autista.trim()) parts.push(`autista ${args.autista.trim()}`);
+  if (args.period.trim()) parts.push(`periodo ${args.period.trim()}`);
+  return parts.length ? parts.join(" | ") : "Nessun filtro archivio attivo";
+}
+
+function cloneReportPreview(report: InternalAiReportPreview): InternalAiReportPreview {
+  return JSON.parse(JSON.stringify(report)) as InternalAiReportPreview;
+}
+
+function buildPeriodInputFromReport(report: InternalAiReportPreview): InternalAiReportPeriodInput {
+  return {
+    preset: report.periodContext.preset,
+    fromDate: report.periodContext.fromDate,
+    toDate: report.periodContext.toDate,
+  };
+}
+
 function buildContractLabelMap(contractCatalog: ReturnType<typeof readInternalAiScaffoldSnapshot>["contractCatalog"]) {
   return new Map<string, string>(contractCatalog.map((entry) => [entry.id, entry.title]));
 }
 
 function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const section = SECTION_CONFIGS[sectionId];
   const [snapshotVersion, setSnapshotVersion] = useState(0);
   const snapshot = useMemo(() => {
@@ -369,21 +591,66 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     readInternalAiTrackingSummary,
   );
   const [targaInput, setTargaInput] = useState("");
+  const [driverInput, setDriverInput] = useState("");
+  const [reportPeriodInput, setReportPeriodInput] = useState<InternalAiReportPeriodInput>(() =>
+    createDefaultInternalAiReportPeriodInput(),
+  );
   const [lookupCatalog, setLookupCatalog] = useState<LookupCatalogState>({
     status: "loading",
     items: [],
     message: null,
   });
+  const [driverLookupCatalog, setDriverLookupCatalog] = useState<{
+    status: "loading" | "ready" | "error";
+    items: InternalAiDriverLookupCandidate[];
+    message: string | null;
+  }>({
+    status: "loading",
+    items: [],
+    message: null,
+  });
   const [selectedVehicle, setSelectedVehicle] = useState<InternalAiVehicleLookupCandidate | null>(null);
+  const [selectedDriver, setSelectedDriver] = useState<InternalAiDriverLookupCandidate | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<InternalAiChatMessage[]>(() => [
     createWelcomeChatMessage(),
   ]);
   const [chatStatus, setChatStatus] = useState<InternalAiChatExecutionStatus>("idle");
   const [openedArtifactId, setOpenedArtifactId] = useState<string | null>(null);
-  const [searchState, setSearchState] = useState<ReportSearchState>({
+  const [artifactSearchQuery, setArtifactSearchQuery] = useState(
+    () => tracking.sessionState.lastArchiveQuery ?? "",
+  );
+  const [artifactTypeFilter, setArtifactTypeFilter] = useState<InternalAiReportType | "tutti">(
+    () => tracking.sessionState.lastArchiveReportType ?? "tutti",
+  );
+  const [artifactStatusFilter, setArtifactStatusFilter] = useState<
+    InternalAiArtifactStatus | "tutti"
+  >(() => tracking.sessionState.lastArchiveStatus ?? "tutti");
+  const [artifactFamilyFilter, setArtifactFamilyFilter] = useState<
+    InternalAiArtifactFamily | "tutte"
+  >(() => tracking.sessionState.lastArchiveFamily ?? "tutte");
+  const [artifactTargaFilter, setArtifactTargaFilter] = useState(
+    () => tracking.sessionState.lastArchiveTarga ?? "",
+  );
+  const [artifactAutistaFilter, setArtifactAutistaFilter] = useState(
+    () => tracking.sessionState.lastArchiveAutista ?? "",
+  );
+  const [artifactPeriodFilter, setArtifactPeriodFilter] = useState(
+    () => tracking.sessionState.lastArchivePeriod ?? "",
+  );
+  const [vehicleRequestState, setVehicleRequestState] = useState<ReportRequestState>({
     status: "idle",
     message: null,
+  });
+  const [driverRequestState, setDriverRequestState] = useState<ReportRequestState>({
+    status: "idle",
+    message: null,
+  });
+  const [combinedRequestState, setCombinedRequestState] = useState<ReportRequestState>({
+    status: "idle",
+    message: null,
+  });
+  const [activeReportState, setActiveReportState] = useState<ActiveReportState>({
     report: null,
     draftMessage: null,
   });
@@ -392,6 +659,149 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     [openedArtifactId, snapshot.artifacts],
   );
   const persistedArtifactsCount = snapshot.artifacts.filter((artifact) => artifact.isPersisted).length;
+  const sortedArtifacts = useMemo(
+    () =>
+      [...snapshot.artifacts].sort((left, right) => {
+        const leftTs = new Date(left.updatedAt ?? left.createdAt).getTime();
+        const rightTs = new Date(right.updatedAt ?? right.createdAt).getTime();
+        return rightTs - leftTs;
+      }),
+    [snapshot.artifacts],
+  );
+  const archivePeriodOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          sortedArtifacts
+            .map((artifact) => artifact.periodLabel?.trim() ?? "")
+            .filter((label) => label.length > 0),
+        ),
+      ),
+    [sortedArtifacts],
+  );
+  const normalizedArchiveQuery = useMemo(
+    () => normalizeArchiveFilterValue(artifactSearchQuery),
+    [artifactSearchQuery],
+  );
+  const normalizedArchiveTargaFilter = useMemo(
+    () => normalizeArchiveFilterValue(artifactTargaFilter),
+    [artifactTargaFilter],
+  );
+  const normalizedArchiveAutistaFilter = useMemo(
+    () => normalizeArchiveFilterValue(artifactAutistaFilter),
+    [artifactAutistaFilter],
+  );
+  const normalizedArchivePeriodFilter = useMemo(
+    () => normalizeArchiveFilterValue(artifactPeriodFilter),
+    [artifactPeriodFilter],
+  );
+  const filteredArtifacts = useMemo(
+    () =>
+      sortedArtifacts.filter((artifact) => {
+        if (artifactTypeFilter !== "tutti" && artifact.reportType !== artifactTypeFilter) {
+          return false;
+        }
+
+        if (artifactStatusFilter !== "tutti" && artifact.status !== artifactStatusFilter) {
+          return false;
+        }
+
+        if (artifactFamilyFilter !== "tutte") {
+          const familyMatches =
+            artifact.primaryFamily === artifactFamilyFilter ||
+            artifact.reportFamilies.includes(artifactFamilyFilter);
+          if (!familyMatches) {
+            return false;
+          }
+        }
+
+        if (normalizedArchiveQuery) {
+          const haystack = normalizeArchiveFilterValue(
+            artifact.searchText ||
+              [
+                artifact.title,
+                artifact.targetLabel,
+                artifact.mezzoTarga,
+                artifact.autistaNome,
+                artifact.periodLabel,
+                artifact.note,
+                artifact.tags.join(" "),
+              ]
+                .filter(Boolean)
+                .join(" "),
+          );
+          if (!haystack.includes(normalizedArchiveQuery)) {
+            return false;
+          }
+        }
+
+        if (
+          normalizedArchiveTargaFilter &&
+          !normalizeArchiveFilterValue(artifact.mezzoTarga ?? "").includes(
+            normalizedArchiveTargaFilter,
+          )
+        ) {
+          return false;
+        }
+
+        if (
+          normalizedArchiveAutistaFilter &&
+          !normalizeArchiveFilterValue(
+            artifact.autistaNome ?? artifact.targetLabel ?? artifact.payload?.report.targetLabel ?? "",
+          ).includes(normalizedArchiveAutistaFilter)
+        ) {
+          return false;
+        }
+
+        if (
+          normalizedArchivePeriodFilter &&
+          !normalizeArchiveFilterValue(artifact.periodLabel ?? "").includes(normalizedArchivePeriodFilter)
+        ) {
+          return false;
+        }
+
+        return true;
+      }),
+    [
+      artifactFamilyFilter,
+      artifactStatusFilter,
+      artifactTypeFilter,
+      normalizedArchiveAutistaFilter,
+      normalizedArchivePeriodFilter,
+      normalizedArchiveQuery,
+      normalizedArchiveTargaFilter,
+      sortedArtifacts,
+    ],
+  );
+  const archiveHasActiveFilters =
+    artifactSearchQuery.trim().length > 0 ||
+    artifactTypeFilter !== "tutti" ||
+    artifactStatusFilter !== "tutti" ||
+    artifactFamilyFilter !== "tutte" ||
+    artifactTargaFilter.trim().length > 0 ||
+    artifactAutistaFilter.trim().length > 0 ||
+    artifactPeriodFilter.trim().length > 0;
+  const archiveFilterSummary = useMemo(
+    () =>
+      buildArchiveFilterSummary({
+        query: artifactSearchQuery,
+        reportType: artifactTypeFilter,
+        status: artifactStatusFilter,
+        family: artifactFamilyFilter,
+        targa: artifactTargaFilter,
+        autista: artifactAutistaFilter,
+        period: artifactPeriodFilter,
+      }),
+    [
+      artifactAutistaFilter,
+      artifactFamilyFilter,
+      artifactPeriodFilter,
+      artifactSearchQuery,
+      artifactStatusFilter,
+      artifactTargaFilter,
+      artifactTypeFilter,
+    ],
+  );
   const normalizedLookupQuery = useMemo(
     () => normalizeInternalAiVehicleLookupQuery(targaInput),
     [targaInput],
@@ -403,6 +813,22 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   const exactVehicleMatch = useMemo(
     () => findInternalAiExactVehicleMatch(lookupCatalog.items, targaInput),
     [lookupCatalog.items, targaInput],
+  );
+  const normalizedDriverQuery = useMemo(
+    () => normalizeInternalAiDriverLookupQuery(driverInput),
+    [driverInput],
+  );
+  const driverLookupSuggestions = useMemo(
+    () => matchInternalAiDriverLookupCandidates(driverLookupCatalog.items, driverInput),
+    [driverLookupCatalog.items, driverInput],
+  );
+  const exactDriverMatch = useMemo(
+    () => findInternalAiExactDriverMatch(driverLookupCatalog.items, driverInput),
+    [driverLookupCatalog.items, driverInput],
+  );
+  const activePeriodContext = useMemo(
+    () => resolveInternalAiReportPeriodContext(reportPeriodInput),
+    [reportPeriodInput],
   );
   const lookupUiState = useMemo((): {
     status: InternalAiVehicleLookupMatchState;
@@ -466,6 +892,84 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     selectedVehicle,
   ]);
 
+  const driverLookupUiState = useMemo((): {
+    status: InternalAiVehicleLookupMatchState;
+    message: string;
+  } => {
+    if (driverLookupCatalog.status === "loading") {
+      return {
+        status: "loading",
+        message: "Sto leggendo gli autisti reali dal layer read-only dei colleghi del clone...",
+      };
+    }
+
+    if (driverLookupCatalog.status === "error") {
+      return {
+        status: "error",
+        message: driverLookupCatalog.message ?? "Errore durante la lettura degli autisti reali.",
+      };
+    }
+
+    if (!normalizedDriverQuery) {
+      return {
+        status: "empty_query",
+        message: "Inizia a digitare nome o badge per vedere gli autisti reali disponibili nel gestionale.",
+      };
+    }
+
+    if (selectedDriver && selectedDriver.id === exactDriverMatch?.id) {
+      return {
+        status: "selected",
+        message: `Autista reale selezionato: ${selectedDriver.nomeCompleto}. Puoi avviare l'anteprima report in sola lettura.`,
+      };
+    }
+
+    if (exactDriverMatch) {
+      return {
+        status: "exact_match",
+        message: `Trovata una corrispondenza precisa per ${exactDriverMatch.nomeCompleto}. Se vuoi ridurre gli errori, seleziona l'autista prima di generare l'anteprima.`,
+      };
+    }
+
+    if (driverLookupSuggestions.length === 0) {
+      return {
+        status: "no_match",
+        message: "Nessun autista reale corrisponde ai caratteri inseriti.",
+      };
+    }
+
+    return {
+      status: "multiple_matches",
+      message:
+        driverLookupSuggestions.length === 1
+          ? "Trovata una corrispondenza possibile. Seleziona l'autista suggerito per confermare."
+          : `Trovate ${driverLookupSuggestions.length} corrispondenze possibili. Seleziona l'autista corretto prima della preview.`,
+    };
+  }, [
+    driverLookupCatalog.message,
+    driverLookupCatalog.status,
+    driverLookupSuggestions.length,
+    exactDriverMatch,
+    normalizedDriverQuery,
+    selectedDriver,
+  ]);
+
+  const handleSelectPeriodPreset = (preset: InternalAiReportPeriodPreset) => {
+    setReportPeriodInput((current) => ({
+      preset,
+      fromDate: preset === "custom" ? current.fromDate : null,
+      toDate: preset === "custom" ? current.toDate : null,
+    }));
+  };
+
+  const handleCustomPeriodFieldChange = (field: "fromDate" | "toDate", value: string) => {
+    setReportPeriodInput((current) => ({
+      preset: "custom",
+      fromDate: field === "fromDate" ? value || null : current.fromDate,
+      toDate: field === "toDate" ? value || null : current.toDate,
+    }));
+  };
+
   useEffect(() => {
     trackInternalAiScreenVisit(sectionId, location.pathname);
   }, [location.pathname, sectionId]);
@@ -499,9 +1003,59 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     };
   }, []);
 
-  const applyPreviewReadResult = (
+  useEffect(() => {
+    rememberInternalAiArtifactArchiveState({
+      query: artifactSearchQuery,
+      reportType: artifactTypeFilter,
+      status: artifactStatusFilter,
+      family: artifactFamilyFilter,
+      targa: artifactTargaFilter,
+      autista: artifactAutistaFilter,
+      period: artifactPeriodFilter,
+    });
+  }, [
+    artifactAutistaFilter,
+    artifactFamilyFilter,
+    artifactPeriodFilter,
+    artifactSearchQuery,
+    artifactStatusFilter,
+    artifactTargaFilter,
+    artifactTypeFilter,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void readInternalAiDriverLookupCatalog()
+      .then((items) => {
+        if (cancelled) return;
+        setDriverLookupCatalog({
+          status: "ready",
+          items,
+          message: null,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setDriverLookupCatalog({
+          status: "error",
+          items: [],
+          message:
+            error instanceof Error
+              ? error.message
+              : "Errore durante la lettura degli autisti reali del gestionale.",
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyVehiclePreviewReadResult = (
     result: InternalAiVehicleReportReadResult,
     source: "manuale" | "selezione_guidata" | "chat",
+    periodLabel: string,
   ) => {
     if (result.status !== "ready") {
       if (result.normalizedTarga) {
@@ -509,15 +1063,14 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
           targa: result.normalizedTarga,
           source,
           result: result.status,
+          periodLabel,
           sectionId,
           path: location.pathname,
         });
       }
-      setSearchState({
+      setVehicleRequestState({
         status: result.status,
         message: result.message,
-        report: null,
-        draftMessage: null,
       });
       return;
     }
@@ -532,12 +1085,130 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       targa: result.normalizedTarga,
       source,
       result: "ready",
+      periodLabel: result.report.periodContext.label,
       sectionId,
       path: location.pathname,
     });
-    setSearchState({
+    setVehicleRequestState({
       status: "ready",
       message: result.message,
+    });
+    setActiveReportState({
+      report: result.report,
+      draftMessage: null,
+    });
+  };
+
+  const applyDriverPreviewReadResult = (
+    result: InternalAiDriverReportReadResult,
+    source: "manuale" | "selezione_guidata" | "chat",
+    candidate: InternalAiDriverLookupCandidate | null,
+    periodLabel: string,
+  ) => {
+    if (result.status !== "ready") {
+      if (candidate) {
+        trackInternalAiDriverSearch({
+          driverId: candidate.id,
+          nomeCompleto: candidate.nomeCompleto,
+          badge: candidate.badge,
+          source,
+          result: result.status,
+          periodLabel,
+          sectionId,
+          path: location.pathname,
+        });
+      }
+      setDriverRequestState({
+        status: result.status,
+        message: result.message,
+      });
+      return;
+    }
+
+    setDriverInput(result.report.header.nomeCompleto);
+    setSelectedDriver(candidate);
+    if (candidate) {
+      trackInternalAiDriverSearch({
+        driverId: candidate.id,
+        nomeCompleto: candidate.nomeCompleto,
+        badge: candidate.badge,
+        source,
+        result: "ready",
+        periodLabel: result.report.periodContext.label,
+        sectionId,
+        path: location.pathname,
+      });
+    }
+    setDriverRequestState({
+      status: "ready",
+      message: result.message,
+    });
+    setActiveReportState({
+      report: result.report,
+      draftMessage: null,
+    });
+  };
+
+  const applyCombinedPreviewReadResult = (
+    result: InternalAiCombinedReportReadResult,
+    source: "manuale" | "selezione_guidata" | "chat",
+    candidate: InternalAiDriverLookupCandidate | null,
+    periodLabel: string,
+  ) => {
+    if (result.status !== "ready") {
+      if (result.normalizedTarga && candidate) {
+        trackInternalAiCombinedSearch({
+          mezzoTarga: result.normalizedTarga,
+          driverId: candidate.id,
+          nomeCompleto: candidate.nomeCompleto,
+          badge: candidate.badge,
+          source,
+          result: result.status,
+          periodLabel,
+          sectionId,
+          path: location.pathname,
+        });
+      }
+      setCombinedRequestState({
+        status: result.status,
+        message: result.message,
+      });
+      return;
+    }
+
+    setTargaInput(result.normalizedTarga);
+    setDriverInput(result.report.header.nomeCompletoAutista);
+    const catalogVehicle =
+      findInternalAiExactVehicleMatch(lookupCatalog.items, result.normalizedTarga) ?? null;
+    const catalogDriver =
+      candidate ??
+      findInternalAiExactDriverMatch(
+        driverLookupCatalog.items,
+        result.report.header.nomeCompletoAutista,
+      ) ??
+      null;
+    if (catalogVehicle) {
+      setSelectedVehicle(catalogVehicle);
+    }
+    if (catalogDriver) {
+      setSelectedDriver(catalogDriver);
+    }
+    trackInternalAiCombinedSearch({
+      mezzoTarga: result.normalizedTarga,
+      driverId: catalogDriver?.id ?? result.report.autistaId,
+      nomeCompleto: catalogDriver?.nomeCompleto ?? result.report.header.nomeCompletoAutista,
+      badge: catalogDriver?.badge ?? result.report.header.badgeAutista,
+      source,
+      result: "ready",
+      periodLabel: result.report.periodContext.label,
+      sectionId,
+      path: location.pathname,
+    });
+    setCombinedRequestState({
+      status: "ready",
+      message: result.message,
+    });
+    setActiveReportState({
       report: result.report,
       draftMessage: null,
     });
@@ -551,30 +1222,38 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       sectionId,
       path: location.pathname,
     });
-    setSearchState((current) =>
-      current.status === "loading"
-        ? current
-        : {
-            status: "idle",
-            message: `Mezzo selezionato dal gestionale read-only: ${candidate.targa}. Ora puoi generare l'anteprima report.`,
-            report: null,
-            draftMessage: null,
-          },
-    );
+    setVehicleRequestState({
+      status: "idle",
+      message: `Mezzo selezionato dal gestionale read-only: ${candidate.targa}. Ora puoi generare l'anteprima report.`,
+    });
   };
 
-  const handleGeneratePreview = async () => {
+  const handleSelectDriver = (candidate: InternalAiDriverLookupCandidate) => {
+    setSelectedDriver(candidate);
+    setDriverInput(candidate.nomeCompleto);
+    trackInternalAiDriverSelection({
+      driverId: candidate.id,
+      nomeCompleto: candidate.nomeCompleto,
+      badge: candidate.badge,
+      sectionId,
+      path: location.pathname,
+    });
+    setDriverRequestState({
+      status: "idle",
+      message: `Autista selezionato dal gestionale read-only: ${candidate.nomeCompleto}. Ora puoi generare l'anteprima report.`,
+    });
+  };
+
+  const handleGenerateVehiclePreview = async () => {
     const candidateToUse =
       selectedVehicle && selectedVehicle.targa === normalizedLookupQuery
         ? selectedVehicle
         : exactVehicleMatch;
 
     if (!normalizedLookupQuery) {
-      setSearchState({
+      setVehicleRequestState({
         status: "invalid_query",
         message: "Inserisci almeno una targa o seleziona un mezzo reale prima di avviare l'anteprima.",
-        report: null,
-        draftMessage: null,
       });
       return;
     }
@@ -584,17 +1263,16 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         targa: normalizedLookupQuery,
         source: "manuale",
         result: "invalid_query",
+        periodLabel: activePeriodContext.label,
         sectionId,
         path: location.pathname,
       });
-      setSearchState({
+      setVehicleRequestState({
         status: "invalid_query",
         message:
           lookupSuggestions.length === 1
             ? "Ricerca incompleta: seleziona il mezzo suggerito oppure completa la targa prima di generare l'anteprima report."
             : "Ricerca ambigua: seleziona un mezzo reale dall'elenco suggerito prima di generare l'anteprima report.",
-        report: null,
-        draftMessage: null,
       });
       return;
     }
@@ -604,28 +1282,153 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       setSelectedVehicle(candidateToUse);
     }
     setTargaInput(targaToRead);
-    setSearchState({
+    setVehicleRequestState({
       status: "loading",
       message: `Analisi in sola lettura in corso dai layer NEXT per la targa ${targaToRead}...`,
-      report: null,
-      draftMessage: null,
     });
 
     try {
       const result: InternalAiVehicleReportReadResult =
-        await readInternalAiVehicleReportPreview(targaToRead);
-      applyPreviewReadResult(result, selectedVehicle ? "selezione_guidata" : "manuale");
+        await readInternalAiVehicleReportPreview(targaToRead, reportPeriodInput);
+      applyVehiclePreviewReadResult(
+        result,
+        selectedVehicle ? "selezione_guidata" : "manuale",
+        activePeriodContext.label,
+      );
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : "Errore non previsto durante la costruzione dell'anteprima report.";
 
-      setSearchState({
+      setVehicleRequestState({
         status: "error",
         message,
-        report: null,
-        draftMessage: null,
+      });
+    }
+  };
+
+  const handleGenerateDriverPreview = async () => {
+    const candidateToUse =
+      selectedDriver && (!exactDriverMatch || selectedDriver.id === exactDriverMatch.id)
+        ? selectedDriver
+        : exactDriverMatch;
+
+    if (!normalizedDriverQuery) {
+      setDriverRequestState({
+        status: "invalid_query",
+        message: "Inserisci almeno un nome o badge oppure seleziona un autista reale prima di avviare l'anteprima.",
+      });
+      return;
+    }
+
+    if (!candidateToUse && driverLookupSuggestions.length > 0) {
+      setDriverRequestState({
+        status: "invalid_query",
+        message:
+          driverLookupSuggestions.length === 1
+            ? "Ricerca incompleta: seleziona l'autista suggerito oppure completa il nome/badge prima di generare l'anteprima report."
+            : "Ricerca ambigua: seleziona un autista reale dall'elenco suggerito prima di generare l'anteprima report.",
+      });
+      return;
+    }
+
+    setDriverRequestState({
+      status: "loading",
+      message: `Analisi in sola lettura in corso dai layer NEXT per l'autista ${candidateToUse?.nomeCompleto ?? normalizedDriverQuery}...`,
+    });
+
+    try {
+      const result = await readInternalAiDriverReportPreview(
+        candidateToUse ?? null,
+        normalizedDriverQuery,
+        reportPeriodInput,
+      );
+      applyDriverPreviewReadResult(
+        result,
+        selectedDriver ? "selezione_guidata" : "manuale",
+        candidateToUse ?? null,
+        activePeriodContext.label,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Errore non previsto durante la costruzione dell'anteprima report autista.";
+
+      setDriverRequestState({
+        status: "error",
+        message,
+      });
+    }
+  };
+
+  const handleGenerateCombinedPreview = async () => {
+    const vehicleToUse =
+      selectedVehicle && selectedVehicle.targa === normalizedLookupQuery
+        ? selectedVehicle
+        : exactVehicleMatch;
+    const driverToUse =
+      selectedDriver && (!exactDriverMatch || selectedDriver.id === exactDriverMatch.id)
+        ? selectedDriver
+        : exactDriverMatch;
+
+    if (!normalizedLookupQuery || !normalizedDriverQuery) {
+      setCombinedRequestState({
+        status: "invalid_query",
+        message:
+          "Per la preview combinata servono sia una targa sia un autista reale. Usa prima le selezioni guidate sopra.",
+      });
+      return;
+    }
+
+    if (!vehicleToUse && lookupSuggestions.length > 0) {
+      setCombinedRequestState({
+        status: "invalid_query",
+        message:
+          "La targa e ancora ambigua per il report combinato: seleziona il mezzo reale dall'elenco suggerito.",
+      });
+      return;
+    }
+
+    if (!driverToUse && driverLookupSuggestions.length > 0) {
+      setCombinedRequestState({
+        status: "invalid_query",
+        message:
+          "L'autista e ancora ambiguo per il report combinato: seleziona l'autista reale dall'elenco suggerito.",
+      });
+      return;
+    }
+
+    setCombinedRequestState({
+      status: "loading",
+      message:
+        `Analisi combinata in sola lettura in corso per ${vehicleToUse?.targa ?? normalizedLookupQuery} + ` +
+        `${driverToUse?.nomeCompleto ?? normalizedDriverQuery}...`,
+    });
+
+    try {
+      const result = await readInternalAiCombinedReportPreview({
+        driverCandidate: driverToUse ?? null,
+        rawTarga: vehicleToUse?.targa ?? normalizedLookupQuery,
+        rawDriverQuery: driverToUse?.nomeCompleto ?? normalizedDriverQuery,
+        periodInput: reportPeriodInput,
+      });
+      applyCombinedPreviewReadResult(
+        result,
+        vehicleToUse && driverToUse ? "selezione_guidata" : "manuale",
+        driverToUse ?? null,
+        activePeriodContext.label,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Errore non previsto durante la costruzione dell'anteprima report combinata.";
+
+      setCombinedRequestState({
+        status: "error",
+        message,
       });
     }
   };
@@ -649,7 +1452,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     setChatStatus("running");
 
     try {
-      const result = await runInternalAiChatTurn(prompt);
+      const result = await runInternalAiChatTurn(prompt, reportPeriodInput);
       trackInternalAiChatPrompt({
         prompt,
         intent: result.intent,
@@ -659,20 +1462,121 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       });
 
       if (result.report) {
-        if (result.report.status === "ready") {
-          applyPreviewReadResult({
-            status: "ready",
-            normalizedTarga: result.report.normalizedTarga,
-            message: result.report.message,
-            report: result.report.preview,
-          }, "chat");
-        } else {
-          applyPreviewReadResult({
-            status: result.report.status,
-            normalizedTarga: result.report.normalizedTarga,
-            message: result.report.message,
-            report: null,
-          }, "chat");
+        if (result.intent === "report_combinato") {
+          if (
+            result.report.status === "ready" &&
+            "normalizedDriverQuery" in result.report &&
+            "normalizedTarga" in result.report &&
+            result.report.preview.reportType === "combinato"
+          ) {
+            const catalogDriver =
+              findInternalAiExactDriverMatch(
+                driverLookupCatalog.items,
+                result.report.preview.header.nomeCompletoAutista,
+              ) ?? null;
+            applyCombinedPreviewReadResult(
+              {
+                status: "ready",
+                normalizedTarga: result.report.normalizedTarga,
+                normalizedDriverQuery: result.report.normalizedDriverQuery,
+                message: result.report.message,
+                report: result.report.preview as InternalAiCombinedReportPreview,
+              },
+              "chat",
+              catalogDriver,
+              result.report.preview.periodContext.label,
+            );
+          } else if (
+            "normalizedDriverQuery" in result.report &&
+            "normalizedTarga" in result.report &&
+            result.report.status !== "ready"
+          ) {
+            const candidate =
+              result.report.normalizedDriverQuery
+                ? findInternalAiExactDriverMatch(
+                    driverLookupCatalog.items,
+                    result.report.normalizedDriverQuery,
+                  ) ?? null
+                : null;
+            applyCombinedPreviewReadResult(
+              {
+                status: result.report.status,
+                normalizedTarga: result.report.normalizedTarga,
+                normalizedDriverQuery: result.report.normalizedDriverQuery,
+                message: result.report.message,
+                report: null,
+              },
+              "chat",
+              candidate,
+              activePeriodContext.label,
+            );
+          }
+        } else if (result.intent === "report_autista") {
+          if (
+            result.report.status === "ready" &&
+            "normalizedDriverQuery" in result.report &&
+            result.report.preview.reportType === "autista"
+          ) {
+            const catalogMatch =
+              findInternalAiExactDriverMatch(
+                driverLookupCatalog.items,
+                result.report.preview.header.nomeCompleto,
+              ) ?? null;
+            applyDriverPreviewReadResult(
+              {
+                status: "ready",
+                normalizedDriverQuery: result.report.normalizedDriverQuery,
+                message: result.report.message,
+                report: result.report.preview as InternalAiDriverReportPreview,
+              },
+              "chat",
+              catalogMatch,
+              result.report.preview.periodContext.label,
+            );
+          } else if ("normalizedDriverQuery" in result.report && result.report.status !== "ready") {
+            const candidate =
+              result.report.normalizedDriverQuery
+                ? findInternalAiExactDriverMatch(
+                    driverLookupCatalog.items,
+                    result.report.normalizedDriverQuery,
+                  ) ?? null
+                : null;
+            applyDriverPreviewReadResult(
+              {
+                status: result.report.status,
+                normalizedDriverQuery: result.report.normalizedDriverQuery,
+                message: result.report.message,
+                report: null,
+              },
+              "chat",
+              candidate,
+              activePeriodContext.label,
+            );
+          }
+        } else if (result.intent === "report_targa") {
+          if (result.report.status === "ready" && "normalizedTarga" in result.report) {
+            applyVehiclePreviewReadResult(
+              {
+                status: "ready",
+                normalizedTarga: result.report.normalizedTarga,
+                message: result.report.message,
+                report: result.report.preview as InternalAiVehicleReportPreview,
+              },
+              "chat",
+              result.report.preview.periodContext.label,
+            );
+          } else if ("normalizedTarga" in result.report) {
+            applyVehiclePreviewReadResult(
+              {
+                status: result.report.status,
+                normalizedTarga: result.report.normalizedTarga,
+                message: result.report.message,
+                report: null,
+              },
+              "chat",
+              activePeriodContext.label,
+            );
+          }
         }
       }
 
@@ -727,25 +1631,25 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     previewState: InternalAiPreviewState;
     approvalState: InternalAiApprovalState;
   }) => {
-    setSearchState((current) => {
-      if (current.status !== "ready") {
+    setActiveReportState((current) => {
+      if (!current.report) {
         return current;
       }
 
       return {
         ...current,
+        draftMessage: null,
         report: {
           ...current.report,
           previewState: next.previewState,
           approvalState: next.approvalState,
         },
-        draftMessage: null,
       };
     });
   };
 
   const markRevisionRequested = () => {
-    if (searchState.status !== "ready") return;
+    if (!activeReportState.report) return;
 
     const updatedAt = new Date().toISOString();
     applyReportState({
@@ -764,7 +1668,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   };
 
   const markApprovable = () => {
-    if (searchState.status !== "ready") return;
+    if (!activeReportState.report) return;
 
     const updatedAt = new Date().toISOString();
     applyReportState({
@@ -783,7 +1687,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   };
 
   const discardPreview = () => {
-    if (searchState.status !== "ready") return;
+    if (!activeReportState.report) return;
 
     const updatedAt = new Date().toISOString();
     applyReportState({
@@ -802,28 +1706,30 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   };
 
   const saveDraftArtifact = () => {
-    if (searchState.status !== "ready") return;
+    if (!activeReportState.report) return;
 
-    const saved = saveInternalAiDraftArtifact({ report: searchState.report });
+    const saved = saveInternalAiDraftArtifact({ report: activeReportState.report });
     trackInternalAiArtifactAction({
       artifactId: saved.artifact.id,
       title: saved.artifact.title,
+      targetType: saved.artifact.reportType,
+      targetLabel: saved.artifact.targetLabel,
       mezzoTarga: saved.artifact.mezzoTarga,
+      autistaNome: saved.artifact.autistaNome,
+      primaryFamily: saved.artifact.primaryFamily,
+      artifactStatus: saved.artifact.status,
+      periodLabel: saved.artifact.periodLabel,
       action: "saved",
       sectionId,
       path: location.pathname,
     });
     setSnapshotVersion((value) => value + 1);
-    setSearchState((current) =>
-      current.status === "ready"
-        ? {
-            ...current,
-            draftMessage: saved.artifact.isPersisted
-              ? `Draft IA salvato nell'archivio locale isolato: sessione ${saved.session.id}, richiesta ${saved.request.id}, artifact ${saved.artifact.id}.`
-              : `Draft IA mantenuto solo in memoria locale di fallback: sessione ${saved.session.id}, richiesta ${saved.request.id}, artifact ${saved.artifact.id}.`,
-          }
-        : current,
-    );
+    setActiveReportState((current) => ({
+      ...current,
+      draftMessage: saved.artifact.isPersisted
+        ? `Draft IA salvato nell'archivio locale isolato: sessione ${saved.session.id}, richiesta ${saved.request.id}, artifact ${saved.artifact.id}.`
+        : `Draft IA mantenuto solo in memoria locale di fallback: sessione ${saved.session.id}, richiesta ${saved.request.id}, artifact ${saved.artifact.id}.`,
+    }));
   };
 
   const handleArchiveArtifact = (artifactId: string) => {
@@ -835,7 +1741,13 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     trackInternalAiArtifactAction({
       artifactId: archived.id,
       title: archived.title,
+      targetType: archived.reportType,
+      targetLabel: archived.targetLabel,
       mezzoTarga: archived.mezzoTarga,
+      autistaNome: archived.autistaNome,
+      primaryFamily: archived.primaryFamily,
+      artifactStatus: archived.status,
+      periodLabel: archived.periodLabel,
       action: "archived",
       sectionId,
       path: location.pathname,
@@ -851,10 +1763,65 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     }
 
     setOpenedArtifactId(artifactId);
+    if (artifact.payload?.report) {
+      const reopenedReport = cloneReportPreview(artifact.payload.report);
+      setActiveReportState({
+        report: reopenedReport,
+        draftMessage: `Report riaperto dall'archivio locale IA: artifact ${artifact.id}.`,
+      });
+      setReportPeriodInput(buildPeriodInputFromReport(reopenedReport));
+
+      const reopenedTarga =
+        reopenedReport.reportType === "targa" || reopenedReport.reportType === "combinato"
+          ? reopenedReport.header.targa
+          : null;
+      const reopenedAutista =
+        reopenedReport.reportType === "autista"
+          ? reopenedReport.header.nomeCompleto
+          : reopenedReport.reportType === "combinato"
+            ? reopenedReport.header.nomeCompletoAutista
+            : null;
+
+      setTargaInput(reopenedTarga ?? "");
+      setDriverInput(reopenedAutista ?? "");
+      setSelectedVehicle(
+        reopenedTarga
+          ? lookupCatalog.items.find(
+              (candidate) =>
+                normalizeInternalAiVehicleLookupQuery(candidate.targa) ===
+                normalizeInternalAiVehicleLookupQuery(reopenedTarga),
+            ) ?? null
+          : null,
+      );
+      setSelectedDriver(
+        reopenedAutista
+          ? driverLookupCatalog.items.find(
+              (candidate) =>
+                candidate.id ===
+                  (reopenedReport.reportType === "autista"
+                    ? reopenedReport.autistaId
+                    : reopenedReport.reportType === "combinato"
+                      ? reopenedReport.autistaId
+                      : "") ||
+                normalizeInternalAiDriverLookupQuery(candidate.nomeCompleto) ===
+                  normalizeInternalAiDriverLookupQuery(reopenedAutista),
+            ) ?? null
+          : null,
+      );
+      if (sectionId === "artifacts") {
+        navigate(NEXT_INTERNAL_AI_PATH);
+      }
+    }
     trackInternalAiArtifactAction({
       artifactId: artifact.id,
       title: artifact.title,
+      targetType: artifact.reportType,
+      targetLabel: artifact.targetLabel,
       mezzoTarga: artifact.mezzoTarga,
+      autistaNome: artifact.autistaNome,
+      primaryFamily: artifact.primaryFamily,
+      artifactStatus: artifact.status,
+      periodLabel: artifact.periodLabel,
       action: "opened",
       sectionId,
       path: location.pathname,
@@ -1038,7 +2005,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   type="text"
                   value={chatInput}
                   onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Es. crea report targa AB123CD"
+                  placeholder="Es. crea report targa AB123CD ultimi 30 giorni oppure report autista Mario Rossi ultimo mese"
                   className="internal-ai-search__input"
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
@@ -1063,97 +2030,337 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
 
           <article className="next-panel internal-ai-search">
             <div className="next-panel__header">
-              <h2>Anteprima report per targa</h2>
+              <h2>Contesto periodo del report</h2>
             </div>
             <p className="next-panel__description">
-              Inserisci una targa oppure seleziona un mezzo reale dall&apos;autosuggest. La preview
-              continua a riusare solo i layer NEXT gia normalizzati del clone in sola lettura.
+              Il periodo attivo viene riusato sia dal report targa sia dal report autista della UI
+              guidata. Le sezioni senza date affidabili restano visibili, ma vengono marcate come
+              fuori filtro.
             </p>
+            <div className="internal-ai-chat__suggestions">
+              {(Object.entries(PERIOD_PRESET_LABELS) as [InternalAiReportPeriodPreset, string][]).map(
+                ([preset, label]) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    className={`internal-ai-chat__suggestion ${
+                      reportPeriodInput.preset === preset ? "is-selected" : ""
+                    }`}
+                    onClick={() => handleSelectPeriodPreset(preset)}
+                  >
+                    {label}
+                  </button>
+                ),
+              )}
+            </div>
             <div className="internal-ai-search__form">
               <label className="internal-ai-search__field">
-                <span>Targa mezzo</span>
+                <span>Da</span>
                 <input
-                  type="text"
-                  value={targaInput}
-                  onChange={(event) => {
-                    const nextValue = event.target.value.toUpperCase();
-                    const normalizedNextValue = normalizeInternalAiVehicleLookupQuery(nextValue);
-                    setTargaInput(nextValue);
-                    if (selectedVehicle && selectedVehicle.targa !== normalizedNextValue) {
-                      setSelectedVehicle(null);
-                    }
-                  }}
-                  placeholder="Es. AB123CD"
+                  type="date"
+                  value={reportPeriodInput.fromDate ?? ""}
+                  onChange={(event) => handleCustomPeriodFieldChange("fromDate", event.target.value)}
                   className="internal-ai-search__input"
-                  autoComplete="off"
                 />
               </label>
-              <div className="internal-ai-search__actions">
+              <label className="internal-ai-search__field">
+                <span>A</span>
+                <input
+                  type="date"
+                  value={reportPeriodInput.toDate ?? ""}
+                  onChange={(event) => handleCustomPeriodFieldChange("toDate", event.target.value)}
+                  className="internal-ai-search__input"
+                />
+              </label>
+            </div>
+            <div className="internal-ai-pill-row">
+              <span className={statusToneClass(activePeriodContext.isValid ? "preview_ready" : "errore")}>
+                {activePeriodContext.isValid ? "Periodo valido" : "Periodo non valido"}
+              </span>
+              <span className="internal-ai-pill is-neutral">{activePeriodContext.label}</span>
+              <span className="internal-ai-pill is-neutral">
+                Preset {PERIOD_PRESET_LABELS[reportPeriodInput.preset]}
+              </span>
+            </div>
+            <ul className="internal-ai-inline-list">
+              {activePeriodContext.notes.map((note) => (
+                <li key={`period-note:${note}`}>{note}</li>
+              ))}
+            </ul>
+          </article>
+
+          <div className="next-section-grid">
+            <article className="next-panel internal-ai-search">
+              <div className="next-panel__header">
+                <h2>Anteprima report per targa</h2>
+              </div>
+              <p className="next-panel__description">
+                Inserisci una targa oppure seleziona un mezzo reale dall&apos;autosuggest. La preview
+                continua a riusare solo i layer NEXT gia normalizzati del clone in sola lettura.
+              </p>
+              <div className="internal-ai-search__form">
+                <label className="internal-ai-search__field">
+                  <span>Targa mezzo</span>
+                  <input
+                    type="text"
+                    value={targaInput}
+                    onChange={(event) => {
+                      const nextValue = event.target.value.toUpperCase();
+                      const normalizedNextValue = normalizeInternalAiVehicleLookupQuery(nextValue);
+                      setTargaInput(nextValue);
+                      if (selectedVehicle && selectedVehicle.targa !== normalizedNextValue) {
+                        setSelectedVehicle(null);
+                      }
+                    }}
+                    placeholder="Es. AB123CD"
+                    className="internal-ai-search__input"
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="internal-ai-search__actions">
+                  <button
+                    type="button"
+                    className="internal-ai-search__button"
+                    onClick={handleGenerateVehiclePreview}
+                    disabled={
+                      vehicleRequestState.status === "loading" || lookupCatalog.status === "loading"
+                    }
+                  >
+                    {vehicleRequestState.status === "loading"
+                      ? "Lettura in corso..."
+                      : "Genera anteprima"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="internal-ai-search__status">
+                <div className="internal-ai-pill-row">
+                  <span className={statusToneClass(lookupUiState.status)}>
+                    {LOOKUP_MATCH_LABELS[lookupUiState.status]}
+                  </span>
+                  {selectedVehicle ? (
+                    <span className="internal-ai-pill is-neutral">
+                      Mezzo reale selezionato: {selectedVehicle.targa}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="internal-ai-card__meta">{lookupUiState.message}</p>
+              </div>
+
+              {lookupSuggestions.length > 0 ? (
+                <div className="internal-ai-suggestions">
+                  {lookupSuggestions.map((candidate) => {
+                    const description = formatVehicleLookupDescription(candidate);
+                    const isSelected = selectedVehicle?.id === candidate.id;
+                    return (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        className={`internal-ai-suggestion ${isSelected ? "is-selected" : ""}`}
+                        onClick={() => handleSelectVehicle(candidate)}
+                      >
+                        <div className="internal-ai-suggestion__header">
+                          <strong>{candidate.targa}</strong>
+                          <div className="internal-ai-pill-row">
+                            <span className="internal-ai-pill is-neutral">{candidate.categoria}</span>
+                            {isSelected ? (
+                              <span className="internal-ai-pill is-warning">Selezionato</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        {description ? (
+                          <p className="internal-ai-card__meta">{description}</p>
+                        ) : (
+                          <p className="internal-ai-card__meta">
+                            Mezzo reale letto da <code>{candidate.sourceKey}</code>.
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {vehicleRequestState.message ? (
+                <div className="next-clone-placeholder internal-ai-empty">
+                  <p>{vehicleRequestState.message}</p>
+                </div>
+              ) : null}
+            </article>
+
+            <article className="next-panel internal-ai-search">
+              <div className="next-panel__header">
+                <h2>Anteprima report per autista</h2>
+              </div>
+              <p className="next-panel__description">
+                Inserisci nome o badge oppure seleziona un autista reale dall&apos;autosuggest. La
+                preview usa solo i layer NEXT gia disponibili e segnala in modo esplicito le fonti
+                ancora parziali.
+              </p>
+              <div className="internal-ai-search__form">
+                <label className="internal-ai-search__field">
+                  <span>Autista reale</span>
+                  <input
+                    type="text"
+                    value={driverInput}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      const normalizedNextValue = normalizeInternalAiDriverLookupQuery(nextValue);
+                      setDriverInput(nextValue);
+                      if (
+                        selectedDriver &&
+                        normalizeInternalAiDriverLookupQuery(selectedDriver.nomeCompleto) !==
+                          normalizedNextValue &&
+                        normalizeInternalAiDriverLookupQuery(selectedDriver.badge ?? "") !==
+                          normalizedNextValue
+                      ) {
+                        setSelectedDriver(null);
+                      }
+                    }}
+                    placeholder="Es. Mario Rossi oppure badge 1234"
+                    className="internal-ai-search__input"
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="internal-ai-search__actions">
+                  <button
+                    type="button"
+                    className="internal-ai-search__button"
+                    onClick={handleGenerateDriverPreview}
+                    disabled={
+                      driverRequestState.status === "loading" ||
+                      driverLookupCatalog.status === "loading"
+                    }
+                  >
+                    {driverRequestState.status === "loading"
+                      ? "Lettura in corso..."
+                      : "Genera anteprima"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="internal-ai-search__status">
+                <div className="internal-ai-pill-row">
+                  <span className={statusToneClass(driverLookupUiState.status)}>
+                    {LOOKUP_MATCH_LABELS[driverLookupUiState.status]}
+                  </span>
+                  {selectedDriver ? (
+                    <span className="internal-ai-pill is-neutral">
+                      Autista reale selezionato: {selectedDriver.nomeCompleto}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="internal-ai-card__meta">{driverLookupUiState.message}</p>
+              </div>
+
+              {driverLookupSuggestions.length > 0 ? (
+                <div className="internal-ai-suggestions">
+                  {driverLookupSuggestions.map((candidate) => {
+                    const isSelected = selectedDriver?.id === candidate.id;
+                    return (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        className={`internal-ai-suggestion ${isSelected ? "is-selected" : ""}`}
+                        onClick={() => handleSelectDriver(candidate)}
+                      >
+                        <div className="internal-ai-suggestion__header">
+                          <strong>{candidate.nomeCompleto}</strong>
+                          <div className="internal-ai-pill-row">
+                            {candidate.badge ? (
+                              <span className="internal-ai-pill is-neutral">
+                                Badge {candidate.badge}
+                              </span>
+                            ) : null}
+                            {isSelected ? (
+                              <span className="internal-ai-pill is-warning">Selezionato</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="internal-ai-card__meta">
+                          {formatDriverLookupDescription(candidate)}
+                        </p>
+                        {candidate.mezziAssociatiPreview.length ? (
+                          <div className="internal-ai-pill-row">
+                            {candidate.mezziAssociatiPreview.map((entry) => (
+                              <span
+                                key={`${candidate.id}:mezzo:${entry}`}
+                                className="internal-ai-pill is-neutral"
+                              >
+                                {entry}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {driverRequestState.message ? (
+                <div className="next-clone-placeholder internal-ai-empty">
+                  <p>{driverRequestState.message}</p>
+                </div>
+              ) : null}
+            </article>
+          </div>
+
+          <div className="next-section-grid">
+            <article className="next-panel internal-ai-search internal-ai-search--combined">
+              <div className="next-panel__header">
+                <h2>Anteprima report combinato mezzo + autista</h2>
+              </div>
+              <p className="next-panel__description">
+                Il report combinato riusa le due selezioni guidate qui sopra e lo stesso periodo
+                attivo. La preview dichiara in modo esplicito se il legame mezzo-autista e forte,
+                plausibile oppure non ancora dimostrabile.
+              </p>
+              <div className="internal-ai-pill-row">
+                <span className="internal-ai-pill is-neutral">
+                  Mezzo: {selectedVehicle?.targa ?? exactVehicleMatch?.targa ?? "da selezionare"}
+                </span>
+                <span className="internal-ai-pill is-neutral">
+                  Autista: {selectedDriver?.nomeCompleto ?? exactDriverMatch?.nomeCompleto ?? "da selezionare"}
+                </span>
+                <span className="internal-ai-pill is-neutral">Periodo {activePeriodContext.label}</span>
+              </div>
+              <ul className="internal-ai-inline-list">
+                <li>
+                  Mezzo selezionato:{" "}
+                  {selectedVehicle?.targa ?? exactVehicleMatch?.targa ?? "usa il blocco report targa"}
+                </li>
+                <li>
+                  Autista selezionato:{" "}
+                  {selectedDriver?.nomeCompleto ?? exactDriverMatch?.nomeCompleto ?? "usa il blocco report autista"}
+                </li>
+                <li>
+                  Il matching forte e dichiarato solo se il mezzo espone `autistaId` coincidente.
+                </li>
+              </ul>
+              <div className="internal-ai-button-row">
                 <button
                   type="button"
                   className="internal-ai-search__button"
-                  onClick={handleGeneratePreview}
-                  disabled={searchState.status === "loading" || lookupCatalog.status === "loading"}
+                  onClick={handleGenerateCombinedPreview}
+                  disabled={
+                    combinedRequestState.status === "loading" ||
+                    lookupCatalog.status === "loading" ||
+                    driverLookupCatalog.status === "loading"
+                  }
                 >
-                  {searchState.status === "loading" ? "Lettura in corso..." : "Genera anteprima"}
+                  {combinedRequestState.status === "loading"
+                    ? "Lettura combinata in corso..."
+                    : "Genera anteprima combinata"}
                 </button>
               </div>
-            </div>
-
-            <div className="internal-ai-search__status">
-              <div className="internal-ai-pill-row">
-                <span className={statusToneClass(lookupUiState.status)}>
-                  {LOOKUP_MATCH_LABELS[lookupUiState.status]}
-                </span>
-                {selectedVehicle ? (
-                  <span className="internal-ai-pill is-neutral">
-                    Mezzo reale selezionato: {selectedVehicle.targa}
-                  </span>
-                ) : null}
-              </div>
-              <p className="internal-ai-card__meta">{lookupUiState.message}</p>
-            </div>
-
-            {lookupSuggestions.length > 0 ? (
-              <div className="internal-ai-suggestions">
-                {lookupSuggestions.map((candidate) => {
-                  const description = formatVehicleLookupDescription(candidate);
-                  const isSelected = selectedVehicle?.id === candidate.id;
-                  return (
-                    <button
-                      key={candidate.id}
-                      type="button"
-                      className={`internal-ai-suggestion ${isSelected ? "is-selected" : ""}`}
-                      onClick={() => handleSelectVehicle(candidate)}
-                    >
-                      <div className="internal-ai-suggestion__header">
-                        <strong>{candidate.targa}</strong>
-                        <div className="internal-ai-pill-row">
-                          <span className="internal-ai-pill is-neutral">{candidate.categoria}</span>
-                          {isSelected ? (
-                            <span className="internal-ai-pill is-warning">Selezionato</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      {description ? (
-                        <p className="internal-ai-card__meta">{description}</p>
-                      ) : (
-                        <p className="internal-ai-card__meta">
-                          Mezzo reale letto da <code>{candidate.sourceKey}</code>.
-                        </p>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {searchState.message ? (
-              <div className="next-clone-placeholder internal-ai-empty">
-                <p>{searchState.message}</p>
-              </div>
-            ) : null}
-          </article>
+              {combinedRequestState.message ? (
+                <div className="next-clone-placeholder internal-ai-empty">
+                  <p>{combinedRequestState.message}</p>
+                </div>
+              ) : null}
+            </article>
+          </div>
 
           <div className="next-section-grid">
             <article className="next-panel">
@@ -1173,11 +2380,50 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                         <li key={`${entry.targa}:${entry.updatedAt}`}>
                           {entry.targa} - {VEHICLE_SEARCH_RESULT_LABELS[entry.result] ?? entry.result} -{" "}
                           {VEHICLE_SEARCH_SOURCE_LABELS[entry.source] ?? entry.source}
+                          {entry.periodLabel ? ` - ${entry.periodLabel}` : ""}
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="internal-ai-card__meta">Nessuna targa recente ancora memorizzata.</p>
+                  )}
+                </article>
+
+                <article className="internal-ai-card">
+                  <p className="internal-ai-card__eyebrow">Ultimi autisti</p>
+                  {tracking.recentDriverSearches.length ? (
+                    <ul className="internal-ai-inline-list">
+                      {tracking.recentDriverSearches.map((entry) => (
+                        <li key={`${entry.driverId}:${entry.updatedAt}`}>
+                          {entry.nomeCompleto}
+                          {entry.badge ? ` (${entry.badge})` : ""} -{" "}
+                          {DRIVER_SEARCH_RESULT_LABELS[entry.result] ?? entry.result} -{" "}
+                          {DRIVER_SEARCH_SOURCE_LABELS[entry.source] ?? entry.source}
+                          {entry.periodLabel ? ` - ${entry.periodLabel}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="internal-ai-card__meta">Nessun autista recente ancora memorizzato.</p>
+                  )}
+                </article>
+
+                <article className="internal-ai-card">
+                  <p className="internal-ai-card__eyebrow">Ultime coppie combinate</p>
+                  {tracking.recentCombinedSearches.length ? (
+                    <ul className="internal-ai-inline-list">
+                      {tracking.recentCombinedSearches.map((entry) => (
+                        <li key={`${entry.mezzoTarga}:${entry.driverId}:${entry.updatedAt}`}>
+                          {entry.mezzoTarga} + {entry.nomeCompleto}
+                          {entry.badge ? ` (${entry.badge})` : ""} - {DRIVER_SEARCH_RESULT_LABELS[entry.result] ?? entry.result}
+                          {entry.periodLabel ? ` - ${entry.periodLabel}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="internal-ai-card__meta">
+                      Nessuna coppia mezzo/autista recente ancora memorizzata.
+                    </p>
                   )}
                 </article>
 
@@ -1202,13 +2448,53 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     <ul className="internal-ai-inline-list">
                       {tracking.recentArtifacts.map((entry) => (
                         <li key={`${entry.artifactId}:${entry.updatedAt}`}>
-                          {entry.title} - {ARTIFACT_ACTION_LABELS[entry.action] ?? entry.action}
+                          {entry.title}
+                          {entry.targetType && entry.targetLabel
+                            ? ` - ${REPORT_TYPE_LABELS[entry.targetType] ?? entry.targetType} ${entry.targetLabel}`
+                            : ""}
+                          {entry.primaryFamily
+                            ? ` - ${ARTIFACT_FAMILY_LABELS[entry.primaryFamily] ?? entry.primaryFamily}`
+                            : ""}
+                          {entry.artifactStatus
+                            ? ` - ${ARTIFACT_STATUS_LABELS[entry.artifactStatus] ?? entry.artifactStatus}`
+                            : ""}
+                          {entry.periodLabel ? ` - ${entry.periodLabel}` : ""}
+                          {" - "}
+                          {ARTIFACT_ACTION_LABELS[entry.action] ?? entry.action}
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="internal-ai-card__meta">Nessun artifact recente ancora memorizzato.</p>
                   )}
+                </article>
+
+                <article className="internal-ai-card">
+                  <p className="internal-ai-card__eyebrow">Ultima consultazione archivio</p>
+                  <ul className="internal-ai-inline-list">
+                    <li>Ricerca: {tracking.sessionState.lastArchiveQuery ?? "non disponibile"}</li>
+                    <li>
+                      Tipo report:{" "}
+                      {tracking.sessionState.lastArchiveReportType
+                        ? ARCHIVE_TYPE_FILTER_LABELS[tracking.sessionState.lastArchiveReportType]
+                        : "non disponibile"}
+                    </li>
+                    <li>
+                      Stato:{" "}
+                      {tracking.sessionState.lastArchiveStatus
+                        ? ARCHIVE_STATUS_FILTER_LABELS[tracking.sessionState.lastArchiveStatus]
+                        : "non disponibile"}
+                    </li>
+                    <li>
+                      Ambito:{" "}
+                      {tracking.sessionState.lastArchiveFamily
+                        ? ARCHIVE_FAMILY_FILTER_LABELS[tracking.sessionState.lastArchiveFamily]
+                        : "non disponibile"}
+                    </li>
+                    <li>Targa: {tracking.sessionState.lastArchiveTarga ?? "non disponibile"}</li>
+                    <li>Autista: {tracking.sessionState.lastArchiveAutista ?? "non disponibile"}</li>
+                    <li>Periodo: {tracking.sessionState.lastArchivePeriod ?? "non disponibile"}</li>
+                  </ul>
                 </article>
 
                 <article className="internal-ai-card">
@@ -1221,6 +2507,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                         : "non disponibile"}
                     </li>
                     <li>Targa: {tracking.sessionState.lastTarga ?? "non disponibile"}</li>
+                    <li>Autista: {tracking.sessionState.lastDriverName ?? "non disponibile"}</li>
+                    <li>Periodo: {tracking.sessionState.lastPeriodLabel ?? "non disponibile"}</li>
                     <li>Intento: {tracking.sessionState.lastIntent ?? "non disponibile"}</li>
                     <li>Artifact: {tracking.sessionState.lastArtifactId ?? "non disponibile"}</li>
                   </ul>
@@ -1279,26 +2567,37 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             </article>
           </div>
 
-          {searchState.status === "ready" ? (
+          {activeReportState.report ? (
             <>
               <article className="next-panel">
                 <div className="next-panel__header">
-                  <h2>{searchState.report.title}</h2>
+                  <h2>{activeReportState.report.title}</h2>
                 </div>
-                <p className="next-panel__description">{searchState.report.subtitle}</p>
+                <p className="next-panel__description">{activeReportState.report.subtitle}</p>
                 <div className="internal-ai-pill-row" style={{ marginTop: 12 }}>
                   <span className="internal-ai-pill is-neutral">
-                    Generata il {formatDateLabel(searchState.report.generatedAt)}
+                    {getReportTypeLabel(activeReportState.report)}
                   </span>
                   <span className="internal-ai-pill is-neutral">
-                    Targa {searchState.report.header.targa}
+                    Generata il {formatDateLabel(activeReportState.report.generatedAt)}
                   </span>
                   <span className="internal-ai-pill is-neutral">
-                    Categoria {searchState.report.header.categoria ?? "non disponibile"}
+                    {getReportTargetChip(activeReportState.report)}
+                  </span>
+                  <span className="internal-ai-pill is-neutral">
+                    Periodo {activeReportState.report.periodContext.label}
+                  </span>
+                  <span className="internal-ai-pill is-neutral">
+                    {getReportHeaderMetaChip(activeReportState.report)}
                   </span>
                 </div>
-                {renderPreviewState(searchState.report.previewState)}
-                {renderApprovalState(searchState.report.approvalState)}
+                {renderPreviewState(activeReportState.report.previewState)}
+                {renderApprovalState(activeReportState.report.approvalState)}
+                <ul className="internal-ai-inline-list">
+                  {activeReportState.report.periodContext.notes.map((note) => (
+                    <li key={`active-period:${note}`}>{note}</li>
+                  ))}
+                </ul>
 
                 <div className="internal-ai-button-row">
                   <button type="button" className="internal-ai-search__button" onClick={markRevisionRequested}>
@@ -1315,13 +2614,13 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   </button>
                 </div>
 
-                {searchState.draftMessage ? (
-                  <p className="internal-ai-card__meta">{searchState.draftMessage}</p>
+                {activeReportState.draftMessage ? (
+                  <p className="internal-ai-card__meta">{activeReportState.draftMessage}</p>
                 ) : null}
               </article>
 
               <section className="internal-ai-grid">
-                {searchState.report.cards.map((card) => (
+                {activeReportState.report.cards.map((card) => (
                   <article key={card.label} className="internal-ai-card">
                     <p className="internal-ai-card__eyebrow">{card.label}</p>
                     <h3>{card.value}</h3>
@@ -1336,15 +2635,23 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     <h2>Sezioni del report</h2>
                   </div>
                   <div className="internal-ai-list">
-                    {searchState.report.sections.map((item) => (
+                    {activeReportState.report.sections.map((item) => (
                       <div key={item.id} className="internal-ai-list__row">
                         <div className="internal-ai-list__row-header">
                           <strong>{item.title}</strong>
-                          <span className={statusToneClass(item.status)}>
-                            {SECTION_STATUS_LABELS[item.status] ?? item.status}
-                          </span>
+                          <div className="internal-ai-pill-row">
+                            <span className={statusToneClass(item.status)}>
+                              {SECTION_STATUS_LABELS[item.status] ?? item.status}
+                            </span>
+                            <span className={statusToneClass(item.periodStatus)}>
+                              {PERIOD_STATUS_LABELS[item.periodStatus] ?? item.periodStatus}
+                            </span>
+                          </div>
                         </div>
                         <p className="internal-ai-muted">{item.summary}</p>
+                        {item.periodNote ? (
+                          <p className="internal-ai-card__meta">{item.periodNote}</p>
+                        ) : null}
                         <ul className="internal-ai-inline-list">
                           {item.bullets.map((bullet) => (
                             <li key={`${item.id}:${bullet}`}>{bullet}</li>
@@ -1367,15 +2674,23 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     <h2>Fonti lette</h2>
                   </div>
                   <div className="internal-ai-list">
-                    {searchState.report.sources.map((source) => (
+                    {activeReportState.report.sources.map((source) => (
                       <div key={source.id} className="internal-ai-list__row">
                         <div className="internal-ai-list__row-header">
                           <strong>{source.title}</strong>
-                          <span className={statusToneClass(source.status)}>
-                            {SOURCE_STATUS_LABELS[source.status] ?? source.status}
-                          </span>
+                          <div className="internal-ai-pill-row">
+                            <span className={statusToneClass(source.status)}>
+                              {SOURCE_STATUS_LABELS[source.status] ?? source.status}
+                            </span>
+                            <span className={statusToneClass(source.periodStatus)}>
+                              {PERIOD_STATUS_LABELS[source.periodStatus] ?? source.periodStatus}
+                            </span>
+                          </div>
                         </div>
                         <p className="internal-ai-muted">{source.description}</p>
+                        {source.periodNote ? (
+                          <p className="internal-ai-card__meta">{source.periodNote}</p>
+                        ) : null}
                         <div className="internal-ai-pill-row">
                           {source.datasetLabels.map((dataset) => (
                             <span key={`${source.id}:${dataset}`} className="internal-ai-pill is-neutral">
@@ -1404,9 +2719,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   <div className="next-panel__header">
                     <h2>Dati mancanti o da completare</h2>
                   </div>
-                  {searchState.report.missingData.length ? (
+                  {activeReportState.report.missingData.length ? (
                     <ul className="internal-ai-inline-list">
-                      {searchState.report.missingData.map((entry) => (
+                      {activeReportState.report.missingData.map((entry) => (
                         <li key={entry}>{entry}</li>
                       ))}
                     </ul>
@@ -1422,7 +2737,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     <h2>Evidenze e segnali</h2>
                   </div>
                   <ul className="internal-ai-inline-list">
-                    {searchState.report.evidences.map((entry) => (
+                    {activeReportState.report.evidences.map((entry) => (
                       <li key={entry}>{entry}</li>
                     ))}
                   </ul>
@@ -1526,61 +2841,246 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
 
       {sectionId === "artifacts" ? (
         <div className="next-section-grid">
-          <article className="next-panel">
+          <article className="next-panel internal-ai-archive">
             <div className="next-panel__header">
               <h2>Archivio artifact IA (`analysis_artifacts`)</h2>
             </div>
-            <div className="internal-ai-list">
-              {snapshot.artifacts.map((artifact) => (
-                <div key={artifact.id} className="internal-ai-list__row">
-                  <div className="internal-ai-list__row-header">
-                    <strong>{artifact.title}</strong>
-                    <span className={statusToneClass(artifact.status)}>
-                      {ARTIFACT_STATUS_LABELS[artifact.status] ?? artifact.status}
-                    </span>
-                  </div>
-                  <p className="internal-ai-muted">
-                    Tipo: {ARTIFACT_KIND_LABELS[artifact.kind] ?? artifact.kind} | targa:{" "}
-                    {artifact.mezzoTarga ?? "non applicabile"} | storage:{" "}
-                    {ARTIFACT_STORAGE_LABELS[artifact.storageMode] ?? artifact.storageMode} |
-                    persistito: {artifact.isPersisted ? "si" : "no"}
-                  </p>
-                  <p className="internal-ai-muted">
-                    Creato: {formatDateLabel(artifact.createdAt)} | Aggiornato:{" "}
-                    {formatDateLabel(artifact.updatedAt)}
-                  </p>
-                  {artifact.tags.length ? (
-                    <div className="internal-ai-pill-row">
-                      {artifact.tags.map((tag) => (
-                        <span key={`${artifact.id}:tag:${tag}`} className="internal-ai-pill is-neutral">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  <p className="internal-ai-card__meta">{artifact.note}</p>
-                  <div className="internal-ai-button-row">
-                    {artifact.payload ? (
-                      <button
-                        type="button"
-                        className="internal-ai-search__button"
-                        onClick={() => handleOpenArtifact(artifact.id)}
-                      >
-                        Apri artifact
-                      </button>
-                    ) : null}
-                    {artifact.status !== "archived" ? (
-                      <button
-                        type="button"
-                        className="internal-ai-search__button"
-                        onClick={() => handleArchiveArtifact(artifact.id)}
-                      >
-                        Porta ad archiviato
-                      </button>
-                    ) : null}
-                  </div>
+            <p className="next-panel__description">
+              Archivio locale intelligente del sottosistema IA interno. Puoi cercare, filtrare e
+              riaprire i report salvati senza uscire dal perimetro isolato del clone.
+            </p>
+            <div className="internal-ai-archive__toolbar">
+              <label className="internal-ai-search__field">
+                Ricerca veloce
+                <input
+                  type="search"
+                  className="internal-ai-search__input"
+                  value={artifactSearchQuery}
+                  onChange={(event) => setArtifactSearchQuery(event.target.value)}
+                  placeholder="Titolo, targa, autista, tag, fonte o note"
+                />
+              </label>
+              <div className="internal-ai-archive__summary">
+                <div className="internal-ai-pill-row">
+                  <span className="internal-ai-pill is-neutral">
+                    {filteredArtifacts.length} risultati su {snapshot.artifacts.length}
+                  </span>
+                  <span className="internal-ai-pill is-neutral">
+                    Persistiti in locale {persistedArtifactsCount}
+                  </span>
+                  <span className="internal-ai-pill is-neutral">
+                    In memoria {
+                      snapshot.artifacts.length - persistedArtifactsCount
+                    }
+                  </span>
                 </div>
-              ))}
+                <p className="internal-ai-card__meta">{archiveFilterSummary}</p>
+              </div>
+            </div>
+            <div className="internal-ai-archive__filters">
+              <label className="internal-ai-search__field">
+                Tipo report
+                <select
+                  className="internal-ai-search__input"
+                  value={artifactTypeFilter}
+                  onChange={(event) =>
+                    setArtifactTypeFilter(event.target.value as InternalAiReportType | "tutti")
+                  }
+                >
+                  {Object.entries(ARCHIVE_TYPE_FILTER_LABELS).map(([value, label]) => (
+                    <option key={`archive-type:${value}`} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="internal-ai-search__field">
+                Stato
+                <select
+                  className="internal-ai-search__input"
+                  value={artifactStatusFilter}
+                  onChange={(event) =>
+                    setArtifactStatusFilter(
+                      event.target.value as InternalAiArtifactStatus | "tutti",
+                    )
+                  }
+                >
+                  {Object.entries(ARCHIVE_STATUS_FILTER_LABELS).map(([value, label]) => (
+                    <option key={`archive-status:${value}`} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="internal-ai-search__field">
+                Ambito
+                <select
+                  className="internal-ai-search__input"
+                  value={artifactFamilyFilter}
+                  onChange={(event) =>
+                    setArtifactFamilyFilter(
+                      event.target.value as InternalAiArtifactFamily | "tutte",
+                    )
+                  }
+                >
+                  {Object.entries(ARCHIVE_FAMILY_FILTER_LABELS).map(([value, label]) => (
+                    <option key={`archive-family:${value}`} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="internal-ai-search__field">
+                Targa
+                <input
+                  type="search"
+                  className="internal-ai-search__input"
+                  value={artifactTargaFilter}
+                  onChange={(event) => setArtifactTargaFilter(event.target.value)}
+                  placeholder="Filtra per mezzo"
+                />
+              </label>
+
+              <label className="internal-ai-search__field">
+                Autista
+                <input
+                  type="search"
+                  className="internal-ai-search__input"
+                  value={artifactAutistaFilter}
+                  onChange={(event) => setArtifactAutistaFilter(event.target.value)}
+                  placeholder="Filtra per autista"
+                />
+              </label>
+
+              <label className="internal-ai-search__field">
+                Periodo
+                <input
+                  type="search"
+                  list="internal-ai-archive-period-options"
+                  className="internal-ai-search__input"
+                  value={artifactPeriodFilter}
+                  onChange={(event) => setArtifactPeriodFilter(event.target.value)}
+                  placeholder="Filtra per periodo"
+                />
+                <datalist id="internal-ai-archive-period-options">
+                  {archivePeriodOptions.map((label) => (
+                    <option key={`archive-period:${label}`} value={label} />
+                  ))}
+                </datalist>
+              </label>
+            </div>
+            <div className="internal-ai-button-row">
+              <button
+                type="button"
+                className="internal-ai-search__button"
+                onClick={() => {
+                  setArtifactSearchQuery("");
+                  setArtifactTypeFilter("tutti");
+                  setArtifactStatusFilter("tutti");
+                  setArtifactFamilyFilter("tutte");
+                  setArtifactTargaFilter("");
+                  setArtifactAutistaFilter("");
+                  setArtifactPeriodFilter("");
+                }}
+                disabled={!archiveHasActiveFilters}
+              >
+                Reset filtri archivio
+              </button>
+            </div>
+            <div className="internal-ai-list">
+              {filteredArtifacts.length ? (
+                filteredArtifacts.map((artifact) => (
+                  <div key={artifact.id} className="internal-ai-list__row">
+                    <div className="internal-ai-list__row-header">
+                      <strong>{artifact.title}</strong>
+                      <div className="internal-ai-pill-row">
+                        <span className={statusToneClass(artifact.status)}>
+                          {ARTIFACT_STATUS_LABELS[artifact.status] ?? artifact.status}
+                        </span>
+                        {artifact.reportType ? (
+                          <span className="internal-ai-pill is-neutral">
+                            {REPORT_TYPE_LABELS[artifact.reportType] ?? artifact.reportType}
+                          </span>
+                        ) : null}
+                        <span className="internal-ai-pill is-neutral">
+                          {buildArtifactScopeSummary(artifact)}
+                        </span>
+                        {artifact.matchingReliability ? (
+                          <span className="internal-ai-pill is-neutral">
+                            Legame {COMBINED_RELIABILITY_LABELS[artifact.matchingReliability]}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <p className="internal-ai-muted">
+                      Target:{" "}
+                      {getArtifactTargetLabel({
+                        reportType: artifact.reportType,
+                        targetLabel: artifact.targetLabel,
+                        mezzoTarga: artifact.mezzoTarga,
+                      })}{" "}
+                      | targa: {artifact.mezzoTarga ?? "non disponibile"} | autista:{" "}
+                      {artifact.autistaNome ?? "non disponibile"} | periodo:{" "}
+                      {artifact.periodLabel ?? "non disponibile"}
+                    </p>
+                    <p className="internal-ai-muted">
+                      Storage: {ARTIFACT_STORAGE_LABELS[artifact.storageMode] ?? artifact.storageMode}
+                      {" | "}persistito: {artifact.isPersisted ? "si" : "no"}
+                      {" | "}kind: {ARTIFACT_KIND_LABELS[artifact.kind] ?? artifact.kind}
+                    </p>
+                    <p className="internal-ai-muted">
+                      Creato: {formatDateLabel(artifact.createdAt)} | Aggiornato:{" "}
+                      {formatDateLabel(artifact.updatedAt)}
+                    </p>
+                    {artifact.tags.length ? (
+                      <div className="internal-ai-pill-row">
+                        {artifact.tags.map((tag) => (
+                          <span
+                            key={`${artifact.id}:tag:${tag}`}
+                            className="internal-ai-pill is-neutral"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {artifact.payload?.searchableSummary ? (
+                      <p className="internal-ai-card__meta">{artifact.payload.searchableSummary}</p>
+                    ) : null}
+                    <p className="internal-ai-card__meta">{artifact.note}</p>
+                    <div className="internal-ai-button-row">
+                      {artifact.payload ? (
+                        <button
+                          type="button"
+                          className="internal-ai-search__button"
+                          onClick={() => handleOpenArtifact(artifact.id)}
+                        >
+                          Riapri report
+                        </button>
+                      ) : null}
+                      {artifact.status !== "archived" ? (
+                        <button
+                          type="button"
+                          className="internal-ai-search__button"
+                          onClick={() => handleArchiveArtifact(artifact.id)}
+                        >
+                          Porta ad archiviato
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="next-clone-placeholder internal-ai-empty">
+                  <p>
+                    Nessun artifact corrisponde ai filtri correnti. Prova a ridurre i criteri o a
+                    resettare la ricerca archivio.
+                  </p>
+                </div>
+              )}
             </div>
           </article>
           <article className="next-panel next-tone">
@@ -1602,10 +3102,40 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             <h2>Artifact aperto</h2>
           </div>
           <p className="next-panel__description">
-            {openedArtifact.title} {openedArtifact.mezzoTarga ? `per la targa ${openedArtifact.mezzoTarga}` : ""}
+            {openedArtifact.title}{" "}
+            {openedArtifact.reportType && openedArtifact.targetLabel
+              ? `per ${REPORT_TYPE_LABELS[openedArtifact.reportType] ?? openedArtifact.reportType} ${openedArtifact.targetLabel}`
+              : openedArtifact.mezzoTarga
+                ? `per la targa ${openedArtifact.mezzoTarga}`
+                : ""}
           </p>
+          <div className="internal-ai-pill-row">
+            <span className={statusToneClass(openedArtifact.status)}>
+              {ARTIFACT_STATUS_LABELS[openedArtifact.status] ?? openedArtifact.status}
+            </span>
+            {openedArtifact.reportType ? (
+              <span className="internal-ai-pill is-neutral">
+                {REPORT_TYPE_LABELS[openedArtifact.reportType] ?? openedArtifact.reportType}
+              </span>
+            ) : null}
+            <span className="internal-ai-pill is-neutral">
+              Ambito {buildArtifactScopeSummary(openedArtifact)}
+            </span>
+            <span className="internal-ai-pill is-neutral">
+              Periodo {openedArtifact.periodLabel ?? "non disponibile"}
+            </span>
+            {openedArtifact.matchingReliability ? (
+              <span className="internal-ai-pill is-neutral">
+                Legame {COMBINED_RELIABILITY_LABELS[openedArtifact.matchingReliability]}
+              </span>
+            ) : null}
+          </div>
           {openedArtifact.payload ? (
             <>
+              <p className="internal-ai-card__meta">
+                Usa il pulsante <strong>Riapri report</strong> nell&apos;archivio per riportare la
+                preview nella schermata principale del modulo IA interno con il contesto corretto.
+              </p>
               {renderPreviewState(openedArtifact.payload.report.previewState)}
               {renderApprovalState(openedArtifact.payload.report.approvalState)}
               <div className="internal-ai-grid">

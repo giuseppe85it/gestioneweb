@@ -2,15 +2,16 @@ import { INTERNAL_AI_CONTRACTS } from "./internalAiContracts";
 import { getInternalAiTrackingPersistenceMode } from "./internalAiTracking";
 import type {
   InternalAiApprovalState,
+  InternalAiArtifactFamily,
   InternalAiDraftArtifactInput,
   InternalAiArtifact,
   InternalAiArtifactPayload,
   InternalAiArtifactStorageMode,
   InternalAiAuditLogEntry,
+  InternalAiReportPreview,
   InternalAiRequest,
   InternalAiScaffoldSummary,
   InternalAiSession,
-  InternalAiVehicleReportPreview,
 } from "./internalAiTypes";
 
 export type InternalAiScaffoldSnapshot = {
@@ -62,6 +63,196 @@ const APPROVAL_IDLE: InternalAiApprovalState = {
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function normalizedPeriodTag(value: string): string {
+  return `periodo-${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "non-definito"}`;
+}
+
+function normalizeSearchValue(value: string | null | undefined): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function mapArtifactFamiliesFromDatasets(datasetLabels: string[]): InternalAiArtifactFamily[] {
+  const joined = datasetLabels.join(" ").toLowerCase();
+  const families: InternalAiArtifactFamily[] = [];
+
+  if (
+    joined.includes("@lavori") ||
+    joined.includes("@materialiconsegnati") ||
+    joined.includes("@alerts_state") ||
+    joined.includes("@storico_eventi_operativi") ||
+    joined.includes("@autisti_sessione_attive") ||
+    joined.includes("@segnalazioni") ||
+    joined.includes("@controlli")
+  ) {
+    families.push("operativo");
+  }
+  if (joined.includes("@manutenzioni")) {
+    families.push("manutenzioni");
+  }
+  if (joined.includes("@rifornimenti")) {
+    families.push("rifornimenti");
+  }
+  if (joined.includes("@costimezzo") || joined.includes("@analisi_economica_mezzi")) {
+    families.push("costi");
+  }
+  if (joined.includes("@documenti")) {
+    families.push("documenti");
+  }
+
+  return dedupeStrings(families) as InternalAiArtifactFamily[];
+}
+
+function deriveArtifactFamilyMeta(datasetLabels: string[]): {
+  primaryFamily: InternalAiArtifactFamily;
+  reportFamilies: InternalAiArtifactFamily[];
+} {
+  const reportFamilies = mapArtifactFamiliesFromDatasets(datasetLabels);
+  if (reportFamilies.length === 0) {
+    return {
+      primaryFamily: "non_classificato",
+      reportFamilies: ["non_classificato"],
+    };
+  }
+
+  if (reportFamilies.length === 1) {
+    return {
+      primaryFamily: reportFamilies[0],
+      reportFamilies,
+    };
+  }
+
+  return {
+    primaryFamily: "misto",
+    reportFamilies,
+  };
+}
+
+function buildArtifactSearchText(args: {
+  title: string;
+  targetLabel: string | null;
+  mezzoTarga: string | null;
+  autistaNome: string | null;
+  periodLabel: string | null;
+  requestTitle: string;
+  sourceLabels: string[];
+  tags: string[];
+  families: InternalAiArtifactFamily[];
+  report: InternalAiReportPreview | null;
+}): string {
+  const report = args.report;
+  const reportDetails =
+    report?.reportType === "autista"
+      ? [report.header.nomeCompleto, report.header.badge]
+      : report?.reportType === "combinato"
+        ? [report.header.nomeCompletoAutista, report.header.badgeAutista, report.header.targa]
+        : report
+          ? [report.header.targa, report.header.autistaNome]
+          : [];
+
+  return normalizeSearchValue(
+    [
+      args.title,
+      args.targetLabel,
+      args.mezzoTarga,
+      args.autistaNome,
+      args.periodLabel,
+      args.requestTitle,
+      ...args.sourceLabels,
+      ...args.tags,
+      ...args.families,
+      ...(report?.sources.flatMap((source) => [source.title, ...source.datasetLabels]) ?? []),
+      ...(report?.sections.flatMap((section) => [section.title, section.summary]) ?? []),
+      ...(report?.cards.flatMap((card) => [card.label, card.value, card.meta]) ?? []),
+      ...reportDetails,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
+function hydrateArtifact(artifact: InternalAiArtifact): InternalAiArtifact {
+  const payload = artifact.payload ? cloneArtifactPayload(artifact.payload) : null;
+  const derivedSourceLabels = dedupeStrings([
+    ...artifact.sourceLabels,
+    ...(payload?.sourceDatasetLabels ?? []),
+  ]);
+  const familyMeta = deriveArtifactFamilyMeta(derivedSourceLabels);
+  const report = payload?.report ?? null;
+  const autistaNome =
+    artifact.autistaNome ??
+    (report?.reportType === "autista"
+      ? report.header.nomeCompleto
+      : report?.reportType === "combinato"
+        ? report.header.nomeCompletoAutista
+        : null);
+  const mezzoTarga =
+    artifact.mezzoTarga ??
+    (report?.reportType === "targa" || report?.reportType === "combinato" ? report.mezzoTarga : null);
+  const periodLabel = artifact.periodLabel ?? report?.periodContext.label ?? null;
+  const matchingReliability =
+    artifact.matchingReliability ??
+    (report?.reportType === "combinato" ? report.header.affidabilitaLegame : null);
+  const tags = dedupeStrings([
+    ...artifact.tags,
+    artifact.reportType
+      ? artifact.reportType === "targa"
+        ? "report-targa"
+        : artifact.reportType === "autista"
+          ? "report-autista"
+          : "report-combinato"
+      : "",
+    ...familyMeta.reportFamilies.map((family) => `famiglia-${family}`),
+    `stato-${artifact.status}`,
+  ]);
+  const searchText =
+    artifact.searchText ||
+    buildArtifactSearchText({
+      title: artifact.title,
+      targetLabel: artifact.targetLabel,
+      mezzoTarga,
+      autistaNome,
+      periodLabel,
+      requestTitle: artifact.sourceRequestTitle,
+      sourceLabels: derivedSourceLabels,
+      tags,
+      families: artifact.reportType ? familyMeta.reportFamilies : [],
+      report,
+    });
+
+  return {
+    ...artifact,
+    mezzoTarga,
+    autistaNome,
+    periodLabel,
+    sourceLabels: derivedSourceLabels,
+    tags,
+    payload:
+      payload && payload.searchableSummary === undefined
+        ? {
+            ...payload,
+            searchableSummary: report ? searchText : null,
+          }
+        : payload,
+    primaryFamily: artifact.reportType ? artifact.primaryFamily ?? familyMeta.primaryFamily : null,
+    reportFamilies: artifact.reportType
+      ? artifact.reportFamilies?.length
+        ? dedupeStrings(artifact.reportFamilies) as InternalAiArtifactFamily[]
+        : familyMeta.reportFamilies
+      : [],
+    searchText,
+    matchingReliability,
+  };
 }
 
 function getArtifactStorageMode(): InternalAiArtifactStorageMode {
@@ -168,7 +359,16 @@ const INITIAL_ARTIFACTS: InternalAiArtifact[] = [
     status: "preview",
     storageMode: "mock_memory_only",
     isPersisted: false,
+    reportType: "targa",
+    targetLabel: "Anteprima report targa",
+    periodLabel: null,
     mezzoTarga: null,
+    autistaId: null,
+    autistaNome: null,
+    primaryFamily: null,
+    reportFamilies: [],
+    searchText: "",
+    matchingReliability: null,
     createdAt: "2026-03-12T09:05:00Z",
     updatedAt: "2026-03-12T09:05:00Z",
     sourceRequestTitle: "Genera anteprima report targa",
@@ -187,7 +387,16 @@ const INITIAL_ARTIFACTS: InternalAiArtifact[] = [
     status: "archived",
     storageMode: "mock_memory_only",
     isPersisted: false,
+    reportType: null,
+    targetLabel: null,
+    periodLabel: null,
     mezzoTarga: null,
+    autistaId: null,
+    autistaNome: null,
+    primaryFamily: null,
+    reportFamilies: [],
+    searchText: "",
+    matchingReliability: null,
     createdAt: "2026-03-12T09:15:00Z",
     updatedAt: "2026-03-12T09:15:00Z",
     sourceRequestTitle: "Archivio artifact IA",
@@ -226,8 +435,8 @@ const INITIAL_AUDIT_LOG: InternalAiAuditLogEntry[] = [
   },
 ];
 
-function cloneReport(report: InternalAiVehicleReportPreview): InternalAiVehicleReportPreview {
-  return JSON.parse(JSON.stringify(report)) as InternalAiVehicleReportPreview;
+function cloneReport(report: InternalAiReportPreview): InternalAiReportPreview {
+  return JSON.parse(JSON.stringify(report)) as InternalAiReportPreview;
 }
 
 function cloneArtifactPayload(payload: InternalAiArtifactPayload | null): InternalAiArtifactPayload | null {
@@ -241,6 +450,7 @@ function cloneArtifactPayload(payload: InternalAiArtifactPayload | null): Intern
     sourceDatasetLabels: [...payload.sourceDatasetLabels],
     missingDataCount: payload.missingDataCount,
     evidenceCount: payload.evidenceCount,
+    searchableSummary: payload.searchableSummary ?? null,
   };
 }
 
@@ -262,12 +472,16 @@ function cloneRequest(request: InternalAiRequest): InternalAiRequest {
 }
 
 function cloneArtifact(artifact: InternalAiArtifact): InternalAiArtifact {
-  return {
+  return hydrateArtifact({
     ...artifact,
     sourceLabels: [...artifact.sourceLabels],
     tags: [...artifact.tags],
     payload: cloneArtifactPayload(artifact.payload),
-  };
+    reportFamilies: [...(artifact.reportFamilies ?? [])],
+    primaryFamily: artifact.primaryFamily ?? null,
+    searchText: artifact.searchText ?? "",
+    matchingReliability: artifact.matchingReliability ?? null,
+  });
 }
 
 function cloneAuditEntry(entry: InternalAiAuditLogEntry): InternalAiAuditLogEntry {
@@ -388,16 +602,29 @@ export function saveInternalAiDraftArtifact(
   ensureStateLoaded();
 
   const now = new Date().toISOString();
-  const safeTarga = input.report.mezzoTarga.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const targetSlug = input.report.targetLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const targetTypeLabel =
+    input.report.reportType === "autista"
+      ? "autista"
+      : input.report.reportType === "combinato"
+        ? "combinato"
+        : "targa";
+  const targetPrimaryValue =
+    input.report.reportType === "autista"
+      ? input.report.header.nomeCompleto
+      : input.report.reportType === "combinato"
+        ? `${input.report.mezzoTarga} + ${input.report.header.nomeCompletoAutista}`
+        : input.report.mezzoTarga;
+  const periodLabel = input.report.periodContext.label;
   const seed = Date.now().toString(36);
-  const sessionId = `session-report-${safeTarga}-${seed}`;
-  const requestId = `request-report-${safeTarga}-${seed}`;
-  const artifactId = `artifact-report-${safeTarga}-${seed}`;
+  const sessionId = `session-report-${targetSlug}-${seed}`;
+  const requestId = `request-report-${targetSlug}-${seed}`;
+  const artifactId = `artifact-report-${targetSlug}-${seed}`;
   const storageMode = getArtifactStorageMode();
 
   const session: InternalAiSession = {
     id: sessionId,
-    title: `Draft report targa ${input.report.mezzoTarga}`,
+    title: `Draft report ${targetTypeLabel} ${targetPrimaryValue}`,
     scope: "/next/ia/interna/sessioni",
     status:
       input.report.previewState.status === "discarded"
@@ -413,7 +640,7 @@ export function saveInternalAiDraftArtifact(
 
   const request: InternalAiRequest = {
     id: requestId,
-    title: `Artifact report targa ${input.report.mezzoTarga}`,
+    title: `Artifact report ${targetTypeLabel} ${targetPrimaryValue}`,
     sessionId,
     target: "report-page",
     requestedAdapters: ["retrieval-data", "artifact-repository", "approval-workflow"],
@@ -423,64 +650,106 @@ export function saveInternalAiDraftArtifact(
     ),
     previewState: input.report.previewState,
     approvalState: input.report.approvalState,
-    note: `Artifact locale del report targa salvato con ${input.report.sources.length} fonti lette e ${input.report.missingData.length} dati mancanti espliciti.`,
+    note:
+      `Artifact locale del report ${targetTypeLabel} salvato con periodo "${periodLabel}", ` +
+      `${input.report.sources.length} fonti lette e ${input.report.missingData.length} dati mancanti espliciti.`,
   };
 
   const artifact: InternalAiArtifact = {
     id: artifactId,
     requestId,
     sourceSessionId: sessionId,
-    title: `Draft report targa ${input.report.mezzoTarga}`,
+    title: `Draft report ${targetTypeLabel} ${targetPrimaryValue}`,
     kind: "report_preview",
     status: "draft",
     storageMode,
     isPersisted: storageMode === "local_storage_isolated",
-    mezzoTarga: input.report.mezzoTarga,
+    reportType: input.report.reportType,
+    targetLabel: input.report.targetLabel,
+    periodLabel,
+    mezzoTarga:
+      input.report.reportType === "targa" || input.report.reportType === "combinato"
+        ? input.report.mezzoTarga
+        : null,
+    autistaId:
+      input.report.reportType === "autista" || input.report.reportType === "combinato"
+        ? input.report.autistaId
+        : null,
+    autistaNome:
+      input.report.reportType === "autista"
+        ? input.report.header.nomeCompleto
+        : input.report.reportType === "combinato"
+          ? input.report.header.nomeCompletoAutista
+          : null,
+    primaryFamily: null,
+    reportFamilies: [],
+    searchText: "",
+    matchingReliability:
+      input.report.reportType === "combinato" ? input.report.header.affidabilitaLegame : null,
     createdAt: now,
     updatedAt: now,
     sourceRequestTitle: request.title,
     sourceLabels: input.report.sources.flatMap((source) => source.datasetLabels).slice(0, 8),
     version: 1,
-    tags: ["report-targa", input.report.mezzoTarga.toLowerCase(), "draft"],
+    tags: [
+      input.report.reportType === "autista"
+        ? "report-autista"
+        : input.report.reportType === "combinato"
+          ? "report-combinato"
+          : "report-targa",
+      targetSlug,
+      normalizedPeriodTag(periodLabel),
+      "draft",
+    ],
     note:
       storageMode === "local_storage_isolated"
-        ? "Draft salvato nell'archivio locale isolato del sottosistema IA."
-        : "Draft disponibile solo in memoria locale di fallback del sottosistema IA.",
+        ? `Draft del report ${targetTypeLabel} salvato nell'archivio locale isolato del sottosistema IA con periodo "${periodLabel}".`
+        : `Draft del report ${targetTypeLabel} disponibile solo in memoria locale di fallback del sottosistema IA con periodo "${periodLabel}".`,
     payload: {
       version: 1,
       report: cloneReport(input.report),
       sourceDatasetLabels: input.report.sources.flatMap((source) => source.datasetLabels),
       missingDataCount: input.report.missingData.length,
       evidenceCount: input.report.evidences.length,
+      searchableSummary: null,
     },
   };
 
+  const hydratedArtifact = hydrateArtifact(artifact);
+  const payloadSearchableSummary =
+    hydratedArtifact.payload && hydratedArtifact.payload.report
+      ? hydratedArtifact.searchText
+      : null;
+  if (hydratedArtifact.payload) {
+    hydratedArtifact.payload.searchableSummary = payloadSearchableSummary;
+  }
+
   const auditEntry: InternalAiAuditLogEntry = {
-    id: `audit-report-${safeTarga}-${seed}`,
+    id: `audit-report-${targetSlug}-${seed}`,
     createdAt: now,
     severity: "info",
     riskLevel: "low",
     message:
       storageMode === "local_storage_isolated"
-        ? `Draft del report targa ${input.report.mezzoTarga} salvato nell'archivio locale isolato del sottosistema IA.`
-        : `Draft del report targa ${input.report.mezzoTarga} mantenuto solo in memoria locale di fallback.`,
+        ? `Draft del report ${targetTypeLabel} ${targetPrimaryValue} salvato nell'archivio locale isolato del sottosistema IA con periodo "${periodLabel}".`
+        : `Draft del report ${targetTypeLabel} ${targetPrimaryValue} mantenuto solo in memoria locale di fallback con periodo "${periodLabel}".`,
     scope: "report-preview",
   };
 
   state.sessions = [session, ...state.sessions];
   state.requests = [request, ...state.requests];
-  state.artifacts = [artifact, ...state.artifacts];
+  state.artifacts = [hydratedArtifact, ...state.artifacts];
   state.auditLog = [auditEntry, ...state.auditLog];
 
   if (!persistState()) {
-    artifact.storageMode = "mock_memory_only";
-    artifact.isPersisted = false;
-    artifact.note = "Draft mantenuto solo in memoria locale di fallback; persistenza locale non disponibile.";
+    hydratedArtifact.storageMode = "mock_memory_only";
+    hydratedArtifact.isPersisted = false;
+    hydratedArtifact.note = "Draft mantenuto solo in memoria locale di fallback; persistenza locale non disponibile.";
     auditEntry.severity = "warning";
-    auditEntry.message = `Draft del report targa ${input.report.mezzoTarga} non persistito su archivio locale; attivo solo fallback in memoria.`;
+    auditEntry.message = `Draft del report ${targetTypeLabel} ${targetPrimaryValue} non persistito su archivio locale; attivo solo fallback in memoria.`;
   }
 
-  return { session, request, artifact };
+  return { session, request, artifact: cloneArtifact(hydratedArtifact) };
 }
 
 export function archiveInternalAiArtifact(artifactId: string): InternalAiArtifact | null {
@@ -494,7 +763,9 @@ export function archiveInternalAiArtifact(artifactId: string): InternalAiArtifac
   const now = new Date().toISOString();
   artifact.status = "archived";
   artifact.updatedAt = now;
-  artifact.tags = Array.from(new Set([...artifact.tags.filter((tag) => tag !== "draft"), "archiviato"]));
+  artifact.tags = Array.from(
+    new Set([...artifact.tags.filter((tag) => tag !== "draft" && tag !== "stato-draft"), "archiviato", "stato-archived"]),
+  );
   artifact.note = artifact.isPersisted
     ? "Artifact archiviato nell'archivio locale isolato del sottosistema IA."
     : "Artifact archiviato solo in memoria locale di fallback del sottosistema IA.";

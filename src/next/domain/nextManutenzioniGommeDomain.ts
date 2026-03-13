@@ -1,3 +1,5 @@
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 import {
   NEXT_MANUTENZIONI_DOMAIN,
   readNextMezzoManutenzioniSnapshot,
@@ -7,13 +9,77 @@ import {
 } from "./nextManutenzioniDomain";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 
+const STORAGE_COLLECTION = "storage";
+const GOMME_TMP_KEY = "@cambi_gomme_autisti_tmp";
+const GOMME_EVENTI_KEY = "@gomme_eventi";
+const NO_DATA_LABELS = new Set(["-", "n/d", "nd"]);
+
+type RawRecord = Record<string, unknown>;
+
+type NextLegacyDatasetShape =
+  | "items"
+  | "value.items"
+  | "value"
+  | "array"
+  | "missing"
+  | "unsupported";
+
+export type NextGommeSourceOrigin =
+  | "manutenzione_derivata"
+  | "evento_autista_tmp"
+  | "evento_ufficiale";
+
+export type NextGommeVehicleMatchReliability = "forte" | "plausibile";
+
+export type NextGommeVehicleMatchField =
+  | "manutenzione.targa"
+  | "targetTarga"
+  | "targa"
+  | "targaCamion"
+  | "targaRimorchio"
+  | "contesto.targaCamion"
+  | "contesto.targaRimorchio";
+
+type NextGommeExternalDataset = typeof GOMME_TMP_KEY | typeof GOMME_EVENTI_KEY;
+
+type ParsedCambioGommeBlock = {
+  evento: string;
+  modalita: string | null;
+  asseLabel: string | null;
+  posizione: string | null;
+  quantita: number | null;
+  marca: string | null;
+  km: number | null;
+  interventoTipo: string | null;
+  rotazioneText: string | null;
+  flags: string[];
+};
+
+type NextGommeVehicleMatch = {
+  field: NextGommeVehicleMatchField;
+  reliability: NextGommeVehicleMatchReliability;
+};
+
+type NextStorageDatasetReadResult = {
+  datasetShape: NextLegacyDatasetShape;
+  items: unknown[];
+};
+
 export const NEXT_MANUTENZIONI_GOMME_DOMAIN = {
   code: "D02-GOM",
   name: "Manutenzioni e gomme mezzo",
-  logicalDatasets: NEXT_MANUTENZIONI_DOMAIN.logicalDatasets,
-  activeReadOnlyDatasets: NEXT_MANUTENZIONI_DOMAIN.logicalDatasets,
+  logicalDatasets: [
+    ...NEXT_MANUTENZIONI_DOMAIN.logicalDatasets,
+    GOMME_TMP_KEY,
+    GOMME_EVENTI_KEY,
+  ] as const,
+  activeReadOnlyDatasets: [
+    ...NEXT_MANUTENZIONI_DOMAIN.logicalDatasets,
+    GOMME_TMP_KEY,
+    GOMME_EVENTI_KEY,
+  ] as const,
   normalizationStrategy:
-    "STORICO_MANUTENZIONI_DA_LAYER_NEXT + DERIVAZIONE_GOMME_DA_BLOCCHI_CAMBIO_GOMME",
+    "STORICO_MANUTENZIONI_DA_LAYER_NEXT + CONVERGENZA_EVENTI_GOMME_BADGELESS_TARGA_FIRST",
 } as const;
 
 export type NextManutenzioneReadOnlyItem = {
@@ -58,7 +124,15 @@ export type NextGommeReadOnlyItem = {
   fornitore: string | null;
   sourceDataset: string;
   sourceRecordId: string;
-  sourceMaintenanceId: string;
+  sourceMaintenanceId: string | null;
+  sourceOrigin: NextGommeSourceOrigin;
+  vehicleMatchReliability: NextGommeVehicleMatchReliability;
+  vehicleMatchField: NextGommeVehicleMatchField;
+  badgeAutista: string | null;
+  autistaNome: string | null;
+  statoEvento: string | null;
+  interventoTipo: string | null;
+  rotazioneText: string | null;
   quality: NextManutenzioneQuality;
   flags: string[];
 };
@@ -91,6 +165,10 @@ export type NextMezzoManutenzioniGommeSnapshot = {
   logicalDatasets: readonly string[];
   activeReadOnlyDatasets: readonly string[];
   normalizationStrategy: typeof NEXT_MANUTENZIONI_GOMME_DOMAIN.normalizationStrategy;
+  datasetShapes: {
+    gommeTmp: NextLegacyDatasetShape;
+    gommeEventi: NextLegacyDatasetShape;
+  };
   scheduledMaintenance: NextScheduledMaintenance;
   maintenanceItems: NextManutenzioneReadOnlyItem[];
   gommeItems: NextGommeReadOnlyItem[];
@@ -100,23 +178,17 @@ export type NextMezzoManutenzioniGommeSnapshot = {
     manutenzioniConOre: number;
     manutenzioniConMateriali: number;
     gommeDerivate: number;
+    gommeDaEventiTmp: number;
+    gommeDaEventiUfficiali: number;
+    gommeMatchForti: number;
+    gommeMatchPlausibili: number;
+    gommeDeduplicateConManutenzione: number;
     gommeConPosizione: number;
     gommeConQuantita: number;
     gommeConKm: number;
     gommeConFornitore: number;
   };
   limitations: string[];
-};
-
-type ParsedCambioGommeBlock = {
-  evento: string;
-  modalita: string | null;
-  asseLabel: string | null;
-  posizione: string | null;
-  quantita: number | null;
-  marca: string | null;
-  km: number | null;
-  flags: string[];
 };
 
 function normalizeText(value: unknown): string {
@@ -128,6 +200,14 @@ function normalizeOptionalText(value: unknown): string | null {
   return normalized || null;
 }
 
+function normalizeMeaningfulText(value: unknown): string | null {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) return null;
+  const compact = normalized.replace(/\s+/g, " ").trim();
+  if (!compact) return null;
+  return NO_DATA_LABELS.has(compact.toLowerCase()) ? null : compact;
+}
+
 function normalizeNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -137,6 +217,115 @@ function normalizeNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function parseDateFlexible(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const millis = value > 1_000_000_000_000 ? value : value * 1000;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const maybe = value as {
+      toDate?: () => Date;
+      seconds?: number;
+      _seconds?: number;
+    };
+
+    if (typeof maybe.toDate === "function") {
+      const date = maybe.toDate();
+      return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+    }
+
+    if (typeof maybe.seconds === "number") {
+      const date = new Date(maybe.seconds * 1000);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    if (typeof maybe._seconds === "number") {
+      const date = new Date(maybe._seconds * 1000);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const dmyMatch = raw.match(
+    /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/,
+  );
+  if (!dmyMatch) return null;
+
+  const yearRaw = Number(dmyMatch[3]);
+  const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
+  const month = Number(dmyMatch[2]) - 1;
+  const day = Number(dmyMatch[1]);
+  const hours = Number(dmyMatch[4] ?? "12");
+  const minutes = Number(dmyMatch[5] ?? "00");
+  const date = new Date(year, month, day, hours, minutes, 0, 0);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDateLabel(date: Date | null): string | null {
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+function buildDateLabel(rawValue: unknown, timestamp: number | null): string | null {
+  const parsed = parseDateFlexible(rawValue);
+  if (parsed) return formatDateLabel(parsed);
+  if (timestamp !== null) return formatDateLabel(new Date(timestamp));
+  return normalizeOptionalText(rawValue);
+}
+
+function unwrapStorageArray(
+  rawDoc: Record<string, unknown> | unknown[] | null,
+): NextStorageDatasetReadResult {
+  if (!rawDoc) {
+    return { datasetShape: "missing", items: [] };
+  }
+
+  if (Array.isArray(rawDoc)) {
+    return { datasetShape: "array", items: rawDoc };
+  }
+
+  if (Array.isArray(rawDoc.items)) {
+    return { datasetShape: "items", items: rawDoc.items };
+  }
+
+  if (Array.isArray((rawDoc.value as { items?: unknown[] } | undefined)?.items)) {
+    return {
+      datasetShape: "value.items",
+      items: (rawDoc.value as { items: unknown[] }).items,
+    };
+  }
+
+  if (Array.isArray(rawDoc.value)) {
+    return { datasetShape: "value", items: rawDoc.value };
+  }
+
+  return { datasetShape: "unsupported", items: [] };
+}
+
+async function readStorageDataset(key: string): Promise<NextStorageDatasetReadResult> {
+  const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, key));
+  const rawDoc = snapshot.exists()
+    ? ((snapshot.data() as Record<string, unknown>) ?? null)
+    : null;
+  return unwrapStorageArray(rawDoc);
 }
 
 function splitCambioGommeBlocks(descrizione: string | null): string[] {
@@ -185,17 +374,19 @@ function parseCambioGommeBlock(block: string): ParsedCambioGommeBlock | null {
   const header = lines[0];
   const normalizedHeader = header.replace(/[\u2013\u2014]/g, "-");
   const modalitaMatch = normalizedHeader.match(/^CAMBIO GOMME(?:\s*-\s*(.+))?$/i);
-  const modalita = normalizeOptionalText(modalitaMatch?.[1]);
+  const modalita = normalizeMeaningfulText(modalitaMatch?.[1]);
 
   let asseLabel: string | null = null;
   let quantita: number | null = null;
   let marca: string | null = null;
   let km: number | null = null;
+  let interventoTipo: string | null = null;
+  let rotazioneText: string | null = null;
   const flags: string[] = [];
 
   for (const line of lines.slice(1)) {
     if (/^asse\s*:/i.test(line)) {
-      asseLabel = normalizeOptionalText(line.replace(/^asse\s*:/i, ""));
+      asseLabel = normalizeMeaningfulText(line.replace(/^asse\s*:/i, ""));
       continue;
     }
     if (/^gomme cambiate\s*:/i.test(line)) {
@@ -203,11 +394,19 @@ function parseCambioGommeBlock(block: string): ParsedCambioGommeBlock | null {
       continue;
     }
     if (/^marca\s*:/i.test(line)) {
-      marca = normalizeOptionalText(line.replace(/^marca\s*:/i, ""));
+      marca = normalizeMeaningfulText(line.replace(/^marca\s*:/i, ""));
       continue;
     }
     if (/^km mezzo\s*:/i.test(line)) {
       km = normalizeNumber(line.replace(/^km mezzo\s*:/i, ""));
+      continue;
+    }
+    if (/^intervento\s*:/i.test(line)) {
+      interventoTipo = normalizeMeaningfulText(line.replace(/^intervento\s*:/i, ""));
+      continue;
+    }
+    if (/^rotazione\s*:/i.test(line)) {
+      rotazioneText = normalizeMeaningfulText(line.replace(/^rotazione\s*:/i, ""));
       continue;
     }
   }
@@ -225,12 +424,64 @@ function parseCambioGommeBlock(block: string): ParsedCambioGommeBlock | null {
     quantita,
     marca,
     km,
+    interventoTipo,
+    rotazioneText,
     flags,
   };
 }
 
 function dedupeFlags(flags: string[]): string[] {
   return Array.from(new Set(flags.filter(Boolean)));
+}
+
+function sortGommeItems(items: NextGommeReadOnlyItem[]): NextGommeReadOnlyItem[] {
+  return [...items].sort((left, right) => {
+    const rightTs = right.timestamp ?? -1;
+    const leftTs = left.timestamp ?? -1;
+    if (rightTs !== leftTs) return rightTs - leftTs;
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function buildTyreDayKey(item: Pick<NextGommeReadOnlyItem, "timestamp" | "data" | "dataLabel">): string | null {
+  const parsed =
+    (item.timestamp !== null ? new Date(item.timestamp) : null) ??
+    parseDateFlexible(item.dataLabel) ??
+    parseDateFlexible(item.data);
+
+  if (!parsed || Number.isNaN(parsed.getTime())) return null;
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildTyreDedupSignature(item: NextGommeReadOnlyItem): string | null {
+  const dayKey = buildTyreDayKey(item);
+  const asseLabel = normalizeMeaningfulText(item.asseLabel ?? item.posizione);
+  const marca = normalizeMeaningfulText(item.marca);
+  const km = item.km;
+
+  if (!dayKey || !asseLabel || !marca || km === null) {
+    return null;
+  }
+
+  const typeLabel =
+    normalizeMeaningfulText(item.interventoTipo) ??
+    normalizeMeaningfulText(item.rotazioneText) ??
+    normalizeMeaningfulText(item.modalita) ??
+    normalizeMeaningfulText(item.evento) ??
+    "evento_gomme";
+
+  return [
+    item.mezzoTarga,
+    dayKey,
+    asseLabel.toLowerCase(),
+    marca.toLowerCase(),
+    String(km),
+    typeLabel.toLowerCase(),
+  ].join("|");
 }
 
 function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneReadOnlyItem {
@@ -280,42 +531,332 @@ function toGommeItems(item: NextManutenzioneReadOnlyItem): NextGommeReadOnlyItem
     flags.push("costo_non_disponibile");
 
     items.push({
-        id: `${item.id}:gomme:${index}`,
-        mezzoTarga: item.mezzoTarga,
-        targa: item.targa,
-        data: item.data,
-        dataLabel: item.dataLabel,
-        timestamp: item.timestamp,
-        descrizione: block,
-        evento: parsed.evento,
-        isCambioGommeDerived: true,
-        modalita: parsed.modalita,
-        posizione: parsed.posizione,
-        asseLabel: parsed.asseLabel,
-        quantita: parsed.quantita,
-        pezzi: parsed.quantita,
-        marca: parsed.marca,
-        km: parsed.km,
-        costo: null,
-        fornitore: item.fornitore,
-        sourceDataset: item.sourceDataset,
-        sourceRecordId: `${item.id}:gomme:${index}`,
-        sourceMaintenanceId: item.id,
-        quality: "derived_acceptable",
-        flags: dedupeFlags(flags),
-      });
+      id: `${item.id}:gomme:${index}`,
+      mezzoTarga: item.mezzoTarga,
+      targa: item.targa,
+      data: item.data,
+      dataLabel: item.dataLabel,
+      timestamp: item.timestamp,
+      descrizione: block,
+      evento: parsed.evento,
+      isCambioGommeDerived: true,
+      modalita: parsed.modalita,
+      posizione: parsed.posizione,
+      asseLabel: parsed.asseLabel,
+      quantita: parsed.quantita,
+      pezzi: parsed.quantita,
+      marca: parsed.marca,
+      km: parsed.km,
+      costo: null,
+      fornitore: item.fornitore,
+      sourceDataset: item.sourceDataset,
+      sourceRecordId: `${item.id}:gomme:${index}`,
+      sourceMaintenanceId: item.id,
+      sourceOrigin: "manutenzione_derivata",
+      vehicleMatchReliability: "forte",
+      vehicleMatchField: "manutenzione.targa",
+      badgeAutista: null,
+      autistaNome: null,
+      statoEvento: null,
+      interventoTipo: parsed.interventoTipo,
+      rotazioneText: parsed.rotazioneText,
+      quality: "derived_acceptable",
+      flags: dedupeFlags(flags),
+    });
   });
 
-  return items.sort((left, right) => {
+  return sortGommeItems(items);
+}
+
+function resolveEventAutista(record: RawRecord): {
+  badgeAutista: string | null;
+  autistaNome: string | null;
+} {
+  const autista =
+    record.autista && typeof record.autista === "object"
+      ? (record.autista as RawRecord)
+      : null;
+
+  return {
+    badgeAutista: normalizeMeaningfulText(
+      autista?.badge ?? record.badgeAutista ?? record.badge,
+    ),
+    autistaNome: normalizeMeaningfulText(
+      autista?.nome ?? record.autistaNome ?? record.nomeAutista ?? record.autista,
+    ),
+  };
+}
+
+function resolveExternalTyreMatch(
+  record: RawRecord,
+  mezzoTarga: string,
+): NextGommeVehicleMatch | null {
+  const targetTarga = normalizeNextMezzoTarga(record.targetTarga);
+  if (targetTarga === mezzoTarga) {
+    return { field: "targetTarga", reliability: "forte" };
+  }
+
+  const directTarga = normalizeNextMezzoTarga(record.targa);
+  if (directTarga === mezzoTarga) {
+    return { field: "targa", reliability: "forte" };
+  }
+
+  if (targetTarga || directTarga) {
+    return null;
+  }
+
+  const contesto =
+    record.contesto && typeof record.contesto === "object"
+      ? (record.contesto as RawRecord)
+      : null;
+
+  const plausibleCandidates: Array<{
+    field: NextGommeVehicleMatchField;
+    value: unknown;
+  }> = [
+    { field: "targaCamion", value: record.targaCamion },
+    { field: "targaRimorchio", value: record.targaRimorchio },
+    { field: "contesto.targaCamion", value: contesto?.targaCamion },
+    { field: "contesto.targaRimorchio", value: contesto?.targaRimorchio },
+  ];
+
+  for (const candidate of plausibleCandidates) {
+    if (normalizeNextMezzoTarga(candidate.value) === mezzoTarga) {
+      return {
+        field: candidate.field,
+        reliability: "plausibile",
+      };
+    }
+  }
+
+  return null;
+}
+
+function resolveExternalTyreEventLabel(record: RawRecord): {
+  evento: string;
+  modalita: string | null;
+  interventoTipo: string | null;
+  rotazioneText: string | null;
+} {
+  const interventoTipo = normalizeMeaningfulText(record.tipo ?? record.tipoIntervento);
+  const rotazioneText = normalizeMeaningfulText(record.rotazioneText);
+  const modalita = interventoTipo;
+
+  if (!interventoTipo) {
+    return {
+      evento: rotazioneText ? "ROTAZIONE GOMME" : "EVENTO GOMME",
+      modalita,
+      interventoTipo,
+      rotazioneText,
+    };
+  }
+
+  const upper = interventoTipo.toUpperCase();
+  if (upper === "ROTAZIONE") {
+    return {
+      evento: "ROTAZIONE GOMME",
+      modalita,
+      interventoTipo,
+      rotazioneText,
+    };
+  }
+
+  if (upper === "SOSTITUZIONE" || upper === "CAMBIO") {
+    return {
+      evento: "CAMBIO GOMME",
+      modalita,
+      interventoTipo,
+      rotazioneText,
+    };
+  }
+
+  return {
+    evento: `EVENTO GOMME - ${interventoTipo.toUpperCase()}`,
+    modalita,
+    interventoTipo,
+    rotazioneText,
+  };
+}
+
+function buildExternalTyreDescription(args: {
+  eventLabel: string;
+  asseLabel: string | null;
+  marca: string | null;
+  km: number | null;
+  interventoTipo: string | null;
+  rotazioneText: string | null;
+  sourceOrigin: NextGommeSourceOrigin;
+}): string {
+  const lines = [
+    args.eventLabel,
+    `fonte: ${args.sourceOrigin === "evento_ufficiale" ? "@gomme_eventi" : "@cambi_gomme_autisti_tmp"}`,
+  ];
+
+  if (args.asseLabel) lines.push(`asse: ${args.asseLabel}`);
+  if (args.marca) lines.push(`marca: ${args.marca}`);
+  if (args.km !== null) lines.push(`km mezzo: ${args.km}`);
+  if (args.interventoTipo) lines.push(`intervento: ${args.interventoTipo}`);
+  if (args.rotazioneText) lines.push(`rotazione: ${args.rotazioneText}`);
+
+  return lines.join("\n");
+}
+
+function buildExternalEventId(
+  dataset: NextGommeExternalDataset,
+  record: RawRecord,
+  index: number,
+  mezzoTarga: string,
+): string {
+  const id = normalizeMeaningfulText(record.id);
+  if (id) return `${dataset}:${id}`;
+  return `${dataset}:${mezzoTarga}:${index}`;
+}
+
+function buildSourceRecordId(record: RawRecord, index: number, mezzoTarga: string): string {
+  return normalizeMeaningfulText(record.id) ?? `evento:${mezzoTarga}:${index}`;
+}
+
+function resolveExternalTyreEvent(
+  record: RawRecord,
+  index: number,
+  mezzoTarga: string,
+  dataset: NextGommeExternalDataset,
+): NextGommeReadOnlyItem | null {
+  const match = resolveExternalTyreMatch(record, mezzoTarga);
+  if (!match) return null;
+
+  const timestamp =
+    parseDateFlexible(record.timestamp)?.getTime() ??
+    parseDateFlexible(record.data)?.getTime() ??
+    null;
+  const dataLabel = buildDateLabel(record.data ?? record.timestamp, timestamp);
+  const asseLabel =
+    normalizeMeaningfulText(record.asseLabel) ??
+    normalizeMeaningfulText(record.asseId);
+  const quantita =
+    Array.isArray(record.gommeIds) && record.gommeIds.length > 0
+      ? record.gommeIds.length
+      : normalizeNumber(record.quantita ?? record.pezzi);
+  const marca = normalizeMeaningfulText(record.marca);
+  const km = normalizeNumber(record.km ?? record.kmMezzo);
+  const { badgeAutista, autistaNome } = resolveEventAutista(record);
+  const { evento, modalita, interventoTipo, rotazioneText } =
+    resolveExternalTyreEventLabel(record);
+  const sourceOrigin: NextGommeSourceOrigin =
+    dataset === GOMME_EVENTI_KEY ? "evento_ufficiale" : "evento_autista_tmp";
+  const flags: string[] = [];
+
+  if (match.reliability === "plausibile") {
+    flags.push("match_mezzo_plausibile_da_contesto");
+  }
+  if (timestamp === null) flags.push("data_non_disponibile");
+  if (!asseLabel) flags.push("asse_non_disponibile");
+  if (!marca) flags.push("marca_non_disponibile");
+  if (km === null) flags.push("km_non_disponibile");
+  if (quantita === null) flags.push("quantita_non_disponibile");
+  if (!badgeAutista) flags.push("badge_autista_non_disponibile");
+  if (!autistaNome) flags.push("autista_non_disponibile");
+  flags.push(dataset === GOMME_EVENTI_KEY ? "fonte_evento_ufficiale" : "fonte_evento_tmp");
+  flags.push("costo_non_disponibile");
+  flags.push("fornitore_non_disponibile");
+
+  return {
+    id: buildExternalEventId(dataset, record, index, mezzoTarga),
+    mezzoTarga,
+    targa: mezzoTarga,
+    data: dataLabel,
+    dataLabel,
+    timestamp,
+    descrizione: buildExternalTyreDescription({
+      eventLabel: evento,
+      asseLabel,
+      marca,
+      km,
+      interventoTipo,
+      rotazioneText,
+      sourceOrigin,
+    }),
+    evento,
+    isCambioGommeDerived: false,
+    modalita,
+    posizione: asseLabel,
+    asseLabel,
+    quantita,
+    pezzi: quantita,
+    marca,
+    km,
+    costo: null,
+    fornitore: null,
+    sourceDataset: dataset,
+    sourceRecordId: buildSourceRecordId(record, index, mezzoTarga),
+    sourceMaintenanceId: null,
+    sourceOrigin,
+    vehicleMatchReliability: match.reliability,
+    vehicleMatchField: match.field,
+    badgeAutista,
+    autistaNome,
+    statoEvento: normalizeMeaningfulText(record.stato),
+    interventoTipo,
+    rotazioneText,
+    quality: match.reliability === "forte" ? "source_direct" : "derived_acceptable",
+    flags: dedupeFlags(flags),
+  };
+}
+
+function dedupeExternalTyreItems(items: NextGommeReadOnlyItem[]): NextGommeReadOnlyItem[] {
+  const ordered = [...items].sort((left, right) => {
+    const leftOfficial = left.sourceOrigin === "evento_ufficiale" ? 1 : 0;
+    const rightOfficial = right.sourceOrigin === "evento_ufficiale" ? 1 : 0;
+    if (leftOfficial !== rightOfficial) return rightOfficial - leftOfficial;
+
+    const leftStrong = left.vehicleMatchReliability === "forte" ? 1 : 0;
+    const rightStrong = right.vehicleMatchReliability === "forte" ? 1 : 0;
+    if (leftStrong !== rightStrong) return rightStrong - leftStrong;
+
     const rightTs = right.timestamp ?? -1;
     const leftTs = left.timestamp ?? -1;
     if (rightTs !== leftTs) return rightTs - leftTs;
+
     return left.id.localeCompare(right.id);
   });
+
+  const byRecordId = new Map<string, NextGommeReadOnlyItem>();
+  ordered.forEach((item) => {
+    const key = item.sourceRecordId;
+    if (!byRecordId.has(key)) {
+      byRecordId.set(key, item);
+    }
+  });
+
+  return sortGommeItems(Array.from(byRecordId.values()));
+}
+
+function dedupeExternalAgainstMaintenance(args: {
+  maintenanceDerivedItems: NextGommeReadOnlyItem[];
+  externalItems: NextGommeReadOnlyItem[];
+}): { items: NextGommeReadOnlyItem[]; deduplicatedCount: number } {
+  const maintenanceSignatures = new Set(
+    args.maintenanceDerivedItems
+      .map(buildTyreDedupSignature)
+      .filter((entry): entry is string => Boolean(entry)),
+  );
+
+  let deduplicatedCount = 0;
+  const items = args.externalItems.filter((item) => {
+    const signature = buildTyreDedupSignature(item);
+    if (!signature || !maintenanceSignatures.has(signature)) {
+      return true;
+    }
+
+    deduplicatedCount += 1;
+    return false;
+  });
+
+  return { items, deduplicatedCount };
 }
 
 export function mapNextManutenzioniItemsToLegacyView(
-  items: NextManutenzioneReadOnlyItem[]
+  items: NextManutenzioneReadOnlyItem[],
 ): NextManutenzioneLegacyViewItem[] {
   return items.map((item) => ({
     id: item.id,
@@ -330,7 +871,7 @@ export function mapNextManutenzioniItemsToLegacyView(
 }
 
 export function mapNextGommeItemsToLegacyView(
-  items: NextGommeReadOnlyItem[]
+  items: NextGommeReadOnlyItem[],
 ): NextGommeLegacyViewItem[] {
   return items.map((item) => ({
     id: item.id,
@@ -344,13 +885,64 @@ export function mapNextGommeItemsToLegacyView(
 }
 
 export async function readNextMezzoManutenzioniGommeSnapshot(
-  targa: string
+  targa: string,
 ): Promise<NextMezzoManutenzioniGommeSnapshot> {
   const mezzoTarga = normalizeNextMezzoTarga(targa);
-  const maintenanceSnapshot = await readNextMezzoManutenzioniSnapshot(mezzoTarga);
+  const [maintenanceSnapshot, gommeTmpDataset, gommeEventiDataset] = await Promise.all([
+    readNextMezzoManutenzioniSnapshot(mezzoTarga),
+    readStorageDataset(GOMME_TMP_KEY),
+    readStorageDataset(GOMME_EVENTI_KEY),
+  ]);
 
   const maintenanceItems = maintenanceSnapshot.historyItems.map(toMaintenanceItem);
-  const gommeItems = maintenanceItems.flatMap(toGommeItems);
+  const maintenanceDerivedGommeItems = maintenanceItems.flatMap(toGommeItems);
+
+  const tmpItems = gommeTmpDataset.items
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      return resolveExternalTyreEvent(
+        entry as RawRecord,
+        index,
+        mezzoTarga,
+        GOMME_TMP_KEY,
+      );
+    })
+    .filter((entry): entry is NextGommeReadOnlyItem => Boolean(entry));
+
+  const officialItems = gommeEventiDataset.items
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      return resolveExternalTyreEvent(
+        entry as RawRecord,
+        index,
+        mezzoTarga,
+        GOMME_EVENTI_KEY,
+      );
+    })
+    .filter((entry): entry is NextGommeReadOnlyItem => Boolean(entry));
+
+  const dedupedExternalItems = dedupeExternalTyreItems([...officialItems, ...tmpItems]);
+  const externalDedupedAgainstMaintenance = dedupeExternalAgainstMaintenance({
+    maintenanceDerivedItems: maintenanceDerivedGommeItems,
+    externalItems: dedupedExternalItems,
+  });
+  const gommeItems = sortGommeItems([
+    ...maintenanceDerivedGommeItems,
+    ...externalDedupedAgainstMaintenance.items,
+  ]);
+
+  const gommeDaEventiTmp = gommeItems.filter(
+    (item) => item.sourceOrigin === "evento_autista_tmp",
+  ).length;
+  const gommeDaEventiUfficiali = gommeItems.filter(
+    (item) => item.sourceOrigin === "evento_ufficiale",
+  ).length;
+  const gommeMatchForti = gommeItems.filter(
+    (item) => item.vehicleMatchReliability === "forte",
+  ).length;
+  const gommeMatchPlausibili = gommeItems.filter(
+    (item) => item.vehicleMatchReliability === "plausibile",
+  ).length;
 
   return {
     domainCode: NEXT_MANUTENZIONI_GOMME_DOMAIN.code,
@@ -359,6 +951,10 @@ export async function readNextMezzoManutenzioniGommeSnapshot(
     logicalDatasets: NEXT_MANUTENZIONI_GOMME_DOMAIN.logicalDatasets,
     activeReadOnlyDatasets: NEXT_MANUTENZIONI_GOMME_DOMAIN.activeReadOnlyDatasets,
     normalizationStrategy: NEXT_MANUTENZIONI_GOMME_DOMAIN.normalizationStrategy,
+    datasetShapes: {
+      gommeTmp: gommeTmpDataset.datasetShape,
+      gommeEventi: gommeEventiDataset.datasetShape,
+    },
     scheduledMaintenance: maintenanceSnapshot.scheduledMaintenance,
     maintenanceItems,
     gommeItems,
@@ -367,17 +963,28 @@ export async function readNextMezzoManutenzioniGommeSnapshot(
       manutenzioniConKm: maintenanceItems.filter((item) => item.km !== null).length,
       manutenzioniConOre: maintenanceItems.filter((item) => item.ore !== null).length,
       manutenzioniConMateriali: maintenanceItems.filter((item) => item.materialiCount > 0).length,
-      gommeDerivate: gommeItems.length,
+      gommeDerivate: maintenanceDerivedGommeItems.length,
+      gommeDaEventiTmp,
+      gommeDaEventiUfficiali,
+      gommeMatchForti,
+      gommeMatchPlausibili,
+      gommeDeduplicateConManutenzione:
+        externalDedupedAgainstMaintenance.deduplicatedCount,
       gommeConPosizione: gommeItems.filter((item) => Boolean(item.posizione)).length,
       gommeConQuantita: gommeItems.filter((item) => item.quantita !== null).length,
       gommeConKm: gommeItems.filter((item) => item.km !== null).length,
       gommeConFornitore: gommeItems.filter((item) => Boolean(item.fornitore)).length,
     },
     limitations: [
-      "Il layer legge storico manutenzioni e pianificazione mezzo dagli stessi dataset gia letti dal clone: `@manutenzioni` e `@mezzi_aziendali`.",
-      "Le gomme del clone non vengono inventate: sono derivate solo dai blocchi testuali `CAMBIO GOMME` realmente presenti nelle descrizioni manutenzione.",
-      "Gli eventi autisti `@cambi_gomme_autisti_tmp` e `@gomme_eventi` restano fuori da questo reader per mantenere la stessa base dati oggi usata dalla madre nel Dossier Gomme.",
-      "Costo gomme e dati di posizione/quantita restano valorizzati solo quando il testo legacy li contiene davvero; in caso contrario il limite resta nel modello tramite flags.",
-    ],
+      "Il layer legge storico manutenzioni e pianificazione mezzo da `@manutenzioni` e `@mezzi_aziendali`, poi converge in sola lettura anche `@cambi_gomme_autisti_tmp` e `@gomme_eventi`.",
+      "Gli eventi gomme extra-manutenzione entrano come match forte solo con `targetTarga` o `targa`; i match solo di contesto (`targaCamion`, `targaRimorchio`, `contesto.*`) restano al massimo plausibili e non vengono promossi a conferma certa.",
+      externalDedupedAgainstMaintenance.deduplicatedCount > 0
+        ? `${externalDedupedAgainstMaintenance.deduplicatedCount} eventi gomme tmp/ufficiali sono stati deduplicati per evitare doppio conteggio con manutenzioni gia importate nello storico.`
+        : null,
+      gommeMatchPlausibili > 0
+        ? `${gommeMatchPlausibili} eventi gomme sono presenti solo come match plausibile di contesto: il report li mostra ma non li tratta come collegamento forte al mezzo.`
+        : null,
+      "Costo gomme e dati di posizione/quantita restano valorizzati solo quando i record legacy o i testi manutenzione li espongono davvero; in caso contrario il limite resta nel modello tramite flags.",
+    ].filter((entry): entry is string => Boolean(entry)),
   };
 }

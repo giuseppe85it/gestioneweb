@@ -131,7 +131,7 @@ Stato macrofase: `IN CORSO`
 
 ### L.1 Chat interna controllata / orchestratore locale mock
 - Stato: `FATTO`
-- Note: la panoramica `/next/ia/interna` espone ora una chat locale controllata con richieste libere, risposta assistente mock, suggerimenti iniziali e instradamento sicuro dei soli intenti oggi supportati.
+- Note: la panoramica `/next/ia/interna` espone ora una chat locale controllata con richieste libere, risposta assistente mock, suggerimenti iniziali e instradamento sicuro dei soli intenti oggi supportati (`report targa` e `report autista`).
 - File/documenti collegati:
   - `docs/product/STATO_MIGRAZIONE_NEXT.md`
   - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
@@ -157,7 +157,7 @@ Stato macrofase: `IN CORSO`
 
 ### L.3 Memoria operativa locale IA / tracking interno non invasivo
 - Stato: `FATTO`
-- Note: il sottosistema IA conserva ora in locale ultime targhe cercate, prompt chat recenti, artifact recenti, intenti usati e ultimo stato di lavoro, con tracking limitato al solo perimetro `/next/ia/interna*`.
+- Note: il sottosistema IA conserva ora in locale ultime targhe e ultimi autisti cercati, prompt chat recenti, artifact recenti, intenti usati e ultimo stato di lavoro, con tracking limitato al solo perimetro `/next/ia/interna*`.
 - File/documenti collegati:
   - `docs/product/STATO_MIGRAZIONE_NEXT.md`
   - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
@@ -167,6 +167,139 @@ Stato macrofase: `IN CORSO`
 - Dipendenze o blocchi:
   - non e memoria operativa completa del gestionale, ma solo memoria locale del modulo IA;
   - nessun backend reale, nessuna persistenza business, nessun tracking globale fuori dal sottosistema IA.
+
+### L.4 Ricerca guidata autisti / report autista read-only
+- Stato: `FATTO`
+- Note: il sottosistema IA espone ora un flusso separato per autista con lookup guidato su `@colleghi`, autosuggest reale, preview report in sola lettura, fonti esplicitate, dati mancanti e differenziazione chiara rispetto al report targa.
+- Nota manutentiva 2026-03-13: il blocco rifornimenti del report autista estende ora il perimetro di lettura ai mezzi osservati dai segnali D10 dello stesso autista, oltre ai mezzi associati in anagrafica, per evitare omissioni strutturali sui rifornimenti recenti.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1159_patch_report-autista-ia-interna.md`
+  - `docs/continuity-reports/2026-03-13_1159_continuity_report-autista-ia-interna.md`
+- Dipendenze o blocchi:
+  - il lookup primario resta confinato al dominio `D01` (`@colleghi` + anagrafiche flotta);
+  - i segnali operativi autista usano solo layer NEXT gia esistenti (`D10` e `D04`) con limiti espliciti, senza import raw del dominio `D03`;
+  - nessuna scrittura business, nessun backend IA reale, nessun riuso runtime IA legacy.
+
+### L.5 Filtri temporali / contesto periodo sui report read-only
+- Stato: `FATTO`
+- Note: il sottosistema IA supporta ora un contesto periodo condiviso per report targa e report autista, con preset rapidi, intervallo personalizzato, applicazione reale solo sulle sezioni con data leggibile e note esplicite sulle sezioni fuori filtro.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1240_patch_filtri-temporali-report-ia-interna.md`
+  - `docs/continuity-reports/2026-03-13_1240_continuity_filtri-temporali-report-ia-interna.md`
+- Dipendenze o blocchi:
+  - il filtro periodo viene applicato solo dove il layer espone timestamp o data leggibile in modo verificabile;
+  - identita anagrafiche, mezzi associati e alcuni blocchi di contesto restano visibili ma dichiarati fuori filtro;
+  - nessuna scrittura business, nessun backend IA reale, nessun riuso runtime IA legacy.
+
+### L.6 Report combinato mezzo + autista + periodo read-only
+- Stato: `FATTO`
+- Note: il sottosistema IA espone ora una terza preview che riusa i report singoli di mezzo e autista, applica lo stesso contesto periodo e rende esplicita l'affidabilita del legame mezzo-autista (`forte`, `plausibile`, `non dimostrabile`) senza inventare match certi.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1304_patch_report-combinato-mezzo-autista-periodo-ia-interna.md`
+  - `docs/continuity-reports/2026-03-13_1304_continuity_report-combinato-ia-interna.md`
+- Dipendenze o blocchi:
+  - il legame `forte` e dichiarato solo quando `autistaId` del mezzo coincide con l'autista selezionato nel dominio anagrafico D01;
+  - i segnali D10 e D04 possono solo rafforzare una plausibilita gia leggibile o mostrare una intersezione reale nel periodo, ma non vengono presentati come prova certa se manca il match anagrafico forte;
+  - nessuna scrittura business, nessun backend IA reale, nessun riuso runtime IA legacy.
+
+### L.7 Archivio intelligente artifact IA / ricerca e filtri scalabili
+- Stato: `FATTO`
+- Note: l'archivio locale del sottosistema IA supporta ora ricerca testuale veloce, filtri combinabili per tipo/stato/ambito/targa/autista/periodo, riapertura diretta della preview corretta e memorizzazione locale dell'ultima consultazione archivio.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1414_patch_archivio-intelligente-artifact-ia-interna.md`
+  - `docs/continuity-reports/2026-03-13_1414_continuity_archivio-intelligente-artifact-ia-interna.md`
+- Dipendenze o blocchi:
+  - le famiglie/ambiti sono derivate solo dai dataset gia letti dai report esistenti e usano fallback `misto` o `non classificato` quando i metadati non bastano;
+  - non esiste ancora persistenza server-side dedicata per gli artifact IA;
+  - nessuna scrittura business, nessun backend IA reale, nessun riuso runtime IA legacy.
+
+### L.8 Audit strutturale lettura/incrocio dati IA
+- Stato: `FATTO`
+- Note: eseguito audit mirato dei facade IA interni e dei layer NEXT realmente usati per report mezzo, report autista, report combinato, lookup, filtri periodo e chat mock. L'audit conferma come blocchi solidi il riuso dei layer NEXT read-only e la dichiarazione esplicita dei limiti periodo, ma segnala come priorita aperte:
+  - matching badge/nome ancora rigido in `report autista` e `report combinato`;
+  - lookup/autista e fallback nome potenzialmente fragili in caso di omonimie;
+  - contesto mezzi autista ancora piu ricco nei rifornimenti che nell'intestazione/lookup;
+  - chat mock con parsing periodo su autista corretto subito nello stesso task.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1448_audit_strutturale-lettura-incrocio-dati-ia.md`
+  - `docs/continuity-reports/2026-03-13_1448_continuity_audit-strutturale-dati-ia.md`
+- Dipendenze o blocchi:
+  - per correggere i match badge/nome senza falsi positivi serve un task dedicato, non un allargamento improvvisato del fix;
+  - il dominio D05 materiali resta esplicitamente parziale e fuori filtro periodo nei report mezzo;
+  - nessuna scrittura business, nessun backend IA reale, nessun riuso runtime IA legacy.
+
+### L.9 Matching autista badge-first cross-layer
+- Stato: `FATTO`
+- Note: il sottosistema IA applica ora una regola unica e riusabile per il matching identita autista tra D01, D04 e D10:
+  - `autistaId` o badge coerente = match forte;
+  - nome esatto = fallback plausibile solo quando il riferimento forte manca davvero;
+  - badge o `autistaId` incoerenti = match non dimostrabile, senza promuovere il nome a conferma certa.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1515_patch_matching-autista-badge-first-cross-layer.md`
+  - `docs/continuity-reports/2026-03-13_1515_continuity_matching-autista-badge-first-cross-layer.md`
+- Dipendenze o blocchi:
+  - il fallback per nome resta volutamente prudente e non risolve ancora i casi di omonimia complessa;
+  - i report continuano a dipendere dalla presenza reale di badge o nome coerenti nei layer D04 e D10;
+  - nessuna scrittura business, nessun backend IA reale, nessun riuso runtime IA legacy.
+
+### L.10 Audit / rafforzamento strutturale report mezzo
+- Stato: `FATTO`
+- Note: eseguito audit mirato del `report targa` read-only sui blocchi lavori, manutenzioni/gomme, rifornimenti, materiali/movimenti, documenti/costi e analisi economica salvata. Il task conferma come punti solidi il riuso del composito `readNextDossierMezzoCompositeSnapshot`, il filtro periodo applicato ai blocchi con data affidabile e la ricostruzione D04 gia prudente, ma registra come limiti strutturali aperti:
+  - eventi gomme fuori `@manutenzioni` non ancora incorporati nel report mezzo;
+  - movimenti materiali ancora dipendenti da match `targa` / `destinatario` legacy e quindi dichiarati solo come copertura parziale;
+  - procurement `@preventivi` e approvazioni fuori perimetro clone-safe del blocco documenti/costi.
+- Fix minimo applicato nello stesso task:
+  - il report mezzo considera ora anche movimenti materiali e analisi economica salvata come segnali reali di copertura, evitando di marcare la preview come troppo debole quando questi blocchi sono gli unici disponibili;
+  - la sezione `Documenti, costi e analisi` non viene piu presentata come vuota quando l'analisi economica legacy e disponibile anche in assenza di documenti/costi nel periodo.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1533_audit-rafforzamento-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1533_continuity_report-mezzo-ia.md`
+- Dipendenze o blocchi:
+  - per includere altri eventi gomme serve un task separato sul layer dedicato, non un fallback improvvisato nel facade IA;
+  - i movimenti materiali restano fuori filtro periodo finche il matching temporale e il link mezzo non sono uniformi a livello di dominio;
+  - il blocco documenti/costi resta volutamente senza `@preventivi` e `@preventivi_approvazioni`, coerentemente con il perimetro clone-safe attuale.
+
+### L.11 Audit / rafforzamento strutturale blocco gomme report mezzo
+- Stato: `FATTO`
+- Note: il blocco gomme del `report targa` non dipende piu solo dalle manutenzioni derivate. Il layer `nextManutenzioniGommeDomain` converge ora in sola lettura anche:
+  - `@cambi_gomme_autisti_tmp`;
+  - `@gomme_eventi`.
+  Regola applicata:
+  - match forte sul mezzo con `targetTarga` o `targa`;
+  - match plausibile solo da campi di contesto (`targaCamion`, `targaRimorchio`, `contesto.*`) quando manca una targa diretta;
+  - nessun match contestuale viene promosso a certezza.
+  Il task deduplica inoltre gli eventi extra gia importati nelle manutenzioni solo quando coincidono davvero su giorno, targa, asse, marca e km, e rende piu trasparente nel report mezzo la differenza tra eventi gomme forti e plausibili.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1612_audit-rafforzamento-blocco-gomme-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1612_continuity_blocco-gomme-report-mezzo-ia.md`
+- Dipendenze o blocchi:
+  - gli eventi gomme solo contestuali restano al massimo plausibili e non diventano conferme forti del mezzo;
+  - i record gomme senza targa diretta o senza contesto coerente restano fuori dal report;
+  - la deduplica con le manutenzioni resta volutamente prudente e non prova a fondere eventi quando i campi chiave non coincidono davvero.
 
 ## 6. Macrofase 3 - Blocchi e fondazioni ancora aperte
 Stato macrofase: `BLOCCATO`

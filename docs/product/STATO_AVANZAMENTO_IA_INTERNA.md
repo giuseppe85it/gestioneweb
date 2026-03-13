@@ -1,7 +1,7 @@
 # STATO AVANZAMENTO IA INTERNA GESTIONALE
 
 Data audit: 2026-03-11  
-Ultimo aggiornamento scaffolding: 2026-03-12  
+Ultimo aggiornamento scaffolding: 2026-03-13  
 Stato generale: SCAFFOLDING V1 ISOLATO AVVIATO  
 Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del sottosistema IA interno in forma non operativa, sicura e reversibile.
 
@@ -315,19 +315,190 @@ Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del s
 ## 12.7 Aggiornamento 2026-03-13
 - Introdotta la prima memoria operativa locale del sottosistema IA interno, con persistenza namespaced su `localStorage` dedicato e fallback implicito alla sola RAM se il browser non consente scrittura locale.
 - La memoria conserva solo elementi del perimetro IA:
-  - ultime targhe cercate;
+  - ultime targhe e ultimi autisti cercati;
   - richieste recenti della chat interna;
   - artifact recenti aperti, salvati o archiviati;
   - intenti usati e relativo conteggio;
   - ultimo stato di lavoro del modulo.
 - Il tracking resta confinato alle sole azioni del subtree `/next/ia/interna*`:
   - apertura sezione;
-  - selezione targa;
-  - esecuzione report targa;
+  - selezione targa e selezione autista;
+  - esecuzione report targa e report autista;
   - invio prompt chat;
   - apertura/salvataggio/archiviazione artifact.
 - Nessuna pagina fuori dal modulo IA viene tracciata e nessun dataset business viene toccato.
 - La UI overview mostra ora una sezione minima di memoria recente per rendere il modulo piu pratico da riaprire, senza trasformarlo in memoria operativa completa del gestionale.
+
+## 12.8 Aggiornamento 2026-03-13
+- Esteso il primo use case IA interno oltre la sola targa introducendo un secondo flusso separato per autista reale.
+- Il lookup autisti usa come fonte primaria il layer clone-safe `readNextColleghiSnapshot()` su `storage/@colleghi`, gia normalizzato e read-only nel clone.
+- La preview `report autista` combina solo fonti gia presenti nel clone:
+  - anagrafica colleghi per i dati base;
+  - anagrafiche flotta per i mezzi associati;
+  - layer `D10 Centro Controllo` per eventuale ultimo mezzo noto e segnali operativi;
+  - layer `D04 Rifornimenti` per eventuali rifornimenti collegabili all'autista sui mezzi associati.
+- La UI di `/next/ia/interna` espone ora due flussi distinti e visivamente separati:
+  - `Anteprima report per targa`;
+  - `Anteprima report per autista`.
+- Il report autista mostra in modo esplicito:
+  - fonti lette;
+  - dati mancanti;
+  - stato di copertura;
+  - differenza rispetto al report targa.
+- La chat mock e stata riallineata in modo minimo e pulito:
+  - riconosce richieste come `fammi un report per l'autista Mario Rossi`;
+  - non introduce backend reale, provider IA o scritture business.
+- Artifact locale e tracking del sottosistema IA distinguono ora anche report e ricerche di tipo autista.
+
+## 12.9 Aggiornamento 2026-03-13
+- I report read-only del sottosistema IA supportano ora un contesto periodo condiviso tra flusso targa e flusso autista.
+- Il modello periodo espone:
+  - preset `Tutto`;
+  - `Ultimi 30 giorni`;
+  - `Ultimi 90 giorni`;
+  - `Ultimo mese`;
+  - intervallo personalizzato `Da / A`.
+- Il filtro viene applicato davvero solo alle sezioni che espongono date leggibili nei layer gia usati dal clone:
+  - report targa: lavori, manutenzioni, rifornimenti, documenti/costi;
+  - report autista: segnali operativi D10 e rifornimenti collegabili.
+- Le sezioni non temporali o con copertura data non abbastanza uniforme restano visibili ma vengono marcate in preview come:
+  - `Nessun filtro`;
+  - `Fuori filtro`;
+  - `Periodo non disponibile`;
+  - `Filtro applicato`.
+- La UI `/next/ia/interna` mostra ora il periodo attivo, consente preset rapidi e intervallo personalizzato, e riporta il periodo anche negli artifact locali e nella memoria recente del modulo.
+- La chat mock puo interpretare richieste con periodo esplicito (`ultimi 30 giorni`, `ultimi 90 giorni`, `ultimo mese`, `dal ... al ...`) e, se il prompt non specifica nulla, riusa il periodo attivo nella UI guidata del modulo.
+- Nessun dataset business, nessun backend IA reale e nessun runtime legacy IA vengono coinvolti da questa estensione.
+
+## 12.10 Aggiornamento 2026-03-13
+- Il subtree `/next/ia/interna*` supporta ora anche una preview combinata `mezzo + autista + periodo`, separata dai report singoli ma costruita sopra gli stessi facade read-only.
+- La nuova preview:
+  - riusa il report mezzo gia filtrato;
+  - riusa il report autista gia filtrato;
+  - aggiunge solo il matching trasparente fra i due perimetri, basato su `D01` per il legame anagrafico e su `D10` / `D04` per l'intersezione reale nel periodo.
+- Il livello di affidabilita del legame mezzo-autista viene dichiarato in modo esplicito:
+  - `forte` solo con match `autistaId` sul mezzo;
+  - `plausibile` con nome dichiarato sul mezzo o segnali compatibili D10/D04;
+  - `non dimostrabile` quando il repo non mostra ancora un legame leggibile.
+- La UI overview mostra un blocco dedicato `Anteprima report combinato mezzo + autista`, che riusa le selezioni guidate gia attive per mezzo, autista e periodo.
+- La memoria locale del modulo e il tracking isolato distinguono ora anche le ultime coppie mezzo/autista analizzate.
+- La chat mock e stata riallineata in modo minimo e pulito per riconoscere richieste come:
+  - `fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni`;
+  - `analizza Mario Rossi sul mezzo TI123456`.
+- Nessuna scrittura Firestore/Storage business, nessun backend IA reale, nessun riuso runtime IA legacy e nessun segreto lato client vengono introdotti da questa estensione.
+
+## 12.11 Aggiornamento 2026-03-13
+- L'archivio artifact locale del sottosistema IA e stato esteso in archivio intelligente consultabile, sempre confinato al clone `/next/ia/interna*`.
+- Gli artifact locali mantengono retrocompatibilita con quelli gia salvati e vengono ora arricchiti con metadati filtrabili e scalabili:
+  - tipo report;
+  - stato artifact;
+  - targa e autista;
+  - periodo;
+  - ambiti/famiglie derivate dai dataset letti;
+  - testo sintetico ricercabile;
+  - affidabilita del matching per i report combinati.
+- La UI archivio espone ora:
+  - barra di ricerca libera;
+  - filtri combinabili per tipo, stato, ambito, targa, autista e periodo;
+  - ordinamento per aggiornamento piu recente;
+  - badge chiari per tipo report, stato e ambito;
+  - azione `Riapri report` che ripristina la preview corretta nel modulo principale.
+- La memoria locale del modulo IA conserva anche:
+  - ultima ricerca archivio;
+  - ultimi filtri archivio usati;
+  - ultimo artifact riaperto.
+- Le famiglie/ambiti vengono assegnati solo quando sono ricavabili dai dataset gia letti dai report esistenti:
+  - `manutenzioni`, `rifornimenti`, `costi`, `documenti`, `operativo`;
+  - `misto` quando il report copre piu famiglie;
+  - `non classificato` quando i metadati non consentono una classificazione piu precisa.
+- Nessuna scrittura Firestore/Storage business, nessun backend IA reale, nessun riuso runtime IA legacy e nessun impatto sui flussi correnti vengono introdotti da questa estensione.
+
+## 12.12 Aggiornamento 2026-03-13
+- Eseguito audit strutturale mirato sulle logiche di lettura/incrocio dati del sottosistema IA interno, con focus su:
+  - report mezzo;
+  - report autista;
+  - report combinato;
+  - filtri periodo;
+  - lookup mezzo/autista;
+  - chat mock.
+- Punti risultati strutturalmente solidi:
+  - riuso dei layer NEXT read-only gia verificati invece di letture raw in pagina;
+  - filtro periodo centralizzato e condiviso;
+  - separazione esplicita tra copertura completa, parziale e non filtrabile;
+  - report combinato che mantiene distinta l'affidabilita del legame mezzo-autista.
+- Punti deboli confermati dall'audit:
+  - il matching badge/nome nei facade autista e combinato resta prudente ma ancora rigido, quindi puo perdere record quando badge e nome non sono coerenti tra D04 e D10;
+  - il lookup/autista e alcuni fallback nome restano sensibili a possibili omonimie;
+  - il contesto mezzi dell'autista resta piu completo nel blocco rifornimenti che nell'intestazione anagrafica del report.
+- Fix minimo applicato subito nello stesso task:
+  - la chat mock ora ripulisce correttamente il suffisso periodo dalle richieste autista (`ultimo mese`, `ultimi 30 giorni`, `dal ... al ...`) prima del lookup esatto, evitando un falso `not found` a monte.
+- Nessuna scrittura Firestore/Storage business, nessun backend IA reale, nessun riuso runtime IA legacy e nessun impatto sui flussi correnti vengono introdotti da questo audit.
+
+## 12.13 Aggiornamento 2026-03-13
+- Il matching identita autista del sottosistema IA interno segue ora una regola badge-first unica e riusabile tra:
+  - D01 anagrafiche persone/flotta;
+  - D10 Centro Controllo;
+  - D04 rifornimenti.
+- La gerarchia effettiva del matching e ora:
+  - `autistaId` sul mezzo o badge coerente nel record = match forte;
+  - nome esatto solo come fallback plausibile, quando il riferimento forte manca davvero;
+  - badge o `autistaId` incoerenti = nessun match certo, anche se il nome coincide.
+- Il lookup autista e stato riallineato alla stessa regola:
+  - badge esatto prima;
+  - nome esatto solo se univoco;
+  - nessun auto-match arbitrario sugli omonimi.
+- Il report autista applica ora questa regola a:
+  - segnali operativi D10;
+  - rifornimenti D04;
+  - associazioni mezzo/autista ricostruite da D01.
+- Il report combinato mezzo + autista + periodo riallinea l'affidabilita del legame:
+  - `forte` con `autistaId` coerente o badge coerente nei record D10/D04 del mezzo;
+  - `plausibile` solo con fallback nome quando manca il riferimento forte;
+  - `non dimostrabile` se esistono contraddizioni forti o mancano conferme.
+- Nessuna scrittura Firestore/Storage business, nessun backend IA reale, nessun riuso runtime IA legacy e nessun impatto sui flussi correnti vengono introdotti da questo riallineamento.
+
+## 12.14 Aggiornamento 2026-03-13
+- Eseguito audit mirato del `report mezzo / targa` del sottosistema IA interno, con focus su:
+  - lavori;
+  - manutenzioni / gomme;
+  - rifornimenti;
+  - materiali / movimenti;
+  - documenti / costi;
+  - analisi economica salvata.
+- Punti risultati strutturalmente solidi:
+  - riuso del composito `readNextDossierMezzoCompositeSnapshot` come punto unico di lettura read-only;
+  - filtro periodo applicato in modo coerente a lavori, manutenzioni, rifornimenti e documenti/costi;
+  - ricostruzione D04 gia prudente e multi-sorgente nel layer rifornimenti;
+  - dedup e tracciabilita esplicita del blocco documenti/costi.
+- Punti deboli confermati dall'audit:
+  - il blocco gomme continua a leggere solo `@manutenzioni` e non incorpora ancora gli eventi autisti dedicati fuori da quel reader;
+  - il blocco materiali resta mezzo-centrico ma strutturalmente parziale, perche una parte dei match dipende ancora da `destinatario.label` o `destinatario.refId`;
+  - il blocco documenti/costi non include ancora `@preventivi` e `@preventivi_approvazioni`, coerentemente con il perimetro clone-safe attuale.
+- Fix minimo applicato subito nello stesso task:
+  - la preview del report mezzo considera ora anche movimenti materiali e analisi economica salvata come segnali reali di copertura, evitando stati troppo pessimisti quando questi sono gli unici blocchi disponibili;
+  - la sezione `Documenti, costi e analisi` non viene piu presentata come vuota quando e disponibile una analisi economica legacy salvata anche se i documenti/costi nel periodo sono assenti.
+- Nessuna scrittura Firestore/Storage business, nessun backend IA reale, nessun riuso runtime IA legacy e nessun impatto sui flussi correnti vengono introdotti da questo audit/fix.
+
+## 12.15 Aggiornamento 2026-03-13
+- Eseguito audit + rafforzamento mirato del solo blocco `Gomme` nel `report mezzo / targa` del sottosistema IA interno.
+- Il layer `nextManutenzioniGommeDomain` non legge piu solo le voci `CAMBIO GOMME` derivate da `@manutenzioni`, ma converge ora in sola lettura anche:
+  - `@cambi_gomme_autisti_tmp`;
+  - `@gomme_eventi`.
+- Regola di matching mezzo applicata nel blocco gomme:
+  - `targetTarga` o `targa` coerenti = match forte;
+  - `targaCamion`, `targaRimorchio` e `contesto.*` = solo match plausibile quando manca una targa diretta;
+  - nessun match contestuale viene presentato come conferma forte del mezzo.
+- Per evitare doppio conteggio, gli eventi gomme extra gia importati nello storico manutenzioni vengono deduplicati solo quando coincidono davvero su:
+  - giorno;
+  - targa;
+  - asse;
+  - marca;
+  - km.
+- La preview `report mezzo` rende ora il blocco piu trasparente:
+  - distingue eventi gomme da manutenzioni e da dataset gomme dedicati;
+  - espone quanti match sono forti e quanti plausibili;
+  - mantiene espliciti i limiti residui sui record senza chiavi targa affidabili.
+- Nessuna scrittura Firestore/Storage business, nessun backend IA reale, nessun riuso runtime IA legacy e nessun impatto sui flussi correnti vengono introdotti da questo rafforzamento.
 
 ## 12. Cosa non va ancora fatto
 - Non implementare chat IA runtime collegata ai backend legacy.
