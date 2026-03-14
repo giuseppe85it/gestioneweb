@@ -37,9 +37,25 @@ export type NextMaterialeMovimentoDestinatarioType =
 
 export type NextMaterialeMovimentoMezzoMatchKind =
   | "direct_targa"
-  | "destinatario_label"
+  | "destinatario_label_targa"
+  | "destinatario_ref_targa"
   | "destinatario_ref_id"
   | null;
+
+export type NextMaterialeMovimentoMezzoMatchReliability =
+  | "forte"
+  | "plausibile";
+
+export type NextMaterialiMovimentiCoverageMatch =
+  | "forte"
+  | "mista"
+  | "plausibile"
+  | "vuota";
+
+export type NextMaterialiMovimentiPeriodFilterStatus =
+  | "affidabile"
+  | "parziale"
+  | "non_dimostrabile";
 
 export const NEXT_MATERIALI_MOVIMENTI_DOMAIN = {
   code: "D05-MATERIALI",
@@ -67,7 +83,8 @@ export const NEXT_MATERIALI_MOVIMENTI_DOMAIN = {
     ] as const,
     mezzoMatchKinds: [
       "direct_targa",
-      "destinatario_label",
+      "destinatario_label_targa",
+      "destinatario_ref_targa",
       "destinatario_ref_id",
     ] as const,
   },
@@ -129,6 +146,7 @@ export type NextMaterialeMovimentoCostSnapshot = {
 export type NextMezzoMaterialeMovimentoReadOnlyItem =
   NextMaterialeMovimentoReadOnlyItem & {
     mezzoMatchKind: Exclude<NextMaterialeMovimentoMezzoMatchKind, null>;
+    mezzoMatchReliability: NextMaterialeMovimentoMezzoMatchReliability;
     costoUnitario: number | null;
     costoTotale: number | null;
     costoCurrency: NextDocumentiCostiCurrency;
@@ -177,11 +195,20 @@ export type NextMezzoMaterialiMovimentiSnapshot = {
   counts: {
     total: number;
     matchedByExplicitTarga: number;
-    matchedByDestinatarioLabel: number;
+    matchedByDestinatarioLabelTarga: number;
+    matchedByDestinatarioRefTarga: number;
     matchedByDestinatarioRefId: number;
+    matchedStrong: number;
+    matchedPlausible: number;
     withCost: number;
     withoutCost: number;
     withFornitore: number;
+    withReliableDate: number;
+    withoutReliableDate: number;
+  };
+  coverage: {
+    match: NextMaterialiMovimentiCoverageMatch;
+    periodFilter: NextMaterialiMovimentiPeriodFilterStatus;
   };
   materialCostSupport: {
     documentCount: number;
@@ -241,6 +268,11 @@ function normalizeOptionalText(value: unknown): string | null {
 
 function normalizeMatchTarga(value: unknown): string {
   return normalizeNextMezzoTarga(value).replace(/[^A-Z0-9]/g, "");
+}
+
+function looksLikeVehicleTarga(value: string | null): boolean {
+  if (!value) return false;
+  return /^[A-Z0-9]{5,10}$/.test(value) && /\d/.test(value);
 }
 
 function normalizeNumber(value: unknown): number | null {
@@ -602,6 +634,7 @@ function buildGlobalLimitations(args: {
     datasetShape === "unsupported"
       ? "Il dataset `@materialiconsegnati` non espone una shape supportata fuori dai formati `array/value/items`."
       : null,
+    "Nel repo i writer legacy non sono uniformi: `MaterialiConsegnati` salva il mezzo con `destinatario.label = targa` e `destinatario.refId = id mezzo`, mentre `Manutenzioni` genera consegne con `destinatario.label = targa` e `destinatario.refId = targa`.",
     counts.conDestinatarioStringa > 0
       ? "Una parte di `@materialiconsegnati` usa ancora `destinatario` come stringa legacy invece che come oggetto strutturato."
       : null,
@@ -624,23 +657,52 @@ function resolveMezzoMatch(args: {
 }): NextMaterialeMovimentoMezzoMatchKind {
   const { item, mezzoTarga, mezzoId } = args;
 
-  if (item.mezzoTarga && normalizeMatchTarga(item.mezzoTarga) === mezzoTarga) {
+  const explicitTarga = item.mezzoTarga
+    ? normalizeMatchTarga(item.mezzoTarga)
+    : null;
+  const destinatarioLabelTarga = looksLikeVehicleTarga(
+    normalizeMatchTarga(item.destinatario.label)
+  )
+    ? normalizeMatchTarga(item.destinatario.label)
+    : null;
+  const destinatarioRefTarga = looksLikeVehicleTarga(
+    normalizeMatchTarga(item.destinatario.refId)
+  )
+    ? normalizeMatchTarga(item.destinatario.refId)
+    : null;
+
+  const aliasTargets = [...new Set(
+    [explicitTarga, destinatarioLabelTarga, destinatarioRefTarga].filter(
+      (entry): entry is string => Boolean(entry)
+    )
+  )];
+  if (aliasTargets.length > 1) {
+    return null;
+  }
+
+  if (explicitTarga === mezzoTarga) {
     return "direct_targa";
   }
 
-  if (item.destinatario.label && normalizeMatchTarga(item.destinatario.label) === mezzoTarga) {
-    return "destinatario_label";
+  if (destinatarioLabelTarga === mezzoTarga) {
+    return "destinatario_label_targa";
+  }
+
+  if (destinatarioRefTarga === mezzoTarga) {
+    return "destinatario_ref_targa";
   }
 
   if (mezzoId && item.destinatario.refId === mezzoId) {
     return "destinatario_ref_id";
   }
 
-  if (item.destinatario.refId && normalizeMatchTarga(item.destinatario.refId) === mezzoTarga) {
-    return "destinatario_ref_id";
-  }
-
   return null;
+}
+
+function deriveMezzoMatchReliability(
+  mezzoMatchKind: Exclude<NextMaterialeMovimentoMezzoMatchKind, null>
+): NextMaterialeMovimentoMezzoMatchReliability {
+  return mezzoMatchKind === "destinatario_ref_id" ? "plausibile" : "forte";
 }
 
 function normalizeMaterialMatchText(value: unknown): string {
@@ -748,8 +810,16 @@ function resolveMaterialCost(
     };
   }
 
-  const { score: _score, timestamp: _timestamp, ...resolved } = bestCandidate;
-  return resolved;
+  return {
+    costoUnitario: bestCandidate.costoUnitario,
+    costoTotale: bestCandidate.costoTotale,
+    costoCurrency: bestCandidate.costoCurrency,
+    costoSourceCollection: bestCandidate.costoSourceCollection,
+    costoSourceDocId: bestCandidate.costoSourceDocId,
+    costoMatchedDescription: bestCandidate.costoMatchedDescription,
+    quality: bestCandidate.quality,
+    flags: [...bestCandidate.flags],
+  };
 }
 
 function buildPerMezzoLimitations(args: {
@@ -758,16 +828,29 @@ function buildPerMezzoLimitations(args: {
   supportDocuments: NextDocumentiMagazzinoSupportDocument[];
 }): string[] {
   const { items, mezzoId, supportDocuments } = args;
+  const withReliableDate = items.filter((item) => item.timestamp !== null).length;
 
   return [
     !mezzoId
       ? "Il reader mezzo-centrico non ha un id mezzo canonico in input: i match `destinatario.refId` restano limitati ai casi in cui il ref contiene gia la targa."
       : null,
-    items.some((item) => item.mezzoMatchKind === "destinatario_label")
-      ? "Una parte dei movimenti mezzo viene collegata solo tramite `destinatario.label`, perche `@materialiconsegnati` non espone sempre una targa esplicita."
+    items.some((item) => item.mezzoMatchKind === "destinatario_label_targa")
+      ? "Una parte dei movimenti mezzo non usa un campo `targa` dedicato ma salva comunque la targa esatta in `destinatario.label`; il layer la tratta come match forte, non come inferenza testuale."
+      : null,
+    items.some((item) => item.mezzoMatchKind === "destinatario_ref_targa")
+      ? "Una parte dei movimenti mezzo salva la targa esatta in `destinatario.refId`; il layer la tratta come match forte finche non emergono alias conflittuali."
       : null,
     items.some((item) => item.mezzoMatchKind === "destinatario_ref_id")
-      ? "Una parte dei movimenti mezzo viene collegata tramite `destinatario.refId`, che nel repo legacy puo rappresentare sia la targa sia l'id mezzo."
+      ? "Una parte dei movimenti mezzo viene collegata solo tramite `destinatario.refId = id mezzo`: questi record restano match plausibili, non certi."
+      : null,
+    items.length > 0 && withReliableDate === items.length
+      ? "Sui movimenti inclusi il filtro periodo e applicabile: tutte le righe matched espongono una data parsabile dal layer read-only."
+      : null,
+    items.length > 0 && withReliableDate > 0 && withReliableDate < items.length
+      ? "Il filtro periodo sui materiali resta solo parziale: non tutte le righe matched espongono una data parsabile."
+      : null,
+    items.length > 0 && withReliableDate === 0
+      ? "Il filtro periodo sui materiali non e dimostrabile: le righe matched non espongono una data parsabile."
       : null,
     supportDocuments.length === 0
       ? "Nessun supporto `@documenti_magazzino` disponibile per ricostruire i costi materiali del mezzo."
@@ -776,6 +859,27 @@ function buildPerMezzoLimitations(args: {
       ? "I costi materiali restano derivati da match descrittivo sulle righe `voci` di `@documenti_magazzino`; non sono costi inventariali transazionali."
       : null,
   ].filter((entry): entry is string => Boolean(entry));
+}
+
+function deriveMatchCoverage(counts: NextMezzoMaterialiMovimentiSnapshot["counts"]): NextMaterialiMovimentiCoverageMatch {
+  if (counts.total === 0) return "vuota";
+  if (counts.matchedStrong > 0 && counts.matchedPlausible > 0) return "mista";
+  if (counts.matchedPlausible > 0) return "plausibile";
+  return "forte";
+}
+
+function derivePeriodFilterCoverage(
+  counts: NextMezzoMaterialiMovimentiSnapshot["counts"]
+): NextMaterialiMovimentiPeriodFilterStatus {
+  if (counts.total === 0 || counts.withReliableDate === 0) {
+    return "non_dimostrabile";
+  }
+
+  if (counts.withoutReliableDate > 0) {
+    return "parziale";
+  }
+
+  return "affidabile";
 }
 
 export async function readNextMaterialiMovimentiSnapshot(): Promise<NextMaterialiMovimentiSnapshot> {
@@ -838,6 +942,7 @@ export function buildNextMezzoMaterialiMovimentiSnapshot(args: {
         return {
           ...item,
           mezzoMatchKind,
+          mezzoMatchReliability: deriveMezzoMatchReliability(mezzoMatchKind),
           costoUnitario: cost.costoUnitario,
           costoTotale: cost.costoTotale,
           costoCurrency: cost.costoCurrency,
@@ -857,15 +962,22 @@ export function buildNextMezzoMaterialiMovimentiSnapshot(args: {
   const counts = {
     total: items.length,
     matchedByExplicitTarga: items.filter((item) => item.mezzoMatchKind === "direct_targa").length,
-    matchedByDestinatarioLabel: items.filter(
-      (item) => item.mezzoMatchKind === "destinatario_label"
+    matchedByDestinatarioLabelTarga: items.filter(
+      (item) => item.mezzoMatchKind === "destinatario_label_targa"
+    ).length,
+    matchedByDestinatarioRefTarga: items.filter(
+      (item) => item.mezzoMatchKind === "destinatario_ref_targa"
     ).length,
     matchedByDestinatarioRefId: items.filter(
       (item) => item.mezzoMatchKind === "destinatario_ref_id"
     ).length,
+    matchedStrong: items.filter((item) => item.mezzoMatchReliability === "forte").length,
+    matchedPlausible: items.filter((item) => item.mezzoMatchReliability === "plausibile").length,
     withCost: items.filter((item) => item.costoTotale !== null).length,
     withoutCost: items.filter((item) => item.costoTotale === null).length,
     withFornitore: items.filter((item) => Boolean(item.fornitore)).length,
+    withReliableDate: items.filter((item) => item.timestamp !== null).length,
+    withoutReliableDate: items.filter((item) => item.timestamp === null).length,
   };
 
   return {
@@ -880,6 +992,10 @@ export function buildNextMezzoMaterialiMovimentiSnapshot(args: {
     datasetShape: args.baseSnapshot.datasetShape,
     items,
     counts,
+    coverage: {
+      match: deriveMatchCoverage(counts),
+      periodFilter: derivePeriodFilterCoverage(counts),
+    },
     materialCostSupport: {
       documentCount: supportDocuments.length,
       rowCount: supportDocuments.reduce((total, document) => total + document.voci.length, 0),

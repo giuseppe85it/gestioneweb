@@ -4,6 +4,7 @@ Questo file e il punto di ingresso piu semplice per capire il progetto.
 
 Prima di tutto leggi sempre:
 1. `docs/STATO_ATTUALE_PROGETTO.md`
+2. `AGENTS.md` se il task e operativo e viene eseguito da Codex
 
 Poi, per orientarti velocemente, leggi questi documenti in questo ordine:
 1. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
@@ -24,7 +25,7 @@ Spiega dove stanno i dati, chi li scrive, chi li legge e quali regole evitare pe
 Spiega ruoli, permessi e regole di sicurezza da rispettare.
 
 ### `product`
-Contiene decisioni di progetto, regole operative Codex e registro dei punti ancora aperti.
+Contiene decisioni di progetto, supporti operativi Codex e registro dei punti ancora aperti.
 
 ### `change-reports`
 Contiene mini report delle singole modifiche fatte nel tempo.

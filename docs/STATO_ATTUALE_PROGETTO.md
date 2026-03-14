@@ -6,7 +6,7 @@
 - **Stato nuova app next**: l'implementazione NEXT attuale e ora considerata un esperimento sospeso; non va piu estesa secondo la regia precedente e dovra essere archiviata per lasciare spazio a un clone `read-only` fedele della madre in `src/next/*`.
 - **Inversione strategica NEXT (2026-03-10)**: la regia precedente basata su shell reinterpretata e ingressi dominio-centrici progressivi e sospesa; la nuova strategia ufficiale e creare prima un clone UX 1:1 della madre, in sola lettura, con blocco totale delle scritture, e innestare solo in fase successiva layer puliti, IA e tracking sopra quel clone.
 - **Stato documentazione**: struttura madre disponibile, documenti core rinominati in italiano, indice e guida di ingresso presenti.
-- **Stato processo Codex/report**: regole operative attive (`AGENTS.md`, `REGOLE_LAVORO_CODEX.md`) + template/report di change e continuity gia presenti.
+- **Stato processo Codex/report**: `AGENTS.md` e ora la fonte primaria operativa di Codex; `docs/product/REGOLE_LAVORO_CODEX.md` resta supporto sintetico/storico e change report + continuity report restano obbligatori quando il task modifica file del repo.
 - **Protocollo sicurezza modifiche**: attivo tramite `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`; ogni patch deve passare da analisi impatto prima dell'applicazione.
 - **Audit repo vs docs**: eseguito con report dedicato in `docs/audit/`; emerse differenze ad alta priorita su endpoint IA/PDF, policy dati/sicurezza effettive e route legacy ancora attive.
 - **Verifica infrastrutturale Firebase/Backend (2026-03-07)**: eseguita in sola lettura; criticita reali confermate su Storage se toccato senza analisi e su canali backend IA/PDF non canonici (`aiCore` non esportata nel repo backend, libretto su Cloud Run esterno); `estraiPreventivoIA` e `stamp_pdf` risultano invece flussi reali da consolidare/documentare.
@@ -76,6 +76,7 @@
 - Creata documentazione madre completa del progetto.
 - Rinomina documenti core in italiano per maggiore leggibilita.
 - `AGENTS.md` creato/aggiornato come guida operativa permanente.
+- Consolidato `AGENTS.md` come fonte primaria operativa Codex, con workflow rapido, formato corto dei task futuri e richiamo esplicito alla checklist unica per i task IA.
 - Struttura `change-reports` creata con regole e template.
 - Struttura `continuity-reports` creata con regole e template.
 - Creato `REGISTRO_PUNTI_DA_VERIFICARE` per memoria fissa dei temi aperti.

@@ -21,8 +21,10 @@ Indice dei documenti architetturali/dati/sicurezza che costituiscono la base del
    Regole trasversali (PDF, IA, ricerca, sicurezza, navigazione mezzo, report).
 9. `docs/product/STORICO_DECISIONI_PROGETTO.md`  
    Registro decisioni architetturali con stato confermato/da verificare.
-10. `docs/product/REGOLE_LAVORO_CODEX.md`  
-   Regole operative per futuri prompt Codex.
+10. `AGENTS.md`  
+   Fonte primaria operativa di Codex sul repository.
+11. `docs/product/REGOLE_LAVORO_CODEX.md`  
+   Supporto sintetico/storico alle regole operative di Codex.
 
 ## 2) Documenti di base gia prodotti (supporto)
 - `docs/data/CENSIMENTO_DOMINI_DATI_STEP1.md`  
@@ -45,7 +47,8 @@ Indice dei documenti architetturali/dati/sicurezza che costituiscono la base del
 4. Poi usa `MAPPA_COMPLETA_DATI` e `REGOLE_STRUTTURA_DATI` per i dettagli fisici ed entity-level.
 5. Prima di toccare accessi/sicurezza, consulta `SICUREZZA_E_PERMESSI`.
 6. Registra nuove scelte in `STORICO_DECISIONI_PROGETTO`.
-7. Applica le regole operative in `REGOLE_LAVORO_CODEX`.
+7. Applica le regole operative in `AGENTS.md`.
+8. Usa `docs/product/REGOLE_LAVORO_CODEX.md` solo come supporto sintetico/storico.
 
 ## 4) Convenzioni di stato (obbligatorie nei docs)
 - `CONFERMATO`: dimostrato dal repository.

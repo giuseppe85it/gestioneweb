@@ -1,5 +1,27 @@
 # AGENTS.md - Guida Operativa Permanente Codex (GestioneManutenzione)
 
+## Fonte primaria operativa
+- `AGENTS.md` e la fonte primaria delle istruzioni operative permanenti di Codex in questo repository.
+- I prompt futuri possono essere piu corti: bastano `obiettivo`, `perimetro` e `output richiesto`, salvo vincoli extra specifici del task.
+- I documenti di progetto restano fonte di verita per stato, dati, sicurezza e decisioni; `AGENTS.md` li rende operativi in forma stabile e sintetica.
+
+## Workflow operativo rapido
+- Leggere i documenti obbligatori in base al task prima di patchare.
+- Classificare richiesta, perimetro e rischio prima di toccare file.
+- Tenere i task piccoli, separati e reversibili.
+- Preferire patch minimali e controllate; niente modifiche fuori perimetro.
+- Eseguire build/lint solo se il task tocca runtime, logica o contratti; non fare build inutili sui task solo markdown.
+- Chiudere sempre con file toccati, rischio/impatto, rischi residui e hash commit se presente.
+- Se il task modifica file del repository, creare change report e continuity report.
+
+## Regole progetto GestioneManutenzione
+- Madre intoccabile.
+- `src/next/*` e area clone/NEXT sicura; nessuna scrittura business reale nel clone senza richiesta esplicita e coerente.
+- Il sottosistema IA interna resta isolato sotto `/next/ia/interna*`.
+- Nessun riuso runtime dei moduli IA legacy nel nuovo sottosistema IA interna.
+- Tutti i testi visibili nel gestionale devono essere in italiano.
+- Matching e incroci dati devono essere accurati, strutturali e spiegabili; niente deduzioni cosmetiche presentate come certezze.
+
 ## Regola iniziale
 - **MODE = OPERAIO** e il default per i task operativi su questo repository.
 - Se il prompt specifica un altro mode, seguire il prompt.
@@ -111,8 +133,28 @@
 7. `docs/data/REGOLE_STRUTTURA_DATI.md`
 8. `docs/security/SICUREZZA_E_PERMESSI.md`
 9. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
-10. altri documenti rilevanti in `docs/` in base al task
-11. `docs/product/STATO_MIGRAZIONE_NEXT.md` quando il task tocca la nuova app NEXT
+10. `docs/product/REGOLE_LAVORO_CODEX.md` come supporto sintetico/storico
+11. `docs/product/CHECKLIST_IA_INTERNA.md` quando il task riguarda il sottosistema IA interno
+12. `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md` quando il task riguarda il sottosistema IA interno
+13. `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md` quando il task riguarda il sottosistema IA interno
+14. `docs/product/STATO_MIGRAZIONE_NEXT.md` quando il task tocca la nuova app NEXT
+15. altri documenti rilevanti in `docs/` in base al task
+
+## Regole per i task IA interna
+- Operare solo nel perimetro clone/NEXT e del sottosistema isolato.
+- Niente backend IA reale, provider reali, segreti lato client o scritture business se non richiesti esplicitamente dal task.
+- Ogni task IA deve aggiornare obbligatoriamente `docs/product/CHECKLIST_IA_INTERNA.md`.
+- Per i task IA consultare anche `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md` e `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`.
+- Ogni nuovo blocco IA deve restare verificabile, clone-safe e con limiti/copertura dichiarati.
+- Preferire audit + fix strutturale a soluzioni cosmetiche o demo poco spiegabili.
+
+## Formato preferito dei task
+- I task futuri possono arrivare in forma corta.
+- Formato preferito: `Obiettivo`.
+- Formato preferito: `Perimetro` oppure `Whitelist`.
+- Formato preferito: `Output richiesto`.
+- I vincoli stabili non vanno ripetuti ogni volta: si ereditano da `AGENTS.md` e dai documenti progetto.
+- Se il task riguarda la IA interna, l'obbligo di aggiornare la checklist vale anche se il prompt non lo ripete.
 
 ## Regola whitelist (bloccante)
 - Se per implementare serve toccare file fuori whitelist, fermarsi subito e dichiarare solo:

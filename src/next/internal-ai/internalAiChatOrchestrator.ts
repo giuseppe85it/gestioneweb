@@ -111,6 +111,7 @@ function buildCapabilitiesResponse(): InternalAiChatTurnResult {
       "Posso aiutarti solo con capacita gia attive e sicure del sottosistema IA interno.\n\n" +
       "Oggi posso:\n" +
       "- creare una anteprima report per targa in sola lettura;\n" +
+      "- aprire dalla home una anteprima di analisi economica mezzo, basata su layer clone-safe e snapshot legacy salvato;\n" +
       "- spiegare quali fonti vengono lette e quali dati mancano;\n" +
       "- indirizzarti verso l'archivio artifact IA locale del clone;\n" +
       "- chiarire quando una funzione non e ancora disponibile.\n\n" +

@@ -10,8 +10,10 @@ import {
 } from "../nextOperativitaTecnicaDomain";
 import {
   type NextDocumentiCostiLegacyViewItem,
+  type NextDocumentiCostiProcurementSupportSnapshot,
   type NextMezzoDocumentiCostiSnapshot,
   mapNextDocumentiCostiItemsToLegacyView,
+  readNextDocumentiCostiProcurementSupportSnapshot,
   readNextMezzoDocumentiCostiSnapshot,
 } from "./nextDocumentiCostiDomain";
 import {
@@ -135,6 +137,7 @@ export type NextDossierMezzoOverview = {
   refuelLimitations: string[];
   documentCostLimitations: string[];
   analysisLimitations: string[];
+  procurementLimitations: string[];
 };
 
 export type NextDossierRifornimentoLegacyItem = {
@@ -180,6 +183,7 @@ export type NextDossierMezzoCompositeSnapshot = {
   maintenance: NextDossierDomainSectionState<NextMezzoManutenzioniGommeSnapshot>;
   refuels: NextDossierDomainSectionState<NextMezzoRifornimentiSnapshot>;
   documentCosts: NextDossierDomainSectionState<NextMezzoDocumentiCostiSnapshot>;
+  procurementPerimeter: NextDossierDomainSectionState<NextDocumentiCostiProcurementSupportSnapshot>;
   analisiEconomica: NextDossierDomainSectionState<NextDossierAnalisiEconomicaSupportSnapshot>;
   overview: NextDossierMezzoOverview;
 };
@@ -568,6 +572,7 @@ function buildOverview(args: {
   maintenance: NextDossierDomainSectionState<NextMezzoManutenzioniGommeSnapshot>;
   refuels: NextDossierDomainSectionState<NextMezzoRifornimentiSnapshot>;
   documentCosts: NextDossierDomainSectionState<NextMezzoDocumentiCostiSnapshot>;
+  procurementPerimeter: NextDossierDomainSectionState<NextDocumentiCostiProcurementSupportSnapshot>;
   analisiEconomica: NextDossierDomainSectionState<NextDossierAnalisiEconomicaSupportSnapshot>;
 }): NextDossierMezzoOverview {
   const {
@@ -578,6 +583,7 @@ function buildOverview(args: {
     maintenance,
     refuels,
     documentCosts,
+    procurementPerimeter,
     analisiEconomica,
   } = args;
 
@@ -597,6 +603,7 @@ function buildOverview(args: {
     "nessuna scrittura clone",
     "nessuna rigenerazione IA dal clone",
     "nessun workflow approvativo o magazzino madre",
+    "procurement e approvazioni fuori dal perimetro base del dossier",
     "nessun merge debole in UI",
   ];
 
@@ -613,8 +620,9 @@ function buildOverview(args: {
     "Materiali/movimenti: layer read-only @materialiconsegnati",
     "Manutenzioni/gomme: layer read-only @manutenzioni + @mezzi_aziendali",
     "Rifornimenti: ricostruzione read-only da @rifornimenti e feed campo",
-    "Documenti e costi: @costiMezzo + collezioni documentali",
-    "Analisi economica legacy salvata: @analisi_economica_mezzi",
+    "Documenti e costi diretti: @costiMezzo + collezioni documentali",
+    "Procurement e approvazioni: audit perimetrale read-only su @preventivi e @preventivi_approvazioni",
+    "Snapshot analisi economica legacy salvata: @analisi_economica_mezzi",
   ];
 
   const keySignals = [
@@ -625,7 +633,7 @@ function buildOverview(args: {
       : "Lavori non disponibili dal layer read-only.",
     materialiMovimenti.status === "success"
       ? materialiMovimenti.snapshot?.counts.total
-        ? `Movimenti materiali collegati: ${materialiMovimenti.snapshot.counts.total} record.`
+        ? `Movimenti materiali collegati: ${materialiMovimenti.snapshot.counts.total} record (${materialiMovimenti.snapshot.counts.matchedStrong} match forti, ${materialiMovimenti.snapshot.counts.matchedPlausible} plausibili).`
         : "Nessun movimento materiali collegato al mezzo."
       : "Materiali/movimenti non disponibili dal layer read-only.",
     maintenance.status === "success"
@@ -640,9 +648,16 @@ function buildOverview(args: {
       : "Rifornimenti non disponibili dal layer clone.",
     documentCosts.status === "success"
       ? documentCosts.snapshot?.counts.total
-        ? `Documenti/costi letti: ${documentCosts.snapshot.counts.total} record collegati al mezzo.`
+        ? `Documenti/costi diretti: ${documentCosts.snapshot.counts.total} record (${documentCosts.snapshot.counts.withReliableDate} con data affidabile).`
         : "Nessun documento/costo utile letto per questa targa."
       : "Documenti/costi non disponibili dal layer clone.",
+    procurementPerimeter.status === "success"
+      ? procurementPerimeter.snapshot?.perimeterDecision === "fuori_perimetro"
+        ? `Procurement globale fuori perimetro: ${procurementPerimeter.snapshot.counts.preventiviGlobali} preventivi letti, ${procurementPerimeter.snapshot.counts.preventiviMatchForte} match forti sulla targa.`
+        : procurementPerimeter.snapshot?.perimeterDecision === "parziale"
+        ? `Procurement solo parziale: ${procurementPerimeter.snapshot.counts.preventiviMatchForte} preventivi con match forte ma workflow globale non mezzo-centrico.`
+        : "Procurement leggibile con match forte."
+      : "Supporto procurement/approvazioni non disponibile dal clone.",
     analisiEconomica.status === "success"
       ? analisiEconomica.snapshot?.savedAnalysis
         ? "Analisi economica legacy salvata presente e leggibile dal clone."
@@ -657,6 +672,7 @@ function buildOverview(args: {
     maintenance,
     refuels,
     documentCosts,
+    procurementPerimeter,
     analisiEconomica,
   ].filter((entry) => entry.status === "success").length;
 
@@ -700,6 +716,11 @@ function buildOverview(args: {
     ...(analisiEconomica.snapshot?.limitations ?? []),
   ].filter((entry): entry is string => Boolean(entry));
 
+  const procurementLimitations = [
+    procurementPerimeter.status === "error" ? procurementPerimeter.error : null,
+    ...(procurementPerimeter.snapshot?.limitations ?? []),
+  ].filter((entry): entry is string => Boolean(entry));
+
   return {
     mezzoTarga: mezzo.targa,
     importedBlockLabels,
@@ -713,6 +734,7 @@ function buildOverview(args: {
     refuelLimitations,
     documentCostLimitations,
     analysisLimitations,
+    procurementLimitations,
   };
 }
 
@@ -736,6 +758,7 @@ export async function readNextDossierMezzoCompositeSnapshot(
     maintenanceResult,
     refuelsResult,
     documentCostsResult,
+    procurementPerimeterResult,
     savedAnalysisResult,
   ] = await Promise.allSettled([
     readNextMezzoOperativitaTecnicaSnapshot(mezzoTarga),
@@ -744,6 +767,7 @@ export async function readNextDossierMezzoCompositeSnapshot(
     readNextMezzoManutenzioniGommeSnapshot(mezzoTarga),
     readNextMezzoRifornimentiSnapshot(mezzoTarga),
     readNextMezzoDocumentiCostiSnapshot(mezzoTarga),
+    readNextDocumentiCostiProcurementSupportSnapshot(mezzoTarga),
     readSavedAnalisiEconomicaRecord(mezzoTarga),
   ]);
 
@@ -769,6 +793,11 @@ export async function readNextDossierMezzoCompositeSnapshot(
     settled: documentCostsResult,
     error:
       "Impossibile leggere il blocco documenti/costi dal layer read-only dedicato.",
+  });
+  const procurementPerimeter = buildSectionState({
+    settled: procurementPerimeterResult,
+    error:
+      "Impossibile leggere il supporto procurement/approvazioni dal clone in sola lettura.",
   });
 
   const materialiMovimenti:
@@ -820,6 +849,7 @@ export async function readNextDossierMezzoCompositeSnapshot(
     maintenance,
     refuels,
     documentCosts,
+    procurementPerimeter,
     analisiEconomica,
     overview: buildOverview({
       mezzo,
@@ -829,6 +859,7 @@ export async function readNextDossierMezzoCompositeSnapshot(
       maintenance,
       refuels,
       documentCosts,
+      procurementPerimeter,
       analisiEconomica,
     }),
   };

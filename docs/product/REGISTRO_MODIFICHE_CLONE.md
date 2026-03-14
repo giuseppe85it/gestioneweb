@@ -31,6 +31,329 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-14 63
+- DATA: 2026-03-14
+- TITOLO MODIFICA: Stabilizzazione warning console e verifica hot reload del perimetro IA interna
+- OBIETTIVO: Chiudere il warning React sulle `key` e verificare se il `500 / failed to reload` segnalato su `NextInternalAiPage.tsx` fosse un errore reale del clone IA oppure un problema esterno al subtree.
+- FILE TOCCATI:
+  - `src/pages/Home.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0242_fix_stabilita-console-hot-reload-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0242_continuity_stabilita-console-hot-reload-ia-interna.md`
+- COSA E STATO CAMBIATO:
+  - E stato verificato che `src/next/NextInternalAiPage.tsx` oggi non presenta un errore sintattico o di import/export persistente.
+  - Il warning React che citava `Home` e stato ricondotto alla pagina madre montata dal clone come controparte `/next`.
+  - In `src/pages/Home.tsx` sono state rese stabili alcune `key` di liste che potevano collidere quando la stessa targa appariva piu volte.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun cambiamento visivo sostanziale nel clone IA; migliorata la stabilita console del contesto in cui vive.
+  - Lettura: invariata; nessun layer dati o dominio toccato.
+  - Blocco scritture: invariato; nessuna scrittura business riaperta.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna` e verificare che la pagina carichi senza errori persistenti su `NextInternalAiPage.tsx`.
+  - Aprire `/next` e controllare la console React sul rendering della `Home`.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Il fix runtime effettivo di questo task e nella madre perche la root cause del warning era realmente li.
+  - Il `500` Vite segnalato sul file IA non e risultato riproducibile nello stato corrente del repository.
+
+### Voce 2026-03-14 62
+- DATA: 2026-03-14
+- TITOLO MODIFICA: Pulizia forte UI dossier-like del report/preview IA interna
+- OBIETTIVO: Ridurre in modo deciso il rumore tecnico della route `/next/ia/interna*`, rendendo home e preview molto piu chiare, sintetiche e professionali senza toccare logica dati o backend.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0235_ui_pulizia-dossier-preview-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0235_continuity_pulizia-dossier-preview-ia-interna.md`
+- COSA E STATO CAMBIATO:
+  - La home ha meno elementi simultanei in vista: chat e richiesta restano centrali, mentre recenti, modalita non attive e dettagli tecnici diventano secondari.
+  - La preview report mostra ora subito solo hero, riepilogo executive e sezioni principali; fonti, limiti, stati e azioni locali sono stati spostati in espansioni comprimibili.
+  - La preview economica segue la stessa logica, con quadro principale in chiaro e perimetro tecnico solo secondario.
+  - Il CSS rafforza contrasto, gerarchia visiva e separazione tra area primaria e dettagli secondari.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il sottosistema IA interno appare meno come dashboard tecnica e piu come assistente gestionale professionale.
+  - Lettura: invariata; vengono usati gli stessi dati e le stesse facade gia presenti.
+  - Blocco scritture: invariato; nessuna scrittura business o workflow reale viene riaperto.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`.
+  - Verificare che la home mostri soprattutto chat e richiesta, con archivio/recenti e tecnico piu secondari.
+  - Generare un report mezzo e verificare che la preview mostri subito solo sintesi e sezioni principali.
+  - Aprire `Mostra dettagli`, `Mostra fonti` e `Mostra limiti` e verificare che i contenuti tecnici siano presenti ma non invasivi.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il task non attiva nuove modalita report e non modifica i perimetri dati gia definiti per il sottosistema IA interno.
+
+### Voce 2026-03-14 61
+- DATA: 2026-03-14
+- TITOLO MODIFICA: Riordino profondo UI home/preview del sottosistema IA interna
+- OBIETTIVO: Rendere `/next/ia/interna*` molto piu semplice, chiaro e professionale, correggendo il warning React sulle liste e spostando il risultato in una preview grande separata dalla home, senza toccare logica dati o backend.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0035_ui_fix-home-preview-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0035_continuity_fix-home-preview-ia-interna.md`
+- COSA E STATO CAMBIATO:
+  - La home IA non mostra piu il report inline: chat e richiesta targa restano al centro, mentre report mezzo e analisi economica si aprono in una preview overlay dedicata.
+  - Archivio/recenti restano accessibili ma meno invasivi; disponibilita modalita, assorbimento legacy e guard rail sono stati spostati nell'area avanzata comprimibile.
+  - Il CSS del subtree IA ora usa piu contrasto tra sfondi, card, badge e call to action, riducendo l'effetto monocromatico della versione precedente.
+  - Nel componente sono state corrette varie `key` deboli basate su stringhe ripetibili, per ridurre il warning React sulle liste.
+  - Verificato che l'errore Vite segnalato su `NextInternalAiPage.tsx` non e riproducibile nello stato corrente del repo; la build del clone passa.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la route IA interna passa da dashboard dispersiva a flusso piu netto `richiesta -> preview`.
+  - Lettura: invariata; la pagina continua a usare le stesse facade e gli stessi layer clone-safe gia esistenti.
+  - Blocco scritture: invariato; nessuna scrittura business o workflow reale viene riaperto.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`.
+  - Verificare che la home mostri chat centrale, richiesta targa e area secondaria meno invasiva.
+  - Generare un report mezzo o un'analisi economica e verificare che il risultato si apra in una preview overlay ampia e ordinata.
+  - Verificare che non compaiano warning React su `key` nel subtree IA interno nelle liste toccate da questa patch.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il task resta solo UI/UX: report autista e report combinato non sono stati attivati e non e stato toccato alcun layer dati.
+
+### Voce 2026-03-14 60
+- DATA: 2026-03-14
+- TITOLO MODIFICA: Primo assorbimento capability legacy alta priorita nel sottosistema IA interna
+- OBIETTIVO: Aprire nel clone il primo blocco reale di assorbimento di una capability legacy ad alta priorita, scegliendo `Analisi economica mezzo` in modalita preview-first e read-only, senza backend legacy canonico o scritture business.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiEconomicAnalysisFacade.ts`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `docs/architecture/MAPPA_FUNZIONI_IA_LEGACY_DA_ASSORBIRE.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0012_patch_assorbimento-analisi-economica-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0012_continuity_assorbimento-analisi-economica-ia-interna.md`
+- COSA E STATO CAMBIATO:
+  - Dichiarata e fissata come prima capability da assorbire `Analisi economica mezzo`, perche oggi e la piu riusabile in sicurezza sopra i layer read-only gia esistenti.
+  - Creato un facade dedicato che compone una preview economica spiegabile da documenti/costi diretti e snapshot legacy gia salvato, senza rigenerare IA.
+  - La home `/next/ia/interna` espone ora una preview separata di analisi economica, distinta dal report mezzo e con perimetro esplicito.
+  - Aggiornati mappa capability legacy, linee guida IA, checklist, stato avanzamento e stato migrazione NEXT.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il sottosistema IA interno puo ora mostrare una preview economica dedicata e dichiarata come primo assorbimento legacy.
+  - Lettura: usa solo layer clone-safe gia presenti e lo snapshot legacy `@analisi_economica_mezzi`; nessun reader raw nella UI.
+  - Blocco scritture: invariato; nessuna scrittura Firestore/Storage business e nessun runtime legacy riaperto.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`, selezionare una targa reale e usare `Apri analisi economica`.
+  - Verificare che la preview dichiari fonti, perimetro e cautele senza presentare il procurement come copertura diretta del mezzo.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiEconomicAnalysisFacade.ts src/next/internal-ai/internalAiChatOrchestrator.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - `libretto`, `documenti` e `preventivi` restano priorita alte, ma non sono state aperte in questo task per non introdurre upload, OCR o backend legacy nel clone.
+
+### Voce 2026-03-13 59
+- DATA: 2026-03-13
+- TITOLO MODIFICA: Ridisegno UI/UX del sottosistema IA interna nel clone
+- OBIETTIVO: Rendere `/next/ia/interna*` piu semplice, professionale e leggibile, con chat centrale in home e report mezzo piu vicino alla logica visiva del dossier, senza toccare la logica dati del sottosistema IA interno.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_2034_ui_ridisegno-ui-sottosistema-ia-interna.md`
+  - `docs/continuity-reports/2026-03-13_2034_continuity_ui-sottosistema-ia-interna.md`
+- COSA E STATO CAMBIATO:
+  - Ridisegnata la home IA per mettere la chat al centro con input ampio, suggerimenti rapidi ridotti e ricerca report mezzo piu ordinata.
+  - Spostati archivio, recenti, stati secondari, guard rail e dettagli tecnici in area laterale o avanzata per ridurre la sensazione di caos iniziale.
+  - Riorganizzata la preview report mezzo con header forte, card di riepilogo, sezioni principali separate, colonna laterale per fonti/copertura e blocchi dedicati per dati mancanti ed evidenze.
+  - Riallineati i testi visibili in italiano nelle etichette aggiornate dal redesign.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: interfaccia del sottosistema IA piu pulita, gerarchica e vicina a un assistente professionale, con report piu leggibile.
+  - Lettura: invariata; nessun domain, facade o reader modificato.
+  - Blocco scritture: invariato; nessuna scrittura Firestore/Storage business e nessun cambio ai flussi correnti.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna` e verificare che la home mostri chat e compositore come elemento principale, con archivio/recenti e dettagli tecnici relegati a sezioni secondarie.
+  - Generare un report mezzo e verificare che la preview abbia hero iniziale, card sintetiche, sezioni ordinate e colonna laterale per fonti/copertura e azioni.
+  - Eseguire `npx eslint src/next/NextInternalAiPage.tsx`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il task e solo UI/UX: non cambia la logica dati e non allarga il perimetro funzionale del sottosistema IA interno.
+
+### Voce 2026-03-13 58
+- DATA: 2026-03-13
+- TITOLO MODIFICA: Audit e mappa permanente delle funzioni IA legacy della madre da assorbire nella nuova IA
+- OBIETTIVO: Censire le funzioni IA legacy realmente presenti nel repo, distinguere quelle da assorbire nella nuova IA interna da quelle da lasciare fuori dal perimetro iniziale e fissare una matrice decisionale permanente senza riusare runtime legacy.
+- FILE TOCCATI:
+  - `docs/architecture/MAPPA_FUNZIONI_IA_LEGACY_DA_ASSORBIRE.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_2006_docs_audit-funzioni-ia-legacy-da-assorbire.md`
+  - `docs/continuity-reports/2026-03-13_2006_continuity_audit-funzioni-ia-legacy.md`
+- COSA E STATO CAMBIATO:
+  - Creata una mappa documentale permanente delle funzioni IA legacy reali del repo con classificazione per valore business, stato operativo, dipendenze e priorita di assorbimento.
+  - Aggiornate le linee guida del sottosistema IA per rendere obbligatorio il controllo di questa mappa prima di ogni nuovo task IA.
+  - Aggiornati checklist, stato avanzamento IA e stato migrazione NEXT per fissare che la nuova IA deve assorbire il valore di `libretto`, `documenti`, `analisi economica` e `preventivi`, ma non puo riusare writer, segreti client o backend legacy come runtime canonico.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna modifica runtime.
+  - Lettura: nessuna nuova lettura dati business nel clone; cambia solo il perimetro documentale permanente delle capability IA da considerare nei task futuri.
+  - Blocco scritture: invariato; nessuna scrittura Firestore/Storage business e nessun riuso runtime dei moduli IA legacy.
+- COME VERIFICARE:
+  - Aprire `docs/architecture/MAPPA_FUNZIONI_IA_LEGACY_DA_ASSORBIRE.md` e verificare che distingua chiaramente capability da `ASSORBIRE RIFACENDO`, capability verticali separate e canali fuori perimetro.
+  - Verificare che `docs/product/CHECKLIST_IA_INTERNA.md` contenga la nuova voce `L.7`.
+  - Verificare che `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md` e `docs/product/STATO_MIGRAZIONE_NEXT.md` richiamino la mappa come base per i futuri task IA.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - Il task non introduce feature IA nuove: fissa solo una decisione strutturale per non perdere valore della madre durante la costruzione della nuova IA interna.
+
+### Voce 2026-03-13 57
+- DATA: 2026-03-13
+- TITOLO MODIFICA: Decisione strutturale sul perimetro procurement-preventivi-approvazioni nel report mezzo IA interno
+- OBIETTIVO: Verificare se il workflow procurement puo entrare nel report mezzo IA interno senza inventare match non dimostrati e rendere esplicito il perimetro reale tra documenti diretti, snapshot analitici e approvazioni.
+- FILE TOCCATI:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/domain/nextDossierMezzoDomain.ts`
+  - `src/next/internal-ai/internalAiVehicleReportFacade.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1948_patch_audit-procurement-perimetro-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1948_continuity_procurement-perimetro-report-mezzo-ia.md`
+- COSA E STATO CAMBIATO:
+  - Esteso il dominio documenti-costi con un supporto read-only che misura separatamente `storage/@preventivi` e `storage/@preventivi_approvazioni`, senza farli entrare nel blocco economico diretto del mezzo.
+  - Aggiornato il composito dossier per includere il nuovo stato `procurementPerimeter` e propagare la decisione di perimetro alla sintesi mezzo.
+  - Aggiornata la facade del report IA per distinguere chiaramente documenti/costi diretti, snapshot `@analisi_economica_mezzi` e procurement/approvazioni come dominio separato.
+  - Tracciato nei documenti di stato che, sui dati reali correnti, `@preventivi` ha 7 record globali ma 0 match forti sulla targa, mentre l'unica approvazione letta annota un record di `@documenti_mezzi`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il report mezzo IA interno non presenta piu il procurement come copertura economica implicita del mezzo; dichiara invece che oggi resta fuori perimetro o solo supporto separato.
+  - Lettura: il clone aggiunge solo audit read-only dei dataset procurement reali, senza fonderli nei documenti/costi diretti del mezzo.
+  - Blocco scritture: invariato; nessuna scrittura Firestore/Storage business, nessun backend IA reale e nessun modulo IA legacy vengono coinvolti.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`, generare un report mezzo e controllare che il blocco economico distingua documenti/costi diretti, snapshot analitico e procurement/approvazioni con decisione `fuori perimetro` o `solo parziale`.
+  - Verificare che il dataset `storage/@preventivi` non venga trattato come match certo del mezzo in assenza di `targa` o `mezzoTarga` diretta.
+  - Eseguire `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/domain/nextDossierMezzoDomain.ts src/next/internal-ai/internalAiVehicleReportFacade.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - La patch corregge anche un buco del composito dossier: il nuovo campo `procurementPerimeter` e ora valorizzato in tutti i rami di ritorno e la build TypeScript torna pulita.
+
+### Voce 2026-03-13 56
+- DATA: 2026-03-13
+- TITOLO MODIFICA: Consolidamento di `AGENTS.md` come fonte primaria operativa di Codex
+- OBIETTIVO: Ridurre la dipendenza da prompt lunghi ripetuti, fissare un workflow stabile e rendere piu esplicite le regole permanenti di lavoro sul clone/NEXT e sul sottosistema IA interno senza toccare runtime o dati business.
+- FILE TOCCATI:
+  - `AGENTS.md`
+  - `docs/LEGGI_PRIMA.md`
+  - `docs/INDICE_DOCUMENTAZIONE_PROGETTO.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/REGOLE_LAVORO_CODEX.md`
+  - `docs/product/STORICO_DECISIONI_PROGETTO.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1909_docs_governo-operativo-agents-codex.md`
+  - `docs/continuity-reports/2026-03-13_1909_continuity_governo-operativo-codex.md`
+- COSA E STATO CAMBIATO:
+  - Rafforzato `AGENTS.md` senza riscriverlo, portando in alto le regole stabili: fonte primaria operativa, workflow rapido, regole progetto, task IA interna e formato corto dei task futuri.
+  - Allineato `docs/product/REGOLE_LAVORO_CODEX.md` per chiarire che resta un supporto sintetico/storico e non la fonte primaria operativa.
+  - Riallineati `docs/LEGGI_PRIMA.md` e `docs/INDICE_DOCUMENTAZIONE_PROGETTO.md` per far partire i task operativi da `AGENTS.md` e non da una seconda fonte concorrente.
+  - Aggiornati stato progetto e storico decisioni per dichiarare che i prossimi task possono essere piu brevi e che la checklist IA resta obbligatoria nei task del sottosistema interno.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun impatto runtime o visivo sul gestionale.
+  - Lettura: nessuna lettura dati nuova; cambia solo il governo operativo delle patch future.
+  - Blocco scritture: invariato; nessuna scrittura business o riapertura di flussi scriventi nel clone.
+- COME VERIFICARE:
+  - Aprire `AGENTS.md` e verificare le nuove sezioni `Fonte primaria operativa`, `Workflow operativo rapido`, `Regole per i task IA interna` e `Formato preferito dei task`.
+  - Aprire `docs/STATO_ATTUALE_PROGETTO.md` e verificare che `AGENTS.md` sia dichiarato fonte primaria operativa.
+  - Aprire `docs/product/REGOLE_LAVORO_CODEX.md` e verificare che sia esplicitata la precedenza di `AGENTS.md`.
+  - Verificare la nuova voce in `docs/product/STORICO_DECISIONI_PROGETTO.md`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md` non e stato aggiornato perche questo task non cambia lo stato di moduli, route o layer della NEXT; cambia solo il metodo operativo di Codex.
+
+### Voce 2026-03-13 55
+- DATA: 2026-03-13
+- TITOLO MODIFICA: Audit e rafforzamento strutturale del blocco documenti-costi nel report mezzo IA interno
+- OBIETTIVO: Verificare e rendere piu trasparente il perimetro economico/documentale del report mezzo IA interno, distinguendo fonti dirette, snapshot analitico e workflow procurement/approvazioni senza riaprire scritture o riusare runtime IA legacy.
+- FILE TOCCATI:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/domain/nextDossierMezzoDomain.ts`
+  - `src/next/internal-ai/internalAiVehicleReportFacade.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1800_patch_audit-documenti-costi-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1800_continuity_documenti-costi-report-mezzo-ia.md`
+- COSA E STATO CAMBIATO:
+  - Auditati il reader clone-safe documenti/costi, l'aggregatore dossier e i moduli legacy che definiscono il perimetro economico reale.
+  - Rafforzato il dominio documenti-costi per dichiarare che `@analisi_economica_mezzi` e uno snapshot separato e che `@preventivi` / `@preventivi_approvazioni` restano fuori dal layer mezzo-centrico.
+  - Aggiunto nel report IA interno un blocco piu esplicito su documenti/costi diretti, stato del filtro periodo, snapshot analitico salvato e workflow procurement/approvazioni fuori perimetro.
+  - Riallineato il riepilogo dossier clone per mostrare che il blocco economico diretto non coincide con l'intero workflow costi/procurement della madre.
+  - Tracciato nei documenti di stato che oggi il dataset reale ha 3 documenti mezzo leggibili, 1 snapshot analitico, 0 costi diretti in `@costiMezzo`, 7 preventivi globali senza targa e 1 approvazione capo.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il report mezzo IA interno non presenta piu il blocco economico come insieme omogeneo; dichiara invece cosa entra davvero e cosa resta fuori perimetro.
+  - Lettura: il clone continua a leggere in sola lettura i dataset reali; sui dati correnti il blocco economico diretto dipende dai soli `@documenti_mezzi`, mentre procurement e approvazioni restano separati.
+  - Blocco scritture: invariato; nessuna scrittura Firestore/Storage business, nessun backend IA reale e nessun modulo IA legacy vengono coinvolti.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`, generare un report mezzo e controllare che il blocco economico distingua documenti/costi diretti, snapshot analitico e procurement/approvazioni fuori perimetro.
+  - Verificare nel report che il filtro periodo venga dichiarato solo sui documenti/costi diretti e che non usi `updatedAt` dello snapshot come data evento.
+  - Eseguire `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/domain/nextDossierMezzoDomain.ts src/next/internal-ai/internalAiVehicleReportFacade.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il dataset reale corrente non contiene costi diretti in `@costiMezzo`; la copertura economica diretta del report oggi dipende quindi dai soli documenti IA mezzo-correlati.
+  - `@preventivi` e `@preventivi_approvazioni` esistono davvero nel repo e nei dati, ma restano fuori dal blocco base perche appartengono al dominio procurement/capo e non hanno lo stesso contratto dei documenti/costi diretti.
+
+### Voce 2026-03-13 54
+- DATA: 2026-03-13
+- TITOLO MODIFICA: Audit e rafforzamento strutturale del blocco materiali nel report mezzo IA interno
+- OBIETTIVO: Verificare e rendere piu affidabile il collegamento read-only tra mezzo e movimenti materiali nel report IA interno, distinguendo match forti, plausibili e non dimostrabili senza riaprire scritture o riusare runtime IA legacy.
+- FILE TOCCATI:
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `src/next/domain/nextDossierMezzoDomain.ts`
+  - `src/next/internal-ai/internalAiVehicleReportFacade.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1740_patch_audit-materiali-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1740_continuity_materiali-report-mezzo-ia.md`
+- COSA E STATO CAMBIATO:
+  - Auditati i reader clone-safe dei materiali e i writer legacy che alimentano `@materialiconsegnati`, verificando in particolare la doppia semantica di `destinatario.refId`.
+  - Rafforzato il dominio materiali per distinguere in modo esplicito match `forti` e `plausibili`, lasciando fuori i casi conflittuali o non dimostrabili.
+  - Aggiunta nel report IA interno una dichiarazione chiara della copertura materiali e dell'affidabilita del filtro periodo sui soli record davvero databili.
+  - Riallineato il riepilogo dossier clone per mostrare quanti movimenti materiali sono forti e quanti restano solo plausibili.
+  - Tracciato nei documenti di stato che il supporto costi materiali resta ancora descrittivo e non transazionale.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il report mezzo IA interno descrive meglio copertura e limiti del blocco materiali, senza presentare come certi collegamenti solo plausibili.
+  - Lettura: il clone continua a leggere in sola lettura i dataset reali; sui dati correnti l'audit ha verificato 18 record materiali, tutti forti e tutti databili.
+  - Blocco scritture: invariato; nessuna scrittura Firestore/Storage business, nessun backend IA reale e nessun modulo IA legacy vengono coinvolti.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`, generare un report mezzo e controllare che il blocco materiali distingua match forti, plausibili e stato filtro periodo.
+  - Verificare nel report che i limiti su costi materiali e copertura parziale vengano dichiarati quando presenti.
+  - Eseguire `npx eslint src/next/domain/nextMaterialiMovimentiDomain.ts src/next/domain/nextDossierMezzoDomain.ts src/next/internal-ai/internalAiVehicleReportFacade.ts`.
+  - Eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il dataset reale corrente non mostra ancora casi attivi con solo `destinatario.refId = id mezzo`, quindi quel percorso resta strutturalmente plausibile ma non ancora confermato dai record odierni.
+
 ### Voce 2026-03-13 53
 - DATA: 2026-03-13
 - TITOLO MODIFICA: Memoria operativa locale IA e tracking persistente non invasivo nel clone

@@ -3,6 +3,10 @@
 Versione: 2026-03-06  
 Scopo: regole operative per futuri task Codex su GestioneManutenzione.
 
+## Nota di precedenza
+- `AGENTS.md` e la fonte primaria operativa di Codex nel repository.
+- Questo file resta un supporto sintetico e storico; se una regola operativa stabile e gia fissata in `AGENTS.md`, prevale `AGENTS.md`.
+
 ## 1) Ruoli fissi del progetto
 - **Utente**: logica/business/realta operativa.
 - **ChatGPT**: CTO/architetto, struttura e strategia.
@@ -146,6 +150,9 @@ Questi documenti non sono intercambiabili:
 ---
 
 ## 10) Template prompt minimo (riuso)
+- Se il task non introduce vincoli speciali, il prompt puo restare corto.
+- Minimo consigliato: `OBIETTIVO`, `PERIMETRO/WHITELIST`, `OUTPUT RICHIESTI`; il resto si eredita da `AGENTS.md` e dai documenti fonte di verita.
+
 ```
 MODE = OPERAIO
 

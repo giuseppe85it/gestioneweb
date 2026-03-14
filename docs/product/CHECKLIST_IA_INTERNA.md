@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-03-13  
+Ultimo aggiornamento: 2026-03-14  
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -167,6 +167,146 @@ Stato macrofase: `IN CORSO`
 - Dipendenze o blocchi:
   - non e memoria operativa completa del gestionale, ma solo memoria locale del modulo IA;
   - nessun backend reale, nessuna persistenza business, nessun tracking globale fuori dal sottosistema IA.
+
+### L.4 Audit / rafforzamento strutturale blocco materiali report mezzo
+- Stato: `FATTO`
+- Note: auditato il blocco `MATERIALI / MOVIMENTI` del report mezzo IA interno su dataset reali e writer legacy collegati; il report distingue ora match `forti` e `plausibili`, dichiara la copertura reale del collegamento mezzo-movimento e rende esplicito se il filtro periodo e affidabile, parziale o non dimostrabile.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1740_patch_audit-materiali-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1740_continuity_materiali-report-mezzo-ia.md`
+- Dipendenze o blocchi:
+  - il dataset reale oggi mostra solo match forti via targa nel destinatario, quindi il percorso legacy `destinatario.refId = id mezzo` resta solo plausibile ma non confermato dai record correnti;
+  - il supporto costi materiali resta descrittivo e non transazionale perche deriva ancora da `@documenti_magazzino`.
+
+### L.5 Audit / rafforzamento strutturale blocco documenti-costi report mezzo
+- Stato: `FATTO`
+- Note: auditato il blocco `DOCUMENTI / COSTI / PERIMETRO ECONOMICO` del report mezzo IA interno su dataset reali e reader legacy/clone collegati; il report distingue ora documenti/costi diretti, snapshot analitico salvato e workflow procurement/approvazioni fuori perimetro, dichiarando anche l'affidabilita del filtro periodo sui soli record diretti.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1800_patch_audit-documenti-costi-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1800_continuity_documenti-costi-report-mezzo-ia.md`
+- Dipendenze o blocchi:
+  - sui dati reali correnti `@costiMezzo` risulta vuoto, quindi il blocco economico diretto oggi dipende di fatto dai soli `@documenti_mezzi`;
+  - `@documenti_magazzino` resta leggibile solo come supporto parziale senza targa diretta e non puo essere promosso a documento economico certo del mezzo;
+  - `@preventivi` e `@preventivi_approvazioni` esistono davvero ma restano fuori dal perimetro base del report mezzo perche appartengono al workflow procurement/capo e non al blocco documenti-costi diretto.
+
+### L.6 Audit / decisione strutturale procurement-preventivi-approvazioni report mezzo
+- Stato: `FATTO`
+- Note: auditato il perimetro reale `procurement / preventivi / approvazioni` collegato al report mezzo IA interno; la decisione strutturale corrente e che `@preventivi` resta fuori dal blocco economico del report mezzo perche non espone oggi un match forte mezzo-centrico, mentre `@preventivi_approvazioni` puo comparire solo come supporto read-only a documenti diretti gia collegati alla targa.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_1948_patch_audit-procurement-perimetro-report-mezzo-ia.md`
+  - `docs/continuity-reports/2026-03-13_1948_continuity_procurement-perimetro-report-mezzo-ia.md`
+- Dipendenze o blocchi:
+  - il dataset reale `storage/@preventivi` contiene oggi 7 record ma nessuno espone una targa diretta del mezzo, quindi il matching resta `NON DIMOSTRABILE`;
+  - il dataset reale `storage/@preventivi_approvazioni` contiene oggi 1 record con targa forte, ma il suo `id` punta a un documento diretto in `@documenti_mezzi` e non prova copertura procurement del mezzo;
+  - un eventuale ingresso futuro del procurement nel report mezzo richiede un task dominio separato e un layer mezzo-centrico dedicato, non una fusione euristica lato UI.
+
+### L.7 Audit funzioni IA legacy della madre da assorbire nella nuova IA
+- Stato: `FATTO`
+- Note: censite le funzioni IA legacy realmente presenti nel repo, distinguendo capability di business gia operative, supporti tecnici fragili e canali da tenere fuori dal runtime canonico della nuova IA interna; fissata una matrice permanente con priorita `ALTA`, `MEDIA`, `BASSA` e `FUORI PERIMETRO INIZIALE`.
+- File/documenti collegati:
+  - `docs/architecture/MAPPA_FUNZIONI_IA_LEGACY_DA_ASSORBIRE.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_2006_docs_audit-funzioni-ia-legacy-da-assorbire.md`
+  - `docs/continuity-reports/2026-03-13_2006_continuity_audit-funzioni-ia-legacy.md`
+- Dipendenze o blocchi:
+  - le capability `libretto`, `documenti`, `analisi economica` e `preventivi` sono valore business reale e non possono andare perse nella nuova IA;
+  - i canali legacy restano pero non canonici per la nuova IA perche mescolano segreti lato client, writer business, endpoint multipli o backend esterni;
+  - i domini verticali o approvativi come `cisterna` e `stamp_pdf` richiedono perimetro o backend dedicato e non vanno fusi nel core iniziale senza task separato.
+
+### L.8 Ridisegno UI/UX sottosistema IA interna
+- Stato: `FATTO`
+- Note: ridisegnata la UI di `/next/ia/interna*` senza toccare facade, domain o backend; la home porta la chat al centro, riduce i blocchi tecnici in primo piano e rende il report mezzo piu ordinato, professionale e vicino alla logica visiva del dossier mezzi.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-13_2034_ui_ridisegno-ui-sottosistema-ia-interna.md`
+  - `docs/continuity-reports/2026-03-13_2034_continuity_ui-sottosistema-ia-interna.md`
+- Dipendenze o blocchi:
+  - il redesign resta solo UI/UX e non modifica i flussi dati o il perimetro read-only del clone;
+  - report autista e report combinato restano non attivi in questo step;
+  - eventuali estensioni future devono mantenere testi visibili in italiano e guard rail tecnici fuori dall'area primaria della home.
+
+### L.9 Assorbimento iniziale capability legacy alta priorita: Analisi economica mezzo
+- Stato: `FATTO`
+- Note: aperto il primo blocco reale di assorbimento legacy ad alta priorita nel sottosistema IA interno scegliendo `Analisi economica mezzo`; la capability entra ora come preview-first read-only nella home IA, con facade dedicato sopra i layer clone-safe gia esistenti e l'eventuale snapshot legacy salvato, senza backend legacy canonico, senza rigenerazione IA e senza scritture business.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiEconomicAnalysisFacade.ts`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `docs/architecture/MAPPA_FUNZIONI_IA_LEGACY_DA_ASSORBIRE.md`
+  - `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0012_patch_assorbimento-analisi-economica-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0012_continuity_assorbimento-analisi-economica-ia-interna.md`
+- Dipendenze o blocchi:
+  - la capability oggi non rigenera testi IA: usa solo base economica diretta read-only e snapshot legacy gia salvato;
+  - `libretto`, `documenti` e `preventivi` restano priorita alte ma richiedono backend o workflow piu esposti rispetto al clone sicuro attuale;
+  - procurement e approvazioni restano esplicitamente fuori dal blocco economico diretto anche in questa prima wave.
+
+### L.10 Riordino profondo UI home/preview del sottosistema IA interna
+- Stato: `FATTO`
+- Note: la route `/next/ia/interna*` usa ora una home piu essenziale e una preview grande separata dalla schermata iniziale; il task ha anche verificato l'errore Vite segnalato su `NextInternalAiPage.tsx`, non riproducibile nello stato corrente del repo, e ha corretto nel subtree IA le `key` deboli che potevano generare warning React.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0035_ui_fix-home-preview-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0035_continuity_fix-home-preview-ia-interna.md`
+- Dipendenze o blocchi:
+  - il task resta strettamente UI/UX: nessuna facade, domain o logica dati e stata modificata;
+  - report autista e report combinato restano non attivi e non devono essere simulati come disponibili;
+  - eventuali estensioni future devono mantenere la preview fuori dalla home e non reintrodurre blocchi concorrenti o rumore tecnico in primo piano.
+
+### L.11 Pulizia forte UI dossier-like della preview IA interna
+- Stato: `FATTO`
+- Note: la preview di `/next/ia/interna*` e stata resa molto piu sintetica e professionale: hero piu pulito, poche card chiave in alto, sezioni business principali in chiaro e dettagli tecnici nascosti dietro espansioni `Mostra dettagli`, `Mostra fonti`, `Mostra limiti`; la home e stata alleggerita ulteriormente mantenendo chat e richiesta come elementi principali.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0235_ui_pulizia-dossier-preview-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0235_continuity_pulizia-dossier-preview-ia-interna.md`
+- Dipendenze o blocchi:
+  - il task resta solo UI/UX e non modifica facade, domain o contratti dati;
+  - la classificazione visiva delle sezioni usa solo il contenuto gia letto nella preview e non introduce nuovi matching dati;
+  - eventuali estensioni future devono mantenere fonti, limiti e stati come elementi secondari, non di primo piano.
+
+### L.12 Stabilizzazione errori console e hot reload della UI IA interna
+- Stato: `FATTO`
+- Note: verificato che `src/next/NextInternalAiPage.tsx` non presenta oggi errori sintattici o import/export rotti persistenti; il warning React sulle `key` duplicabili risultava invece coerente con la `Home` madre, montata nel clone come controparte `/next`, ed e stato corretto con un fix minimo sulle chiavi delle liste senza toccare logica dati o flussi business.
+- File/documenti collegati:
+  - `src/pages/Home.tsx`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-14_0242_fix_stabilita-console-hot-reload-ia-interna.md`
+  - `docs/continuity-reports/2026-03-14_0242_continuity_stabilita-console-hot-reload-ia-interna.md`
+- Dipendenze o blocchi:
+  - il task non ha richiesto modifiche a facade, domain o backend del sottosistema IA;
+  - il `500` Vite segnalato su `NextInternalAiPage.tsx` non e risultato riproducibile nello stato corrente del repository, quindi non e stata applicata alcuna patch cosmetica sul file;
+  - il controllo `eslint` sulla `Home` madre non e usato come esito del task perche il file contiene errori legacy preesistenti e non collegati a questa correzione minima.
 
 ## 6. Macrofase 3 - Blocchi e fondazioni ancora aperte
 Stato macrofase: `BLOCCATO`

@@ -4,15 +4,22 @@ import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 
 const STORAGE_COLLECTION = "storage";
 const COSTI_DATASET_KEY = "@costiMezzo";
+const PROCUREMENT_PREVENTIVI_DATASET_KEY = "@preventivi";
+const PROCUREMENT_APPROVALS_DATASET_KEY = "@preventivi_approvazioni";
 const DOCUMENTI_COLLECTION_KEYS = [
   "@documenti_mezzi",
   "@documenti_magazzino",
   "@documenti_generici",
 ] as const;
+const DIRECT_DOCUMENT_SOURCE_KEYS = new Set<string>([
+  COSTI_DATASET_KEY,
+  ...DOCUMENTI_COLLECTION_KEYS,
+]);
 
 type RawRecord = Record<string, unknown>;
 
 type NextLegacyDatasetShape =
+  | "preventivi"
   | "items"
   | "value.items"
   | "value"
@@ -31,6 +38,18 @@ type NextDocumentiCostiCategory = "preventivo" | "fattura" | "documento_utile";
 export type NextDocumentiCostiCurrency = "EUR" | "CHF" | "UNKNOWN";
 
 export type NextDocumentiCostiFieldQuality = "certo" | "ricostruito" | "non_disponibile";
+
+export type NextDocumentiCostiPeriodFilterStatus =
+  | "affidabile"
+  | "parziale"
+  | "non_dimostrabile";
+
+export type NextDocumentiCostiProcurementMatchLevel = "forte" | "non_dimostrabile";
+
+export type NextDocumentiCostiProcurementPerimeterDecision =
+  | "fuori_perimetro"
+  | "parziale"
+  | "forte";
 
 export type NextDocumentiCostiLegacyViewItem = {
   id: string;
@@ -156,6 +175,8 @@ export type NextMezzoDocumentiCostiSnapshot = {
     documentiUtili: number;
     withFile: number;
     withAmount: number;
+    withReliableDate: number;
+    withoutReliableDate: number;
   };
   totals: {
     preventivi: NextDocumentiCostiAmountTotals;
@@ -180,6 +201,30 @@ export type NextMezzoDocumentiCostiSnapshot = {
   limitations: string[];
 };
 
+export type NextDocumentiCostiProcurementSupportSnapshot = {
+  mezzoTarga: string;
+  datasets: readonly string[];
+  datasetShapes: {
+    preventivi: NextLegacyDatasetShape;
+    approvazioni: NextLegacyDatasetShape;
+  };
+  counts: {
+    preventiviGlobali: number;
+    preventiviConTargaDiretta: number;
+    preventiviMatchForte: number;
+    approvazioniGlobali: number;
+    approvazioniMezzo: number;
+    approvazioniSuPreventiviGlobali: number;
+    approvazioniSuDocumentiDiretti: number;
+  };
+  matching: {
+    preventivi: NextDocumentiCostiProcurementMatchLevel;
+    approvazioni: NextDocumentiCostiProcurementMatchLevel;
+  };
+  perimeterDecision: NextDocumentiCostiProcurementPerimeterDecision;
+  limitations: string[];
+};
+
 export type NextDocumentiCostiFleetSnapshot = {
   domainCode: typeof NEXT_DOCUMENTI_COSTI_DOMAIN.code;
   domainName: typeof NEXT_DOCUMENTI_COSTI_DOMAIN.name;
@@ -199,6 +244,8 @@ export type NextDocumentiCostiFleetSnapshot = {
     documentiUtili: number;
     withFile: number;
     withAmount: number;
+    withReliableDate: number;
+    withoutReliableDate: number;
   };
   totals: {
     preventivi: NextDocumentiCostiAmountTotals;
@@ -409,8 +456,25 @@ function resolveDateFields(args: {
 function unwrapStorageArray(
   rawDoc: Record<string, unknown> | null
 ): { datasetShape: NextLegacyDatasetShape; items: unknown[] } {
+  return unwrapStorageArrayWithPreferredKeys(rawDoc);
+}
+
+function unwrapStorageArrayWithPreferredKeys(
+  rawDoc: Record<string, unknown> | null,
+  preferredKeys: string[] = []
+): { datasetShape: NextLegacyDatasetShape; items: unknown[] } {
   if (!rawDoc) {
     return { datasetShape: "missing", items: [] };
+  }
+
+  for (const key of preferredKeys) {
+    const candidate = rawDoc[key];
+    if (Array.isArray(candidate)) {
+      return {
+        datasetShape: key === PROCUREMENT_PREVENTIVI_DATASET_KEY.slice(1) ? "preventivi" : "array",
+        items: candidate,
+      };
+    }
   }
 
   if (Array.isArray(rawDoc.items)) {
@@ -433,6 +497,18 @@ function unwrapStorageArray(
   }
 
   return { datasetShape: "unsupported", items: [] };
+}
+
+function extractApprovalSourceKey(approvalKey: string | null): string | null {
+  if (!approvalKey) return null;
+  const parts = approvalKey.split("__");
+  return parts.length >= 3 ? normalizeText(parts[1]) || null : null;
+}
+
+function extractApprovalTarga(approvalKey: string | null): string {
+  if (!approvalKey) return "";
+  const [rawTarga = ""] = approvalKey.split("__");
+  return normalizeTarga(rawTarga);
 }
 
 function classifyCategory(tipoDocumento: string): NextDocumentiCostiCategory {
@@ -717,6 +793,16 @@ function buildAmountTotals(items: NextDocumentiCostiReadOnlyItem[]): NextDocumen
       withAmount: 0,
     }
   );
+}
+
+function derivePeriodFilterCoverage(args: {
+  total: number;
+  withReliableDate: number;
+}): NextDocumentiCostiPeriodFilterStatus {
+  const { total, withReliableDate } = args;
+  if (total <= 0 || withReliableDate <= 0) return "non_dimostrabile";
+  if (withReliableDate < total) return "parziale";
+  return "affidabile";
 }
 
 function mapCostoMezzoRecordAny(
@@ -1010,6 +1096,7 @@ function buildLimitations(args: {
 
   return [
     "Il layer legge solo `@costiMezzo` e le collezioni `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, sempre con filtro targa e output mezzo-centrico pulito.",
+    "Il layer non incorpora `@analisi_economica_mezzi`: quello snapshot resta separato e viene letto dall'aggregatore dossier, non come documento/costo base.",
     "Il layer non legge `@preventivi` e non apre il workflow globale Acquisti: contratto allegati e convergenza D06 verso Dossier restano `DA VERIFICARE`.",
     "Il layer non legge `@preventivi_approvazioni`, non espone approvazioni, non replica `CapoCostiMezzo` e non apre `AnalisiEconomica` completa.",
     counts.documentiUtili > 0
@@ -1023,6 +1110,13 @@ function buildLimitations(args: {
       : null,
     counts.withAmount < groups.preventivi.length + groups.fatture.length
       ? "Una parte di preventivi o fatture non espone un importo parsabile: i totali restano prudenziali e non forzano ricostruzioni."
+      : null,
+    counts.total > 0 &&
+    derivePeriodFilterCoverage({
+      total: counts.total,
+      withReliableDate: counts.withReliableDate,
+    }) !== "affidabile"
+      ? "Una parte dei documenti/costi collegati non espone una data evento parsabile: il filtro periodo resta prudenziale."
       : null,
     datasetShape === "unsupported"
       ? "Il dataset `@costiMezzo` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
@@ -1045,10 +1139,18 @@ function buildFleetLimitations(args: {
   return [
     "Il layer globale legge solo `@costiMezzo` e le collezioni `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, sempre in sola lettura.",
     "La vista flotta aggrega solo record con `targa` leggibile: nessuna inferenza debole da testo libero o file name.",
+    "Il layer globale non incorpora `@analisi_economica_mezzi`: quello snapshot resta separato e non va confuso con i documenti/costi base.",
     "Il layer non legge `@preventivi`, non apre il workflow Acquisti e non riattiva PDF o approvazioni scriventi.",
     "Il layer globale non incorpora `@preventivi_approvazioni`: quello stato resta un supporto separato dell'Area Capo e va trattato in sola lettura.",
     counts.withAmount < counts.preventivi + counts.fatture
       ? "Una parte di preventivi o fatture non espone un importo parsabile: i totali flotta restano prudenziali e non forzano ricostruzioni."
+      : null,
+    counts.total > 0 &&
+    derivePeriodFilterCoverage({
+      total: counts.total,
+      withReliableDate: counts.withReliableDate,
+    }) !== "affidabile"
+      ? "Una parte dei documenti/costi aggregati non espone una data evento parsabile: il filtro periodo resta prudenziale."
       : null,
     sourceCounts.documentiMagazzino > 0
       ? "I documenti magazzino entrano solo come lettura documentale/costi correlata al mezzo: nessun ingresso del dominio stock o movimenti."
@@ -1074,6 +1176,147 @@ async function readCostiMezzoDataset(): Promise<{
   return unwrapStorageArray(rawDoc);
 }
 
+function buildProcurementSupportLimitations(args: {
+  counts: NextDocumentiCostiProcurementSupportSnapshot["counts"];
+  matching: NextDocumentiCostiProcurementSupportSnapshot["matching"];
+  perimeterDecision: NextDocumentiCostiProcurementSupportSnapshot["perimeterDecision"];
+  datasetShapes: NextDocumentiCostiProcurementSupportSnapshot["datasetShapes"];
+  readFailures: string[];
+}): string[] {
+  const { counts, matching, perimeterDecision, datasetShapes, readFailures } = args;
+
+  return [
+    "`@preventivi` appartiene al workflow procurement globale: non e un dataset mezzo-centrico e non va fuso nel blocco documenti/costi diretti.",
+    counts.preventiviConTargaDiretta > 0
+      ? `Il dataset \`@preventivi\` espone ${counts.preventiviConTargaDiretta} record con targa diretta, ma resta comunque solo supporto parziale finche non esiste un layer mezzo-centrico dedicato.`
+      : "Il dataset `@preventivi` non espone oggi una targa diretta sui record letti: il matching col mezzo non e dimostrabile.",
+    counts.approvazioniMezzo > 0
+      ? `Le approvazioni lette per la targa sono ${counts.approvazioniMezzo}; di queste ${counts.approvazioniSuDocumentiDiretti} annotano documenti/costi diretti gia mezzo-centrici e ${counts.approvazioniSuPreventiviGlobali} puntano al dataset procurement globale.`
+      : "Nessuna approvazione letta per questa targa in `@preventivi_approvazioni`.",
+    matching.approvazioni === "forte"
+      ? "`@preventivi_approvazioni` puo avere un collegamento forte alla targa, ma rappresenta solo stato approvativo read-only e non un documento/costo base."
+      : null,
+    perimeterDecision === "fuori_perimetro"
+      ? "Decisione corrente: il procurement resta fuori dal report mezzo IA come blocco economico diretto."
+      : perimeterDecision === "parziale"
+      ? "Decisione corrente: il procurement puo entrare solo come supporto parziale separato, non come blocco economico diretto."
+      : "Decisione corrente: il procurement puo entrare con match forte.",
+    datasetShapes.preventivi === "unsupported"
+      ? "Il dataset `@preventivi` non e in una shape pienamente leggibile dal supporto clone-safe."
+      : null,
+    datasetShapes.approvazioni === "unsupported"
+      ? "Il dataset `@preventivi_approvazioni` non e in una shape pienamente leggibile dal supporto clone-safe."
+      : null,
+    ...readFailures.map(
+      (entry) => `Lettura parziale: la sorgente ${entry} non e stata letta e viene trattata come non disponibile.`
+    ),
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
+export async function readNextDocumentiCostiProcurementSupportSnapshot(
+  targa: string
+): Promise<NextDocumentiCostiProcurementSupportSnapshot> {
+  const mezzoTarga = normalizeTarga(targa);
+  const [preventiviResult, approvalsResult] = await Promise.allSettled([
+    getDoc(doc(db, STORAGE_COLLECTION, PROCUREMENT_PREVENTIVI_DATASET_KEY)),
+    getDoc(doc(db, STORAGE_COLLECTION, PROCUREMENT_APPROVALS_DATASET_KEY)),
+  ]);
+  const readFailures: string[] = [];
+
+  const preventiviDataset =
+    preventiviResult.status === "fulfilled"
+      ? unwrapStorageArrayWithPreferredKeys(
+          preventiviResult.value.exists()
+            ? ((preventiviResult.value.data() as Record<string, unknown>) ?? null)
+            : null,
+          ["preventivi"]
+        )
+      : ((readFailures.push(`storage/${PROCUREMENT_PREVENTIVI_DATASET_KEY}`), {
+          datasetShape: "missing",
+          items: [],
+        }) as { datasetShape: NextLegacyDatasetShape; items: unknown[] });
+
+  const approvalsDataset =
+    approvalsResult.status === "fulfilled"
+      ? unwrapStorageArray(
+          approvalsResult.value.exists()
+            ? ((approvalsResult.value.data() as Record<string, unknown>) ?? null)
+            : null
+        )
+      : ((readFailures.push(`storage/${PROCUREMENT_APPROVALS_DATASET_KEY}`), {
+          datasetShape: "missing",
+          items: [],
+        }) as { datasetShape: NextLegacyDatasetShape; items: unknown[] });
+
+  const preventiviItems = preventiviDataset.items.filter(
+    (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object"
+  );
+  const approvalItems = approvalsDataset.items.filter(
+    (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object"
+  );
+
+  const preventiviConTargaDiretta = preventiviItems.filter((entry) =>
+    Boolean(normalizeTarga(entry.targa ?? entry.mezzoTarga))
+  );
+  const preventiviMatchForte = preventiviConTargaDiretta.filter(
+    (entry) => normalizeTarga(entry.targa ?? entry.mezzoTarga) === mezzoTarga
+  );
+
+  const approvalsMezzo = approvalItems.filter((entry) => {
+    const approvalKey = normalizeOptionalText(entry.id);
+    const entryTarga = normalizeTarga(entry.targa ?? entry.mezzoTarga);
+    return entryTarga === mezzoTarga || extractApprovalTarga(approvalKey) === mezzoTarga;
+  });
+
+  const approvazioniSuPreventiviGlobali = approvalsMezzo.filter(
+    (entry) => extractApprovalSourceKey(normalizeOptionalText(entry.id)) === PROCUREMENT_PREVENTIVI_DATASET_KEY
+  ).length;
+  const approvazioniSuDocumentiDiretti = approvalsMezzo.filter((entry) => {
+    const sourceKey = extractApprovalSourceKey(normalizeOptionalText(entry.id));
+    return sourceKey ? DIRECT_DOCUMENT_SOURCE_KEYS.has(sourceKey) : false;
+  }).length;
+
+  const matching = {
+    preventivi: preventiviMatchForte.length > 0 ? "forte" : "non_dimostrabile",
+    approvazioni: approvalsMezzo.length > 0 ? "forte" : "non_dimostrabile",
+  } satisfies NextDocumentiCostiProcurementSupportSnapshot["matching"];
+
+  const perimeterDecision: NextDocumentiCostiProcurementPerimeterDecision =
+    preventiviMatchForte.length > 0 ? "parziale" : "fuori_perimetro";
+
+  const counts = {
+    preventiviGlobali: preventiviItems.length,
+    preventiviConTargaDiretta: preventiviConTargaDiretta.length,
+    preventiviMatchForte: preventiviMatchForte.length,
+    approvazioniGlobali: approvalItems.length,
+    approvazioniMezzo: approvalsMezzo.length,
+    approvazioniSuPreventiviGlobali,
+    approvazioniSuDocumentiDiretti,
+  } satisfies NextDocumentiCostiProcurementSupportSnapshot["counts"];
+
+  return {
+    mezzoTarga,
+    datasets: [PROCUREMENT_PREVENTIVI_DATASET_KEY, PROCUREMENT_APPROVALS_DATASET_KEY],
+    datasetShapes: {
+      preventivi: preventiviDataset.datasetShape,
+      approvazioni: approvalsDataset.datasetShape,
+    },
+    counts,
+    matching,
+    perimeterDecision,
+    limitations: buildProcurementSupportLimitations({
+      counts,
+      matching,
+      perimeterDecision,
+      datasetShapes: {
+        preventivi: preventiviDataset.datasetShape,
+        approvazioni: approvalsDataset.datasetShape,
+      },
+      readFailures,
+    }),
+  };
+}
+
 export async function readNextDocumentiCostiFleetSnapshot(): Promise<NextDocumentiCostiFleetSnapshot> {
   const { costiDataset, documentSnapshots, readFailures } = await readDocumentiCostiSources();
   const { items, materialSupportDocuments } = buildAllDocumentiCostiItems({
@@ -1093,6 +1336,8 @@ export async function readNextDocumentiCostiFleetSnapshot(): Promise<NextDocumen
     documentiUtili: groups.documentiUtili.length,
     withFile: items.filter((item) => Boolean(item.fileUrl)).length,
     withAmount: items.filter((item) => item.amount !== null).length,
+    withReliableDate: items.filter((item) => item.sortTimestamp !== null).length,
+    withoutReliableDate: items.filter((item) => item.sortTimestamp === null).length,
   };
   const sourceCounts = {
     costiMezzo: items.filter((item) => item.sourceType === "costo_mezzo").length,
@@ -1157,6 +1402,8 @@ export async function readNextMezzoDocumentiCostiSnapshot(
     documentiUtili: groups.documentiUtili.length,
     withFile: items.filter((item) => Boolean(item.fileUrl)).length,
     withAmount: items.filter((item) => item.amount !== null).length,
+    withReliableDate: items.filter((item) => item.sortTimestamp !== null).length,
+    withoutReliableDate: items.filter((item) => item.sortTimestamp === null).length,
   };
 
   const sourceCounts = {

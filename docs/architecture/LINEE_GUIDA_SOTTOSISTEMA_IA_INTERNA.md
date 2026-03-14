@@ -249,6 +249,20 @@ Scopo: riferimento operativo permanente per progettare una IA interna al gestion
 ## 13. Use case iniziale di riferimento
 **Caso guida**: "Crea una pagina/report per una targa, mostrala in preview dentro il gestionale, salvala come artifact, non applicare nulla in produzione."
 
+### 13.1 Primo blocco capability legacy ad alta priorita gia aperto
+- Dal `2026-03-14` il primo assorbimento operativo aperto nel sottosistema IA interno e `Analisi economica mezzo`.
+- Il perimetro del primo step e volutamente prudente:
+  - preview-first nella home `/next/ia/interna`;
+  - sola lettura dei layer clone-safe gia attivi;
+  - riuso del solo snapshot legacy gia salvato in `@analisi_economica_mezzi`;
+  - nessuna rigenerazione IA dal clone;
+  - nessuna scrittura business o Storage.
+- La scelta precede `libretto`, `documenti` e `preventivi` perche oggi offre il miglior rapporto tra:
+  - valore business;
+  - fattibilita immediata nel clone;
+  - riuso di layer gia verificati;
+  - assenza di upload, OCR o backend legacy da riattivare.
+
 ### Output minimo richiesto
 - analisi sorgenti usate;
 - proposta pagina/report coerente con la UI esistente;
@@ -299,3 +313,12 @@ Scopo: riferimento operativo permanente per progettare una IA interna al gestion
   - dipendenze e blocchi;
   - filoni futuri, incluso `Modello camion con IA`.
 - Questo documento non deve piu ospitare una checklist duplicata da mantenere a mano.
+
+## 17. Mappa permanente delle funzioni IA legacy da assorbire
+- La fonte documentale permanente per censire le capability IA legacy della madre e `docs/architecture/MAPPA_FUNZIONI_IA_LEGACY_DA_ASSORBIRE.md`.
+- Ogni task futuro della nuova IA deve verificare prima se la capability richiesta esiste gia nel legacy e come e stata classificata:
+  - `ASSORBIRE`;
+  - `ASSORBIRE RIFACENDO`;
+  - `FUORI PERIMETRO INIZIALE`;
+  - `TENERE COME RIFERIMENTO TECNICO`.
+- La mappa legacy serve a non perdere valore della madre, ma non autorizza mai il riuso runtime dei backend, writer o segreti legacy nel nuovo sottosistema IA.

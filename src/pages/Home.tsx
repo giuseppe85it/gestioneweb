@@ -2925,7 +2925,7 @@ function Home() {
                         const canEditPrenotazione = Boolean(r.targa);
                         return (
                           <div
-                            key={r.targa || `rev-${idx}`}
+                            key={`${r.targa || "rev"}-${idx}`}
                             className="panel-row panel-row-link"
                             role="link"
                             tabIndex={0}
@@ -3113,7 +3113,7 @@ function Home() {
                   if (isEditing) {
                     return (
                       <div
-                        key={r.targa || `rim-${idx}`}
+                        key={`${r.targa || "rim"}-${idx}`}
                         className="panel-row panel-row-edit"
                       >
                       <div className="row-main">
@@ -3169,7 +3169,7 @@ function Home() {
 
                   return (
                     <Link
-                      key={r.targa || `rim-${idx}`}
+                      key={`${r.targa || "rim"}-${idx}`}
                       to="/autisti-admin"
                       className="panel-row"
                     >
@@ -3240,7 +3240,7 @@ function Home() {
                   if (isEditing) {
                     return (
                       <div
-                        key={r.targa || `mot-${idx}`}
+                        key={`${r.targa || "mot"}-${idx}`}
                         className="panel-row panel-row-edit"
                       >
                         <div className="row-main">
@@ -3296,7 +3296,7 @@ function Home() {
 
                   return (
                     <Link
-                      key={r.targa || `mot-${idx}`}
+                      key={`${r.targa || "mot"}-${idx}`}
                       to="/autisti-admin"
                       className="panel-row"
                     >
@@ -3399,7 +3399,7 @@ function Home() {
                   const canEditPrenotazione = Boolean(r.targa);
                   return (
                     <div
-                      key={r.targa || `rev-${idx}`}
+                      key={`${r.targa || "rev"}-${idx}`}
                       className="panel-row panel-row-link"
                       role="link"
                       tabIndex={0}

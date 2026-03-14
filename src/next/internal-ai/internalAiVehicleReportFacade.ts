@@ -36,6 +36,70 @@ function formatCountLabel(value: number, suffix: string): string {
   return `${value} ${suffix}`;
 }
 
+function formatMaterialiMatchCoverage(value: "forte" | "mista" | "plausibile" | "vuota"): string {
+  switch (value) {
+    case "forte":
+      return "forte";
+    case "mista":
+      return "mista";
+    case "plausibile":
+      return "solo plausibile";
+    default:
+      return "vuota";
+  }
+}
+
+function formatMaterialiPeriodFilterStatus(value: "affidabile" | "parziale" | "non_dimostrabile"): string {
+  switch (value) {
+    case "affidabile":
+      return "affidabile";
+    case "parziale":
+      return "parziale";
+    default:
+      return "non dimostrabile";
+  }
+}
+
+function formatDocumentiCostiPeriodFilterStatus(
+  value: "affidabile" | "parziale" | "non_dimostrabile",
+): string {
+  switch (value) {
+    case "affidabile":
+      return "affidabile";
+    case "parziale":
+      return "parziale";
+    default:
+      return "non dimostrabile";
+  }
+}
+
+function formatProcurementMatchLevel(value: "forte" | "non_dimostrabile"): string {
+  return value === "forte" ? "forte" : "non dimostrabile";
+}
+
+function formatProcurementDecision(
+  value: "fuori_perimetro" | "parziale" | "forte",
+): string {
+  switch (value) {
+    case "forte":
+      return "con match forte";
+    case "parziale":
+      return "solo parziale";
+    default:
+      return "fuori perimetro";
+  }
+}
+
+function deriveDocumentiCostiPeriodFilterStatus(args: {
+  total: number;
+  withReliableDate: number;
+}): "affidabile" | "parziale" | "non_dimostrabile" {
+  const { total, withReliableDate } = args;
+  if (total <= 0 || withReliableDate <= 0) return "non_dimostrabile";
+  if (withReliableDate < total) return "parziale";
+  return "affidabile";
+}
+
 function mapSectionStateToStatus(
   state: NextDossierDomainSectionState<unknown>,
   count: number,
@@ -125,6 +189,13 @@ function buildPreviewStates(
 
 function buildMissingData(snapshot: NextDossierMezzoCompositeSnapshot): string[] {
   const missing: string[] = [];
+  const materialiSnapshot = snapshot.materialiMovimenti.snapshot;
+  const documentCostsSnapshot = snapshot.documentCosts.snapshot;
+  const procurementSnapshot = snapshot.procurementPerimeter.snapshot;
+  const documentiCostiPeriodFilter = deriveDocumentiCostiPeriodFilterStatus({
+    total: documentCostsSnapshot?.counts.total ?? 0,
+    withReliableDate: documentCostsSnapshot?.counts.withReliableDate ?? 0,
+  });
 
   if (!snapshot.mezzo.autistaNome) {
     missing.push("Autista assegnato non disponibile nell'anagrafica flotta.");
@@ -138,11 +209,76 @@ function buildMissingData(snapshot: NextDossierMezzoCompositeSnapshot): string[]
   if ((snapshot.documentCosts.snapshot?.counts.total ?? 0) === 0) {
     missing.push("Nessun documento o costo utile collegato alla targa.");
   }
+  if (
+    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 &&
+    documentiCostiPeriodFilter === "parziale"
+  ) {
+    missing.push(
+      "Il filtro periodo su documenti e costi diretti sarebbe solo parziale: non tutti i record inclusi espongono una data evento parsabile."
+    );
+  }
+  if (
+    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 &&
+    documentiCostiPeriodFilter === "non_dimostrabile"
+  ) {
+    missing.push(
+      "Il filtro periodo su documenti e costi diretti non e dimostrabile: i record inclusi non espongono una data evento parsabile."
+    );
+  }
   if ((snapshot.materialiMovimenti.snapshot?.counts.total ?? 0) === 0) {
     missing.push("Nessun movimento materiali collegabile in modo affidabile al mezzo.");
   }
+  if (materialiSnapshot?.coverage.match === "mista") {
+    missing.push(
+      "Il blocco materiali combina match forti e plausibili: i record plausibili non vanno letti come collegamenti certi."
+    );
+  }
+  if (materialiSnapshot?.coverage.match === "plausibile") {
+    missing.push(
+      "Il blocco materiali usa solo match plausibili: manca un collegamento forte diretto alla targa sui record inclusi."
+    );
+  }
+  if (materialiSnapshot?.counts.total && materialiSnapshot.coverage.periodFilter === "parziale") {
+    missing.push(
+      "Il filtro periodo sui materiali sarebbe solo parziale: non tutte le righe matched espongono una data parsabile."
+    );
+  }
+  if (
+    materialiSnapshot?.counts.total &&
+    materialiSnapshot.coverage.periodFilter === "non_dimostrabile"
+  ) {
+    missing.push(
+      "Il filtro periodo sui materiali non e dimostrabile: le righe matched non espongono una data parsabile."
+    );
+  }
   if (!snapshot.analisiEconomica.snapshot?.savedAnalysis) {
     missing.push("Nessuna analisi economica legacy salvata per questa targa.");
+  }
+  if (
+    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 ||
+    snapshot.analisiEconomica.snapshot?.savedAnalysis
+  ) {
+    missing.push(
+      "Il blocco economico del report resta parziale perimetralmente: distingue documenti/costi diretti, snapshot analitico salvato e lascia fuori procurement e approvazioni."
+    );
+  }
+  if (
+    procurementSnapshot &&
+    procurementSnapshot.counts.preventiviGlobali > 0 &&
+    procurementSnapshot.perimeterDecision === "fuori_perimetro"
+  ) {
+    missing.push(
+      `Il workflow procurement esiste nel repo con ${procurementSnapshot.counts.preventiviGlobali} preventivi globali, ma non entra nel report mezzo: in \`@preventivi\` il matching per targa resta ${formatProcurementMatchLevel(procurementSnapshot.matching.preventivi)}.`
+    );
+  }
+  if (
+    procurementSnapshot &&
+    procurementSnapshot.counts.approvazioniMezzo > 0 &&
+    procurementSnapshot.counts.approvazioniSuDocumentiDiretti > 0
+  ) {
+    missing.push(
+      `Le approvazioni lette per questa targa (${procurementSnapshot.counts.approvazioniMezzo}) sono solo supporto read-only a documenti diretti gia mezzo-centrici, non copertura procurement del mezzo.`
+    );
   }
 
   return missing;
@@ -157,6 +293,11 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
   const lavoriTotal = snapshot.lavori.snapshot?.counts.total ?? 0;
   const manutenzioniTotal = snapshot.maintenance.snapshot?.counts.manutenzioni ?? 0;
   const materialiTotal = snapshot.materialiMovimenti.snapshot?.counts.total ?? 0;
+  const procurementSnapshot = snapshot.procurementPerimeter.snapshot;
+  const documentiCostiPeriodFilter = deriveDocumentiCostiPeriodFilterStatus({
+    total: snapshot.documentCosts.snapshot?.counts.total ?? 0,
+    withReliableDate: snapshot.documentCosts.snapshot?.counts.withReliableDate ?? 0,
+  });
 
   const sections: InternalAiVehicleReportSection[] = [
     {
@@ -243,20 +384,29 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
       count: materialiTotal,
       summary:
         materialiTotal > 0
-          ? `Trovati ${materialiTotal} movimenti materiali collegabili in modo utile alla targa.`
-          : "Nessun movimento materiali collegabile in modo affidabile al mezzo.",
+          ? `Trovati ${materialiTotal} movimenti materiali. Copertura match ${formatMaterialiMatchCoverage(snapshot.materialiMovimenti.snapshot?.coverage.match ?? "vuota")}.`
+          : "Nessun movimento materiali collegabile in modo dimostrabile al mezzo.",
       bullets: [
-        `Match targa esplicita: ${snapshot.materialiMovimenti.snapshot?.counts.matchedByExplicitTarga ?? 0}`,
-        `Match da destinatario: ${
-          (snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioLabel ?? 0) +
-          (snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioRefId ?? 0)
+        `Match forti: ${snapshot.materialiMovimenti.snapshot?.counts.matchedStrong ?? 0}`,
+        `Match plausibili: ${snapshot.materialiMovimenti.snapshot?.counts.matchedPlausible ?? 0}`,
+        `Dettaglio match forti: targa esplicita ${
+          snapshot.materialiMovimenti.snapshot?.counts.matchedByExplicitTarga ?? 0
+        }, destinatario.label=targa ${
+          snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioLabelTarga ?? 0
+        }, destinatario.refId=targa ${
+          snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioRefTarga ?? 0
         }`,
+        `Filtro periodo materiali: ${formatMaterialiPeriodFilterStatus(
+          snapshot.materialiMovimenti.snapshot?.coverage.periodFilter ?? "non_dimostrabile",
+        )} (${snapshot.materialiMovimenti.snapshot?.counts.withReliableDate ?? 0}/${
+          snapshot.materialiMovimenti.snapshot?.counts.total ?? 0
+        } record con data parsabile)`,
         `Movimenti con costo: ${snapshot.materialiMovimenti.snapshot?.counts.withCost ?? 0}`,
         `Documenti supporto costo: ${snapshot.materialiMovimenti.snapshot?.materialCostSupport.documentCount ?? 0}`,
       ],
       notes: [
         ...(snapshot.materialiMovimenti.error ? [snapshot.materialiMovimenti.error] : []),
-        ...takeNotes(snapshot.materialiMovimenti.snapshot?.limitations),
+        ...takeNotes(snapshot.materialiMovimenti.snapshot?.limitations, 4),
       ],
     }),
     createSection({
@@ -266,20 +416,42 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
       count: documentsTotal,
       summary:
         documentsTotal > 0
-          ? `Trovati ${documentsTotal} documenti/costi collegati al mezzo.`
-          : "Nessun documento o costo utile collegato alla targa.",
+          ? `Trovati ${documentsTotal} documenti/costi diretti collegati al mezzo. Snapshot analitico ${snapshot.analisiEconomica.snapshot?.savedAnalysis ? "presente" : "assente"}.`
+          : "Nessun documento o costo diretto utile collegato alla targa.",
       bullets: [
-        `Preventivi: ${snapshot.documentCosts.snapshot?.counts.preventivi ?? 0}`,
-        `Fatture: ${snapshot.documentCosts.snapshot?.counts.fatture ?? 0}`,
-        `Documenti utili: ${snapshot.documentCosts.snapshot?.counts.documentiUtili ?? 0}`,
-        `Analisi economica salvata: ${
-          snapshot.analisiEconomica.snapshot?.savedAnalysis ? "Si" : "No"
+        `Documenti/costi diretti: ${snapshot.documentCosts.snapshot?.counts.total ?? 0}`,
+        `Dettaglio fonti dirette: costiMezzo ${
+          snapshot.documentCosts.snapshot?.sourceCounts.costiMezzo ?? 0
+        }, documenti mezzo ${snapshot.documentCosts.snapshot?.sourceCounts.documentiMezzo ?? 0}, documenti magazzino ${
+          snapshot.documentCosts.snapshot?.sourceCounts.documentiMagazzino ?? 0
+        }, documenti generici ${snapshot.documentCosts.snapshot?.sourceCounts.documentiGenerici ?? 0}`,
+        `Dettaglio categorie: preventivi ${
+          snapshot.documentCosts.snapshot?.counts.preventivi ?? 0
+        }, fatture ${snapshot.documentCosts.snapshot?.counts.fatture ?? 0}, documenti utili ${
+          snapshot.documentCosts.snapshot?.counts.documentiUtili ?? 0
         }`,
+        `Filtro periodo documenti/costi: ${formatDocumentiCostiPeriodFilterStatus(
+          documentiCostiPeriodFilter,
+        )} (${snapshot.documentCosts.snapshot?.counts.withReliableDate ?? 0}/${
+          snapshot.documentCosts.snapshot?.counts.total ?? 0
+        } record con data parsabile)`,
+        `Analisi economica salvata: ${
+          snapshot.analisiEconomica.snapshot?.savedAnalysis ? "presente" : "assente"
+        }`,
+        `Procurement: ${formatProcurementDecision(
+          procurementSnapshot?.perimeterDecision ?? "fuori_perimetro",
+        )} (${procurementSnapshot?.counts.preventiviGlobali ?? 0} preventivi globali, ${
+          procurementSnapshot?.counts.preventiviMatchForte ?? 0
+        } match forti sulla targa in \`@preventivi\`)`,
+        `Approvazioni: ${procurementSnapshot?.counts.approvazioniMezzo ?? 0} record per la targa, di cui ${
+          procurementSnapshot?.counts.approvazioniSuDocumentiDiretti ?? 0
+        } su documenti diretti gia mezzo-centrici`,
       ],
       notes: [
         ...(snapshot.documentCosts.error ? [snapshot.documentCosts.error] : []),
-        ...takeNotes(snapshot.documentCosts.snapshot?.limitations),
-        ...takeNotes(snapshot.analisiEconomica.snapshot?.limitations),
+        ...takeNotes(snapshot.documentCosts.snapshot?.limitations, 4),
+        ...takeNotes(snapshot.analisiEconomica.snapshot?.limitations, 3),
+        ...takeNotes(snapshot.procurementPerimeter.snapshot?.limitations, 3),
       ],
     }),
   ];
@@ -338,33 +510,81 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
       title: snapshot.materialiMovimenti.snapshot?.domainName ?? "Movimenti materiali",
       state: snapshot.materialiMovimenti,
       count: materialiTotal,
-      description: "Movimenti materiali ricostruiti dal layer mezzo-centrico in sola lettura del clone.",
+      description:
+        "Movimenti materiali letti da `@materialiconsegnati` tramite layer read-only del clone; il report include solo match forti o plausibili e lascia fuori i collegamenti non dimostrabili.",
       datasetLabels: snapshot.materialiMovimenti.snapshot
         ? [...snapshot.materialiMovimenti.snapshot.logicalDatasets]
         : ["storage/@materialiconsegnati"],
       countLabel: formatCountLabel(materialiTotal, "movimenti"),
-      notes: takeNotes(snapshot.materialiMovimenti.snapshot?.limitations),
+      notes: takeNotes(
+        [
+          `Copertura match: ${formatMaterialiMatchCoverage(
+            snapshot.materialiMovimenti.snapshot?.coverage.match ?? "vuota",
+          )}.`,
+          `Filtro periodo: ${formatMaterialiPeriodFilterStatus(
+            snapshot.materialiMovimenti.snapshot?.coverage.periodFilter ?? "non_dimostrabile",
+          )}.`,
+          ...(snapshot.materialiMovimenti.snapshot?.limitations ?? []),
+        ],
+        4,
+      ),
     }),
     createSource({
       id: "documenti-costi",
-      title: snapshot.documentCosts.snapshot?.domainName ?? "Documenti e costi",
+      title: snapshot.documentCosts.snapshot?.domainName ?? "Documenti e costi diretti",
       state: snapshot.documentCosts,
       count: documentsTotal,
-      description: "Documenti e costi letti dai layer documentali ed economici in sola lettura del clone.",
+      description:
+        "Documenti e costi diretti letti dai layer documentali ed economici in sola lettura del clone, senza confonderli con snapshot analitici o workflow procurement.",
       datasetLabels: snapshot.documentCosts.snapshot
         ? [...snapshot.documentCosts.snapshot.activeReadOnlyDatasets]
         : ["storage/@costiMezzo", "@documenti_mezzi", "@documenti_magazzino", "@documenti_generici"],
       countLabel: formatCountLabel(documentsTotal, "documenti/costi"),
-      notes: takeNotes(snapshot.documentCosts.snapshot?.limitations),
+      notes: takeNotes(
+        [
+          `Filtro periodo diretto: ${formatDocumentiCostiPeriodFilterStatus(
+            documentiCostiPeriodFilter,
+          )}.`,
+          ...(snapshot.documentCosts.snapshot?.limitations ?? []),
+        ],
+        5,
+      ),
     }),
     {
       id: "analisi-economica",
       title: "Analisi economica salvata",
       status: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "disponibile" : "parziale",
-      description: "Verifica in sola lettura dell'eventuale snapshot legacy di analisi economica.",
+      description:
+        "Verifica in sola lettura dell'eventuale snapshot legacy di analisi economica: e un riepilogo salvato, non un documento/costo base.",
       datasetLabels: ["@analisi_economica_mezzi"],
-      countLabel: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "1 analisi trovata" : null,
+      countLabel: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "1 snapshot trovato" : null,
       notes: takeNotes(snapshot.analisiEconomica.snapshot?.limitations),
+    },
+    {
+      id: "procurement-approvazioni",
+      title: "Procurement e approvazioni",
+      status: snapshot.procurementPerimeter.status === "error" ? "errore" : "parziale",
+      description:
+        procurementSnapshot?.perimeterDecision === "parziale"
+          ? "Dataset reali presenti nel repo con qualche collegamento mezzo leggibile, ma ancora solo come supporto parziale separato: non vanno fusi nel blocco economico diretto."
+          : "Dataset reali presenti nel repo ma fuori dal perimetro base del report mezzo: non sono documenti/costi diretti e non vanno fusi in questo blocco come se fossero omogenei.",
+      datasetLabels: ["storage/@preventivi", "storage/@preventivi_approvazioni"],
+      countLabel: procurementSnapshot
+        ? `Globali ${procurementSnapshot.counts.preventiviGlobali}, match forte mezzo ${procurementSnapshot.counts.preventiviMatchForte}, approvazioni mezzo ${procurementSnapshot.counts.approvazioniMezzo}`
+        : null,
+      notes: takeNotes(
+        [
+          `Matching \`@preventivi\`: ${formatProcurementMatchLevel(
+            procurementSnapshot?.matching.preventivi ?? "non_dimostrabile",
+          )}.`,
+          `Matching \`@preventivi_approvazioni\`: ${formatProcurementMatchLevel(
+            procurementSnapshot?.matching.approvazioni ?? "non_dimostrabile",
+          )}.`,
+          ...(snapshot.procurementPerimeter.error ? [snapshot.procurementPerimeter.error] : []),
+          ...(procurementSnapshot?.limitations ?? []),
+        ],
+        5,
+      ),
     },
   ];
 
@@ -407,8 +627,8 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
       {
         label: "Documenti e costi",
         value: String(documentsTotal),
-        meta: `Preventivi ${snapshot.documentCosts.snapshot?.counts.preventivi ?? 0}, fatture ${
-          snapshot.documentCosts.snapshot?.counts.fatture ?? 0
+        meta: `Diretti ${documentsTotal}, snapshot analisi ${
+          snapshot.analisiEconomica.snapshot?.savedAnalysis ? "si" : "no"
         }`,
         tone: documentsTotal > 0 ? "success" : "warning",
       },

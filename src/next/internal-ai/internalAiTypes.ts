@@ -154,6 +154,27 @@ export type InternalAiVehicleReportPreview = {
   approvalState: InternalAiApprovalState;
 };
 
+export type InternalAiEconomicAnalysisPreview = {
+  mezzoTarga: string;
+  title: string;
+  subtitle: string;
+  generatedAt: string;
+  header: {
+    targa: string;
+    categoria: string | null;
+    marcaModello: string | null;
+    documentiDiretti: string;
+    snapshotLegacy: string;
+    procurement: string;
+    periodoDiretto: string;
+  };
+  cards: InternalAiVehicleReportCard[];
+  sections: InternalAiVehicleReportSection[];
+  missingData: string[];
+  sources: InternalAiVehicleReportSource[];
+  previewState: InternalAiPreviewState;
+};
+
 export type InternalAiVehicleLookupMatchState =
   | "idle"
   | "loading"
