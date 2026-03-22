@@ -15,6 +15,10 @@ import type {
   InternalAiTrackingMode,
   NextInternalAiSectionId,
 } from "./internalAiTypes";
+import {
+  writeInternalAiServerTrackingSummary,
+  type InternalAiServerTrackingRepositoryState,
+} from "./internalAiServerPersistenceClient";
 
 type InternalAiPersistedTrackingStore = {
   version: 1;
@@ -34,12 +38,17 @@ type InternalAiPersistedTrackingStore = {
 const STORAGE_KEY = "@next_internal_ai:tracking_memory_v1";
 const MAX_RECENT_EVENTS = 24;
 const MAX_RECENT_ITEMS = 6;
+let trackingModeOverride: InternalAiTrackingMode | null = null;
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
 export function getInternalAiTrackingPersistenceMode(): InternalAiTrackingMode {
+  if (trackingModeOverride) {
+    return trackingModeOverride;
+  }
+
   return canUseStorage() ? "local_storage_isolated" : "memory_only";
 }
 
@@ -249,6 +258,30 @@ function persistState() {
 }
 
 function emitChange() {
+  cachedSnapshot = buildSnapshot();
+  persistState();
+  const serverTrackingState: InternalAiServerTrackingRepositoryState = {
+    version: 1,
+    summary: cachedSnapshot,
+  };
+  void writeInternalAiServerTrackingSummary(serverTrackingState);
+  listeners.forEach((listener) => listener());
+}
+
+export function hydrateInternalAiTrackingSummaryFromServer(summary: InternalAiTrackingSummary) {
+  memoryStore.totalVisits = summary.totalVisits;
+  memoryStore.totalEvents = summary.totalEvents;
+  memoryStore.sectionCounts = { ...summary.sectionCounts };
+  memoryStore.recentEvents = summary.recentEvents.map(cloneRecentEvent);
+  memoryStore.recentVehicleSearches = summary.recentVehicleSearches.map(cloneRecentVehicleSearch);
+  memoryStore.recentDriverSearches = summary.recentDriverSearches.map(cloneRecentDriverSearch);
+  memoryStore.recentCombinedSearches = summary.recentCombinedSearches.map(cloneRecentCombinedSearch);
+  memoryStore.recentChatPrompts = summary.recentChatPrompts.map(cloneRecentChatPrompt);
+  memoryStore.recentArtifacts = summary.recentArtifacts.map(cloneRecentArtifactAction);
+  memoryStore.recentIntents = summary.recentIntents.map((entry) => ({ ...entry }));
+  memoryStore.sessionState = cloneSessionState(summary.sessionState);
+  trackingModeOverride = "server_file_isolated";
+  isHydrated = true;
   cachedSnapshot = buildSnapshot();
   persistState();
   listeners.forEach((listener) => listener());

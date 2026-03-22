@@ -314,6 +314,321 @@ Serve a:
   - perimetro `/next/ia/interna*` ancora isolato e `read-only`;
   - testi visibili del clone mantenuti in italiano.
 
+## 5.20 Aggiornamento 2026-03-22 - Primo assorbimento preview-first documenti IA interni
+- Il clone `/next/ia/interna*` espone ora un primo blocco secondario `Preview documenti collegabili al mezzo`.
+- Il blocco legge davvero solo:
+  - `@documenti_mezzi`;
+  - record gia mezzo-centrici di `@costiMezzo`;
+  - `@documenti_magazzino` e `@documenti_generici` solo quando la targa e gia leggibile nel layer clone-safe.
+- La UI distingue in modo esplicito:
+  - documenti diretti;
+  - documenti plausibili;
+  - flussi fuori perimetro.
+- Restano fuori perimetro del primo step:
+  - runtime legacy documenti (`IADocumenti`, `estrazioneDocumenti`);
+  - OCR reale, upload Storage, classificazione automatica e scritture su `@documenti_*`;
+  - `@preventivi`, approvazioni procurement e provider reali come backend canonico del blocco documenti.
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiDocumentsPreviewFacade.ts` -> OK;
+  - `npm run build` -> OK.
+- Stato del clone dopo il task:
+  - nessuna scrittura business riaperta;
+  - nessun impatto sui flussi dati della madre;
+  - blocco documenti IA interno integrato in modo secondario, reversibile e read-only;
+  - testi visibili del clone mantenuti in italiano.
+
+## 5.21 Aggiornamento 2026-03-22 - Primo assorbimento preview-first libretto IA interno
+- Il clone `/next/ia/interna*` espone ora un blocco secondario `Preview libretto collegato al mezzo`.
+- Il blocco legge davvero solo:
+  - campi gia presenti sul mezzo in `@mezzi_aziendali`;
+  - supporto clone-safe del layer `nextLibrettiExportDomain` per capire se il file libretto e gia disponibile nel clone.
+- La UI distingue in modo esplicito:
+  - dati libretto diretti;
+  - dati plausibili o incompleti;
+  - flussi fuori perimetro.
+- Restano fuori perimetro del primo step:
+  - runtime legacy `IALibretto`;
+  - Cloud Run esterno e OCR reale;
+  - upload file, salvataggi su `@mezzi_aziendali` e Storage business;
+  - provider reali e segreti lato client.
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiLibrettoPreviewFacade.ts` -> OK;
+  - `npm run build` -> OK.
+- Stato del clone dopo il task:
+  - nessuna scrittura business riaperta;
+  - nessun impatto sui flussi dati della madre;
+  - blocco libretto IA interno integrato in modo secondario, reversibile e read-only;
+  - testi visibili del clone mantenuti in italiano.
+
+## 5.22 Aggiornamento 2026-03-22 - Primo assorbimento preview-first preventivi IA interni
+- Il clone `/next/ia/interna*` espone ora un blocco secondario `Preview preventivi collegabili al mezzo`.
+- Il blocco legge davvero solo:
+  - preventivi gia mezzo-centrici esposti dal layer clone-safe `nextDocumentiCostiDomain`;
+  - supporti plausibili dai record documentali gia normalizzati nel layer documenti/costi;
+  - snapshot clone-safe di procurement (`@preventivi`, `@preventivi_approvazioni`) solo come contesto separato e diagnostico.
+- La UI distingue in modo esplicito:
+  - preventivi direttamente collegabili;
+  - preventivi plausibili o supporti separati;
+  - flussi fuori perimetro.
+- Restano fuori perimetro del primo step:
+  - runtime legacy preventivi (`Acquisti`, `estraiPreventivoIA`);
+  - OCR reale, parsing AI, upload Storage e ingestione nuovi file;
+  - scritture su `@preventivi`, `@preventivi_approvazioni`, `@documenti_*` e provider reali come backend canonico;
+  - workflow approvativo e PDF timbrati.
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiPreventiviPreviewFacade.ts` -> OK;
+  - `npm run build` -> OK.
+- Stato del clone dopo il task:
+  - nessuna scrittura business riaperta;
+  - nessun impatto sui flussi dati della madre;
+  - blocco preventivi IA interno integrato in modo secondario, reversibile e read-only;
+  - testi visibili del clone mantenuti in italiano.
+
+## 5.23 Aggiornamento 2026-03-22 - Primo scaffolding backend IA separato
+- Il repo ospita ora il primo perimetro dedicato al backend server-side del sottosistema IA interno in `backend/internal-ai/*`.
+- La scelta architetturale e deliberatamente separata da:
+  - `functions/*`;
+  - `functions-schede/*`;
+  - `api/*`;
+  - `server.js`.
+- Lo scaffold include:
+  - contratti base server-side;
+  - manifest di guard rail;
+  - dispatcher framework-agnostico;
+  - handler stub non operativi per `health`, orchestrazione preview, retrieval controllato, preview artifact e preparazione approvazioni.
+- Stato runtime del clone dopo il task:
+  - nessuna route `/next` viene collegata al nuovo backend;
+  - il clone resta navigabile anche con backend IA separato spento;
+  - nessuna scrittura business, nessun provider reale e nessun runtime legacy vengono riattivati.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint backend/internal-ai/src/*.ts` -> OK;
+  - `npm run build` -> OK.
+
+## 5.24 Aggiornamento 2026-03-22 - Primo ponte mock-safe tra clone IA e backend separato
+- Il clone `/next/ia/interna*` usa ora un primo ponte mock-safe verso `backend/internal-ai/*`.
+- La capability oggi instradata nel backend separato e solo:
+  - `Preview documenti collegabili al mezzo`.
+- Il flusso runtime del clone ora e:
+  - pagina `/next/ia/interna`;
+  - bridge frontend `internalAiDocumentsPreviewBridge`;
+  - dispatcher `internalAiBackendService` sul path `orchestrator.preview`;
+  - handler backend mock-safe per `documents-preview`;
+  - fallback locale esplicito sul facade documenti clone-safe se il ponte non e pronto.
+- Cosa non cambia:
+  - nessun endpoint deployato reale del backend IA separato;
+  - nessun provider reale o segreto;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Cosa resta ancora solo frontend/mock locale:
+  - `report targa`, `report autista`, `report combinato`;
+  - `analisi economica`, `libretto`, `preventivi`;
+  - chat interna controllata.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiDocumentsPreviewBridge.ts src/next/internal-ai/internalAiContracts.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendHandlers.ts backend/internal-ai/src/internalAiBackendService.ts` -> OK;
+  - `npm run build` -> OK.
+
+## 5.25 Aggiornamento 2026-03-22 - Secondo ponte mock-safe tra clone IA e backend separato
+- Il clone `/next/ia/interna*` usa ora un secondo ponte mock-safe verso `backend/internal-ai/*`.
+- La capability oggi aggiunta al backend separato e:
+  - `Analisi economica preview-first`.
+- Il flusso runtime del clone ora e:
+  - pagina `/next/ia/interna`;
+  - bridge frontend `internalAiEconomicAnalysisPreviewBridge`;
+  - dispatcher `internalAiBackendService` sul path `orchestrator.preview`;
+  - handler backend mock-safe per `economic-analysis-preview`;
+  - fallback locale esplicito sul facade economico clone-safe se il ponte non e pronto.
+- Cosa non cambia:
+  - nessun endpoint deployato reale del backend IA separato;
+  - nessun provider reale o segreto;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Cosa resta ancora solo frontend/mock locale:
+  - `report targa`, `report autista`, `report combinato`;
+  - `libretto`, `preventivi`;
+  - chat interna controllata.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiEconomicAnalysisPreviewBridge.ts src/next/internal-ai/internalAiContracts.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendHandlers.ts backend/internal-ai/src/internalAiBackendService.ts` -> OK;
+  - `npm run build` -> OK.
+
+## 5.26 Aggiornamento 2026-03-22 - Terzo e quarto ponte mock-safe tra clone IA e backend separato
+- Il clone `/next/ia/interna*` usa ora anche il terzo e il quarto ponte mock-safe verso `backend/internal-ai/*`.
+- Le capability oggi aggiunte al backend separato sono:
+  - `Preview libretto collegato al mezzo`;
+  - `Preview preventivi collegabili al mezzo`.
+- Il flusso runtime del clone ora e:
+  - pagina `/next/ia/interna`;
+  - bridge frontend `internalAiLibrettoPreviewBridge` e `internalAiPreventiviPreviewBridge`;
+  - dispatcher `internalAiBackendService` sul path `orchestrator.preview`;
+  - handler backend mock-safe per `libretto-preview` e `preventivi-preview`;
+  - fallback locale esplicito sui facade clone-safe se i ponti non sono pronti.
+- Cosa non cambia:
+  - nessun endpoint deployato reale del backend IA separato;
+  - nessun provider reale o segreto;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Cosa resta ancora solo frontend/mock locale:
+  - `report targa`, `report autista`, `report combinato`;
+  - chat interna controllata.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiLibrettoPreviewBridge.ts src/next/internal-ai/internalAiPreventiviPreviewBridge.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendHandlers.ts backend/internal-ai/src/internalAiBackendService.ts` -> OK;
+  - `npm run build` -> OK.
+
+## 5.27 Aggiornamento 2026-03-22 - Quinto, sesto e settimo ponte mock-safe tra clone IA e backend separato
+- Il clone `/next/ia/interna*` usa ora anche il quinto, il sesto e il settimo ponte mock-safe verso `backend/internal-ai/*`.
+- Le capability oggi aggiunte al backend separato sono:
+  - `Anteprima report per targa`;
+  - `Anteprima report per autista`;
+  - `Anteprima report combinato mezzo + autista`.
+- Il flusso runtime del clone ora e:
+  - pagina `/next/ia/interna`;
+  - bridge frontend `internalAiVehicleReportPreviewBridge`, `internalAiDriverReportPreviewBridge` e `internalAiCombinedReportPreviewBridge`;
+  - dispatcher `internalAiBackendService` sul path `orchestrator.preview`;
+  - handler backend mock-safe per `vehicle-report-preview`, `driver-report-preview` e `combined-report-preview`;
+  - fallback locale esplicito sui facade clone-safe se i ponti non sono pronti.
+- Cosa non cambia:
+  - nessun endpoint deployato reale del backend IA separato;
+  - nessun provider reale o segreto;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Cosa resta ancora solo frontend/mock locale:
+  - chat interna controllata;
+  - lookup/autosuggest di supporto al clone.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiVehicleReportPreviewBridge.ts src/next/internal-ai/internalAiDriverReportPreviewBridge.ts src/next/internal-ai/internalAiCombinedReportPreviewBridge.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendHandlers.ts backend/internal-ai/src/internalAiBackendService.ts` -> OK;
+  - `npm run build` -> OK.
+
+## 5.28 Aggiornamento 2026-03-22 - Ottavo ponte mock-safe tra clone IA e backend separato
+- Il clone `/next/ia/interna*` usa ora anche l'ottavo ponte mock-safe verso `backend/internal-ai/*`.
+- La capability oggi aggiunta al backend separato e:
+  - `Chat interna controllata backend-first`.
+- Il flusso runtime del clone ora e:
+  - pagina `/next/ia/interna`;
+  - bridge frontend `internalAiChatOrchestratorBridge`;
+  - dispatcher `internalAiBackendService` sul path `orchestrator.chat`;
+  - handler backend mock-safe per `chat-orchestrator`;
+  - fallback locale esplicito sull'orchestratore chat clone-safe se il ponte non e pronto.
+- Cosa non cambia:
+  - nessun endpoint deployato reale del backend IA separato;
+  - nessun provider reale o segreto;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Cosa resta ancora solo frontend/mock locale:
+  - lookup/autosuggest di supporto al clone;
+  - persistenza messaggi chat e tracking locale in memoria.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendHandlers.ts backend/internal-ai/src/internalAiBackendService.ts` -> OK;
+  - `npm run build` -> OK.
+
+## 5.29 Aggiornamento 2026-03-22 - Primo adapter server-side reale e prima persistenza IA dedicata
+- Il clone `/next/ia/interna*` usa ora anche un primo adapter server-side reale del backend IA separato, sempre in modalita mock-safe.
+- Canale scelto nel repo:
+  - adapter HTTP locale `backend/internal-ai/server/internal-ai-adapter.js`;
+  - base path `/internal-ai-backend/*`;
+  - persistenza dedicata in `backend/internal-ai/runtime-data/*`;
+  - fallback locale esplicito nel clone se l'adapter non e acceso o non risponde.
+- Cosa salva davvero lato server:
+  - repository artifact/sessioni/richieste/audit IA in `analysis_artifacts.json`;
+  - memoria operativa e tracking IA in `ai_operational_memory.json`;
+  - traceability minima di letture/scritture IA in `ai_traceability_log.json`.
+- Impatto sul runtime clone:
+  - `NextInternalAiPage.tsx` tenta una hydration iniziale via `internalAiServerPersistenceBridge`;
+  - `internalAiMockRepository` e `internalAiTracking` fanno mirror mock-safe verso l'adapter server-side dedicato;
+  - nessuna route `/next` dipende in modo bloccante dall'adapter: se il server non e disponibile, il clone resta navigabile con persistenza locale di fallback.
+- Cosa non cambia:
+  - nessun provider reale o segreto;
+  - nessuna scrittura Firestore/Storage business;
+  - nessun backend legacy reso canonico;
+  - nessun retrieval server-side reale di repo, Firestore o Storage business ancora attivo.
+- Cosa resta ancora solo frontend/mock locale o in-process:
+  - lookup/autosuggest di supporto al clone;
+  - reader preview/chat ancora eseguiti sugli stessi layer clone-safe gia presenti;
+  - persistenza locale di fallback del clone, che resta attiva come rete di sicurezza.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiMockRepository.ts src/next/internal-ai/internalAiTracking.ts src/next/internal-ai/internalAiServerPersistenceClient.ts src/next/internal-ai/internalAiServerPersistenceBridge.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendService.ts backend/internal-ai/src/internalAiServerPersistenceContracts.ts` -> OK;
+  - smoke test adapter `health/read/write` via import Node locale -> OK;
+  - `npm run build` -> OK.
+
+## 5.30 Aggiornamento 2026-03-22 - Primo retrieval server-side read-only della nuova IA interna
+- Il clone `/next/ia/interna*` usa ora anche un primo retrieval server-side controllato del backend IA separato.
+- Perimetro attivo nel runtime clone:
+  - solo contesto mezzo `D01/@mezzi_aziendali`;
+  - solo snapshot read-only seedato dal clone;
+  - sola capability `libretto-preview` sul nuovo retrieval;
+  - fallback locale esplicito se l'adapter o lo snapshot non sono disponibili.
+- Flusso runtime ora attivo per il libretto:
+  - `NextInternalAiPage.tsx`;
+  - bridge frontend `internalAiLibrettoPreviewBridge`;
+  - client HTTP `internalAiServerRetrievalClient`;
+  - adapter `backend/internal-ai/server/internal-ai-adapter.js` sul path `/internal-ai-backend/retrieval/read`;
+  - snapshot locale `backend/internal-ai/runtime-data/fleet_readonly_snapshot.json`;
+  - builder preview `internalAiLibrettoPreviewFacade`.
+- Cosa legge davvero il retrieval server-side:
+  - campi mezzo gia normalizzati del clone;
+  - disponibilita `librettoUrl` e `librettoStoragePath`;
+  - limitazioni dei layer clone-safe gia esistenti.
+- Cosa non cambia:
+  - nessuna lettura diretta Firestore/Storage business lato server;
+  - nessun provider reale o segreto;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Cosa resta ancora solo frontend/mock locale o in-process:
+  - report targa, report autista, report combinato, documenti preview, analisi economica preview, preventivi preview e chat continuano sui ponti mock-safe gia aperti;
+  - lookup/autosuggest di supporto restano frontend/in-process.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiLibrettoPreviewFacade.ts src/next/internal-ai/internalAiLibrettoPreviewBridge.ts src/next/internal-ai/internalAiServerRetrievalClient.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendHandlers.ts backend/internal-ai/src/internalAiBackendService.ts backend/internal-ai/src/internalAiServerPersistenceContracts.ts backend/internal-ai/src/internalAiServerRetrievalContracts.ts` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - smoke test adapter `retrieval.read` via Node locale su porta dedicata `4311` -> OK;
+  - `npm run build` -> OK.
+
+## 5.31 Aggiornamento 2026-03-22 - Primo provider reale server-side + workflow preview/approval/rollback IA
+- Il clone `/next/ia/interna*` apre ora il primo punto di aggancio a un provider reale lato server, ma solo su un workflow controllato e reversibile.
+- Provider/canale scelti nel repo:
+  - `OpenAI` lato server;
+  - `Responses API`;
+  - modello di default `gpt-5-mini`, configurabile via `INTERNAL_AI_OPENAI_MODEL`;
+  - segreto solo server-side tramite `OPENAI_API_KEY`;
+  - adapter canonico `backend/internal-ai/server/internal-ai-adapter.js`, separato da `functions/*`, `api/*` e `server.js`.
+- Caso d'uso iniziale nel clone:
+  - sintesi guidata del report attivo gia letto nel clone;
+  - trigger UI minimo dentro `NextInternalAiPage.tsx`;
+  - nessuna nuova scrittura business e nessuna applicazione automatica.
+- Flusso runtime ora previsto:
+  - report attivo nel clone;
+  - client `internalAiServerReportSummaryClient`;
+  - `POST /internal-ai-backend/artifacts/preview` per la preview;
+  - `POST /internal-ai-backend/approvals/prepare` per approvazione, rifiuto e rollback;
+  - persistenza IA dedicata in `backend/internal-ai/runtime-data/ai_preview_workflows.json`.
+- Cosa viene salvato davvero lato server:
+  - testo della preview generata;
+  - contesto report strutturato usato come input;
+  - stati `preview_ready`, `approved`, `rejected`, `rolled_back`;
+  - traceability minima delle operazioni.
+- Cosa non cambia:
+  - nessuna scrittura Firestore/Storage business automatica;
+  - nessun backend legacy reso canonico;
+  - nessun segreto lato client;
+  - chat reale, OCR, upload, parsing documentale e applicazioni business restano fuori perimetro.
+- Stato reale del runner corrente:
+  - `OPENAI_API_KEY` manca nel runner locale, quindi la chiamata reale al provider non e dimostrata end-to-end in questa sessione;
+  - il clone mostra comunque il workflow e mantiene fallback/mock-safe quando il provider non e disponibile;
+  - approval e rollback server-side sono stati verificati sul contenitore IA dedicato, senza toccare dati business.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiServerReportSummaryClient.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendService.ts backend/internal-ai/src/internalAiServerPersistenceContracts.ts` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - smoke test `GET /internal-ai-backend/health` -> OK;
+  - smoke test `POST /internal-ai-backend/artifacts/preview` con esito `provider_not_configured` senza segreto -> OK;
+  - smoke test `approve_preview` + `rollback_preview` su workflow IA dedicato -> OK;
+  - `npm run build` -> OK.
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

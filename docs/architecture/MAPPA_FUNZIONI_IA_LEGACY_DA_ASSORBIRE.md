@@ -1,6 +1,6 @@
 # MAPPA FUNZIONI IA LEGACY DELLA MADRE DA ASSORBIRE NELLA NUOVA IA
 
-Ultimo aggiornamento: 2026-03-13  
+Ultimo aggiornamento: 2026-03-22  
 Stato documento: CURRENT  
 Scopo: censire solo le funzioni IA realmente presenti nel repository legacy/madre e fissare cosa la nuova IA interna deve assorbire, rifare o lasciare fuori dal perimetro iniziale.
 
@@ -36,6 +36,20 @@ Scopo: censire solo le funzioni IA realmente presenti nel repository legacy/madr
 - Analisi economica mezzo come report/snapshot spiegabile, separato dai documenti base e senza dipendere dal backend legacy attuale.
 - Estrazione preventivi procurement come capability specialistica gia usata dal business, ma da ricostruire su backend piu pulito e contratto allegati chiaro.
 - Prima wave operativa aperta nel clone il `2026-03-14`: `Analisi economica mezzo` in modalita `preview-first`, read-only, sopra i layer clone-safe esistenti e l'eventuale snapshot legacy gia salvato, senza rigenerazione IA o scritture business.
+- Wave operativa aperta nel clone il `2026-03-22`: `Libretto IA` in modalita `preview-first`, read-only e reversibile, sopra i layer clone-safe di flotta/libretti gia esistenti, distinguendo:
+  - dati libretto diretti gia strutturati sul mezzo;
+  - dati plausibili o incompleti da verificare;
+  - flussi fuori perimetro (`OCR`, Cloud Run esterno, upload, scritture, provider reali).
+- Dal `2026-03-22` la capability `Libretto IA` passa anche prima dal backend IA separato mock-safe via `orchestrator.preview`, con fallback locale esplicito e nessun backend legacy canonico.
+- Seconda wave operativa aperta nel clone il `2026-03-22`: `Documenti IA` in modalita `preview-first`, read-only e reversibile, sopra il layer clone-safe `nextDocumentiCostiDomain`, distinguendo:
+  - documenti diretti gia mezzo-centrici;
+  - documenti plausibili con targa leggibile;
+  - flussi fuori perimetro (`@preventivi`, approvazioni, OCR/upload legacy, provider reali).
+- Terza wave operativa aperta nel clone il `2026-03-22`: `Preventivi IA` in modalita `preview-first`, read-only e reversibile, sopra i layer clone-safe gia attivi per documenti/costi e procurement, distinguendo:
+  - preventivi direttamente collegabili al mezzo;
+  - preventivi plausibili o supporti separati;
+  - flussi fuori perimetro (parsing IA reale, upload, scritture business, approvazioni e PDF timbrati).
+- Dal `2026-03-22` la capability `Preventivi IA` passa anche prima dal backend IA separato mock-safe via `orchestrator.preview`, con fallback locale esplicito e nessun backend legacy canonico.
 
 ### 3.2 Priorita media
 - Dominio cisterna, ma come filone separato o wave dedicata, non come pezzo indistinto della IA business generale.

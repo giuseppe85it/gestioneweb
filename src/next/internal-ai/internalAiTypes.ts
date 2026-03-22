@@ -35,7 +35,10 @@ export type InternalAiArtifactKind =
 
 export type InternalAiArtifactStatus = "draft" | "preview" | "archived";
 
-export type InternalAiArtifactStorageMode = "mock_memory_only" | "local_storage_isolated";
+export type InternalAiArtifactStorageMode =
+  | "mock_memory_only"
+  | "local_storage_isolated"
+  | "server_file_isolated";
 
 export type InternalAiArtifactFamily =
   | "operativo"
@@ -98,7 +101,7 @@ export type InternalAiAuditLogEntry = {
 export type InternalAiScaffoldSummary = {
   safeMode: true;
   runtimeMode: "scaffolding";
-  backendMode: "stub_only";
+  backendMode: "stub_only" | "server_adapter_mock_safe";
   artifactArchiveMode: InternalAiArtifactStorageMode;
   trackingMode: InternalAiTrackingMode;
   writesBlocked: true;
@@ -220,6 +223,151 @@ export type InternalAiEconomicAnalysisPreview = {
   };
   cards: InternalAiVehicleReportCard[];
   sections: InternalAiVehicleReportSection[];
+  missingData: string[];
+  sources: InternalAiVehicleReportSource[];
+  previewState: InternalAiPreviewState;
+};
+
+export type InternalAiDocumentPreviewItemClassification =
+  | "diretto"
+  | "plausibile"
+  | "fuori_perimetro";
+
+export type InternalAiDocumentPreviewItem = {
+  id: string;
+  title: string;
+  classification: InternalAiDocumentPreviewItemClassification;
+  summary: string;
+  sourceLabel: string;
+  datasetLabel: string;
+  categoryLabel: string;
+  dateLabel: string | null;
+  amountLabel: string | null;
+  fileLabel: string;
+  traceabilityLabel: string;
+  notes: string[];
+};
+
+export type InternalAiDocumentsPreviewBucket = {
+  id: string;
+  title: string;
+  status: InternalAiVehicleReportSectionStatus;
+  summary: string;
+  items: InternalAiDocumentPreviewItem[];
+  notes: string[];
+};
+
+export type InternalAiDocumentsPreview = {
+  mezzoTarga: string;
+  title: string;
+  subtitle: string;
+  generatedAt: string;
+  header: {
+    targa: string;
+    documentiDiretti: number;
+    documentiPlausibili: number;
+    fuoriPerimetro: number;
+    fileLeggibili: number;
+  };
+  cards: InternalAiVehicleReportCard[];
+  buckets: InternalAiDocumentsPreviewBucket[];
+  safePerimeter: string[];
+  outOfScope: string[];
+  missingData: string[];
+  sources: InternalAiVehicleReportSource[];
+  previewState: InternalAiPreviewState;
+};
+
+export type InternalAiLibrettoPreviewItemClassification =
+  | "diretto"
+  | "plausibile"
+  | "fuori_perimetro";
+
+export type InternalAiLibrettoPreviewItem = {
+  id: string;
+  title: string;
+  valueLabel: string;
+  classification: InternalAiLibrettoPreviewItemClassification;
+  sourceLabel: string;
+  traceabilityLabel: string;
+  notes: string[];
+};
+
+export type InternalAiLibrettoPreviewBucket = {
+  id: string;
+  title: string;
+  status: InternalAiVehicleReportSectionStatus;
+  summary: string;
+  items: InternalAiLibrettoPreviewItem[];
+  notes: string[];
+};
+
+export type InternalAiLibrettoPreview = {
+  mezzoTarga: string;
+  title: string;
+  subtitle: string;
+  generatedAt: string;
+  header: {
+    targa: string;
+    datiDiretti: number;
+    datiPlausibili: number;
+    fuoriPerimetro: number;
+    fileLibretto: string;
+  };
+  cards: InternalAiVehicleReportCard[];
+  buckets: InternalAiLibrettoPreviewBucket[];
+  safePerimeter: string[];
+  outOfScope: string[];
+  missingData: string[];
+  sources: InternalAiVehicleReportSource[];
+  previewState: InternalAiPreviewState;
+};
+
+export type InternalAiPreventiviPreviewItemClassification =
+  | "diretto"
+  | "plausibile"
+  | "fuori_perimetro";
+
+export type InternalAiPreventiviPreviewItem = {
+  id: string;
+  title: string;
+  classification: InternalAiPreventiviPreviewItemClassification;
+  summary: string;
+  sourceLabel: string;
+  datasetLabel: string;
+  dateLabel: string | null;
+  amountLabel: string | null;
+  collegamentoLabel: string;
+  traceabilityLabel: string;
+  notes: string[];
+};
+
+export type InternalAiPreventiviPreviewBucket = {
+  id: string;
+  title: string;
+  status: InternalAiVehicleReportSectionStatus;
+  summary: string;
+  items: InternalAiPreventiviPreviewItem[];
+  notes: string[];
+};
+
+export type InternalAiPreventiviPreview = {
+  mezzoTarga: string;
+  title: string;
+  subtitle: string;
+  generatedAt: string;
+  header: {
+    targa: string;
+    categoria: string | null;
+    marcaModello: string | null;
+    preventiviDiretti: number;
+    supportiPlausibili: number;
+    fuoriPerimetro: number;
+  };
+  cards: InternalAiVehicleReportCard[];
+  buckets: InternalAiPreventiviPreviewBucket[];
+  safePerimeter: string[];
+  outOfScope: string[];
   missingData: string[];
   sources: InternalAiVehicleReportSource[];
   previewState: InternalAiPreviewState;
@@ -382,7 +530,10 @@ export type InternalAiChatMessage = {
   references: InternalAiChatMessageReference[];
 };
 
-export type InternalAiTrackingMode = "memory_only" | "local_storage_isolated";
+export type InternalAiTrackingMode =
+  | "memory_only"
+  | "local_storage_isolated"
+  | "server_file_isolated";
 
 export type InternalAiTrackingEventKind =
   | "screen_visit"

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "tsBuildInfoFile": "../../node_modules/.tmp/tsconfig.internal-ai-backend.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"]
+}

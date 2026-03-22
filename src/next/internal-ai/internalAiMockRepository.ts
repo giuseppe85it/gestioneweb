@@ -1,5 +1,9 @@
 import { INTERNAL_AI_CONTRACTS } from "./internalAiContracts";
 import { getInternalAiTrackingPersistenceMode } from "./internalAiTracking";
+import {
+  writeInternalAiServerArtifactRepositorySnapshot,
+  type InternalAiServerArtifactRepositoryState,
+} from "./internalAiServerPersistenceClient";
 import type {
   InternalAiApprovalState,
   InternalAiArtifactFamily,
@@ -39,6 +43,8 @@ type InternalAiPersistedStore = {
 };
 
 const STORAGE_KEY = "@next_internal_ai:artifact_archive_v1";
+let artifactStorageModeOverride: InternalAiArtifactStorageMode | null = null;
+let backendMode: InternalAiScaffoldSummary["backendMode"] = "stub_only";
 
 const APPROVAL_PENDING: InternalAiApprovalState = {
   status: "awaiting_approval",
@@ -256,6 +262,10 @@ function hydrateArtifact(artifact: InternalAiArtifact): InternalAiArtifact {
 }
 
 function getArtifactStorageMode(): InternalAiArtifactStorageMode {
+  if (artifactStorageModeOverride) {
+    return artifactStorageModeOverride;
+  }
+
   return canUseStorage() ? "local_storage_isolated" : "mock_memory_only";
 }
 
@@ -263,7 +273,7 @@ function createSummary(): InternalAiScaffoldSummary {
   return {
     safeMode: true,
     runtimeMode: "scaffolding",
-    backendMode: "stub_only",
+    backendMode,
     artifactArchiveMode: getArtifactStorageMode(),
     trackingMode: getInternalAiTrackingPersistenceMode(),
     writesBlocked: true,
@@ -327,10 +337,12 @@ const INITIAL_REQUESTS: InternalAiRequest[] = [
     previewState: {
       status: "revision_requested",
       updatedAt: "2026-03-12T09:22:00Z",
-      note: "Tracking confinato al modulo IA: ammessa solo persistenza locale isolata del clone.",
+      note:
+        "Tracking confinato al modulo IA: ammessa solo persistenza dedicata del sottosistema, con adapter server-side mock-safe o fallback locale isolato.",
     },
     approvalState: APPROVAL_REVISION,
-    note: "Scelta deliberata: nessuna persistenza business e nessun tracking globale. Solo memoria locale del perimetro IA interno.",
+    note:
+      "Scelta deliberata: nessuna persistenza business e nessun tracking globale. Solo contenitore IA dedicato server-side con fallback locale del perimetro IA interno.",
   },
   {
     id: "request-artifact-archive",
@@ -342,10 +354,12 @@ const INITIAL_REQUESTS: InternalAiRequest[] = [
     previewState: {
       status: "preview_ready",
       updatedAt: "2026-03-12T09:15:00Z",
-      note: "Archivio predisposto in modo isolato, con persistenza locale dedicata e fallback in memoria.",
+      note:
+        "Archivio predisposto in modo isolato, con contenitore server-side IA dedicato e fallback locale in memoria.",
     },
     approvalState: APPROVAL_IDLE,
-    note: "Archivio isolato del clone, separato dai dati business e senza Storage reale.",
+    note:
+      "Archivio IA isolato, separato dai dati business e senza Storage reale o provider esterni.",
   },
 ];
 
@@ -422,7 +436,8 @@ const INITIAL_AUDIT_LOG: InternalAiAuditLogEntry[] = [
     createdAt: "2026-03-12T09:18:00Z",
     severity: "info",
     riskLevel: "low",
-    message: "Tracking e memoria operativa restano confinati al solo modulo IA interno, con persistenza locale isolata e nessun dato business.",
+    message:
+      "Tracking e memoria operativa restano confinati al solo modulo IA interno, con persistenza server-side dedicata o fallback locale e nessun dato business.",
     scope: "tracking",
   },
   {
@@ -430,7 +445,8 @@ const INITIAL_AUDIT_LOG: InternalAiAuditLogEntry[] = [
     createdAt: "2026-03-12T09:20:00Z",
     severity: "warning",
     riskLevel: "medium",
-    message: "Archivio artifact predisposto come contenitore locale isolato del clone, senza Firestore o Storage business.",
+    message:
+      "Archivio artifact predisposto come contenitore server-side IA dedicato, senza Firestore o Storage business.",
     scope: "artifacts",
   },
 ];
@@ -505,6 +521,20 @@ function createPersistedStore(): InternalAiPersistedStore {
     artifacts: state.artifacts.map(cloneArtifact),
     auditLog: state.auditLog.map(cloneAuditEntry),
   };
+}
+
+function buildServerRepositoryState(): InternalAiServerArtifactRepositoryState {
+  return {
+    version: 1,
+    sessions: state.sessions.map(cloneSession),
+    requests: state.requests.map(cloneRequest),
+    artifacts: state.artifacts.map(cloneArtifact),
+    auditLog: state.auditLog.map(cloneAuditEntry),
+  };
+}
+
+function queueServerMirror() {
+  void writeInternalAiServerArtifactRepositorySnapshot(buildServerRepositoryState());
 }
 
 function parsePersistedStore(raw: string | null): InternalAiRepositoryState | null {
@@ -592,6 +622,21 @@ export function readInternalAiScaffoldSnapshot(): InternalAiScaffoldSnapshot {
   return createSnapshot();
 }
 
+export function hydrateInternalAiRepositoryStateFromServer(
+  repositoryState: InternalAiServerArtifactRepositoryState,
+) {
+  state = {
+    sessions: repositoryState.sessions.map(cloneSession),
+    requests: repositoryState.requests.map(cloneRequest),
+    artifacts: repositoryState.artifacts.map(cloneArtifact),
+    auditLog: repositoryState.auditLog.map(cloneAuditEntry),
+  };
+  artifactStorageModeOverride = "server_file_isolated";
+  backendMode = "server_adapter_mock_safe";
+  isHydrated = true;
+  persistState();
+}
+
 export function saveInternalAiDraftArtifact(
   input: InternalAiDraftArtifactInput,
 ): {
@@ -651,7 +696,7 @@ export function saveInternalAiDraftArtifact(
     previewState: input.report.previewState,
     approvalState: input.report.approvalState,
     note:
-      `Artifact locale del report ${targetTypeLabel} salvato con periodo "${periodLabel}", ` +
+      `Artifact IA del report ${targetTypeLabel} salvato con periodo "${periodLabel}", ` +
       `${input.report.sources.length} fonti lette e ${input.report.missingData.length} dati mancanti espliciti.`,
   };
 
@@ -663,7 +708,8 @@ export function saveInternalAiDraftArtifact(
     kind: "report_preview",
     status: "draft",
     storageMode,
-    isPersisted: storageMode === "local_storage_isolated",
+    isPersisted:
+      storageMode === "local_storage_isolated" || storageMode === "server_file_isolated",
     reportType: input.report.reportType,
     targetLabel: input.report.targetLabel,
     periodLabel,
@@ -702,9 +748,11 @@ export function saveInternalAiDraftArtifact(
       "draft",
     ],
     note:
-      storageMode === "local_storage_isolated"
-        ? `Draft del report ${targetTypeLabel} salvato nell'archivio locale isolato del sottosistema IA con periodo "${periodLabel}".`
-        : `Draft del report ${targetTypeLabel} disponibile solo in memoria locale di fallback del sottosistema IA con periodo "${periodLabel}".`,
+      storageMode === "server_file_isolated"
+        ? `Draft del report ${targetTypeLabel} salvato nel contenitore server-side IA dedicato con periodo "${periodLabel}".`
+        : storageMode === "local_storage_isolated"
+          ? `Draft del report ${targetTypeLabel} salvato nell'archivio locale isolato del sottosistema IA con periodo "${periodLabel}".`
+          : `Draft del report ${targetTypeLabel} disponibile solo in memoria locale di fallback del sottosistema IA con periodo "${periodLabel}".`,
     payload: {
       version: 1,
       report: cloneReport(input.report),
@@ -730,9 +778,11 @@ export function saveInternalAiDraftArtifact(
     severity: "info",
     riskLevel: "low",
     message:
-      storageMode === "local_storage_isolated"
-        ? `Draft del report ${targetTypeLabel} ${targetPrimaryValue} salvato nell'archivio locale isolato del sottosistema IA con periodo "${periodLabel}".`
-        : `Draft del report ${targetTypeLabel} ${targetPrimaryValue} mantenuto solo in memoria locale di fallback con periodo "${periodLabel}".`,
+      storageMode === "server_file_isolated"
+        ? `Draft del report ${targetTypeLabel} ${targetPrimaryValue} salvato nel contenitore server-side IA dedicato con periodo "${periodLabel}".`
+        : storageMode === "local_storage_isolated"
+          ? `Draft del report ${targetTypeLabel} ${targetPrimaryValue} salvato nell'archivio locale isolato del sottosistema IA con periodo "${periodLabel}".`
+          : `Draft del report ${targetTypeLabel} ${targetPrimaryValue} mantenuto solo in memoria locale di fallback con periodo "${periodLabel}".`,
     scope: "report-preview",
   };
 
@@ -741,13 +791,15 @@ export function saveInternalAiDraftArtifact(
   state.artifacts = [hydratedArtifact, ...state.artifacts];
   state.auditLog = [auditEntry, ...state.auditLog];
 
-  if (!persistState()) {
+  if (!persistState() && storageMode !== "server_file_isolated") {
     hydratedArtifact.storageMode = "mock_memory_only";
     hydratedArtifact.isPersisted = false;
     hydratedArtifact.note = "Draft mantenuto solo in memoria locale di fallback; persistenza locale non disponibile.";
     auditEntry.severity = "warning";
     auditEntry.message = `Draft del report ${targetTypeLabel} ${targetPrimaryValue} non persistito su archivio locale; attivo solo fallback in memoria.`;
   }
+
+  queueServerMirror();
 
   return { session, request, artifact: cloneArtifact(hydratedArtifact) };
 }
@@ -767,7 +819,9 @@ export function archiveInternalAiArtifact(artifactId: string): InternalAiArtifac
     new Set([...artifact.tags.filter((tag) => tag !== "draft" && tag !== "stato-draft"), "archiviato", "stato-archived"]),
   );
   artifact.note = artifact.isPersisted
-    ? "Artifact archiviato nell'archivio locale isolato del sottosistema IA."
+    ? artifact.storageMode === "server_file_isolated"
+      ? "Artifact archiviato nel contenitore server-side IA dedicato."
+      : "Artifact archiviato nell'archivio locale isolato del sottosistema IA."
     : "Artifact archiviato solo in memoria locale di fallback del sottosistema IA.";
 
   state.auditLog = [
@@ -783,5 +837,6 @@ export function archiveInternalAiArtifact(artifactId: string): InternalAiArtifac
   ];
 
   persistState();
+  queueServerMirror();
   return cloneArtifact(artifact);
 }
