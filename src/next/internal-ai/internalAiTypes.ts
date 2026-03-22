@@ -37,6 +37,15 @@ export type InternalAiArtifactStatus = "draft" | "preview" | "archived";
 
 export type InternalAiArtifactStorageMode = "mock_memory_only" | "local_storage_isolated";
 
+export type InternalAiArtifactFamily =
+  | "operativo"
+  | "manutenzioni"
+  | "rifornimenti"
+  | "costi"
+  | "documenti"
+  | "misto"
+  | "non_classificato";
+
 export type InternalAiAuditSeverity = "info" | "warning" | "critical";
 
 export type InternalAiRiskLevel = "low" | "medium" | "high";
@@ -97,6 +106,39 @@ export type InternalAiScaffoldSummary = {
 
 export type InternalAiReportTone = "default" | "success" | "warning";
 
+export type InternalAiReportType = "targa" | "autista" | "combinato";
+
+export type InternalAiReportPeriodPreset =
+  | "all"
+  | "last_30_days"
+  | "last_90_days"
+  | "last_full_month"
+  | "custom";
+
+export type InternalAiReportPeriodInput = {
+  preset: InternalAiReportPeriodPreset;
+  fromDate: string | null;
+  toDate: string | null;
+};
+
+export type InternalAiReportPeriodSectionStatus =
+  | "nessun_filtro"
+  | "applicato"
+  | "non_applicabile"
+  | "non_disponibile";
+
+export type InternalAiReportPeriodContext = {
+  preset: InternalAiReportPeriodPreset;
+  label: string;
+  fromDate: string | null;
+  toDate: string | null;
+  fromTimestamp: number | null;
+  toTimestamp: number | null;
+  appliesFilter: boolean;
+  isValid: boolean;
+  notes: string[];
+};
+
 export type InternalAiVehicleReportCard = {
   label: string;
   value: string;
@@ -117,6 +159,8 @@ export type InternalAiVehicleReportSection = {
   summary: string;
   bullets: string[];
   notes: string[];
+  periodStatus: InternalAiReportPeriodSectionStatus;
+  periodNote: string | null;
 };
 
 export type InternalAiVehicleReportSourceStatus = "disponibile" | "parziale" | "errore";
@@ -129,9 +173,14 @@ export type InternalAiVehicleReportSource = {
   datasetLabels: string[];
   countLabel: string | null;
   notes: string[];
+  periodStatus: InternalAiReportPeriodSectionStatus;
+  periodNote: string | null;
 };
 
 export type InternalAiVehicleReportPreview = {
+  reportType: "targa";
+  targetId: string;
+  targetLabel: string;
   mezzoTarga: string;
   title: string;
   subtitle: string;
@@ -146,6 +195,7 @@ export type InternalAiVehicleReportPreview = {
     manutenzioneProgrammata: boolean;
   };
   cards: InternalAiVehicleReportCard[];
+  periodContext: InternalAiReportPeriodContext;
   sections: InternalAiVehicleReportSection[];
   missingData: string[];
   evidences: string[];
@@ -175,6 +225,76 @@ export type InternalAiEconomicAnalysisPreview = {
   previewState: InternalAiPreviewState;
 };
 
+export type InternalAiDriverReportPreview = {
+  reportType: "autista";
+  targetId: string;
+  targetLabel: string;
+  autistaId: string;
+  title: string;
+  subtitle: string;
+  generatedAt: string;
+  header: {
+    nomeCompleto: string;
+    badge: string | null;
+    telefono: string | null;
+    telefonoPrivato: string | null;
+    codice: string | null;
+    descrizione: string | null;
+    schedeCarburante: number;
+    mezziAssociati: number;
+    ultimoMezzoNoto: string | null;
+    sessioneAttiva: boolean;
+  };
+  cards: InternalAiVehicleReportCard[];
+  periodContext: InternalAiReportPeriodContext;
+  sections: InternalAiVehicleReportSection[];
+  missingData: string[];
+  evidences: string[];
+  sources: InternalAiVehicleReportSource[];
+  previewState: InternalAiPreviewState;
+  approvalState: InternalAiApprovalState;
+};
+
+export type InternalAiCombinedMatchReliability =
+  | "forte"
+  | "plausibile"
+  | "non_dimostrabile";
+
+export type InternalAiCombinedReportPreview = {
+  reportType: "combinato";
+  targetId: string;
+  targetLabel: string;
+  mezzoTarga: string;
+  autistaId: string;
+  title: string;
+  subtitle: string;
+  generatedAt: string;
+  header: {
+    targa: string;
+    categoria: string | null;
+    marcaModello: string | null;
+    nomeCompletoAutista: string;
+    badgeAutista: string | null;
+    autistaDichiaratoSulMezzo: string | null;
+    ultimoMezzoNotoAutista: string | null;
+    affidabilitaLegame: InternalAiCombinedMatchReliability;
+    motivazioneLegame: string;
+  };
+  cards: InternalAiVehicleReportCard[];
+  periodContext: InternalAiReportPeriodContext;
+  sections: InternalAiVehicleReportSection[];
+  missingData: string[];
+  evidences: string[];
+  sources: InternalAiVehicleReportSource[];
+  previewState: InternalAiPreviewState;
+  approvalState: InternalAiApprovalState;
+};
+
+export type InternalAiReportPreview =
+  | InternalAiVehicleReportPreview
+  | InternalAiDriverReportPreview
+  | InternalAiCombinedReportPreview;
+
 export type InternalAiVehicleLookupMatchState =
   | "idle"
   | "loading"
@@ -195,20 +315,36 @@ export type InternalAiVehicleLookupCandidate = {
   sourceKey: string;
 };
 
+export type InternalAiDriverLookupCandidate = {
+  id: string;
+  nomeCompleto: string;
+  badge: string | null;
+  telefono: string | null;
+  codice: string | null;
+  descrizione: string | null;
+  mezziAssociatiCount: number;
+  mezziAssociatiPreview: string[];
+  quality: "certo" | "parziale" | "da_verificare";
+  sourceKey: string;
+};
+
 export type InternalAiArtifactPayload = {
   version: 1;
-  report: InternalAiVehicleReportPreview;
+  report: InternalAiReportPreview;
   sourceDatasetLabels: string[];
   missingDataCount: number;
   evidenceCount: number;
+  searchableSummary: string | null;
 };
 
 export type InternalAiDraftArtifactInput = {
-  report: InternalAiVehicleReportPreview;
+  report: InternalAiReportPreview;
 };
 
 export type InternalAiChatIntent =
   | "report_targa"
+  | "report_autista"
+  | "report_combinato"
   | "capabilities"
   | "non_supportato"
   | "richiesta_generica";
@@ -253,6 +389,9 @@ export type InternalAiTrackingEventKind =
   | "chat_prompt"
   | "report_preview"
   | "vehicle_selected"
+  | "driver_report_preview"
+  | "combined_report_preview"
+  | "driver_selected"
   | "artifact_saved"
   | "artifact_opened"
   | "artifact_archived";
@@ -273,6 +412,28 @@ export type InternalAiRecentVehicleSearch = {
   targa: string;
   source: "manuale" | "selezione_guidata" | "chat";
   result: "selected" | "ready" | "not_found" | "invalid_query";
+  periodLabel: string | null;
+  updatedAt: string;
+};
+
+export type InternalAiRecentDriverSearch = {
+  driverId: string;
+  nomeCompleto: string;
+  badge: string | null;
+  source: "manuale" | "selezione_guidata" | "chat";
+  result: "selected" | "ready" | "not_found" | "invalid_query";
+  periodLabel: string | null;
+  updatedAt: string;
+};
+
+export type InternalAiRecentCombinedSearch = {
+  mezzoTarga: string;
+  driverId: string;
+  nomeCompleto: string;
+  badge: string | null;
+  source: "manuale" | "selezione_guidata" | "chat";
+  result: "selected" | "ready" | "not_found" | "invalid_query";
+  periodLabel: string | null;
   updatedAt: string;
 };
 
@@ -286,7 +447,13 @@ export type InternalAiRecentChatPrompt = {
 export type InternalAiRecentArtifactAction = {
   artifactId: string;
   title: string;
+  targetType: InternalAiReportType | null;
+  targetLabel: string | null;
   mezzoTarga: string | null;
+  autistaNome: string | null;
+  primaryFamily: InternalAiArtifactFamily | null;
+  artifactStatus: InternalAiArtifactStatus | null;
+  periodLabel: string | null;
   action: "saved" | "opened" | "archived";
   updatedAt: string;
 };
@@ -301,9 +468,19 @@ export type InternalAiSessionMemoryState = {
   lastSectionId: NextInternalAiSectionId | null;
   lastPath: string | null;
   lastTarga: string | null;
+  lastDriverId: string | null;
+  lastDriverName: string | null;
+  lastPeriodLabel: string | null;
   lastPrompt: string | null;
   lastIntent: InternalAiChatIntent | null;
   lastArtifactId: string | null;
+  lastArchiveQuery: string | null;
+  lastArchiveReportType: InternalAiReportType | "tutti" | null;
+  lastArchiveStatus: InternalAiArtifactStatus | "tutti" | null;
+  lastArchiveFamily: InternalAiArtifactFamily | "tutte" | null;
+  lastArchiveTarga: string | null;
+  lastArchiveAutista: string | null;
+  lastArchivePeriod: string | null;
   updatedAt: string | null;
 };
 
@@ -314,6 +491,8 @@ export type InternalAiTrackingSummary = {
   sectionCounts: Record<NextInternalAiSectionId, number>;
   recentEvents: InternalAiTrackingEvent[];
   recentVehicleSearches: InternalAiRecentVehicleSearch[];
+  recentDriverSearches: InternalAiRecentDriverSearch[];
+  recentCombinedSearches: InternalAiRecentCombinedSearch[];
   recentChatPrompts: InternalAiRecentChatPrompt[];
   recentArtifacts: InternalAiRecentArtifactAction[];
   recentIntents: InternalAiIntentUsage[];
@@ -329,7 +508,16 @@ export type InternalAiArtifact = {
   status: InternalAiArtifactStatus;
   storageMode: InternalAiArtifactStorageMode;
   isPersisted: boolean;
+  reportType: InternalAiReportType | null;
+  targetLabel: string | null;
+  periodLabel: string | null;
   mezzoTarga: string | null;
+  autistaId: string | null;
+  autistaNome: string | null;
+  primaryFamily: InternalAiArtifactFamily | null;
+  reportFamilies: InternalAiArtifactFamily[];
+  searchText: string;
+  matchingReliability: InternalAiCombinedMatchReliability | null;
   createdAt: string;
   updatedAt: string;
   sourceRequestTitle: string;

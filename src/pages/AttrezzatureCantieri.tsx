@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getItemSync, setItemSync } from "../utils/storageSync";
-import { generateTablePDFBlob } from "../utils/pdfEngine";
+import { generateAttrezzatureCantieriPDFBlob } from "../utils/pdfEngine";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
   buildPdfShareText,
@@ -57,6 +57,20 @@ type MovimentoForm = {
   sourceCantiereId: string;
   sourceCantiereLabel: string;
 };
+
+type StatoMateriale = {
+  descrizione: string;
+  unita: string;
+  quantita: number;
+};
+
+type StatoCantiere = {
+  id: string;
+  label: string;
+  materiali: StatoMateriale[];
+};
+
+type ExportScope = "stato" | "movimenti" | "stato_movimenti";
 
 function unwrapList(value: any): any[] {
   if (Array.isArray(value)) return value;
@@ -127,6 +141,114 @@ function formatQuantita(value: number) {
   return value.toFixed(2).replace(/\.00$/, "");
 }
 
+function formatDataExport(value: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "-";
+
+  const parts = trimmed.split(" ");
+  if (parts.length === 3) {
+    const [gg, mm, yy] = parts;
+    return `${String(gg).padStart(2, "0")}/${String(mm).padStart(2, "0")}/${yy}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return trimmed;
+
+  const gg = String(parsed.getDate()).padStart(2, "0");
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const yy = parsed.getFullYear();
+  return `${gg}/${mm}/${yy}`;
+}
+
+function formatCantiereExport(labelRaw: string, idRaw: string) {
+  const label = String(labelRaw || "").trim();
+  const id = String(idRaw || "").trim();
+  if (label && id && label.toUpperCase() !== id.toUpperCase()) {
+    return `${label} (${id})`;
+  }
+  return label || id || "Senza cantiere";
+}
+
+function buildStatoAttualeFromMovimenti(source: Movimento[]): StatoCantiere[] {
+  const cantieri = new Map<
+    string,
+    {
+      id: string;
+      label: string;
+      materiali: Map<string, StatoMateriale>;
+    }
+  >();
+
+  const resolveCantiere = (idRaw: string, labelRaw: string) => {
+    const id = idRaw.trim() || labelRaw.trim() || "SENZA_CANTIERE";
+    const label = labelRaw.trim() || idRaw.trim() || "Senza cantiere";
+    const key = `${id}__${label}`.toUpperCase();
+    if (!cantieri.has(key)) {
+      cantieri.set(key, { id, label, materiali: new Map() });
+    }
+    return cantieri.get(key)!;
+  };
+
+  const addQty = (
+    cantiereId: string,
+    cantiereLabel: string,
+    descrizione: string,
+    unita: string,
+    delta: number
+  ) => {
+    if (!descrizione || !unita || !Number.isFinite(delta) || delta === 0) return;
+    const cantiere = resolveCantiere(cantiereId, cantiereLabel);
+    const matKey = `${descrizione}__${unita}`.toLowerCase();
+    const existing = cantiere.materiali.get(matKey);
+    const nextQty = (existing?.quantita || 0) + delta;
+    cantiere.materiali.set(matKey, {
+      descrizione,
+      unita,
+      quantita: nextQty,
+    });
+  };
+
+  source.forEach((m) => {
+    const qty = Number(m.quantita) || 0;
+    const descrizione = String(m.descrizione || "").trim();
+    const unita = String(m.unita || "").trim();
+    if (!descrizione || !unita || !qty) return;
+
+    if (m.tipo === "CONSEGNATO") {
+      addQty(m.cantiereId, m.cantiereLabel, descrizione, unita, qty);
+      return;
+    }
+
+    if (m.tipo === "SPOSTATO") {
+      if (m.sourceCantiereId || m.sourceCantiereLabel) {
+        addQty(
+          m.sourceCantiereId || "",
+          m.sourceCantiereLabel || "",
+          descrizione,
+          unita,
+          -qty
+        );
+      }
+      addQty(m.cantiereId, m.cantiereLabel, descrizione, unita, qty);
+      return;
+    }
+
+    if (m.tipo === "RITIRATO") {
+      addQty(m.cantiereId, m.cantiereLabel, descrizione, unita, -qty);
+      addQty("MAGAZZINO", "MAGAZZINO", descrizione, unita, qty);
+    }
+  });
+
+  return Array.from(cantieri.values())
+    .map((c) => {
+      const materiali = Array.from(c.materiali.values())
+        .filter((m) => m.quantita !== 0)
+        .sort((a, b) => a.descrizione.localeCompare(b.descrizione));
+      return { ...c, materiali };
+    })
+    .filter((c) => c.materiali.length > 0);
+}
+
 export default function AttrezzatureCantieri() {
   const navigate = useNavigate();
 
@@ -147,6 +269,7 @@ export default function AttrezzatureCantieri() {
   const [filterText, setFilterText] = useState("");
   const [filterTipo, setFilterTipo] = useState("tutti");
   const [filterCategoria, setFilterCategoria] = useState("tutte");
+  const [exportScope, setExportScope] = useState<ExportScope>("stato_movimenti");
   const [showAllStato, setShowAllStato] = useState(false);
   const [showAllRegistro, setShowAllRegistro] = useState(false);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
@@ -516,84 +639,71 @@ export default function AttrezzatureCantieri() {
   }, [movimentiFiltrati]);
 
   const statoAttuale = useMemo(() => {
-    const cantieri = new Map<
-      string,
-      {
-        id: string;
-        label: string;
-        materiali: Map<string, { descrizione: string; unita: string; quantita: number }>;
-      }
-    >();
-
-    const resolveCantiere = (idRaw: string, labelRaw: string) => {
-      const id = idRaw.trim() || labelRaw.trim() || "SENZA_CANTIERE";
-      const label = labelRaw.trim() || idRaw.trim() || "Senza cantiere";
-      const key = `${id}__${label}`.toUpperCase();
-      if (!cantieri.has(key)) {
-        cantieri.set(key, { id, label, materiali: new Map() });
-      }
-      return cantieri.get(key)!;
-    };
-
-    const addQty = (
-      cantiereId: string,
-      cantiereLabel: string,
-      descrizione: string,
-      unita: string,
-      delta: number
-    ) => {
-      if (!descrizione || !unita || !Number.isFinite(delta) || delta === 0) return;
-      const cantiere = resolveCantiere(cantiereId, cantiereLabel);
-      const matKey = `${descrizione}__${unita}`.toLowerCase();
-      const existing = cantiere.materiali.get(matKey);
-      const nextQty = (existing?.quantita || 0) + delta;
-      cantiere.materiali.set(matKey, {
-        descrizione,
-        unita,
-        quantita: nextQty,
-      });
-    };
-
-    movimenti.forEach((m) => {
-      const qty = Number(m.quantita) || 0;
-      const descrizione = String(m.descrizione || "").trim();
-      const unita = String(m.unita || "").trim();
-      if (!descrizione || !unita || !qty) return;
-
-      if (m.tipo === "CONSEGNATO") {
-        addQty(m.cantiereId, m.cantiereLabel, descrizione, unita, qty);
-        return;
-      }
-
-      if (m.tipo === "SPOSTATO") {
-        if (m.sourceCantiereId || m.sourceCantiereLabel) {
-          addQty(
-            m.sourceCantiereId || "",
-            m.sourceCantiereLabel || "",
-            descrizione,
-            unita,
-            -qty
-          );
-        }
-        addQty(m.cantiereId, m.cantiereLabel, descrizione, unita, qty);
-        return;
-      }
-
-      if (m.tipo === "RITIRATO") {
-        addQty(m.cantiereId, m.cantiereLabel, descrizione, unita, -qty);
-        addQty("MAGAZZINO", "MAGAZZINO", descrizione, unita, qty);
-      }
-    });
-
-    const result = Array.from(cantieri.values()).map((c) => {
-      const materiali = Array.from(c.materiali.values())
-        .filter((m) => m.quantita !== 0)
-        .sort((a, b) => a.descrizione.localeCompare(b.descrizione));
-      return { ...c, materiali };
-    });
-
-    return result.filter((c) => c.materiali.length > 0);
+    return buildStatoAttualeFromMovimenti(movimenti);
   }, [movimenti]);
+
+  const statoExport = useMemo(() => {
+    return buildStatoAttualeFromMovimenti(movimentiFiltrati);
+  }, [movimentiFiltrati]);
+
+  const exportScopeLabel = useMemo(() => {
+    if (exportScope === "stato") return "Solo stato attuale";
+    if (exportScope === "movimenti") return "Solo movimenti";
+    return "Stato attuale + movimenti";
+  }, [exportScope]);
+
+  const filtriRegistroAttivi = useMemo(() => {
+    const parts: string[] = [];
+    if (filterText.trim()) parts.push(`ricerca: ${filterText.trim()}`);
+    if (filterTipo !== "tutti") parts.push(`tipo: ${filterTipo}`);
+    if (filterCategoria !== "tutte") parts.push(`categoria: ${filterCategoria}`);
+    return parts;
+  }, [filterCategoria, filterText, filterTipo]);
+
+  const filtriRegistroLabel = useMemo(() => {
+    if (filtriRegistroAttivi.length === 0) return "Nessun filtro attivo";
+    return filtriRegistroAttivi.join(" | ");
+  }, [filtriRegistroAttivi]);
+
+  const exportStateRows = useMemo(() => {
+    return statoExport.flatMap((cantiere) =>
+      cantiere.materiali.map((materiale) => ({
+        cantiere: formatCantiereExport(cantiere.label, cantiere.id),
+        materiale: materiale.descrizione,
+        quantita: `${formatQuantita(materiale.quantita)} ${materiale.unita}`,
+      }))
+    );
+  }, [statoExport]);
+
+  const exportMovementRows = useMemo(() => {
+    return movimentiOrdinati.map((movimento) => ({
+      data: formatDataExport(movimento.data),
+      tipo: movimento.tipo,
+      destinazione: formatCantiereExport(movimento.cantiereLabel, movimento.cantiereId),
+      materiale:
+        movimento.materialeCategoria && movimento.materialeCategoria !== "-"
+          ? `${movimento.descrizione} - ${movimento.materialeCategoria}`
+          : movimento.descrizione,
+      quantita: `${formatQuantita(movimento.quantita)} ${movimento.unita}`,
+      origine:
+        movimento.tipo === "SPOSTATO" &&
+        (movimento.sourceCantiereLabel || movimento.sourceCantiereId)
+          ? formatCantiereExport(
+              movimento.sourceCantiereLabel || "",
+              movimento.sourceCantiereId || ""
+            )
+          : "-",
+      note: String(movimento.note || "").trim(),
+    }));
+  }, [movimentiOrdinati]);
+
+  const exportCountSummary = useMemo(() => {
+    return {
+      statoCantieri: statoExport.length,
+      statoMateriali: exportStateRows.length,
+      movimenti: exportMovementRows.length,
+    };
+  }, [exportMovementRows.length, exportStateRows.length, statoExport.length]);
 
   const statoVisibile = useMemo(() => {
     return showAllStato ? statoAttuale : statoAttuale.slice(0, 5);
@@ -604,57 +714,34 @@ export default function AttrezzatureCantieri() {
   }, [movimentiOrdinati, showAllRegistro]);
 
   const handleExportPdf = async () => {
-    const columns = [
-      "Sezione",
-      "Cantiere",
-      "CantiereId",
-      "Categoria",
-      "Materiale",
-      "Quantita",
-      "Unita",
-      "Tipo",
-      "Data",
-      "Note",
-    ];
+    const includeStato = exportScope === "stato" || exportScope === "stato_movimenti";
+    const includeMovimenti =
+      exportScope === "movimenti" || exportScope === "stato_movimenti";
+    const noStatoData = !includeStato || exportStateRows.length === 0;
+    const noMovimentiData = !includeMovimenti || exportMovementRows.length === 0;
 
-    const rows: Record<string, string>[] = [];
-
-    statoAttuale.forEach((cantiere) => {
-      cantiere.materiali.forEach((m) => {
-        rows.push({
-          Sezione: "STATO",
-          Cantiere: cantiere.label,
-          CantiereId: cantiere.id,
-          Categoria: "-",
-          Materiale: m.descrizione,
-          Quantita: formatQuantita(m.quantita),
-          Unita: m.unita,
-          Tipo: "STATO",
-          Data: "",
-          Note: "",
-        });
-      });
-    });
-
-    movimentiOrdinati.forEach((m) => {
-      rows.push({
-        Sezione: "MOVIMENTO",
-        Cantiere: m.cantiereLabel,
-        CantiereId: m.cantiereId,
-        Categoria: m.materialeCategoria || "-",
-        Materiale: m.descrizione,
-        Quantita: formatQuantita(m.quantita),
-        Unita: m.unita,
-        Tipo: m.tipo,
-        Data: m.data,
-        Note: m.note || "",
-      });
-    });
+    if (noStatoData && noMovimentiData) {
+      setError("Nessun dato disponibile per l'export con la selezione corrente.");
+      return;
+    }
 
     try {
+      setError(null);
       const fileDate = formatFileDate();
       const preview = await openPreview({
-        source: async () => generateTablePDFBlob("Attrezzature cantieri", rows, columns),
+        source: async () =>
+          generateAttrezzatureCantieriPDFBlob({
+            title: "Attrezzature cantieri",
+            generatedAt: formatDataExport(oggi()),
+            exportScopeLabel,
+            filtersLabel: filtriRegistroLabel,
+            statoRows: includeStato ? exportStateRows : [],
+            movimentoRows: includeMovimenti ? exportMovementRows : [],
+            statoCantieriCount: includeStato ? exportCountSummary.statoCantieri : 0,
+            statoMaterialiCount: includeStato ? exportCountSummary.statoMateriali : 0,
+            movimentiCount: includeMovimenti ? exportCountSummary.movimenti : 0,
+            fileName: `attrezzature-cantieri-${fileDate}`,
+          }),
         fileName: `attrezzature-cantieri-${fileDate}.pdf`,
         previousUrl: pdfPreviewUrl,
       });
@@ -702,6 +789,71 @@ export default function AttrezzatureCantieri() {
         </div>
 
         {error && <div className="ac-error">{error}</div>}
+
+        <section className="ac-section ac-export-section">
+          <div className="ac-section-head">
+            <div>
+              <h2>Configurazione export PDF</h2>
+              <span>Scegli cosa esportare prima di aprire l'anteprima.</span>
+            </div>
+          </div>
+
+          <div className="ac-export-grid">
+            <div className="ac-export-group">
+              <div className="ac-export-label">Ambito export</div>
+              <div className="ac-export-scopes" role="radiogroup" aria-label="Ambito export PDF">
+                <button
+                  type="button"
+                  className={`ac-scope-btn ${exportScope === "stato" ? "is-active" : ""}`}
+                  onClick={() => setExportScope("stato")}
+                >
+                  Stato attuale
+                </button>
+                <button
+                  type="button"
+                  className={`ac-scope-btn ${exportScope === "movimenti" ? "is-active" : ""}`}
+                  onClick={() => setExportScope("movimenti")}
+                >
+                  Movimenti
+                </button>
+                <button
+                  type="button"
+                  className={`ac-scope-btn ${exportScope === "stato_movimenti" ? "is-active" : ""}`}
+                  onClick={() => setExportScope("stato_movimenti")}
+                >
+                  Stato + movimenti
+                </button>
+              </div>
+            </div>
+
+            <div className="ac-export-group">
+              <div className="ac-export-label">Filtri applicati</div>
+              <div className="ac-export-note">
+                I movimenti esportati usano sempre i filtri correnti del registro. Lo stato
+                nel PDF viene ricalcolato sugli stessi movimenti filtrati per evitare
+                incoerenze.
+              </div>
+              <div className="ac-export-filters">{filtriRegistroLabel}</div>
+            </div>
+          </div>
+
+          <div className="ac-export-summary">
+            <div className="ac-export-chip">
+              <strong>Ambito</strong>
+              <span>{exportScopeLabel}</span>
+            </div>
+            <div className="ac-export-chip">
+              <strong>Stato</strong>
+              <span>
+                {exportCountSummary.statoCantieri} cantieri / {exportCountSummary.statoMateriali} materiali
+              </span>
+            </div>
+            <div className="ac-export-chip">
+              <strong>Movimenti</strong>
+              <span>{exportCountSummary.movimenti} righe</span>
+            </div>
+          </div>
+        </section>
 
         <div className="ac-grid">
           <div className="ac-col">

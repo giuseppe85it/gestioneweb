@@ -139,6 +139,94 @@
   gap: 12px;
 }
 
+.ac-export-section {
+  gap: 14px;
+}
+
+.ac-export-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.ac-export-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ac-export-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1f2933;
+}
+
+.ac-export-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ac-scope-btn {
+  border: 1px solid #c9c0b1;
+  background: #f7f3e8;
+  color: #1f2933;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ac-scope-btn.is-active {
+  background: #1f4f7a;
+  color: #ffffff;
+  border-color: #1f4f7a;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
+}
+
+.ac-export-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #4b5563;
+  background: #f7f3e8;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.ac-export-filters {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f4f7a;
+}
+
+.ac-export-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.ac-export-chip {
+  background: #ffffff;
+  border: 1px solid rgba(31, 79, 122, 0.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.ac-export-chip strong {
+  font-size: 12px;
+  color: #1a1a1a;
+}
+
+.ac-export-chip span {
+  font-size: 12px;
+  color: #4b5563;
+  text-align: right;
+}
+
 .ac-section-head {
   display: flex;
   justify-content: space-between;
@@ -455,6 +543,14 @@
 @media (min-width: 900px) {
   .ac-card {
     width: 1120px;
+  }
+
+  .ac-export-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .ac-export-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .ac-grid {

@@ -194,6 +194,18 @@ function buildSections(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiV
         `Date evento affidabili: ${documentCosts?.counts.withReliableDate ?? 0}`,
       ],
       notes: takeNotes(documentCosts?.limitations),
+      periodStatus:
+        directPeriodStatus === "affidabile"
+          ? "applicato"
+          : directPeriodStatus === "parziale"
+            ? "non_applicabile"
+            : "non_disponibile",
+      periodNote:
+        directPeriodStatus === "affidabile"
+          ? "La base economica diretta usa solo record con data evento leggibile nel periodo corrente."
+          : directPeriodStatus === "parziale"
+            ? "La base economica diretta ha copertura periodo solo parziale: alcuni record non espongono una data evento affidabile."
+            : "La base economica diretta non espone un filtro periodo dimostrabile sui record oggi leggibili.",
     },
     {
       id: "analisi-economica-snapshot-legacy",
@@ -220,6 +232,9 @@ function buildSections(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiV
         trimText(savedAnalysis?.fornitoriNotevoli ?? null, 180),
         ...takeNotes(snapshot.analisiEconomica.snapshot?.limitations, 2),
       ].filter((entry): entry is string => Boolean(entry)),
+      periodStatus: "non_applicabile",
+      periodNote:
+        "Lo snapshot legacy resta un contesto salvato read-only: non viene rifiltrato temporalmente dal clone.",
     },
     {
       id: "analisi-economica-perimetro",
@@ -240,6 +255,16 @@ function buildSections(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiV
         ...takeNotes(snapshot.overview.analysisLimitations, 2),
         ...takeNotes(snapshot.overview.procurementLimitations, 2),
       ],
+      periodStatus:
+        directPeriodStatus === "affidabile"
+          ? "applicato"
+          : directPeriodStatus === "parziale"
+            ? "non_applicabile"
+            : "non_disponibile",
+      periodNote:
+        procurement?.perimeterDecision === "forte"
+          ? "Il perimetro procurement resta separato dalla base diretta anche quando il matching sulla targa e forte."
+          : "Procurement e approvazioni restano solo contesto perimetrale read-only, fuori dalla base economica diretta del report.",
     },
   ];
 }
@@ -302,6 +327,20 @@ function buildSources(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVe
       datasetLabels: [...(documentCosts?.activeReadOnlyDatasets ?? ["@costiMezzo", "@documenti_mezzi", "@documenti_magazzino", "@documenti_generici"])],
       countLabel: `${documentCosts?.counts.total ?? 0} record diretti`,
       notes: takeNotes(documentCosts?.limitations, 2),
+      periodStatus:
+        deriveDirectPeriodStatus({
+          total: documentCosts?.counts.total ?? 0,
+          withReliableDate: documentCosts?.counts.withReliableDate ?? 0,
+        }) === "affidabile"
+          ? "applicato"
+          : deriveDirectPeriodStatus({
+                total: documentCosts?.counts.total ?? 0,
+                withReliableDate: documentCosts?.counts.withReliableDate ?? 0,
+              }) === "parziale"
+            ? "non_applicabile"
+            : "non_disponibile",
+      periodNote:
+        "Il periodo qui riguarda solo i record diretti con data evento affidabile letti dal clone.",
     },
     {
       id: "fonte-economica-snapshot-legacy",
@@ -314,6 +353,9 @@ function buildSources(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVe
         ? `Aggiornato ${formatDateTimeLabel(savedAnalysis.updatedAtTimestamp)}`
         : null,
       notes: takeNotes(snapshot.analisiEconomica.snapshot?.limitations, 2),
+      periodStatus: "non_applicabile",
+      periodNote:
+        "Lo snapshot legacy viene mostrato come contesto salvato e non viene rifiltrato dal clone.",
     },
     {
       id: "fonte-economica-procurement",
@@ -324,6 +366,9 @@ function buildSources(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVe
       datasetLabels: [...(procurement?.datasets ?? ["@preventivi", "@preventivi_approvazioni"])],
       countLabel: `${procurement?.counts.preventiviGlobali ?? 0} preventivi globali`,
       notes: takeNotes(procurement?.limitations, 2),
+      periodStatus: "non_applicabile",
+      periodNote:
+        "Procurement e approvazioni restano un supporto perimetrale read-only, non una base economica filtrabile del report.",
     },
   ];
 }

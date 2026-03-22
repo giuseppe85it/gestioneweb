@@ -1,12 +1,24 @@
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import {
   readNextDossierMezzoCompositeSnapshot,
-  type NextDossierMezzoCompositeSnapshot,
   type NextDossierDomainSectionState,
+  type NextDossierMezzoCompositeSnapshot,
 } from "../domain/nextDossierMezzoDomain";
+import type { NextDocumentiCostiReadOnlyItem } from "../domain/nextDocumentiCostiDomain";
+import type { NextGommeReadOnlyItem, NextManutenzioneReadOnlyItem } from "../domain/nextManutenzioniGommeDomain";
+import type { NextLavoroReadOnlyItem } from "../domain/nextLavoriDomain";
+import type { NextRifornimentoReadOnlyItem } from "../domain/nextRifornimentiDomain";
+import {
+  describeInternalAiPeriodApplication,
+  filterItemsByInternalAiReportPeriod,
+  resolveInternalAiReportPeriodContext,
+} from "./internalAiReportPeriod";
 import type {
   InternalAiApprovalState,
   InternalAiPreviewState,
+  InternalAiReportPeriodContext,
+  InternalAiReportPeriodInput,
+  InternalAiReportPeriodSectionStatus,
   InternalAiVehicleReportPreview,
   InternalAiVehicleReportSection,
   InternalAiVehicleReportSectionStatus,
@@ -28,6 +40,11 @@ export type InternalAiVehicleReportReadResult =
       report: InternalAiVehicleReportPreview;
     };
 
+type PeriodAwareMeta = {
+  periodStatus: InternalAiReportPeriodSectionStatus;
+  periodNote: string | null;
+};
+
 function takeNotes(notes: string[] | undefined, limit = 3): string[] {
   return (notes ?? []).filter(Boolean).slice(0, limit);
 }
@@ -36,136 +53,144 @@ function formatCountLabel(value: number, suffix: string): string {
   return `${value} ${suffix}`;
 }
 
-function formatMaterialiMatchCoverage(value: "forte" | "mista" | "plausibile" | "vuota"): string {
-  switch (value) {
-    case "forte":
-      return "forte";
-    case "mista":
-      return "mista";
-    case "plausibile":
-      return "solo plausibile";
-    default:
-      return "vuota";
+function mapSectionStateToStatus(args: {
+  state: NextDossierDomainSectionState<unknown>;
+  visibleCount: number;
+  availableCount: number;
+  context: InternalAiReportPeriodContext;
+}): InternalAiVehicleReportSectionStatus {
+  if (args.state.status === "error") return "errore";
+  if (args.visibleCount > 0) return "completa";
+  if (args.context.appliesFilter && args.availableCount > 0) return "parziale";
+  return "vuota";
+}
+
+function mapSourceStatus(args: {
+  state: NextDossierDomainSectionState<unknown>;
+  visibleCount: number;
+  availableCount: number;
+  context: InternalAiReportPeriodContext;
+}): InternalAiVehicleReportSourceStatus {
+  if (args.state.status === "error") return "errore";
+  if (args.visibleCount > 0) return "disponibile";
+  if (args.context.appliesFilter && args.availableCount > 0) return "parziale";
+  return "parziale";
+}
+
+function buildFilterablePeriodMeta(args: {
+  context: InternalAiReportPeriodContext;
+  noun: string;
+  totalCount: number;
+  matchingCount: number;
+  outsideRangeCount: number;
+  missingTimestampCount: number;
+}): PeriodAwareMeta {
+  if (!args.context.appliesFilter) {
+    return {
+      periodStatus: "nessun_filtro",
+      periodNote: "Nessun filtro periodo attivo: la sezione legge tutto lo storico disponibile.",
+    };
   }
-}
 
-function formatMaterialiPeriodFilterStatus(value: "affidabile" | "parziale" | "non_dimostrabile"): string {
-  switch (value) {
-    case "affidabile":
-      return "affidabile";
-    case "parziale":
-      return "parziale";
-    default:
-      return "non dimostrabile";
+  if (args.totalCount === 0) {
+    return {
+      periodStatus: "non_disponibile",
+      periodNote: `Nessun record ${args.noun} leggibile da confrontare con il periodo attivo.`,
+    };
   }
-}
 
-function formatDocumentiCostiPeriodFilterStatus(
-  value: "affidabile" | "parziale" | "non_dimostrabile",
-): string {
-  switch (value) {
-    case "affidabile":
-      return "affidabile";
-    case "parziale":
-      return "parziale";
-    default:
-      return "non dimostrabile";
+  if (args.matchingCount === 0 && args.missingTimestampCount === args.totalCount) {
+    return {
+      periodStatus: "non_disponibile",
+      periodNote: `Il filtro periodo non e applicabile ai record ${args.noun}: manca una data affidabile su tutti gli elementi letti.`,
+    };
   }
+
+  return {
+    periodStatus: "applicato",
+    periodNote: describeInternalAiPeriodApplication({
+      noun: args.noun,
+      totalCount: args.totalCount,
+      matchingCount: args.matchingCount,
+      outsideRangeCount: args.outsideRangeCount,
+      missingTimestampCount: args.missingTimestampCount,
+      context: args.context,
+    }),
+  };
 }
 
-function formatProcurementMatchLevel(value: "forte" | "non_dimostrabile"): string {
-  return value === "forte" ? "forte" : "non dimostrabile";
-}
-
-function formatProcurementDecision(
-  value: "fuori_perimetro" | "parziale" | "forte",
-): string {
-  switch (value) {
-    case "forte":
-      return "con match forte";
-    case "parziale":
-      return "solo parziale";
-    default:
-      return "fuori perimetro";
+function buildStaticPeriodMeta(
+  context: InternalAiReportPeriodContext,
+  note: string,
+): PeriodAwareMeta {
+  if (!context.appliesFilter) {
+    return {
+      periodStatus: "nessun_filtro",
+      periodNote: "Nessun filtro periodo attivo sul report corrente.",
+    };
   }
-}
 
-function deriveDocumentiCostiPeriodFilterStatus(args: {
-  total: number;
-  withReliableDate: number;
-}): "affidabile" | "parziale" | "non_dimostrabile" {
-  const { total, withReliableDate } = args;
-  if (total <= 0 || withReliableDate <= 0) return "non_dimostrabile";
-  if (withReliableDate < total) return "parziale";
-  return "affidabile";
-}
-
-function mapSectionStateToStatus(
-  state: NextDossierDomainSectionState<unknown>,
-  count: number,
-): InternalAiVehicleReportSectionStatus {
-  if (state.status === "error") return "errore";
-  if (count === 0) return "vuota";
-  return state.status === "success" ? "completa" : "parziale";
-}
-
-function mapSourceStatus(
-  state: NextDossierDomainSectionState<unknown>,
-  count: number,
-): InternalAiVehicleReportSourceStatus {
-  if (state.status === "error") return "errore";
-  if (count === 0) return "parziale";
-  return "disponibile";
+  return {
+    periodStatus: "non_applicabile",
+    periodNote: note,
+  };
 }
 
 function createSection(args: {
   id: string;
   title: string;
-  state: NextDossierDomainSectionState<unknown>;
-  count: number;
+  status: InternalAiVehicleReportSectionStatus;
   summary: string;
   bullets: string[];
   notes?: string[];
+  period: PeriodAwareMeta;
 }): InternalAiVehicleReportSection {
   return {
     id: args.id,
     title: args.title,
-    status: mapSectionStateToStatus(args.state, args.count),
+    status: args.status,
     summary: args.summary,
     bullets: args.bullets,
-    notes: takeNotes(args.notes),
+    notes: takeNotes(args.notes, 4),
+    periodStatus: args.period.periodStatus,
+    periodNote: args.period.periodNote,
   };
 }
 
 function createSource(args: {
   id: string;
   title: string;
-  state: NextDossierDomainSectionState<unknown>;
-  count: number;
+  status: InternalAiVehicleReportSourceStatus;
   description: string;
   datasetLabels: string[];
   countLabel: string | null;
   notes?: string[];
+  period: PeriodAwareMeta;
 }): InternalAiVehicleReportSource {
   return {
     id: args.id,
     title: args.title,
-    status: mapSourceStatus(args.state, args.count),
+    status: args.status,
     description: args.description,
     datasetLabels: args.datasetLabels,
     countLabel: args.countLabel,
-    notes: takeNotes(args.notes),
+    notes: takeNotes(args.notes, 4),
+    periodStatus: args.period.periodStatus,
+    periodNote: args.period.periodNote,
   };
 }
 
-function buildPreviewStates(
-  snapshot: NextDossierMezzoCompositeSnapshot,
-): Pick<InternalAiVehicleReportPreview, "previewState" | "approvalState"> {
+function buildPreviewStates(snapshot: NextDossierMezzoCompositeSnapshot): Pick<
+  InternalAiVehicleReportPreview,
+  "previewState" | "approvalState"
+> {
   const hasEnoughData =
-    snapshot.lavori.snapshot?.counts.total ||
-    snapshot.refuels.snapshot?.counts.total ||
-    snapshot.documentCosts.snapshot?.counts.total ||
-    snapshot.maintenance.snapshot?.counts.manutenzioni;
+    (snapshot.lavori.snapshot?.counts.total ?? 0) > 0 ||
+    (snapshot.refuels.snapshot?.counts.total ?? 0) > 0 ||
+    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 ||
+    (snapshot.maintenance.snapshot?.counts.manutenzioni ?? 0) > 0 ||
+    (snapshot.materialiMovimenti.snapshot?.counts.total ?? 0) > 0 ||
+    Boolean(snapshot.analisiEconomica.snapshot?.savedAnalysis);
 
   const previewState: InternalAiPreviewState = {
     status: hasEnoughData ? "preview_ready" : "revision_requested",
@@ -187,15 +212,11 @@ function buildPreviewStates(
   return { previewState, approvalState };
 }
 
-function buildMissingData(snapshot: NextDossierMezzoCompositeSnapshot): string[] {
+function buildMissingData(
+  snapshot: NextDossierMezzoCompositeSnapshot,
+  periodContext: InternalAiReportPeriodContext,
+): string[] {
   const missing: string[] = [];
-  const materialiSnapshot = snapshot.materialiMovimenti.snapshot;
-  const documentCostsSnapshot = snapshot.documentCosts.snapshot;
-  const procurementSnapshot = snapshot.procurementPerimeter.snapshot;
-  const documentiCostiPeriodFilter = deriveDocumentiCostiPeriodFilterStatus({
-    total: documentCostsSnapshot?.counts.total ?? 0,
-    withReliableDate: documentCostsSnapshot?.counts.withReliableDate ?? 0,
-  });
 
   if (!snapshot.mezzo.autistaNome) {
     missing.push("Autista assegnato non disponibile nell'anagrafica flotta.");
@@ -209,98 +230,206 @@ function buildMissingData(snapshot: NextDossierMezzoCompositeSnapshot): string[]
   if ((snapshot.documentCosts.snapshot?.counts.total ?? 0) === 0) {
     missing.push("Nessun documento o costo utile collegato alla targa.");
   }
-  if (
-    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 &&
-    documentiCostiPeriodFilter === "parziale"
-  ) {
-    missing.push(
-      "Il filtro periodo su documenti e costi diretti sarebbe solo parziale: non tutti i record inclusi espongono una data evento parsabile."
-    );
-  }
-  if (
-    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 &&
-    documentiCostiPeriodFilter === "non_dimostrabile"
-  ) {
-    missing.push(
-      "Il filtro periodo su documenti e costi diretti non e dimostrabile: i record inclusi non espongono una data evento parsabile."
-    );
-  }
   if ((snapshot.materialiMovimenti.snapshot?.counts.total ?? 0) === 0) {
     missing.push("Nessun movimento materiali collegabile in modo affidabile al mezzo.");
-  }
-  if (materialiSnapshot?.coverage.match === "mista") {
-    missing.push(
-      "Il blocco materiali combina match forti e plausibili: i record plausibili non vanno letti come collegamenti certi."
-    );
-  }
-  if (materialiSnapshot?.coverage.match === "plausibile") {
-    missing.push(
-      "Il blocco materiali usa solo match plausibili: manca un collegamento forte diretto alla targa sui record inclusi."
-    );
-  }
-  if (materialiSnapshot?.counts.total && materialiSnapshot.coverage.periodFilter === "parziale") {
-    missing.push(
-      "Il filtro periodo sui materiali sarebbe solo parziale: non tutte le righe matched espongono una data parsabile."
-    );
-  }
-  if (
-    materialiSnapshot?.counts.total &&
-    materialiSnapshot.coverage.periodFilter === "non_dimostrabile"
-  ) {
-    missing.push(
-      "Il filtro periodo sui materiali non e dimostrabile: le righe matched non espongono una data parsabile."
-    );
   }
   if (!snapshot.analisiEconomica.snapshot?.savedAnalysis) {
     missing.push("Nessuna analisi economica legacy salvata per questa targa.");
   }
-  if (
-    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 ||
-    snapshot.analisiEconomica.snapshot?.savedAnalysis
-  ) {
+  if (periodContext.appliesFilter) {
     missing.push(
-      "Il blocco economico del report resta parziale perimetralmente: distingue documenti/costi diretti, snapshot analitico salvato e lascia fuori procurement e approvazioni."
-    );
-  }
-  if (
-    procurementSnapshot &&
-    procurementSnapshot.counts.preventiviGlobali > 0 &&
-    procurementSnapshot.perimeterDecision === "fuori_perimetro"
-  ) {
-    missing.push(
-      `Il workflow procurement esiste nel repo con ${procurementSnapshot.counts.preventiviGlobali} preventivi globali, ma non entra nel report mezzo: in \`@preventivi\` il matching per targa resta ${formatProcurementMatchLevel(procurementSnapshot.matching.preventivi)}.`
-    );
-  }
-  if (
-    procurementSnapshot &&
-    procurementSnapshot.counts.approvazioniMezzo > 0 &&
-    procurementSnapshot.counts.approvazioniSuDocumentiDiretti > 0
-  ) {
-    missing.push(
-      `Le approvazioni lette per questa targa (${procurementSnapshot.counts.approvazioniMezzo}) sono solo supporto read-only a documenti diretti gia mezzo-centrici, non copertura procurement del mezzo.`
+      "Il filtro periodo non viene applicato a identita mezzo, movimenti materiali e analisi economica per evitare inferenze temporali non affidabili.",
     );
   }
 
   return missing;
 }
 
-function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVehicleReportPreview {
+function withPeriodNotes(
+  base: InternalAiReportPeriodContext,
+  extraNotes: string[],
+): InternalAiReportPeriodContext {
+  return {
+    ...base,
+    notes: [...base.notes, ...extraNotes.filter(Boolean)],
+  };
+}
+
+function buildReport(
+  snapshot: NextDossierMezzoCompositeSnapshot,
+  periodInput?: InternalAiReportPeriodInput,
+): InternalAiVehicleReportPreview {
   const generatedAt = new Date().toISOString();
+  const periodBase = resolveInternalAiReportPeriodContext(periodInput);
   const previewStates = buildPreviewStates(snapshot);
-  const missingData = buildMissingData(snapshot);
-  const refuelsTotal = snapshot.refuels.snapshot?.counts.total ?? 0;
-  const documentsTotal = snapshot.documentCosts.snapshot?.counts.total ?? 0;
-  const lavoriTotal = snapshot.lavori.snapshot?.counts.total ?? 0;
-  const manutenzioniTotal = snapshot.maintenance.snapshot?.counts.manutenzioni ?? 0;
-  const materialiTotal = snapshot.materialiMovimenti.snapshot?.counts.total ?? 0;
-  const procurementSnapshot = snapshot.procurementPerimeter.snapshot;
-  const documentiCostiPeriodFilter = deriveDocumentiCostiPeriodFilterStatus({
-    total: snapshot.documentCosts.snapshot?.counts.total ?? 0,
-    withReliableDate: snapshot.documentCosts.snapshot?.counts.withReliableDate ?? 0,
+
+  const lavoriItems = snapshot.lavori.snapshot?.items ?? [];
+  const lavoriPeriod = filterItemsByInternalAiReportPeriod<NextLavoroReadOnlyItem>(
+    lavoriItems,
+    (item) => item.timestampEsecuzione ?? item.timestampInserimento,
+    periodBase,
+  );
+  const lavoriDaEseguire = lavoriPeriod.filteredItems.filter((entry) => entry.matchesGlobalOpenView);
+  const lavoriInAttesa = lavoriPeriod.filteredItems.filter((entry) => entry.matchesDossierInAttesaView);
+  const lavoriEseguiti = lavoriPeriod.filteredItems.filter((entry) => entry.eseguito === true);
+  const lavoriPeriodMeta = buildFilterablePeriodMeta({
+    context: periodBase,
+    noun: "lavori",
+    totalCount: lavoriPeriod.totalCount,
+    matchingCount: lavoriPeriod.matchingCount,
+    outsideRangeCount: lavoriPeriod.outsideRangeCount,
+    missingTimestampCount: lavoriPeriod.missingTimestampCount,
   });
 
+  const maintenanceItems = snapshot.maintenance.snapshot?.maintenanceItems ?? [];
+  const gommeItems = snapshot.maintenance.snapshot?.gommeItems ?? [];
+  const maintenancePeriod = filterItemsByInternalAiReportPeriod<NextManutenzioneReadOnlyItem>(
+    maintenanceItems,
+    (item) => item.timestamp,
+    periodBase,
+  );
+  const gommePeriod = filterItemsByInternalAiReportPeriod<NextGommeReadOnlyItem>(
+    gommeItems,
+    (item) => item.timestamp,
+    periodBase,
+  );
+  const maintenancePeriodMeta = buildFilterablePeriodMeta({
+    context: periodBase,
+    noun: "manutenzioni",
+    totalCount: maintenancePeriod.totalCount + gommePeriod.totalCount,
+    matchingCount: maintenancePeriod.matchingCount + gommePeriod.matchingCount,
+    outsideRangeCount: maintenancePeriod.outsideRangeCount + gommePeriod.outsideRangeCount,
+    missingTimestampCount:
+      maintenancePeriod.missingTimestampCount + gommePeriod.missingTimestampCount,
+  });
+  const gommeFromMaintenance = gommePeriod.filteredItems.filter(
+    (item) => item.sourceOrigin === "manutenzione_derivata",
+  ).length;
+  const gommeFromTmp = gommePeriod.filteredItems.filter(
+    (item) => item.sourceOrigin === "evento_autista_tmp",
+  ).length;
+  const gommeFromOfficial = gommePeriod.filteredItems.filter(
+    (item) => item.sourceOrigin === "evento_ufficiale",
+  ).length;
+  const gommeStrongMatches = gommePeriod.filteredItems.filter(
+    (item) => item.vehicleMatchReliability === "forte",
+  ).length;
+  const gommePlausibleMatches = gommePeriod.filteredItems.filter(
+    (item) => item.vehicleMatchReliability === "plausibile",
+  ).length;
+
+  const refuelItems = snapshot.refuels.snapshot?.items ?? [];
+  const refuelPeriod = filterItemsByInternalAiReportPeriod<NextRifornimentoReadOnlyItem>(
+    refuelItems,
+    (item) => item.timestampRicostruito,
+    periodBase,
+  );
+  const refuelsTotal = refuelPeriod.filteredItems.length;
+  const refuelPeriodMeta = buildFilterablePeriodMeta({
+    context: periodBase,
+    noun: "rifornimenti",
+    totalCount: refuelPeriod.totalCount,
+    matchingCount: refuelPeriod.matchingCount,
+    outsideRangeCount: refuelPeriod.outsideRangeCount,
+    missingTimestampCount: refuelPeriod.missingTimestampCount,
+  });
+
+  const documentItems = snapshot.documentCosts.snapshot?.items ?? [];
+  const documentPeriod = filterItemsByInternalAiReportPeriod<NextDocumentiCostiReadOnlyItem>(
+    documentItems,
+    (item) => item.sortTimestamp ?? item.timestamp,
+    periodBase,
+  );
+  const filteredPreventivi = documentPeriod.filteredItems.filter(
+    (item) => item.category === "preventivo",
+  );
+  const filteredFatture = documentPeriod.filteredItems.filter((item) => item.category === "fattura");
+  const filteredDocumentiUtili = documentPeriod.filteredItems.filter(
+    (item) => item.category === "documento_utile",
+  );
+  const documentsTotal = documentPeriod.filteredItems.length;
+  const savedAnalysisAvailable = Boolean(snapshot.analisiEconomica.snapshot?.savedAnalysis);
+  const documentPeriodMeta = buildFilterablePeriodMeta({
+    context: periodBase,
+    noun: "documenti e costi",
+    totalCount: documentPeriod.totalCount,
+    matchingCount: documentPeriod.matchingCount,
+    outsideRangeCount: documentPeriod.outsideRangeCount,
+    missingTimestampCount: documentPeriod.missingTimestampCount,
+  });
+
+  const materialiTotal = snapshot.materialiMovimenti.snapshot?.counts.total ?? 0;
+  const materialiPeriodMeta = buildStaticPeriodMeta(
+    periodBase,
+    "La sezione materiali resta fuori filtro: il layer combina date e match legacy non abbastanza uniformi per un periodo affidabile del report.",
+  );
+  const identitaPeriodMeta = buildStaticPeriodMeta(
+    periodBase,
+    "La sezione identita mezzo e anagrafica e non rappresenta eventi temporali filtrabili.",
+  );
+  const analisiPeriodMeta = buildStaticPeriodMeta(
+    periodBase,
+    "L'analisi economica salvata e uno snapshot legacy puntuale: il report la mostra come contesto, senza rifiltrarne la copertura storica.",
+  );
+
+  const periodContext = withPeriodNotes(periodBase, [
+    periodBase.appliesFilter
+      ? "Filtro periodo applicato davvero a lavori, manutenzioni, rifornimenti e documenti/costi con data leggibile."
+      : "Il report mostra tutto lo storico disponibile delle sezioni lette nel clone.",
+      periodBase.appliesFilter
+      ? "Identita mezzo, movimenti materiali e analisi economica restano visibili come contesto non filtrabile."
+      : "",
+  ]);
+
+  const missingData = buildMissingData(snapshot, periodContext);
+
+  const documentSectionStatus: InternalAiVehicleReportSectionStatus =
+    snapshot.documentCosts.status === "error"
+      ? "errore"
+      : documentsTotal > 0
+        ? mapSectionStateToStatus({
+            state: snapshot.documentCosts,
+            visibleCount: documentsTotal,
+            availableCount: documentItems.length,
+            context: periodBase,
+          })
+        : savedAnalysisAvailable
+          ? "parziale"
+          : mapSectionStateToStatus({
+              state: snapshot.documentCosts,
+              visibleCount: documentsTotal,
+              availableCount: documentItems.length,
+              context: periodBase,
+            });
+
+  const documentSectionSummary = (() => {
+    if (documentsTotal > 0 && savedAnalysisAvailable) {
+      return `Trovati ${documentsTotal} documenti/costi collegati al mezzo nel periodo attivo; e disponibile anche una analisi economica legacy salvata fuori filtro.`;
+    }
+
+    if (documentsTotal > 0) {
+      return `Trovati ${documentsTotal} documenti/costi collegati al mezzo nel periodo attivo.`;
+    }
+
+    if (savedAnalysisAvailable) {
+      return periodBase.appliesFilter && documentItems.length > 0
+        ? "Nessun documento o costo ricade nel periodo attivo, ma e disponibile una analisi economica legacy salvata fuori filtro."
+        : "Nessun documento/costo utile collegato alla targa, ma e disponibile una analisi economica legacy salvata come contesto read-only.";
+    }
+
+    return periodBase.appliesFilter && documentItems.length > 0
+      ? "Nessun documento o costo ricade nel periodo attivo, ma il layer documentale e disponibile."
+      : "Nessun documento o costo utile collegato alla targa.";
+  })();
+
+  const documentSourceCountLabel = savedAnalysisAvailable
+    ? documentsTotal > 0
+      ? `${documentsTotal} documenti/costi nel periodo + 1 analisi salvata`
+      : "1 analisi salvata"
+    : formatCountLabel(documentsTotal, "documenti/costi nel periodo");
+
   const sections: InternalAiVehicleReportSection[] = [
-    {
+    createSection({
       id: "identita-mezzo",
       title: "Identita mezzo",
       status: "completa",
@@ -312,152 +441,152 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
         `Autista: ${snapshot.mezzo.autistaNome ?? "Non disponibile"}`,
       ],
       notes: takeNotes(snapshot.overview.technicalLimitations, 2),
-    },
+      period: identitaPeriodMeta,
+    }),
     createSection({
       id: "lavori-operativita",
       title: "Lavori e operativita tecnica",
-      state: snapshot.lavori,
-      count: lavoriTotal,
+      status: mapSectionStateToStatus({
+        state: snapshot.lavori,
+        visibleCount: lavoriPeriod.filteredItems.length,
+        availableCount: lavoriItems.length,
+        context: periodBase,
+      }),
       summary:
-        lavoriTotal > 0
-          ? `Trovati ${lavoriTotal} lavori collegati alla targa.`
-          : "Nessun lavoro collegato alla targa nel perimetro in sola lettura.",
+        lavoriPeriod.filteredItems.length > 0
+          ? `Trovati ${lavoriPeriod.filteredItems.length} lavori collegati alla targa nel periodo attivo.`
+          : periodBase.appliesFilter && lavoriItems.length > 0
+            ? "Nessun lavoro ricade nel periodo attivo, ma il layer lavori e disponibile."
+            : "Nessun lavoro collegato alla targa nel perimetro in sola lettura.",
       bullets: [
-        `Da eseguire: ${snapshot.lavori.snapshot?.counts.daEseguire ?? 0}`,
-        `In attesa: ${snapshot.lavori.snapshot?.counts.inAttesa ?? 0}`,
-        `Eseguiti: ${snapshot.lavori.snapshot?.counts.eseguiti ?? 0}`,
-        `Storico tecnico: ${snapshot.technical.snapshot?.counts.manutenzioni ?? 0} manutenzioni lette`,
+        `Da eseguire: ${lavoriDaEseguire.length}`,
+        `In attesa: ${lavoriInAttesa.length}`,
+        `Eseguiti: ${lavoriEseguiti.length}`,
+        `Storico tecnico: ${maintenancePeriod.filteredItems.length} manutenzioni lette nel periodo`,
       ],
       notes: [
         ...(snapshot.lavori.error ? [snapshot.lavori.error] : []),
         ...takeNotes(snapshot.lavori.snapshot?.limitations),
       ],
+      period: lavoriPeriodMeta,
     }),
     createSection({
       id: "manutenzioni-gomme",
       title: "Manutenzioni e gomme",
-      state: snapshot.maintenance,
-      count: manutenzioniTotal,
+      status: mapSectionStateToStatus({
+        state: snapshot.maintenance,
+        visibleCount: maintenancePeriod.filteredItems.length + gommePeriod.filteredItems.length,
+        availableCount: maintenanceItems.length + gommeItems.length,
+        context: periodBase,
+      }),
       summary:
-        manutenzioniTotal > 0
-          ? `Trovate ${manutenzioniTotal} manutenzioni e ${
-              snapshot.maintenance.snapshot?.counts.gommeDerivate ?? 0
-            } eventi gomme derivati.`
-          : "Nessuna manutenzione disponibile per il mezzo nel layer dedicato.",
+        maintenancePeriod.filteredItems.length > 0 || gommePeriod.filteredItems.length > 0
+          ? `Trovate ${maintenancePeriod.filteredItems.length} manutenzioni e ${gommePeriod.filteredItems.length} eventi gomme nel periodo attivo (${gommeStrongMatches} match forti, ${gommePlausibleMatches} plausibili).`
+          : periodBase.appliesFilter && (maintenanceItems.length > 0 || gommeItems.length > 0)
+            ? "Nessuna manutenzione o evento gomme ricade nel periodo attivo, ma il layer dedicato e disponibile."
+            : "Nessuna manutenzione o evento gomme disponibile per il mezzo nel layer dedicato.",
       bullets: [
-        `Manutenzioni con km: ${snapshot.maintenance.snapshot?.counts.manutenzioniConKm ?? 0}`,
-        `Manutenzioni con ore: ${snapshot.maintenance.snapshot?.counts.manutenzioniConOre ?? 0}`,
-        `Gomme derivate: ${snapshot.maintenance.snapshot?.counts.gommeDerivate ?? 0}`,
+        `Manutenzioni con km: ${maintenancePeriod.filteredItems.filter((item) => item.km !== null).length}`,
+        `Manutenzioni con ore: ${maintenancePeriod.filteredItems.filter((item) => item.ore !== null).length}`,
+        `Eventi gomme: ${gommePeriod.filteredItems.length} (${gommeFromMaintenance} da manutenzioni, ${gommeFromTmp + gommeFromOfficial} da dataset gomme)`,
+        `Match gomme: ${gommeStrongMatches} forti, ${gommePlausibleMatches} plausibili`,
         `Stato manutenzione programmata: ${
           snapshot.maintenance.snapshot?.scheduledMaintenance.status ?? "non disponibile"
         }`,
       ],
       notes: [
         ...(snapshot.maintenance.error ? [snapshot.maintenance.error] : []),
+        ...(gommePlausibleMatches > 0
+          ? [
+              `${gommePlausibleMatches} eventi gomme del periodo sono collegati solo da targa di contesto e restano copertura plausibile, non conferma forte del mezzo.`,
+            ]
+          : []),
+        ...((snapshot.maintenance.snapshot?.counts.gommeDeduplicateConManutenzione ?? 0) > 0
+          ? [
+              `${snapshot.maintenance.snapshot?.counts.gommeDeduplicateConManutenzione ?? 0} eventi gomme extra sono stati deduplicati rispetto alle manutenzioni per evitare doppio conteggio.`,
+            ]
+          : []),
         ...takeNotes(snapshot.maintenance.snapshot?.limitations),
       ],
+      period: maintenancePeriodMeta,
     }),
     createSection({
       id: "rifornimenti",
       title: "Rifornimenti",
-      state: snapshot.refuels,
-      count: refuelsTotal,
+      status: mapSectionStateToStatus({
+        state: snapshot.refuels,
+        visibleCount: refuelsTotal,
+        availableCount: refuelItems.length,
+        context: periodBase,
+      }),
       summary:
         refuelsTotal > 0
-          ? `Trovati ${refuelsTotal} rifornimenti per la targa con lettura normalizzata in sola lettura.`
-          : "Nessun rifornimento utile letto per questa targa.",
+          ? `Trovati ${refuelsTotal} rifornimenti per la targa nel periodo attivo.`
+          : periodBase.appliesFilter && refuelItems.length > 0
+            ? "Nessun rifornimento ricade nel periodo attivo, ma il layer D04 e disponibile."
+            : "Nessun rifornimento utile letto per questa targa.",
       bullets: [
-        `Record con km: ${snapshot.refuels.snapshot?.counts.withKm ?? 0}`,
-        `Record con costo: ${snapshot.refuels.snapshot?.counts.withCosto ?? 0}`,
-        `Litri totali: ${snapshot.refuels.snapshot?.totals.litri ?? 0}`,
-        `Costo totale noto: ${snapshot.refuels.snapshot?.totals.costo ?? 0}`,
+        `Record con km: ${refuelPeriod.filteredItems.filter((item) => item.km !== null).length}`,
+        `Record con costo: ${refuelPeriod.filteredItems.filter((item) => item.costo !== null).length}`,
+        `Litri totali: ${refuelPeriod.filteredItems.reduce((sum, item) => sum + (item.litri ?? 0), 0)}`,
+        `Costo totale noto: ${refuelPeriod.filteredItems.reduce((sum, item) => sum + (item.costo ?? 0), 0)}`,
       ],
       notes: [
         ...(snapshot.refuels.error ? [snapshot.refuels.error] : []),
         ...takeNotes(snapshot.refuels.snapshot?.limitations),
       ],
+      period: refuelPeriodMeta,
     }),
     createSection({
       id: "materiali",
       title: "Movimenti materiali",
-      state: snapshot.materialiMovimenti,
-      count: materialiTotal,
+      status:
+        snapshot.materialiMovimenti.status === "error"
+          ? "errore"
+          : materialiTotal > 0
+            ? "parziale"
+            : "vuota",
       summary:
         materialiTotal > 0
-          ? `Trovati ${materialiTotal} movimenti materiali. Copertura match ${formatMaterialiMatchCoverage(snapshot.materialiMovimenti.snapshot?.coverage.match ?? "vuota")}.`
-          : "Nessun movimento materiali collegabile in modo dimostrabile al mezzo.",
+          ? `Trovati ${materialiTotal} movimenti materiali collegabili alla targa nel quadro generale read-only.`
+          : "Nessun movimento materiali collegabile in modo affidabile al mezzo.",
       bullets: [
-        `Match forti: ${snapshot.materialiMovimenti.snapshot?.counts.matchedStrong ?? 0}`,
-        `Match plausibili: ${snapshot.materialiMovimenti.snapshot?.counts.matchedPlausible ?? 0}`,
-        `Dettaglio match forti: targa esplicita ${
-          snapshot.materialiMovimenti.snapshot?.counts.matchedByExplicitTarga ?? 0
-        }, destinatario.label=targa ${
-          snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioLabelTarga ?? 0
-        }, destinatario.refId=targa ${
-          snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioRefTarga ?? 0
+        `Match targa esplicita: ${snapshot.materialiMovimenti.snapshot?.counts.matchedByExplicitTarga ?? 0}`,
+        `Match da destinatario: ${
+          (snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioLabelTarga ?? 0) +
+          (snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioRefId ?? 0)
         }`,
-        `Filtro periodo materiali: ${formatMaterialiPeriodFilterStatus(
-          snapshot.materialiMovimenti.snapshot?.coverage.periodFilter ?? "non_dimostrabile",
-        )} (${snapshot.materialiMovimenti.snapshot?.counts.withReliableDate ?? 0}/${
-          snapshot.materialiMovimenti.snapshot?.counts.total ?? 0
-        } record con data parsabile)`,
         `Movimenti con costo: ${snapshot.materialiMovimenti.snapshot?.counts.withCost ?? 0}`,
         `Documenti supporto costo: ${snapshot.materialiMovimenti.snapshot?.materialCostSupport.documentCount ?? 0}`,
       ],
       notes: [
         ...(snapshot.materialiMovimenti.error ? [snapshot.materialiMovimenti.error] : []),
-        ...takeNotes(snapshot.materialiMovimenti.snapshot?.limitations, 4),
+        ...takeNotes(snapshot.materialiMovimenti.snapshot?.limitations),
       ],
+      period: materialiPeriodMeta,
     }),
     createSection({
       id: "documenti-costi",
       title: "Documenti, costi e analisi",
-      state: snapshot.documentCosts,
-      count: documentsTotal,
-      summary:
-        documentsTotal > 0
-          ? `Trovati ${documentsTotal} documenti/costi diretti collegati al mezzo. Snapshot analitico ${snapshot.analisiEconomica.snapshot?.savedAnalysis ? "presente" : "assente"}.`
-          : "Nessun documento o costo diretto utile collegato alla targa.",
+      status: documentSectionStatus,
+      summary: documentSectionSummary,
       bullets: [
-        `Documenti/costi diretti: ${snapshot.documentCosts.snapshot?.counts.total ?? 0}`,
-        `Dettaglio fonti dirette: costiMezzo ${
-          snapshot.documentCosts.snapshot?.sourceCounts.costiMezzo ?? 0
-        }, documenti mezzo ${snapshot.documentCosts.snapshot?.sourceCounts.documentiMezzo ?? 0}, documenti magazzino ${
-          snapshot.documentCosts.snapshot?.sourceCounts.documentiMagazzino ?? 0
-        }, documenti generici ${snapshot.documentCosts.snapshot?.sourceCounts.documentiGenerici ?? 0}`,
-        `Dettaglio categorie: preventivi ${
-          snapshot.documentCosts.snapshot?.counts.preventivi ?? 0
-        }, fatture ${snapshot.documentCosts.snapshot?.counts.fatture ?? 0}, documenti utili ${
-          snapshot.documentCosts.snapshot?.counts.documentiUtili ?? 0
-        }`,
-        `Filtro periodo documenti/costi: ${formatDocumentiCostiPeriodFilterStatus(
-          documentiCostiPeriodFilter,
-        )} (${snapshot.documentCosts.snapshot?.counts.withReliableDate ?? 0}/${
-          snapshot.documentCosts.snapshot?.counts.total ?? 0
-        } record con data parsabile)`,
-        `Analisi economica salvata: ${
-          snapshot.analisiEconomica.snapshot?.savedAnalysis ? "presente" : "assente"
-        }`,
-        `Procurement: ${formatProcurementDecision(
-          procurementSnapshot?.perimeterDecision ?? "fuori_perimetro",
-        )} (${procurementSnapshot?.counts.preventiviGlobali ?? 0} preventivi globali, ${
-          procurementSnapshot?.counts.preventiviMatchForte ?? 0
-        } match forti sulla targa in \`@preventivi\`)`,
-        `Approvazioni: ${procurementSnapshot?.counts.approvazioniMezzo ?? 0} record per la targa, di cui ${
-          procurementSnapshot?.counts.approvazioniSuDocumentiDiretti ?? 0
-        } su documenti diretti gia mezzo-centrici`,
+        `Preventivi: ${filteredPreventivi.length}`,
+        `Fatture: ${filteredFatture.length}`,
+        `Documenti utili: ${filteredDocumentiUtili.length}`,
+        `Analisi economica salvata: ${snapshot.analisiEconomica.snapshot?.savedAnalysis ? "Si" : "No"}`,
       ],
       notes: [
         ...(snapshot.documentCosts.error ? [snapshot.documentCosts.error] : []),
-        ...takeNotes(snapshot.documentCosts.snapshot?.limitations, 4),
-        ...takeNotes(snapshot.analisiEconomica.snapshot?.limitations, 3),
-        ...takeNotes(snapshot.procurementPerimeter.snapshot?.limitations, 3),
+        ...takeNotes(snapshot.documentCosts.snapshot?.limitations),
+        ...takeNotes(snapshot.analisiEconomica.snapshot?.limitations),
       ],
+      period: documentPeriodMeta,
     }),
   ];
 
   const sources: InternalAiVehicleReportSource[] = [
-    {
+    createSource({
       id: "anagrafica",
       title: "Anagrafica flotta",
       status: "disponibile",
@@ -465,36 +594,57 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
       datasetLabels: ["storage/@mezzi_aziendali"],
       countLabel: "1 mezzo letto",
       notes: [],
-    },
+      period: identitaPeriodMeta,
+    }),
     createSource({
       id: "lavori",
       title: snapshot.lavori.snapshot?.domainName ?? "Lavori",
-      state: snapshot.lavori,
-      count: lavoriTotal,
+      status: mapSourceStatus({
+        state: snapshot.lavori,
+        visibleCount: lavoriPeriod.filteredItems.length,
+        availableCount: lavoriItems.length,
+        context: periodBase,
+      }),
       description: "Lettura in sola lettura dei lavori mezzo-centrici gia normalizzati nel clone.",
       datasetLabels: snapshot.lavori.snapshot
         ? [...snapshot.lavori.snapshot.logicalDatasets]
         : ["storage/@lavori"],
-      countLabel: formatCountLabel(lavoriTotal, "lavori"),
+      countLabel: formatCountLabel(lavoriPeriod.filteredItems.length, "lavori nel periodo"),
       notes: takeNotes(snapshot.lavori.snapshot?.limitations),
+      period: lavoriPeriodMeta,
     }),
     createSource({
       id: "manutenzioni",
       title: snapshot.maintenance.snapshot?.domainName ?? "Manutenzioni e gomme",
-      state: snapshot.maintenance,
-      count: manutenzioniTotal,
-      description: "Storico manutenzioni e derivazione gomme letti dai layer NEXT dedicati.",
+      status: mapSourceStatus({
+        state: snapshot.maintenance,
+        visibleCount: maintenancePeriod.filteredItems.length + gommePeriod.filteredItems.length,
+        availableCount: maintenanceItems.length + gommeItems.length,
+        context: periodBase,
+      }),
+      description:
+        "Storico manutenzioni e convergenza eventi gomme letti dai layer NEXT dedicati, con distinzione tra match forti e plausibili.",
       datasetLabels: snapshot.maintenance.snapshot
         ? [...snapshot.maintenance.snapshot.logicalDatasets]
-        : ["storage/@manutenzioni"],
-      countLabel: formatCountLabel(manutenzioniTotal, "manutenzioni"),
+        : [
+            "storage/@manutenzioni",
+            "storage/@mezzi_aziendali",
+            "storage/@cambi_gomme_autisti_tmp",
+            "storage/@gomme_eventi",
+          ],
+      countLabel: `${maintenancePeriod.filteredItems.length} manutenzioni, ${gommePeriod.filteredItems.length} eventi gomme`,
       notes: takeNotes(snapshot.maintenance.snapshot?.limitations),
+      period: maintenancePeriodMeta,
     }),
     createSource({
       id: "rifornimenti",
       title: snapshot.refuels.snapshot?.domainName ?? "Rifornimenti",
-      state: snapshot.refuels,
-      count: refuelsTotal,
+      status: mapSourceStatus({
+        state: snapshot.refuels,
+        visibleCount: refuelsTotal,
+        availableCount: refuelItems.length,
+        context: periodBase,
+      }),
       description: "Rifornimenti letti con merge in sola lettura tra dataset business e feed campo.",
       datasetLabels: snapshot.refuels.snapshot
         ? [
@@ -502,97 +652,64 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
             ...snapshot.refuels.snapshot.supportingReadOnlyDatasets,
           ]
         : ["storage/@rifornimenti", "storage/@rifornimenti_autisti_tmp"],
-      countLabel: formatCountLabel(refuelsTotal, "record"),
+      countLabel: formatCountLabel(refuelsTotal, "record nel periodo"),
       notes: takeNotes(snapshot.refuels.snapshot?.limitations),
+      period: refuelPeriodMeta,
     }),
     createSource({
       id: "materiali",
       title: snapshot.materialiMovimenti.snapshot?.domainName ?? "Movimenti materiali",
-      state: snapshot.materialiMovimenti,
-      count: materialiTotal,
-      description:
-        "Movimenti materiali letti da `@materialiconsegnati` tramite layer read-only del clone; il report include solo match forti o plausibili e lascia fuori i collegamenti non dimostrabili.",
+      status:
+        snapshot.materialiMovimenti.status === "error"
+          ? "errore"
+          : materialiTotal > 0
+            ? "parziale"
+            : "parziale",
+      description: "Movimenti materiali ricostruiti dal layer mezzo-centrico in sola lettura del clone.",
       datasetLabels: snapshot.materialiMovimenti.snapshot
         ? [...snapshot.materialiMovimenti.snapshot.logicalDatasets]
         : ["storage/@materialiconsegnati"],
-      countLabel: formatCountLabel(materialiTotal, "movimenti"),
-      notes: takeNotes(
-        [
-          `Copertura match: ${formatMaterialiMatchCoverage(
-            snapshot.materialiMovimenti.snapshot?.coverage.match ?? "vuota",
-          )}.`,
-          `Filtro periodo: ${formatMaterialiPeriodFilterStatus(
-            snapshot.materialiMovimenti.snapshot?.coverage.periodFilter ?? "non_dimostrabile",
-          )}.`,
-          ...(snapshot.materialiMovimenti.snapshot?.limitations ?? []),
-        ],
-        4,
-      ),
+      countLabel: formatCountLabel(materialiTotal, "movimenti totali"),
+      notes: takeNotes(snapshot.materialiMovimenti.snapshot?.limitations),
+      period: materialiPeriodMeta,
     }),
     createSource({
       id: "documenti-costi",
-      title: snapshot.documentCosts.snapshot?.domainName ?? "Documenti e costi diretti",
-      state: snapshot.documentCosts,
-      count: documentsTotal,
-      description:
-        "Documenti e costi diretti letti dai layer documentali ed economici in sola lettura del clone, senza confonderli con snapshot analitici o workflow procurement.",
+      title: snapshot.documentCosts.snapshot?.domainName ?? "Documenti e costi",
+      status: mapSourceStatus({
+        state: snapshot.documentCosts,
+        visibleCount: documentsTotal,
+        availableCount: documentItems.length,
+        context: periodBase,
+      }),
+      description: "Documenti e costi letti dai layer documentali ed economici in sola lettura del clone.",
       datasetLabels: snapshot.documentCosts.snapshot
         ? [...snapshot.documentCosts.snapshot.activeReadOnlyDatasets]
         : ["storage/@costiMezzo", "@documenti_mezzi", "@documenti_magazzino", "@documenti_generici"],
-      countLabel: formatCountLabel(documentsTotal, "documenti/costi"),
-      notes: takeNotes(
-        [
-          `Filtro periodo diretto: ${formatDocumentiCostiPeriodFilterStatus(
-            documentiCostiPeriodFilter,
-          )}.`,
-          ...(snapshot.documentCosts.snapshot?.limitations ?? []),
-        ],
-        5,
-      ),
+      countLabel: documentSourceCountLabel,
+      notes: takeNotes(snapshot.documentCosts.snapshot?.limitations),
+      period: documentPeriodMeta,
     }),
-    {
+    createSource({
       id: "analisi-economica",
       title: "Analisi economica salvata",
       status: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "disponibile" : "parziale",
-      description:
-        "Verifica in sola lettura dell'eventuale snapshot legacy di analisi economica: e un riepilogo salvato, non un documento/costo base.",
+      description: "Verifica in sola lettura dell'eventuale snapshot legacy di analisi economica.",
       datasetLabels: ["@analisi_economica_mezzi"],
-      countLabel: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "1 snapshot trovato" : null,
+      countLabel: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "1 analisi trovata" : null,
       notes: takeNotes(snapshot.analisiEconomica.snapshot?.limitations),
-    },
-    {
-      id: "procurement-approvazioni",
-      title: "Procurement e approvazioni",
-      status: snapshot.procurementPerimeter.status === "error" ? "errore" : "parziale",
-      description:
-        procurementSnapshot?.perimeterDecision === "parziale"
-          ? "Dataset reali presenti nel repo con qualche collegamento mezzo leggibile, ma ancora solo come supporto parziale separato: non vanno fusi nel blocco economico diretto."
-          : "Dataset reali presenti nel repo ma fuori dal perimetro base del report mezzo: non sono documenti/costi diretti e non vanno fusi in questo blocco come se fossero omogenei.",
-      datasetLabels: ["storage/@preventivi", "storage/@preventivi_approvazioni"],
-      countLabel: procurementSnapshot
-        ? `Globali ${procurementSnapshot.counts.preventiviGlobali}, match forte mezzo ${procurementSnapshot.counts.preventiviMatchForte}, approvazioni mezzo ${procurementSnapshot.counts.approvazioniMezzo}`
-        : null,
-      notes: takeNotes(
-        [
-          `Matching \`@preventivi\`: ${formatProcurementMatchLevel(
-            procurementSnapshot?.matching.preventivi ?? "non_dimostrabile",
-          )}.`,
-          `Matching \`@preventivi_approvazioni\`: ${formatProcurementMatchLevel(
-            procurementSnapshot?.matching.approvazioni ?? "non_dimostrabile",
-          )}.`,
-          ...(snapshot.procurementPerimeter.error ? [snapshot.procurementPerimeter.error] : []),
-          ...(procurementSnapshot?.limitations ?? []),
-        ],
-        5,
-      ),
-    },
+      period: analisiPeriodMeta,
+    }),
   ];
 
   return {
+    reportType: "targa",
+    targetId: snapshot.mezzo.id,
+    targetLabel: snapshot.mezzo.targa,
     mezzoTarga: snapshot.mezzo.targa,
     title: `Anteprima report targa ${snapshot.mezzo.targa}`,
     subtitle:
-      "Report costruito in sola lettura dai layer NEXT gia esistenti, senza scritture e senza backend IA.",
+      "Report costruito in sola lettura dai layer NEXT gia esistenti, con contesto periodo esplicito e senza scritture.",
     generatedAt,
     header: {
       targa: snapshot.mezzo.targa,
@@ -606,38 +723,39 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
     cards: [
       {
         label: "Lavori",
-        value: String(lavoriTotal),
-        meta: `Da eseguire ${snapshot.lavori.snapshot?.counts.daEseguire ?? 0}, in attesa ${
-          snapshot.lavori.snapshot?.counts.inAttesa ?? 0
-        }, eseguiti ${snapshot.lavori.snapshot?.counts.eseguiti ?? 0}`,
-        tone: lavoriTotal > 0 ? "success" : "warning",
+        value: String(lavoriPeriod.filteredItems.length),
+        meta: `Da eseguire ${lavoriDaEseguire.length}, in attesa ${lavoriInAttesa.length}, eseguiti ${lavoriEseguiti.length}`,
+        tone: lavoriPeriod.filteredItems.length > 0 ? "success" : "warning",
       },
       {
-        label: "Manutenzioni",
-        value: String(manutenzioniTotal),
-        meta: `Gomme derivate ${snapshot.maintenance.snapshot?.counts.gommeDerivate ?? 0}`,
-        tone: manutenzioniTotal > 0 ? "success" : "warning",
+        label: "Manutenzioni e gomme",
+        value: String(maintenancePeriod.filteredItems.length + gommePeriod.filteredItems.length),
+        meta: `Eventi gomme ${gommePeriod.filteredItems.length} (forti ${gommeStrongMatches}, plausibili ${gommePlausibleMatches})`,
+        tone:
+          maintenancePeriod.filteredItems.length > 0 || gommePeriod.filteredItems.length > 0
+            ? "success"
+            : "warning",
       },
       {
         label: "Rifornimenti",
         value: String(refuelsTotal),
-        meta: `Litri totali ${snapshot.refuels.snapshot?.totals.litri ?? 0}`,
+        meta: `Litri totali ${refuelPeriod.filteredItems.reduce((sum, item) => sum + (item.litri ?? 0), 0)}`,
         tone: refuelsTotal > 0 ? "success" : "warning",
       },
       {
         label: "Documenti e costi",
         value: String(documentsTotal),
-        meta: `Diretti ${documentsTotal}, snapshot analisi ${
-          snapshot.analisiEconomica.snapshot?.savedAnalysis ? "si" : "no"
-        }`,
+        meta: `Preventivi ${filteredPreventivi.length}, fatture ${filteredFatture.length}`,
         tone: documentsTotal > 0 ? "success" : "warning",
       },
     ],
+    periodContext,
     sections,
     missingData,
     evidences: [
       ...snapshot.overview.keySignals,
       ...snapshot.overview.readerLabels,
+      `Periodo attivo: ${periodContext.label}`,
       `Blocchi importati: ${snapshot.overview.importedBlockLabels.join(", ") || "nessuno"}`,
     ].filter(Boolean),
     sources,
@@ -648,14 +766,25 @@ function buildReport(snapshot: NextDossierMezzoCompositeSnapshot): InternalAiVeh
 
 export async function readInternalAiVehicleReportPreview(
   rawTarga: string,
+  periodInput?: InternalAiReportPeriodInput,
 ): Promise<InternalAiVehicleReportReadResult> {
   const normalizedTarga = normalizeNextMezzoTarga(rawTarga);
+  const periodContext = resolveInternalAiReportPeriodContext(periodInput);
 
   if (!normalizedTarga) {
     return {
       status: "invalid_query",
       normalizedTarga: null,
       message: "Inserisci una targa valida prima di avviare l'anteprima.",
+      report: null,
+    };
+  }
+
+  if (!periodContext.isValid) {
+    return {
+      status: "invalid_query",
+      normalizedTarga,
+      message: "Il periodo selezionato non e valido. Controlla le date da e a prima di generare l'anteprima.",
       report: null,
     };
   }
@@ -674,7 +803,7 @@ export async function readInternalAiVehicleReportPreview(
   return {
     status: "ready",
     normalizedTarga,
-    message: `Anteprima report generata in sola lettura per la targa ${normalizedTarga}.`,
-    report: buildReport(snapshot),
+    message: `Anteprima report generata in sola lettura per la targa ${normalizedTarga} con periodo ${periodContext.label}.`,
+    report: buildReport(snapshot, periodInput),
   };
 }

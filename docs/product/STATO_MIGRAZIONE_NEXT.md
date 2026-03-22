@@ -147,156 +147,172 @@ Serve a:
 - La UI overview espone una sezione minima di memoria recente, utile per riprendere il lavoro nel modulo senza introdurre memoria operativa globale del gestionale.
 - Nessun backend reale, nessun provider IA, nessun writer Firestore/Storage business e nessun modulo IA legacy vengono coinvolti da questa patch.
 
-## 5.10 Aggiornamento 2026-03-13 - Audit e trasparenza del blocco materiali nel report mezzo IA interno
-- Il report mezzo del sottosistema `/next/ia/interna*` usa ora un blocco materiali piu esplicito sul livello di affidabilita del collegamento mezzo-movimento, senza cambiare il perimetro `read-only` del clone.
-- Il dominio `src/next/domain/nextMaterialiMovimentiDomain.ts` classifica il match mezzo/materiale in modo prudente:
-  - `forte` se la targa e leggibile in modo esplicito in `destinatario.label` o `destinatario.refId`;
-  - `plausibile` se rimane solo il collegamento legacy `destinatario.refId = id mezzo`;
-  - i casi conflittuali o non dimostrabili non vengono promossi a match certi.
-- La facade IA e l'aggregatore dossier espongono ora conteggi e testi trasparenti su:
-  - quanti movimenti materiali sono collegati con match forti;
-  - quanti restano solo plausibili;
-  - quanto il filtro periodo sia affidabile o parziale sui record davvero databili.
-- Audit read-only sui dati correnti:
-  - `@materialiconsegnati` contiene 18 record, oggi tutti fortemente riconducibili a una targa e tutti con data parsabile;
-  - `@documenti_magazzino` offre solo supporto descrittivo ai costi materiali, con 1 documento e 3 righe `voci` senza chiave targa dedicata.
-- Nessun writer e stato aperto o riattivato: il task resta confinato a lettura, matching prudente e trasparenza del report IA interno.
+## 5.10 Aggiornamento 2026-03-13 - Ricerca guidata autisti e report autista read-only nel sottosistema IA
+- Il subtree `/next/ia/interna*` supporta ora anche un secondo use case separato dal report targa: ricerca guidata autista reale e preview report autista in sola lettura.
+- La lettura primaria degli autisti riusa il layer clone-safe `readNextColleghiSnapshot()` su `storage/@colleghi`, gia presente nel clone e gia normalizzato, senza introdurre nuove letture raw.
+- La preview `report autista` legge solo fonti gia disponibili nel clone:
+  - `storage/@colleghi` per i dati base autista;
+  - `storage/@mezzi_aziendali` tramite `readNextAnagraficheFlottaSnapshot()` per i mezzi associati;
+  - `D10 Centro Controllo` per eventuale ultimo mezzo noto e segnali operativi read-only;
+  - `D04 Rifornimenti` per eventuali rifornimenti collegabili all'autista sui mezzi associati.
+- La UI overview ora distingue in modo esplicito i due flussi:
+  - `Anteprima report per targa`;
+  - `Anteprima report per autista`.
+- La memoria locale del modulo, il tracking interno e l'archivio artifact IA distinguono ora anche report e ricerche recenti di tipo autista.
+- La chat mock del sottosistema IA riconosce ora anche richieste minime sul nuovo flusso autista, restando locale, controllata e senza backend reale.
+- Nessuna scrittura Firestore/Storage business, nessun riuso runtime IA legacy, nessun segreto lato client e nessun impatto sui flussi correnti vengono introdotti da questa estensione.
 
-## 5.11 Aggiornamento 2026-03-13 - Audit e trasparenza del blocco documenti-costi nel report mezzo IA interno
-- Il report mezzo del sottosistema `/next/ia/interna*` separa ora in modo esplicito tre livelli distinti del perimetro economico:
-  - documenti/costi diretti letti dal layer clone-safe;
-  - snapshot analitico legacy salvato;
-  - workflow procurement/approvazioni fuori perimetro base del report mezzo.
-- Il dominio `src/next/domain/nextDocumentiCostiDomain.ts` continua a leggere solo `@costiMezzo` e le collezioni documentali IA, ma dichiara ora meglio:
-  - che `@analisi_economica_mezzi` non e un documento/costo base;
-  - che `@preventivi` e `@preventivi_approvazioni` non entrano nel layer mezzo-centrico;
-  - quanto il filtro periodo sui record diretti sia affidabile o prudenziale.
-- La facade IA e l'aggregatore dossier espongono ora testi piu trasparenti su:
-  - fonti dirette davvero incluse;
-  - snapshot analitico separato;
-  - procurement e approvazioni presenti nel repo ma esclusi dal blocco economico del report.
-- Audit read-only sui dati correnti:
-  - `@costiMezzo` contiene 0 record;
-  - `@documenti_mezzi` contiene 3 record, tutti con targa/data/importo/file leggibili;
-  - `@documenti_magazzino` contiene 1 record senza targa diretta, quindi non promuovibile a documento economico certo del mezzo;
-  - `@documenti_generici` contiene 0 record;
-  - `@analisi_economica_mezzi` contiene 1 snapshot con docId=targa e `updatedAt` leggibile;
-  - `@preventivi` contiene 7 record ma nessuno con targa diretta del mezzo;
-  - `@preventivi_approvazioni` contiene 1 record, utile solo come stato approvativo read-only del dominio capo.
-- Nessun writer e stato aperto o riattivato: il task resta confinato a lettura, perimetrazione corretta e trasparenza del report IA interno.
+## 5.11 Aggiornamento 2026-03-13 - Filtri temporali e contesto periodo nei report IA interni
+- Il subtree `/next/ia/interna*` supporta ora un contesto periodo condiviso per report targa e report autista, sempre confinato al clone e al sottosistema IA interno.
+- La UI overview espone un blocco unico `Contesto periodo del report` con:
+  - preset `Tutto`;
+  - `Ultimi 30 giorni`;
+  - `Ultimi 90 giorni`;
+  - `Ultimo mese`;
+  - intervallo personalizzato `Da / A`.
+- Il filtro periodo viene applicato davvero solo alle sezioni che, nei layer NEXT gia esistenti, espongono una data utilizzabile:
+  - targa: lavori, manutenzioni, rifornimenti, documenti/costi;
+  - autista: segnali operativi D10 e rifornimenti collegabili.
+- Le sezioni non filtrabili o non abbastanza affidabili sul piano temporale restano visibili come contesto read-only, ma vengono marcate in preview con stato periodo esplicito (`Nessun filtro`, `Fuori filtro`, `Periodo non disponibile`, `Filtro applicato`).
+- La chat mock del sottosistema IA puo ora interpretare anche richieste con contesto periodo esplicito e, in assenza di periodo nel prompt, riusa il periodo attivo nella UI guidata del modulo.
+- La memoria locale e l'archivio artifact IA registrano ora anche il periodo usato per l'ultimo report, senza toccare dataset business, Storage business o backend IA reali.
 
-## 5.12 Aggiornamento 2026-03-13 - Decisione strutturale sul perimetro procurement nel report mezzo IA interno
-- Il clone espone ora in modo esplicito anche la decisione strutturale sul perimetro `procurement / preventivi / approvazioni` del report mezzo IA interno.
-- Il supporto aggiunto in `src/next/domain/nextDocumentiCostiDomain.ts` legge in sola lettura `storage/@preventivi` e `storage/@preventivi_approvazioni` solo per audit di perimetro, non per fonderli nel blocco economico diretto del mezzo.
-- Audit read-only sui dati correnti:
-  - `storage/@preventivi` contiene 7 record ma 0 match forti sulla targa;
-  - `storage/@preventivi_approvazioni` contiene 1 record per la targa auditata;
-  - l'approvazione letta punta a `@documenti_mezzi`, quindi oggi rappresenta solo uno stato approvativo su documento diretto gia mezzo-centrico.
-- Decisione corrente del clone:
-  - `@preventivi` resta fuori perimetro del report mezzo IA;
-  - il procurement puo al massimo comparire come supporto parziale separato se in futuro emergeranno match forti espliciti;
-  - `@preventivi_approvazioni` non va trattato come copertura procurement del mezzo, ma solo come overlay read-only su record diretti gia presenti.
-- La facade del report IA e il composito dossier mostrano ora questa distinzione con testi italiani e conteggi espliciti, evitando falsa completezza economica.
-- Nessun writer e stato aperto o riattivato: il task resta confinato a audit, perimetrazione e trasparenza del report IA interno.
+## 5.12 Aggiornamento 2026-03-13 - Report combinato mezzo + autista + periodo nel sottosistema IA interno
+- Il subtree `/next/ia/interna*` supporta ora anche una preview combinata che unisce:
+  - mezzo reale;
+  - autista reale;
+  - periodo attivo del report.
+- L'implementazione resta confinata al clone/NEXT e riusa in modo pulito i facade gia attivi:
+  - `report targa` read-only;
+  - `report autista` read-only;
+  - tracking/memoria/artifact locali del modulo IA.
+- Il matching mezzo-autista non viene mai presentato come verita implicita:
+  - `forte` solo con conferma anagrafica `autistaId` sul mezzo;
+  - `plausibile` con nome dichiarato sul mezzo o segnali compatibili D10/D04;
+  - `non dimostrabile` se il repo non espone legami leggibili.
+- La preview combinata mostra in modo separato:
+  - contesto selezionato;
+  - affidabilita del legame;
+  - intersezione reale nel periodo;
+  - vista mezzo riusata;
+  - vista autista riusata;
+  - fonti lette e dati mancanti.
+- La chat mock del sottosistema IA riconosce ora anche richieste minime combinate mezzo + autista, restando locale, mock e senza backend reale.
+- Nessuna scrittura Firestore/Storage business, nessun runtime IA legacy, nessun segreto lato client e nessun impatto sui flussi correnti vengono introdotti da questa patch.
 
-## 5.13 Aggiornamento 2026-03-13 - Mappa permanente delle funzioni IA legacy da assorbire nella nuova IA
-- Il clone e il sottosistema `/next/ia/interna*` dispongono ora di una mappa documentale permanente delle funzioni IA legacy della madre da assorbire, rifare o lasciare fuori dal perimetro iniziale.
-- L'audit conferma che il valore business reale gia presente nel repo si concentra soprattutto in:
-  - estrazione libretto mezzo;
-  - estrazione documenti e classificazione;
-  - analisi economica mezzo;
-  - estrazione preventivi;
-  - cluster cisterna come dominio separato.
-- La decisione strutturale resta invariata sul runtime clone:
-  - nessun backend legacy diventa canale canonico della nuova IA interna;
-  - `aiCore`, `estrazioneDocumenti`, `analisi_economica_mezzo`, Cloud Run libretto, `stamp_pdf`, `server.js` e gli altri canali legacy restano solo riferimento tecnico o capability da rifare in backend dedicato;
-  - i writer business diretti delle pagine IA legacy non entrano nel clone.
-- La mappa `docs/architecture/MAPPA_FUNZIONI_IA_LEGACY_DA_ASSORBIRE.md` diventa base obbligatoria per i futuri task IA che propongono nuove capability nel clone.
+## 5.13 Aggiornamento 2026-03-13 - Archivio intelligente artifact IA con ricerca e filtri
+- Il subtree `/next/ia/interna*` espone ora un archivio artifact locale piu consultabile e scalabile, sempre confinato al clone e senza backend reale.
+- L'archivio IA interno supporta ora:
+  - ricerca testuale veloce sui metadati del report;
+  - filtri combinabili per tipo report, stato, ambito, targa, autista e periodo;
+  - ordinamento per ultimi aggiornati;
+  - riapertura della preview corretta nel modulo overview.
+- Il modello locale degli artifact e retrocompatibile con quelli gia presenti e aggiunge metadati scalabili:
+  - famiglia/ambito report;
+  - testo ricercabile;
+  - affidabilita del matching combinato quando disponibile;
+  - ultimo aggiornamento archivio memorizzato nella memoria locale del modulo.
+- Le famiglie vengono assegnate solo a partire dai dataset gia letti dai facade esistenti; se il report attraversa piu ambiti o i metadati non bastano, il clone usa i fallback espliciti `misto` o `non classificato`.
+- Nessuna scrittura Firestore/Storage business, nessun runtime IA legacy, nessun segreto lato client e nessun impatto sui flussi correnti vengono introdotti da questa patch.
 
-## 5.14 Aggiornamento 2026-03-13 - Ridisegno UI del sottosistema IA interna
-- La route `/next/ia/interna*` usa ora una UI piu pulita, semplice e professionale senza cambiare letture dati, facade o domain del sottosistema IA interno.
-- La home del modulo mette al centro:
-  - chat principale;
-  - input ampio e pulito;
-  - pochi suggerimenti iniziali;
-  - ricerca report mezzo con stato ordinato e suggerimenti guidati;
-  - area secondaria compatta per archivio, recenti e modalita non ancora attive.
-- La preview report mezzo assume ora una struttura piu vicina al dossier mezzi:
-  - hero iniziale con identita mezzo e stati;
-  - card di riepilogo in alto;
-  - sezioni principali nel corpo centrale;
-  - fonti/copertura e azioni in colonna laterale;
-  - dati mancanti ed evidenze in blocchi separati e leggibili.
-- Guard rail, contratti predisposti e memoria del modulo restano visibili ma sono stati spostati in area avanzata secondaria per ridurre il rumore tecnico nella schermata iniziale.
-- Nessuna scrittura business, nessun backend IA reale e nessun riuso runtime dei moduli IA legacy sono stati introdotti da questo redesign: cambia solo la UX del clone.
+## 5.14 Aggiornamento 2026-03-13 - Fix matching rifornimenti nel report autista IA interno
+- Il facade read-only del `report autista` non limitava il problema ai dati D04, ma al perimetro mezzi usato per leggerli: i rifornimenti venivano cercati solo sui mezzi associati all'autista nell'anagrafica D01.
+- Questo poteva escludere rifornimenti recenti leggibili nel clone quando l'autista risultava su mezzi osservati nei segnali operativi D10, ma non ancora allineati come associazione corrente in anagrafica.
+- Il fix resta confinato al sottosistema `/next/ia/interna*` e amplia in modo trasparente solo il perimetro di lettura:
+  - mezzi associati in D01;
+  - mezzi osservati nelle sessioni, negli alert e nei focus D10 dello stesso autista.
+- Il matching autista sui rifornimenti resta read-only e continua a usare solo i campi gia esposti dal layer D04 (`badgeAutista`, `autistaNome`) senza introdurre join business nuovi o scritture.
+- Nessuna modifica alla madre, nessuna scrittura business, nessun runtime IA legacy e nessun impatto sugli altri report vengono introdotti da questo fix.
 
-## 5.15 Aggiornamento 2026-03-14 - Primo assorbimento capability legacy alta priorita: Analisi economica mezzo
-- Il subtree `/next/ia/interna*` ospita ora il primo blocco reale di assorbimento di una capability legacy ad alta priorita, scegliendo `Analisi economica mezzo` come prima wave operativa.
-- La scelta e stata fatta perche oggi e la capability alta con il miglior rapporto tra valore business e sicurezza nel clone:
-  - legge gia dati reali tramite layer clone-safe esistenti;
-  - non richiede upload, OCR o backend legacy da riattivare;
-  - puo restare preview-first e read-only;
-  - non apre scritture business automatiche.
-- La patch runtime introduce:
-  - `src/next/internal-ai/internalAiEconomicAnalysisFacade.ts` come facade dedicato read-only;
-  - una preview economica separata nella home IA, attivabile da ricerca targa;
-  - una lettura esplicita e spiegabile del perimetro: documenti/costi diretti + eventuale snapshot legacy salvato, con procurement fuori blocco diretto.
-- Restano invariati i guard rail:
-  - nessun backend legacy canonico;
-  - nessuna scrittura Firestore/Storage business;
-  - nessuna modifica alla madre;
-  - nessun impatto sui flussi correnti del clone o della legacy.
+## 5.15 Aggiornamento 2026-03-13 - Audit strutturale lettura/incrocio dati IA interna
+- Eseguito audit mirato dei facade `/next/ia/interna*` e dei layer NEXT realmente usati per report mezzo, report autista, report combinato, lookup, filtri periodo e chat mock.
+- L'audit conferma come punti solidi:
+  - riuso dei layer NEXT read-only gia verificati;
+  - filtro periodo centralizzato e coerente tra i report;
+  - separazione esplicita tra copertura completa, parziale e non filtrabile;
+  - report combinato che non promuove a `forte` un legame mezzo-autista non dimostrato.
+- L'audit segnala come priorita strutturali ancora aperte:
+  - matching badge/nome ancora rigido nei facade autista e combinato;
+  - fallback lookup/autista sensibili a omonimie;
+  - contesto mezzi autista piu ricco nel blocco rifornimenti che nell'intestazione anagrafica del report.
+- Fix minimo e sicuro applicato nello stesso task:
+  - la chat mock del sottosistema IA ripulisce ora il suffisso periodo dalle richieste autista prima del lookup esatto, evitando falsi `not found` su prompt gia supportati come `Mario Rossi ultimo mese`.
+- Nessuna scrittura Firestore/Storage business, nessun runtime IA legacy, nessun segreto lato client e nessun impatto sui flussi correnti vengono introdotti da questo audit.
 
-## 5.16 Aggiornamento 2026-03-14 - Riordino serio UI home/preview del sottosistema IA interna
-- La route `/next/ia/interna*` usa ora una home molto piu essenziale e una preview grande separata dalla schermata iniziale.
-- La patch clone-side su `src/next/NextInternalAiPage.tsx` e `src/next/internal-ai/internal-ai.css` ha introdotto:
-  - chat centrale come ingresso principale;
-  - richiesta targa compatta con due sole azioni primarie;
-  - preview report/analisi aperta in overlay dedicato, con riepilogo in alto e sezioni sotto;
-  - area secondaria ridotta ad archivio/recenti e dettagli avanzati comprimibili.
-- Verifiche tecniche del task:
-  - l'errore Vite segnalato su `NextInternalAiPage.tsx` non e riproducibile nello stato corrente del repo;
-  - la build del clone passa;
-  - nel subtree IA sono state corrette `key` deboli per ridurre il warning React sulle liste.
-- Restano invariati i guard rail del clone:
-  - nessuna modifica a facade/domain/logica dati salvo normalissimo wiring UI locale;
-  - nessuna scrittura business;
-  - nessun riuso runtime dei moduli IA legacy;
-  - nessun impatto sui flussi correnti.
+## 5.16 Aggiornamento 2026-03-13 - Matching autista badge-first cross-layer
+- Il subtree `/next/ia/interna*` applica ora una regola badge-first unica e centralizzata per il matching identita autista tra:
+  - D01 anagrafiche persone/flotta;
+  - D10 Centro Controllo;
+  - D04 rifornimenti.
+- La regola runtime del clone e ora esplicita:
+  - `autistaId` sul mezzo o badge coerente nel record = match forte;
+  - nome esatto = solo fallback plausibile quando il riferimento forte manca davvero;
+  - badge o `autistaId` incoerenti = nessun match certo, anche se il nome coincide.
+- Il lookup autista non promuove piu un nome esatto a match automatico se nel catalogo esistono omonimi; il badge resta il primo discriminante.
+- Il report autista e il report combinato riusano la stessa logica centrale su:
+  - blocco rifornimenti D04;
+  - blocco segnali D10;
+  - ricostruzione delle associazioni mezzo/autista da D01.
+- L'affidabilita del report combinato viene ora riallineata alla stessa gerarchia:
+  - `forte` con `autistaId` coerente o badge coerente osservato sui record del mezzo;
+  - `plausibile` solo con fallback nome prudente;
+  - `non dimostrabile` in presenza di incoerenze forti o mancanza di conferme.
+- Nessuna scrittura Firestore/Storage business, nessun runtime IA legacy, nessun segreto lato client e nessun impatto sui flussi correnti vengono introdotti da questo riallineamento.
 
-## 5.17 Aggiornamento 2026-03-14 - Pulizia dossier-like della preview IA interna
-- La route `/next/ia/interna*` usa ora una preview molto piu vicina alla logica di un dossier leggibile e molto meno simile a una dashboard tecnica.
-- La patch clone-side su `src/next/NextInternalAiPage.tsx` e `src/next/internal-ai/internal-ai.css` ha introdotto:
-  - riepilogo esecutivo con poche card chiave visibili subito;
-  - sezioni principali del report rese centrali nella lettura;
-  - fonti, limiti, stati e azioni spostati dietro espansioni secondarie;
-  - home alleggerita ulteriormente con archivio/recenti e modalita non attive piu secondari.
-- Verifiche tecniche del task:
-  - `npx eslint src/next/NextInternalAiPage.tsx` passa;
-  - `npm run build` passa;
-  - nessun layer dati o writer business e stato toccato.
-- Restano invariati i guard rail del clone:
-  - nessuna modifica a facade/domain/logica dati;
-  - nessuna scrittura business;
-  - nessun riuso runtime dei moduli IA legacy;
-  - nessun impatto sui flussi correnti.
+## 5.17 Aggiornamento 2026-03-13 - Audit e rafforzamento del report mezzo IA interno
+- Eseguito audit mirato del `report targa` read-only del sottosistema IA interno, concentrato sui blocchi:
+  - lavori;
+  - manutenzioni / gomme;
+  - rifornimenti;
+  - materiali / movimenti;
+  - documenti / costi;
+  - analisi economica salvata.
+- L'audit conferma come punti solidi:
+  - riuso del composito clone-safe `readNextDossierMezzoCompositeSnapshot`;
+  - filtro periodo applicato ai blocchi con data affidabile;
+  - ricostruzione D04 gia prudente e multi-sorgente;
+  - dedup documentale gia confinato nel layer dedicato.
+- Restano espliciti come limiti strutturali aperti:
+  - eventi gomme fuori `@manutenzioni` non ancora inclusi nel report mezzo;
+  - movimenti materiali ancora dipendenti in parte da match legacy su `destinatario`;
+  - blocco documenti/costi ancora limitato dal perimetro clone-safe che non apre `@preventivi` e approvazioni procurement.
+- Fix minimo e sicuro applicato nello stesso task:
+  - la preview del report mezzo considera ora anche movimenti materiali e analisi economica salvata come copertura reale, evitando stati troppo pessimisti quando questi sono gli unici blocchi disponibili;
+  - la sezione `Documenti, costi e analisi` non viene piu resa come vuota quando esiste una analisi economica legacy salvata fuori filtro.
+- Nessuna scrittura Firestore/Storage business, nessun runtime IA legacy, nessun segreto lato client e nessun impatto sui flussi correnti vengono introdotti da questo audit/fix.
 
-## 5.18 Aggiornamento 2026-03-14 - Stabilita console/hot reload del perimetro IA interna
-- Eseguita una verifica tecnica separata sui problemi segnalati dal browser per la UI del sottosistema `/next/ia/interna*`.
-- Esito verifica:
-  - `src/next/NextInternalAiPage.tsx` non presenta oggi errori sintattici o import/export rotti persistenti;
-  - `npx eslint src/next/NextInternalAiPage.tsx` passa;
-  - `npm run build` passa;
-  - il `500 / failed to reload` Vite sul file non e riproducibile nello stato corrente del repo.
-- Root cause trovata per il warning React:
-  - il warning su `Home` non nasceva dal subtree IA, ma dalla `Home` madre montata nel clone come controparte `/next`;
-  - alcune liste in `src/pages/Home.tsx` usavano `key` potenzialmente duplicate basate solo su `targa`.
-- Correzione applicata:
-  - fix minimo e diretto nella `Home` madre per rendere stabili le `key` delle liste, senza toccare la logica dati e senza modificare il runtime del sottosistema IA.
-- Stato clone dopo il task:
-  - nessuna modifica a facade/domain/backend del clone IA;
-  - nessuna scrittura business;
-  - nessun cambiamento di perimetro funzionale o stato `read-only`.
+## 5.18 Aggiornamento 2026-03-13 - Rafforzamento blocco gomme nel report mezzo IA interno
+- Il blocco `Manutenzioni / Gomme` del `report targa` IA non dipende piu solo dalle descrizioni `CAMBIO GOMME` lette in `@manutenzioni`.
+- Il layer clone-safe `nextManutenzioniGommeDomain` converge ora in sola lettura anche:
+  - `@cambi_gomme_autisti_tmp`;
+  - `@gomme_eventi`.
+- Regola di matching mezzo introdotta nel layer:
+  - `targetTarga` o `targa` coerenti = match forte;
+  - `targaCamion`, `targaRimorchio` e `contesto.*` = solo match plausibile quando manca una targa diretta;
+  - nessun match di contesto viene promosso a conferma forte del mezzo.
+- Per evitare doppio conteggio, gli eventi gomme extra che risultano gia importati nello storico manutenzioni vengono deduplicati solo quando coincidono davvero su giorno, targa, asse, marca e km.
+- La preview `/next/ia/interna` rende ora piu trasparente la copertura del blocco gomme:
+  - eventi da manutenzioni;
+  - eventi da dataset gomme dedicati;
+  - match forti;
+  - match plausibili.
+- Restano volutamente fuori dalla conferma forte i record gomme senza targa diretta o con solo contesto ambiguo; il clone preferisce copertura parziale dichiarata a collegamenti non dimostrati.
+
+## 5.19 Aggiornamento 2026-03-22 - Ripristino build del clone IA interna dopo merge incompleto
+- Il clone `read-only` e tornato compilabile dopo la rimozione dei conflict marker residui lasciati da un merge/worktree incompleto nella pagina `src/next/NextInternalAiPage.tsx` e nei file IA interni strettamente collegati.
+- Il ripristino ha riallineato:
+  - runtime pagina IA interna;
+  - tipi condivisi del sottosistema IA;
+  - facade clone-safe del report mezzo compatibili con la build attuale;
+  - registri documentali obbligatori del clone e dell'IA interna.
+- Verifiche del task:
+  - `npm run build` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> OK.
+- Stato del clone dopo il fix:
+  - nessuna scrittura business riaperta;
+  - nessun impatto sui flussi dati della madre;
+  - perimetro `/next/ia/interna*` ancora isolato e `read-only`;
+  - testi visibili del clone mantenuti in italiano.
 
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:

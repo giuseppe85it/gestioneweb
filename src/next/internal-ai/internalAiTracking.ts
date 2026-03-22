@@ -1,8 +1,13 @@
 import type {
+  InternalAiArtifactFamily,
+  InternalAiArtifactStatus,
   InternalAiChatExecutionStatus,
   InternalAiChatIntent,
   InternalAiRecentArtifactAction,
   InternalAiRecentChatPrompt,
+  InternalAiRecentCombinedSearch,
+  InternalAiRecentDriverSearch,
+  InternalAiReportType,
   InternalAiRecentVehicleSearch,
   InternalAiSessionMemoryState,
   InternalAiTrackingEvent,
@@ -18,6 +23,8 @@ type InternalAiPersistedTrackingStore = {
   sectionCounts: Record<NextInternalAiSectionId, number>;
   recentEvents: InternalAiTrackingEvent[];
   recentVehicleSearches: InternalAiRecentVehicleSearch[];
+  recentDriverSearches: InternalAiRecentDriverSearch[];
+  recentCombinedSearches: InternalAiRecentCombinedSearch[];
   recentChatPrompts: InternalAiRecentChatPrompt[];
   recentArtifacts: InternalAiRecentArtifactAction[];
   recentIntents: InternalAiTrackingSummary["recentIntents"];
@@ -50,6 +57,8 @@ function createInitialSummary(): InternalAiTrackingSummary {
     },
     recentEvents: [],
     recentVehicleSearches: [],
+    recentDriverSearches: [],
+    recentCombinedSearches: [],
     recentChatPrompts: [],
     recentArtifacts: [],
     recentIntents: [],
@@ -57,9 +66,19 @@ function createInitialSummary(): InternalAiTrackingSummary {
       lastSectionId: null,
       lastPath: null,
       lastTarga: null,
+      lastDriverId: null,
+      lastDriverName: null,
+      lastPeriodLabel: null,
       lastPrompt: null,
       lastIntent: null,
       lastArtifactId: null,
+      lastArchiveQuery: null,
+      lastArchiveReportType: null,
+      lastArchiveStatus: null,
+      lastArchiveFamily: null,
+      lastArchiveTarga: null,
+      lastArchiveAutista: null,
+      lastArchivePeriod: null,
       updatedAt: null,
     },
   };
@@ -76,6 +95,16 @@ function cloneRecentEvent(event: InternalAiTrackingEvent): InternalAiTrackingEve
 }
 
 function cloneRecentVehicleSearch(search: InternalAiRecentVehicleSearch): InternalAiRecentVehicleSearch {
+  return { ...search };
+}
+
+function cloneRecentDriverSearch(search: InternalAiRecentDriverSearch): InternalAiRecentDriverSearch {
+  return { ...search };
+}
+
+function cloneRecentCombinedSearch(
+  search: InternalAiRecentCombinedSearch,
+): InternalAiRecentCombinedSearch {
   return { ...search };
 }
 
@@ -101,6 +130,8 @@ function buildSnapshot(): InternalAiTrackingSummary {
     sectionCounts: { ...memoryStore.sectionCounts },
     recentEvents: memoryStore.recentEvents.map(cloneRecentEvent),
     recentVehicleSearches: memoryStore.recentVehicleSearches.map(cloneRecentVehicleSearch),
+    recentDriverSearches: memoryStore.recentDriverSearches.map(cloneRecentDriverSearch),
+    recentCombinedSearches: memoryStore.recentCombinedSearches.map(cloneRecentCombinedSearch),
     recentChatPrompts: memoryStore.recentChatPrompts.map(cloneRecentChatPrompt),
     recentArtifacts: memoryStore.recentArtifacts.map(cloneRecentArtifactAction),
     recentIntents: memoryStore.recentIntents.map((entry) => ({ ...entry })),
@@ -118,6 +149,8 @@ function createPersistedStore(): InternalAiPersistedTrackingStore {
     sectionCounts: { ...memoryStore.sectionCounts },
     recentEvents: memoryStore.recentEvents.map(cloneRecentEvent),
     recentVehicleSearches: memoryStore.recentVehicleSearches.map(cloneRecentVehicleSearch),
+    recentDriverSearches: memoryStore.recentDriverSearches.map(cloneRecentDriverSearch),
+    recentCombinedSearches: memoryStore.recentCombinedSearches.map(cloneRecentCombinedSearch),
     recentChatPrompts: memoryStore.recentChatPrompts.map(cloneRecentChatPrompt),
     recentArtifacts: memoryStore.recentArtifacts.map(cloneRecentArtifactAction),
     recentIntents: memoryStore.recentIntents.map((entry) => ({ ...entry })),
@@ -152,6 +185,12 @@ function parsePersistedStore(raw: string | null): InternalAiPersistedTrackingSto
       recentVehicleSearches: Array.isArray(parsed.recentVehicleSearches)
         ? parsed.recentVehicleSearches.map(cloneRecentVehicleSearch)
         : [],
+      recentDriverSearches: Array.isArray(parsed.recentDriverSearches)
+        ? parsed.recentDriverSearches.map(cloneRecentDriverSearch)
+        : [],
+      recentCombinedSearches: Array.isArray(parsed.recentCombinedSearches)
+        ? parsed.recentCombinedSearches.map(cloneRecentCombinedSearch)
+        : [],
       recentChatPrompts: Array.isArray(parsed.recentChatPrompts)
         ? parsed.recentChatPrompts.map(cloneRecentChatPrompt)
         : [],
@@ -162,7 +201,10 @@ function parsePersistedStore(raw: string | null): InternalAiPersistedTrackingSto
         ? parsed.recentIntents.map((entry) => ({ ...entry }))
         : [],
       sessionState: parsed.sessionState
-        ? cloneSessionState(parsed.sessionState)
+        ? {
+            ...createInitialSummary().sessionState,
+            ...cloneSessionState(parsed.sessionState),
+          }
         : createInitialSummary().sessionState,
     };
   } catch {
@@ -181,6 +223,8 @@ function ensureStateLoaded() {
       memoryStore.sectionCounts = { ...parsed.sectionCounts };
       memoryStore.recentEvents = parsed.recentEvents.map(cloneRecentEvent);
       memoryStore.recentVehicleSearches = parsed.recentVehicleSearches.map(cloneRecentVehicleSearch);
+      memoryStore.recentDriverSearches = parsed.recentDriverSearches.map(cloneRecentDriverSearch);
+      memoryStore.recentCombinedSearches = parsed.recentCombinedSearches.map(cloneRecentCombinedSearch);
       memoryStore.recentChatPrompts = parsed.recentChatPrompts.map(cloneRecentChatPrompt);
       memoryStore.recentArtifacts = parsed.recentArtifacts.map(cloneRecentArtifactAction);
       memoryStore.recentIntents = parsed.recentIntents.map((entry) => ({ ...entry }));
@@ -227,6 +271,22 @@ function upsertVehicleSearch(search: InternalAiRecentVehicleSearch) {
   memoryStore.recentVehicleSearches = [
     search,
     ...memoryStore.recentVehicleSearches.filter((entry) => entry.targa !== search.targa),
+  ].slice(0, MAX_RECENT_ITEMS);
+}
+
+function upsertDriverSearch(search: InternalAiRecentDriverSearch) {
+  memoryStore.recentDriverSearches = [
+    search,
+    ...memoryStore.recentDriverSearches.filter((entry) => entry.driverId !== search.driverId),
+  ].slice(0, MAX_RECENT_ITEMS);
+}
+
+function upsertCombinedSearch(search: InternalAiRecentCombinedSearch) {
+  memoryStore.recentCombinedSearches = [
+    search,
+    ...memoryStore.recentCombinedSearches.filter(
+      (entry) => !(entry.mezzoTarga === search.mezzoTarga && entry.driverId === search.driverId),
+    ),
   ].slice(0, MAX_RECENT_ITEMS);
 }
 
@@ -325,6 +385,7 @@ export function trackInternalAiVehicleSelection(args: {
     targa: args.targa,
     source: "selezione_guidata",
     result: "selected",
+    periodLabel: memoryStore.sessionState.lastPeriodLabel,
     updatedAt: nowIso,
   });
   updateSessionState(
@@ -332,6 +393,50 @@ export function trackInternalAiVehicleSelection(args: {
       lastSectionId: args.sectionId,
       lastPath: args.path,
       lastTarga: args.targa,
+      lastDriverId: memoryStore.sessionState.lastDriverId,
+      lastDriverName: memoryStore.sessionState.lastDriverName,
+    },
+    nowIso,
+  );
+  emitChange();
+}
+
+export function trackInternalAiDriverSelection(args: {
+  driverId: string;
+  nomeCompleto: string;
+  badge: string | null;
+  sectionId: NextInternalAiSectionId;
+  path: string;
+}) {
+  ensureStateLoaded();
+
+  const nowIso = new Date().toISOString();
+  pushRecentEvent({
+    id: `driver-selected-${args.driverId}-${Date.now().toString(36)}`,
+    ts: nowIso,
+    kind: "driver_selected",
+    sectionId: args.sectionId,
+    path: args.path,
+    label: `Selezionato autista ${args.nomeCompleto}`,
+    targa: null,
+    artifactId: null,
+    intent: null,
+  });
+  upsertDriverSearch({
+    driverId: args.driverId,
+    nomeCompleto: args.nomeCompleto,
+    badge: args.badge,
+    source: "selezione_guidata",
+    result: "selected",
+    periodLabel: memoryStore.sessionState.lastPeriodLabel,
+    updatedAt: nowIso,
+  });
+  updateSessionState(
+    {
+      lastSectionId: args.sectionId,
+      lastPath: args.path,
+      lastDriverId: args.driverId,
+      lastDriverName: args.nomeCompleto,
     },
     nowIso,
   );
@@ -342,6 +447,7 @@ export function trackInternalAiVehicleSearch(args: {
   targa: string;
   source: InternalAiRecentVehicleSearch["source"];
   result: InternalAiRecentVehicleSearch["result"];
+  periodLabel?: string | null;
   sectionId: NextInternalAiSectionId;
   path: string;
 }) {
@@ -363,6 +469,7 @@ export function trackInternalAiVehicleSearch(args: {
     targa: args.targa,
     source: args.source,
     result: args.result,
+    periodLabel: args.periodLabel ?? null,
     updatedAt: nowIso,
   });
   bumpIntentUsage("report_targa", nowIso);
@@ -371,7 +478,107 @@ export function trackInternalAiVehicleSearch(args: {
       lastSectionId: args.sectionId,
       lastPath: args.path,
       lastTarga: args.targa,
+      lastPeriodLabel: args.periodLabel ?? memoryStore.sessionState.lastPeriodLabel,
       lastIntent: "report_targa",
+    },
+    nowIso,
+  );
+  emitChange();
+}
+
+export function trackInternalAiDriverSearch(args: {
+  driverId: string;
+  nomeCompleto: string;
+  badge: string | null;
+  source: InternalAiRecentDriverSearch["source"];
+  result: InternalAiRecentDriverSearch["result"];
+  periodLabel?: string | null;
+  sectionId: NextInternalAiSectionId;
+  path: string;
+}) {
+  ensureStateLoaded();
+
+  const nowIso = new Date().toISOString();
+  pushRecentEvent({
+    id: `driver-report-${args.result}-${args.driverId}-${Date.now().toString(36)}`,
+    ts: nowIso,
+    kind: "driver_report_preview",
+    sectionId: args.sectionId,
+    path: args.path,
+    label: `Preview autista ${args.nomeCompleto} (${args.result})`,
+    targa: null,
+    artifactId: null,
+    intent: "report_autista",
+  });
+  upsertDriverSearch({
+    driverId: args.driverId,
+    nomeCompleto: args.nomeCompleto,
+    badge: args.badge,
+    source: args.source,
+    result: args.result,
+    periodLabel: args.periodLabel ?? null,
+    updatedAt: nowIso,
+  });
+  bumpIntentUsage("report_autista", nowIso);
+  updateSessionState(
+    {
+      lastSectionId: args.sectionId,
+      lastPath: args.path,
+      lastDriverId: args.driverId,
+      lastDriverName: args.nomeCompleto,
+      lastPeriodLabel: args.periodLabel ?? memoryStore.sessionState.lastPeriodLabel,
+      lastIntent: "report_autista",
+    },
+    nowIso,
+  );
+  emitChange();
+}
+
+export function trackInternalAiCombinedSearch(args: {
+  mezzoTarga: string;
+  driverId: string;
+  nomeCompleto: string;
+  badge: string | null;
+  source: InternalAiRecentCombinedSearch["source"];
+  result: InternalAiRecentCombinedSearch["result"];
+  periodLabel?: string | null;
+  sectionId: NextInternalAiSectionId;
+  path: string;
+}) {
+  ensureStateLoaded();
+
+  const nowIso = new Date().toISOString();
+  pushRecentEvent({
+    id: `combined-report-${args.result}-${args.mezzoTarga}-${args.driverId}-${Date.now().toString(36)}`,
+    ts: nowIso,
+    kind: "combined_report_preview",
+    sectionId: args.sectionId,
+    path: args.path,
+    label: `Preview combinata ${args.mezzoTarga} + ${args.nomeCompleto} (${args.result})`,
+    targa: args.mezzoTarga,
+    artifactId: null,
+    intent: "report_combinato",
+  });
+  upsertCombinedSearch({
+    mezzoTarga: args.mezzoTarga,
+    driverId: args.driverId,
+    nomeCompleto: args.nomeCompleto,
+    badge: args.badge,
+    source: args.source,
+    result: args.result,
+    periodLabel: args.periodLabel ?? null,
+    updatedAt: nowIso,
+  });
+  bumpIntentUsage("report_combinato", nowIso);
+  updateSessionState(
+    {
+      lastSectionId: args.sectionId,
+      lastPath: args.path,
+      lastTarga: args.mezzoTarga,
+      lastDriverId: args.driverId,
+      lastDriverName: args.nomeCompleto,
+      lastPeriodLabel: args.periodLabel ?? memoryStore.sessionState.lastPeriodLabel,
+      lastIntent: "report_combinato",
     },
     nowIso,
   );
@@ -421,7 +628,13 @@ export function trackInternalAiChatPrompt(args: {
 export function trackInternalAiArtifactAction(args: {
   artifactId: string;
   title: string;
+  targetType: InternalAiRecentArtifactAction["targetType"];
+  targetLabel: string | null;
   mezzoTarga: string | null;
+  autistaNome?: string | null;
+  primaryFamily?: InternalAiArtifactFamily | null;
+  artifactStatus?: InternalAiArtifactStatus | null;
+  periodLabel?: string | null;
   action: InternalAiRecentArtifactAction["action"];
   sectionId: NextInternalAiSectionId;
   path: string;
@@ -450,7 +663,13 @@ export function trackInternalAiArtifactAction(args: {
   upsertArtifactAction({
     artifactId: args.artifactId,
     title: args.title,
+    targetType: args.targetType,
+    targetLabel: args.targetLabel,
     mezzoTarga: args.mezzoTarga,
+    autistaNome: args.autistaNome ?? null,
+    primaryFamily: args.primaryFamily ?? null,
+    artifactStatus: args.artifactStatus ?? null,
+    periodLabel: args.periodLabel ?? null,
     action: args.action,
     updatedAt: nowIso,
   });
@@ -460,6 +679,44 @@ export function trackInternalAiArtifactAction(args: {
       lastPath: args.path,
       lastArtifactId: args.artifactId,
       lastTarga: args.mezzoTarga ?? memoryStore.sessionState.lastTarga,
+      lastDriverName:
+        args.targetType === "autista"
+          ? args.targetLabel ?? memoryStore.sessionState.lastDriverName
+          : memoryStore.sessionState.lastDriverName,
+      lastPeriodLabel: args.periodLabel ?? memoryStore.sessionState.lastPeriodLabel,
+    },
+    nowIso,
+  );
+  emitChange();
+}
+
+export function rememberInternalAiArtifactArchiveState(args: {
+  query: string;
+  reportType: InternalAiReportType | "tutti";
+  status: InternalAiArtifactStatus | "tutti";
+  family: InternalAiArtifactFamily | "tutte";
+  targa: string;
+  autista: string;
+  period: string;
+}) {
+  ensureStateLoaded();
+
+  const nowIso = new Date().toISOString();
+  updateSessionState(
+    {
+      lastArchiveQuery: args.query || null,
+      lastArchiveReportType:
+        args.reportType === "tutti" ||
+        args.reportType === "targa" ||
+        args.reportType === "autista" ||
+        args.reportType === "combinato"
+          ? args.reportType
+          : "tutti",
+      lastArchiveStatus: args.status,
+      lastArchiveFamily: args.family,
+      lastArchiveTarga: args.targa || null,
+      lastArchiveAutista: args.autista || null,
+      lastArchivePeriod: args.period || null,
     },
     nowIso,
   );

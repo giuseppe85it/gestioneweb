@@ -618,7 +618,7 @@ function buildOverview(args: {
     `Identita mezzo: ${NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.activeReadOnlyDataset}`,
     "Lavori: layer read-only @lavori",
     "Materiali/movimenti: layer read-only @materialiconsegnati",
-    "Manutenzioni/gomme: layer read-only @manutenzioni + @mezzi_aziendali",
+    "Manutenzioni/gomme: layer read-only @manutenzioni + @mezzi_aziendali con convergenza prudente di @cambi_gomme_autisti_tmp e @gomme_eventi",
     "Rifornimenti: ricostruzione read-only da @rifornimenti e feed campo",
     "Documenti e costi diretti: @costiMezzo + collezioni documentali",
     "Procurement e approvazioni: audit perimetrale read-only su @preventivi e @preventivi_approvazioni",
