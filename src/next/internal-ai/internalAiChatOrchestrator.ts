@@ -430,6 +430,7 @@ function buildGenericResponse(): InternalAiChatTurnResult {
       '- "fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni"\n' +
       '- "fammi una preview per la targa TI123456 ultimi 90 giorni"\n' +
       '- "dimmi lo stato del mezzo TI123456"\n' +
+      '- "riepiloga i rifornimenti del mezzo TI123456 ultimi 30 giorni"\n' +
       '- "elenca i documenti del mezzo TI123456"\n' +
       '- "riepiloga i costi del mezzo TI123456 ultimi 90 giorni"\n' +
       '- "spiegami la shell NEXT e le schermate principali"\n' +

@@ -912,7 +912,7 @@ Stato macrofase: `IN CORSO`
   - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts` -> OK
   - `npm run build` -> OK
 - Dipendenze o blocchi:
-  - il hook mezzo-centrico resta sopra read model NEXT clone-safe e non e ancora un retrieval dossier server-side dedicato;
+  - il hook mezzo-centrico nasce sopra read model NEXT clone-safe; l'estensione server-side clone-seeded del Dossier e ora descritta in `M.16`, ma non equivale ancora a un bridge Firebase/Storage business live;
   - il riepilogo costi resta documentale/read-only e non va scambiato per contabilita o procurement live;
   - Firestore/Storage business read-only lato server restano bloccati dai prerequisiti gia documentati.
 
@@ -983,6 +983,55 @@ Stato macrofase: `IN CORSO`
   - la copertura runtime resta comunque parziale e limitata a stati esplicitamente whitelistati;
   - la scelta formato output e piu intelligente ma non trasforma la nuova IA in un agente che applica integrazioni;
   - Firestore/Storage business read-only lato server restano bloccati dai prerequisiti gia documentati.
+
+### M.16 Estensione hook mezzo-centrico con retrieval Dossier server-side clone-seeded
+- Stato: `FATTO`
+- Note: il primo hook mezzo-centrico non si appoggia piu solo al composito locale del clone. Esiste ora anche uno snapshot `Dossier Mezzo` server-side clone-seeded per singola targa, persistito nel backend IA separato e usato in modo governato per stato mezzo, riepilogo costi e nuova capability rifornimenti.
+- Cosa apre davvero questo step:
+  - nuovo retrieval server-side `read_vehicle_dossier_by_targa` su snapshot Dossier mezzo read-only, persistita nel contenitore IA dedicato;
+  - estensione del catalogo capability con `Riepilogo rifornimenti mezzo`;
+  - riuso del retrieval Dossier clone-seeded per:
+    - stato sintetico mezzo;
+    - riepilogo costi mezzo;
+    - riepilogo rifornimenti mezzo;
+  - migliore dichiarazione di fonti, dataset e limiti nel thread della chat.
+- Cosa NON apre ancora:
+  - nessun bridge Firestore/Storage business live;
+  - nessuna scrittura business;
+  - nessun retrieval live dedicato del verticale `Cisterna`;
+  - nessun procurement globale come backend canonico del mezzo.
+- File/documenti collegati:
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-persistence.js`
+  - `backend/internal-ai/src/internalAiServerRetrievalContracts.ts`
+  - `backend/internal-ai/README.md`
+  - `src/next/internal-ai/internalAiServerRetrievalClient.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts`
+  - `src/next/internal-ai/internalAiVehicleDossierHookFacade.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/internal-ai/internalAiLibrettoPreviewBridge.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/change-reports/2026-03-23_0659_estensione-hook-dossier-retrieval-rifornimenti-ia.md`
+  - `docs/continuity-reports/2026-03-23_0659_continuity_estensione-hook-dossier-retrieval-rifornimenti-ia.md`
+- Verifiche eseguite:
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK
+  - `node --check backend/internal-ai/server/internal-ai-persistence.js` -> OK
+  - smoke test adapter locale `seed_vehicle_dossier_snapshot` + `read_vehicle_dossier_by_targa` -> OK
+  - `npx eslint src/next/internal-ai/internalAiLibrettoPreviewBridge.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiServerRetrievalClient.ts backend/internal-ai/src/internalAiServerRetrievalContracts.ts` -> OK
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK
+  - `npm run build` -> OK
+- Dipendenze o blocchi:
+  - il nuovo retrieval Dossier resta clone-seeded: non e ancora un adapter Firebase/Storage business live;
+  - `rifornimenti` entra come capability governata e spiegabile, ma non come contabilita o fuel control live;
+  - `Cisterna` resta un verticale specialistico solo segnalato, senza retrieval live dedicato in questo step.
 
 ### N. Workflow reale di approvazione, scarto e rollback
 - Stato: `IN CORSO`

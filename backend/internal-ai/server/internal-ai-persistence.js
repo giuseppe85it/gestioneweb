@@ -9,6 +9,10 @@ const artifactsFilePath = path.join(runtimeDataRoot, "analysis_artifacts.json");
 const memoryFilePath = path.join(runtimeDataRoot, "ai_operational_memory.json");
 const traceabilityFilePath = path.join(runtimeDataRoot, "ai_traceability_log.json");
 const vehicleContextFilePath = path.join(runtimeDataRoot, "fleet_readonly_snapshot.json");
+const vehicleDossierFilePath = path.join(
+  runtimeDataRoot,
+  "vehicle_dossier_readonly_snapshot.json",
+);
 const previewWorkflowFilePath = path.join(runtimeDataRoot, "ai_preview_workflows.json");
 const repoUnderstandingFilePath = path.join(runtimeDataRoot, "repo_ui_understanding_snapshot.json");
 
@@ -88,6 +92,22 @@ const DEFAULT_VEHICLE_CONTEXT_SNAPSHOT = {
   notes: [
     "Contenitore IA dedicato e isolato dal business data.",
     "Nessuna lettura diretta Firestore o Storage business dal backend in questo step.",
+  ],
+  items: [],
+};
+
+const DEFAULT_VEHICLE_DOSSIER_SNAPSHOT = {
+  version: 1,
+  sourceMode: "clone_seeded_vehicle_dossier_snapshot",
+  domainCode: "DOSSIER_MEZZO",
+  activeReadOnlyDatasets: [],
+  seededAt: null,
+  counts: {
+    trackedVehicles: 0,
+  },
+  notes: [
+    "Contenitore IA dedicato e isolato dal business data.",
+    "Snapshot dossier mezzo non ancora seedato dal clone NEXT.",
   ],
   items: [],
 };
@@ -189,6 +209,15 @@ export async function readVehicleContextSnapshot() {
 
 export async function writeVehicleContextSnapshot(nextSnapshot) {
   await writeJson(vehicleContextFilePath, nextSnapshot);
+  return nextSnapshot;
+}
+
+export async function readVehicleDossierSnapshot() {
+  return readJson(vehicleDossierFilePath, DEFAULT_VEHICLE_DOSSIER_SNAPSHOT);
+}
+
+export async function writeVehicleDossierSnapshot(nextSnapshot) {
+  await writeJson(vehicleDossierFilePath, nextSnapshot);
   return nextSnapshot;
 }
 

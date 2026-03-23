@@ -1,6 +1,7 @@
 import {
   type InternalAiBackendLibrettoPreviewRequestBody,
   type InternalAiBackendOrchestratorPreviewResponseData,
+  type InternalAiServerVehicleContextSnapshotMeta,
   internalAiBackendService,
 } from "../../../backend/internal-ai/src";
 import {
@@ -53,6 +54,30 @@ function isLibrettoPreviewResponseData(
   );
 }
 
+function isVehicleContextSnapshotMeta(
+  value: unknown,
+): value is InternalAiServerVehicleContextSnapshotMeta {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as {
+    domainCode?: unknown;
+    activeReadOnlyDataset?: unknown;
+    fileAvailabilityDataset?: unknown;
+    flottaLimitations?: unknown;
+    fileAvailabilityLimitations?: unknown;
+  };
+
+  return (
+    candidate.domainCode === "D01" &&
+    typeof candidate.activeReadOnlyDataset === "string" &&
+    typeof candidate.fileAvailabilityDataset === "string" &&
+    Array.isArray(candidate.flottaLimitations) &&
+    Array.isArray(candidate.fileAvailabilityLimitations)
+  );
+}
+
 export async function readInternalAiLibrettoPreviewThroughBackend(
   rawTarga: string,
 ): Promise<InternalAiLibrettoPreviewBridgeReadResult> {
@@ -60,7 +85,7 @@ export async function readInternalAiLibrettoPreviewThroughBackend(
   if (
     serverRetrievalResult.status === "ready" &&
     serverRetrievalResult.payload.vehicleContext &&
-    serverRetrievalResult.payload.snapshotMeta
+    isVehicleContextSnapshotMeta(serverRetrievalResult.payload.snapshotMeta)
   ) {
     const preview = buildInternalAiLibrettoPreviewFromVehicleContext({
       mezzo: serverRetrievalResult.payload.vehicleContext,

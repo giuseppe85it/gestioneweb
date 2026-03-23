@@ -26,6 +26,31 @@
 - **MODE = OPERAIO** e il default per i task operativi su questo repository.
 - Se il prompt specifica un altro mode, seguire il prompt.
 
+## Regole operative per i prompt Codex
+- Ogni prompt futuro per Codex deve essere numerato e deve dichiarare sempre all'inizio:
+  - modello/agente da usare;
+  - livello di ragionamento da usare.
+- Regola modelli:
+  - `GPT-5.4 mini`: task piccoli, fix CSS/UI semplici, micro-fix, audit leggeri, wiring semplice, pochi file e basso rischio;
+  - `GPT-5.4 standard`: logica, architettura, flussi, dominio dati, IA interna, Firebase/Storage, task multi-file, audit seri e task con rischio medio/alto.
+- Regola livelli di ragionamento:
+  - `BASSO`: micro-fix, testo UI, ritocchi grafici piccoli, rename banali, import/path facili;
+  - `NORMALE`: UI/CSS non banale ma contenuta, piccoli componenti/modali/pagine, audit di un modulo singolo, documentazione limitata;
+  - `ELEVATO`: logica di dominio, flussi tra moduli, file multipli collegati, planner/capability/orchestrazione, observer runtime, suggerimenti integrazione moduli;
+  - `EXTRA ELEVATO`: architettura, multi-agent, Firebase/Storage, boundary read-only, audit ampi di repository, integrazione IA profonda, task in cui un errore puo sporcare il progetto.
+- Regola pratica per questo progetto:
+  - UI/CSS semplice -> `GPT-5.4 mini | BASSO o NORMALE`;
+  - modulo medio UI/logica locale -> `GPT-5.4 standard | NORMALE o ELEVATO`;
+  - logica/architettura/IA/dati/flussi -> `GPT-5.4 standard | ELEVATO`;
+  - multi-agent / Firebase / integrazione profonda / audit totale -> `GPT-5.4 standard | EXTRA ELEVATO`.
+- Regola anti-spreco:
+  - non usare `EXTRA ELEVATO` per puro CSS;
+  - non usare `GPT-5.4 standard` per micro-fix grafici;
+  - non usare `GPT-5.4 mini` per boundary Firebase o architettura IA;
+  - usare `GPT-5.4 standard + EXTRA ELEVATO` quando si toccano Firebase, Storage, IA interna profonda, multi-agent, domain layer o flussi tra moduli.
+- Regola facoltativa ma utile:
+  - quando l'uso disponibile e quasi finito, privilegiare task piccoli con `GPT-5.4 mini` per non sprecare plafond sui micro-fix.
+
 ## Regola di ingresso obbligatoria
 - Prima di qualsiasi task nuovo, leggere sempre `docs/STATO_ATTUALE_PROGETTO.md`.
 - Se il task cambia in modo importante lo stato del progetto (decisioni, priorita, punti aperti, fase), suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.

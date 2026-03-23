@@ -1,6 +1,10 @@
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
-import { readNextDossierMezzoCompositeSnapshot } from "../domain/nextDossierMezzoDomain";
+import {
+  readNextDossierMezzoCompositeSnapshot,
+  type NextDossierMezzoCompositeSnapshot,
+} from "../domain/nextDossierMezzoDomain";
 import type { NextDocumentiCostiReadOnlyItem } from "../domain/nextDocumentiCostiDomain";
+import type { NextRifornimentoReadOnlyItem } from "../domain/nextRifornimentiDomain";
 import {
   filterItemsByInternalAiReportPeriod,
   resolveInternalAiReportPeriodContext,
@@ -22,6 +26,9 @@ import {
   type InternalAiPreventiviPreviewReadResult,
 } from "./internalAiPreventiviPreviewFacade";
 import {
+  readInternalAiServerVehicleDossierByTarga,
+} from "./internalAiServerRetrievalClient";
+import {
   readInternalAiVehicleReportPreview,
   type InternalAiVehicleReportReadResult,
 } from "./internalAiVehicleReportFacade";
@@ -35,6 +42,14 @@ import type {
   InternalAiVehicleCapabilityPlan,
 } from "./internalAiTypes";
 
+type InternalAiVehicleDossierSnapshotSource = {
+  snapshot: NextDossierMezzoCompositeSnapshot;
+  transport: "server_http_retrieval" | "frontend_fallback";
+  transportMessage: string;
+  sourceDatasets: string[];
+  limitations: string[];
+};
+
 function formatOptionalText(value: string | null | undefined): string {
   return value && value.trim() ? value.trim() : "non disponibile";
 }
@@ -44,6 +59,10 @@ function formatCurrencyAmount(amount: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim()))));
 }
 
 function buildCapabilityReferences(
@@ -63,6 +82,98 @@ function buildCapabilityReferences(
       targa: normalizedTarga,
     },
   ];
+}
+
+function buildVehicleDossierSourceDatasetLabels(
+  snapshot: NextDossierMezzoCompositeSnapshot,
+): string[] {
+  const labels: Array<string | null> = [snapshot.mezzo.sourceKey];
+
+  if (snapshot.lavori.status === "success") {
+    labels.push("@lavori");
+  }
+
+  if (snapshot.materialiMovimenti.status === "success") {
+    labels.push("@materialiconsegnati");
+  }
+
+  if (snapshot.maintenance.status === "success") {
+    labels.push("@manutenzioni");
+  }
+
+  if (snapshot.refuels.status === "success") {
+    labels.push("@rifornimenti", "@rifornimenti_autisti_tmp");
+  }
+
+  if (snapshot.documentCosts.status === "success") {
+    labels.push("@costiMezzo");
+  }
+
+  if (snapshot.procurementPerimeter.status === "success") {
+    labels.push("@preventivi", "@preventivi_approvazioni");
+  }
+
+  if (snapshot.analisiEconomica.status === "success") {
+    labels.push("@analisi_economica_mezzi");
+  }
+
+  return uniqueStrings(labels);
+}
+
+function buildVehicleDossierLimitations(
+  snapshot: NextDossierMezzoCompositeSnapshot,
+): string[] {
+  return uniqueStrings([
+    ...snapshot.overview.technicalLimitations,
+    ...snapshot.overview.refuelLimitations,
+    ...snapshot.overview.documentCostLimitations,
+    ...snapshot.overview.analysisLimitations,
+    ...snapshot.overview.procurementLimitations,
+  ]).slice(0, 18);
+}
+
+function buildCisternaSpecialistNote(snapshot: NextDossierMezzoCompositeSnapshot): string | null {
+  const categoria = (snapshot.mezzo.categoria ?? "").toLowerCase();
+  if (!categoria.includes("cisterna")) {
+    return null;
+  }
+
+  return "Nota verticale specialistica: il mezzo rientra nell'area Cisterna, ma in questo step la IA legge solo il perimetro mezzo-centrico governato e non apre ancora retrieval live dedicati del verticale.";
+}
+
+async function readVehicleDossierSnapshotSource(
+  normalizedTarga: string,
+): Promise<InternalAiVehicleDossierSnapshotSource | null> {
+  const serverResult = await readInternalAiServerVehicleDossierByTarga(normalizedTarga);
+  if (serverResult.status === "ready" && serverResult.payload.vehicleDossier) {
+    return {
+      snapshot: serverResult.payload.vehicleDossier.snapshot,
+      transport: "server_http_retrieval",
+      transportMessage: `${serverResult.message} Fonti dichiarate: snapshot Dossier clone-seeded nel backend IA dedicato, senza Firestore/Storage business diretti.`,
+      sourceDatasets:
+        serverResult.payload.vehicleDossier.sourceDatasetLabels ??
+        buildVehicleDossierSourceDatasetLabels(serverResult.payload.vehicleDossier.snapshot),
+      limitations:
+        serverResult.payload.vehicleDossier.limitations ??
+        buildVehicleDossierLimitations(serverResult.payload.vehicleDossier.snapshot),
+    };
+  }
+
+  const fallbackSnapshot = await readNextDossierMezzoCompositeSnapshot(normalizedTarga);
+  if (!fallbackSnapshot) {
+    return null;
+  }
+
+  return {
+    snapshot: fallbackSnapshot,
+    transport: "frontend_fallback",
+    transportMessage:
+      serverResult.status === "not_enabled" || serverResult.status === "not_found"
+        ? `${serverResult.message} Attivato fallback locale clone-safe sul composito Dossier mezzo.`
+        : "Attivato fallback locale clone-safe sul composito Dossier mezzo.",
+    sourceDatasets: buildVehicleDossierSourceDatasetLabels(fallbackSnapshot),
+    limitations: buildVehicleDossierLimitations(fallbackSnapshot),
+  };
 }
 
 function buildMissingTargaResponse(
@@ -132,34 +243,43 @@ function buildNotFoundResponse(
   };
 }
 
+function buildSourceDatasetLine(source: InternalAiVehicleDossierSnapshotSource): string {
+  if (!source.sourceDatasets.length) {
+    return "";
+  }
+
+  return `- Dataset letti: ${source.sourceDatasets.join(", ")}.\n`;
+}
+
 function buildDossierStatusText(
   plan: InternalAiVehicleCapabilityPlan,
-  snapshot: Awaited<ReturnType<typeof readNextDossierMezzoCompositeSnapshot>>,
+  source: InternalAiVehicleDossierSnapshotSource,
 ): string {
-  const lavoriCount = snapshot?.lavori.snapshot?.items?.length ?? 0;
-  const manutenzioniCount = snapshot?.maintenance.snapshot?.maintenanceItems?.length ?? 0;
-  const gommeCount = snapshot?.maintenance.snapshot?.gommeItems?.length ?? 0;
-  const rifornimentiCount = snapshot?.refuels.snapshot?.items?.length ?? 0;
-  const documentItems = snapshot?.documentCosts.snapshot?.items ?? [];
+  const snapshot = source.snapshot;
+  const lavoriCount = snapshot.lavori.snapshot?.items?.length ?? 0;
+  const manutenzioniCount = snapshot.maintenance.snapshot?.maintenanceItems?.length ?? 0;
+  const gommeCount = snapshot.maintenance.snapshot?.gommeItems?.length ?? 0;
+  const rifornimentiCount = snapshot.refuels.snapshot?.items?.length ?? 0;
+  const documentItems = snapshot.documentCosts.snapshot?.items ?? [];
   const preventiviCount = documentItems.filter((item) => item.category === "preventivo").length;
   const fattureCount = documentItems.filter((item) => item.category === "fattura").length;
-  const keySignals = snapshot?.overview.keySignals.slice(0, 3) ?? [];
-  const limitations = [
-    ...(snapshot?.overview.technicalLimitations ?? []),
-    ...(snapshot?.overview.documentCostLimitations ?? []),
-    ...(snapshot?.overview.analysisLimitations ?? []),
-  ].filter(Boolean);
+  const keySignals = snapshot.overview.keySignals.slice(0, 3);
+  const limitations = source.limitations;
+  const cisternaNote = buildCisternaSpecialistNote(snapshot);
 
   return (
-    `Per la targa ${snapshot?.mezzo.targa ?? plan.normalizedTarga} il Dossier clone-safe mi restituisce questo quadro sintetico.\n\n` +
-    `- Mezzo: ${formatOptionalText(snapshot?.mezzo.marcaModello)} | categoria ${formatOptionalText(snapshot?.mezzo.categoria)}.\n` +
-    `- Autista dichiarato: ${formatOptionalText(snapshot?.mezzo.autistaNome)}.\n` +
-    `- Revisione: ${formatOptionalText(snapshot?.mezzo.dataScadenzaRevisione)} | libretto ${snapshot?.mezzo.librettoUrl ? "presente" : "non presente"}.\n` +
+    `Per la targa ${snapshot.mezzo.targa ?? plan.normalizedTarga} il Dossier mezzo-centrico read-only mi restituisce questo quadro sintetico.\n\n` +
+    `- Mezzo: ${formatOptionalText(snapshot.mezzo.marcaModello)} | categoria ${formatOptionalText(snapshot.mezzo.categoria)}.\n` +
+    `- Autista dichiarato: ${formatOptionalText(snapshot.mezzo.autistaNome)}.\n` +
+    `- Revisione: ${formatOptionalText(snapshot.mezzo.dataScadenzaRevisione)} | libretto ${snapshot.mezzo.librettoUrl ? "presente" : "non presente"}.\n` +
     `- Dati mezzo-centrici letti: ${lavoriCount} lavori, ${manutenzioniCount} manutenzioni, ${gommeCount} eventi gomme, ${rifornimentiCount} rifornimenti.\n` +
     `- Perimetro documentale: ${documentItems.length} record, di cui ${preventiviCount} preventivi e ${fattureCount} fatture.\n` +
-    `${keySignals.length ? `- Segnali principali: ${keySignals.join("; ")}.\n` : ""}\n` +
-    `${limitations[0] ? `Limite dichiarato: ${limitations[0]}\n\n` : "\n"}` +
-    "Se vuoi posso anche elencare documenti, riepilogare i costi oppure preparare il report PDF del mezzo."
+    buildSourceDatasetLine(source) +
+    `${keySignals.length ? `- Segnali principali: ${keySignals.join("; ")}.\n` : ""}` +
+    `- Fonte dichiarata: ${source.transport === "server_http_retrieval" ? "retrieval server-side read-only sul Dossier seedato dal clone" : "fallback locale clone-safe sul composito Dossier"}.\n` +
+    `${limitations[0] ? `Limite dichiarato: ${limitations[0]}\n` : ""}` +
+    `${cisternaNote ? `${cisternaNote}\n` : ""}\n` +
+    "Se vuoi posso anche riepilogare i rifornimenti, elencare documenti, spiegare i costi oppure preparare il report PDF del mezzo."
   );
 }
 
@@ -188,11 +308,12 @@ function buildDocumentsText(
 
 function buildEconomicText(
   plan: InternalAiVehicleCapabilityPlan,
-  snapshot: Awaited<ReturnType<typeof readNextDossierMezzoCompositeSnapshot>>,
+  source: InternalAiVehicleDossierSnapshotSource,
   economicResult: InternalAiEconomicAnalysisReadResult,
 ): string {
+  const snapshot = source.snapshot;
   const periodContext = resolveInternalAiReportPeriodContext(plan.periodInput);
-  const documentItems = snapshot?.documentCosts.snapshot?.items ?? [];
+  const documentItems = snapshot.documentCosts.snapshot?.items ?? [];
   const filtered = filterItemsByInternalAiReportPeriod<NextDocumentiCostiReadOnlyItem>(
     documentItems,
     (item) => item.sortTimestamp ?? item.timestamp,
@@ -240,12 +361,70 @@ function buildEconomicText(
 
   return (
     `Per la targa ${plan.normalizedTarga} posso darti un riepilogo costi mezzo-centrico nel periodo ${periodContext.label}.\n\n` +
-    `- Record economici letti: ${filteredItems.length}.\n` +
+    `- Record economici letti: ${filteredItems.length} su ${filtered.totalCount} totali.\n` +
     `- Totali con importo: EUR ${formatCurrencyAmount(eurTotal)} | CHF ${formatCurrencyAmount(chfTotal)}.\n` +
     `- Record senza importo leggibile: ${recordsWithoutAmount}.\n` +
     `- Fonti documentali dirette: ${fattureCount} fatture e ${preventiviCount} preventivi.\n` +
+    buildSourceDatasetLine(source) +
     groupingLine +
-    `\n${economicLimit ?? "Limite dichiarato: il riepilogo resta documentale/read-only e non sostituisce contabilita o procurement live."}`
+    `- Fonte dichiarata: ${source.transport === "server_http_retrieval" ? "retrieval server-side read-only sul Dossier seedato dal clone" : "fallback locale clone-safe sul composito Dossier"}.\n\n` +
+    `${economicLimit ?? "Limite dichiarato: il riepilogo resta documentale/read-only e non sostituisce contabilita o procurement live."}`
+  );
+}
+
+function buildRefuelsText(
+  plan: InternalAiVehicleCapabilityPlan,
+  source: InternalAiVehicleDossierSnapshotSource,
+): string {
+  const snapshot = source.snapshot;
+  const periodContext = resolveInternalAiReportPeriodContext(plan.periodInput);
+  const refuelItems = snapshot.refuels.snapshot?.items ?? [];
+  const filtered = filterItemsByInternalAiReportPeriod<NextRifornimentoReadOnlyItem>(
+    refuelItems,
+    (item) => item.timestampRicostruito ?? item.timestamp,
+    periodContext,
+  );
+  const filteredItems = filtered.filteredItems;
+  const litersTotal = filteredItems.reduce((total, item) => total + (item.litri ?? 0), 0);
+  const eurTotal = filteredItems
+    .filter((item) => item.costo !== null && item.valuta === "EUR")
+    .reduce((total, item) => total + (item.costo ?? 0), 0);
+  const chfTotal = filteredItems
+    .filter((item) => item.costo !== null && item.valuta === "CHF")
+    .reduce((total, item) => total + (item.costo ?? 0), 0);
+  const unknownCurrencyCostCount = filteredItems.filter(
+    (item) => item.costo !== null && item.valuta === null,
+  ).length;
+  const businessCount = filteredItems.filter((item) => item.provenienza === "business").length;
+  const fieldCount = filteredItems.filter((item) => item.provenienza === "campo").length;
+  const reconstructedCount = filteredItems.filter(
+    (item) => item.provenienza === "ricostruito",
+  ).length;
+  const latestRows = filteredItems
+    .slice(0, 3)
+    .map((item) => {
+      const parts = [
+        item.dataLabel ?? item.dataDisplay ?? "data non disponibile",
+        item.litri != null ? `${formatCurrencyAmount(item.litri)} litri` : null,
+        item.costo != null && item.valuta ? `${formatCurrencyAmount(item.costo)} ${item.valuta}` : null,
+      ].filter(Boolean);
+      return parts.join(" | ");
+    })
+    .filter(Boolean);
+  const cisternaNote = buildCisternaSpecialistNote(snapshot);
+
+  return (
+    `Per la targa ${plan.normalizedTarga} posso leggere i rifornimenti nel perimetro ${periodContext.label} usando il layer D04 gia normalizzato.\n\n` +
+    `- Record utili: ${filteredItems.length} su ${filtered.totalCount} totali.\n` +
+    `- Litri complessivi leggibili: ${formatCurrencyAmount(litersTotal)}.\n` +
+    `- Costi con valuta nota: EUR ${formatCurrencyAmount(eurTotal)} | CHF ${formatCurrencyAmount(chfTotal)}.\n` +
+    `- Record con costo ma valuta non deducibile: ${unknownCurrencyCostCount}.\n` +
+    `- Provenienza: ${businessCount} business, ${reconstructedCount} ricostruiti, ${fieldCount} solo feed campo.\n` +
+    buildSourceDatasetLine(source) +
+    `${latestRows.length ? `- Ultimi riferimenti: ${latestRows.join("; ")}.\n` : ""}` +
+    `- Fonte dichiarata: ${source.transport === "server_http_retrieval" ? "retrieval server-side read-only sul Dossier seedato dal clone" : "fallback locale clone-safe sul composito Dossier"}.\n` +
+    `${source.limitations[0] ? `Limite dichiarato: ${source.limitations[0]}\n` : ""}` +
+    `${cisternaNote ? `${cisternaNote}\n` : ""}`
   );
 }
 
@@ -348,19 +527,38 @@ export async function runInternalAiVehicleDossierHook(
   }
 
   if (descriptor.id === "mezzo.status.dossier") {
-    const snapshot = await readNextDossierMezzoCompositeSnapshot(normalizedTarga);
-    if (!snapshot) {
+    const dossierSource = await readVehicleDossierSnapshotSource(normalizedTarga);
+    if (!dossierSource) {
       return buildNotFoundResponse(descriptor, normalizedTarga);
     }
 
     return {
       intent: "mezzo_dossier",
       status: "completed",
-      assistantText: buildDossierStatusText(plan, snapshot),
+      assistantText: buildDossierStatusText(plan, dossierSource),
       references: buildCapabilityReferences(
         descriptor,
         normalizedTarga,
-        "Hook Dossier mezzo attivo: usa il composito clone-safe e non legge la UI come fonte primaria.",
+        dossierSource.transportMessage,
+      ),
+      report: null,
+    };
+  }
+
+  if (descriptor.id === "mezzo.summary.rifornimenti") {
+    const dossierSource = await readVehicleDossierSnapshotSource(normalizedTarga);
+    if (!dossierSource) {
+      return buildNotFoundResponse(descriptor, normalizedTarga);
+    }
+
+    return {
+      intent: "mezzo_dossier",
+      status: "completed",
+      assistantText: buildRefuelsText(plan, dossierSource),
+      references: buildCapabilityReferences(
+        descriptor,
+        normalizedTarga,
+        dossierSource.transportMessage,
       ),
       report: null,
     };
@@ -386,22 +584,22 @@ export async function runInternalAiVehicleDossierHook(
   }
 
   if (descriptor.id === "mezzo.report.economic") {
-    const [snapshot, economicResult] = await Promise.all([
-      readNextDossierMezzoCompositeSnapshot(normalizedTarga),
+    const [dossierSource, economicResult] = await Promise.all([
+      readVehicleDossierSnapshotSource(normalizedTarga),
       readInternalAiEconomicAnalysisPreview(normalizedTarga),
     ]);
-    if (!snapshot) {
+    if (!dossierSource) {
       return buildNotFoundResponse(descriptor, normalizedTarga);
     }
 
     return {
       intent: "mezzo_dossier",
       status: "completed",
-      assistantText: buildEconomicText(plan, snapshot, economicResult),
+      assistantText: buildEconomicText(plan, dossierSource, economicResult),
       references: buildCapabilityReferences(
         descriptor,
         normalizedTarga,
-        "Riepilogo costi read-only: documentale, spiegabile e senza procurement live.",
+        dossierSource.transportMessage,
       ),
       report: null,
     };

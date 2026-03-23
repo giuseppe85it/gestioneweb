@@ -1,10 +1,13 @@
 import type { NextAnagraficheFlottaMezzoItem } from "../../../src/next/nextAnagraficheFlottaDomain";
+import type { NextDossierMezzoCompositeSnapshot } from "../../../src/next/domain/nextDossierMezzoDomain";
 import {
   INTERNAL_AI_SERVER_ADAPTER_BASE_PATH,
   type InternalAiServerPersistenceMode,
 } from "./internalAiServerPersistenceContracts";
 
-export type InternalAiServerRetrievalSourceMode = "clone_seeded_readonly_snapshot";
+export type InternalAiServerRetrievalSourceMode =
+  | "clone_seeded_readonly_snapshot"
+  | "clone_seeded_vehicle_dossier_snapshot";
 export type InternalAiServerRepoUnderstandingSourceMode = "server_filesystem_curated_readonly";
 export type InternalAiServerRuntimeObserverSourceMode = "playwright_next_readonly_runtime";
 
@@ -34,7 +37,7 @@ export type InternalAiServerVehicleContextSnapshot = {
   items: InternalAiServerVehicleContextRecord[];
 };
 
-export type InternalAiServerRetrievalSnapshotMeta = {
+export type InternalAiServerVehicleContextSnapshotMeta = {
   domainCode: "D01";
   activeReadOnlyDataset: "@mezzi_aziendali";
   fileAvailabilityDataset: "@mezzi_aziendali";
@@ -44,6 +47,40 @@ export type InternalAiServerRetrievalSnapshotMeta = {
   fileAvailabilityLimitations: string[];
   notes: string[];
 };
+
+export type InternalAiServerVehicleDossierRecord = {
+  targa: string;
+  seededAt: string | null;
+  sourceMode: "clone_seeded_vehicle_dossier_snapshot";
+  snapshot: NextDossierMezzoCompositeSnapshot;
+  sourceDatasetLabels: string[];
+  limitations: string[];
+};
+
+export type InternalAiServerVehicleDossierSnapshot = {
+  version: 1;
+  sourceMode: "clone_seeded_vehicle_dossier_snapshot";
+  domainCode: "DOSSIER_MEZZO";
+  activeReadOnlyDatasets: string[];
+  seededAt: string | null;
+  counts: {
+    trackedVehicles: number;
+  };
+  notes: string[];
+  items: InternalAiServerVehicleDossierRecord[];
+};
+
+export type InternalAiServerVehicleDossierSnapshotMeta = {
+  domainCode: "DOSSIER_MEZZO";
+  activeReadOnlyDatasets: string[];
+  seededAt: string | null;
+  counts: InternalAiServerVehicleDossierSnapshot["counts"];
+  notes: string[];
+};
+
+export type InternalAiServerRetrievalSnapshotMeta =
+  | InternalAiServerVehicleContextSnapshotMeta
+  | InternalAiServerVehicleDossierSnapshotMeta;
 
 export type InternalAiServerRepoUnderstandingDocumentEntry = {
   path: string;
@@ -386,7 +423,19 @@ export type InternalAiServerRetrievalReadRequestBody =
       snapshot: InternalAiServerVehicleContextSnapshot;
     }
   | {
+      operation: "seed_vehicle_dossier_snapshot";
+      requestId?: string;
+      actorId?: string | null;
+      snapshot: InternalAiServerVehicleDossierRecord;
+    }
+  | {
       operation: "read_vehicle_context_by_targa";
+      requestId?: string;
+      actorId?: string | null;
+      rawTarga: string;
+    }
+  | {
+      operation: "read_vehicle_dossier_by_targa";
       requestId?: string;
       actorId?: string | null;
       rawTarga: string;
@@ -402,12 +451,15 @@ export type InternalAiServerRetrievalReadResponseData = {
   operation:
     | "seed_vehicle_context_snapshot"
     | "read_vehicle_context_by_targa"
+    | "seed_vehicle_dossier_snapshot"
+    | "read_vehicle_dossier_by_targa"
     | "read_repo_understanding_snapshot";
   persistenceMode: InternalAiServerPersistenceMode;
   sourceMode: InternalAiServerRetrievalSourceMode | InternalAiServerRepoUnderstandingSourceMode;
   snapshotMeta: InternalAiServerRetrievalSnapshotMeta | null;
   repoUnderstandingMeta: InternalAiServerRepoUnderstandingMeta | null;
   vehicleContext: InternalAiServerVehicleContextRecord | null;
+  vehicleDossier: InternalAiServerVehicleDossierRecord | null;
   repoUnderstanding: InternalAiServerRepoUnderstandingSnapshot | null;
   traceEntryId: string;
   notes: string[];

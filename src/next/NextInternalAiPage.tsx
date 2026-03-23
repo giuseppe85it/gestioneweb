@@ -505,6 +505,7 @@ const CHAT_SUGGESTIONS = [
   "Cosa puoi fare",
   "Crea report targa AB123CD ultimi 30 giorni",
   "Dimmi lo stato del mezzo AB123CD",
+  "Riepiloga i rifornimenti del mezzo AB123CD ultimi 30 giorni",
   "Elenca i documenti del mezzo AB123CD",
   "Riepiloga i costi del mezzo AB123CD ultimi 90 giorni",
   "Fammi un report per l'autista Mario Rossi",
@@ -1616,7 +1617,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             : "is-warning",
         detail:
           librettoPreviewState.transportMessage ??
-          "Oggi e dimostrato solo su un perimetro mezzo-centrico controllato.",
+          "Oggi e dimostrato sul perimetro mezzo-centrico controllato: libretto D01 e hook Dossier clone-seeded quando il retrieval server-side e disponibile.",
       },
       {
         label: "Formato scelto dall'assistente",
@@ -3865,9 +3866,11 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             </div>
             <p className="next-panel__description">
               Scrivi una richiesta libera in italiano. La chat usa un primo hook mezzo-centrico sul
-              Dossier read-only per stato targa, documenti, costi e report; quando chiedi un report
-              strutturato, il contenuto lungo viene spostato in una anteprima PDF dedicata invece di
-              finire nel thread.
+              Dossier read-only per stato targa, rifornimenti, documenti, costi e report; quando
+              possibile prova prima uno snapshot server-side clone-seeded del Dossier e, se non e
+              disponibile, ricade in fallback locale clone-safe. Quando chiedi un report strutturato,
+              il contenuto lungo viene spostato in una anteprima PDF dedicata invece di finire nel
+              thread.
             </p>
             <div className="internal-ai-chat__shell">
               <div className="internal-ai-chat__main">

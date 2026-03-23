@@ -491,6 +491,7 @@ export type InternalAiDraftArtifactInput = {
 
 export type InternalAiVehicleCapabilityId =
   | "mezzo.status.dossier"
+  | "mezzo.summary.rifornimenti"
   | "mezzo.preview.documents"
   | "mezzo.report.economic"
   | "mezzo.preview.libretto"

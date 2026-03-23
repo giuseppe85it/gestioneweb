@@ -13,11 +13,13 @@ import {
   readPreviewWorkflowState,
   readRepoUnderstandingSnapshot,
   readVehicleContextSnapshot,
+  readVehicleDossierSnapshot,
   writeArtifactsState,
   writeMemoryState,
   writePreviewWorkflowState,
   writeRepoUnderstandingSnapshot,
   writeVehicleContextSnapshot,
+  writeVehicleDossierSnapshot,
 } from "./internal-ai-persistence.js";
 import {
   buildRepoUnderstandingMeta,
@@ -103,7 +105,7 @@ function getProviderClient() {
   });
 }
 
-function buildVehicleSnapshotMeta(snapshot) {
+function buildVehicleContextSnapshotMeta(snapshot) {
   return {
     domainCode: snapshot.domainCode,
     activeReadOnlyDataset: snapshot.activeReadOnlyDataset,
@@ -112,6 +114,16 @@ function buildVehicleSnapshotMeta(snapshot) {
     counts: snapshot.counts,
     flottaLimitations: snapshot.flottaLimitations ?? [],
     fileAvailabilityLimitations: snapshot.fileAvailabilityLimitations ?? [],
+    notes: snapshot.notes ?? [],
+  };
+}
+
+function buildVehicleDossierSnapshotMeta(snapshot) {
+  return {
+    domainCode: snapshot.domainCode,
+    activeReadOnlyDatasets: snapshot.activeReadOnlyDatasets ?? [],
+    seededAt: snapshot.seededAt,
+    counts: snapshot.counts,
     notes: snapshot.notes ?? [],
   };
 }
@@ -1251,9 +1263,10 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
         operation,
         persistenceMode: "server_file_isolated",
         sourceMode: snapshot.sourceMode,
-        snapshotMeta: buildVehicleSnapshotMeta(snapshot),
+        snapshotMeta: buildVehicleContextSnapshotMeta(snapshot),
         repoUnderstandingMeta: null,
         vehicleContext: null,
+        vehicleDossier: null,
         repoUnderstanding: null,
         traceEntryId: traceEntry.id,
         notes: [
@@ -1293,9 +1306,10 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
           "Nessuno snapshot read-only dei mezzi e ancora disponibile nel backend IA separato.",
         data: {
           sourceMode: "clone_seeded_readonly_snapshot",
-          snapshotMeta: buildVehicleSnapshotMeta(snapshot),
+          snapshotMeta: buildVehicleContextSnapshotMeta(snapshot),
           repoUnderstandingMeta: null,
           vehicleContext: null,
+          vehicleDossier: null,
           repoUnderstanding: null,
           allowedOperations: ["seed_vehicle_context_snapshot", "read_vehicle_context_by_targa"],
         },
@@ -1330,13 +1344,200 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
         operation,
         persistenceMode: "server_file_isolated",
         sourceMode: snapshot.sourceMode,
-        snapshotMeta: buildVehicleSnapshotMeta(snapshot),
+        snapshotMeta: buildVehicleContextSnapshotMeta(snapshot),
         repoUnderstandingMeta: null,
         vehicleContext,
+        vehicleDossier: null,
         repoUnderstanding: null,
         traceEntryId: traceEntry.id,
         notes: [
           "Retrieval read-only servito da contenitore IA dedicato e separato dai dataset business.",
+          "Il backend non legge ancora Firestore o Storage business in modo diretto.",
+        ],
+      },
+    });
+    return;
+  }
+
+  if (operation === "seed_vehicle_dossier_snapshot" && req.body?.snapshot) {
+    const normalizedTarga = normalizeTarga(req.body.snapshot.targa);
+
+    if (!normalizedTarga) {
+      sendEnvelope(res, {
+        httpStatus: 400,
+        ok: false,
+        endpointId: "retrieval.read",
+        status: "validation_error",
+        message: "Il seed del Dossier mezzo richiede una targa valida.",
+        data: {
+          allowedOperations: [
+            "seed_vehicle_context_snapshot",
+            "read_vehicle_context_by_targa",
+            "seed_vehicle_dossier_snapshot",
+            "read_vehicle_dossier_by_targa",
+            "read_repo_understanding_snapshot",
+          ],
+        },
+      });
+      return;
+    }
+
+    const currentSnapshot = await readVehicleDossierSnapshot();
+    const nextRecord = {
+      ...req.body.snapshot,
+      targa: normalizedTarga,
+      seededAt: req.body.snapshot.seededAt || new Date().toISOString(),
+      sourceMode: "clone_seeded_vehicle_dossier_snapshot",
+      sourceDatasetLabels: uniqueStrings(req.body.snapshot.sourceDatasetLabels ?? []),
+      limitations: uniqueStrings(req.body.snapshot.limitations ?? []),
+    };
+    const nextItems = [
+      nextRecord,
+      ...((currentSnapshot.items ?? []).filter(
+        (entry) => normalizeTarga(entry?.targa) !== normalizedTarga,
+      ) ?? []),
+    ].slice(0, 120);
+    const nextSnapshot = {
+      version: 1,
+      sourceMode: "clone_seeded_vehicle_dossier_snapshot",
+      domainCode: "DOSSIER_MEZZO",
+      activeReadOnlyDatasets: uniqueStrings(
+        nextItems.flatMap((entry) => entry.sourceDatasetLabels ?? []),
+      ),
+      seededAt: new Date().toISOString(),
+      counts: {
+        trackedVehicles: nextItems.length,
+      },
+      notes: [
+        "Snapshot Dossier mezzo seedata dal clone NEXT tramite read model gia governati.",
+        "Il backend IA separato persiste solo dati read-only e non legge Firestore/Storage business in modo diretto.",
+      ],
+      items: nextItems,
+    };
+    const snapshot = await writeVehicleDossierSnapshot(nextSnapshot);
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "retrieval.read",
+        operation,
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Seed snapshot Dossier read-only per ${normalizedTarga} nel backend IA separato.`,
+        entityCount: 1,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "retrieval.read",
+      status: "ok",
+      message:
+        "Snapshot Dossier mezzo read-only seedata nel backend IA separato per il primo retrieval server-side mezzo-centrico controllato.",
+      data: {
+        operation,
+        persistenceMode: "server_file_isolated",
+        sourceMode: snapshot.sourceMode,
+        snapshotMeta: buildVehicleDossierSnapshotMeta(snapshot),
+        repoUnderstandingMeta: null,
+        vehicleContext: null,
+        vehicleDossier: null,
+        repoUnderstanding: null,
+        traceEntryId: traceEntry.id,
+        notes: [
+          "Seed eseguito dal clone NEXT sopra il composito Dossier e i suoi layer read-only.",
+          "Nessuna lettura diretta Firestore o Storage business viene aperta in questo step.",
+        ],
+      },
+    });
+    return;
+  }
+
+  if (operation === "read_vehicle_dossier_by_targa" && typeof req.body?.rawTarga === "string") {
+    const normalizedTarga = normalizeTarga(req.body.rawTarga);
+
+    if (!normalizedTarga) {
+      sendEnvelope(res, {
+        httpStatus: 400,
+        ok: false,
+        endpointId: "retrieval.read",
+        status: "validation_error",
+        message: "La lettura server-side del Dossier mezzo richiede una targa valida.",
+        data: {
+          allowedOperations: [
+            "seed_vehicle_context_snapshot",
+            "read_vehicle_context_by_targa",
+            "seed_vehicle_dossier_snapshot",
+            "read_vehicle_dossier_by_targa",
+            "read_repo_understanding_snapshot",
+          ],
+        },
+      });
+      return;
+    }
+
+    const snapshot = await readVehicleDossierSnapshot();
+    if (!snapshot.seededAt) {
+      sendEnvelope(res, {
+        httpStatus: 404,
+        ok: false,
+        endpointId: "retrieval.read",
+        status: "not_found",
+        message:
+          "Nessuno snapshot Dossier read-only e ancora disponibile nel backend IA separato.",
+        data: {
+          sourceMode: "clone_seeded_vehicle_dossier_snapshot",
+          snapshotMeta: buildVehicleDossierSnapshotMeta(snapshot),
+          repoUnderstandingMeta: null,
+          vehicleContext: null,
+          vehicleDossier: null,
+          repoUnderstanding: null,
+          allowedOperations: [
+            "seed_vehicle_context_snapshot",
+            "read_vehicle_context_by_targa",
+            "seed_vehicle_dossier_snapshot",
+            "read_vehicle_dossier_by_targa",
+            "read_repo_understanding_snapshot",
+          ],
+        },
+      });
+      return;
+    }
+
+    const vehicleDossier =
+      snapshot.items?.find((entry) => normalizeTarga(entry?.targa) === normalizedTarga) ?? null;
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "retrieval.read",
+        operation,
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: vehicleDossier
+          ? `Lettura server-side Dossier mezzo ${normalizedTarga} da snapshot read-only IA.`
+          : `Nessun Dossier mezzo ${normalizedTarga} trovato nello snapshot read-only IA.`,
+        entityCount: vehicleDossier ? 1 : 0,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "retrieval.read",
+      status: "ok",
+      message: vehicleDossier
+        ? `Dossier mezzo ${normalizedTarga} letto dal retrieval server-side IA su snapshot read-only dedicato.`
+        : `Nessun Dossier mezzo ${normalizedTarga} trovato nello snapshot read-only del backend IA separato.`,
+      data: {
+        operation,
+        persistenceMode: "server_file_isolated",
+        sourceMode: snapshot.sourceMode,
+        snapshotMeta: buildVehicleDossierSnapshotMeta(snapshot),
+        repoUnderstandingMeta: null,
+        vehicleContext: null,
+        vehicleDossier,
+        repoUnderstanding: null,
+        traceEntryId: traceEntry.id,
+        notes: [
+          "Retrieval mezzo-centrico servito da contenitore IA dedicato e separato dai dataset business.",
           "Il backend non legge ancora Firestore o Storage business in modo diretto.",
         ],
       },
@@ -1376,6 +1577,7 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
         snapshotMeta: null,
         repoUnderstandingMeta: buildRepoUnderstandingMeta(snapshot),
         vehicleContext: null,
+        vehicleDossier: null,
         repoUnderstanding: snapshot,
         traceEntryId: traceEntry.id,
         notes: [
@@ -1393,11 +1595,13 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
     endpointId: "retrieval.read",
     status: "validation_error",
     message:
-      "Operazione retrieval.read non valida. Sono ammesse `seed_vehicle_context_snapshot`, `read_vehicle_context_by_targa` e `read_repo_understanding_snapshot`.",
+      "Operazione retrieval.read non valida. Sono ammesse `seed_vehicle_context_snapshot`, `read_vehicle_context_by_targa`, `seed_vehicle_dossier_snapshot`, `read_vehicle_dossier_by_targa` e `read_repo_understanding_snapshot`.",
     data: {
       allowedOperations: [
         "seed_vehicle_context_snapshot",
         "read_vehicle_context_by_targa",
+        "seed_vehicle_dossier_snapshot",
+        "read_vehicle_dossier_by_targa",
         "read_repo_understanding_snapshot",
       ],
     },

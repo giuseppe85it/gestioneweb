@@ -151,7 +151,7 @@ export const INTERNAL_AI_CONTRACTS: InternalAiContractDescriptor[] = [
     mode: "bridge_mock_safe",
     runtime: "mock_safe_backend",
     note:
-      "Primo hook mezzo-centrico reale del sottosistema IA: traduce linguaggio libero verso capability governate per stato dossier, documenti, costi, libretto, preventivi e report PDF del mezzo, riusando solo read model NEXT clone-safe e senza aprire retrieval Firebase live largo.",
+      "Primo hook mezzo-centrico reale del sottosistema IA: traduce linguaggio libero verso capability governate per stato dossier, rifornimenti, documenti, costi, libretto, preventivi e report PDF del mezzo, riusando solo read model NEXT clone-safe e senza aprire retrieval Firebase live largo.",
   },
   {
     id: "vehicle-report-preview",
@@ -223,7 +223,7 @@ export const INTERNAL_AI_CONTRACTS: InternalAiContractDescriptor[] = [
     mode: "bridge_mock_safe",
     runtime: "mock_safe_backend",
     note:
-      "Primo retrieval server-side read-only ora attivo solo tramite adapter dedicato del backend IA: usa uno snapshot D01 seedato dal clone per il contesto mezzo/libretto, mantiene fallback locale esplicito e non apre letture dirette Firestore/Storage business lato server.",
+      "Primo retrieval server-side read-only ora attivo tramite adapter dedicato del backend IA su due perimetri stretti: snapshot D01 per contesto mezzo/libretto e snapshot Dossier mezzo clone-seeded per hook mezzo-centrico e rifornimenti, con fallback locale esplicito e senza letture dirette Firestore/Storage business lato server.",
   },
   {
     id: "artifact-repository",

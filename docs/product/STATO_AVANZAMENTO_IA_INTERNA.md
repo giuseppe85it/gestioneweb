@@ -1185,6 +1185,39 @@ Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del s
   - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts` -> OK
   - `npm run build` -> OK
 
+## 12.37 Aggiornamento 2026-03-23
+- Il primo hook mezzo-centrico della chat `/next/ia/interna` non si ferma piu al composito locale del clone: prova ora prima un retrieval server-side dedicato del `Dossier Mezzo`, seedato dai layer NEXT read-only e persistito nel contenitore IA separato.
+- Cosa apre davvero questo step:
+  - nuovo retrieval server-side `seed_vehicle_dossier_snapshot` + `read_vehicle_dossier_by_targa` nel backend IA separato;
+  - estensione del hook `mezzo_dossier` con una nuova capability governata `riepilogo rifornimenti mezzo`;
+  - riuso dello snapshot Dossier clone-seeded per:
+    - stato sintetico mezzo;
+    - riepilogo costi mezzo;
+    - riepilogo rifornimenti mezzo;
+  - dichiarazione piu esplicita in chat di fonti, dataset, trasporto server-side/fallback e limiti del perimetro.
+- Fonti reali coinvolte:
+  - `D01/@mezzi_aziendali`;
+  - composito `readNextDossierMezzoCompositeSnapshot`;
+  - `D04/@rifornimenti` + `@rifornimenti_autisti_tmp`;
+  - `D07-D08` documenti/costi;
+  - supporto procurement e analisi legacy gia letti dal composito Dossier.
+- Cosa resta fuori perimetro:
+  - nessun bridge Firestore/Storage business live;
+  - nessuna scrittura business;
+  - nessun retrieval live dedicato del verticale `Cisterna`;
+  - nessun procurement globale reso backend canonico del mezzo.
+- Verifiche eseguite:
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK
+  - `node --check backend/internal-ai/server/internal-ai-persistence.js` -> OK
+  - smoke test adapter locale `seed_vehicle_dossier_snapshot` + `read_vehicle_dossier_by_targa` -> OK
+  - `npx eslint src/next/internal-ai/internalAiLibrettoPreviewBridge.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiServerRetrievalClient.ts backend/internal-ai/src/internalAiServerRetrievalContracts.ts` -> OK
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK
+  - `npm run build` -> OK
+- Limiti residui:
+  - lo snapshot Dossier resta clone-seeded e non equivale ancora a una lettura diretta Firestore/Storage lato server;
+  - `rifornimenti` resta capability spiegabile ma non contabilita o fuel control live;
+  - `Cisterna` resta solo verticale specialistico segnalato, senza bridge dati dedicato.
+
 ## 12. Cosa non va ancora fatto
 - Non implementare chat IA runtime collegata ai backend legacy.
 - Non agganciare la nuova IA a `aiCore`, `estrazioneDocumenti`, `analisi_economica_mezzo`, `stamp_pdf`, Cloud Run libretto o `server.js`.

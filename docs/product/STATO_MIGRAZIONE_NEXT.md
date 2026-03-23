@@ -894,6 +894,32 @@ Serve a:
   - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts` -> OK;
   - `npm run build` -> OK.
 
+## 5.41 Aggiornamento 2026-03-23 - Retrieval Dossier mezzo server-side clone-seeded + rifornimenti governati
+- Il clone `/next/ia/interna` estende ora il primo hook mezzo-centrico con un retrieval server-side stretto e read-only sul `Dossier Mezzo`, senza aprire ancora Firebase/Storage business live.
+- Cosa apre davvero:
+  - nuovo snapshot `Dossier Mezzo` clone-seeded nel backend IA separato, persistita su file locale dedicato;
+  - nuove operazioni server-side:
+    - `seed_vehicle_dossier_snapshot`;
+    - `read_vehicle_dossier_by_targa`;
+  - riuso di questo retrieval per:
+    - stato sintetico mezzo;
+    - riepilogo costi mezzo;
+    - nuova capability `riepilogo rifornimenti mezzo`;
+  - copy della chat aggiornato per dichiarare meglio fonti, perimetro e fallback.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun bridge Firestore/Storage business live;
+  - nessun retrieval live dedicato del verticale `Cisterna`;
+  - nessun backend legacy reso canonico.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-persistence.js` -> OK;
+  - smoke test adapter locale `seed_vehicle_dossier_snapshot` + `read_vehicle_dossier_by_targa` -> OK;
+  - `npx eslint src/next/internal-ai/internalAiLibrettoPreviewBridge.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiServerRetrievalClient.ts backend/internal-ai/src/internalAiServerRetrievalContracts.ts` -> OK;
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npm run build` -> OK.
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

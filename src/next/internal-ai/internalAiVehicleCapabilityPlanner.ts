@@ -23,6 +23,13 @@ const VEHICLE_SCOPE_HINTS = [
   "costi",
   "spese",
   "economica",
+  "rifornimenti",
+  "rifornimento",
+  "carburante",
+  "gasolio",
+  "diesel",
+  "consumi",
+  "litri",
   "stato",
   "situazione",
 ];

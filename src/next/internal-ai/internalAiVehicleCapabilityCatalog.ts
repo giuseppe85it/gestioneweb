@@ -92,6 +92,43 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
     },
   },
   {
+    id: "mezzo.summary.rifornimenti",
+    title: "Riepilogo rifornimenti mezzo",
+    domain: "mezzo_dossier",
+    targetScope: "single_vehicle",
+    requiredFilters: ["targa"],
+    optionalFilters: ["periodo"],
+    metrics: [
+      "vehicle_identity",
+      "refuel_count",
+      "source_coverage",
+      "missing_data",
+    ],
+    groupBy: ["source", "none"],
+    outputKind: "chat_answer",
+    bridgeCapabilityId: null,
+    limitations: [
+      "Usa solo il layer D04 read-only gia normalizzato nella NEXT e non legge pagine UI come fonte primaria.",
+      "Consumi, costi e provenienza restano spiegabili ma non diventano contabilita o controllo carburante live.",
+    ],
+    plannerHints: {
+      keywords: [
+        "rifornimenti",
+        "rifornimento",
+        "carburante",
+        "gasolio",
+        "diesel",
+        "consumi",
+        "litri",
+      ],
+      verbs: ["riepiloga", "riassumi", "spiega", "analizza", "dimmi", "controlla"],
+      samplePrompts: [
+        "Riepiloga i rifornimenti del mezzo AB123CD ultimi 30 giorni",
+        "Dimmi i consumi del mezzo AB123CD",
+      ],
+    },
+  },
+  {
     id: "mezzo.report.economic",
     title: "Riepilogo costi mezzo",
     domain: "mezzo_dossier",

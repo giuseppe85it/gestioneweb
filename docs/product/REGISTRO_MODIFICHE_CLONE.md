@@ -3002,3 +3002,51 @@ Serve a:
 - NOTE:
   - Il hook mezzo-centrico resta sopra read model NEXT clone-safe e non e ancora un retrieval dossier server-side dedicato.
   - Firestore/Storage business read-only lato server restano invariati e fuori perimetro in questo task.
+
+### Voce 2026-03-23 54
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Estensione hook mezzo-centrico con retrieval Dossier server-side clone-seeded e capability rifornimenti
+- OBIETTIVO: Rafforzare il primo hook IA mezzo-centrico del clone aprendo uno snapshot `Dossier Mezzo` server-side stretto, read-only e dedicato, senza allargare il perimetro a Firebase/Storage business live.
+- FILE TOCCATI:
+  - `backend/internal-ai/README.md`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-persistence.js`
+  - `backend/internal-ai/src/internalAiServerRetrievalContracts.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/internal-ai/internalAiLibrettoPreviewBridge.ts`
+  - `src/next/internal-ai/internalAiServerRetrievalClient.ts`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts`
+  - `src/next/internal-ai/internalAiVehicleDossierHookFacade.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/change-reports/2026-03-23_0659_estensione-hook-dossier-retrieval-rifornimenti-ia.md`
+  - `docs/continuity-reports/2026-03-23_0659_continuity_estensione-hook-dossier-retrieval-rifornimenti-ia.md`
+- COSA E STATO CAMBIATO:
+  - Aperto nel backend IA separato un nuovo retrieval server-side read-only su snapshot `Dossier Mezzo` clone-seeded per singola targa.
+  - Esteso il client retrieval IA per seed e lettura del Dossier mezzo senza usare Firebase/Storage business live.
+  - Esteso il catalogo capability mezzo-centrico con `Riepilogo rifornimenti mezzo`.
+  - Il hook `mezzo_dossier` prova ora prima il retrieval server-side sul Dossier per stato mezzo, costi e rifornimenti; se non e disponibile, ricade sul fallback locale clone-safe.
+  - La UI chat dichiara meglio che il perimetro mezzo-centrico copre ora anche i rifornimenti e che il retrieval puo essere server-side clone-seeded.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la chat interna supporta meglio richieste su singola targa legate a stato mezzo, costi e rifornimenti, mantenendo testi in italiano e senza trasformarsi in un pannello tecnico.
+  - Lettura: la nuova IA usa ora anche uno snapshot server-side dedicato del `Dossier Mezzo`, ma sempre seedato dai layer NEXT read-only gia governati; nessuna lettura business live diretta viene aperta.
+  - Blocco scritture: invariato; nessuna scrittura business, nessuna modifica della madre, nessun uso del legacy come backend canonico.
+- COME VERIFICARE:
+  - Eseguire smoke test `seed_vehicle_dossier_snapshot` + `read_vehicle_dossier_by_targa` sul path `POST /internal-ai-backend/retrieval/read`.
+  - Aprire `/next/ia/interna` e provare:
+    - `Dimmi lo stato del mezzo AB123CD`
+    - `Riepiloga i rifornimenti del mezzo AB123CD ultimi 30 giorni`
+    - `Riepiloga i costi del mezzo AB123CD ultimi 90 giorni`
+  - Verificare che le risposte dichiarino fonti e limiti e che il report PDF continui a restare separato dalla chat.
+  - Eseguire `npx eslint ...`, `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` e `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Il nuovo retrieval Dossier e serio ma non equivale ancora a un bridge Firebase/Storage business live.
+  - `rifornimenti` entra come capability governata e spiegabile; `Cisterna` resta verticale specialistico senza retrieval live dedicato.

@@ -52,13 +52,17 @@
 - Perimetro attivo:
   - solo dominio mezzo-centrico `D01` su `@mezzi_aziendali`;
   - snapshot read-only seedato dal clone NEXT gia validato;
-  - uso iniziale sulla capability `libretto-preview`.
+  - snapshot `Dossier Mezzo` clone-seeded per singola targa, persistita nel contenitore IA dedicato;
+  - uso iniziale su `libretto-preview` e sul primo hook mezzo-centrico governato per stato dossier, costi e rifornimenti.
 - Perimetro escluso:
   - Firestore server-side diretto;
   - Storage business diretto;
   - domini documenti/costi/procurement completi;
   - backend IA legacy come canale canonico.
-- Il retrieval salva e legge il file locale `runtime-data/fleet_readonly_snapshot.json`, separato dai dataset business e reversibile.
+- Il retrieval salva e legge i file locali:
+  - `runtime-data/fleet_readonly_snapshot.json`
+  - `runtime-data/vehicle_dossier_readonly_snapshot.json`
+- Entrambi restano separati dai dataset business e reversibili.
 
 ## Readiness Firebase / Storage read-only
 - Il backend IA separato ha ora una governance minima dedicata anche a livello package, ma il bridge Firebase/Storage business read-only NON e ancora attivo.
@@ -76,6 +80,9 @@
   - configurare credenziale server-side separata;
   - chiarire policy Firestore/Storage effettive;
   - aprire solo dopo un adapter read-only reale con whitelist runtime e traceability.
+- Nota importante:
+  - il nuovo snapshot `Dossier Mezzo` server-side NON equivale a un bridge Firebase live;
+  - resta un retrieval IA dedicato, clone-seeded e read-only sopra i layer NEXT gia governati.
 
 ## Primo provider reale e workflow controllato
 - Provider scelto: `OpenAI` via `Responses API`, solo server-side.
