@@ -57,7 +57,11 @@ export async function readInternalAiLibrettoPreviewThroughBackend(
   rawTarga: string,
 ): Promise<InternalAiLibrettoPreviewBridgeReadResult> {
   const serverRetrievalResult = await readInternalAiServerVehicleContextByTarga(rawTarga);
-  if (serverRetrievalResult.status === "ready" && serverRetrievalResult.payload.vehicleContext) {
+  if (
+    serverRetrievalResult.status === "ready" &&
+    serverRetrievalResult.payload.vehicleContext &&
+    serverRetrievalResult.payload.snapshotMeta
+  ) {
     const preview = buildInternalAiLibrettoPreviewFromVehicleContext({
       mezzo: serverRetrievalResult.payload.vehicleContext,
       flottaLimitations: serverRetrievalResult.payload.snapshotMeta.flottaLimitations,

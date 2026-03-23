@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   NEXT_HOME_PATH,
@@ -23,6 +23,11 @@ import {
   rollbackInternalAiServerReportSummaryPreview,
   type InternalAiServerReportSummaryWorkflow,
 } from "./internal-ai/internalAiServerReportSummaryClient";
+import {
+  buildInternalAiRuntimeObserverAssetUrl,
+  readInternalAiServerRepoUnderstandingSnapshot,
+  type InternalAiServerRepoUnderstandingSnapshot,
+} from "./internal-ai/internalAiServerRepoUnderstandingClient";
 import {
   findInternalAiExactDriverMatch,
   matchInternalAiDriverLookupCandidates,
@@ -67,6 +72,12 @@ import {
   type InternalAiVehicleReportPreviewBridgeReadResult,
 } from "./internal-ai/internalAiVehicleReportPreviewBridge";
 import {
+  buildInternalAiReportDocumentText,
+  buildInternalAiReportPdfFileName,
+  generateInternalAiReportPdfBlob,
+} from "./internal-ai/internalAiReportPdf";
+import { selectInternalAiOutputMode } from "./internal-ai/internalAiOutputSelector";
+import {
   findInternalAiExactVehicleMatch,
   matchInternalAiVehicleLookupCandidates,
   normalizeInternalAiVehicleLookupQuery,
@@ -89,6 +100,13 @@ import {
   trackInternalAiVehicleSearch,
   trackInternalAiVehicleSelection,
 } from "./internal-ai/internalAiTracking";
+import {
+  buildPdfShareText,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import type {
   InternalAiApprovalState,
   InternalAiArtifact,
@@ -102,6 +120,7 @@ import type {
   InternalAiDriverLookupCandidate,
   InternalAiLibrettoPreview,
   InternalAiDriverReportPreview,
+  InternalAiOutputMode,
   InternalAiReportPreview,
   InternalAiReportPeriodInput,
   InternalAiReportPeriodPreset,
@@ -161,6 +180,28 @@ type ActiveReportState = {
   draftMessage: string | null;
 };
 
+type ReportPreviewModalState = {
+  isOpen: boolean;
+  report: InternalAiReportPreview | null;
+  artifactId: string | null;
+};
+
+type ReportPdfPreviewState =
+  | {
+      status: "idle" | "loading" | "error";
+      url: null;
+      blob: null;
+      fileName: null;
+      message: string | null;
+    }
+  | {
+      status: "ready";
+      url: string;
+      blob: Blob;
+      fileName: string;
+      message: string;
+    };
+
 type ReportSummaryWorkflowState =
   | {
       status: "idle";
@@ -183,6 +224,7 @@ type ReportSummaryWorkflowState =
 
 type BackendPreviewTransportState =
   | "non_attivo"
+  | "server_http_provider"
   | "server_http_retrieval"
   | "backend_mock_safe"
   | "frontend_fallback";
@@ -191,6 +233,29 @@ type ReportBridgeState = {
   transport: BackendPreviewTransportState;
   transportMessage: string | null;
 };
+
+type RepoUnderstandingState =
+  | {
+      status: "idle";
+      message: string | null;
+      snapshot: null;
+      transport: "non_attivo";
+      transportMessage: null;
+    }
+  | {
+      status: "loading" | "not_enabled" | "error";
+      message: string;
+      snapshot: null;
+      transport: "non_attivo" | "server_http_retrieval";
+      transportMessage: string | null;
+    }
+  | {
+      status: "ready";
+      message: string;
+      snapshot: InternalAiServerRepoUnderstandingSnapshot;
+      transport: "server_http_retrieval";
+      transportMessage: string;
+    };
 
 type EconomicAnalysisPreviewState =
   | {
@@ -416,13 +481,38 @@ const CHAT_STATUS_LABELS: Record<InternalAiChatExecutionStatus, string> = {
   failed: "Errore",
 };
 
+const CHAT_OUTPUT_MODE_LABELS: Record<InternalAiOutputMode, string> = {
+  chat_brief: "Risposta breve in chat",
+  chat_structured: "Analisi strutturata in chat",
+  artifact_document: "Documento dedicato",
+  report_pdf: "Report PDF",
+  ui_integration_proposal: "Proposta di integrazione NEXT",
+  next_integration_confirmation_required: "Conferma richiesta",
+};
+
+const CHAT_INTENT_LABELS: Record<InternalAiChatMessage["intent"], string> = {
+  report_targa: "Report mezzo",
+  report_autista: "Report autista",
+  report_combinato: "Report combinato",
+  mezzo_dossier: "Hook Dossier mezzo",
+  repo_understanding: "Repo/UI understanding",
+  capabilities: "Capability governate",
+  non_supportato: "Richiesta non supportata",
+  richiesta_generica: "Richiesta generica",
+};
+
 const CHAT_SUGGESTIONS = [
   "Cosa puoi fare",
   "Crea report targa AB123CD ultimi 30 giorni",
+  "Dimmi lo stato del mezzo AB123CD",
+  "Elenca i documenti del mezzo AB123CD",
+  "Riepiloga i costi del mezzo AB123CD ultimi 90 giorni",
   "Fammi un report per l'autista Mario Rossi",
   "Fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni",
-  "Fammi una preview per la targa TI123456 ultimi 90 giorni",
+  "Controlla il libretto del mezzo AB123CD",
   "Analizza il mezzo AA111AA",
+  "Spiegami la shell NEXT e le schermate principali",
+  "Quali pattern UI del repo posso riusare per semplificare il gestionale?",
 ];
 
 const LOOKUP_MATCH_LABELS: Record<InternalAiVehicleLookupMatchState, string> = {
@@ -551,9 +641,108 @@ const CONTRACT_RUNTIME_LABELS: Record<"disabled" | "mock_safe_backend", string> 
 
 const BACKEND_PREVIEW_TRANSPORT_LABELS: Record<BackendPreviewTransportState, string> = {
   non_attivo: "Nessun ponte attivo",
+  server_http_provider: "Provider reale server-side",
   server_http_retrieval: "Retrieval server-side read-only",
   backend_mock_safe: "Backend separato mock-safe",
   frontend_fallback: "Fallback locale clone-safe",
+};
+
+const REPO_ZONE_LABELS: Record<string, string> = {
+  next_clone: "NEXT clone",
+  legacy_madre: "Madre legacy",
+  shared_ui: "UI condivisa",
+  backend_internal_ai: "Backend IA separato",
+  docs: "Documentazione",
+};
+
+const REPO_FILE_KIND_LABELS: Record<string, string> = {
+  page: "Pagina",
+  component: "Componente",
+  style: "Stile",
+  routing: "Routing",
+  backend: "Backend",
+  document: "Documento",
+  support: "Supporto",
+};
+
+const REPO_WRITE_POLICY_LABELS: Record<string, string> = {
+  next_backend_docs_only: "Scrittura ammessa solo su NEXT, backend IA e documentazione autorizzata",
+  read_only_for_ai: "Solo lettura per la nuova IA",
+};
+
+const FIREBASE_READINESS_LABELS: Record<string, string> = {
+  ready: "Pronto",
+  partial: "Parziale",
+  not_ready: "Non pronto",
+};
+
+const FIREBASE_REQUIREMENT_STATUS_LABELS: Record<string, string> = {
+  present: "Presente",
+  missing: "Mancante",
+  legacy_only: "Solo legacy",
+  not_versioned: "Non versionato",
+  conflicting: "Confliggente",
+};
+
+const RUNTIME_OBSERVER_STATUS_LABELS: Record<string, string> = {
+  not_observed: "Non osservato",
+  observed: "Osservato",
+  partial: "Parziale",
+  error: "Errore",
+  unavailable: "Non disponibile",
+};
+
+const RUNTIME_COVERAGE_LEVEL_LABELS: Record<string, string> = {
+  route_only: "Solo route",
+  interactive_readonly: "Interazione read-only",
+  dynamic_route_resolved: "Route dinamica risolta",
+};
+
+const RUNTIME_SURFACE_KIND_LABELS: Record<string, string> = {
+  section: "Sezione",
+  card: "Card",
+  tab_trigger: "Tab",
+  button_trigger: "Bottone",
+  route_link: "Link route",
+  modal_trigger: "Trigger modale",
+};
+
+const RUNTIME_STATE_KIND_LABELS: Record<string, string> = {
+  route_state: "Stato route",
+  tab_state: "Stato tab",
+  section_state: "Stato sezione",
+  dialog_state: "Stato dialog",
+};
+
+const RUNTIME_SCREEN_TYPE_LABELS: Record<string, string> = {
+  cockpit: "Cockpit",
+  mezzo_centrico: "Mezzo-centrica",
+  operativita_globale: "Operativa globale",
+  documentale: "Documentale",
+  ia_interna: "IA interna",
+  procurement: "Procurement",
+  autista: "Autisti",
+  specialistico: "Specialistica",
+};
+
+const UI_INTEGRATION_DOMAIN_LABELS: Record<string, string> = {
+  mezzo_centrico: "Dominio mezzo-centrico",
+  cockpit_globale: "Dominio cockpit globale",
+  operativita_globale: "Dominio operativo globale",
+  documentale: "Dominio documentale",
+  procurement: "Dominio procurement",
+  autista: "Dominio autisti",
+  ia_interna: "Dominio IA interna",
+  specialistico: "Dominio specialistico",
+};
+
+const UI_INTEGRATION_SURFACE_LABELS: Record<string, string> = {
+  page: "Pagina",
+  modal: "Modale",
+  tab: "Tab",
+  card: "Card",
+  button: "Bottone",
+  section: "Sezione",
 };
 
 const SERVER_REPORT_SUMMARY_REQUEST_LABELS: Record<
@@ -590,12 +779,18 @@ function statusToneClass(status: string) {
     status.includes("awaiting") ||
     status.includes("revision") ||
     status.includes("preview") ||
-    status.includes("parziale")
+    status.includes("parziale") ||
+    status.includes("partial")
   ) {
     return "internal-ai-pill is-warning";
   }
 
-  if (status.includes("reject") || status.includes("discard") || status.includes("errore")) {
+  if (
+    status.includes("reject") ||
+    status.includes("discard") ||
+    status.includes("errore") ||
+    status.includes("not_ready")
+  ) {
     return "internal-ai-pill is-danger";
   }
 
@@ -657,6 +852,8 @@ function createChatMessage(args: {
   intent: InternalAiChatMessage["intent"];
   status: InternalAiChatMessage["status"];
   references?: InternalAiChatMessage["references"];
+  outputMode?: InternalAiChatMessage["outputMode"];
+  outputReason?: InternalAiChatMessage["outputReason"];
 }): InternalAiChatMessage {
   return {
     id: `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -666,6 +863,8 @@ function createChatMessage(args: {
     intent: args.intent,
     status: args.status,
     references: args.references ?? [],
+    outputMode: args.outputMode ?? null,
+    outputReason: args.outputReason ?? null,
   };
 }
 
@@ -675,16 +874,19 @@ function createWelcomeChatMessage(): InternalAiChatMessage {
     intent: "capabilities",
     status: "completed",
     text:
-      "Chat interna controllata attiva.\n\n" +
-      "Posso aiutarti con richieste sicure gia supportate dal sottosistema IA interno, in particolare la preview report per targa, per autista o combinata mezzo + autista in sola lettura.\n\n" +
-      'Prova con: "crea report targa AB123CD ultimi 30 giorni", "fammi un report per l\'autista Mario Rossi ultimo mese", "fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni" oppure "cosa puoi fare".',
+      "Ciao, sono l'assistente interno del gestionale nel perimetro NEXT controllato.\n\n" +
+      "Posso aiutarti a leggere il Dossier mezzo in sola lettura, spiegare il repository e chiarire lo stato del progetto senza toccare dati business o codice fuori dal perimetro autorizzato.\n\n" +
+      'Puoi scrivermi in modo naturale, per esempio: "dimmi lo stato del mezzo AB123CD", "elenca i documenti del mezzo AB123CD", "riepiloga i costi del mezzo AB123CD ultimi 90 giorni", "crea report targa AB123CD ultimi 30 giorni" oppure "spiegami la shell NEXT".',
     references: [
       {
         type: "safe_mode_notice",
-        label: "Modalita sicura e controllata",
+        label: "Perimetro controllato e sola lettura",
         targa: null,
       },
     ],
+    outputMode: "chat_brief",
+    outputReason:
+      "Messaggio iniziale di orientamento: basta una risposta breve in chat per chiarire perimetro e capacita attive.",
   });
 }
 
@@ -820,6 +1022,230 @@ function buildPeriodInputFromReport(report: InternalAiReportPreview): InternalAi
   };
 }
 
+function dedupeChatMessageReferences(
+  references: InternalAiChatMessage["references"],
+): InternalAiChatMessage["references"] {
+  const seen = new Set<string>();
+
+  return references.filter((reference) => {
+    const key = `${reference.type}:${reference.label}:${reference.targa ?? ""}:${reference.artifactId ?? ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderReportDocumentContent(
+  report: InternalAiReportPreview,
+  workflow: InternalAiServerReportSummaryWorkflow | null,
+) {
+  return (
+    <div className="internal-ai-document">
+      <header className="internal-ai-document__header">
+        <p className="internal-ai-card__eyebrow">Contenuto strutturato</p>
+        <h2>{report.title}</h2>
+        <p className="next-panel__description">{report.subtitle}</p>
+        <div className="internal-ai-pill-row">
+          <span className="internal-ai-pill is-neutral">{getReportTypeLabel(report)}</span>
+          <span className="internal-ai-pill is-neutral">{getReportTargetChip(report)}</span>
+          <span className="internal-ai-pill is-neutral">
+            Generata il {formatDateLabel(report.generatedAt)}
+          </span>
+          <span className="internal-ai-pill is-neutral">
+            Periodo {report.periodContext.label}
+          </span>
+          <span className="internal-ai-pill is-neutral">{getReportHeaderMetaChip(report)}</span>
+        </div>
+        {renderPreviewState(report.previewState)}
+        {renderApprovalState(report.approvalState)}
+      </header>
+
+      <section className="internal-ai-grid">
+        {report.cards.map((card) => (
+          <article key={`document-card:${card.label}`} className="internal-ai-card">
+            <p className="internal-ai-card__eyebrow">{card.label}</p>
+            <h3>{card.value}</h3>
+            <p className="internal-ai-card__meta">{card.meta}</p>
+          </article>
+        ))}
+      </section>
+
+      {workflow ? (
+        <article className="next-panel" style={{ marginTop: 16 }}>
+          <div className="next-panel__header">
+            <h2>Sintesi IA server-side</h2>
+          </div>
+          <p className="next-panel__description">{workflow.previewText}</p>
+          <div className="internal-ai-pill-row">
+            <span className="internal-ai-pill is-neutral">
+              {workflow.providerTarget.provider.toUpperCase()}
+            </span>
+            <span className="internal-ai-pill is-neutral">{workflow.providerTarget.model}</span>
+            <span className={statusToneClass(workflow.requestState)}>
+              {SERVER_REPORT_SUMMARY_REQUEST_LABELS[workflow.requestState]}
+            </span>
+            <span className={statusToneClass(workflow.approvalState)}>
+              {SERVER_REPORT_SUMMARY_APPROVAL_LABELS[workflow.approvalState]}
+            </span>
+            <span className={statusToneClass(workflow.rollbackState)}>
+              {SERVER_REPORT_SUMMARY_ROLLBACK_LABELS[workflow.rollbackState]}
+            </span>
+          </div>
+          <p className="internal-ai-card__meta">{workflow.previewNote}</p>
+        </article>
+      ) : null}
+
+      <div className="next-section-grid">
+        <article className="next-panel">
+          <div className="next-panel__header">
+            <h2>Sezioni del report</h2>
+          </div>
+          <div className="internal-ai-list">
+            {report.sections.map((item) => (
+              <div key={item.id} className="internal-ai-list__row">
+                <div className="internal-ai-list__row-header">
+                  <strong>{item.title}</strong>
+                  <div className="internal-ai-pill-row">
+                    <span className={statusToneClass(item.status)}>
+                      {SECTION_STATUS_LABELS[item.status] ?? item.status}
+                    </span>
+                    <span className={statusToneClass(item.periodStatus)}>
+                      {PERIOD_STATUS_LABELS[item.periodStatus] ?? item.periodStatus}
+                    </span>
+                  </div>
+                </div>
+                <p className="internal-ai-muted">{item.summary}</p>
+                {item.periodNote ? <p className="internal-ai-card__meta">{item.periodNote}</p> : null}
+                <ul className="internal-ai-inline-list">
+                  {item.bullets.map((bullet) => (
+                    <li key={`${item.id}:${bullet}`}>{bullet}</li>
+                  ))}
+                </ul>
+                {item.notes.length ? (
+                  <ul className="internal-ai-inline-list">
+                    {item.notes.map((note) => (
+                      <li key={`${item.id}:note:${note}`}>{note}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="next-panel">
+          <div className="next-panel__header">
+            <h2>Fonti lette</h2>
+          </div>
+          <div className="internal-ai-list">
+            {report.sources.map((source) => (
+              <div key={source.id} className="internal-ai-list__row">
+                <div className="internal-ai-list__row-header">
+                  <strong>{source.title}</strong>
+                  <div className="internal-ai-pill-row">
+                    <span className={statusToneClass(source.status)}>
+                      {SOURCE_STATUS_LABELS[source.status] ?? source.status}
+                    </span>
+                    <span className={statusToneClass(source.periodStatus)}>
+                      {PERIOD_STATUS_LABELS[source.periodStatus] ?? source.periodStatus}
+                    </span>
+                  </div>
+                </div>
+                <p className="internal-ai-muted">{source.description}</p>
+                <div className="internal-ai-pill-row">
+                  {source.datasetLabels.map((dataset) => (
+                    <span key={`${source.id}:${dataset}`} className="internal-ai-pill is-neutral">
+                      {dataset}
+                    </span>
+                  ))}
+                  {source.countLabel ? (
+                    <span className="internal-ai-pill is-neutral">{source.countLabel}</span>
+                  ) : null}
+                </div>
+                {source.periodNote ? <p className="internal-ai-card__meta">{source.periodNote}</p> : null}
+                {source.notes.length ? (
+                  <ul className="internal-ai-inline-list">
+                    {source.notes.map((note) => (
+                      <li key={`${source.id}:note:${note}`}>{note}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </article>
+      </div>
+
+      <div className="next-section-grid">
+        <article className="next-panel">
+          <div className="next-panel__header">
+            <h2>Dati mancanti</h2>
+          </div>
+          {report.missingData.length ? (
+            <ul className="internal-ai-inline-list">
+              {report.missingData.map((entry) => (
+                <li key={entry}>{entry}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="next-panel__description">
+              Nessun dato mancante rilevante emerso per questa anteprima.
+            </p>
+          )}
+        </article>
+
+        <article className="next-panel">
+          <div className="next-panel__header">
+            <h2>Evidenze e segnali</h2>
+          </div>
+          <ul className="internal-ai-inline-list">
+            {report.evidences.map((entry) => (
+              <li key={entry}>{entry}</li>
+            ))}
+          </ul>
+        </article>
+      </div>
+    </div>
+  );
+}
+
+function runtimeObserverStatusClass(status: string) {
+  if (status === "observed") {
+    return "internal-ai-pill is-positive";
+  }
+
+  return statusToneClass(status);
+}
+
+function outputModeToneClass(mode: InternalAiOutputMode | null) {
+  if (mode === "report_pdf" || mode === "artifact_document") {
+    return "internal-ai-pill is-positive";
+  }
+
+  if (
+    mode === "ui_integration_proposal" ||
+    mode === "next_integration_confirmation_required" ||
+    mode === "chat_structured"
+  ) {
+    return "internal-ai-pill is-warning";
+  }
+
+  return "internal-ai-pill is-neutral";
+}
+
+function outputModeCardTone(mode: InternalAiOutputMode | null) {
+  const toneClass = outputModeToneClass(mode);
+  if (toneClass.includes("positive")) {
+    return "is-positive";
+  }
+  if (toneClass.includes("warning")) {
+    return "is-warning";
+  }
+  return "is-neutral";
+}
+
 function buildContractLabelMap(contractCatalog: ReturnType<typeof readInternalAiScaffoldSnapshot>["contractCatalog"]) {
   return new Map<string, string>(contractCatalog.map((entry) => [entry.id, entry.title]));
 }
@@ -885,7 +1311,24 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     createWelcomeChatMessage(),
   ]);
   const [chatStatus, setChatStatus] = useState<InternalAiChatExecutionStatus>("idle");
+  const [reportPreviewModalState, setReportPreviewModalState] = useState<ReportPreviewModalState>({
+    isOpen: false,
+    report: null,
+    artifactId: null,
+  });
+  const [reportPdfPreviewState, setReportPdfPreviewState] = useState<ReportPdfPreviewState>({
+    status: "idle",
+    url: null,
+    blob: null,
+    fileName: null,
+    message: null,
+  });
+  const [reportDocumentActionMessage, setReportDocumentActionMessage] = useState<string | null>(
+    null,
+  );
   const [openedArtifactId, setOpenedArtifactId] = useState<string | null>(null);
+  const chatMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const reportPdfPreviewUrlRef = useRef<string | null>(null);
   const [artifactSearchQuery, setArtifactSearchQuery] = useState(
     () => tracking.sessionState.lastArchiveQuery ?? "",
   );
@@ -934,6 +1377,13 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     transport: "non_attivo",
     transportMessage: null,
   });
+  const [repoUnderstandingState, setRepoUnderstandingState] = useState<RepoUnderstandingState>({
+    status: "idle",
+    message: null,
+    snapshot: null,
+    transport: "non_attivo",
+    transportMessage: null,
+  });
   const [vehicleReportBridgeState, setVehicleReportBridgeState] = useState<ReportBridgeState>({
     transport: "non_attivo",
     transportMessage: null,
@@ -975,6 +1425,99 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     transport: "non_attivo",
     transportMessage: null,
   });
+
+  async function loadRepoUnderstandingSnapshot(refresh = false) {
+    setRepoUnderstandingState({
+      status: "loading",
+      message: refresh
+        ? "Aggiornamento della snapshot controllata repo/UI in corso..."
+        : "Caricamento della snapshot controllata repo/UI...",
+      snapshot: null,
+      transport: "server_http_retrieval",
+      transportMessage: refresh
+        ? "Richiesta di refresh verso il retrieval server-side read-only."
+        : "Tentativo di lettura della snapshot repo/UI dal backend IA separato.",
+    });
+
+    const result = await readInternalAiServerRepoUnderstandingSnapshot(refresh);
+    if (result.status === "ready") {
+      setRepoUnderstandingState({
+        status: "ready",
+        message: result.message,
+        snapshot: result.payload,
+        transport: "server_http_retrieval",
+        transportMessage: result.message,
+      });
+      return;
+    }
+
+    setRepoUnderstandingState({
+      status: result.status,
+      message: result.message,
+      snapshot: null,
+      transport: result.status === "not_enabled" ? "non_attivo" : "server_http_retrieval",
+      transportMessage: result.message,
+    });
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (sectionId !== "overview") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (repoUnderstandingState.status !== "idle") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void Promise.resolve().then(async () => {
+      if (cancelled) {
+        return;
+      }
+
+      setRepoUnderstandingState({
+        status: "loading",
+        message: "Caricamento della snapshot controllata repo/UI...",
+        snapshot: null,
+        transport: "server_http_retrieval",
+        transportMessage: "Tentativo di lettura della snapshot repo/UI dal backend IA separato.",
+      });
+
+      const result = await readInternalAiServerRepoUnderstandingSnapshot(false);
+      if (cancelled) {
+        return;
+      }
+
+      if (result.status === "ready") {
+        setRepoUnderstandingState({
+          status: "ready",
+          message: result.message,
+          snapshot: result.payload,
+          transport: "server_http_retrieval",
+          transportMessage: result.message,
+        });
+        return;
+      }
+
+      setRepoUnderstandingState({
+        status: result.status,
+        message: result.message,
+        snapshot: null,
+        transport: result.status === "not_enabled" ? "non_attivo" : "server_http_retrieval",
+        transportMessage: result.message,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [repoUnderstandingState.status, sectionId]);
+
   const activeReportSignature = getInternalAiReportSignature(activeReportState.report);
   const visibleReportSummaryMessage =
     reportSummaryWorkflowState.reportSignature === activeReportSignature
@@ -987,6 +1530,115 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   const openedArtifact = useMemo(
     () => snapshot.artifacts.find((artifact) => artifact.id === openedArtifactId) ?? null,
     [openedArtifactId, snapshot.artifacts],
+  );
+  const modalReportSummaryWorkflow = useMemo(() => {
+    if (!reportPreviewModalState.report || !visibleReportSummaryWorkflow) {
+      return null;
+    }
+
+    const activeSignature = getInternalAiReportSignature(reportPreviewModalState.report);
+    const workflowSignature = activeReportState.report
+      ? getInternalAiReportSignature(activeReportState.report)
+      : null;
+
+    return activeSignature && workflowSignature && activeSignature === workflowSignature
+      ? visibleReportSummaryWorkflow
+      : null;
+  }, [reportPreviewModalState.report, visibleReportSummaryWorkflow, activeReportState.report]);
+  const modalReportDocumentText = useMemo(
+    () =>
+      reportPreviewModalState.report
+        ? buildInternalAiReportDocumentText(
+            reportPreviewModalState.report,
+            modalReportSummaryWorkflow,
+          )
+        : "",
+    [reportPreviewModalState.report, modalReportSummaryWorkflow],
+  );
+  const latestAssistantMessage = useMemo(
+    () =>
+      [...chatMessages]
+        .reverse()
+        .find((message) => message.role === "assistente") ?? null,
+    [chatMessages],
+  );
+  const chatStatusCards = useMemo(
+    () => [
+      {
+        label: "Backend server-side",
+        value:
+          snapshot.summary.backendMode === "server_adapter_mock_safe"
+            ? "Attivo"
+            : "Scaffold locale",
+        tone:
+          snapshot.summary.backendMode === "server_adapter_mock_safe"
+            ? "is-positive"
+            : "is-warning",
+        detail: BACKEND_MODE_LABELS[snapshot.summary.backendMode],
+      },
+      {
+        label: "OpenAI lato server",
+        value:
+          chatBridgeState.transport === "server_http_provider"
+            ? "Attivo sulla risposta corrente"
+            : "Fallback o contesto locale",
+        tone:
+          chatBridgeState.transport === "server_http_provider"
+            ? "is-positive"
+            : "is-warning",
+        detail: BACKEND_PREVIEW_TRANSPORT_LABELS[chatBridgeState.transport],
+      },
+      {
+        label: "Repo e UI understanding",
+        value:
+          repoUnderstandingState.status === "ready"
+            ? "Snapshot controllata disponibile"
+            : "Solo perimetro base",
+        tone: repoUnderstandingState.status === "ready" ? "is-positive" : "is-neutral",
+        detail:
+          repoUnderstandingState.status === "ready" && repoUnderstandingState.snapshot
+            ? repoUnderstandingState.snapshot.runtimeObserver.status === "observed"
+              ? `Osservatore runtime NEXT attivo su ${repoUnderstandingState.snapshot.runtimeObserver.routeCount} schermate e ${repoUnderstandingState.snapshot.runtimeObserver.stateCount} stati read-only.`
+              : repoUnderstandingState.snapshot.runtimeObserver.status === "partial"
+                ? `Osservatore runtime NEXT parziale su ${repoUnderstandingState.snapshot.runtimeObserver.routeCount} schermate e ${repoUnderstandingState.snapshot.runtimeObserver.stateCount} stati read-only.`
+                : repoUnderstandingState.transportMessage
+            : repoUnderstandingState.transportMessage ?? "La comprensione repo/UI resta read-only e curata.",
+      },
+      {
+        label: "Retrieval business read-only",
+        value:
+          librettoPreviewState.transport === "server_http_retrieval"
+            ? "Attivo sul perimetro libretto"
+            : "Parziale o non attivo",
+        tone:
+          librettoPreviewState.transport === "server_http_retrieval"
+            ? "is-positive"
+            : "is-warning",
+        detail:
+          librettoPreviewState.transportMessage ??
+          "Oggi e dimostrato solo su un perimetro mezzo-centrico controllato.",
+      },
+      {
+        label: "Formato scelto dall'assistente",
+        value: latestAssistantMessage?.outputMode
+          ? CHAT_OUTPUT_MODE_LABELS[latestAssistantMessage.outputMode]
+          : "Nessuna scelta registrata",
+        tone: outputModeCardTone(latestAssistantMessage?.outputMode ?? null),
+        detail:
+          latestAssistantMessage?.outputReason ??
+          "La scelta formato viene spiegata a ogni risposta assistente.",
+      },
+    ],
+    [
+      snapshot.summary.backendMode,
+      chatBridgeState.transport,
+      repoUnderstandingState.status,
+      repoUnderstandingState.snapshot,
+      repoUnderstandingState.transportMessage,
+      librettoPreviewState.transport,
+      librettoPreviewState.transportMessage,
+      latestAssistantMessage,
+    ],
   );
   const persistedArtifactsCount = snapshot.artifacts.filter((artifact) => artifact.isPersisted).length;
   const sortedArtifacts = useMemo(
@@ -1300,9 +1952,157 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     }));
   };
 
+  function closeReportPreviewModal() {
+    if (reportPdfPreviewUrlRef.current) {
+      revokePdfPreviewUrl(reportPdfPreviewUrlRef.current);
+      reportPdfPreviewUrlRef.current = null;
+    }
+    setReportPreviewModalState({
+      isOpen: false,
+      report: null,
+      artifactId: null,
+    });
+    setReportPdfPreviewState({
+      status: "idle",
+      url: null,
+      blob: null,
+      fileName: null,
+      message: null,
+    });
+    setReportDocumentActionMessage(null);
+  }
+
   useEffect(() => {
     trackInternalAiScreenVisit(sectionId, location.pathname);
   }, [location.pathname, sectionId]);
+
+  useEffect(() => {
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [chatMessages, chatStatus]);
+
+  useEffect(() => {
+    if (!reportPreviewModalState.isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeReportPreviewModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [reportPreviewModalState.isOpen]);
+
+  useEffect(() => {
+    if (!reportDocumentActionMessage) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setReportDocumentActionMessage(null), 2800);
+    return () => window.clearTimeout(timeoutId);
+  }, [reportDocumentActionMessage]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadingTimeoutId: number | null = null;
+
+    if (!reportPreviewModalState.isOpen || !reportPreviewModalState.report) {
+      if (reportPdfPreviewUrlRef.current) {
+        revokePdfPreviewUrl(reportPdfPreviewUrlRef.current);
+        reportPdfPreviewUrlRef.current = null;
+      }
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    loadingTimeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      setReportPdfPreviewState({
+        status: "loading",
+        url: null,
+        blob: null,
+        fileName: null,
+        message:
+          "Sto preparando il PDF del report a partire dall'artifact IA gia salvato, senza toccare dati business.",
+      });
+    }, 0);
+
+    void (async () => {
+      try {
+        const pdf = await generateInternalAiReportPdfBlob({
+          report: reportPreviewModalState.report!,
+          workflow: modalReportSummaryWorkflow,
+        });
+        const preview = await openPreview({
+          source: {
+            blob: pdf.blob,
+            fileName: pdf.fileName,
+          },
+          previousUrl: reportPdfPreviewUrlRef.current,
+        });
+
+        if (cancelled) {
+          revokePdfPreviewUrl(preview.url);
+          return;
+        }
+
+        reportPdfPreviewUrlRef.current = preview.url;
+        setReportPdfPreviewState({
+          status: "ready",
+          url: preview.url,
+          blob: preview.blob,
+          fileName: preview.fileName,
+          message:
+            "PDF reale generato al volo dall'artifact IA dedicato. Nessuna scrittura business automatica.",
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        if (reportPdfPreviewUrlRef.current) {
+          revokePdfPreviewUrl(reportPdfPreviewUrlRef.current);
+          reportPdfPreviewUrlRef.current = null;
+        }
+
+        setReportPdfPreviewState({
+          status: "error",
+          url: null,
+          blob: null,
+          fileName: null,
+          message:
+            error instanceof Error
+              ? `Impossibile generare il PDF del report: ${error.message}`
+              : "Impossibile generare il PDF del report in questo browser.",
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (loadingTimeoutId !== null) {
+        window.clearTimeout(loadingTimeoutId);
+      }
+    };
+  }, [
+    reportPreviewModalState.isOpen,
+    reportPreviewModalState.report,
+    modalReportSummaryWorkflow,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (reportPdfPreviewUrlRef.current) {
+        revokePdfPreviewUrl(reportPdfPreviewUrlRef.current);
+        reportPdfPreviewUrlRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2197,6 +2997,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     try {
       const bridgeResult = await runInternalAiChatTurnThroughBackend(prompt, reportPeriodInput);
       const result = bridgeResult.result;
+      let generatedArtifactId: string | null = null;
       setChatBridgeState({
         transport: bridgeResult.transport,
         transportMessage: bridgeResult.transportMessage,
@@ -2234,6 +3035,16 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               catalogDriver,
               result.report.preview.periodContext.label,
             );
+            const saved = persistArtifactForReport(result.report.preview);
+            generatedArtifactId = saved.artifact.id;
+            setOpenedArtifactId(saved.artifact.id);
+            setActiveReportState((current) => ({
+              ...current,
+              draftMessage: saved.artifact.isPersisted
+                ? `Anteprima report salvata nell'archivio IA dedicato: artifact ${saved.artifact.id}.`
+                : `Anteprima report mantenuta nel fallback locale: artifact ${saved.artifact.id}.`,
+            }));
+            openReportPreviewModal(result.report.preview, saved.artifact.id);
           } else if (
             "normalizedDriverQuery" in result.report &&
             "normalizedTarga" in result.report &&
@@ -2281,6 +3092,16 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               catalogMatch,
               result.report.preview.periodContext.label,
             );
+            const saved = persistArtifactForReport(result.report.preview);
+            generatedArtifactId = saved.artifact.id;
+            setOpenedArtifactId(saved.artifact.id);
+            setActiveReportState((current) => ({
+              ...current,
+              draftMessage: saved.artifact.isPersisted
+                ? `Anteprima report salvata nell'archivio IA dedicato: artifact ${saved.artifact.id}.`
+                : `Anteprima report mantenuta nel fallback locale: artifact ${saved.artifact.id}.`,
+            }));
+            openReportPreviewModal(result.report.preview, saved.artifact.id);
           } else if ("normalizedDriverQuery" in result.report && result.report.status !== "ready") {
             const candidate =
               result.report.normalizedDriverQuery
@@ -2313,6 +3134,16 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               "chat",
               result.report.preview.periodContext.label,
             );
+            const saved = persistArtifactForReport(result.report.preview);
+            generatedArtifactId = saved.artifact.id;
+            setOpenedArtifactId(saved.artifact.id);
+            setActiveReportState((current) => ({
+              ...current,
+              draftMessage: saved.artifact.isPersisted
+                ? `Anteprima report salvata nell'archivio IA dedicato: artifact ${saved.artifact.id}.`
+                : `Anteprima report mantenuta nel fallback locale: artifact ${saved.artifact.id}.`,
+            }));
+            openReportPreviewModal(result.report.preview, saved.artifact.id);
           } else if ("normalizedTarga" in result.report) {
             applyVehiclePreviewReadResult(
               {
@@ -2328,14 +3159,77 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         }
       }
 
+      const outputSelection = selectInternalAiOutputMode({
+        prompt,
+        result,
+        previousMessages: chatMessages,
+        repoUnderstandingReady: repoUnderstandingState.status === "ready",
+        runtimeObserverObserved:
+          repoUnderstandingState.status === "ready" &&
+          repoUnderstandingState.snapshot?.runtimeObserver.status === "observed",
+      });
+
+      const outputReferences: InternalAiChatMessage["references"] =
+        outputSelection.mode === "ui_integration_proposal"
+          ? [
+              {
+                type: "integration_guidance",
+                label: "Guida integrazione NEXT osservata",
+                targa: null,
+              },
+            ]
+          : outputSelection.mode === "next_integration_confirmation_required"
+            ? [
+                {
+                  type: "integration_confirmation",
+                  label: "Richiede conferma per integrazione stabile nella NEXT",
+                  targa: null,
+                },
+              ]
+            : [];
+
       setChatMessages((current) => [
         ...current,
         createChatMessage({
           role: "assistente",
-          text: result.assistantText,
+          text:
+            result.report?.status === "ready"
+              ? "Ho preparato il report in anteprima. Te lo apro come documento dedicato, cosi in chat resta solo il passaggio essenziale."
+              : result.assistantText,
           intent: result.intent,
           status: result.status,
-          references: result.references,
+          references: dedupeChatMessageReferences([
+            ...result.references,
+            ...outputReferences,
+            ...(generatedArtifactId
+              ? [
+                  {
+                    type: "report_preview" as const,
+                    label: "Apri anteprima report",
+                    targa:
+                      result.report?.status === "ready" &&
+                      "preview" in result.report &&
+                      result.report.preview.reportType !== "autista"
+                        ? result.report.preview.header.targa
+                        : null,
+                    artifactId: generatedArtifactId,
+                  },
+                  {
+                    type: "artifact_archive" as const,
+                    label: `Artifact ${generatedArtifactId}`,
+                    targa: null,
+                    artifactId: generatedArtifactId,
+                  },
+                  {
+                    type: "safe_mode_notice" as const,
+                    label: "Nessuna scrittura business automatica",
+                    targa: null,
+                  },
+                ]
+              : []),
+          ]),
+          outputMode: outputSelection.mode,
+          outputReason: outputSelection.reason,
         }),
       ]);
       setChatStatus("idle");
@@ -2347,7 +3241,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       setChatBridgeState({
         transport: "frontend_fallback",
         transportMessage:
-          "La richiesta non si e conclusa sul backend mock-safe o sul fallback locale clone-safe.",
+          "La richiesta non si e conclusa sul backend server-side controllato o sul fallback locale clone-safe.",
       });
 
       trackInternalAiChatPrompt({
@@ -2374,6 +3268,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               targa: null,
             },
           ],
+          outputMode: "chat_brief",
+          outputReason:
+            "La richiesta non ha prodotto un output strutturato: viene mostrato solo l'errore sintetico in chat.",
         }),
       ]);
       setChatStatus("idle");
@@ -2630,10 +3527,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     });
   };
 
-  const saveDraftArtifact = () => {
-    if (!activeReportState.report) return;
-
-    const saved = saveInternalAiDraftArtifact({ report: activeReportState.report });
+  const persistArtifactForReport = (report: InternalAiReportPreview) => {
+    const saved = saveInternalAiDraftArtifact({ report });
     trackInternalAiArtifactAction({
       artifactId: saved.artifact.id,
       title: saved.artifact.title,
@@ -2649,6 +3544,30 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       path: location.pathname,
     });
     setSnapshotVersion((value) => value + 1);
+    return saved;
+  };
+
+  const openReportPreviewModal = (report: InternalAiReportPreview, artifactId: string | null) => {
+    setReportPreviewModalState({
+      isOpen: true,
+      report: cloneReportPreview(report),
+      artifactId,
+    });
+    setReportPdfPreviewState({
+      status: "loading",
+      url: null,
+      blob: null,
+      fileName: null,
+      message: "Sto preparando l'anteprima PDF del report...",
+    });
+    setReportDocumentActionMessage(null);
+  };
+
+  const saveDraftArtifact = () => {
+    if (!activeReportState.report) return;
+
+    const saved = persistArtifactForReport(activeReportState.report);
+    setOpenedArtifactId(saved.artifact.id);
     setActiveReportState((current) => ({
       ...current,
       draftMessage: saved.artifact.isPersisted
@@ -2733,6 +3652,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             ) ?? null
           : null,
       );
+      openReportPreviewModal(reopenedReport, artifact.id);
       if (sectionId === "artifacts") {
         navigate(NEXT_INTERNAL_AI_PATH);
       }
@@ -2753,25 +3673,107 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     });
   };
 
+  const handleCopyReportDocument = async () => {
+    if (!reportPreviewModalState.report) {
+      return;
+    }
+
+    const copied = await copyTextToClipboard(modalReportDocumentText);
+    if (!copied) {
+      setReportDocumentActionMessage("Copia non disponibile nel browser corrente.");
+      return;
+    }
+
+    setReportDocumentActionMessage("Contenuto del report copiato negli appunti.");
+  };
+
+  const handleDownloadReportDocument = () => {
+    if (reportPdfPreviewState.status !== "ready" || typeof document === "undefined") {
+      setReportDocumentActionMessage(
+        "PDF non ancora pronto. Attendi la generazione o usa la lettura testuale sotto l'anteprima.",
+      );
+      return;
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = reportPdfPreviewState.url;
+    anchor.download = reportPdfPreviewState.fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    setReportDocumentActionMessage("Download del PDF avviato.");
+  };
+
+  const handleShareReportDocument = async () => {
+    if (!reportPreviewModalState.report || typeof navigator === "undefined" || !navigator.share) {
+      setReportDocumentActionMessage("Condivisione non disponibile nel browser corrente.");
+      return;
+    }
+
+    const shareText = buildPdfShareText({
+      contextLabel: reportPreviewModalState.report.title,
+      dateLabel: reportPreviewModalState.report.periodContext.label,
+      fileName:
+        reportPdfPreviewState.status === "ready"
+          ? reportPdfPreviewState.fileName
+          : buildInternalAiReportPdfFileName(reportPreviewModalState.report),
+      url: null,
+    });
+
+    if (reportPdfPreviewState.status === "ready") {
+      const result = await sharePdfFile({
+        blob: reportPdfPreviewState.blob,
+        fileName: reportPdfPreviewState.fileName,
+        title: reportPreviewModalState.report.title,
+        text: shareText,
+      });
+
+      if (result.status === "shared") {
+        setReportDocumentActionMessage("PDF condiviso dal browser.");
+        return;
+      }
+
+      if (result.status === "aborted") {
+        setReportDocumentActionMessage("Condivisione annullata.");
+        return;
+      }
+    }
+
+    try {
+      await navigator.share({
+        title: reportPreviewModalState.report.title,
+        text: shareText,
+      });
+      setReportDocumentActionMessage("Anteprima condivisa dal browser.");
+    } catch {
+      setReportDocumentActionMessage(
+        reportPdfPreviewState.status === "ready"
+          ? "Il browser non supporta la condivisione diretta del PDF. Usa Scarica PDF."
+          : "Condivisione annullata o non riuscita.",
+      );
+    }
+  };
+
   return (
     <section className="next-page internal-ai-page">
       <header className="internal-ai-hero">
         <div className="next-panel">
-          <p className="next-page__eyebrow">IA interna / modalita sicura</p>
+          <p className="next-page__eyebrow">Assistente interno / perimetro controllato</p>
           <h1>{section.title}</h1>
           <p className="next-page__description">
-            Sottosistema IA interno isolato sotto <code>/next/ia/interna*</code>. Stato attuale:
-            preview-first, backend-first mock-safe, reversibile e senza scritture business.
+            Parla con l&apos;assistente interno del clone NEXT per leggere report, capire il repo
+            e chiarire limiti o stato del progetto. Il perimetro resta preview-first, backend-first,
+            reversibile e senza scritture business.
           </p>
           <div className="internal-ai-pill-row" style={{ marginTop: 14 }}>
-            <span className="next-chip next-chip--accent">SCAFFOLDING</span>
-            <span className="next-chip">NON OPERATIVO</span>
+            <span className="next-chip next-chip--accent">CHAT CONTROLLATA</span>
+            <span className="next-chip">ARTIFACT PREVIEW</span>
             <span className="next-chip">SOLO LETTURA</span>
             <span className="next-chip next-chip--subtle">NESSUNA SCRITTURA BUSINESS</span>
           </div>
           <p className="internal-ai-card__meta">
-            {section.description} Nessun backend IA reale, nessun segreto lato client, nessun
-            riuso runtime dei moduli IA legacy.
+            {section.description} Nessun segreto lato client, nessuna modifica automatica del codice,
+            nessun riuso runtime dei moduli IA legacy come backend canonico.
           </p>
           <div className="internal-ai-nav" style={{ marginTop: 16 }}>
             {(
@@ -2862,105 +3864,862 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               <h2>Chat interna controllata</h2>
             </div>
             <p className="next-panel__description">
-              Orchestrazione backend-first mock-safe del sottosistema IA. Nessun LLM reale, nessun
-              backend legacy canonico, nessuna scrittura business. I messaggi restano solo in
-              memoria nella pagina corrente.
+              Scrivi una richiesta libera in italiano. La chat usa un primo hook mezzo-centrico sul
+              Dossier read-only per stato targa, documenti, costi e report; quando chiedi un report
+              strutturato, il contenuto lungo viene spostato in una anteprima PDF dedicata invece di
+              finire nel thread.
             </p>
-            {chatBridgeState.transportMessage ? (
-              <div className="internal-ai-pill-row">
-                <span className={backendPreviewTransportClass(chatBridgeState.transport)}>
-                  {BACKEND_PREVIEW_TRANSPORT_LABELS[chatBridgeState.transport]}
-                </span>
-                <span className="internal-ai-muted">{chatBridgeState.transportMessage}</span>
-              </div>
-            ) : null}
-            <div className="internal-ai-chat__suggestions">
-              {CHAT_SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  className="internal-ai-chat__suggestion"
-                  onClick={() => setChatInput(suggestion)}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-            <div className="internal-ai-chat__messages">
-              {chatMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`internal-ai-chat__message ${
-                    message.role === "utente" ? "is-user" : "is-assistant"
-                  }`}
-                >
-                  <div className="internal-ai-chat__message-header">
-                    <strong>{message.role === "utente" ? "Utente" : "Assistente IA interno"}</strong>
-                    <div className="internal-ai-pill-row">
-                      <span className={statusToneClass(message.status)}>
-                        {CHAT_STATUS_LABELS[message.status]}
-                      </span>
-                      <span className="internal-ai-pill is-neutral">
-                        {formatDateLabel(message.createdAt)}
-                      </span>
+            <div className="internal-ai-chat__shell">
+              <div className="internal-ai-chat__main">
+                {chatBridgeState.transportMessage ? (
+                  <div className="internal-ai-chat__status-inline">
+                    <span className={backendPreviewTransportClass(chatBridgeState.transport)}>
+                      {BACKEND_PREVIEW_TRANSPORT_LABELS[chatBridgeState.transport]}
+                    </span>
+                    <span className="internal-ai-muted">{chatBridgeState.transportMessage}</span>
+                  </div>
+                ) : null}
+                <div className="internal-ai-chat__suggestions">
+                  {CHAT_SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className="internal-ai-chat__suggestion"
+                      onClick={() => setChatInput(suggestion)}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+                <div className="internal-ai-chat__messages">
+                  {chatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`internal-ai-chat__message ${
+                        message.role === "utente" ? "is-user" : "is-assistant"
+                      }`}
+                    >
+                      <div className="internal-ai-chat__message-header">
+                        <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
+                        <div className="internal-ai-pill-row">
+                          <span className={statusToneClass(message.status)}>
+                            {CHAT_STATUS_LABELS[message.status]}
+                          </span>
+                          <span className="internal-ai-pill is-neutral">
+                            {formatDateLabel(message.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                      {message.role === "assistente" && message.outputMode ? (
+                        <div className="internal-ai-chat__message-delivery">
+                          <span className={outputModeToneClass(message.outputMode)}>
+                            {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
+                          </span>
+                          {message.outputReason ? (
+                            <span className="internal-ai-chat__message-reason">
+                              {message.outputReason}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <p className="internal-ai-chat__message-text">{message.text}</p>
+                      {message.references.length ? (
+                        <div className="internal-ai-chat__references">
+                          {message.references.map((reference) =>
+                            reference.artifactId ? (
+                              <button
+                                key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
+                                type="button"
+                                className="internal-ai-chat__reference"
+                                onClick={() => handleOpenArtifact(reference.artifactId!)}
+                              >
+                                {reference.label}
+                                {reference.targa ? ` - ${reference.targa}` : ""}
+                              </button>
+                            ) : (
+                              <span
+                                key={`${message.id}:${reference.type}:${reference.label}`}
+                                className="internal-ai-pill is-neutral"
+                              >
+                                {reference.label}
+                                {reference.targa ? ` - ${reference.targa}` : ""}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  {chatStatus === "running" ? (
+                    <div className="internal-ai-chat__message is-assistant">
+                      <div className="internal-ai-chat__message-header">
+                        <strong>Assistente interno</strong>
+                        <span className={statusToneClass("running")}>In elaborazione</span>
+                      </div>
+                      <p className="internal-ai-chat__message-text">
+                        Sto preparando una risposta controllata dal backend IA separato. Se la
+                        richiesta e un report, troverai il contenuto lungo in una anteprima
+                        dedicata.
+                      </p>
+                    </div>
+                  ) : null}
+                  <div ref={chatMessagesEndRef} />
+                </div>
+                <div className="internal-ai-chat__composer">
+                  <label className="internal-ai-search__field">
+                    <span>Scrivi una richiesta</span>
+                    <textarea
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      placeholder="Chiedimi un report, una spiegazione del repo o un chiarimento sul perimetro della NEXT."
+                      className="internal-ai-search__input internal-ai-chat__composer-input"
+                      rows={4}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleChatSubmit();
+                        }
+                      }}
+                    />
+                  </label>
+                  <div className="internal-ai-chat__composer-actions">
+                    <p className="internal-ai-card__meta">
+                      `Invio` manda la richiesta. `Shift + Invio` va a capo.
+                    </p>
+                    <div className="internal-ai-search__actions">
+                      <button
+                        type="button"
+                        className="internal-ai-search__button"
+                        disabled={chatStatus === "running" || !chatInput.trim()}
+                        onClick={() => void handleChatSubmit()}
+                      >
+                        {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
+                      </button>
                     </div>
                   </div>
-                  <p className="internal-ai-chat__message-text">{message.text}</p>
-                  {message.references.length ? (
-                    <div className="internal-ai-pill-row">
-                      {message.references.map((reference) => (
-                        <span
-                          key={`${message.id}:${reference.type}:${reference.label}`}
-                          className="internal-ai-pill is-neutral"
-                        >
-                          {reference.label}
-                          {reference.targa ? ` - ${reference.targa}` : ""}
+                </div>
+              </div>
+              <aside className="internal-ai-chat__aside">
+                <div className="internal-ai-chat__status-grid">
+                  {chatStatusCards.map((card) => (
+                    <article key={card.label} className={`internal-ai-chat__status-card ${card.tone}`}>
+                      <p className="internal-ai-card__eyebrow">{card.label}</p>
+                      <h3>{card.value}</h3>
+                      <p className="internal-ai-card__meta">{card.detail}</p>
+                    </article>
+                  ))}
+                </div>
+                <div className="internal-ai-card internal-ai-chat__guide">
+                  <p className="internal-ai-card__eyebrow">Come rispondo</p>
+                  <ul className="internal-ai-inline-list">
+                    <li>Le domande normali restano nel thread.</li>
+                    <li>I report strutturati si aprono come anteprima PDF dedicata.</li>
+                    <li>Fonti, limiti e fallback restano visibili ma non invasivi.</li>
+                  </ul>
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <article className="next-panel">
+            <div className="next-panel__header">
+              <h2>Comprensione controllata repo e UI</h2>
+            </div>
+            <p className="next-panel__description">
+              Il backend IA separato costruisce una snapshot read-only di documenti architetturali,
+              macro-aree, pattern UI e relazioni tra schermate, cosi la nuova IA puo spiegare il
+              gestionale senza trasformarsi in un agente che modifica il repository.
+            </p>
+            <div className="internal-ai-button-row">
+              <button
+                type="button"
+                className="internal-ai-search__button"
+                onClick={() => void loadRepoUnderstandingSnapshot(true)}
+                disabled={repoUnderstandingState.status === "loading"}
+              >
+                {repoUnderstandingState.status === "loading"
+                  ? "Aggiornamento snapshot..."
+                  : "Aggiorna snapshot repo/UI"}
+              </button>
+            </div>
+            {repoUnderstandingState.transportMessage ? (
+              <div className="internal-ai-pill-row" style={{ marginTop: 12 }}>
+                <span className={backendPreviewTransportClass(repoUnderstandingState.transport)}>
+                  {BACKEND_PREVIEW_TRANSPORT_LABELS[repoUnderstandingState.transport]}
+                </span>
+                <span className="internal-ai-muted">
+                  {repoUnderstandingState.transportMessage}
+                </span>
+              </div>
+            ) : null}
+            {repoUnderstandingState.status === "ready" && repoUnderstandingState.snapshot ? (
+              <>
+                <section className="internal-ai-grid" style={{ marginTop: 16 }}>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Documenti</p>
+                    <h3>{repoUnderstandingState.snapshot.documents.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Fonti architetturali e di stato lette dal backend IA separato.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Macro-aree</p>
+                    <h3>{repoUnderstandingState.snapshot.moduleAreas.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Blocchi funzionali e UI rappresentativi del clone.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Pattern UI</p>
+                    <h3>{repoUnderstandingState.snapshot.uiPatterns.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Pattern visuali e interazioni riusabili gia osservati nel repo.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Relazioni schermate</p>
+                    <h3>{repoUnderstandingState.snapshot.screenRelations.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Collegamenti dichiarati tra shell, dossier, analisi e IA interna.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Indice file controllato</p>
+                    <h3>{repoUnderstandingState.snapshot.fileIndex.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      File di codice, route-like file e CSS letti in modo controllato dal backend
+                      IA separato.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Relazioni stile</p>
+                    <h3>{repoUnderstandingState.snapshot.styleRelations.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Import CSS osservati tra pagina, componenti e fogli stile rappresentativi.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Madre vs NEXT</p>
+                    <h3>{repoUnderstandingState.snapshot.legacyNextRelations.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Relazioni chiave tra runtime madre, shell NEXT e backend IA separato.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Runtime NEXT osservato</p>
+                    <h3>{repoUnderstandingState.snapshot.runtimeObserver.routeCount}</h3>
+                    <p className="internal-ai-card__meta">
+                      {RUNTIME_OBSERVER_STATUS_LABELS[
+                        repoUnderstandingState.snapshot.runtimeObserver.status
+                      ] ?? repoUnderstandingState.snapshot.runtimeObserver.status}
+                      {" | "}screenshot raccolti:{" "}
+                      {repoUnderstandingState.snapshot.runtimeObserver.screenshotCount}
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Guida integrazione</p>
+                    <h3>{repoUnderstandingState.snapshot.integrationGuidance.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Regole concrete per scegliere modale, pagina, tab, card, bottone o file
+                      candidati nel flusso corretto del gestionale.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Firebase read-only</p>
+                    <h3>
+                      {
+                        FIREBASE_READINESS_LABELS[
+                          repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.status
+                        ]
+                      }
+                    </h3>
+                    <p className="internal-ai-card__meta">
+                      Stato readiness verificato per Firestore server-side read-only nel backend IA
+                      separato.
+                    </p>
+                  </article>
+                </section>
+                <div className="next-section-grid" style={{ marginTop: 16 }}>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Documenti e route rappresentative</h3>
+                    </div>
+                    <ul className="internal-ai-inline-list">
+                      {repoUnderstandingState.snapshot.documents.slice(0, 3).map((document) => (
+                        <li key={document.path}>
+                          <strong>{document.title}:</strong> {document.summary}
+                        </li>
+                      ))}
+                    </ul>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.representativeRoutes.map((route) => (
+                        <li key={route.path}>
+                          <strong>{route.label}:</strong> <code>{route.path}</code> - {route.summary}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Pattern UI e limiti</h3>
+                    </div>
+                    <ul className="internal-ai-inline-list">
+                      {repoUnderstandingState.snapshot.uiPatterns.map((pattern) => (
+                        <li key={pattern.id}>
+                          <strong>{pattern.label}:</strong> {pattern.summary}
+                        </li>
+                      ))}
+                    </ul>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.limitations.map((limitation) => (
+                        <li key={limitation}>{limitation}</li>
+                      ))}
+                    </ul>
+                  </article>
+                </div>
+                <div className="next-section-grid" style={{ marginTop: 16 }}>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Osservazione runtime NEXT</h3>
+                    </div>
+                    <p className="next-panel__description">
+                      Questo blocco mostra solo cio che l&apos;observer read-only ha visto davvero
+                      nella NEXT: route visitate, stati whitelist-safe, heading, card, tab, link
+                      visibili e screenshot locali. Nessun click operativo, nessun submit e nessuna
+                      uscita dal perimetro <code>/next/*</code>.
+                    </p>
+                    <div className="internal-ai-pill-row" style={{ marginTop: 12 }}>
+                      <span
+                        className={runtimeObserverStatusClass(
+                          repoUnderstandingState.snapshot.runtimeObserver.status,
+                        )}
+                      >
+                        {RUNTIME_OBSERVER_STATUS_LABELS[
+                          repoUnderstandingState.snapshot.runtimeObserver.status
+                        ] ?? repoUnderstandingState.snapshot.runtimeObserver.status}
+                      </span>
+                      <span className="internal-ai-pill is-neutral">
+                        Route: {repoUnderstandingState.snapshot.runtimeObserver.routeCount}
+                      </span>
+                      <span className="internal-ai-pill is-neutral">
+                        Screenshot: {repoUnderstandingState.snapshot.runtimeObserver.screenshotCount}
+                      </span>
+                      <span className="internal-ai-pill is-neutral">
+                        Stati osservati: {repoUnderstandingState.snapshot.runtimeObserver.stateCount}
+                      </span>
+                      <span className="internal-ai-pill is-neutral">
+                        Ultima osservazione:{" "}
+                        {formatDateLabel(repoUnderstandingState.snapshot.runtimeObserver.observedAt)}
+                      </span>
+                    </div>
+                    <p className="internal-ai-card__meta" style={{ marginTop: 12 }}>
+                      Se vuoi rigenerare la vista runtime, usa{" "}
+                      <code>npm run internal-ai:observe-next</code> con la NEXT locale attiva su{" "}
+                      <code>{repoUnderstandingState.snapshot.runtimeObserver.baseUrl ?? "http://127.0.0.1:4173"}</code>.
+                    </p>
+                    {repoUnderstandingState.snapshot.runtimeObserver.routes.length ? (
+                      <div className="internal-ai-runtime-observer-grid" style={{ marginTop: 16 }}>
+                        {repoUnderstandingState.snapshot.runtimeObserver.routes
+                          .slice(0, 12)
+                          .map((route) => {
+                            const screenshotUrl = buildInternalAiRuntimeObserverAssetUrl(
+                              route.screenshotFileName,
+                            );
+
+                            return (
+                              <article
+                                key={`runtime-observer:${route.id}`}
+                                className="internal-ai-runtime-observer-card"
+                              >
+                                {screenshotUrl ? (
+                                  <a
+                                    href={screenshotUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="internal-ai-runtime-observer-card__media-link"
+                                  >
+                                    <img
+                                      src={screenshotUrl}
+                                      alt={`Screenshot ${route.label}`}
+                                      className="internal-ai-runtime-observer-card__media"
+                                    />
+                                  </a>
+                                ) : (
+                                  <div className="internal-ai-runtime-observer-card__placeholder">
+                                    Screenshot non disponibile
+                                  </div>
+                                )}
+                                <div className="internal-ai-runtime-observer-card__body">
+                                  <div className="internal-ai-list__row-header">
+                                    <strong>{route.label}</strong>
+                                    <div className="internal-ai-pill-row">
+                                      <span className={runtimeObserverStatusClass(route.status)}>
+                                        {RUNTIME_OBSERVER_STATUS_LABELS[route.status] ?? route.status}
+                                      </span>
+                                      <span className="internal-ai-pill is-neutral">
+                                        {RUNTIME_SCREEN_TYPE_LABELS[route.screenType] ??
+                                          route.screenType}
+                                      </span>
+                                      <span className="internal-ai-pill is-neutral">
+                                        {RUNTIME_COVERAGE_LEVEL_LABELS[route.coverageLevel] ??
+                                          route.coverageLevel}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <p className="internal-ai-card__meta">
+                                    <code>{route.finalPath ?? route.path}</code>
+                                    {route.discoveredFromRouteId
+                                      ? ` | scoperta da ${route.discoveredFromRouteId}`
+                                      : ""}
+                                  </p>
+                                  <p className="internal-ai-muted">
+                                    {route.mainHeading ??
+                                      route.pageTitle ??
+                                      "Titolo principale non rilevato in modo affidabile."}
+                                  </p>
+                                  <div className="internal-ai-pill-row">
+                                    <span className="internal-ai-pill is-neutral">
+                                      Card: {route.visibleCards.length}
+                                    </span>
+                                    <span className="internal-ai-pill is-neutral">
+                                      Tab: {route.visibleTabs.length}
+                                    </span>
+                                    <span className="internal-ai-pill is-neutral">
+                                      Bottoni: {route.visibleButtons.length}
+                                    </span>
+                                    <span className="internal-ai-pill is-neutral">
+                                      Link NEXT: {route.visibleLinks.length}
+                                    </span>
+                                    <span className="internal-ai-pill is-neutral">
+                                      Stati: {route.stateObservations.length}
+                                    </span>
+                                  </div>
+                                  {route.visibleSections.length ? (
+                                    <p className="internal-ai-card__meta">
+                                      Sezioni: {route.visibleSections.slice(0, 4).join(" | ")}
+                                    </p>
+                                  ) : null}
+                                  {route.surfaceEntries.length ? (
+                                    <div className="internal-ai-pill-row">
+                                      {route.surfaceEntries.slice(0, 6).map((entry) => (
+                                        <span
+                                          key={`${route.id}:surface:${entry.kind}:${entry.label}:${entry.targetPath ?? ""}`}
+                                          className="internal-ai-pill is-neutral"
+                                        >
+                                          {RUNTIME_SURFACE_KIND_LABELS[entry.kind] ?? entry.kind}:{" "}
+                                          {entry.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  {route.visibleLinks.length ? (
+                                    <div className="internal-ai-pill-row">
+                                      {route.visibleLinks.slice(0, 4).map((entry) => (
+                                        <span
+                                          key={`${route.id}:link:${entry.path}:${entry.label}`}
+                                          className="internal-ai-pill is-neutral"
+                                        >
+                                          {entry.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  {route.stateObservations.length ? (
+                                    <div className="internal-ai-list" style={{ marginTop: 8 }}>
+                                      {route.stateObservations.slice(0, 3).map((stateObservation) => (
+                                        <div
+                                          key={`${route.id}:state:${stateObservation.id}`}
+                                          className="internal-ai-runtime-observer-state"
+                                        >
+                                          <div className="internal-ai-list__row-header">
+                                            <strong>{stateObservation.label}</strong>
+                                            <div className="internal-ai-pill-row">
+                                              <span
+                                                className={runtimeObserverStatusClass(
+                                                  stateObservation.status,
+                                                )}
+                                              >
+                                                {RUNTIME_OBSERVER_STATUS_LABELS[
+                                                  stateObservation.status
+                                                ] ?? stateObservation.status}
+                                              </span>
+                                              <span className="internal-ai-pill is-neutral">
+                                                {RUNTIME_STATE_KIND_LABELS[stateObservation.kind] ??
+                                                  stateObservation.kind}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <p className="internal-ai-card__meta">
+                                            Trigger: {stateObservation.triggerLabel}
+                                            {stateObservation.finalPath
+                                              ? ` | ${stateObservation.finalPath}`
+                                              : ""}
+                                          </p>
+                                          {stateObservation.visibleSections.length ? (
+                                            <p className="internal-ai-card__meta">
+                                              Sezioni:{" "}
+                                              {stateObservation.visibleSections
+                                                .slice(0, 3)
+                                                .join(" | ")}
+                                            </p>
+                                          ) : null}
+                                          {stateObservation.limitations.length ? (
+                                            <ul className="internal-ai-inline-list">
+                                              {stateObservation.limitations
+                                                .slice(0, 2)
+                                                .map((entry) => (
+                                                  <li
+                                                    key={`${stateObservation.id}:limit:${entry}`}
+                                                  >
+                                                    {entry}
+                                                  </li>
+                                                ))}
+                                            </ul>
+                                          ) : null}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  {route.limitations.length ? (
+                                    <ul className="internal-ai-inline-list">
+                                      {route.limitations.slice(0, 2).map((entry) => (
+                                        <li key={`${route.id}:limit:${entry}`}>{entry}</li>
+                                      ))}
+                                    </ul>
+                                  ) : null}
+                                </div>
+                              </article>
+                            );
+                          })}
+                      </div>
+                    ) : (
+                      <div className="next-clone-placeholder internal-ai-empty" style={{ marginTop: 16 }}>
+                        <p>
+                          L&apos;observer runtime non ha ancora raccolto schermate reali della NEXT.
+                          La guida IA usa ancora solo la snapshot repo/UI curata.
+                        </p>
+                      </div>
+                    )}
+                  </article>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Consigliatore integrazione UI, flow e file</h3>
+                    </div>
+                    <p className="next-panel__description">
+                      La nuova IA usa questa matrice per dire dove conviene integrare una funzione
+                      futura: modulo giusto, superficie giusta e file candidati coerenti col flusso
+                      reale del gestionale.
+                    </p>
+                    <div className="internal-ai-list" style={{ marginTop: 16 }}>
+                      {repoUnderstandingState.snapshot.integrationGuidance.map((entry) => (
+                        <div key={`integration-guidance:${entry.id}`} className="internal-ai-list__row">
+                          <div className="internal-ai-list__row-header">
+                            <strong>{entry.recommendedModuleLabel}</strong>
+                            <div className="internal-ai-pill-row">
+                              <span className="internal-ai-pill is-neutral">
+                                {UI_INTEGRATION_DOMAIN_LABELS[entry.domainType] ?? entry.domainType}
+                              </span>
+                              <span className="internal-ai-pill is-warning">
+                                Superficie primaria:{" "}
+                                {UI_INTEGRATION_SURFACE_LABELS[entry.primarySurfaceKind] ??
+                                  entry.primarySurfaceKind}
+                              </span>
+                              <span className="internal-ai-pill is-neutral">
+                                Confidenza {entry.confidence}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="internal-ai-muted">{entry.whenToUse}</p>
+                          <p className="internal-ai-card__meta">
+                            <strong>Perche qui:</strong> {entry.why}
+                          </p>
+                          <p className="internal-ai-card__meta">
+                            <strong>Route consigliate:</strong>{" "}
+                            {entry.recommendedRoutePaths.map((routePath) => (
+                              <code key={`${entry.id}:route:${routePath}`}>{routePath} </code>
+                            ))}
+                          </p>
+                          <p className="internal-ai-card__meta">
+                            <strong>File candidati:</strong>{" "}
+                            {entry.candidateSourcePaths.map((filePath) => (
+                              <code key={`${entry.id}:file:${filePath}`}>{filePath} </code>
+                            ))}
+                          </p>
+                          <div className="internal-ai-pill-row">
+                            {entry.recommendedSurfaceKinds.map((surface) => (
+                              <span
+                                key={`${entry.id}:surface:${surface}`}
+                                className="internal-ai-pill is-neutral"
+                              >
+                                {UI_INTEGRATION_SURFACE_LABELS[surface] ?? surface}
+                              </span>
+                            ))}
+                            {entry.alternativeSurfaceKinds.map((surface) => (
+                              <span
+                                key={`${entry.id}:surface-alt:${surface}`}
+                                className="internal-ai-pill is-warning"
+                              >
+                                Alternativa{" "}
+                                {UI_INTEGRATION_SURFACE_LABELS[surface] ?? surface}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="internal-ai-card__meta">
+                            <strong>Ruolo file:</strong> {entry.fileRoles.join(" | ")}
+                          </p>
+                          {entry.evidenceRouteIds.length ? (
+                            <p className="internal-ai-card__meta">
+                              <strong>Evidenze runtime:</strong> {entry.evidenceRouteIds.join(" | ")}
+                            </p>
+                          ) : null}
+                          <div className="internal-ai-pill-row">
+                            {entry.impactedModules.map((moduleLabel) => (
+                              <span
+                                key={`${entry.id}:module:${moduleLabel}`}
+                                className="internal-ai-pill is-neutral"
+                              >
+                                Impatta {moduleLabel}
+                              </span>
+                            ))}
+                            {entry.avoidModules.map((moduleLabel) => (
+                              <span
+                                key={`${entry.id}:avoid:${moduleLabel}`}
+                                className="internal-ai-pill is-warning"
+                              >
+                                Evita {moduleLabel}
+                              </span>
+                            ))}
+                          </div>
+                          {entry.antiPatterns.length ? (
+                            <ul className="internal-ai-inline-list">
+                              {entry.antiPatterns.map((antiPattern) => (
+                                <li key={`${entry.id}:anti-pattern:${antiPattern}`}>{antiPattern}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                </div>
+                <div className="next-section-grid" style={{ marginTop: 16 }}>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Indice repository controllato</h3>
+                    </div>
+                    <p className="next-panel__description">
+                      Il backend IA non scansiona tutto il repository in modo opaco: indicizza solo
+                      un perimetro controllato di file chiave per codice, route-like file,
+                      componenti e CSS.
+                    </p>
+                    <div className="internal-ai-pill-row" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.repoZones.map((zone) => (
+                        <span key={zone.id} className="internal-ai-pill is-neutral">
+                          {REPO_ZONE_LABELS[zone.id] ?? zone.id}
                         </span>
                       ))}
                     </div>
-                  ) : null}
+                    <div className="internal-ai-list" style={{ marginTop: 16 }}>
+                      {repoUnderstandingState.snapshot.fileIndex.slice(0, 10).map((entry) => (
+                        <div key={entry.path} className="internal-ai-list__row">
+                          <div className="internal-ai-list__row-header">
+                            <strong>{entry.path}</strong>
+                            <div className="internal-ai-pill-row">
+                              <span className="internal-ai-pill is-neutral">
+                                {REPO_ZONE_LABELS[entry.zoneId] ?? entry.zoneId}
+                              </span>
+                              <span className="internal-ai-pill is-neutral">
+                                {REPO_FILE_KIND_LABELS[entry.kind] ?? entry.kind}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="internal-ai-muted">{entry.uiRole}</p>
+                          <div className="internal-ai-pill-row">
+                            {entry.relatedRoutePaths.length ? (
+                              <span className="internal-ai-pill is-neutral">
+                                Route collegate: {entry.relatedRoutePaths.join(", ")}
+                              </span>
+                            ) : null}
+                            {entry.relatedStylePaths.length ? (
+                              <span className="internal-ai-pill is-neutral">
+                                CSS collegati: {entry.relatedStylePaths.join(", ")}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Madre vs NEXT e policy di scrittura</h3>
+                    </div>
+                    <div className="internal-ai-list">
+                      {repoUnderstandingState.snapshot.legacyNextRelations.map((relation) => (
+                        <div key={relation.id} className="internal-ai-list__row">
+                          <div className="internal-ai-list__row-header">
+                            <strong>{relation.label}</strong>
+                          </div>
+                          <p className="internal-ai-muted">{relation.summary}</p>
+                          <div className="internal-ai-pill-row">
+                            {relation.legacyPaths.map((entry) => (
+                              <span key={`${relation.id}:legacy:${entry}`} className="internal-ai-pill is-warning">
+                                Madre: {entry}
+                              </span>
+                            ))}
+                            {relation.nextPaths.map((entry) => (
+                              <span key={`${relation.id}:next:${entry}`} className="internal-ai-pill is-neutral">
+                                NEXT/backend IA: {entry}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.repoZones.map((zone) => (
+                        <li key={`${zone.id}:policy`}>
+                          <strong>{REPO_ZONE_LABELS[zone.id] ?? zone.id}:</strong>{" "}
+                          {REPO_WRITE_POLICY_LABELS[zone.writePolicy] ?? zone.writePolicy}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
                 </div>
-              ))}
-              {chatStatus === "running" ? (
-                <div className="internal-ai-chat__message is-assistant">
-                  <div className="internal-ai-chat__message-header">
-                    <strong>Assistente IA interno</strong>
-                    <span className={statusToneClass("running")}>In elaborazione</span>
-                  </div>
-                  <p className="internal-ai-chat__message-text">
-                    Sto elaborando la richiesta con l&apos;orchestratore backend-first mock-safe...
-                  </p>
+                <div className="next-section-grid" style={{ marginTop: 16 }}>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Readiness Firestore server-side</h3>
+                    </div>
+                    <div className="internal-ai-pill-row">
+                      <span
+                        className={statusToneClass(
+                          repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.status,
+                        )}
+                      >
+                        {
+                          FIREBASE_READINESS_LABELS[
+                            repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.status
+                          ]
+                        }
+                      </span>
+                    </div>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.evidence.map(
+                        (entry) => (
+                          <li key={`firestore:evidence:${entry}`}>{entry}</li>
+                        ),
+                      )}
+                    </ul>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.blockers.map(
+                        (entry) => (
+                          <li key={`firestore:blocker:${entry}`}>{entry}</li>
+                        ),
+                      )}
+                    </ul>
+                    {repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.candidateReads
+                      .length ? (
+                      <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                        {repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.candidateReads.map(
+                          (entry) => (
+                            <li key={`firestore:candidate:${entry.id}`}>
+                              <strong>{entry.label}:</strong> {entry.targetLabel}.{" "}
+                              {entry.sourceOfTruth}
+                              <br />
+                              Vincoli: {entry.constraints.join(" ")}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    ) : null}
+                    <p className="internal-ai-card__meta">
+                      Prossimo passo stabile:{" "}
+                      {repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.nextStep}
+                    </p>
+                  </article>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Readiness Storage server-side</h3>
+                    </div>
+                    <div className="internal-ai-pill-row">
+                      <span
+                        className={statusToneClass(
+                          repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.status,
+                        )}
+                      >
+                        {
+                          FIREBASE_READINESS_LABELS[
+                            repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.status
+                          ]
+                        }
+                      </span>
+                    </div>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.evidence.map(
+                        (entry) => (
+                          <li key={`storage:evidence:${entry}`}>{entry}</li>
+                        ),
+                      )}
+                    </ul>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.blockers.map(
+                        (entry) => (
+                          <li key={`storage:blocker:${entry}`}>{entry}</li>
+                        ),
+                      )}
+                    </ul>
+                    {repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.candidateReads
+                      .length ? (
+                      <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                        {repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.candidateReads.map(
+                          (entry) => (
+                            <li key={`storage:candidate:${entry.id}`}>
+                              <strong>{entry.label}:</strong> {entry.targetLabel}.{" "}
+                              {entry.sourceOfTruth}
+                              <br />
+                              Vincoli: {entry.constraints.join(" ")}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    ) : null}
+                    <p className="internal-ai-card__meta">
+                      Prossimo passo stabile:{" "}
+                      {repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.nextStep}
+                    </p>
+                  </article>
+                  <article className="next-panel">
+                    <div className="next-panel__header">
+                      <h3>Prerequisiti comuni</h3>
+                    </div>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.firebaseReadiness.sharedRequirements.map(
+                        (entry) => (
+                          <li key={`firebase:requirement:${entry.id}`}>
+                            <strong>
+                              {entry.label} (
+                              {FIREBASE_REQUIREMENT_STATUS_LABELS[entry.status] ?? entry.status})
+                              :
+                            </strong>{" "}
+                            {entry.detail}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                    <ul className="internal-ai-inline-list" style={{ marginTop: 12 }}>
+                      {repoUnderstandingState.snapshot.firebaseReadiness.notes.map((entry) => (
+                        <li key={`firebase:note:${entry}`}>{entry}</li>
+                      ))}
+                    </ul>
+                  </article>
                 </div>
-              ) : null}
-            </div>
-            <div className="internal-ai-chat__composer">
-              <label className="internal-ai-search__field">
-                <span>Scrivi una richiesta</span>
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Es. crea report targa AB123CD ultimi 30 giorni oppure report autista Mario Rossi ultimo mese"
-                  className="internal-ai-search__input"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleChatSubmit();
-                    }
-                  }}
-                />
-              </label>
-              <div className="internal-ai-search__actions">
-                <button
-                  type="button"
-                  className="internal-ai-search__button"
-                  disabled={chatStatus === "running" || !chatInput.trim()}
-                  onClick={() => void handleChatSubmit()}
-                >
-                  {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
-                </button>
-              </div>
-            </div>
+              </>
+            ) : repoUnderstandingState.message ? (
+              <p className="internal-ai-card__meta" style={{ marginTop: 12 }}>
+                {repoUnderstandingState.message}
+              </p>
+            ) : null}
           </article>
 
           <article className="next-panel internal-ai-search">
@@ -4444,7 +6203,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                 <ul className="internal-ai-inline-list">
                   {tracking.recentIntents.map((entry) => (
                     <li key={`${entry.intent}:${entry.updatedAt}`}>
-                      {entry.intent} - usi {entry.count}
+                      {CHAT_INTENT_LABELS[entry.intent] ?? entry.intent} - usi {entry.count}
                     </li>
                   ))}
                 </ul>
@@ -4477,9 +6236,12 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             <>
               <article className="next-panel">
                 <div className="next-panel__header">
-                  <h2>{activeReportState.report.title}</h2>
+                  <h2>Anteprima report pronta</h2>
                 </div>
-                <p className="next-panel__description">{activeReportState.report.subtitle}</p>
+                <p className="next-panel__description">
+                  {activeReportState.report.title}. Il report completo e disponibile nel documento
+                  dedicato, cosi la chat resta leggibile anche quando l&apos;anteprima e ampia.
+                </p>
                 <div className="internal-ai-pill-row" style={{ marginTop: 12 }}>
                   <span className="internal-ai-pill is-neutral">
                     {getReportTypeLabel(activeReportState.report)}
@@ -4506,6 +6268,15 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                 </ul>
 
                 <div className="internal-ai-button-row">
+                  <button
+                    type="button"
+                    className="internal-ai-search__button"
+                    onClick={() =>
+                      openReportPreviewModal(activeReportState.report!, openedArtifactId)
+                    }
+                  >
+                    Apri anteprima PDF
+                  </button>
                   <button type="button" className="internal-ai-search__button" onClick={markRevisionRequested}>
                     Segna da rivedere
                   </button>
@@ -4637,121 +6408,32 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   </article>
                 ))}
               </section>
-
-              <div className="next-section-grid">
-                <article className="next-panel">
-                  <div className="next-panel__header">
-                    <h2>Sezioni del report</h2>
-                  </div>
-                  <div className="internal-ai-list">
-                    {activeReportState.report.sections.map((item) => (
-                      <div key={item.id} className="internal-ai-list__row">
-                        <div className="internal-ai-list__row-header">
-                          <strong>{item.title}</strong>
-                          <div className="internal-ai-pill-row">
-                            <span className={statusToneClass(item.status)}>
-                              {SECTION_STATUS_LABELS[item.status] ?? item.status}
-                            </span>
-                            <span className={statusToneClass(item.periodStatus)}>
-                              {PERIOD_STATUS_LABELS[item.periodStatus] ?? item.periodStatus}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="internal-ai-muted">{item.summary}</p>
-                        {item.periodNote ? (
-                          <p className="internal-ai-card__meta">{item.periodNote}</p>
-                        ) : null}
-                        <ul className="internal-ai-inline-list">
-                          {item.bullets.map((bullet) => (
-                            <li key={`${item.id}:${bullet}`}>{bullet}</li>
-                          ))}
-                        </ul>
-                        {item.notes.length ? (
-                          <ul className="internal-ai-inline-list">
-                            {item.notes.map((note) => (
-                              <li key={`${item.id}:note:${note}`}>{note}</li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </article>
-
-                <article className="next-panel">
-                  <div className="next-panel__header">
-                    <h2>Fonti lette</h2>
-                  </div>
-                  <div className="internal-ai-list">
-                    {activeReportState.report.sources.map((source) => (
-                      <div key={source.id} className="internal-ai-list__row">
-                        <div className="internal-ai-list__row-header">
-                          <strong>{source.title}</strong>
-                          <div className="internal-ai-pill-row">
-                            <span className={statusToneClass(source.status)}>
-                              {SOURCE_STATUS_LABELS[source.status] ?? source.status}
-                            </span>
-                            <span className={statusToneClass(source.periodStatus)}>
-                              {PERIOD_STATUS_LABELS[source.periodStatus] ?? source.periodStatus}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="internal-ai-muted">{source.description}</p>
-                        {source.periodNote ? (
-                          <p className="internal-ai-card__meta">{source.periodNote}</p>
-                        ) : null}
-                        <div className="internal-ai-pill-row">
-                          {source.datasetLabels.map((dataset) => (
-                            <span key={`${source.id}:${dataset}`} className="internal-ai-pill is-neutral">
-                              {dataset}
-                            </span>
-                          ))}
-                          {source.countLabel ? (
-                            <span className="internal-ai-pill is-neutral">{source.countLabel}</span>
-                          ) : null}
-                        </div>
-                        {source.notes.length ? (
-                          <ul className="internal-ai-inline-list">
-                            {source.notes.map((note) => (
-                              <li key={`${source.id}:source-note:${note}`}>{note}</li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              </div>
-
-              <div className="next-section-grid">
-                <article className="next-panel next-tone next-tone--warning">
-                  <div className="next-panel__header">
-                    <h2>Dati mancanti o da completare</h2>
-                  </div>
+              <article className="next-panel">
+                <div className="next-panel__header">
+                  <h2>Contesto sintetico del report</h2>
+                </div>
+                <div className="internal-ai-pill-row">
+                  {activeReportState.report.sources.slice(0, 4).map((source) => (
+                    <span key={source.id} className="internal-ai-pill is-neutral">
+                      {source.title}
+                    </span>
+                  ))}
                   {activeReportState.report.missingData.length ? (
-                    <ul className="internal-ai-inline-list">
-                      {activeReportState.report.missingData.map((entry) => (
-                        <li key={entry}>{entry}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="next-panel__description">
-                      Nessun dato mancante rilevante emerso per questa anteprima.
-                    </p>
-                  )}
-                </article>
-
-                <article className="next-panel">
-                  <div className="next-panel__header">
-                    <h2>Evidenze e segnali</h2>
-                  </div>
-                  <ul className="internal-ai-inline-list">
-                    {activeReportState.report.evidences.map((entry) => (
-                      <li key={entry}>{entry}</li>
-                    ))}
-                  </ul>
-                </article>
-              </div>
+                    <span className="internal-ai-pill is-warning">
+                      Dati mancanti {activeReportState.report.missingData.length}
+                    </span>
+                  ) : null}
+                  {activeReportState.report.evidences.length ? (
+                    <span className="internal-ai-pill is-neutral">
+                      Evidenze {activeReportState.report.evidences.length}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="internal-ai-card__meta">
+                  Le sezioni complete, le fonti lette, i dati mancanti e gli eventuali output
+                  server-side restano nella anteprima PDF dedicata.
+                </p>
+              </article>
             </>
           ) : null}
 
@@ -5147,9 +6829,27 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
           {openedArtifact.payload ? (
             <>
               <p className="internal-ai-card__meta">
-                Usa il pulsante <strong>Riapri report</strong> nell&apos;archivio per riportare la
-                preview nella schermata principale del modulo IA interno con il contesto corretto.
+                Questo artifact contiene una preview riapribile. Puoi riportarla nella home IA o
+                aprirla direttamente nel documento dedicato.
               </p>
+              <div className="internal-ai-button-row">
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  onClick={() => handleOpenArtifact(openedArtifact.id)}
+                >
+                  Riapri nella home IA
+                </button>
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  onClick={() =>
+                    openReportPreviewModal(openedArtifact.payload!.report, openedArtifact.id)
+                  }
+                >
+                  Apri anteprima PDF
+                </button>
+              </div>
               {renderPreviewState(openedArtifact.payload.report.previewState)}
               {renderApprovalState(openedArtifact.payload.report.approvalState)}
               <div className="internal-ai-grid">
@@ -5161,38 +6861,18 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   </article>
                 ))}
               </div>
-              <div className="internal-ai-list" style={{ marginTop: 16 }}>
-                <div className="internal-ai-list__row">
-                  <div className="internal-ai-list__row-header">
-                    <strong>Fonti lette</strong>
-                    <span className="internal-ai-pill is-neutral">
-                      {openedArtifact.payload.report.sources.length} fonti
-                    </span>
-                  </div>
-                  <div className="internal-ai-pill-row">
-                    {openedArtifact.payload.sourceDatasetLabels.map((dataset) => (
-                      <span
-                        key={`${openedArtifact.id}:dataset:${dataset}`}
-                        className="internal-ai-pill is-neutral"
-                      >
-                        {dataset}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="internal-ai-list__row">
-                  <div className="internal-ai-list__row-header">
-                    <strong>Dati mancanti</strong>
-                    <span className="internal-ai-pill is-warning">
-                      {openedArtifact.payload.missingDataCount}
-                    </span>
-                  </div>
-                  <ul className="internal-ai-inline-list">
-                    {openedArtifact.payload.report.missingData.map((entry) => (
-                      <li key={`${openedArtifact.id}:missing:${entry}`}>{entry}</li>
-                    ))}
-                  </ul>
-                </div>
+              <div className="internal-ai-pill-row" style={{ marginTop: 16 }}>
+                {openedArtifact.payload.sourceDatasetLabels.map((dataset) => (
+                  <span
+                    key={`${openedArtifact.id}:dataset:${dataset}`}
+                    className="internal-ai-pill is-neutral"
+                  >
+                    {dataset}
+                  </span>
+                ))}
+                <span className="internal-ai-pill is-warning">
+                  Dati mancanti {openedArtifact.payload.missingDataCount}
+                </span>
               </div>
             </>
           ) : (
@@ -5254,6 +6934,137 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               ))}
             </div>
           </article>
+        </div>
+      ) : null}
+
+      {reportPreviewModalState.isOpen && reportPreviewModalState.report ? (
+        <div
+          className="internal-ai-document-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Anteprima PDF del report"
+        >
+          <button
+            type="button"
+            className="internal-ai-document-modal__backdrop"
+            aria-label="Chiudi anteprima report"
+            onClick={closeReportPreviewModal}
+          />
+          <div className="internal-ai-document-modal__sheet">
+            <div className="internal-ai-document-modal__toolbar">
+              <div>
+                <p className="internal-ai-card__eyebrow">Anteprima PDF del report</p>
+                <h2>{reportPreviewModalState.report.title}</h2>
+                <p className="internal-ai-card__meta">
+                  {reportPreviewModalState.artifactId
+                    ? `Artifact ${reportPreviewModalState.artifactId}`
+                    : "Anteprima generata dalla chat controllata"}
+                </p>
+                <p className="internal-ai-card__meta">
+                  PDF reale generato al volo dall&apos;artifact IA dedicato. Nessuna scrittura
+                  business automatica.
+                </p>
+              </div>
+              <div className="internal-ai-button-row">
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  onClick={() => void handleCopyReportDocument()}
+                >
+                  Copia contenuto
+                </button>
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  onClick={handleDownloadReportDocument}
+                >
+                  Scarica PDF
+                </button>
+                {typeof navigator !== "undefined" && "share" in navigator ? (
+                  <button
+                    type="button"
+                    className="internal-ai-search__button"
+                    onClick={() => void handleShareReportDocument()}
+                  >
+                    Condividi
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  onClick={closeReportPreviewModal}
+                >
+                  Chiudi
+                </button>
+              </div>
+            </div>
+            {reportDocumentActionMessage ? (
+              <p className="internal-ai-card__meta">{reportDocumentActionMessage}</p>
+            ) : null}
+            <div className="internal-ai-document-modal__content">
+              <div className="internal-ai-document-modal__pdf-shell">
+                <div className="internal-ai-document-modal__pdf-meta">
+                  <span className="internal-ai-pill is-neutral">
+                    {reportPdfPreviewState.status === "ready"
+                      ? "PDF pronto"
+                      : reportPdfPreviewState.status === "loading"
+                        ? "Generazione PDF in corso"
+                        : "Fallback documento"}
+                  </span>
+                  <span className="internal-ai-pill is-neutral">
+                    Periodo {reportPreviewModalState.report.periodContext.label}
+                  </span>
+                  <span className="internal-ai-pill is-neutral">
+                    {getReportTypeLabel(reportPreviewModalState.report)}
+                  </span>
+                </div>
+                <p className="internal-ai-card__meta">
+                  {reportPdfPreviewState.message ??
+                    "L'anteprima PDF usa solo il contenuto gia verificato del report IA."}
+                </p>
+                {reportPdfPreviewState.status === "ready" ? (
+                  <object
+                    data={reportPdfPreviewState.url}
+                    type="application/pdf"
+                    className="internal-ai-document-modal__pdf-viewer"
+                  >
+                    <iframe
+                      title={reportPreviewModalState.report.title}
+                      src={reportPdfPreviewState.url}
+                      className="internal-ai-document-modal__pdf-viewer"
+                    />
+                  </object>
+                ) : reportPdfPreviewState.status === "loading" ? (
+                  <div className="next-clone-placeholder internal-ai-empty">
+                    <p>
+                      Sto preparando il PDF del report. Il contenuto testuale resta comunque
+                      leggibile e copiabile qui sotto.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="next-clone-placeholder internal-ai-empty">
+                    <p>
+                      Il browser non sta mostrando l&apos;anteprima PDF inline. Puoi comunque
+                      leggere, copiare e, appena disponibile, scaricare il PDF dal flusso IA
+                      dedicato.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <details
+                className="internal-ai-document-modal__details"
+                open={reportPdfPreviewState.status !== "ready"}
+              >
+                <summary>Leggi il contenuto strutturato del report</summary>
+                <div className="internal-ai-document-modal__details-content">
+                  {renderReportDocumentContent(
+                    reportPreviewModalState.report,
+                    modalReportSummaryWorkflow,
+                  )}
+                </div>
+              </details>
+            </div>
+          </div>
         </div>
       ) : null}
     </section>

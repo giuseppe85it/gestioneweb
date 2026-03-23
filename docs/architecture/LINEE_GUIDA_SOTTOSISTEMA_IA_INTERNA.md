@@ -540,8 +540,41 @@ Scopo: riferimento operativo permanente per progettare una IA interna al gestion
   - se il provider non e configurato, il clone deve ripiegare sui fallback mock-safe gia esistenti.
 - Stato reale del repo:
   - il codice del provider server-side e presente nel backend IA separato;
-  - nel runner locale la chiamata end-to-end dipende dalla presenza di `OPENAI_API_KEY`;
-  - approval e rollback sono comunque verificabili sul contenitore IA dedicato anche senza toccare business data.
+  - l'adapter legge il segreto solo da `process.env.OPENAI_API_KEY`;
+  - il `2026-03-22` la chiamata reale end-to-end e stata verificata su processo server-side dedicato con `OPENAI_API_KEY` presente a livello utente Windows e propagata solo al processo adapter;
+  - `health` ha risposto con `providerEnabled: true`, `artifacts.preview` ha generato una preview reale con `gpt-5-mini` e `approve_preview` / `reject_preview` / `rollback_preview` hanno aggiornato correttamente il workflow IA dedicato;
+  - se la shell non eredita la variabile o il provider fallisce, il clone mantiene i fallback mock-safe gia esistenti.
+
+### 13.13 Chat reale controllata e primo livello di comprensione repo/UI
+- Dal `2026-03-22` la chat interna puo usare davvero il provider reale lato server tramite `POST /internal-ai-backend/orchestrator/chat`, sempre con fallback locale esplicito.
+- Flusso controllato attivo:
+  1. la UI `/next/ia/interna` calcola comunque il risultato locale clone-safe;
+  2. il bridge frontend invia `prompt`, stato locale e `reportContext` eventuale all'adapter server-side;
+  3. l'adapter usa `OpenAI Responses API` solo lato server se `OPENAI_API_KEY` e disponibile nel processo;
+  4. la risposta torna al clone come sola anteprima assistita, senza azioni business automatiche.
+- Primo livello di comprensione repo/UI aperto nello stesso backend:
+  - endpoint `POST /internal-ai-backend/retrieval/read`;
+  - operazione `read_repo_understanding_snapshot`;
+  - snapshot curata e read-only di:
+    - documenti architetturali/stato chiave;
+    - macro-aree e route rappresentative della NEXT;
+    - pattern UI rappresentativi;
+    - relazioni principali tra schermate;
+    - file sorgente rappresentativi della UI.
+- Questo livello di comprensione serve a:
+  - spiegare il repository;
+  - descrivere la UI e le relazioni tra schermate;
+  - suggerire semplificazioni coerenti con lo stile attuale;
+  - motivare i limiti del perimetro letto.
+- Restano fuori perimetro:
+  - patch automatiche del repository;
+  - agenti autonomi che modificano codice;
+  - scansione indiscriminata di tutto il repo;
+  - scritture business;
+  - riuso dei backend IA legacy come canale canonico.
+- Nota operativa:
+  - `OPENAI_API_KEY` continua a essere letta solo da `process.env.OPENAI_API_KEY` lato server;
+  - nel runner locale la variabile puo esistere a livello utente Windows senza essere ereditata automaticamente dalla shell corrente, quindi il processo adapter puo richiedere bootstrap esplicito.
 
 ### Output minimo richiesto
 - analisi sorgenti usate;

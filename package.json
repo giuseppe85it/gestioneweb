@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "internal-ai-backend:start": "node backend/internal-ai/server/internal-ai-adapter.js"
+    "internal-ai-backend:start": "node backend/internal-ai/server/internal-ai-adapter.js",
+    "internal-ai:observe-next": "node scripts/internal-ai-observe-next-runtime.mjs"
   },
   "dependencies": {
     "body-parser": "^2.2.0",
@@ -39,6 +40,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "playwright": "^1.58.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.3",
     "vite": "^7.2.2"

@@ -10,6 +10,7 @@ const memoryFilePath = path.join(runtimeDataRoot, "ai_operational_memory.json");
 const traceabilityFilePath = path.join(runtimeDataRoot, "ai_traceability_log.json");
 const vehicleContextFilePath = path.join(runtimeDataRoot, "fleet_readonly_snapshot.json");
 const previewWorkflowFilePath = path.join(runtimeDataRoot, "ai_preview_workflows.json");
+const repoUnderstandingFilePath = path.join(runtimeDataRoot, "repo_ui_understanding_snapshot.json");
 
 const DEFAULT_ARTIFACTS_STATE = {
   version: 1,
@@ -96,6 +97,43 @@ const DEFAULT_PREVIEW_WORKFLOW_STATE = {
   items: [],
 };
 
+const DEFAULT_REPO_UNDERSTANDING_SNAPSHOT = {
+  version: 1,
+  sourceMode: "server_filesystem_curated_readonly",
+  builtAt: null,
+  documents: [],
+  moduleAreas: [],
+  uiPatterns: [],
+  repoZones: [],
+  fileIndex: [],
+  styleRelations: [],
+  legacyNextRelations: [],
+  firebaseReadiness: {
+    firestoreReadOnly: {
+      status: "not_ready",
+      evidence: [],
+      blockers: [],
+      nextStep: "Audit non ancora disponibile nel contenitore IA dedicato.",
+    },
+    storageReadOnly: {
+      status: "not_ready",
+      evidence: [],
+      blockers: [],
+      nextStep: "Audit non ancora disponibile nel contenitore IA dedicato.",
+    },
+    notes: [],
+  },
+  screenRelations: [],
+  representativeRoutes: [],
+  representativeFiles: [],
+  notes: [
+    "Snapshot repo/UI non ancora costruita dal backend IA separato.",
+  ],
+  limitations: [
+    "La comprensione del repository non e ancora disponibile nel contenitore IA dedicato.",
+  ],
+};
+
 async function ensureRuntimeDataRoot() {
   await fs.mkdir(runtimeDataRoot, { recursive: true });
 }
@@ -161,6 +199,15 @@ export async function readPreviewWorkflowState() {
 export async function writePreviewWorkflowState(nextState) {
   await writeJson(previewWorkflowFilePath, nextState);
   return nextState;
+}
+
+export async function readRepoUnderstandingSnapshot() {
+  return readJson(repoUnderstandingFilePath, DEFAULT_REPO_UNDERSTANDING_SNAPSHOT);
+}
+
+export async function writeRepoUnderstandingSnapshot(nextSnapshot) {
+  await writeJson(repoUnderstandingFilePath, nextSnapshot);
+  return nextSnapshot;
 }
 
 export function getInternalAiRuntimeDataRoot() {

@@ -2,18 +2,31 @@ import "dotenv/config";
 import bodyParser from "body-parser";
 import express from "express";
 import OpenAI from "openai";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   appendTraceabilityEntry,
   getInternalAiRuntimeDataRoot,
   readArtifactsState,
   readMemoryState,
   readPreviewWorkflowState,
+  readRepoUnderstandingSnapshot,
   readVehicleContextSnapshot,
   writeArtifactsState,
   writeMemoryState,
   writePreviewWorkflowState,
+  writeRepoUnderstandingSnapshot,
   writeVehicleContextSnapshot,
 } from "./internal-ai-persistence.js";
+import {
+  buildRepoUnderstandingMeta,
+  buildRepoUnderstandingReferences,
+  buildRepoUnderstandingSnapshot,
+  isRepoUnderstandingQuestion,
+  trimRepoUnderstandingSnapshotForChat,
+} from "./internal-ai-repo-understanding.js";
+import { getNextRuntimeObserverDirPath } from "./internal-ai-next-runtime-observer.js";
 
 const host = process.env.INTERNAL_AI_BACKEND_HOST || "127.0.0.1";
 const port = Number(process.env.INTERNAL_AI_BACKEND_PORT || "4310");
@@ -185,6 +198,226 @@ function buildReportSummaryReferences(report) {
       targa: null,
     },
   ];
+}
+
+function sanitizeChatReferences(references) {
+  if (!Array.isArray(references)) {
+    return [];
+  }
+
+  return references
+    .filter((entry) => entry && typeof entry === "object")
+    .slice(0, 6)
+    .map((entry) => ({
+      type: typeof entry.type === "string" ? entry.type : "safe_mode_notice",
+      label:
+        typeof entry.label === "string" && entry.label.trim()
+          ? entry.label.trim()
+          : "Riferimento IA interno",
+      targa: typeof entry.targa === "string" && entry.targa.trim() ? entry.targa.trim() : null,
+      artifactId:
+        typeof entry.artifactId === "string" && entry.artifactId.trim()
+          ? entry.artifactId.trim()
+          : undefined,
+    }));
+}
+
+function normalizeChatLocalTurn(localTurn) {
+  if (!localTurn || typeof localTurn !== "object") {
+    return null;
+  }
+
+  return {
+    intent: typeof localTurn.intent === "string" ? localTurn.intent : "richiesta_generica",
+    status: typeof localTurn.status === "string" ? localTurn.status : "partial",
+    assistantText:
+      typeof localTurn.assistantText === "string" ? localTurn.assistantText.trim() : "",
+    references: sanitizeChatReferences(localTurn.references),
+    reportContext:
+      localTurn.reportContext && typeof localTurn.reportContext === "object"
+        ? localTurn.reportContext
+        : null,
+  };
+}
+
+function isControlledChatRequestBody(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    value.operation === "run_controlled_chat" &&
+    typeof value.prompt === "string" &&
+    value.localTurn &&
+    typeof value.localTurn === "object"
+  );
+}
+
+async function loadRepoUnderstandingSnapshot(refresh = false) {
+  const currentSnapshot = await readRepoUnderstandingSnapshot();
+  if (
+    !refresh &&
+    currentSnapshot?.builtAt &&
+    Array.isArray(currentSnapshot.documents) &&
+    currentSnapshot.documents.length > 0 &&
+    Array.isArray(currentSnapshot.repoZones) &&
+    Array.isArray(currentSnapshot.fileIndex) &&
+    Array.isArray(currentSnapshot.styleRelations) &&
+    Array.isArray(currentSnapshot.legacyNextRelations) &&
+    currentSnapshot.runtimeObserver &&
+    Array.isArray(currentSnapshot.runtimeObserver.routes) &&
+    Array.isArray(currentSnapshot.integrationGuidance) &&
+    typeof currentSnapshot.runtimeObserver.stateCount === "number" &&
+    currentSnapshot.integrationGuidance.every(
+      (entry) =>
+        entry &&
+        typeof entry.primarySurfaceKind === "string" &&
+        Array.isArray(entry.alternativeSurfaceKinds) &&
+        typeof entry.confidence === "string",
+    ) &&
+    currentSnapshot.firebaseReadiness &&
+    currentSnapshot.firebaseReadiness.firestoreReadOnly &&
+    currentSnapshot.firebaseReadiness.storageReadOnly
+  ) {
+    return currentSnapshot;
+  }
+
+  const nextSnapshot = await buildRepoUnderstandingSnapshot();
+  await writeRepoUnderstandingSnapshot(nextSnapshot);
+  return nextSnapshot;
+}
+
+function buildControlledChatUserPayload(args) {
+  const localTurn = normalizeChatLocalTurn(args.localTurn);
+  if (!localTurn) {
+    return null;
+  }
+
+  return {
+    prompt: args.prompt,
+    intent: localTurn.intent,
+    localTurn: {
+      intent: localTurn.intent,
+      status: localTurn.status,
+      assistantText: localTurn.assistantText,
+      references: localTurn.references,
+      reportContext: localTurn.reportContext,
+    },
+    repoUnderstanding: args.repoSnapshot
+      ? trimRepoUnderstandingSnapshotForChat(args.repoSnapshot)
+      : null,
+  };
+}
+
+async function createControlledChatTurn(args) {
+  const providerClient = getProviderClient();
+  if (!providerClient) {
+    return {
+      ok: false,
+      reason: "provider_not_configured",
+      message:
+        "Provider reale non configurato nel runner server-side. Impostare `OPENAI_API_KEY` solo lato server per attivare la chat controllata.",
+    };
+  }
+
+  const localTurn = normalizeChatLocalTurn(args.localTurn);
+  if (!localTurn) {
+    return {
+      ok: false,
+      reason: "validation_error",
+      message: "Contesto locale della chat non valido per l'orchestrazione server-side.",
+    };
+  }
+
+  const repoQuestion = isRepoUnderstandingQuestion(args.prompt) || localTurn.intent === "repo_understanding";
+  const repoSnapshot = repoQuestion ? await loadRepoUnderstandingSnapshot(false) : null;
+  const userPayload = buildControlledChatUserPayload({
+    prompt: args.prompt,
+    localTurn,
+    repoSnapshot,
+  });
+
+  if (!userPayload) {
+    return {
+      ok: false,
+      reason: "validation_error",
+      message: "Payload della chat server-side non valido.",
+    };
+  }
+
+  const providerTarget = getProviderTarget();
+  const response = await providerClient.responses.create({
+    model: providerTarget.model,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "Sei la chat server-side controllata della nuova IA interna del gestionale. " +
+              "Lavora solo in italiano. Usa esclusivamente il contesto strutturato ricevuto. " +
+              "Non inventare dati, non proporre scritture business, non descrivere patch automatiche e non trasformarti in un agente che modifica il repository. " +
+              "Se la richiesta riguarda report o preview, spiega solo dati gia letti e limiti dichiarati. " +
+              "Se la richiesta riguarda repository o UI, usa solo la snapshot curata repo/UI allegata e dichiarane i limiti. " +
+              "Rispondi in modo operativo, breve e chiaro.",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(userPayload, null, 2),
+          },
+        ],
+      },
+    ],
+  });
+
+  const assistantText =
+    typeof response.output_text === "string" ? response.output_text.trim() : "";
+
+  if (!assistantText) {
+    return {
+      ok: false,
+      reason: "upstream_error",
+      message:
+        "Il provider reale ha risposto senza testo utile per la chat controllata.",
+    };
+  }
+
+  const traceEntry = await appendTraceabilityEntry(
+    buildTraceabilityEntry({
+      endpointId: "orchestrator.chat",
+      operation: "run_controlled_chat",
+      actorId: args.actorId,
+      requestId: args.requestId,
+      note: repoQuestion
+        ? `Chat controllata server-side con ${providerTarget.provider}/${providerTarget.model} e snapshot repo/UI curata.`
+        : `Chat controllata server-side con ${providerTarget.provider}/${providerTarget.model} sopra contesto locale gia letto dal clone.`,
+      entityCount: repoSnapshot
+        ? (repoSnapshot.documents?.length ?? 0) + (repoSnapshot.uiPatterns?.length ?? 0)
+        : 1,
+    }),
+  );
+
+  const references = repoQuestion
+    ? buildRepoUnderstandingReferences(repoSnapshot)
+    : sanitizeChatReferences(localTurn.references);
+
+  return {
+    ok: true,
+    traceEntryId: traceEntry.id,
+    providerTarget,
+    repoUnderstandingAvailable: Boolean(repoSnapshot?.builtAt),
+    result: {
+      intent: repoQuestion ? "repo_understanding" : localTurn.intent,
+      status: repoQuestion ? "completed" : localTurn.status,
+      assistantText,
+      references,
+      report: null,
+    },
+  };
 }
 
 function isReportSummaryPreviewRequestBody(value) {
@@ -499,25 +732,188 @@ app.get("/internal-ai-backend/health", async (_req, res) => {
         "Il provider reale e ammesso solo lato server e solo per output di preview/proposta.",
         "L'approvazione e il rollback aggiornano solo artifact e traceability IA dedicati.",
         "Nessun dato business Firestore o Storage viene scritto da questi endpoint.",
-        "Il retrieval read-only attivo continua a leggere solo lo snapshot D01 seedato dal clone.",
+        "Il retrieval read-only attivo legge lo snapshot D01 seedato dal clone e la snapshot curata repo/UI del repository.",
+        "La snapshot repo/UI puo includere anche osservazioni runtime NEXT passive e screenshot locali, se l'observer dedicato e stato eseguito.",
+        "La chat server-side reale usa OpenAI solo lato server, con fallback locale esplicito se provider o adapter non sono disponibili.",
       ],
     },
   });
 });
 
-app.post("/internal-ai-backend/orchestrator/chat", async (_req, res) => {
-  sendEnvelope(res, {
-    httpStatus: 501,
-    ok: false,
-    endpointId: "orchestrator.chat",
-    status: "not_enabled",
-    message:
-      "La chat continua a usare il ponte backend-first mock-safe gia aperto. Il primo provider reale viene attivato in questo step solo sulla sintesi guidata dei report gia letti.",
-    data: {
-      nextStep:
-        "Usare il workflow server-side `artifacts.preview` + `approvals.prepare` per la prima preview reale controllata.",
-    },
-  });
+app.get("/internal-ai-backend/runtime-observer/assets/:fileName", async (req, res) => {
+  const fileName = String(req.params?.fileName ?? "").trim();
+  if (!/^[a-z0-9._-]+\.(png|jpg|jpeg|webp)$/i.test(fileName)) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "runtime-observer.assets",
+      status: "validation_error",
+      message: "Nome file non valido per gli asset dell'osservatore runtime NEXT.",
+      data: {
+        fileName,
+      },
+    });
+    return;
+  }
+
+  const assetDir = getNextRuntimeObserverDirPath();
+  const assetPath = path.join(assetDir, fileName);
+
+  try {
+    const binary = await fs.readFile(assetPath);
+    const extension = path.extname(fileName).toLowerCase();
+    const mimeType =
+      extension === ".jpg" || extension === ".jpeg"
+        ? "image/jpeg"
+        : extension === ".webp"
+          ? "image/webp"
+          : "image/png";
+
+    res.status(200).setHeader("Content-Type", mimeType);
+    res.send(binary);
+  } catch {
+    sendEnvelope(res, {
+      httpStatus: 404,
+      ok: false,
+      endpointId: "runtime-observer.assets",
+      status: "not_found",
+      message: `Asset runtime NEXT non trovato: ${fileName}.`,
+      data: {
+        fileName,
+      },
+    });
+  }
+});
+
+app.post("/internal-ai-backend/orchestrator/chat", async (req, res) => {
+  if (!isControlledChatRequestBody(req.body)) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "orchestrator.chat",
+      status: "validation_error",
+      message:
+        "Operazione orchestrator.chat non valida. E ammessa solo `run_controlled_chat` con prompt e contesto locale strutturato.",
+      data: {
+        allowedOperations: ["run_controlled_chat"],
+      },
+    });
+    return;
+  }
+
+  try {
+    const result = await createControlledChatTurn(req.body);
+    if (!result.ok) {
+      sendEnvelope(res, {
+        httpStatus:
+          result.reason === "provider_not_configured"
+            ? 503
+            : result.reason === "upstream_error"
+              ? 502
+              : 400,
+        ok: false,
+        endpointId: "orchestrator.chat",
+        status: result.reason,
+        message: result.message,
+        data: {
+          operation: "run_controlled_chat",
+          persistenceMode: "server_file_isolated",
+          chatState: {
+            providerConfigured: isProviderConfigured(),
+            providerTarget: isProviderConfigured() ? getProviderTarget() : null,
+            repoUnderstandingAvailable: false,
+          },
+          summary: {
+            intent: req.body.localTurn?.intent ?? "richiesta_generica",
+            status: req.body.localTurn?.status ?? "partial",
+            usedRealProvider: false,
+          },
+          result: {
+            intent: req.body.localTurn?.intent ?? "richiesta_generica",
+            status: req.body.localTurn?.status ?? "partial",
+            assistantText:
+              "La chat server-side non e disponibile: il clone deve mantenere il fallback locale esplicito.",
+            references: sanitizeChatReferences(req.body.localTurn?.references),
+            report: null,
+          },
+          traceEntryId: null,
+          notes: [
+            "Se il provider o l'adapter non sono disponibili, il frontend deve ricadere sull'orchestratore locale clone-safe.",
+            "Nessun dato business viene scritto da questo endpoint anche in caso di errore.",
+          ],
+        },
+      });
+      return;
+    }
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "orchestrator.chat",
+      status: "ok",
+      message:
+        "Chat interna controllata servita dal backend IA separato con provider reale solo lato server e fallback locale esplicito sul clone.",
+      data: {
+        operation: "run_controlled_chat",
+        persistenceMode: "server_file_isolated",
+        chatState: {
+          providerConfigured: true,
+          providerTarget: result.providerTarget,
+          repoUnderstandingAvailable: result.repoUnderstandingAvailable,
+        },
+        summary: {
+          intent: result.result.intent,
+          status: result.result.status,
+          usedRealProvider: true,
+        },
+        result: result.result,
+        traceEntryId: result.traceEntryId,
+        notes: [
+          "La chat usa OpenAI solo lato server e non espone segreti al client.",
+          "Le richieste repo/UI leggono solo la snapshot curata del repository e non autorizzano modifiche automatiche del codice.",
+          "Le richieste report continuano a usare solo il contesto gia letto dal clone e non aprono scritture business.",
+        ],
+      },
+    });
+  } catch (error) {
+    sendEnvelope(res, {
+      httpStatus: 502,
+      ok: false,
+      endpointId: "orchestrator.chat",
+      status: "upstream_error",
+      message:
+        error instanceof Error
+          ? `Errore del provider reale lato server nella chat controllata: ${error.message}`
+          : "Errore non previsto nella chat server-side controllata.",
+      data: {
+        operation: "run_controlled_chat",
+        persistenceMode: "server_file_isolated",
+        chatState: {
+          providerConfigured: isProviderConfigured(),
+          providerTarget: isProviderConfigured() ? getProviderTarget() : null,
+          repoUnderstandingAvailable: false,
+        },
+        summary: {
+          intent: req.body?.localTurn?.intent ?? "richiesta_generica",
+          status: req.body?.localTurn?.status ?? "partial",
+          usedRealProvider: false,
+        },
+        result: {
+          intent: req.body?.localTurn?.intent ?? "richiesta_generica",
+          status: req.body?.localTurn?.status ?? "partial",
+          assistantText:
+            "La chat server-side ha avuto un errore. Il clone deve mantenere il fallback locale esplicito.",
+          references: sanitizeChatReferences(req.body?.localTurn?.references),
+          report: null,
+        },
+        traceEntryId: null,
+        notes: [
+          "Il fallback locale del clone resta obbligatorio.",
+          "Nessun dato business viene scritto da questo endpoint anche in caso di errore del provider.",
+        ],
+      },
+    });
+  }
 });
 
 app.post("/internal-ai-backend/artifacts/repository", async (req, res) => {
@@ -856,7 +1252,9 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
         persistenceMode: "server_file_isolated",
         sourceMode: snapshot.sourceMode,
         snapshotMeta: buildVehicleSnapshotMeta(snapshot),
+        repoUnderstandingMeta: null,
         vehicleContext: null,
+        repoUnderstanding: null,
         traceEntryId: traceEntry.id,
         notes: [
           "Seed eseguito da layer clone-safe gia validato sul frontend.",
@@ -894,7 +1292,11 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
         message:
           "Nessuno snapshot read-only dei mezzi e ancora disponibile nel backend IA separato.",
         data: {
+          sourceMode: "clone_seeded_readonly_snapshot",
           snapshotMeta: buildVehicleSnapshotMeta(snapshot),
+          repoUnderstandingMeta: null,
+          vehicleContext: null,
+          repoUnderstanding: null,
           allowedOperations: ["seed_vehicle_context_snapshot", "read_vehicle_context_by_targa"],
         },
       });
@@ -929,11 +1331,56 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
         persistenceMode: "server_file_isolated",
         sourceMode: snapshot.sourceMode,
         snapshotMeta: buildVehicleSnapshotMeta(snapshot),
+        repoUnderstandingMeta: null,
         vehicleContext,
+        repoUnderstanding: null,
         traceEntryId: traceEntry.id,
         notes: [
           "Retrieval read-only servito da contenitore IA dedicato e separato dai dataset business.",
           "Il backend non legge ancora Firestore o Storage business in modo diretto.",
+        ],
+      },
+    });
+    return;
+  }
+
+  if (operation === "read_repo_understanding_snapshot") {
+    const snapshot = await loadRepoUnderstandingSnapshot(Boolean(req.body?.refresh));
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "retrieval.read",
+        operation,
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: Boolean(req.body?.refresh)
+          ? "Snapshot controllata repo/UI rigenerata dal backend IA separato."
+          : "Snapshot controllata repo/UI letta dal backend IA separato.",
+        entityCount:
+          (snapshot.documents?.length ?? 0) +
+          (snapshot.moduleAreas?.length ?? 0) +
+          (snapshot.uiPatterns?.length ?? 0),
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "retrieval.read",
+      status: "ok",
+      message:
+        "Snapshot controllata di repository e UI letta dal backend IA separato in modalita read-only.",
+      data: {
+        operation,
+        persistenceMode: "server_file_isolated",
+        sourceMode: snapshot.sourceMode,
+        snapshotMeta: null,
+        repoUnderstandingMeta: buildRepoUnderstandingMeta(snapshot),
+        vehicleContext: null,
+        repoUnderstanding: snapshot,
+        traceEntryId: traceEntry.id,
+        notes: [
+          "La snapshot legge solo documenti architetturali e file rappresentativi del repo, in modo curato e read-only.",
+          "La snapshot non autorizza patch automatiche, scritture business o riuso dei backend legacy come canale canonico.",
         ],
       },
     });
@@ -946,9 +1393,13 @@ app.post("/internal-ai-backend/retrieval/read", async (req, res) => {
     endpointId: "retrieval.read",
     status: "validation_error",
     message:
-      "Operazione retrieval.read non valida. Sono ammesse solo `seed_vehicle_context_snapshot` e `read_vehicle_context_by_targa`.",
+      "Operazione retrieval.read non valida. Sono ammesse `seed_vehicle_context_snapshot`, `read_vehicle_context_by_targa` e `read_repo_understanding_snapshot`.",
     data: {
-      allowedOperations: ["seed_vehicle_context_snapshot", "read_vehicle_context_by_targa"],
+      allowedOperations: [
+        "seed_vehicle_context_snapshot",
+        "read_vehicle_context_by_targa",
+        "read_repo_understanding_snapshot",
+      ],
     },
   });
 });
@@ -1005,8 +1456,20 @@ app.post("/internal-ai-backend/approvals/prepare", async (req, res) => {
   });
 });
 
-app.listen(port, host, () => {
-  console.log(
-    `[internal-ai-adapter] attivo su http://${host}:${port}/internal-ai-backend | runtime-data=${getInternalAiRuntimeDataRoot()}`,
-  );
-});
+export function startInternalAiAdapterServer(options = {}) {
+  const listenHost = options.listenHost || options.host || host;
+  const listenPort = Number(options.listenPort || options.port || port);
+
+  return new Promise((resolve) => {
+    const server = app.listen(listenPort, listenHost, () => {
+      console.log(
+        `[internal-ai-adapter] attivo su http://${listenHost}:${listenPort}/internal-ai-backend | runtime-data=${getInternalAiRuntimeDataRoot()}`,
+      );
+      resolve(server);
+    });
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await startInternalAiAdapterServer();
+}

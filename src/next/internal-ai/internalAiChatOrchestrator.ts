@@ -12,6 +12,8 @@ import {
   createDefaultInternalAiReportPeriodInput,
   createInternalAiCustomPeriodInput,
 } from "./internalAiReportPeriod";
+import { readInternalAiVehicleCapabilityCatalog } from "./internalAiVehicleCapabilityCatalog";
+import { runInternalAiVehicleDossierHook } from "./internalAiVehicleDossierHookFacade";
 import { readInternalAiVehicleReportPreview } from "./internalAiVehicleReportFacade";
 import type {
   InternalAiChatExecutionStatus,
@@ -85,7 +87,7 @@ type ParsedIntent =
       extractedDriverQuery: string | null;
     }
   | {
-      intent: "capabilities" | "non_supportato" | "richiesta_generica";
+      intent: "repo_understanding" | "capabilities" | "non_supportato" | "richiesta_generica";
       extractedTarga: null;
       extractedDriverQuery: null;
     };
@@ -137,6 +139,36 @@ const COMBINED_REPORT_PATTERNS = [
   "report combinato",
   "mezzo con autista",
   "autista sul mezzo",
+];
+
+const REPO_UNDERSTANDING_PATTERNS = [
+  "repository",
+  "repo",
+  "modulo",
+  "moduli",
+  "pagina",
+  "pagine",
+  "schermata",
+  "schermate",
+  "ui",
+  "interfaccia",
+  "layout",
+  "componente",
+  "componenti",
+  "shell next",
+  "shell",
+  "route",
+  "route next",
+  "percorso",
+  "percorsi",
+  "pattern ui",
+  "stile del gestionale",
+  "convenzioni visive",
+  "dossier",
+  "centro controllo",
+  "analisi economica",
+  "semplificare il gestionale",
+  "capire il repo",
 ];
 
 function normalizePrompt(prompt: string): string {
@@ -262,6 +294,10 @@ function parseIntent(prompt: string): ParsedIntent {
     return { intent: "capabilities", extractedTarga: null, extractedDriverQuery: null };
   }
 
+  if (REPO_UNDERSTANDING_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return { intent: "repo_understanding", extractedTarga: null, extractedDriverQuery: null };
+  }
+
   if (UNSUPPORTED_PATTERNS.some((pattern) => normalized.includes(pattern))) {
     return { intent: "non_supportato", extractedTarga: null, extractedDriverQuery: null };
   }
@@ -297,23 +333,36 @@ function parseIntent(prompt: string): ParsedIntent {
 }
 
 function buildCapabilitiesResponse(): InternalAiChatTurnResult {
+  const vehicleCapabilities = readInternalAiVehicleCapabilityCatalog();
+  const capabilityLines = vehicleCapabilities
+    .map((entry) => {
+      const filterLabel = [
+        entry.requiredFilters.includes("targa") ? "targa" : null,
+        entry.optionalFilters.includes("periodo") ? "periodo opzionale" : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+      return `- ${entry.title}: ${filterLabel || "perimetro mezzo-centrico read-only"}.`;
+    })
+    .join("\n");
+
   return {
     intent: "capabilities",
     status: "completed",
     assistantText:
       "Posso aiutarti solo con capacita gia attive e sicure del sottosistema IA interno.\n\n" +
       "Oggi posso:\n" +
-      "- creare una anteprima report per targa in sola lettura, anche con periodo;\n" +
+      `${capabilityLines}\n` +
       "- creare una anteprima report per autista in sola lettura, anche con periodo;\n" +
       "- creare una anteprima report combinata mezzo + autista + periodo, dichiarando il livello di affidabilita del legame;\n" +
-      "- spiegare quali fonti vengono lette e quali dati mancano;\n" +
-      "- indirizzarti verso l'archivio artifact IA locale del clone;\n" +
-      "- chiarire quando una funzione non e ancora disponibile.\n\n" +
-      "Non posso ancora modificare codice, scrivere sui dati business, usare provider IA reali o inviare alert esterni.",
+      "- spiegare il repository, le schermate principali e alcuni pattern UI del clone quando il backend server-side reale e disponibile;\n" +
+      "- chiarire quali fonti vengono lette, cosa e parziale e cosa resta fuori perimetro.\n\n" +
+      "Non posso modificare codice in automatico, scrivere sui dati business o inviare alert esterni.",
     references: [
       {
         type: "capabilities",
-        label: "Capacita reali della chat controllata",
+        label: "Catalogo capability mezzo-centriche governate",
         targa: null,
       },
       {
@@ -345,6 +394,30 @@ function buildUnsupportedResponse(): InternalAiChatTurnResult {
   };
 }
 
+function buildRepoUnderstandingFallbackResponse(): InternalAiChatTurnResult {
+  return {
+    intent: "repo_understanding",
+    status: "partial",
+    assistantText:
+      "Posso aiutarti a leggere il repository e i pattern UI del gestionale solo quando il backend server-side controllato e disponibile.\n\n" +
+      "In fallback locale posso solo confermare il perimetro sicuro: niente patch automatiche, niente scritture business e niente uso dei backend legacy come canale canonico.\n\n" +
+      'Se il backend e attivo, prova con richieste come "spiegami la shell NEXT", "quali pattern UI posso riusare" oppure "come sono collegate le schermate principali".',
+    references: [
+      {
+        type: "repo_understanding",
+        label: "Comprensione controllata repo/UI disponibile solo via backend server-side",
+        targa: null,
+      },
+      {
+        type: "safe_mode_notice",
+        label: "Nessuna modifica automatica del repository",
+        targa: null,
+      },
+    ],
+    report: null,
+  };
+}
+
 function buildGenericResponse(): InternalAiChatTurnResult {
   return {
     intent: "richiesta_generica",
@@ -356,6 +429,11 @@ function buildGenericResponse(): InternalAiChatTurnResult {
       '- "fammi un report per l\'autista Mario Rossi ultimo mese"\n' +
       '- "fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni"\n' +
       '- "fammi una preview per la targa TI123456 ultimi 90 giorni"\n' +
+      '- "dimmi lo stato del mezzo TI123456"\n' +
+      '- "elenca i documenti del mezzo TI123456"\n' +
+      '- "riepiloga i costi del mezzo TI123456 ultimi 90 giorni"\n' +
+      '- "spiegami la shell NEXT e le schermate principali"\n' +
+      '- "quali pattern UI del repo posso riusare"\n' +
       '- "cosa puoi fare"',
     references: [
       {
@@ -657,6 +735,8 @@ export async function runInternalAiChatTurn(
   const parsed = parseIntent(prompt);
 
   switch (parsed.intent) {
+    case "repo_understanding":
+      return buildRepoUnderstandingFallbackResponse();
     case "capabilities":
       return buildCapabilitiesResponse();
     case "non_supportato":
@@ -669,10 +749,13 @@ export async function runInternalAiChatTurn(
         fallbackPeriodInput,
       );
     case "report_targa":
-      return buildReportResponse(parsed.extractedTarga, prompt, fallbackPeriodInput);
+      return (
+        (await runInternalAiVehicleDossierHook(prompt, fallbackPeriodInput)) ??
+        buildReportResponse(parsed.extractedTarga, prompt, fallbackPeriodInput)
+      );
     case "report_autista":
       return buildDriverReportResponse(parsed.extractedDriverQuery, prompt, fallbackPeriodInput);
     default:
-      return buildGenericResponse();
+      return (await runInternalAiVehicleDossierHook(prompt, fallbackPeriodInput)) ?? buildGenericResponse();
   }
 }

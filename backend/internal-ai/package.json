@@ -1,0 +1,11 @@
+{
+  "name": "@gestione-web/backend-internal-ai",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Perimetro di governance del backend IA separato della NEXT. Non attiva ancora letture Firebase/Storage business.",
+  "scripts": {
+    "start": "node server/internal-ai-adapter.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

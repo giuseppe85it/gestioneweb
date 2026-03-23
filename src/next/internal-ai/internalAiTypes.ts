@@ -489,10 +489,108 @@ export type InternalAiDraftArtifactInput = {
   report: InternalAiReportPreview;
 };
 
+export type InternalAiVehicleCapabilityId =
+  | "mezzo.status.dossier"
+  | "mezzo.preview.documents"
+  | "mezzo.report.economic"
+  | "mezzo.preview.libretto"
+  | "mezzo.preview.preventivi"
+  | "mezzo.report.overview";
+
+export type InternalAiVehicleCapabilityDomain = "mezzo_dossier";
+
+export type InternalAiVehicleCapabilityTargetScope = "single_vehicle";
+
+export type InternalAiVehicleCapabilityFilterId = "targa" | "periodo";
+
+export type InternalAiVehicleCapabilityMetricId =
+  | "vehicle_identity"
+  | "technical_flags"
+  | "document_count"
+  | "direct_documents"
+  | "plausible_documents"
+  | "preventivi_count"
+  | "fatture_count"
+  | "documenti_utili_count"
+  | "cost_total_eur"
+  | "cost_total_chf"
+  | "file_availability"
+  | "refuel_count"
+  | "maintenance_count"
+  | "work_count"
+  | "missing_data"
+  | "source_coverage";
+
+export type InternalAiVehicleCapabilityGroupBy = "none" | "document_type" | "source";
+
+export type InternalAiVehicleCapabilityOutputKind = "chat_answer" | "report_preview";
+
+export type InternalAiVehicleCapabilityConfidence = "high" | "medium" | "low";
+
+export type InternalAiOutputMode =
+  | "chat_brief"
+  | "chat_structured"
+  | "artifact_document"
+  | "report_pdf"
+  | "ui_integration_proposal"
+  | "next_integration_confirmation_required";
+
+export type InternalAiOutputSelection = {
+  mode: InternalAiOutputMode;
+  reason: string;
+};
+
+export type InternalAiVehicleCapabilityBridgeId =
+  | "vehicle-report-preview"
+  | "economic-analysis-preview"
+  | "documents-preview"
+  | "libretto-preview"
+  | "preventivi-preview"
+  | null;
+
+export type InternalAiVehicleCapabilityDescriptor = {
+  id: InternalAiVehicleCapabilityId;
+  title: string;
+  domain: InternalAiVehicleCapabilityDomain;
+  targetScope: InternalAiVehicleCapabilityTargetScope;
+  requiredFilters: InternalAiVehicleCapabilityFilterId[];
+  optionalFilters: InternalAiVehicleCapabilityFilterId[];
+  metrics: InternalAiVehicleCapabilityMetricId[];
+  groupBy: InternalAiVehicleCapabilityGroupBy[];
+  outputKind: InternalAiVehicleCapabilityOutputKind;
+  bridgeCapabilityId: InternalAiVehicleCapabilityBridgeId;
+  limitations: string[];
+  plannerHints: {
+    keywords: string[];
+    verbs: string[];
+    samplePrompts: string[];
+  };
+};
+
+export type InternalAiVehicleCapabilityPlan = {
+  capabilityId: InternalAiVehicleCapabilityId;
+  domain: InternalAiVehicleCapabilityDomain;
+  targetScope: InternalAiVehicleCapabilityTargetScope;
+  rawTarga: string | null;
+  normalizedTarga: string | null;
+  periodInput: InternalAiReportPeriodInput;
+  periodLabel: string;
+  outputKind: InternalAiVehicleCapabilityOutputKind;
+  groupBy: InternalAiVehicleCapabilityGroupBy;
+  metrics: InternalAiVehicleCapabilityMetricId[];
+  missingInputs: InternalAiVehicleCapabilityFilterId[];
+  confidence: InternalAiVehicleCapabilityConfidence;
+  rationale: string[];
+  limitations: string[];
+  bridgeCapabilityId: InternalAiVehicleCapabilityBridgeId;
+};
+
 export type InternalAiChatIntent =
   | "report_targa"
   | "report_autista"
   | "report_combinato"
+  | "mezzo_dossier"
+  | "repo_understanding"
   | "capabilities"
   | "non_supportato"
   | "richiesta_generica";
@@ -511,7 +609,12 @@ export type InternalAiChatMessageReferenceType =
   | "report_preview"
   | "artifact_archive"
   | "capabilities"
-  | "safe_mode_notice";
+  | "repo_understanding"
+  | "architecture_doc"
+  | "ui_pattern"
+  | "safe_mode_notice"
+  | "integration_guidance"
+  | "integration_confirmation";
 
 export type InternalAiChatMessageReference = {
   type: InternalAiChatMessageReferenceType;
@@ -528,6 +631,8 @@ export type InternalAiChatMessage = {
   intent: InternalAiChatIntent;
   status: InternalAiChatExecutionStatus;
   references: InternalAiChatMessageReference[];
+  outputMode: InternalAiOutputMode | null;
+  outputReason: string | null;
 };
 
 export type InternalAiTrackingMode =

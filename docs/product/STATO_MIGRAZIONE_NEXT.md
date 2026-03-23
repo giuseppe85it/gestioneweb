@@ -629,6 +629,271 @@ Serve a:
   - smoke test `approve_preview` + `rollback_preview` su workflow IA dedicato -> OK;
   - `npm run build` -> OK.
 
+## 5.32 Aggiornamento 2026-03-22 - OpenAI attivato davvero nel backend IA della NEXT
+- Il backend IA separato della NEXT e ora verificato anche con chiamata reale a OpenAI, senza allargare i casi d'uso gia aperti.
+- Dove e come viene letta davvero la chiave:
+  - solo in `backend/internal-ai/server/internal-ai-adapter.js`;
+  - solo da `process.env.OPENAI_API_KEY`;
+  - mai dal client e mai dal codice sorgente versionato.
+- Esito reale del flusso end-to-end:
+  - processo server-side dedicato avviato su porta `4311`;
+  - `health` -> `providerEnabled: true`, modello `gpt-5-mini`;
+  - `artifacts.preview` -> preview reale generata e salvata nel contenitore IA dedicato;
+  - `approve_preview` -> stato `approved`;
+  - `reject_preview` -> stato `rejected`;
+  - `rollback_preview` -> stato `rolled_back` su workflow approvato.
+- Cosa non cambia:
+  - il caso d'uso resta solo la sintesi guidata del report gia letto;
+  - nessuna scrittura Firestore/Storage business automatica;
+  - nessun backend legacy reso canonico;
+  - fallback mock-safe invariato se il processo non eredita la variabile o il provider fallisce.
+- Nota operativa:
+  - nel runner corrente `OPENAI_API_KEY` e presente a livello utente Windows, ma la shell puo non ereditarla automaticamente;
+  - per questo task la variabile e stata propagata solo al processo server-side dedicato, senza modificare codice o client.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiServerReportSummaryClient.ts backend/internal-ai/src/internalAiBackendContracts.ts backend/internal-ai/src/internalAiBackendService.ts backend/internal-ai/src/internalAiServerPersistenceContracts.ts` -> OK;
+  - smoke test reale `health` + `artifacts.preview` + `approve_preview` + `reject_preview` + `rollback_preview` su porta `4311` -> OK;
+  - `npm run build` -> OK.
+
+## 5.33 Aggiornamento 2026-03-22 - Chat reale controllata + primo repo/UI understanding nel clone IA
+- Il clone `/next/ia/interna*` usa ora anche la chat reale server-side controllata del backend IA separato e mostra un primo pannello di comprensione controllata di repository e UI.
+- Ponte scelto nel runtime clone:
+  - `NextInternalAiPage.tsx`;
+  - `internalAiChatOrchestratorBridge` + `internalAiServerChatClient`;
+  - `POST /internal-ai-backend/orchestrator/chat`;
+  - provider `OpenAI Responses API` solo server-side;
+  - fallback locale clone-safe se adapter o provider non sono disponibili.
+- Primo livello repo/UI understanding nel clone:
+  - `internalAiServerRepoUnderstandingClient`;
+  - `POST /internal-ai-backend/retrieval/read`;
+  - operazione `read_repo_understanding_snapshot`;
+  - pannello overview dedicato che espone fonti, route rappresentative, pattern UI, relazioni tra schermate e limiti del perimetro.
+- Cosa legge davvero lato server questo nuovo livello:
+  - documenti architetturali/stato chiave del repo;
+  - macro-aree e route rappresentative della NEXT;
+  - pattern UI rappresentativi;
+  - relazioni principali tra schermate;
+  - file sorgente rappresentativi della UI.
+- Cosa non cambia:
+  - nessuna scrittura Firestore/Storage business;
+  - nessun segreto lato client;
+  - nessun backend legacy reso canonico;
+  - nessuna patch automatica del repository;
+  - fallback locale esplicito sempre disponibile lato clone.
+- Stato reale verificato:
+  - senza `OPENAI_API_KEY` nel processo server-side, `orchestrator.chat` risponde `provider_not_configured` e il clone resta sul fallback locale;
+  - con `OPENAI_API_KEY` propagata al solo processo server-side, `health` risponde `providerEnabled: true`;
+  - `retrieval.read(read_repo_understanding_snapshot)` -> snapshot repo/UI curata costruita e letta correttamente;
+  - `orchestrator.chat` repo/UI-aware -> risposta reale del provider con `usedRealProvider: true`;
+  - `orchestrator.chat` con `reportContext` -> risposta reale del provider con `usedRealProvider: true`.
+- Cosa resta ancora solo frontend/mock locale o fuori perimetro:
+  - lookup/autosuggest e supporti minori;
+  - qualunque modifica codice automatica;
+  - retrieval completo di tutti i dati business lato server;
+  - writer business o automazioni operative.
+- Verifiche del task:
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiServerChatClient.ts src/next/internal-ai/internalAiServerRepoUnderstandingClient.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiLibrettoPreviewBridge.ts` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - smoke test adapter `retrieval.read` + `orchestrator.chat` senza segreto nel processo server-side -> OK;
+  - smoke test reale `health` + `retrieval.read(read_repo_understanding_snapshot)` + `orchestrator.chat` repo/UI-aware + `orchestrator.chat` con `reportContext` su processo server-side dedicato con `OPENAI_API_KEY` -> OK;
+  - `npm run build` -> OK.
+
+## 5.34 Aggiornamento 2026-03-22 - Repo understanding esteso + audit readiness Firebase nel clone IA
+- Il clone `/next/ia/interna*` mostra ora un pannello di comprensione repository piu ricco e verificato, senza aprire accessi business pericolosi.
+- Estensione concreta aperta nel backend IA separato:
+  - la snapshot `read_repo_understanding_snapshot` include ora anche un indice filesystem controllato di file sotto `src/next`, `src/pages`, `src/components` e `backend/internal-ai`;
+  - vengono esposte anche relazioni CSS importate, relazioni curate madre vs NEXT e un audit di readiness per Firestore/Storage read-only lato server.
+- Cosa legge davvero lato server questo ampliamento:
+  - documenti architetturali/stato chiave;
+  - macro-aree, route rappresentative e pattern UI;
+  - file di codice e CSS collegati nel perimetro controllato;
+  - segnali reali del repo su Firebase client, runtime legacy con `firebase-admin`, assenza di `firestore.rules` e stato di `storage.rules`.
+- Cosa NON apre ancora:
+  - nessuna lettura diretta Firestore business lato server;
+  - nessuna lettura diretta Storage business lato server;
+  - nessuna modifica della madre;
+  - nessuna patch automatica del repository.
+- Cosa chiarisce ora il clone:
+  - dove la nuova IA puo gia leggere in modo utile codice, route-like file, componenti e CSS;
+  - dove finisce il perimetro NEXT e dove inizia la madre legacy;
+  - quali prerequisiti mancano prima di aprire davvero Firestore/Storage read-only lato server nel backend IA separato.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-repo-understanding.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiServerRepoUnderstandingClient.ts backend/internal-ai/src/internalAiServerRetrievalContracts.ts backend/internal-ai/server/internal-ai-adapter.js backend/internal-ai/server/internal-ai-repo-understanding.js` -> OK;
+  - smoke test `buildRepoUnderstandingSnapshot()` -> OK;
+  - smoke test `POST /internal-ai-backend/retrieval/read` con `read_repo_understanding_snapshot` su porta `4316` -> OK;
+  - `npm run build` -> OK.
+
+## 5.35 Aggiornamento 2026-03-22 - Chat conversazionale controllata + report in modale documento
+- La overview `/next/ia/interna` e ora molto piu vicina a una chat reale e leggibile, senza perdere guard rail, traceability o fallback espliciti.
+- Cosa cambia nel clone:
+  - input libero multilinea e thread piu naturale;
+  - indicatori leggeri su backend server-side, OpenAI lato server, repo understanding e retrieval business read-only parziale;
+  - richieste di report che non riversano piu il contenuto lungo in chat;
+  - report pronti salvati come artifact IA e aperti in una modale di anteprima documento.
+- Flusso utente ora visibile:
+  - l'utente chiede un report dalla chat;
+  - l'orchestrazione gia esistente produce la preview controllata;
+  - la preview viene salvata nel repository artifact IA dedicato;
+  - la pagina apre il documento dedicato con lettura, copia, download testo e condivisione browser se disponibile;
+  - il thread conserva solo il messaggio breve di conferma e il richiamo all'artifact.
+- Cosa non cambia:
+  - nessuna scrittura business;
+  - nessuna modifica alla madre;
+  - nessun backend legacy come canale canonico;
+  - nessun segreto lato client;
+  - fallback locale esplicito mantenuto.
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> OK;
+  - `npm run build` -> OK.
+
+## 5.36 Aggiornamento 2026-03-22 - Readiness Firebase read-only piu precisa nel clone IA
+- Il clone `/next/ia/interna` non dichiara piu soltanto uno stato generico di readiness Firebase: mostra ora prerequisiti condivisi e whitelist candidate per un futuro bridge server-side read-only del backend IA separato.
+- Cosa e stato aperto davvero:
+  - la snapshot repo/UI del backend IA separato include ora:
+    - requisiti condivisi verificati (`package` dedicato, `firebase-admin`, credenziali server-side, regole versionate);
+    - whitelist candidate ma NON attive per Firestore e Storage;
+    - blocchi reali che impediscono oggi l'apertura sicura del bridge business read-only;
+  - la UI clone espone queste informazioni in italiano senza simulare un accesso gia attivo.
+- Whitelist candidate dichiarate:
+  - Firestore: solo documento `storage/@mezzi_aziendali`;
+  - Storage: solo oggetto del bucket `gestionemanutenzione-934ef.firebasestorage.app` ricavato dal valore esatto di `librettoStoragePath` su un mezzo gia whitelisted;
+  - restano fuori query libere, scansione collection, `listAll`, prefix scan, upload e delete.
+- Cosa NON apre ancora:
+  - nessuna lettura diretta Firestore business lato server;
+  - nessuna lettura diretta Storage business lato server;
+  - nessuna modifica della madre;
+  - nessun uso del runtime legacy come backend canonico della nuova IA.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-repo-understanding.js` -> OK;
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx backend/internal-ai/src/internalAiServerRetrievalContracts.ts` -> OK;
+  - smoke test `buildFirebaseReadinessSnapshot()` -> OK;
+  - smoke test `POST /internal-ai-backend/retrieval/read` con `read_repo_understanding_snapshot` -> OK;
+  - `npm run build` -> OK.
+
+## 5.37 Aggiornamento 2026-03-22 - Report IA in anteprima PDF reale + governance package backend IA
+- Il clone `/next/ia/interna` separa ora in modo piu netto chat e documento: quando l'utente chiede un report strutturato, la chat conserva solo la conferma breve e la modale apre una vera anteprima PDF generata dal perimetro IA.
+- Flusso report ora visibile nel clone:
+  - richiesta report dalla chat controllata;
+  - salvataggio dell'artifact IA dedicato;
+  - apertura della modale con PDF reale generato al volo dall'artifact;
+  - copia del contenuto strutturato, download PDF e condivisione browser se supportata.
+- Cosa NON cambia:
+  - nessuna scrittura business;
+  - nessuna modifica della madre;
+  - nessun uso del legacy come backend canonico;
+  - nessuna persistenza server-side del binario PDF come artifact separato.
+- Sul fronte backend IA separato e readiness:
+  - esiste ora `backend/internal-ai/package.json` come package dedicato del perimetro server-side IA;
+  - la readiness Firebase/Storage continua a dichiarare il bridge business read-only come NON attivo;
+  - restano bloccanti reali `firebase-admin` non ancora governato dal package dedicato, credenziale server-side separata, `firestore.rules` assente e `storage.rules` in conflitto.
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiReportPdf.ts backend/internal-ai/server/internal-ai-firebase-readiness.js` -> OK;
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js` -> OK;
+  - smoke test `buildFirebaseReadinessSnapshot()` -> OK;
+  - `npm run build` -> OK.
+
+## 5.38 Aggiornamento 2026-03-22 - Osservatore runtime NEXT passivo + guida integrazione UI/file
+- Il clone `/next/ia/interna` non si limita piu a una snapshot repo/UI statica: puo ora leggere anche una prima osservazione runtime reale e controllata della NEXT, con screenshot e DOM snapshot passivo delle schermate principali.
+- Cosa apre davvero nel runtime clone:
+  - script `npm run internal-ai:observe-next` che usa Playwright solo in modalita passiva e solo su route `/next/*` whitelistate;
+  - persistenza IA dedicata di `next_runtime_observer_snapshot.json` e screenshot locali in `backend/internal-ai/runtime-data/next-runtime-observer/`;
+  - pannello `Comprensione controllata repo e UI` esteso con:
+    - stato osservatore runtime;
+    - schermate realmente coperte;
+    - screenshot riapribili dal backend IA separato;
+    - consigliatore di integrazione che indica modulo, superficie UI e file candidati.
+- Copertura runtime verificata nel clone:
+  - osservate con screenshot: `/next`, `/next/centro-controllo`, `/next/gestione-operativa`, `/next/mezzi`, `/next/dossiermezzi`, `/next/ia`, `/next/ia/interna`, `/next/acquisti`, `/next/autisti-inbox`, `/next/autisti-admin`, `/next/cisterna`;
+  - restano parziali/non osservate in automatico le route dinamiche `Dossier mezzo` e `Analisi Economica`, perche il crawl non forza click o stati potenzialmente distruttivi.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun bridge Firestore/Storage business live;
+  - nessun riuso del runtime legacy come backend canonico.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-next-runtime-observer.js` -> OK;
+  - `node --check scripts/internal-ai-observe-next-runtime.mjs` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiServerRepoUnderstandingClient.ts backend/internal-ai/src/internalAiServerRetrievalContracts.ts backend/internal-ai/server/internal-ai-next-runtime-observer.js backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js scripts/internal-ai-observe-next-runtime.mjs` -> OK;
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npm run internal-ai:observe-next` -> OK;
+  - smoke test adapter `read_repo_understanding_snapshot` + asset screenshot -> OK;
+  - `npm run build` -> OK.
+
+## 5.40 Aggiornamento 2026-03-22 - Deep runtime observer NEXT + selettore formato output IA
+- Il clone `/next/ia/interna` usa ora una comprensione runtime piu profonda della NEXT, sempre read-only e senza toccare la madre, insieme a una scelta piu intelligente del formato di output della risposta.
+- Cosa apre davvero:
+  - observer runtime NEXT esteso a:
+    - 19 route reali osservate;
+    - 23 screenshot runtime;
+    - 4 stati whitelist-safe osservati su `Acquisti`;
+    - route dinamiche mezzo-centriche risolte:
+      - `/next/dossier/:targa`;
+      - `/next/analisi-economica/:targa`;
+      - `/next/dossier/:targa/gomme`;
+      - `/next/dossier/:targa/rifornimenti`;
+    - sottoroute `IA interna` osservate direttamente:
+      - `/next/ia/interna/sessioni`;
+      - `/next/ia/interna/richieste`;
+      - `/next/ia/interna/artifacts`;
+      - `/next/ia/interna/audit`;
+  - selettore formato output per la chat IA:
+    - `chat_brief`;
+    - `chat_structured`;
+    - `report_pdf`;
+    - `ui_integration_proposal`;
+    - `next_integration_confirmation_required`;
+  - guida integrazione UI/flow/file piu motivata nella pagina IA, con superficie primaria, alternative, confidenza, evidenze runtime e anti-pattern.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun click distruttivo, submit o upload runtime;
+  - nessun bridge Firestore/Storage business live;
+  - nessun backend legacy reso canonico.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-next-runtime-observer.js` -> OK;
+  - `node --check scripts/internal-ai-observe-next-runtime.mjs` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-repo-understanding.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - `npm run internal-ai:observe-next` -> OK;
+  - rebuild snapshot repo/UI server-side -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiContracts.ts backend/internal-ai/src/internalAiServerRetrievalContracts.ts backend/internal-ai/server/internal-ai-next-runtime-observer.js backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js scripts/internal-ai-observe-next-runtime.mjs` -> OK;
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npm run build` -> OK.
+
+## 5.39 Aggiornamento 2026-03-22 - Primo hook mezzo-centrico governato su Dossier Mezzo
+- Il clone `/next/ia/interna` usa ora un primo hook mezzo-centrico governato che prende come nodo principale il `Dossier Mezzo` e traduce il linguaggio libero verso capability dichiarate, senza leggere la UI come fonte primaria e senza aprire retrieval Firebase live largo.
+- Cosa apre davvero:
+  - catalogo capability mezzo-centrico con:
+    - stato sintetico Dossier mezzo;
+    - preview documenti collegabili al mezzo;
+    - riepilogo costi mezzo;
+    - preview libretto mezzo;
+    - preview preventivi collegabili al mezzo;
+    - report mezzo PDF in anteprima;
+  - planner `prompt -> capability -> filtri/metriche/groupBy/output`, riusato dalla chat controllata;
+  - hook read-only che usa come fonti:
+    - `D01` anagrafiche flotta;
+    - composito `readNextDossierMezzoCompositeSnapshot`;
+    - layer `D07-D08` documenti/costi;
+    - facade clone-safe gia attivi per documenti, costi, libretto, preventivi e report mezzo.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun bridge Firestore/Storage business live aggiuntivo;
+  - nessun uso del runtime legacy come backend canonico.
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiContracts.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleCapabilityPlanner.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts` -> OK;
+  - `npm run build` -> OK.
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

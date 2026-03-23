@@ -1,6 +1,7 @@
 import type {
   InternalAiArtifact,
   InternalAiAuditLogEntry,
+  InternalAiChatIntent,
   InternalAiChatMessageReference,
   InternalAiRequest,
   InternalAiReportPeriodInput,
@@ -8,6 +9,7 @@ import type {
   InternalAiSession,
   InternalAiTrackingSummary,
 } from "../../../src/next/internal-ai/internalAiTypes";
+import type { InternalAiChatTurnResult } from "../../../src/next/internal-ai/internalAiChatOrchestrator";
 
 export type InternalAiServerPersistenceMode = "server_file_isolated";
 
@@ -210,6 +212,57 @@ export type InternalAiServerArtifactsPreviewResponseData = {
   providerConfigured: boolean;
   providerTarget: InternalAiServerProviderTarget | null;
   workflow: InternalAiServerReportSummaryWorkflow;
+  traceEntryId: string;
+  notes: string[];
+};
+
+export type InternalAiServerOrchestratorChatRequestBody = {
+  operation: "run_controlled_chat";
+  requestId?: string;
+  actorId?: string | null;
+  prompt: string;
+  periodInput?: InternalAiReportPeriodInput;
+  localTurn: {
+    intent: InternalAiChatIntent;
+    status: InternalAiChatTurnResult["status"];
+    assistantText: string;
+    references: InternalAiChatMessageReference[];
+    reportContext:
+      | {
+          status: "ready";
+          reportType: InternalAiReportPreview["reportType"];
+          targetLabel: string;
+          periodLabel: string;
+          sourceLabels: string[];
+          sections: { title: string; summary: string; status: string }[];
+          missingData: string[];
+        }
+      | {
+          status: "invalid_query" | "not_found";
+          message: string;
+        }
+      | null;
+  };
+};
+
+export type InternalAiServerChatCapabilityState = {
+  providerConfigured: boolean;
+  providerTarget: InternalAiServerProviderTarget | null;
+  repoUnderstandingAvailable: boolean;
+};
+
+export type InternalAiServerChatSummary = {
+  intent: InternalAiChatIntent;
+  status: InternalAiChatTurnResult["status"];
+  usedRealProvider: boolean;
+};
+
+export type InternalAiServerOrchestratorChatResponseData = {
+  operation: "run_controlled_chat";
+  persistenceMode: InternalAiServerPersistenceMode;
+  chatState: InternalAiServerChatCapabilityState;
+  summary: InternalAiServerChatSummary;
+  result: InternalAiChatTurnResult;
   traceEntryId: string;
   notes: string[];
 };

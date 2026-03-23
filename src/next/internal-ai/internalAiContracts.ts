@@ -1,5 +1,6 @@
 export type InternalAiContractId =
   | "chat-orchestrator"
+  | "vehicle-dossier-hook"
   | "vehicle-report-preview"
   | "driver-report-preview"
   | "combined-report-preview"
@@ -28,6 +29,17 @@ export type InternalAiContractDescriptor = {
 
 export interface InternalAiChatOrchestratorContract {
   createPreviewSession(input: { prompt: string }): Promise<{ requestId: string }>;
+}
+
+export interface InternalAiVehicleDossierHookContract {
+  resolveVehicleQuestion(input: {
+    prompt: string;
+    rawTarga?: string;
+    periodPreset?: string;
+  }): Promise<{
+    status: "answer_ready" | "preview_ready" | "needs_input";
+    capabilityId: string;
+  }>;
 }
 
 export interface InternalAiRetrievalContract {
@@ -131,7 +143,15 @@ export const INTERNAL_AI_CONTRACTS: InternalAiContractDescriptor[] = [
     mode: "bridge_mock_safe",
     runtime: "mock_safe_backend",
     note:
-      "Contratto ora instradato nel backend IA separato in modalita mock-safe: la chat passa prima dal canale server-side dedicato, mantiene fallback locale esplicito e non riusa runtime legacy o provider esterni come backend canonico.",
+      "Contratto ora instradato nel backend IA separato tramite adapter HTTP server-side: usa OpenAI solo lato server quando disponibile, mantiene fallback locale esplicito e non riusa runtime legacy come backend canonico.",
+  },
+  {
+    id: "vehicle-dossier-hook",
+    title: "Hook Dossier mezzo governato",
+    mode: "bridge_mock_safe",
+    runtime: "mock_safe_backend",
+    note:
+      "Primo hook mezzo-centrico reale del sottosistema IA: traduce linguaggio libero verso capability governate per stato dossier, documenti, costi, libretto, preventivi e report PDF del mezzo, riusando solo read model NEXT clone-safe e senza aprire retrieval Firebase live largo.",
   },
   {
     id: "vehicle-report-preview",
@@ -191,10 +211,11 @@ export const INTERNAL_AI_CONTRACTS: InternalAiContractDescriptor[] = [
   },
   {
     id: "retrieval-code",
-    title: "Recupero contesto codice",
-    mode: "stub",
-    runtime: "disabled",
-    note: "Solo segnaposto contrattuale. Nessun accesso a runtime al repository o ai moduli business.",
+    title: "Comprensione controllata repo e UI",
+    mode: "bridge_mock_safe",
+    runtime: "mock_safe_backend",
+    note:
+      "Contratto read-only server-side attivo in forma curata: il backend IA separato costruisce una snapshot repo/UI da documenti architetturali, indice controllato di codice e CSS, relazioni madre vs NEXT e audit di readiness Firebase, senza autonomia di patch, senza writer business e senza riuso dei runtime legacy.",
   },
   {
     id: "retrieval-data",
