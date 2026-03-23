@@ -3,9 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Perimetro di governance del backend IA separato della NEXT. Non attiva ancora letture Firebase/Storage business.",
+  "description": "Perimetro di governance del backend IA separato della NEXT. Governa il runtime server-side senza attivare ancora letture Firebase/Storage business live.",
   "scripts": {
     "start": "node server/internal-ai-adapter.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "firebase-readiness": "node server/internal-ai-firebase-readiness-cli.js"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "firebase-admin": "^13.6.0",
+    "gestione-web": "file:../..",
+    "openai": "^6.9.1"
   }
 }

@@ -29,6 +29,8 @@ import {
   trimRepoUnderstandingSnapshotForChat,
 } from "./internal-ai-repo-understanding.js";
 import { getNextRuntimeObserverDirPath } from "./internal-ai-next-runtime-observer.js";
+import { buildFirebaseReadinessSnapshot } from "./internal-ai-firebase-readiness.js";
+import { probeInternalAiFirebaseAdminRuntime } from "./internal-ai-firebase-admin.js";
 
 const host = process.env.INTERNAL_AI_BACKEND_HOST || "127.0.0.1";
 const port = Number(process.env.INTERNAL_AI_BACKEND_PORT || "4310");
@@ -263,6 +265,19 @@ function isControlledChatRequestBody(value) {
   );
 }
 
+function hasCurrentFirebaseReadinessShape(firebaseReadiness) {
+  return Boolean(
+    firebaseReadiness &&
+      Array.isArray(firebaseReadiness.sharedRequirements) &&
+      firebaseReadiness.sharedRequirements.some(
+        (entry) => entry && entry.id === "backend-runtime-dependencies",
+      ) &&
+      firebaseReadiness.sharedRequirements.some(
+        (entry) => entry && entry.id === "firebase-admin-runtime-resolution",
+      ),
+  );
+}
+
 async function loadRepoUnderstandingSnapshot(refresh = false) {
   const currentSnapshot = await readRepoUnderstandingSnapshot();
   if (
@@ -278,6 +293,10 @@ async function loadRepoUnderstandingSnapshot(refresh = false) {
     Array.isArray(currentSnapshot.runtimeObserver.routes) &&
     Array.isArray(currentSnapshot.integrationGuidance) &&
     typeof currentSnapshot.runtimeObserver.stateCount === "number" &&
+    typeof currentSnapshot.runtimeObserver.catalogVersion === "string" &&
+    typeof currentSnapshot.runtimeObserver.observedRouteCount === "number" &&
+    typeof currentSnapshot.runtimeObserver.unavailableRouteCount === "number" &&
+    typeof currentSnapshot.runtimeObserver.observedStateCount === "number" &&
     currentSnapshot.integrationGuidance.every(
       (entry) =>
         entry &&
@@ -286,6 +305,7 @@ async function loadRepoUnderstandingSnapshot(refresh = false) {
         typeof entry.confidence === "string",
     ) &&
     currentSnapshot.firebaseReadiness &&
+    hasCurrentFirebaseReadinessShape(currentSnapshot.firebaseReadiness) &&
     currentSnapshot.firebaseReadiness.firestoreReadOnly &&
     currentSnapshot.firebaseReadiness.storageReadOnly
   ) {
@@ -723,6 +743,10 @@ async function updatePreviewWorkflow(body) {
 
 app.get("/internal-ai-backend/health", async (_req, res) => {
   const providerTarget = getProviderTarget();
+  const [firebaseReadiness, firebaseAdminRuntime] = await Promise.all([
+    buildFirebaseReadinessSnapshot(),
+    probeInternalAiFirebaseAdminRuntime(),
+  ]);
 
   sendEnvelope(res, {
     httpStatus: 200,
@@ -737,6 +761,12 @@ app.get("/internal-ai-backend/health", async (_req, res) => {
       runtimeDataRoot: "backend/internal-ai/runtime-data",
       providerEnabled: isProviderConfigured(),
       providerTarget,
+      firebaseReadiness: {
+        firestoreReadOnlyStatus: firebaseReadiness.firestoreReadOnly.status,
+        storageReadOnlyStatus: firebaseReadiness.storageReadOnly.status,
+        sharedRequirements: firebaseReadiness.sharedRequirements,
+      },
+      firebaseAdminRuntime,
       businessWritesEnabled: false,
       legacyCanonicalBackendEnabled: false,
       workflowEndpointsEnabled: ["artifacts.preview", "approvals.prepare"],
@@ -747,6 +777,7 @@ app.get("/internal-ai-backend/health", async (_req, res) => {
         "Il retrieval read-only attivo legge lo snapshot D01 seedato dal clone e la snapshot curata repo/UI del repository.",
         "La snapshot repo/UI puo includere anche osservazioni runtime NEXT passive e screenshot locali, se l'observer dedicato e stato eseguito.",
         "La chat server-side reale usa OpenAI solo lato server, con fallback locale esplicito se provider o adapter non sono disponibili.",
+        "La readiness Firebase/Storage esposta dall'health resta descrittiva e read-only: il bridge live non viene attivato finche mancano credenziali e policy verificabili.",
       ],
     },
   });

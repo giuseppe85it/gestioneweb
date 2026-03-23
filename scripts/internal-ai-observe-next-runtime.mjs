@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import {
+  INTERNAL_AI_NEXT_RUNTIME_OBSERVER_CATALOG_VERSION,
   INTERNAL_AI_NEXT_RUNTIME_DYNAMIC_ROUTE_SPECS,
   INTERNAL_AI_NEXT_RUNTIME_OBSERVER_BASE_URL,
   INTERNAL_AI_NEXT_RUNTIME_OBSERVER_ROUTE_SPECS,
@@ -29,6 +30,10 @@ function toSafeFileName(value) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatRuntimePath(url) {
+  return `${url.pathname}${url.search}`;
 }
 
 async function isNextAvailable() {
@@ -339,9 +344,16 @@ async function observeStateProbe(page, routeSpec, routePath, probe) {
     await trigger.waitFor({ state: "visible", timeout: 6000 });
     await trigger.click();
     await waitForAppHydration(page);
+    if (typeof probe.settleMs === "number" && probe.settleMs > 0) {
+      await page.waitForTimeout(probe.settleMs);
+    }
+
+    if (typeof probe.successSelector === "string" && probe.successSelector.trim()) {
+      await page.locator(probe.successSelector).first().waitFor({ state: "visible", timeout: 5000 });
+    }
 
     const currentUrl = new URL(page.url());
-    observation.finalPath = currentUrl.pathname;
+    observation.finalPath = formatRuntimePath(currentUrl);
     if (!currentUrl.pathname.startsWith("/next")) {
       observation.limitations.push(
         "Lo stato ha portato fuori dal perimetro /next/* e non viene considerato coperto.",
@@ -386,7 +398,7 @@ async function observeRoute(page, spec) {
     await waitForAppHydration(page);
 
     const currentUrl = new URL(page.url());
-    observation.finalPath = currentUrl.pathname;
+    observation.finalPath = formatRuntimePath(currentUrl);
     if (!currentUrl.pathname.startsWith("/next")) {
       observation.limitations.push(
         "La schermata ha deviato fuori dal perimetro /next/* e non viene considerata coperta.",
@@ -401,7 +413,12 @@ async function observeRoute(page, spec) {
 
     if (Array.isArray(spec.safeStateProbes) && spec.safeStateProbes.length) {
       for (const probe of spec.safeStateProbes) {
-        const stateObservation = await observeStateProbe(page, spec, routePath, probe);
+        const stateObservation = await observeStateProbe(
+          page,
+          spec,
+          observation.finalPath || routePath,
+          probe,
+        );
         observation.stateObservations.push(stateObservation);
       }
       if (observation.stateObservations.some((entry) => entry.status === "observed")) {
@@ -455,10 +472,21 @@ async function observeDynamicRoute(page, spec) {
     await applyDiscoverySteps(page, spec);
 
     const currentUrl = new URL(page.url());
-    observation.finalPath = currentUrl.pathname;
+    observation.finalPath = formatRuntimePath(currentUrl);
     if (!currentUrl.pathname.startsWith("/next")) {
       observation.limitations.push(
         "La discovery dinamica ha portato fuori dal perimetro /next/* e non viene considerata coperta.",
+      );
+      return observation;
+    }
+
+    if (
+      Array.isArray(spec.expectedPathPrefixes) &&
+      spec.expectedPathPrefixes.length > 0 &&
+      !spec.expectedPathPrefixes.some((prefix) => currentUrl.pathname.startsWith(prefix))
+    ) {
+      observation.limitations.push(
+        `La discovery non ha raggiunto il path atteso per ${spec.label}: ${currentUrl.pathname}.`,
       );
       return observation;
     }
@@ -472,6 +500,16 @@ async function observeDynamicRoute(page, spec) {
     observation.notes.push(
       "La route e stata raggiunta con una catena di interazioni whitelist-safe e read-only.",
     );
+
+    if (Array.isArray(spec.safeStateProbes) && spec.safeStateProbes.length) {
+      for (const probe of spec.safeStateProbes) {
+        const stateObservation = await observeStateProbe(page, spec, observation.finalPath, probe);
+        observation.stateObservations.push(stateObservation);
+      }
+      if (observation.stateObservations.some((entry) => entry.status === "observed")) {
+        observation.coverageLevel = "interactive_readonly";
+      }
+    }
 
     if (!observation.visibleDialogs.length) {
       observation.limitations.push(
@@ -496,6 +534,14 @@ async function launchObserverBrowser() {
   } catch {
     return chromium.launch({ headless });
   }
+}
+
+function buildStatusCounts(entries) {
+  return {
+    observed: entries.filter((entry) => entry.status === "observed").length,
+    partial: entries.filter((entry) => entry.status === "partial").length,
+    unavailable: entries.filter((entry) => entry.status === "unavailable").length,
+  };
 }
 
 async function main() {
@@ -525,8 +571,9 @@ async function main() {
     }
   }
 
-  const observedRoutes = observations.filter((entry) => entry.status === "observed");
-  const partialRoutes = observations.filter((entry) => entry.status === "partial");
+  const routeStatusCounts = buildStatusCounts(observations);
+  const stateObservations = observations.flatMap((entry) => entry.stateObservations);
+  const stateStatusCounts = buildStatusCounts(stateObservations);
   const screenshotCount =
     observations.filter((entry) => entry.screenshotFileName).length +
     observations.reduce(
@@ -534,31 +581,39 @@ async function main() {
         total + entry.stateObservations.filter((stateObservation) => stateObservation.screenshotFileName).length,
       0,
     );
-  const stateCount = observations.reduce(
-    (total, entry) => total + entry.stateObservations.length,
-    0,
-  );
+  const stateCount = stateObservations.length;
 
   const snapshot = {
     ...createDefaultNextRuntimeObserverSnapshot(),
+    catalogVersion: INTERNAL_AI_NEXT_RUNTIME_OBSERVER_CATALOG_VERSION,
     status:
-      observedRoutes.length === 0
-        ? partialRoutes.length > 0
+      routeStatusCounts.observed === 0
+        ? routeStatusCounts.partial > 0
           ? "partial"
           : "error"
-        : partialRoutes.length > 0
+        : routeStatusCounts.partial > 0 ||
+            routeStatusCounts.unavailable > 0 ||
+            stateStatusCounts.partial > 0 ||
+            stateStatusCounts.unavailable > 0
           ? "partial"
           : "observed",
     baseUrl,
     observedAt: new Date().toISOString(),
     routeCount: observations.length,
+    observedRouteCount: routeStatusCounts.observed,
+    partialRouteCount: routeStatusCounts.partial,
+    unavailableRouteCount: routeStatusCounts.unavailable,
     screenshotCount,
     stateCount,
+    observedStateCount: stateStatusCounts.observed,
+    partialStateCount: stateStatusCounts.partial,
+    unavailableStateCount: stateStatusCounts.unavailable,
     routes: observations,
     notes: [
       "Crawl Playwright eseguito solo su route /next/* whitelistate.",
       "Sono ammesse solo interazioni whitelist-safe e read-only per tab o percorsi dinamici gia verificati.",
       "Nessun submit, upload, salvataggio o uscita dal perimetro /next/* e stata eseguita dall'osservatore.",
+      `Catalogo observer: ${INTERNAL_AI_NEXT_RUNTIME_OBSERVER_CATALOG_VERSION}. Route osservate ${routeStatusCounts.observed}/${observations.length}, stati osservati ${stateStatusCounts.observed}/${stateCount}.`,
     ],
     limitations: [
       "La copertura runtime resta comunque parziale: modali, menu o stati non whitelistati restano fuori osservazione.",
@@ -576,8 +631,14 @@ async function main() {
         status: snapshot.status,
         baseUrl: snapshot.baseUrl,
         routeCount: snapshot.routeCount,
+        observedRouteCount: snapshot.observedRouteCount,
+        partialRouteCount: snapshot.partialRouteCount,
+        unavailableRouteCount: snapshot.unavailableRouteCount,
         screenshotCount: snapshot.screenshotCount,
         stateCount: snapshot.stateCount,
+        observedStateCount: snapshot.observedStateCount,
+        partialStateCount: snapshot.partialStateCount,
+        unavailableStateCount: snapshot.unavailableStateCount,
       },
       null,
       2,

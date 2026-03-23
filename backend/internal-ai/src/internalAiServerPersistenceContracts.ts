@@ -142,6 +142,37 @@ export type InternalAiServerHealthResponseData = {
   runtimeDataRoot: "backend/internal-ai/runtime-data";
   providerEnabled: boolean;
   providerTarget: InternalAiServerProviderTarget | null;
+  firebaseReadiness: {
+    firestoreReadOnlyStatus: "ready" | "partial" | "not_ready";
+    storageReadOnlyStatus: "ready" | "partial" | "not_ready";
+    sharedRequirements: Array<{
+      id: string;
+      label: string;
+      status: "present" | "missing" | "legacy_only" | "not_versioned" | "conflicting";
+      detail: string;
+    }>;
+  };
+  firebaseAdminRuntime: {
+    packageRoot: "backend/internal-ai";
+    moduleResolution: {
+      app: string | null;
+      firestore: string | null;
+      storage: string | null;
+    };
+    modulesReady: boolean;
+    credential: {
+      mode:
+        | "google_application_credentials"
+        | "firebase_config"
+        | "project_id_only"
+        | "missing";
+      projectId: string | null;
+      googleApplicationCredentialsExists: boolean | null;
+      isReady: boolean;
+    };
+    storageBucket: string;
+    canAttemptLiveRead: boolean;
+  };
   businessWritesEnabled: false;
   legacyCanonicalBackendEnabled: false;
   workflowEndpointsEnabled: Array<"artifacts.preview" | "approvals.prepare">;

@@ -39,9 +39,13 @@
 - `tsconfig.json`
   - verifica TypeScript isolata del perimetro backend.
 - `package.json`
-  - governance dedicata del perimetro `backend/internal-ai`, separata dal runtime root e dai package legacy; prepara il futuro adapter Firebase/Storage read-only senza dichiararlo ancora attivo.
+  - governance dedicata del perimetro `backend/internal-ai`, separata dal runtime root e dai package legacy; dichiara ora anche le dipendenze runtime effettive dell'adapter e uno script dedicato di readiness Firebase/Storage.
 - `server/internal-ai-adapter.js`
   - primo adapter server-side reale, separato dai runtime legacy, con endpoint `health`, repository artifact, memoria IA, primo retrieval read-only controllato e primo workflow preview/approval/rollback con provider lato server.
+- `server/internal-ai-firebase-admin.js`
+  - probe dedicato del runtime `firebase-admin` del backend IA separato, con verifica di risoluzione moduli dal package dedicato, credenziali server-side e contesto futuro per un eventuale bridge read-only stretto.
+- `server/internal-ai-firebase-readiness-cli.js`
+  - runner locale read-only che stampa la snapshot di readiness Firebase/Storage senza leggere dati business.
 - `server/internal-ai-persistence.js`
   - persistenza locale server-side dedicata della nuova IA su file JSON in `runtime-data/`.
 - `runtime-data/`
@@ -67,22 +71,33 @@
 ## Readiness Firebase / Storage read-only
 - Il backend IA separato ha ora una governance minima dedicata anche a livello package, ma il bridge Firebase/Storage business read-only NON e ancora attivo.
 - Stato reale verificabile oggi:
-  - `backend/internal-ai/package.json` esiste e governa il perimetro futuro del backend IA;
-  - `firebase-admin` non e ancora dichiarato in questo package;
-  - `firestore.rules` non e presente nel repo;
+  - `backend/internal-ai/package.json` esiste e governa ora anche le dipendenze runtime gia usate dal suo adapter server-side (`body-parser`, `dotenv`, `express`, `openai`, `firebase-admin`);
+  - `backend/internal-ai/server/internal-ai-firebase-admin.js` prepara il bootstrap server-side dedicato e separato, ma non apre letture business finche la probe non risulta davvero pronta;
+  - `firestore.rules` non e presente nel repo e `firebase.json` non espone ancora alcun boundary Firestore verificabile;
   - `storage.rules` versionato resta in conflitto con l'uso legacy di Storage;
   - credenziali server-side dedicate del backend IA non risultano dimostrate nel processo corrente.
+- Probe locale ripetibile:
+  - `npm --prefix backend/internal-ai run firebase-readiness`
+  - il comando stampa solo la snapshot di readiness del bridge, senza leggere Firestore o Storage business.
+  - nel checkout locale verificato in questo task la probe risolve `firebase-admin` dal solo package `backend/internal-ai`, ma il bridge resta `not_ready` per assenza di credenziali Google server-side e policy Firestore verificabili.
 - Whitelist candidate non attive:
   - Firestore: solo `storage/@mezzi_aziendali`;
   - Storage: solo path esatto derivato da `librettoStoragePath`, senza `listAll`, senza prefix scan e senza path arbitrari.
+- Boundary futuro codificato ma non attivo:
+  - `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js` dichiara in modo machine-readable l'unico primo perimetro live ammissibile;
+  - Firestore: solo documento esatto `storage/@mezzi_aziendali`, con projection futura limitata ai campi D01/libretto;
+  - Storage: solo bucket `gestionemanutenzione-934ef.firebasestorage.app` e solo oggetto esatto puntato da `librettoStoragePath`;
+  - restano esplicitamente fuori `@rifornimenti`, `@rifornimenti_autisti_tmp`, `@costiMezzo`, `@documenti_*`, `@preventivi`, `@preventivi_approvazioni`, `documenti_pdf/*`, `preventivi/*`, `autisti/*`.
 - Prossimo passo corretto:
-  - dichiarare `firebase-admin` nel package dedicato del backend IA;
   - configurare credenziale server-side separata;
-  - chiarire policy Firestore/Storage effettive;
+  - versionare/collegare davvero `firestore.rules` o un'evidenza equivalente delle policy effettive;
+  - chiarire in modo definitivo il boundary deployato di `storage.rules`;
   - aprire solo dopo un adapter read-only reale con whitelist runtime e traceability.
 - Nota importante:
   - il nuovo snapshot `Dossier Mezzo` server-side NON equivale a un bridge Firebase live;
   - resta un retrieval IA dedicato, clone-seeded e read-only sopra i layer NEXT gia governati.
+  - `firebase.json`, `firestore.rules` e `storage.rules` non vengono toccati in questo step perche il repo li marca ancora come punti critici da chiarire prima di qualunque modifica deploy-sensitive.
+  - `GET /internal-ai-backend/health` espone ora anche una sintesi read-only della readiness Firebase/Storage e della probe runtime `firebase-admin`, senza attivare il live bridge.
 
 ## Primo provider reale e workflow controllato
 - Provider scelto: `OpenAI` via `Responses API`, solo server-side.

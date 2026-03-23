@@ -192,6 +192,46 @@ const CURATED_SCREEN_RELATIONS = [
     to: "/next/ia/interna/audit",
     summary: "Ogni capability IA interna deve lasciare tracce leggibili e reversibili nel perimetro audit dedicato.",
   },
+  {
+    from: "/next/gestione-operativa",
+    to: "/next/acquisti",
+    summary: "Il workbench operativo globale instrada il procurement sulle route dedicate, senza comprimere tutto in una sola pagina hub.",
+  },
+  {
+    from: "/next/gestione-operativa",
+    to: "/next/lavori-in-attesa",
+    summary: "Le code lavori vivono come route autonome leggibili e non piu solo come sotto-stato di una pagina globale.",
+  },
+  {
+    from: "/next/acquisti",
+    to: "/next/dettaglio-ordine/:ordineId",
+    summary: "Il procurement apre il dettaglio ordine come vista propria read-only, distinta dal tab principale.",
+  },
+  {
+    from: "/next/capo/mezzi",
+    to: "/next/capo/costi/:targa",
+    summary: "L'area capo parte dall'overview mezzi e apre il drill-down costi per targa come route dedicata.",
+  },
+  {
+    from: "/next/autisti-inbox",
+    to: "/next/autisti-inbox/segnalazioni",
+    summary: "La inbox autisti si estende in listati specializzati per segnalazioni, controlli, gomme e richieste attrezzature.",
+  },
+  {
+    from: "/next/ia",
+    to: "/next/ia/libretto",
+    summary: "L'hub IA clone-safe instrada verso strumenti documentali e viewer dedicati, non verso un'unica pagina monolitica.",
+  },
+  {
+    from: "/next/cisterna",
+    to: "/next/cisterna/ia",
+    summary: "Il verticale cisterna apre un sottopercorso specialistico IA separato dal cockpit generale e dal dossier standard.",
+  },
+  {
+    from: "/next/cisterna",
+    to: "/next/cisterna/schede-test",
+    summary: "La route schede test estende la verticale cisterna con query state di mese, mantenendo bloccati upload e save.",
+  },
 ];
 
 const CURATED_ROUTES = [
@@ -220,6 +260,86 @@ const CURATED_ROUTES = [
     label: "IA interna overview",
     path: "/next/ia/interna",
     summary: "Chat controllata, preview report e capability IA isolate.",
+  },
+  {
+    label: "Gestione Operativa",
+    path: "/next/gestione-operativa",
+    summary: "Hub operativo globale con pagine figlie autonome per stock, procurement e backlog lavori.",
+  },
+  {
+    label: "Acquisti",
+    path: "/next/acquisti",
+    summary: "Workbench procurement read-only con tab, menu e route dettaglio dedicate.",
+  },
+  {
+    label: "Dettaglio ordine",
+    path: "/next/dettaglio-ordine/:ordineId",
+    summary: "Drill-down ordine standalone osservabile in sola lettura dalle code procurement.",
+  },
+  {
+    label: "Lavori in attesa",
+    path: "/next/lavori-in-attesa",
+    summary: "Lista globale lavori aperti con percorso dedicato al dettaglio.",
+  },
+  {
+    label: "Dettaglio lavoro",
+    path: "/next/dettagliolavori/:lavoroId",
+    summary: "Drill-down del singolo lavoro raggiunto dalle liste globali clone-safe.",
+  },
+  {
+    label: "Area Capo",
+    path: "/next/capo/mezzi",
+    summary: "Overview mezzi area capo con accesso al drill-down costi per targa.",
+  },
+  {
+    label: "Capo costi mezzo",
+    path: "/next/capo/costi/:targa",
+    summary: "Vista costi per targa con tab, filtri e preview non scriventi.",
+  },
+  {
+    label: "Autisti Inbox",
+    path: "/next/autisti-inbox",
+    summary: "Inbox autisti clone-safe con menu, modali dettaglio e listati dedicati.",
+  },
+  {
+    label: "Autisti Segnalazioni",
+    path: "/next/autisti-inbox/segnalazioni",
+    summary: "Listato specializzato segnalazioni autisti con accordion, foto e preview PDF.",
+  },
+  {
+    label: "Autisti Admin",
+    path: "/next/autisti-admin",
+    summary: "Centro rettifica reader-first con tab e filtri locali, senza write business.",
+  },
+  {
+    label: "IA API key",
+    path: "/next/ia/apikey",
+    summary: "Pagina legacy-clone osservabile con toggle locale, senza segreti reali lato client.",
+  },
+  {
+    label: "IA Libretto archivio",
+    path: "/next/ia/libretto?archive=1",
+    summary: "Viewer archivio libretti osservabile in GET-only con query state esplicito.",
+  },
+  {
+    label: "Libretti Export",
+    path: "/next/libretti-export",
+    summary: "Perimetro export PDF clone-safe separato dall'hub IA.",
+  },
+  {
+    label: "Cisterna",
+    path: "/next/cisterna",
+    summary: "Verticale specialistico con month picker, tab report e sottoroute dedicate.",
+  },
+  {
+    label: "Cisterna IA",
+    path: "/next/cisterna/ia",
+    summary: "Sottoroute specialistica IA della verticale cisterna, osservata in sola lettura.",
+  },
+  {
+    label: "Cisterna Schede Test",
+    path: "/next/cisterna/schede-test",
+    summary: "Route specialistica con query month e superficie edit ancora esclusa dal perimetro safe.",
   },
 ];
 
@@ -656,7 +776,8 @@ export function buildRepoUnderstandingMeta(snapshot) {
     fileIndexCount: snapshot.fileIndex.length,
     styleRelationCount: snapshot.styleRelations.length,
     legacyNextRelationCount: snapshot.legacyNextRelations.length,
-    runtimeObservedRouteCount: snapshot.runtimeObserver?.routeCount ?? 0,
+    runtimeObservedRouteCount:
+      snapshot.runtimeObserver?.observedRouteCount ?? snapshot.runtimeObserver?.routeCount ?? 0,
     runtimeScreenshotCount: snapshot.runtimeObserver?.screenshotCount ?? 0,
     integrationGuidanceCount: snapshot.integrationGuidance?.length ?? 0,
     relationCount: snapshot.screenRelations.length,
@@ -688,16 +809,80 @@ export function buildRepoUnderstandingReferences(snapshot) {
       label: pattern.label,
       targa: null,
     })),
-    ...(snapshot.runtimeObserver?.routeCount
+    ...((snapshot.runtimeObserver?.observedRouteCount ?? snapshot.runtimeObserver?.routeCount)
       ? [
           {
             type: "runtime_observer",
-            label: `Runtime NEXT osservato su ${snapshot.runtimeObserver.routeCount} schermate`,
+            label: `Runtime NEXT osservato su ${snapshot.runtimeObserver.observedRouteCount ?? snapshot.runtimeObserver.routeCount} schermate`,
             targa: null,
           },
         ]
       : []),
   ];
+}
+
+function trimRuntimeObserverStateForChat(stateObservation) {
+  return {
+    id: stateObservation.id,
+    label: stateObservation.label,
+    kind: stateObservation.kind,
+    status: stateObservation.status,
+    finalPath: stateObservation.finalPath,
+    mainHeading: stateObservation.mainHeading,
+    visibleSections: stateObservation.visibleSections.slice(0, 3),
+    visibleDialogs: stateObservation.visibleDialogs.slice(0, 2),
+    limitations: stateObservation.limitations.slice(0, 1),
+  };
+}
+
+function trimRuntimeObserverRouteForChat(route) {
+  return {
+    id: route.id,
+    label: route.label,
+    path: route.path,
+    finalPath: route.finalPath,
+    screenType: route.screenType,
+    status: route.status,
+    coverageLevel: route.coverageLevel,
+    discoveredFromRouteId: route.discoveredFromRouteId,
+    sourcePaths: route.sourcePaths.slice(0, 4),
+    pageTitle: route.pageTitle,
+    mainHeading: route.mainHeading,
+    visibleHeadings: route.visibleHeadings.slice(0, 4),
+    visibleSections: route.visibleSections.slice(0, 4),
+    visibleTabs: route.visibleTabs.slice(0, 4),
+    surfaceEntries: route.surfaceEntries.slice(0, 4).map((entry) => ({
+      type: entry.type,
+      label: entry.label,
+    })),
+    stateObservations: route.stateObservations.map(trimRuntimeObserverStateForChat),
+    limitations: route.limitations.slice(0, 1),
+  };
+}
+
+function trimRuntimeObserverForChat(runtimeObserver) {
+  if (!runtimeObserver) {
+    return null;
+  }
+
+  return {
+    status: runtimeObserver.status,
+    catalogVersion: runtimeObserver.catalogVersion,
+    baseUrl: runtimeObserver.baseUrl,
+    observedAt: runtimeObserver.observedAt,
+    routeCount: runtimeObserver.routeCount,
+    observedRouteCount: runtimeObserver.observedRouteCount,
+    partialRouteCount: runtimeObserver.partialRouteCount,
+    unavailableRouteCount: runtimeObserver.unavailableRouteCount,
+    screenshotCount: runtimeObserver.screenshotCount,
+    stateCount: runtimeObserver.stateCount,
+    observedStateCount: runtimeObserver.observedStateCount,
+    partialStateCount: runtimeObserver.partialStateCount,
+    unavailableStateCount: runtimeObserver.unavailableStateCount,
+    routes: runtimeObserver.routes.map(trimRuntimeObserverRouteForChat),
+    notes: runtimeObserver.notes.slice(0, 4),
+    limitations: runtimeObserver.limitations.slice(0, 6),
+  };
 }
 
 export function trimRepoUnderstandingSnapshotForChat(snapshot) {
@@ -707,22 +892,15 @@ export function trimRepoUnderstandingSnapshotForChat(snapshot) {
     moduleAreas: snapshot.moduleAreas.slice(0, 5),
     uiPatterns: snapshot.uiPatterns.slice(0, 5),
     repoZones: snapshot.repoZones.slice(0, 5),
-    fileIndex: snapshot.fileIndex.slice(0, 20),
-    styleRelations: snapshot.styleRelations.slice(0, 12),
-    legacyNextRelations: snapshot.legacyNextRelations.slice(0, 4),
-    runtimeObserver: snapshot.runtimeObserver
-      ? {
-          ...snapshot.runtimeObserver,
-          routes: snapshot.runtimeObserver.routes.slice(0, 6),
-          notes: snapshot.runtimeObserver.notes.slice(0, 3),
-          limitations: snapshot.runtimeObserver.limitations.slice(0, 3),
-        }
-      : null,
-    integrationGuidance: snapshot.integrationGuidance.slice(0, 6),
-    representativeRoutes: snapshot.representativeRoutes.slice(0, 6),
-    screenRelations: snapshot.screenRelations.slice(0, 5),
+    fileIndex: snapshot.fileIndex.slice(0, 16),
+    styleRelations: snapshot.styleRelations.slice(0, 10),
+    legacyNextRelations: snapshot.legacyNextRelations.slice(0, 6),
+    runtimeObserver: trimRuntimeObserverForChat(snapshot.runtimeObserver),
+    integrationGuidance: snapshot.integrationGuidance,
+    representativeRoutes: snapshot.representativeRoutes,
+    screenRelations: snapshot.screenRelations,
     firebaseReadiness: snapshot.firebaseReadiness,
-    notes: snapshot.notes.slice(0, 3),
-    limitations: snapshot.limitations.slice(0, 3),
+    notes: snapshot.notes.slice(0, 4),
+    limitations: snapshot.limitations.slice(0, 4),
   };
 }

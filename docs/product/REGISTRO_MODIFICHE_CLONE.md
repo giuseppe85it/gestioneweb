@@ -31,6 +31,115 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-23 74
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Copertura runtime UI quasi totale verificabile della NEXT + payload chat runtime completo
+- OBIETTIVO: portare la nuova IA alla massima copertura runtime verificabile della NEXT nel perimetro read-only, rendendo visibili in UI e nel payload chat tutte le route/stati osservati davvero senza toccare la madre.
+- FILE TOCCATI:
+  - `backend/internal-ai/server/internal-ai-next-runtime-observer.js`
+  - `backend/internal-ai/server/internal-ai-repo-understanding.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/src/internalAiServerRetrievalContracts.ts`
+  - `scripts/internal-ai-observe-next-runtime.mjs`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/change-reports/2026-03-23_1249_ui_total-runtime-coverage-next-ia.md`
+  - `docs/continuity-reports/2026-03-23_1249_continuity_runtime-observer-next-total-ui-coverage.md`
+- COSA E STATO CAMBIATO:
+  - esteso il catalogo dell'observer runtime NEXT a 53 route candidate con piu route annidate, dinamiche e stati interni whitelist-safe;
+  - rigenerata la copertura reale con esito verificato `52/53` route osservate, `70` screenshot e `18/26` stati osservati;
+  - la pagina `/next/ia/interna` e il payload chat del backend IA mostrano ora una vista runtime completa e compatta, senza piu limitarsi a un piccolo campione di route osservate.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il pannello runtime della nuova IA mostra tutte le route e tutti gli stati osservati, con conteggi osservati/tentati/non disponibili e breakdown per tipo di stato;
+  - Lettura: la nuova IA puo ragionare su tutta la copertura runtime osservata e su un mapping piu concreto `schermata -> file/modulo/flusso`, senza usare la madre e senza aprire bridge business live;
+  - Blocco scritture: invariato, nessun click distruttivo, nessun submit, nessun upload, nessuna scrittura business e nessun backend legacy reso canonico.
+- COME VERIFICARE:
+  - eseguire `npx tsc -p backend/internal-ai/tsconfig.json --noEmit`;
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx backend/internal-ai/src/internalAiServerRetrievalContracts.ts backend/internal-ai/server/internal-ai-next-runtime-observer.js backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js scripts/internal-ai-observe-next-runtime.mjs`;
+  - eseguire `npm run internal-ai:observe-next`;
+  - verificare che `next_runtime_observer_snapshot.json` riporti `routeCount = 53`, `observedRouteCount = 52`, `stateCount = 26`, `observedStateCount = 18`, `screenshotCount = 70`;
+  - rigenerare o leggere la snapshot repo/UI e verificare che la chat riceva tutte le route runtime in forma compatta;
+  - eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - resta non osservata oggi la route dinamica `Acquisti` dettaglio per assenza affidabile del trigger `Apri` nel campione runtime locale;
+  - restano 8 stati interni non osservabili in modo sicuro per controlli nascosti, data-dependent o disabilitati dal guard rail read-only del clone.
+
+### Voce 2026-03-23 73
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Governance package backend IA piu seria + probe runtime Firebase Admin
+- OBIETTIVO: preparare davvero il backend IA separato a ospitare un futuro bridge live read-only senza usare i runtime legacy come canale canonico, ma senza aprire il live finche credenziali e policy restano non verificabili.
+- FILE TOCCATI:
+  - `backend/internal-ai/package.json`
+  - `backend/internal-ai/server/internal-ai-firebase-admin.js`
+  - `backend/internal-ai/server/internal-ai-firebase-readiness.js`
+  - `backend/internal-ai/server/internal-ai-firebase-readiness-cli.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/README.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/change-reports/2026-03-23_0942_governance-package-backend-ia-readiness-live.md`
+  - `docs/continuity-reports/2026-03-23_0942_continuity_governance-package-backend-ia-readiness-live.md`
+- COSA E STATO CAMBIATO:
+  - il package `backend/internal-ai` dichiara ora le dipendenze runtime effettive del proprio adapter e non solo il contenitore logico del backend IA;
+  - e stato aggiunto un bootstrap Firebase Admin dedicato e separato dai runtime legacy, insieme a una CLI locale di readiness;
+  - l'adapter invalida la vecchia snapshot repo/UI e rigenera la readiness con i nuovi prerequisiti package/runtime.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: al refresh snapshot, `/next/ia/interna` vede una readiness piu onesta sul confine tra manifest, runtime e credenziali;
+  - Lettura: nessuna nuova lettura business viene attivata; resta attivo solo il retrieval clone-seeded gia governato;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna modifica deploy-sensitive alle rules globali e nessun uso del legacy come backend canonico.
+- COME VERIFICARE:
+  - eseguire `node --check backend/internal-ai/server/internal-ai-firebase-admin.js`;
+  - eseguire `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js`;
+  - eseguire `node --check backend/internal-ai/server/internal-ai-firebase-readiness-cli.js`;
+  - eseguire `npm --prefix backend/internal-ai run firebase-readiness`;
+  - verificare che la snapshot mostri ancora `not_ready` per Firestore/Storage finche mancano credenziali e policy verificabili.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Il task non apre alcun live bridge Firestore/Storage business.
+  - `firebase.json`, `firestore.rules` e `storage.rules` non vengono toccati perche il repo li marca ancora come punti critici da chiarire.
+
+### Voce 2026-03-23 72
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Ri-verifica bridge live Firebase/Storage IA con boundary futuro esplicito
+- OBIETTIVO: chiarire in modo verificato se il backend IA separato possa aprire davvero il primo bridge Firebase/Storage business live read-only e, non potendolo ancora fare in sicurezza, irrigidire la readiness con un boundary futuro stretto e non attivo.
+- FILE TOCCATI:
+  - `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`
+  - `backend/internal-ai/server/internal-ai-firebase-readiness.js`
+  - `backend/internal-ai/README.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/change-reports/2026-03-23_0909_riverifica-bridge-live-firebase-storage-ia.md`
+  - `docs/continuity-reports/2026-03-23_0909_continuity_riverifica-bridge-live-firebase-storage-ia.md`
+- COSA E STATO CAMBIATO:
+  - codificato in backend IA un boundary futuro e machine-readable che limita il primo bridge live ammissibile al solo documento `storage/@mezzi_aziendali` e all'oggetto Storage esatto puntato da `librettoStoragePath`;
+  - irrigidita la readiness Firebase/Storage per dichiarare in modo piu duro che il bridge live non e ancora attivo ne apribile con l'evidenza oggi disponibile;
+  - aggiornati checklist, stato IA, stato NEXT e stato progetto per registrare che il fallback ufficiale resta il retrieval clone-seeded del `mezzo_dossier`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la sezione readiness di `/next/ia/interna` continua a essere onesta e, al refresh snapshot, espone limiti futuri piu stretti e blocco live confermato;
+  - Lettura: nessuna nuova lettura business viene attivata; resta attivo solo il retrieval clone-seeded gia governato;
+  - Blocco scritture: invariato, nessuna scrittura business, nessun uso del legacy come backend canonico, nessun live Firebase/Storage aperto.
+- COME VERIFICARE:
+  - eseguire `node --check backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`;
+  - eseguire `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js`;
+  - eseguire `npx eslint backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js backend/internal-ai/server/internal-ai-firebase-readiness.js`;
+  - eseguire smoke test `buildFirebaseReadinessSnapshot()`;
+  - aprire `/next/ia/interna`, sezione readiness Firebase/Storage, e verificare che il bridge business live resti non attivo e limitato ai soli perimetri futuri dichiarati.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - blocchi ancora aperti: `firebase-admin` non governato dal package backend IA, credenziali server-side Google assenti nel processo corrente, `firestore.rules` assente, `storage.rules` in conflitto;
+  - restano fuori dal primo bridge live `@rifornimenti`, `@documenti_*`, `@preventivi`, `documenti_pdf/*`, `preventivi/*`, `autisti/*`.
+
 ### Voce 2026-03-22 71
 - DATA: 2026-03-22
 - TITOLO MODIFICA: Deep runtime observer NEXT + selettore formato output IA + guida integrazione evoluta

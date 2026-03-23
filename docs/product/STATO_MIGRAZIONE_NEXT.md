@@ -920,6 +920,102 @@ Serve a:
   - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
   - `npm run build` -> OK.
 
+## 5.42 Aggiornamento 2026-03-23 - Ri-verifica live Firebase/Storage IA: blocco confermato e boundary futuro esplicito
+- Il clone `/next/ia/interna` non apre ancora il primo bridge Firebase/Storage business live read-only: la ri-verifica `2026-03-23` conferma che il perimetro sicuro e verificabile non e ancora sufficiente per attivarlo.
+- Cosa viene reso piu solido in questo task:
+  - la readiness server-side del backend IA separato passa da semplice candidatura a boundary futuro piu esplicito e stretto;
+  - viene codificato il solo primo perimetro futuro ammissibile:
+    - Firestore `storage/@mezzi_aziendali` come documento esatto;
+    - Storage `gestionemanutenzione-934ef.firebasestorage.app` solo su path esatto `librettoStoragePath`;
+  - vengono dichiarati in modo piu duro i divieti:
+    - niente query larghe;
+    - niente scansioni collection;
+    - niente `listAll` o prefix scan;
+    - niente `@rifornimenti`, `@documenti_*`, `@preventivi` o path `documenti_pdf/*`, `preventivi/*`, `autisti/*` nel primo bridge live.
+- Cosa NON cambia:
+  - il fallback ufficiale resta il retrieval clone-seeded del `mezzo_dossier`;
+  - nessuna modifica della madre;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Blocchi confermati:
+  - `firebase-admin` non ancora governato dal package dedicato del backend IA;
+  - nessuna credenziale server-side Google dimostrata nel processo corrente;
+  - `firestore.rules` assente dal repo;
+  - `storage.rules` versionato in conflitto con l'uso legacy.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js` -> OK;
+  - `npx eslint backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js backend/internal-ai/server/internal-ai-firebase-readiness.js` -> OK;
+  - smoke test `buildFirebaseReadinessSnapshot()` -> OK.
+
+## 5.43 Aggiornamento 2026-03-23 - Governance package backend IA piu seria, live ancora chiuso
+- Il clone `/next/ia/interna` non apre ancora il live minimo, ma il backend IA separato governa ora in modo piu credibile il proprio perimetro server-side:
+  - `backend/internal-ai/package.json` dichiara le dipendenze runtime effettive dell'adapter;
+  - `backend/internal-ai/server/internal-ai-firebase-admin.js` prepara un bootstrap Firebase Admin separato e non legacy;
+  - `backend/internal-ai/server/internal-ai-firebase-readiness-cli.js` rende ripetibile la verifica locale della readiness.
+- Cosa NON cambia nel clone:
+  - il fallback ufficiale resta il retrieval clone-seeded del `mezzo_dossier`;
+  - nessuna modifica della madre;
+  - nessuna scrittura business;
+  - nessun backend legacy reso canonico.
+- Blocchi residui che impediscono ancora il live:
+  - il checkout locale risolve ora `firebase-admin` dal perimetro backend IA, ma questo non basta ancora ad aprire il live minimo;
+  - nessuna credenziale server-side Google dedicata e verificabile nel processo corrente;
+  - `firestore.rules` assente e `firebase.json` senza boundary Firestore verificabile;
+  - `storage.rules` versionato ancora in conflitto con l'uso legacy reale.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-firebase-admin.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readiness-cli.js` -> OK;
+  - `npx eslint backend/internal-ai/server/internal-ai-firebase-admin.js backend/internal-ai/server/internal-ai-firebase-readiness.js backend/internal-ai/server/internal-ai-firebase-readiness-cli.js backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - `npm --prefix backend/internal-ai run firebase-readiness` -> OK;
+  - smoke test `health` adapter su porta temporanea `4317` -> `firestore: not_ready`, `storage: not_ready`, `adminRuntimeReady: true`.
+
+## 5.44 Aggiornamento 2026-03-23 - Copertura runtime UI quasi totale verificabile della NEXT
+- Il clone `/next/ia/interna` porta ora la copertura runtime della NEXT al massimo oggi verificabile in modo read-only, senza click distruttivi, senza madre e senza simulare scritture business.
+- Copertura reale rigenerata con `npm run internal-ai:observe-next`:
+  - catalogo observer `2026-03-23-total-ui-v1` su 53 route candidate;
+  - 52 route osservate davvero;
+  - 70 screenshot runtime;
+  - 26 stati interni whitelist-safe tentati;
+  - 18 stati interni osservati davvero:
+    - 12 `tab`;
+    - 2 `menu`;
+    - 2 `dialog/modal`;
+    - 1 `card`;
+    - 1 `detail`;
+  - 8 stati interni dichiarati come non osservabili oggi nel perimetro sicuro.
+- Aree oggi coperte davvero nel clone read-only:
+  - subtree `IA` e `IA interna`;
+  - subtree `Autisti Inbox`;
+  - `Autisti Admin` con tab principali;
+  - `Centro di Controllo` con tab principali;
+  - subtree `Cisterna` con route figlie read-only;
+  - `Lavori in attesa` + dettaglio lavoro;
+  - `Ordini in attesa` + dettaglio ordine;
+  - schermate operative/lista come `Inventario`, `Manutenzioni`, `Materiali`, `Mezzi`, `Colleghi`, `Fornitori`, `Capo Mezzi`.
+- Cosa migliora davvero anche per la nuova IA:
+  - la pagina `/next/ia/interna` mostra tutte le route e tutti gli stati osservati, senza piu tagliare la lista ai primi elementi;
+  - il backend chat riceve una vista runtime compatta ma completa di tutte le route osservate, insieme a `integrationGuidance`, `representativeRoutes` e `screenRelations` completi, cosi il mapping `schermata -> file/modulo/flusso` e piu concreto e meno generico.
+- Limiti residui espliciti:
+  - non osservata oggi la route dinamica `Acquisti` dettaglio, perche il trigger `Apri` non emerge in modo affidabile nel runtime locale;
+  - restano non osservabili in modo sicuro alcuni stati interni non cosmetici:
+    - `Home`: accordion rapido non visibile e modale `Vedi tutto` bloccata dal guard rail read-only del clone;
+    - `Dossier dettaglio`: modale lavori e foto mezzo non visibili nel DOM del campione;
+    - `Dossier rifornimenti`: filtri `MESE` e `12 mesi` non visibili in modo affidabile;
+    - `Capo costi`: toggle `solo da valutare` non visibile;
+    - `Acquisti`: menu ordine non visibile nel campione.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-next-runtime-observer.js` -> OK;
+  - `node --check scripts/internal-ai-observe-next-runtime.mjs` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-repo-understanding.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> OK;
+  - `npx tsc -p backend/internal-ai/tsconfig.json --noEmit` -> OK;
+  - `npx eslint src/next/NextInternalAiPage.tsx backend/internal-ai/src/internalAiServerRetrievalContracts.ts backend/internal-ai/server/internal-ai-next-runtime-observer.js backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js scripts/internal-ai-observe-next-runtime.mjs` -> OK;
+  - `npm run internal-ai:observe-next` -> OK (`52/53` route, `18/26` stati, `70` screenshot);
+  - rebuild snapshot repo/UI server-side -> OK;
+  - `npm run build` -> OK.
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

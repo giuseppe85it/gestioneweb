@@ -713,6 +713,10 @@ const RUNTIME_STATE_KIND_LABELS: Record<string, string> = {
   tab_state: "Stato tab",
   section_state: "Stato sezione",
   dialog_state: "Stato dialog",
+  menu_state: "Stato menu",
+  filter_state: "Stato filtro",
+  card_state: "Stato card",
+  detail_state: "Stato dettaglio",
 };
 
 const RUNTIME_SCREEN_TYPE_LABELS: Record<string, string> = {
@@ -1220,6 +1224,71 @@ function runtimeObserverStatusClass(status: string) {
   return statusToneClass(status);
 }
 
+function buildRuntimeObserverMetrics(
+  runtimeObserver: InternalAiServerRepoUnderstandingSnapshot["runtimeObserver"],
+) {
+  const routes = Array.isArray(runtimeObserver.routes) ? runtimeObserver.routes : [];
+  const stateObservations = routes.flatMap((route) =>
+    Array.isArray(route.stateObservations) ? route.stateObservations : [],
+  );
+  const stateKindCounts = stateObservations.reduce<
+    Record<
+      string,
+      {
+        attempted: number;
+        observed: number;
+        partial: number;
+        unavailable: number;
+      }
+    >
+  >((accumulator, stateObservation) => {
+    const key = stateObservation.kind ?? "route_state";
+    const current =
+      accumulator[key] ??
+      (accumulator[key] = {
+        attempted: 0,
+        observed: 0,
+        partial: 0,
+        unavailable: 0,
+      });
+
+    current.attempted += 1;
+    if (stateObservation.status === "observed") {
+      current.observed += 1;
+    } else if (stateObservation.status === "partial") {
+      current.partial += 1;
+    } else if (stateObservation.status === "unavailable") {
+      current.unavailable += 1;
+    }
+
+    return accumulator;
+  }, {});
+
+  return {
+    routeCount: runtimeObserver.routeCount ?? routes.length,
+    observedRouteCount:
+      runtimeObserver.observedRouteCount ??
+      routes.filter((route) => route.status === "observed").length,
+    partialRouteCount:
+      runtimeObserver.partialRouteCount ??
+      routes.filter((route) => route.status === "partial").length,
+    unavailableRouteCount:
+      runtimeObserver.unavailableRouteCount ??
+      routes.filter((route) => route.status === "unavailable").length,
+    stateCount: runtimeObserver.stateCount ?? stateObservations.length,
+    observedStateCount:
+      runtimeObserver.observedStateCount ??
+      stateObservations.filter((state) => state.status === "observed").length,
+    partialStateCount:
+      runtimeObserver.partialStateCount ??
+      stateObservations.filter((state) => state.status === "partial").length,
+    unavailableStateCount:
+      runtimeObserver.unavailableStateCount ??
+      stateObservations.filter((state) => state.status === "unavailable").length,
+    stateKindCounts,
+  };
+}
+
 function outputModeToneClass(mode: InternalAiOutputMode | null) {
   if (mode === "report_pdf" || mode === "artifact_document") {
     return "internal-ai-pill is-positive";
@@ -1563,6 +1632,28 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         .find((message) => message.role === "assistente") ?? null,
     [chatMessages],
   );
+  const runtimeObserverMetrics = useMemo(
+    () =>
+      repoUnderstandingState.status === "ready" && repoUnderstandingState.snapshot
+        ? buildRuntimeObserverMetrics(repoUnderstandingState.snapshot.runtimeObserver)
+        : null,
+    [repoUnderstandingState.status, repoUnderstandingState.snapshot],
+  );
+  const runtimeObserverStateKindSummary = useMemo(() => {
+    if (!runtimeObserverMetrics) {
+      return "";
+    }
+
+    return Object.entries(runtimeObserverMetrics.stateKindCounts)
+      .filter(([, counts]) => counts.attempted > 0)
+      .sort((left, right) => right[1].attempted - left[1].attempted)
+      .map(([kind, counts]) => {
+        const label =
+          RUNTIME_STATE_KIND_LABELS[kind as keyof typeof RUNTIME_STATE_KIND_LABELS] ?? kind;
+        return `${label}: ${counts.observed}/${counts.attempted}`;
+      })
+      .join(" | ");
+  }, [runtimeObserverMetrics]);
   const chatStatusCards = useMemo(
     () => [
       {
@@ -1599,9 +1690,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         detail:
           repoUnderstandingState.status === "ready" && repoUnderstandingState.snapshot
             ? repoUnderstandingState.snapshot.runtimeObserver.status === "observed"
-              ? `Osservatore runtime NEXT attivo su ${repoUnderstandingState.snapshot.runtimeObserver.routeCount} schermate e ${repoUnderstandingState.snapshot.runtimeObserver.stateCount} stati read-only.`
+              ? `Osservatore runtime NEXT attivo su ${runtimeObserverMetrics?.observedRouteCount ?? repoUnderstandingState.snapshot.runtimeObserver.routeCount} schermate osservate e ${runtimeObserverMetrics?.observedStateCount ?? repoUnderstandingState.snapshot.runtimeObserver.stateCount} stati davvero aperti.`
               : repoUnderstandingState.snapshot.runtimeObserver.status === "partial"
-                ? `Osservatore runtime NEXT parziale su ${repoUnderstandingState.snapshot.runtimeObserver.routeCount} schermate e ${repoUnderstandingState.snapshot.runtimeObserver.stateCount} stati read-only.`
+                ? `Osservatore runtime NEXT parziale: ${runtimeObserverMetrics?.observedRouteCount ?? 0}/${runtimeObserverMetrics?.routeCount ?? repoUnderstandingState.snapshot.runtimeObserver.routeCount} schermate osservate e ${runtimeObserverMetrics?.observedStateCount ?? 0}/${runtimeObserverMetrics?.stateCount ?? repoUnderstandingState.snapshot.runtimeObserver.stateCount} stati riusciti.`
                 : repoUnderstandingState.transportMessage
             : repoUnderstandingState.transportMessage ?? "La comprensione repo/UI resta read-only e curata.",
       },
@@ -1635,6 +1726,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       chatBridgeState.transport,
       repoUnderstandingState.status,
       repoUnderstandingState.snapshot,
+      runtimeObserverMetrics,
       repoUnderstandingState.transportMessage,
       librettoPreviewState.transport,
       librettoPreviewState.transportMessage,
@@ -4110,11 +4202,12 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   </article>
                   <article className="internal-ai-card">
                     <p className="internal-ai-card__eyebrow">Runtime NEXT osservato</p>
-                    <h3>{repoUnderstandingState.snapshot.runtimeObserver.routeCount}</h3>
+                    <h3>{runtimeObserverMetrics?.observedRouteCount ?? repoUnderstandingState.snapshot.runtimeObserver.routeCount}</h3>
                     <p className="internal-ai-card__meta">
                       {RUNTIME_OBSERVER_STATUS_LABELS[
                         repoUnderstandingState.snapshot.runtimeObserver.status
                       ] ?? repoUnderstandingState.snapshot.runtimeObserver.status}
+                      {" | "}route tentate: {runtimeObserverMetrics?.routeCount ?? repoUnderstandingState.snapshot.runtimeObserver.routeCount}
                       {" | "}screenshot raccolti:{" "}
                       {repoUnderstandingState.snapshot.runtimeObserver.screenshotCount}
                     </p>
@@ -4202,13 +4295,29 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                         ] ?? repoUnderstandingState.snapshot.runtimeObserver.status}
                       </span>
                       <span className="internal-ai-pill is-neutral">
-                        Route: {repoUnderstandingState.snapshot.runtimeObserver.routeCount}
+                        Route osservate:{" "}
+                        {runtimeObserverMetrics?.observedRouteCount ??
+                          repoUnderstandingState.snapshot.runtimeObserver.routeCount}
+                        /
+                        {runtimeObserverMetrics?.routeCount ??
+                          repoUnderstandingState.snapshot.runtimeObserver.routeCount}
                       </span>
                       <span className="internal-ai-pill is-neutral">
                         Screenshot: {repoUnderstandingState.snapshot.runtimeObserver.screenshotCount}
                       </span>
                       <span className="internal-ai-pill is-neutral">
-                        Stati osservati: {repoUnderstandingState.snapshot.runtimeObserver.stateCount}
+                        Stati osservati:{" "}
+                        {runtimeObserverMetrics?.observedStateCount ??
+                          repoUnderstandingState.snapshot.runtimeObserver.stateCount}
+                        /
+                        {runtimeObserverMetrics?.stateCount ??
+                          repoUnderstandingState.snapshot.runtimeObserver.stateCount}
+                      </span>
+                      <span className="internal-ai-pill is-neutral">
+                        Non disponibili:{" "}
+                        {runtimeObserverMetrics?.unavailableRouteCount ??
+                          repoUnderstandingState.snapshot.runtimeObserver.unavailableRouteCount ??
+                          0}
                       </span>
                       <span className="internal-ai-pill is-neutral">
                         Ultima osservazione:{" "}
@@ -4220,11 +4329,18 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       <code>npm run internal-ai:observe-next</code> con la NEXT locale attiva su{" "}
                       <code>{repoUnderstandingState.snapshot.runtimeObserver.baseUrl ?? "http://127.0.0.1:4173"}</code>.
                     </p>
+                    <p className="internal-ai-card__meta" style={{ marginTop: 8 }}>
+                      Catalogo observer:{" "}
+                      <code>{repoUnderstandingState.snapshot.runtimeObserver.catalogVersion}</code>.
+                    </p>
+                    {runtimeObserverStateKindSummary ? (
+                      <p className="internal-ai-card__meta" style={{ marginTop: 8 }}>
+                        Tipi di stato osservati: {runtimeObserverStateKindSummary}
+                      </p>
+                    ) : null}
                     {repoUnderstandingState.snapshot.runtimeObserver.routes.length ? (
                       <div className="internal-ai-runtime-observer-grid" style={{ marginTop: 16 }}>
-                        {repoUnderstandingState.snapshot.runtimeObserver.routes
-                          .slice(0, 12)
-                          .map((route) => {
+                        {repoUnderstandingState.snapshot.runtimeObserver.routes.map((route) => {
                             const screenshotUrl = buildInternalAiRuntimeObserverAssetUrl(
                               route.screenshotFileName,
                             );
@@ -4271,6 +4387,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                                   </div>
                                   <p className="internal-ai-card__meta">
                                     <code>{route.finalPath ?? route.path}</code>
+                                    {route.finalPath && route.finalPath !== route.path
+                                      ? ` | richiesto ${route.path}`
+                                      : ""}
                                     {route.discoveredFromRouteId
                                       ? ` | scoperta da ${route.discoveredFromRouteId}`
                                       : ""}
@@ -4329,7 +4448,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                                   ) : null}
                                   {route.stateObservations.length ? (
                                     <div className="internal-ai-list" style={{ marginTop: 8 }}>
-                                      {route.stateObservations.slice(0, 3).map((stateObservation) => (
+                                      {route.stateObservations.map((stateObservation) => (
                                         <div
                                           key={`${route.id}:state:${stateObservation.id}`}
                                           className="internal-ai-runtime-observer-state"
@@ -4368,9 +4487,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                                           ) : null}
                                           {stateObservation.limitations.length ? (
                                             <ul className="internal-ai-inline-list">
-                                              {stateObservation.limitations
-                                                .slice(0, 2)
-                                                .map((entry) => (
+                                              {stateObservation.limitations.map((entry) => (
                                                   <li
                                                     key={`${stateObservation.id}:limit:${entry}`}
                                                   >
@@ -4385,7 +4502,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                                   ) : null}
                                   {route.limitations.length ? (
                                     <ul className="internal-ai-inline-list">
-                                      {route.limitations.slice(0, 2).map((entry) => (
+                                      {route.limitations.map((entry) => (
                                         <li key={`${route.id}:limit:${entry}`}>{entry}</li>
                                       ))}
                                     </ul>

@@ -255,7 +255,11 @@ export type InternalAiServerRuntimeObserverStateKind =
   | "route_state"
   | "tab_state"
   | "section_state"
-  | "dialog_state";
+  | "dialog_state"
+  | "menu_state"
+  | "filter_state"
+  | "card_state"
+  | "detail_state";
 
 export type InternalAiServerRuntimeObserverStateObservation = {
   id: string;
@@ -306,11 +310,18 @@ export type InternalAiServerRuntimeObserverSnapshot = {
   version: 1;
   sourceMode: InternalAiServerRuntimeObserverSourceMode;
   status: "not_observed" | "observed" | "partial" | "error";
+  catalogVersion: string;
   baseUrl: string | null;
   observedAt: string | null;
   routeCount: number;
+  observedRouteCount: number;
+  partialRouteCount: number;
+  unavailableRouteCount: number;
   screenshotCount: number;
   stateCount: number;
+  observedStateCount: number;
+  partialStateCount: number;
+  unavailableStateCount: number;
   nextOnly: true;
   screenshotDirectory: string;
   routes: InternalAiServerRuntimeObserverRouteObservation[];
@@ -321,10 +332,17 @@ export type InternalAiServerRuntimeObserverSnapshot = {
 export type InternalAiServerRuntimeObserverMeta = {
   status: InternalAiServerRuntimeObserverSnapshot["status"];
   sourceMode: InternalAiServerRuntimeObserverSnapshot["sourceMode"];
+  catalogVersion: InternalAiServerRuntimeObserverSnapshot["catalogVersion"];
   observedAt: string | null;
   routeCount: number;
+  observedRouteCount: number;
+  partialRouteCount: number;
+  unavailableRouteCount: number;
   screenshotCount: number;
   stateCount: number;
+  observedStateCount: number;
+  partialStateCount: number;
+  unavailableStateCount: number;
   nextOnly: true;
   limitations: string[];
   notes: string[];
