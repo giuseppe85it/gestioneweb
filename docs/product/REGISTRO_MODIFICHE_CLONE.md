@@ -31,6 +31,35 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-24 86
+- DATA: 2026-03-24
+- TITOLO MODIFICA: Pulizia finale del primo piano chat IA NEXT
+- OBIETTIVO: lasciare nel primo piano della console IA quasi solo chat/composer al centro e report nella colonna destra, eliminando welcome, riassunti automatici e rumore iniziale.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+- COSA E STATO CAMBIATO:
+  - rimossa l'inizializzazione automatica del messaggio di benvenuto della chat;
+  - il corpo centrale mostra ora solo messaggi della conversazione attiva oppure un placeholder minimo;
+  - nascosti all'apertura i testi/stati di lookup non ancora utili;
+  - mantenuta la colonna destra con `Report corrente` e `Report per targa`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI molto piu pulita all'apertura, senza ultima richiesta o ultimo report riportati nel flusso centrale;
+  - lettura e motore invariati;
+  - clone sempre in sola lettura.
+- COME VERIFICARE:
+  - aprire `/next/ia/interna` e verificare che il centro mostri solo placeholder minimo + composer;
+  - inviare una richiesta e verificare che compaiano solo i messaggi della conversazione attiva;
+  - controllare che i report restino nella colonna destra;
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx` e `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - nessun intervento sul motore unificato o sui reader;
+  - nessuna modifica alla madre.
+
 ### Voce 2026-03-24 85
 - DATA: 2026-03-24
 - TITOLO MODIFICA: Rifinitura finale overview IA, PDF utente e blocco gomme

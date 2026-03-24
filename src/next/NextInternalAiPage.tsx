@@ -978,42 +978,6 @@ function createChatMessage(args: {
   };
 }
 
-function createWelcomeChatMessage(): InternalAiChatMessage {
-  return createChatMessage({
-    role: "assistente",
-    intent: "capabilities",
-    status: "completed",
-    text:
-      "Ciao, sono la console IA interna del gestionale nel perimetro NEXT controllato.\n\n" +
-      "Qui trovi un motore unificato read-only: legge il registry delle fonti mappate, incrocia le entita e mette al centro il risultato operativo. La prima verticale mezzo resta la piu forte, ma posso anche intrecciare fonti di rifornimenti, materiali, procurement, documenti, costi e cisterna quando la richiesta lo chiede.\n\n" +
-      'Puoi scrivermi in modo naturale oppure usare i filtri della console, per esempio: "fammi il quadro completo del TI 315407", "apri un modale con gomme + lavori + alert" oppure "dimmi cosa richiede attenzione oggi".',
-    references: [
-      {
-        type: "safe_mode_notice",
-        label: "Perimetro controllato e sola lettura",
-        targa: null,
-      },
-      {
-        type: "architecture_doc",
-        label: UNIFIED_ENGINE_REFERENCE,
-        targa: null,
-      },
-    ],
-    attachments: [],
-    outputMode: "chat_brief",
-    outputReason:
-      "Messaggio iniziale di orientamento: basta una risposta breve in chat per chiarire perimetro e capacita attive.",
-  });
-}
-
-function isWelcomeChatMessage(message: InternalAiChatMessage): boolean {
-  return (
-    message.role === "assistente" &&
-    message.intent === "capabilities" &&
-    message.references.some((reference) => reference.label === UNIFIED_ENGINE_REFERENCE)
-  );
-}
-
 function formatVehicleLookupDescription(candidate: InternalAiVehicleLookupCandidate) {
   return [
     candidate.marcaModello,
@@ -1856,9 +1820,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     summary: null,
     message: null,
   });
-  const [chatMessages, setChatMessages] = useState<InternalAiChatMessage[]>(() => [
-    createWelcomeChatMessage(),
-  ]);
+  const [chatMessages, setChatMessages] = useState<InternalAiChatMessage[]>([]);
   const [chatAttachments, setChatAttachments] = useState<InternalAiChatAttachment[]>([]);
   const [chatAttachmentRepositoryState, setChatAttachmentRepositoryState] =
     useState<ChatAttachmentRepositoryState>({
@@ -4853,7 +4815,12 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     }
   };
 
-  const overviewMessages = chatMessages.filter((message) => !isWelcomeChatMessage(message));
+  const hasActiveConversation = chatMessages.length > 0 || chatStatus === "running";
+  const shouldShowLookupStatus =
+    Boolean(targaInput.trim()) ||
+    Boolean(selectedVehicle) ||
+    lookupUiState.status === "loading" ||
+    lookupUiState.status === "error";
 
   return (
     <section className="next-page internal-ai-page">
@@ -4903,91 +4870,100 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             <div className="internal-ai-chat__shell">
               <div className="internal-ai-chat__main">
                 <div className="internal-ai-chat__messages">
-                  {overviewMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`internal-ai-chat__message ${
-                        message.role === "utente" ? "is-user" : "is-assistant"
-                      }`}
-                    >
-                      <div className="internal-ai-chat__message-header">
-                        <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
-                        <div className="internal-ai-pill-row">
-                          <span className={statusToneClass(message.status)}>
-                            {CHAT_STATUS_LABELS[message.status]}
-                          </span>
-                          <span className="internal-ai-pill is-neutral">
-                            {formatDateLabel(message.createdAt)}
-                          </span>
-                        </div>
-                      </div>
-                      {message.role === "assistente" && message.outputMode ? (
-                        <div className="internal-ai-chat__message-delivery">
-                          <span className={outputModeToneClass(message.outputMode)}>
-                            {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
-                          </span>
-                          {buildChatReliabilityLabel(message) &&
-                          buildChatReliabilityLabel(message) !== "Affidabile" ? (
-                            <span className="internal-ai-pill is-neutral">
-                              {buildChatReliabilityLabel(message)}
+                  {chatMessages.length ? (
+                    chatMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`internal-ai-chat__message ${
+                          message.role === "utente" ? "is-user" : "is-assistant"
+                        }`}
+                      >
+                        <div className="internal-ai-chat__message-header">
+                          <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
+                          <div className="internal-ai-pill-row">
+                            <span className={statusToneClass(message.status)}>
+                              {CHAT_STATUS_LABELS[message.status]}
                             </span>
-                          ) : null}
+                            <span className="internal-ai-pill is-neutral">
+                              {formatDateLabel(message.createdAt)}
+                            </span>
+                          </div>
                         </div>
-                      ) : null}
-                      {message.role === "assistente" ? (
-                        <>
-                          {buildChatUseCaseLabel(message) ? (
-                            <p className="internal-ai-card__eyebrow">
-                              {buildChatUseCaseLabel(message)}
-                            </p>
-                          ) : null}
-                          {renderChatMessageText(message.text)}
-                        </>
-                      ) : (
-                        <p className="internal-ai-chat__message-text">{message.text}</p>
-                      )}
-                      {message.attachments.length ? (
-                        <div className="internal-ai-chat__message-attachments">
-                          {message.attachments.map((attachment) => (
-                            <button
-                              key={`${message.id}:attachment:${attachment.id}`}
-                              type="button"
-                              className="internal-ai-chat__attachment-pill"
-                              onClick={() => handleOpenChatAttachment(attachment)}
-                            >
-                              <strong>{attachment.fileName}</strong>
-                              <span>{buildInternalAiChatAttachmentPreviewLabel(attachment)}</span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                      {message.references.length ? (
-                        <div className="internal-ai-chat__references">
-                          {message.references.map((reference) =>
-                            reference.artifactId ? (
-                              <button
-                                key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
-                                type="button"
-                                className="internal-ai-chat__reference"
-                                onClick={() => handleOpenArtifact(reference.artifactId!)}
-                              >
-                                {reference.label}
-                                {reference.targa ? ` - ${reference.targa}` : ""}
-                              </button>
-                            ) : (
-                              <span
-                                key={`${message.id}:${reference.type}:${reference.label}`}
-                                className="internal-ai-pill is-neutral"
-                              >
-                                {reference.label}
-                                {reference.targa ? ` - ${reference.targa}` : ""}
+                        {message.role === "assistente" && message.outputMode ? (
+                          <div className="internal-ai-chat__message-delivery">
+                            <span className={outputModeToneClass(message.outputMode)}>
+                              {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
+                            </span>
+                            {buildChatReliabilityLabel(message) &&
+                            buildChatReliabilityLabel(message) !== "Affidabile" ? (
+                              <span className="internal-ai-pill is-neutral">
+                                {buildChatReliabilityLabel(message)}
                               </span>
-                            ),
-                          )}
-                        </div>
-                      ) : null}
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {message.role === "assistente" ? (
+                          <>
+                            {buildChatUseCaseLabel(message) ? (
+                              <p className="internal-ai-card__eyebrow">
+                                {buildChatUseCaseLabel(message)}
+                              </p>
+                            ) : null}
+                            {renderChatMessageText(message.text)}
+                          </>
+                        ) : (
+                          <p className="internal-ai-chat__message-text">{message.text}</p>
+                        )}
+                        {message.attachments.length ? (
+                          <div className="internal-ai-chat__message-attachments">
+                            {message.attachments.map((attachment) => (
+                              <button
+                                key={`${message.id}:attachment:${attachment.id}`}
+                                type="button"
+                                className="internal-ai-chat__attachment-pill"
+                                onClick={() => handleOpenChatAttachment(attachment)}
+                              >
+                                <strong>{attachment.fileName}</strong>
+                                <span>{buildInternalAiChatAttachmentPreviewLabel(attachment)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {message.references.length ? (
+                          <div className="internal-ai-chat__references">
+                            {message.references.map((reference) =>
+                              reference.artifactId ? (
+                                <button
+                                  key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
+                                  type="button"
+                                  className="internal-ai-chat__reference"
+                                  onClick={() => handleOpenArtifact(reference.artifactId!)}
+                                >
+                                  {reference.label}
+                                  {reference.targa ? ` - ${reference.targa}` : ""}
+                                </button>
+                              ) : (
+                                <span
+                                  key={`${message.id}:${reference.type}:${reference.label}`}
+                                  className="internal-ai-pill is-neutral"
+                                >
+                                  {reference.label}
+                                  {reference.targa ? ` - ${reference.targa}` : ""}
+                                </span>
+                              ),
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : hasActiveConversation ? null : (
+                    <div className="internal-ai-chat__empty" aria-live="polite">
+                      <p className="internal-ai-chat__empty-title">Nessuna conversazione in corso.</p>
+                      <p className="internal-ai-chat__empty-copy">
+                        Usa il composer qui sotto per fare una richiesta, selezionare una targa o allegare un documento.
+                      </p>
                     </div>
-                  ))}
+                  )}
                   {chatStatus === "running" ? (
                     <div className="internal-ai-chat__message is-assistant">
                       <div className="internal-ai-chat__message-header">
@@ -5066,12 +5042,14 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     </label>
                   </div>
 
-                  <div className="internal-ai-chat__status-inline">
-                    <span className={statusToneClass(lookupUiState.status)}>
-                      {LOOKUP_MATCH_LABELS[lookupUiState.status]}
-                    </span>
-                    <span className="internal-ai-muted">{lookupUiState.message}</span>
-                  </div>
+                  {shouldShowLookupStatus ? (
+                    <div className="internal-ai-chat__status-inline">
+                      <span className={statusToneClass(lookupUiState.status)}>
+                        {LOOKUP_MATCH_LABELS[lookupUiState.status]}
+                      </span>
+                      <span className="internal-ai-muted">{lookupUiState.message}</span>
+                    </div>
+                  ) : null}
 
                   {lookupSuggestions.length > 0 && targaInput.trim().length > 0 ? (
                     <div className="internal-ai-suggestions">

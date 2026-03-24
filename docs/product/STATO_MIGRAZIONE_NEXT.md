@@ -1256,6 +1256,25 @@ Serve a:
   - `npm run build` -> OK
   - `npx eslint src/utils/pdfEngine.ts` -> NON OK per debito lint storico preesistente
 
+## 5.57 Aggiornamento 2026-03-24 - Pulizia finale del primo piano chat IA
+- Il clone `/next/ia/interna` e stato ulteriormente ripulito nel solo primo piano della colonna centrale, senza toccare motore unificato, reader o backend.
+- Cosa cambia davvero:
+  - la chat non precarica piu un messaggio di benvenuto o riassunti automatici all'apertura;
+  - se non esiste una conversazione in corso, il centro mostra solo un placeholder minimo e il composer;
+  - il corpo centrale non ripresenta automaticamente ultima richiesta o ultimo report come blocchi statici;
+  - lo stato del lookup targa compare solo quando l'utente inizia davvero a lavorare sulla targa;
+  - la colonna destra resta invariata nel concetto: `Report corrente` e `Report per targa`.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun backend live nuovo;
+  - nessun refactor del motore unificato o dei reader.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> OK
+  - `npm run build` -> OK
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

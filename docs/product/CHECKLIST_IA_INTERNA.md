@@ -1639,3 +1639,25 @@ Stato macrofase: `NON FATTO`
   - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiProfessionalVehicleReport.ts` -> OK
   - `npm run build` -> OK
   - `npx eslint src/utils/pdfEngine.ts` -> NON OK per debito lint storico preesistente nel file condiviso
+
+### M.31 Pulizia finale estrema del primo piano chat IA
+- Stato: `FATTO`
+- Note: il `2026-03-24` la overview di `/next/ia/interna` e stata stretta ancora sul solo primo piano utile, senza toccare il motore unificato:
+  - all'apertura la chat non precarica piu messaggi statici o riassunti automatici;
+  - il corpo centrale mostra solo conversazione reale della sessione attiva oppure un placeholder minimo, senza ultima richiesta o ultimo report riportati come card nel flusso;
+  - il lookup targa non mostra piu stato/testo di servizio quando la chat e ancora vuota;
+  - la colonna destra resta dedicata a `Report corrente` e `Report per targa`.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_1812_pulizia-finale-primo-piano-chat-ia-next.md`
+  - `docs/continuity-reports/2026-03-24_1812_continuity_pulizia-finale-primo-piano-chat-ia-next.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> OK
+  - `npm run build` -> OK
+- Dipendenze o blocchi:
+  - il task non elimina il motore unificato o i blocchi secondari gia presenti nel file; li lascia fuori dal primo piano della pagina;
+  - nessuna scrittura business, nessun backend live nuovo, nessuna modifica alla madre.
