@@ -76,6 +76,13 @@ import {
   buildInternalAiReportPdfFileName,
   generateInternalAiReportPdfBlob,
 } from "./internal-ai/internalAiReportPdf";
+import {
+  buildInternalAiChatAttachmentAssetUrl,
+  buildInternalAiChatAttachmentPreviewLabel,
+  readInternalAiServerChatAttachmentsSnapshot,
+  removeInternalAiServerChatAttachment,
+  uploadInternalAiServerChatAttachment,
+} from "./internal-ai/internalAiChatAttachmentsClient";
 import { selectInternalAiOutputMode } from "./internal-ai/internalAiOutputSelector";
 import {
   findInternalAiExactVehicleMatch,
@@ -115,6 +122,9 @@ import type {
   InternalAiCombinedMatchReliability,
   InternalAiCombinedReportPreview,
   InternalAiChatExecutionStatus,
+  InternalAiChatAttachment,
+  InternalAiChatMemoryFreshness,
+  InternalAiChatMemoryHints,
   InternalAiEconomicAnalysisPreview,
   InternalAiDocumentsPreview,
   InternalAiDriverLookupCandidate,
@@ -254,6 +264,29 @@ type RepoUnderstandingState =
       message: string;
       snapshot: InternalAiServerRepoUnderstandingSnapshot;
       transport: "server_http_retrieval";
+      transportMessage: string;
+    };
+
+type ChatAttachmentRepositoryState =
+  | {
+      status: "idle";
+      message: string | null;
+      items: InternalAiChatAttachment[];
+      transport: "non_attivo";
+      transportMessage: null;
+    }
+  | {
+      status: "loading" | "error" | "not_enabled";
+      message: string;
+      items: InternalAiChatAttachment[];
+      transport: BackendPreviewTransportState;
+      transportMessage: string | null;
+    }
+  | {
+      status: "ready";
+      message: string;
+      items: InternalAiChatAttachment[];
+      transport: BackendPreviewTransportState;
       transportMessage: string;
     };
 
@@ -502,18 +535,12 @@ const CHAT_INTENT_LABELS: Record<InternalAiChatMessage["intent"], string> = {
 };
 
 const CHAT_SUGGESTIONS = [
-  "Cosa puoi fare",
-  "Crea report targa AB123CD ultimi 30 giorni",
-  "Dimmi lo stato del mezzo AB123CD",
-  "Riepiloga i rifornimenti del mezzo AB123CD ultimi 30 giorni",
-  "Elenca i documenti del mezzo AB123CD",
-  "Riepiloga i costi del mezzo AB123CD ultimi 90 giorni",
-  "Fammi un report per l'autista Mario Rossi",
-  "Fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni",
-  "Controlla il libretto del mezzo AB123CD",
-  "Analizza il mezzo AA111AA",
-  "Spiegami la shell NEXT e le schermate principali",
-  "Quali pattern UI del repo posso riusare per semplificare il gestionale?",
+  "Analizza la home",
+  "Dimmi come migliorare i flussi della Home",
+  "Fammi un report della targa AB123CD",
+  "Fammi un report del mezzo AB123CD ultimi 30 giorni",
+  "Quali file devo toccare",
+  "Quali moduli sono coinvolti attorno alla targa AB123CD?",
 ];
 
 const LOOKUP_MATCH_LABELS: Record<InternalAiVehicleLookupMatchState, string> = {
@@ -857,6 +884,7 @@ function createChatMessage(args: {
   intent: InternalAiChatMessage["intent"];
   status: InternalAiChatMessage["status"];
   references?: InternalAiChatMessage["references"];
+  attachments?: InternalAiChatAttachment[];
   outputMode?: InternalAiChatMessage["outputMode"];
   outputReason?: InternalAiChatMessage["outputReason"];
 }): InternalAiChatMessage {
@@ -868,6 +896,7 @@ function createChatMessage(args: {
     intent: args.intent,
     status: args.status,
     references: args.references ?? [],
+    attachments: args.attachments ?? [],
     outputMode: args.outputMode ?? null,
     outputReason: args.outputReason ?? null,
   };
@@ -880,8 +909,8 @@ function createWelcomeChatMessage(): InternalAiChatMessage {
     status: "completed",
     text:
       "Ciao, sono l'assistente interno del gestionale nel perimetro NEXT controllato.\n\n" +
-      "Posso aiutarti a leggere il Dossier mezzo in sola lettura, spiegare il repository e chiarire lo stato del progetto senza toccare dati business o codice fuori dal perimetro autorizzato.\n\n" +
-      'Puoi scrivermi in modo naturale, per esempio: "dimmi lo stato del mezzo AB123CD", "elenca i documenti del mezzo AB123CD", "riepiloga i costi del mezzo AB123CD ultimi 90 giorni", "crea report targa AB123CD ultimi 30 giorni" oppure "spiegami la shell NEXT".',
+      "In questa V1 tengo il focus su tre richieste utili: analisi della Home, report mezzo per targa e mappa dei file da toccare.\n\n" +
+      'Puoi scrivermi in modo naturale, per esempio: "analizza la home", "fammi un report della targa AB123CD" oppure "quali file devo toccare".',
     references: [
       {
         type: "safe_mode_notice",
@@ -889,6 +918,7 @@ function createWelcomeChatMessage(): InternalAiChatMessage {
         targa: null,
       },
     ],
+    attachments: [],
     outputMode: "chat_brief",
     outputReason:
       "Messaggio iniziale di orientamento: basta una risposta breve in chat per chiarire perimetro e capacita attive.",
@@ -1039,6 +1069,150 @@ function dedupeChatMessageReferences(
     }
     seen.add(key);
     return true;
+  });
+}
+
+function buildChatMemoryFocusLabel(screenHint: InternalAiChatMemoryHints["screenHint"]): string | null {
+  switch (screenHint) {
+    case "home":
+      return "sulla Home";
+    case "flussi":
+      return "sui flussi";
+    case "file":
+    case "quale-file":
+      return "sui file da toccare";
+    case "modulo":
+      return "sui moduli coinvolti";
+    case "repo":
+      return "sul repo";
+    default:
+      return null;
+  }
+}
+
+function buildChatReportReadyText(report: InternalAiReportPreview): string {
+  const highlightedSections = report.sections
+    .slice(0, 3)
+    .map((section) => section.title)
+    .join(", ");
+
+  return (
+    `${getReportTypeLabel(report)} pronto per ${getReportTargetChip(report)}.\n\n` +
+    "Quadro rapido:\n" +
+    `- Periodo: ${report.periodContext.label}\n` +
+    "- Percorso dati: layer NEXT mezzo-centrico read-only\n" +
+    `- Fonti dichiarate: ${report.sources.length}\n` +
+    `- Sezioni utili: ${highlightedSections || "quadro sintetico disponibile"}\n\n` +
+    "Apro l'anteprima PDF e lascio qui solo il riepilogo essenziale."
+  );
+}
+
+function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
+  const normalized = normalizeChatPrompt(message.text);
+
+  if (message.intent === "report_targa") {
+    return "Report mezzo";
+  }
+
+  if (message.intent === "mezzo_dossier") {
+    return "Quadro mezzo";
+  }
+
+  if (message.intent === "repo_understanding" && normalized.includes("home")) {
+    return "Analisi Home";
+  }
+
+  if (
+    message.intent === "repo_understanding" &&
+    (normalized.includes("file") || normalized.includes("modul"))
+  ) {
+    return "File e moduli";
+  }
+
+  return null;
+}
+
+function buildChatContextChips(message: InternalAiChatMessage): string[] {
+  const normalized = normalizeChatPrompt(message.text);
+  const chips: string[] = [];
+
+  if (message.intent === "repo_understanding") {
+    chips.push("repo");
+  }
+
+  if (message.intent === "report_targa" || message.intent === "mezzo_dossier") {
+    chips.push("mezzo");
+  }
+
+  if (
+    normalized.includes("home") ||
+    message.references.some((reference) => reference.label.toLowerCase().includes("home.tsx"))
+  ) {
+    chips.push("home");
+  }
+
+  if (
+    normalized.includes("memoria osservata") ||
+    (message.outputReason ? normalizeChatPrompt(message.outputReason).includes("memoria osservata") : false)
+  ) {
+    chips.push("runtime");
+  }
+
+  if (message.attachments.length > 0) {
+    chips.push("allegati");
+  }
+
+  return Array.from(new Set(chips));
+}
+
+function renderChatMessageText(text: string) {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return blocks.map((block, index) => {
+    const lines = block
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const bulletLines = lines.filter((line) => line.startsWith("- "));
+
+    if (lines.length > 1 && bulletLines.length === lines.length) {
+      return (
+        <ul
+          key={`chat-block:${index}`}
+          className="internal-ai-chat__message-text"
+          style={{ margin: "0 0 12px 18px", padding: 0 }}
+        >
+          {bulletLines.map((line) => (
+            <li key={`chat-line:${index}:${line}`}>{line.slice(2)}</li>
+          ))}
+        </ul>
+      );
+    }
+
+    if (lines.length > 2 && !lines[0].startsWith("- ") && bulletLines.length === lines.length - 1) {
+      return (
+        <div key={`chat-block:${index}`}>
+          <p className="internal-ai-chat__message-text">{lines[0]}</p>
+          <ul
+            className="internal-ai-chat__message-text"
+            style={{ margin: "0 0 12px 18px", padding: 0 }}
+          >
+            {lines.slice(1).map((line) => (
+              <li key={`chat-line:${index}:${line}`}>{line.replace(/^- /, "")}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    return (
+      <p key={`chat-block:${index}`} className="internal-ai-chat__message-text">
+        {block}
+      </p>
+    );
   });
 }
 
@@ -1289,6 +1463,112 @@ function buildRuntimeObserverMetrics(
   };
 }
 
+function normalizeChatPrompt(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function detectChatMemoryScreenHint(prompt: string): string | null {
+  const normalized = normalizeChatPrompt(prompt);
+  const patterns: Array<[RegExp, string]> = [
+    [/\bhome\b/, "home"],
+    [/\bflussi?\b/, "flussi"],
+    [/\bfile\b/, "file"],
+    [/\bmodul[oi]\b/, "modulo"],
+    [/\brepo\b/, "repo"],
+    [/\bschermat[ae]\b/, "schermata"],
+    [/\bdove la metteresti\b/, "dove-la-metteresti"],
+    [/\bquale file\b/, "quale-file"],
+  ];
+
+  for (const [pattern, label] of patterns) {
+    if (pattern.test(normalized)) {
+      return label;
+    }
+  }
+
+  return null;
+}
+
+function isRepoUiMemoryPrompt(prompt: string): boolean {
+  const normalized = normalizeChatPrompt(prompt);
+  return (
+    normalized.includes("analizza la home") ||
+    normalized.includes("analizza home") ||
+    normalized.includes("dimmi come migliorare i flussi") ||
+    normalized.includes("migliorare i flussi") ||
+    normalized.includes("questa funzione dove la metteresti") ||
+    normalized.includes("dove la metteresti") ||
+    normalized.includes("dove metteresti") ||
+    normalized.includes("quale file tocco") ||
+    normalized.includes("quale file devo toccare") ||
+    normalized.includes("spiegami la home") ||
+    normalized.includes("come migliorare") ||
+    normalized.includes("schermata") ||
+    normalized.includes("screen") ||
+    normalized.includes("flussi")
+  );
+}
+
+function getRepoMemoryFreshness(
+  repoUnderstandingState: RepoUnderstandingState,
+): InternalAiChatMemoryFreshness {
+  if (repoUnderstandingState.status !== "ready" || !repoUnderstandingState.snapshot) {
+    return "missing";
+  }
+
+  const observedAtValue = repoUnderstandingState.snapshot.runtimeObserver.observedAt;
+  const observedAt = observedAtValue ? new Date(observedAtValue).getTime() : Number.NaN;
+  if (Number.isNaN(observedAt)) {
+    return repoUnderstandingState.snapshot.runtimeObserver.status === "observed"
+      ? "partial"
+      : "missing";
+  }
+
+  const ageDays = (Date.now() - observedAt) / (24 * 60 * 60 * 1000);
+  if (repoUnderstandingState.snapshot.runtimeObserver.status === "observed" && ageDays <= 7) {
+    return "fresh";
+  }
+
+  if (
+    repoUnderstandingState.snapshot.runtimeObserver.status === "partial" ||
+    ageDays <= 30
+  ) {
+    return "partial";
+  }
+
+  return "stale";
+}
+
+function buildChatMemoryHints(args: {
+  prompt: string;
+  attachments: InternalAiChatAttachment[];
+  repoUnderstandingState: RepoUnderstandingState;
+}): InternalAiChatMemoryHints {
+  return {
+    repoUiRequested: isRepoUiMemoryPrompt(args.prompt),
+    memoryFreshness: getRepoMemoryFreshness(args.repoUnderstandingState),
+    screenHint: detectChatMemoryScreenHint(args.prompt),
+    focusKind: args.attachments.length > 0 ? "attachment" : isRepoUiMemoryPrompt(args.prompt) ? "repo_ui" : "general",
+    attachmentsCount: args.attachments.length,
+    runtimeObserverObserved:
+      args.repoUnderstandingState.status === "ready" &&
+      args.repoUnderstandingState.snapshot?.runtimeObserver.status === "observed",
+  };
+}
+
+function buildMemoryFreshnessLabel(freshness: InternalAiChatMemoryFreshness): string {
+  switch (freshness) {
+    case "fresh":
+      return "fresca";
+    case "partial":
+      return "parziale";
+    case "stale":
+      return "da aggiornare";
+    default:
+      return "assente";
+  }
+}
+
 function outputModeToneClass(mode: InternalAiOutputMode | null) {
   if (mode === "report_pdf" || mode === "artifact_document") {
     return "internal-ai-pill is-positive";
@@ -1380,6 +1660,15 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   const [chatMessages, setChatMessages] = useState<InternalAiChatMessage[]>(() => [
     createWelcomeChatMessage(),
   ]);
+  const [chatAttachments, setChatAttachments] = useState<InternalAiChatAttachment[]>([]);
+  const [chatAttachmentRepositoryState, setChatAttachmentRepositoryState] =
+    useState<ChatAttachmentRepositoryState>({
+      status: "idle",
+      message: null,
+      items: [],
+      transport: "non_attivo",
+      transportMessage: null,
+    });
   const [chatStatus, setChatStatus] = useState<InternalAiChatExecutionStatus>("idle");
   const [reportPreviewModalState, setReportPreviewModalState] = useState<ReportPreviewModalState>({
     isOpen: false,
@@ -1398,6 +1687,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   );
   const [openedArtifactId, setOpenedArtifactId] = useState<string | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const chatAttachmentsRef = useRef<InternalAiChatAttachment[]>([]);
   const reportPdfPreviewUrlRef = useRef<string | null>(null);
   const [artifactSearchQuery, setArtifactSearchQuery] = useState(
     () => tracking.sessionState.lastArchiveQuery ?? "",
@@ -1533,12 +1824,6 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   useEffect(() => {
     let cancelled = false;
 
-    if (sectionId !== "overview") {
-      return () => {
-        cancelled = true;
-      };
-    }
-
     if (repoUnderstandingState.status !== "idle") {
       return () => {
         cancelled = true;
@@ -1586,7 +1871,74 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     return () => {
       cancelled = true;
     };
-  }, [repoUnderstandingState.status, sectionId]);
+  }, [repoUnderstandingState.status]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void Promise.resolve().then(async () => {
+      if (cancelled) {
+        return;
+      }
+
+      setChatAttachmentRepositoryState({
+        status: "loading",
+        message: "Caricamento degli allegati IA-only del thread...",
+        items: chatAttachmentsRef.current,
+        transport: "server_http_retrieval",
+        transportMessage: "Tentativo di lettura allegati dal backend IA separato.",
+      });
+
+      const result = await readInternalAiServerChatAttachmentsSnapshot();
+      if (cancelled) {
+        return;
+      }
+
+      if (result.status === "ready") {
+        const mergedAttachments = [
+          ...result.payload,
+          ...chatAttachmentsRef.current.filter(
+            (entry) => !result.payload.some((loaded) => loaded.id === entry.id),
+          ),
+        ];
+        setChatAttachments(mergedAttachments);
+        setChatAttachmentRepositoryState({
+          status: "ready",
+          message: result.message,
+          items: mergedAttachments,
+          transport: "server_http_retrieval",
+          transportMessage: result.message,
+        });
+        return;
+      }
+
+      setChatAttachmentRepositoryState({
+        status: result.status,
+        message: result.message,
+        items: chatAttachmentsRef.current,
+        transport: result.status === "not_enabled" ? "non_attivo" : "server_http_retrieval",
+        transportMessage: result.message,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    chatAttachmentsRef.current = chatAttachments;
+  }, [chatAttachments]);
+
+  useEffect(() => {
+    return () => {
+      chatAttachmentsRef.current.forEach((attachment) => {
+        if (attachment.storageMode === "local_browser_only" && attachment.localObjectUrl) {
+          URL.revokeObjectURL(attachment.localObjectUrl);
+        }
+      });
+    };
+  }, []);
 
   const activeReportSignature = getInternalAiReportSignature(activeReportState.report);
   const visibleReportSummaryMessage =
@@ -1731,6 +2083,85 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       librettoPreviewState.transport,
       librettoPreviewState.transportMessage,
       latestAssistantMessage,
+    ],
+  );
+  const chatPrimaryStatusCards = useMemo(
+    () => {
+      const memoryFreshness = buildMemoryFreshnessLabel(
+        getRepoMemoryFreshness(repoUnderstandingState),
+      );
+      const backendState =
+        chatBridgeState.transport === "server_http_provider"
+          ? "attivo"
+          : chatBridgeState.transport === "frontend_fallback"
+            ? "fallback"
+            : "non attivo";
+      const realDataState =
+        [economicAnalysisPreviewState.transport, documentsPreviewState.transport, librettoPreviewState.transport, preventiviPreviewState.transport].some(
+          (transport) => transport === "server_http_retrieval",
+        )
+          ? "attivi"
+          : [economicAnalysisPreviewState.transport, documentsPreviewState.transport, librettoPreviewState.transport, preventiviPreviewState.transport].some(
+                (transport) => transport !== "non_attivo",
+              )
+            ? "parziali"
+            : "non attivi";
+      const observerState =
+        repoUnderstandingState.status === "ready" && repoUnderstandingState.snapshot
+          ? repoUnderstandingState.snapshot.runtimeObserver.status === "observed"
+            ? "aggiornato"
+            : repoUnderstandingState.snapshot.runtimeObserver.status === "partial"
+              ? "parziale"
+              : "vecchio"
+          : "assente";
+
+      return [
+        {
+          label: "Memoria UI/repo",
+          value: memoryFreshness,
+          tone:
+            memoryFreshness === "fresca"
+              ? "is-positive"
+              : memoryFreshness === "parziale"
+                ? "is-warning"
+                : memoryFreshness === "da aggiornare"
+                  ? "is-warning"
+                  : "is-neutral",
+        },
+        {
+          label: "Backend",
+          value: backendState,
+          tone: backendState === "attivo" ? "is-positive" : backendState === "fallback" ? "is-warning" : "is-neutral",
+        },
+        {
+          label: "Dati reali",
+          value: realDataState,
+          tone:
+            realDataState === "attivi"
+              ? "is-positive"
+              : realDataState === "parziali"
+                ? "is-warning"
+                : "is-neutral",
+        },
+        {
+          label: "Observer",
+          value: observerState,
+          tone:
+            observerState === "aggiornato"
+              ? "is-positive"
+              : observerState === "parziale" || observerState === "vecchio"
+                ? "is-warning"
+                : "is-neutral",
+        },
+      ];
+    },
+    [
+      chatBridgeState.transport,
+      documentsPreviewState.transport,
+      economicAnalysisPreviewState.transport,
+      librettoPreviewState.transport,
+      preventiviPreviewState.transport,
+      repoUnderstandingState,
     ],
   );
   const persistedArtifactsCount = snapshot.artifacts.filter((artifact) => artifact.isPersisted).length;
@@ -3065,11 +3496,201 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     }
   };
 
+  const handleChatAttachmentPicker = () => {
+    if (chatStatus === "running" || chatAttachmentRepositoryState.status === "loading") {
+      return;
+    }
+
+    chatAttachmentInputRef.current?.click();
+  };
+
+  const handleChatAttachmentSelection = async (files: FileList | null) => {
+    const fileItems = Array.from(files ?? []).slice(0, 6);
+    if (
+      !fileItems.length ||
+      chatStatus === "running" ||
+      chatAttachmentRepositoryState.status === "loading"
+    ) {
+      return;
+    }
+
+    const nextAttachments = [...chatAttachments];
+    let nextTransport: ChatAttachmentRepositoryState["transport"] = "server_http_retrieval";
+    let nextMessage = "Allegati IA-only aggiornati nel thread.";
+    let sawServerUpload = false;
+
+    setChatAttachmentRepositoryState((current) => ({
+      ...current,
+      status: "loading",
+      message: "Caricamento allegati IA-only in corso...",
+      transport: "server_http_retrieval",
+      transportMessage: "Upload verso backend IA separato o fallback locale.",
+    }));
+
+    for (const file of fileItems) {
+      if (file.size > 4 * 1024 * 1024) {
+        nextTransport = "frontend_fallback";
+        nextMessage = `File escluso per dimensione: ${file.name}. Il limite IA-only e 4 MB.`;
+        continue;
+      }
+
+      const result = await uploadInternalAiServerChatAttachment(file);
+      if (result.status === "ready") {
+        sawServerUpload = true;
+        const preservedLocalAttachments = nextAttachments.filter(
+          (entry) =>
+            entry.storageMode === "local_browser_only" &&
+            !result.repositoryState.some((serverAttachment) => serverAttachment.id === entry.id),
+        );
+        nextAttachments.splice(
+          0,
+          nextAttachments.length,
+          ...[...result.repositoryState, ...preservedLocalAttachments].slice(0, 12),
+        );
+      } else if (result.attachment) {
+        const attachment = result.attachment;
+        const merged = [attachment, ...nextAttachments.filter((entry) => entry.id !== attachment.id)];
+        nextAttachments.splice(0, nextAttachments.length, ...merged.slice(0, 12));
+      }
+
+      nextTransport =
+        result.status === "ready" ? "server_http_retrieval" : "frontend_fallback";
+      nextMessage = result.message;
+    }
+
+    setChatAttachments([...nextAttachments]);
+
+    setChatAttachmentRepositoryState({
+      status: nextAttachments.length ? "ready" : "error",
+      message: nextMessage,
+      items: [...nextAttachments],
+      transport: nextTransport || (sawServerUpload ? "server_http_retrieval" : "frontend_fallback"),
+      transportMessage: nextMessage,
+    });
+  };
+
+  const handleOpenChatAttachment = (attachment: InternalAiChatAttachment) => {
+    const url = buildInternalAiChatAttachmentAssetUrl(attachment);
+    if (!url || typeof window === "undefined") {
+      return;
+    }
+
+    window.open(url, "_blank", "noreferrer");
+  };
+
+  const handleRemoveChatAttachment = async (attachment: InternalAiChatAttachment) => {
+    if (chatStatus === "running") {
+      return;
+    }
+
+    if (attachment.storageMode === "local_browser_only") {
+      if (attachment.localObjectUrl) {
+        URL.revokeObjectURL(attachment.localObjectUrl);
+      }
+
+      setChatAttachments((current) => current.filter((entry) => entry.id !== attachment.id));
+      setChatAttachmentRepositoryState((current) => {
+        const nextItems = current.items.filter((entry) => entry.id !== attachment.id);
+        if (!nextItems.length) {
+          return {
+            status: "idle",
+            message: null,
+            items: [],
+            transport: "non_attivo",
+            transportMessage: null,
+          };
+        }
+
+        return {
+          status: "ready",
+          message: "Allegato locale rimosso dal thread.",
+          items: nextItems,
+          transport:
+            nextItems.some((entry) => entry.storageMode === "server_file_isolated")
+              ? "server_http_retrieval"
+              : "frontend_fallback",
+          transportMessage: "Allegato locale rimosso dal thread.",
+        };
+      });
+      return;
+    }
+
+    const result = await removeInternalAiServerChatAttachment(attachment.id);
+    if (result.status !== "ready" || !result.attachment || !result.repositoryState) {
+      setChatAttachmentRepositoryState((current) => ({
+        ...current,
+        status: result.status === "not_found" ? "error" : result.status,
+        message: result.message,
+        transport: result.status === "not_enabled" ? "frontend_fallback" : current.transport,
+        transportMessage: result.message,
+      }));
+      return;
+    }
+
+    setChatAttachments((current) => {
+      const preservedLocalAttachments = current.filter(
+        (entry) => entry.storageMode === "local_browser_only" && entry.id !== attachment.id,
+      );
+      return [...result.repositoryState, ...preservedLocalAttachments];
+    });
+    setChatAttachmentRepositoryState({
+      status: "ready",
+      message: result.message,
+      items: [...result.repositoryState],
+      transport: "server_http_retrieval",
+      transportMessage: result.message,
+    });
+  };
+
+  const buildChatAssistantMemoryLead = (memoryHints: InternalAiChatMemoryHints): string | null => {
+    const freshnessLabel = buildMemoryFreshnessLabel(memoryHints.memoryFreshness);
+    const focusLabel = buildChatMemoryFocusLabel(memoryHints.screenHint);
+    const attachmentLabel =
+      memoryHints.attachmentsCount > 0
+        ? memoryHints.attachmentsCount === 1
+          ? "1 allegato IA-only nel thread"
+          : `${memoryHints.attachmentsCount} allegati IA-only nel thread`
+        : null;
+
+    if (memoryHints.repoUiRequested) {
+      if (memoryHints.memoryFreshness === "fresh") {
+        return `Sto usando memoria osservata fresca della UI/repo${focusLabel ? ` ${focusLabel}` : ""}${attachmentLabel ? ` e ${attachmentLabel}` : ""}.`;
+      }
+
+      if (memoryHints.memoryFreshness === "partial") {
+        return `Sto usando memoria osservata parziale della UI/repo${focusLabel ? ` ${focusLabel}` : ""}${attachmentLabel ? ` e ${attachmentLabel}` : ""}: segnalo i limiti.`;
+      }
+
+      if (memoryHints.memoryFreshness === "stale") {
+        return `Sto usando memoria osservata della UI/repo${focusLabel ? ` ${focusLabel}` : ""}, ma e da aggiornare${attachmentLabel ? `; ${attachmentLabel}` : ""}.`;
+      }
+
+      return `Mi manca una memoria osservata aggiornata della UI/repo${focusLabel ? ` ${focusLabel}` : ""}${attachmentLabel ? `; vedo solo ${attachmentLabel}` : ""}.`;
+    }
+
+    if (attachmentLabel) {
+      return `Vedo ${attachmentLabel} come contesto dichiarato.`;
+    }
+
+    if (freshnessLabel !== "assente") {
+      return `Stato memoria osservata: ${freshnessLabel}.`;
+    }
+
+    return null;
+  };
+
   const handleChatSubmit = async (promptOverride?: string) => {
     const prompt = (promptOverride ?? chatInput).trim();
     if (!prompt || chatStatus === "running") {
       return;
     }
+
+    const attachmentsSnapshot = [...chatAttachments];
+    const memoryHints = buildChatMemoryHints({
+      prompt,
+      attachments: attachmentsSnapshot,
+      repoUnderstandingState,
+    });
 
     setChatMessages((current) => [
       ...current,
@@ -3078,6 +3699,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         text: prompt,
         intent: "richiesta_generica",
         status: "completed",
+        attachments: attachmentsSnapshot,
       }),
     ]);
     setChatInput("");
@@ -3088,7 +3710,10 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     });
 
     try {
-      const bridgeResult = await runInternalAiChatTurnThroughBackend(prompt, reportPeriodInput);
+      const bridgeResult = await runInternalAiChatTurnThroughBackend(prompt, reportPeriodInput, {
+        attachments: attachmentsSnapshot,
+        memoryHints,
+      });
       const result = bridgeResult.result;
       let generatedArtifactId: string | null = null;
       setChatBridgeState({
@@ -3260,6 +3885,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         runtimeObserverObserved:
           repoUnderstandingState.status === "ready" &&
           repoUnderstandingState.snapshot?.runtimeObserver.status === "observed",
+        memoryHints,
       });
 
       const outputReferences: InternalAiChatMessage["references"] =
@@ -3287,8 +3913,10 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
           role: "assistente",
           text:
             result.report?.status === "ready"
-              ? "Ho preparato il report in anteprima. Te lo apro come documento dedicato, cosi in chat resta solo il passaggio essenziale."
-              : result.assistantText,
+              ? buildChatReportReadyText(result.report.preview)
+              : [buildChatAssistantMemoryLead(memoryHints), result.assistantText]
+                  .filter(Boolean)
+                  .join("\n\n"),
           intent: result.intent,
           status: result.status,
           references: dedupeChatMessageReferences([
@@ -3918,38 +4546,6 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         </div>
       </header>
 
-      <section className="internal-ai-grid">
-        <article className="internal-ai-card">
-          <p className="internal-ai-card__eyebrow">Sessioni</p>
-          <h3>{snapshot.sessions.length}</h3>
-          <p className="internal-ai-card__meta">
-            Sessioni simulate del sottosistema IA per anteprima e revisione.
-          </p>
-        </article>
-        <article className="internal-ai-card">
-          <p className="internal-ai-card__eyebrow">Richieste</p>
-          <h3>{snapshot.requests.length}</h3>
-          <p className="internal-ai-card__meta">
-            Richieste locali con stato anteprima, approvabile, revisione e scarto.
-          </p>
-        </article>
-        <article className="internal-ai-card">
-          <p className="internal-ai-card__eyebrow">Artifact IA</p>
-          <h3>{snapshot.artifacts.length}</h3>
-          <p className="internal-ai-card__meta">
-            Persistenti locali {persistedArtifactsCount}, fallback memoria{" "}
-            {snapshot.artifacts.length - persistedArtifactsCount}.
-          </p>
-        </article>
-        <article className="internal-ai-card">
-          <p className="internal-ai-card__eyebrow">Audit</p>
-          <h3>{snapshot.auditLog.length}</h3>
-          <p className="internal-ai-card__meta">
-            Registro locale di sicurezza e tracciabilita del sottosistema.
-          </p>
-        </article>
-      </section>
-
       {sectionId === "overview" ? (
         <>
           <article className="next-panel internal-ai-chat">
@@ -3964,162 +4560,320 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               il contenuto lungo viene spostato in una anteprima PDF dedicata invece di finire nel
               thread.
             </p>
-            <div className="internal-ai-chat__shell">
-              <div className="internal-ai-chat__main">
+            <div className="internal-ai-chat__status-strip">
+              {chatPrimaryStatusCards.map((card) => (
+                <article key={card.label} className={`internal-ai-chat__status-chip ${card.tone}`}>
+                  <p className="internal-ai-card__eyebrow">{card.label}</p>
+                  <strong>{card.value}</strong>
+                </article>
+              ))}
+              <button
+                type="button"
+                className="internal-ai-search__button internal-ai-chat__refresh-button"
+                onClick={() => void loadRepoUnderstandingSnapshot(true)}
+                disabled={repoUnderstandingState.status === "loading"}
+              >
+                {repoUnderstandingState.status === "loading"
+                  ? "Aggiornamento memoria..."
+                  : "Aggiorna memoria repo/UI"}
+              </button>
+            </div>
+            {chatBridgeState.transportMessage || chatAttachmentRepositoryState.transportMessage ? (
+              <div className="internal-ai-chat__status-inline">
                 {chatBridgeState.transportMessage ? (
-                  <div className="internal-ai-chat__status-inline">
+                  <>
                     <span className={backendPreviewTransportClass(chatBridgeState.transport)}>
                       {BACKEND_PREVIEW_TRANSPORT_LABELS[chatBridgeState.transport]}
                     </span>
                     <span className="internal-ai-muted">{chatBridgeState.transportMessage}</span>
-                  </div>
+                  </>
                 ) : null}
-                <div className="internal-ai-chat__suggestions">
-                  {CHAT_SUGGESTIONS.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      className="internal-ai-chat__suggestion"
-                      onClick={() => setChatInput(suggestion)}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-                <div className="internal-ai-chat__messages">
-                  {chatMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`internal-ai-chat__message ${
-                        message.role === "utente" ? "is-user" : "is-assistant"
-                      }`}
-                    >
-                      <div className="internal-ai-chat__message-header">
-                        <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
-                        <div className="internal-ai-pill-row">
-                          <span className={statusToneClass(message.status)}>
-                            {CHAT_STATUS_LABELS[message.status]}
-                          </span>
-                          <span className="internal-ai-pill is-neutral">
-                            {formatDateLabel(message.createdAt)}
-                          </span>
-                        </div>
-                      </div>
-                      {message.role === "assistente" && message.outputMode ? (
-                        <div className="internal-ai-chat__message-delivery">
-                          <span className={outputModeToneClass(message.outputMode)}>
-                            {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
-                          </span>
-                          {message.outputReason ? (
-                            <span className="internal-ai-chat__message-reason">
-                              {message.outputReason}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <p className="internal-ai-chat__message-text">{message.text}</p>
-                      {message.references.length ? (
-                        <div className="internal-ai-chat__references">
-                          {message.references.map((reference) =>
-                            reference.artifactId ? (
-                              <button
-                                key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
-                                type="button"
-                                className="internal-ai-chat__reference"
-                                onClick={() => handleOpenArtifact(reference.artifactId!)}
-                              >
-                                {reference.label}
-                                {reference.targa ? ` - ${reference.targa}` : ""}
-                              </button>
-                            ) : (
-                              <span
-                                key={`${message.id}:${reference.type}:${reference.label}`}
-                                className="internal-ai-pill is-neutral"
-                              >
-                                {reference.label}
-                                {reference.targa ? ` - ${reference.targa}` : ""}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      ) : null}
+                {chatAttachmentRepositoryState.transportMessage ? (
+                  <>
+                    <span className={backendPreviewTransportClass(chatAttachmentRepositoryState.transport)}>
+                      Allegati: {chatAttachmentRepositoryState.status}
+                    </span>
+                    <span className="internal-ai-muted">
+                      {chatAttachmentRepositoryState.transportMessage}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="internal-ai-chat__suggestions">
+              {CHAT_SUGGESTIONS.slice(0, 6).map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  className="internal-ai-chat__suggestion"
+                  onClick={() => setChatInput(suggestion)}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+            <div className="internal-ai-chat__messages">
+              {chatMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`internal-ai-chat__message ${
+                    message.role === "utente" ? "is-user" : "is-assistant"
+                  }`}
+                >
+                  <div className="internal-ai-chat__message-header">
+                    <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
+                    <div className="internal-ai-pill-row">
+                      <span className={statusToneClass(message.status)}>
+                        {CHAT_STATUS_LABELS[message.status]}
+                      </span>
+                      <span className="internal-ai-pill is-neutral">
+                        {formatDateLabel(message.createdAt)}
+                      </span>
                     </div>
-                  ))}
-                  {chatStatus === "running" ? (
-                    <div className="internal-ai-chat__message is-assistant">
-                      <div className="internal-ai-chat__message-header">
-                        <strong>Assistente interno</strong>
-                        <span className={statusToneClass("running")}>In elaborazione</span>
-                      </div>
-                      <p className="internal-ai-chat__message-text">
-                        Sto preparando una risposta controllata dal backend IA separato. Se la
-                        richiesta e un report, troverai il contenuto lungo in una anteprima
-                        dedicata.
-                      </p>
+                  </div>
+                  {message.role === "assistente" && message.outputMode ? (
+                    <div className="internal-ai-chat__message-delivery">
+                      <span className={outputModeToneClass(message.outputMode)}>
+                        {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
+                      </span>
+                      {message.outputReason ? (
+                        <span className="internal-ai-chat__message-reason">
+                          {message.outputReason}
+                        </span>
+                      ) : null}
                     </div>
                   ) : null}
-                  <div ref={chatMessagesEndRef} />
-                </div>
-                <div className="internal-ai-chat__composer">
-                  <label className="internal-ai-search__field">
-                    <span>Scrivi una richiesta</span>
-                    <textarea
-                      value={chatInput}
-                      onChange={(event) => setChatInput(event.target.value)}
-                      placeholder="Chiedimi un report, una spiegazione del repo o un chiarimento sul perimetro della NEXT."
-                      className="internal-ai-search__input internal-ai-chat__composer-input"
-                      rows={4}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          void handleChatSubmit();
-                        }
-                      }}
-                    />
-                  </label>
-                  <div className="internal-ai-chat__composer-actions">
-                    <p className="internal-ai-card__meta">
-                      `Invio` manda la richiesta. `Shift + Invio` va a capo.
-                    </p>
-                    <div className="internal-ai-search__actions">
-                      <button
-                        type="button"
-                        className="internal-ai-search__button"
-                        disabled={chatStatus === "running" || !chatInput.trim()}
-                        onClick={() => void handleChatSubmit()}
-                      >
-                        {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
-                      </button>
+                  {message.role === "assistente" ? (
+                    <>
+                      {buildChatUseCaseLabel(message) ? (
+                        <p className="internal-ai-card__eyebrow">
+                          {buildChatUseCaseLabel(message)}
+                        </p>
+                      ) : null}
+                      {buildChatContextChips(message).length ? (
+                        <div className="internal-ai-pill-row" style={{ marginBottom: 12 }}>
+                          {buildChatContextChips(message).map((chip) => (
+                            <span
+                              key={`${message.id}:context:${chip}`}
+                              className="internal-ai-pill is-neutral"
+                            >
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {renderChatMessageText(message.text)}
+                    </>
+                  ) : (
+                    <p className="internal-ai-chat__message-text">{message.text}</p>
+                  )}
+                  {message.attachments.length ? (
+                    <div className="internal-ai-chat__message-attachments">
+                      {message.attachments.map((attachment) => (
+                        <button
+                          key={`${message.id}:attachment:${attachment.id}`}
+                          type="button"
+                          className="internal-ai-chat__attachment-pill"
+                          onClick={() => handleOpenChatAttachment(attachment)}
+                        >
+                          <strong>{attachment.fileName}</strong>
+                          <span>{buildInternalAiChatAttachmentPreviewLabel(attachment)}</span>
+                        </button>
+                      ))}
                     </div>
+                  ) : null}
+                  {message.references.length ? (
+                    <div className="internal-ai-chat__references">
+                      {message.references.map((reference) =>
+                        reference.artifactId ? (
+                          <button
+                            key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
+                            type="button"
+                            className="internal-ai-chat__reference"
+                            onClick={() => handleOpenArtifact(reference.artifactId!)}
+                          >
+                            {reference.label}
+                            {reference.targa ? ` - ${reference.targa}` : ""}
+                          </button>
+                        ) : (
+                          <span
+                            key={`${message.id}:${reference.type}:${reference.label}`}
+                            className="internal-ai-pill is-neutral"
+                          >
+                            {reference.label}
+                            {reference.targa ? ` - ${reference.targa}` : ""}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {chatStatus === "running" ? (
+                <div className="internal-ai-chat__message is-assistant">
+                  <div className="internal-ai-chat__message-header">
+                    <strong>Assistente interno</strong>
+                    <span className={statusToneClass("running")}>In elaborazione</span>
                   </div>
+                  <p className="internal-ai-chat__message-text">
+                    Sto preparando una risposta controllata dal backend IA separato. Se la
+                    richiesta e un report, troverai il contenuto lungo in una anteprima dedicata.
+                  </p>
+                </div>
+              ) : null}
+              <div ref={chatMessagesEndRef} />
+            </div>
+            <div className="internal-ai-chat__composer">
+              <label className="internal-ai-search__field">
+                <span>Scrivi una richiesta</span>
+                <textarea
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  placeholder="Chiedimi di analizzare la Home, preparare un report mezzo o indicarti i file da toccare."
+                  className="internal-ai-search__input internal-ai-chat__composer-input"
+                  rows={4}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleChatSubmit();
+                    }
+                  }}
+                />
+              </label>
+              <div className="internal-ai-chat__composer-actions">
+                <p className="internal-ai-card__meta">
+                  `Invio` manda la richiesta. `Shift + Invio` va a capo.
+                </p>
+                <div className="internal-ai-search__actions">
+                  <button
+                    type="button"
+                    className="internal-ai-search__button internal-ai-search__button--secondary"
+                    disabled={chatStatus === "running" || chatAttachmentRepositoryState.status === "loading"}
+                    onClick={handleChatAttachmentPicker}
+                  >
+                    Allega file
+                  </button>
+                  <button
+                    type="button"
+                    className="internal-ai-search__button"
+                    disabled={
+                      chatStatus === "running" ||
+                      chatAttachmentRepositoryState.status === "loading" ||
+                      !chatInput.trim()
+                    }
+                    onClick={() => void handleChatSubmit()}
+                  >
+                    {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
+                  </button>
                 </div>
               </div>
-              <aside className="internal-ai-chat__aside">
-                <div className="internal-ai-chat__status-grid">
-                  {chatStatusCards.map((card) => (
-                    <article key={card.label} className={`internal-ai-chat__status-card ${card.tone}`}>
-                      <p className="internal-ai-card__eyebrow">{card.label}</p>
-                      <h3>{card.value}</h3>
-                      <p className="internal-ai-card__meta">{card.detail}</p>
+              {chatAttachments.length ? (
+                <div className="internal-ai-chat__attachments">
+                  {chatAttachments.map((attachment) => (
+                    <article key={attachment.id} className="internal-ai-chat__attachment-row">
+                      <div className="internal-ai-chat__attachment-copy">
+                        <strong>{attachment.fileName}</strong>
+                        <p className="internal-ai-card__meta">
+                          {attachment.note}
+                        </p>
+                        <p className="internal-ai-card__meta">
+                          {buildInternalAiChatAttachmentPreviewLabel(attachment)} ·{" "}
+                          {attachment.storageMode === "server_file_isolated"
+                            ? "server IA isolato"
+                            : "browser locale"}
+                          {" · "}
+                          {(attachment.sizeBytes / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                      <div className="internal-ai-pill-row">
+                        <button
+                          type="button"
+                          className="internal-ai-chat__reference"
+                          onClick={() => handleOpenChatAttachment(attachment)}
+                        >
+                          Apri
+                        </button>
+                        <button
+                          type="button"
+                          className="internal-ai-chat__reference"
+                          onClick={() => void handleRemoveChatAttachment(attachment)}
+                        >
+                          Rimuovi
+                        </button>
+                      </div>
                     </article>
                   ))}
                 </div>
-                <div className="internal-ai-card internal-ai-chat__guide">
-                  <p className="internal-ai-card__eyebrow">Come rispondo</p>
-                  <ul className="internal-ai-inline-list">
-                    <li>Le domande normali restano nel thread.</li>
-                    <li>I report strutturati si aprono come anteprima PDF dedicata.</li>
-                    <li>Fonti, limiti e fallback restano visibili ma non invasivi.</li>
-                  </ul>
-                </div>
-              </aside>
+              ) : null}
+              <input
+                ref={chatAttachmentInputRef}
+                type="file"
+                multiple
+                className="internal-ai-sr-only"
+                accept=".pdf,image/*,text/plain,text/markdown,.txt,.md,.doc,.docx,.odt,.xls,.xlsx,.csv,application/pdf"
+                onChange={(event) => {
+                  void handleChatAttachmentSelection(event.currentTarget.files);
+                  event.currentTarget.value = "";
+                }}
+              />
             </div>
+            <details className="internal-ai-chat__secondary">
+              <summary>Strumenti secondari e stato tecnico</summary>
+              <div className="internal-ai-chat__status-grid">
+                {chatStatusCards.map((card) => (
+                  <article key={card.label} className={`internal-ai-chat__status-card ${card.tone}`}>
+                    <p className="internal-ai-card__eyebrow">{card.label}</p>
+                    <h3>{card.value}</h3>
+                    <p className="internal-ai-card__meta">{card.detail}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="internal-ai-card internal-ai-chat__guide">
+                <p className="internal-ai-card__eyebrow">Come rispondo</p>
+                <ul className="internal-ai-inline-list">
+                  <li>Le domande normali restano nel thread.</li>
+                  <li>I report strutturati si aprono come anteprima PDF dedicata.</li>
+                  <li>Fonti, limiti e fallback restano visibili ma non invasivi.</li>
+                </ul>
+              </div>
+            </details>
           </article>
 
-          <article className="next-panel">
-            <div className="next-panel__header">
-              <h2>Comprensione controllata repo e UI</h2>
-            </div>
+          <section className="internal-ai-grid">
+            <article className="internal-ai-card">
+              <p className="internal-ai-card__eyebrow">Sessioni</p>
+              <h3>{snapshot.sessions.length}</h3>
+              <p className="internal-ai-card__meta">
+                Sessioni simulate del sottosistema IA per anteprima e revisione.
+              </p>
+            </article>
+            <article className="internal-ai-card">
+              <p className="internal-ai-card__eyebrow">Richieste</p>
+              <h3>{snapshot.requests.length}</h3>
+              <p className="internal-ai-card__meta">
+                Richieste locali con stato anteprima, approvabile, revisione e scarto.
+              </p>
+            </article>
+            <article className="internal-ai-card">
+              <p className="internal-ai-card__eyebrow">Artifact IA</p>
+              <h3>{snapshot.artifacts.length}</h3>
+              <p className="internal-ai-card__meta">
+                Persistenti locali {persistedArtifactsCount}, fallback memoria{" "}
+                {snapshot.artifacts.length - persistedArtifactsCount}.
+              </p>
+            </article>
+            <article className="internal-ai-card">
+              <p className="internal-ai-card__eyebrow">Audit</p>
+              <h3>{snapshot.auditLog.length}</h3>
+              <p className="internal-ai-card__meta">
+                Registro locale di sicurezza e tracciabilita del sottosistema.
+              </p>
+            </article>
+          </section>
+
+          <details className="next-panel internal-ai-secondary-panel">
+            <summary>Memoria repo/UI e osservatore</summary>
+            <div className="internal-ai-secondary-panel__body">
             <p className="next-panel__description">
               Il backend IA separato costruisce una snapshot read-only di documenti architetturali,
               macro-aree, pattern UI e relazioni tra schermate, cosi la nuova IA puo spiegare il
@@ -4840,7 +5594,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                 {repoUnderstandingState.message}
               </p>
             ) : null}
-          </article>
+          </div>
+          </details>
 
           <article className="next-panel internal-ai-search">
             <div className="next-panel__header">

@@ -111,6 +111,12 @@ function buildServerCredentialDetail(runtimeProbe) {
       : "GOOGLE_APPLICATION_CREDENTIALS e impostata, ma il file puntato non e verificabile nel processo corrente.";
   }
 
+  if (runtimeProbe.credential.mode === "firebase_service_account_json") {
+    return runtimeProbe.credential.firebaseServiceAccountJsonValid
+      ? "FIREBASE_SERVICE_ACCOUNT_JSON e presente nel processo server-side del backend IA separato e risulta parseabile."
+      : "FIREBASE_SERVICE_ACCOUNT_JSON e presente nel processo server-side del backend IA separato, ma non risulta parseabile come service account JSON valido.";
+  }
+
   if (runtimeProbe.credential.mode === "firebase_config") {
     return "FIREBASE_CONFIG e presente nel processo server-side del backend IA separato.";
   }
@@ -119,7 +125,7 @@ function buildServerCredentialDetail(runtimeProbe) {
     return "Nel processo corrente esiste solo il project id Google, ma non una credenziale server-side utilizzabile in modo dimostrato.";
   }
 
-  return "Nel processo corrente non risultano GOOGLE_APPLICATION_CREDENTIALS o FIREBASE_CONFIG utili al backend IA separato.";
+  return "Nel processo corrente non risultano GOOGLE_APPLICATION_CREDENTIALS, FIREBASE_SERVICE_ACCOUNT_JSON o FIREBASE_CONFIG utili al backend IA separato.";
 }
 
 function buildSharedRequirements(args) {
@@ -156,7 +162,9 @@ function buildSharedRequirements(args) {
       status: args.runtimeProbe.modulesReady ? "present" : "missing",
       detail: args.runtimeProbe.modulesReady
         ? "Il runtime del backend IA separato risolve firebase-admin/app, firestore e storage dal proprio perimetro."
-        : "Il backend IA dichiara o prepara il package, ma nel processo corrente non risolve ancora firebase-admin dal proprio perimetro eseguibile.",
+        : args.backendPackageHasFirebaseAdmin
+          ? "Il package dedicato dichiara firebase-admin, ma nel checkout/processo corrente i moduli firebase-admin/app, firestore e storage non risultano installati o risolvibili dal perimetro backend/internal-ai."
+          : "Il backend IA dichiara o prepara il package, ma nel processo corrente non risolve ancora firebase-admin dal proprio perimetro eseguibile.",
     },
     {
       id: "server-side-credentials",

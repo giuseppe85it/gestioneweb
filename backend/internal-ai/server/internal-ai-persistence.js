@@ -6,6 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const runtimeDataRoot = path.resolve(__dirname, "../runtime-data");
 const artifactsFilePath = path.join(runtimeDataRoot, "analysis_artifacts.json");
+const attachmentsFilePath = path.join(runtimeDataRoot, "chat_attachments.json");
 const memoryFilePath = path.join(runtimeDataRoot, "ai_operational_memory.json");
 const traceabilityFilePath = path.join(runtimeDataRoot, "ai_traceability_log.json");
 const vehicleContextFilePath = path.join(runtimeDataRoot, "fleet_readonly_snapshot.json");
@@ -64,6 +65,11 @@ const DEFAULT_MEMORY_STATE = {
       updatedAt: null,
     },
   },
+};
+
+const DEFAULT_ATTACHMENTS_STATE = {
+  version: 1,
+  items: [],
 };
 
 const DEFAULT_TRACEABILITY_STATE = {
@@ -180,6 +186,15 @@ export async function readArtifactsState() {
 
 export async function writeArtifactsState(nextState) {
   await writeJson(artifactsFilePath, nextState);
+  return nextState;
+}
+
+export async function readAttachmentsState() {
+  return readJson(attachmentsFilePath, DEFAULT_ATTACHMENTS_STATE);
+}
+
+export async function writeAttachmentsState(nextState) {
+  await writeJson(attachmentsFilePath, nextState);
   return nextState;
 }
 

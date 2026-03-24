@@ -7,6 +7,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   appendTraceabilityEntry,
+  readAttachmentsState,
   getInternalAiRuntimeDataRoot,
   readArtifactsState,
   readMemoryState,
@@ -15,12 +16,22 @@ import {
   readVehicleContextSnapshot,
   readVehicleDossierSnapshot,
   writeArtifactsState,
+  writeAttachmentsState,
   writeMemoryState,
   writePreviewWorkflowState,
   writeRepoUnderstandingSnapshot,
   writeVehicleContextSnapshot,
   writeVehicleDossierSnapshot,
 } from "./internal-ai-persistence.js";
+import {
+  buildInternalAiChatAttachmentAssetPath,
+  buildInternalAiChatAttachmentFilePath,
+  createAttachmentId,
+  deleteInternalAiChatAttachmentFile,
+  getInternalAiChatAttachmentMaxSizeBytes,
+  materializeInternalAiChatAttachmentRecord,
+  writeInternalAiChatAttachmentFile,
+} from "./internal-ai-chat-attachments.js";
 import {
   buildRepoUnderstandingMeta,
   buildRepoUnderstandingReferences,
@@ -36,7 +47,7 @@ const host = process.env.INTERNAL_AI_BACKEND_HOST || "127.0.0.1";
 const port = Number(process.env.INTERNAL_AI_BACKEND_PORT || "4310");
 const app = express();
 
-app.use(bodyParser.json({ limit: "2mb" }));
+app.use(bodyParser.json({ limit: "12mb" }));
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "content-type");
@@ -79,6 +90,92 @@ function normalizeTarga(value) {
 
 function createId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isAttachmentsRepositoryRequestBody(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    [
+      "list_thread_attachments",
+      "upload_thread_attachment",
+      "remove_thread_attachment",
+    ].includes(value.operation)
+  );
+}
+
+function sanitizeAttachmentInputText(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function sanitizeChatAttachments(attachments) {
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments
+    .filter((entry) => entry && typeof entry === "object")
+    .slice(0, 6)
+    .map((entry) => ({
+      id: typeof entry.id === "string" ? entry.id : createId("attach-ref"),
+      fileName:
+        typeof entry.fileName === "string" && entry.fileName.trim()
+          ? entry.fileName.trim()
+          : "Allegato IA-only",
+      mimeType: sanitizeAttachmentInputText(entry.mimeType),
+      sizeBytes: Number.isFinite(entry.sizeBytes) ? Number(entry.sizeBytes) : 0,
+      kind: typeof entry.kind === "string" ? entry.kind : "other",
+      storageMode:
+        entry.storageMode === "server_file_isolated" ? "server_file_isolated" : "local_browser_only",
+      persisted: Boolean(entry.persisted),
+      note:
+        typeof entry.note === "string" && entry.note.trim()
+          ? entry.note.trim()
+          : "Allegato IA-only collegato al thread.",
+      textExcerpt:
+        typeof entry.textExcerpt === "string" && entry.textExcerpt.trim()
+          ? entry.textExcerpt.trim().slice(0, 1600)
+          : null,
+    }));
+}
+
+function normalizeAttachmentsRepositoryState(repositoryState) {
+  return {
+    version: 1,
+    items: Array.isArray(repositoryState?.items)
+      ? repositoryState.items.filter((entry) => entry && typeof entry === "object")
+      : [],
+  };
+}
+
+function normalizeMemoryHints(memoryHints) {
+  if (!memoryHints || typeof memoryHints !== "object") {
+    return null;
+  }
+
+  return {
+    repoUiRequested: Boolean(memoryHints.repoUiRequested),
+    memoryFreshness:
+      memoryHints.memoryFreshness === "fresh" ||
+      memoryHints.memoryFreshness === "partial" ||
+      memoryHints.memoryFreshness === "stale"
+        ? memoryHints.memoryFreshness
+        : "missing",
+    screenHint:
+      typeof memoryHints.screenHint === "string" && memoryHints.screenHint.trim()
+        ? memoryHints.screenHint.trim()
+        : null,
+    focusKind:
+      memoryHints.focusKind === "repo_ui" ||
+      memoryHints.focusKind === "report" ||
+      memoryHints.focusKind === "attachment"
+        ? memoryHints.focusKind
+        : "general",
+    attachmentsCount: Number.isFinite(memoryHints.attachmentsCount)
+      ? Number(memoryHints.attachmentsCount)
+      : 0,
+    runtimeObserverObserved: Boolean(memoryHints.runtimeObserverObserved),
+  };
 }
 
 function uniqueStrings(values) {
@@ -333,6 +430,8 @@ function buildControlledChatUserPayload(args) {
       references: localTurn.references,
       reportContext: localTurn.reportContext,
     },
+    attachments: sanitizeChatAttachments(args.attachments),
+    memoryHints: normalizeMemoryHints(args.memoryHints),
     repoUnderstanding: args.repoSnapshot
       ? trimRepoUnderstandingSnapshotForChat(args.repoSnapshot)
       : null,
@@ -359,12 +458,18 @@ async function createControlledChatTurn(args) {
     };
   }
 
-  const repoQuestion = isRepoUnderstandingQuestion(args.prompt) || localTurn.intent === "repo_understanding";
+  const memoryHints = normalizeMemoryHints(args.memoryHints);
+  const repoQuestion =
+    isRepoUnderstandingQuestion(args.prompt) ||
+    localTurn.intent === "repo_understanding" ||
+    Boolean(memoryHints?.repoUiRequested);
   const repoSnapshot = repoQuestion ? await loadRepoUnderstandingSnapshot(false) : null;
   const userPayload = buildControlledChatUserPayload({
     prompt: args.prompt,
     localTurn,
     repoSnapshot,
+    attachments: args.attachments,
+    memoryHints,
   });
 
   if (!userPayload) {
@@ -390,6 +495,7 @@ async function createControlledChatTurn(args) {
               "Non inventare dati, non proporre scritture business, non descrivere patch automatiche e non trasformarti in un agente che modifica il repository. " +
               "Se la richiesta riguarda report o preview, spiega solo dati gia letti e limiti dichiarati. " +
               "Se la richiesta riguarda repository o UI, usa solo la snapshot curata repo/UI allegata e dichiarane i limiti. " +
+              "Se sono presenti allegati, usa solo metadata o estratti testuali esplicitamente forniti: se un file non e analizzabile in profondita, dichiaralo chiaramente. " +
               "Rispondi in modo operativo, breve e chiaro.",
           },
         ],
@@ -826,6 +932,315 @@ app.get("/internal-ai-backend/runtime-observer/assets/:fileName", async (req, re
       },
     });
   }
+});
+
+app.get("/internal-ai-backend/attachments/assets/:attachmentId", async (req, res) => {
+  const attachmentId = String(req.params?.attachmentId ?? "").trim();
+  if (!attachmentId) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "attachments.repository",
+      status: "validation_error",
+      message: "Identificativo allegato non valido.",
+      data: {
+        fileName: null,
+      },
+    });
+    return;
+  }
+
+  const repositoryState = normalizeAttachmentsRepositoryState(await readAttachmentsState());
+  const attachment =
+    repositoryState.items.find(
+      (entry) => entry.id === attachmentId && entry.threadId === "main_chat",
+    ) ?? null;
+
+  if (!attachment) {
+    sendEnvelope(res, {
+      httpStatus: 404,
+      ok: false,
+      endpointId: "attachments.repository",
+      status: "not_found",
+      message: `Allegato IA-only non trovato: ${attachmentId}.`,
+      data: {
+        fileName: null,
+      },
+    });
+    return;
+  }
+
+  const absolutePath = buildInternalAiChatAttachmentFilePath(attachment.id, attachment.fileName);
+
+  try {
+    const binary = await fs.readFile(absolutePath);
+    res.status(200).setHeader("Content-Type", attachment.mimeType || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${attachment.fileName.replace(/"/g, '\\"')}"`,
+    );
+    res.send(binary);
+  } catch {
+    sendEnvelope(res, {
+      httpStatus: 404,
+      ok: false,
+      endpointId: "attachments.repository",
+      status: "not_found",
+      message: `File allegato IA-only non trovato: ${attachment.fileName}.`,
+      data: {
+        fileName: attachment.fileName,
+      },
+    });
+  }
+});
+
+app.post("/internal-ai-backend/attachments/repository", async (req, res) => {
+  const operation = req.body?.operation;
+  const threadId = "main_chat";
+
+  if (operation === "list_thread_attachments") {
+    const repositoryState = normalizeAttachmentsRepositoryState(await readAttachmentsState());
+    const threadItems = repositoryState.items.filter((entry) => entry.threadId === threadId);
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "attachments.repository",
+        operation,
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: "Lettura lista allegati IA-only del thread principale.",
+        entityCount: threadItems.length,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "attachments.repository",
+      status: "ok",
+      message:
+        "Lista allegati IA-only letta dal contenitore server-side dedicato in modalita mock-safe.",
+      data: {
+        operation,
+        persistenceMode: "server_file_isolated",
+        repositoryState: {
+          version: 1,
+          items: threadItems,
+        },
+        attachment: null,
+        traceEntryId: traceEntry.id,
+        notes: [
+          "Gli allegati restano isolati nel runtime IA separato.",
+          "Nessun dato business viene coinvolto.",
+        ],
+      },
+    });
+    return;
+  }
+
+  if (operation === "upload_thread_attachment") {
+    const fileName = typeof req.body?.fileName === "string" ? req.body.fileName.trim() : "";
+    const mimeType =
+      typeof req.body?.mimeType === "string" && req.body.mimeType.trim()
+        ? req.body.mimeType.trim()
+        : null;
+    const sizeBytes = Number(req.body?.sizeBytes);
+    const contentBase64 =
+      typeof req.body?.contentBase64 === "string" && req.body.contentBase64.trim()
+        ? req.body.contentBase64.trim()
+        : "";
+    const textExcerptInput =
+      typeof req.body?.textExcerpt === "string" && req.body.textExcerpt.trim()
+        ? req.body.textExcerpt.trim().slice(0, 1600)
+        : null;
+
+    if (!fileName || !contentBase64 || !Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+      sendEnvelope(res, {
+        httpStatus: 400,
+        ok: false,
+        endpointId: "attachments.repository",
+        status: "validation_error",
+        message: "File, dimensione o contenuto base64 non validi per l'allegato IA-only.",
+        data: {
+          fileName,
+        },
+      });
+      return;
+    }
+
+    if (sizeBytes > getInternalAiChatAttachmentMaxSizeBytes()) {
+      sendEnvelope(res, {
+        httpStatus: 413,
+        ok: false,
+        endpointId: "attachments.repository",
+        status: "validation_error",
+        message:
+          "L'allegato supera il limite IA-only consentito dal backend separato (4 MB).",
+        data: {
+          fileName,
+        },
+      });
+      return;
+    }
+
+    const attachmentId = createAttachmentId();
+    let textExcerpt = textExcerptInput;
+    if (!textExcerpt && typeof mimeType === "string" && mimeType.toLowerCase().startsWith("text/")) {
+      try {
+        textExcerpt = Buffer.from(contentBase64, "base64").toString("utf8").trim().slice(0, 1600) || null;
+      } catch {
+        textExcerpt = null;
+      }
+    }
+
+    const uploadedAt = new Date().toISOString();
+    const attachment = materializeInternalAiChatAttachmentRecord({
+      id: attachmentId,
+      fileName,
+      mimeType,
+      sizeBytes,
+      uploadedAt,
+      textExcerpt,
+    });
+
+    await writeInternalAiChatAttachmentFile({
+      id: attachmentId,
+      fileName,
+      contentBase64,
+    });
+
+    const repositoryState = normalizeAttachmentsRepositoryState(await readAttachmentsState());
+    const nextState = {
+      version: 1,
+      items: [attachment, ...repositoryState.items].slice(0, 100),
+    };
+    await writeAttachmentsState(nextState);
+
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "attachments.repository",
+        operation,
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Upload allegato IA-only ${attachment.fileName}.`,
+        entityCount: nextState.items.length,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "attachments.repository",
+      status: "ok",
+      message: "Allegato IA-only caricato nel contenitore server-side isolato.",
+      data: {
+        operation,
+        persistenceMode: "server_file_isolated",
+        repositoryState: nextState,
+        attachment,
+        traceEntryId: traceEntry.id,
+        notes: [
+          "L'allegato resta nel runtime IA separato.",
+          "Sono ammessi solo metadata e contesto dichiarato, nessuna scrittura business.",
+        ],
+      },
+    });
+    return;
+  }
+
+  if (operation === "remove_thread_attachment") {
+    const attachmentId =
+      typeof req.body?.attachmentId === "string" ? req.body.attachmentId.trim() : "";
+    if (!attachmentId) {
+      sendEnvelope(res, {
+        httpStatus: 400,
+        ok: false,
+        endpointId: "attachments.repository",
+        status: "validation_error",
+        message: "Identificativo allegato mancante o non valido.",
+        data: {
+          fileName: null,
+        },
+      });
+      return;
+    }
+
+    const repositoryState = normalizeAttachmentsRepositoryState(await readAttachmentsState());
+    const attachment =
+      repositoryState.items.find(
+        (entry) => entry.id === attachmentId && entry.threadId === threadId,
+      ) ?? null;
+
+    if (!attachment) {
+      sendEnvelope(res, {
+        httpStatus: 404,
+        ok: false,
+        endpointId: "attachments.repository",
+        status: "not_found",
+        message: `Allegato IA-only non trovato: ${attachmentId}.`,
+        data: {
+          fileName: null,
+        },
+      });
+      return;
+    }
+
+    const nextState = {
+      version: 1,
+      items: repositoryState.items.filter((entry) => entry.id !== attachmentId),
+    };
+
+    await deleteInternalAiChatAttachmentFile(
+      buildInternalAiChatAttachmentFilePath(attachment.id, attachment.fileName),
+    );
+    await writeAttachmentsState(nextState);
+
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "attachments.repository",
+        operation,
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Rimozione allegato IA-only ${attachment.fileName}.`,
+        entityCount: nextState.items.length,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "attachments.repository",
+      status: "ok",
+      message: "Allegato IA-only rimosso dal contenitore server-side isolato.",
+      data: {
+        operation,
+        persistenceMode: "server_file_isolated",
+        repositoryState: nextState,
+        attachment,
+        traceEntryId: traceEntry.id,
+        notes: [
+          "La rimozione riguarda solo il runtime IA separato.",
+          "Nessuna scrittura business viene applicata.",
+        ],
+      },
+    });
+    return;
+  }
+
+  sendEnvelope(res, {
+    httpStatus: 400,
+    ok: false,
+    endpointId: "attachments.repository",
+    status: "validation_error",
+    message:
+      "Operazione attachments.repository non valida. Sono ammesse solo list_thread_attachments, upload_thread_attachment e remove_thread_attachment.",
+    data: {
+      allowedOperations: [
+        "list_thread_attachments",
+        "upload_thread_attachment",
+        "remove_thread_attachment",
+      ],
+    },
+  });
 });
 
 app.post("/internal-ai-backend/orchestrator/chat", async (req, res) => {

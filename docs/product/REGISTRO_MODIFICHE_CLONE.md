@@ -31,6 +31,141 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-24 78
+- DATA: 2026-03-24
+- TITOLO MODIFICA: V1 chat IA stretta su Home, report targa e file da toccare
+- OBIETTIVO: chiudere il valore prodotto minimo della pagina `/next/ia/interna`, rendendo affidabili e leggibili i tre use case V1 senza allargare il perimetro del clone.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_0631_v1-chat-home-report-file-map.md`
+  - `docs/continuity-reports/2026-03-24_0631_continuity_v1-chat-home-report-file-map.md`
+- COSA E STATO CAMBIATO:
+  - stretti gli intenti della chat sui tre use case prioritari, con fallback locale piu utile per `Home` e `file da toccare`;
+  - mantenuto il `report targa` sul percorso mezzo-centrico NEXT read-only;
+  - corretto il selettore output per tenere `analisi Home` e `quali file devo toccare` in chat strutturata invece che in proposta di integrazione;
+  - migliorata la resa nel thread con suggerimenti iniziali piu stretti, copy piu chiaro e risposta spezzata in blocchi leggibili.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la chat risulta piu chiara e piu focalizzata sui tre casi utili della V1;
+  - Lettura: Home e file usano meglio la memoria repo/UI quando esiste, mentre il report mezzo resta ancorato ai layer NEXT normalizzati;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna modifica alla madre, nessun backend live nuovo.
+- COME VERIFICARE:
+  - `npm run build`
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il task non introduce nuove capability oltre ai tre use case V1;
+  - il worktree contiene altre modifiche preesistenti non toccate da questa patch.
+
+### Voce 2026-03-23 77
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Reset prodotto chat IA interna stile ChatGPT
+- OBIETTIVO: trasformare `/next/ia/interna` in una chat unica usabile, con memoria repo/UI usata davvero nelle richieste libere, allegati IA-only nello stesso thread e pannelli tecnici secondari.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiChatAttachmentsClient.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-chat-attachments.js`
+  - `backend/internal-ai/src/internalAiServerPersistenceContracts.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-23_2211_reset-chat-ia-interna-stile-chatgpt.md`
+  - `docs/continuity-reports/2026-03-23_2211_continuity_reset-chat-ia-interna-stile-chatgpt.md`
+- COSA E STATO CAMBIATO:
+  - pagina IA ristrutturata come thread centrale unico con composer dedicato e suggerimenti iniziali piu mirati;
+  - richieste UI/flussi/repo ora dichiarano e usano la memoria osservata quando disponibile invece di ripiegare sempre sul perimetro base;
+  - aggiunto flusso allegati IA-only con preview, rimozione e apertura, confinato al backend IA separato o fallback locale;
+  - ridotti i pannelli tecnici al ruolo secondario collassabile e mantenuta in italiano tutta la UI visibile.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la pagina sembra una chat assistente e non una dashboard di debug;
+  - Lettura: la memoria repo/UI viene riusata davvero nelle richieste libere quando c'e un contesto fresco o parziale;
+  - Blocco scritture: invariato, nessuna madre toccata, nessuna scrittura business, nessun live Firebase/Storage riaperto.
+- COME VERIFICARE:
+  - `npm run build`;
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiChatAttachmentsClient.ts src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiChatOrchestrator.ts backend/internal-ai/server/internal-ai-adapter.js backend/internal-ai/server/internal-ai-chat-attachments.js backend/internal-ai/src/internalAiServerPersistenceContracts.ts`;
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js`;
+  - `node --check backend/internal-ai/server/internal-ai-chat-attachments.js`;
+  - `npm --prefix backend/internal-ai run typecheck`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il reset e clone-specifico e non apre nuovi canali business live;
+  - la madre resta intoccabile.
+
+### Voce 2026-03-23 76
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Reality check finale del live minimo IA read-only
+- OBIETTIVO: verificare in modo definitivo se il backend IA separato possa aprire davvero il primo bridge live minimo Firestore/Storage read-only o se debba restare sul fallback clone-seeded del `mezzo_dossier`.
+- FILE TOCCATI:
+  - `package.json`
+  - `package-lock.json`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-23_1833_live-minimo-ia-readonly-reality-check.md`
+  - `docs/continuity-reports/2026-03-23_1833_continuity_live-minimo-ia-readonly-reality-check.md`
+- COSA E STATO CAMBIATO:
+  - riallineata la documentazione di stato del backend IA al checkout corrente;
+  - reso verificabile che il runtime del backend IA separato risolve `firebase-admin`;
+  - chiarito che il bootstrap server-side dedicato supporta `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_SERVICE_ACCOUNT_JSON` e `FIREBASE_CONFIG`, ma che nessuno dei tre canali e presente nel processo verificato.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna modifica visiva del clone;
+  - Lettura: nessuna nuova lettura business viene attivata;
+  - Blocco scritture: invariato, nessuna scrittura business e nessun uso del legacy come backend canonico.
+- COME VERIFICARE:
+  - eseguire probe presenza env server-side senza stampare segreti;
+  - eseguire `npm --prefix backend/internal-ai run firebase-readiness`;
+  - eseguire smoke test `probeInternalAiFirebaseAdminRuntime()` e verificare `modulesReady: true`, `credentialMode: missing`, `canAttemptLiveRead: false`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - blocchi reali e definitivi oggi: credenziali server-side assenti, `firestore.rules` assente, `storage.rules` deny-all in conflitto, access layer live dedicato ancora non aperto.
+
+### Voce 2026-03-23 75
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Chiusura mirata gap runtime Prompt 59 + observer v2
+- OBIETTIVO: chiudere in modo onesto i gap residui del Prompt 59 del runtime observer NEXT, senza riaprire l'audit largo, senza toccare la madre e senza forzare controlli disabilitati.
+- FILE TOCCATI:
+  - `backend/internal-ai/server/internal-ai-next-runtime-observer.js`
+  - `scripts/internal-ai-observe-next-runtime.mjs`
+  - `scripts/internal-ai-observe-next-gap59.mjs`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/change-reports/2026-03-23_1733_ui_gap59-runtime-observer-next-closure.md`
+  - `docs/continuity-reports/2026-03-23_1733_continuity_gap59-runtime-observer-next-closure.md`
+- COSA E STATO CAMBIATO:
+  - corretto l'observer per riconoscere stati gia aperti nel render iniziale, distinguere trigger bloccati dal guard rail e supportare step preparatori read-only sui probe;
+  - aggiunto un micro-script dedicato ai gap del Prompt 59 che aggiorna la snapshot runtime solo sui residui verificati davvero;
+  - chiusi davvero la route dinamica `Acquisti` dettaglio e 7 degli 8 stati interni residui.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il clone resta invariato; cambiano solo osservazione, screenshot e tracciabilita del runtime;
+  - Lettura: la nuova IA vede ora `53/53` route e `25/26` stati runtime osservati, con mapping piu completo `schermata -> file/modulo/flusso`;
+  - Blocco scritture: invariato; l'unico residuo non osservato e proprio un trigger bloccato dal guard rail read-only.
+- COME VERIFICARE:
+  - eseguire `node --check backend/internal-ai/server/internal-ai-next-runtime-observer.js`;
+  - eseguire `node --check scripts/internal-ai-observe-next-runtime.mjs`;
+  - eseguire `node --check scripts/internal-ai-observe-next-gap59.mjs`;
+  - eseguire `npx eslint backend/internal-ai/server/internal-ai-next-runtime-observer.js scripts/internal-ai-observe-next-runtime.mjs scripts/internal-ai-observe-next-gap59.mjs`;
+  - eseguire `node scripts/internal-ai-observe-next-gap59.mjs`;
+  - verificare che `next_runtime_observer_snapshot.json` riporti `routeCount = 53`, `observedRouteCount = 53`, `stateCount = 26`, `observedStateCount = 25`, `unavailableStateCount = 1`, `screenshotCount = 78`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - il residuo finale e unico e definitivo nel perimetro sicuro corrente: `Home -> Vedi tutto`, trigger visibile ma disabilitato dal clone;
+  - il risultato non va raccontato come `100% assoluto` degli stati, ma come chiusura completa di tutte le route e di tutti gli stati realmente osservabili senza violare il guard rail.
+
 ### Voce 2026-03-23 74
 - DATA: 2026-03-23
 - TITOLO MODIFICA: Copertura runtime UI quasi totale verificabile della NEXT + payload chat runtime completo
@@ -139,6 +274,72 @@ Serve a:
 - NOTE:
   - blocchi ancora aperti: `firebase-admin` non governato dal package backend IA, credenziali server-side Google assenti nel processo corrente, `firestore.rules` assente, `storage.rules` in conflitto;
   - restano fuori dal primo bridge live `@rifornimenti`, `@documenti_*`, `@preventivi`, `documenti_pdf/*`, `preventivi/*`, `autisti/*`.
+
+### Voce 2026-03-23 73
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Supporto `FIREBASE_SERVICE_ACCOUNT_JSON` nel backend IA, live minimo ancora non apribile
+- OBIETTIVO: completare il supporto server-side ai canali credenziali Firebase Admin del backend IA separato senza aprire il live bridge quando il processo e le policy non lo consentono davvero.
+- FILE TOCCATI:
+  - `backend/internal-ai/server/internal-ai-firebase-admin.js`
+  - `backend/internal-ai/server/internal-ai-firebase-readiness.js`
+  - `backend/internal-ai/src/internalAiServerPersistenceContracts.ts`
+  - `backend/internal-ai/README.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/change-reports/2026-03-23_1832_backend-ia-firebase-service-account-readiness.md`
+  - `docs/continuity-reports/2026-03-23_1832_continuity_backend-ia-firebase-service-account-readiness.md`
+- COSA E STATO CAMBIATO:
+  - il backend IA riconosce ora anche `FIREBASE_SERVICE_ACCOUNT_JSON` accanto a `GOOGLE_APPLICATION_CREDENTIALS` e `FIREBASE_CONFIG`;
+  - la readiness distingue meglio il supporto credenziali del codice dallo stato reale del processo;
+  - il fallback ufficiale sul `mezzo_dossier` resta invariato e clone-seeded.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la sezione readiness di `/next/ia/interna` puo dichiarare in modo piu preciso il perimetro credenziali supportato;
+  - Lettura: nessuna nuova lettura business viene attivata;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna modifica alla madre e nessun uso del legacy come backend canonico.
+- COME VERIFICARE:
+  - eseguire `node --check backend/internal-ai/server/internal-ai-firebase-admin.js`;
+  - eseguire `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js`;
+  - eseguire `npx tsc -p backend/internal-ai/tsconfig.json --noEmit`;
+  - eseguire `npm --prefix backend/internal-ai run firebase-readiness`;
+  - verificare che il processo riporti `credentialMode: missing` e `canAttemptLiveRead: false` finche le credenziali restano assenti.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - blocchi ancora aperti: nessuna credenziale server-side Google nel processo corrente, `firestore.rules` assente, `storage.rules` deny-all in conflitto e access layer live non ancora implementato;
+  - il primo live futuro, se mai sara apribile, resta limitato a `storage/@mezzi_aziendali` e al path esatto `librettoStoragePath`.
+
+### Voce 2026-03-23 74
+- DATA: 2026-03-23
+- TITOLO MODIFICA: Verifica finale prerequisiti reali del live minimo Firebase/Storage IA
+- OBIETTIVO: chiudere in modo definitivo se il primo read-only minimo sia davvero apribile nel processo reale corrente, distinguendo supporto codice, credenziali disponibili e blocchi infrastrutturali effettivi.
+- FILE TOCCATI:
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-23_1848_verifica-finale-live-minimo-firebase-storage-ia.md`
+  - `docs/continuity-reports/2026-03-23_1848_continuity_verifica-finale-live-minimo-firebase-storage-ia.md`
+- COSA E STATO CAMBIATO:
+  - registrato che il supporto server-side alle credenziali esiste gia e include `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_SERVICE_ACCOUNT_JSON` e `FIREBASE_CONFIG`;
+  - fissato che il processo reale corrente non ha comunque credenziali server-side effettive e quindi il bridge resta spento;
+  - confermato che Firestore resta bloccato anche da `firestore.rules` assente e da access layer live non ancora aperto;
+  - confermato che il dominio `mezzo_dossier` continua a usare come fallback ufficiale il retrieval clone-seeded gia governato.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun cambio funzionale al clone; la readiness resta onesta;
+  - Lettura: nessuna nuova lettura business viene attivata;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna modifica alla madre.
+- COME VERIFICARE:
+  - eseguire `npm --prefix backend/internal-ai run firebase-readiness`;
+  - eseguire `node -e "import('./backend/internal-ai/server/internal-ai-firebase-admin.js').then(async m=>{const r=await m.probeInternalAiFirebaseAdminRuntime(); console.log(JSON.stringify(r,null,2));})"`;
+  - verificare che nel processo reale corrente `server-side-credentials` resti `missing`;
+  - verificare che il `mezzo_dossier` continui a dichiarare il retrieval clone-seeded come fallback ufficiale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il supporto a `FIREBASE_SERVICE_ACCOUNT_JSON` e confermato ma non equivale a una credenziale reale presente nel processo;
+  - il blocco reale del live minimo Firestore e oggi triplo: credenziale assente, `firestore.rules` assente, access layer live stretto ancora non aperto.
 
 ### Voce 2026-03-22 71
 - DATA: 2026-03-22

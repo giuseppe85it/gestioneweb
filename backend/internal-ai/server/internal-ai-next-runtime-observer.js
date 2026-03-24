@@ -33,7 +33,7 @@ function buildCurrentMonthKey() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export const INTERNAL_AI_NEXT_RUNTIME_OBSERVER_CATALOG_VERSION = "2026-03-23-total-ui-v1";
+export const INTERNAL_AI_NEXT_RUNTIME_OBSERVER_CATALOG_VERSION = "2026-03-23-total-ui-v2";
 
 const runtimeObserverTodayIsoDate = buildTodayIsoDate();
 const runtimeObserverCurrentMonthKey = buildCurrentMonthKey();
@@ -50,8 +50,9 @@ export const INTERNAL_AI_NEXT_RUNTIME_OBSERVER_ROUTE_SPECS = [
         id: "quicklinks-accordion",
         label: "Quick link operativi",
         kind: "card_state",
-        selector: ".quick-accordion-toggle",
+        selector: '.quick-accordion-toggle[aria-expanded="false"]',
         successSelector: ".quick-accordion-body",
+        skipClickIfSuccessVisible: true,
       },
       {
         id: "important-events-modal",
@@ -277,8 +278,17 @@ export const INTERNAL_AI_NEXT_RUNTIME_OBSERVER_ROUTE_SPECS = [
         id: "menu-ordine",
         label: "Menu ordine read-only",
         kind: "menu_state",
+        routePathOverride: "/next/acquisti?tab=ordini",
         selector: ".acq-kebab-trigger",
         successSelector: ".acq-kebab-menu",
+        prepareSteps: [
+          {
+            kind: "click_selector",
+            selector:
+              'button:has-text("Ordini"), [role="tab"]:has-text("Ordini"), a:has-text("Ordini")',
+            label: "Apri tab Ordini",
+          },
+        ],
       },
     ],
     notes: ["Dominio ordini/preventivi globale, non ideale come primo hook IA mezzo-centrico."],
@@ -593,13 +603,13 @@ export const INTERNAL_AI_NEXT_RUNTIME_DYNAMIC_ROUTE_SPECS = [
         label: "Dossier - lavori in attesa",
         kind: "dialog_state",
         selector: '.dossier-card .dossier-button:has-text("Mostra tutti")',
-        successSelector: ".dossier-modal-card",
+        successSelector: ".dossier-modal",
       },
       {
         id: "foto-mezzo",
         label: "Dossier - foto mezzo",
         kind: "dialog_state",
-        selector: 'button[aria-label="Apri foto mezzo"]',
+        selector: '[aria-label="Apri foto mezzo"]',
         successSelector: ".dossier-photo-modal",
       },
     ],
@@ -690,15 +700,19 @@ export const INTERNAL_AI_NEXT_RUNTIME_DYNAMIC_ROUTE_SPECS = [
         id: "range-mese",
         label: "Rifornimenti - range mese",
         kind: "filter_state",
+        routePathOverride: "/next/dossier/TI313387/rifornimenti",
         selector: 'button:has-text("MESE")',
         successSelector: 'button.dossier-button.primary:has-text("MESE")',
+        notes: ["Probe eseguito su una targa del clone con rifornimenti reali visibili in runtime."],
       },
       {
         id: "range-12-mesi",
         label: "Rifornimenti - range 12 mesi",
         kind: "filter_state",
+        routePathOverride: "/next/dossier/TI313387/rifornimenti",
         selector: 'button:has-text("12 mesi")',
         successSelector: 'button.dossier-button.primary:has-text("12 mesi")',
+        notes: ["Probe eseguito su una targa del clone con rifornimenti reali visibili in runtime."],
       },
     ],
     notes: ["Sottosezione rifornimenti del dossier osservata in sola lettura."],
@@ -730,8 +744,10 @@ export const INTERNAL_AI_NEXT_RUNTIME_DYNAMIC_ROUTE_SPECS = [
         id: "capo-solo-da-valutare",
         label: "Capo - solo da valutare",
         kind: "filter_state",
-        selector: ".capo-approvazioni-toggle input",
+        skipClickIfSuccessVisible: true,
+        selector: ".capo-approvazioni-toggle",
         successSelector: ".capo-approvazioni-toggle input:checked",
+        successState: "attached",
       },
     ],
     notes: ["Drill-down costi mezzo raggiunto in sola lettura dalla overview capo."],
@@ -742,12 +758,18 @@ export const INTERNAL_AI_NEXT_RUNTIME_DYNAMIC_ROUTE_SPECS = [
     screenType: "procurement",
     sourcePaths: ["src/next/NextDettaglioOrdinePage.tsx", "src/pages/Acquisti.tsx"],
     discoveryFromRouteId: "next-acquisti",
-    startPath: "/next/acquisti",
+    startPath: "/next/acquisti?tab=ordini",
     expectedPathPrefixes: ["/next/acquisti/dettaglio/"],
     discoverySteps: [
       {
         kind: "click_selector",
-        selector: 'button:has-text("Apri")',
+        selector:
+          'button:has-text("Ordini"), [role="tab"]:has-text("Ordini"), a:has-text("Ordini")',
+        label: "Apri tab Ordini",
+      },
+      {
+        kind: "click_selector",
+        selector: 'tbody .acq-orders-actions-inline button:has-text("Apri")',
         label: "Apri dettaglio ordine inline",
       },
     ],

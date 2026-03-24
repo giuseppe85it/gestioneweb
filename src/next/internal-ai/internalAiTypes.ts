@@ -624,6 +624,52 @@ export type InternalAiChatMessageReference = {
   artifactId?: string;
 };
 
+export type InternalAiChatAttachmentKind =
+  | "pdf"
+  | "image"
+  | "text"
+  | "document"
+  | "spreadsheet"
+  | "other";
+
+export type InternalAiChatAttachmentStorageMode =
+  | "server_file_isolated"
+  | "local_browser_only";
+
+export type InternalAiChatAttachmentPreviewMode =
+  | "image"
+  | "pdf"
+  | "text"
+  | "download_only";
+
+export type InternalAiChatMemoryFreshness = "fresh" | "partial" | "stale" | "missing";
+
+export type InternalAiChatMemoryHints = {
+  repoUiRequested: boolean;
+  memoryFreshness: InternalAiChatMemoryFreshness;
+  screenHint: string | null;
+  focusKind: "repo_ui" | "report" | "attachment" | "general";
+  attachmentsCount: number;
+  runtimeObserverObserved: boolean;
+};
+
+export type InternalAiChatAttachment = {
+  id: string;
+  threadId: "main_chat";
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  kind: InternalAiChatAttachmentKind;
+  storageMode: InternalAiChatAttachmentStorageMode;
+  previewMode: InternalAiChatAttachmentPreviewMode;
+  persisted: boolean;
+  uploadedAt: string;
+  note: string;
+  textExcerpt: string | null;
+  serverAssetPath: string | null;
+  localObjectUrl?: string | null;
+};
+
 export type InternalAiChatMessage = {
   id: string;
   role: InternalAiChatMessageRole;
@@ -632,6 +678,7 @@ export type InternalAiChatMessage = {
   intent: InternalAiChatIntent;
   status: InternalAiChatExecutionStatus;
   references: InternalAiChatMessageReference[];
+  attachments: InternalAiChatAttachment[];
   outputMode: InternalAiOutputMode | null;
   outputReason: string | null;
 };

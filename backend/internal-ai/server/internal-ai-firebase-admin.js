@@ -19,6 +19,19 @@ function resolveBackendDependency(specifier) {
   }
 }
 
+function parseJsonObject(rawValue) {
+  if (!rawValue || typeof rawValue !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function pathExists(filePath) {
   try {
     await fs.access(filePath);
@@ -30,15 +43,33 @@ async function pathExists(filePath) {
 
 function readCredentialDescriptor() {
   const googleApplicationCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim() ?? "";
+  const firebaseServiceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() ?? "";
   const firebaseConfig = process.env.FIREBASE_CONFIG?.trim() ?? "";
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT?.trim() ?? "";
   const gcloudProject = process.env.GCLOUD_PROJECT?.trim() ?? "";
+  const parsedServiceAccount = parseJsonObject(firebaseServiceAccountJson);
 
   if (googleApplicationCredentials) {
     return {
       mode: "google_application_credentials",
       value: googleApplicationCredentials,
       projectId: googleCloudProject || gcloudProject || null,
+      serviceAccount: null,
+      isReady: true,
+    };
+  }
+
+  if (parsedServiceAccount) {
+    const parsedProjectId =
+      typeof parsedServiceAccount.project_id === "string" && parsedServiceAccount.project_id.trim()
+        ? parsedServiceAccount.project_id.trim()
+        : null;
+
+    return {
+      mode: "firebase_service_account_json",
+      value: null,
+      projectId: googleCloudProject || gcloudProject || parsedProjectId,
+      serviceAccount: parsedServiceAccount,
       isReady: true,
     };
   }
@@ -48,6 +79,7 @@ function readCredentialDescriptor() {
       mode: "firebase_config",
       value: firebaseConfig,
       projectId: googleCloudProject || gcloudProject || null,
+      serviceAccount: null,
       isReady: true,
     };
   }
@@ -57,6 +89,7 @@ function readCredentialDescriptor() {
       mode: "project_id_only",
       value: null,
       projectId: googleCloudProject || gcloudProject,
+      serviceAccount: null,
       isReady: false,
     };
   }
@@ -65,6 +98,7 @@ function readCredentialDescriptor() {
     mode: "missing",
     value: null,
     projectId: null,
+    serviceAccount: null,
     isReady: false,
   };
 }
@@ -92,6 +126,8 @@ export async function probeInternalAiFirebaseAdminRuntime() {
       mode: credential.mode,
       projectId: credential.projectId,
       googleApplicationCredentialsExists,
+      firebaseServiceAccountJsonValid:
+        credential.mode === "firebase_service_account_json" ? true : null,
       isReady:
         credential.mode === "google_application_credentials"
           ? Boolean(googleApplicationCredentialsExists)
@@ -102,6 +138,7 @@ export async function probeInternalAiFirebaseAdminRuntime() {
       Boolean(moduleResolution.app && moduleResolution.firestore && moduleResolution.storage) &&
       Boolean(
         credential.mode === "firebase_config" ||
+          credential.mode === "firebase_service_account_json" ||
           (credential.mode === "google_application_credentials" &&
             googleApplicationCredentialsExists),
       ),
@@ -117,6 +154,7 @@ export async function getInternalAiFirebaseAdminReadonlyContext() {
 
   cachedReadonlyContextPromise = (async () => {
     const runtimeProbe = await probeInternalAiFirebaseAdminRuntime();
+    const credential = readCredentialDescriptor();
     if (!runtimeProbe.canAttemptLiveRead) {
       return {
         status: "not_ready",
@@ -127,7 +165,7 @@ export async function getInternalAiFirebaseAdminReadonlyContext() {
       };
     }
 
-    const [{ applicationDefault, getApp, getApps, initializeApp }, { getFirestore }, { getStorage }] =
+    const [{ applicationDefault, cert, getApp, getApps, initializeApp }, { getFirestore }, { getStorage }] =
       await Promise.all([
         import("firebase-admin/app"),
         import("firebase-admin/firestore"),
@@ -141,7 +179,10 @@ export async function getInternalAiFirebaseAdminReadonlyContext() {
       existingApp ??
       initializeApp(
         {
-          credential: applicationDefault(),
+          credential:
+            credential.mode === "firebase_service_account_json" && credential.serviceAccount
+              ? cert(credential.serviceAccount)
+              : applicationDefault(),
           projectId: runtimeProbe.credential.projectId ?? undefined,
           storageBucket: boundary.storage.bucket,
         },

@@ -1,5 +1,9 @@
 import type { InternalAiChatTurnResult } from "./internalAiChatOrchestrator";
-import type { InternalAiChatMessage, InternalAiOutputSelection } from "./internalAiTypes";
+import type {
+  InternalAiChatMemoryHints,
+  InternalAiChatMessage,
+  InternalAiOutputSelection,
+} from "./internalAiTypes";
 
 const BRIEF_PATTERNS = [
   "aiuto",
@@ -14,7 +18,6 @@ const BRIEF_PATTERNS = [
 const REPO_UI_PATTERNS = [
   "repo",
   "repository",
-  "shell",
   "ui",
   "modulo",
   "moduli",
@@ -26,8 +29,38 @@ const REPO_UI_PATTERNS = [
   "layout",
   "pattern",
   "flusso",
+  "flussi",
   "madre",
   "next",
+  "home",
+  "screen",
+  "schermo",
+  "file tocco",
+  "quale file",
+  "dove la metteresti",
+  "dove metteresti",
+  "come migliorare",
+];
+
+const HOME_ANALYSIS_PATTERNS = [
+  "analizza la home",
+  "analizza home",
+  "analisi home",
+  "spiegami la home",
+  "migliorare i flussi",
+  "dimmi come migliorare i flussi",
+  "flussi home",
+];
+
+const FILE_TOUCH_PATTERNS = [
+  "quale file tocco",
+  "quale file devo toccare",
+  "quali file devo toccare",
+  "quali moduli sono coinvolti",
+  "file coinvolti",
+  "moduli coinvolti",
+  "file da toccare",
+  "mappa file",
 ];
 
 const INTEGRATION_PATTERNS = [
@@ -39,17 +72,8 @@ const INTEGRATION_PATTERNS = [
   "mettere",
   "inserisci",
   "inserire",
-  "modale",
-  "tab",
-  "card",
-  "bottone",
-  "sezione",
-  "file",
-  "pagina",
-  "hook",
-  "dove conviene",
-  "dove va",
-  "dove metteresti",
+  "portalo nella next",
+  "mettilo nella next",
 ];
 
 const CONFIRMATION_PATTERNS = [
@@ -104,18 +128,65 @@ function buildDefaultReason(result: InternalAiChatTurnResult): string {
   return "La risposta resta nel thread perche non richiede un artifact separato o una proposta di integrazione.";
 }
 
+function buildRepoUiReason(args: {
+  prompt: string;
+  memoryFreshness?: InternalAiChatMemoryHints["memoryFreshness"];
+}): string {
+  const normalizedPrompt = normalizePrompt(args.prompt);
+  const homeRequested = hasAnyPattern(normalizedPrompt, HOME_ANALYSIS_PATTERNS);
+  const fileTouchRequested = hasAnyPattern(normalizedPrompt, FILE_TOUCH_PATTERNS);
+
+  if (homeRequested) {
+    if (args.memoryFreshness === "stale") {
+      return "La richiesta riguarda la Home: la risposta resta strutturata in chat e segnala che la memoria osservata va aggiornata.";
+    }
+
+    if (args.memoryFreshness === "partial") {
+      return "La richiesta riguarda la Home: la risposta resta strutturata in chat usando la memoria osservata ma dichiarando i limiti.";
+    }
+
+    return "La richiesta riguarda la Home: conviene una risposta strutturata in chat con blocchi, collegamenti mezzo/targa e file principali.";
+  }
+
+  if (fileTouchRequested) {
+    if (args.memoryFreshness === "stale") {
+      return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat, ma segnala che il mapping osservato va aggiornato.";
+    }
+
+    if (args.memoryFreshness === "partial") {
+      return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat separando Home, dominio mezzo e IA interna, con limiti dichiarati.";
+    }
+
+    return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat separando Home, dominio mezzo e IA interna.";
+  }
+
+  if (args.memoryFreshness === "stale") {
+    return "La richiesta riguarda repo, UI o flussi: la risposta resta in chat ma segnala che la memoria osservata e da aggiornare.";
+  }
+
+  if (args.memoryFreshness === "partial") {
+    return "La richiesta riguarda repo, UI o flussi: la risposta resta in chat usando la memoria osservata ma dichiarando i limiti.";
+  }
+
+  return "La richiesta riguarda repo, UI o flussi: la risposta resta in chat in forma strutturata e leggibile.";
+}
+
 export function selectInternalAiOutputMode(args: {
   prompt: string;
   result: InternalAiChatTurnResult;
   previousMessages: InternalAiChatMessage[];
   repoUnderstandingReady: boolean;
   runtimeObserverObserved: boolean;
+  memoryHints?: InternalAiChatMemoryHints;
 }): InternalAiOutputSelection {
   const normalizedPrompt = normalizePrompt(args.prompt);
   const recentIntegrationContext = hasRecentIntegrationContext(args.previousMessages);
-  const repoUiRequested = hasAnyPattern(normalizedPrompt, REPO_UI_PATTERNS);
+  const repoUiRequested =
+    hasAnyPattern(normalizedPrompt, REPO_UI_PATTERNS) || Boolean(args.memoryHints?.repoUiRequested);
   const integrationRequested = hasAnyPattern(normalizedPrompt, INTEGRATION_PATTERNS);
   const confirmationRequested = hasAnyPattern(normalizedPrompt, CONFIRMATION_PATTERNS);
+  const homeAnalysisRequested = hasAnyPattern(normalizedPrompt, HOME_ANALYSIS_PATTERNS);
+  const fileTouchRequested = hasAnyPattern(normalizedPrompt, FILE_TOUCH_PATTERNS);
   const reportReady = args.result.report?.status === "ready";
   const reportIntent =
     args.result.intent === "report_targa" ||
@@ -126,7 +197,17 @@ export function selectInternalAiOutputMode(args: {
     return {
       mode: "report_pdf",
       reason:
-        "La richiesta e reportistica o comparativa: il contenuto lungo viene spostato in artifact e anteprima PDF dedicata.",
+        "La richiesta e un report mezzo-centrico: il contenuto lungo viene spostato in artifact e anteprima PDF read-only del percorso NEXT.",
+    };
+  }
+
+  if (args.result.intent === "repo_understanding" || homeAnalysisRequested || fileTouchRequested) {
+    return {
+      mode: "chat_structured",
+      reason: buildRepoUiReason({
+        prompt: args.prompt,
+        memoryFreshness: args.memoryHints?.memoryFreshness,
+      }),
     };
   }
 
@@ -147,11 +228,13 @@ export function selectInternalAiOutputMode(args: {
     };
   }
 
-  if (args.result.intent === "repo_understanding" || repoUiRequested) {
+  if (repoUiRequested) {
     return {
       mode: "chat_structured",
-      reason:
-        "La richiesta riguarda repo, UI o flussi: la risposta resta in chat ma in forma piu strutturata e leggibile.",
+      reason: buildRepoUiReason({
+        prompt: args.prompt,
+        memoryFreshness: args.memoryHints?.memoryFreshness,
+      }),
     };
   }
 
@@ -191,7 +274,12 @@ export function selectInternalAiOutputMode(args: {
   }
 
   return {
-    mode: args.result.references.length > 2 ? "chat_structured" : "chat_brief",
+    mode:
+      repoUiRequested || args.memoryHints?.repoUiRequested
+        ? "chat_structured"
+        : args.result.references.length > 2
+          ? "chat_structured"
+          : "chat_brief",
     reason: buildDefaultReason(args.result),
   };
 }

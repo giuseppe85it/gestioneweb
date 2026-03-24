@@ -973,6 +973,9 @@ Serve a:
 
 ## 5.44 Aggiornamento 2026-03-23 - Copertura runtime UI quasi totale verificabile della NEXT
 - Il clone `/next/ia/interna` porta ora la copertura runtime della NEXT al massimo oggi verificabile in modo read-only, senza click distruttivi, senza madre e senza simulare scritture business.
+
+## 5.44 Aggiornamento 2026-03-23 - Copertura runtime UI quasi totale verificabile della NEXT
+- Il clone `/next/ia/interna` porta ora la copertura runtime della NEXT al massimo oggi verificabile in modo read-only, senza click distruttivi, senza madre e senza simulare scritture business.
 - Copertura reale rigenerata con `npm run internal-ai:observe-next`:
   - catalogo observer `2026-03-23-total-ui-v1` su 53 route candidate;
   - 52 route osservate davvero;
@@ -1015,6 +1018,92 @@ Serve a:
   - `npm run internal-ai:observe-next` -> OK (`52/53` route, `18/26` stati, `70` screenshot);
   - rebuild snapshot repo/UI server-side -> OK;
   - `npm run build` -> OK.
+
+## 5.45 Aggiornamento 2026-03-23 - Gap runtime Prompt 59 quasi chiusi, residuo unico e guardrail-confirmed
+- Il clone `/next/ia/interna` chiude con un micro-task dedicato quasi tutti i gap residui del Prompt 59 senza toccare la madre e senza forzare controlli disabilitati.
+- Copertura reale aggiornata con micro-refresh dedicato:
+  - catalogo observer `2026-03-23-total-ui-v2`;
+  - `53/53` route osservate davvero;
+  - `78` screenshot runtime;
+  - `25/26` stati interni osservati davvero;
+  - `1/26` stato interno dichiarato non osservabile nel perimetro sicuro.
+- Chiusure reali:
+  - route dinamica `Acquisti` dettaglio osservata da `/next/acquisti` tramite tab `Ordini` e trigger `Apri`;
+  - `Home`: accordion rapido riconosciuto come stato gia aperto nel render iniziale;
+  - `Dossier dettaglio`: modale lavori e foto mezzo osservate davvero;
+  - `Dossier rifornimenti`: filtri `MESE` e `12 mesi` osservati su `TI313387`, targa con rifornimenti reali leggibili nel clone;
+  - `Capo costi`: toggle `solo da valutare` osservato davvero;
+  - `Acquisti`: menu ordine osservato davvero dopo step preparatorio read-only sul tab `Ordini`.
+- Residuo definitivo:
+  - `Home -> Vedi tutto` resta fuori copertura diretta, perche il trigger e visibile ma disabilitato dal guard rail read-only del clone.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-next-runtime-observer.js` -> OK;
+  - `node --check scripts/internal-ai-observe-next-runtime.mjs` -> OK;
+  - `node --check scripts/internal-ai-observe-next-gap59.mjs` -> OK;
+  - `npx eslint backend/internal-ai/server/internal-ai-next-runtime-observer.js scripts/internal-ai-observe-next-runtime.mjs scripts/internal-ai-observe-next-gap59.mjs` -> OK;
+  - `node scripts/internal-ai-observe-next-gap59.mjs` -> OK (`53/53` route, `25/26` stati, `78` screenshot).
+
+## 5.46 Aggiornamento 2026-03-23 - Supporto credenziali server-side esteso, live minimo ancora bloccato
+- Il clone `/next/ia/interna` non apre ancora il primo bridge Firestore/Storage business live read-only, ma il backend IA separato supporta ora in modo esplicito tre canali server-side per Firebase Admin:
+  - `GOOGLE_APPLICATION_CREDENTIALS`;
+  - `FIREBASE_SERVICE_ACCOUNT_JSON`;
+  - `FIREBASE_CONFIG`.
+- Verdetto reale del checkout corrente:
+  - `firebase-admin` e risolvibile dal runtime del backend IA nel checkout corrente;
+  - nessuno dei tre canali credenziali e presente nel processo;
+  - `firestore.rules` resta assente dal repo;
+  - `storage.rules` versionato resta deny-all e in conflitto con l'uso legacy;
+  - `canAttemptLiveRead` resta `false`;
+  - manca ancora un access layer live dedicato in `backend/internal-ai`.
+- Conseguenza sul dominio:
+  - nessuna integrazione live viene aperta nel `mezzo_dossier`;
+  - il fallback ufficiale resta il retrieval clone-seeded gia governato;
+  - nessun backend legacy diventa canale canonico.
+- Verifiche del task:
+  - `node --check backend/internal-ai/server/internal-ai-firebase-admin.js` -> OK;
+  - `node --check backend/internal-ai/server/internal-ai-firebase-readiness.js` -> OK;
+  - `npm --prefix backend/internal-ai run firebase-readiness` -> OK;
+  - smoke test `probeInternalAiFirebaseAdminRuntime()` -> `modulesReady: true`, `credentialMode: missing`, `canAttemptLiveRead: false`;
+  - il checkout corrente risolve `firebase-admin` da `node_modules` root senza usare canali backend legacy.
+
+## 5.47 Aggiornamento 2026-03-23 - Reset prodotto chat IA interna stile ChatGPT
+- Il subtree `/next/ia/interna*` e stato riallineato a un prodotto unico e usabile, con una chat principale centrale stile ChatGPT invece di una dashboard tecnica dispersiva.
+- Cosa e cambiato nella UI:
+  - composer unico per la chat;
+  - allegati IA-only nello stesso thread;
+  - memoria repo/UI e runtime usate davvero nelle richieste libere quando disponibili;
+  - output selector, report, modali e PDF mantenuti ma spostati in secondo piano;
+  - pannelli tecnici compressi in blocchi collassabili e secondari.
+- Cosa resta invariato:
+  - madre intoccabile;
+  - nessuna scrittura business;
+  - nessun bridge Firebase/Storage live riaperto;
+  - il fallback ufficiale del `mezzo_dossier` resta clone-seeded quando il live non e apribile.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Nota: il reset UX rafforza l'usabilita della pagina IA interna ma non introduce nuove capability business live.
+
+## 5.48 Aggiornamento 2026-03-24 - V1 chat IA stretta su Home, report targa e file da toccare
+- Il clone `/next/ia/interna` e stato rifinito per chiudere il valore prodotto minimo della chat interna senza allargare il perimetro:
+  - `analizza la home`;
+  - `fammi un report della targa X`;
+  - `quali file devo toccare`.
+- Cosa migliora davvero:
+  - l'orchestrator locale distingue in modo piu affidabile i prompt Home e `file da toccare`, senza diluirli in intenti laterali;
+  - il `report targa` resta esplicitamente sul percorso mezzo-centrico NEXT read-only, non su `Mezzo360` legacy;
+  - il selettore output non tratta piu le richieste sui file come proposta di integrazione, ma le tiene in chat strutturata;
+  - il thread rende meglio risposte e report con blocchi leggibili, chip sobri e suggerimenti iniziali stretti sui tre use case V1.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun backend nuovo;
+  - nessuna espansione di observer/runtime/live bridge;
+  - nessuna nuova capability oltre ai tre use case prioritari.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx` -> OK
 
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:

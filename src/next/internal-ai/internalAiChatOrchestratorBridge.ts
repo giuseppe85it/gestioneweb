@@ -6,7 +6,12 @@ import {
   hasInternalAiServerChatAdapterCandidate,
   runInternalAiServerControlledChat,
 } from "./internalAiServerChatClient";
-import type { InternalAiReportPeriodInput, InternalAiReportType } from "./internalAiTypes";
+import type {
+  InternalAiChatAttachment,
+  InternalAiChatMemoryHints,
+  InternalAiReportPeriodInput,
+  InternalAiReportType,
+} from "./internalAiTypes";
 
 export type InternalAiChatOrchestratorTransport =
   | "server_http_provider"
@@ -90,6 +95,10 @@ function mergeServerChatResult(
 export async function runInternalAiChatTurnThroughBackend(
   prompt: string,
   fallbackPeriodInput?: InternalAiReportPeriodInput,
+  options?: {
+    attachments?: InternalAiChatAttachment[];
+    memoryHints?: InternalAiChatMemoryHints;
+  },
 ): Promise<InternalAiChatOrchestratorBridgeResult> {
   const localResult = await runInternalAiChatTurn(prompt, fallbackPeriodInput);
 
@@ -107,6 +116,8 @@ export async function runInternalAiChatTurnThroughBackend(
     operation: "run_controlled_chat",
     prompt,
     periodInput: fallbackPeriodInput,
+    attachments: options?.attachments,
+    memoryHints: options?.memoryHints,
     localTurn: {
       intent: localResult.intent,
       status: localResult.status,

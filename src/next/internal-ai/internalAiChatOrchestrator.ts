@@ -141,35 +141,38 @@ const COMBINED_REPORT_PATTERNS = [
   "autista sul mezzo",
 ];
 
-const REPO_UNDERSTANDING_PATTERNS = [
-  "repository",
-  "repo",
-  "modulo",
-  "moduli",
-  "pagina",
-  "pagine",
-  "schermata",
-  "schermate",
-  "ui",
-  "interfaccia",
-  "layout",
-  "componente",
-  "componenti",
-  "shell next",
-  "shell",
-  "route",
-  "route next",
-  "percorso",
-  "percorsi",
-  "pattern ui",
-  "stile del gestionale",
-  "convenzioni visive",
-  "dossier",
-  "centro controllo",
-  "analisi economica",
-  "semplificare il gestionale",
-  "capire il repo",
+const HOME_ANALYSIS_PATTERNS = [
+  "analizza la home",
+  "analizza home",
+  "analisi home",
+  "spiegami la home",
+  "home",
+  "dimmi come migliorare i flussi",
+  "migliorare i flussi",
+  "come migliorare",
+  "flussi home",
+  "flussi ui",
 ];
+
+const FILE_TOUCH_PATTERNS = [
+  "quale file tocco",
+  "quale file devo toccare",
+  "quali file devo toccare",
+  "quali file tocco",
+  "quali moduli sono coinvolti",
+  "quali moduli coinvolti",
+  "file coinvolti",
+  "moduli coinvolti",
+  "file da toccare",
+  "mappa file",
+];
+
+const REPO_UNDERSTANDING_PATTERNS = [
+  ...HOME_ANALYSIS_PATTERNS,
+  ...FILE_TOUCH_PATTERNS,
+];
+
+type RepoUnderstandingFocus = "home_analysis" | "file_touch" | "repo_support";
 
 function normalizePrompt(prompt: string): string {
   return prompt.toLowerCase().replace(/\s+/g, " ").trim();
@@ -332,6 +335,20 @@ function parseIntent(prompt: string): ParsedIntent {
   return { intent: "richiesta_generica", extractedTarga: null, extractedDriverQuery: null };
 }
 
+function detectRepoUnderstandingFocus(prompt: string): RepoUnderstandingFocus {
+  const normalized = normalizePrompt(prompt);
+
+  if (FILE_TOUCH_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "file_touch";
+  }
+
+  if (HOME_ANALYSIS_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "home_analysis";
+  }
+
+  return "repo_support";
+}
+
 function buildCapabilitiesResponse(): InternalAiChatTurnResult {
   const vehicleCapabilities = readInternalAiVehicleCapabilityCatalog();
   const capabilityLines = vehicleCapabilities
@@ -394,23 +411,108 @@ function buildUnsupportedResponse(): InternalAiChatTurnResult {
   };
 }
 
-function buildRepoUnderstandingFallbackResponse(): InternalAiChatTurnResult {
+function buildRepoUnderstandingFallbackResponse(prompt: string): InternalAiChatTurnResult {
+  const focus = detectRepoUnderstandingFocus(prompt);
+
+  if (focus === "home_analysis") {
+    return {
+      intent: "repo_understanding",
+      status: "partial",
+      assistantText:
+        "Posso aiutarti a leggere la Home nel perimetro V1 gia verificato, anche se la memoria server-side non e disponibile.\n\n" +
+        "Blocchi principali da guardare:\n" +
+        "- Ricerca 360.\n" +
+        "- Alert.\n" +
+        "- Sessioni attive.\n" +
+        "- Revisioni.\n" +
+        "- Rimorchi: dove sono.\n" +
+        "- Motrici e trattori: dove sono.\n\n" +
+        "Collegamenti mezzo/targa gia dimostrati:\n" +
+        "- Ricerca 360 porta nel perimetro mezzo.\n" +
+        "- Alert e Revisioni leggono segnali legati alla targa.\n" +
+        "- Il dettaglio eventi passa anche dal modal condiviso degli eventi autista.\n\n" +
+        "File chiave da leggere per primo:\n" +
+        "- src/pages/Home.tsx\n" +
+        "- src/utils/homeEvents.ts\n" +
+        "- src/components/AutistiEventoModal.tsx\n\n" +
+        "Se il backend repo/UI e attivo posso rifinire il mapping con memoria osservata fresca; qui resto sul perimetro verificato del clone.",
+      references: [
+        {
+          type: "repo_understanding",
+          label: "Home: src/pages/Home.tsx",
+          targa: null,
+        },
+        {
+          type: "ui_pattern",
+          label: "Dettaglio eventi: src/components/AutistiEventoModal.tsx",
+          targa: null,
+        },
+        {
+          type: "architecture_doc",
+          label: "Segnali Home: src/utils/homeEvents.ts",
+          targa: null,
+        },
+      ],
+      report: null,
+    };
+  }
+
+  if (focus === "file_touch") {
+    return {
+      intent: "repo_understanding",
+      status: "partial",
+      assistantText:
+        "Per dirti quali file toccare senza allargare il perimetro, separo le tre zone che contano davvero in V1.\n\n" +
+        "Home:\n" +
+        "- src/pages/Home.tsx\n" +
+        "- src/utils/homeEvents.ts\n" +
+        "- src/components/AutistiEventoModal.tsx\n\n" +
+        "Dominio mezzo/targa NEXT:\n" +
+        "- src/next/domain/nextDossierMezzoDomain.ts\n" +
+        "- src/next/internal-ai/internalAiVehicleDossierHookFacade.ts\n" +
+        "- src/next/internal-ai/internalAiVehicleReportFacade.ts\n\n" +
+        "IA interna NEXT:\n" +
+        "- src/next/internal-ai/internalAiChatOrchestrator.ts\n" +
+        "- src/next/internal-ai/internalAiOutputSelector.ts\n" +
+        "- src/next/NextInternalAiPage.tsx\n\n" +
+        "Se mi dici se stai lavorando sulla Home, sul report mezzo o solo sulla resa chat, restringo ancora il set dei file da toccare.",
+      references: [
+        {
+          type: "repo_understanding",
+          label: "Home: src/pages/Home.tsx",
+          targa: null,
+        },
+        {
+          type: "architecture_doc",
+          label: "Dominio mezzo: src/next/domain/nextDossierMezzoDomain.ts",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "IA interna: src/next/internal-ai/internalAiChatOrchestrator.ts",
+          targa: null,
+        },
+      ],
+      report: null,
+    };
+  }
+
   return {
     intent: "repo_understanding",
     status: "partial",
     assistantText:
-      "Posso aiutarti a leggere il repository e i pattern UI del gestionale solo quando il backend server-side controllato e disponibile.\n\n" +
-      "In fallback locale posso solo confermare il perimetro sicuro: niente patch automatiche, niente scritture business e niente uso dei backend legacy come canale canonico.\n\n" +
-      'Se il backend e attivo, prova con richieste come "spiegami la shell NEXT", "quali pattern UI posso riusare" oppure "come sono collegate le schermate principali".',
+      "In questa V1 tengo il focus su due richieste repo/UI davvero utili: analisi Home e mappa file/moduli da toccare.\n\n" +
+      "Se la memoria osservata repo/UI e attiva la uso direttamente nel thread. Se non lo e, resto sui file chiave gia verificati senza inventare mapping non dimostrati.\n\n" +
+      'Prova con: "analizza la home" oppure "quali file devo toccare".',
     references: [
       {
         type: "repo_understanding",
-        label: "Comprensione controllata repo/UI disponibile solo via backend server-side",
+        label: "Perimetro repo/UI V1: Home e file da toccare",
         targa: null,
       },
       {
         type: "safe_mode_notice",
-        label: "Nessuna modifica automatica del repository",
+        label: "Nessun mapping inventato fuori memoria osservata",
         targa: null,
       },
     ],
@@ -423,23 +525,15 @@ function buildGenericResponse(): InternalAiChatTurnResult {
     intent: "richiesta_generica",
     status: "partial",
     assistantText:
-      "Ho capito la richiesta, ma al momento la chat controllata supporta solo una parte del perimetro.\n\n" +
-      "Se vuoi, puoi chiedermi:\n" +
-      '- "crea report targa AB123CD ultimi 30 giorni"\n' +
-      '- "fammi un report per l\'autista Mario Rossi ultimo mese"\n' +
-      '- "fammi report mezzo TI123456 con autista Mario Rossi ultimi 30 giorni"\n' +
-      '- "fammi una preview per la targa TI123456 ultimi 90 giorni"\n' +
-      '- "dimmi lo stato del mezzo TI123456"\n' +
-      '- "riepiloga i rifornimenti del mezzo TI123456 ultimi 30 giorni"\n' +
-      '- "elenca i documenti del mezzo TI123456"\n' +
-      '- "riepiloga i costi del mezzo TI123456 ultimi 90 giorni"\n' +
-      '- "spiegami la shell NEXT e le schermate principali"\n' +
-      '- "quali pattern UI del repo posso riusare"\n' +
-      '- "cosa puoi fare"',
+      "Per tenere la V1 chiara e affidabile, qui gestisco soprattutto tre richieste.\n\n" +
+      '- "Analizza la home"\n' +
+      '- "Fammi un report della targa AB123CD"\n' +
+      '- "Quali file devo toccare"\n\n' +
+      "Per il report mezzo uso solo il percorso mezzo-centrico NEXT in sola lettura. Per Home e file uso la memoria repo/UI quando e davvero disponibile.",
     references: [
       {
         type: "capabilities",
-        label: "Prompt supportati",
+        label: "Tre use case V1 prioritari",
         targa: null,
       },
     ],
@@ -506,13 +600,14 @@ async function buildReportResponse(
     intent: "report_targa",
     status: "completed",
     assistantText:
-      `Ho creato la preview in sola lettura per la targa ${result.normalizedTarga}.\n\n` +
-      `${result.report.title}\n` +
+      `Ho preparato il report mezzo-centrico NEXT per la targa ${result.normalizedTarga}.\n\n` +
+      "Quadro rapido:\n" +
       `- Periodo: ${result.report.periodContext.label}\n` +
+      "- Percorso dati: layer NEXT mezzo-centrico in sola lettura\n" +
       `- Fonti lette: ${result.report.sources.length}\n` +
       `- Dati mancanti: ${result.report.missingData.length}\n` +
       `- Evidenze raccolte: ${result.report.evidences.length}\n\n` +
-      "Ho aggiornato anche la sezione di anteprima report qui sotto. Se vuoi, puoi salvare il risultato nell'archivio artifact IA locale.",
+      "Ti apro l'anteprima PDF read-only e lascio in chat solo il quadro sintetico.",
     references: [
       {
         type: "report_preview",
@@ -737,7 +832,7 @@ export async function runInternalAiChatTurn(
 
   switch (parsed.intent) {
     case "repo_understanding":
-      return buildRepoUnderstandingFallbackResponse();
+      return buildRepoUnderstandingFallbackResponse(prompt);
     case "capabilities":
       return buildCapabilitiesResponse();
     case "non_supportato":

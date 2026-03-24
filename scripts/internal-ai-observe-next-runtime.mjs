@@ -313,6 +313,59 @@ function classifyObservationStatus(observation) {
   return evidenceCount > 0 || (observation.bodySnippet ?? "").length > 80 ? "observed" : "partial";
 }
 
+async function isSelectorVisible(page, selector, timeout = 1200, state = "visible") {
+  if (typeof selector !== "string" || !selector.trim()) {
+    return false;
+  }
+
+  try {
+    await page.locator(selector).first().waitFor({ state, timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function applyInteractionSteps(page, steps) {
+  for (const step of steps ?? []) {
+    if (step.kind !== "click_selector") {
+      continue;
+    }
+
+    const locator = page.locator(step.selector).first();
+    await locator.waitFor({ state: "visible", timeout: 7000 });
+    await locator.click();
+    await waitForAppHydration(page);
+  }
+}
+
+async function readTriggerGuardrailState(locator) {
+  try {
+    return await locator.evaluate((element) => {
+      const htmlElement = element instanceof HTMLElement ? element : null;
+      const nativeDisabled =
+        htmlElement && "disabled" in htmlElement ? Boolean(htmlElement.disabled) : false;
+
+      return {
+        nativeDisabled,
+        ariaDisabled: htmlElement?.getAttribute("aria-disabled") ?? null,
+        cloneBlocked:
+          htmlElement?.getAttribute("data-next-clone-blocked") ??
+          htmlElement?.closest?.("[data-next-clone-blocked='true']")?.getAttribute?.(
+            "data-next-clone-blocked",
+          ) ??
+          null,
+      };
+    });
+  } catch {
+    return {
+      nativeDisabled: false,
+      ariaDisabled: null,
+      cloneBlocked: null,
+    };
+  }
+}
+
 async function observeStateProbe(page, routeSpec, routePath, probe) {
   const observation = {
     id: `${routeSpec.id}:${probe.id}`,
@@ -334,22 +387,57 @@ async function observeStateProbe(page, routeSpec, routePath, probe) {
   };
 
   try {
-    await page.goto(new URL(routePath, baseUrl).toString(), {
+    const probeRoutePath =
+      typeof probe.routePathOverride === "string" && probe.routePathOverride.trim()
+        ? probe.routePathOverride
+        : routePath;
+
+    await page.goto(new URL(probeRoutePath, baseUrl).toString(), {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
     await waitForAppHydration(page);
 
-    const trigger = page.locator(probe.selector).first();
-    await trigger.waitFor({ state: "visible", timeout: 6000 });
-    await trigger.click();
-    await waitForAppHydration(page);
+    await applyInteractionSteps(page, probe.prepareSteps);
+
+    const successSelector =
+      typeof probe.successSelector === "string" && probe.successSelector.trim()
+        ? probe.successSelector
+        : null;
+    const successState = probe.successState === "attached" ? "attached" : "visible";
+    const alreadySatisfied =
+      probe.skipClickIfSuccessVisible === true && successSelector
+        ? await isSelectorVisible(page, successSelector, 1200, successState)
+        : false;
+
+    if (!alreadySatisfied) {
+      const trigger = page.locator(probe.selector).first();
+      await trigger.waitFor({ state: "visible", timeout: 6000 });
+
+      const guardrailState = await readTriggerGuardrailState(trigger);
+      if (
+        guardrailState.nativeDisabled ||
+        guardrailState.ariaDisabled === "true" ||
+        guardrailState.cloneBlocked === "true"
+      ) {
+        observation.limitations.push(
+          "Trigger visibile ma disabilitato dal guard rail read-only del clone.",
+        );
+        return observation;
+      }
+
+      await trigger.click();
+      await waitForAppHydration(page);
+    } else {
+      observation.notes.push("Stato gia visibile nel render iniziale della schermata.");
+    }
+
     if (typeof probe.settleMs === "number" && probe.settleMs > 0) {
       await page.waitForTimeout(probe.settleMs);
     }
 
-    if (typeof probe.successSelector === "string" && probe.successSelector.trim()) {
-      await page.locator(probe.successSelector).first().waitFor({ state: "visible", timeout: 5000 });
+    if (successSelector) {
+      await page.locator(successSelector).first().waitFor({ state: successState, timeout: 5000 });
     }
 
     const currentUrl = new URL(page.url());
@@ -452,17 +540,7 @@ async function applyDiscoverySteps(page, spec) {
     timeout: 30000,
   });
   await waitForAppHydration(page);
-
-  for (const step of spec.discoverySteps ?? []) {
-    if (step.kind !== "click_selector") {
-      continue;
-    }
-
-    const locator = page.locator(step.selector).first();
-    await locator.waitFor({ state: "visible", timeout: 7000 });
-    await locator.click();
-    await waitForAppHydration(page);
-  }
+  await applyInteractionSteps(page, spec.discoverySteps);
 }
 
 async function observeDynamicRoute(page, spec) {

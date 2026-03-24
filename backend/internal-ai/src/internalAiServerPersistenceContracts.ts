@@ -1,6 +1,8 @@
 import type {
   InternalAiArtifact,
   InternalAiAuditLogEntry,
+  InternalAiChatAttachment,
+  InternalAiChatMemoryHints,
   InternalAiChatIntent,
   InternalAiChatMessageReference,
   InternalAiRequest,
@@ -16,6 +18,7 @@ export type InternalAiServerPersistenceMode = "server_file_isolated";
 export type InternalAiServerAdapterEndpointId =
   | "health"
   | "orchestrator.chat"
+  | "attachments.repository"
   | "artifacts.repository"
   | "artifacts.preview"
   | "memory.repository"
@@ -36,6 +39,7 @@ export const INTERNAL_AI_SERVER_ADAPTER_BASE_PATH = "/internal-ai-backend";
 export const INTERNAL_AI_SERVER_ADAPTER_ROUTES = {
   health: `${INTERNAL_AI_SERVER_ADAPTER_BASE_PATH}/health`,
   orchestratorChat: `${INTERNAL_AI_SERVER_ADAPTER_BASE_PATH}/orchestrator/chat`,
+  attachmentsRepository: `${INTERNAL_AI_SERVER_ADAPTER_BASE_PATH}/attachments/repository`,
   artifactsRepository: `${INTERNAL_AI_SERVER_ADAPTER_BASE_PATH}/artifacts/repository`,
   artifactsPreview: `${INTERNAL_AI_SERVER_ADAPTER_BASE_PATH}/artifacts/preview`,
   memoryRepository: `${INTERNAL_AI_SERVER_ADAPTER_BASE_PATH}/memory/repository`,
@@ -54,6 +58,11 @@ export type InternalAiServerArtifactRepositoryState = {
 export type InternalAiServerTrackingRepositoryState = {
   version: 1;
   summary: InternalAiTrackingSummary;
+};
+
+export type InternalAiServerAttachmentsRepositoryState = {
+  version: 1;
+  items: InternalAiChatAttachment[];
 };
 
 export type InternalAiServerTraceabilityEntry = {
@@ -163,11 +172,13 @@ export type InternalAiServerHealthResponseData = {
     credential: {
       mode:
         | "google_application_credentials"
+        | "firebase_service_account_json"
         | "firebase_config"
         | "project_id_only"
         | "missing";
       projectId: string | null;
       googleApplicationCredentialsExists: boolean | null;
+      firebaseServiceAccountJsonValid: boolean | null;
       isReady: boolean;
     };
     storageBucket: string;
@@ -253,6 +264,18 @@ export type InternalAiServerOrchestratorChatRequestBody = {
   actorId?: string | null;
   prompt: string;
   periodInput?: InternalAiReportPeriodInput;
+  attachments?: Array<{
+    id: string;
+    fileName: string;
+    mimeType: string | null;
+    sizeBytes: number;
+    kind: InternalAiChatAttachment["kind"];
+    storageMode: InternalAiChatAttachment["storageMode"];
+    persisted: boolean;
+    note: string;
+    textExcerpt: string | null;
+  }>;
+  memoryHints?: InternalAiChatMemoryHints;
   localTurn: {
     intent: InternalAiChatIntent;
     status: InternalAiChatTurnResult["status"];
@@ -294,6 +317,44 @@ export type InternalAiServerOrchestratorChatResponseData = {
   chatState: InternalAiServerChatCapabilityState;
   summary: InternalAiServerChatSummary;
   result: InternalAiChatTurnResult;
+  traceEntryId: string;
+  notes: string[];
+};
+
+export type InternalAiServerAttachmentsRepositoryRequestBody =
+  | {
+      operation: "list_thread_attachments";
+      requestId?: string;
+      actorId?: string | null;
+      threadId?: "main_chat";
+    }
+  | {
+      operation: "upload_thread_attachment";
+      requestId?: string;
+      actorId?: string | null;
+      threadId?: "main_chat";
+      fileName: string;
+      mimeType: string | null;
+      sizeBytes: number;
+      contentBase64: string;
+      textExcerpt?: string | null;
+    }
+  | {
+      operation: "remove_thread_attachment";
+      requestId?: string;
+      actorId?: string | null;
+      attachmentId: string;
+      threadId?: "main_chat";
+    };
+
+export type InternalAiServerAttachmentsRepositoryResponseData = {
+  operation:
+    | "list_thread_attachments"
+    | "upload_thread_attachment"
+    | "remove_thread_attachment";
+  persistenceMode: InternalAiServerPersistenceMode;
+  repositoryState: InternalAiServerAttachmentsRepositoryState;
+  attachment: InternalAiChatAttachment | null;
   traceEntryId: string;
   notes: string[];
 };

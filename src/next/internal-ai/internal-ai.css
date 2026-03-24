@@ -109,6 +109,38 @@
   gap: 14px;
 }
 
+.internal-ai-chat__status-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.internal-ai-chat__status-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 84px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(110, 85, 51, 0.12);
+  background: linear-gradient(180deg, #fff, #faf6ef);
+}
+
+.internal-ai-chat__status-chip.is-positive {
+  border-color: rgba(92, 122, 82, 0.28);
+  background: linear-gradient(180deg, #f4f8ef, #ffffff);
+}
+
+.internal-ai-chat__status-chip.is-warning {
+  border-color: rgba(176, 126, 27, 0.24);
+  background: linear-gradient(180deg, #fff6e2, #ffffff);
+}
+
+.internal-ai-chat__status-chip.is-neutral {
+  background: linear-gradient(180deg, #faf6ef, #ffffff);
+}
+
 .internal-ai-chat__shell {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.9fr);
@@ -164,6 +196,32 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.internal-ai-chat__message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.internal-ai-chat__attachment-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(92, 122, 82, 0.2);
+  background: #f4f8ef;
+  color: #35512d;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.internal-ai-chat__attachment-pill span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b5c45;
 }
 
 .internal-ai-chat__suggestions {
@@ -275,6 +333,50 @@
   gap: 12px;
 }
 
+.internal-ai-chat__attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.internal-ai-chat__attachment-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(110, 85, 51, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.internal-ai-chat__attachment-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(100%, 320px);
+}
+
+.internal-ai-chat__secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(110, 85, 51, 0.12);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.internal-ai-chat__secondary summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: #4d412e;
+}
+
+.internal-ai-chat__secondary[open] summary {
+  margin-bottom: 4px;
+}
+
 .internal-ai-chat__references {
   display: flex;
   flex-wrap: wrap;
@@ -294,6 +396,24 @@
 
 .internal-ai-chat__reference:hover {
   background: #e8f1df;
+}
+
+.internal-ai-search__button--secondary {
+  background: #f4f8ef;
+  border-color: rgba(92, 122, 82, 0.2);
+  color: #35512d;
+}
+
+.internal-ai-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .internal-ai-document {

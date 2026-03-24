@@ -72,14 +72,15 @@
 - Il backend IA separato ha ora una governance minima dedicata anche a livello package, ma il bridge Firebase/Storage business read-only NON e ancora attivo.
 - Stato reale verificabile oggi:
   - `backend/internal-ai/package.json` esiste e governa ora anche le dipendenze runtime gia usate dal suo adapter server-side (`body-parser`, `dotenv`, `express`, `openai`, `firebase-admin`);
-  - `backend/internal-ai/server/internal-ai-firebase-admin.js` prepara il bootstrap server-side dedicato e separato, ma non apre letture business finche la probe non risulta davvero pronta;
+  - `backend/internal-ai/server/internal-ai-firebase-admin.js` prepara il bootstrap server-side dedicato e separato e supporta ora i canali `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_SERVICE_ACCOUNT_JSON` e `FIREBASE_CONFIG`, ma non apre letture business finche la probe non risulta davvero pronta;
   - `firestore.rules` non e presente nel repo e `firebase.json` non espone ancora alcun boundary Firestore verificabile;
   - `storage.rules` versionato resta in conflitto con l'uso legacy di Storage;
-  - credenziali server-side dedicate del backend IA non risultano dimostrate nel processo corrente.
+  - nel bootstrap attuale risultano supportati `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_SERVICE_ACCOUNT_JSON` e `FIREBASE_CONFIG`, ma nel processo corrente non risultano comunque credenziali server-side dedicate.
 - Probe locale ripetibile:
   - `npm --prefix backend/internal-ai run firebase-readiness`
   - il comando stampa solo la snapshot di readiness del bridge, senza leggere Firestore o Storage business.
-  - nel checkout locale verificato in questo task la probe risolve `firebase-admin` dal solo package `backend/internal-ai`, ma il bridge resta `not_ready` per assenza di credenziali Google server-side e policy Firestore verificabili.
+  - nel checkout locale verificato in questo task la probe dichiara `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_SERVICE_ACCOUNT_JSON` e `FIREBASE_CONFIG` tutti assenti nel processo corrente; il runtime dedicato risolve `firebase-admin`, ma il bridge resta comunque `not_ready`;
+  - finche mancano credenziali server-side e policy verificabili, il fallback ufficiale resta il retrieval clone-seeded del `mezzo_dossier`.
 - Whitelist candidate non attive:
   - Firestore: solo `storage/@mezzi_aziendali`;
   - Storage: solo path esatto derivato da `librettoStoragePath`, senza `listAll`, senza prefix scan e senza path arbitrari.
@@ -89,6 +90,7 @@
   - Storage: solo bucket `gestionemanutenzione-934ef.firebasestorage.app` e solo oggetto esatto puntato da `librettoStoragePath`;
   - restano esplicitamente fuori `@rifornimenti`, `@rifornimenti_autisti_tmp`, `@costiMezzo`, `@documenti_*`, `@preventivi`, `@preventivi_approvazioni`, `documenti_pdf/*`, `preventivi/*`, `autisti/*`.
 - Prossimo passo corretto:
+  - materializzare in modo governato il runtime dedicato `backend/internal-ai` prima di qualunque smoke test live;
   - configurare credenziale server-side separata;
   - versionare/collegare davvero `firestore.rules` o un'evidenza equivalente delle policy effettive;
   - chiarire in modo definitivo il boundary deployato di `storage.rules`;
