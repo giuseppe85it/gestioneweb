@@ -2423,6 +2423,345 @@ export async function generateDossierMezzoPDFBlob(
   return { blob: doc.output("blob") as Blob, fileName };
 }
 
+export type InternalAiOperationalReportPdfMedia = {
+  label: string;
+  targa: string;
+  categoria?: string | null;
+  marcaModello?: string | null;
+  autistaNome?: string | null;
+  revisione?: string | null;
+  collaudo?: string | null;
+  precollaudo?: string | null;
+  photoUrl?: string | null;
+  photoStoragePath?: string | null;
+};
+
+export type InternalAiOperationalReportPdfSection = {
+  title: string;
+  summary: string;
+  bullets: string[];
+  emptyLabel?: string | null;
+};
+
+export type InternalAiOperationalReportPdfTyreVisual = {
+  title: string;
+  subtitle: string;
+  backgroundImageUrl: string | null;
+  wheels: Array<{ id: string; axisId: string; x: number; y: number }>;
+  selectedWheelIds: string[];
+  selectedAxisId: string | null;
+  modalita: "ordinario" | "straordinario";
+  highlights: string[];
+  details: Array<{ label: string; value: string }>;
+};
+
+export type InternalAiOperationalReportPdfInput = {
+  docId?: string;
+  title: string;
+  subtitle?: string | null;
+  targa: string;
+  generatedAt: string;
+  periodLabel: string;
+  executiveSummary: string[];
+  vehicle: InternalAiOperationalReportPdfMedia;
+  relatedAsset?: InternalAiOperationalReportPdfMedia | null;
+  sections: InternalAiOperationalReportPdfSection[];
+  tyreVisual?: InternalAiOperationalReportPdfTyreVisual | null;
+  appendix?: {
+    sources: Array<{
+      title: string;
+      description: string;
+      countLabel: string | null;
+      status: string;
+    }>;
+    limits: string[];
+    notes: string[];
+    workflowSummary: string | null;
+  };
+};
+
+export async function generateInternalAiOperationalReportPdfBlob(
+  input: InternalAiOperationalReportPdfInput
+): Promise<{ blob: Blob; fileName: string }> {
+  const docId = input.docId || buildDocId("RIA");
+  const model: PdfDocModel = {
+    docId,
+    title: safeStr(input.title) || "Report operativo mezzo",
+    dateTimeLabel: formatDateTime(input.generatedAt || new Date()),
+    headerRight: input.targa ? `Targa: ${fmtTarga(input.targa)}` : undefined,
+    blocks: [],
+  };
+
+  const doc = new jsPDF();
+  let currentY = await drawStandardHeader(doc, model);
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - PDF_MARGIN_X * 2;
+
+  const ensureSpace = async (requiredHeight: number) => {
+    if (currentY + requiredHeight <= pageHeight - PDF_BOTTOM_MARGIN) {
+      return;
+    }
+    doc.addPage();
+    currentY = await drawStandardHeader(doc, model);
+  };
+
+  const writeParagraph = async (
+    value: string,
+    options?: {
+      bold?: boolean;
+      fontSize?: number;
+      color?: [number, number, number];
+      spacingAfter?: number;
+      indent?: number;
+    }
+  ) => {
+    const text = safeStr(value);
+    if (!text) return;
+
+    const fontSize = options?.fontSize ?? 10;
+    const lineHeight = Math.max(5, fontSize * 0.42);
+    const indent = options?.indent ?? 0;
+    const maxWidth = contentWidth - indent;
+    const lines = doc.splitTextToSize(text, maxWidth) as string[];
+    await ensureSpace(lines.length * lineHeight + (options?.spacingAfter ?? 0));
+
+    doc.setFont("helvetica", options?.bold ? "bold" : "normal");
+    doc.setFontSize(fontSize);
+    doc.setTextColor(...(options?.color ?? COLORS.textBlack));
+    doc.text(lines, PDF_MARGIN_X + indent, currentY);
+    currentY += lines.length * lineHeight + (options?.spacingAfter ?? 0);
+  };
+
+  const writeSectionTitle = async (title: string) => {
+    await ensureSpace(16);
+    doc.setFillColor(248, 243, 234);
+    doc.setDrawColor(...COLORS.headerLine);
+    doc.roundedRect(PDF_MARGIN_X, currentY, contentWidth, 12, 4, 4, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...COLORS.textBlack);
+    doc.text(title, PDF_MARGIN_X + 8, currentY + 8);
+    currentY += 16;
+  };
+
+  const drawSummaryBox = async (title: string, lines: string[]) => {
+    const normalizedLines = lines.filter(Boolean);
+    if (!normalizedLines.length) return;
+
+    const prepared = normalizedLines.flatMap((line) =>
+      doc.splitTextToSize(`- ${line}`, contentWidth - 20) as string[]
+    );
+    const boxHeight = Math.max(22, 10 + prepared.length * 5.2);
+    await ensureSpace(boxHeight + 8);
+
+    doc.setFillColor(250, 247, 240);
+    doc.setDrawColor(...COLORS.headerLine);
+    doc.roundedRect(PDF_MARGIN_X, currentY, contentWidth, boxHeight, 4, 4, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...COLORS.textBlack);
+    doc.text(title, PDF_MARGIN_X + 8, currentY + 8);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(prepared, PDF_MARGIN_X + 8, currentY + 14);
+    currentY += boxHeight + 8;
+  };
+
+  const drawMediaBlock = async (title: string, media: InternalAiOperationalReportPdfMedia) => {
+    const rows = [
+      `Targa: ${media.targa || "-"}`,
+      `Categoria: ${safeStr(media.categoria) || "-"}`,
+      `Marca / modello: ${safeStr(media.marcaModello) || "-"}`,
+      `Autista associato: ${safeStr(media.autistaNome) || "-"}`,
+      `Revisione: ${safeStr(media.revisione) || "-"}`,
+      `Ultimo collaudo: ${safeStr(media.collaudo) || "-"}`,
+      `Pre-collaudo: ${safeStr(media.precollaudo) || "-"}`,
+    ];
+
+    const photoSize = 64;
+    const gap = 12;
+    const textWidth = contentWidth - photoSize - gap - 18;
+    const wrappedRows = rows.flatMap((row) => doc.splitTextToSize(row, textWidth) as string[]);
+    const blockHeight = Math.max(photoSize + 12, wrappedRows.length * 5 + 18);
+    await ensureSpace(blockHeight + 10);
+
+    doc.setFillColor(255, 250, 244);
+    doc.setDrawColor(...COLORS.headerLine);
+    doc.roundedRect(PDF_MARGIN_X, currentY, contentWidth, blockHeight, 5, 5, "FD");
+
+    const topY = currentY + 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...COLORS.textBlack);
+    doc.text(title, PDF_MARGIN_X + 8, topY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.text(wrappedRows, PDF_MARGIN_X + 8, topY + 7);
+
+    const photoX = PDF_MARGIN_X + contentWidth - photoSize - 8;
+    const photoDataUrl = await resolvePhotoDataUrl(
+      media.photoUrl || null,
+      media.photoStoragePath || null
+    );
+
+    if (photoDataUrl) {
+      const fit = containBox(photoSize, photoSize, photoDataUrl.width, photoDataUrl.height);
+      const format = getImageFormatFromDataUrl(photoDataUrl.dataUrl);
+      doc.addImage(
+        photoDataUrl.dataUrl,
+        format,
+        photoX + fit.offsetX,
+        topY + fit.offsetY + 2,
+        fit.width,
+        fit.height,
+        undefined,
+        "FAST"
+      );
+    } else {
+      doc.setDrawColor(180, 180, 180);
+      doc.rect(photoX, topY + 2, photoSize, photoSize);
+      doc.setFontSize(8);
+      doc.text("Foto non disponibile", photoX + 2, topY + 12);
+    }
+
+    currentY += blockHeight + 8;
+  };
+
+  const drawTyreSection = async (tyreVisual: InternalAiOperationalReportPdfTyreVisual) => {
+    await writeSectionTitle(tyreVisual.title);
+    await writeParagraph(tyreVisual.subtitle, {
+      fontSize: 10,
+      color: COLORS.accent,
+      spacingAfter: 4,
+    });
+
+    const visualWidth = 170;
+    const visualHeight = 86;
+    const detailsX = PDF_MARGIN_X + visualWidth + 10;
+    const detailsWidth = contentWidth - visualWidth - 10;
+    const detailLines = [
+      ...tyreVisual.highlights.map((entry) => `- ${entry}`),
+      ...tyreVisual.details.map((entry) => `${entry.label}: ${entry.value}`),
+    ].flatMap((entry) => doc.splitTextToSize(entry, detailsWidth) as string[]);
+
+    const blockHeight = Math.max(visualHeight, detailLines.length * 5 + 4) + 6;
+    await ensureSpace(blockHeight + 6);
+
+    const imageX = PDF_MARGIN_X;
+    const imageY = currentY;
+    doc.setDrawColor(...COLORS.headerLine);
+    doc.roundedRect(imageX, imageY, visualWidth, visualHeight, 4, 4, "S");
+
+    const normalized = tyreVisual.backgroundImageUrl
+      ? await normalizeImageFromRef(tyreVisual.backgroundImageUrl)
+      : null;
+    if (normalized) {
+      const fit = containBox(visualWidth - 6, visualHeight - 6, normalized.width, normalized.height);
+      const format = getImageFormatFromDataUrl(normalized.dataUrl);
+      doc.addImage(
+        normalized.dataUrl,
+        format,
+        imageX + 3 + fit.offsetX,
+        imageY + 3 + fit.offsetY,
+        fit.width,
+        fit.height,
+        undefined,
+        "FAST"
+      );
+    }
+
+    tyreVisual.wheels.forEach((wheel) => {
+      const isActive =
+        tyreVisual.modalita === "ordinario"
+          ? wheel.axisId === tyreVisual.selectedAxisId
+          : tyreVisual.selectedWheelIds.includes(wheel.id);
+      const scaledX = imageX + (wheel.x / 360) * visualWidth;
+      const scaledY = imageY + (wheel.y / 180) * visualHeight;
+
+      doc.setDrawColor(...(isActive ? COLORS.lowGreen : [120, 120, 120] as [number, number, number]));
+      doc.setLineWidth(isActive ? 1.4 : 0.8);
+      doc.circle(scaledX, scaledY, isActive ? 3.1 : 2.1, "S");
+      if (isActive) {
+        doc.setFillColor(...COLORS.lowGreen);
+        doc.circle(scaledX, scaledY, 1.1, "F");
+      }
+    });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...COLORS.textBlack);
+    doc.text(detailLines, detailsX, imageY + 4);
+    currentY += blockHeight + 4;
+  };
+
+  await writeParagraph(model.title, {
+    bold: true,
+    fontSize: 18,
+    spacingAfter: 2,
+  });
+  if (safeStr(input.subtitle)) {
+    await writeParagraph(input.subtitle || "", {
+      fontSize: 10,
+      color: COLORS.accent,
+      spacingAfter: 2,
+    });
+  }
+  await writeParagraph(`Periodo richiesto: ${safeStr(input.periodLabel) || "-"}`, {
+    fontSize: 10,
+    color: COLORS.accent,
+    spacingAfter: 2,
+  });
+  await writeParagraph(`Data generazione: ${formatDateTime(input.generatedAt)}`, {
+    fontSize: 9,
+    color: COLORS.accent,
+    spacingAfter: 6,
+  });
+
+  await drawMediaBlock("Dati del mezzo", input.vehicle);
+  await drawSummaryBox("Sintesi esecutiva", input.executiveSummary);
+
+  if (input.tyreVisual) {
+    await drawTyreSection(input.tyreVisual);
+  }
+
+  if (input.relatedAsset) {
+    await drawMediaBlock(input.relatedAsset.label || "Configurazione collegata", input.relatedAsset);
+  }
+
+  for (const section of input.sections) {
+    await writeSectionTitle(section.title);
+    await writeParagraph(section.summary || section.emptyLabel || "non disponibile", {
+      fontSize: 10,
+      spacingAfter: 2,
+    });
+
+    if (section.bullets.length > 0) {
+      for (const bullet of section.bullets) {
+        await writeParagraph(`- ${bullet}`, {
+          fontSize: 9.5,
+          spacingAfter: 1,
+          indent: 4,
+        });
+      }
+      currentY += 2;
+    } else if (section.emptyLabel) {
+      await writeParagraph(section.emptyLabel, {
+        fontSize: 9,
+        color: COLORS.accent,
+        spacingAfter: 2,
+      });
+    }
+  }
+
+  addStandardFooter(doc);
+  const fileName = `${sanitizeFileName(`${model.title}_${input.targa}_${docId}`)}.pdf`;
+  return { blob: doc.output("blob") as Blob, fileName };
+}
+
 type AnalisiEconomicaPdfSection = {
   title: string;
   text?: string;

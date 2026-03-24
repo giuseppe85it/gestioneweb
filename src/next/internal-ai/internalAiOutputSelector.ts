@@ -37,9 +37,6 @@ const REPO_UI_PATTERNS = [
   "schermo",
   "file tocco",
   "quale file",
-  "dove la metteresti",
-  "dove metteresti",
-  "come migliorare",
 ];
 
 const HOME_ANALYSIS_PATTERNS = [
@@ -47,9 +44,10 @@ const HOME_ANALYSIS_PATTERNS = [
   "analizza home",
   "analisi home",
   "spiegami la home",
-  "migliorare i flussi",
-  "dimmi come migliorare i flussi",
-  "flussi home",
+  "home operativa",
+  "alert della home",
+  "revisioni della home",
+  "stato operativo home",
 ];
 
 const FILE_TOUCH_PATTERNS = [
@@ -63,29 +61,9 @@ const FILE_TOUCH_PATTERNS = [
   "mappa file",
 ];
 
-const INTEGRATION_PATTERNS = [
-  "integra",
-  "integrazione",
-  "aggiungi",
-  "aggiungere",
-  "metti",
-  "mettere",
-  "inserisci",
-  "inserire",
-  "portalo nella next",
-  "mettilo nella next",
-];
-
-const CONFIRMATION_PATTERNS = [
-  "rendilo stabile",
-  "fallo stabile",
-  "confermo integrazione",
-  "procedi con integrazione",
-  "portalo nella next",
-  "mettilo nella next",
-  "aggiungilo nella next",
-  "prepara l'integrazione",
-];
+const DOMAIN_REFERENCE_PREFIX = "dominio rilevato:";
+const RELIABILITY_REFERENCE_PREFIX = "affidabilita:";
+const UNIFIED_ENGINE_REFERENCE = "motore: unified intelligence engine";
 
 function normalizePrompt(prompt: string): string {
   return prompt.toLowerCase().replace(/\s+/g, " ").trim();
@@ -95,37 +73,33 @@ function hasAnyPattern(prompt: string, patterns: string[]): boolean {
   return patterns.some((pattern) => prompt.includes(pattern));
 }
 
-function hasRecentIntegrationContext(messages: InternalAiChatMessage[]): boolean {
-  return messages
-    .slice(-4)
-    .reverse()
-    .some(
-      (message) =>
-        message.role === "assistente" &&
-        (message.outputMode === "ui_integration_proposal" ||
-          message.outputMode === "next_integration_confirmation_required" ||
-          message.references.some(
-            (reference) =>
-              reference.type === "integration_guidance" ||
-              reference.type === "integration_confirmation",
-          )),
-    );
+function hasStructuredDomainGuidance(result: InternalAiChatTurnResult): boolean {
+  return result.references.some((reference) => {
+    const label = reference.label.toLowerCase();
+    return label.startsWith(DOMAIN_REFERENCE_PREFIX) || label.startsWith(RELIABILITY_REFERENCE_PREFIX);
+  });
+}
+
+function hasUnifiedEngineMarker(result: InternalAiChatTurnResult): boolean {
+  return result.references.some((reference) =>
+    reference.label.toLowerCase().includes(UNIFIED_ENGINE_REFERENCE),
+  );
 }
 
 function buildDefaultReason(result: InternalAiChatTurnResult): string {
   if (result.intent === "capabilities" || result.intent === "non_supportato") {
-    return "La richiesta e breve o di perimetro: la risposta resta direttamente nel thread.";
+    return "La richiesta chiede perimetro, limiti o confini della verticale: la risposta resta nel thread.";
   }
 
   if (result.intent === "repo_understanding") {
-    return "La richiesta riguarda repo, UI o flussi: conviene una risposta strutturata nel thread.";
+    return "La richiesta riguarda Home o file/moduli del perimetro mezzo: conviene una risposta strutturata in chat.";
   }
 
   if (result.intent === "mezzo_dossier") {
-    return "La richiesta e mezzo-centrica e spiegabile: la risposta resta leggibile in chat, con fonti e limiti dichiarati.";
+    return "La richiesta riguarda stato mezzo, alert o backlog tecnico: la risposta resta leggibile in chat con fonti e limiti dichiarati.";
   }
 
-  return "La risposta resta nel thread perche non richiede un artifact separato o una proposta di integrazione.";
+  return "La risposta resta nel thread perche non richiede un artifact separato oltre ai casi report.";
 }
 
 function buildRepoUiReason(args: {
@@ -138,37 +112,37 @@ function buildRepoUiReason(args: {
 
   if (homeRequested) {
     if (args.memoryFreshness === "stale") {
-      return "La richiesta riguarda la Home: la risposta resta strutturata in chat e segnala che la memoria osservata va aggiornata.";
+      return "La richiesta riguarda la Home operativa: la risposta resta strutturata in chat e segnala che la memoria osservata va aggiornata.";
     }
 
     if (args.memoryFreshness === "partial") {
-      return "La richiesta riguarda la Home: la risposta resta strutturata in chat usando la memoria osservata ma dichiarando i limiti.";
+      return "La richiesta riguarda la Home operativa: la risposta resta strutturata in chat usando la memoria osservata ma dichiarando i limiti.";
     }
 
-    return "La richiesta riguarda la Home: conviene una risposta strutturata in chat con blocchi, collegamenti mezzo/targa e file principali.";
+    return "La richiesta riguarda la Home operativa: conviene una risposta strutturata in chat con superfici UI, reader canonici e confini di dominio.";
   }
 
   if (fileTouchRequested) {
     if (args.memoryFreshness === "stale") {
-      return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat, ma segnala che il mapping osservato va aggiornato.";
+      return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat e segnala che il mapping osservato va aggiornato.";
     }
 
     if (args.memoryFreshness === "partial") {
-      return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat separando Home, dominio mezzo e IA interna, con limiti dichiarati.";
+      return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat separando superfici Home, reader canonici e file IA, con limiti dichiarati.";
     }
 
-    return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat separando Home, dominio mezzo e IA interna.";
+    return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat separando superfici Home, reader canonici e file IA del perimetro mezzo.";
   }
 
   if (args.memoryFreshness === "stale") {
-    return "La richiesta riguarda repo, UI o flussi: la risposta resta in chat ma segnala che la memoria osservata e da aggiornare.";
+    return "La richiesta riguarda Home o file del clone: la risposta resta in chat ma segnala che la memoria osservata e da aggiornare.";
   }
 
   if (args.memoryFreshness === "partial") {
-    return "La richiesta riguarda repo, UI o flussi: la risposta resta in chat usando la memoria osservata ma dichiarando i limiti.";
+    return "La richiesta riguarda Home o file del clone: la risposta resta in chat usando la memoria osservata ma dichiarando i limiti.";
   }
 
-  return "La richiesta riguarda repo, UI o flussi: la risposta resta in chat in forma strutturata e leggibile.";
+  return "La richiesta riguarda Home o file del clone: la risposta resta in chat in forma strutturata e leggibile.";
 }
 
 export function selectInternalAiOutputMode(args: {
@@ -180,24 +154,26 @@ export function selectInternalAiOutputMode(args: {
   memoryHints?: InternalAiChatMemoryHints;
 }): InternalAiOutputSelection {
   const normalizedPrompt = normalizePrompt(args.prompt);
-  const recentIntegrationContext = hasRecentIntegrationContext(args.previousMessages);
   const repoUiRequested =
     hasAnyPattern(normalizedPrompt, REPO_UI_PATTERNS) || Boolean(args.memoryHints?.repoUiRequested);
-  const integrationRequested = hasAnyPattern(normalizedPrompt, INTEGRATION_PATTERNS);
-  const confirmationRequested = hasAnyPattern(normalizedPrompt, CONFIRMATION_PATTERNS);
   const homeAnalysisRequested = hasAnyPattern(normalizedPrompt, HOME_ANALYSIS_PATTERNS);
   const fileTouchRequested = hasAnyPattern(normalizedPrompt, FILE_TOUCH_PATTERNS);
   const reportReady = args.result.report?.status === "ready";
-  const reportIntent =
-    args.result.intent === "report_targa" ||
-    args.result.intent === "report_autista" ||
-    args.result.intent === "report_combinato";
+  const reportIntent = args.result.intent === "report_targa";
 
   if (reportReady || reportIntent) {
     return {
       mode: "report_pdf",
       reason:
-        "La richiesta e un report mezzo-centrico: il contenuto lungo viene spostato in artifact e anteprima PDF read-only del percorso NEXT.",
+        "La richiesta genera un artifact operativo read-only: il contenuto lungo viene spostato nell'anteprima PDF/modale della console unificata NEXT.",
+    };
+  }
+
+  if (hasUnifiedEngineMarker(args.result)) {
+    return {
+      mode: "chat_structured",
+      reason:
+        "La richiesta passa dal motore unificato read-only: conviene una risposta strutturata nel thread con priorita, fonti e limiti dichiarati.",
     };
   }
 
@@ -211,44 +187,24 @@ export function selectInternalAiOutputMode(args: {
     };
   }
 
-  if (confirmationRequested || (recentIntegrationContext && normalizedPrompt.includes("stabile"))) {
-    return {
-      mode: "next_integration_confirmation_required",
-      reason:
-        "La richiesta punta a un cambiamento stabile della NEXT: serve una proposta confermabile, non un'azione automatica.",
-    };
-  }
-
-  if (integrationRequested && (repoUiRequested || args.repoUnderstandingReady)) {
-    return {
-      mode: "ui_integration_proposal",
-      reason: args.runtimeObserverObserved
-        ? "La richiesta riguarda un punto di integrazione nella NEXT: conviene una proposta strutturata guidata da repo understanding e osservatore runtime."
-        : "La richiesta riguarda un punto di integrazione nella NEXT: conviene una proposta strutturata guidata dal repo understanding controllato.",
-    };
-  }
-
-  if (repoUiRequested) {
-    return {
-      mode: "chat_structured",
-      reason: buildRepoUiReason({
-        prompt: args.prompt,
-        memoryFreshness: args.memoryHints?.memoryFreshness,
-      }),
-    };
-  }
-
   if (
-    args.result.intent === "mezzo_dossier" &&
-    (normalizedPrompt.includes("elenca") ||
-      normalizedPrompt.includes("riepiloga") ||
-      normalizedPrompt.includes("spiega") ||
-      normalizedPrompt.includes("analizza"))
+    args.result.intent === "mezzo_dossier"
   ) {
     return {
       mode: "chat_structured",
       reason:
-        "La richiesta mezzo-centrica ha piu elementi utili: conviene una risposta strutturata nel thread senza aprire un documento separato.",
+        "La capability canonica stato_operativo_mezzo usa un quadro piccolo D01 + D10 + D02: conviene sempre una risposta strutturata nel thread.",
+    };
+  }
+
+  if (
+    hasStructuredDomainGuidance(args.result) &&
+    (args.result.intent === "non_supportato" || args.result.status === "partial")
+  ) {
+    return {
+      mode: "chat_structured",
+      reason:
+        "La richiesta e stata classificata per dominio ma il dominio non e ancora consolidato: conviene una risposta strutturata e prudente nel thread.",
     };
   }
 

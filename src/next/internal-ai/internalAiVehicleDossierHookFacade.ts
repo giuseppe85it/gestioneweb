@@ -1,36 +1,10 @@
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
-import {
-  readNextDossierMezzoCompositeSnapshot,
-  type NextDossierMezzoCompositeSnapshot,
-} from "../domain/nextDossierMezzoDomain";
-import type { NextDocumentiCostiReadOnlyItem } from "../domain/nextDocumentiCostiDomain";
-import type { NextRifornimentoReadOnlyItem } from "../domain/nextRifornimentiDomain";
-import {
-  filterItemsByInternalAiReportPeriod,
-  resolveInternalAiReportPeriodContext,
-} from "./internalAiReportPeriod";
-import {
-  readInternalAiDocumentsPreview,
-  type InternalAiDocumentsPreviewReadResult,
-} from "./internalAiDocumentsPreviewFacade";
-import {
-  readInternalAiEconomicAnalysisPreview,
-  type InternalAiEconomicAnalysisReadResult,
-} from "./internalAiEconomicAnalysisFacade";
-import {
-  readInternalAiLibrettoPreview,
-  type InternalAiLibrettoPreviewReadResult,
-} from "./internalAiLibrettoPreviewFacade";
-import {
-  readInternalAiPreventiviPreview,
-  type InternalAiPreventiviPreviewReadResult,
-} from "./internalAiPreventiviPreviewFacade";
-import {
-  readInternalAiServerVehicleDossierByTarga,
-} from "./internalAiServerRetrievalClient";
+import { resolveInternalAiReportPeriodContext } from "./internalAiReportPeriod";
 import {
   readInternalAiVehicleReportPreview,
+  readInternalAiVehicleVerticalSnapshot,
   type InternalAiVehicleReportReadResult,
+  type InternalAiVehicleVerticalSnapshot,
 } from "./internalAiVehicleReportFacade";
 import { findInternalAiVehicleCapabilityDescriptor } from "./internalAiVehicleCapabilityCatalog";
 import { planInternalAiVehicleCapability } from "./internalAiVehicleCapabilityPlanner";
@@ -43,26 +17,14 @@ import type {
 } from "./internalAiTypes";
 
 type InternalAiVehicleDossierSnapshotSource = {
-  snapshot: NextDossierMezzoCompositeSnapshot;
-  transport: "server_http_retrieval" | "frontend_fallback";
-  transportMessage: string;
+  snapshot: InternalAiVehicleVerticalSnapshot;
   sourceDatasets: string[];
   limitations: string[];
+  transportMessage: string;
 };
 
 function formatOptionalText(value: string | null | undefined): string {
   return value && value.trim() ? value.trim() : "non disponibile";
-}
-
-function formatCurrencyAmount(amount: number): string {
-  return new Intl.NumberFormat("it-IT", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function uniqueStrings(values: Array<string | null | undefined>): string[] {
-  return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim()))));
 }
 
 function buildCapabilityReferences(
@@ -81,99 +43,12 @@ function buildCapabilityReferences(
       label: extraScopeLabel,
       targa: normalizedTarga,
     },
+    {
+      type: "architecture_doc",
+      label: "Reader canonici: D01 anagrafica, D10 stato operativo, D02 operativita tecnica",
+      targa: normalizedTarga,
+    },
   ];
-}
-
-function buildVehicleDossierSourceDatasetLabels(
-  snapshot: NextDossierMezzoCompositeSnapshot,
-): string[] {
-  const labels: Array<string | null> = [snapshot.mezzo.sourceKey];
-
-  if (snapshot.lavori.status === "success") {
-    labels.push("@lavori");
-  }
-
-  if (snapshot.materialiMovimenti.status === "success") {
-    labels.push("@materialiconsegnati");
-  }
-
-  if (snapshot.maintenance.status === "success") {
-    labels.push("@manutenzioni");
-  }
-
-  if (snapshot.refuels.status === "success") {
-    labels.push("@rifornimenti", "@rifornimenti_autisti_tmp");
-  }
-
-  if (snapshot.documentCosts.status === "success") {
-    labels.push("@costiMezzo");
-  }
-
-  if (snapshot.procurementPerimeter.status === "success") {
-    labels.push("@preventivi", "@preventivi_approvazioni");
-  }
-
-  if (snapshot.analisiEconomica.status === "success") {
-    labels.push("@analisi_economica_mezzi");
-  }
-
-  return uniqueStrings(labels);
-}
-
-function buildVehicleDossierLimitations(
-  snapshot: NextDossierMezzoCompositeSnapshot,
-): string[] {
-  return uniqueStrings([
-    ...snapshot.overview.technicalLimitations,
-    ...snapshot.overview.refuelLimitations,
-    ...snapshot.overview.documentCostLimitations,
-    ...snapshot.overview.analysisLimitations,
-    ...snapshot.overview.procurementLimitations,
-  ]).slice(0, 18);
-}
-
-function buildCisternaSpecialistNote(snapshot: NextDossierMezzoCompositeSnapshot): string | null {
-  const categoria = (snapshot.mezzo.categoria ?? "").toLowerCase();
-  if (!categoria.includes("cisterna")) {
-    return null;
-  }
-
-  return "Nota verticale specialistica: il mezzo rientra nell'area Cisterna, ma in questo step la IA legge solo il perimetro mezzo-centrico governato e non apre ancora retrieval live dedicati del verticale.";
-}
-
-async function readVehicleDossierSnapshotSource(
-  normalizedTarga: string,
-): Promise<InternalAiVehicleDossierSnapshotSource | null> {
-  const serverResult = await readInternalAiServerVehicleDossierByTarga(normalizedTarga);
-  if (serverResult.status === "ready" && serverResult.payload.vehicleDossier) {
-    return {
-      snapshot: serverResult.payload.vehicleDossier.snapshot,
-      transport: "server_http_retrieval",
-      transportMessage: `${serverResult.message} Fonti dichiarate: snapshot Dossier clone-seeded nel backend IA dedicato, senza Firestore/Storage business diretti.`,
-      sourceDatasets:
-        serverResult.payload.vehicleDossier.sourceDatasetLabels ??
-        buildVehicleDossierSourceDatasetLabels(serverResult.payload.vehicleDossier.snapshot),
-      limitations:
-        serverResult.payload.vehicleDossier.limitations ??
-        buildVehicleDossierLimitations(serverResult.payload.vehicleDossier.snapshot),
-    };
-  }
-
-  const fallbackSnapshot = await readNextDossierMezzoCompositeSnapshot(normalizedTarga);
-  if (!fallbackSnapshot) {
-    return null;
-  }
-
-  return {
-    snapshot: fallbackSnapshot,
-    transport: "frontend_fallback",
-    transportMessage:
-      serverResult.status === "not_enabled" || serverResult.status === "not_found"
-        ? `${serverResult.message} Attivato fallback locale clone-safe sul composito Dossier mezzo.`
-        : "Attivato fallback locale clone-safe sul composito Dossier mezzo.",
-    sourceDatasets: buildVehicleDossierSourceDatasetLabels(fallbackSnapshot),
-    limitations: buildVehicleDossierLimitations(fallbackSnapshot),
-  };
 }
 
 function buildMissingTargaResponse(
@@ -190,12 +65,12 @@ function buildMissingTargaResponse(
       references: buildCapabilityReferences(
         descriptor,
         null,
-        "Perimetro read-only mezzo-centrico: prima serve una targa reale.",
+        "Perimetro read-only della prima verticale: prima serve una targa reale.",
       ),
       report: {
         status: "invalid_query",
         normalizedTarga: null,
-        message: "Inserisci una targa valida prima di aprire il report mezzo-centrico.",
+        message: "Inserisci una targa valida prima di aprire il report targa.",
         preview: null,
       },
     };
@@ -210,7 +85,7 @@ function buildMissingTargaResponse(
     references: buildCapabilityReferences(
       descriptor,
       null,
-      "Perimetro read-only mezzo-centrico: nessuna deduzione senza targa reale.",
+      "Perimetro read-only della prima verticale: nessuna deduzione senza targa reale.",
     ),
     report: null,
   };
@@ -229,7 +104,7 @@ function buildNotFoundResponse(
     references: buildCapabilityReferences(
       descriptor,
       normalizedTarga,
-      "Il hook Dossier usa solo mezzi reali leggibili dai layer NEXT clone-safe.",
+      "La prima verticale usa solo mezzi reali leggibili dai reader NEXT clone-safe.",
     ),
     report:
       descriptor.outputKind === "report_preview"
@@ -251,217 +126,77 @@ function buildSourceDatasetLine(source: InternalAiVehicleDossierSnapshotSource):
   return `- Dataset letti: ${source.sourceDatasets.join(", ")}.\n`;
 }
 
-function buildDossierStatusText(
+function buildStatusText(
   plan: InternalAiVehicleCapabilityPlan,
   source: InternalAiVehicleDossierSnapshotSource,
 ): string {
   const snapshot = source.snapshot;
-  const lavoriCount = snapshot.lavori.snapshot?.items?.length ?? 0;
-  const manutenzioniCount = snapshot.maintenance.snapshot?.maintenanceItems?.length ?? 0;
-  const gommeCount = snapshot.maintenance.snapshot?.gommeItems?.length ?? 0;
-  const rifornimentiCount = snapshot.refuels.snapshot?.items?.length ?? 0;
-  const documentItems = snapshot.documentCosts.snapshot?.items ?? [];
-  const preventiviCount = documentItems.filter((item) => item.category === "preventivo").length;
-  const fattureCount = documentItems.filter((item) => item.category === "fattura").length;
-  const keySignals = snapshot.overview.keySignals.slice(0, 3);
-  const limitations = source.limitations;
-  const cisternaNote = buildCisternaSpecialistNote(snapshot);
+  const keySignals = [
+    ...snapshot.alerts.slice(0, 2).map((item) => item.title),
+    ...snapshot.focusItems.slice(0, 2).map((item) => item.title),
+  ].filter(Boolean);
+  const revisionText =
+    snapshot.revisioni[0]?.classe ??
+    (snapshot.mezzo.dataScadenzaRevisione
+      ? `scadenza ${snapshot.mezzo.dataScadenzaRevisione}`
+      : "non disponibile");
 
   return (
-    `Per la targa ${snapshot.mezzo.targa ?? plan.normalizedTarga} il Dossier mezzo-centrico read-only mi restituisce questo quadro sintetico.\n\n` +
+    `Per la targa ${snapshot.mezzo.targa ?? plan.normalizedTarga} la prima verticale mezzo/Home/tecnica mi restituisce questo quadro sintetico.\n\n` +
     `- Mezzo: ${formatOptionalText(snapshot.mezzo.marcaModello)} | categoria ${formatOptionalText(snapshot.mezzo.categoria)}.\n` +
     `- Autista dichiarato: ${formatOptionalText(snapshot.mezzo.autistaNome)}.\n` +
-    `- Revisione: ${formatOptionalText(snapshot.mezzo.dataScadenzaRevisione)} | libretto ${snapshot.mezzo.librettoUrl ? "presente" : "non presente"}.\n` +
-    `- Dati mezzo-centrici letti: ${lavoriCount} lavori, ${manutenzioniCount} manutenzioni, ${gommeCount} eventi gomme, ${rifornimentiCount} rifornimenti.\n` +
-    `- Perimetro documentale: ${documentItems.length} record, di cui ${preventiviCount} preventivi e ${fattureCount} fatture.\n` +
+    `- Revisione: ${formatOptionalText(snapshot.mezzo.dataScadenzaRevisione)} | stato operativo ${revisionText}.\n` +
+    `- Segnali D10: ${snapshot.alerts.length} alert, ${snapshot.focusItems.length} focus, ${snapshot.sessioni.length} sessioni correlate.\n` +
+    `- Dati tecnici D02: ${snapshot.operativita.counts.lavoriAperti} lavori aperti, ${snapshot.operativita.counts.lavoriChiusi} chiusi, ${snapshot.operativita.counts.manutenzioni} manutenzioni.\n` +
     buildSourceDatasetLine(source) +
     `${keySignals.length ? `- Segnali principali: ${keySignals.join("; ")}.\n` : ""}` +
-    `- Fonte dichiarata: ${source.transport === "server_http_retrieval" ? "retrieval server-side read-only sul Dossier seedato dal clone" : "fallback locale clone-safe sul composito Dossier"}.\n` +
-    `${limitations[0] ? `Limite dichiarato: ${limitations[0]}\n` : ""}` +
-    `${cisternaNote ? `${cisternaNote}\n` : ""}\n` +
-    "Se vuoi posso anche riepilogare i rifornimenti, elencare documenti, spiegare i costi oppure preparare il report PDF del mezzo."
+    "- Fonte dichiarata: reader NEXT canonici D01 + D10 + D02, senza usare pagine legacy come reader IA.\n" +
+    `${source.limitations[0] ? `Limite dichiarato: ${source.limitations[0]}\n` : ""}\n` +
+    "Se vuoi posso spiegarti meglio alert e revisione, riassumere il backlog tecnico oppure preparare il report targa della stessa verticale."
   );
 }
 
-function buildDocumentsText(
-  result: Extract<InternalAiDocumentsPreviewReadResult, { status: "ready" }>,
-): string {
-  const directBucket = result.preview.buckets.find((bucket) => bucket.id === "diretti");
-  const plausibleBucket = result.preview.buckets.find((bucket) => bucket.id === "plausibili");
-  const directItems = directBucket?.items.slice(0, 3) ?? [];
-  const plausibleItems = plausibleBucket?.items.slice(0, 2) ?? [];
-  const highlights = [...directItems, ...plausibleItems]
-    .map((item) => item.title)
-    .filter(Boolean)
-    .slice(0, 4);
-
-  return (
-    `Per la targa ${result.normalizedTarga} posso leggere un perimetro documentale mezzo-centrico gia governato.\n\n` +
-    `- Diretti: ${result.preview.header.documentiDiretti}.\n` +
-    `- Plausibili: ${result.preview.header.documentiPlausibili}.\n` +
-    `- Fuori perimetro: ${result.preview.header.fuoriPerimetro}.\n` +
-    `- File leggibili: ${result.preview.header.fileLeggibili}.\n` +
-    `${highlights.length ? `- Primi riferimenti utili: ${highlights.join("; ")}.\n` : ""}\n` +
-    `${result.preview.outOfScope[0] ? `Limite dichiarato: ${result.preview.outOfScope[0]}` : "Limite dichiarato: OCR, upload e Storage business live restano fuori perimetro."}`
-  );
-}
-
-function buildEconomicText(
+function buildAlertStatusText(
   plan: InternalAiVehicleCapabilityPlan,
   source: InternalAiVehicleDossierSnapshotSource,
-  economicResult: InternalAiEconomicAnalysisReadResult,
 ): string {
   const snapshot = source.snapshot;
-  const periodContext = resolveInternalAiReportPeriodContext(plan.periodInput);
-  const documentItems = snapshot.documentCosts.snapshot?.items ?? [];
-  const filtered = filterItemsByInternalAiReportPeriod<NextDocumentiCostiReadOnlyItem>(
-    documentItems,
-    (item) => item.sortTimestamp ?? item.timestamp,
-    periodContext,
-  );
-  const filteredItems = filtered.filteredItems;
-  const preventiviCount = filteredItems.filter((item) => item.category === "preventivo").length;
-  const fattureCount = filteredItems.filter((item) => item.category === "fattura").length;
-  const documentiUtiliCount = filteredItems.filter(
-    (item) => item.category === "documento_utile",
-  ).length;
-  const eurTotal = filteredItems
-    .filter((item) => typeof item.amount === "number" && item.currency === "EUR")
-    .reduce((total, item) => total + (item.amount ?? 0), 0);
-  const chfTotal = filteredItems
-    .filter((item) => typeof item.amount === "number" && item.currency === "CHF")
-    .reduce((total, item) => total + (item.amount ?? 0), 0);
-  const recordsWithoutAmount = filteredItems.filter((item) => item.amount === null).length;
-
-  let groupingLine = "";
-  if (plan.groupBy === "document_type") {
-    groupingLine =
-      `- Ripartizione per tipo: ${preventiviCount} preventivi, ${fattureCount} fatture, ` +
-      `${documentiUtiliCount} documenti utili.\n`;
-  } else if (plan.groupBy === "source") {
-    const sourceGroups = Array.from(
-      filteredItems.reduce((map, item) => {
-        const current = map.get(item.sourceLabel) ?? 0;
-        map.set(item.sourceLabel, current + 1);
-        return map;
-      }, new Map<string, number>()),
-    )
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 3)
-      .map(([label, count]) => `${label} (${count})`);
-    if (sourceGroups.length) {
-      groupingLine = `- Ripartizione per fonte: ${sourceGroups.join("; ")}.\n`;
-    }
-  }
-
-  const economicLimit =
-    economicResult.status === "ready"
-      ? economicResult.preview.missingData[0] ?? null
-      : null;
+  const firstAlert = snapshot.alerts[0];
+  const firstFocus = snapshot.focusItems[0];
+  const firstRevision = snapshot.revisioni[0];
 
   return (
-    `Per la targa ${plan.normalizedTarga} posso darti un riepilogo costi mezzo-centrico nel periodo ${periodContext.label}.\n\n` +
-    `- Record economici letti: ${filteredItems.length} su ${filtered.totalCount} totali.\n` +
-    `- Totali con importo: EUR ${formatCurrencyAmount(eurTotal)} | CHF ${formatCurrencyAmount(chfTotal)}.\n` +
-    `- Record senza importo leggibile: ${recordsWithoutAmount}.\n` +
-    `- Fonti documentali dirette: ${fattureCount} fatture e ${preventiviCount} preventivi.\n` +
-    buildSourceDatasetLine(source) +
-    groupingLine +
-    `- Fonte dichiarata: ${source.transport === "server_http_retrieval" ? "retrieval server-side read-only sul Dossier seedato dal clone" : "fallback locale clone-safe sul composito Dossier"}.\n\n` +
-    `${economicLimit ?? "Limite dichiarato: il riepilogo resta documentale/read-only e non sostituisce contabilita o procurement live."}`
+    `Per la targa ${plan.normalizedTarga} questo e il perimetro alert/revisione/stato operativo oggi consolidato.\n\n` +
+    `- Alert attivi: ${snapshot.alerts.length}.\n` +
+    `- Focus operativi: ${snapshot.focusItems.length}.\n` +
+    `- Sessioni attive correlate: ${snapshot.sessioni.length}.\n` +
+    `- Eventi Home importanti: ${snapshot.importantEvents.length}.\n` +
+    `- Revisione: ${firstRevision?.classe ?? formatOptionalText(snapshot.mezzo.dataScadenzaRevisione)}.\n` +
+    `${firstAlert ? `- Primo alert: ${firstAlert.title} | ${firstAlert.detailText}.\n` : ""}` +
+    `${firstFocus ? `- Primo focus: ${firstFocus.title} | ${firstFocus.detailText}.\n` : ""}` +
+    `${source.limitations[0] ? `Limite dichiarato: ${source.limitations[0]}` : "Limite dichiarato: il cockpit D10 resta read-only e non sostituisce verifiche operative live."}`
   );
 }
 
-function buildRefuelsText(
+function buildBacklogTecnicoText(
   plan: InternalAiVehicleCapabilityPlan,
   source: InternalAiVehicleDossierSnapshotSource,
 ): string {
   const snapshot = source.snapshot;
   const periodContext = resolveInternalAiReportPeriodContext(plan.periodInput);
-  const refuelItems = snapshot.refuels.snapshot?.items ?? [];
-  const filtered = filterItemsByInternalAiReportPeriod<NextRifornimentoReadOnlyItem>(
-    refuelItems,
-    (item) => item.timestampRicostruito ?? item.timestamp,
-    periodContext,
-  );
-  const filteredItems = filtered.filteredItems;
-  const litersTotal = filteredItems.reduce((total, item) => total + (item.litri ?? 0), 0);
-  const eurTotal = filteredItems
-    .filter((item) => item.costo !== null && item.valuta === "EUR")
-    .reduce((total, item) => total + (item.costo ?? 0), 0);
-  const chfTotal = filteredItems
-    .filter((item) => item.costo !== null && item.valuta === "CHF")
-    .reduce((total, item) => total + (item.costo ?? 0), 0);
-  const unknownCurrencyCostCount = filteredItems.filter(
-    (item) => item.costo !== null && item.valuta === null,
-  ).length;
-  const businessCount = filteredItems.filter((item) => item.provenienza === "business").length;
-  const fieldCount = filteredItems.filter((item) => item.provenienza === "campo").length;
-  const reconstructedCount = filteredItems.filter(
-    (item) => item.provenienza === "ricostruito",
-  ).length;
-  const latestRows = filteredItems
-    .slice(0, 3)
-    .map((item) => {
-      const parts = [
-        item.dataLabel ?? item.dataDisplay ?? "data non disponibile",
-        item.litri != null ? `${formatCurrencyAmount(item.litri)} litri` : null,
-        item.costo != null && item.valuta ? `${formatCurrencyAmount(item.costo)} ${item.valuta}` : null,
-      ].filter(Boolean);
-      return parts.join(" | ");
-    })
-    .filter(Boolean);
-  const cisternaNote = buildCisternaSpecialistNote(snapshot);
+  const firstLavoro = snapshot.operativita.lavoriAperti[0] ?? snapshot.operativita.lavoriChiusi[0] ?? null;
+  const firstMaintenance = snapshot.operativita.manutenzioni[0] ?? null;
 
   return (
-    `Per la targa ${plan.normalizedTarga} posso leggere i rifornimenti nel perimetro ${periodContext.label} usando il layer D04 gia normalizzato.\n\n` +
-    `- Record utili: ${filteredItems.length} su ${filtered.totalCount} totali.\n` +
-    `- Litri complessivi leggibili: ${formatCurrencyAmount(litersTotal)}.\n` +
-    `- Costi con valuta nota: EUR ${formatCurrencyAmount(eurTotal)} | CHF ${formatCurrencyAmount(chfTotal)}.\n` +
-    `- Record con costo ma valuta non deducibile: ${unknownCurrencyCostCount}.\n` +
-    `- Provenienza: ${businessCount} business, ${reconstructedCount} ricostruiti, ${fieldCount} solo feed campo.\n` +
+    `Per la targa ${plan.normalizedTarga} questo e il backlog tecnico letto nel periodo ${periodContext.label}.\n\n` +
+    `- Lavori aperti: ${snapshot.operativita.counts.lavoriAperti}.\n` +
+    `- Lavori chiusi: ${snapshot.operativita.counts.lavoriChiusi}.\n` +
+    `- Manutenzioni lette: ${snapshot.operativita.counts.manutenzioni}.\n` +
+    `- Urgenze alte aperte: ${snapshot.operativita.lavoriAperti.filter((item) => item.urgenza === "alta").length}.\n` +
     buildSourceDatasetLine(source) +
-    `${latestRows.length ? `- Ultimi riferimenti: ${latestRows.join("; ")}.\n` : ""}` +
-    `- Fonte dichiarata: ${source.transport === "server_http_retrieval" ? "retrieval server-side read-only sul Dossier seedato dal clone" : "fallback locale clone-safe sul composito Dossier"}.\n` +
-    `${source.limitations[0] ? `Limite dichiarato: ${source.limitations[0]}\n` : ""}` +
-    `${cisternaNote ? `${cisternaNote}\n` : ""}`
-  );
-}
-
-function buildLibrettoText(
-  result: Extract<InternalAiLibrettoPreviewReadResult, { status: "ready" }>,
-): string {
-  const highlights = result.preview.buckets
-    .flatMap((bucket) => bucket.items.slice(0, 2))
-    .map((item) => `${item.title}: ${item.valueLabel}`)
-    .slice(0, 4);
-
-  return (
-    `Per la targa ${result.normalizedTarga} il perimetro libretto read-only e questo.\n\n` +
-    `- Dati diretti: ${result.preview.header.datiDiretti}.\n` +
-    `- Dati plausibili: ${result.preview.header.datiPlausibili}.\n` +
-    `- Fuori perimetro: ${result.preview.header.fuoriPerimetro}.\n` +
-    `- File libretto: ${result.preview.header.fileLibretto}.\n` +
-    `${highlights.length ? `- Evidenze disponibili: ${highlights.join("; ")}.\n` : ""}\n` +
-    `${result.preview.outOfScope[0] ?? "Limite dichiarato: OCR e upload restano fuori perimetro."}`
-  );
-}
-
-function buildPreventiviText(
-  result: Extract<InternalAiPreventiviPreviewReadResult, { status: "ready" }>,
-): string {
-  const highlights = result.preview.buckets
-    .flatMap((bucket) => bucket.items.slice(0, 2))
-    .map((item) => item.title)
-    .slice(0, 4);
-
-  return (
-    `Per la targa ${result.normalizedTarga} posso leggere solo i preventivi gia governati nel perimetro mezzo-centrico.\n\n` +
-    `- Diretti: ${result.preview.header.preventiviDiretti}.\n` +
-    `- Supporti plausibili: ${result.preview.header.supportiPlausibili}.\n` +
-    `- Fuori perimetro: ${result.preview.header.fuoriPerimetro}.\n` +
-    `${highlights.length ? `- Riferimenti utili: ${highlights.join("; ")}.\n` : ""}\n` +
-    `${result.preview.outOfScope[0] ?? "Limite dichiarato: procurement globale e approvazioni restano fuori perimetro."}`
+    `${firstLavoro?.descrizione ? `- Primo lavoro utile: ${firstLavoro.descrizione}.\n` : ""}` +
+    `${firstMaintenance?.descrizione ?? firstMaintenance?.tipo ? `- Prima manutenzione utile: ${firstMaintenance?.descrizione ?? firstMaintenance?.tipo}.\n` : ""}` +
+    `${source.limitations[0] ? `Limite dichiarato: ${source.limitations[0]}` : "Limite dichiarato: il backlog tecnico resta confinato a lavori e manutenzioni del layer D02."}`
   );
 }
 
@@ -502,7 +237,7 @@ export async function runInternalAiVehicleDossierHook(
       intent: "report_targa",
       status: "completed",
       assistantText:
-        `Ho preparato il report mezzo-centrico per la targa ${normalizedTarga} nel perimetro Dossier read-only.\n\n` +
+        `Ho preparato il report targa della prima verticale per ${normalizedTarga}.\n\n` +
         `Periodo: ${result.report.periodContext.label}. Fonti lette: ${result.report.sources.length}. ` +
         `Dati mancanti: ${result.report.missingData.length}.`,
       references: [
@@ -514,7 +249,7 @@ export async function runInternalAiVehicleDossierHook(
         ...buildCapabilityReferences(
           descriptor,
           normalizedTarga,
-          "Fonti read-only: Dossier mezzo clone-safe, D01 e D07-D08.",
+          "Output riusato: anteprima PDF gia esistente del clone, senza nuovi tipi di output.",
         ),
       ],
       report: {
@@ -526,118 +261,64 @@ export async function runInternalAiVehicleDossierHook(
     };
   }
 
+  const verticalResult = await readInternalAiVehicleVerticalSnapshot(normalizedTarga);
+  if (verticalResult.status !== "ready") {
+    return buildNotFoundResponse(descriptor, normalizedTarga);
+  }
+
+  const source: InternalAiVehicleDossierSnapshotSource = {
+    snapshot: verticalResult.snapshot,
+    sourceDatasets: verticalResult.snapshot.sourceDatasetLabels,
+    limitations: verticalResult.snapshot.limitations,
+    transportMessage: "Perimetro consolidato: reader NEXT read-only D01 + D10 + D02.",
+  };
+
   if (descriptor.id === "mezzo.status.dossier") {
-    const dossierSource = await readVehicleDossierSnapshotSource(normalizedTarga);
-    if (!dossierSource) {
-      return buildNotFoundResponse(descriptor, normalizedTarga);
-    }
-
     return {
       intent: "mezzo_dossier",
       status: "completed",
-      assistantText: buildDossierStatusText(plan, dossierSource),
-      references: buildCapabilityReferences(
-        descriptor,
-        normalizedTarga,
-        dossierSource.transportMessage,
-      ),
-      report: null,
-    };
-  }
-
-  if (descriptor.id === "mezzo.summary.rifornimenti") {
-    const dossierSource = await readVehicleDossierSnapshotSource(normalizedTarga);
-    if (!dossierSource) {
-      return buildNotFoundResponse(descriptor, normalizedTarga);
-    }
-
-    return {
-      intent: "mezzo_dossier",
-      status: "completed",
-      assistantText: buildRefuelsText(plan, dossierSource),
-      references: buildCapabilityReferences(
-        descriptor,
-        normalizedTarga,
-        dossierSource.transportMessage,
-      ),
-      report: null,
-    };
-  }
-
-  if (descriptor.id === "mezzo.preview.documents") {
-    const result = await readInternalAiDocumentsPreview(normalizedTarga);
-    if (result.status !== "ready") {
-      return buildNotFoundResponse(descriptor, normalizedTarga);
-    }
-
-    return {
-      intent: "mezzo_dossier",
-      status: "completed",
-      assistantText: buildDocumentsText(result),
-      references: buildCapabilityReferences(
-        descriptor,
-        normalizedTarga,
-        "Preview documentale governata: diretti, plausibili e fuori perimetro restano distinti.",
-      ),
-      report: null,
-    };
-  }
-
-  if (descriptor.id === "mezzo.report.economic") {
-    const [dossierSource, economicResult] = await Promise.all([
-      readVehicleDossierSnapshotSource(normalizedTarga),
-      readInternalAiEconomicAnalysisPreview(normalizedTarga),
-    ]);
-    if (!dossierSource) {
-      return buildNotFoundResponse(descriptor, normalizedTarga);
-    }
-
-    return {
-      intent: "mezzo_dossier",
-      status: "completed",
-      assistantText: buildEconomicText(plan, dossierSource, economicResult),
-      references: buildCapabilityReferences(
-        descriptor,
-        normalizedTarga,
-        dossierSource.transportMessage,
-      ),
+      assistantText: buildStatusText(plan, source),
+      references: buildCapabilityReferences(descriptor, normalizedTarga, source.transportMessage),
       report: null,
     };
   }
 
   if (descriptor.id === "mezzo.preview.libretto") {
-    const result = await readInternalAiLibrettoPreview(normalizedTarga);
-    if (result.status !== "ready") {
-      return buildNotFoundResponse(descriptor, normalizedTarga);
-    }
-
     return {
       intent: "mezzo_dossier",
       status: "completed",
-      assistantText: buildLibrettoText(result),
-      references: buildCapabilityReferences(
-        descriptor,
-        normalizedTarga,
-        "Preview libretto read-only: nessun OCR, nessun upload, nessun bridge Storage live.",
-      ),
+      assistantText: buildAlertStatusText(plan, source),
+      references: buildCapabilityReferences(descriptor, normalizedTarga, source.transportMessage),
       report: null,
     };
   }
 
   if (descriptor.id === "mezzo.preview.preventivi") {
-    const result = await readInternalAiPreventiviPreview(normalizedTarga);
-    if (result.status !== "ready") {
-      return buildNotFoundResponse(descriptor, normalizedTarga);
-    }
-
     return {
       intent: "mezzo_dossier",
       status: "completed",
-      assistantText: buildPreventiviText(result),
+      assistantText: buildBacklogTecnicoText(plan, source),
+      references: buildCapabilityReferences(descriptor, normalizedTarga, source.transportMessage),
+      report: null,
+    };
+  }
+
+  if (
+    descriptor.id === "mezzo.summary.rifornimenti" ||
+    descriptor.id === "mezzo.preview.documents" ||
+    descriptor.id === "mezzo.report.economic"
+  ) {
+    return {
+      intent: "non_supportato",
+      status: "not_supported",
+      assistantText:
+        `La richiesta sulla targa ${normalizedTarga} esce dalla prima verticale consolidata.\n\n` +
+        "In questo step la chat resta affidabile solo su D01 anagrafica mezzo, D10 stato operativo e D02 operativita tecnica.\n" +
+        "Domini come rifornimenti, documenti, costi e procurement vengono dichiarati come esterni e non ancora consolidati qui.",
       references: buildCapabilityReferences(
         descriptor,
         normalizedTarga,
-        "Preview preventivi read-only: supporta solo record mezzo-centrici e supporti dichiarati.",
+        "Fuori verticale: D04, D06, D07 e D08 non ancora consolidati nella chat V1.",
       ),
       report: null,
     };

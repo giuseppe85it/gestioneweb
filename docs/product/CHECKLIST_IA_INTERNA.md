@@ -1405,6 +1405,188 @@ Stato macrofase: `NON FATTO`
   - nessuna nuova capability o backend vengono aperti in questo step;
   - le risposte piu ricche su repo/UI restano comunque migliori quando la memoria osservata e aggiornata lato backend.
 
+### M.23 Consolidamento prima verticale IA D01 + D10 + D02
+- Stato: `FATTO`
+- Note: il `2026-03-24` la chat `/next/ia/interna` e stata riallineata alla prima verticale mezzo/Home/tecnica definita dal Prompt 67:
+  - `stato mezzo / targa`;
+  - `report targa`;
+  - `analizza la Home operativa`;
+  - `spiega alert, revisione e stato operativo`;
+  - `quali file/moduli devo toccare nel perimetro mezzo/Home`;
+  - `variante tecnica su lavori e manutenzioni del mezzo`.
+  Il thread usa ora come reader canonici solo `D01`, `D10` e `D02` NEXT read-only; capability e output fuori verticale vengono de-enfatizzati o fermati con limite esplicito.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/internal-ai/internalAiVehicleDossierHookFacade.ts`
+  - `src/next/internal-ai/internalAiVehicleReportFacade.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_0810_consolidamento-prima-verticale-chat-ia.md`
+  - `docs/continuity-reports/2026-03-24_0810_continuity_consolidamento-prima-verticale-chat-ia.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts` -> OK
+- Dipendenze o blocchi:
+  - il report targa resta nel formato artifact/PDF gia esistente, ma ora legge solo la prima verticale consolidata;
+  - i domini esterni `D03`, `D04`, `D05`, `D06`, `D07`, `D08` non vengono riaperti in questo step.
+
+### M.24 Classificazione prudente per domini della chat IA
+- Stato: `FATTO`
+- Note: il `2026-03-24` la chat `/next/ia/interna` classifica ora le richieste per domini canonici del gestionale invece di trattarle come lista sparsa di pagine:
+  - `D01`, `D02`, `D10` restano la prima verticale forte;
+  - `D03`, `D04`, `D05`, `D06`, `D07`, `D08`, `D09` vengono riconosciuti in modo prudente e restituiscono dominio rilevato, file/moduli principali, capability oggi disponibili, limiti dichiarati e prossimo passo corretto;
+  - il thread mostra in modo sobrio dominio riconosciuto, affidabilita e tipo di output senza trasformarsi in pannello debug.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_0844_classificazione-domini-chat-ia.md`
+  - `docs/continuity-reports/2026-03-24_0844_continuity_classificazione-domini-chat-ia.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx` -> OK
+  - `npm run build` -> OK
+- Dipendenze o blocchi:
+  - la classificazione dominio-first non rende ancora operativi i domini esterni alla prima verticale;
+  - nel repo non emerge un file esplicitamente etichettato come report finale del Prompt 66 o del Prompt 68; il consolidamento si appoggia ai documenti canonici e ai report del `2026-03-24` presenti.
+
+### M.25 Capability canonica `stato_operativo_mezzo`
+- Stato: `FATTO`
+- Note: il `2026-03-24` la chat `/next/ia/interna` usa ora una capability canonica e prioritaria per richieste tipo `stato mezzo/targa`, separata dal `report targa`:
+  - il routing passa prima per `stato_operativo_mezzo`;
+  - la capability compone solo `D01` anagrafica/pivot targa, `D10` stato operativo/alert/focus cockpit e `D02` backlog tecnico lavori/manutenzioni;
+  - l'output e sempre `chat_structured` sobrio con sezioni `Identita mezzo`, `Stato operativo attuale`, `Alert / priorita`, `Lavori / manutenzioni aperte`, `Limiti / DA VERIFICARE`;
+  - il `report targa` resta capability distinta e secondaria nel formato PDF/preview gia esistente.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_0915_capability-canonica-stato-operativo-mezzo.md`
+  - `docs/continuity-reports/2026-03-24_0915_continuity_capability-canonica-stato-operativo-mezzo.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/NextInternalAiPage.tsx` -> OK
+  - `npm run build` -> OK
+- Dipendenze o blocchi:
+  - il collegamento D10 resta prudente quando alert/focus/revisione non risultano collegabili in modo pienamente affidabile alla targa;
+  - il task non riapre i domini `D03-D09`, gli allegati o il live bridge.
+
+### M.26 Unified Intelligence Engine e console unica read-only
+- Stato: `FATTO`
+- Note: il `2026-03-24` e stato completato il motore unificato read-only della console IA NEXT riprendendo un worktree gia avviato, senza rifare da zero la patch interrotta:
+  - esiste ora `nextUnifiedReadRegistryDomain.ts` come adapter layer read-only prudente per storage document, collection Firestore, prefix Storage e localStorage isolato;
+  - esiste `internalAiUnifiedIntelligenceEngine.ts` che costruisce un Global Read Registry clone-safe, collega le entita con chiavi strutturali (`targa`, `mezzoId`, badge/nome autista, refId, documentId, label normalizzate) e produce output operativi senza mettere al centro la classificazione tecnica;
+  - la console `/next/ia/interna` espone ora filtri sobri per targa, ambiti e output, usa il motore unificato come percorso prioritario per query operative e riusa i renderer/report artifact gia esistenti per modale/PDF/report;
+  - il perimetro copre in lettura le fonti mappate nel documento canonico `docs/data/MAPPA_COMPLETA_DATI.md`, includendo anche fonti sporche o ambigue tramite adapter prudente invece di escluderle;
+  - la fonte `@impostazioni_app/gemini` resta presente nel registry ma marcata `guarded`, senza lettura client di segreti.
+- File/documenti collegati:
+  - `src/next/domain/nextUnifiedReadRegistryDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_1128_unified-intelligence-engine-console.md`
+  - `docs/continuity-reports/2026-03-24_1128_continuity_unified-intelligence-engine-console.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/domain/nextUnifiedReadRegistryDomain.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts` -> OK
+  - `npm run build` -> OK
+- Dipendenze o blocchi:
+  - una parte dei link cross-fonte resta forte solo dove il repo espone chiavi strutturali coerenti; altrove il motore dichiara affidabilita `Parziale` o `Da verificare` invece di inventare match certi;
+  - il registry include fonti `raw` e `tmp` con adapter prudente, ma questo non equivale a una bonifica completa dei domini sporchi;
+  - la persistenza dei report resta quella gia disponibile nel sottosistema IA e non introduce scritture business o backend live nuovi.
+
+### M.27 Report gestionale professionale del motore unificato
+- Stato: `FATTO`
+- Note: il `2026-03-24` il report targa del motore unificato e stato rifatto solo sul layer output/rendering, senza riaprire il motore di lettura/incrocio:
+  - il renderer della console IA mostra ora un report gestionale vero con `header` aziendale, sintesi esecutiva, dati mezzo, foto reale e sezioni operative leggibili;
+  - il corpo principale del report non mette piu al centro reader, dataset, storage keys o note tecniche da sviluppatore;
+  - il report gomme riusa la stessa grafica stilizzata del modale gomme esistente nel repo tramite `TruckGommeSvg` e `wheelGeom`, evidenziando asse/lato coinvolto quando il dato e dimostrabile e dichiarando `da verificare` quando non lo e;
+  - il PDF dei report targa passa ora dal `pdfEngine` ufficiale del progetto, con logo aziendale, impaginazione pulita, foto reale mezzo e appendice tecnica separata;
+  - la configurazione collegata motrice/rimorchio/centina viene mostrata solo quando la sessione D10 e l'anagrafica D01 permettono un aggancio prudente e dimostrabile.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/internalAiReportPdf.ts`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/utils/pdfEngine.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_1411_unified-report-renderer-pdf.md`
+  - `docs/continuity-reports/2026-03-24_1411_continuity_unified-report-renderer-pdf.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts` -> OK
+  - `npm run build` -> OK
+  - `npx eslint src/utils/pdfEngine.ts` -> DA VERIFICARE come file storico: restano errori lint preesistenti (`no-explicit-any` e debito locale non introdotto da questa patch)
+- Dipendenze o blocchi:
+  - le foto reali dipendono dalla presenza di `fotoUrl`/`fotoStoragePath` realmente leggibili per il mezzo o la configurazione collegata;
+  - il report gomme evidenzia asse/lato solo quando il dato e esposto davvero dai record gomme; in caso contrario il blocco resta professionale ma segna il lato come `da verificare`;
+  - il task non riapre il motore unificato, i domini business o la madre.
+
+### M.28 Pulizia UI della console IA NEXT
+- Stato: `FATTO`
+- Note: il `2026-03-24` la pagina `/next/ia/interna` e stata ripulita senza rifare il motore unificato:
+  - la chat e ora la superficie dominante;
+  - la colonna destra mostra i report richiesti/salvati raggruppati per targa quando possibile;
+  - le richieste rapide passano da un menu a tendina compatto;
+  - il campo visibile per la ricerca targa usa solo la label `Targa` e riusa l'autosuggest reale gia esistente;
+  - pannelli tecnici, contatori, memoria osservatore e scaffolding rumoroso restano accessibili solo in una sezione avanzata collassata.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_1530_pulizia-ui-console-ia-next.md`
+  - `docs/continuity-reports/2026-03-24_1530_continuity_pulizia-ui-console-ia-next.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> OK
+  - `npm run build` -> OK
+- Dipendenze o blocchi:
+  - il vecchio scaffolding operativo/tecnico non e stato eliminato dal file, ma solo spostato in un livello secondario collassato per non rompere flussi gia presenti;
+  - l'autosuggest targa resta dipendente dal catalogo read-only reale gia esistente, senza nuove fonti o backend.
+
+### M.29 Rifinitura UI console IA e gerarchia report/PDF
+- Stato: `FATTO`
+- Note: il `2026-03-24` la console IA NEXT e stata ulteriormente semplificata e il report professionale e stato riallineato a una gerarchia visiva piu leggibile:
+  - l'header della pagina e stato ridotto a una testata minima `Console IA`;
+  - il blocco `Richieste rapide` e stato spostato nel composer, vicino a `Targa` e `Output`;
+  - i filtri rapidi sono ora neutri da spenti e chiaramente evidenziati da attivi;
+  - i pannelli avanzati/tecnici restano fuori dal primo piano;
+  - il report professionale mostra prima l'identita mezzo e la foto a destra, poi la sintesi esecutiva e le sezioni operative;
+  - il PDF segue la stessa logica visuale, con blocco mezzo in alto e sezioni piu separate.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/utils/pdfEngine.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_1603_rifinitura-ui-report-pdf-ia-next.md`
+  - `docs/continuity-reports/2026-03-24_1603_continuity_rifinitura-ui-report-pdf-ia-next.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx` -> OK
+  - `npx eslint src/utils/pdfEngine.ts` -> NON OK per debito lint storico gia presente nel file condiviso
+  - `npm run build` -> OK
+- Dipendenze o blocchi:
+  - `src/utils/pdfEngine.ts` resta un file storico con errori eslint preesistenti e non bonificati in questo task;
+  - il task non riapre motore unificato, registry, linker o backend.
+
 ### R.5 IA usata per interpretazione, normalizzazione e supporto ricerca
 - Stato: `NON FATTO`
 - Note: il ruolo della IA futura dovra essere di supporto interpretativo, non di invenzione arbitraria dello schema mezzo.
@@ -1436,3 +1618,24 @@ Stato macrofase: `NON FATTO`
   - `npm --prefix backend/internal-ai run firebase-readiness` -> OK
   - `node -e "import('./backend/internal-ai/server/internal-ai-firebase-admin.js').then(async m=>{const r=await m.probeInternalAiFirebaseAdminRuntime(); console.log(JSON.stringify(r,null,2));})"` -> OK
   - smoke test non produttivo con `FIREBASE_SERVICE_ACCOUNT_JSON` fittizio e parseabile -> ramo supportato confermato, nessuna lettura business eseguita
+
+### M.30 Rifinitura finale UI overview IA e report/PDF utente
+- Stato: `FATTO`
+- Note: il `2026-03-24` il primo piano della console IA NEXT e stato ridotto a chat centrale + composer con filtri rapidi + colonna destra report, mentre il report professionale standard ha smesso di esporre appendici tecniche nel corpo principale e il blocco gomme e stato corretto sul caso asse intero.
+- Cosa e stato chiuso:
+  - overview senza hero pesante, testo introduttivo, pulsanti `Archivio report` / `Tecnico` o messaggio iniziale statico dell'assistente nel primo piano;
+  - colonna destra limitata a `Report corrente` e `Report per targa`;
+  - report professionale UI senza appendice tecnica visibile;
+  - PDF utente standard senza `Appendice tecnica`, `Fonti considerate`, reader o dataset nel corpo report;
+  - caso gomme con `asse intero` reso come coinvolgimento completo dell'asse, senza etichetta `lato da verificare`.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/utils/pdfEngine.ts`
+  - `docs/change-reports/2026-03-24_1702_rifinitura-finale-ui-pdf-gomme-ia-next.md`
+  - `docs/continuity-reports/2026-03-24_1702_continuity_rifinitura-finale-ui-pdf-gomme-ia-next.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiProfessionalVehicleReport.ts` -> OK
+  - `npm run build` -> OK
+  - `npx eslint src/utils/pdfEngine.ts` -> NON OK per debito lint storico preesistente nel file condiviso

@@ -1,5 +1,10 @@
 import type { InternalAiServerReportSummaryWorkflow } from "./internalAiServerReportSummaryClient";
 import type { InternalAiReportPreview } from "./internalAiTypes";
+import {
+  buildInternalAiProfessionalVehicleReportText,
+  readInternalAiProfessionalVehicleReport,
+} from "./internalAiProfessionalVehicleReport";
+import { generateInternalAiOperationalReportPdfBlob } from "../../utils/pdfEngine";
 
 const PREVIEW_STATUS_LABELS: Record<string, string> = {
   idle: "In attesa",
@@ -124,7 +129,7 @@ export function buildInternalAiReportPdfFileName(report: InternalAiReportPreview
   return `${sanitizeFileNameSegment(report.reportType)}-${sanitizeFileNameSegment(getReportFileTarget(report))}.pdf`;
 }
 
-export function buildInternalAiReportDocumentText(
+function buildLegacyInternalAiReportDocumentText(
   report: InternalAiReportPreview,
   workflow: InternalAiServerReportSummaryWorkflow | null,
 ): string {
@@ -204,6 +209,17 @@ export function buildInternalAiReportDocumentText(
   return lines.join("\n");
 }
 
+export function buildInternalAiReportDocumentText(
+  report: InternalAiReportPreview,
+  workflow: InternalAiServerReportSummaryWorkflow | null,
+): string {
+  if (report.reportType === "targa") {
+    return buildInternalAiProfessionalVehicleReportText(report, workflow);
+  }
+
+  return buildLegacyInternalAiReportDocumentText(report, workflow);
+}
+
 type InternalAiReportPdfBuildResult = {
   blob: Blob;
   fileName: string;
@@ -214,6 +230,54 @@ export async function generateInternalAiReportPdfBlob(args: {
   report: InternalAiReportPreview;
   workflow: InternalAiServerReportSummaryWorkflow | null;
 }): Promise<InternalAiReportPdfBuildResult> {
+  if (args.report.reportType === "targa") {
+    const professionalReport = await readInternalAiProfessionalVehicleReport(
+      args.report,
+      args.workflow,
+    );
+    const pdf = await generateInternalAiOperationalReportPdfBlob({
+      title: professionalReport.displayTitle,
+      subtitle: professionalReport.displaySubtitle,
+      targa: professionalReport.targetLabel,
+      generatedAt: args.report.generatedAt,
+      periodLabel: professionalReport.periodLabel,
+      executiveSummary: professionalReport.executiveSummary,
+      vehicle: {
+        label: professionalReport.vehicle.label,
+        targa: professionalReport.vehicle.targa,
+        categoria: professionalReport.vehicle.categoria,
+        marcaModello: professionalReport.vehicle.marcaModello,
+        autistaNome: professionalReport.vehicle.autistaNome,
+        revisione: professionalReport.vehicle.revisione,
+        collaudo: professionalReport.vehicle.collaudo,
+        precollaudo: professionalReport.vehicle.precollaudo,
+        photoUrl: professionalReport.vehicle.photoUrl,
+      },
+      relatedAsset: professionalReport.relatedAsset
+        ? {
+            label: professionalReport.relatedAsset.label,
+            targa: professionalReport.relatedAsset.targa,
+            categoria: professionalReport.relatedAsset.categoria,
+            marcaModello: professionalReport.relatedAsset.marcaModello,
+            autistaNome: professionalReport.relatedAsset.autistaNome,
+            revisione: professionalReport.relatedAsset.revisione,
+            collaudo: professionalReport.relatedAsset.collaudo,
+            precollaudo: professionalReport.relatedAsset.precollaudo,
+            photoUrl: professionalReport.relatedAsset.photoUrl,
+          }
+        : null,
+      sections: professionalReport.sections,
+      tyreVisual: professionalReport.tyreVisual,
+      appendix: professionalReport.appendix,
+    });
+
+    return {
+      blob: pdf.blob,
+      fileName: pdf.fileName,
+      text: buildInternalAiProfessionalVehicleReportText(args.report, args.workflow),
+    };
+  }
+
   const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({
     orientation: "portrait",
@@ -229,7 +293,7 @@ export async function generateInternalAiReportPdfBlob(args: {
   const marginBottom = 48;
   const lineHeight = 16;
   const maxWidth = pageWidth - marginX * 2;
-  const text = buildInternalAiReportDocumentText(args.report, args.workflow);
+  const text = buildLegacyInternalAiReportDocumentText(args.report, args.workflow);
   const lines = text.split("\n");
   const title = args.report.title;
   const subtitle = args.report.subtitle;

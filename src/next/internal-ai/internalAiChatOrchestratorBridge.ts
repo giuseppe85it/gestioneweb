@@ -13,6 +13,8 @@ import type {
   InternalAiReportType,
 } from "./internalAiTypes";
 
+const UNIFIED_ENGINE_REFERENCE = "Motore: Unified Intelligence Engine";
+
 export type InternalAiChatOrchestratorTransport =
   | "server_http_provider"
   | "frontend_fallback";
@@ -82,6 +84,17 @@ function mergeServerChatResult(
   localResult: InternalAiChatTurnResult,
   serverResult: InternalAiChatTurnResult,
 ): InternalAiChatTurnResult {
+  if (
+    localResult.references.some((reference) =>
+      reference.label.toLowerCase().includes(UNIFIED_ENGINE_REFERENCE.toLowerCase()),
+    )
+  ) {
+    return {
+      ...localResult,
+      report: localResult.report ?? serverResult.report,
+    };
+  }
+
   return {
     ...localResult,
     intent: serverResult.intent,

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  NEXT_HOME_PATH,
-  NEXT_IA_PATH,
   NEXT_INTERNAL_AI_ARTIFACTS_PATH,
   NEXT_INTERNAL_AI_AUDIT_PATH,
   NEXT_INTERNAL_AI_PATH,
@@ -76,6 +74,7 @@ import {
   buildInternalAiReportPdfFileName,
   generateInternalAiReportPdfBlob,
 } from "./internal-ai/internalAiReportPdf";
+import InternalAiProfessionalVehicleReportView from "./internal-ai/InternalAiProfessionalVehicleReportView";
 import {
   buildInternalAiChatAttachmentAssetUrl,
   buildInternalAiChatAttachmentPreviewLabel,
@@ -83,6 +82,10 @@ import {
   removeInternalAiServerChatAttachment,
   uploadInternalAiServerChatAttachment,
 } from "./internal-ai/internalAiChatAttachmentsClient";
+import {
+  readInternalAiUnifiedRegistrySummary,
+  type InternalAiUnifiedRegistrySummary,
+} from "./internal-ai/internalAiUnifiedIntelligenceEngine";
 import { selectInternalAiOutputMode } from "./internal-ai/internalAiOutputSelector";
 import {
   findInternalAiExactVehicleMatch,
@@ -149,6 +152,43 @@ import "./internal-ai/internal-ai.css";
 type NextInternalAiPageProps = {
   sectionId?: NextInternalAiSectionId;
 };
+
+type UnifiedConsoleScopeFilter =
+  | "quadro"
+  | "criticita"
+  | "scadenze"
+  | "lavori"
+  | "manutenzioni"
+  | "gomme"
+  | "rifornimenti"
+  | "materiali"
+  | "inventario"
+  | "ordini"
+  | "preventivi"
+  | "fornitori"
+  | "documenti"
+  | "costi"
+  | "cisterna"
+  | "attenzione_oggi";
+
+type UnifiedConsoleOutputPreference = "thread" | "modale" | "pdf" | "report";
+
+type UnifiedRegistryState =
+  | {
+      status: "idle" | "loading";
+      summary: InternalAiUnifiedRegistrySummary | null;
+      message: string | null;
+    }
+  | {
+      status: "ready";
+      summary: InternalAiUnifiedRegistrySummary;
+      message: string | null;
+    }
+  | {
+      status: "error";
+      summary: null;
+      message: string;
+    };
 
 type ReportRequestState =
   | {
@@ -527,21 +567,57 @@ const CHAT_INTENT_LABELS: Record<InternalAiChatMessage["intent"], string> = {
   report_targa: "Report mezzo",
   report_autista: "Report autista",
   report_combinato: "Report combinato",
-  mezzo_dossier: "Hook Dossier mezzo",
-  repo_understanding: "Repo/UI understanding",
-  capabilities: "Capability governate",
+  mezzo_dossier: "Stato operativo mezzo canonico",
+  repo_understanding: "Home e file/moduli",
+  capabilities: "Prima verticale governata",
   non_supportato: "Richiesta non supportata",
   richiesta_generica: "Richiesta generica",
 };
 
 const CHAT_SUGGESTIONS = [
-  "Analizza la home",
-  "Dimmi come migliorare i flussi della Home",
-  "Fammi un report della targa AB123CD",
-  "Fammi un report del mezzo AB123CD ultimi 30 giorni",
-  "Quali file devo toccare",
-  "Quali moduli sono coinvolti attorno alla targa AB123CD?",
+  "Fammi il quadro completo del TI 315407",
+  "Mostrami criticita + segnalazioni + manutenzioni ultimi 30 giorni",
+  "Dimmi scadenze collaudo, precollaudo e revisione della targa AB123CD",
+  "Apri un modale con gomme + lavori + alert del mezzo AB123CD",
+  "Crea un PDF con controlli KO, segnalazioni e scadenze della targa AB123CD",
+  "Dimmi cosa richiede attenzione oggi",
 ];
+
+const PRIMARY_SECTION_NAV: NextInternalAiSectionId[] = ["overview", "artifacts"];
+const TECHNICAL_SECTION_NAV: NextInternalAiSectionId[] = ["sessions", "requests", "audit"];
+
+const DOMAIN_REFERENCE_PREFIX = "Dominio rilevato: ";
+const RELIABILITY_REFERENCE_PREFIX = "Affidabilita: ";
+const UNIFIED_ENGINE_REFERENCE = "Motore: Unified Intelligence Engine";
+
+const UNIFIED_CONSOLE_SCOPE_OPTIONS: Array<{
+  id: UnifiedConsoleScopeFilter;
+  label: string;
+}> = [
+  { id: "quadro", label: "Quadro completo" },
+  { id: "criticita", label: "Criticita" },
+  { id: "scadenze", label: "Scadenze" },
+  { id: "lavori", label: "Lavori" },
+  { id: "manutenzioni", label: "Manutenzioni" },
+  { id: "gomme", label: "Gomme" },
+  { id: "rifornimenti", label: "Rifornimenti" },
+  { id: "materiali", label: "Materiali" },
+  { id: "inventario", label: "Inventario" },
+  { id: "ordini", label: "Ordini" },
+  { id: "preventivi", label: "Preventivi" },
+  { id: "fornitori", label: "Fornitori" },
+  { id: "documenti", label: "Documenti" },
+  { id: "costi", label: "Costi" },
+  { id: "cisterna", label: "Cisterna" },
+  { id: "attenzione_oggi", label: "Attenzione oggi" },
+];
+
+const UNIFIED_OUTPUT_LABELS: Record<UnifiedConsoleOutputPreference, string> = {
+  thread: "Lascia nel thread",
+  modale: "Apri come modale",
+  pdf: "Genera PDF",
+  report: "Crea report",
+};
 
 const LOOKUP_MATCH_LABELS: Record<InternalAiVehicleLookupMatchState, string> = {
   idle: "In attesa",
@@ -908,13 +984,18 @@ function createWelcomeChatMessage(): InternalAiChatMessage {
     intent: "capabilities",
     status: "completed",
     text:
-      "Ciao, sono l'assistente interno del gestionale nel perimetro NEXT controllato.\n\n" +
-      "In questa V1 tengo il focus su tre richieste utili: analisi della Home, report mezzo per targa e mappa dei file da toccare.\n\n" +
-      'Puoi scrivermi in modo naturale, per esempio: "analizza la home", "fammi un report della targa AB123CD" oppure "quali file devo toccare".',
+      "Ciao, sono la console IA interna del gestionale nel perimetro NEXT controllato.\n\n" +
+      "Qui trovi un motore unificato read-only: legge il registry delle fonti mappate, incrocia le entita e mette al centro il risultato operativo. La prima verticale mezzo resta la piu forte, ma posso anche intrecciare fonti di rifornimenti, materiali, procurement, documenti, costi e cisterna quando la richiesta lo chiede.\n\n" +
+      'Puoi scrivermi in modo naturale oppure usare i filtri della console, per esempio: "fammi il quadro completo del TI 315407", "apri un modale con gomme + lavori + alert" oppure "dimmi cosa richiede attenzione oggi".',
     references: [
       {
         type: "safe_mode_notice",
         label: "Perimetro controllato e sola lettura",
+        targa: null,
+      },
+      {
+        type: "architecture_doc",
+        label: UNIFIED_ENGINE_REFERENCE,
         targa: null,
       },
     ],
@@ -923,6 +1004,14 @@ function createWelcomeChatMessage(): InternalAiChatMessage {
     outputReason:
       "Messaggio iniziale di orientamento: basta una risposta breve in chat per chiarire perimetro e capacita attive.",
   });
+}
+
+function isWelcomeChatMessage(message: InternalAiChatMessage): boolean {
+  return (
+    message.role === "assistente" &&
+    message.intent === "capabilities" &&
+    message.references.some((reference) => reference.label === UNIFIED_ENGINE_REFERENCE)
+  );
 }
 
 function formatVehicleLookupDescription(candidate: InternalAiVehicleLookupCandidate) {
@@ -1100,7 +1189,7 @@ function buildChatReportReadyText(report: InternalAiReportPreview): string {
     `${getReportTypeLabel(report)} pronto per ${getReportTargetChip(report)}.\n\n` +
     "Quadro rapido:\n" +
     `- Periodo: ${report.periodContext.label}\n` +
-    "- Percorso dati: layer NEXT mezzo-centrico read-only\n" +
+    "- Percorso dati: motore unificato NEXT read-only\n" +
     `- Fonti dichiarate: ${report.sources.length}\n` +
     `- Sezioni utili: ${highlightedSections || "quadro sintetico disponibile"}\n\n` +
     "Apro l'anteprima PDF e lascio qui solo il riepilogo essenziale."
@@ -1115,6 +1204,22 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
   }
 
   if (message.intent === "mezzo_dossier") {
+    if (
+      normalized.includes("alert") ||
+      normalized.includes("revisione") ||
+      normalized.includes("operativo")
+    ) {
+      return "Alert e stato operativo";
+    }
+
+    if (
+      normalized.includes("lavor") ||
+      normalized.includes("manutenz") ||
+      normalized.includes("tecnic")
+    ) {
+      return "Backlog tecnico";
+    }
+
     return "Quadro mezzo";
   }
 
@@ -1135,13 +1240,25 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
 function buildChatContextChips(message: InternalAiChatMessage): string[] {
   const normalized = normalizeChatPrompt(message.text);
   const chips: string[] = [];
+  const domainLabel = buildChatDomainLabel(message);
+  const reliabilityLabel = buildChatReliabilityLabel(message);
 
   if (message.intent === "repo_understanding") {
-    chips.push("repo");
+    chips.push("home/repo");
   }
 
-  if (message.intent === "report_targa" || message.intent === "mezzo_dossier") {
+  if (domainLabel) {
+    const domainCodes = domainLabel.match(/D\d{2}/g) ?? [];
+    if (domainCodes.length) {
+      chips.push(...domainCodes);
+    }
+
+    if (domainLabel.toLowerCase().includes("console unificata")) {
+      chips.push("console unificata");
+    }
+  } else if (message.intent === "report_targa" || message.intent === "mezzo_dossier") {
     chips.push("mezzo");
+    chips.push("console unificata");
   }
 
   if (
@@ -1162,7 +1279,74 @@ function buildChatContextChips(message: InternalAiChatMessage): string[] {
     chips.push("allegati");
   }
 
+  if (message.outputMode === "report_pdf") {
+    chips.push("report");
+  }
+
+  if (reliabilityLabel) {
+    chips.push(reliabilityLabel.toLowerCase());
+  }
+
+  if (
+    normalized.includes("fuori perimetro") ||
+    normalized.includes("dominio esterno") ||
+    normalized.includes("non ancora consolidato")
+  ) {
+    chips.push("limite");
+  }
+
   return Array.from(new Set(chips));
+}
+
+function findChatReferenceValue(message: InternalAiChatMessage, prefix: string): string | null {
+  const match = message.references.find((reference) => reference.label.startsWith(prefix));
+  return match ? match.label.slice(prefix.length).trim() : null;
+}
+
+function buildChatDomainLabel(message: InternalAiChatMessage): string | null {
+  const referenceLabel = findChatReferenceValue(message, DOMAIN_REFERENCE_PREFIX);
+  if (referenceLabel) {
+    return referenceLabel;
+  }
+
+  if (
+    message.references.some((reference) =>
+      reference.label.toLowerCase().includes(UNIFIED_ENGINE_REFERENCE.toLowerCase()),
+    )
+  ) {
+    return "Console unificata read-only";
+  }
+
+  if (message.intent === "report_targa" || message.intent === "mezzo_dossier") {
+    return "Console unificata read-only";
+  }
+
+  if (message.intent === "repo_understanding") {
+    return "Perimetro mezzo/Home";
+  }
+
+  return null;
+}
+
+function buildChatReliabilityLabel(message: InternalAiChatMessage): string | null {
+  const referenceLabel = findChatReferenceValue(message, RELIABILITY_REFERENCE_PREFIX);
+  if (referenceLabel) {
+    return referenceLabel;
+  }
+
+  if (message.intent === "report_targa" || message.intent === "mezzo_dossier") {
+    return "Affidabile";
+  }
+
+  if (message.intent === "repo_understanding" || message.intent === "capabilities") {
+    return "Parziale";
+  }
+
+  if (message.intent === "non_supportato") {
+    return "Da verificare";
+  }
+
+  return null;
 }
 
 function renderChatMessageText(text: string) {
@@ -1220,6 +1404,10 @@ function renderReportDocumentContent(
   report: InternalAiReportPreview,
   workflow: InternalAiServerReportSummaryWorkflow | null,
 ) {
+  if (report.reportType === "targa") {
+    return <InternalAiProfessionalVehicleReportView report={report} workflow={workflow} />;
+  }
+
   return (
     <div className="internal-ai-document">
       <header className="internal-ai-document__header">
@@ -1603,7 +1791,6 @@ function buildContractLabelMap(contractCatalog: ReturnType<typeof readInternalAi
 function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const section = SECTION_CONFIGS[sectionId];
   const [snapshotVersion, setSnapshotVersion] = useState(0);
   const snapshot = useMemo(() => {
     void snapshotVersion;
@@ -1657,6 +1844,18 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   const [selectedVehicle, setSelectedVehicle] = useState<InternalAiVehicleLookupCandidate | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<InternalAiDriverLookupCandidate | null>(null);
   const [chatInput, setChatInput] = useState("");
+  const [selectedQuickRequest, setSelectedQuickRequest] = useState("");
+  const [unifiedConsoleTarga, setUnifiedConsoleTarga] = useState("");
+  const [unifiedConsoleScopes, setUnifiedConsoleScopes] = useState<UnifiedConsoleScopeFilter[]>([
+    "quadro",
+  ]);
+  const [unifiedConsoleOutput, setUnifiedConsoleOutput] =
+    useState<UnifiedConsoleOutputPreference>("thread");
+  const [unifiedRegistryState, setUnifiedRegistryState] = useState<UnifiedRegistryState>({
+    status: "idle",
+    summary: null,
+    message: null,
+  });
   const [chatMessages, setChatMessages] = useState<InternalAiChatMessage[]>(() => [
     createWelcomeChatMessage(),
   ]);
@@ -1786,6 +1985,46 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     transport: "non_attivo",
     transportMessage: null,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadUnifiedRegistrySummary = async () => {
+      setUnifiedRegistryState((current) => ({
+        status: "loading",
+        summary: current.summary,
+        message: current.message,
+      }));
+
+      try {
+        const summary = await readInternalAiUnifiedRegistrySummary();
+        if (cancelled) {
+          return;
+        }
+        setUnifiedRegistryState({
+          status: "ready",
+          summary,
+          message: "Registry unificato aggiornato dal perimetro dati canonico.",
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setUnifiedRegistryState({
+          status: "error",
+          summary: null,
+          message:
+            error instanceof Error
+              ? `Impossibile leggere il registry unificato: ${error.message}`
+              : "Impossibile leggere il registry unificato.",
+        });
+      }
+    };
+
+    void loadUnifiedRegistrySummary();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function loadRepoUnderstandingSnapshot(refresh = false) {
     setRepoUnderstandingState({
@@ -2336,6 +2575,67 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     () => resolveInternalAiReportPeriodContext(reportPeriodInput),
     [reportPeriodInput],
   );
+  const resolvedChatTarga = useMemo(() => {
+    if (selectedVehicle?.targa) {
+      return selectedVehicle.targa;
+    }
+
+    return normalizeInternalAiVehicleLookupQuery(targaInput || unifiedConsoleTarga);
+  }, [selectedVehicle, targaInput, unifiedConsoleTarga]);
+  const sidebarArtifactGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        targa: string;
+        items: InternalAiArtifact[];
+        updatedAt: string;
+      }
+    >();
+
+    sortedArtifacts.forEach((artifact) => {
+      if (artifact.kind !== "report_preview") {
+        return;
+      }
+
+      const embeddedReport = artifact.payload?.report;
+      const embeddedVehicleTarga =
+        embeddedReport && "mezzoTarga" in embeddedReport ? embeddedReport.mezzoTarga : null;
+      const embeddedHeaderTarga =
+        embeddedReport &&
+        "header" in embeddedReport &&
+        embeddedReport.header &&
+        "targa" in embeddedReport.header
+          ? embeddedReport.header.targa
+          : null;
+      const artifactTarga = normalizeInternalAiVehicleLookupQuery(
+        artifact.mezzoTarga ?? embeddedVehicleTarga ?? embeddedHeaderTarga ?? "",
+      );
+      if (!artifactTarga) {
+        return;
+      }
+
+      const existing = groups.get(artifactTarga);
+      if (!existing) {
+        groups.set(artifactTarga, {
+          targa: artifactTarga,
+          items: [artifact],
+          updatedAt: artifact.updatedAt,
+        });
+        return;
+      }
+
+      if (existing.items.length < 3) {
+        existing.items.push(artifact);
+      }
+      if (new Date(artifact.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+        existing.updatedAt = artifact.updatedAt;
+      }
+    });
+
+    return Array.from(groups.values())
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+      .slice(0, 8);
+  }, [sortedArtifacts]);
   const lookupUiState = useMemo((): {
     status: InternalAiVehicleLookupMatchState;
     message: string;
@@ -3036,6 +3336,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   const handleSelectVehicle = (candidate: InternalAiVehicleLookupCandidate) => {
     setSelectedVehicle(candidate);
     setTargaInput(candidate.targa);
+    setUnifiedConsoleTarga(candidate.targa);
     trackInternalAiVehicleSelection({
       targa: candidate.targa,
       sectionId,
@@ -3679,15 +3980,84 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     return null;
   };
 
+  const toggleUnifiedConsoleScope = (scopeId: UnifiedConsoleScopeFilter) => {
+    setUnifiedConsoleScopes((current) =>
+      current.includes(scopeId)
+        ? current.filter((entry) => entry !== scopeId)
+        : [...current, scopeId],
+    );
+  };
+
+  const hydrateQuickRequest = (template: string) => {
+    if (!resolvedChatTarga) {
+      return template;
+    }
+
+    return template.replace(/AB123CD/gi, resolvedChatTarga).replace(/TI 315407/gi, resolvedChatTarga);
+  };
+
+  const resetUnifiedConsoleFilters = () => {
+    setUnifiedConsoleTarga("");
+    setTargaInput("");
+    setSelectedVehicle(null);
+    setSelectedQuickRequest("");
+    setUnifiedConsoleScopes(["quadro"]);
+    setUnifiedConsoleOutput("thread");
+  };
+
+  const buildUnifiedConsoleRequest = (rawPrompt: string) => {
+    const trimmedPrompt = rawPrompt.trim();
+    const selectedScopeLabels = UNIFIED_CONSOLE_SCOPE_OPTIONS.filter((entry) =>
+      unifiedConsoleScopes.includes(entry.id),
+    ).map((entry) => entry.label);
+
+    const basePrompt =
+      trimmedPrompt ||
+      (resolvedChatTarga
+        ? `Fammi il quadro completo della targa ${resolvedChatTarga}`
+        : unifiedConsoleScopes.includes("attenzione_oggi")
+          ? "Dimmi cosa richiede attenzione oggi"
+          : "Fammi il quadro completo");
+
+    const contextParts = [
+      resolvedChatTarga ? `targa ${resolvedChatTarga}` : null,
+      selectedScopeLabels.length ? `ambiti ${selectedScopeLabels.join(", ")}` : null,
+      unifiedConsoleOutput !== "thread"
+        ? `output ${UNIFIED_OUTPUT_LABELS[unifiedConsoleOutput].toLowerCase()}`
+        : null,
+    ].filter((entry): entry is string => Boolean(entry));
+
+    const visiblePrompt =
+      contextParts.length > 0 ? `${basePrompt} [${contextParts.join("; ")}]` : basePrompt;
+
+    return {
+      visiblePrompt,
+      promptForEngine:
+        `${basePrompt}\n\n` +
+        "[CONSOLE IA UNIFICATA]\n" +
+        `Targa: ${resolvedChatTarga || "-"}\n` +
+        `Ambiti: ${selectedScopeLabels.join(", ") || "-"}\n` +
+        `Output: ${unifiedConsoleOutput}\n` +
+        "[/CONSOLE IA UNIFICATA]",
+    };
+  };
+
+  const canSubmitUnifiedConsole =
+    Boolean(chatInput.trim()) ||
+    Boolean(resolvedChatTarga) ||
+    unifiedConsoleOutput !== "thread" ||
+    unifiedConsoleScopes.some((scope) => scope !== "quadro");
+
   const handleChatSubmit = async (promptOverride?: string) => {
-    const prompt = (promptOverride ?? chatInput).trim();
+    const request = buildUnifiedConsoleRequest(promptOverride ?? chatInput);
+    const prompt = request.promptForEngine.trim();
     if (!prompt || chatStatus === "running") {
       return;
     }
 
     const attachmentsSnapshot = [...chatAttachments];
     const memoryHints = buildChatMemoryHints({
-      prompt,
+      prompt: request.visiblePrompt,
       attachments: attachmentsSnapshot,
       repoUnderstandingState,
     });
@@ -3696,7 +4066,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       ...current,
       createChatMessage({
         role: "utente",
-        text: prompt,
+        text: request.visiblePrompt,
         intent: "richiesta_generica",
         status: "completed",
         attachments: attachmentsSnapshot,
@@ -3721,7 +4091,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         transportMessage: bridgeResult.transportMessage,
       });
       trackInternalAiChatPrompt({
-        prompt,
+        prompt: request.visiblePrompt,
         intent: result.intent,
         status: result.status,
         sectionId,
@@ -3878,7 +4248,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       }
 
       const outputSelection = selectInternalAiOutputMode({
-        prompt,
+        prompt: request.visiblePrompt,
         result,
         previousMessages: chatMessages,
         repoUnderstandingReady: repoUnderstandingState.status === "ready",
@@ -3966,7 +4336,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       });
 
       trackInternalAiChatPrompt({
-        prompt,
+        prompt: request.visiblePrompt,
         intent: "richiesta_generica",
         status: "failed",
         sectionId,
@@ -4284,6 +4654,14 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     setReportDocumentActionMessage(null);
   };
 
+  const handlePrepareReportPdf = () => {
+    if (!activeReportState.report) {
+      return;
+    }
+
+    openReportPreviewModal(activeReportState.report, openedArtifactId);
+  };
+
   const saveDraftArtifact = () => {
     if (!activeReportState.report) return;
 
@@ -4475,91 +4853,506 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     }
   };
 
+  const overviewMessages = chatMessages.filter((message) => !isWelcomeChatMessage(message));
+
   return (
     <section className="next-page internal-ai-page">
-      <header className="internal-ai-hero">
-        <div className="next-panel">
-          <p className="next-page__eyebrow">Assistente interno / perimetro controllato</p>
-          <h1>{section.title}</h1>
-          <p className="next-page__description">
-            Parla con l&apos;assistente interno del clone NEXT per leggere report, capire il repo
-            e chiarire limiti o stato del progetto. Il perimetro resta preview-first, backend-first,
-            reversibile e senza scritture business.
-          </p>
-          <div className="internal-ai-pill-row" style={{ marginTop: 14 }}>
-            <span className="next-chip next-chip--accent">CHAT CONTROLLATA</span>
-            <span className="next-chip">ARTIFACT PREVIEW</span>
-            <span className="next-chip">SOLO LETTURA</span>
-            <span className="next-chip next-chip--subtle">NESSUNA SCRITTURA BUSINESS</span>
+      {sectionId !== "overview" ? (
+        <header className="internal-ai-hero">
+          <div className="next-panel">
+            <p className="next-page__eyebrow">Assistente interno</p>
+            <h1>Console IA</h1>
+            <p className="next-page__description">
+              Chat operativa al centro, report recenti per targa sulla destra, sola lettura.
+            </p>
+            <p className="internal-ai-card__meta">
+              Nessun segreto lato client, nessun backend live nuovo e nessuna scrittura business.
+            </p>
+            <div className="internal-ai-nav" style={{ marginTop: 16 }}>
+              {PRIMARY_SECTION_NAV.map((id) => (
+                <Link
+                  key={id}
+                  to={SECTION_CONFIGS[id].path}
+                  className={`internal-ai-nav__link ${id === sectionId ? "is-active" : ""}`}
+                >
+                  {SECTION_CONFIGS[id].title}
+                </Link>
+              ))}
+              <details className="internal-ai-nav__secondary">
+                <summary>Tecnico</summary>
+                <div className="internal-ai-nav__secondary-links">
+                  {TECHNICAL_SECTION_NAV.map((id) => (
+                    <Link
+                      key={id}
+                      to={SECTION_CONFIGS[id].path}
+                      className={`internal-ai-nav__link ${id === sectionId ? "is-active" : ""}`}
+                    >
+                      {SECTION_CONFIGS[id].title}
+                    </Link>
+                  ))}
+                </div>
+              </details>
+            </div>
           </div>
-          <p className="internal-ai-card__meta">
-            {section.description} Nessun segreto lato client, nessuna modifica automatica del codice,
-            nessun riuso runtime dei moduli IA legacy come backend canonico.
-          </p>
-          <div className="internal-ai-nav" style={{ marginTop: 16 }}>
-            {(
-              Object.entries(SECTION_CONFIGS) as [
-                NextInternalAiSectionId,
-                (typeof SECTION_CONFIGS)[NextInternalAiSectionId],
-              ][]
-            ).map(([id, entry]) => (
-              <Link
-                key={id}
-                to={entry.path}
-                className={`internal-ai-nav__link ${id === sectionId ? "is-active" : ""}`}
-              >
-                {entry.title}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        <div className="next-panel internal-ai-hero__meta">
-          <span className="next-chip next-chip--accent">
-            Esecuzione:{" "}
-            {snapshot.summary.backendMode === "server_adapter_mock_safe"
-              ? "adapter server-side mock-safe"
-              : "scaffolding isolato"}
-          </span>
-          <span className="next-chip">
-            Backend: {BACKEND_MODE_LABELS[snapshot.summary.backendMode]}
-          </span>
-          <span className="next-chip">
-            Archivio artifact: {ARTIFACT_STORAGE_LABELS[snapshot.summary.artifactArchiveMode]}
-          </span>
-          <span className="next-chip">
-            Tracking: {TRACKING_MODE_LABELS[tracking.mode] ?? tracking.mode}
-          </span>
-          <span className="next-chip next-chip--subtle">Scritture bloccate: si</span>
-          <p className="internal-ai-muted">
-            Questa superficie resta confinata alla famiglia clone IA e non aggancia le pagine
-            correnti fuori da <code>/next/ia/interna*</code>.
-          </p>
-          <div className="internal-ai-pill-row">
-            <Link to={NEXT_IA_PATH} className="next-clone-topbar__link">
-              Hub IA clone
-            </Link>
-            <Link to={NEXT_HOME_PATH} className="next-clone-topbar__link">
-              Home clone
-            </Link>
-          </div>
-        </div>
-      </header>
+        </header>
+      ) : null}
 
       {sectionId === "overview" ? (
         <>
+          <article className="next-panel internal-ai-chat internal-ai-chat--primary">
+            <div className="internal-ai-chat__shell">
+              <div className="internal-ai-chat__main">
+                <div className="internal-ai-chat__messages">
+                  {overviewMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`internal-ai-chat__message ${
+                        message.role === "utente" ? "is-user" : "is-assistant"
+                      }`}
+                    >
+                      <div className="internal-ai-chat__message-header">
+                        <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
+                        <div className="internal-ai-pill-row">
+                          <span className={statusToneClass(message.status)}>
+                            {CHAT_STATUS_LABELS[message.status]}
+                          </span>
+                          <span className="internal-ai-pill is-neutral">
+                            {formatDateLabel(message.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                      {message.role === "assistente" && message.outputMode ? (
+                        <div className="internal-ai-chat__message-delivery">
+                          <span className={outputModeToneClass(message.outputMode)}>
+                            {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
+                          </span>
+                          {buildChatReliabilityLabel(message) &&
+                          buildChatReliabilityLabel(message) !== "Affidabile" ? (
+                            <span className="internal-ai-pill is-neutral">
+                              {buildChatReliabilityLabel(message)}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {message.role === "assistente" ? (
+                        <>
+                          {buildChatUseCaseLabel(message) ? (
+                            <p className="internal-ai-card__eyebrow">
+                              {buildChatUseCaseLabel(message)}
+                            </p>
+                          ) : null}
+                          {renderChatMessageText(message.text)}
+                        </>
+                      ) : (
+                        <p className="internal-ai-chat__message-text">{message.text}</p>
+                      )}
+                      {message.attachments.length ? (
+                        <div className="internal-ai-chat__message-attachments">
+                          {message.attachments.map((attachment) => (
+                            <button
+                              key={`${message.id}:attachment:${attachment.id}`}
+                              type="button"
+                              className="internal-ai-chat__attachment-pill"
+                              onClick={() => handleOpenChatAttachment(attachment)}
+                            >
+                              <strong>{attachment.fileName}</strong>
+                              <span>{buildInternalAiChatAttachmentPreviewLabel(attachment)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {message.references.length ? (
+                        <div className="internal-ai-chat__references">
+                          {message.references.map((reference) =>
+                            reference.artifactId ? (
+                              <button
+                                key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
+                                type="button"
+                                className="internal-ai-chat__reference"
+                                onClick={() => handleOpenArtifact(reference.artifactId!)}
+                              >
+                                {reference.label}
+                                {reference.targa ? ` - ${reference.targa}` : ""}
+                              </button>
+                            ) : (
+                              <span
+                                key={`${message.id}:${reference.type}:${reference.label}`}
+                                className="internal-ai-pill is-neutral"
+                              >
+                                {reference.label}
+                                {reference.targa ? ` - ${reference.targa}` : ""}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  {chatStatus === "running" ? (
+                    <div className="internal-ai-chat__message is-assistant">
+                      <div className="internal-ai-chat__message-header">
+                        <strong>Assistente interno</strong>
+                        <span className={statusToneClass("running")}>In elaborazione</span>
+                      </div>
+                      <p className="internal-ai-chat__message-text">
+                        Sto preparando una risposta controllata. Se serve un report targa, lo trovi
+                        anche nella colonna destra appena pronto.
+                      </p>
+                    </div>
+                  ) : null}
+                  <div ref={chatMessagesEndRef} />
+                </div>
+
+                <div className="internal-ai-chat__composer">
+                  <div className="internal-ai-chat__composer-grid">
+                    <label className="internal-ai-search__field">
+                      <span>Richieste rapide</span>
+                      <select
+                        value={selectedQuickRequest}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSelectedQuickRequest(value);
+                          if (!value) {
+                            return;
+                          }
+                          setChatInput(hydrateQuickRequest(value));
+                        }}
+                        className="internal-ai-search__input"
+                      >
+                        <option value="">Scegli una richiesta rapida</option>
+                        {CHAT_SUGGESTIONS.map((suggestion) => (
+                          <option key={suggestion} value={suggestion}>
+                            {suggestion}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="internal-ai-search__field">
+                      <span>Targa</span>
+                      <input
+                        type="text"
+                        value={targaInput}
+                        onChange={(event) => {
+                          const nextValue = event.target.value.toUpperCase();
+                          const normalizedNextValue = normalizeInternalAiVehicleLookupQuery(nextValue);
+                          setTargaInput(nextValue);
+                          setUnifiedConsoleTarga(normalizedNextValue);
+                          if (selectedVehicle && selectedVehicle.targa !== normalizedNextValue) {
+                            setSelectedVehicle(null);
+                          }
+                        }}
+                        placeholder="Es. AB123CD"
+                        className="internal-ai-search__input"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label className="internal-ai-search__field">
+                      <span>Output</span>
+                      <select
+                        value={unifiedConsoleOutput}
+                        onChange={(event) =>
+                          setUnifiedConsoleOutput(
+                            event.target.value as UnifiedConsoleOutputPreference,
+                          )
+                        }
+                        className="internal-ai-search__input"
+                      >
+                        {Object.entries(UNIFIED_OUTPUT_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="internal-ai-chat__status-inline">
+                    <span className={statusToneClass(lookupUiState.status)}>
+                      {LOOKUP_MATCH_LABELS[lookupUiState.status]}
+                    </span>
+                    <span className="internal-ai-muted">{lookupUiState.message}</span>
+                  </div>
+
+                  {lookupSuggestions.length > 0 && targaInput.trim().length > 0 ? (
+                    <div className="internal-ai-suggestions">
+                      {lookupSuggestions.slice(0, 6).map((candidate) => {
+                        const description = formatVehicleLookupDescription(candidate);
+                        const isSelected = selectedVehicle?.id === candidate.id;
+                        return (
+                          <button
+                            key={candidate.id}
+                            type="button"
+                            className={`internal-ai-suggestion ${isSelected ? "is-selected" : ""}`}
+                            onClick={() => handleSelectVehicle(candidate)}
+                          >
+                            <div className="internal-ai-suggestion__header">
+                              <strong>{candidate.targa}</strong>
+                              <div className="internal-ai-pill-row">
+                                <span className="internal-ai-pill is-neutral">
+                                  {candidate.categoria}
+                                </span>
+                                {isSelected ? (
+                                  <span className="internal-ai-pill is-warning">Selezionata</span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <p className="internal-ai-card__meta">
+                              {description || "Targa disponibile nel gestionale."}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <div className="internal-ai-chat__message-header">
+                      <strong>Filtri rapidi</strong>
+                      <button
+                        type="button"
+                        className="internal-ai-chat__reference"
+                        onClick={resetUnifiedConsoleFilters}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div className="internal-ai-search__actions" style={{ flexWrap: "wrap" }}>
+                      {UNIFIED_CONSOLE_SCOPE_OPTIONS.slice(0, 6).map((entry) => {
+                        const active = unifiedConsoleScopes.includes(entry.id);
+                        return (
+                          <button
+                            key={entry.id}
+                            type="button"
+                            className={`internal-ai-filter-chip ${active ? "is-active" : ""}`}
+                            onClick={() => toggleUnifiedConsoleScope(entry.id)}
+                          >
+                            {entry.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <label className="internal-ai-search__field">
+                    <span>Scrivi una richiesta</span>
+                    <textarea
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      placeholder="Esempio: dimmi lo stato del mezzo, mostrami le criticita, prepara un report o spiegami cosa richiede attenzione oggi."
+                      className="internal-ai-search__input internal-ai-chat__composer-input"
+                      rows={4}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleChatSubmit();
+                        }
+                      }}
+                    />
+                  </label>
+
+                  <div className="internal-ai-chat__composer-actions">
+                    <p className="internal-ai-card__meta">
+                      `Invio` manda la richiesta. `Shift + Invio` va a capo.
+                    </p>
+                    <div className="internal-ai-search__actions">
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        disabled={chatStatus === "running" || chatAttachmentRepositoryState.status === "loading"}
+                        onClick={handleChatAttachmentPicker}
+                      >
+                        Allega file
+                      </button>
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        disabled={
+                          vehicleRequestState.status === "loading" ||
+                          lookupCatalog.status === "loading" ||
+                          !resolvedChatTarga
+                        }
+                        onClick={() => void handleGenerateVehiclePreview()}
+                      >
+                        {vehicleRequestState.status === "loading"
+                          ? "Preparazione report..."
+                          : "Apri report targa"}
+                      </button>
+                      <button
+                        type="button"
+                        className="internal-ai-search__button"
+                        disabled={
+                          chatStatus === "running" ||
+                          chatAttachmentRepositoryState.status === "loading" ||
+                          !canSubmitUnifiedConsole
+                        }
+                        onClick={() => void handleChatSubmit()}
+                      >
+                        {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {chatAttachments.length ? (
+                    <div className="internal-ai-chat__attachments">
+                      {chatAttachments.map((attachment) => (
+                        <article key={attachment.id} className="internal-ai-chat__attachment-row">
+                          <div className="internal-ai-chat__attachment-copy">
+                            <strong>{attachment.fileName}</strong>
+                            <p className="internal-ai-card__meta">{attachment.note}</p>
+                            <p className="internal-ai-card__meta">
+                              {buildInternalAiChatAttachmentPreviewLabel(attachment)} ·{" "}
+                              {attachment.storageMode === "server_file_isolated"
+                                ? "server IA isolato"
+                                : "browser locale"}
+                              {" · "}
+                              {(attachment.sizeBytes / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                          <div className="internal-ai-pill-row">
+                            <button
+                              type="button"
+                              className="internal-ai-chat__reference"
+                              onClick={() => handleOpenChatAttachment(attachment)}
+                            >
+                              Apri
+                            </button>
+                            <button
+                              type="button"
+                              className="internal-ai-chat__reference"
+                              onClick={() => void handleRemoveChatAttachment(attachment)}
+                            >
+                              Rimuovi
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <input
+                    ref={chatAttachmentInputRef}
+                    type="file"
+                    multiple
+                    className="internal-ai-sr-only"
+                    accept=".pdf,image/*,text/plain,text/markdown,.txt,.md,.doc,.docx,.odt,.xls,.xlsx,.csv,application/pdf"
+                    onChange={(event) => {
+                      void handleChatAttachmentSelection(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </div>
+              </div>
+
+              <aside className="internal-ai-chat__aside">
+                {activeReportState.report ? (
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Report corrente</p>
+                    <div className="internal-ai-list__row-header">
+                      <strong>{activeReportState.report.title}</strong>
+                      <span className="internal-ai-pill is-neutral">
+                        {getReportTargetChip(activeReportState.report)}
+                      </span>
+                    </div>
+                    <p className="internal-ai-card__meta">
+                      {activeReportState.report.periodContext.label} - {formatDateLabel(activeReportState.report.generatedAt)}
+                    </p>
+                    <div className="internal-ai-search__actions">
+                      <button
+                        type="button"
+                        className="internal-ai-search__button"
+                        onClick={() => openReportPreviewModal(activeReportState.report!, openedArtifactId)}
+                      >
+                        Apri report
+                      </button>
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        onClick={handlePrepareReportPdf}
+                      >
+                        PDF
+                      </button>
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        onClick={saveDraftArtifact}
+                      >
+                        Salva
+                      </button>
+                    </div>
+                    {activeReportState.draftMessage ? (
+                      <p className="internal-ai-card__meta">{activeReportState.draftMessage}</p>
+                    ) : null}
+                  </article>
+                ) : null}
+
+                <article className="internal-ai-card">
+                  <div className="internal-ai-list__row-header">
+                    <div>
+                      <p className="internal-ai-card__eyebrow">Report per targa</p>
+                      <strong>Richiesti e salvati</strong>
+                    </div>
+                  </div>
+                  {sidebarArtifactGroups.length ? (
+                    <div className="internal-ai-chat__aside-groups">
+                      {sidebarArtifactGroups.map((group) => (
+                        <section key={group.targa} className="internal-ai-chat__aside-group">
+                          <div className="internal-ai-list__row-header">
+                            <strong>{group.targa}</strong>
+                            <span className="internal-ai-pill is-neutral">
+                              {group.items.length} report
+                            </span>
+                          </div>
+                          <div className="internal-ai-chat__aside-items">
+                            {group.items.map((artifact) => (
+                              <button
+                                key={artifact.id}
+                                type="button"
+                                className="internal-ai-chat__aside-item"
+                                onClick={() => handleOpenArtifact(artifact.id)}
+                              >
+                                <strong>{artifact.title}</strong>
+                                <span>
+                                  {REPORT_TYPE_LABELS[artifact.reportType ?? "targa"] ?? artifact.reportType ?? "Report"}
+                                  {" - "}
+                                  {ARTIFACT_STATUS_LABELS[artifact.status] ?? artifact.status}
+                                  {" - "}
+                                  {formatDateLabel(artifact.updatedAt)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="internal-ai-card__meta">
+                      Nessun report per targa ancora memorizzato. Appena ne generi uno, lo trovi qui.
+                    </p>
+                  )}
+                </article>
+              </aside>
+            </div>
+          </article>
+
+          <details className="next-panel internal-ai-secondary-panel internal-ai-overview-advanced">
+            <summary>Ricerca guidata avanzata e strumenti tecnici</summary>
+            <div className="internal-ai-secondary-panel__body">
           <article className="next-panel internal-ai-chat">
             <div className="next-panel__header">
               <h2>Chat interna controllata</h2>
             </div>
             <p className="next-panel__description">
-              Scrivi una richiesta libera in italiano. La chat usa un primo hook mezzo-centrico sul
-              Dossier read-only per stato targa, rifornimenti, documenti, costi e report; quando
-              possibile prova prima uno snapshot server-side clone-seeded del Dossier e, se non e
-              disponibile, ricade in fallback locale clone-safe. Quando chiedi un report strutturato,
-              il contenuto lungo viene spostato in una anteprima PDF dedicata invece di finire nel
-              thread.
+              Scrivi una richiesta libera in italiano. La capability canonica di questa V1 e lo
+              stato operativo mezzo sulla prima verticale D01 + D10 + D02: anagrafica mezzo, stato
+              operativo Home e operativita tecnica. Usa reader NEXT read-only come fonte canonica,
+              dichiara i limiti quando la richiesta sconfina e tiene il report targa come capability
+              distinta nell&apos;anteprima PDF.
             </p>
+            <div className="internal-ai-pill-row" style={{ marginBottom: 12 }}>
+              <span className="internal-ai-pill is-neutral">D01 anagrafica mezzo</span>
+              <span className="internal-ai-pill is-neutral">D10 Home e stato operativo</span>
+              <span className="internal-ai-pill is-neutral">D02 lavori e manutenzioni</span>
+            </div>
             <div className="internal-ai-chat__status-strip">
               {chatPrimaryStatusCards.map((card) => (
                 <article key={card.label} className={`internal-ai-chat__status-chip ${card.tone}`}>
@@ -4636,6 +5429,16 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       <span className={outputModeToneClass(message.outputMode)}>
                         {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
                       </span>
+                      {buildChatDomainLabel(message) ? (
+                        <span className="internal-ai-pill is-neutral">
+                          Perimetro: {buildChatDomainLabel(message)}
+                        </span>
+                      ) : null}
+                      {buildChatReliabilityLabel(message) ? (
+                        <span className="internal-ai-pill is-neutral">
+                          Affidabilita: {buildChatReliabilityLabel(message)}
+                        </span>
+                      ) : null}
                       {message.outputReason ? (
                         <span className="internal-ai-chat__message-reason">
                           {message.outputReason}
@@ -4724,12 +5527,102 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               <div ref={chatMessagesEndRef} />
             </div>
             <div className="internal-ai-chat__composer">
+              <div
+                style={{
+                  display: "grid",
+                  gap: 12,
+                  marginBottom: 16,
+                  padding: 12,
+                  border: "1px solid rgba(148, 163, 184, 0.22)",
+                  borderRadius: 16,
+                  background: "rgba(15, 23, 42, 0.02)",
+                }}
+              >
+                <div className="internal-ai-chat__status-inline">
+                  <span className="internal-ai-pill is-neutral">Console unificata read-only</span>
+                  {unifiedRegistryState.status === "ready" && unifiedRegistryState.summary ? (
+                    <span className="internal-ai-muted">
+                      Fonti mappate {unifiedRegistryState.summary.counts.totalSources}, pronte{" "}
+                      {unifiedRegistryState.summary.counts.readySources}, record letti{" "}
+                      {unifiedRegistryState.summary.counts.totalRecords}.
+                    </span>
+                  ) : unifiedRegistryState.message ? (
+                    <span className="internal-ai-muted">{unifiedRegistryState.message}</span>
+                  ) : null}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 12,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  }}
+                >
+                  <label className="internal-ai-search__field">
+                    <span>Targa</span>
+                    <input
+                      value={unifiedConsoleTarga}
+                      onChange={(event) => setUnifiedConsoleTarga(event.target.value)}
+                      placeholder="Es. AB123CD"
+                      className="internal-ai-search__input"
+                    />
+                  </label>
+                  <label className="internal-ai-search__field">
+                    <span>Output</span>
+                    <select
+                      value={unifiedConsoleOutput}
+                      onChange={(event) =>
+                        setUnifiedConsoleOutput(
+                          event.target.value as UnifiedConsoleOutputPreference,
+                        )
+                      }
+                      className="internal-ai-search__input"
+                    >
+                      {Object.entries(UNIFIED_OUTPUT_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div>
+                  <div className="internal-ai-chat__message-header">
+                    <strong>Filtri rapidi</strong>
+                    <button
+                      type="button"
+                      className="internal-ai-chat__reference"
+                      onClick={resetUnifiedConsoleFilters}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div className="internal-ai-search__actions" style={{ flexWrap: "wrap" }}>
+                    {UNIFIED_CONSOLE_SCOPE_OPTIONS.map((entry) => {
+                      const active = unifiedConsoleScopes.includes(entry.id);
+                      return (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          className={
+                            active
+                              ? "internal-ai-search__button"
+                              : "internal-ai-search__button internal-ai-search__button--secondary"
+                          }
+                          onClick={() => toggleUnifiedConsoleScope(entry.id)}
+                        >
+                          {entry.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
               <label className="internal-ai-search__field">
                 <span>Scrivi una richiesta</span>
                 <textarea
                   value={chatInput}
                   onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Chiedimi di analizzare la Home, preparare un report mezzo o indicarti i file da toccare."
+                  placeholder="Chiedimi un quadro completo, criticita + segnalazioni + manutenzioni, scadenze, oppure usa i filtri sopra per targa, ambiti e output."
                   className="internal-ai-search__input internal-ai-chat__composer-input"
                   rows={4}
                   onKeyDown={(event) => {
@@ -4759,7 +5652,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     disabled={
                       chatStatus === "running" ||
                       chatAttachmentRepositoryState.status === "loading" ||
-                      !chatInput.trim()
+                      !canSubmitUnifiedConsole
                     }
                     onClick={() => void handleChatSubmit()}
                   >
@@ -5669,7 +6562,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               </p>
               <div className="internal-ai-search__form">
                 <label className="internal-ai-search__field">
-                  <span>Targa mezzo</span>
+                  <span>Targa</span>
                   <input
                     type="text"
                     value={targaInput}
@@ -7114,8 +8007,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   <h2>Anteprima report pronta</h2>
                 </div>
                 <p className="next-panel__description">
-                  {activeReportState.report.title}. Il report completo e disponibile nel documento
-                  dedicato, cosi la chat resta leggibile anche quando l&apos;anteprima e ampia.
+                  {activeReportState.report.title}. Apro un report gestionale ordinato con sintesi,
+                  dati mezzo, foto reale e sezioni operative, cosi la chat resta leggibile anche
+                  quando il contenuto e ampio.
                 </p>
                 <div className="internal-ai-pill-row" style={{ marginTop: 12 }}>
                   <span className="internal-ai-pill is-neutral">
@@ -7150,7 +8044,14 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       openReportPreviewModal(activeReportState.report!, openedArtifactId)
                     }
                   >
-                    Apri anteprima PDF
+                    Apri report professionale
+                  </button>
+                  <button
+                    type="button"
+                    className="internal-ai-search__button"
+                    onClick={handlePrepareReportPdf}
+                  >
+                    Genera PDF
                   </button>
                   <button type="button" className="internal-ai-search__button" onClick={markRevisionRequested}>
                     Segna da rivedere
@@ -7352,6 +8253,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               </p>
             </article>
           </div>
+            </div>
+          </details>
         </>
       ) : null}
 
@@ -7930,7 +8833,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                 className="internal-ai-document-modal__details"
                 open={reportPdfPreviewState.status !== "ready"}
               >
-                <summary>Leggi il contenuto strutturato del report</summary>
+                <summary>Leggi il report gestionale</summary>
                 <div className="internal-ai-document-modal__details-content">
                   {renderReportDocumentContent(
                     reportPreviewModalState.report,

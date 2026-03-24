@@ -1,13 +1,26 @@
-import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import {
-  readNextDossierMezzoCompositeSnapshot,
-  type NextDossierDomainSectionState,
-  type NextDossierMezzoCompositeSnapshot,
-} from "../domain/nextDossierMezzoDomain";
-import type { NextDocumentiCostiReadOnlyItem } from "../domain/nextDocumentiCostiDomain";
-import type { NextGommeReadOnlyItem, NextManutenzioneReadOnlyItem } from "../domain/nextManutenzioniGommeDomain";
+  NEXT_ANAGRAFICHE_FLOTTA_DOMAIN,
+  normalizeNextMezzoTarga,
+  readNextMezzoByTarga,
+  type NextAnagraficheFlottaMezzoItem,
+} from "../nextAnagraficheFlottaDomain";
+import {
+  NEXT_OPERATIVITA_TECNICA_DOMAIN,
+  readNextMezzoOperativitaTecnicaSnapshot,
+  type NextManutenzioneTecnicaItem,
+  type NextMezzoOperativitaTecnicaSnapshot,
+} from "../nextOperativitaTecnicaDomain";
 import type { NextLavoroReadOnlyItem } from "../domain/nextLavoriDomain";
-import type { NextRifornimentoReadOnlyItem } from "../domain/nextRifornimentiDomain";
+import {
+  NEXT_CENTRO_CONTROLLO_DOMAIN,
+  readNextStatoOperativoSnapshot,
+  type D10AlertItem,
+  type D10FocusItem,
+  type D10ImportantAutistiEventItem,
+  type D10RevisionItem,
+  type D10SessionItem,
+  type D10Snapshot,
+} from "../domain/nextCentroControlloDomain";
 import {
   describeInternalAiPeriodApplication,
   filterItemsByInternalAiReportPeriod,
@@ -40,38 +53,95 @@ export type InternalAiVehicleReportReadResult =
       report: InternalAiVehicleReportPreview;
     };
 
+export type InternalAiVehicleVerticalReadResult =
+  | {
+      status: "invalid_query" | "not_found";
+      normalizedTarga: string | null;
+      message: string;
+      snapshot: null;
+    }
+  | {
+      status: "ready";
+      normalizedTarga: string;
+      message: string;
+      snapshot: InternalAiVehicleVerticalSnapshot;
+    };
+
 type PeriodAwareMeta = {
   periodStatus: InternalAiReportPeriodSectionStatus;
   periodNote: string | null;
+};
+
+export type InternalAiVehicleVerticalSnapshot = {
+  mezzo: NextAnagraficheFlottaMezzoItem;
+  operativita: NextMezzoOperativitaTecnicaSnapshot;
+  statoOperativo: D10Snapshot;
+  alerts: D10AlertItem[];
+  focusItems: D10FocusItem[];
+  revisioni: D10RevisionItem[];
+  sessioni: D10SessionItem[];
+  importantEvents: D10ImportantAutistiEventItem[];
+  sourceDatasetLabels: string[];
+  limitations: string[];
 };
 
 function takeNotes(notes: string[] | undefined, limit = 3): string[] {
   return (notes ?? []).filter(Boolean).slice(0, limit);
 }
 
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim()))));
+}
+
 function formatCountLabel(value: number, suffix: string): string {
   return `${value} ${suffix}`;
 }
 
+function parseDateFlexible(value: string | null | undefined): number | null {
+  if (!value) return null;
+
+  const direct = Date.parse(value);
+  if (!Number.isNaN(direct)) {
+    return direct;
+  }
+
+  const match = value.match(/^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})$/);
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const rawYear = Number(match[3]);
+  const year = match[3].length === 2 ? Number(`20${rawYear}`) : rawYear;
+  const parsed = new Date(year, month, day, 12, 0, 0, 0).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatDateFromTimestamp(value: number | null): string {
+  if (value == null) return "non disponibile";
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 function mapSectionStateToStatus(args: {
-  state: NextDossierDomainSectionState<unknown>;
   visibleCount: number;
   availableCount: number;
   context: InternalAiReportPeriodContext;
 }): InternalAiVehicleReportSectionStatus {
-  if (args.state.status === "error") return "errore";
   if (args.visibleCount > 0) return "completa";
   if (args.context.appliesFilter && args.availableCount > 0) return "parziale";
   return "vuota";
 }
 
 function mapSourceStatus(args: {
-  state: NextDossierDomainSectionState<unknown>;
   visibleCount: number;
   availableCount: number;
   context: InternalAiReportPeriodContext;
 }): InternalAiVehicleReportSourceStatus {
-  if (args.state.status === "error") return "errore";
   if (args.visibleCount > 0) return "disponibile";
   if (args.context.appliesFilter && args.availableCount > 0) return "parziale";
   return "parziale";
@@ -180,23 +250,21 @@ function createSource(args: {
   };
 }
 
-function buildPreviewStates(snapshot: NextDossierMezzoCompositeSnapshot): Pick<
+function buildPreviewStates(snapshot: InternalAiVehicleVerticalSnapshot): Pick<
   InternalAiVehicleReportPreview,
   "previewState" | "approvalState"
 > {
   const hasEnoughData =
-    (snapshot.lavori.snapshot?.counts.total ?? 0) > 0 ||
-    (snapshot.refuels.snapshot?.counts.total ?? 0) > 0 ||
-    (snapshot.documentCosts.snapshot?.counts.total ?? 0) > 0 ||
-    (snapshot.maintenance.snapshot?.counts.manutenzioni ?? 0) > 0 ||
-    (snapshot.materialiMovimenti.snapshot?.counts.total ?? 0) > 0 ||
-    Boolean(snapshot.analisiEconomica.snapshot?.savedAnalysis);
+    snapshot.alerts.length > 0 ||
+    snapshot.focusItems.length > 0 ||
+    snapshot.operativita.counts.lavoriAperti > 0 ||
+    snapshot.operativita.counts.manutenzioni > 0;
 
   const previewState: InternalAiPreviewState = {
     status: hasEnoughData ? "preview_ready" : "revision_requested",
     updatedAt: new Date().toISOString(),
     note: hasEnoughData
-      ? "Anteprima report costruita dai layer in sola lettura del clone."
+      ? "Anteprima report costruita dai reader canonici della prima verticale in sola lettura."
       : "Anteprima disponibile ma con copertura dati limitata; utile una revisione manuale.",
   };
 
@@ -213,7 +281,7 @@ function buildPreviewStates(snapshot: NextDossierMezzoCompositeSnapshot): Pick<
 }
 
 function buildMissingData(
-  snapshot: NextDossierMezzoCompositeSnapshot,
+  snapshot: InternalAiVehicleVerticalSnapshot,
   periodContext: InternalAiReportPeriodContext,
 ): string[] {
   const missing: string[] = [];
@@ -221,26 +289,28 @@ function buildMissingData(
   if (!snapshot.mezzo.autistaNome) {
     missing.push("Autista assegnato non disponibile nell'anagrafica flotta.");
   }
-  if (!snapshot.mezzo.librettoUrl) {
-    missing.push("Libretto mezzo non presente nel dataset anagrafico.");
+  if (!snapshot.mezzo.dataScadenzaRevisione) {
+    missing.push("Scadenza revisione non disponibile nell'anagrafica flotta.");
   }
-  if ((snapshot.refuels.snapshot?.counts.total ?? 0) === 0) {
-    missing.push("Nessun rifornimento utile collegato alla targa.");
+  if (snapshot.alerts.length === 0 && snapshot.focusItems.length === 0 && snapshot.revisioni.length === 0) {
+    missing.push("Nessun alert, focus o revisione urgente leggibile per la targa nel layer D10.");
   }
-  if ((snapshot.documentCosts.snapshot?.counts.total ?? 0) === 0) {
-    missing.push("Nessun documento o costo utile collegato alla targa.");
-  }
-  if ((snapshot.materialiMovimenti.snapshot?.counts.total ?? 0) === 0) {
-    missing.push("Nessun movimento materiali collegabile in modo affidabile al mezzo.");
-  }
-  if (!snapshot.analisiEconomica.snapshot?.savedAnalysis) {
-    missing.push("Nessuna analisi economica legacy salvata per questa targa.");
+  if (
+    snapshot.operativita.counts.lavoriAperti === 0 &&
+    snapshot.operativita.counts.lavoriChiusi === 0 &&
+    snapshot.operativita.counts.manutenzioni === 0
+  ) {
+    missing.push("Nessun lavoro o manutenzione leggibile per la targa nel layer D02.");
   }
   if (periodContext.appliesFilter) {
     missing.push(
-      "Il filtro periodo non viene applicato a identita mezzo, movimenti materiali e analisi economica per evitare inferenze temporali non affidabili.",
+      "Il filtro periodo si applica a lavori, manutenzioni e segnali D10 datati; identita mezzo e scadenza revisione restano contesto statico.",
     );
   }
+
+  missing.push(
+    "Fuori perimetro consolidato: rifornimenti, costi, documenti, procurement, materiali e verticali specialistici.",
+  );
 
   return missing;
 }
@@ -256,20 +326,20 @@ function withPeriodNotes(
 }
 
 function buildReport(
-  snapshot: NextDossierMezzoCompositeSnapshot,
+  snapshot: InternalAiVehicleVerticalSnapshot,
   periodInput?: InternalAiReportPeriodInput,
 ): InternalAiVehicleReportPreview {
   const generatedAt = new Date().toISOString();
   const periodBase = resolveInternalAiReportPeriodContext(periodInput);
   const previewStates = buildPreviewStates(snapshot);
 
-  const lavoriItems = snapshot.lavori.snapshot?.items ?? [];
+  const lavoriItems = [...snapshot.operativita.lavoriAperti, ...snapshot.operativita.lavoriChiusi];
   const lavoriPeriod = filterItemsByInternalAiReportPeriod<NextLavoroReadOnlyItem>(
     lavoriItems,
     (item) => item.timestampEsecuzione ?? item.timestampInserimento,
     periodBase,
   );
-  const lavoriDaEseguire = lavoriPeriod.filteredItems.filter((entry) => entry.matchesGlobalOpenView);
+  const lavoriDaEseguire = lavoriPeriod.filteredItems.filter((entry) => !entry.eseguito);
   const lavoriInAttesa = lavoriPeriod.filteredItems.filter((entry) => entry.matchesDossierInAttesaView);
   const lavoriEseguiti = lavoriPeriod.filteredItems.filter((entry) => entry.eseguito === true);
   const lavoriPeriodMeta = buildFilterablePeriodMeta({
@@ -281,173 +351,149 @@ function buildReport(
     missingTimestampCount: lavoriPeriod.missingTimestampCount,
   });
 
-  const maintenanceItems = snapshot.maintenance.snapshot?.maintenanceItems ?? [];
-  const gommeItems = snapshot.maintenance.snapshot?.gommeItems ?? [];
-  const maintenancePeriod = filterItemsByInternalAiReportPeriod<NextManutenzioneReadOnlyItem>(
-    maintenanceItems,
-    (item) => item.timestamp,
+  const manutenzioniItems = snapshot.operativita.manutenzioni;
+  const manutenzioniPeriod = filterItemsByInternalAiReportPeriod<NextManutenzioneTecnicaItem>(
+    manutenzioniItems,
+    (item) => parseDateFlexible(item.data),
     periodBase,
   );
-  const gommePeriod = filterItemsByInternalAiReportPeriod<NextGommeReadOnlyItem>(
-    gommeItems,
-    (item) => item.timestamp,
-    periodBase,
-  );
-  const maintenancePeriodMeta = buildFilterablePeriodMeta({
+  const manutenzioniPeriodMeta = buildFilterablePeriodMeta({
     context: periodBase,
     noun: "manutenzioni",
-    totalCount: maintenancePeriod.totalCount + gommePeriod.totalCount,
-    matchingCount: maintenancePeriod.matchingCount + gommePeriod.matchingCount,
-    outsideRangeCount: maintenancePeriod.outsideRangeCount + gommePeriod.outsideRangeCount,
-    missingTimestampCount:
-      maintenancePeriod.missingTimestampCount + gommePeriod.missingTimestampCount,
+    totalCount: manutenzioniPeriod.totalCount,
+    matchingCount: manutenzioniPeriod.matchingCount,
+    outsideRangeCount: manutenzioniPeriod.outsideRangeCount,
+    missingTimestampCount: manutenzioniPeriod.missingTimestampCount,
   });
-  const gommeFromMaintenance = gommePeriod.filteredItems.filter(
-    (item) => item.sourceOrigin === "manutenzione_derivata",
-  ).length;
-  const gommeFromTmp = gommePeriod.filteredItems.filter(
-    (item) => item.sourceOrigin === "evento_autista_tmp",
-  ).length;
-  const gommeFromOfficial = gommePeriod.filteredItems.filter(
-    (item) => item.sourceOrigin === "evento_ufficiale",
-  ).length;
-  const gommeStrongMatches = gommePeriod.filteredItems.filter(
-    (item) => item.vehicleMatchReliability === "forte",
-  ).length;
-  const gommePlausibleMatches = gommePeriod.filteredItems.filter(
-    (item) => item.vehicleMatchReliability === "plausibile",
-  ).length;
 
-  const refuelItems = snapshot.refuels.snapshot?.items ?? [];
-  const refuelPeriod = filterItemsByInternalAiReportPeriod<NextRifornimentoReadOnlyItem>(
-    refuelItems,
-    (item) => item.timestampRicostruito,
-    periodBase,
-  );
-  const refuelsTotal = refuelPeriod.filteredItems.length;
-  const refuelPeriodMeta = buildFilterablePeriodMeta({
+  const alertItems = [
+    ...snapshot.alerts.map((item) => item.dueTs ?? item.eventTs),
+    ...snapshot.focusItems.map((item) => item.eventTs),
+    ...snapshot.importantEvents.map((item) => item.ts),
+  ];
+  const alertMatchingCount =
+    !periodBase.appliesFilter
+      ? alertItems.length
+      : alertItems.filter((value) => {
+          if (value == null) return false;
+          if (periodBase.fromTimestamp != null && value < periodBase.fromTimestamp) return false;
+          if (periodBase.toTimestamp != null && value > periodBase.toTimestamp) return false;
+          return true;
+        }).length;
+  const alertOutsideRangeCount =
+    !periodBase.appliesFilter
+      ? 0
+      : alertItems.filter((value) => {
+          if (value == null) return false;
+          if (periodBase.fromTimestamp != null && value < periodBase.fromTimestamp) return true;
+          if (periodBase.toTimestamp != null && value > periodBase.toTimestamp) return true;
+          return false;
+        }).length;
+  const statoOperativoPeriodMeta = buildFilterablePeriodMeta({
     context: periodBase,
-    noun: "rifornimenti",
-    totalCount: refuelPeriod.totalCount,
-    matchingCount: refuelPeriod.matchingCount,
-    outsideRangeCount: refuelPeriod.outsideRangeCount,
-    missingTimestampCount: refuelPeriod.missingTimestampCount,
+    noun: "segnali operativi",
+    totalCount: alertItems.length,
+    matchingCount: alertMatchingCount,
+    outsideRangeCount: alertOutsideRangeCount,
+    missingTimestampCount: alertItems.filter((value) => value == null).length,
   });
 
-  const documentItems = snapshot.documentCosts.snapshot?.items ?? [];
-  const documentPeriod = filterItemsByInternalAiReportPeriod<NextDocumentiCostiReadOnlyItem>(
-    documentItems,
-    (item) => item.sortTimestamp ?? item.timestamp,
-    periodBase,
-  );
-  const filteredPreventivi = documentPeriod.filteredItems.filter(
-    (item) => item.category === "preventivo",
-  );
-  const filteredFatture = documentPeriod.filteredItems.filter((item) => item.category === "fattura");
-  const filteredDocumentiUtili = documentPeriod.filteredItems.filter(
-    (item) => item.category === "documento_utile",
-  );
-  const documentsTotal = documentPeriod.filteredItems.length;
-  const savedAnalysisAvailable = Boolean(snapshot.analisiEconomica.snapshot?.savedAnalysis);
-  const documentPeriodMeta = buildFilterablePeriodMeta({
-    context: periodBase,
-    noun: "documenti e costi",
-    totalCount: documentPeriod.totalCount,
-    matchingCount: documentPeriod.matchingCount,
-    outsideRangeCount: documentPeriod.outsideRangeCount,
-    missingTimestampCount: documentPeriod.missingTimestampCount,
-  });
-
-  const materialiTotal = snapshot.materialiMovimenti.snapshot?.counts.total ?? 0;
-  const materialiPeriodMeta = buildStaticPeriodMeta(
-    periodBase,
-    "La sezione materiali resta fuori filtro: il layer combina date e match legacy non abbastanza uniformi per un periodo affidabile del report.",
-  );
   const identitaPeriodMeta = buildStaticPeriodMeta(
     periodBase,
-    "La sezione identita mezzo e anagrafica e non rappresenta eventi temporali filtrabili.",
+    "La sezione identita mezzo e anagrafica non rappresenta eventi temporali filtrabili.",
   );
-  const analisiPeriodMeta = buildStaticPeriodMeta(
+  const revisionePeriodMeta = buildStaticPeriodMeta(
     periodBase,
-    "L'analisi economica salvata e uno snapshot legacy puntuale: il report la mostra come contesto, senza rifiltrarne la copertura storica.",
+    "Le revisioni restano un segnale di stato corrente del mezzo e non uno storico filtrato per evento.",
   );
 
   const periodContext = withPeriodNotes(periodBase, [
     periodBase.appliesFilter
-      ? "Filtro periodo applicato davvero a lavori, manutenzioni, rifornimenti e documenti/costi con data leggibile."
-      : "Il report mostra tutto lo storico disponibile delle sezioni lette nel clone.",
-      periodBase.appliesFilter
-      ? "Identita mezzo, movimenti materiali e analisi economica restano visibili come contesto non filtrabile."
+      ? "Filtro periodo applicato davvero a lavori, manutenzioni e segnali D10 con data leggibile."
+      : "Il report mostra tutto il perimetro disponibile della prima verticale letto nel clone.",
+    periodBase.appliesFilter
+      ? "Identita mezzo e revisione restano visibili come contesto operativo anche fuori filtro stretto."
       : "",
   ]);
 
   const missingData = buildMissingData(snapshot, periodContext);
-
-  const documentSectionStatus: InternalAiVehicleReportSectionStatus =
-    snapshot.documentCosts.status === "error"
-      ? "errore"
-      : documentsTotal > 0
-        ? mapSectionStateToStatus({
-            state: snapshot.documentCosts,
-            visibleCount: documentsTotal,
-            availableCount: documentItems.length,
-            context: periodBase,
-          })
-        : savedAnalysisAvailable
-          ? "parziale"
-          : mapSectionStateToStatus({
-              state: snapshot.documentCosts,
-              visibleCount: documentsTotal,
-              availableCount: documentItems.length,
-              context: periodBase,
-            });
-
-  const documentSectionSummary = (() => {
-    if (documentsTotal > 0 && savedAnalysisAvailable) {
-      return `Trovati ${documentsTotal} documenti/costi collegati al mezzo nel periodo attivo; e disponibile anche una analisi economica legacy salvata fuori filtro.`;
-    }
-
-    if (documentsTotal > 0) {
-      return `Trovati ${documentsTotal} documenti/costi collegati al mezzo nel periodo attivo.`;
-    }
-
-    if (savedAnalysisAvailable) {
-      return periodBase.appliesFilter && documentItems.length > 0
-        ? "Nessun documento o costo ricade nel periodo attivo, ma e disponibile una analisi economica legacy salvata fuori filtro."
-        : "Nessun documento/costo utile collegato alla targa, ma e disponibile una analisi economica legacy salvata come contesto read-only.";
-    }
-
-    return periodBase.appliesFilter && documentItems.length > 0
-      ? "Nessun documento o costo ricade nel periodo attivo, ma il layer documentale e disponibile."
-      : "Nessun documento o costo utile collegato alla targa.";
-  })();
-
-  const documentSourceCountLabel = savedAnalysisAvailable
-    ? documentsTotal > 0
-      ? `${documentsTotal} documenti/costi nel periodo + 1 analisi salvata`
-      : "1 analisi salvata"
-    : formatCountLabel(documentsTotal, "documenti/costi nel periodo");
+  const latestMaintenance = manutenzioniPeriod.filteredItems[0] ?? manutenzioniItems[0] ?? null;
+  const activeRevision = snapshot.revisioni[0] ?? null;
+  const revisionTone =
+    activeRevision?.classe && activeRevision.classe.toLowerCase().includes("scad")
+      ? "warning"
+      : snapshot.mezzo.dataScadenzaRevisione
+        ? "default"
+        : "warning";
 
   const sections: InternalAiVehicleReportSection[] = [
     createSection({
       id: "identita-mezzo",
       title: "Identita mezzo",
       status: "completa",
-      summary: "Intestazione mezzo costruita dall'anagrafica flotta in sola lettura.",
+      summary: "Intestazione mezzo costruita dal reader anagrafico D01 in sola lettura.",
       bullets: [
         `Targa: ${snapshot.mezzo.targa}`,
-        `Categoria: ${snapshot.mezzo.categoria ?? "Non disponibile"}`,
-        `Marca e modello: ${snapshot.mezzo.marcaModello ?? "Non disponibile"}`,
-        `Autista: ${snapshot.mezzo.autistaNome ?? "Non disponibile"}`,
+        `Categoria: ${snapshot.mezzo.categoria || "Non disponibile"}`,
+        `Marca e modello: ${snapshot.mezzo.marcaModello || "Non disponibile"}`,
+        `Autista dichiarato: ${snapshot.mezzo.autistaNome || "Non disponibile"}`,
+        `Scadenza revisione: ${snapshot.mezzo.dataScadenzaRevisione || "Non disponibile"}`,
       ],
-      notes: takeNotes(snapshot.overview.technicalLimitations, 2),
+      notes: takeNotes(snapshot.mezzo.flags, 3),
       period: identitaPeriodMeta,
     }),
     createSection({
-      id: "lavori-operativita",
-      title: "Lavori e operativita tecnica",
+      id: "stato-operativo",
+      title: "Stato operativo, alert e focus",
       status: mapSectionStateToStatus({
-        state: snapshot.lavori,
+        visibleCount:
+          snapshot.alerts.length + snapshot.focusItems.length + snapshot.importantEvents.length,
+        availableCount:
+          snapshot.alerts.length + snapshot.focusItems.length + snapshot.importantEvents.length,
+        context: periodBase,
+      }),
+      summary:
+        snapshot.alerts.length + snapshot.focusItems.length > 0
+          ? `Trovati ${snapshot.alerts.length} alert e ${snapshot.focusItems.length} focus leggibili per la targa.`
+          : "Nessun alert o focus attivo leggibile per la targa nel cockpit D10.",
+      bullets: [
+        `Alert visibili: ${snapshot.alerts.length}`,
+        `Focus operativi: ${snapshot.focusItems.length}`,
+        `Sessioni attive correlate: ${snapshot.sessioni.length}`,
+        `Eventi Home importanti: ${snapshot.importantEvents.length}`,
+      ],
+      notes: takeNotes(
+        [
+          ...snapshot.alerts.slice(0, 2).map((item) => `${item.title}: ${item.detailText}`),
+          ...snapshot.focusItems.slice(0, 2).map((item) => `${item.title}: ${item.detailText}`),
+          ...takeNotes(snapshot.statoOperativo.limitations, 2),
+        ],
+        4,
+      ),
+      period: statoOperativoPeriodMeta,
+    }),
+    createSection({
+      id: "revisione",
+      title: "Revisione e scadenze",
+      status: activeRevision || snapshot.mezzo.dataScadenzaRevisione ? "completa" : "vuota",
+      summary: activeRevision
+        ? `Segnale revisione attivo: ${activeRevision.classe}.`
+        : snapshot.mezzo.dataScadenzaRevisione
+          ? `Scadenza revisione disponibile in anagrafica: ${snapshot.mezzo.dataScadenzaRevisione}.`
+          : "Scadenza revisione non disponibile per il mezzo.",
+      bullets: [
+        `Scadenza anagrafica: ${snapshot.mezzo.dataScadenzaRevisione || "non disponibile"}`,
+        `Classe D10: ${activeRevision?.classe ?? "nessuna evidenza urgente"}`,
+        `Data D10: ${formatDateFromTimestamp(activeRevision?.scadenzaTs ?? null)}`,
+        `Autista associato: ${activeRevision?.autistaNome ?? snapshot.mezzo.autistaNome ?? "non disponibile"}`,
+      ],
+      notes: takeNotes(activeRevision ? activeRevision.flags : [], 2),
+      period: revisionePeriodMeta,
+    }),
+    createSection({
+      id: "lavori-operativita",
+      title: "Lavori e backlog tecnico",
+      status: mapSectionStateToStatus({
         visibleCount: lavoriPeriod.filteredItems.length,
         availableCount: lavoriItems.length,
         context: periodBase,
@@ -456,249 +502,110 @@ function buildReport(
         lavoriPeriod.filteredItems.length > 0
           ? `Trovati ${lavoriPeriod.filteredItems.length} lavori collegati alla targa nel periodo attivo.`
           : periodBase.appliesFilter && lavoriItems.length > 0
-            ? "Nessun lavoro ricade nel periodo attivo, ma il layer lavori e disponibile."
-            : "Nessun lavoro collegato alla targa nel perimetro in sola lettura.",
+            ? "Nessun lavoro ricade nel periodo attivo, ma il layer D02 resta disponibile."
+            : "Nessun lavoro collegato alla targa nel layer D02.",
       bullets: [
         `Da eseguire: ${lavoriDaEseguire.length}`,
         `In attesa: ${lavoriInAttesa.length}`,
         `Eseguiti: ${lavoriEseguiti.length}`,
-        `Storico tecnico: ${maintenancePeriod.filteredItems.length} manutenzioni lette nel periodo`,
+        `Urgenza alta nel periodo: ${lavoriPeriod.filteredItems.filter((item) => item.urgenza === "alta").length}`,
       ],
-      notes: [
-        ...(snapshot.lavori.error ? [snapshot.lavori.error] : []),
-        ...takeNotes(snapshot.lavori.snapshot?.limitations),
-      ],
+      notes: takeNotes(
+        lavoriPeriod.filteredItems.slice(0, 3).map((item) => item.descrizione ?? "Lavoro senza descrizione"),
+        3,
+      ),
       period: lavoriPeriodMeta,
     }),
     createSection({
-      id: "manutenzioni-gomme",
-      title: "Manutenzioni e gomme",
+      id: "manutenzioni",
+      title: "Manutenzioni e storico tecnico",
       status: mapSectionStateToStatus({
-        state: snapshot.maintenance,
-        visibleCount: maintenancePeriod.filteredItems.length + gommePeriod.filteredItems.length,
-        availableCount: maintenanceItems.length + gommeItems.length,
+        visibleCount: manutenzioniPeriod.filteredItems.length,
+        availableCount: manutenzioniItems.length,
         context: periodBase,
       }),
       summary:
-        maintenancePeriod.filteredItems.length > 0 || gommePeriod.filteredItems.length > 0
-          ? `Trovate ${maintenancePeriod.filteredItems.length} manutenzioni e ${gommePeriod.filteredItems.length} eventi gomme nel periodo attivo (${gommeStrongMatches} match forti, ${gommePlausibleMatches} plausibili).`
-          : periodBase.appliesFilter && (maintenanceItems.length > 0 || gommeItems.length > 0)
-            ? "Nessuna manutenzione o evento gomme ricade nel periodo attivo, ma il layer dedicato e disponibile."
-            : "Nessuna manutenzione o evento gomme disponibile per il mezzo nel layer dedicato.",
+        manutenzioniPeriod.filteredItems.length > 0
+          ? `Trovate ${manutenzioniPeriod.filteredItems.length} manutenzioni nel periodo attivo.`
+          : periodBase.appliesFilter && manutenzioniItems.length > 0
+            ? "Nessuna manutenzione ricade nel periodo attivo, ma lo storico tecnico D02 resta disponibile."
+            : "Nessuna manutenzione leggibile per il mezzo nel layer D02.",
       bullets: [
-        `Manutenzioni con km: ${maintenancePeriod.filteredItems.filter((item) => item.km !== null).length}`,
-        `Manutenzioni con ore: ${maintenancePeriod.filteredItems.filter((item) => item.ore !== null).length}`,
-        `Eventi gomme: ${gommePeriod.filteredItems.length} (${gommeFromMaintenance} da manutenzioni, ${gommeFromTmp + gommeFromOfficial} da dataset gomme)`,
-        `Match gomme: ${gommeStrongMatches} forti, ${gommePlausibleMatches} plausibili`,
-        `Stato manutenzione programmata: ${
-          snapshot.maintenance.snapshot?.scheduledMaintenance.status ?? "non disponibile"
-        }`,
+        `Manutenzioni nel periodo: ${manutenzioniPeriod.filteredItems.length}`,
+        `Con km valorizzati: ${manutenzioniPeriod.filteredItems.filter((item) => item.km != null).length}`,
+        `Con ore valorizzate: ${manutenzioniPeriod.filteredItems.filter((item) => item.ore != null).length}`,
+        `Ultimo intervento: ${latestMaintenance?.data ?? "non disponibile"}`,
       ],
-      notes: [
-        ...(snapshot.maintenance.error ? [snapshot.maintenance.error] : []),
-        ...(gommePlausibleMatches > 0
-          ? [
-              `${gommePlausibleMatches} eventi gomme del periodo sono collegati solo da targa di contesto e restano copertura plausibile, non conferma forte del mezzo.`,
-            ]
-          : []),
-        ...((snapshot.maintenance.snapshot?.counts.gommeDeduplicateConManutenzione ?? 0) > 0
-          ? [
-              `${snapshot.maintenance.snapshot?.counts.gommeDeduplicateConManutenzione ?? 0} eventi gomme extra sono stati deduplicati rispetto alle manutenzioni per evitare doppio conteggio.`,
-            ]
-          : []),
-        ...takeNotes(snapshot.maintenance.snapshot?.limitations),
-      ],
-      period: maintenancePeriodMeta,
-    }),
-    createSection({
-      id: "rifornimenti",
-      title: "Rifornimenti",
-      status: mapSectionStateToStatus({
-        state: snapshot.refuels,
-        visibleCount: refuelsTotal,
-        availableCount: refuelItems.length,
-        context: periodBase,
-      }),
-      summary:
-        refuelsTotal > 0
-          ? `Trovati ${refuelsTotal} rifornimenti per la targa nel periodo attivo.`
-          : periodBase.appliesFilter && refuelItems.length > 0
-            ? "Nessun rifornimento ricade nel periodo attivo, ma il layer D04 e disponibile."
-            : "Nessun rifornimento utile letto per questa targa.",
-      bullets: [
-        `Record con km: ${refuelPeriod.filteredItems.filter((item) => item.km !== null).length}`,
-        `Record con costo: ${refuelPeriod.filteredItems.filter((item) => item.costo !== null).length}`,
-        `Litri totali: ${refuelPeriod.filteredItems.reduce((sum, item) => sum + (item.litri ?? 0), 0)}`,
-        `Costo totale noto: ${refuelPeriod.filteredItems.reduce((sum, item) => sum + (item.costo ?? 0), 0)}`,
-      ],
-      notes: [
-        ...(snapshot.refuels.error ? [snapshot.refuels.error] : []),
-        ...takeNotes(snapshot.refuels.snapshot?.limitations),
-      ],
-      period: refuelPeriodMeta,
-    }),
-    createSection({
-      id: "materiali",
-      title: "Movimenti materiali",
-      status:
-        snapshot.materialiMovimenti.status === "error"
-          ? "errore"
-          : materialiTotal > 0
-            ? "parziale"
-            : "vuota",
-      summary:
-        materialiTotal > 0
-          ? `Trovati ${materialiTotal} movimenti materiali collegabili alla targa nel quadro generale read-only.`
-          : "Nessun movimento materiali collegabile in modo affidabile al mezzo.",
-      bullets: [
-        `Match targa esplicita: ${snapshot.materialiMovimenti.snapshot?.counts.matchedByExplicitTarga ?? 0}`,
-        `Match da destinatario: ${
-          (snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioLabelTarga ?? 0) +
-          (snapshot.materialiMovimenti.snapshot?.counts.matchedByDestinatarioRefId ?? 0)
-        }`,
-        `Movimenti con costo: ${snapshot.materialiMovimenti.snapshot?.counts.withCost ?? 0}`,
-        `Documenti supporto costo: ${snapshot.materialiMovimenti.snapshot?.materialCostSupport.documentCount ?? 0}`,
-      ],
-      notes: [
-        ...(snapshot.materialiMovimenti.error ? [snapshot.materialiMovimenti.error] : []),
-        ...takeNotes(snapshot.materialiMovimenti.snapshot?.limitations),
-      ],
-      period: materialiPeriodMeta,
-    }),
-    createSection({
-      id: "documenti-costi",
-      title: "Documenti, costi e analisi",
-      status: documentSectionStatus,
-      summary: documentSectionSummary,
-      bullets: [
-        `Preventivi: ${filteredPreventivi.length}`,
-        `Fatture: ${filteredFatture.length}`,
-        `Documenti utili: ${filteredDocumentiUtili.length}`,
-        `Analisi economica salvata: ${snapshot.analisiEconomica.snapshot?.savedAnalysis ? "Si" : "No"}`,
-      ],
-      notes: [
-        ...(snapshot.documentCosts.error ? [snapshot.documentCosts.error] : []),
-        ...takeNotes(snapshot.documentCosts.snapshot?.limitations),
-        ...takeNotes(snapshot.analisiEconomica.snapshot?.limitations),
-      ],
-      period: documentPeriodMeta,
+      notes: takeNotes(
+        manutenzioniPeriod.filteredItems
+          .slice(0, 3)
+          .map((item) => item.descrizione ?? item.tipo ?? "Manutenzione senza descrizione"),
+        3,
+      ),
+      period: manutenzioniPeriodMeta,
     }),
   ];
 
   const sources: InternalAiVehicleReportSource[] = [
     createSource({
       id: "anagrafica",
-      title: "Anagrafica flotta",
+      title: NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.name,
       status: "disponibile",
-      description: "Identita mezzo letta dal layer in sola lettura delle anagrafiche NEXT.",
-      datasetLabels: ["storage/@mezzi_aziendali"],
+      description: "Identita mezzo letta dal reader canonico D01 della flotta NEXT.",
+      datasetLabels: [...NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.logicalDatasets],
       countLabel: "1 mezzo letto",
-      notes: [],
+      notes: takeNotes(snapshot.mezzo.flags, 2),
       period: identitaPeriodMeta,
     }),
     createSource({
-      id: "lavori",
-      title: snapshot.lavori.snapshot?.domainName ?? "Lavori",
+      id: "stato-operativo",
+      title: NEXT_CENTRO_CONTROLLO_DOMAIN.name,
       status: mapSourceStatus({
-        state: snapshot.lavori,
+        visibleCount:
+          snapshot.alerts.length +
+          snapshot.focusItems.length +
+          snapshot.importantEvents.length +
+          snapshot.revisioni.length,
+        availableCount:
+          snapshot.alerts.length +
+          snapshot.focusItems.length +
+          snapshot.importantEvents.length +
+          snapshot.revisioni.length,
+        context: periodBase,
+      }),
+      description: "Alert, revisioni, focus e segnali Home letti dal read model D10 in sola lettura.",
+      datasetLabels: [...NEXT_CENTRO_CONTROLLO_DOMAIN.logicalDatasets],
+      countLabel: `${snapshot.alerts.length} alert, ${snapshot.focusItems.length} focus, ${snapshot.revisioni.length} revisioni`,
+      notes: takeNotes(snapshot.statoOperativo.limitations, 3),
+      period: statoOperativoPeriodMeta,
+    }),
+    createSource({
+      id: "lavori",
+      title: "Lavori mezzo-centrici",
+      status: mapSourceStatus({
         visibleCount: lavoriPeriod.filteredItems.length,
         availableCount: lavoriItems.length,
         context: periodBase,
       }),
-      description: "Lettura in sola lettura dei lavori mezzo-centrici gia normalizzati nel clone.",
-      datasetLabels: snapshot.lavori.snapshot
-        ? [...snapshot.lavori.snapshot.logicalDatasets]
-        : ["storage/@lavori"],
+      description: "Lavori letti dal reader D02 dei lavori mezzo-centrici gia normalizzati nel clone.",
+      datasetLabels: ["@lavori"],
       countLabel: formatCountLabel(lavoriPeriod.filteredItems.length, "lavori nel periodo"),
-      notes: takeNotes(snapshot.lavori.snapshot?.limitations),
+      notes: [],
       period: lavoriPeriodMeta,
     }),
     createSource({
       id: "manutenzioni",
-      title: snapshot.maintenance.snapshot?.domainName ?? "Manutenzioni e gomme",
+      title: NEXT_OPERATIVITA_TECNICA_DOMAIN.name,
       status: mapSourceStatus({
-        state: snapshot.maintenance,
-        visibleCount: maintenancePeriod.filteredItems.length + gommePeriod.filteredItems.length,
-        availableCount: maintenanceItems.length + gommeItems.length,
+        visibleCount: manutenzioniPeriod.filteredItems.length,
+        availableCount: manutenzioniItems.length,
         context: periodBase,
       }),
-      description:
-        "Storico manutenzioni e convergenza eventi gomme letti dai layer NEXT dedicati, con distinzione tra match forti e plausibili.",
-      datasetLabels: snapshot.maintenance.snapshot
-        ? [...snapshot.maintenance.snapshot.logicalDatasets]
-        : [
-            "storage/@manutenzioni",
-            "storage/@mezzi_aziendali",
-            "storage/@cambi_gomme_autisti_tmp",
-            "storage/@gomme_eventi",
-          ],
-      countLabel: `${maintenancePeriod.filteredItems.length} manutenzioni, ${gommePeriod.filteredItems.length} eventi gomme`,
-      notes: takeNotes(snapshot.maintenance.snapshot?.limitations),
-      period: maintenancePeriodMeta,
-    }),
-    createSource({
-      id: "rifornimenti",
-      title: snapshot.refuels.snapshot?.domainName ?? "Rifornimenti",
-      status: mapSourceStatus({
-        state: snapshot.refuels,
-        visibleCount: refuelsTotal,
-        availableCount: refuelItems.length,
-        context: periodBase,
-      }),
-      description: "Rifornimenti letti con merge in sola lettura tra dataset business e feed campo.",
-      datasetLabels: snapshot.refuels.snapshot
-        ? [
-            snapshot.refuels.snapshot.activeReadOnlyDataset,
-            ...snapshot.refuels.snapshot.supportingReadOnlyDatasets,
-          ]
-        : ["storage/@rifornimenti", "storage/@rifornimenti_autisti_tmp"],
-      countLabel: formatCountLabel(refuelsTotal, "record nel periodo"),
-      notes: takeNotes(snapshot.refuels.snapshot?.limitations),
-      period: refuelPeriodMeta,
-    }),
-    createSource({
-      id: "materiali",
-      title: snapshot.materialiMovimenti.snapshot?.domainName ?? "Movimenti materiali",
-      status:
-        snapshot.materialiMovimenti.status === "error"
-          ? "errore"
-          : materialiTotal > 0
-            ? "parziale"
-            : "parziale",
-      description: "Movimenti materiali ricostruiti dal layer mezzo-centrico in sola lettura del clone.",
-      datasetLabels: snapshot.materialiMovimenti.snapshot
-        ? [...snapshot.materialiMovimenti.snapshot.logicalDatasets]
-        : ["storage/@materialiconsegnati"],
-      countLabel: formatCountLabel(materialiTotal, "movimenti totali"),
-      notes: takeNotes(snapshot.materialiMovimenti.snapshot?.limitations),
-      period: materialiPeriodMeta,
-    }),
-    createSource({
-      id: "documenti-costi",
-      title: snapshot.documentCosts.snapshot?.domainName ?? "Documenti e costi",
-      status: mapSourceStatus({
-        state: snapshot.documentCosts,
-        visibleCount: documentsTotal,
-        availableCount: documentItems.length,
-        context: periodBase,
-      }),
-      description: "Documenti e costi letti dai layer documentali ed economici in sola lettura del clone.",
-      datasetLabels: snapshot.documentCosts.snapshot
-        ? [...snapshot.documentCosts.snapshot.activeReadOnlyDatasets]
-        : ["storage/@costiMezzo", "@documenti_mezzi", "@documenti_magazzino", "@documenti_generici"],
-      countLabel: documentSourceCountLabel,
-      notes: takeNotes(snapshot.documentCosts.snapshot?.limitations),
-      period: documentPeriodMeta,
-    }),
-    createSource({
-      id: "analisi-economica",
-      title: "Analisi economica salvata",
-      status: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "disponibile" : "parziale",
-      description: "Verifica in sola lettura dell'eventuale snapshot legacy di analisi economica.",
-      datasetLabels: ["@analisi_economica_mezzi"],
-      countLabel: snapshot.analisiEconomica.snapshot?.savedAnalysis ? "1 analisi trovata" : null,
-      notes: takeNotes(snapshot.analisiEconomica.snapshot?.limitations),
-      period: analisiPeriodMeta,
+      description: "Manutenzioni lette dal reader D02 dedicato all'operativita tecnica del mezzo.",
+      datasetLabels: [...NEXT_OPERATIVITA_TECNICA_DOMAIN.logicalDatasets],
+      countLabel: formatCountLabel(manutenzioniPeriod.filteredItems.length, "manutenzioni nel periodo"),
+      notes: [],
+      period: manutenzioniPeriodMeta,
     }),
   ];
 
@@ -709,7 +616,7 @@ function buildReport(
     mezzoTarga: snapshot.mezzo.targa,
     title: `Anteprima report targa ${snapshot.mezzo.targa}`,
     subtitle:
-      "Report costruito in sola lettura dai layer NEXT gia esistenti, con contesto periodo esplicito e senza scritture.",
+      "Report della prima verticale D01 + D10 + D02, costruito in sola lettura dai reader NEXT canonici e senza scritture.",
     generatedAt,
     header: {
       targa: snapshot.mezzo.targa,
@@ -722,45 +629,113 @@ function buildReport(
     },
     cards: [
       {
-        label: "Lavori",
-        value: String(lavoriPeriod.filteredItems.length),
-        meta: `Da eseguire ${lavoriDaEseguire.length}, in attesa ${lavoriInAttesa.length}, eseguiti ${lavoriEseguiti.length}`,
-        tone: lavoriPeriod.filteredItems.length > 0 ? "success" : "warning",
+        label: "Alert e focus",
+        value: String(snapshot.alerts.length + snapshot.focusItems.length),
+        meta: `Revisioni ${snapshot.revisioni.length}, eventi Home ${snapshot.importantEvents.length}`,
+        tone: snapshot.alerts.length + snapshot.focusItems.length > 0 ? "warning" : "default",
       },
       {
-        label: "Manutenzioni e gomme",
-        value: String(maintenancePeriod.filteredItems.length + gommePeriod.filteredItems.length),
-        meta: `Eventi gomme ${gommePeriod.filteredItems.length} (forti ${gommeStrongMatches}, plausibili ${gommePlausibleMatches})`,
-        tone:
-          maintenancePeriod.filteredItems.length > 0 || gommePeriod.filteredItems.length > 0
-            ? "success"
-            : "warning",
+        label: "Revisione",
+        value: snapshot.mezzo.dataScadenzaRevisione || "n/d",
+        meta: activeRevision ? `Stato D10: ${activeRevision.classe}` : "Nessun alert revisione urgente",
+        tone: revisionTone,
       },
       {
-        label: "Rifornimenti",
-        value: String(refuelsTotal),
-        meta: `Litri totali ${refuelPeriod.filteredItems.reduce((sum, item) => sum + (item.litri ?? 0), 0)}`,
-        tone: refuelsTotal > 0 ? "success" : "warning",
+        label: "Lavori aperti",
+        value: String(snapshot.operativita.counts.lavoriAperti),
+        meta: `In attesa ${snapshot.operativita.lavoriAperti.filter((item) => item.matchesDossierInAttesaView).length}`,
+        tone: snapshot.operativita.counts.lavoriAperti > 0 ? "warning" : "default",
       },
       {
-        label: "Documenti e costi",
-        value: String(documentsTotal),
-        meta: `Preventivi ${filteredPreventivi.length}, fatture ${filteredFatture.length}`,
-        tone: documentsTotal > 0 ? "success" : "warning",
+        label: "Manutenzioni",
+        value: String(snapshot.operativita.counts.manutenzioni),
+        meta: `Ultimo intervento ${latestMaintenance?.data ?? "non disponibile"}`,
+        tone: snapshot.operativita.counts.manutenzioni > 0 ? "success" : "warning",
       },
     ],
     periodContext,
     sections,
     missingData,
-    evidences: [
-      ...snapshot.overview.keySignals,
-      ...snapshot.overview.readerLabels,
+    evidences: uniqueStrings([
+      `Reader anagrafico: ${NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.code}`,
+      `Reader stato operativo: ${NEXT_CENTRO_CONTROLLO_DOMAIN.code}`,
+      `Reader tecnico: ${NEXT_OPERATIVITA_TECNICA_DOMAIN.code}`,
       `Periodo attivo: ${periodContext.label}`,
-      `Blocchi importati: ${snapshot.overview.importedBlockLabels.join(", ") || "nessuno"}`,
-    ].filter(Boolean),
+      ...snapshot.alerts.slice(0, 2).map((item) => item.title),
+      ...snapshot.operativita.lavoriAperti.slice(0, 2).map((item) => item.descrizione ?? "lavoro"),
+      ...snapshot.operativita.manutenzioni
+        .slice(0, 2)
+        .map((item) => item.descrizione ?? item.tipo ?? "manutenzione"),
+    ]),
     sources,
     previewState: previewStates.previewState,
     approvalState: previewStates.approvalState,
+  };
+}
+
+export async function readInternalAiVehicleVerticalSnapshot(
+  rawTarga: string,
+): Promise<InternalAiVehicleVerticalReadResult> {
+  const normalizedTarga = normalizeNextMezzoTarga(rawTarga);
+  if (!normalizedTarga) {
+    return {
+      status: "invalid_query",
+      normalizedTarga: null,
+      message: "Inserisci una targa valida prima di interrogare la verticale mezzo/Home/tecnica.",
+      snapshot: null,
+    };
+  }
+
+  const [mezzo, operativita, statoOperativo] = await Promise.all([
+    readNextMezzoByTarga(normalizedTarga),
+    readNextMezzoOperativitaTecnicaSnapshot(normalizedTarga),
+    readNextStatoOperativoSnapshot(),
+  ]);
+
+  if (!mezzo) {
+    return {
+      status: "not_found",
+      normalizedTarga,
+      message: `Nessun mezzo trovato nel clone in sola lettura per la targa ${normalizedTarga}.`,
+      snapshot: null,
+    };
+  }
+
+  const alerts = statoOperativo.alerts.filter((item) => item.mezzoTarga === normalizedTarga);
+  const focusItems = statoOperativo.focusItems.filter((item) => item.mezzoTarga === normalizedTarga);
+  const revisioni = statoOperativo.revisioni.filter((item) => item.targa === normalizedTarga);
+  const sessioni = statoOperativo.sessioni.filter(
+    (item) => item.targaMotrice === normalizedTarga || item.targaRimorchio === normalizedTarga,
+  );
+  const importantEvents = statoOperativo.importantAutistiItems.filter(
+    (item) => normalizeNextMezzoTarga(item.targa) === normalizedTarga,
+  );
+
+  return {
+    status: "ready",
+    normalizedTarga,
+    message: `Verticale mezzo/Home/tecnica letta in sola lettura per la targa ${normalizedTarga}.`,
+    snapshot: {
+      mezzo,
+      operativita,
+      statoOperativo,
+      alerts,
+      focusItems,
+      revisioni,
+      sessioni,
+      importantEvents,
+      sourceDatasetLabels: uniqueStrings([
+        ...NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.logicalDatasets,
+        ...NEXT_OPERATIVITA_TECNICA_DOMAIN.logicalDatasets,
+        ...NEXT_CENTRO_CONTROLLO_DOMAIN.logicalDatasets,
+      ]),
+      limitations: uniqueStrings([
+        "Prima verticale consolidata: D01 anagrafica mezzo, D10 stato operativo e D02 operativita tecnica.",
+        "Le pagine clone Home e Centro Controllo restano superfici UI; la lettura canonica per la chat passa dai read model NEXT.",
+        ...takeNotes(statoOperativo.limitations, 3),
+        "D04, D05, D06, D07 e D08 restano fuori verticale consolidata in questo step.",
+      ]),
+    },
   };
 }
 
@@ -768,42 +743,30 @@ export async function readInternalAiVehicleReportPreview(
   rawTarga: string,
   periodInput?: InternalAiReportPeriodInput,
 ): Promise<InternalAiVehicleReportReadResult> {
-  const normalizedTarga = normalizeNextMezzoTarga(rawTarga);
   const periodContext = resolveInternalAiReportPeriodContext(periodInput);
-
-  if (!normalizedTarga) {
-    return {
-      status: "invalid_query",
-      normalizedTarga: null,
-      message: "Inserisci una targa valida prima di avviare l'anteprima.",
-      report: null,
-    };
-  }
-
   if (!periodContext.isValid) {
     return {
       status: "invalid_query",
-      normalizedTarga,
+      normalizedTarga: normalizeNextMezzoTarga(rawTarga) || null,
       message: "Il periodo selezionato non e valido. Controlla le date da e a prima di generare l'anteprima.",
       report: null,
     };
   }
 
-  const snapshot = await readNextDossierMezzoCompositeSnapshot(normalizedTarga);
-
-  if (!snapshot) {
+  const result = await readInternalAiVehicleVerticalSnapshot(rawTarga);
+  if (result.status !== "ready") {
     return {
-      status: "not_found",
-      normalizedTarga,
-      message: `Nessun mezzo trovato nel clone in sola lettura per la targa ${normalizedTarga}.`,
+      status: result.status,
+      normalizedTarga: result.normalizedTarga,
+      message: result.message,
       report: null,
     };
   }
 
   return {
     status: "ready",
-    normalizedTarga,
-    message: `Anteprima report generata in sola lettura per la targa ${normalizedTarga} con periodo ${periodContext.label}.`,
-    report: buildReport(snapshot, periodInput),
+    normalizedTarga: result.normalizedTarga,
+    message: `Anteprima report generata in sola lettura per la targa ${result.normalizedTarga} nel perimetro D01 + D10 + D02 con periodo ${periodContext.label}.`,
+    report: buildReport(result.snapshot, periodInput),
   };
 }

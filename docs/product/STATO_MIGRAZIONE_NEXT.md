@@ -1105,6 +1105,157 @@ Serve a:
   - `npm run build` -> OK
   - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx` -> OK
 
+## 5.49 Aggiornamento 2026-03-24 - Chat IA consolidata sulla prima verticale D01 + D10 + D02
+- Il clone `/next/ia/interna` e stato riallineato alla prima verticale mezzo/Home/tecnica senza aprire nuovi domini o backend:
+  - `D01` anagrafica mezzo;
+  - `D10` stato operativo, alert e revisioni della Home;
+  - `D02` backlog lavori e manutenzioni tecniche.
+- Cosa migliora davvero:
+  - il catalogo capability e il planner della chat espongono solo stato mezzo e report targa come capability mezzo-centriche governate;
+  - il thread dichiara in modo esplicito i limiti verso domini esterni e non prova piu a trattare rifornimenti, costi, documenti, preventivi o autisti come se fossero gia consolidati;
+  - il `report targa` e lo `stato mezzo` leggono ora i reader canonici NEXT della prima verticale, invece del composito Dossier largo;
+  - la pagina `/next/ia/interna` rende piu chiari i use case, i chip di contesto e i limiti del thread senza introdurre nuovi pannelli tecnici.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessuna espansione di infrastruttura IA;
+  - nessun nuovo tipo di output oltre risposta breve, analisi strutturata, report targa e mappa file/moduli.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+
+## 5.50 Aggiornamento 2026-03-24 - Chat IA dominio-first con prudenza fuori verticale
+- Il clone `/next/ia/interna` classifica ora le richieste per domini canonici del gestionale invece di trattarle come insieme sparso di schermate o capability isolate.
+- Comportamento verificato:
+  - la prima verticale `D01 + D10 + D02` resta la sola area forte della chat;
+  - i domini `D03`, `D04`, `D05`, `D06`, `D07`, `D08`, `D09` non vengono resi deep-operativi, ma vengono riconosciuti e restituiscono una risposta prudente con dominio, file/moduli, capability oggi disponibili, limiti e prossimo passo corretto;
+  - il thread mostra ora in modo sobrio dominio riconosciuto, livello di affidabilita e tipo di output usato.
+- Perimetro tecnico della patch:
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/NextInternalAiPage.tsx`
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessuna espansione infrastrutturale IA;
+  - nessun nuovo tipo di output oltre a risposta breve, analisi strutturata, report/PDF e file/moduli gia esistenti.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+
+## 5.51 Aggiornamento 2026-03-24 - Capability canonica `stato_operativo_mezzo`
+- Il clone `/next/ia/interna` ha ora un percorso principale piccolo e canonico per richieste di stato mezzo/targa.
+- Comportamento verificato:
+  - il routing priorizza `stato_operativo_mezzo` per richieste come `dimmi lo stato del mezzo`, `come sta oggi la targa`, `che problemi/alert/lavori ha questa targa`;
+  - la capability compone solo tre reader canonici NEXT: `D01` anagrafica flotta, `D10` stato operativo cockpit, `D02` backlog tecnico;
+  - l'output resta nel thread come `chat_structured` sobrio e leggibile;
+  - il `report targa` resta separato e secondario come capability PDF/preview.
+- Cosa NON cambia:
+  - nessun uso di `Mezzo360`, `Home` legacy, `CentroControllo` legacy o Dossier largo come fonte canonica primaria;
+  - nessuna riapertura dei domini `D03-D09`;
+  - nessuna modifica alla madre o nuovi backend live.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts` -> OK
+
+## 5.52 Aggiornamento 2026-03-24 - Unified Intelligence Engine e console unica
+- Il clone `/next/ia/interna` usa ora un motore unificato read-only che legge e intreccia le fonti mappate nel documento canonico dati, senza toccare la madre.
+- Componenti verificati:
+  - `src/next/domain/nextUnifiedReadRegistryDomain.ts` introduce adapter read-only prudente per documenti `storage`, collection Firestore, prefix Storage e chiavi `localStorage` isolate;
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts` costruisce il Global Read Registry, applica linking entita per chiavi strutturali e genera una query unificata capace di produrre `chat_structured`, report, modale e PDF riusando i renderer gia presenti;
+  - `src/next/NextInternalAiPage.tsx` espone una console unica con barra richiesta, filtri sobri per targa/ambiti/output e stato sintetico del registry, mantenendo il thread come centro dell'esperienza;
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`, `internalAiChatOrchestratorBridge.ts` e `internalAiOutputSelector.ts` instradano ora il motore unificato senza perdere gli artifact o far ricadere il risultato su classificazioni tecniche come focus primario.
+- Copertura e limiti:
+  - le fonti con reader NEXT pulito vengono lette tramite reader canonici;
+  - le fonti sporche, `tmp` o senza reader dedicato entrano comunque nel registry tramite adapter read-only prudente, con note e limiti espliciti;
+  - la configurazione `@impostazioni_app/gemini` resta solo censita e guardata, non letta lato client;
+  - la persistenza risultati continua a riusare il repository artifact gia esistente del sottosistema IA, senza nuove scritture business.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/domain/nextUnifiedReadRegistryDomain.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts` -> OK
+  - `npm run build` -> OK
+
+## 5.53 Aggiornamento 2026-03-24 - Report unificato professionale e PDF aziendale
+- Il clone `/next/ia/interna` mostra ora i report targa del motore unificato come report gestionali veri, senza rimettere al centro note tecniche o dettagli da sviluppatore.
+- Componenti verificati:
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts` costruisce un layer di presentazione professionale read-only che arricchisce il report con foto mezzo, configurazione collegata motrice/rimorchio/centina e blocco gomme;
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx` rende in UI il report professionale con header aziendale, sintesi esecutiva, dati mezzo, foto reale, grafica gomme e appendice tecnica secondaria;
+  - `src/next/internal-ai/internalAiReportPdf.ts` instrada i report targa verso il PDF professionale e mantiene il fallback legacy per report non targa;
+  - `src/utils/pdfEngine.ts` espone ora un builder branded per i report operativi IA, riusando il logo e il layout ufficiali del progetto;
+  - `src/next/NextInternalAiPage.tsx` sostituisce il vecchio dump tecnico del report con il nuovo renderer gestionale e chiarisce le CTA `Apri report professionale` e `Genera PDF`.
+- Copertura e limiti:
+  - il report mostra la foto reale del mezzo solo se `fotoUrl` o `fotoStoragePath` sono davvero risolvibili;
+  - la configurazione collegata viene mostrata solo quando una sessione `D10` collega in modo prudente la targa a motrice/rimorchio e la relativa anagrafica `D01` e leggibile;
+  - il report gomme usa la stessa grafica del modale gomme esistente tramite `TruckGommeSvg` e `wheelGeom`, ma asse/lato restano `da verificare` quando il dato legacy non e dimostrabile;
+  - le note tecniche, limiti e fonti restano in appendice secondaria e non dominano il corpo principale.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts` -> OK
+  - `npm run build` -> OK
+  - `npx eslint src/utils/pdfEngine.ts` -> NON VERDE per debito lint storico gia presente nel file, non introdotto da questa patch
+
+## 5.54 Aggiornamento 2026-03-24 - Pulizia UI della console IA NEXT
+- Il clone `/next/ia/interna` e stato ripulito lato UI/usabilita senza riaprire il motore unificato o la logica dati.
+- Cosa migliora davvero:
+  - la chat e ora chiaramente la parte centrale e dominante della pagina;
+  - la colonna destra mette in evidenza i report richiesti/salvati raggruppati per targa quando il legame e presente;
+  - le richieste rapide sono entrate in un menu a tendina compatto invece di occupare spazio con chip ripetuti;
+  - il campo principale usa solo la label `Targa` e mostra subito autosuggest progressivo dalle targhe reali gia lette dal catalogo NEXT;
+  - il rumore UI viene declassato in una sezione avanzata collassata, evitando contatori, scaffolding tecnico e pannelli diagnostici in primo piano.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun backend live nuovo;
+  - nessun refactor del motore unificato oltre al wiring minimo del layer visivo.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> OK
+  - `npm run build` -> OK
+
+## 5.55 Aggiornamento 2026-03-24 - Rifinitura UI console IA e gerarchia report/PDF
+- Il clone `/next/ia/interna` e stato ulteriormente ripulito nel primo piano visivo, con interventi limitati a UI pagina, renderer report professionale e PDF.
+- Cosa migliora davvero:
+  - la testata superiore e ora minima e non mette piu al centro `Panoramica` o chip rumorosi;
+  - `Richieste rapide` sta dentro il composer, vicino a `Targa` e `Output`, invece di occupare spazio sopra la chat;
+  - i filtri rapidi hanno ora una logica visiva chiara: neutri da spenti, evidenziati da attivi;
+  - la ricerca avanzata e i blocchi tecnici spariscono dal primo piano della pagina;
+  - il report professionale mostra in alto identita mezzo a sinistra e foto a destra, con sezioni piu leggibili;
+  - il PDF targa segue la stessa gerarchia, con blocco mezzo in apertura e titoli di sezione piu distinti.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun backend live nuovo;
+  - nessun refactor del motore unificato o dei reader.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx` -> OK
+  - `npx eslint src/utils/pdfEngine.ts` -> NON OK per debito lint storico gia presente nel file condiviso
+  - `npm run build` -> OK
+
+## 5.56 Aggiornamento 2026-03-24 - Rifinitura finale overview IA, PDF utente e blocco gomme
+- L'overview di `/next/ia/interna` e stata ulteriormente semplificata senza toccare il motore unificato: nel primo piano restano di fatto stream chat, composer con filtri rapidi e colonna destra report.
+- Cosa cambia davvero:
+  - il hero `Console IA`, il testo introduttivo, i link `Archivio report` / `Tecnico` e il messaggio iniziale statico dell'assistente non dominano piu l'overview;
+  - la colonna destra mostra solo `Report corrente` e `Report per targa`, senza strumenti tecnici aggiuntivi;
+  - il report professionale standard in UI non mostra piu appendice tecnica, fonti considerate o note da sviluppatore;
+  - il PDF utente standard non genera piu sezioni tecniche finali, mantenendo solo header, blocco mezzo, sintesi e sezioni operative;
+  - il report gomme esplicita correttamente il coinvolgimento `asse intero` e non usa piu `lato da verificare` quando l'evento identifica l'asse completo.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessun backend live nuovo;
+  - nessuna scrittura business;
+  - nessun refactor del registry, entity linker o motore unificato.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiProfessionalVehicleReport.ts` -> OK
+  - `npm run build` -> OK
+  - `npx eslint src/utils/pdfEngine.ts` -> NON OK per debito lint storico preesistente
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;
