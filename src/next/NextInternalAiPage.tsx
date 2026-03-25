@@ -568,13 +568,18 @@ const CHAT_INTENT_LABELS: Record<InternalAiChatMessage["intent"], string> = {
   report_autista: "Report autista",
   report_combinato: "Report combinato",
   mezzo_dossier: "Analisi gestionale mezzo",
-  repo_understanding: "Home e file/moduli",
+  repo_understanding: "Repo, flussi e integrazione",
   capabilities: "Capability console IA",
   non_supportato: "Richiesta non supportata",
   richiesta_generica: "Richiesta generica",
 };
 
 const CHAT_SUGGESTIONS = [
+  "Se voglio semplificare il flusso rifornimenti, quali moduli e file sono collegati tra loro e dove conviene intervenire nella NEXT?",
+  "Se modifico il Dossier Mezzo, quali moduli e file rischio di impattare?",
+  "Voglio aggiungere un nuovo modulo nel gestionale: dove lo dovrei inserire, quali moduli esistenti toccherebbe e come lo gestiresti nel perimetro NEXT?",
+  "Questa logica vive nella madre, nella NEXT o nel backend IA? E quali file devo leggere per capirla bene?",
+  "Se voglio aggiungere una nuova funzione IA legata ai flussi operativi, qual e il punto corretto di integrazione?",
   "Crea un report sui rifornimenti di questo mese e dimmi la media km/l della targa TI233827",
   "Dimmi quali sono oggi i 3 mezzi che richiedono piu attenzione, incrociando scadenze, collaudi/pre-collaudi, segnalazioni, lavori aperti e criticita operative",
   "Se oggi dovessi controllare un solo mezzo, quale sceglieresti e perche?",
@@ -1389,6 +1394,40 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
 
   if (
     message.intent === "repo_understanding" &&
+    (normalized.includes("riforniment") || normalized.includes("semplificare il flusso"))
+  ) {
+    return "Flusso rifornimenti";
+  }
+
+  if (message.intent === "repo_understanding" && normalized.includes("dossier mezzo")) {
+    return "Impatto Dossier Mezzo";
+  }
+
+  if (
+    message.intent === "repo_understanding" &&
+    (normalized.includes("nuovo modulo") || normalized.includes("dove lo dovrei inserire"))
+  ) {
+    return "Integrazione modulo";
+  }
+
+  if (
+    message.intent === "repo_understanding" &&
+    (normalized.includes("backend ia") ||
+      normalized.includes("vive nella madre") ||
+      normalized.includes("vive nella next"))
+  ) {
+    return "Perimetro logica";
+  }
+
+  if (
+    message.intent === "repo_understanding" &&
+    (normalized.includes("funzione ia") || normalized.includes("flussi operativi"))
+  ) {
+    return "Integrazione IA";
+  }
+
+  if (
+    message.intent === "repo_understanding" &&
     (normalized.includes("file") || normalized.includes("modul"))
   ) {
     return "File e moduli";
@@ -1423,7 +1462,7 @@ function buildChatContextChips(message: InternalAiChatMessage): string[] {
   const reliabilityLabel = buildChatReliabilityLabel(message);
 
   if (message.intent === "repo_understanding") {
-    chips.push("home/repo");
+    chips.push("repo/flussi");
   }
 
   if (domainLabel) {
@@ -1445,6 +1484,14 @@ function buildChatContextChips(message: InternalAiChatMessage): string[] {
     message.references.some((reference) => reference.label.toLowerCase().includes("home.tsx"))
   ) {
     chips.push("home");
+  }
+
+  if (normalized.includes("integrazione")) {
+    chips.push("integrazione");
+  }
+
+  if (normalized.includes("backend ia") || normalized.includes("madre") || normalized.includes("next")) {
+    chips.push("perimetri");
   }
 
   if (
@@ -1501,7 +1548,7 @@ function buildChatDomainLabel(message: InternalAiChatMessage): string | null {
   }
 
   if (message.intent === "repo_understanding") {
-    return "Perimetro mezzo/Home";
+    return "Repo, flussi e integrazione NEXT";
   }
 
   return null;
@@ -5545,11 +5592,12 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               <h2>Chat interna controllata</h2>
             </div>
             <p className="next-panel__description">
-              Scrivi una richiesta libera in italiano. La capability canonica di questa V1 e lo
-              stato operativo mezzo sulla prima verticale D01 + D10 + D02: anagrafica mezzo, stato
-              operativo Home e operativita tecnica. Usa reader NEXT read-only come fonte canonica,
-              dichiara i limiti quando la richiesta sconfina e tiene il report targa come capability
-              distinta nell&apos;anteprima PDF.
+              Scrivi una richiesta libera in italiano. Il nucleo forte resta lo stato operativo
+              mezzo sulla prima verticale D01 + D10 + D02, ma la console puo ora aiutare anche su
+              repo, flussi, moduli collegati, impatti file/layer e punti corretti di integrazione
+              nel perimetro NEXT. Usa reader NEXT read-only e snapshot repo/UI controllate come
+              fonti canoniche, dichiara i limiti quando la richiesta sconfina e tiene il report
+              targa come capability distinta nell&apos;anteprima PDF.
             </p>
             <div className="internal-ai-pill-row" style={{ marginBottom: 12 }}>
               <span className="internal-ai-pill is-neutral">D01 anagrafica mezzo</span>
@@ -5972,8 +6020,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             <div className="internal-ai-secondary-panel__body">
             <p className="next-panel__description">
               Il backend IA separato costruisce una snapshot read-only di documenti architetturali,
-              macro-aree, pattern UI e relazioni tra schermate, cosi la nuova IA puo spiegare il
-              gestionale senza trasformarsi in un agente che modifica il repository.
+              macro-aree, pattern UI, relazioni tra schermate e layer repo, cosi la nuova IA puo
+              spiegare meglio flussi reali, moduli collegati, file candidati e punti di
+              integrazione senza trasformarsi in un agente che modifica il repository.
             </p>
             <div className="internal-ai-button-row">
               <button
@@ -6377,8 +6426,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     </div>
                     <p className="next-panel__description">
                       La nuova IA usa questa matrice per dire dove conviene integrare una funzione
-                      futura: modulo giusto, superficie giusta e file candidati coerenti col flusso
-                      reale del gestionale.
+                      futura: modulo giusto, superficie giusta, file candidati e confine corretto
+                      tra madre, NEXT e backend IA rispetto al flusso reale del gestionale.
                     </p>
                     <div className="internal-ai-list" style={{ marginTop: 16 }}>
                       {repoUnderstandingState.snapshot.integrationGuidance.map((entry) => (

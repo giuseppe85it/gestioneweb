@@ -210,7 +210,64 @@ const FILE_TOUCH_PATTERNS = [
   "mappa file",
 ];
 
-const REPO_UNDERSTANDING_PATTERNS = [...HOME_ANALYSIS_PATTERNS, ...FILE_TOUCH_PATTERNS];
+const FLOW_ANALYSIS_PATTERNS = [
+  "semplificare il flusso",
+  "semplifico questo flusso",
+  "spiegami i moduli collegati a questo flusso",
+  "moduli collegati a questo flusso",
+  "quali moduli e file sono collegati",
+  "dove conviene intervenire",
+  "flusso rifornimenti",
+  "quali dipendenze rischio di rompere",
+];
+
+const DOSSIER_IMPACT_PATTERNS = [
+  "dossier mezzo",
+  "dossier mezzi",
+  "se modifico il dossier mezzo",
+  "quali moduli e file rischio di impattare",
+  "rischio di impattare",
+];
+
+const MODULE_INSERTION_PATTERNS = [
+  "nuovo modulo",
+  "aggiungere un nuovo modulo",
+  "aggiungere modulo",
+  "dove lo dovrei inserire",
+  "dove va inserito",
+  "dove va messo",
+  "quali moduli esistenti toccherebbe",
+];
+
+const PERIMETER_ANALYSIS_PATTERNS = [
+  "questa logica vive",
+  "vive nella madre",
+  "vive nella next",
+  "backend ia",
+  "domain layer",
+  "domain/read model",
+  "read model",
+  "renderer",
+  "quali file devo leggere per capirla bene",
+];
+
+const IA_INTEGRATION_PATTERNS = [
+  "nuova funzione ia",
+  "funzione ia legata ai flussi operativi",
+  "punto corretto di integrazione",
+  "integrazione ia",
+  "capability ia",
+];
+
+const REPO_UNDERSTANDING_PATTERNS = [
+  ...HOME_ANALYSIS_PATTERNS,
+  ...FILE_TOUCH_PATTERNS,
+  ...FLOW_ANALYSIS_PATTERNS,
+  ...DOSSIER_IMPACT_PATTERNS,
+  ...MODULE_INSERTION_PATTERNS,
+  ...PERIMETER_ANALYSIS_PATTERNS,
+  ...IA_INTEGRATION_PATTERNS,
+];
 
 const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
   {
@@ -433,7 +490,15 @@ const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
   },
 ] as const;
 
-type RepoUnderstandingFocus = "home_analysis" | "file_touch" | "repo_support";
+type RepoUnderstandingFocus =
+  | "home_analysis"
+  | "file_touch"
+  | "flow_analysis"
+  | "dossier_impact"
+  | "module_integration"
+  | "perimeter_analysis"
+  | "ia_integration"
+  | "repo_support";
 
 function normalizePrompt(prompt: string): string {
   return prompt
@@ -518,9 +583,10 @@ function buildDomainDecoration(
 
   if (result.intent === "repo_understanding") {
     return {
-      domainLabel: detectRepoUnderstandingFocus(prompt) === "home_analysis"
-        ? "D10 Stato operativo, alert e promemoria"
-        : FIRST_VERTICAL_DOMAIN_LABEL,
+      domainLabel:
+        detectRepoUnderstandingFocus(prompt) === "home_analysis"
+          ? "D10 Stato operativo, alert e promemoria"
+          : "Repo, flussi e integrazione NEXT",
       reliabilityLabel: "Parziale",
       structuredOutputLabel: "analisi strutturata",
     };
@@ -800,6 +866,26 @@ function parseIntent(prompt: string): ParsedIntent {
 function detectRepoUnderstandingFocus(prompt: string): RepoUnderstandingFocus {
   const normalized = normalizePrompt(prompt);
 
+  if (IA_INTEGRATION_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "ia_integration";
+  }
+
+  if (PERIMETER_ANALYSIS_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "perimeter_analysis";
+  }
+
+  if (MODULE_INSERTION_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "module_integration";
+  }
+
+  if (DOSSIER_IMPACT_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "dossier_impact";
+  }
+
+  if (FLOW_ANALYSIS_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "flow_analysis";
+  }
+
   if (FILE_TOUCH_PATTERNS.some((pattern) => normalized.includes(pattern))) {
     return "file_touch";
   }
@@ -885,6 +971,37 @@ function buildUnsupportedResponse(prompt: string): InternalAiChatTurnResult {
   };
 }
 
+function buildRepoStructuredFallback(args: {
+  summary: string[];
+  modules: string[];
+  readFirst: string[];
+  perimeter: string[];
+  whereIntervene: string[];
+  impact: string[];
+  integrationPoint: string[];
+  action: string[];
+  references: InternalAiChatMessageReference[];
+}): InternalAiChatTurnResult {
+  const sections = [
+    `Sintesi breve:\n${args.summary.map((entry) => `- ${entry}`).join("\n")}`,
+    `Moduli collegati:\n${args.modules.map((entry) => `- ${entry}`).join("\n")}`,
+    `File/layer da leggere prima:\n${args.readFirst.map((entry) => `- ${entry}`).join("\n")}`,
+    `Perimetro logica:\n${args.perimeter.map((entry) => `- ${entry}`).join("\n")}`,
+    `Dove intervenire:\n${args.whereIntervene.map((entry) => `- ${entry}`).join("\n")}`,
+    `Rischio impatto:\n${args.impact.map((entry) => `- ${entry}`).join("\n")}`,
+    `Punto consigliato di integrazione:\n${args.integrationPoint.map((entry) => `- ${entry}`).join("\n")}`,
+    `Azione consigliata:\n${args.action.map((entry) => `- ${entry}`).join("\n")}`,
+  ];
+
+  return {
+    intent: "repo_understanding",
+    status: "partial",
+    assistantText: sections.join("\n\n"),
+    references: args.references,
+    report: null,
+  };
+}
+
 async function buildRepoUnderstandingFallbackResponse(
   prompt: string,
 ): Promise<InternalAiChatTurnResult> {
@@ -931,6 +1048,324 @@ async function buildRepoUnderstandingFallbackResponse(
       ],
       report: null,
     };
+  }
+
+  if (focus === "flow_analysis") {
+    return buildRepoStructuredFallback({
+      summary: [
+        "Il flusso rifornimenti non va semplificato partendo dalla pagina madre o dal thread IA.",
+        "Il punto corretto e il layer D04 della NEXT, perche da li passano Dossier Mezzo, dossier rifornimenti, analisi economica e output IA fuel.",
+      ],
+      modules: [
+        "Dossier Mezzo",
+        "Dossier Rifornimenti",
+        "Analisi Economica",
+        "IA interna NEXT",
+      ],
+      readFirst: [
+        "docs/data/DOMINI_DATI_CANONICI.md",
+        "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
+        "src/next/domain/nextRifornimentiDomain.ts",
+        "src/next/nextRifornimentiConsumiDomain.ts",
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/NextDossierRifornimentiPage.tsx",
+        "src/next/NextRifornimentiEconomiaSection.tsx",
+        "src/pages/DossierRifornimenti.tsx",
+      ],
+      perimeter: [
+        "Madre: `src/pages/DossierRifornimenti.tsx` serve solo per capire il flusso reale, non per patchare.",
+        "NEXT: `src/next/*` e il perimetro dove correggere lettura, mapping e superfici read-only.",
+        "Domain/read model: D04 nella NEXT e il punto di verita del clone per rifornimenti e consumi.",
+        "Backend IA: legge e spiega il risultato del read model, non deve ricostruire D04 da zero.",
+      ],
+      whereIntervene: [
+        "Prima sul layer D04 e sulla normalizzazione dei rifornimenti, poi sulle pagine dossier/rifornimenti e solo infine sui renderer IA.",
+      ],
+      impact: [
+        "ELEVATO: una modifica sbagliata su D04 si riflette su dossier, analisi economica e capability IA rifornimenti.",
+      ],
+      integrationPoint: [
+        "Reader D04 e read model NEXT, non nuova logica sparsa nelle pagine o nel backend IA.",
+      ],
+      action: [
+        "Mappa sorgenti, regole di normalizzazione e consumatori del dato fuel; poi accorpa la logica duplicata nel layer NEXT e lascia la UI come renderer.",
+      ],
+      references: [
+        {
+          type: "architecture_doc",
+          label: "D04 Rifornimenti e consumi",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/domain/nextRifornimentiDomain.ts",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/nextRifornimentiConsumiDomain.ts",
+          targa: null,
+        },
+        {
+          type: "integration_guidance",
+          label: "Integrazione consigliata: Dossier Mezzo",
+          targa: null,
+        },
+      ],
+    });
+  }
+
+  if (focus === "dossier_impact") {
+    return buildRepoStructuredFallback({
+      summary: [
+        "Il Dossier Mezzo e un aggregatore detail-first: modificarlo non tocca solo una pagina, ma piu viste targa-centriche collegate.",
+        "Il rischio principale e rompere il read model condiviso tra dettaglio mezzo, rifornimenti, analisi economica e capability IA mezzo-centriche.",
+      ],
+      modules: [
+        "Lista Dossier Mezzi",
+        "Dossier Mezzo",
+        "Dossier Rifornimenti",
+        "Dossier Gomme",
+        "Analisi Economica",
+        "IA interna NEXT",
+      ],
+      readFirst: [
+        "docs/STATO_ATTUALE_PROGETTO.md",
+        "docs/product/STATO_MIGRAZIONE_NEXT.md",
+        "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/NextMezziDossierPage.tsx",
+        "src/next/NextDossierMezzoPage.tsx",
+        "src/next/NextDossierRifornimentiPage.tsx",
+        "src/next/NextAnalisiEconomicaPage.tsx",
+        "src/next/internal-ai/internalAiVehicleDossierHookFacade.ts",
+        "src/pages/DossierMezzo.tsx",
+      ],
+      perimeter: [
+        "Madre: la pagina legacy dossier serve come riferimento del flusso reale.",
+        "NEXT: qui vivono il clone dossier e le sue estensioni read-only.",
+        "Domain/read model: `src/next/domain/nextDossierMezzoDomain.ts` e il nodo da controllare prima di cambiare la UI.",
+        "Backend IA: i casi mezzo-centrici leggono il dossier tramite hook/facade, quindi vanno verificati a valle.",
+      ],
+      whereIntervene: [
+        "Prima sul domain/read model del dossier, poi su `NextDossierMezzoPage.tsx` e infine sulle pagine/section derivate.",
+      ],
+      impact: [
+        "ELEVATO: puoi impattare ingressi lista, blocchi dossier, rifornimenti, analisi economica e capability IA mezzo-centriche.",
+      ],
+      integrationPoint: [
+        "Il punto corretto resta il read model dossier nella NEXT, con superfici collegate che lo consumano in sola lettura.",
+      ],
+      action: [
+        "Verifica sempre ingressi, estensioni dossier e hook IA collegati prima di toccare il dettaglio mezzo.",
+      ],
+      references: [
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/domain/nextDossierMezzoDomain.ts",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/NextDossierMezzoPage.tsx",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/internal-ai/internalAiVehicleDossierHookFacade.ts",
+          targa: null,
+        },
+        {
+          type: "integration_guidance",
+          label: "Integrazione consigliata: Dossier Mezzo",
+          targa: null,
+        },
+      ],
+    });
+  }
+
+  if (focus === "module_integration") {
+    return buildRepoStructuredFallback({
+      summary: [
+        "Un nuovo modulo non va inserito partendo da una route nuova a caso.",
+        "Il primo passo corretto e classificare l'owner del flusso: Dossier se targa-centrico, Centro di Controllo se globale/priorita, Gestione Operativa se workbench condiviso, IA interna se funzione assistiva.",
+      ],
+      modules: [
+        "Shell NEXT",
+        "Dossier Mezzo",
+        "Centro di Controllo",
+        "Gestione Operativa",
+        "IA interna NEXT",
+      ],
+      readFirst: [
+        "docs/STRUTTURA_COMPLETA_GESTIONALE.md",
+        "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
+        "docs/product/STATO_MIGRAZIONE_NEXT.md",
+        "src/next/NextShell.tsx",
+        "src/next/nextStructuralPaths.ts",
+        "src/next/NextDossierMezzoPage.tsx",
+        "src/next/NextCentroControlloPage.tsx",
+        "src/next/NextInternalAiPage.tsx",
+      ],
+      perimeter: [
+        "Madre: utile solo per capire dove il flusso esiste gia davvero.",
+        "NEXT: qui scegli macro-area owner, route e superficie del nuovo modulo.",
+        "Domain/read model: se il modulo legge dati nuovi o sporchi, serve un layer dedicato prima della UI.",
+        "Backend IA: da toccare solo se il modulo e una capability assistiva o un retrieval server-side controllato.",
+      ],
+      whereIntervene: [
+        "Parti dalla macro-area owner del flusso e non da una pagina autonoma creata in anticipo.",
+      ],
+      impact: [
+        "ELEVATO: se sbagli ownership crei duplicazioni tra dossier, cockpit, workbench globali e IA.",
+      ],
+      integrationPoint: [
+        "Macro-area owner nella NEXT; route, tab, card o capability arrivano solo dopo la classificazione del modulo.",
+      ],
+      action: [
+        "Scegli owner, sorgente dati e read model; poi apri il minimo innesto coerente nella NEXT.",
+      ],
+      references: [
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/nextStructuralPaths.ts",
+          targa: null,
+        },
+        {
+          type: "integration_guidance",
+          label: "Integrazione consigliata: Shell NEXT / macro-area owner",
+          targa: null,
+        },
+        {
+          type: "architecture_doc",
+          label: "Struttura completa del gestionale",
+          targa: null,
+        },
+      ],
+    });
+  }
+
+  if (focus === "perimeter_analysis") {
+    return buildRepoStructuredFallback({
+      summary: [
+        "Per capire dove vive una logica devi separare madre, NEXT, backend IA, domain/read model e renderer UI.",
+        "La regola pratica e: documentazione prima, read model NEXT dopo, UI clone come superficie, madre come riferimento storico e backend IA solo se la capability passa dal server.",
+      ],
+      modules: [
+        "Madre legacy",
+        "NEXT clone read-only",
+        "Backend IA separato",
+        "Domain/read model NEXT",
+        "Renderer/UI",
+        "Documentazione di verita",
+      ],
+      readFirst: [
+        "docs/STATO_ATTUALE_PROGETTO.md",
+        "docs/data/DOMINI_DATI_CANONICI.md",
+        "docs/product/STATO_MIGRAZIONE_NEXT.md",
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/NextDossierMezzoPage.tsx",
+        "src/pages/DossierMezzo.tsx",
+        "backend/internal-ai/server/internal-ai-adapter.js",
+        "backend/internal-ai/server/internal-ai-repo-understanding.js",
+      ],
+      perimeter: [
+        "Madre: `src/pages/*` descrive il flusso legacy reale ma non si modifica.",
+        "NEXT: `src/next/*` e il perimetro di evoluzione del clone.",
+        "Domain/read model: e il punto corretto per logica, mapping e normalizzazione.",
+        "Renderer/UI: mostra la superficie ma non dovrebbe essere il reader canonico.",
+        "Backend IA: serve per orchestrazione, repo understanding e retrieval server-side controllato.",
+      ],
+      whereIntervene: [
+        "Intervieni nel layer owner: domain per logica, backend IA per orchestrazione server-side, UI per rendering.",
+      ],
+      impact: [
+        "NORMALE se rispetti l'ordine di lettura; sale a ELEVATO se confondi page clone, logica dati e backend IA.",
+      ],
+      integrationPoint: [
+        "Il layer owner del flusso, non il primo file UI che trovi aperto.",
+      ],
+      action: [
+        "Leggi i file nell'ordine corretto e non far nascere la logica dal renderer.",
+      ],
+      references: [
+        {
+          type: "architecture_doc",
+          label: "Stato attuale del progetto",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "File chiave: backend/internal-ai/server/internal-ai-repo-understanding.js",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/domain/nextDossierMezzoDomain.ts",
+          targa: null,
+        },
+      ],
+    });
+  }
+
+  if (focus === "ia_integration") {
+    return buildRepoStructuredFallback({
+      summary: [
+        "Una nuova funzione IA sui flussi operativi non va agganciata direttamente alla madre o a una pagina business.",
+        "Il punto corretto e sopra il read model NEXT e dentro l'orchestrazione IA, con output selector e pagina IA come renderer finale.",
+      ],
+      modules: [
+        "IA interna NEXT",
+        "Backend IA separato",
+        "Dossier Mezzo",
+        "Centro di Controllo",
+      ],
+      readFirst: [
+        "docs/product/CHECKLIST_IA_INTERNA.md",
+        "docs/product/STATO_MIGRAZIONE_NEXT.md",
+        "docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md",
+        "src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts",
+        "src/next/internal-ai/internalAiChatOrchestrator.ts",
+        "src/next/internal-ai/internalAiOutputSelector.ts",
+        "src/next/NextInternalAiPage.tsx",
+        "backend/internal-ai/server/internal-ai-adapter.js",
+      ],
+      perimeter: [
+        "Madre: non deve diventare il backend della capability IA.",
+        "NEXT: contiene read model, orchestrazione locale e renderer della console IA.",
+        "Backend IA: va toccato solo se serve retrieval o chat server-side controllata.",
+        "Domain/read model: la capability deve leggere dati gia spiegabili e normalizzati.",
+      ],
+      whereIntervene: [
+        "Prima definisci il read model sorgente, poi l'orchestrazione IA e solo infine il wiring UI.",
+      ],
+      impact: [
+        "ELEVATO: se integri la capability nel punto sbagliato sporchi il nucleo business o trasformi l'IA in una UI parallela.",
+      ],
+      integrationPoint: [
+        "Read model NEXT -> orchestratore/motore IA -> output selector -> `NextInternalAiPage.tsx`; backend IA solo quando serve davvero lato server.",
+      ],
+      action: [
+        "Definisci input, output e limiti della capability prima di aprire nuovo wiring nel layer IA.",
+      ],
+      references: [
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/internal-ai/internalAiChatOrchestrator.ts",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "File chiave: src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts",
+          targa: null,
+        },
+        {
+          type: "integration_guidance",
+          label: "Integrazione consigliata: IA interna NEXT",
+          targa: null,
+        },
+      ],
+    });
   }
 
   if (focus === "file_touch") {
@@ -980,18 +1415,18 @@ async function buildRepoUnderstandingFallbackResponse(
     intent: "repo_understanding",
     status: "partial",
     assistantText:
-      "Nel perimetro V1 tengo il focus su due richieste repo/UI davvero utili: analisi Home operativa e mappa file/moduli da toccare.\n\n" +
-      "Qui la regola e semplice: le pagine UI spiegano la superficie, ma i reader canonici per la chat restano i layer NEXT read-only D10, D01 e D02.\n\n" +
-      'Prova con: "analizza la home operativa" oppure "quali file devo toccare nel perimetro mezzo/Home".',
+      "Nel perimetro attuale posso aiutarti anche su repo, flussi e integrazione, ma resto dentro un mapping controllato e read-only del clone.\n\n" +
+      "Regola pratica: documentazione di verita e read model NEXT vengono prima della UI, la madre resta solo leggibile e il backend IA serve per orchestrazione o repo understanding, non per scritture business.\n\n" +
+      'Prova con: "Se voglio semplificare il flusso rifornimenti...", "Se modifico il Dossier Mezzo...", "Questa logica vive nella madre, nella NEXT o nel backend IA?" oppure "Voglio aggiungere un nuovo modulo nel gestionale".',
     references: [
       {
         type: "repo_understanding",
-        label: "Perimetro repo/UI V1: Home operativa e file da toccare",
+        label: "Perimetro repo/flussi/integrazione clone-safe",
         targa: null,
       },
       {
         type: "safe_mode_notice",
-        label: "Reader canonici: D10, D01 e D02 NEXT read-only",
+        label: "Madre read-only, NEXT come perimetro di evoluzione, backend IA separato",
         targa: null,
       },
     ],
@@ -1012,7 +1447,10 @@ function buildGenericResponse(): InternalAiChatTurnResult {
       '- "Che lavori e manutenzioni aperte ha AB123CD"\n' +
       '- "Fammi un report della targa AB123CD ultimi 30 giorni"\n' +
       '- "Analizza la home operativa"\n' +
-      '- "Quali file devo toccare nel perimetro mezzo/Home"\n\n' +
+      '- "Quali file devo toccare nel perimetro mezzo/Home"\n' +
+      '- "Se modifico il Dossier Mezzo, quali moduli e file rischio di impattare?"\n' +
+      '- "Voglio aggiungere un nuovo modulo nel gestionale: dove lo dovrei inserire?"\n' +
+      '- "Questa logica vive nella madre, nella NEXT o nel backend IA?"\n\n' +
       "Se la richiesta sconfina su autisti, rifornimenti, costi, documenti o preventivi, dichiaro il limite e non invento coperture fuori dominio.",
     references: [
       {
@@ -1314,6 +1752,12 @@ export async function runInternalAiChatTurn(
   prompt: string,
   fallbackPeriodInput?: InternalAiReportPeriodInput,
 ): Promise<InternalAiChatTurnResult> {
+  const parsed = parseIntent(prompt);
+
+  if (parsed.intent === "repo_understanding") {
+    return decorateChatTurnResult(prompt, await buildRepoUnderstandingFallbackResponse(prompt));
+  }
+
   if (isInternalAiUnifiedIntelligenceCandidate(prompt)) {
     const unifiedResult = await runInternalAiUnifiedIntelligenceQuery(prompt, fallbackPeriodInput);
     if (unifiedResult) {
@@ -1321,11 +1765,7 @@ export async function runInternalAiChatTurn(
     }
   }
 
-  const parsed = parseIntent(prompt);
-
   switch (parsed.intent) {
-    case "repo_understanding":
-      return decorateChatTurnResult(prompt, await buildRepoUnderstandingFallbackResponse(prompt));
     case "capabilities":
       return decorateChatTurnResult(prompt, buildCapabilitiesResponse());
     case "non_supportato":

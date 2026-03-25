@@ -1840,3 +1840,30 @@ Stato macrofase: `NON FATTO`
     - `documenti rilevanti TI233827` -> thread `Costi e documenti`, risposta strutturata prudente con assenza dati dichiarata in modo esplicito
     - `storico decisionale mezzo TI233827 con costi, documenti e segnali utili` -> `Quadro mezzo`, usa il payload decisionale multi-dominio e mantiene costi/documenti come blocco prudente
     - `report/PDF sullo storico utile del mezzo TI233827` -> report `Quadro mezzo` coerente con thread e PDF, senza riaprire D06 o introdurre coverage fittizia
+
+### M.39 Assistente repo, flussi e integrazione per sviluppo interno
+- Stato: `FATTO`
+- Note: il `2026-03-25` la console `/next/ia/interna` e il backend IA separato sono stati rafforzati come assistente tecnico interno su repo, flussi reali e punti di integrazione, senza rifare il nucleo business della IA.
+- Cosa e stato chiuso:
+  - il repo understanding server-side espone ora anche una mappa pratica dei layer `madre / NEXT / backend IA / domain-read-model / renderer-UI / documentazione di verita` e un catalogo operativo di playbook su flussi, impatti e integrazione;
+  - le richieste repo/flussi non dipendono piu dal provider reale: il backend IA separato risponde in modo deterministico sopra snapshot read-only curata, con output fisso `Sintesi breve`, `Moduli collegati`, `File/layer da leggere prima`, `Dove intervenire`, `Rischio impatto`, `Punto consigliato di integrazione`, `Azione consigliata`;
+  - l'orchestrator locale riconosce ora anche analisi flusso, impatto Dossier Mezzo, inserimento nuovo modulo, distinzione madre/NEXT/backend IA e integrazione di nuove funzioni IA legate ai flussi operativi;
+  - il routing locale evita che i prompt repo/flussi vengano assorbiti dal motore business unificato quando arrivano dal composer della console con ambiti gia valorizzati;
+  - la UI della pagina IA aggiorna etichetta intent, prompt suggeriti e copy descrittivi per rendere esplicita la nuova funzione di assistente tecnico interno.
+- File/documenti collegati:
+  - `backend/internal-ai/server/internal-ai-repo-understanding.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/change-reports/2026-03-25_1545_assistente-repo-flussi-sviluppo-interno-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_1545_continuity_assistente-repo-flussi-sviluppo-interno-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js` -> OK
+  - smoke test reali lato endpoint `orchestrator.chat` del backend IA separato sui 5 prompt bussola:
+    - `Se voglio semplificare il flusso rifornimenti...` -> risposta `repo_understanding` con sezioni complete e `usedRealProvider=false`
+    - `Se modifico il Dossier Mezzo...` -> risposta `repo_understanding` con moduli/file impattati e rischio esplicito
+    - `Voglio aggiungere un nuovo modulo nel gestionale...` -> risposta `repo_understanding` con macro-area owner e punto di integrazione
+    - `Questa logica vive nella madre, nella NEXT o nel backend IA?...` -> risposta `repo_understanding` con distinzione perimetri e ordine di lettura file
+    - `Se voglio aggiungere una nuova funzione IA legata ai flussi operativi...` -> risposta `repo_understanding` con punto corretto di integrazione della capability IA

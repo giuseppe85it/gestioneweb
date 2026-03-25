@@ -31,6 +31,41 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-25 91
+- DATA: 2026-03-25
+- TITOLO MODIFICA: Assistente repo, flussi e integrazione per sviluppo interno nella console IA NEXT
+- OBIETTIVO: rafforzare la IA interna NEXT come assistente tecnico interno su repo, moduli collegati, impatti file/layer e inserimento corretto di nuovi moduli o capability, senza toccare la madre o il nucleo business gia chiuso.
+- FILE TOCCATI:
+  - `backend/internal-ai/server/internal-ai-repo-understanding.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiOutputSelector.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_1545_assistente-repo-flussi-sviluppo-interno-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_1545_continuity_assistente-repo-flussi-sviluppo-interno-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - il backend repo understanding espone ora anche layer architetturali chiari (`madre`, `NEXT`, `backend IA`, `domain/read model`, `renderer/UI`, `documentazione di verita`) e playbook pratici per flussi, impatti e integrazione;
+  - le richieste repo/flussi sul backend IA separato rispondono in modo deterministico sopra snapshot read-only, senza dipendere dal provider reale;
+  - l'orchestrator locale riconosce ora analisi flusso, impatto Dossier Mezzo, inserimento nuovo modulo, distinzione perimetri e integrazione IA, con output strutturato e concreto;
+  - corretto il routing locale per evitare che i prompt repo/flussi vengano intercettati dal motore business unificato solo perche il composer porta ambiti console precompilati;
+  - la pagina `/next/ia/interna` dichiara meglio la capability tecnica interna e propone i 5 prompt bussola nei suggerimenti rapidi.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la console espone ora meglio il ruolo di assistente tecnico interno e rende accessibili i prompt repo/flussi direttamente dai suggerimenti;
+  - Lettura: la IA distingue in modo piu netto madre, NEXT, backend IA e read model, e indica file/layer da leggere prima invece di elenchi generici;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna madre toccata, nessun bridge live riaperto.
+- COME VERIFICARE:
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js`;
+  - avviare il backend IA separato e inviare i 5 prompt bussola all'endpoint `orchestrator.chat`, verificando risposta `repo_understanding` con sezioni `Sintesi breve`, `Moduli collegati`, `File/layer da leggere prima`, `Perimetro logica`, `Dove intervenire`, `Rischio impatto`, `Punto consigliato di integrazione`, `Azione consigliata`;
+  - verificare che i prompt repo/flussi non cadano piu nel motore business unificato solo per gli ambiti console preimpostati.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il perimetro resta clone-safe e read-only: la capability aiuta a leggere il repo e a decidere dove intervenire, ma non applica patch automatiche.
+  - lo smoke principale e stato chiuso sul canale reale server-side `orchestrator.chat`, che e il runtime effettivo usato per le risposte repo/flussi della IA interna.
+
 ### Voce 2026-03-25 90
 - DATA: 2026-03-25
 - TITOLO MODIFICA: Priority engine operativo flotta per la console IA NEXT

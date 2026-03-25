@@ -33,6 +33,7 @@ import {
   writeInternalAiChatAttachmentFile,
 } from "./internal-ai-chat-attachments.js";
 import {
+  buildRepoOperationalAnswer,
   buildRepoUnderstandingMeta,
   buildRepoUnderstandingReferences,
   buildRepoUnderstandingSnapshot,
@@ -439,16 +440,6 @@ function buildControlledChatUserPayload(args) {
 }
 
 async function createControlledChatTurn(args) {
-  const providerClient = getProviderClient();
-  if (!providerClient) {
-    return {
-      ok: false,
-      reason: "provider_not_configured",
-      message:
-        "Provider reale non configurato nel runner server-side. Impostare `OPENAI_API_KEY` solo lato server per attivare la chat controllata.",
-    };
-  }
-
   const localTurn = normalizeChatLocalTurn(args.localTurn);
   if (!localTurn) {
     return {
@@ -464,6 +455,55 @@ async function createControlledChatTurn(args) {
     localTurn.intent === "repo_understanding" ||
     Boolean(memoryHints?.repoUiRequested);
   const repoSnapshot = repoQuestion ? await loadRepoUnderstandingSnapshot(false) : null;
+
+  if (repoQuestion && repoSnapshot) {
+    const deterministicRepoAnswer = buildRepoOperationalAnswer(args.prompt, repoSnapshot);
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "orchestrator.chat",
+        operation: "run_controlled_chat",
+        actorId: args.actorId,
+        requestId: args.requestId,
+        note:
+          "Chat repo/flussi/infrastruttura servita in modo deterministico dal backend IA separato sopra snapshot curata read-only.",
+        entityCount:
+          (repoSnapshot.documents?.length ?? 0) +
+          (repoSnapshot.integrationGuidance?.length ?? 0) +
+          (repoSnapshot.flowPlaybooks?.length ?? 0),
+      }),
+    );
+
+    return {
+      ok: true,
+      traceEntryId: traceEntry.id,
+      providerConfigured: isProviderConfigured(),
+      providerTarget: isProviderConfigured() ? getProviderTarget() : null,
+      usedRealProvider: false,
+      repoUnderstandingAvailable: Boolean(repoSnapshot?.builtAt),
+      transportMessage:
+        "Richiesta repo/flussi servita dal backend IA separato sopra snapshot curata, senza dipendere dal provider reale.",
+      result: {
+        intent: "repo_understanding",
+        status: "completed",
+        assistantText:
+          deterministicRepoAnswer?.assistantText || localTurn.assistantText,
+        references:
+          deterministicRepoAnswer?.references || buildRepoUnderstandingReferences(repoSnapshot),
+        report: null,
+      },
+    };
+  }
+
+  const providerClient = getProviderClient();
+  if (!providerClient) {
+    return {
+      ok: false,
+      reason: "provider_not_configured",
+      message:
+        "Provider reale non configurato nel runner server-side. Impostare `OPENAI_API_KEY` solo lato server per attivare la chat controllata.",
+    };
+  }
+
   const userPayload = buildControlledChatUserPayload({
     prompt: args.prompt,
     localTurn,
@@ -546,7 +586,11 @@ async function createControlledChatTurn(args) {
   return {
     ok: true,
     traceEntryId: traceEntry.id,
+    providerConfigured: true,
     providerTarget,
+    usedRealProvider: true,
+    transportMessage:
+      "Chat interna controllata servita dal backend IA separato con provider reale solo lato server.",
     repoUnderstandingAvailable: Boolean(repoSnapshot?.builtAt),
     result: {
       intent: repoQuestion ? "repo_understanding" : localTurn.intent,
@@ -1310,24 +1354,27 @@ app.post("/internal-ai-backend/orchestrator/chat", async (req, res) => {
       endpointId: "orchestrator.chat",
       status: "ok",
       message:
+        result.transportMessage ||
         "Chat interna controllata servita dal backend IA separato con provider reale solo lato server e fallback locale esplicito sul clone.",
       data: {
         operation: "run_controlled_chat",
         persistenceMode: "server_file_isolated",
         chatState: {
-          providerConfigured: true,
+          providerConfigured: result.providerConfigured,
           providerTarget: result.providerTarget,
           repoUnderstandingAvailable: result.repoUnderstandingAvailable,
         },
         summary: {
           intent: result.result.intent,
           status: result.result.status,
-          usedRealProvider: true,
+          usedRealProvider: result.usedRealProvider,
         },
         result: result.result,
         traceEntryId: result.traceEntryId,
         notes: [
-          "La chat usa OpenAI solo lato server e non espone segreti al client.",
+          result.usedRealProvider
+            ? "La chat usa OpenAI solo lato server e non espone segreti al client."
+            : "Le richieste repo/flussi sono servite dal backend IA separato in modo deterministico sopra snapshot read-only, anche senza provider reale.",
           "Le richieste repo/UI leggono solo la snapshot curata del repository e non autorizzano modifiche automatiche del codice.",
           "Le richieste report continuano a usare solo il contesto gia letto dal clone e non aprono scritture business.",
         ],

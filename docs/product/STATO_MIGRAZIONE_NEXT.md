@@ -1476,6 +1476,32 @@ Serve a:
     - `storico decisionale TI233827 con costi/documenti/segnali` -> `Quadro mezzo` coerente
     - `report/PDF sullo storico utile del mezzo` -> report/PDF coerenti con il thread
 
+## 5.65 Aggiornamento 2026-03-25 - Assistente repo, flussi e integrazione per sviluppo interno
+- La console `/next/ia/interna` e il backend IA separato aiutano ora anche come assistente tecnico interno su repo, moduli collegati, impatti file/layer e punto corretto di integrazione di moduli o capability future, senza riaprire il nucleo business della IA.
+- Cosa cambia davvero:
+  - il repo understanding server-side include ora anche una mappa pratica dei layer `madre`, `NEXT`, `backend IA`, `domain/read model`, `renderer/UI` e `documentazione di verita`;
+  - lo stesso snapshot espone un catalogo operativo di playbook su Home, file/moduli, flusso rifornimenti, Dossier Mezzo, inserimento nuovo modulo, perimetri logici e integrazione di nuove funzioni IA sui flussi operativi;
+  - le richieste repo/flussi non dipendono piu dal provider reale: il backend IA separato risponde in modo deterministico sopra snapshot read-only, con output pratico e sempre strutturato;
+  - l'orchestrator locale riconosce ora anche i prompt tecnici interni e li fa passare prima del motore business unificato, evitando che vengano assorbiti dai filtri `quadro/scadenze/...` della console;
+  - la UI della pagina IA dichiara in modo piu esplicito il nuovo ruolo tecnico interno, aggiorna etichette e aggiunge i 5 prompt bussola tra i suggerimenti rapidi.
+- Correzioni strutturali incluse:
+  - `Se voglio semplificare il flusso rifornimenti...` restituisce ora moduli collegati, file/layer da leggere, rischio impatto e punto corretto di intervento in NEXT;
+  - `Se modifico il Dossier Mezzo...` restituisce l'impatto sull'aggregatore mezzo-centrico invece di cadere nel motore business generico;
+  - `Voglio aggiungere un nuovo modulo nel gestionale...` propone ora la macro-area owner corretta, distinguendo dossier, cockpit globale, workbench operativi e IA interna;
+  - `Questa logica vive nella madre, nella NEXT o nel backend IA?...` separa esplicitamente i perimetri e l'ordine corretto di lettura dei file;
+  - `Se voglio aggiungere una nuova funzione IA legata ai flussi operativi...` indica ora il wiring corretto `read model -> orchestrazione IA -> output selector -> pagina IA`, con backend server-side solo se serve davvero.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun refactor largo del motore business unificato;
+  - nessuna knowledge base astratta fuori repo o agente autonomo che modifica codice.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js` -> OK
+  - smoke test reali lato endpoint `orchestrator.chat` del backend IA separato con i 5 prompt bussola -> tutti `OK`, `intent=repo_understanding`, sezioni complete, `usedRealProvider=false`
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

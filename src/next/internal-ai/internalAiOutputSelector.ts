@@ -37,6 +37,19 @@ const REPO_UI_PATTERNS = [
   "schermo",
   "file tocco",
   "quale file",
+  "integrazione",
+  "dove intervenire",
+  "nuovo modulo",
+  "dove va messo",
+  "dove inserirlo",
+  "moduli collegati",
+  "dipendenze",
+  "impatto",
+  "impattare",
+  "backend ia",
+  "domain layer",
+  "read model",
+  "renderer",
 ];
 
 const HOME_ANALYSIS_PATTERNS = [
@@ -59,6 +72,39 @@ const FILE_TOUCH_PATTERNS = [
   "moduli coinvolti",
   "file da toccare",
   "mappa file",
+];
+
+const FLOW_ANALYSIS_PATTERNS = [
+  "semplificare il flusso",
+  "moduli collegati a questo flusso",
+  "quali moduli e file sono collegati",
+  "dove conviene intervenire",
+  "quali dipendenze rischio di rompere",
+];
+
+const MODULE_INSERTION_PATTERNS = [
+  "nuovo modulo",
+  "aggiungere un nuovo modulo",
+  "dove lo dovrei inserire",
+  "dove va inserito",
+  "quali moduli esistenti toccherebbe",
+];
+
+const PERIMETER_ANALYSIS_PATTERNS = [
+  "questa logica vive",
+  "vive nella madre",
+  "vive nella next",
+  "backend ia",
+  "domain layer",
+  "read model",
+  "renderer",
+];
+
+const IA_INTEGRATION_PATTERNS = [
+  "nuova funzione ia",
+  "funzione ia",
+  "flussi operativi",
+  "punto corretto di integrazione",
 ];
 
 const DOMAIN_REFERENCE_PREFIX = "dominio rilevato:";
@@ -92,7 +138,7 @@ function buildDefaultReason(result: InternalAiChatTurnResult): string {
   }
 
   if (result.intent === "repo_understanding") {
-    return "La richiesta riguarda Home o file/moduli del perimetro mezzo: conviene una risposta strutturata in chat.";
+    return "La richiesta riguarda repo, flussi o integrazione della NEXT: conviene una risposta strutturata in chat.";
   }
 
   if (result.intent === "mezzo_dossier") {
@@ -109,6 +155,10 @@ function buildRepoUiReason(args: {
   const normalizedPrompt = normalizePrompt(args.prompt);
   const homeRequested = hasAnyPattern(normalizedPrompt, HOME_ANALYSIS_PATTERNS);
   const fileTouchRequested = hasAnyPattern(normalizedPrompt, FILE_TOUCH_PATTERNS);
+  const flowAnalysisRequested = hasAnyPattern(normalizedPrompt, FLOW_ANALYSIS_PATTERNS);
+  const moduleInsertionRequested = hasAnyPattern(normalizedPrompt, MODULE_INSERTION_PATTERNS);
+  const perimeterAnalysisRequested = hasAnyPattern(normalizedPrompt, PERIMETER_ANALYSIS_PATTERNS);
+  const iaIntegrationRequested = hasAnyPattern(normalizedPrompt, IA_INTEGRATION_PATTERNS);
 
   if (homeRequested) {
     if (args.memoryFreshness === "stale") {
@@ -132,6 +182,22 @@ function buildRepoUiReason(args: {
     }
 
     return "La richiesta punta ai file da toccare: la risposta resta strutturata in chat separando superfici Home, reader canonici e file IA del perimetro mezzo.";
+  }
+
+  if (flowAnalysisRequested) {
+    return "La richiesta riguarda collegamenti reali di un flusso: la risposta resta in chat con moduli collegati, file/layer da leggere e punto corretto di intervento.";
+  }
+
+  if (moduleInsertionRequested) {
+    return "La richiesta riguarda dove inserire un nuovo modulo: conviene una risposta strutturata in chat con macro-area owner, moduli toccati e punto di integrazione.";
+  }
+
+  if (perimeterAnalysisRequested) {
+    return "La richiesta chiede dove vive una logica tra madre, NEXT, backend IA e read model: la risposta resta in chat con perimetri chiari e ordine di lettura dei file.";
+  }
+
+  if (iaIntegrationRequested) {
+    return "La richiesta riguarda una nuova capability IA sui flussi operativi: conviene una risposta strutturata in chat con layer di integrazione e rischio dichiarato.";
   }
 
   if (args.memoryFreshness === "stale") {
