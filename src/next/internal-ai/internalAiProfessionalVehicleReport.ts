@@ -470,6 +470,10 @@ function buildScadenzeList(
   return dedupeStrings(collected).slice(0, 4);
 }
 
+function isDecisionalOverviewReport(report: InternalAiVehicleReportPreview): boolean {
+  return report.sections.some((section) => section.id.startsWith("decision-"));
+}
+
 function buildExecutiveSummary(args: {
   report: InternalAiVehicleReportPreview;
   mezzo: NextAnagraficheFlottaMezzoItem | null;
@@ -477,10 +481,33 @@ function buildExecutiveSummary(args: {
   sections: InternalAiProfessionalReportSection[];
   tyreVisual: InternalAiProfessionalReportTyreVisual | null;
 }): string[] {
+  if (isDecisionalOverviewReport(args.report)) {
+    const cardsByLabel = new Map(args.report.cards.map((card) => [card.label, card]));
+    const deadlines = args.sections.find((section) => section.id === "decision-deadlines");
+    const backlog = args.sections.find((section) => section.id === "decision-backlog");
+    const signals = args.sections.find((section) => section.id === "decision-signals");
+    const fuel = args.sections.find((section) => section.id === "decision-fuel");
+    const costs = args.sections.find((section) => section.id === "decision-costs");
+    const note = args.sections.find((section) => section.id === "decision-note");
+
+    return dedupeStrings([
+      `Stato generale: ${cardsByLabel.get("Stato generale")?.value ?? "Quadro disponibile"}.`,
+      `Cosa fare ora: ${cardsByLabel.get("Cosa fare ora")?.value ?? "Nessuna azione prioritaria forte individuata."}`,
+      deadlines ? `Scadenze e collaudi: ${deadlines.summary}` : null,
+      backlog ? `Backlog tecnico: ${backlog.summary}` : null,
+      signals ? `Segnali operativi: ${signals.summary}` : null,
+      fuel ? `Consumi e rifornimenti: ${fuel.summary}` : null,
+      costs ? `Costi, documenti e storico utile: ${costs.summary}` : null,
+      note ? `Nota finale: ${note.summary}` : null,
+    ]).slice(0, 6);
+  }
+
   const operational = args.sections.find((section) => section.id === "criticita");
   const scadenze = args.sections.find((section) => section.id === "scadenze");
   const lavori = args.sections.find((section) => section.id === "lavori-manutenzioni");
   const fuel = args.sections.find((section) => section.id === "rifornimenti");
+  const costsDocuments = args.sections.find((section) => section.id === "documenti-costi");
+  const fuelTrust = args.sections.find((section) => section.id === "rifornimenti-affidabilita");
   const fuelAnomalies = args.sections.find((section) => section.id === "rifornimenti-anomalie");
   const fuelActions = args.sections.find((section) => section.id === "rifornimenti-azioni");
   const summary: string[] = [];
@@ -493,6 +520,8 @@ function buildExecutiveSummary(args: {
     summary.push(`Criticita principali: ${operational.summary}`);
   } else if (fuel) {
     summary.push(`Rifornimenti: ${fuel.summary}`);
+  } else if (costsDocuments) {
+    summary.push(`Costi, documenti e storico utile: ${costsDocuments.summary}`);
   } else {
     summary.push("Criticita principali: non trovate criticita operative forti nel periodo letto.");
   }
@@ -501,12 +530,28 @@ function buildExecutiveSummary(args: {
     summary.push(`Rifornimenti: ${fuel.summary}`);
   }
 
+  if (costsDocuments && (operational || fuel)) {
+    summary.push(`Costi, documenti e storico utile: ${costsDocuments.summary}`);
+  }
+
+  if (fuelTrust) {
+    summary.push(`Affidabilita del dato: ${fuelTrust.summary}`);
+  }
+
   if (scadenze) {
     summary.push(`Scadenze: ${scadenze.bullets.slice(0, 2).join(" | ") || scadenze.summary}`);
   }
 
   if (fuelActions) {
     summary.push(`Azione consigliata: ${fuelActions.bullets[0] || fuelActions.summary}`);
+  } else if (costsDocuments) {
+    const actionBullet =
+      costsDocuments.bullets.find((bullet) => /^azione consigliata:/i.test(bullet)) ||
+      costsDocuments.bullets[0] ||
+      "verificare prima i record economici e documentali piu rilevanti.";
+    summary.push(
+      `Azione consigliata: ${actionBullet.replace(/^azione consigliata:\s*/i, "")}`,
+    );
   } else if (lavori) {
     summary.push(
       `Azioni consigliate: ${lavori.bullets.length > 0 ? lavori.bullets[0] : "verificare pianificazione lavori e manutenzioni aperte."}`,
@@ -553,16 +598,23 @@ function buildAppendix(args: {
 }
 
 function mapSectionTitle(section: InternalAiVehicleReportSection): string {
+  if (section.id === "decision-deadlines") return "Scadenze e collaudi";
+  if (section.id === "decision-backlog") return "Backlog tecnico";
+  if (section.id === "decision-signals") return "Segnali operativi";
+  if (section.id === "decision-fuel") return "Consumi e rifornimenti";
+  if (section.id === "decision-costs") return "Costi, documenti e storico utile";
+  if (section.id === "decision-note") return "Nota finale";
   if (section.id === "stato-operativo-attuale") return "Criticita e priorita operative";
   if (section.id === "lavori-manutenzioni") return "Lavori e manutenzioni";
   if (section.id === "gomme") return "Gomme";
   if (section.id === "rifornimenti") return "Rifornimenti e consumi";
+  if (section.id === "rifornimenti-affidabilita") return "Affidabilita del dato";
   if (section.id === "rifornimenti-records") return "Record del periodo";
   if (section.id === "rifornimenti-anomalie") return "Anomalie rilevate";
   if (section.id === "rifornimenti-azioni") return "Azione consigliata";
   if (section.id === "materiali-inventario") return "Materiali e inventario";
   if (section.id === "procurement") return "Ordini, preventivi e fornitori";
-  if (section.id === "documenti-costi") return "Documenti e costi";
+  if (section.id === "documenti-costi") return "Costi, documenti e storico utile";
   if (section.id === "cisterna") return "Cisterna";
   if (section.id === "riscontri-registry") return "Riscontri operativi collegati";
   return sanitizeUserFacingText(section.title);
@@ -576,6 +628,19 @@ function buildProfessionalSections(
   report: InternalAiVehicleReportPreview,
   mezzo: NextAnagraficheFlottaMezzoItem | null,
 ): InternalAiProfessionalReportSection[] {
+  if (isDecisionalOverviewReport(report)) {
+    return report.sections.map((section) => {
+      const bullets = dedupeStrings(section.bullets).slice(0, section.id === "decision-note" ? 4 : 6);
+      return {
+        id: section.id,
+        title: mapSectionTitle(section),
+        summary: sanitizeUserFacingText(section.summary),
+        bullets,
+        emptyLabel: bullets.length === 0 ? "non disponibile" : null,
+      };
+    });
+  }
+
   const sectionsById = new Map(report.sections.map((section) => [section.id, section]));
   const operational = sectionsById.get("stato-operativo-attuale") ?? null;
   const technical = sectionsById.get("lavori-manutenzioni") ?? null;
@@ -861,7 +926,7 @@ export function buildInternalAiProfessionalVehicleReportText(
     `Periodo: ${report.periodContext.label}`,
     `Generato il: ${formatDateLabel(report.generatedAt)}`,
     "",
-    "Sintesi esecutiva",
+    "Sintesi iniziale",
     ...executiveSummary.map((entry) => `- ${entry}`),
     "",
     "Dati mezzo",
@@ -870,7 +935,7 @@ export function buildInternalAiProfessionalVehicleReportText(
     `- Autista associato: ${sanitizeUserFacingText(report.header.autistaNome) || FALLBACK_UNAVAILABLE}`,
     `- Revisione: ${sanitizeUserFacingText(report.header.revisione) || FALLBACK_UNAVAILABLE}`,
     "",
-    "Sezioni operative",
+    isDecisionalOverviewReport(report) ? "Blocchi decisionali" : "Sezioni operative",
   ];
 
   sections.forEach((section) => {

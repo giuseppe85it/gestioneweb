@@ -153,6 +153,14 @@ export default function InternalAiProfessionalVehicleReportView({
   }
 
   const presentation = state.report;
+  const reliabilityCard =
+    presentation.cards.find((card) => card.label === "Verdetto fiducia") ?? null;
+  const displayTitleNormalized = presentation.displayTitle.toLowerCase();
+  const reportEyebrow = displayTitleNormalized.includes("quadro mezzo")
+    ? "Quadro mezzo"
+    : displayTitleNormalized.includes("costi e documenti")
+      ? "Costi e documenti"
+      : "Report gestionale";
 
   return (
     <div className="internal-ai-operational-report">
@@ -160,7 +168,7 @@ export default function InternalAiProfessionalVehicleReportView({
         <div className="internal-ai-operational-report__brand">
           <img src="/logo.png" alt="Ghielmicementi SA" className="internal-ai-operational-report__logo" />
           <div>
-            <p className="internal-ai-card__eyebrow">Report gestionale</p>
+            <p className="internal-ai-card__eyebrow">{reportEyebrow}</p>
             <h2>{presentation.displayTitle}</h2>
             <p className="next-panel__description">{presentation.displaySubtitle}</p>
           </div>
@@ -169,13 +177,13 @@ export default function InternalAiProfessionalVehicleReportView({
           <span className="internal-ai-pill is-neutral">Targa {presentation.targetLabel}</span>
           <span className="internal-ai-pill is-neutral">Generato il {presentation.generatedAtLabel}</span>
           <span className="internal-ai-pill is-neutral">Periodo {presentation.periodLabel}</span>
+          {reliabilityCard ? (
+            <span className="internal-ai-pill is-neutral">
+              Fiducia {reliabilityCard.value}
+            </span>
+          ) : null}
         </div>
       </header>
-
-      <section className="internal-ai-operational-report__media-stack">
-        {renderMediaCard(presentation.vehicle)}
-        {presentation.relatedAsset ? renderMediaCard(presentation.relatedAsset) : null}
-      </section>
 
       {presentation.cards.length ? (
         <section
@@ -194,7 +202,7 @@ export default function InternalAiProfessionalVehicleReportView({
 
       <section className="next-panel internal-ai-operational-report__summary-card">
         <div className="next-panel__header">
-          <h2>Sintesi esecutiva</h2>
+          <h2>Sintesi iniziale</h2>
         </div>
         <ul className="internal-ai-inline-list internal-ai-operational-report__summary-list">
           {presentation.executiveSummary.map((entry) => (
@@ -260,6 +268,11 @@ export default function InternalAiProfessionalVehicleReportView({
             )}
           </article>
         ))}
+      </section>
+
+      <section className="internal-ai-operational-report__media-stack">
+        {renderMediaCard(presentation.vehicle)}
+        {presentation.relatedAsset ? renderMediaCard(presentation.relatedAsset) : null}
       </section>
 
       {presentation.appendix.limits.length || presentation.appendix.notes.length ? (

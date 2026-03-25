@@ -151,7 +151,7 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
   },
   {
     id: "mezzo.report.economic",
-    title: "Classifica priorita mezzi",
+    title: "Priorita operativa flotta",
     domain: "mezzo_dossier",
     targetScope: "single_vehicle",
     requiredFilters: [],
@@ -168,6 +168,7 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
     bridgeCapabilityId: null,
     limitations: [
       "Incrocia solo segnali read-only dimostrabili: D10 per scadenze/alert/focus e D02 per backlog tecnico.",
+      "Ordina i mezzi con criterio fisso: scaduti, poi entro 7 giorni, poi alert/KO o lavori urgenti, poi segnalazioni/pre-collaudi, infine backlog tecnico.",
       "Non inventa punteggi arbitrari: la priorita nasce da regole deterministiche e motivazioni esplicite.",
     ],
     plannerHints: {
@@ -177,11 +178,18 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
         "mezzo piu critico",
         "mezzi critici",
         "attenzione oggi",
+        "richiedono piu attenzione",
+        "ordinati per priorita",
+        "top 3",
+        "controllare per primo",
       ],
       verbs: ["dimmi", "analizza", "incrocia", "ordina", "classifica"],
       samplePrompts: [
         "Quale mezzo e piu critico oggi",
+        "Quale mezzo e piu critico questa settimana",
+        "Se oggi dovessi controllare un solo mezzo, quale sceglieresti e perche",
         "Fammi una priorita dei mezzi che richiedono intervento",
+        "Dimmi quali sono oggi i 3 mezzi che richiedono piu attenzione incrociando scadenze, collaudi, segnalazioni e lavori aperti",
       ],
     },
   },

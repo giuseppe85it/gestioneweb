@@ -69,7 +69,7 @@ export const NEXT_RIFORNIMENTI_CONSUMI_DOMAIN = {
   supportingReadOnlyDatasets: [FIELD_DATASET_KEY] as const,
   normalizationStrategy: "RICOSTRUZIONE CONTROLLATA NEXT",
   outputContract: {
-    certain: ["id", "mezzoTarga", "provenienza", "fieldQuality", "flags"] as const,
+    certain: ["id", "mezzoTarga", "provenienza", "fieldQuality", "flags", "sourceTrust"] as const,
     derived: ["dataDisplay", "timestampRicostruito"] as const,
     optional: [
       "litri",
@@ -102,6 +102,13 @@ export type NextRifornimentoFieldQuality =
 export type NextRifornimentoCurrency = "EUR" | "CHF" | null;
 
 export type NextRifornimentoProvenienza = "business" | "campo" | "ricostruito";
+
+export type NextRifornimentoSourceClassification = "canonico" | "ricostruito";
+
+export type NextRifornimentoReliabilityStatus =
+  | "affidabile"
+  | "prudente"
+  | "da_verificare";
 
 export type NextRifornimentoMatchStrategy =
   | "solo_business"
@@ -172,6 +179,11 @@ export type NextRifornimentoReadOnlyItem = {
       field: string | null;
     };
   };
+  sourceTrust: {
+    classification: NextRifornimentoSourceClassification;
+    reliability: Exclude<NextRifornimentoReliabilityStatus, "da_verificare">;
+    reason: string;
+  };
 };
 
 export type NextMezzoRifornimentiSnapshot = {
@@ -211,6 +223,17 @@ export type NextMezzoRifornimentiSnapshot = {
     matchedByHeuristicSameDay: number;
     appendedFieldOnly: number;
     businessOnly: number;
+  };
+  trustModel: {
+    source: {
+      verdict: NextRifornimentoReliabilityStatus;
+      summary: string;
+      counts: {
+        canonico: number;
+        ricostruito: number;
+      };
+      notes: string[];
+    };
   };
   limitations: string[];
 };
@@ -603,6 +626,144 @@ function buildSourceAlias(
   };
 }
 
+function hasCriticalFuelReconstruction(
+  fieldQuality: Pick<
+    NextRifornimentoReadOnlyItem["fieldQuality"],
+    "timestampRicostruito" | "litri" | "km"
+  >,
+): boolean {
+  return (
+    fieldQuality.timestampRicostruito === "ricostruito" ||
+    fieldQuality.litri === "ricostruito" ||
+    fieldQuality.km === "ricostruito"
+  );
+}
+
+function buildSourceTrustProfile(args: {
+  provenienza: NextRifornimentoProvenienza;
+  matchStrategy: NextRifornimentoMatchStrategy;
+  fieldQuality: NextRifornimentoReadOnlyItem["fieldQuality"];
+}): NextRifornimentoReadOnlyItem["sourceTrust"] {
+  const criticalReconstruction = hasCriticalFuelReconstruction(args.fieldQuality);
+
+  if (
+    args.provenienza === "business" &&
+    args.matchStrategy === "solo_business" &&
+    !criticalReconstruction
+  ) {
+    return {
+      classification: "canonico",
+      reliability: "affidabile",
+      reason:
+        "record letto dal dataset business D04 senza ricostruzione su data, litri o km",
+    };
+  }
+
+  if (args.provenienza === "campo" || args.matchStrategy === "solo_campo") {
+    return {
+      classification: "ricostruito",
+      reliability: "prudente",
+      reason:
+        "record presente solo nel feed campo e quindi trattato come ricostruito",
+    };
+  }
+
+  if (args.matchStrategy === "match_origin_id") {
+    return {
+      classification: "ricostruito",
+      reliability: "prudente",
+      reason:
+        "record business completato con il feed campo tramite collegamento per originId",
+    };
+  }
+
+  if (
+    args.matchStrategy === "match_euristica_10_minuti" ||
+    args.matchStrategy === "match_euristica_stesso_giorno"
+  ) {
+    return {
+      classification: "ricostruito",
+      reliability: "prudente",
+      reason:
+        "record business completato con il feed campo tramite aggancio euristico controllato",
+    };
+  }
+
+  if (criticalReconstruction) {
+    return {
+      classification: "ricostruito",
+      reliability: "prudente",
+      reason:
+        "record con almeno un campo critico ricostruito tra data, litri o km",
+    };
+  }
+
+  return {
+    classification: "ricostruito",
+    reliability: "prudente",
+    reason: "record D04 completato in modo prudenziale rispetto alla sorgente business",
+  };
+}
+
+function buildSourceTrustModel(args: {
+  items: NextRifornimentoReadOnlyItem[];
+  datasetShapes: NextMezzoRifornimentiSnapshot["datasetShapes"];
+  reconstructionStats: NextMezzoRifornimentiSnapshot["reconstructionStats"];
+}): NextMezzoRifornimentiSnapshot["trustModel"]["source"] {
+  const canonico = args.items.filter(
+    (item) => item.sourceTrust.classification === "canonico",
+  ).length;
+  const ricostruito = args.items.length - canonico;
+  const heuristicMatches =
+    args.reconstructionStats.matchedByHeuristic10Minutes +
+    args.reconstructionStats.matchedByHeuristicSameDay;
+
+  const verdict: NextRifornimentoReliabilityStatus =
+    args.items.length === 0 ||
+    args.datasetShapes.business === "unsupported" ||
+    args.datasetShapes.field === "unsupported"
+      ? "da_verificare"
+      : ricostruito > 0
+        ? "prudente"
+        : "affidabile";
+
+  const summary =
+    verdict === "affidabile"
+      ? `D04 espone ${canonico} record canonici senza ricostruzioni sui campi chiave.`
+      : verdict === "prudente"
+        ? `D04 espone ${canonico} record canonici e ${ricostruito} record ricostruiti o integrati in modo prudenziale.`
+        : "D04 non espone ancora una base completamente verificabile per distinguere sorgente esatta e sorgente ricostruita.";
+
+  const notes = [
+    canonico > 0 ? `${canonico} record con sorgente canonica business.` : null,
+    ricostruito > 0
+      ? `${ricostruito} record ricostruiti o integrati dal feed campo.`
+      : null,
+    args.reconstructionStats.appendedFieldOnly > 0
+      ? `${args.reconstructionStats.appendedFieldOnly} record sono presenti solo nel feed campo.`
+      : null,
+    heuristicMatches > 0
+      ? `${heuristicMatches} record usano un aggancio euristico controllato tra le fonti.`
+      : null,
+    args.datasetShapes.business === "unsupported"
+      ? "Il dataset business D04 non e in una shape pienamente leggibile dal layer."
+      : null,
+    args.datasetShapes.field === "unsupported"
+      ? "Il feed campo D04 non e in una shape pienamente leggibile dal layer."
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return {
+    verdict,
+    summary,
+    counts: {
+      canonico,
+      ricostruito,
+    },
+    notes,
+  };
+}
+
 function buildBusinessOnlyOutput(
   row: NextNormalizedLegacyRifornimento
 ): NextRifornimentoReadOnlyItem {
@@ -624,6 +785,11 @@ function buildBusinessOnlyOutput(
     field: null,
   };
   const sourceKeys = [row.sourceKey];
+  const sourceTrust = buildSourceTrustProfile({
+    provenienza: "business",
+    matchStrategy: "solo_business",
+    fieldQuality,
+  });
 
   return {
     id: row.id,
@@ -652,6 +818,7 @@ function buildBusinessOnlyOutput(
     sourceKeys,
     sourceRecordIds,
     source: buildSourceAlias("business", "solo_business", sourceKeys, sourceRecordIds),
+    sourceTrust,
   };
 }
 
@@ -676,6 +843,11 @@ function buildFieldOnlyOutput(
     field: row.originId ?? row.id,
   };
   const sourceKeys = [row.sourceKey];
+  const sourceTrust = buildSourceTrustProfile({
+    provenienza: "campo",
+    matchStrategy: "solo_campo",
+    fieldQuality,
+  });
 
   return {
     id: row.id,
@@ -704,6 +876,7 @@ function buildFieldOnlyOutput(
     sourceKeys,
     sourceRecordIds,
     source: buildSourceAlias("campo", "solo_campo", sourceKeys, sourceRecordIds),
+    sourceTrust,
   };
 }
 
@@ -827,6 +1000,11 @@ function buildMergedOutput(
     field: fieldRow.originId ?? fieldRow.id,
   };
   const sourceKeys = [businessRow.sourceKey, fieldRow.sourceKey];
+  const sourceTrust = buildSourceTrustProfile({
+    provenienza: "ricostruito",
+    matchStrategy,
+    fieldQuality,
+  });
 
   return {
     id: businessRow.id,
@@ -855,6 +1033,7 @@ function buildMergedOutput(
     sourceKeys,
     sourceRecordIds,
     source: buildSourceAlias("ricostruito", matchStrategy, sourceKeys, sourceRecordIds),
+    sourceTrust,
   };
 }
 
@@ -1078,6 +1257,13 @@ export async function readNextMezzoRifornimentiSnapshot(
       costo: items.reduce((sum, entry) => sum + (entry.costo ?? 0), 0),
     },
     reconstructionStats: snapshotBase.reconstructionStats,
+    trustModel: {
+      source: buildSourceTrustModel({
+        items,
+        datasetShapes: snapshotBase.datasetShapes,
+        reconstructionStats,
+      }),
+    },
     limitations: buildLimitations(snapshotBase),
   };
 }

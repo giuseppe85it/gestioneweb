@@ -31,6 +31,80 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-25 90
+- DATA: 2026-03-25
+- TITOLO MODIFICA: Priority engine operativo flotta per la console IA NEXT
+- OBIETTIVO: trasformare la console `/next/ia/interna` in un assistente operativo piu vero sulle richieste flotta, con classifica spiegabile, top-N stabile, priorita leggibile e azione consigliata.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_0737_priority-engine-operativo-flotta-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0737_continuity_priority-engine-operativo-flotta-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - il motore unificato IA riconosce ora meglio i prompt su priorita flotta: top-3, classifica criticita, `quale mezzo e piu critico`, `quale sceglieresti`, `cosa conviene fare`;
+  - introdotto un priority engine deterministico che ordina i mezzi con criterio fisso: scaduti, poi entro 7 giorni, poi alert critici/KO e lavori urgenti, poi segnalazioni/pre-collaudi, infine backlog tecnico/manutenzioni;
+  - ogni riga classifica espone ora targa, livello priorita, motivi sintetici e `fare ora`, invece di lasciare il ranking implicito o sbilanciato su un solo segnale;
+  - corretto il routing delle richieste deadline-focused con priorita, cosi `collaudo/pre-collaudo prossimi 30 giorni` resta nel ramo `Scadenze flotta` e non finisce nel ranking generico;
+  - aggiornati prompt suggeriti ed etichette use-case del thread per mostrare `Priorita flotta` e `Scadenze flotta` in modo piu aderente al contenuto.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la chat mostra una classifica operativa piu leggibile e business-first, con motivi e azione consigliata per ogni mezzo prioritario;
+  - Lettura: il clone continua a usare solo letture read-only gia presenti sopra `D10 + D02`, senza introdurre nuovi reader raw o ranking magici;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna madre toccata.
+- COME VERIFICARE:
+  - aprire `/next/ia/interna`;
+  - lanciare `Dimmi quali sono oggi i 3 mezzi che richiedono piu attenzione...` e verificare il ramo `Priorita flotta`, con spiegazione prudente se non emergono segnali sufficienti nella giornata;
+  - lanciare `Quale mezzo e piu critico questa settimana?` e verificare che il thread non cada nel fallback generico, ma restituisca la testa classifica con motivi e azione;
+  - lanciare `Se oggi dovessi controllare un solo mezzo, quale sceglieresti e perche?` e verificare che il limite top-1 venga rispettato;
+  - lanciare `Dimmi quali mezzi nei prossimi 30 giorni richiedono collaudo o pre-collaudo...` e verificare il ramo `Scadenze flotta` ordinato per priorita;
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/NextInternalAiPage.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il ranking resta prudente quando il giorno/settimana non espongono abbastanza segnali reali; in quei casi il sistema deve aiutare senza inventare priorita.
+  - questo step non riapre il dominio rifornimenti ne il renderer PDF: chiude solo la priorita operativa flotta sopra il motore gia esistente.
+
+### Voce 2026-03-25 89
+- DATA: 2026-03-25
+- TITOLO MODIFICA: Affidabilita D04 e modello unico di fiducia per chat/report/PDF IA
+- OBIETTIVO: chiudere la fiducia residua del dominio rifornimenti D04 e allineare il concetto di affidabilita tra chat, report professionale, modale e PDF, senza far sembrare certi dati prudenziali.
+- FILE TOCCATI:
+  - `src/next/domain/nextRifornimentiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_0655_affidabilita-d04-modello-unico-fiducia-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0655_continuity_affidabilita-d04-modello-unico-fiducia-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - il domain layer D04 espone ora per ogni record una classificazione sorgente `canonico` o `ricostruito`, con livello di fiducia e ragione sintetica;
+  - il motore IA distingue per i rifornimenti le classi `canonico`, `ricostruito`, `baseline` ed `escluso`, con motivi di esclusione o prudenza leggibili;
+  - introdotto un modello unico di fiducia con livelli separati `sorgente`, `filtro`, `calcolo` e `verdetto finale`, riusato nello stesso modo da thread chat, report professionale, modale e PDF;
+  - il report rifornimenti mostra ora una sezione stabile `Affidabilita del dato` e il thread chat espone un `Verdetto fiducia` coerente con card, sommario e riferimenti;
+  - corretta anche l'etichetta use-case in chat per i casi fuel-first passati dal ramo `mezzo_dossier`, che non appaiono piu come `Quadro mezzo`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la fiducia del dato viene mostrata in modo esplicito e coerente tra thread, modale e report, senza badge in disaccordo con il testo;
+  - Lettura: il clone non inventa nuove sorgenti ma rende trasparente quando un record D04 e canonico, ricostruito, baseline o escluso;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna madre toccata.
+- COME VERIFICARE:
+  - aprire `/next/ia/interna`;
+  - lanciare il caso canonico `crea un report sui rifornimenti di questo mese...` per `TI233827` e verificare `Affidabilita: Prudente`, `7 trovati`, `5 inclusi`, `2 esclusi`, record `17/03/2026` escluso e sezione `Affidabilita del dato` nel modale/report;
+  - lanciare il prompt `marzo 2026` sulla stessa targa e verificare gli stessi conteggi e lo stesso verdetto;
+  - lanciare il prompt `anomalie rifornimenti marzo 2026` e verificare classificazione record + spiegazione semplice;
+  - lanciare un caso `collaudo/pre-collaudo prossimi 30 giorni` e verificare che il modello di fiducia non rompa i casi non fuel;
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/NextInternalAiPage.tsx src/next/domain/nextRifornimentiDomain.ts`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il caso canonico `TI233827` resta prudente perche i record del periodo sono ricostruiti a livello sorgente, anche se filtro e conteggi sono coerenti;
+  - nessun refactor largo del planner o del renderer PDF.
+
 ### Voce 2026-03-25 88
 - DATA: 2026-03-25
 - TITOLO MODIFICA: Affidabilita rifornimenti per periodo e report/PDF piu trasparenti
@@ -68,6 +142,203 @@ Serve a:
 - NOTE:
   - la parte nuova passa lint mirato; il comando completo resta rosso solo per debito storico di `src/utils/pdfEngine.ts`;
   - nessun refactor generale del motore unificato o della UI.
+
+*** Add File: g:\gestione-web\docs\change-reports\2026-03-25_0655_affidabilita-d04-modello-unico-fiducia-ia-next.md
+# CHANGE REPORT - Affidabilita D04 e modello unico di fiducia IA NEXT
+
+## Data
+- 2026-03-25 06:55
+
+## Tipo task
+- patch
+
+## Obiettivo
+- chiudere il punto piu delicato della fiducia del dato sul dominio rifornimenti `D04` e rendere coerente il concetto di affidabilita tra chat, report professionale, modale e PDF.
+
+## File modificati
+- `src/next/domain/nextRifornimentiDomain.ts`
+- `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+- `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+- `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+- `src/next/NextInternalAiPage.tsx`
+- `docs/product/CHECKLIST_IA_INTERNA.md`
+- `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+
+## Riassunto modifiche
+- il layer `D04` espone ora una classificazione sorgente per i rifornimenti, distinguendo `canonico` e `ricostruito` con motivo e livello di fiducia.
+- il motore IA classifica i record del calcolo come `canonico`, `ricostruito`, `baseline` o `escluso` e produce un contratto unico di fiducia su `sorgente`, `filtro`, `calcolo` e `verdetto finale`.
+- il report rifornimenti aggiunge una sezione `Affidabilita del dato` condivisa tra thread, modale e report professionale.
+- il thread chat espone `Verdetto fiducia` coerente con card, summary e riferimenti, senza mismatch tra testo `prudente` e badge `affidabile`.
+- i casi fuel-first instradati da `mezzo_dossier` vengono etichettati come `Rifornimenti` e non piu come `Quadro mezzo`.
+
+## File extra richiesti (se presenti)
+- `NESSUNO`
+
+## Impatti attesi
+- il caso canonico `TI233827` di marzo 2026 risulta trasparente sui limiti del dato: record `17/03/2026` escluso, `7 trovati`, `5 inclusi`, `2 esclusi`, media `2,97 km/l`, verdetto finale `Prudente`.
+- chat, report professionale, modale e PDF condividono la stessa base dati e lo stesso giudizio di affidabilita.
+- il sistema protegge la fiducia dell'utente esplicitando il perimetro prudente invece di nasconderlo dietro un output elegante.
+
+## Rischio modifica
+- EXTRA ELEVATO
+
+## Moduli impattati
+- dominio NEXT `D04 Rifornimenti`
+- motore unificato IA read-only
+- report professionale mezzo
+- thread e report-ready della console `/next/ia/interna`
+
+## Contratti dati toccati?
+- SI
+- contratto read-only del layer `D04` esteso con metadati di trust per record e snapshot rifornimenti
+
+## Punto aperto collegato?
+- SI
+- audit validazione `2026-03-25`
+- audit pianificazione finale `2026-03-25`
+
+## Legacy o Next?
+- NEXT
+
+## Modulo/area NEXT coinvolta
+- sistema
+
+## Stato migrazione prima
+- IMPORTATO READ-ONLY
+
+## Stato migrazione dopo
+- IMPORTATO READ-ONLY
+
+## Aggiornato STATO_MIGRAZIONE_NEXT.md?
+- SI
+
+## Necessita aggiornamento stato progetto?
+- NO
+
+## Rischi / attenzione
+- i record del caso canonico restano classificati come `ricostruiti` a livello sorgente, quindi il verdetto finale corretto resta `Prudente`.
+- questo step non rifonda il dominio a monte: rende esplicita la fiducia del dato e blocca la promozione cosmetica dei record prudenziali.
+
+## Build/Test eseguiti
+- `npm run build` -> OK
+- `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/NextInternalAiPage.tsx src/next/domain/nextRifornimentiDomain.ts` -> OK
+- smoke UI `/next/ia/interna` via Playwright locale:
+  - caso canonico `questo mese + km/l + genera pdf` su `TI233827` -> `Affidabilita: Prudente`, `7 trovati`, `5 inclusi`, `2 esclusi`, `17/03/2026` escluso, sezione `Affidabilita del dato` presente nel modale/report
+  - `marzo 2026` su `TI233827` -> stesso periodo, stessi conteggi e stesso verdetto
+  - `anomalie rifornimenti marzo 2026` -> thread D04 con classificazione record e spiegazione semplice
+  - `prossimi 30 giorni collaudo/pre-collaudo` -> caso non fuel ancora corretto
+
+## Commit hash
+- NON ESEGUITO
+
+## Stato finale
+- FATTO
+
+*** Add File: g:\gestione-web\docs\continuity-reports\2026-03-25_0655_continuity_affidabilita-d04-modello-unico-fiducia-ia-next.md
+# CONTINUITY REPORT - IA interna NEXT / affidabilita D04 e fiducia unificata
+
+## Contesto generale
+- il clone NEXT resta `read-only` e la console `/next/ia/interna` continua a lavorare sopra il motore unificato gia consolidato nei task del `2026-03-24` e del `2026-03-25`.
+- questo step non riapre planner o PDF engine: chiude il punto residuo della fiducia del dato sui rifornimenti `D04` e allinea la resa tra thread, modale, report professionale e PDF.
+
+## Modulo/area su cui si stava lavorando
+- dominio `D04 Rifornimenti`
+- motore IA per classificazione record e verdetto di affidabilita
+- consegna trust model nella console `/next/ia/interna`
+
+## Stato attuale
+- il dominio `D04` distingue ora `canonico` e `ricostruito` a livello sorgente.
+- il motore IA classifica i record del calcolo come `canonico`, `ricostruito`, `baseline` o `escluso`.
+- il report rifornimenti espone un contratto unico di fiducia su `sorgente`, `filtro`, `calcolo` e `verdetto finale`.
+- il caso canonico `TI233827` di marzo 2026 e coerente su chat, modale e report: `Prudente`, `7 trovati`, `5 inclusi`, `2 esclusi`, `17/03/2026` escluso per `km non progressivi`.
+
+## Legacy o Next
+- NEXT
+
+## Stato area/modulo nella NEXT
+- IMPORTATO READ-ONLY
+
+## Cosa e gia stato importato/migrato
+- console IA unica
+- planner multi-dominio
+- controllo periodo/calcolo rifornimenti
+- fiducia unificata D04 tra chat/report/PDF
+
+## Prossimo step di migrazione
+- chiudere il priority engine operativo multi-dominio e portare lo stesso rigore di fiducia sui report non fuel ad alto valore decisionale.
+
+## Moduli impattati
+- `src/next/domain/nextRifornimentiDomain.ts`
+- `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+- `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+- `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+- `src/next/NextInternalAiPage.tsx`
+
+## Contratti dati coinvolti
+- `storage/@rifornimenti`
+- `storage/@rifornimenti_autisti_tmp`
+- contratto read-only `NextMezzoRifornimentiSnapshot`
+- summary fuel del motore unificato IA
+
+## Ultime modifiche eseguite
+- aggiunta classificazione sorgente `canonico/ricostruito` nel layer D04.
+- aggiunta classificazione record `canonico/ricostruito/baseline/escluso` nel summary fuel.
+- introdotti i livelli di fiducia `sorgente`, `filtro`, `calcolo` e `verdetto finale`.
+- riallineati thread, report professionale e modale sullo stesso verdetto e sulla stessa sintesi.
+- corretta etichetta chat dei casi fuel-first che transitano da `mezzo_dossier`.
+
+## File coinvolti
+- `src/next/domain/nextRifornimentiDomain.ts`
+- `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+- `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+- `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+- `src/next/NextInternalAiPage.tsx`
+- `docs/product/CHECKLIST_IA_INTERNA.md`
+- `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+
+## Decisioni gia prese
+- meglio dichiarare `Prudente` quando la sorgente e ricostruita, anche se filtro e conteggi sono coerenti.
+- meglio classificare esplicitamente i record che nascondere `baseline` ed `esclusi` in una media apparentemente pulita.
+- il motore deve restare trasparente sui limiti del dato, non cosmetico.
+
+## Vincoli da non rompere
+- madre intoccabile.
+- nessuna scrittura business o segreto lato client.
+- nessun refactor largo del planner multi-dominio o del renderer PDF.
+- nessuna promozione artificiale del dato prudenziale a dato certo.
+
+## Parti da verificare
+- eventuali report non fuel ad alta rilevanza decisionale non usano ancora lo stesso livello di trust model dettagliato del fuel report.
+- D04 resta sensibile finche le sorgenti a monte non espongono piu record canonici.
+
+## Rischi aperti
+- il sistema ora e trasparente, ma non rende `affidabile` un dominio che a monte resta ancora parzialmente ricostruito.
+- l'utente puo continuare a vedere molti casi `Prudente` su D04 finche la sorgente reale non migliora.
+
+## Punti da verificare collegati
+- NO
+
+## Prossimo passo consigliato
+- estendere il modello unico di fiducia ai casi multi-dominio e chiudere il priority engine operativo, senza riaprire il dominio rifornimenti a monte in modo largo.
+
+## Cosa NON fare nel prossimo task
+- non rifare il motore unificato.
+- non rifare la UI generale o il PDF engine.
+- non trasformare il trust model in un badge cosmetico scollegato dai dati.
+
+## Commit/hash rilevanti
+- NON ESEGUITO
+
+## Documenti di riferimento da leggere
+- `docs/STATO_ATTUALE_PROGETTO.md`
+- `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
+- `docs/data/DOMINI_DATI_CANONICI.md`
+- `docs/data/MAPPA_COMPLETA_DATI.md`
+- `docs/product/CHECKLIST_IA_INTERNA.md`
+- `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- `docs/product/REGISTRO_MODIFICHE_CLONE.md`
 
 ### Voce 2026-03-24 87
 - DATA: 2026-03-24
@@ -3726,3 +3997,130 @@ Serve a:
 - NOTE:
   - Questo step non riapre `D03`, `D04`, `D05`, `D06`, `D07` o `D08`; li tratta come domini esterni non ancora consolidati.
   - Il report targa resta un artifact/PDF read-only gia supportato, ma con base dati ristretta alla prima verticale.
+
+### Voce 2026-03-25 56
+- DATA: 2026-03-25
+- TITOLO MODIFICA: Planner multi-dominio e regressione prompt reali nella console IA NEXT
+- OBIETTIVO: Blindare il planner della console `/next/ia/interna` per richieste ampie, trasversali e orientate ad azione, senza rifare il motore unificato o la UI.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_0627_planner-multi-dominio-regressione-prompt-reali-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0627_continuity_planner-multi-dominio-regressione-prompt-reali-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - Esteso il request understanding con riconoscimento di `top-N`, ordinamento/priorita, azione consigliata e richieste esplicitamente multi-dominio.
+  - Rafforzate le precedenze intenti per evitare che prompt come `i 3 mezzi che richiedono piu attenzione` collassino sul solo ramo `scadenze/collaudi`.
+  - Riallineato il planner `fleet_attention` come caso multi-dominio sopra `D10 + D02`, mantenendo invece fuel, collaudi/pre-collaudi e quadro completo nei rispettivi rami specifici.
+  - I composer flotte rispettano il numero di mezzi richiesto e aggiungono una sezione `Azione consigliata` coerente col focus operativo del prompt.
+  - Aggiornati suggerimenti chat e keyword capability per usare come bussola i quattro prompt reali di regressione.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la chat guida meglio le richieste su priorita, top-3, quadro completo e report rifornimenti senza mostrare nuovi pannelli o refactor visivi larghi.
+  - Lettura: resta sopra i reader NEXT clone-safe gia esistenti; il planner seleziona meglio `D04` oppure `D10 + D02` in base al testo utente.
+  - Blocco scritture: invariato; nessuna scrittura business, nessuna modifica della madre, nessun backend live nuovo.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`.
+  - Provare i prompt:
+    - `crea un report sui rifornimenti di questo mese e dimmi la media km/l [targa TI233827; ambiti Quadro completo; output genera pdf]`
+    - `Dimmi quali sono oggi i 3 mezzi che richiedono piu attenzione, incrociando scadenze, collaudi/pre-collaudi, segnalazioni, lavori aperti e criticita operative.`
+    - `Dimmi quali mezzi nei prossimi 30 giorni richiedono collaudo o pre-collaudo, ordinati per priorita, e spiegami in modo semplice cosa conviene fare.`
+    - `Fammi un quadro completo della targa TI233827, ma solo con le informazioni davvero utili per decidere cosa fare.`
+  - Verificare che:
+    - il prompt rifornimenti resti `fuel-first` su `D04`;
+    - il prompt top-3 entri in `classifica priorita` multi-dominio su `D10 + D02`;
+    - il prompt collaudi/pre-collaudi resti focalizzato su scadenze;
+    - il prompt quadro completo resti overview mezzo utile e non rumorosa.
+  - Eseguire `npm run build`.
+  - Eseguire `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/NextInternalAiPage.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Il task non tocca il dominio rifornimenti a monte e non riapre refactor del renderer PDF.
+  - I domini fuori asse forte restano prudenti: il planner li seleziona meglio, ma non li rende automaticamente deep-operativi.
+
+### Voce 2026-03-25 57
+- DATA: 2026-03-25
+- TITOLO MODIFICA: Quadro mezzo utile e output allineati nella console IA NEXT
+- OBIETTIVO: Rendere il quadro completo mezzo davvero utile alla decisione e allineare definitivamente thread chat, report corrente, modale e PDF sullo stesso payload business verificato.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_1028_quadro-mezzo-utile-output-allineati-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_1028_continuity_quadro-mezzo-utile-output-allineati-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - Il quadro mezzo viene costruito con un ordine fisso e decisionale, centrato su sintesi, azione da fare, scadenze, backlog, segnali operativi e nota finale.
+  - Il thread chat usa lo stesso payload business del report e del PDF, con etichetta `Quadro mezzo` corretta e senza riferimenti tecnici del motore in primo piano.
+  - Il renderer professionale preserva l'ordine dei blocchi decisionali del payload condiviso, invece di rimapparli in modo divergente.
+  - La vista report mostra prima cards, sintesi e sezioni operative, spostando media e appendici in fondo.
+  - Il sanitizer business pulisce anche note finali o limiti che arrivavano con wording troppo tecnico o poco leggibile.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il quadro mezzo e piu leggibile, piu business-first e fa capire subito cosa conviene fare.
+  - Lettura: nessun nuovo reader; viene riusata la stessa base dati business verificata gia prodotta dal motore unificato.
+  - Blocco scritture: invariato; nessuna scrittura business, nessuna modifica della madre, nessun backend live nuovo.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`.
+  - Provare:
+    - `Fammi un quadro completo della targa TI233827, ma solo con le informazioni davvero utili per decidere cosa fare.`
+    - `Dimmi la situazione del mezzo TI233827 e cosa dovrei fare per primo.`
+    - `Per questa targa voglio un report completo ma leggibile, non tecnico.` con `TI233827` selezionata nel campo targa
+    - `Crea il PDF del quadro mezzo TI233827.`
+  - Verificare che:
+    - il thread mostri `Quadro mezzo` e `Cosa fare ora` in primo piano;
+    - report corrente e PDF mantengano gli stessi blocchi decisionali del thread;
+    - non compaiano nel primo piano riferimenti come `Motore`, `Dominio rilevato` o `Perimetro`.
+  - Eseguire `npm run build`.
+  - Eseguire `npx eslint src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/NextInternalAiPage.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Il formato `report completo` puo ancora atterrare sul percorso report/PDF della console quando la richiesta chiede un artifact lungo; il contenuto resta comunque coerente col quadro decisionale.
+  - Costi e documenti continuano a mostrarsi solo se il payload li giudica abbastanza leggibili e agganciati in modo stabile.
+
+### Voce 2026-03-25 58
+- DATA: 2026-03-25
+- TITOLO MODIFICA: Estensione realistica costi-documenti-report decisionali nella console IA NEXT
+- OBIETTIVO: Aprire `D07/D08` per costi, documenti e storico utile del mezzo, rispettando il periodo richiesto e dichiarando i limiti veri senza copertura finta.
+- FILE TOCCATI:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_1125_estensione-realistica-costi-documenti-report-decisionali-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_1125_continuity_estensione-realistica-costi-documenti-report-decisionali-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - Il dominio `D07/D08` espone ora una vista business per targa filtrabile per periodo, con conteggi diretti/prudenziali, storico utile e azione consigliata.
+  - Il motore IA usa questa vista per comporre il blocco `Costi, documenti e storico utile`, invece di costruire sintesi grezze dai soli record completi.
+  - Il parser periodo riconosce anche `ultimi N mesi`, cosi i report economico-documentali non cadono piu su `Tutto lo storico disponibile` quando l'utente chiede un intervallo esplicito.
+  - Chat, report e PDF restano coerenti sulla stessa sostanza business anche nei casi costi/documenti, con etichetta chat corretta `Costi e documenti`.
+  - I casi senza dati leggibili non vengono abbelliti: la risposta dichiara assenza dati o collegamento prudenziale in modo semplice.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la chat rende piu chiari i casi `Costi e documenti` e li distingue dai veri `Storico mezzo`.
+  - Lettura: resta solo read-only, sopra `@costiMezzo`, `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, senza aprire `D06`.
+  - Blocco scritture: invariato; nessuna scrittura business, nessuna modifica della madre, nessun backend live nuovo.
+- COME VERIFICARE:
+  - Aprire `/next/ia/interna`.
+  - Provare:
+    - `Fammi un report dei costi della targa TI233827 negli ultimi 12 mesi, in modo semplice e utile.`
+    - `Quali documenti rilevanti risultano associati alla targa TI233827?`
+    - `Fammi uno storico decisionale del mezzo TI233827 con costi, documenti e segnali utili.`
+    - `Genera un report/PDF sullo storico utile del mezzo TI233827.`
+  - Verificare che:
+    - il primo prompt risolva il periodo `ultimi 12 mesi` invece di cadere su storico completo;
+    - i casi senza dati leggibili dichiarino il limite senza inventare costi o documenti;
+    - chat, report e PDF restino coerenti sullo stesso contenuto sostanziale.
+  - Eseguire `npm run build`.
+  - Eseguire `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Nel clone letto durante il task, la targa `TI233827` non restituisce ancora costi o documenti leggibili nel perimetro `D07/D08`; il valore dello step sta nel rendere il limite esplicito e il periodo corretto, non nel creare copertura artificiale.
+  - `D06` resta fuori: nessuna promozione di procurement separato a backend diretto del report costi/documenti.

@@ -15,7 +15,7 @@ import { readNextColleghiSnapshot } from "../domain/nextColleghiDomain";
 import {
   readNextDocumentiCostiFleetSnapshot,
   readNextDocumentiCostiProcurementSupportSnapshot,
-  readNextMezzoDocumentiCostiSnapshot,
+  readNextMezzoDocumentiCostiPeriodView,
 } from "../domain/nextDocumentiCostiDomain";
 import { readNextFornitoriSnapshot } from "../domain/nextFornitoriDomain";
 import { readNextInventarioSnapshot } from "../domain/nextInventarioDomain";
@@ -204,6 +204,9 @@ type UnifiedQuerySpec = {
   explicitScopes: InternalAiUnifiedScopeId[];
   asksFullOverview: boolean;
   asksAttentionToday: boolean;
+  asksPriorityOrdering: boolean;
+  asksActionAdvice: boolean;
+  rankingLimit: number | null;
   primaryIntent: UnifiedBusinessIntentId;
   metrics: UnifiedMetricId[];
   assetBreadth: UnifiedAssetBreadth;
@@ -251,6 +254,12 @@ type UnifiedSectionBuild = {
   keyPoints: string[];
   missingData: string[];
   evidences: string[];
+  businessPayload?:
+    | {
+        kind: "documenti_costi";
+        periodView: VehicleDocumentiCostiPeriodView;
+      }
+    | null;
 };
 
 type LinkedUnifiedRecord = {
@@ -290,13 +299,49 @@ type FuelAnalyticsSummary = {
   anomalyBullets: string[];
   recordBullets: string[];
   actionBullets: string[];
+  reliabilityBullets: string[];
+  classificationBullets: string[];
   missingData: string[];
+  classificationCounts: {
+    canonico: number;
+    ricostruito: number;
+    baseline: number;
+    escluso: number;
+  };
+  reliability: FuelReliabilitySummary;
 };
 
 type FuelValidationRecord = VehicleFuelSnapshot["items"][number] & {
   effectiveTimestamp: number | null;
   status: "incluso" | "escluso";
   exclusionReason: string | null;
+  calculationClassification: FuelRecordClassification;
+  classificationReason: string | null;
+};
+
+type FuelReliabilityStatus = "affidabile" | "prudente" | "da_verificare";
+
+type FuelRecordClassification = "canonico" | "ricostruito" | "baseline" | "escluso";
+
+type FuelReliabilityLayer = {
+  status: FuelReliabilityStatus;
+  label: string;
+  summary: string;
+  bullets: string[];
+};
+
+type FuelCalculationLayer = {
+  status: FuelAnalyticsSummary["calculationStatus"];
+  label: string;
+  summary: string;
+  bullets: string[];
+};
+
+type FuelReliabilitySummary = {
+  source: FuelReliabilityLayer;
+  filter: FuelReliabilityLayer;
+  calculation: FuelCalculationLayer;
+  final: FuelReliabilityLayer;
 };
 
 type UnifiedPeriodSelection = {
@@ -320,10 +365,24 @@ type VehiclePrioritySummary = {
   maintenanceCount: number;
 };
 
+type FleetPriorityEngineSummary = {
+  attentionCount: number;
+  crossDomainCount: number;
+  d10OnlyCount: number;
+  d02OnlyCount: number;
+  signalBullets: string[];
+  criteriaBullets: string[];
+  reliabilityLabel: "Prudente" | "Parziale" | "Da verificare";
+  reliabilityNote: string;
+};
+
 type FleetPriorityRow = VehiclePrioritySummary & {
   targa: string;
   rankValues: number[];
   preCollaudoSuggested: boolean;
+  recommendedAction: string;
+  hasD10Signals: boolean;
+  hasD02Signals: boolean;
 };
 
 type CentroControlloSnapshot = Awaited<ReturnType<typeof readNextCentroControlloSnapshot>>;
@@ -331,6 +390,10 @@ type CentroControlloSnapshot = Awaited<ReturnType<typeof readNextCentroControllo
 type VehicleTechnicalSnapshot = Awaited<ReturnType<typeof readNextMezzoOperativitaTecnicaSnapshot>>;
 
 type VehicleFuelSnapshot = Awaited<ReturnType<typeof readNextMezzoRifornimentiSnapshot>>;
+
+type VehicleDocumentiCostiPeriodView = Awaited<
+  ReturnType<typeof readNextMezzoDocumentiCostiPeriodView>
+>;
 
 type OperativitaGlobaleSnapshot = Awaited<ReturnType<typeof readNextOperativitaGlobaleSnapshot>>;
 
@@ -401,8 +464,8 @@ const SCOPE_PATTERNS: ReadonlyArray<{ scope: InternalAiUnifiedScopeId; patterns:
   { scope: "ordini", patterns: ["ordini", "ordine", "arrivi"] },
   { scope: "preventivi", patterns: ["preventivi", "preventivo"] },
   { scope: "fornitori", patterns: ["fornitori", "fornitore", "listino"] },
-  { scope: "documenti", patterns: ["documenti", "documento", "libretto", "allegati"] },
-  { scope: "costi", patterns: ["costi", "costo", "analisi economica", "fatture"] },
+  { scope: "documenti", patterns: ["documenti", "documento", "libretto", "allegati", "documentale"] },
+  { scope: "costi", patterns: ["costi", "costo", "analisi economica", "fatture", "spese", "storico costi"] },
   { scope: "cisterna", patterns: ["cisterna", "schede test", "caravate"] },
   { scope: "attenzione_oggi", patterns: ["attenzione oggi", "richiede attenzione oggi", "priorita oggi", "priorita operative"] },
 ];
@@ -589,6 +652,21 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
+function formatCurrencyByCode(value: number, currency: "EUR" | "CHF"): string {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatReliabilityLabel(status: "affidabile" | "prudente" | "da_verificare"): string {
+  if (status === "affidabile") return "Affidabile";
+  if (status === "prudente") return "Prudente";
+  return "Da verificare";
+}
+
 function formatDateLabel(value: number | string | null | undefined): string {
   if (value == null) {
     return "DA VERIFICARE";
@@ -630,6 +708,16 @@ function createUnifiedCustomPeriodSelection(from: Date, to: Date): UnifiedPeriod
   };
 }
 
+function extractLastMonthsCount(normalizedPrompt: string): number | null {
+  const match = normalizedPrompt.match(/\bultimi\s+(\d{1,2})\s+mesi\b/i);
+  const parsed = match?.[1] ? Number(match[1]) : null;
+  if (!parsed || !Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.min(Math.max(parsed, 1), 24);
+}
+
 function hasExplicitPeriodCue(normalizedPrompt: string): boolean {
   if (
     normalizedPrompt.includes("oggi") ||
@@ -638,7 +726,8 @@ function hasExplicitPeriodCue(normalizedPrompt: string): boolean {
     normalizedPrompt.includes("ultimo mese") ||
     normalizedPrompt.includes("ultimi 30 giorni") ||
     normalizedPrompt.includes("ultimi 90 giorni") ||
-    normalizedPrompt.includes("prossimi 30 giorni")
+    normalizedPrompt.includes("prossimi 30 giorni") ||
+    extractLastMonthsCount(normalizedPrompt) !== null
   ) {
     return true;
   }
@@ -729,6 +818,102 @@ function inferOutputPreferenceFromPrompt(normalizedPrompt: string): UnifiedOutpu
   return "thread";
 }
 
+function extractRankingLimit(normalizedPrompt: string): number | null {
+  if (
+    normalizedPrompt.includes("un solo mezzo") ||
+    normalizedPrompt.includes("un mezzo solo") ||
+    normalizedPrompt.includes("un solo veicolo") ||
+    normalizedPrompt.includes("quale mezzo e piu critico") ||
+    normalizedPrompt.includes("quale sceglieresti")
+  ) {
+    return 1;
+  }
+
+  const patterns = [
+    /\btop\s*(\d{1,2})\b/i,
+    /\bprimi\s+(\d{1,2})\b/i,
+    /\bprime\s+(\d{1,2})\b/i,
+    /\bi\s+(\d{1,2})\s+mezz/i,
+    /\ble\s+(\d{1,2})\s+targ/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedPrompt.match(pattern);
+    const parsed = match?.[1] ? Number(match[1]) : null;
+    if (parsed && Number.isFinite(parsed)) {
+      return Math.min(Math.max(parsed, 1), 10);
+    }
+  }
+
+  return null;
+}
+
+function inferAsksPriorityOrdering(normalizedPrompt: string, rankingLimit: number | null): boolean {
+  if (rankingLimit !== null) {
+    return true;
+  }
+
+  return (
+    normalizedPrompt.includes("classifica") ||
+    normalizedPrompt.includes("priorita") ||
+    normalizedPrompt.includes("ordine di priorita") ||
+    normalizedPrompt.includes("ordina per priorita") ||
+    normalizedPrompt.includes("ordinati per priorita") ||
+    normalizedPrompt.includes("ordina per criticita") ||
+    normalizedPrompt.includes("ordinati per criticita") ||
+    normalizedPrompt.includes("mezzo piu critico") ||
+    normalizedPrompt.includes("mezzi piu critici") ||
+    normalizedPrompt.includes("richiedono piu attenzione") ||
+    normalizedPrompt.includes("controllare per primo")
+  );
+}
+
+function inferAsksActionAdvice(normalizedPrompt: string): boolean {
+  return (
+    normalizedPrompt.includes("cosa conviene fare") ||
+    normalizedPrompt.includes("conviene fare") ||
+    normalizedPrompt.includes("cosa fare") ||
+    normalizedPrompt.includes("azione consigliata") ||
+    normalizedPrompt.includes("spiegami cosa") ||
+    normalizedPrompt.includes("spiegami in modo semplice") ||
+    normalizedPrompt.includes("controllare per primo") ||
+    normalizedPrompt.includes("quale sceglieresti")
+  );
+}
+
+function hasCrossDomainPriorityCue(args: {
+  normalizedPrompt: string;
+  explicitScopes: InternalAiUnifiedScopeId[];
+  asksAttentionToday: boolean;
+  asksPriorityOrdering: boolean;
+  asksActionAdvice: boolean;
+}): boolean {
+  const multiOperationalScopeCount = Array.from(
+    new Set(
+      args.explicitScopes.filter((scope) =>
+        ["criticita", "scadenze", "lavori", "manutenzioni", "gomme", "attenzione_oggi"].includes(scope),
+      ),
+    ),
+  ).length;
+  const hasOperationalWeight =
+    args.explicitScopes.includes("criticita") ||
+    args.explicitScopes.includes("lavori") ||
+    args.explicitScopes.includes("manutenzioni") ||
+    args.explicitScopes.includes("attenzione_oggi");
+  const asksCrossDomain =
+    args.normalizedPrompt.includes("incrocia") ||
+    args.normalizedPrompt.includes("incrociando") ||
+    args.normalizedPrompt.includes("trasvers") ||
+    args.normalizedPrompt.includes("mettendo insieme") ||
+    args.normalizedPrompt.includes("insieme");
+
+  return (
+    (asksCrossDomain && multiOperationalScopeCount >= 2) ||
+    ((args.asksAttentionToday || args.asksPriorityOrdering || args.asksActionAdvice) &&
+      (multiOperationalScopeCount >= 2 || hasOperationalWeight))
+  );
+}
+
 function extractNamedEntity(prompt: string, labels: string[]): string | null {
   for (const label of labels) {
     const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -748,6 +933,14 @@ function resolveUnifiedPeriodSelection(
   fallbackPeriodInput?: InternalAiReportPeriodInput,
 ): UnifiedPeriodSelection {
   const normalizedPrompt = normalizeSearchText(prompt);
+  const rollingMonths = extractLastMonthsCount(normalizedPrompt);
+
+  if (rollingMonths !== null) {
+    const today = new Date();
+    const from = new Date(today);
+    from.setMonth(today.getMonth() - rollingMonths);
+    return createUnifiedCustomPeriodSelection(from, today);
+  }
 
   if (normalizedPrompt.includes("ultimi 30 giorni")) {
     return {
@@ -846,12 +1039,14 @@ function resolveUnifiedPeriodSelection(
 function inferResponseFocus(
   normalizedPrompt: string,
   outputPreference: UnifiedOutputPreference,
+  rankingLimit: number | null,
+  asksPriorityOrdering: boolean,
 ): UnifiedResponseFocus {
   if (outputPreference !== "thread") {
     return "report_pdf";
   }
 
-  if (normalizedPrompt.includes("classifica") || normalizedPrompt.includes("priorita")) {
+  if (rankingLimit !== null || asksPriorityOrdering) {
     return "classifica";
   }
 
@@ -919,6 +1114,8 @@ function inferPrimaryIntent(args: {
   explicitScopes: InternalAiUnifiedScopeId[];
   asksFullOverview: boolean;
   asksAttentionToday: boolean;
+  asksPriorityOrdering: boolean;
+  asksActionAdvice: boolean;
 }): UnifiedBusinessIntentId {
   const asksFuel = args.explicitScopes.includes("rifornimenti");
   const asksFuelAnomalies =
@@ -928,6 +1125,37 @@ function inferPrimaryIntent(args: {
   const asksCriticality = args.explicitScopes.includes("criticita");
   const asksCostsDocuments =
     args.explicitScopes.includes("costi") || args.explicitScopes.includes("documenti");
+  const hasExplicitDeadlineCue =
+    args.normalizedPrompt.includes("scadenz") ||
+    args.normalizedPrompt.includes("revisione") ||
+    args.normalizedPrompt.includes("collaudo") ||
+    args.normalizedPrompt.includes("precollaudo") ||
+    args.normalizedPrompt.includes("pre-collaudo");
+  const asksExtraOperationalSignals =
+    args.explicitScopes.includes("lavori") ||
+    args.explicitScopes.includes("manutenzioni") ||
+    args.explicitScopes.includes("attenzione_oggi") ||
+    args.normalizedPrompt.includes("segnalaz") ||
+    args.normalizedPrompt.includes("alert") ||
+    args.normalizedPrompt.includes("incrocia") ||
+    args.normalizedPrompt.includes("incrociando");
+  const asksCrossDomainPriority = hasCrossDomainPriorityCue({
+    normalizedPrompt: args.normalizedPrompt,
+    explicitScopes: args.explicitScopes,
+    asksAttentionToday: args.asksAttentionToday,
+    asksPriorityOrdering: args.asksPriorityOrdering,
+    asksActionAdvice: args.asksActionAdvice,
+  });
+  const asksGenericOperationalPriority =
+    !args.normalizedTarga &&
+    !asksDeadlines &&
+    !asksFuel &&
+    !args.asksFullOverview &&
+    (args.asksPriorityOrdering || args.asksActionAdvice) &&
+    (args.normalizedPrompt.includes("mezzo") ||
+      args.normalizedPrompt.includes("mezzi") ||
+      args.normalizedPrompt.includes("attenzione") ||
+      args.normalizedPrompt.includes("critico"));
 
   if (asksFuelAnomalies) {
     return "fuel_anomalies";
@@ -937,7 +1165,20 @@ function inferPrimaryIntent(args: {
     return "fuel_report";
   }
 
-  if (args.asksAttentionToday) {
+  if (args.asksFullOverview) {
+    return "vehicle_overview";
+  }
+
+  if (
+    asksDeadlines &&
+    hasExplicitDeadlineCue &&
+    !asksExtraOperationalSignals &&
+    !args.asksAttentionToday
+  ) {
+    return args.normalizedTarga ? "vehicle_deadlines" : "fleet_deadlines";
+  }
+
+  if (asksCrossDomainPriority || args.asksAttentionToday || asksGenericOperationalPriority) {
     return "fleet_attention";
   }
 
@@ -951,10 +1192,6 @@ function inferPrimaryIntent(args: {
 
   if (asksCostsDocuments) {
     return "costs_documents";
-  }
-
-  if (args.asksFullOverview) {
-    return "vehicle_overview";
   }
 
   return args.normalizedTarga ? "vehicle_criticality" : "generic";
@@ -984,12 +1221,27 @@ function inferDomainBreadth(args: {
   normalizedPrompt: string;
   explicitScopes: InternalAiUnifiedScopeId[];
   asksFullOverview: boolean;
+  primaryIntent: UnifiedBusinessIntentId;
+  asksAttentionToday: boolean;
+  asksPriorityOrdering: boolean;
+  asksActionAdvice: boolean;
 }): UnifiedDomainBreadth {
-  if (args.asksFullOverview || args.explicitScopes.length > 1) {
+  if (
+    args.asksFullOverview ||
+    args.primaryIntent === "fleet_attention" ||
+    args.explicitScopes.length > 1
+  ) {
     return "multi_domain";
   }
 
-  if (args.normalizedPrompt.includes("incrocia") || args.normalizedPrompt.includes("trasvers")) {
+  if (
+    args.normalizedPrompt.includes("incrocia") ||
+    args.normalizedPrompt.includes("trasvers") ||
+    ((args.asksAttentionToday || args.asksPriorityOrdering || args.asksActionAdvice) &&
+      !args.explicitScopes.includes("rifornimenti") &&
+      !args.explicitScopes.includes("documenti") &&
+      !args.explicitScopes.includes("costi"))
+  ) {
     return "multi_domain";
   }
 
@@ -1031,17 +1283,36 @@ function parseUnifiedQuery(
   const scopesFromPrompt = SCOPE_PATTERNS.filter((entry) =>
     entry.patterns.some((pattern) => normalizedPrompt.includes(normalizeSearchText(pattern))),
   ).map((entry) => entry.scope);
+  const asksDecisionHistory =
+    normalizedTarga !== null &&
+    (normalizedPrompt.includes("storico decisionale") ||
+      normalizedPrompt.includes("storico utile") ||
+      normalizedPrompt.includes("storico del mezzo") ||
+      normalizedPrompt.includes("storico sintetico del mezzo") ||
+      normalizedPrompt.includes("eventi recenti del mezzo"));
   const asksFullOverview =
     normalizedPrompt.includes("quadro completo") ||
+    normalizedPrompt.includes("quadro mezzo") ||
     normalizedPrompt.includes("panoramica completa") ||
     normalizedPrompt.includes("quadro generale mezzo") ||
-    normalizedPrompt.includes("tutte le fonti");
+    normalizedPrompt.includes("tutte le fonti") ||
+    asksDecisionHistory ||
+    (normalizedTarga !== null &&
+      (normalizedPrompt.includes("report completo") ||
+        normalizedPrompt.includes("situazione del mezzo")));
   const asksAttentionToday =
     normalizedPrompt.includes("attenzione oggi") ||
     normalizedPrompt.includes("richiede attenzione oggi") ||
+    normalizedPrompt.includes("richiedono attenzione oggi") ||
+    normalizedPrompt.includes("richiedono piu attenzione") ||
+    (normalizedPrompt.includes("oggi") && normalizedPrompt.includes("attenzione")) ||
     normalizedPrompt.includes("priorita oggi") ||
     normalizedPrompt.includes("priorita operative") ||
-    normalizedPrompt.includes("quale mezzo e piu critico oggi");
+    normalizedPrompt.includes("quale mezzo e piu critico oggi") ||
+    normalizedPrompt.includes("quali mezzi richiedono attenzione oggi");
+  const rankingLimit = extractRankingLimit(normalizedPrompt);
+  const asksPriorityOrdering = inferAsksPriorityOrdering(normalizedPrompt, rankingLimit);
+  const asksActionAdvice = inferAsksActionAdvice(normalizedPrompt);
 
   const explicitScopes = Array.from(new Set([...scopesFromConsole, ...scopesFromPrompt]));
   let scopes = [...explicitScopes];
@@ -1059,6 +1330,8 @@ function parseUnifiedQuery(
     explicitScopes,
     asksFullOverview,
     asksAttentionToday,
+    asksPriorityOrdering,
+    asksActionAdvice,
   });
 
   if (scopes.length === 0) {
@@ -1074,7 +1347,10 @@ function parseUnifiedQuery(
       case "vehicle_criticality":
       case "fleet_criticality":
       case "fleet_attention":
-        scopes = ["criticita", "scadenze", "lavori", "manutenzioni"];
+        scopes =
+          primaryIntent === "fleet_attention"
+            ? ["criticita", "scadenze", "lavori", "manutenzioni", "attenzione_oggi"]
+            : ["criticita", "scadenze", "lavori", "manutenzioni"];
         break;
       case "costs_documents":
         scopes = ["documenti", "costi"];
@@ -1098,7 +1374,12 @@ function parseUnifiedQuery(
     materiale: extractNamedEntity(visiblePrompt, ["materiale"]),
   };
   const periodSelection = resolveUnifiedPeriodSelection(visiblePrompt, fallbackPeriodInput);
-  const responseFocus = inferResponseFocus(normalizedPrompt, outputPreference);
+  const responseFocus = inferResponseFocus(
+    normalizedPrompt,
+    outputPreference,
+    rankingLimit,
+    asksPriorityOrdering,
+  );
 
   return {
     visiblePrompt,
@@ -1113,10 +1394,21 @@ function parseUnifiedQuery(
     explicitScopes,
     asksFullOverview,
     asksAttentionToday,
+    asksPriorityOrdering,
+    asksActionAdvice,
+    rankingLimit,
     primaryIntent,
     metrics: inferMetrics(normalizedPrompt, scopes, primaryIntent),
     assetBreadth: inferAssetBreadth(normalizedPrompt, normalizedTarga),
-    domainBreadth: inferDomainBreadth({ normalizedPrompt, explicitScopes: scopes, asksFullOverview }),
+    domainBreadth: inferDomainBreadth({
+      normalizedPrompt,
+      explicitScopes: scopes,
+      asksFullOverview,
+      primaryIntent,
+      asksAttentionToday,
+      asksPriorityOrdering,
+      asksActionAdvice,
+    }),
     responseFocus,
   };
 }
@@ -2335,17 +2627,22 @@ function buildUnifiedQueryPlan(spec: UnifiedQuerySpec): UnifiedQueryPlan {
       };
     case "vehicle_criticality":
     case "fleet_criticality":
-    case "fleet_attention":
+    case "fleet_attention": {
+      const priorityScopes: InternalAiUnifiedScopeId[] =
+        spec.primaryIntent === "fleet_attention"
+          ? ["criticita", "scadenze", "lavori", "manutenzioni", "attenzione_oggi"]
+          : ["criticita", "scadenze", "lavori", "manutenzioni"];
       return {
         primaryIntent: spec.primaryIntent,
-        selectedScopes: ["criticita", "scadenze", "lavori", "manutenzioni"],
+        selectedScopes: priorityScopes,
         domainLabel: "D10 Stato operativo + D02 backlog tecnico",
         domainCodes: ["D01", "D10", "D02"],
         relations: ["targa -> alert e focus", "targa -> lavori aperti", "targa -> manutenzioni"],
-        excludedScopes: ALL_OPERATIONAL_SCOPES.filter((scope) => !["criticita", "scadenze", "lavori", "manutenzioni"].includes(scope)),
+        excludedScopes: ALL_OPERATIONAL_SCOPES.filter((scope) => !priorityScopes.includes(scope)),
         includeIdentitySection: spec.normalizedTarga !== null && spec.outputPreference !== "thread",
         outputLabel,
       };
+    }
     case "costs_documents":
       return {
         primaryIntent: spec.primaryIntent,
@@ -2498,6 +2795,31 @@ function formatBulletBlock(title: string, bullets: string[]): string {
   return `${title}:\n${(bullets.length > 0 ? bullets : ["Nessun elemento rilevante."]).map((entry) => `- ${entry}`).join("\n")}`;
 }
 
+function sanitizeBusinessText(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  const sanitized = value
+    .replace(/\bD0\d(?:-[A-Z]+)?\b/gi, "")
+    .replace(/\bclone-safe\b/gi, "")
+    .replace(/\bread-only\b/gi, "sola lettura")
+    .replace(/\bregistry\b/gi, "fonti collegate")
+    .replace(/^\/\s+presenti\b/gi, "Sono presenti")
+    .replace(/^\/\s+presente\b/gi, "E presente")
+    .replace(/\bnel fonti collegate\b/gi, "nelle fonti collegate")
+    .replace(/\s+\|\s+/g, " | ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.:;])/g, "$1")
+    .trim();
+
+  if (/^e presente\b/i.test(sanitized)) {
+    return sanitized.replace(/^e presente\b/i, "E presente");
+  }
+
+  return sanitized;
+}
+
 function collectVehicleOperationalSignals(
   snapshot: CentroControlloSnapshot,
   targa: string,
@@ -2546,6 +2868,177 @@ function getFuelEffectiveTimestamp(item: VehicleFuelSnapshot["items"][number]): 
   return item.timestampRicostruito ?? item.timestamp ?? null;
 }
 
+function formatFuelReliabilityLabel(status: FuelReliabilityStatus): string {
+  if (status === "affidabile") return "Affidabile";
+  if (status === "prudente") return "Prudente";
+  return "Da verificare";
+}
+
+function formatFuelCalculationLabel(status: FuelAnalyticsSummary["calculationStatus"]): string {
+  if (status === "affidabile") return "Affidabile";
+  if (status === "prudente") return "Prudente";
+  return "Non calcolabile";
+}
+
+function rankFuelReliabilityStatus(status: FuelReliabilityStatus): number {
+  if (status === "affidabile") return 0;
+  if (status === "prudente") return 1;
+  return 2;
+}
+
+function deriveFuelFinalReliabilityStatus(args: {
+  sourceStatus: FuelReliabilityStatus;
+  filterStatus: FuelReliabilityStatus;
+  calculationStatus: FuelAnalyticsSummary["calculationStatus"];
+}): FuelReliabilityStatus {
+  if (args.calculationStatus === "non_calcolabile") {
+    return "da_verificare";
+  }
+
+  const statuses = [args.sourceStatus, args.filterStatus];
+  const worst = statuses.reduce((currentWorst, current) =>
+    rankFuelReliabilityStatus(current) > rankFuelReliabilityStatus(currentWorst)
+      ? current
+      : currentWorst,
+  );
+  return worst;
+}
+
+function buildFuelSourceReliability(args: {
+  records: FuelValidationRecord[];
+  snapshot: VehicleFuelSnapshot;
+}): FuelReliabilityLayer {
+  const canonicoCount = args.records.filter(
+    (record) => record.sourceTrust.classification === "canonico",
+  ).length;
+  const ricostruitoCount = args.records.length - canonicoCount;
+  const heuristicMatches = args.records.filter((record) =>
+    [
+      "match_euristica_10_minuti",
+      "match_euristica_stesso_giorno",
+    ].includes(record.matchStrategy),
+  ).length;
+  const fieldOnlyCount = args.records.filter(
+    (record) => record.matchStrategy === "solo_campo",
+  ).length;
+
+  const status: FuelReliabilityStatus =
+    args.records.length === 0
+      ? "da_verificare"
+      : ricostruitoCount > 0 ||
+          heuristicMatches > 0 ||
+          fieldOnlyCount > 0
+        ? "prudente"
+        : args.snapshot.trustModel.source.verdict === "da_verificare"
+          ? "da_verificare"
+          : "affidabile";
+
+  const summary =
+    status === "affidabile"
+      ? `Sorgente affidabile: i ${formatCount(args.records.length)} record del periodo sono canonici nel layer business D04.`
+      : status === "prudente"
+        ? `Sorgente prudente: nel periodo ci sono ${formatCount(canonicoCount)} record canonici e ${formatCount(ricostruitoCount)} record ricostruiti o integrati dal feed campo.`
+        : "Sorgente da verificare: nel periodo non ho una base sufficiente per distinguere con sicurezza record canonici e ricostruiti.";
+
+  const bullets = [
+    `Record canonici nel periodo: ${formatCount(canonicoCount)}`,
+    `Record ricostruiti nel periodo: ${formatCount(ricostruitoCount)}`,
+    fieldOnlyCount > 0
+      ? `Record presenti solo nel feed campo: ${formatCount(fieldOnlyCount)}`
+      : null,
+    heuristicMatches > 0
+      ? `Agganci euristici tra fonti: ${formatCount(heuristicMatches)}`
+      : null,
+    ...args.records
+      .filter((record) => record.sourceTrust.classification === "ricostruito")
+      .slice(0, 2)
+      .map((record) => record.sourceTrust.reason),
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return {
+    status,
+    label: formatFuelReliabilityLabel(status),
+    summary,
+    bullets,
+  };
+}
+
+function buildFuelFilterReliability(args: {
+  periodContext: InternalAiReportPeriodContext;
+  recordsFound: number;
+  outsidePeriodRecords: number;
+  undatedRecords: number;
+  mismatchedTargaRecords: number;
+}): FuelReliabilityLayer {
+  const status: FuelReliabilityStatus =
+    args.recordsFound === 0 && (args.undatedRecords > 0 || args.mismatchedTargaRecords > 0)
+      ? "da_verificare"
+      : args.undatedRecords > 0 || args.mismatchedTargaRecords > 0
+        ? "prudente"
+        : "affidabile";
+
+  const summary =
+    status === "affidabile"
+      ? args.periodContext.appliesFilter
+        ? `Filtro affidabile: il periodo ${args.periodContext.label} e stato applicato solo a record con data verificabile e targa coerente.`
+        : "Filtro affidabile: nessun filtro periodo attivo, tutti i record della targa restano nel perimetro letto."
+      : status === "prudente"
+        ? `Filtro prudente: il periodo ${args.periodContext.label} e corretto, ma alcuni record non avevano data verificabile o targa coerente.`
+        : `Filtro da verificare: il periodo ${args.periodContext.label} non puo garantire che tutti i record storici della targa siano attribuiti in modo sicuro.`;
+
+  const bullets = [
+    `Periodo applicato: ${args.periodContext.label}`,
+    args.outsidePeriodRecords > 0
+      ? `Record fuori periodo esclusi: ${formatCount(args.outsidePeriodRecords)}`
+      : null,
+    args.undatedRecords > 0
+      ? `Record senza data verificabile: ${formatCount(args.undatedRecords)}`
+      : null,
+    args.mismatchedTargaRecords > 0
+      ? `Record con targa non coerente esclusi: ${formatCount(args.mismatchedTargaRecords)}`
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return {
+    status,
+    label: formatFuelReliabilityLabel(status),
+    summary,
+    bullets,
+  };
+}
+
+function buildFuelCalculationReliability(args: {
+  analytics: {
+    includedRecords: number;
+    excludedRecords: number;
+    analyzedTransitions: number;
+    kmPerLiter: number | null;
+    calculationStatus: FuelAnalyticsSummary["calculationStatus"];
+    classificationCounts: FuelAnalyticsSummary["classificationCounts"];
+  };
+}): FuelCalculationLayer {
+  const summary =
+    args.analytics.calculationStatus === "affidabile"
+      ? `Calcolo affidabile: la sequenza valida del periodo usa ${formatCount(args.analytics.includedRecords)} record inclusi con ${formatCount(args.analytics.analyzedTransitions)} passaggi coerenti.`
+      : args.analytics.calculationStatus === "prudente"
+        ? `Calcolo prudente: la media usa ${formatCount(args.analytics.includedRecords)} record inclusi, ma il periodo contiene baseline, esclusioni o record ricostruiti.`
+        : "Calcolo non calcolabile: il periodo non contiene una sequenza sufficiente e coerente per produrre una media attendibile.";
+
+  const bullets = [
+    `Record inclusi nel calcolo: ${formatCount(args.analytics.includedRecords)}`,
+    `Record baseline: ${formatCount(args.analytics.classificationCounts.baseline)}`,
+    `Record esclusi: ${formatCount(args.analytics.excludedRecords)}`,
+    `Record inclusi come ricostruiti: ${formatCount(args.analytics.classificationCounts.ricostruito)}`,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return {
+    status: args.analytics.calculationStatus,
+    label: formatFuelCalculationLabel(args.analytics.calculationStatus),
+    summary,
+    bullets,
+  };
+}
+
 function buildFuelDuplicateKey(item: VehicleFuelSnapshot["items"][number], effectiveTimestamp: number | null): string | null {
   if (effectiveTimestamp === null || item.litri === null || item.km === null) {
     return null;
@@ -2567,9 +3060,15 @@ function buildFuelRecordBullet(record: FuelValidationRecord): string {
     record.distributore ? `distributore ${record.distributore}` : "distributore n.d.",
   ].join(" | ");
 
-  return record.status === "incluso"
-    ? `${base} | incluso`
-    : `${base} | escluso${record.exclusionReason ? `: ${record.exclusionReason}` : ""}`;
+  if (record.calculationClassification === "baseline") {
+    return `${base} | baseline: ${record.classificationReason ?? "record base del periodo"}`;
+  }
+
+  if (record.calculationClassification === "escluso") {
+    return `${base} | escluso${record.exclusionReason ? `: ${record.exclusionReason}` : ""}`;
+  }
+
+  return `${base} | ${record.calculationClassification} | incluso${record.classificationReason ? `: ${record.classificationReason}` : ""}`;
 }
 
 function buildFuelAnalyticsSummary(
@@ -2606,6 +3105,8 @@ function buildFuelAnalyticsSummary(
       effectiveTimestamp,
       status: "escluso",
       exclusionReason: null,
+      calculationClassification: item.sourceTrust.classification,
+      classificationReason: item.sourceTrust.reason,
     });
   }
 
@@ -2639,6 +3140,8 @@ function buildFuelAnalyticsSummary(
     if (duplicateKey) {
       if (duplicateSeen.has(duplicateKey)) {
         item.exclusionReason = "possibile duplicato del record precedente";
+        item.calculationClassification = "escluso";
+        item.classificationReason = item.exclusionReason;
         duplicateCount += 1;
         continue;
       }
@@ -2647,23 +3150,32 @@ function buildFuelAnalyticsSummary(
 
     if (item.effectiveTimestamp === null) {
       item.exclusionReason = "data non verificabile";
+      item.calculationClassification = "escluso";
+      item.classificationReason = item.exclusionReason;
       continue;
     }
 
     if (item.litri === null || item.litri <= 0) {
       item.exclusionReason = "litri mancanti o non validi";
+      item.calculationClassification = "escluso";
+      item.classificationReason = item.exclusionReason;
       missingLitersCount += 1;
       continue;
     }
 
     if (item.km === null) {
       item.exclusionReason = "km non disponibile";
+      item.calculationClassification = "escluso";
+      item.classificationReason = item.exclusionReason;
       missingKmCount += 1;
       continue;
     }
 
     if (previousComparable === null) {
       item.exclusionReason = "primo record utile del periodo: serve un rifornimento successivo per stimare la resa";
+      item.calculationClassification = "baseline";
+      item.classificationReason =
+        "primo record valido del periodo usato come base di confronto";
       previousComparable = item;
       continue;
     }
@@ -2671,12 +3183,19 @@ function buildFuelAnalyticsSummary(
     const deltaKm = item.km - previousComparable.km!;
     if (deltaKm <= 0) {
       item.exclusionReason = "km non progressivi rispetto al record precedente";
+      item.calculationClassification = "escluso";
+      item.classificationReason = item.exclusionReason;
       nonIncreasingKmCount += 1;
       continue;
     }
 
     item.status = "incluso";
     item.exclusionReason = null;
+    item.calculationClassification = item.sourceTrust.classification;
+    item.classificationReason =
+      item.sourceTrust.classification === "canonico"
+        ? "record canonico letto dal business D04"
+        : item.sourceTrust.reason;
     analyzedKm += deltaKm;
     analyzedLiters += item.litri;
     analyzedTransitions += 1;
@@ -2702,12 +3221,66 @@ function buildFuelAnalyticsSummary(
   const kmPerLiter = analyzedKm > 0 && analyzedLiters > 0 ? analyzedKm / analyzedLiters : null;
   const litersPer100Km =
     analyzedKm > 0 && analyzedLiters > 0 ? (analyzedLiters / analyzedKm) * 100 : null;
+  const classificationCounts = {
+    canonico: sorted.filter((item) => item.calculationClassification === "canonico").length,
+    ricostruito: sorted.filter((item) => item.calculationClassification === "ricostruito").length,
+    baseline: sorted.filter((item) => item.calculationClassification === "baseline").length,
+    escluso: sorted.filter((item) => item.calculationClassification === "escluso").length,
+  };
   const calculationStatus =
     kmPerLiter === null
       ? "non_calcolabile"
       : excludedRecords.length > 0 || heuristicCount > 0 || reconstructedKmCount > 0
         ? "prudente"
         : "affidabile";
+
+  const sourceReliability = buildFuelSourceReliability({
+    records: sorted,
+    snapshot,
+  });
+  const filterReliability = buildFuelFilterReliability({
+    periodContext,
+    recordsFound: sorted.length,
+    outsidePeriodRecords,
+    undatedRecords,
+    mismatchedTargaRecords,
+  });
+  const calculationReliability = buildFuelCalculationReliability({
+    analytics: {
+      includedRecords: includedRecords.length,
+      excludedRecords: excludedRecords.length,
+      analyzedTransitions,
+      kmPerLiter,
+      calculationStatus,
+      classificationCounts,
+    },
+  });
+  const finalReliabilityStatus = deriveFuelFinalReliabilityStatus({
+    sourceStatus: sourceReliability.status,
+    filterStatus: filterReliability.status,
+    calculationStatus,
+  });
+  const finalReliability: FuelReliabilityLayer = {
+    status: finalReliabilityStatus,
+    label: formatFuelReliabilityLabel(finalReliabilityStatus),
+    summary:
+      finalReliabilityStatus === "affidabile"
+        ? "Verdetto finale affidabile: sorgente, filtro e calcolo risultano coerenti nel periodo richiesto."
+        : finalReliabilityStatus === "prudente"
+          ? "Verdetto finale prudente: il periodo e corretto, ma almeno una parte del dato o del calcolo richiede cautela."
+          : "Verdetto finale da verificare: il dato o il calcolo non permettono di presentare la resa come pienamente attendibile.",
+    bullets: [
+      `Sorgente: ${sourceReliability.label}`,
+      `Filtro: ${filterReliability.label}`,
+      `Calcolo: ${calculationReliability.label}`,
+    ],
+  };
+  const reliability = {
+    source: sourceReliability,
+    filter: filterReliability,
+    calculation: calculationReliability,
+    final: finalReliability,
+  } satisfies FuelReliabilitySummary;
 
   const anomalyBullets = [
     missingKmCount > 0 ? `${missingKmCount} record del periodo senza km.` : null,
@@ -2734,6 +3307,23 @@ function buildFuelAnalyticsSummary(
       : null,
   ].filter((entry): entry is string => Boolean(entry));
 
+  const reliabilityBullets = [
+    `${sourceReliability.summary}`,
+    ...sourceReliability.bullets,
+    `${filterReliability.summary}`,
+    ...filterReliability.bullets,
+    `${calculationReliability.summary}`,
+    ...calculationReliability.bullets,
+    `${finalReliability.summary}`,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const classificationBullets = [
+    `Canonici: ${formatCount(classificationCounts.canonico)}`,
+    `Ricostruiti: ${formatCount(classificationCounts.ricostruito)}`,
+    `Baseline: ${formatCount(classificationCounts.baseline)}`,
+    `Esclusi: ${formatCount(classificationCounts.escluso)}`,
+  ];
+
   return {
     recordsFound: sorted.length,
     includedRecords: includedRecords.length,
@@ -2753,6 +3343,8 @@ function buildFuelAnalyticsSummary(
     anomalyBullets,
     recordBullets: sorted.map((item) => buildFuelRecordBullet(item)),
     actionBullets,
+    reliabilityBullets,
+    classificationBullets,
     missingData: [
       ...(snapshot.limitations ?? []).slice(0, 2),
       periodContext.appliesFilter && outsidePeriodRecords > 0
@@ -2768,6 +3360,8 @@ function buildFuelAnalyticsSummary(
         ? "La media consumi viene mostrata solo quando esiste una sequenza ordinata con km progressivi e litri validi."
         : null,
     ].filter((entry): entry is string => Boolean(entry)),
+    classificationCounts,
+    reliability,
   };
 }
 
@@ -2844,6 +3438,263 @@ function buildVehiclePrioritySummary(args: {
   };
 }
 
+function getFleetUpcomingRevisionCount(entry: Pick<FleetPriorityRow, "upcomingRevisions" | "dueSoonRevisions">): number {
+  return Math.max(entry.upcomingRevisions - entry.dueSoonRevisions, 0);
+}
+
+function buildFleetPriorityReasons(entry: {
+  overdueRevisions: number;
+  dueSoonRevisions: number;
+  upcomingRevisions: number;
+  alertDangerCount: number;
+  alertWarningCount: number;
+  focusKoCount: number;
+  newSignalCount: number;
+  openWorks: number;
+  highUrgencyWorks: number;
+  maintenanceCount: number;
+  preCollaudoSuggested: boolean;
+}): string[] {
+  const upcomingRevisionCount = getFleetUpcomingRevisionCount(entry);
+
+  return [
+    entry.overdueRevisions > 0 ? `${entry.overdueRevisions} revisione/collaudo scaduti` : null,
+    entry.dueSoonRevisions > 0 ? `${entry.dueSoonRevisions} scadenze entro 7 giorni` : null,
+    entry.alertDangerCount > 0 ? `${entry.alertDangerCount} alert critici` : null,
+    entry.focusKoCount > 0 ? `${entry.focusKoCount} controlli KO` : null,
+    entry.highUrgencyWorks > 0 ? `${entry.highUrgencyWorks} lavori alta urgenza` : null,
+    entry.newSignalCount > 0 ? `${entry.newSignalCount} segnalazioni nuove` : null,
+    entry.preCollaudoSuggested ? "pre-collaudo da organizzare" : null,
+    upcomingRevisionCount > 0 ? `${upcomingRevisionCount} scadenze entro 30 giorni` : null,
+    entry.alertWarningCount > 0 ? `${entry.alertWarningCount} alert da seguire` : null,
+    entry.openWorks > 0 ? `${entry.openWorks} lavori aperti` : null,
+    entry.maintenanceCount > 0 ? `${entry.maintenanceCount} manutenzioni collegate` : null,
+  ].filter((entryReason): entryReason is string => Boolean(entryReason));
+}
+
+function buildFleetPriorityAction(args: {
+  targa: string;
+  overdueRevisions: number;
+  dueSoonRevisions: number;
+  alertDangerCount: number;
+  focusKoCount: number;
+  highUrgencyWorks: number;
+  newSignalCount: number;
+  preCollaudoSuggested: boolean;
+  openWorks: number;
+  maintenanceCount: number;
+}): string {
+  if (args.overdueRevisions > 0) {
+    return `${args.targa}: verificare subito scadenze o collaudi gia scaduti e chiudere il piano di rientro.`;
+  }
+
+  if (args.dueSoonRevisions > 0 && args.preCollaudoSuggested) {
+    return `${args.targa}: organizzare oggi pre-collaudo e prenotazione del collaudo.`;
+  }
+
+  if (args.dueSoonRevisions > 0) {
+    return `${args.targa}: chiudere subito prenotazione e preparazione del collaudo.`;
+  }
+
+  if (args.alertDangerCount > 0 || args.focusKoCount > 0) {
+    return `${args.targa}: verificare prima alert critici e controlli KO ancora aperti.`;
+  }
+
+  if (args.highUrgencyWorks > 0) {
+    return `${args.targa}: prendere in carico prima i lavori ad alta urgenza.`;
+  }
+
+  if (args.newSignalCount > 0) {
+    return `${args.targa}: leggere e smistare subito le segnalazioni nuove.`;
+  }
+
+  if (args.preCollaudoSuggested) {
+    return `${args.targa}: programmare il pre-collaudo prima della scadenza ravvicinata.`;
+  }
+
+  if (args.openWorks > 0) {
+    return `${args.targa}: riallineare il backlog tecnico aperto.`;
+  }
+
+  if (args.maintenanceCount > 0) {
+    return `${args.targa}: verificare lo stato delle manutenzioni collegate.`;
+  }
+
+  return `${args.targa}: mantenere monitoraggio operativo nel periodo corrente.`;
+}
+
+function buildFleetPriorityRankValues(entry: {
+  overdueRevisions: number;
+  dueSoonRevisions: number;
+  alertDangerCount: number;
+  focusKoCount: number;
+  highUrgencyWorks: number;
+  newSignalCount: number;
+  preCollaudoSuggested: boolean;
+  upcomingRevisions: number;
+  alertWarningCount: number;
+  openWorks: number;
+  maintenanceCount: number;
+  hasD10Signals: boolean;
+  hasD02Signals: boolean;
+}): number[] {
+  const urgentOperationalSignals =
+    entry.alertDangerCount + entry.focusKoCount + entry.highUrgencyWorks;
+  const planningSignals = entry.newSignalCount + (entry.preCollaudoSuggested ? 1 : 0);
+  const backlogSignals =
+    getFleetUpcomingRevisionCount(entry) + entry.alertWarningCount + entry.openWorks;
+
+  return [
+    entry.overdueRevisions,
+    entry.dueSoonRevisions,
+    urgentOperationalSignals,
+    Number(entry.hasD10Signals && entry.hasD02Signals),
+    planningSignals,
+    backlogSignals,
+    entry.maintenanceCount,
+  ];
+}
+
+function buildFleetPriorityLabel(entry: {
+  overdueRevisions: number;
+  dueSoonRevisions: number;
+  alertDangerCount: number;
+  focusKoCount: number;
+  highUrgencyWorks: number;
+  newSignalCount: number;
+  preCollaudoSuggested: boolean;
+  upcomingRevisions: number;
+  alertWarningCount: number;
+  openWorks: number;
+  maintenanceCount: number;
+}): FleetPriorityRow["priorityLabel"] {
+  if (
+    entry.overdueRevisions > 0 ||
+    entry.dueSoonRevisions > 0 ||
+    entry.alertDangerCount > 0 ||
+    entry.focusKoCount > 0 ||
+    entry.highUrgencyWorks > 0
+  ) {
+    return "alta";
+  }
+
+  if (
+    entry.newSignalCount > 0 ||
+    entry.preCollaudoSuggested ||
+    getFleetUpcomingRevisionCount(entry) > 0 ||
+    entry.alertWarningCount > 0 ||
+    entry.openWorks > 0
+  ) {
+    return "media";
+  }
+
+  if (entry.maintenanceCount > 0) {
+    return "bassa";
+  }
+
+  return "bassa";
+}
+
+function buildFleetPriorityEngineSummary(rows: FleetPriorityRow[]): FleetPriorityEngineSummary {
+  const attentionRows = rows.filter((row) => row.priorityLabel !== "bassa");
+  const rankedRows = attentionRows.length > 0 ? attentionRows : rows;
+  const hasD10Evidence = rankedRows.some((row) => row.hasD10Signals);
+  const hasD02Evidence = rankedRows.some((row) => row.hasD02Signals);
+  const crossDomainCount = rankedRows.filter(
+    (row) => row.hasD10Signals && row.hasD02Signals,
+  ).length;
+  const d10OnlyCount = rankedRows.filter((row) => row.hasD10Signals && !row.hasD02Signals).length;
+  const d02OnlyCount = rankedRows.filter((row) => !row.hasD10Signals && row.hasD02Signals).length;
+
+  const totals = rankedRows.reduce(
+    (accumulator, row) => {
+      accumulator.overdueRevisions += row.overdueRevisions;
+      accumulator.dueSoonRevisions += row.dueSoonRevisions;
+      accumulator.upcomingRevisions += getFleetUpcomingRevisionCount(row);
+      accumulator.alertDangerCount += row.alertDangerCount;
+      accumulator.alertWarningCount += row.alertWarningCount;
+      accumulator.focusKoCount += row.focusKoCount;
+      accumulator.newSignalCount += row.newSignalCount;
+      accumulator.openWorks += row.openWorks;
+      accumulator.highUrgencyWorks += row.highUrgencyWorks;
+      accumulator.maintenanceCount += row.maintenanceCount;
+      accumulator.preCollaudoSuggested += row.preCollaudoSuggested ? 1 : 0;
+      return accumulator;
+    },
+    {
+      overdueRevisions: 0,
+      dueSoonRevisions: 0,
+      upcomingRevisions: 0,
+      alertDangerCount: 0,
+      alertWarningCount: 0,
+      focusKoCount: 0,
+      newSignalCount: 0,
+      openWorks: 0,
+      highUrgencyWorks: 0,
+      maintenanceCount: 0,
+      preCollaudoSuggested: 0,
+    },
+  );
+
+  const signalBullets = [
+    totals.overdueRevisions > 0
+      ? `${totals.overdueRevisions} scadenze o collaudi gia scaduti`
+      : null,
+    totals.dueSoonRevisions > 0
+      ? `${totals.dueSoonRevisions} scadenze entro 7 giorni`
+      : null,
+    totals.alertDangerCount > 0 || totals.focusKoCount > 0
+      ? `${totals.alertDangerCount + totals.focusKoCount} alert critici o controlli KO`
+      : null,
+    totals.highUrgencyWorks > 0
+      ? `${totals.highUrgencyWorks} lavori ad alta urgenza`
+      : null,
+    totals.newSignalCount > 0 ? `${totals.newSignalCount} segnalazioni nuove` : null,
+    totals.preCollaudoSuggested > 0
+      ? `${totals.preCollaudoSuggested} pre-collaudi da organizzare`
+      : null,
+    totals.openWorks > 0 ? `${totals.openWorks} lavori aperti` : null,
+    totals.maintenanceCount > 0 ? `${totals.maintenanceCount} manutenzioni collegate` : null,
+    rankedRows.length > 0
+      ? `${formatCount(rankedRows.length)} mezzi con segnali rilevanti, ${formatCount(crossDomainCount)} con incrocio D10 + D02`
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const criteriaBullets = [
+    "Prima scadenze o collaudi scaduti.",
+    "Poi scadenze entro 7 giorni.",
+    "A seguire alert critici, controlli KO e lavori ad alta urgenza.",
+    "Poi segnalazioni nuove e pre-collaudi da organizzare.",
+    "Infine backlog tecnico, scadenze entro 30 giorni e manutenzioni collegate.",
+  ];
+
+  const reliabilityLabel =
+    rankedRows.length === 0
+      ? "Da verificare"
+      : hasD10Evidence && hasD02Evidence
+        ? "Prudente"
+        : "Parziale";
+  const reliabilityNote =
+    rankedRows.length === 0
+      ? "Non emergono segnali sufficienti per una priorita operativa solida nel periodo richiesto."
+      : hasD10Evidence && hasD02Evidence
+        ? `Il ranking incrocia segnali sia D10 sia D02 su ${formatCount(rankedRows.length)} mezzi, ma resta prudente perche usa solo i reader read-only oggi consolidati.`
+        : hasD10Evidence
+          ? "Il ranking del periodo nasce soprattutto da scadenze, alert e criticita operative D10; il backlog tecnico pesa meno o non emerge."
+          : "Il ranking del periodo nasce soprattutto dal backlog tecnico D02; segnali D10 forti non emergono nel perimetro letto.";
+
+  return {
+    attentionCount: rankedRows.length,
+    crossDomainCount,
+    d10OnlyCount,
+    d02OnlyCount,
+    signalBullets,
+    criteriaBullets,
+    reliabilityLabel,
+    reliabilityNote,
+  };
+}
+
 function compareRankValues(left: number[], right: number[]): number {
   const length = Math.max(left.length, right.length);
   for (let index = 0; index < length; index += 1) {
@@ -2861,7 +3712,13 @@ function buildFleetPriorityRows(args: {
   operativita: OperativitaGlobaleSnapshot;
   periodContext: InternalAiReportPeriodContext;
 }): FleetPriorityRow[] {
-  const registry = new Map<string, Omit<FleetPriorityRow, "priorityLabel" | "reasons" | "rankValues">>();
+  const registry = new Map<
+    string,
+    Omit<
+      FleetPriorityRow,
+      "priorityLabel" | "reasons" | "rankValues" | "recommendedAction" | "hasD10Signals" | "hasD02Signals"
+    >
+  >();
 
   const ensureRow = (targaInput: string | null | undefined) => {
     const normalizedTarga = normalizeNextMezzoTarga(targaInput);
@@ -2939,41 +3796,38 @@ function buildFleetPriorityRows(args: {
 
   return Array.from(registry.values())
     .map((entry) => {
-      const reasons = [
-        entry.overdueRevisions > 0 ? `${entry.overdueRevisions} revisione/collaudo scaduti` : null,
-        entry.dueSoonRevisions > 0 ? `${entry.dueSoonRevisions} scadenze entro 7 giorni` : null,
-        entry.alertDangerCount > 0 ? `${entry.alertDangerCount} alert critici` : null,
-        entry.focusKoCount > 0 ? `${entry.focusKoCount} controlli KO` : null,
-        entry.highUrgencyWorks > 0 ? `${entry.highUrgencyWorks} lavori alta urgenza` : null,
-        entry.newSignalCount > 0 ? `${entry.newSignalCount} segnalazioni nuove` : null,
-        entry.openWorks > 0 ? `${entry.openWorks} lavori aperti` : null,
-        entry.maintenanceCount > 0 ? `${entry.maintenanceCount} manutenzioni collegate` : null,
-      ].filter((reason): reason is string => Boolean(reason));
-      const priorityLabel =
+      const hasD10Signals =
         entry.overdueRevisions > 0 ||
         entry.dueSoonRevisions > 0 ||
+        entry.upcomingRevisions > 0 ||
         entry.alertDangerCount > 0 ||
+        entry.alertWarningCount > 0 ||
         entry.focusKoCount > 0 ||
-        entry.highUrgencyWorks > 0
-          ? "alta"
-          : entry.upcomingRevisions > 0 ||
-              entry.alertWarningCount > 0 ||
-              entry.openWorks > 0 ||
-              entry.maintenanceCount > 0 ||
-              entry.newSignalCount > 0
-            ? "media"
-            : "bassa";
-      const rankValues = [
-        entry.overdueRevisions,
-        entry.dueSoonRevisions,
-        entry.alertDangerCount,
-        entry.focusKoCount,
-        entry.highUrgencyWorks,
-        entry.newSignalCount,
-        entry.alertWarningCount,
-        entry.openWorks,
-        entry.maintenanceCount,
-      ];
+        entry.newSignalCount > 0 ||
+        entry.preCollaudoSuggested;
+      const hasD02Signals =
+        entry.openWorks > 0 ||
+        entry.highUrgencyWorks > 0 ||
+        entry.maintenanceCount > 0;
+      const reasons = buildFleetPriorityReasons(entry);
+      const priorityLabel = buildFleetPriorityLabel(entry);
+      const rankValues = buildFleetPriorityRankValues({
+        ...entry,
+        hasD10Signals,
+        hasD02Signals,
+      });
+      const recommendedAction = buildFleetPriorityAction({
+        targa: entry.targa,
+        overdueRevisions: entry.overdueRevisions,
+        dueSoonRevisions: entry.dueSoonRevisions,
+        alertDangerCount: entry.alertDangerCount,
+        focusKoCount: entry.focusKoCount,
+        highUrgencyWorks: entry.highUrgencyWorks,
+        newSignalCount: entry.newSignalCount,
+        preCollaudoSuggested: entry.preCollaudoSuggested,
+        openWorks: entry.openWorks,
+        maintenanceCount: entry.maintenanceCount,
+      });
 
       return {
         targa: entry.targa,
@@ -2990,6 +3844,9 @@ function buildFleetPriorityRows(args: {
         highUrgencyWorks: entry.highUrgencyWorks,
         maintenanceCount: entry.maintenanceCount,
         preCollaudoSuggested: entry.preCollaudoSuggested,
+        recommendedAction,
+        hasD10Signals,
+        hasD02Signals,
         rankValues,
       };
     })
@@ -3042,6 +3899,8 @@ function composeFuelAssistantText(args: {
     `Sintesi breve: ${summary}`,
     formatBulletBlock("Dati trovati", foundBullets),
     formatBulletBlock("Dati usati per il calcolo", metricBullets),
+    formatBulletBlock("Classificazione record", args.analytics.classificationBullets),
+    formatBulletBlock("Affidabilita del dato", args.analytics.reliabilityBullets.slice(0, 10)),
     formatBulletBlock("Record del periodo", args.analytics.recordBullets.slice(0, 8)),
     formatBulletBlock("Anomalie", args.analytics.anomalyBullets.slice(0, 6)),
     formatBulletBlock("Azione consigliata", args.analytics.actionBullets),
@@ -3131,20 +3990,60 @@ function composeVehicleCriticalityAssistantText(args: {
 }
 
 function composeVehicleOverviewAssistantText(args: {
-  targa: string;
-  keyPoints: string[];
-  sections: UnifiedSectionBuild[];
-  missingData: string[];
+  preview: InternalAiVehicleReportPreview;
 }): string {
+  const stateCard = args.preview.cards.find((card) => card.label === "Stato generale") ?? null;
+  const actionCard = args.preview.cards.find((card) => card.label === "Cosa fare ora") ?? null;
+  const deadlinesCard = args.preview.cards.find((card) => card.label === "Scadenze") ?? null;
+  const backlogCard = args.preview.cards.find((card) => card.label === "Backlog tecnico") ?? null;
+  const deadlinesSection = args.preview.sections.find((section) => section.id === "decision-deadlines") ?? null;
+  const backlogSection = args.preview.sections.find((section) => section.id === "decision-backlog") ?? null;
+  const signalsSection = args.preview.sections.find((section) => section.id === "decision-signals") ?? null;
+  const fuelSection = args.preview.sections.find((section) => section.id === "decision-fuel") ?? null;
+  const costsSection = args.preview.sections.find((section) => section.id === "decision-costs") ?? null;
+  const noteSection = args.preview.sections.find((section) => section.id === "decision-note") ?? null;
+
   return [
-    `Quadro completo ${args.targa}`,
-    `Sintesi breve: ho composto un quadro gestionale multi-dominio della targa ${args.targa} senza allargare oltre le fonti richieste.`,
-    formatBulletBlock("Punti chiave", args.keyPoints.slice(0, 6)),
+    args.preview.title,
+    `Sintesi iniziale: ${args.preview.header.targa} | ${stateCard?.value ?? "Quadro disponibile"}. ${stateCard?.meta ?? "Sto mostrando solo i blocchi utili per decidere cosa fare."}`,
     formatBulletBlock(
-      "Sezioni lette",
-      args.sections.map((entry) => `${entry.section.title}: ${entry.section.summary}`).slice(0, 6),
+      "Cosa fare ora",
+      [
+        actionCard?.value ?? "Nessuna azione prioritaria forte individuata.",
+        actionCard?.meta ?? null,
+      ].filter((entry): entry is string => Boolean(entry)),
     ),
-    formatBulletBlock("Limiti", args.missingData.slice(0, 6)),
+    formatBulletBlock(
+      "Scadenze e collaudi",
+      [
+        deadlinesCard ? `${deadlinesCard.value}: ${deadlinesCard.meta}` : null,
+        ...(deadlinesSection?.bullets.slice(0, 4) ?? []),
+      ].filter((entry): entry is string => Boolean(entry)),
+    ),
+    formatBulletBlock(
+      "Backlog tecnico",
+      [
+        backlogCard ? `${backlogCard.value}: ${backlogCard.meta}` : null,
+        ...(backlogSection?.bullets.slice(0, 4) ?? []),
+      ].filter((entry): entry is string => Boolean(entry)),
+    ),
+    formatBulletBlock(
+      "Segnali operativi",
+      signalsSection?.bullets.slice(0, 4) ?? [],
+    ),
+    fuelSection
+      ? formatBulletBlock("Consumi e rifornimenti", fuelSection.bullets.slice(0, 4))
+      : null,
+    costsSection
+      ? formatBulletBlock("Costi, documenti e storico utile", costsSection.bullets.slice(0, 4))
+      : null,
+    formatBulletBlock(
+      "Nota finale",
+      [
+        noteSection?.summary ?? null,
+        ...(noteSection?.bullets.slice(0, 3) ?? []),
+      ].filter((entry): entry is string => Boolean(entry)),
+    ),
   ].join("\n\n");
 }
 
@@ -3153,28 +4052,48 @@ function composeFleetCriticalityAssistantText(args: {
   rows: FleetPriorityRow[];
   limitations: string[];
   periodContext: InternalAiReportPeriodContext;
+  rankingLimit: number | null;
+  asksActionAdvice: boolean;
 }): string {
-  const top = args.rows[0] ?? null;
+  const displayLimit = Math.min(Math.max(args.rankingLimit ?? 5, 1), 6);
+  const attentionRows = args.rows.filter((row) => row.priorityLabel !== "bassa");
+  const rankedRows = attentionRows.length > 0 ? attentionRows : args.rows;
+  const visibleRows = rankedRows.slice(0, displayLimit);
+  const engineSummary = buildFleetPriorityEngineSummary(rankedRows);
+  const top = visibleRows[0] ?? null;
   const summary = top
-    ? `${top.targa} e il mezzo piu critico nel periodo ${args.periodContext.label}: ${top.reasons.slice(0, 3).join(", ")}.`
-    : `Non emergono mezzi con criticita forti nel periodo ${args.periodContext.label}.`;
+    ? `${formatCount(engineSummary.attentionCount)} mezzi richiedono attenzione nel periodo ${args.periodContext.label}; metto in testa ${top.targa} per ${top.reasons.slice(0, 3).join(", ")}.`
+    : `Nel periodo ${args.periodContext.label} non emergono mezzi con segnali abbastanza forti per una priorita operativa affidabile.`;
+  const actionBullets = visibleRows
+    .slice(0, Math.min(displayLimit, 4))
+    .map((row) => row.recommendedAction);
 
   return [
     args.title,
     `Sintesi breve: ${summary}`,
     formatBulletBlock(
-      "Priorita mezzi",
-      args.rows.slice(0, 6).map((row, index) => `${index + 1}. ${row.targa} | priorita ${row.priorityLabel} | ${row.reasons.slice(0, 3).join(", ") || "nessun fattore forte"}`),
+      "Segnali usati per la classifica",
+      engineSummary.signalBullets.slice(0, 6),
     ),
     formatBulletBlock(
-      "Cosa pesa di piu",
-      args.rows
-        .slice(0, 4)
-        .flatMap((row) =>
-          row.reasons.slice(0, 2).map((reason) => `${row.targa}: ${reason}`),
-        ),
+      "Classifica operativa",
+      visibleRows.map(
+        (row, index) =>
+          `${index + 1}. ${row.targa} | priorita ${row.priorityLabel} | ${row.reasons.slice(0, 3).join(", ") || "nessun fattore forte"} | fare ora: ${row.recommendedAction.replace(`${row.targa}: `, "")}`,
+      ),
     ),
-    formatBulletBlock("Limiti", args.limitations.slice(0, 5)),
+    formatBulletBlock(
+      "Criterio di priorita",
+      engineSummary.criteriaBullets,
+    ),
+    formatBulletBlock(
+      "Azione consigliata",
+      args.asksActionAdvice ? actionBullets : actionBullets.slice(0, 3),
+    ),
+    formatBulletBlock(
+      "Limiti",
+      [engineSummary.reliabilityNote, ...args.limitations.slice(0, 4)],
+    ),
   ].join("\n\n");
 }
 
@@ -3182,30 +4101,62 @@ function composeFleetDeadlineAssistantText(args: {
   rows: FleetPriorityRow[];
   limitations: string[];
   periodContext: InternalAiReportPeriodContext;
+  rankingLimit: number | null;
+  asksActionAdvice: boolean;
 }): string {
+  const displayLimit = Math.min(Math.max(args.rankingLimit ?? 5, 1), 6);
   const deadlineRows = args.rows.filter(
     (row) => row.overdueRevisions > 0 || row.upcomingRevisions > 0,
   );
   const preCollaudoRows = deadlineRows.filter((row) => row.preCollaudoSuggested);
+  const visibleRows = deadlineRows.slice(0, displayLimit);
+  const engineSummary = buildFleetPriorityEngineSummary(deadlineRows);
   const summary =
     deadlineRows.length > 0
       ? `${formatCount(deadlineRows.length)} mezzi richiedono attenzione su revisione/collaudo nel periodo ${args.periodContext.label}; ${formatCount(preCollaudoRows.length)} conviene pre-collaudarli.`
       : `Nel periodo ${args.periodContext.label} non emergono mezzi con scadenze rilevanti di revisione o collaudo.`;
+  const actionBullets = visibleRows
+    .slice(0, Math.min(displayLimit, 4))
+    .map((row) => row.recommendedAction);
 
   return [
     "Scadenze, collaudi e pre-collaudi",
     `Sintesi breve: ${summary}`,
     formatBulletBlock(
+      "Segnali usati per la classifica",
+      engineSummary.signalBullets.slice(0, 6),
+    ),
+    formatBulletBlock(
       "Mezzi da seguire",
-      deadlineRows
-        .slice(0, 6)
-        .map((row) => `${row.targa} | scadute ${row.overdueRevisions} | entro 7 giorni ${row.dueSoonRevisions} | entro 30 giorni ${row.upcomingRevisions}`),
+      visibleRows
+        .map(
+          (row, index) =>
+            `${index + 1}. ${row.targa} | priorita ${row.priorityLabel} | scadute ${row.overdueRevisions} | entro 7 giorni ${row.dueSoonRevisions} | entro 30 giorni ${row.upcomingRevisions} | fare ora: ${row.recommendedAction.replace(`${row.targa}: `, "")}`,
+        ),
     ),
     formatBulletBlock(
       "Pre-collaudi consigliati",
-      preCollaudoRows.slice(0, 6).map((row) => `${row.targa} | revisione vicina e pre-collaudo non rilevato.`),
+      preCollaudoRows
+        .slice(0, displayLimit)
+        .map((row) => `${row.targa} | revisione vicina e pre-collaudo non rilevato.`),
     ),
-    formatBulletBlock("Limiti", args.limitations.slice(0, 5)),
+    formatBulletBlock(
+      "Criterio di priorita",
+      [
+        "Prima scadenze o collaudi gia scaduti.",
+        "Poi mezzi con scadenza entro 7 giorni.",
+        "Poi mezzi entro 30 giorni senza pre-collaudo.",
+        "A parita di scadenza pesano anche backlog tecnico e criticita gia aperte.",
+      ],
+    ),
+    formatBulletBlock(
+      "Azione consigliata",
+      args.asksActionAdvice ? actionBullets : actionBullets.slice(0, 3),
+    ),
+    formatBulletBlock(
+      "Limiti",
+      [engineSummary.reliabilityNote, ...args.limitations.slice(0, 4)],
+    ),
   ].join("\n\n");
 }
 
@@ -3418,6 +4369,7 @@ function buildRifornimentiSections(args: {
     analytics.litersPer100Km !== null
       ? `Litri per 100 km: ${formatDecimal(analytics.litersPer100Km)}`
       : "Litri per 100 km: non calcolabili in modo affidabile",
+    `Verdetto fiducia: ${analytics.reliability.final.label}`,
   ].filter((entry): entry is string => Boolean(entry));
   const sources = mergePreviewSources(
     ["storage/@rifornimenti", "storage/@rifornimenti_autisti_tmp"]
@@ -3449,6 +4401,32 @@ function buildRifornimentiSections(args: {
           ? analytics.missingData.slice(0, 4)
           : ["D04 resta presente nel registry ma non ha rifornimenti agganciati in modo forte alla targa nel periodo richiesto."],
       evidences: bullets.slice(0, 3),
+    },
+    {
+      section: buildSection({
+        id: "rifornimenti-affidabilita",
+        title: "Affidabilita del dato",
+        summary: analytics.reliability.final.summary,
+        bullets: [
+          ...analytics.classificationBullets,
+          ...analytics.reliabilityBullets.slice(0, 10),
+        ],
+        notes: analytics.missingData.slice(0, 2),
+        status:
+          analytics.reliability.final.status === "affidabile"
+            ? "completa"
+            : analytics.reliability.final.status === "prudente"
+              ? "parziale"
+              : "errore",
+        periodContext: args.periodContext,
+      }),
+      sources,
+      keyPoints: [
+        `Verdetto fiducia: ${analytics.reliability.final.label}`,
+        analytics.reliability.final.summary,
+      ],
+      missingData: analytics.reliability.final.status === "affidabile" ? [] : analytics.missingData.slice(0, 3),
+      evidences: analytics.reliabilityBullets.slice(0, 3),
     },
     {
       section: buildSection({
@@ -3605,20 +4583,209 @@ async function buildProcurementSection(args: {
   };
 }
 
+function isDirectDocumentiCostiItem(
+  item: VehicleDocumentiCostiPeriodView["items"][number],
+): boolean {
+  return item.sourceType === "costo_mezzo" || item.sourceType === "documento_mezzo";
+}
+
+function formatDocumentiCostiTotalsLabel(args: {
+  label: string;
+  totals: VehicleDocumentiCostiPeriodView["totals"]["fatture"];
+  nonAdditive?: boolean;
+}): string | null {
+  if (args.totals.withAmount <= 0) {
+    return null;
+  }
+
+  const amountParts: string[] = [];
+  if (args.totals.eur > 0) {
+    amountParts.push(formatCurrencyByCode(args.totals.eur, "EUR"));
+  }
+  if (args.totals.chf > 0) {
+    amountParts.push(formatCurrencyByCode(args.totals.chf, "CHF"));
+  }
+  if (args.totals.unknownCount > 0) {
+    amountParts.push(`${formatCount(args.totals.unknownCount)} importi senza valuta certa`);
+  }
+
+  return `${args.label}: ${formatCount(args.totals.withAmount)} elementi con importo leggibile${amountParts.length > 0 ? ` per ${amountParts.join(" + ")}` : ""}${args.nonAdditive ? " (non sommati al costo consuntivo)." : "."}`;
+}
+
+function formatDocumentiCostiHistoricalEntry(
+  item: VehicleDocumentiCostiPeriodView["items"][number],
+): string {
+  const dateLabel = item.dateLabel ?? "data non disponibile";
+  const businessLink = isDirectDocumentiCostiItem(item) ? "legame diretto" : "legame prudente";
+  const verificationLabel =
+    item.flags.includes("da_verificare") || item.flags.includes("motivo_verifica_presente")
+      ? " | da verificare"
+      : "";
+  const amountLabel =
+    item.amount !== null && (item.currency === "EUR" || item.currency === "CHF")
+      ? formatCurrencyByCode(item.amount, item.currency)
+      : item.amount !== null
+        ? `${formatDecimal(item.amount)} valuta non dichiarata`
+        : item.category === "documento_utile"
+          ? item.fileUrl
+            ? "allegato leggibile"
+            : "allegato non disponibile"
+          : "importo non leggibile";
+
+  return `${dateLabel} | ${sanitizeBusinessText(item.title)} | ${amountLabel} | ${businessLink}${verificationLabel}`;
+}
+
+function buildDocumentiCostiSectionSummary(args: {
+  targa: string;
+  periodView: VehicleDocumentiCostiPeriodView;
+}): string {
+  const { periodView } = args;
+  if (periodView.counts.total === 0) {
+    return `Nel periodo ${periodView.period.label} non risultano costi o documenti leggibili collegati in modo abbastanza chiaro alla targa ${args.targa}.`;
+  }
+
+  const summaryParts = [
+    `Nel periodo ${periodView.period.label} risultano ${formatCount(periodView.counts.total)} elementi utili per ${args.targa}`,
+    periodView.totals.fatture.withAmount > 0
+      ? `costo consuntivo leggibile su ${formatCount(periodView.totals.fatture.withAmount)} fatture`
+      : periodView.counts.fatture > 0
+        ? "sono presenti fatture, ma senza una base importi completa"
+        : null,
+    periodView.counts.documentiUtili > 0
+      ? `${formatCount(periodView.counts.documentiUtili)} documenti utili`
+      : null,
+    periodView.counts.prudential > 0
+      ? `${formatCount(periodView.counts.prudential)} collegamenti prudenziali`
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return `${summaryParts.join(", ")}.`;
+}
+
+function composeCostsDocumentsAssistantText(args: {
+  targa: string;
+  periodView: VehicleDocumentiCostiPeriodView;
+}): string {
+  const { periodView } = args;
+  const primaryDataBullet =
+    periodView.counts.total > 0
+      ? `Elementi utili nel periodo: ${formatCount(periodView.counts.total)} | diretti ${formatCount(periodView.counts.direct)} | prudenziali ${formatCount(periodView.counts.prudential)}`
+      : `Elementi utili nel periodo: ${formatCount(periodView.counts.total)}`;
+  const costBullet =
+    formatDocumentiCostiTotalsLabel({
+      label: "Costo consuntivo leggibile",
+      totals: periodView.totals.fatture,
+    }) ??
+    (periodView.counts.fatture > 0
+      ? `Costo consuntivo leggibile: sono presenti ${formatCount(periodView.counts.fatture)} fatture, ma senza importi abbastanza leggibili per un totale affidabile.`
+      : "Costo consuntivo leggibile: nessuna fattura con importo leggibile nel periodo.");
+  const quotesBullet =
+    periodView.counts.preventivi > 0
+      ? formatDocumentiCostiTotalsLabel({
+          label: "Preventivi letti",
+          totals: periodView.totals.preventivi,
+          nonAdditive: true,
+        }) ??
+        `Preventivi letti: ${formatCount(periodView.counts.preventivi)} presenti, ma senza importi leggibili completi.`
+      : null;
+  const documentsBullet =
+    periodView.counts.documentiUtili > 0
+      ? `Documenti rilevanti: ${formatCount(periodView.counts.documentiUtili)} | con allegato ${formatCount(periodView.counts.withFile)} | da verificare ${formatCount(periodView.counts.daVerificare)}`
+      : "Documenti rilevanti: nessun documento utile forte nel periodo richiesto.";
+  const historyBullets = periodView.highlights.storico
+    .slice(0, 3)
+    .map((item) => formatDocumentiCostiHistoricalEntry(item));
+  const limitBullets = dedupeStrings([
+    periodView.period.note,
+    ...periodView.limitations.slice(0, 3),
+  ]).slice(0, 4);
+
+  return [
+    `Report costi e documenti ${args.targa}`,
+    `Sintesi breve: ${buildDocumentiCostiSectionSummary(args)}`,
+    formatBulletBlock(
+      "Dati principali",
+      [primaryDataBullet, costBullet, quotesBullet, documentsBullet].filter(
+        (entry): entry is string => Boolean(entry),
+      ),
+    ),
+    formatBulletBlock("Elementi rilevanti", historyBullets),
+    formatBulletBlock("Anomalie o limiti", limitBullets),
+    formatBulletBlock("Azione consigliata", [periodView.actionHint]),
+  ].join("\n\n");
+}
+
 async function buildDocumentiCostiSection(args: {
   targa: string;
   periodContext: InternalAiReportPeriodContext;
   registry: UnifiedRegistrySnapshot;
 }): Promise<UnifiedSectionBuild> {
-  const snapshot = await readNextMezzoDocumentiCostiSnapshot(args.targa);
-  const items = snapshot.items.filter((item) => isTsInPeriod(item.sortTimestamp, args.periodContext));
+  const periodView = await readNextMezzoDocumentiCostiPeriodView(args.targa, {
+    label: args.periodContext.label,
+    appliesFilter: args.periodContext.appliesFilter,
+    fromTimestamp: args.periodContext.fromTimestamp,
+    toTimestamp: args.periodContext.toTimestamp,
+  });
+  const summary = buildDocumentiCostiSectionSummary({
+    targa: args.targa,
+    periodView,
+  });
+  const primaryDataBullet =
+    periodView.counts.total > 0
+      ? `Dati principali: ${formatCount(periodView.counts.total)} elementi utili nel periodo, ${formatCount(periodView.counts.direct)} diretti e ${formatCount(periodView.counts.prudential)} prudenziali.`
+      : "Dati principali: nessun elemento utile leggibile nel periodo richiesto.";
+  const costsBullet =
+    formatDocumentiCostiTotalsLabel({
+      label: "Costi leggibili",
+      totals: periodView.totals.fatture,
+    }) ??
+    (periodView.counts.fatture > 0
+      ? `Costi leggibili: ${formatCount(periodView.counts.fatture)} fatture presenti, ma senza importi abbastanza leggibili per un totale certo.`
+      : "Costi leggibili: nessuna fattura con importo leggibile nel periodo.");
+  const quotesBullet =
+    periodView.counts.preventivi > 0
+      ? formatDocumentiCostiTotalsLabel({
+          label: "Preventivi letti",
+          totals: periodView.totals.preventivi,
+          nonAdditive: true,
+        }) ??
+        `Preventivi letti: ${formatCount(periodView.counts.preventivi)} presenti, ma senza importi leggibili completi.`
+      : null;
+  const documentsBullet =
+    periodView.counts.documentiUtili > 0
+      ? `Documenti rilevanti: ${formatCount(periodView.counts.documentiUtili)} | allegati leggibili ${formatCount(periodView.counts.withFile)} | da verificare ${formatCount(periodView.counts.daVerificare)}.`
+      : "Documenti rilevanti: nessun documento utile forte nel periodo richiesto.";
+  const historyBullet =
+    periodView.highlights.storico.length > 0
+      ? `Storico utile: ${periodView.highlights.storico
+          .slice(0, 2)
+          .map((item) => formatDocumentiCostiHistoricalEntry(item))
+          .join(" || ")}`
+      : "Storico utile: nessun evento documentale o costo con data leggibile nel periodo.";
+  const limitsBullet = dedupeStrings([
+    periodView.period.note,
+    periodView.counts.prudential > 0
+      ? `${formatCount(periodView.counts.prudential)} collegamenti del periodo restano prudenziali.`
+      : null,
+    periodView.counts.excludedMissingDate > 0
+      ? `${formatCount(periodView.counts.excludedMissingDate)} elementi senza data leggibile restano fuori dal filtro periodo.`
+      : null,
+    periodView.counts.daVerificare > 0
+      ? `${formatCount(periodView.counts.daVerificare)} elementi risultano da verificare.`
+      : null,
+  ])
+    .slice(0, 3)
+    .join(" ");
   const bullets = [
-    `Documenti/costi trovati: ${items.length}`,
-    `Preventivi: ${snapshot.counts.preventivi}`,
-    `Fatture: ${snapshot.counts.fatture}`,
-    `Documenti utili: ${snapshot.counts.documentiUtili}`,
-    ...items.slice(0, 4).map((item) => `${item.title} | ${item.documentTypeLabel}${item.dateLabel ? ` | ${item.dateLabel}` : ""}`),
-  ];
+    primaryDataBullet,
+    costsBullet,
+    quotesBullet,
+    documentsBullet,
+    historyBullet,
+    `Azione consigliata: ${periodView.actionHint}`,
+  ]
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 6);
   const sources = mergePreviewSources(
     ["storage/@costiMezzo", "collection/@documenti_mezzi", "collection/@documenti_magazzino", "collection/@documenti_generici", "storage-path/documenti_pdf", "storage-path/mezzi_aziendali"]
       .map((sourceId) => args.registry.sources.find((entry) => entry.sourceId === sourceId))
@@ -3629,17 +4796,41 @@ async function buildDocumentiCostiSection(args: {
   return {
     section: buildSection({
       id: "documenti-costi",
-      title: "Documenti e costi",
-      summary: items.length > 0 ? `Trovati ${items.length} documenti o costi con legame diretto alla targa.` : "Nessun documento o costo direttamente collegato alla targa nel periodo richiesto.",
+      title: "Costi, documenti e storico utile",
+      summary,
       bullets,
-      notes: snapshot.limitations.slice(0, 3),
-      status: items.length > 0 ? "completa" : "parziale",
+      notes: dedupeStrings([
+        limitsBullet,
+        ...periodView.limitations,
+      ]).slice(0, 4),
+      status:
+        periodView.counts.total === 0
+          ? periodView.counts.totalAvailable > 0
+            ? "parziale"
+            : "vuota"
+          : periodView.reliability.final === "affidabile"
+            ? "completa"
+            : "parziale",
       periodContext: args.periodContext,
     }),
     sources,
-    keyPoints: bullets.slice(0, 3),
-    missingData: items.length > 0 ? [] : ["D07/D08 presenti nel registry ma senza riscontri diretti sulla targa nel periodo richiesto."],
-    evidences: bullets.slice(0, 2),
+    keyPoints: [summary, costsBullet, documentsBullet, `Azione consigliata: ${periodView.actionHint}`]
+      .filter((entry): entry is string => Boolean(entry))
+      .slice(0, 4),
+    missingData:
+      periodView.counts.total > 0
+        ? periodView.limitations.slice(0, 3)
+        : [
+            "D07/D08 presenti nel registry ma senza costi o documenti leggibili nel periodo richiesto.",
+            ...periodView.limitations.slice(0, 2),
+          ],
+    evidences: periodView.highlights.storico
+      .slice(0, 2)
+      .map((item) => formatDocumentiCostiHistoricalEntry(item)),
+    businessPayload: {
+      kind: "documenti_costi",
+      periodView,
+    },
   };
 }
 
@@ -3680,9 +4871,16 @@ async function buildCisternaSection(args: {
 }
 
 function buildVehicleReportTitle(
+  primaryIntent: UnifiedBusinessIntentId,
   selectedScopes: InternalAiUnifiedScopeId[],
   targa: string,
 ): string {
+  if (primaryIntent === "vehicle_overview") {
+    return `Quadro mezzo ${targa}`;
+  }
+  if (primaryIntent === "costs_documents") {
+    return `Report costi e documenti ${targa}`;
+  }
   if (selectedScopes.length === 1 && selectedScopes[0] === "rifornimenti") {
     return `Report rifornimenti ${targa}`;
   }
@@ -3699,6 +4897,325 @@ function buildVehicleReportTitle(
   return `Report gestionale ${targa}`;
 }
 
+function hasVehiclePrecollaudoSuggestion(
+  operational: ReturnType<typeof collectVehicleOperationalSignals> | null,
+): boolean {
+  if (!operational) {
+    return false;
+  }
+
+  return operational.revisionItems.some(
+    (item) => item.giorni !== null && item.giorni <= 30 && !item.preCollaudo?.data,
+  );
+}
+
+function buildVehiclePrimaryActionLabel(args: {
+  targa: string;
+  priority: VehiclePrioritySummary | null;
+  operational: ReturnType<typeof collectVehicleOperationalSignals> | null;
+  fuelAnalytics?: FuelAnalyticsSummary | null;
+}): string {
+  if (args.priority?.overdueRevisions) {
+    return "Verificare subito le scadenze o i collaudi gia scaduti e chiudere la prenotazione.";
+  }
+
+  if (args.priority?.dueSoonRevisions) {
+    return hasVehiclePrecollaudoSuggestion(args.operational)
+      ? "Organizzare prima il pre-collaudo e confermare la prenotazione."
+      : "Chiudere prima la preparazione del collaudo entro 7 giorni.";
+  }
+
+  if ((args.priority?.alertDangerCount ?? 0) > 0 || (args.priority?.focusKoCount ?? 0) > 0) {
+    return "Controllare prima alert critici e controlli KO ancora aperti.";
+  }
+
+  if ((args.priority?.highUrgencyWorks ?? 0) > 0) {
+    return "Sbloccare prima i lavori ad alta urgenza aperti sul mezzo.";
+  }
+
+  if ((args.priority?.newSignalCount ?? 0) > 0) {
+    return "Leggere le segnalazioni recenti e confermare subito la presa in carico.";
+  }
+
+  if ((args.priority?.openWorks ?? 0) > 0 || (args.priority?.maintenanceCount ?? 0) > 0) {
+    return "Allineare backlog tecnico e manutenzioni aperte prima di allargare l'analisi.";
+  }
+
+  if (
+    args.fuelAnalytics &&
+    args.fuelAnalytics.reliability.final.status !== "affidabile" &&
+    args.fuelAnalytics.recordsFound > 0
+  ) {
+    return "Usare i consumi con prudenza e verificare prima i record esclusi o ricostruiti.";
+  }
+
+  return "Non emergono urgenze forti: mantenere monitoraggio ordinario e ricontrollare il mezzo nel prossimo ciclo operativo.";
+}
+
+function buildVehicleOverviewCards(args: {
+  targa: string;
+  priority: VehiclePrioritySummary | null;
+  operational: ReturnType<typeof collectVehicleOperationalSignals> | null;
+  fuelAnalytics?: FuelAnalyticsSummary | null;
+}): InternalAiVehicleReportPreview["cards"] {
+  const primaryAction = buildVehiclePrimaryActionLabel(args);
+  const deadlineValue =
+    (args.priority?.overdueRevisions ?? 0) > 0
+      ? "Scaduto"
+      : (args.priority?.dueSoonRevisions ?? 0) > 0
+        ? "Entro 7 giorni"
+        : (args.priority?.upcomingRevisions ?? 0) > 0
+          ? "Entro 30 giorni"
+          : "OK";
+  const deadlineMetaParts = [
+    (args.priority?.overdueRevisions ?? 0) > 0
+      ? `${args.priority?.overdueRevisions ?? 0} scadenze o collaudi gia scaduti`
+      : null,
+    (args.priority?.dueSoonRevisions ?? 0) > 0
+      ? `${args.priority?.dueSoonRevisions ?? 0} scadenze entro 7 giorni`
+      : null,
+    (args.priority?.upcomingRevisions ?? 0) > 0 && (args.priority?.dueSoonRevisions ?? 0) === 0
+      ? `${args.priority?.upcomingRevisions ?? 0} scadenze entro 30 giorni`
+      : null,
+    hasVehiclePrecollaudoSuggestion(args.operational) ? "Pre-collaudo utile." : null,
+    deadlineValue === "OK" ? "Nessuna scadenza ravvicinata nel periodo letto." : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return [
+    {
+      label: "Stato generale",
+      value:
+        args.priority?.priorityLabel === "alta"
+          ? "Attenzione alta"
+          : args.priority?.priorityLabel === "media"
+            ? "Attenzione media"
+            : "Monitoraggio ordinario",
+      meta:
+        args.priority?.reasons.length
+          ? args.priority.reasons.slice(0, 2).map((entry) => sanitizeBusinessText(entry)).join(", ")
+          : "Non emergono criticita forti nel periodo letto.",
+      tone: args.priority?.priorityLabel === "bassa" ? "success" : "warning",
+    },
+    {
+      label: "Cosa fare ora",
+      value: primaryAction,
+      meta:
+        args.priority?.reasons.length
+          ? `Motivo principale: ${sanitizeBusinessText(args.priority.reasons[0])}.`
+          : "Nessun segnale forte da mettere in cima alle priorita.",
+      tone: args.priority?.priorityLabel === "alta" ? "warning" : "default",
+    },
+    {
+      label: "Scadenze",
+      value: deadlineValue,
+      meta: deadlineMetaParts.join(" "),
+      tone: deadlineValue === "OK" ? "success" : "warning",
+    },
+    {
+      label: "Backlog tecnico",
+      value:
+        (args.priority?.openWorks ?? 0) > 0 || (args.priority?.maintenanceCount ?? 0) > 0
+          ? `${args.priority?.openWorks ?? 0} lavori / ${args.priority?.maintenanceCount ?? 0} manutenzioni`
+          : "Nessun backlog rilevante",
+      meta:
+        (args.priority?.highUrgencyWorks ?? 0) > 0
+          ? `${args.priority?.highUrgencyWorks ?? 0} lavori urgenti da seguire.`
+          : (args.priority?.openWorks ?? 0) > 0
+            ? "Backlog tecnico aperto da pianificare."
+            : (args.priority?.maintenanceCount ?? 0) > 0
+              ? "Manutenzioni presenti nel periodo letto."
+              : "Nessun intervento aperto rilevante.",
+      tone:
+        (args.priority?.openWorks ?? 0) > 0 || (args.priority?.maintenanceCount ?? 0) > 0
+          ? "warning"
+          : "success",
+    },
+  ];
+}
+
+function buildVehicleOverviewSections(args: {
+  periodContext: InternalAiReportPeriodContext;
+  sections: InternalAiVehicleReportSection[];
+  missingData: string[];
+  operational: ReturnType<typeof collectVehicleOperationalSignals> | null;
+  technical: ReturnType<typeof collectVehicleTechnicalSignals> | null;
+  priority: VehiclePrioritySummary | null;
+  fuelAnalytics?: FuelAnalyticsSummary | null;
+}): InternalAiVehicleReportSection[] {
+  const sectionsById = new Map(args.sections.map((section) => [section.id, section]));
+  const tyreSection = sectionsById.get("gomme") ?? null;
+  const costsSection = sectionsById.get("documenti-costi") ?? null;
+  const operationalSignals = args.operational;
+  const technicalSignals = args.technical;
+  const shouldIncludeFuel =
+    Boolean(args.fuelAnalytics) &&
+    (args.fuelAnalytics?.recordsFound ?? 0) > 0 &&
+    ((args.fuelAnalytics?.kmPerLiter ?? null) !== null ||
+      (args.fuelAnalytics?.anomalyBullets.length ?? 0) > 0);
+  const deadlineValue =
+    (args.priority?.overdueRevisions ?? 0) > 0
+      ? "Scaduto"
+      : (args.priority?.dueSoonRevisions ?? 0) > 0
+        ? "Entro 7 giorni"
+        : (args.priority?.upcomingRevisions ?? 0) > 0
+          ? "Entro 30 giorni"
+          : "OK";
+  const deadlineBullets = [
+    (args.priority?.overdueRevisions ?? 0) > 0
+      ? `${args.priority?.overdueRevisions ?? 0} scadenze o collaudi gia scaduti`
+      : null,
+    ...(operationalSignals?.revisionItems.slice(0, 3).map((item) => {
+      const dayLabel =
+        item.giorni == null
+          ? "giorni da verificare"
+          : item.giorni < 0
+            ? `scaduta da ${Math.abs(item.giorni)} giorni`
+            : `tra ${item.giorni} giorni`;
+      return `${formatDateLabel(item.scadenzaTs)} | ${dayLabel}`;
+    }) ?? []),
+    ...(operationalSignals?.revisionItems
+      .filter((item) => item.giorni !== null && item.giorni <= 30 && !item.preCollaudo?.data)
+      .slice(0, 2)
+      .map((item) => `${formatDateLabel(item.scadenzaTs)} | utile organizzare pre-collaudo.`) ?? []),
+    deadlineValue === "OK" ? "Nessuna scadenza ravvicinata nel periodo letto." : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const backlogBullets = [
+    `Lavori aperti: ${technicalSignals?.lavoriAperti.length ?? 0}`,
+    `Manutenzioni rilevanti: ${technicalSignals?.manutenzioni.length ?? 0}`,
+    ...(technicalSignals?.lavoriAperti.slice(0, 3).map((item) =>
+      `${sanitizeBusinessText(item.descrizione)}${item.urgenza ? ` | urgenza ${sanitizeBusinessText(item.urgenza)}` : ""}`) ?? []),
+    ...(technicalSignals?.manutenzioni.slice(0, 2).map((item) =>
+      `${sanitizeBusinessText(item.descrizione ?? item.tipo ?? "manutenzione")}${item.data ? ` | ${item.data}` : ""}`) ?? []),
+    ...(tyreSection?.status === "completa"
+      ? tyreSection.bullets
+          .filter((bullet) => /gomm|pneumatic/i.test(bullet))
+          .slice(0, 2)
+          .map((bullet) => sanitizeBusinessText(bullet))
+      : []),
+  ];
+
+  const signalBullets = [
+    ...(operationalSignals?.alertItems.slice(0, 3).map((item) =>
+      `${sanitizeBusinessText(item.title)}: ${sanitizeBusinessText(item.detailText)}`) ?? []),
+    ...(operationalSignals?.focusItems.slice(0, 2).map((item) =>
+      `${sanitizeBusinessText(item.title)}: ${sanitizeBusinessText(item.detailText)}`) ?? []),
+    ...(operationalSignals?.sessioni[0]
+      ? [
+          `Sessione attiva: ${sanitizeBusinessText(
+            operationalSignals.sessioni[0].nomeAutista ?? "autista non dichiarato",
+          )}`,
+        ]
+      : []),
+  ];
+
+  const result: InternalAiVehicleReportSection[] = [
+    buildSection({
+      id: "decision-deadlines",
+      title: "Scadenze e collaudi",
+      summary:
+        deadlineValue === "OK"
+          ? "Scadenze e collaudi sotto controllo nel periodo letto."
+          : `Stato scadenze: ${deadlineValue}.`,
+      bullets: deadlineBullets,
+      status: deadlineValue === "OK" ? "completa" : "parziale",
+      periodContext: args.periodContext,
+    }),
+    buildSection({
+      id: "decision-backlog",
+      title: "Backlog tecnico",
+      summary:
+        (args.priority?.openWorks ?? 0) > 0 || (args.priority?.maintenanceCount ?? 0) > 0
+          ? `Sono presenti ${args.priority?.openWorks ?? 0} lavori aperti e ${args.priority?.maintenanceCount ?? 0} manutenzioni da seguire.`
+          : "Non risultano backlog tecnici forti nel periodo letto.",
+      bullets: backlogBullets.slice(0, 6).map((entry) => sanitizeBusinessText(entry)),
+      status:
+        (args.priority?.openWorks ?? 0) > 0 || (args.priority?.maintenanceCount ?? 0) > 0
+          ? "completa"
+          : "parziale",
+      periodContext: args.periodContext,
+    }),
+    buildSection({
+      id: "decision-signals",
+      title: "Segnali operativi",
+      summary:
+        signalBullets.length > 0
+          ? `Rilevati ${operationalSignals?.alertItems.length ?? 0} alert o segnalazioni utili e ${operationalSignals?.focusItems.length ?? 0} focus da seguire.`
+          : "Non emergono alert o segnalazioni operative forti nel periodo letto.",
+      bullets:
+        signalBullets.length > 0
+          ? signalBullets.slice(0, 6)
+          : ["Nessun alert o segnalazione forte nel periodo letto."],
+      status: signalBullets.length > 0 ? "completa" : "parziale",
+      periodContext: args.periodContext,
+    }),
+  ];
+
+  if (shouldIncludeFuel && args.fuelAnalytics) {
+    result.push(
+      buildSection({
+        id: "decision-fuel",
+        title: "Consumi e rifornimenti",
+        summary:
+          args.fuelAnalytics.kmPerLiter !== null
+            ? `${formatCount(args.fuelAnalytics.recordsFound)} rifornimenti letti; resa media ${formatDecimal(args.fuelAnalytics.kmPerLiter)} km/l con fiducia ${args.fuelAnalytics.reliability.final.label.toLowerCase()}.`
+            : `${formatCount(args.fuelAnalytics.recordsFound)} rifornimenti letti, ma la media non e calcolabile in modo affidabile.`,
+        bullets: [
+          `Litri inclusi: ${formatDecimal(args.fuelAnalytics.totalLiters, 1)} L`,
+          args.fuelAnalytics.analyzedKm > 0
+            ? `Km analizzati: ${formatCount(Math.round(args.fuelAnalytics.analyzedKm))}`
+            : "Km analizzati: non disponibili in modo affidabile",
+          `Verdetto fiducia: ${args.fuelAnalytics.reliability.final.label}`,
+          ...(args.fuelAnalytics.anomalyBullets.slice(0, 2).map((entry) => sanitizeBusinessText(entry))),
+          ...(args.fuelAnalytics.actionBullets.slice(0, 1).map((entry) => sanitizeBusinessText(entry))),
+        ].filter((entry): entry is string => Boolean(entry)),
+        status:
+          args.fuelAnalytics.reliability.final.status === "affidabile"
+            ? "completa"
+            : "parziale",
+        periodContext: args.periodContext,
+      }),
+    );
+  }
+
+  if (
+    costsSection &&
+    (costsSection.status === "completa" || costsSection.bullets.some((entry) => /\|/.test(entry)))
+  ) {
+    result.push(
+      buildSection({
+        id: "decision-costs",
+        title: "Costi, documenti e storico utile",
+        summary: sanitizeBusinessText(costsSection.summary),
+        bullets: costsSection.bullets
+          .slice(0, 4)
+          .map((entry) => sanitizeBusinessText(entry)),
+        status: costsSection.status,
+        periodContext: args.periodContext,
+      }),
+    );
+  }
+
+  result.push(
+    buildSection({
+      id: "decision-note",
+      title: "Nota finale",
+      summary:
+        args.missingData.length > 0
+          ? "Il quadro usa solo le informazioni oggi leggibili in modo abbastanza stabile."
+          : "Il quadro usa solo le informazioni oggi verificabili nel clone in sola lettura.",
+      bullets:
+        args.missingData.length > 0
+          ? args.missingData.slice(0, 4).map((entry) => sanitizeBusinessText(entry))
+          : ["Nessun limite forte aggiuntivo oltre alle fonti gia lette nel periodo richiesto."],
+      status: args.missingData.length > 0 ? "parziale" : "completa",
+      periodContext: args.periodContext,
+    }),
+  );
+
+  return result;
+}
+
 function buildVehiclePreview(args: {
   mezzo: NextAnagraficheFlottaMezzoItem;
   periodContext: InternalAiReportPeriodContext;
@@ -3707,14 +5224,40 @@ function buildVehiclePreview(args: {
   missingData: string[];
   evidences: string[];
   selectedScopes: InternalAiUnifiedScopeId[];
+  primaryIntent: UnifiedBusinessIntentId;
+  operationalSignals?: ReturnType<typeof collectVehicleOperationalSignals> | null;
+  technicalSignals?: ReturnType<typeof collectVehicleTechnicalSignals> | null;
+  prioritySummary?: VehiclePrioritySummary | null;
   fuelAnalytics?: FuelAnalyticsSummary | null;
+  documentiCostiView?: VehicleDocumentiCostiPeriodView | null;
 }): InternalAiVehicleReportPreview {
   const criticalCount = args.sections
     .filter((section) => section.id === "stato-operativo-attuale" || section.id === "lavori-manutenzioni")
     .reduce((total, section) => total + section.bullets.length, 0);
   const isFuelReport =
     args.selectedScopes.length === 1 && args.selectedScopes[0] === "rifornimenti" && args.fuelAnalytics;
-  const cards = isFuelReport
+  const isVehicleOverview = args.primaryIntent === "vehicle_overview";
+  const isCostsDocumentsReport =
+    args.primaryIntent === "costs_documents" && Boolean(args.documentiCostiView);
+  const previewSections = isVehicleOverview
+    ? buildVehicleOverviewSections({
+        periodContext: args.periodContext,
+        sections: args.sections,
+        missingData: args.missingData,
+        operational: args.operationalSignals ?? null,
+        technical: args.technicalSignals ?? null,
+        priority: args.prioritySummary ?? null,
+        fuelAnalytics: args.fuelAnalytics,
+      })
+    : args.sections;
+  const cards: InternalAiVehicleReportPreview["cards"] = isVehicleOverview
+    ? buildVehicleOverviewCards({
+        targa: args.mezzo.targa,
+        priority: args.prioritySummary ?? null,
+        operational: args.operationalSignals ?? null,
+        fuelAnalytics: args.fuelAnalytics,
+      })
+    : isFuelReport
     ? [
         {
           label: "Trovati nel periodo",
@@ -3744,6 +5287,54 @@ function buildVehiclePreview(args: {
                 ? "calcolo prudente"
                 : "calcolo non disponibile",
         },
+        {
+          label: "Verdetto fiducia",
+          value: args.fuelAnalytics?.reliability.final.label ?? "Da verificare",
+          meta: `Sorgente ${args.fuelAnalytics?.reliability.source.label ?? "n.d."} | Filtro ${args.fuelAnalytics?.reliability.filter.label ?? "n.d."} | Calcolo ${args.fuelAnalytics?.reliability.calculation.label ?? "n.d."}`,
+          tone: args.fuelAnalytics?.reliability.final.status === "affidabile" ? "success" : "warning",
+        },
+      ]
+    : isCostsDocumentsReport
+    ? [
+        {
+          label: "Elementi nel periodo",
+          value: `${args.documentiCostiView?.counts.total ?? 0}`,
+          meta: "costi e documenti leggibili nel periodo richiesto",
+        },
+        {
+          label: "Costo consuntivo",
+          value:
+            (args.documentiCostiView?.totals.fatture.withAmount ?? 0) > 0
+              ? `${args.documentiCostiView?.totals.fatture.withAmount ?? 0} fatture`
+              : "n.d.",
+          meta:
+            (args.documentiCostiView?.totals.fatture.withAmount ?? 0) > 0
+              ? [
+                  args.documentiCostiView?.totals.fatture.eur
+                    ? formatCurrencyByCode(args.documentiCostiView.totals.fatture.eur, "EUR")
+                    : null,
+                  args.documentiCostiView?.totals.fatture.chf
+                    ? formatCurrencyByCode(args.documentiCostiView.totals.fatture.chf, "CHF")
+                    : null,
+                ]
+                  .filter((entry): entry is string => Boolean(entry))
+                  .join(" + ")
+              : "nessun totale consuntivo leggibile",
+        },
+        {
+          label: "Documenti rilevanti",
+          value: `${args.documentiCostiView?.counts.documentiUtili ?? 0}`,
+          meta: `${args.documentiCostiView?.counts.withFile ?? 0} allegati leggibili | ${args.documentiCostiView?.counts.daVerificare ?? 0} da verificare`,
+        },
+        {
+          label: "Affidabilita",
+          value: formatReliabilityLabel(args.documentiCostiView?.reliability.final ?? "da_verificare"),
+          meta: `Sorgente ${formatReliabilityLabel(args.documentiCostiView?.reliability.source ?? "da_verificare")} | Filtro ${formatReliabilityLabel(args.documentiCostiView?.reliability.filter ?? "da_verificare")}`,
+          tone:
+            (args.documentiCostiView?.reliability.final ?? "da_verificare") === "affidabile"
+              ? "success"
+              : "warning",
+        },
       ]
     : [
         { label: "Sezioni utili", value: `${args.sections.length}`, meta: "sezioni combinate nel report" },
@@ -3757,9 +5348,13 @@ function buildVehiclePreview(args: {
     targetId: args.mezzo.id,
     targetLabel: args.mezzo.targa,
     mezzoTarga: args.mezzo.targa,
-    title: buildVehicleReportTitle(args.selectedScopes, args.mezzo.targa),
-    subtitle: isFuelReport
+    title: buildVehicleReportTitle(args.primaryIntent, args.selectedScopes, args.mezzo.targa),
+    subtitle: isVehicleOverview
+      ? `Solo le informazioni utili per decidere cosa fare | periodo ${args.periodContext.label}`
+      : isFuelReport
       ? `Targa ${args.mezzo.targa} | periodo ${args.periodContext.label}`
+      : isCostsDocumentsReport
+        ? `Costi, documenti e storico utile | periodo ${args.periodContext.label}`
       : `Ambiti: ${args.selectedScopes.map((scope) => formatScopeLabel(scope)).join(", ") || "quadro operativo"} | periodo ${args.periodContext.label}`,
     generatedAt: new Date().toISOString(),
     header: {
@@ -3773,7 +5368,7 @@ function buildVehiclePreview(args: {
     },
     cards,
     periodContext: args.periodContext,
-    sections: args.sections,
+    sections: previewSections,
     missingData: args.missingData,
     evidences: args.evidences,
     sources: args.sources,
@@ -3932,16 +5527,39 @@ async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalA
       }),
     );
   }
+  const documentiCostiView =
+    sections.find((section) => section.businessPayload?.kind === "documenti_costi")
+      ?.businessPayload?.periodView ?? null;
   const allSources = mergePreviewSources(sections.flatMap((section) => section.sources));
   const missingData = dedupeStrings(sections.flatMap((section) => section.missingData));
   const evidences = dedupeStrings(sections.flatMap((section) => section.evidences));
   const keyPoints = dedupeStrings(sections.flatMap((section) => section.keyPoints)).slice(0, 8);
   const reliabilityLabel =
-    linkedRecords.some((entry) => entry.linkReliability === "alta") && keyPoints.length > 0
-      ? "Affidabile"
-      : linkedRecords.length > 0
-        ? "Parziale"
-        : "Da verificare";
+    fuelAnalytics !== null
+      ? fuelAnalytics.reliability.final.label
+      : documentiCostiView !== null
+        ? formatReliabilityLabel(documentiCostiView.reliability.final)
+      : linkedRecords.some((entry) => entry.linkReliability === "alta") && keyPoints.length > 0
+        ? "Affidabile"
+        : linkedRecords.length > 0
+          ? "Parziale"
+          : "Da verificare";
+
+  const preview = buildVehiclePreview({
+    mezzo,
+    periodContext,
+    sections: sections.map((entry) => entry.section),
+    sources: allSources,
+    missingData,
+    evidences,
+    selectedScopes,
+    primaryIntent: plan.primaryIntent,
+    operationalSignals,
+    technicalSignals,
+    prioritySummary,
+    fuelAnalytics,
+    documentiCostiView,
+  });
 
   let assistantText = [
     `Analisi ${mezzo.targa}`,
@@ -3993,11 +5611,16 @@ async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalA
       break;
     case "vehicle_overview":
       assistantText = composeVehicleOverviewAssistantText({
-        targa: mezzo.targa,
-        keyPoints,
-        sections,
-        missingData,
+        preview,
       });
+      break;
+    case "costs_documents":
+      if (documentiCostiView) {
+        assistantText = composeCostsDocumentsAssistantText({
+          targa: mezzo.targa,
+          periodView: documentiCostiView,
+        });
+      }
       break;
     default:
       break;
@@ -4008,27 +5631,27 @@ async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalA
     domainLabel: plan.domainLabel,
     outputLabel: plan.outputLabel,
     targa: mezzo.targa,
+    extraLabels:
+      fuelAnalytics !== null
+        ? [
+            `Fiducia sorgente: ${fuelAnalytics.reliability.source.label}`,
+            `Fiducia filtro: ${fuelAnalytics.reliability.filter.label}`,
+            `Fiducia calcolo: ${fuelAnalytics.reliability.calculation.label}`,
+          ]
+        : undefined,
   });
 
   if (spec.outputPreference === "thread") {
     return { intent: "mezzo_dossier", status: keyPoints.length > 0 ? "completed" : "partial", assistantText, references, report: null };
   }
 
-  const preview = buildVehiclePreview({
-    mezzo,
-    periodContext,
-    sections: sections.map((entry) => entry.section),
-    sources: allSources,
-    missingData,
-    evidences,
-    selectedScopes,
-    fuelAnalytics,
-  });
-
   return {
     intent: "report_targa",
     status: "completed",
-    assistantText: `Ho preparato ${preview.title.toLowerCase()} nel perimetro NEXT read-only.\n\nSezioni incluse: ${preview.sections.length}. Dati mancanti dichiarati: ${preview.missingData.length}.`,
+    assistantText:
+      plan.primaryIntent === "vehicle_overview"
+        ? `${preview.title} pronto.\n\nContenuto allineato su sintesi iniziale, cosa fare ora, scadenze, backlog, segnali operativi${preview.sections.some((section) => section.id === "decision-fuel") ? ", consumi" : ""}${preview.sections.some((section) => section.id === "decision-costs") ? " e costi/documenti" : ""}.`
+        : `Ho preparato ${preview.title.toLowerCase()} nel perimetro NEXT read-only.\n\nSezioni incluse: ${preview.sections.length}. Dati mancanti dichiarati: ${preview.missingData.length}.`,
     references,
     report: { status: "ready", normalizedTarga: mezzo.targa, message: `${preview.title} pronto nel perimetro NEXT read-only.`, preview },
   };
@@ -4084,15 +5707,26 @@ async function runFleetUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalAiU
     operativita,
     periodContext,
   }).filter((row) => row.reasons.length > 0);
+  const relevantRows =
+    plan.primaryIntent === "fleet_deadlines"
+      ? rows.filter((row) => row.overdueRevisions > 0 || row.upcomingRevisions > 0)
+      : (() => {
+          const attentionRows = rows.filter((row) => row.priorityLabel !== "bassa");
+          return attentionRows.length > 0 ? attentionRows : rows;
+        })();
+  const engineSummary = buildFleetPriorityEngineSummary(relevantRows);
   const limitations = dedupeStrings([
     ...centro.limitations.slice(0, 2),
     ...lavori.limitations.slice(0, 2),
     ...operativita.limitations.slice(0, 2),
   ]);
   const references = buildUnifiedReferences({
-    reliabilityLabel: rows.length > 0 ? "Parziale" : "Da verificare",
+    reliabilityLabel: engineSummary.reliabilityLabel,
     domainLabel: plan.domainLabel,
     outputLabel: plan.outputLabel,
+    extraLabels: [
+      "Criterio priorita: scaduti > entro 7 giorni > alert critici/KO e lavori urgenti > segnalazioni e pre-collaudi > backlog tecnico",
+    ],
   });
   let assistantText = [
     "Analisi flotte",
@@ -4105,6 +5739,8 @@ async function runFleetUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalAiU
       rows,
       limitations,
       periodContext,
+      rankingLimit: spec.rankingLimit,
+      asksActionAdvice: spec.asksActionAdvice,
     });
   } else {
     assistantText = composeFleetCriticalityAssistantText({
@@ -4117,12 +5753,14 @@ async function runFleetUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalAiU
       rows,
       limitations,
       periodContext,
+      rankingLimit: spec.rankingLimit,
+      asksActionAdvice: spec.asksActionAdvice,
     });
   }
 
   return {
     intent: "richiesta_generica",
-    status: rows.length > 0 ? "completed" : "partial",
+    status: relevantRows.length > 0 ? "completed" : "partial",
     assistantText,
     references,
     report: null,

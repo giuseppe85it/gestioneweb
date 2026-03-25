@@ -575,12 +575,16 @@ const CHAT_INTENT_LABELS: Record<InternalAiChatMessage["intent"], string> = {
 };
 
 const CHAT_SUGGESTIONS = [
-  "Creami un report di tutti i rifornimenti effettuati con la media dei km per lt percorsi della targa TI233827",
-  "Dimmi quali mezzi richiedono attenzione oggi incrociando scadenze, lavori aperti e segnalazioni",
-  "Quale mezzo e piu critico questa settimana?",
-  "Fammi un quadro completo della targa TI233827",
+  "Crea un report sui rifornimenti di questo mese e dimmi la media km/l della targa TI233827",
+  "Dimmi quali sono oggi i 3 mezzi che richiedono piu attenzione, incrociando scadenze, collaudi/pre-collaudi, segnalazioni, lavori aperti e criticita operative",
+  "Se oggi dovessi controllare un solo mezzo, quale sceglieresti e perche?",
+  "Dimmi quali mezzi nei prossimi 30 giorni richiedono collaudo o pre-collaudo, ordinati per priorita, e spiegami cosa conviene fare",
+  "Fammi un quadro completo della targa TI233827, ma solo con le informazioni davvero utili per decidere cosa fare",
+  "Fammi un report dei costi della targa TI233827 negli ultimi 12 mesi, in modo semplice e utile",
+  "Quali documenti rilevanti risultano associati alla targa TI233827?",
+  "Fammi uno storico decisionale del mezzo TI233827 con costi, documenti e segnali utili",
   "Ci sono anomalie nei rifornimenti del mezzo TI233827?",
-  "Quali mezzi stanno per andare a collaudo e quali conviene pre-collaudare?",
+  "Quale mezzo e piu critico questa settimana?",
 ];
 
 const PRIMARY_SECTION_NAV: NextInternalAiSectionId[] = ["overview", "artifacts"];
@@ -589,6 +593,9 @@ const TECHNICAL_SECTION_NAV: NextInternalAiSectionId[] = ["sessions", "requests"
 const DOMAIN_REFERENCE_PREFIX = "Dominio rilevato: ";
 const RELIABILITY_REFERENCE_PREFIX = "Affidabilita: ";
 const UNIFIED_ENGINE_REFERENCE = "Motore: Unified Intelligence Engine";
+const CLONE_SCOPE_REFERENCE_PREFIX = "Perimetro: ";
+const TRUST_REFERENCE_PREFIX = "Fiducia ";
+const OUTPUT_REFERENCE_PREFIX = "Output suggerito: ";
 
 const UNIFIED_CONSOLE_SCOPE_OPTIONS: Array<{
   id: UnifiedConsoleScopeFilter;
@@ -1125,6 +1132,42 @@ function dedupeChatMessageReferences(
   });
 }
 
+function isDecisionalVehicleOverviewMessage(message: InternalAiChatMessage): boolean {
+  if (message.role !== "assistente") {
+    return false;
+  }
+
+  const normalized = normalizeChatPrompt(message.text);
+  return (
+    normalized.includes("quadro mezzo") &&
+    normalized.includes("cosa fare ora") &&
+    normalized.includes("scadenze e collaudi")
+  );
+}
+
+function buildVisibleChatReferences(
+  message: InternalAiChatMessage,
+): InternalAiChatMessage["references"] {
+  if (!isDecisionalVehicleOverviewMessage(message)) {
+    return message.references;
+  }
+
+  return message.references.filter((reference) => {
+    if (reference.artifactId) {
+      return true;
+    }
+
+    return !(
+      reference.label.startsWith(UNIFIED_ENGINE_REFERENCE) ||
+      reference.label.startsWith(DOMAIN_REFERENCE_PREFIX) ||
+      reference.label.startsWith(RELIABILITY_REFERENCE_PREFIX) ||
+      reference.label.startsWith(CLONE_SCOPE_REFERENCE_PREFIX) ||
+      reference.label.startsWith(TRUST_REFERENCE_PREFIX) ||
+      reference.label.startsWith(OUTPUT_REFERENCE_PREFIX)
+    );
+  });
+}
+
 function buildChatMemoryFocusLabel(screenHint: InternalAiChatMemoryHints["screenHint"]): string | null {
   switch (screenHint) {
     case "home":
@@ -1149,17 +1192,92 @@ function buildChatReportReadyText(report: InternalAiReportPreview): string {
     .slice(0, 3)
     .map((section) => section.title)
     .join(", ");
+  const overviewActionSection =
+    report.sections.find((section) => section.id === "decision-deadlines") ?? null;
+  const overviewBacklogSection =
+    report.sections.find((section) => section.id === "decision-backlog") ?? null;
+  const overviewSignalsSection =
+    report.sections.find((section) => section.id === "decision-signals") ?? null;
+  const overviewFuelSection =
+    report.sections.find((section) => section.id === "decision-fuel") ?? null;
+  const overviewCostsSection =
+    report.sections.find((section) => section.id === "decision-costs") ?? null;
+  const overviewNoteSection =
+    report.sections.find((section) => section.id === "decision-note") ?? null;
+  const costsDocumentsSection =
+    report.sections.find((section) => section.id === "documenti-costi") ?? null;
+  const reliabilityCard =
+    report.cards.find((card) => card.label === "Verdetto fiducia") ?? null;
+  const actionCard = report.cards.find((card) => card.label === "Cosa fare ora") ?? null;
   const anomalySection =
     report.sections.find((section) => section.id === "rifornimenti-anomalie") ?? null;
   const actionSection =
     report.sections.find((section) => section.id === "rifornimenti-azioni") ?? null;
+  const trustSection =
+    report.sections.find((section) => section.id === "rifornimenti-affidabilita") ?? null;
   const fuelSummary =
     report.sections.find((section) => section.id === "rifornimenti") ?? null;
+
+  if (report.sections.some((section) => section.id.startsWith("decision-"))) {
+    return [
+      `${report.title} pronto per ${getReportTargetChip(report)}.`,
+      `Sintesi iniziale:\n- Periodo: ${report.periodContext.label}\n${cards.join("\n")}`,
+      actionCard
+        ? `Cosa fare ora:\n- ${actionCard.value}\n- ${actionCard.meta}`
+        : null,
+      overviewActionSection
+        ? `Scadenze e collaudi:\n- ${overviewActionSection.summary}\n${overviewActionSection.bullets.slice(0, 3).map((entry) => `- ${entry}`).join("\n")}`
+        : null,
+      overviewBacklogSection
+        ? `Backlog tecnico:\n- ${overviewBacklogSection.summary}\n${overviewBacklogSection.bullets.slice(0, 3).map((entry) => `- ${entry}`).join("\n")}`
+        : null,
+      overviewSignalsSection
+        ? `Segnali operativi:\n${overviewSignalsSection.bullets.slice(0, 3).map((entry) => `- ${entry}`).join("\n")}`
+        : null,
+      overviewFuelSection
+        ? `Consumi e rifornimenti:\n- ${overviewFuelSection.summary}`
+        : null,
+      overviewCostsSection
+        ? `Costi, documenti e storico utile:\n- ${overviewCostsSection.summary}`
+        : null,
+      overviewNoteSection
+        ? `Nota finale:\n- ${overviewNoteSection.summary}\n${overviewNoteSection.bullets.slice(0, 2).map((entry) => `- ${entry}`).join("\n")}`
+        : null,
+      "Apro l'anteprima e mantengo lo stesso quadro decisionale in modale, report e PDF.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  if (costsDocumentsSection) {
+    return [
+      `${report.title} pronto per ${getReportTargetChip(report)}.`,
+      `Sintesi iniziale:\n- Periodo: ${report.periodContext.label}\n${cards.join("\n")}`,
+      `Dati principali:\n- ${costsDocumentsSection.summary}`,
+      costsDocumentsSection.bullets.length
+        ? `Elementi rilevanti:\n${costsDocumentsSection.bullets
+            .slice(0, 5)
+            .map((entry) => `- ${entry}`)
+            .join("\n")}`
+        : null,
+      report.missingData.length
+        ? `Limiti:\n${report.missingData.slice(0, 3).map((entry) => `- ${entry}`).join("\n")}`
+        : null,
+      "Apro l'anteprima e mantengo lo stesso taglio business in modale, report e PDF.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
 
   if (fuelSummary) {
     return [
       `${report.title} pronto per ${getReportTargetChip(report)}.`,
       `Sintesi iniziale:\n- Periodo: ${report.periodContext.label}\n${cards.join("\n")}`,
+      reliabilityCard
+        ? `Verdetto fiducia: ${reliabilityCard.value}\n- ${reliabilityCard.meta}`
+        : trustSection
+          ? `Verdetto fiducia: ${trustSection.summary}`
+          : null,
       anomalySection?.bullets.length
         ? `Anomalie:\n${anomalySection.bullets.slice(0, 3).map((entry) => `- ${entry}`).join("\n")}`
         : null,
@@ -1184,10 +1302,68 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
   const normalized = normalizeChatPrompt(message.text);
 
   if (message.intent === "report_targa") {
+    if (
+      normalized.includes("quadro mezzo") ||
+      normalized.includes("cosa fare ora") ||
+      normalized.includes("situazione del mezzo")
+    ) {
+      return "Quadro mezzo";
+    }
+
+    if (
+      normalized.includes("riforniment") ||
+      normalized.includes("consum") ||
+      normalized.includes("km/l") ||
+      normalized.includes("carburant") ||
+      normalized.includes("gasolio")
+    ) {
+      return "Report rifornimenti";
+    }
+
+    if (
+      normalized.includes("costi") ||
+      normalized.includes("document") ||
+      normalized.includes("storico decisionale") ||
+      normalized.includes("storico utile")
+    ) {
+      return normalized.includes("costi") || normalized.includes("document")
+        ? "Costi e documenti"
+        : "Storico mezzo";
+    }
+
     return "Report mezzo";
   }
 
   if (message.intent === "mezzo_dossier") {
+    if (
+      normalized.includes("quadro mezzo") ||
+      normalized.includes("cosa fare ora") ||
+      normalized.includes("situazione del mezzo")
+    ) {
+      return "Quadro mezzo";
+    }
+
+    if (
+      normalized.includes("riforniment") ||
+      normalized.includes("consum") ||
+      normalized.includes("km/l") ||
+      normalized.includes("carburant") ||
+      normalized.includes("gasolio")
+    ) {
+      return "Rifornimenti";
+    }
+
+    if (
+      normalized.includes("costi") ||
+      normalized.includes("document") ||
+      normalized.includes("storico decisionale") ||
+      normalized.includes("storico utile")
+    ) {
+      return normalized.includes("costi") || normalized.includes("document")
+        ? "Costi e documenti"
+        : "Storico mezzo";
+    }
+
     if (
       normalized.includes("alert") ||
       normalized.includes("revisione") ||
@@ -1216,6 +1392,25 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
     (normalized.includes("file") || normalized.includes("modul"))
   ) {
     return "File e moduli";
+  }
+
+  if (message.intent === "richiesta_generica") {
+    if (
+      normalized.includes("scadenze, collaudi e pre-collaudi") ||
+      normalized.includes("mezzi da seguire") ||
+      normalized.includes("pre-collaudi consigliati")
+    ) {
+      return "Scadenze flotta";
+    }
+
+    if (
+      normalized.includes("mezzi che richiedono attenzione") ||
+      normalized.includes("classifica criticita") ||
+      normalized.includes("classifica operativa") ||
+      normalized.includes("priorita mezzi")
+    ) {
+      return "Priorita flotta";
+    }
   }
 
   return null;
@@ -1316,6 +1511,16 @@ function buildChatReliabilityLabel(message: InternalAiChatMessage): string | nul
   const referenceLabel = findChatReferenceValue(message, RELIABILITY_REFERENCE_PREFIX);
   if (referenceLabel) {
     return referenceLabel;
+  }
+
+  const trustMatch = message.text.match(
+    /Verdetto fiducia:\s*(Affidabile|Prudente|Da verificare)/i,
+  );
+  if (trustMatch) {
+    return trustMatch[1]
+      .charAt(0)
+      .toUpperCase()
+      .concat(trustMatch[1].slice(1).toLowerCase());
   }
 
   if (message.intent === "report_targa" || message.intent === "mezzo_dossier") {
@@ -4949,9 +5154,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                             ))}
                           </div>
                         ) : null}
-                        {message.references.length ? (
+                        {buildVisibleChatReferences(message).length ? (
                           <div className="internal-ai-chat__references">
-                            {message.references.map((reference) =>
+                            {buildVisibleChatReferences(message).map((reference) =>
                               reference.artifactId ? (
                                 <button
                                   key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
@@ -5483,9 +5688,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       ))}
                     </div>
                   ) : null}
-                  {message.references.length ? (
+                  {buildVisibleChatReferences(message).length ? (
                     <div className="internal-ai-chat__references">
-                      {message.references.map((reference) =>
+                      {buildVisibleChatReferences(message).map((reference) =>
                         reference.artifactId ? (
                           <button
                             key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}

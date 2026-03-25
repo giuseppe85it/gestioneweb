@@ -44,6 +44,13 @@ export type NextDocumentiCostiPeriodFilterStatus =
   | "parziale"
   | "non_dimostrabile";
 
+export type NextDocumentiCostiDecisionReliability =
+  | "affidabile"
+  | "prudente"
+  | "da_verificare";
+
+export type NextDocumentiCostiBusinessLinkClassification = "diretto" | "prudente";
+
 export type NextDocumentiCostiProcurementMatchLevel = "forte" | "non_dimostrabile";
 
 export type NextDocumentiCostiProcurementPerimeterDecision =
@@ -149,6 +156,58 @@ type NextDocumentiCostiAmountTotals = {
   chf: number;
   unknownCount: number;
   withAmount: number;
+};
+
+export type NextMezzoDocumentiCostiPeriodInput = {
+  label: string;
+  appliesFilter: boolean;
+  fromTimestamp: number | null;
+  toTimestamp: number | null;
+};
+
+export type NextMezzoDocumentiCostiPeriodView = {
+  mezzoTarga: string;
+  period: {
+    label: string;
+    appliesFilter: boolean;
+    coverage: NextDocumentiCostiPeriodFilterStatus;
+    note: string;
+  };
+  items: NextDocumentiCostiReadOnlyItem[];
+  counts: {
+    total: number;
+    totalAvailable: number;
+    direct: number;
+    prudential: number;
+    preventivi: number;
+    fatture: number;
+    documentiUtili: number;
+    withAmount: number;
+    withoutAmount: number;
+    withFile: number;
+    withoutFile: number;
+    withReliableDate: number;
+    withoutReliableDate: number;
+    daVerificare: number;
+    outsidePeriod: number;
+    excludedMissingDate: number;
+  };
+  totals: {
+    preventivi: NextDocumentiCostiAmountTotals;
+    fatture: NextDocumentiCostiAmountTotals;
+  };
+  highlights: {
+    costi: NextDocumentiCostiReadOnlyItem[];
+    documenti: NextDocumentiCostiReadOnlyItem[];
+    storico: NextDocumentiCostiReadOnlyItem[];
+  };
+  reliability: {
+    source: NextDocumentiCostiDecisionReliability;
+    filter: NextDocumentiCostiDecisionReliability;
+    final: NextDocumentiCostiDecisionReliability;
+  };
+  limitations: string[];
+  actionHint: string;
 };
 
 export type NextMezzoDocumentiCostiSnapshot = {
@@ -805,6 +864,270 @@ function derivePeriodFilterCoverage(args: {
   return "affidabile";
 }
 
+function isItemInPeriod(
+  item: NextDocumentiCostiReadOnlyItem,
+  period: NextMezzoDocumentiCostiPeriodInput,
+): boolean {
+  if (!period.appliesFilter) {
+    return true;
+  }
+
+  if (item.sortTimestamp === null) {
+    return false;
+  }
+
+  if (period.fromTimestamp !== null && item.sortTimestamp < period.fromTimestamp) {
+    return false;
+  }
+
+  if (period.toTimestamp !== null && item.sortTimestamp > period.toTimestamp) {
+    return false;
+  }
+
+  return true;
+}
+
+function classifyBusinessLink(
+  item: NextDocumentiCostiReadOnlyItem,
+): NextDocumentiCostiBusinessLinkClassification {
+  return item.sourceType === "costo_mezzo" || item.sourceType === "documento_mezzo"
+    ? "diretto"
+    : "prudente";
+}
+
+function hasVerificationFlag(item: NextDocumentiCostiReadOnlyItem): boolean {
+  return item.flags.includes("da_verificare") || item.flags.includes("motivo_verifica_presente");
+}
+
+function buildPeriodCoverageNote(args: {
+  period: NextMezzoDocumentiCostiPeriodInput;
+  coverage: NextDocumentiCostiPeriodFilterStatus;
+  totalAvailable: number;
+  outsidePeriod: number;
+  excludedMissingDate: number;
+}): string {
+  if (!args.period.appliesFilter) {
+    return "Nessun filtro periodo attivo: il layer mostra tutto lo storico leggibile della targa.";
+  }
+
+  if (args.totalAvailable === 0) {
+    return `Periodo ${args.period.label}: nessun costo o documento leggibile da confrontare con il filtro richiesto.`;
+  }
+
+  if (args.coverage === "affidabile") {
+    return `Periodo ${args.period.label} applicato in modo affidabile ai record con data leggibile.`;
+  }
+
+  if (args.coverage === "parziale") {
+    return `Periodo ${args.period.label} applicato in modo prudente: ${args.excludedMissingDate} elementi senza data leggibile restano fuori dal conteggio e ${args.outsidePeriod} risultano fuori intervallo.`;
+  }
+
+  return `Periodo ${args.period.label} non pienamente dimostrabile: manca una data leggibile sulla maggior parte dei record storici della targa.`;
+}
+
+function derivePeriodReliability(args: {
+  directCount: number;
+  prudentialCount: number;
+  totalCount: number;
+  coverage: NextDocumentiCostiPeriodFilterStatus;
+  appliesFilter: boolean;
+  unverifiableCount: number;
+  missingAmountCount: number;
+}): NextMezzoDocumentiCostiPeriodView["reliability"] {
+  const source: NextDocumentiCostiDecisionReliability =
+    args.totalCount === 0
+      ? "da_verificare"
+      : args.prudentialCount > 0
+        ? "prudente"
+        : "affidabile";
+  const filter: NextDocumentiCostiDecisionReliability =
+    !args.appliesFilter
+      ? "affidabile"
+      : args.coverage === "affidabile"
+        ? "affidabile"
+        : args.coverage === "parziale"
+          ? "prudente"
+          : "da_verificare";
+
+  const final: NextDocumentiCostiDecisionReliability =
+    args.totalCount === 0
+      ? "da_verificare"
+      : filter === "da_verificare"
+        ? "da_verificare"
+        : source === "prudente" || args.unverifiableCount > 0 || args.missingAmountCount > 0
+          ? "prudente"
+          : "affidabile";
+
+  return { source, filter, final };
+}
+
+function buildPeriodActionHint(args: {
+  totalCount: number;
+  directCount: number;
+  prudentialCount: number;
+  fattureWithAmount: number;
+  documentiDaVerificare: number;
+  coverage: NextDocumentiCostiPeriodFilterStatus;
+}): string {
+  if (args.totalCount === 0) {
+    return "Se ti serve una decisione economica o documentale, conviene prima verificare se esistono allegati o costi leggibili nel periodo richiesto.";
+  }
+
+  if (args.documentiDaVerificare > 0) {
+    return "Conviene controllare prima i documenti marcati da verificare, cosi eviti di basare la decisione su allegati incompleti.";
+  }
+
+  if (args.prudentialCount > 0 && args.directCount === 0) {
+    return "I collegamenti del periodo sono prudenziali: prima di decidere conviene confermare i documenti direttamente associati alla targa.";
+  }
+
+  if (args.coverage !== "affidabile") {
+    return "Il filtro periodo resta prudente: usa il quadro come supporto rapido, ma verifica prima i record senza data leggibile.";
+  }
+
+  if (args.fattureWithAmount > 0) {
+    return "Conviene partire dalle fatture con importo leggibile e dalle voci di costo piu recenti.";
+  }
+
+  return "Usa questo quadro per verificare prima i documenti allegati e poi allargare solo gli approfondimenti davvero necessari.";
+}
+
+function buildPeriodViewLimitations(args: {
+  snapshot: NextMezzoDocumentiCostiSnapshot;
+  period: NextMezzoDocumentiCostiPeriodInput;
+  periodNote: string;
+  prudentialCount: number;
+  unverifiableCount: number;
+  missingAmountCount: number;
+  missingFileCount: number;
+}): string[] {
+  return [
+    args.periodNote,
+    args.prudentialCount > 0
+      ? `Nel periodo richiesto sono presenti ${args.prudentialCount} collegamenti prudenziali da documenti magazzino o generici: non vanno letti come match certi.`
+      : null,
+    args.unverifiableCount > 0
+      ? `Nel periodo richiesto risultano ${args.unverifiableCount} elementi marcati da verificare o con motivazione di verifica presente.`
+      : null,
+    args.missingAmountCount > 0
+      ? `Una parte di preventivi o fatture del periodo non espone un importo leggibile: i totali restano prudenziali.`
+      : null,
+    args.missingFileCount > 0
+      ? `Una parte dei documenti del periodo non espone un allegato leggibile dal clone: conviene verificarne la completezza prima di usarli come base documentale.`
+      : null,
+    ...args.snapshot.limitations,
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
+function deriveNextMezzoDocumentiCostiPeriodView(args: {
+  snapshot: NextMezzoDocumentiCostiSnapshot;
+  period: NextMezzoDocumentiCostiPeriodInput;
+}): NextMezzoDocumentiCostiPeriodView {
+  const allItems = args.snapshot.items;
+  const items = allItems.filter((item) => isItemInPeriod(item, args.period));
+  const preventivi = items.filter((item) => item.category === "preventivo");
+  const fatture = items.filter((item) => item.category === "fattura");
+  const documentiUtili = items.filter((item) => item.category === "documento_utile");
+  const directItems = items.filter((item) => classifyBusinessLink(item) === "diretto");
+  const prudentialItems = items.filter((item) => classifyBusinessLink(item) === "prudente");
+  const daVerificareItems = items.filter((item) => hasVerificationFlag(item));
+  const outsidePeriod = args.period.appliesFilter
+    ? allItems.filter(
+        (item) => item.sortTimestamp !== null && !isItemInPeriod(item, args.period),
+      ).length
+    : 0;
+  const excludedMissingDate = args.period.appliesFilter
+    ? allItems.filter((item) => item.sortTimestamp === null).length
+    : 0;
+  const coverage = derivePeriodFilterCoverage({
+    total: allItems.length,
+    withReliableDate: args.snapshot.counts.withReliableDate,
+  });
+  const periodNote = buildPeriodCoverageNote({
+    period: args.period,
+    coverage,
+    totalAvailable: allItems.length,
+    outsidePeriod,
+    excludedMissingDate,
+  });
+  const reliability = derivePeriodReliability({
+    directCount: directItems.length,
+    prudentialCount: prudentialItems.length,
+    totalCount: items.length,
+    coverage,
+    appliesFilter: args.period.appliesFilter,
+    unverifiableCount: daVerificareItems.length,
+    missingAmountCount: preventivi.filter((item) => item.amount === null).length +
+      fatture.filter((item) => item.amount === null).length,
+  });
+  const sortedByAmount = [...items].sort((left, right) => {
+    const amountDelta = (right.amount ?? -1) - (left.amount ?? -1);
+    if (amountDelta !== 0) return amountDelta;
+    return (right.sortTimestamp ?? 0) - (left.sortTimestamp ?? 0);
+  });
+  const sortedByRecency = sortItems(items);
+
+  return {
+    mezzoTarga: args.snapshot.mezzoTarga,
+    period: {
+      label: args.period.label,
+      appliesFilter: args.period.appliesFilter,
+      coverage,
+      note: periodNote,
+    },
+    items,
+    counts: {
+      total: items.length,
+      totalAvailable: allItems.length,
+      direct: directItems.length,
+      prudential: prudentialItems.length,
+      preventivi: preventivi.length,
+      fatture: fatture.length,
+      documentiUtili: documentiUtili.length,
+      withAmount: items.filter((item) => item.amount !== null).length,
+      withoutAmount: preventivi.filter((item) => item.amount === null).length +
+        fatture.filter((item) => item.amount === null).length,
+      withFile: items.filter((item) => Boolean(item.fileUrl)).length,
+      withoutFile: items.filter((item) => !item.fileUrl).length,
+      withReliableDate: items.filter((item) => item.sortTimestamp !== null).length,
+      withoutReliableDate: items.filter((item) => item.sortTimestamp === null).length,
+      daVerificare: daVerificareItems.length,
+      outsidePeriod,
+      excludedMissingDate,
+    },
+    totals: {
+      preventivi: buildAmountTotals(preventivi),
+      fatture: buildAmountTotals(fatture),
+    },
+    highlights: {
+      costi: sortedByAmount.filter((item) => item.category !== "documento_utile").slice(0, 4),
+      documenti: sortedByRecency
+        .filter((item) => item.category === "documento_utile")
+        .slice(0, 4),
+      storico: sortedByRecency.slice(0, 6),
+    },
+    reliability,
+    limitations: buildPeriodViewLimitations({
+      snapshot: args.snapshot,
+      period: args.period,
+      periodNote,
+      prudentialCount: prudentialItems.length,
+      unverifiableCount: daVerificareItems.length,
+      missingAmountCount: preventivi.filter((item) => item.amount === null).length +
+        fatture.filter((item) => item.amount === null).length,
+      missingFileCount: items.filter((item) => !item.fileUrl).length,
+    }),
+    actionHint: buildPeriodActionHint({
+      totalCount: items.length,
+      directCount: directItems.length,
+      prudentialCount: prudentialItems.length,
+      fattureWithAmount: buildAmountTotals(fatture).withAmount,
+      documentiDaVerificare: daVerificareItems.length,
+      coverage,
+    }),
+  };
+}
+
 function mapCostoMezzoRecordAny(
   raw: RawRecord,
   index: number
@@ -1452,6 +1775,17 @@ export async function readNextMezzoDocumentiCostiSnapshot(
       readFailures,
     }),
   };
+}
+
+export async function readNextMezzoDocumentiCostiPeriodView(
+  targa: string,
+  period: NextMezzoDocumentiCostiPeriodInput,
+): Promise<NextMezzoDocumentiCostiPeriodView> {
+  const snapshot = await readNextMezzoDocumentiCostiSnapshot(targa);
+  return deriveNextMezzoDocumentiCostiPeriodView({
+    snapshot,
+    period,
+  });
 }
 
 export function mapNextDocumentiCostiItemsToLegacyView(

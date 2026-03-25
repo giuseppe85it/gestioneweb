@@ -1715,3 +1715,128 @@ Stato macrofase: `NON FATTO`
   - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/NextInternalAiPage.tsx src/utils/pdfEngine.ts` -> KO solo per debito lint storico gia presente in `src/utils/pdfEngine.ts`
   - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/NextInternalAiPage.tsx` -> OK
   - smoke UI reale su `/next/ia/interna` via Playwright locale con i prompt A/B/C/D richiesti -> OK
+
+### M.34 Planner multi-dominio e regressione prompt reali
+- Stato: `FATTO`
+- Note: il `2026-03-25` il planner della console `/next/ia/interna` e stato blindato per richieste ampie, trasversali e orientate ad azione, senza rifare il motore unificato o la UI.
+- Cosa e stato chiuso:
+  - request understanding esteso con riconoscimento esplicito di `top-N`, `priorita`, `azione consigliata`, `quale mezzo controllare per primo` e richieste trasversali con `incrociando`;
+  - precedenze intenti rafforzate per evitare che i prompt ampi su attenzione/priorita collassino automaticamente su `scadenze/collaudi` o su un solo dominio;
+  - domain breadth e planner riallineati per trattare `fleet_attention` come caso multi-dominio reale sopra `D10 + D02`, mantenendo invece `fuel report`, `collaudi/pre-collaudi` e `quadro completo mezzo` nei rispettivi rami corretti;
+  - output focus migliorato per scegliere in modo piu affidabile `classifica priorita`, `analisi strutturata`, `report` o `PDF` in base al testo utente;
+  - chat suggestions e capability keywords aggiornate per guidare i prompt bussola reali del planner.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/change-reports/2026-03-25_0627_planner-multi-dominio-regressione-prompt-reali-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0627_continuity_planner-multi-dominio-regressione-prompt-reali-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/NextInternalAiPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale con i 4 prompt bussola -> OK
+    - prompt 1 `questo mese + km/l + genera pdf` -> resta `fuel-first`, genera `Report PDF` su `D04`
+    - prompt 2 `oggi + top 3 + incrocio multi-dominio` -> entra in `classifica priorita` multi-mezzo su `D10 + D02`
+    - prompt 3 `prossimi 30 giorni + collaudo/pre-collaudo + priorita` -> resta focalizzato su scadenze/collaudi/pre-collaudi
+    - prompt 4 `quadro completo TI233827` -> resta overview multi-dominio utile alla decisione, senza allargarsi oltre il richiesto
+
+### M.35 Affidabilita D04 e modello unico di fiducia
+- Stato: `FATTO`
+- Note: il `2026-03-25` la console `/next/ia/interna` espone ora un modello unico di affidabilita per i report rifornimenti, coerente tra chat, report professionale, modale e PDF, senza mascherare i dati prudenziali come certi.
+- Cosa e stato chiuso:
+  - il layer `D04` distingue ora per ogni record rilevante tra `canonico`, `ricostruito`, `baseline` ed `escluso`, con motivo leggibile quando il record non entra nel calcolo o resta prudente;
+  - il motore IA calcola e propaga quattro livelli coerenti di fiducia: `sorgente`, `filtro`, `calcolo` e `verdetto finale`;
+  - il report rifornimenti e il thread chat mostrano ora in modo esplicito sia la classificazione dei record sia il verdetto finale di fiducia, evitando mismatch tra testo `prudente` e badge `affidabile`;
+  - il caso canonico `TI233827` di marzo 2026 intercetta il record anomalo del `17/03/2026`, lo esclude per `km non progressivi` e mantiene allineati `trovati`, `inclusi`, `esclusi`, media `km/l` e sezioni del report;
+  - il thread chat non etichetta piu i casi D04 di tipo `mezzo_dossier` come `Quadro mezzo`, ma come `Rifornimenti` quando il contenuto reale e fuel-first.
+- File/documenti collegati:
+  - `src/next/domain/nextRifornimentiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/change-reports/2026-03-25_0655_affidabilita-d04-modello-unico-fiducia-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0655_continuity_affidabilita-d04-modello-unico-fiducia-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/NextInternalAiPage.tsx src/next/domain/nextRifornimentiDomain.ts` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale con:
+    - caso canonico `questo mese + km/l + PDF` su `TI233827` -> `Affidabilita: Prudente`, `7 trovati`, `5 inclusi`, `2 esclusi`, record `17/03/2026` escluso, modal/report coerenti
+    - `marzo 2026` su `TI233827` -> stesso periodo, stessi conteggi e stesso verdetto di fiducia
+    - `anomalie rifornimenti marzo 2026` -> thread D04 con classificazione record e spiegazione semplice delle esclusioni
+    - `prossimi 30 giorni collaudo/pre-collaudo` -> caso non fuel ancora integro, senza regressioni sul modello di affidabilita
+
+### M.36 Priority engine operativo flotta
+- Stato: `FATTO`
+- Note: il `2026-03-25` la console `/next/ia/interna` ha aggiunto un motore di priorita operativo, piccolo ma deterministico, che trasforma richieste flotta in classifica spiegabile e azione consigliata senza ridurle a solo `scadenze/collaudi`.
+- Cosa e stato chiuso:
+  - il planner riconosce ora in modo piu robusto richieste `top-N`, `mezzo piu critico`, `un solo mezzo da controllare`, `priorita della settimana` e prompt con `cosa conviene fare`;
+  - il ranking flotta usa criteri fissi e leggibili: prima scadenze/collaudi scaduti, poi entro 7 giorni, poi alert critici/controlli KO/lavori urgenti, poi segnalazioni e pre-collaudi, infine backlog tecnico/manutenzioni;
+  - per ogni mezzo selezionato il thread espone targa evidente, priorita, motivi sintetici e `fare ora`, invece di limitarsi a un dump di segnali o a una revisione vicina;
+  - il ramo `fleet_attention` non collassa piu sui soli prompt `oggi`, ma copre anche `questa settimana` e `quale mezzo sceglieresti`, mantenendo invece `collaudi/pre-collaudi` nel ramo deadline-focused;
+  - la UI chat etichetta ora meglio i casi `Priorita flotta` e `Scadenze flotta`, e i prompt suggeriti riflettono i casi operativi reali.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/change-reports/2026-03-25_0737_priority-engine-operativo-flotta-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0737_continuity_priority-engine-operativo-flotta-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/NextInternalAiPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale con i 4 prompt bussola:
+    - `oggi + top 3 + incrocio multi-dominio` -> entra in `Priorita flotta`, resta spiegabile e segnala prudenza se nel giorno non emergono segnali sufficienti
+    - `mezzo piu critico questa settimana` -> entra nel ranking flotta e mette in testa `TI180147` con motivi e azione consigliata
+    - `un solo mezzo da controllare oggi` -> rispetta il limite top-1 e resta nel ramo `Priorita flotta`
+    - `prossimi 30 giorni + collaudo/pre-collaudo + priorita` -> resta `Scadenze flotta`, ordinato per priorita e senza collassare sul ranking generico
+
+### M.37 Quadro mezzo utile e output allineati
+- Stato: `FATTO`
+- Note: il `2026-03-25` il quadro completo mezzo della console `/next/ia/interna` e stato riallineato su un payload business decisionale unico, reso coerente tra thread chat, report corrente, modale e PDF senza rifare il motore o la UI.
+- Cosa e stato chiuso:
+  - il `vehicle_overview` costruisce ora un quadro mezzo fisso e decisionale con ordine stabile: `Sintesi iniziale`, `Cosa fare ora`, `Scadenze e collaudi`, `Backlog tecnico`, `Segnali operativi`, `Consumi e rifornimenti`, `Costi e documenti`, `Nota finale`;
+  - il thread chat usa lo stesso payload business del report e del PDF, con testo breve ma coerente sui blocchi decisionali, senza dump tecnico o riferimenti al motore in primo piano;
+  - la vista professionale del report preserva l'ordine e i titoli del quadro mezzo decisionale invece di rimappare le sezioni in modo divergente;
+  - la UI della chat etichetta correttamente i casi `Quadro mezzo`, nasconde nel thread decisionale i riferimenti tecnici di supporto non utili al business e mantiene in evidenza solo targa, fiducia e blocchi utili;
+  - il PDF e il report corrente continuano a usare gli stessi contenuti sostanziali del thread, cambiando solo il renderer finale.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/change-reports/2026-03-25_1028_quadro-mezzo-utile-output-allineati-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_1028_continuity_quadro-mezzo-utile-output-allineati-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/NextInternalAiPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale:
+    - `quadro completo TI233827` -> thread `Quadro mezzo` con blocchi decisionali ordinati e `Cosa fare ora` in primo piano
+    - `situazione del mezzo TI233827` -> entra nello stesso payload decisionale e mantiene focus sull'azione principale
+    - `report completo ma leggibile` con targa `TI233827` selezionata -> report/PDF del quadro mezzo coerente con il thread
+    - `Crea il PDF del quadro mezzo TI233827` -> thread, report corrente e anteprima PDF allineati sugli stessi blocchi business
+
+### M.38 Estensione realistica costi-documenti-report decisionali
+- Stato: `FATTO`
+- Note: il `2026-03-25` la console `/next/ia/interna` ha aperto in modo realistico `D07/D08` per costi, documenti e storico utile del mezzo, con periodo rispettato, limiti dichiarati in linguaggio umano e contenuto coerente tra chat, report e PDF.
+- Cosa e stato chiuso:
+  - il layer `nextDocumentiCostiDomain` espone ora una vista period-aware per targa, con conteggi diretti/prudenziali, copertura del filtro periodo, costi leggibili, documenti rilevanti, storico utile e azione consigliata;
+  - il motore IA usa questa vista read-only invece di improvvisare conteggi o sintesi costi/documenti direttamente nel composer;
+  - il parser periodo gestisce anche richieste come `ultimi 12 mesi`, evitando il fallback implicito a `Tutto lo storico disponibile` quando il prompt chiede un intervallo economico/documentale esplicito;
+  - il ramo `costs_documents` produce ora un output business-first con `Sintesi breve`, `Dati principali`, `Elementi rilevanti`, `Anomalie o limiti`, `Azione consigliata`;
+  - il quadro mezzo decisionale puo inglobare costi/documenti/storico utile senza creare una vista rumorosa o separata dal resto del payload.
+- File/documenti collegati:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/change-reports/2026-03-25_1125_estensione-realistica-costi-documenti-report-decisionali-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_1125_continuity_estensione-realistica-costi-documenti-report-decisionali-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale:
+    - `report costi TI233827 negli ultimi 12 mesi` -> `Costi e documenti`, report/PDF coerenti, periodo risolto su `25/03/2025 - 25/03/2026`, nessun costo leggibile trovato e limite dichiarato senza fingere copertura
+    - `documenti rilevanti TI233827` -> thread `Costi e documenti`, risposta strutturata prudente con assenza dati dichiarata in modo esplicito
+    - `storico decisionale mezzo TI233827 con costi, documenti e segnali utili` -> `Quadro mezzo`, usa il payload decisionale multi-dominio e mantiene costi/documenti come blocco prudente
+    - `report/PDF sullo storico utile del mezzo TI233827` -> report `Quadro mezzo` coerente con thread e PDF, senza riaprire D06 o introdurre coverage fittizia
