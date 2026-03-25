@@ -31,6 +31,80 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-25 88
+- DATA: 2026-03-25
+- TITOLO MODIFICA: Affidabilita rifornimenti per periodo e report/PDF piu trasparenti
+- OBIETTIVO: impedire che report rifornimenti con periodo esplicito ricadano sullo storico completo e riallineare chat/report/PDF sulla stessa base dati validata.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/utils/pdfEngine.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_0000_affidabilita-rifornimenti-periodo-pdf-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0000_continuity_affidabilita-rifornimenti-periodo-pdf-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - esteso il parser periodo a `questo mese`, `oggi`, `questa settimana`, `prossimi 30 giorni`, mesi espliciti e intervalli custom;
+  - aggiunto un guard-rail che blocca il fallback allo storico completo quando il periodo esplicito non e interpretabile in modo affidabile;
+  - sostituito il calcolo rifornimenti con una sequenza validata che separa record trovati, inclusi ed esclusi e motiva ogni esclusione;
+  - riallineati chat report-ready, report professionale e PDF alle stesse metriche e alle stesse anomalie;
+  - aggiunti nel PDF i blocchi `Limiti e verifiche` e `Note di lettura` senza refactor largo del motore PDF.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i messaggi chat report-ready mostrano ora KPI leggibili, e il report professionale espone record del periodo, anomalie e azione consigliata;
+  - Lettura: il clone filtra i rifornimenti sul periodo richiesto prima delle aggregazioni e non allarga piu un prompt fuel a overview mezzo;
+  - Blocco scritture: invariato, nessuna scrittura business, nessuna madre toccata.
+- COME VERIFICARE:
+  - aprire `/next/ia/interna`;
+  - provare i prompt A/B/C/D del task su rifornimenti periodo e collaudi/pre-collaudi;
+  - verificare che `questo mese` e `marzo 2026` producano l'intervallo marzo 2026 e non lo storico completo;
+  - verificare che il report corrente mostri `Report rifornimenti TI233827` e che l'anteprima PDF si apra;
+  - eseguire `npm run build`;
+  - eseguire `npx eslint ... src/utils/pdfEngine.ts` e confermare che il rosso residuo resta confinato al debito storico del file condiviso.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - la parte nuova passa lint mirato; il comando completo resta rosso solo per debito storico di `src/utils/pdfEngine.ts`;
+  - nessun refactor generale del motore unificato o della UI.
+
+### Voce 2026-03-24 87
+- DATA: 2026-03-24
+- TITOLO MODIFICA: Planner gestionale e composer business-first della console IA NEXT
+- OBIETTIVO: completare il cervello gestionale sopra il motore unificato gia esistente, evitando sia il fallback automatico a `stato mezzo` sia il refactor largo di UI/report/PDF.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-24_2235_patch_cervello-gestionale-console-ia-next.md`
+  - `docs/continuity-reports/2026-03-24_2235_continuity_cervello-gestionale-console-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - introdotto request understanding robusto con parsing di intenti business, periodi, metriche e filtri console;
+  - introdotto planner che seleziona i domini corretti e non allarga piu le richieste specifiche a `stato mezzo` generale;
+  - aggiunti calcoli deterministici per rifornimenti/consumi, criticita/priorita e scadenze/collaudi/pre-collaudi;
+  - composer finale riscritto in chiave business-first con riuso del report/PDF esistente solo quando davvero richiesto;
+  - corretta la gestione dei filtri vuoti della console (`Targa: -`) che prima falsavano le query senza targa.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI invariata come struttura, ma con suggerimenti prompt riallineati alle famiglie operative reali;
+  - lettura molto piu focalizzata: D04 per rifornimenti, D10+D02 per criticita/scadenze flotte, multi-dominio solo su quadro completo esplicito;
+  - clone sempre in sola lettura, nessuna nuova scrittura business.
+- COME VERIFICARE:
+  - aprire `/next/ia/interna`;
+  - provare i prompt rifornimenti, criticita, quadro completo e collaudi/pre-collaudi;
+  - verificare che il report rifornimenti apra il PDF/modale e che le query senza targa non finiscano piu su `targa - non trovata`;
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/NextInternalAiPage.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - nessuna modifica alla madre;
+  - nessun refactor su `src/utils/pdfEngine.ts`;
+  - la parte piu forte resta `D10 + D02`, mentre gli altri domini continuano a dichiarare prudenza quando il dato non basta.
+
 ### Voce 2026-03-24 86
 - DATA: 2026-03-24
 - TITOLO MODIFICA: Pulizia finale del primo piano chat IA NEXT

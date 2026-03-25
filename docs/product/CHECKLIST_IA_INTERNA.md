@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-03-24  
+Ultimo aggiornamento: 2026-03-25  
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -1588,11 +1588,20 @@ Stato macrofase: `NON FATTO`
   - il task non riapre motore unificato, registry, linker o backend.
 
 ### R.5 IA usata per interpretazione, normalizzazione e supporto ricerca
-- Stato: `NON FATTO`
-- Note: il ruolo della IA futura dovra essere di supporto interpretativo, non di invenzione arbitraria dello schema mezzo.
+- Stato: `FATTO`
+- Note: il `2026-03-24` la console `/next/ia/interna` ha chiuso il gap interpretativo sopra il motore unificato gia esistente, senza rifare backend, UI o renderer PDF.
+- Cosa e stato chiuso davvero:
+  - request understanding robusto su intento business, targa/entita, metriche richieste, ampiezza della richiesta e focus finale;
+  - planner gestionale che sceglie i domini corretti, evita rumore laterale e non apre piu automaticamente il quadro generale mezzo quando la richiesta e specifica;
+  - calcoli deterministici riusabili per rifornimenti/consumi, criticita mezzo e priorita flotte, senza numeri inventati;
+  - composer finale business-first con sezioni brevi, limiti in linguaggio semplice e riuso del report/PDF esistente solo quando richiesto.
 - File/documenti collegati:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
   - `docs/product/CHECKLIST_IA_INTERNA.md`
-- Dipendenze o blocchi: richiede backend IA dedicato e retrieval controllato.
+- Dipendenze o blocchi: restano prudenti i domini esterni alla coppia forte `D10 + D02` e il quadro completo continua a dichiarare i limiti dei domini ancora parziali.
 
 ### R.6 Vista per sezioni tecniche, non schermata caotica unica
 - Stato: `NON FATTO`
@@ -1661,3 +1670,48 @@ Stato macrofase: `NON FATTO`
 - Dipendenze o blocchi:
   - il task non elimina il motore unificato o i blocchi secondari gia presenti nel file; li lascia fuori dal primo piano della pagina;
   - nessuna scrittura business, nessun backend live nuovo, nessuna modifica alla madre.
+
+### M.32 Planner gestionale e composer business-first sopra il motore unificato
+- Stato: `FATTO`
+- Note: il `2026-03-24` la chat IA interna ha smesso di trattare il motore unificato come semplice classificatore prudente e lo usa ora come cervello gestionale read-only per richieste business su rifornimenti, scadenze, criticita/priorita e quadro completo mezzo.
+- Cosa e stato chiuso:
+  - il parser riconosce output `report/PDF`, periodi (`oggi`, `questa settimana`, `ultimi 30/90 giorni`, intervalli custom) e filtri console vuoti senza scambiare `-` per una targa reale;
+  - il planner decide i domini da leggere senza allargare le richieste specifiche a `stato mezzo` generico;
+  - i rifornimenti generano ora indicatori `litri`, `km analizzati`, `km/l`, `l/100km` e anomalie record con regole dimostrabili;
+  - le query flotte lavorano su `D10 + D02` per priorita, scadenze, collaudi e pre-collaudi;
+  - il composer business-first riusa il report/PDF esistente per le richieste `report`, lasciando nel thread solo il riepilogo essenziale.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/change-reports/2026-03-24_2235_patch_cervello-gestionale-console-ia-next.md`
+  - `docs/continuity-reports/2026-03-24_2235_continuity_cervello-gestionale-console-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/NextInternalAiPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale con prompt rifornimenti, criticita, scadenze e quadro completo -> OK
+
+### M.33 Affidabilita periodo/calcolo rifornimenti e leggibilita report/PDF
+- Stato: `FATTO`
+- Note: il `2026-03-25` la console `/next/ia/interna` non ricade piu sullo storico completo quando il prompt chiede un periodo esplicito sui rifornimenti e usa ora una base dati validata condivisa tra chat e PDF.
+- Cosa e stato chiuso:
+  - parsing periodo esteso a `questo mese`, `oggi`, `questa settimana`, `prossimi 30 giorni`, `marzo 2026` e intervalli `dal X al Y`, con guard-rail che blocca il fallback allo storico completo se il periodo esplicito non e interpretabile;
+  - validazione rigorosa dei rifornimenti del periodo con distinzione fra record trovati, inclusi nel calcolo ed esclusi, piu motivo di esclusione per ogni record;
+  - calcolo deterministico di `litri inclusi`, `km analizzati`, `km/l` e `l/100km` solo su sequenze con km progressivi e litri validi;
+  - report professionale e PDF riallineati a sezioni business-first (`Sintesi iniziale`, `Record del periodo`, `Anomalie`, `Azione consigliata`, `Limiti e verifiche`);
+  - messaggio di consegna report in chat reso piu leggibile e coerente con il contenuto del report rifornimenti.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/utils/pdfEngine.ts`
+  - `docs/change-reports/2026-03-25_0000_affidabilita-rifornimenti-periodo-pdf-ia-next.md`
+  - `docs/continuity-reports/2026-03-25_0000_continuity_affidabilita-rifornimenti-periodo-pdf-ia-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/NextInternalAiPage.tsx src/utils/pdfEngine.ts` -> KO solo per debito lint storico gia presente in `src/utils/pdfEngine.ts`
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/NextInternalAiPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale con i prompt A/B/C/D richiesti -> OK

@@ -567,20 +567,20 @@ const CHAT_INTENT_LABELS: Record<InternalAiChatMessage["intent"], string> = {
   report_targa: "Report mezzo",
   report_autista: "Report autista",
   report_combinato: "Report combinato",
-  mezzo_dossier: "Stato operativo mezzo canonico",
+  mezzo_dossier: "Analisi gestionale mezzo",
   repo_understanding: "Home e file/moduli",
-  capabilities: "Prima verticale governata",
+  capabilities: "Capability console IA",
   non_supportato: "Richiesta non supportata",
   richiesta_generica: "Richiesta generica",
 };
 
 const CHAT_SUGGESTIONS = [
-  "Fammi il quadro completo del TI 315407",
-  "Mostrami criticita + segnalazioni + manutenzioni ultimi 30 giorni",
-  "Dimmi scadenze collaudo, precollaudo e revisione della targa AB123CD",
-  "Apri un modale con gomme + lavori + alert del mezzo AB123CD",
-  "Crea un PDF con controlli KO, segnalazioni e scadenze della targa AB123CD",
-  "Dimmi cosa richiede attenzione oggi",
+  "Creami un report di tutti i rifornimenti effettuati con la media dei km per lt percorsi della targa TI233827",
+  "Dimmi quali mezzi richiedono attenzione oggi incrociando scadenze, lavori aperti e segnalazioni",
+  "Quale mezzo e piu critico questa settimana?",
+  "Fammi un quadro completo della targa TI233827",
+  "Ci sono anomalie nei rifornimenti del mezzo TI233827?",
+  "Quali mezzi stanno per andare a collaudo e quali conviene pre-collaudare?",
 ];
 
 const PRIMARY_SECTION_NAV: NextInternalAiSectionId[] = ["overview", "artifacts"];
@@ -1144,20 +1144,40 @@ function buildChatMemoryFocusLabel(screenHint: InternalAiChatMemoryHints["screen
 }
 
 function buildChatReportReadyText(report: InternalAiReportPreview): string {
+  const cards = report.cards.slice(0, 4).map((card) => `- ${card.label}: ${card.value}`);
   const highlightedSections = report.sections
     .slice(0, 3)
     .map((section) => section.title)
     .join(", ");
+  const anomalySection =
+    report.sections.find((section) => section.id === "rifornimenti-anomalie") ?? null;
+  const actionSection =
+    report.sections.find((section) => section.id === "rifornimenti-azioni") ?? null;
+  const fuelSummary =
+    report.sections.find((section) => section.id === "rifornimenti") ?? null;
 
-  return (
-    `${getReportTypeLabel(report)} pronto per ${getReportTargetChip(report)}.\n\n` +
-    "Quadro rapido:\n" +
-    `- Periodo: ${report.periodContext.label}\n` +
-    "- Percorso dati: motore unificato NEXT read-only\n" +
-    `- Fonti dichiarate: ${report.sources.length}\n` +
-    `- Sezioni utili: ${highlightedSections || "quadro sintetico disponibile"}\n\n` +
-    "Apro l'anteprima PDF e lascio qui solo il riepilogo essenziale."
-  );
+  if (fuelSummary) {
+    return [
+      `${report.title} pronto per ${getReportTargetChip(report)}.`,
+      `Sintesi iniziale:\n- Periodo: ${report.periodContext.label}\n${cards.join("\n")}`,
+      anomalySection?.bullets.length
+        ? `Anomalie:\n${anomalySection.bullets.slice(0, 3).map((entry) => `- ${entry}`).join("\n")}`
+        : null,
+      actionSection
+        ? `Azione consigliata:\n- ${actionSection.bullets[0] || actionSection.summary}`
+        : null,
+      "Apro l'anteprima PDF e lascio qui il riepilogo essenziale.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  return [
+    `${report.title} pronto per ${getReportTargetChip(report)}.`,
+    `Sintesi iniziale:\n- Periodo: ${report.periodContext.label}\n${cards.join("\n")}`,
+    `Sezioni utili:\n- ${highlightedSections || "quadro sintetico disponibile"}`,
+    "Apro l'anteprima PDF e lascio qui il riepilogo essenziale.",
+  ].join("\n\n");
 }
 
 function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {

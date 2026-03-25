@@ -99,10 +99,31 @@ type DomainDecoration =
     }
   | null;
 
+type LegacyPeriodSelection = {
+  input: InternalAiReportPeriodInput;
+  label: string;
+  explicitRequested: boolean;
+  resolved: boolean;
+};
+
 const DOMAIN_REFERENCE_PREFIX = "Dominio rilevato: ";
 const RELIABILITY_REFERENCE_PREFIX = "Affidabilita: ";
 const OUTPUT_REFERENCE_PREFIX = "Output suggerito: ";
 const FIRST_VERTICAL_DOMAIN_LABEL = "D01 + D10 + D02 prima verticale mezzo/Home/tecnica";
+const MONTH_NAME_TO_INDEX: Record<string, number> = {
+  gennaio: 0,
+  febbraio: 1,
+  marzo: 2,
+  aprile: 3,
+  maggio: 4,
+  giugno: 5,
+  luglio: 6,
+  agosto: 7,
+  settembre: 8,
+  ottobre: 9,
+  novembre: 10,
+  dicembre: 11,
+};
 
 const HELP_PATTERNS = [
   "aiuto",
@@ -415,7 +436,38 @@ const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
 type RepoUnderstandingFocus = "home_analysis" | "file_touch" | "repo_support";
 
 function normalizePrompt(prompt: string): string {
-  return prompt.toLowerCase().replace(/\s+/g, " ").trim();
+  return prompt
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatIsoDate(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function hasExplicitPeriodCue(normalizedPrompt: string): boolean {
+  if (
+    normalizedPrompt.includes("oggi") ||
+    normalizedPrompt.includes("questa settimana") ||
+    normalizedPrompt.includes("questo mese") ||
+    normalizedPrompt.includes("ultimo mese") ||
+    normalizedPrompt.includes("ultimi 30 giorni") ||
+    normalizedPrompt.includes("ultimi 90 giorni") ||
+    normalizedPrompt.includes("prossimi 30 giorni")
+  ) {
+    return true;
+  }
+
+  if (/(?:dal|da)\s+\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\s+(?:al|a)\s+\d{1,4}[./-]\d{1,2}[./-]\d{1,4}/i.test(normalizedPrompt)) {
+    return true;
+  }
+
+  return new RegExp(`\\b(${Object.keys(MONTH_NAME_TO_INDEX).join("|")})\\s+(?:19|20)\\d{2}\\b`, "i").test(
+    normalizedPrompt,
+  );
 }
 
 function extractTarga(prompt: string): string | null {
@@ -519,7 +571,10 @@ function decorateChatTurnResult(
     });
   }
 
-  if (!labels.has(`${OUTPUT_REFERENCE_PREFIX}${decoration.structuredOutputLabel}`)) {
+  if (
+    !labels.has(`${OUTPUT_REFERENCE_PREFIX}${decoration.structuredOutputLabel}`) &&
+    !hasReferenceWithPrefix(result, OUTPUT_REFERENCE_PREFIX)
+  ) {
     references.push({
       type: "capabilities",
       label: `${OUTPUT_REFERENCE_PREFIX}${decoration.structuredOutputLabel}`,
@@ -573,7 +628,7 @@ function buildPrudentDomainResponse(domain: PrudentDomainGuidance): InternalAiCh
   };
 }
 
-function extractPeriodInput(prompt: string, fallback?: InternalAiReportPeriodInput) {
+function extractPeriodInput(prompt: string, fallback?: InternalAiReportPeriodInput): LegacyPeriodSelection {
   const normalized = normalizePrompt(prompt);
   if (normalized.includes("ultimi 30 giorni")) {
     return {
@@ -583,6 +638,8 @@ function extractPeriodInput(prompt: string, fallback?: InternalAiReportPeriodInp
         toDate: null,
       } as const,
       label: "ultimi 30 giorni",
+      explicitRequested: true,
+      resolved: true,
     };
   }
 
@@ -594,6 +651,8 @@ function extractPeriodInput(prompt: string, fallback?: InternalAiReportPeriodInp
         toDate: null,
       } as const,
       label: "ultimi 90 giorni",
+      explicitRequested: true,
+      resolved: true,
     };
   }
 
@@ -605,6 +664,58 @@ function extractPeriodInput(prompt: string, fallback?: InternalAiReportPeriodInp
         toDate: null,
       } as const,
       label: "ultimo mese chiuso",
+      explicitRequested: true,
+      resolved: true,
+    };
+  }
+
+  if (normalized.includes("questo mese")) {
+    const today = new Date();
+    const from = new Date(today.getFullYear(), today.getMonth(), 1);
+    const to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return {
+      input: createInternalAiCustomPeriodInput(formatIsoDate(from), formatIsoDate(to)),
+      label: "mese corrente",
+      explicitRequested: true,
+      resolved: true,
+    };
+  }
+
+  if (normalized.includes("oggi")) {
+    const today = new Date();
+    return {
+      input: createInternalAiCustomPeriodInput(formatIsoDate(today), formatIsoDate(today)),
+      label: "oggi",
+      explicitRequested: true,
+      resolved: true,
+    };
+  }
+
+  if (normalized.includes("questa settimana")) {
+    const today = new Date();
+    const currentDay = today.getDay();
+    const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
+    const from = new Date(today);
+    from.setDate(today.getDate() + mondayOffset);
+    const to = new Date(from);
+    to.setDate(from.getDate() + 6);
+    return {
+      input: createInternalAiCustomPeriodInput(formatIsoDate(from), formatIsoDate(to)),
+      label: "settimana corrente",
+      explicitRequested: true,
+      resolved: true,
+    };
+  }
+
+  if (normalized.includes("prossimi 30 giorni")) {
+    const today = new Date();
+    const to = new Date(today);
+    to.setDate(today.getDate() + 29);
+    return {
+      input: createInternalAiCustomPeriodInput(formatIsoDate(today), formatIsoDate(to)),
+      label: "prossimi 30 giorni",
+      explicitRequested: true,
+      resolved: true,
     };
   }
 
@@ -615,12 +726,43 @@ function extractPeriodInput(prompt: string, fallback?: InternalAiReportPeriodInp
     return {
       input: createInternalAiCustomPeriodInput(customMatch[1], customMatch[2]),
       label: `intervallo ${customMatch[1]} - ${customMatch[2]}`,
+      explicitRequested: true,
+      resolved: true,
+    };
+  }
+
+  const monthYearMatch = normalized.match(
+    new RegExp(`\\b(${Object.keys(MONTH_NAME_TO_INDEX).join("|")})\\s+((?:19|20)\\d{2})\\b`, "i"),
+  );
+  if (monthYearMatch?.[1] && monthYearMatch?.[2]) {
+    const monthIndex = MONTH_NAME_TO_INDEX[monthYearMatch[1].toLowerCase()];
+    const year = Number(monthYearMatch[2]);
+    if (monthIndex != null && Number.isFinite(year)) {
+      const from = new Date(year, monthIndex, 1);
+      const to = new Date(year, monthIndex + 1, 0);
+      return {
+        input: createInternalAiCustomPeriodInput(formatIsoDate(from), formatIsoDate(to)),
+        label: `${monthYearMatch[1]} ${monthYearMatch[2]}`,
+        explicitRequested: true,
+        resolved: true,
+      };
+    }
+  }
+
+  if (hasExplicitPeriodCue(normalized)) {
+    return {
+      input: fallback ?? createDefaultInternalAiReportPeriodInput(),
+      label: "periodo esplicito non risolto",
+      explicitRequested: true,
+      resolved: false,
     };
   }
 
   return {
     input: fallback ?? createDefaultInternalAiReportPeriodInput(),
     label: "tutto lo storico disponibile",
+    explicitRequested: false,
+    resolved: true,
   };
 }
 
@@ -688,23 +830,28 @@ function buildCapabilitiesResponse(): InternalAiChatTurnResult {
     intent: "capabilities",
     status: "completed",
     assistantText:
-      "La chat V1 e consolidata solo sulla prima verticale mezzo/Home/tecnica.\n\n" +
+      "La console IA usa ora un planner gestionale read-only sopra il motore unificato gia esistente.\n\n" +
       "Oggi posso:\n" +
       `${capabilityLines}\n` +
-      "- spiegare alert, revisione e stato operativo di una targa leggendo D10 senza usare pagine legacy come reader canonico;\n" +
-      "- analizzare la Home operativa indicando superfici UI coinvolte e reader canonici D10, D01 e D02;\n" +
-      "- indicare quali file e moduli toccare nel perimetro mezzo/Home senza allargare il dominio;\n" +
-      "- dichiarare in modo esplicito cosa resta fuori verticale e quale dominio esterno richiederebbe consolidamento.\n\n" +
-      "Non posso modificare codice in automatico, scrivere sui dati business o aprire domini esterni non ancora consolidati.",
+      "- rispondere in focus rifornimenti, scadenze/collaudi, criticita/priorita o quadro completo mezzo senza allargare automaticamente tutto a stato generale mezzo;\n" +
+      "- incrociare in sola lettura scadenze, alert, segnalazioni, lavori aperti e manutenzioni per classifiche e priorita mezzi;\n" +
+      "- riusare report/PDF gia esistenti quando la richiesta chiede un artifact strutturato;\n" +
+      "- dichiarare in linguaggio semplice i limiti quando un dominio resta prudente o parziale.\n\n" +
+      "Resta tutto read-only: nessuna scrittura business, nessun segreto lato client, nessuna azione automatica fuori perimetro.",
     references: [
       {
         type: "capabilities",
-        label: "Catalogo capability della prima verticale",
+        label: "Catalogo capability console IA gestionale",
         targa: null,
       },
       {
         type: "safe_mode_notice",
-        label: "Perimetro consolidato: D01 anagrafica, D10 stato operativo, D02 operativita tecnica",
+        label: "Perimetro consolidato: D01, D10, D02 forti; D04 operativo; altri domini ancora prudenti",
+        targa: null,
+      },
+      {
+        type: "capabilities",
+        label: `${OUTPUT_REFERENCE_PREFIX} analisi strutturata`,
         targa: null,
       },
     ],
@@ -1082,6 +1229,28 @@ async function buildReportResponse(
   }
 
   const periodSelection = extractPeriodInput(rawPrompt, fallbackPeriodInput);
+  if (periodSelection.explicitRequested && !periodSelection.resolved) {
+    return {
+      intent: "report_targa",
+      status: "partial",
+      assistantText:
+        "Ho rilevato una richiesta con periodo esplicito, ma il periodo non e stato interpretato in modo affidabile.\n\n" +
+        "Per evitare di allargare il report allo storico completo, fermo qui la preview e ti chiedo di indicare il periodo in modo piu chiaro, ad esempio \"questo mese\", \"marzo 2026\" oppure \"dal 01/03/2026 al 31/03/2026\".",
+      references: [
+        {
+          type: "report_preview",
+          label: "Periodo esplicito non interpretato: preview fermata per evitare storico completo",
+          targa: extractedTarga,
+        },
+      ],
+      report: {
+        status: "invalid_query",
+        normalizedTarga: extractedTarga,
+        message: "Periodo esplicito non interpretato: preview non avviata per evitare storico completo.",
+        preview: null,
+      },
+    };
+  }
   const result = await readInternalAiVehicleReportPreview(extractedTarga, periodSelection.input);
 
   if (result.status !== "ready") {

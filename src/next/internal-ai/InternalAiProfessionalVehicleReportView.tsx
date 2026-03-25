@@ -177,6 +177,21 @@ export default function InternalAiProfessionalVehicleReportView({
         {presentation.relatedAsset ? renderMediaCard(presentation.relatedAsset) : null}
       </section>
 
+      {presentation.cards.length ? (
+        <section
+          className="internal-ai-operational-report__appendix"
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
+        >
+          {presentation.cards.map((card) => (
+            <article key={card.label} className="internal-ai-card">
+              <p className="internal-ai-card__eyebrow">{card.label}</p>
+              <strong>{card.value}</strong>
+              <p className="internal-ai-card__meta">{card.meta}</p>
+            </article>
+          ))}
+        </section>
+      ) : null}
+
       <section className="next-panel internal-ai-operational-report__summary-card">
         <div className="next-panel__header">
           <h2>Sintesi esecutiva</h2>
@@ -246,6 +261,35 @@ export default function InternalAiProfessionalVehicleReportView({
           </article>
         ))}
       </section>
+
+      {presentation.appendix.limits.length || presentation.appendix.notes.length ? (
+        <section className="internal-ai-operational-report__appendix">
+          {presentation.appendix.limits.length ? (
+            <article className="next-panel internal-ai-operational-report__section-card">
+              <div className="next-panel__header">
+                <h2>Limiti e verifiche</h2>
+              </div>
+              <ul className="internal-ai-inline-list">
+                {presentation.appendix.limits.map((entry) => (
+                  <li key={`limit:${entry}`}>{entry}</li>
+                ))}
+              </ul>
+            </article>
+          ) : null}
+          {presentation.appendix.notes.length ? (
+            <article className="next-panel internal-ai-operational-report__section-card">
+              <div className="next-panel__header">
+                <h2>Note di lettura</h2>
+              </div>
+              <ul className="internal-ai-inline-list">
+                {presentation.appendix.notes.map((entry) => (
+                  <li key={`note:${entry}`}>{entry}</li>
+                ))}
+              </ul>
+            </article>
+          ) : null}
+        </section>
+      ) : null}
 
     </div>
   );

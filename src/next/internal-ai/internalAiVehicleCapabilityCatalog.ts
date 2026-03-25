@@ -6,7 +6,7 @@ import type {
 export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapabilityDescriptor[] = [
   {
     id: "mezzo.status.dossier",
-    title: "Stato operativo mezzo",
+    title: "Criticita e stato operativo mezzo",
     domain: "mezzo_dossier",
     targetScope: "single_vehicle",
     requiredFilters: ["targa"],
@@ -23,9 +23,9 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
     outputKind: "chat_answer",
     bridgeCapabilityId: null,
     limitations: [
-      "Questa e la capability canonica e prioritaria della prima verticale per richieste di stato mezzo/targa.",
-      "Legge solo reader NEXT read-only della prima verticale: D01 anagrafica mezzo, D10 stato operativo e D02 operativita tecnica.",
-      "D04, D05, D06, D07 e D08 restano fuori verticale consolidata e vengono dichiarati come limite.",
+      "Questa capability governa criticita, scadenze, alert, lavori aperti e manutenzioni della targa.",
+      "Legge solo layer NEXT read-only consolidati: D01 anagrafica, D10 stato operativo e D02 backlog tecnico.",
+      "Non apre rifornimenti, documenti o procurement se la richiesta non li chiede davvero.",
     ],
     plannerHints: {
       keywords: [
@@ -42,15 +42,48 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
       ],
       verbs: ["mostra", "spiega", "controlla", "verifica", "dimmi", "riassumi", "analizza"],
       samplePrompts: [
-        "Dimmi lo stato del mezzo AB123CD",
+        "Dimmi quale criticita ha oggi il mezzo AB123CD",
         "Fammi capire la situazione della targa AB123CD",
         "Che problemi, alert o lavori ha la targa AB123CD",
       ],
     },
   },
   {
+    id: "mezzo.summary.rifornimenti",
+    title: "Rifornimenti e consumi mezzo",
+    domain: "mezzo_dossier",
+    targetScope: "single_vehicle",
+    requiredFilters: ["targa"],
+    optionalFilters: ["periodo"],
+    metrics: ["vehicle_identity", "source_coverage", "missing_data"],
+    groupBy: ["none"],
+    outputKind: "chat_answer",
+    bridgeCapabilityId: null,
+    limitations: [
+      "Usa il dominio D04 read-only per rifornimenti e consumi, con calcoli deterministici su litri, km analizzati e anomalie record.",
+      "Non allarga automaticamente la richiesta a criticita o quadro completo mezzo.",
+    ],
+    plannerHints: {
+      keywords: [
+        "rifornimenti",
+        "consumi",
+        "carburante",
+        "km/l",
+        "km per lt",
+        "km per litro",
+        "l/100km",
+        "anomalie rifornimenti",
+      ],
+      verbs: ["mostra", "controlla", "verifica", "dimmi", "analizza", "crea"],
+      samplePrompts: [
+        "Dimmi i consumi del mezzo AB123CD negli ultimi 30 giorni",
+        "Ci sono anomalie nei rifornimenti di AB123CD",
+      ],
+    },
+  },
+  {
     id: "mezzo.preview.libretto",
-    title: "Alert, revisione e stato operativo",
+    title: "Scadenze, collaudi e pre-collaudi",
     domain: "mezzo_dossier",
     targetScope: "single_vehicle",
     requiredFilters: ["targa"],
@@ -60,23 +93,22 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
     outputKind: "chat_answer",
     bridgeCapabilityId: null,
     limitations: [
-      "Legge solo segnali D10 mezzo-centrici gia governati nel clone: alert, revisioni, focus e sessioni correlate alla targa.",
-      "Non trasforma feed autista o alert UI in verita assoluta: limiti e qualita restano dichiarati.",
+      "Legge solo segnali mezzo-centrici D10 gia governati nel clone: revisioni, collaudi, pre-collaudi, alert e focus collegati alla targa.",
+      "Le raccomandazioni di pre-collaudo sono deterministiche e basate solo su scadenza vicina e assenza di dato pre-collaudo.",
     ],
     plannerHints: {
       keywords: [
-        "alert",
         "revisione",
         "revisioni",
-        "stato operativo",
-        "controllo ko",
-        "segnalazione",
-        "promemoria",
+        "collaudo",
+        "precollaudo",
+        "pre-collaudo",
+        "scadenze",
       ],
       verbs: ["spiega", "mostra", "controlla", "verifica", "dimmi", "analizza"],
       samplePrompts: [
-        "Spiegami gli alert del mezzo AB123CD",
-        "Controlla revisione e stato operativo di AB123CD",
+        "Dimmi quali mezzi stanno per andare a collaudo",
+        "Controlla revisione e pre-collaudo di AB123CD",
       ],
     },
   },
@@ -98,8 +130,8 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
     outputKind: "chat_answer",
     bridgeCapabilityId: null,
     limitations: [
-      "Legge solo il reader NEXT D02 per lavori e manutenzioni legati davvero alla targa.",
-      "Non apre costi, documenti, procurement o materiali: quei domini non fanno parte della prima verticale consolidata.",
+      "Legge solo il layer NEXT D02 per lavori e manutenzioni legati davvero alla targa.",
+      "Puoi usarla sia per il backlog del singolo mezzo sia dentro le priorita flotte quando servono incroci con D10.",
     ],
     plannerHints: {
       keywords: [
@@ -118,8 +150,68 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
     },
   },
   {
+    id: "mezzo.report.economic",
+    title: "Classifica priorita mezzi",
+    domain: "mezzo_dossier",
+    targetScope: "single_vehicle",
+    requiredFilters: [],
+    optionalFilters: ["periodo"],
+    metrics: [
+      "technical_flags",
+      "maintenance_count",
+      "work_count",
+      "source_coverage",
+      "missing_data",
+    ],
+    groupBy: ["none"],
+    outputKind: "chat_answer",
+    bridgeCapabilityId: null,
+    limitations: [
+      "Incrocia solo segnali read-only dimostrabili: D10 per scadenze/alert/focus e D02 per backlog tecnico.",
+      "Non inventa punteggi arbitrari: la priorita nasce da regole deterministiche e motivazioni esplicite.",
+    ],
+    plannerHints: {
+      keywords: [
+        "priorita",
+        "classifica",
+        "mezzo piu critico",
+        "mezzi critici",
+        "attenzione oggi",
+      ],
+      verbs: ["dimmi", "analizza", "incrocia", "ordina", "classifica"],
+      samplePrompts: [
+        "Quale mezzo e piu critico oggi",
+        "Fammi una priorita dei mezzi che richiedono intervento",
+      ],
+    },
+  },
+  {
+    id: "mezzo.preview.documents",
+    title: "Documenti e costi mezzo",
+    domain: "mezzo_dossier",
+    targetScope: "single_vehicle",
+    requiredFilters: ["targa"],
+    optionalFilters: ["periodo"],
+    metrics: ["vehicle_identity", "source_coverage", "missing_data"],
+    groupBy: ["none"],
+    outputKind: "chat_answer",
+    bridgeCapabilityId: null,
+    limitations: [
+      "Legge domini D07/D08 in sola lettura quando la richiesta chiede davvero costi o documenti.",
+      "I collegamenti restano prudenti se documenti e costi non hanno una targa forte o una data dimostrabile.",
+    ],
+    plannerHints: {
+      keywords: ["costi", "documenti", "fatture", "preventivi", "allegati"],
+      verbs: ["mostra", "analizza", "riassumi", "dimmi"],
+      samplePrompts: [
+        "Mostrami documenti e costi del mezzo AB123CD",
+        "Dimmi i documenti rilevanti della targa AB123CD",
+      ],
+    },
+  },
+  {
     id: "mezzo.report.overview",
-    title: "Report targa mezzo",
+    title: "Quadro completo mezzo / report",
     domain: "mezzo_dossier",
     targetScope: "single_vehicle",
     requiredFilters: ["targa"],
@@ -136,9 +228,9 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
     outputKind: "report_preview",
     bridgeCapabilityId: "vehicle-report-preview",
     limitations: [
-      "Genera solo un report read-only della prima verticale D01 + D10 + D02, mantenendo il PDF gia esistente come output.",
-      "Il report targa resta capability distinta e secondaria rispetto allo stato operativo mezzo in chat.",
-      "Rifornimenti, costi, documenti, procurement e altri verticali restano fuori dal report consolidato e vengono dichiarati come limite.",
+      "Genera un report read-only della targa riusando il renderer gia esistente e scegliendo solo gli ambiti richiesti dal planner.",
+      "Il quadro completo viene aperto solo se la richiesta lo chiede in modo esplicito, non come fallback automatico.",
+      "I domini ancora parziali vengono dichiarati come limite nel report finale.",
     ],
     plannerHints: {
       keywords: [
@@ -153,7 +245,7 @@ export const INTERNAL_AI_VEHICLE_CAPABILITY_CATALOG: InternalAiVehicleCapability
       verbs: ["crea", "genera", "prepara", "fammi", "aprimi"],
       samplePrompts: [
         "Crea un report per il mezzo AB123CD ultimi 30 giorni",
-        "Preparami il report targa AB123CD",
+        "Fammi un quadro completo della targa AB123CD",
       ],
     },
   },

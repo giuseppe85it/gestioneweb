@@ -1275,6 +1275,63 @@ Serve a:
   - `npx eslint src/next/NextInternalAiPage.tsx` -> OK
   - `npm run build` -> OK
 
+## 5.58 Aggiornamento 2026-03-24 - Planner gestionale sopra il motore unificato
+- La console `/next/ia/interna` usa ora il motore unificato come cervello gestionale read-only e non piu come semplice classificazione prudente della prima verticale.
+- Cosa cambia davvero:
+  - il request understanding riconosce intento business, targa/entita, metriche, periodo e focus finale (`thread`, `report`, `PDF`, `classifica`);
+  - le richieste specifiche non vengono piu allargate automaticamente a `stato mezzo` generale: rifornimenti restano rifornimenti, criticita restano criticita, scadenze restano scadenze;
+  - le richieste flotte senza targa lavorano ora davvero su `D10 + D02` per priorita, attenzione oggi, collaudi e pre-collaudi;
+  - i rifornimenti usano calcoli deterministici su litri, km analizzati, `km/l`, `l/100km` e anomalie record;
+  - il quadro completo mezzo viene composto solo quando richiesto in modo esplicito;
+  - il report/PDF riusa il renderer gia esistente e lo apre solo quando la richiesta chiede davvero un artifact.
+- Correzioni strutturali incluse:
+  - i filtri console vuoti non passano piu `Targa: -` al parser come se fosse una targa reale;
+  - il riconoscimento prompt `creami un report ...` entra ora correttamente nel ramo report/PDF;
+  - fonti, dataset e reader non dominano piu il testo principale della risposta.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun refactor del registry o del renderer PDF oltre al wiring minimo gia presente;
+  - nessun backend live nuovo.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleDossierHookFacade.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/NextInternalAiPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` con Playwright locale:
+    - report rifornimenti `TI233827` -> apre `Report PDF`
+    - attenzione oggi / mezzo piu critico / collaudi-precollaudi -> thread strutturato multi-mezzo
+    - quadro completo `TI233827` -> thread strutturato multi-dominio
+    - anomalie rifornimenti `TI233827` -> thread focalizzato solo su D04
+
+## 5.59 Aggiornamento 2026-03-25 - Affidabilita rifornimenti per periodo e report/PDF piu trasparenti
+- Il punto piu critico emerso sulla console IA NEXT e stato chiuso nel layer sopra il motore unificato: una richiesta con periodo esplicito sui rifornimenti non ricade piu sullo storico completo.
+- Cosa cambia davvero:
+  - il parsing periodo riconosce ora anche `questo mese`, `oggi`, `questa settimana`, `prossimi 30 giorni`, mesi espliciti come `marzo 2026` e intervalli `dal X al Y`;
+  - se il prompt contiene un periodo esplicito ma il parser non lo capisce in modo affidabile, il report viene fermato invece di cadere sullo storico completo;
+  - i rifornimenti del periodo vengono validati con regole esplicite: targa coerente, data verificabile, litri validi, km presenti e progressivi, duplicati esclusi;
+  - chat e report/PDF usano ora la stessa base validata, con conteggi separati per record trovati, inclusi nel calcolo ed esclusi;
+  - il report professionale e il PDF mostrano in modo piu leggibile `Sintesi iniziale`, `Record del periodo`, `Anomalie`, `Azione consigliata` e `Limiti e verifiche`.
+- Correzioni strutturali incluse:
+  - una richiesta rifornimenti con hint console `Quadro completo` non viene piu promossa automaticamente a `overview mezzo` se il testo utente chiede in modo esplicito un report fuel;
+  - il composer chat per i report mostra ora anche KPI leggibili (`trovati`, `inclusi`, `esclusi`, `media km/l`) invece del solo messaggio generico `report pronto`;
+  - il PDF operativo riusa il renderer esistente ma aggiunge in fondo `Limiti e verifiche` e `Note di lettura`, senza riaprire refactor larghi su `pdfEngine.ts`.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessun nuovo backend live;
+  - il debito lint storico di `src/utils/pdfEngine.ts` resta fuori scopo.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiVehicleCapabilityCatalog.ts src/next/internal-ai/internalAiVehicleReportFacade.ts src/next/internal-ai/internalAiProfessionalVehicleReport.ts src/next/internal-ai/InternalAiProfessionalVehicleReportView.tsx src/next/internal-ai/internalAiReportPdf.ts src/next/NextInternalAiPage.tsx src/utils/pdfEngine.ts` -> KO solo per debito lint storico gia presente in `src/utils/pdfEngine.ts`
+  - smoke UI reale su `/next/ia/interna` con Playwright locale:
+    - prompt A `questo mese + km/l + genera pdf` -> periodo marzo 2026 rispettato, report rifornimenti focalizzato, anteprima PDF aperta
+    - prompt B `marzo 2026 + report rifornimenti` -> periodo marzo 2026 rispettato, report rifornimenti focalizzato
+    - prompt C `anomalie rifornimenti marzo 2026` -> thread con record esclusi e motivi espliciti
+    - prompt D `prossimi 30 giorni collaudo/pre-collaudo` -> periodo futuro applicato e classifica mezzi restituita
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

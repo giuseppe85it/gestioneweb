@@ -80,6 +80,7 @@ export type InternalAiProfessionalVehicleReport = {
   targetLabel: string;
   generatedAtLabel: string;
   periodLabel: string;
+  cards: InternalAiVehicleReportPreview["cards"];
   executiveSummary: string[];
   vehicle: InternalAiProfessionalReportMedia;
   relatedAsset: InternalAiProfessionalReportMedia | null;
@@ -479,6 +480,9 @@ function buildExecutiveSummary(args: {
   const operational = args.sections.find((section) => section.id === "criticita");
   const scadenze = args.sections.find((section) => section.id === "scadenze");
   const lavori = args.sections.find((section) => section.id === "lavori-manutenzioni");
+  const fuel = args.sections.find((section) => section.id === "rifornimenti");
+  const fuelAnomalies = args.sections.find((section) => section.id === "rifornimenti-anomalie");
+  const fuelActions = args.sections.find((section) => section.id === "rifornimenti-azioni");
   const summary: string[] = [];
 
   summary.push(
@@ -487,20 +491,32 @@ function buildExecutiveSummary(args: {
 
   if (operational) {
     summary.push(`Criticita principali: ${operational.summary}`);
+  } else if (fuel) {
+    summary.push(`Rifornimenti: ${fuel.summary}`);
   } else {
     summary.push("Criticita principali: non trovate criticita operative forti nel periodo letto.");
+  }
+
+  if (fuel && operational) {
+    summary.push(`Rifornimenti: ${fuel.summary}`);
   }
 
   if (scadenze) {
     summary.push(`Scadenze: ${scadenze.bullets.slice(0, 2).join(" | ") || scadenze.summary}`);
   }
 
-  if (lavori) {
+  if (fuelActions) {
+    summary.push(`Azione consigliata: ${fuelActions.bullets[0] || fuelActions.summary}`);
+  } else if (lavori) {
     summary.push(
       `Azioni consigliate: ${lavori.bullets.length > 0 ? lavori.bullets[0] : "verificare pianificazione lavori e manutenzioni aperte."}`,
     );
   } else if (args.tyreVisual) {
     summary.push("Azioni consigliate: verificare priorita gomme e confermare l'intervento sul mezzo.");
+  }
+
+  if (fuelAnomalies?.bullets.length) {
+    summary.push(`Anomalie: ${fuelAnomalies.bullets.slice(0, 2).join(" | ")}`);
   }
 
   if (args.relatedAsset?.targa) {
@@ -541,12 +557,19 @@ function mapSectionTitle(section: InternalAiVehicleReportSection): string {
   if (section.id === "lavori-manutenzioni") return "Lavori e manutenzioni";
   if (section.id === "gomme") return "Gomme";
   if (section.id === "rifornimenti") return "Rifornimenti e consumi";
+  if (section.id === "rifornimenti-records") return "Record del periodo";
+  if (section.id === "rifornimenti-anomalie") return "Anomalie rilevate";
+  if (section.id === "rifornimenti-azioni") return "Azione consigliata";
   if (section.id === "materiali-inventario") return "Materiali e inventario";
   if (section.id === "procurement") return "Ordini, preventivi e fornitori";
   if (section.id === "documenti-costi") return "Documenti e costi";
   if (section.id === "cisterna") return "Cisterna";
   if (section.id === "riscontri-registry") return "Riscontri operativi collegati";
   return sanitizeUserFacingText(section.title);
+}
+
+function isFuelOnlyReport(report: InternalAiVehicleReportPreview): boolean {
+  return report.sections.some((section) => section.id === "rifornimenti");
 }
 
 function buildProfessionalSections(
@@ -557,6 +580,11 @@ function buildProfessionalSections(
   const operational = sectionsById.get("stato-operativo-attuale") ?? null;
   const technical = sectionsById.get("lavori-manutenzioni") ?? null;
   const tyres = sectionsById.get("gomme") ?? null;
+  const isFuelReport =
+    isFuelOnlyReport(report) &&
+    report.sections.every((section) =>
+      ["identita-mezzo", "rifornimenti", "rifornimenti-records", "rifornimenti-anomalie", "rifornimenti-azioni"].includes(section.id),
+    );
   const deadlineBullets = buildScadenzeList(report, mezzo);
   const result: InternalAiProfessionalReportSection[] = [];
 
@@ -579,17 +607,15 @@ function buildProfessionalSections(
     });
   }
 
-  result.push({
-    id: "scadenze",
-    title: "Scadenze e verifiche",
-    summary:
-      deadlineBullets.length > 0
-        ? "Le principali scadenze disponibili sono raccolte qui sotto."
-        : "Non risultano scadenze forti aggiuntive oltre ai dati anagrafici letti.",
-    bullets: deadlineBullets,
-    emptyLabel:
-      deadlineBullets.length === 0 ? "Nessuna scadenza aggiuntiva collegata in modo forte." : null,
-  });
+  if (!isFuelReport && deadlineBullets.length > 0) {
+    result.push({
+      id: "scadenze",
+      title: "Scadenze e verifiche",
+      summary: "Le principali scadenze disponibili sono raccolte qui sotto.",
+      bullets: deadlineBullets,
+      emptyLabel: null,
+    });
+  }
 
   if (technical) {
     const bullets = dedupeStrings(technical.bullets).slice(0, 6);
@@ -625,7 +651,13 @@ function buildProfessionalSections(
       continue;
     }
 
-    const bullets = dedupeStrings(section.bullets).slice(0, 6);
+    const bulletLimit =
+      section.id === "rifornimenti-records"
+        ? 14
+        : section.id === "rifornimenti-anomalie"
+          ? 10
+          : 6;
+    const bullets = dedupeStrings(section.bullets).slice(0, bulletLimit);
     const summary = sanitizeUserFacingText(section.summary);
     if (bullets.length === 0 && (!summary || isEmptyOperationalText(summary))) {
       continue;
@@ -822,8 +854,9 @@ export function buildInternalAiProfessionalVehicleReportText(
     sections,
     tyreVisual: null,
   });
+  const displayTitle = sanitizeUserFacingText(report.title) || "Report operativo mezzo";
   const lines: string[] = [
-    "Report operativo mezzo",
+    displayTitle,
     `Targa: ${report.header.targa}`,
     `Periodo: ${report.periodContext.label}`,
     `Generato il: ${formatDateLabel(report.generatedAt)}`,
@@ -876,7 +909,7 @@ export async function readInternalAiProfessionalVehicleReport(
   const appendix = buildAppendix({ report, workflow });
 
   return {
-    displayTitle: "Report operativo mezzo",
+    displayTitle: sanitizeUserFacingText(report.title) || "Report operativo mezzo",
     displaySubtitle:
       report.subtitle && report.subtitle !== report.title
         ? sanitizeUserFacingText(report.subtitle)
@@ -884,6 +917,7 @@ export async function readInternalAiProfessionalVehicleReport(
     targetLabel: report.header.targa,
     generatedAtLabel: formatDateLabel(report.generatedAt),
     periodLabel: report.periodContext.label,
+    cards: report.cards,
     executiveSummary,
     vehicle: {
       label: "Mezzo",

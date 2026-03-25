@@ -2757,6 +2757,30 @@ export async function generateInternalAiOperationalReportPdfBlob(
     }
   }
 
+  if (input.appendix?.limits?.length) {
+    await writeSectionTitle("Limiti e verifiche");
+    for (const limit of input.appendix.limits) {
+      await writeParagraph(`- ${limit}`, {
+        fontSize: 9.5,
+        spacingAfter: 1,
+        indent: 4,
+      });
+    }
+    currentY += 2;
+  }
+
+  if (input.appendix?.notes?.length) {
+    await writeSectionTitle("Note di lettura");
+    for (const note of input.appendix.notes) {
+      await writeParagraph(`- ${note}`, {
+        fontSize: 9.5,
+        spacingAfter: 1,
+        indent: 4,
+      });
+    }
+    currentY += 2;
+  }
+
   addStandardFooter(doc);
   const fileName = `${sanitizeFileName(`${model.title}_${input.targa}_${docId}`)}.pdf`;
   return { blob: doc.output("blob") as Blob, fileName };
