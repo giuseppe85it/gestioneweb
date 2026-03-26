@@ -251,6 +251,24 @@ const PERIMETER_ANALYSIS_PATTERNS = [
   "quali file devo leggere per capirla bene",
 ];
 
+const LIVE_BOUNDARY_PATTERNS = [
+  "lo stai leggendo live",
+  "lo stai leggendo dal clone",
+  "live o dal clone",
+  "lettura live verificata",
+  "live-read",
+  "live read",
+  "snapshot read-only",
+  "read-only del clone",
+  "read model della next",
+  "read model next",
+  "perimetro reale della lettura backend ia",
+  "la ia sta leggendo davvero tutti i dati attuali",
+  "questa funzione usa live-read",
+  "questa funzione usa live read",
+  "lettura backend ia",
+];
+
 const IA_INTEGRATION_PATTERNS = [
   "nuova funzione ia",
   "funzione ia legata ai flussi operativi",
@@ -265,6 +283,7 @@ const REPO_UNDERSTANDING_PATTERNS = [
   ...FLOW_ANALYSIS_PATTERNS,
   ...DOSSIER_IMPACT_PATTERNS,
   ...MODULE_INSERTION_PATTERNS,
+  ...LIVE_BOUNDARY_PATTERNS,
   ...PERIMETER_ANALYSIS_PATTERNS,
   ...IA_INTEGRATION_PATTERNS,
 ];
@@ -501,6 +520,7 @@ type RepoUnderstandingFocus =
   | "flow_analysis"
   | "dossier_impact"
   | "module_integration"
+  | "live_boundary"
   | "perimeter_analysis"
   | "ia_integration"
   | "repo_support";
@@ -845,6 +865,10 @@ function parseIntent(prompt: string): ParsedIntent {
     return { intent: "capabilities", extractedTarga: null };
   }
 
+  if (LIVE_BOUNDARY_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return { intent: "repo_understanding", extractedTarga: null };
+  }
+
   if (!extractedTarga && REPO_UNDERSTANDING_PATTERNS.some((pattern) => normalized.includes(pattern))) {
     return { intent: "repo_understanding", extractedTarga: null };
   }
@@ -870,6 +894,10 @@ function parseIntent(prompt: string): ParsedIntent {
 
 function detectRepoUnderstandingFocus(prompt: string): RepoUnderstandingFocus {
   const normalized = normalizePrompt(prompt);
+
+  if (LIVE_BOUNDARY_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return "live_boundary";
+  }
 
   if (IA_INTEGRATION_PATTERNS.some((pattern) => normalized.includes(pattern))) {
     return "ia_integration";
@@ -979,7 +1007,13 @@ function buildUnsupportedResponse(prompt: string): InternalAiChatTurnResult {
 function buildRepoStructuredFallback(args: {
   summary: string[];
   modules: string[];
+  routes?: string[];
   readFirst: string[];
+  uiFiles?: string[];
+  domainFiles?: string[];
+  backendFiles?: string[];
+  legacyFiles?: string[];
+  domainReaders?: string[];
   perimeter: string[];
   whereIntervene: string[];
   impact: string[];
@@ -990,7 +1024,39 @@ function buildRepoStructuredFallback(args: {
   const sections = [
     `Sintesi breve:\n${args.summary.map((entry) => `- ${entry}`).join("\n")}`,
     `Moduli collegati:\n${args.modules.map((entry) => `- ${entry}`).join("\n")}`,
+    ...(args.routes?.length ? [`Route coinvolte:\n${args.routes.map((entry) => `- ${entry}`).join("\n")}`] : []),
     `File/layer da leggere prima:\n${args.readFirst.map((entry) => `- ${entry}`).join("\n")}`,
+    ...(args.uiFiles?.length
+      ? [`File UI coinvolti:\n${args.uiFiles.map((entry) => `- ${entry}`).join("\n")}`]
+      : []),
+    ...(args.domainFiles?.length
+      ? [
+          `File domain/read-model coinvolti:\n${args.domainFiles
+            .map((entry) => `- ${entry}`)
+            .join("\n")}`,
+        ]
+      : []),
+    ...(args.backendFiles?.length
+      ? [
+          `File backend IA coinvolti:\n${args.backendFiles
+            .map((entry) => `- ${entry}`)
+            .join("\n")}`,
+        ]
+      : []),
+    ...(args.legacyFiles?.length
+      ? [
+          `File madre di riferimento:\n${args.legacyFiles
+            .map((entry) => `- ${entry}`)
+            .join("\n")}`,
+        ]
+      : []),
+    ...(args.domainReaders?.length
+      ? [
+          `Lettori dominio usati:\n${args.domainReaders
+            .map((entry) => `- ${entry}`)
+            .join("\n")}`,
+        ]
+      : []),
     `Perimetro logica:\n${args.perimeter.map((entry) => `- ${entry}`).join("\n")}`,
     `Dove intervenire:\n${args.whereIntervene.map((entry) => `- ${entry}`).join("\n")}`,
     `Rischio impatto:\n${args.impact.map((entry) => `- ${entry}`).join("\n")}`,
@@ -1011,6 +1077,55 @@ async function buildRepoUnderstandingFallbackResponse(
   prompt: string,
 ): Promise<InternalAiChatTurnResult> {
   const focus = detectRepoUnderstandingFocus(prompt);
+
+  if (focus === "live_boundary") {
+    return {
+      intent: "repo_understanding",
+      status: "completed",
+      assistantText:
+        "Oggi il live-read business del backend IA e chiuso.\n\n" +
+        "Perimetro reale della lettura:\n" +
+        "- clone/read model NEXT: SI;\n" +
+        "- snapshot D01 seedata dal clone: SI;\n" +
+        "- snapshot Dossier mezzo seedata dal clone: SI;\n" +
+        "- snapshot repo/UI curata del backend IA: SI;\n" +
+        "- Firestore business live: NO;\n" +
+        "- Storage business live: NO.\n\n" +
+        "Regola pratica:\n" +
+        "- se vedi `retrieval server-side`, non significa live-read business: significa snapshot read-only dedicata o snapshot repo/UI curata;\n" +
+        "- se vedi `clone-safe` o `read-only`, il dato arriva dai layer NEXT gia governati;\n" +
+        "- se il dato non e abbastanza forte, la console lo dichiara come prudente o parziale e non lo promuove a live.\n\n" +
+        "Verdetto operativo: backend IA separato e UI usano solo clone/read model e snapshot read-only dedicate. Nessun bridge live Firestore/Storage e oggi ammesso come fonte business attiva.",
+      references: [
+        {
+          type: "repo_understanding",
+          label: `${DOMAIN_REFERENCE_PREFIX} Confine backend IA / clone / live-read`,
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: `${RELIABILITY_REFERENCE_PREFIX} Affidabile`,
+          targa: null,
+        },
+        {
+          type: "safe_mode_notice",
+          label: "Live-read business chiuso: solo clone/read model e snapshot seedate",
+          targa: null,
+        },
+        {
+          type: "repo_understanding",
+          label: "Backend IA: nessun Firestore/Storage live business",
+          targa: null,
+        },
+        {
+          type: "architecture_doc",
+          label: "Confine IA: clone/read model, non live business",
+          targa: null,
+        },
+      ],
+      report: null,
+    };
+  }
 
   if (focus === "home_analysis") {
     const snapshot = await readNextStatoOperativoSnapshot();
@@ -1067,6 +1182,7 @@ async function buildRepoUnderstandingFallbackResponse(
         "Analisi Economica",
         "IA interna NEXT",
       ],
+      routes: ["/next/dossier/:targa", "/next/analisi-economica/:targa", "/next/ia/interna"],
       readFirst: [
         "docs/data/DOMINI_DATI_CANONICI.md",
         "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
@@ -1076,6 +1192,26 @@ async function buildRepoUnderstandingFallbackResponse(
         "src/next/NextDossierRifornimentiPage.tsx",
         "src/next/NextRifornimentiEconomiaSection.tsx",
         "src/pages/DossierRifornimenti.tsx",
+      ],
+      uiFiles: [
+        "src/next/NextDossierMezzoPage.tsx",
+        "src/next/NextDossierRifornimentiPage.tsx",
+        "src/next/NextRifornimentiEconomiaSection.tsx",
+        "src/next/NextAnalisiEconomicaPage.tsx",
+      ],
+      domainFiles: [
+        "src/next/domain/nextRifornimentiDomain.ts",
+        "src/next/nextRifornimentiConsumiDomain.ts",
+        "src/next/domain/nextDossierMezzoDomain.ts",
+      ],
+      backendFiles: [
+        "backend/internal-ai/server/internal-ai-repo-understanding.js",
+        "backend/internal-ai/server/internal-ai-adapter.js",
+      ],
+      legacyFiles: ["src/pages/DossierRifornimenti.tsx", "src/pages/DossierMezzo.tsx"],
+      domainReaders: [
+        "src/next/domain/nextRifornimentiDomain.ts",
+        "src/next/nextRifornimentiConsumiDomain.ts",
       ],
       perimeter: [
         "Madre: `src/pages/DossierRifornimenti.tsx` serve solo per capire il flusso reale, non per patchare.",
@@ -1134,6 +1270,7 @@ async function buildRepoUnderstandingFallbackResponse(
         "Analisi Economica",
         "IA interna NEXT",
       ],
+      routes: ["/next/dossiermezzi", "/next/dossier/:targa", "/next/analisi-economica/:targa"],
       readFirst: [
         "docs/STATO_ATTUALE_PROGETTO.md",
         "docs/product/STATO_MIGRAZIONE_NEXT.md",
@@ -1146,6 +1283,23 @@ async function buildRepoUnderstandingFallbackResponse(
         "src/next/internal-ai/internalAiVehicleDossierHookFacade.ts",
         "src/pages/DossierMezzo.tsx",
       ],
+      uiFiles: [
+        "src/next/NextMezziDossierPage.tsx",
+        "src/next/NextDossierMezzoPage.tsx",
+        "src/next/NextDossierRifornimentiPage.tsx",
+        "src/next/NextAnalisiEconomicaPage.tsx",
+      ],
+      domainFiles: [
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/domain/nextRifornimentiDomain.ts",
+        "src/next/domain/nextDocumentiCostiDomain.ts",
+      ],
+      backendFiles: [
+        "src/next/internal-ai/internalAiVehicleDossierHookFacade.ts",
+        "backend/internal-ai/server/internal-ai-repo-understanding.js",
+      ],
+      legacyFiles: ["src/pages/DossierMezzo.tsx", "src/pages/AnalisiEconomica.tsx"],
+      domainReaders: ["src/next/domain/nextDossierMezzoDomain.ts"],
       perimeter: [
         "Madre: la pagina legacy dossier serve come riferimento del flusso reale.",
         "NEXT: qui vivono il clone dossier e le sue estensioni read-only.",
@@ -1202,6 +1356,7 @@ async function buildRepoUnderstandingFallbackResponse(
         "Gestione Operativa",
         "IA interna NEXT",
       ],
+      routes: ["/next/centro-controllo", "/next/dossier/:targa", "/next/gestione-operativa", "/next/ia/interna"],
       readFirst: [
         "docs/STRUTTURA_COMPLETA_GESTIONALE.md",
         "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
@@ -1211,6 +1366,25 @@ async function buildRepoUnderstandingFallbackResponse(
         "src/next/NextDossierMezzoPage.tsx",
         "src/next/NextCentroControlloPage.tsx",
         "src/next/NextInternalAiPage.tsx",
+      ],
+      uiFiles: [
+        "src/next/NextShell.tsx",
+        "src/next/nextStructuralPaths.ts",
+        "src/next/NextCentroControlloPage.tsx",
+        "src/next/NextDossierMezzoPage.tsx",
+        "src/next/NextOperativitaGlobalePage.tsx",
+        "src/next/NextInternalAiPage.tsx",
+      ],
+      domainFiles: [
+        "src/next/domain/nextCentroControlloDomain.ts",
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/domain/nextMaterialiMovimentiDomain.ts",
+      ],
+      backendFiles: ["backend/internal-ai/server/internal-ai-repo-understanding.js"],
+      domainReaders: [
+        "src/next/domain/nextCentroControlloDomain.ts",
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/domain/nextMaterialiMovimentiDomain.ts",
       ],
       perimeter: [
         "Madre: utile solo per capire dove il flusso esiste gia davvero.",
@@ -1264,6 +1438,7 @@ async function buildRepoUnderstandingFallbackResponse(
         "Renderer/UI",
         "Documentazione di verita",
       ],
+      routes: ["/next/centro-controllo", "/next/dossier/:targa", "/next/ia/interna"],
       readFirst: [
         "docs/STATO_ATTUALE_PROGETTO.md",
         "docs/data/DOMINI_DATI_CANONICI.md",
@@ -1273,6 +1448,20 @@ async function buildRepoUnderstandingFallbackResponse(
         "src/pages/DossierMezzo.tsx",
         "backend/internal-ai/server/internal-ai-adapter.js",
         "backend/internal-ai/server/internal-ai-repo-understanding.js",
+      ],
+      uiFiles: ["src/next/NextDossierMezzoPage.tsx", "src/next/NextCentroControlloPage.tsx"],
+      domainFiles: [
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/domain/nextCentroControlloDomain.ts",
+      ],
+      backendFiles: [
+        "backend/internal-ai/server/internal-ai-adapter.js",
+        "backend/internal-ai/server/internal-ai-repo-understanding.js",
+      ],
+      legacyFiles: ["src/pages/DossierMezzo.tsx", "src/pages/Home.tsx"],
+      domainReaders: [
+        "src/next/domain/nextDossierMezzoDomain.ts",
+        "src/next/domain/nextCentroControlloDomain.ts",
       ],
       perimeter: [
         "Madre: `src/pages/*` descrive il flusso legacy reale ma non si modifica.",
@@ -1325,6 +1514,7 @@ async function buildRepoUnderstandingFallbackResponse(
         "Dossier Mezzo",
         "Centro di Controllo",
       ],
+      routes: ["/next/ia/interna", "/next/dossier/:targa", "/next/centro-controllo"],
       readFirst: [
         "docs/product/CHECKLIST_IA_INTERNA.md",
         "docs/product/STATO_MIGRAZIONE_NEXT.md",
@@ -1334,6 +1524,22 @@ async function buildRepoUnderstandingFallbackResponse(
         "src/next/internal-ai/internalAiOutputSelector.ts",
         "src/next/NextInternalAiPage.tsx",
         "backend/internal-ai/server/internal-ai-adapter.js",
+      ],
+      uiFiles: [
+        "src/next/NextInternalAiPage.tsx",
+        "src/next/internal-ai/internalAiOutputSelector.ts",
+      ],
+      domainFiles: [
+        "src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts",
+        "src/next/internal-ai/internalAiChatOrchestrator.ts",
+      ],
+      backendFiles: [
+        "backend/internal-ai/server/internal-ai-adapter.js",
+        "backend/internal-ai/server/internal-ai-repo-understanding.js",
+      ],
+      domainReaders: [
+        "src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts",
+        "src/next/internal-ai/internalAiChatOrchestrator.ts",
       ],
       perimeter: [
         "Madre: non deve diventare il backend della capability IA.",
@@ -1420,7 +1626,7 @@ async function buildRepoUnderstandingFallbackResponse(
     intent: "repo_understanding",
     status: "partial",
     assistantText:
-      "Nel perimetro attuale posso aiutarti anche su repo, flussi e integrazione, ma resto dentro un mapping controllato e read-only del clone.\n\n" +
+      "Nel perimetro attuale posso aiutarti anche su repo, flussi, integrazione e dependency map, ma resto dentro un mapping controllato e read-only del clone.\n\n" +
       "Regola pratica: documentazione di verita e read model NEXT vengono prima della UI, la madre resta solo leggibile e il backend IA serve per orchestrazione o repo understanding, non per scritture business.\n\n" +
       'Prova con: "Se voglio semplificare il flusso rifornimenti...", "Se modifico il Dossier Mezzo...", "Questa logica vive nella madre, nella NEXT o nel backend IA?" oppure "Voglio aggiungere un nuovo modulo nel gestionale".',
     references: [
@@ -1457,7 +1663,8 @@ function buildGenericResponse(): InternalAiChatTurnResult {
       '- "Questa targa a quale autista risulta collegata?"\n' +
       '- "Se modifico il Dossier Mezzo, quali moduli e file rischio di impattare?"\n' +
       '- "Voglio aggiungere un nuovo modulo nel gestionale: dove lo dovrei inserire?"\n' +
-      '- "Questa logica vive nella madre, nella NEXT o nel backend IA?"\n\n' +
+      '- "Questa logica vive nella madre, nella NEXT o nel backend IA?"\n' +
+      '- "Questo dato lo stai leggendo live o dal clone?"\n\n' +
       "Se la richiesta sconfina su domini non ancora chiusi, dichiaro il limite e non invento coperture fuori dominio.",
     references: [
       {

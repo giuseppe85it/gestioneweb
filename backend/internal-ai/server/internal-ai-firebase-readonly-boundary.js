@@ -71,7 +71,7 @@ const STORAGE_ALLOWED_READS = Object.freeze([
 ]);
 
 export const INTERNAL_AI_FIREBASE_READONLY_BOUNDARY = Object.freeze({
-  mode: "future_candidate_only",
+  mode: "live_read_closed",
   firestore: Object.freeze({
     allowedReads: FIRESTORE_ALLOWED_READS,
   }),
@@ -80,9 +80,9 @@ export const INTERNAL_AI_FIREBASE_READONLY_BOUNDARY = Object.freeze({
     allowedReads: STORAGE_ALLOWED_READS,
   }),
   notes: Object.freeze([
-    "Boundary futuro e strettissimo: nessuna query larga, nessuna scansione collection, nessun fallback opaco su domini sensibili.",
-    "Il primo bridge live corretto puo passare solo da D01 storage/@mezzi_aziendali e dal path esatto librettoStoragePath.",
-    "D04 rifornimenti, documenti/costi, procurement e verticale Cisterna restano fuori dal primo bridge live.",
+    "Verdetto operativo attuale: live-read business chiuso.",
+    "Le voci allowedReads descrivono solo il confine massimo documentato e non autorizzano alcuna lettura live nel backend IA separato.",
+    "Finche il confine resta chiuso, la IA usa solo read model NEXT, snapshot seedate dal clone e snapshot repo/UI curate.",
   ]),
 });
 

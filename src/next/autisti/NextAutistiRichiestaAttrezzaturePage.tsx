@@ -189,7 +189,7 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
         <div className="richiesta-section">
           <div className="richiesta-label">Foto (opzionale)</div>
           <label className="richiesta-photo-btn">
-            {attachment ? "Sostituisci foto" : "Aggiungi foto"}
+            {attachment ? "Sostituisci foto locale" : "Aggiungi foto locale"}
             <input
               type="file"
               accept="image/*"
@@ -219,7 +219,7 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
                 onClick={() => handleRemoveAttachment(attachment.id)}
                 disabled={attachmentPreparing}
               >
-                Rimuovi foto
+                Rimuovi foto locale
               </button>
             </div>
           ) : null}

@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-03-25  
+Ultimo aggiornamento: 2026-03-26  
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -1954,9 +1954,114 @@ Stato macrofase: `NON FATTO`
   - smoke UI reale su `/next/ia/interna` via Playwright locale:
     - `Ci sono criticita di magazzino o inventario che richiedono attenzione?` -> `Magazzino reale`, `1` segnale D05
     - `Fammi un riepilogo utile dei materiali collegati ai mezzi.` -> `Materiali collegati ai mezzi`, `9` collegamenti forti
+
+### M.43 Rifinitura locale D06 procurement read-only per NEXT e IA interna
+- Stato: `FATTO`
+- Note: il `2026-03-26` e stata completata una rifinitura locale del work-package D06 senza riaprirne il dominio: chiusi i residui lint sui file shared, riallineato l'header della checklist e chiarito meglio il confine descrittivo D05/D06 nel contenitore operativo globale.
+- Cosa e stato chiuso:
+  - `NextCapoCostiMezzoPage` ora evita mutazioni nel calcolo del riepilogo e gestisce i `catch` in modo tipizzato, cosi il lint locale richiesto dal task torna pulito;
+  - `Acquisti.tsx` mantiene il workbench D06 `read-only` ma chiude il debito lint locale con micro-correzioni meccaniche e contenimento esplicito delle aree legacy ancora fuori refactor;
+  - `NextOperativitaGlobalePage` esplicita meglio che la card procurement D06 non sostituisce D05: gli ordini restano separati dai movimenti e dallo stock, che continuano a vivere nelle viste magazzino dedicate;
+  - la tracciabilita documentale D06 torna coerente con header checklist, stato migrazione e registro clone aggiornati.
+- File/documenti collegati:
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/pages/Acquisti.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/change-reports/2026-03-26_0902_rifinitura-d06-procurement-readonly-next.md`
+  - `docs/continuity-reports/2026-03-26_0902_continuity_rifinitura-d06-procurement-readonly-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/NextCapoCostiMezzoPage.tsx src/pages/Acquisti.tsx src/next/NextOperativitaGlobalePage.tsx` -> OK
     - `Questo mezzo ha ricevuto materiali o attrezzature rilevanti?` con `TI233827` -> `2` movimenti forti e azione coerente
     - `Ci sono stock bassi o segnali che possono bloccare il lavoro?` -> ramo D05 globale
     - `Questa parte e davvero operativa o solo in lettura?` -> confine D05 `sola lettura`
   - smoke UI reale su `/next/gestione-operativa`:
     - banner `D03 autisti in sola lettura` e `D05 magazzino in sola lettura`
     - CTA `Apri inventario read-only`, `Apri movimenti materiali`, `Apri attrezzature read-only`
+
+### M.44 Confine live-read backend IA chiuso per NEXT e IA interna
+- Stato: `FATTO`
+- Note: il `2026-03-26` il sottosistema IA interno esce dal limbo sul live-read business con verdetto binario verificato: nessun live-read Firestore o Storage viene aperto e il backend IA separato usa solo clone/read model NEXT, snapshot D01/Dossier seedate dal clone e snapshot repo/UI curate.
+- Cosa e stato chiuso:
+  - il boundary tecnico del backend IA dichiara ora `live_read_closed` come stato operativo, lasciando gli `allowedReads` solo come perimetro massimo documentato e non come bridge attivo;
+  - la readiness Firebase/Storage espone solo stati `not_ready`, blocker e note che chiudono in modo esplicito ogni live-read business non verificato, senza piu stati intermedi ambigui;
+  - l'orchestratore locale e la chat server-side rispondono in modo coerente alle domande su `live o clone`, distinguendo clone/read model, snapshot seedate e fonti non ammesse live;
+  - la UI di `/next/ia/interna` mostra adesso in modo sobrio che la `Lettura business live` e `Chiusa`, che la `Fonte business` e `clone + snapshot` o `clone/read model`, e che i pannelli Firestore/Storage descrivono un confine chiuso e non una readiness apribile implicitamente.
+- File/documenti collegati:
+  - `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`
+  - `backend/internal-ai/server/internal-ai-firebase-readiness.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-repo-understanding.js`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_0937_confine-live-read-backend-ia.md`
+  - `docs/continuity-reports/2026-03-26_0937_continuity_confine-live-read-backend-ia.md`
+- Verifiche eseguite:
+  - `npm --prefix backend/internal-ai run firebase-readiness` -> OK, `firestoreReadOnly.status = not_ready`, `storageReadOnly.status = not_ready`, live-read business chiuso dichiarato nelle note
+  - `npx eslint --no-error-on-unmatched-pattern src/next/internal-ai/*.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/*.js backend/internal-ai/*.js` -> OK
+  - `npm run build` -> OK
+  - smoke backend IA separato:
+    - `GET /internal-ai-backend/health` -> note coerenti: snapshot clone/read-only, nessuna scrittura Firestore/Storage, live-read business chiuso
+    - `POST /internal-ai-backend/orchestrator/chat` con `Questo dato lo stai leggendo live o dal clone?` -> risposta deterministica backend con verdetto `live-read business chiuso`, `Firestore live: not_ready`, `Storage live: not_ready`
+  - smoke UI su `/next/ia/interna` con Playwright locale -> route caricata, suggestion `Questo dato lo stai leggendo live o dal clone?` visibile e DOM renderizzato coerente con i badge `Lettura business live` e `Fonte business`
+
+### M.45 Sweep CTA veritiere per NEXT e IA interna
+- Stato: `FATTO`
+- Note: il `2026-03-26` il work-package `SWEEP CTA VERITIERE` viene chiuso senza riaprirne i domini. Le CTA del clone restano utili dove la consultazione e reale, ma non promettono piu scritture, sync madre o funzioni non ancora importate. Il file extra `src/next/NextCentroControlloClonePage.tsx` e servito davvero perche la route runtime `/next/centro-controllo` monta ancora il wrapper clone sulla pagina legacy `CentroControllo`, quindi la sola shell `NextCentroControlloPage` non bastava a correggere le CTA visibili all'utente.
+- Cosa e stato chiuso:
+  - `Gestione Operativa`, `Acquisti`, `Capo Costi`, `IA interna` e area autisti mantengono le CTA consultive attive ma con etichette oneste (`read-only`, `preview`, `locale clone`, `bloccato`) invece di sembrare business-live;
+  - il wrapper reale del Centro di Controllo riscrive ora il copy della superficie clone-safe davvero montata, aggiunge un banner di perimetro e rende esplicite come `read-only` o `preview` le CTA consultive di refresh/PDF/tab runtime;
+  - l'area autisti clone-safe continua a distinguere azioni locali clone e schermate non ancora importate, con badge e copy coerenti invece di sembrare sincronizzate sulla madre;
+  - il task non riapre nessuna logica business: si limita a rendere veritiera la UX dei punti di ingresso e delle azioni visibili.
+- File/documenti collegati:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextCentroControlloClonePage.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/autisti/NextAutistiRichiestaAttrezzaturePage.tsx`
+  - `src/next/autisti/NextAutistiRifornimentoPage.tsx`
+  - `src/next/autisti/NextAutistiSegnalazioniPage.tsx`
+  - `src/next/autisti/next-autisti-clone.css`
+  - `src/next/autisti/nextAutistiCloneRuntime.ts`
+  - `src/pages/Acquisti.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_1112_sweep-cta-veritiere-next.md`
+  - `docs/continuity-reports/2026-03-26_1112_continuity_sweep-cta-veritiere-next.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextCentroControlloClonePage.tsx src/next/NextCentroControlloPage.tsx src/next/NextGestioneOperativaPage.tsx src/next/NextOperativitaGlobalePage.tsx src/next/NextCapoCostiMezzoPage.tsx src/next/NextInternalAiPage.tsx src/pages/Acquisti.tsx` -> OK
+  - `npm run build` -> OK
+  - ricognizione runtime Playwright su `/next/centro-controllo` prima della rifinitura finale -> confermata la superficie reale montata dal wrapper clone con CTA legacy `Aggiorna`, `Anteprima PDF selezionati`, tab non marcati e copy troppo neutro; la chiusura e stata quindi applicata nel wrapper runtime e non solo nella shell NEXT
+
+### M.46 Dependency map repo strutturale per IA interna NEXT
+- Stato: `FATTO`
+- Note: il `2026-03-26` l'assistente `repo/flussi` smette di essere solo un playbook curato e passa a una dependency map piu strutturale, con route coinvolte, file UI, read model, file backend IA, moduli a monte/a valle e punto corretto di integrazione per i casi bussola.
+- Cosa e stato chiuso:
+  - il backend `repo-understanding` costruisce ora una dependency map statica/pratica per i casi chiave `Home/Centro di Controllo`, `D04 rifornimenti`, `Dossier Mezzo`, `nuovo modulo`, `perimetro layer` e `nuova funzione IA`;
+  - le risposte deterministiche server-side elencano in modo piu concreto route, file da leggere prima, file UI, file domain/read-model, file backend IA, lettori dominio usati, moduli a monte/a valle, rischio impatto e punto di integrazione;
+  - il fallback locale dell'orchestratore su prompt repo/flussi mantiene la stessa struttura pratica anche quando la console degrada dal backend server-side al clone-safe;
+  - `/next/ia/interna` mostra ora anche il conteggio e una vista sintetica della dependency map, senza redesign largo e senza uscire dal perimetro read-only.
+- File/documenti collegati:
+  - `backend/internal-ai/server/internal-ai-repo-understanding.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_1311_dependency-map-repo-ia-next.md`
+  - `docs/continuity-reports/2026-03-26_1311_continuity_dependency-map-repo-ia-next.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/internal-ai/*.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/*.js backend/internal-ai/*.js` -> il glob `backend/internal-ai/*.js` non matcha file nel repo; rilanciato in modo equivalente con `--no-error-on-unmatched-pattern` -> OK
+  - `npm run build` -> OK
+  - smoke test reali `POST /internal-ai-backend/orchestrator/chat` sui 5 prompt bussola -> OK, `intent=repo_understanding`, `status=completed`, `usedRealProvider=false`, sezioni con `Route coinvolte`, `File UI`, `File domain/read-model`, `File backend IA`, `Lettori dominio usati`, `Punto consigliato di integrazione`
+  - smoke test reale `POST /internal-ai-backend/retrieval/read` con `read_repo_understanding_snapshot` -> `dependencyMaps=6`, con route/file bucket coerenti per i sei casi censiti

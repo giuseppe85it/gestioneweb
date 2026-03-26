@@ -1,5 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ChangeEvent, WheelEvent } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { MaterialeOrdine, Ordine, UnitaMisura } from "../types/ordini";
 import { getItemSync, setItemSync } from "../utils/storageSync";
@@ -426,7 +428,7 @@ function renderNextProcurementListTable(props: {
                           className="acq-btn acq-btn--primary"
                           onClick={() => onOpenOrder(order.id, fromTab)}
                         >
-                          Apri
+                          Apri dettaglio read-only
                         </button>
                       </div>
                     </td>
@@ -457,15 +459,15 @@ function renderNextProcurementBlockedTab(props: {
           <p>{subtitle}</p>
         </div>
         <div className="acq-pill is-warn" style={{ width: "fit-content" }}>
-          Bloccato nel clone in sola lettura
+          Bloccato o solo preview nel clone
         </div>
         <p>{reason}</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" className="acq-btn acq-btn--primary" onClick={onGoOrdini}>
-            Vai a ordini
+            Vai a ordini read-only
           </button>
           <button type="button" className="acq-btn" onClick={onGoArrivi}>
-            Vai a arrivi
+            Vai a arrivi read-only
           </button>
         </div>
       </div>
@@ -488,7 +490,7 @@ function renderNextProcurementOrderDetail(props: {
       <div className="acq-detail">
         <div className="acq-detail-head">
           <div>
-            <p className="acq-section-kicker">Dettaglio ordine</p>
+            <p className="acq-section-kicker">Dettaglio ordine read-only</p>
             <h3>{order.supplierName}</h3>
             <p className="acq-detail-meta">
               {order.orderReference}
@@ -500,7 +502,9 @@ function renderNextProcurementOrderDetail(props: {
               Indietro
             </button>
             <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
-              {order.state === "arrivato" ? "Segna non arrivato" : "Segna arrivato"}
+              {order.state === "arrivato"
+                ? "Segna non arrivato (bloccato)"
+                : "Segna arrivato (bloccato)"}
             </button>
             <button
               type="button"
@@ -508,7 +512,7 @@ function renderNextProcurementOrderDetail(props: {
               disabled
               title={detailDisabledReason}
             >
-              Modifica
+              Modifica (bloccata)
             </button>
           </div>
         </div>
@@ -525,10 +529,10 @@ function renderNextProcurementOrderDetail(props: {
           <div className="acq-detail-totals">
             <div className="acq-detail-pdf-actions">
               <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
-                PDF Fornitori
+                PDF fornitori (bloccato)
               </button>
               <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
-                Anteprima PDF
+                Anteprima PDF (bloccata)
               </button>
               <button
                 type="button"
@@ -536,7 +540,7 @@ function renderNextProcurementOrderDetail(props: {
                 disabled
                 title={detailDisabledReason}
               >
-                PDF interno
+                PDF interno (bloccato)
               </button>
             </div>
             <strong>{pricing.summary}</strong>
@@ -547,7 +551,7 @@ function renderNextProcurementOrderDetail(props: {
         </div>
 
         <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
-          + Aggiungi materiale
+          + Aggiungi materiale (bloccato)
         </button>
 
         <label className="acq-order-note acq-order-note--detail">
@@ -5814,7 +5818,13 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
     });
   };
 
-  const materials = ordine ? [...ordine.materiali].sort((a, b) => (a.arrivato === b.arrivato ? 0 : a.arrivato ? 1 : -1)) : [];
+  const materials = useMemo(
+    () =>
+      ordine
+        ? [...ordine.materiali].sort((a, b) => (a.arrivato === b.arrivato ? 0 : a.arrivato ? 1 : -1))
+        : [],
+    [ordine]
+  );
   const detailSuggestList = useMemo(() => {
     const q = newDesc.trim().toLowerCase();
     if (!q || !ordine) return [];
@@ -6254,7 +6264,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
 
   const aggiornaInventario = async (oldO: Ordine, newO: Ordine) => {
     const raw = await getItemSync("@inventario");
-    let inv: any[] = Array.isArray(raw) ? raw : [];
+    const inv: any[] = Array.isArray(raw) ? raw : [];
 
     const oldMap = new Map(oldO.materiali.map((m) => [m.id, m]));
     const newMap = new Map(newO.materiali.map((m) => [m.id, m]));
@@ -6270,7 +6280,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
         else inv[idx].quantita = newQty;
       } else if (delta > 0) {
         inv.push({
-          id: `${Date.now()}_${Math.random()}`,
+          id: generaId(),
           descrizione: m.descrizione,
           unita: m.unita,
           quantita: delta,
@@ -6324,7 +6334,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
 
     if (target?.arrivato) {
       const invRaw = await getItemSync("@inventario");
-      let inv: any[] = Array.isArray(invRaw) ? invRaw : [];
+      const inv: any[] = Array.isArray(invRaw) ? invRaw : [];
       const idx = inv.findIndex(
         (i: any) => i.descrizione === target.descrizione && i.unita === target.unita && i.fornitore === ordine.nomeFornitore
       );
@@ -6341,7 +6351,7 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
 
   const salvaNuovoMateriale = async () => {
     if (!ordine) return;
-    const id = `${Date.now()}_${Math.random()}`;
+    const id = generaId();
     let fotoUrl = null;
     let fotoStoragePath = null;
     if (newPhotoFile) {
@@ -6636,11 +6646,13 @@ const Acquisti = () => {
         const snapshot = await readNextProcurementSnapshot();
         if (cancelled) return;
         setNextReadOnlySnapshot(snapshot);
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (cancelled) return;
         setNextReadOnlySnapshot(null);
         setNextReadOnlyError(
-          error?.message || "Impossibile leggere il workbench procurement in sola lettura.",
+          error instanceof Error && error.message
+            ? error.message
+            : "Impossibile leggere il workbench procurement in sola lettura.",
         );
       } finally {
         if (!cancelled) {
@@ -6712,7 +6724,9 @@ const Acquisti = () => {
                 <p className="acq-eyebrow">Gestione Acquisti</p>
                 <h1 className="acq-title">Acquisti</h1>
                 <p className="acq-subtitle">
-                  Modulo clone in sola lettura: ordini, arrivi e dettaglio ordine restano navigabili senza scritture.
+                  Modulo clone in sola lettura: ordini, arrivi e dettaglio ordine restano
+                  navigabili; preventivi sono solo preview prudenziale, listino solo contesto e le
+                  azioni operative non sono importate davvero.
                 </p>
               </div>
             </div>
@@ -6723,11 +6737,11 @@ const Acquisti = () => {
 
           <div className="acq-tabs" role="tablist" aria-label="Schede acquisti clone">
             {[
-              ["ordine-materiali", "Ordine materiali"],
-              ["ordini", "Ordini"],
-              ["arrivi", "Arrivi"],
-              ["preventivi", "Prezzi & Preventivi"],
-              ["listino", "Listino Prezzi"],
+              ["ordine-materiali", "Ordine materiali | bloccato"],
+              ["ordini", "Ordini | read-only"],
+              ["arrivi", "Arrivi | read-only"],
+              ["preventivi", "Prezzi & Preventivi | preview"],
+              ["listino", "Listino Prezzi | contesto"],
             ].map(([tabId, label]) => {
               const isActive = !activeOrder && nextCloneTab === tabId;
               return (

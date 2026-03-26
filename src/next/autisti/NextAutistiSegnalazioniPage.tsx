@@ -542,7 +542,7 @@ export default function NextAutistiSegnalazioniPage() {
         <div className="seg-label">Foto (opzionale)</div>
 
         <label className="seg-photoBtn">
-          + AGGIUNGI FOTO
+          + AGGIUNGI FOTO LOCALE
           <input
             type="file"
             accept="image/*"
@@ -571,7 +571,7 @@ export default function NextAutistiSegnalazioniPage() {
                   className="seg-photoRemove"
                   onClick={() => removeFoto(item.id)}
                 >
-                  RIMUOVI
+                  RIMUOVI FOTO LOCALE
                 </button>
               </div>
             ))}

@@ -308,6 +308,18 @@ type RepoUnderstandingState =
       transportMessage: string;
     };
 
+type RepoDependencyMapPreviewEntry = {
+  id: string;
+  label: string;
+  domainCodes?: string[];
+  featureLabel?: string;
+  routePaths?: string[];
+  uiFilePaths?: string[];
+  domainFilePaths?: string[];
+  backendFilePaths?: string[];
+  impactRisk?: string;
+};
+
 type ChatAttachmentRepositoryState =
   | {
       status: "idle";
@@ -569,7 +581,7 @@ const CHAT_INTENT_LABELS: Record<InternalAiChatMessage["intent"], string> = {
   report_autista: "Report autista",
   report_combinato: "Report combinato",
   mezzo_dossier: "Analisi gestionale mezzo",
-  repo_understanding: "Repo, flussi e integrazione",
+  repo_understanding: "Repo, flussi e mappa dipendenze",
   capabilities: "Capability console IA",
   non_supportato: "Richiesta non supportata",
   richiesta_generica: "Richiesta generica",
@@ -580,6 +592,7 @@ const CHAT_SUGGESTIONS = [
   "Se modifico il Dossier Mezzo, quali moduli e file rischio di impattare?",
   "Voglio aggiungere un nuovo modulo nel gestionale: dove lo dovrei inserire, quali moduli esistenti toccherebbe e come lo gestiresti nel perimetro NEXT?",
   "Questa logica vive nella madre, nella NEXT o nel backend IA? E quali file devo leggere per capirla bene?",
+  "Questo dato lo stai leggendo live o dal clone?",
   "Se voglio aggiungere una nuova funzione IA legata ai flussi operativi, qual e il punto corretto di integrazione?",
   "Crea un report sui rifornimenti di questo mese e dimmi la media km/l della targa TI233827",
   "Dimmi quali sono oggi i 3 mezzi che richiedono piu attenzione, incrociando scadenze, collaudi/pre-collaudi, segnalazioni, lavori aperti e criticita operative",
@@ -641,9 +654,9 @@ const UNIFIED_CONSOLE_SCOPE_OPTIONS: Array<{
 
 const UNIFIED_OUTPUT_LABELS: Record<UnifiedConsoleOutputPreference, string> = {
   thread: "Lascia nel thread",
-  modale: "Apri come modale",
-  pdf: "Genera PDF",
-  report: "Crea report",
+  modale: "Apri modale IA",
+  pdf: "Apri PDF IA-only",
+  report: "Apri report IA",
 };
 
 const LOOKUP_MATCH_LABELS: Record<InternalAiVehicleLookupMatchState, string> = {
@@ -773,7 +786,7 @@ const CONTRACT_RUNTIME_LABELS: Record<"disabled" | "mock_safe_backend", string> 
 const BACKEND_PREVIEW_TRANSPORT_LABELS: Record<BackendPreviewTransportState, string> = {
   non_attivo: "Nessun ponte attivo",
   server_http_provider: "Provider reale server-side",
-  server_http_retrieval: "Retrieval server-side read-only",
+  server_http_retrieval: "Snapshot server-side clone-seeded",
   backend_mock_safe: "Backend separato mock-safe",
   frontend_fallback: "Fallback locale clone-safe",
 };
@@ -802,9 +815,9 @@ const REPO_WRITE_POLICY_LABELS: Record<string, string> = {
 };
 
 const FIREBASE_READINESS_LABELS: Record<string, string> = {
-  ready: "Pronto",
+  ready: "Aperto",
   partial: "Parziale",
-  not_ready: "Non pronto",
+  not_ready: "Chiuso",
 };
 
 const FIREBASE_REQUIREMENT_STATUS_LABELS: Record<string, string> = {
@@ -1447,6 +1460,17 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
 
   if (
     message.intent === "repo_understanding" &&
+    (normalized.includes("live-read") ||
+      normalized.includes("live read") ||
+      normalized.includes("live o dal clone") ||
+      normalized.includes("snapshot read-only") ||
+      normalized.includes("read-only del clone"))
+  ) {
+    return "Confine live-read";
+  }
+
+  if (
+    message.intent === "repo_understanding" &&
     (normalized.includes("backend ia") ||
       normalized.includes("vive nella madre") ||
       normalized.includes("vive nella next"))
@@ -1548,6 +1572,15 @@ function buildChatContextChips(message: InternalAiChatMessage): string[] {
 
   if (normalized.includes("integrazione")) {
     chips.push("integrazione");
+  }
+
+  if (
+    normalized.includes("live-read") ||
+    normalized.includes("live read") ||
+    normalized.includes("snapshot read-only") ||
+    normalized.includes("read-only del clone")
+  ) {
+    chips.push("confine live");
   }
 
   if (normalized.includes("backend ia") || normalized.includes("madre") || normalized.includes("next")) {
@@ -1945,6 +1978,18 @@ function buildRuntimeObserverMetrics(
       stateObservations.filter((state) => state.status === "unavailable").length,
     stateKindCounts,
   };
+}
+
+function readRepoDependencyMaps(
+  snapshot: InternalAiServerRepoUnderstandingSnapshot | null | undefined,
+): RepoDependencyMapPreviewEntry[] {
+  const candidate = (
+    snapshot as (InternalAiServerRepoUnderstandingSnapshot & {
+      dependencyMaps?: RepoDependencyMapPreviewEntry[];
+    }) | null | undefined
+  )?.dependencyMaps;
+
+  return Array.isArray(candidate) ? candidate : [];
 }
 
 function normalizeChatPrompt(value: string): string {
@@ -2539,6 +2584,13 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       })
       .join(" | ");
   }, [runtimeObserverMetrics]);
+  const repoDependencyMaps = useMemo(
+    () =>
+      repoUnderstandingState.status === "ready"
+        ? readRepoDependencyMaps(repoUnderstandingState.snapshot)
+        : [],
+    [repoUnderstandingState.status, repoUnderstandingState.snapshot],
+  );
   const chatStatusCards = useMemo(
     () => [
       {
@@ -2582,18 +2634,11 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
             : repoUnderstandingState.transportMessage ?? "La comprensione repo/UI resta read-only e curata.",
       },
       {
-        label: "Retrieval business read-only",
-        value:
-          librettoPreviewState.transport === "server_http_retrieval"
-            ? "Attivo sul perimetro libretto"
-            : "Parziale o non attivo",
-        tone:
-          librettoPreviewState.transport === "server_http_retrieval"
-            ? "is-positive"
-            : "is-warning",
+        label: "Lettura business live",
+        value: "Chiusa",
+        tone: "is-neutral",
         detail:
-          librettoPreviewState.transportMessage ??
-          "Oggi e dimostrato sul perimetro mezzo-centrico controllato: libretto D01 e hook Dossier clone-seeded quando il retrieval server-side e disponibile.",
+          "Oggi la console usa solo read model NEXT clone-safe, snapshot D01/Dossier seedate dal clone e snapshot repo/UI curate. Firestore e Storage business live non sono una fonte attiva.",
       },
       {
         label: "Formato scelto dall'assistente",
@@ -2613,8 +2658,6 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       repoUnderstandingState.snapshot,
       runtimeObserverMetrics,
       repoUnderstandingState.transportMessage,
-      librettoPreviewState.transport,
-      librettoPreviewState.transportMessage,
       latestAssistantMessage,
     ],
   );
@@ -2633,12 +2676,12 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         [economicAnalysisPreviewState.transport, documentsPreviewState.transport, librettoPreviewState.transport, preventiviPreviewState.transport].some(
           (transport) => transport === "server_http_retrieval",
         )
-          ? "attivi"
+          ? "clone + snapshot"
           : [economicAnalysisPreviewState.transport, documentsPreviewState.transport, librettoPreviewState.transport, preventiviPreviewState.transport].some(
                 (transport) => transport !== "non_attivo",
               )
-            ? "parziali"
-            : "non attivi";
+            ? "clone/read model"
+            : "inattiva";
       const observerState =
         repoUnderstandingState.status === "ready" && repoUnderstandingState.snapshot
           ? repoUnderstandingState.snapshot.runtimeObserver.status === "observed"
@@ -2667,12 +2710,12 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
           tone: backendState === "attivo" ? "is-positive" : backendState === "fallback" ? "is-warning" : "is-neutral",
         },
         {
-          label: "Dati reali",
+          label: "Fonte business",
           value: realDataState,
           tone:
-            realDataState === "attivi"
+            realDataState === "clone + snapshot"
               ? "is-positive"
-              : realDataState === "parziali"
+              : realDataState === "clone/read model"
                 ? "is-warning"
                 : "is-neutral",
         },
@@ -5165,7 +5208,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               Chat operativa al centro, report recenti per targa sulla destra, sola lettura.
             </p>
             <p className="internal-ai-card__meta">
-              Nessun segreto lato client, nessun backend live nuovo e nessuna scrittura business.
+              Live-read business chiuso: la IA usa clone/read model, snapshot server-side curate e
+              nessuna scrittura business.
             </p>
             <div className="internal-ai-nav" style={{ marginTop: 16 }}>
               {PRIMARY_SECTION_NAV.map((id) => (
@@ -5656,8 +5700,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               mezzo sulla prima verticale D01 + D10 + D02, ma la console puo ora aiutare anche su
               repo, flussi, moduli collegati, impatti file/layer e punti corretti di integrazione
               nel perimetro NEXT. Usa reader NEXT read-only e snapshot repo/UI controllate come
-              fonti canoniche, dichiara i limiti quando la richiesta sconfina e tiene il report
-              targa come capability distinta nell&apos;anteprima PDF.
+              fonti canoniche, tiene chiuso il live-read business e dichiara i limiti quando la
+              richiesta sconfina, lasciando il report targa come capability distinta
+              nell&apos;anteprima PDF.
             </p>
             <div className="internal-ai-pill-row" style={{ marginBottom: 12 }}>
               <span className="internal-ai-pill is-neutral">D01 anagrafica mezzo</span>
@@ -5830,8 +5875,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     <span className={statusToneClass("running")}>In elaborazione</span>
                   </div>
                   <p className="internal-ai-chat__message-text">
-                    Sto preparando una risposta controllata dal backend IA separato. Se la
-                    richiesta e un report, troverai il contenuto lungo in una anteprima dedicata.
+                    Sto preparando una risposta controllata dal backend IA separato sopra contesto
+                    clone/read-only. Se la richiesta e un report, troverai il contenuto lungo in
+                    una anteprima dedicata.
                   </p>
                 </div>
               ) : null}
@@ -6180,7 +6226,15 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     </p>
                   </article>
                   <article className="internal-ai-card">
-                    <p className="internal-ai-card__eyebrow">Firebase read-only</p>
+                    <p className="internal-ai-card__eyebrow">Dependency map</p>
+                    <h3>{repoDependencyMaps.length}</h3>
+                    <p className="internal-ai-card__meta">
+                      Moduli con route, file UI, read model, backend IA, monte/valle e punto di
+                      integrazione gia strutturati per la chat tecnica.
+                    </p>
+                  </article>
+                  <article className="internal-ai-card">
+                    <p className="internal-ai-card__eyebrow">Live-read business</p>
                     <h3>
                       {
                         FIREBASE_READINESS_LABELS[
@@ -6189,8 +6243,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       }
                     </h3>
                     <p className="internal-ai-card__meta">
-                      Stato readiness verificato per Firestore server-side read-only nel backend IA
-                      separato.
+                      Verdetto runtime per il backend IA separato: Firestore e Storage business live
+                      restano chiusi.
                     </p>
                   </article>
                 </section>
@@ -6232,6 +6286,63 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     </ul>
                   </article>
                 </div>
+                {repoDependencyMaps.length ? (
+                  <div className="next-section-grid" style={{ marginTop: 16 }}>
+                    <article className="next-panel">
+                      <div className="next-panel__header">
+                        <h3>Dependency map repo e moduli</h3>
+                      </div>
+                      <p className="next-panel__description">
+                        Questa matrice rende piu strutturale il repo assistant: per ogni area chiave
+                        mostra domini, route, file UI, read model, backend IA e rischio impatto,
+                        cosi la chat puo motivare meglio dove leggere e dove intervenire.
+                      </p>
+                      <div className="internal-ai-list" style={{ marginTop: 16 }}>
+                        {repoDependencyMaps.map((entry) => (
+                          <div key={`dependency-map:${entry.id}`} className="internal-ai-list__row">
+                            <div className="internal-ai-list__row-header">
+                              <strong>{entry.label}</strong>
+                              <div className="internal-ai-pill-row">
+                                {entry.domainCodes?.length ? (
+                                  <span className="internal-ai-pill is-neutral">
+                                    {entry.domainCodes.join(" | ")}
+                                  </span>
+                                ) : null}
+                                {entry.impactRisk ? (
+                                  <span className="internal-ai-pill is-warning">
+                                    Rischio {entry.impactRisk}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            {entry.featureLabel ? (
+                              <p className="internal-ai-muted">{entry.featureLabel}</p>
+                            ) : null}
+                            {entry.routePaths?.length ? (
+                              <p className="internal-ai-card__meta">
+                                <strong>Route:</strong>{" "}
+                                {entry.routePaths.map((routePath) => (
+                                  <code key={`${entry.id}:route:${routePath}`}>{routePath} </code>
+                                ))}
+                              </p>
+                            ) : null}
+                            <div className="internal-ai-pill-row">
+                              <span className="internal-ai-pill is-neutral">
+                                UI {entry.uiFilePaths?.length ?? 0}
+                              </span>
+                              <span className="internal-ai-pill is-neutral">
+                                Read model {entry.domainFilePaths?.length ?? 0}
+                              </span>
+                              <span className="internal-ai-pill is-neutral">
+                                Backend IA {entry.backendFilePaths?.length ?? 0}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  </div>
+                ) : null}
                 <div className="next-section-grid" style={{ marginTop: 16 }}>
                   <article className="next-panel">
                     <div className="next-panel__header">
@@ -6668,7 +6779,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                 <div className="next-section-grid" style={{ marginTop: 16 }}>
                   <article className="next-panel">
                     <div className="next-panel__header">
-                      <h3>Readiness Firestore server-side</h3>
+                      <h3>Boundary Firestore live</h3>
                     </div>
                     <div className="internal-ai-pill-row">
                       <span
@@ -6713,13 +6824,13 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       </ul>
                     ) : null}
                     <p className="internal-ai-card__meta">
-                      Prossimo passo stabile:{" "}
+                      Confine attuale:{" "}
                       {repoUnderstandingState.snapshot.firebaseReadiness.firestoreReadOnly.nextStep}
                     </p>
                   </article>
                   <article className="next-panel">
                     <div className="next-panel__header">
-                      <h3>Readiness Storage server-side</h3>
+                      <h3>Boundary Storage live</h3>
                     </div>
                     <div className="internal-ai-pill-row">
                       <span
@@ -6764,7 +6875,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       </ul>
                     ) : null}
                     <p className="internal-ai-card__meta">
-                      Prossimo passo stabile:{" "}
+                      Confine attuale:{" "}
                       {repoUnderstandingState.snapshot.firebaseReadiness.storageReadOnly.nextStep}
                     </p>
                   </article>
@@ -8319,9 +8430,9 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   <h2>Anteprima report pronta</h2>
                 </div>
                 <p className="next-panel__description">
-                  {activeReportState.report.title}. Apro un report gestionale ordinato con sintesi,
-                  dati mezzo, foto reale e sezioni operative, cosi la chat resta leggibile anche
-                  quando il contenuto e ampio.
+                  {activeReportState.report.title}. Apro un report IA interno ordinato con sintesi,
+                  dati clone-safe e sezioni operative, cosi la chat resta leggibile anche quando il
+                  contenuto e ampio senza aprire workflow business reali.
                 </p>
                 <div className="internal-ai-pill-row" style={{ marginTop: 12 }}>
                   <span className="internal-ai-pill is-neutral">
@@ -8356,23 +8467,23 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       openReportPreviewModal(activeReportState.report!, openedArtifactId)
                     }
                   >
-                    Apri report professionale
+                    Apri report IA-only
                   </button>
                   <button
                     type="button"
                     className="internal-ai-search__button"
                     onClick={handlePrepareReportPdf}
                   >
-                    Genera PDF
+                    Genera PDF IA-only
                   </button>
                   <button type="button" className="internal-ai-search__button" onClick={markRevisionRequested}>
-                    Segna da rivedere
+                    Segna da rivedere (IA)
                   </button>
                   <button type="button" className="internal-ai-search__button" onClick={markApprovable}>
-                    Segna come approvabile
+                    Segna approvabile (IA)
                   </button>
                   <button type="button" className="internal-ai-search__button" onClick={discardPreview}>
-                    Scarta anteprima
+                    Scarta anteprima IA
                   </button>
                   <button type="button" className="internal-ai-search__button" onClick={saveDraftArtifact}>
                     Salva draft nell&apos;archivio IA
@@ -8385,7 +8496,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   >
                     {reportSummaryWorkflowState.status === "loading"
                       ? "Sintesi server-side..."
-                      : "Genera sintesi IA server-side"}
+                      : "Genera sintesi IA server-side (preview)"}
                   </button>
                 </div>
 
@@ -8452,7 +8563,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                         }
                         onClick={() => void handleApproveServerReportSummary()}
                       >
-                        Approva preview
+                        Approva preview IA
                       </button>
                       <button
                         type="button"
@@ -8463,7 +8574,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                         }
                         onClick={() => void handleRejectServerReportSummary()}
                       >
-                        Respinge preview
+                        Respingi preview IA
                       </button>
                       <button
                         type="button"
@@ -8475,7 +8586,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                         }
                         onClick={() => void handleRollbackServerReportSummary()}
                       >
-                        Esegui rollback
+                        Rollback preview IA
                       </button>
                     </div>
                     <ul className="internal-ai-inline-list">
@@ -9068,7 +9179,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                   className="internal-ai-search__button"
                   onClick={handleDownloadReportDocument}
                 >
-                  Scarica PDF
+                  Scarica PDF IA
                 </button>
                 {typeof navigator !== "undefined" && "share" in navigator ? (
                   <button
@@ -9076,7 +9187,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                     className="internal-ai-search__button"
                     onClick={() => void handleShareReportDocument()}
                   >
-                    Condividi
+                    Condividi PDF IA
                   </button>
                 ) : null}
                 <button

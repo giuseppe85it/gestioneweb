@@ -143,7 +143,7 @@ export const INTERNAL_AI_CONTRACTS: InternalAiContractDescriptor[] = [
     mode: "bridge_mock_safe",
     runtime: "mock_safe_backend",
     note:
-      "Contratto ora instradato nel backend IA separato tramite adapter HTTP server-side: usa OpenAI solo lato server quando disponibile, mantiene fallback locale esplicito e non riusa runtime legacy come backend canonico.",
+      "Contratto ora instradato nel backend IA separato tramite adapter HTTP server-side: usa OpenAI solo lato server quando disponibile, mantiene fallback locale esplicito, non riusa runtime legacy come backend canonico e non apre live-read business.",
   },
   {
     id: "vehicle-dossier-hook",
@@ -215,7 +215,7 @@ export const INTERNAL_AI_CONTRACTS: InternalAiContractDescriptor[] = [
     mode: "bridge_mock_safe",
     runtime: "mock_safe_backend",
     note:
-      "Contratto read-only server-side attivo in forma curata: il backend IA separato costruisce una snapshot repo/UI da documenti architetturali, indice controllato di codice e CSS, relazioni madre vs NEXT e audit di readiness Firebase, senza autonomia di patch, senza writer business e senza riuso dei runtime legacy.",
+      "Contratto read-only server-side attivo in forma curata: il backend IA separato costruisce una snapshot repo/UI da documenti architetturali, indice controllato di codice e CSS, relazioni madre vs NEXT, dependency map strutturale di route/moduli/layer e audit di readiness Firebase, senza autonomia di patch, senza writer business e senza riuso dei runtime legacy.",
   },
   {
     id: "retrieval-data",
@@ -223,7 +223,7 @@ export const INTERNAL_AI_CONTRACTS: InternalAiContractDescriptor[] = [
     mode: "bridge_mock_safe",
     runtime: "mock_safe_backend",
     note:
-      "Primo retrieval server-side read-only ora attivo tramite adapter dedicato del backend IA su due perimetri stretti: snapshot D01 per contesto mezzo/libretto e snapshot Dossier mezzo clone-seeded per hook mezzo-centrico e rifornimenti, con fallback locale esplicito e senza letture dirette Firestore/Storage business lato server.",
+      "Primo retrieval server-side read-only ora attivo tramite adapter dedicato del backend IA su due perimetri stretti: snapshot D01 per contesto mezzo/libretto e snapshot Dossier mezzo clone-seeded per hook mezzo-centrico e rifornimenti, con fallback locale esplicito, live-read business chiuso e senza letture dirette Firestore/Storage lato server.",
   },
   {
     id: "artifact-repository",

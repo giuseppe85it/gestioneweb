@@ -53,7 +53,7 @@ import {
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
 
-const CLONE_ACTION_BLOCKED_TITLE = "Clone read-only: azione bloccata";
+const CLONE_ACTION_BLOCKED_TITLE = "Clone in sola lettura: azione non disponibile";
 
 function resolveCloneSafeRoute(path: string): string | null {
   if (path.startsWith("/next/")) return path;
@@ -239,42 +239,58 @@ function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
 }
 
 const QUICK_LINKS_OPERATIVO = buildQuickLinks([
-  { to: "/gestione-operativa", label: "Gestione Operativa" },
-  { to: "/attrezzature-cantieri", label: "Attrezzature Cantieri" },
+  {
+    to: "/gestione-operativa",
+    label: "Gestione Operativa",
+    description: "Workbench clone-safe con superfici consultabili e nessuna scrittura reale.",
+  },
+  {
+    to: "/attrezzature-cantieri",
+    label: "Attrezzature Cantieri read-only",
+    description: "Consulta consegne e spostamenti senza ritiri o variazioni reali.",
+  },
   {
     to: "/autisti-admin",
-    label: "Centro rettifica dati (admin)",
-    description: "Correggi dati e risolvi anomalie operative.",
+    label: "Autisti Admin (lettura)",
+    description: "Consulta dati autisti e anomalie nel clone, senza rettifiche reali.",
   },
   {
     to: "/autisti-inbox",
-    label: "Autisti Inbox (admin)",
-    description: "Vedi e gestisci cio che arriva dagli autisti.",
+    label: "Autisti Inbox (admin, lettura)",
+    description: "Consulta cio che arriva dagli autisti, senza presa in carico sulla madre.",
   },
-  { to: "/manutenzioni", label: "Manutenzioni" },
-  { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire" },
-  { to: "/lavori-eseguiti", label: "Lavori Eseguiti" },
-  { to: "/lavori-in-attesa", label: "Lavori In Attesa" },
-  { to: "/materiali-da-ordinare", label: "Materiali Da Ordinare" },
-  { to: "/materiali-consegnati", label: "Materiali Consegnati" },
-  { to: "/inventario", label: "Inventario" },
-  { to: "/ordini-arrivati", label: "Ordini Arrivati" },
-  { to: "/ordini-in-attesa", label: "Ordini In Attesa" },
-  { to: "/ia", label: "Intelligenza Artificiale" },
+  { to: "/manutenzioni", label: "Manutenzioni read-only" },
+  { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire read-only" },
+  { to: "/lavori-eseguiti", label: "Lavori Eseguiti read-only" },
+  { to: "/lavori-in-attesa", label: "Lavori In Attesa read-only" },
+  {
+    to: "/materiali-da-ordinare",
+    label: "Materiali Da Ordinare (bloccato)",
+    description: "La bozza ordine non e importata davvero nel clone.",
+  },
+  { to: "/materiali-consegnati", label: "Materiali Consegnati read-only" },
+  { to: "/inventario", label: "Inventario read-only" },
+  { to: "/ordini-arrivati", label: "Ordini Arrivati read-only" },
+  { to: "/ordini-in-attesa", label: "Ordini In Attesa read-only" },
+  { to: "/ia", label: "IA interna clone-safe" },
   { to: "/libretti-export", label: "Libretti Export" },
-  { to: "/ia/documenti", label: "IA Documenti" },
+  { to: "/ia/documenti", label: "IA Documenti (clone-safe)" },
   { to: "/cisterna", label: "Cisterna Caravate" },
 ]);
 
 const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([
-  { to: "/mezzi", label: "Mezzi" },
-  { to: "/dossiermezzi", label: "Dossier Mezzi" },
-  { to: "/colleghi", label: "Colleghi" },
-  { to: "/fornitori", label: "Fornitori" },
+  { to: "/mezzi", label: "Mezzi read-only", description: "Anagrafiche flotta in consultazione." },
+  {
+    to: "/dossiermezzi",
+    label: "Dossier Mezzi read-only",
+    description: "Apre il Dossier clone-safe e non una vista 360 scrivente.",
+  },
+  { to: "/colleghi", label: "Colleghi read-only" },
+  { to: "/fornitori", label: "Fornitori read-only" },
   {
     to: "/autisti",
     label: "Autisti App (telefono)",
-    description: "Usata dagli autisti per inviare rifornimenti, segnalazioni e controlli.",
+    description: "Nel clone gli invii restano locali e non sincronizzano la madre.",
   },
 ]);
 
@@ -1070,35 +1086,35 @@ function Home() {
                 <h1 className="home-title">Dashboard Admin</h1>
                 <p className="home-subtitle">
                   Panoramica rapida su rimorchi, sessioni attive e revisioni. Tutti i pannelli
-                  portano alle sezioni operative.
+                  portano solo alle sezioni clone-safe gia leggibili.
                 </p>
               </div>
             </div>
             <div className="home-hero-right homeTopRight">
               <Link to={NEXT_AUTISTI_ADMIN_PATH} className="hero-card">
-                <div className="hero-card-title">Centro rettifica dati (admin)</div>
+                <div className="hero-card-title">Autisti Admin (lettura)</div>
                 <div className="hero-card-value hero-card-subtext">
-                  Correggi dati e risolvi anomalie operative.
+                  Consulta dati autisti e anomalie nel clone, senza rettifiche reali.
                 </div>
               </Link>
               <Link to={NEXT_MEZZI_PATH} className="hero-card">
                 <div className="hero-card-title">Mezzi</div>
-                <div className="hero-card-value">Anagrafiche</div>
+                <div className="hero-card-value">Anagrafiche read-only</div>
               </Link>
               <Link to="/next/capo/mezzi" className="hero-card">
                 <div className="hero-card-title">Area Capo</div>
                 <div className="hero-card-value hero-card-subtext">
-                  Costi mezzi, fatture e riepiloghi.
+                  Costi mezzi e documenti in sola lettura.
                 </div>
               </Link>
               <Link to={NEXT_MANUTENZIONI_PATH} className="hero-card">
                 <div className="hero-card-title">Manutenzioni</div>
-                <div className="hero-card-value">Registro</div>
+                <div className="hero-card-value">Registro read-only</div>
               </Link>
               <Link to={NEXT_AUTISTI_INBOX_PATH} className="hero-card">
-                <div className="hero-card-title">Autisti Inbox (admin)</div>
+                <div className="hero-card-title">Autisti Inbox (admin, lettura)</div>
                 <div className="hero-card-value hero-card-subtext">
-                  Vedi e gestisci cio che arriva dagli autisti.
+                  Consulta cio che arriva dagli autisti, senza presa in carico sulla madre.
                 </div>
               </Link>
             </div>
@@ -1113,7 +1129,7 @@ function Home() {
                   <div>
                     <h2 className="home-card__title">Ricerca 360</h2>
                     <span className="home-card__subtitle">
-                      Cerca targa o autista e apri la Vista Mezzo 360
+                      Cerca targa o autista e apri il Dossier Mezzo clone-safe
                     </span>
                   </div>
                 </div>
@@ -1233,7 +1249,7 @@ function Home() {
                             title={CLONE_ACTION_BLOCKED_TITLE}
                             onClick={handleAutistaSearch}
                           >
-                            Apri
+                            Vista 360 non importata
                           </button>
                         </div>
                       </div>
@@ -1262,7 +1278,7 @@ function Home() {
                       disabled={!canExportAlerts}
                       title={CLONE_ACTION_BLOCKED_TITLE}
                     >
-                      ESPORTA PDF
+                      PDF alert non disponibile
                     </button>
                   </div>
                   <div className="panel-body alerts-list home-card__body">
@@ -1290,7 +1306,7 @@ function Home() {
                                 disabled
                                 title={CLONE_ACTION_BLOCKED_TITLE}
                               >
-                                Ignora
+                                Ignora (bloccato)
                               </button>
                               <button
                                 type="button"
@@ -1298,7 +1314,7 @@ function Home() {
                                 disabled
                                 title={CLONE_ACTION_BLOCKED_TITLE}
                               >
-                                In seguito
+                                Rinvia (bloccato)
                               </button>
                               <button
                                 type="button"
@@ -1518,7 +1534,7 @@ function Home() {
                                     disabled
                                     title={CLONE_ACTION_BLOCKED_TITLE}
                                   >
-                                    Profilo
+                                    Profilo non importato
                                   </button>
                                 ) : null}
                               </div>

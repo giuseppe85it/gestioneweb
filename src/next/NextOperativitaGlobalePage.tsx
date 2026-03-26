@@ -240,7 +240,9 @@ const GestioneOperativa: React.FC = () => {
             />
             <div>
               <h1 className="go-title">Gestione Operativa</h1>
-              <p className="go-subtitle">Centro di controllo magazzino e manutenzioni</p>
+              <p className="go-subtitle">
+                Centro di consultazione read-only per magazzino, manutenzioni e procurement prudente
+              </p>
             </div>
           </div>
 
@@ -301,7 +303,7 @@ const GestioneOperativa: React.FC = () => {
                 type="button"
                 onClick={() => openCloneSection("materiali")}
               >
-                Apri movimenti materiali
+                Apri movimenti materiali read-only
               </button>
             </div>
 
@@ -313,20 +315,24 @@ const GestioneOperativa: React.FC = () => {
                 type="button"
                 onClick={() => openCloneSection("manutenzioni")}
               >
-                Vai a manutenzioni
+                Apri manutenzioni read-only
               </button>
             </div>
 
             <div className="go-action-card">
               <h3>Acquisti / Ordini</h3>
-              <p>Apri il workbench procurement clone-safe con ordini, arrivi e dettaglio read-only.</p>
+              <p>
+                Apri il workbench procurement clone-safe con ordini, arrivi e dettaglio read-only.
+                Questo pannello resta separato da D05: stock e movimenti materiali si leggono nelle
+                viste magazzino dedicate.
+              </p>
               <button
                 className="go-primary-btn"
                 type="button"
                 onClick={() => openCloneSection("procurement", { procurementTab: "ordini" })}
                 title={snapshot?.navigability.ordini.reason ?? undefined}
               >
-                Vai ad acquisti
+                Apri acquisti read-only
               </button>
             </div>
 
@@ -338,7 +344,7 @@ const GestioneOperativa: React.FC = () => {
                 type="button"
                 onClick={() => openReadOnlyTarget("/next/centro-controllo")}
               >
-                Apri Centro Controllo
+                Apri Centro Controllo read-only
               </button>
             </div>
 
@@ -394,7 +400,7 @@ const GestioneOperativa: React.FC = () => {
               style={activeSection === "inventario" ? ACTIVE_FILTER_BUTTON_STYLE : undefined}
               onClick={() => openCloneSection("inventario")}
             >
-              Inventario
+              Inventario read-only
             </button>
             <button
               type="button"
@@ -402,7 +408,7 @@ const GestioneOperativa: React.FC = () => {
               style={activeSection === "materiali" ? ACTIVE_FILTER_BUTTON_STYLE : undefined}
               onClick={() => openCloneSection("materiali")}
             >
-              Materiali consegnati
+              Materiali read-only
             </button>
             <button
               type="button"
@@ -410,7 +416,7 @@ const GestioneOperativa: React.FC = () => {
               style={activeSection === "manutenzioni" ? ACTIVE_FILTER_BUTTON_STYLE : undefined}
               onClick={() => openCloneSection("manutenzioni")}
             >
-              Manutenzioni
+              Manutenzioni read-only
             </button>
             <button
               type="button"
@@ -419,7 +425,7 @@ const GestioneOperativa: React.FC = () => {
               onClick={() => openCloneSection("attrezzature")}
               title={snapshot?.navigability.attrezzature.reason ?? undefined}
             >
-              Attrezzature
+              Attrezzature read-only
             </button>
             <button
               type="button"
@@ -428,7 +434,7 @@ const GestioneOperativa: React.FC = () => {
               onClick={() => openCloneSection("procurement", { procurementTab: "ordini" })}
               title={snapshot?.navigability.ordini.reason ?? undefined}
             >
-              Acquisti / Ordini
+              Acquisti read-only
             </button>
           </div>
 

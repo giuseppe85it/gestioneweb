@@ -109,27 +109,27 @@ export function bootstrapNextAutistiCloneStorage(storage: Storage) {
 export function getNextAutistiNoticeMessage(code: NextAutistiNoticeCode): string {
   switch (code) {
     case "rifornimento":
-      return "Rifornimento resta fuori dal perimetro clone-safe attivo dell'app autisti.";
+      return "Rifornimento resta fuori dal perimetro clone-safe oggi importato nell'app autisti.";
     case "rifornimento-locale":
-      return "Rifornimento salvato solo nel clone: il dato non viene sincronizzato sulla madre.";
+      return "Rifornimento salvato solo nel locale clone: il dato non viene sincronizzato sulla madre.";
     case "segnalazioni":
-      return "Segnalazioni nel clone resta locale e non sincronizza la madre.";
+      return "Segnalazioni nel clone restano locali e non sincronizzano la madre.";
     case "segnalazioni-locale":
-      return "Segnalazione salvata solo nel clone: testo e foto non vengono sincronizzati sulla madre.";
+      return "Segnalazione salvata solo nel locale clone: testo e foto non vengono sincronizzati sulla madre.";
     case "richiesta-attrezzature":
       return "Richiesta attrezzature nel clone resta locale e non sincronizza la madre.";
     case "richiesta-attrezzature-locale":
-      return "Richiesta attrezzature salvata solo nel clone: testo e foto non vengono sincronizzati sulla madre.";
+      return "Richiesta attrezzature salvata solo nel locale clone: testo e foto non vengono sincronizzati sulla madre.";
     case "sgancia-motrice":
       return "Sgancio motrice resta bloccato nel clone finche la sessione madre non puo essere aggiornata.";
     case "controllo-locale":
-      return "Controllo salvato solo nel clone: il passaggio resta locale e non sincronizza la madre.";
+      return "Controllo salvato solo nel locale clone: il passaggio resta locale e non sincronizza la madre.";
     case "cambio-mezzo-locale":
-      return "Cambio mezzo applicato solo nel clone: l'assetto madre non viene aggiornato.";
+      return "Cambio mezzo applicato solo nel locale clone: l'assetto madre non viene aggiornato.";
     case "gomme-salvataggio-bloccato":
       return "Gomme aperto in clone-safe: il salvataggio resta bloccato per non simulare una sincronizzazione sulla madre.";
     default:
-      return "Questo passaggio resta fuori dal perimetro clone-safe attuale dell'app autisti.";
+      return "Questa schermata non e ancora importata nel perimetro clone-safe attuale dell'app autisti.";
   }
 }
 

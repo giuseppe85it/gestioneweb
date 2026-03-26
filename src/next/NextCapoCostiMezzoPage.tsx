@@ -19,6 +19,17 @@ const BLOCKED_CTA_LABELS = [
   "ANTEPRIMA TIMBRATO",
 ] as const;
 
+function readErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+type ComputedCapoCostiRecord = NextCapoCostiRecord & {
+  dateValue: Date | null;
+  importoValue: number | null;
+  importoValid: boolean;
+  dateValid: boolean;
+};
+
 type Currency = NextDocumentiCostiCurrency;
 type ActiveTab = "FATTURE" | "PREVENTIVI" | "TUTTI";
 
@@ -122,9 +133,9 @@ export default function NextCapoCostiMezzoPage() {
         setRecords(snapshot.items);
         setMezzoLabel(snapshot.mezzo?.targa || snapshot.mezzoTarga);
         setLoading(false);
-      } catch (loadError: any) {
+      } catch (loadError: unknown) {
         if (cancelled) return;
-        setError(loadError?.message || "Errore caricamento costi.");
+        setError(readErrorMessage(loadError, "Errore caricamento costi."));
         setRecords([]);
         setMezzoLabel("");
         setLoading(false);
@@ -144,74 +155,83 @@ export default function NextCapoCostiMezzoPage() {
   }, [now]);
 
   const computed = useMemo(() => {
-    let fattureMonthCHF = 0;
-    let fattureMonthEUR = 0;
-    let fattureYearCHF = 0;
-    let fattureYearEUR = 0;
-    let preventiviMonthCHF = 0;
-    let preventiviMonthEUR = 0;
-    let preventiviYearCHF = 0;
-    let preventiviYearEUR = 0;
-    let incomplete = 0;
-    let currencyUnknown = 0;
+    const summary = records.reduce(
+      (accumulator, record) => {
+        const dateValue = record.timestamp ? new Date(record.timestamp) : parseDateFlexible(record.data);
+        const importoValue =
+          typeof record.amount === "number" && Number.isFinite(record.amount) ? record.amount : null;
+        const importoValid = importoValue !== null;
+        const dateValid = dateValue instanceof Date && !Number.isNaN(dateValue.getTime());
+        const currency = record.currency ?? "UNKNOWN";
+        const enrichedRecord: ComputedCapoCostiRecord = {
+          ...record,
+          dateValue,
+          importoValue,
+          importoValid,
+          dateValid,
+        };
 
-    const enriched = records.map((record) => {
-      const dateValue = record.timestamp ? new Date(record.timestamp) : parseDateFlexible(record.data);
-      const importoValue = typeof record.amount === "number" ? record.amount : null;
-      const importoValid = Number.isFinite(importoValue as number);
-      const dateValid = Boolean(dateValue) && !Number.isNaN((dateValue as Date).getTime());
-      const currency = record.currency ?? "UNKNOWN";
+        accumulator.enriched.push(enrichedRecord);
 
-      if ((record.category === "preventivo" || record.category === "fattura") && (!importoValid || !dateValid)) {
-        incomplete += 1;
-      } else if (
-        (record.category === "preventivo" || record.category === "fattura") &&
-        currency === "UNKNOWN"
-      ) {
-        currencyUnknown += 1;
-      } else if (
-        (record.category === "preventivo" || record.category === "fattura") &&
-        dateValid &&
-        importoValid
-      ) {
-        const date = dateValue as Date;
-        if (date.getFullYear() === selectedYear) {
-          const amount = importoValue as number;
+        if ((record.category === "preventivo" || record.category === "fattura") && (!importoValid || !dateValid)) {
+          accumulator.incomplete += 1;
+          return accumulator;
+        }
+
+        if ((record.category === "preventivo" || record.category === "fattura") && currency === "UNKNOWN") {
+          accumulator.currencyUnknown += 1;
+          return accumulator;
+        }
+
+        if (
+          (record.category === "preventivo" || record.category === "fattura") &&
+          dateValue &&
+          importoValue !== null &&
+          dateValue.getFullYear() === selectedYear
+        ) {
           if (record.category === "fattura") {
             if (currency === "CHF") {
-              fattureYearCHF += amount;
-              if (date.getMonth() + 1 === selectedMonth) fattureMonthCHF += amount;
+              accumulator.fattureYearCHF += importoValue;
+              if (dateValue.getMonth() + 1 === selectedMonth) accumulator.fattureMonthCHF += importoValue;
             } else {
-              fattureYearEUR += amount;
-              if (date.getMonth() + 1 === selectedMonth) fattureMonthEUR += amount;
+              accumulator.fattureYearEUR += importoValue;
+              if (dateValue.getMonth() + 1 === selectedMonth) accumulator.fattureMonthEUR += importoValue;
             }
           } else if (currency === "CHF") {
-            preventiviYearCHF += amount;
-            if (date.getMonth() + 1 === selectedMonth) preventiviMonthCHF += amount;
+            accumulator.preventiviYearCHF += importoValue;
+            if (dateValue.getMonth() + 1 === selectedMonth) accumulator.preventiviMonthCHF += importoValue;
           } else {
-            preventiviYearEUR += amount;
-            if (date.getMonth() + 1 === selectedMonth) preventiviMonthEUR += amount;
+            accumulator.preventiviYearEUR += importoValue;
+            if (dateValue.getMonth() + 1 === selectedMonth) accumulator.preventiviMonthEUR += importoValue;
           }
         }
+
+        return accumulator;
+      },
+      {
+        fattureMonthCHF: 0,
+        fattureMonthEUR: 0,
+        fattureYearCHF: 0,
+        fattureYearEUR: 0,
+        preventiviMonthCHF: 0,
+        preventiviMonthEUR: 0,
+        preventiviYearCHF: 0,
+        preventiviYearEUR: 0,
+        incomplete: 0,
+        currencyUnknown: 0,
+        enriched: [] as ComputedCapoCostiRecord[],
       }
+    );
 
-      return {
-        ...record,
-        dateValue,
-        importoValue,
-        importoValid,
-        dateValid,
-      };
-    });
-
-    const periodFiltered = enriched
+    const periodFiltered = summary.enriched
       .filter((record) => record.dateValid)
       .filter((record) => {
-        const date = record.dateValue as Date;
+        const date = record.dateValue;
+        if (!date) return false;
         return date.getFullYear() === selectedYear && date.getMonth() + 1 === selectedMonth;
       })
       .sort((left, right) => {
-        const byDate = ((right.dateValue as Date)?.getTime?.() ?? 0) - ((left.dateValue as Date)?.getTime?.() ?? 0);
+        const byDate = (right.dateValue?.getTime() ?? 0) - (left.dateValue?.getTime() ?? 0);
         if (byDate !== 0) return byDate;
         return (right.importoValue ?? 0) - (left.importoValue ?? 0);
       });
@@ -226,9 +246,10 @@ export default function NextCapoCostiMezzoPage() {
     const preventiviCount = periodFiltered.filter((record) => record.category === "preventivo").length;
     const monthCounts = monthShortLabels.map((_, index) => {
       const monthIndex = index + 1;
-      return enriched.filter((record) => {
+      return summary.enriched.filter((record) => {
         if (!record.dateValid) return false;
-        const date = record.dateValue as Date;
+        const date = record.dateValue;
+        if (!date) return false;
         if (date.getFullYear() !== selectedYear || date.getMonth() + 1 !== monthIndex) return false;
         if (activeTab === "TUTTI") {
           return record.category === "fattura" || record.category === "preventivo";
@@ -239,16 +260,16 @@ export default function NextCapoCostiMezzoPage() {
     });
 
     return {
-      fattureMonthCHF,
-      fattureMonthEUR,
-      fattureYearCHF,
-      fattureYearEUR,
-      preventiviMonthCHF,
-      preventiviMonthEUR,
-      preventiviYearCHF,
-      preventiviYearEUR,
-      incomplete,
-      currencyUnknown,
+      fattureMonthCHF: summary.fattureMonthCHF,
+      fattureMonthEUR: summary.fattureMonthEUR,
+      fattureYearCHF: summary.fattureYearCHF,
+      fattureYearEUR: summary.fattureYearEUR,
+      preventiviMonthCHF: summary.preventiviMonthCHF,
+      preventiviMonthEUR: summary.preventiviMonthEUR,
+      preventiviYearCHF: summary.preventiviYearCHF,
+      preventiviYearEUR: summary.preventiviYearEUR,
+      incomplete: summary.incomplete,
+      currencyUnknown: summary.currencyUnknown,
       filtered,
       fattureCount,
       preventiviCount,
@@ -435,7 +456,7 @@ export default function NextCapoCostiMezzoPage() {
                           title={CLONE_BLOCKED_REASON}
                           style={{ opacity: 0.55, cursor: "not-allowed" }}
                         >
-                          APPROVA
+                          APPROVA (bloccato)
                         </button>
                         <button
                           type="button"
@@ -444,7 +465,7 @@ export default function NextCapoCostiMezzoPage() {
                           title={CLONE_BLOCKED_REASON}
                           style={{ opacity: 0.55, cursor: "not-allowed" }}
                         >
-                          RIFIUTA
+                          RIFIUTA (bloccato)
                         </button>
                         <button
                           type="button"
@@ -453,7 +474,7 @@ export default function NextCapoCostiMezzoPage() {
                           title={CLONE_BLOCKED_REASON}
                           style={{ opacity: 0.55, cursor: "not-allowed" }}
                         >
-                          DA VALUTARE
+                          DA VALUTARE (bloccato)
                         </button>
                       </div>
 
@@ -465,7 +486,7 @@ export default function NextCapoCostiMezzoPage() {
                               className="capo-button"
                               onClick={() => openPdfPreview(String(item.fileUrl))}
                             >
-                              ANTEPRIMA PDF
+                              ANTEPRIMA PDF READ-ONLY
                             </button>
                             <button
                               type="button"
@@ -474,7 +495,7 @@ export default function NextCapoCostiMezzoPage() {
                               title="Clone in sola lettura: `stamp_pdf` e PDF timbrati restano bloccati."
                               style={{ opacity: 0.55, cursor: "not-allowed" }}
                             >
-                              ANTEPRIMA TIMBRATO
+                              ANTEPRIMA TIMBRATO (bloccata)
                             </button>
                           </>
                         ) : (
@@ -549,7 +570,7 @@ export default function NextCapoCostiMezzoPage() {
                               className="capo-button"
                               onClick={() => openPdfPreview(String(item.fileUrl))}
                             >
-                              ANTEPRIMA PDF
+                              ANTEPRIMA PDF READ-ONLY
                             </button>
                           ) : (
                             <span className="capo-meta-muted">Nessun PDF</span>

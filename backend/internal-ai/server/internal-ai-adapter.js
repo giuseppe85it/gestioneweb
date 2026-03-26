@@ -191,6 +191,26 @@ function getProviderTarget() {
   };
 }
 
+const CONTROLLED_CHAT_DATA_BOUNDARY = Object.freeze({
+  businessLiveRead: "closed",
+  businessWrites: "disabled",
+  backendLiveSources: Object.freeze([
+    "snapshot repo/UI curata del backend IA separato",
+    "snapshot D01 seedata dal clone NEXT",
+    "snapshot Dossier mezzo seedata dal clone NEXT",
+  ]),
+  backendNotAllowedLiveSources: Object.freeze([
+    "Firestore business live",
+    "Storage business live",
+    "runtime legacy promosso a backend canonico",
+  ]),
+  guidance: Object.freeze([
+    "Se l'utente chiede se il dato e live o clone, rispondi che oggi il live-read business e chiuso.",
+    "Se vedi retrieval server-side, significa snapshot read-only dedicata o repo snapshot curata, non lettura live business.",
+    "Quando il dato non e abbastanza forte devi dichiararlo come prudente, parziale o clone/read-only.",
+  ]),
+});
+
 function isProviderConfigured() {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
@@ -424,6 +444,7 @@ function buildControlledChatUserPayload(args) {
   return {
     prompt: args.prompt,
     intent: localTurn.intent,
+    dataBoundary: CONTROLLED_CHAT_DATA_BOUNDARY,
     localTurn: {
       intent: localTurn.intent,
       status: localTurn.status,
@@ -465,11 +486,12 @@ async function createControlledChatTurn(args) {
         actorId: args.actorId,
         requestId: args.requestId,
         note:
-          "Chat repo/flussi/infrastruttura servita in modo deterministico dal backend IA separato sopra snapshot curata read-only.",
+          "Chat repo/flussi/infrastruttura servita in modo deterministico dal backend IA separato sopra snapshot curata read-only e dependency map strutturale.",
         entityCount:
           (repoSnapshot.documents?.length ?? 0) +
           (repoSnapshot.integrationGuidance?.length ?? 0) +
-          (repoSnapshot.flowPlaybooks?.length ?? 0),
+          (repoSnapshot.flowPlaybooks?.length ?? 0) +
+          (repoSnapshot.dependencyMaps?.length ?? 0),
       }),
     );
 
@@ -481,7 +503,7 @@ async function createControlledChatTurn(args) {
       usedRealProvider: false,
       repoUnderstandingAvailable: Boolean(repoSnapshot?.builtAt),
       transportMessage:
-        "Richiesta repo/flussi servita dal backend IA separato sopra snapshot curata, senza dipendere dal provider reale.",
+        "Richiesta repo/flussi servita dal backend IA separato sopra snapshot curata e dependency map strutturale, con live-read business chiuso.",
       result: {
         intent: "repo_understanding",
         status: "completed",
@@ -533,6 +555,7 @@ async function createControlledChatTurn(args) {
               "Sei la chat server-side controllata della nuova IA interna del gestionale. " +
               "Lavora solo in italiano. Usa esclusivamente il contesto strutturato ricevuto. " +
               "Non inventare dati, non proporre scritture business, non descrivere patch automatiche e non trasformarti in un agente che modifica il repository. " +
+              "Non descrivere mai Firestore o Storage business come letture live attive: oggi il live-read business e chiuso e il backend usa solo clone/read model o snapshot read-only dedicate. " +
               "Se la richiesta riguarda report o preview, spiega solo dati gia letti e limiti dichiarati. " +
               "Se la richiesta riguarda repository o UI, usa solo la snapshot curata repo/UI allegata e dichiarane i limiti. " +
               "Se sono presenti allegati, usa solo metadata o estratti testuali esplicitamente forniti: se un file non e analizzabile in profondita, dichiaralo chiaramente. " +
@@ -590,7 +613,7 @@ async function createControlledChatTurn(args) {
     providerTarget,
     usedRealProvider: true,
     transportMessage:
-      "Chat interna controllata servita dal backend IA separato con provider reale solo lato server.",
+      "Chat interna controllata servita dal backend IA separato sopra contesto clone/read-only, con provider reale solo lato server.",
     repoUnderstandingAvailable: Boolean(repoSnapshot?.builtAt),
     result: {
       intent: repoQuestion ? "repo_understanding" : localTurn.intent,
@@ -904,7 +927,7 @@ app.get("/internal-ai-backend/health", async (_req, res) => {
     endpointId: "health",
     status: "ok",
     message:
-      "Adapter server-side del backend IA separato disponibile con persistenza IA dedicata, retrieval read-only e primo workflow preview/approval/rollback controllato.",
+      "Adapter server-side del backend IA separato disponibile con persistenza IA dedicata, snapshot clone/read-only controllate e workflow preview/approval/rollback IA.",
     data: {
       adapterState: "server_adapter_mock_safe",
       persistenceMode: "server_file_isolated",
@@ -924,10 +947,10 @@ app.get("/internal-ai-backend/health", async (_req, res) => {
         "Il provider reale e ammesso solo lato server e solo per output di preview/proposta.",
         "L'approvazione e il rollback aggiornano solo artifact e traceability IA dedicati.",
         "Nessun dato business Firestore o Storage viene scritto da questi endpoint.",
-        "Il retrieval read-only attivo legge lo snapshot D01 seedato dal clone e la snapshot curata repo/UI del repository.",
+        "Il retrieval server-side attivo legge solo snapshot D01/Dossier seedate dal clone e la snapshot curata repo/UI del repository.",
         "La snapshot repo/UI puo includere anche osservazioni runtime NEXT passive e screenshot locali, se l'observer dedicato e stato eseguito.",
         "La chat server-side reale usa OpenAI solo lato server, con fallback locale esplicito se provider o adapter non sono disponibili.",
-        "La readiness Firebase/Storage esposta dall'health resta descrittiva e read-only: il bridge live non viene attivato finche mancano credenziali e policy verificabili.",
+        "Verdetto binario attuale: live-read business chiuso; la readiness Firebase/Storage resta solo descrittiva finche mancano access layer, credenziali e policy verificabili.",
       ],
     },
   });
@@ -1375,6 +1398,7 @@ app.post("/internal-ai-backend/orchestrator/chat", async (req, res) => {
           result.usedRealProvider
             ? "La chat usa OpenAI solo lato server e non espone segreti al client."
             : "Le richieste repo/flussi sono servite dal backend IA separato in modo deterministico sopra snapshot read-only, anche senza provider reale.",
+          "Anche quando il provider reale e attivo, il testo puo usare solo contesto clone/read-only o snapshot curate: nessun live-read business viene aperto.",
           "Le richieste repo/UI leggono solo la snapshot curata del repository e non autorizzano modifiche automatiche del codice.",
           "Le richieste report continuano a usare solo il contesto gia letto dal clone e non aprono scritture business.",
         ],

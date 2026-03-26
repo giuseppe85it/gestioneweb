@@ -31,6 +31,147 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-26 98
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Dependency map repo strutturale per IA interna NEXT
+- OBIETTIVO: trasformare l'assistente `repo/flussi` della console IA da playbook curato a mappa dipendenze piu strutturale, cosi da rispondere meglio su file impattati, moduli collegati, route, layer, read model e punto corretto di integrazione.
+- FILE TOCCATI:
+  - `backend/internal-ai/server/internal-ai-repo-understanding.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_1311_dependency-map-repo-ia-next.md`
+  - `docs/continuity-reports/2026-03-26_1311_continuity_dependency-map-repo-ia-next.md`
+- COSA E STATO CAMBIATO:
+  - il backend `repo-understanding` costruisce ora una dependency map pratica per 6 casi chiave, con domini, route, file UI, file domain/read-model, file backend IA, moduli a monte/a valle e note di perimetro;
+  - le risposte deterministiche `repo_understanding` elencano in modo piu concreto i file da leggere prima, i layer coinvolti e il punto corretto di integrazione di un nuovo modulo o di una nuova funzione IA;
+  - il fallback locale della chat repo/flussi mantiene la stessa struttura pratica sui prompt bussola principali anche senza appoggiarsi al provider reale;
+  - `/next/ia/interna` mostra il conteggio della dependency map e una vista sintetica della matrice, senza trasformarsi in una nuova UI business.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la console IA spiega meglio route, file e layer collegati e rende visibile la nuova dependency map;
+  - Lettura: nessun live-read business nuovo; restano attivi solo snapshot clone/read-only e repo/UI curate;
+  - Blocco scritture: invariato e ancora pienamente attivo.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/internal-ai/*.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/*.js backend/internal-ai/*.js` e, dato che `backend/internal-ai/*.js` non matcha file, rilanciare con `--no-error-on-unmatched-pattern`;
+  - eseguire `npm run build`;
+  - chiamare `POST /internal-ai-backend/orchestrator/chat` con i 5 prompt bussola del task e verificare le sezioni `Route coinvolte`, `File UI coinvolti`, `File domain/read-model coinvolti`, `File backend IA coinvolti`, `Lettori dominio usati`, `Punto consigliato di integrazione`;
+  - chiamare `POST /internal-ai-backend/retrieval/read` con `read_repo_understanding_snapshot` e verificare la presenza di `dependencyMaps`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il miglioramento resta confinato al clone/NEXT e al backend IA separato;
+  - nessuna riapertura del live-read business e nessun allargamento alla madre.
+
+### Voce 2026-03-26 97
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Sweep CTA veritiere per clone NEXT completato
+- OBIETTIVO: allineare in modo sistematico CTA, bottoni, azioni e punti di ingresso del clone NEXT allo stato reale di copertura, senza riaprire logiche business e senza far sembrare operative funzioni solo read-only, preview o locali clone.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextCentroControlloClonePage.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/autisti/NextAutistiRichiestaAttrezzaturePage.tsx`
+  - `src/next/autisti/NextAutistiRifornimentoPage.tsx`
+  - `src/next/autisti/NextAutistiSegnalazioniPage.tsx`
+  - `src/next/autisti/next-autisti-clone.css`
+  - `src/next/autisti/nextAutistiCloneRuntime.ts`
+  - `src/pages/Acquisti.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_1112_sweep-cta-veritiere-next.md`
+  - `docs/continuity-reports/2026-03-26_1112_continuity_sweep-cta-veritiere-next.md`
+- COSA E STATO CAMBIATO:
+  - rese veritiere le CTA della shell clone-safe su `Gestione Operativa`, `Acquisti`, `Capo Costi`, `IA interna` e area autisti, sostituendo copy generici con `read-only`, `preview`, `locale clone` o `bloccato` dove necessario;
+  - chiuso il residuo vero del Centro di Controllo sul wrapper runtime `NextCentroControlloClonePage`, che monta ancora la pagina legacy `CentroControllo`: banner clone-safe, sottotitolo piu onesto e relabel locale delle CTA consultive/PDF;
+  - mantenute attive solo le CTA utili in sola lettura e consultazione; nessun bottone continua a simulare scritture o workflow madre non coperti.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: copy e badge piu onesti su cio che e davvero navigabile, locale clone o bloccato;
+  - Lettura: nessun layer dati nuovo, nessun dominio riaperto; la consultazione read-only resta attiva dove gia dimostrata;
+  - Blocco scritture: invariato e ancora pienamente attivo.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextCentroControlloClonePage.tsx src/next/NextCentroControlloPage.tsx src/next/NextGestioneOperativaPage.tsx src/next/NextOperativitaGlobalePage.tsx src/next/NextCapoCostiMezzoPage.tsx src/next/NextInternalAiPage.tsx src/pages/Acquisti.tsx`;
+  - eseguire `npm run build`;
+  - aprire `/next/gestione-operativa`, `/next/acquisti`, `/next/capo/costi/TI233827`, `/next/centro-controllo` e una schermata `/next/autisti/*` e verificare che le CTA visibili dichiarino il proprio stato reale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - `NextCentroControlloClonePage.tsx` e servito davvero perche la route runtime del Centro di Controllo non passa dalla shell `NextCentroControlloPage`;
+  - nessuna modifica del Prompt 20 e stata riaperta da questo task.
+
+### Voce 2026-03-26 96
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Chiusura definitiva del confine live-read backend IA per clone NEXT
+- OBIETTIVO: uscire dal limbo sul live-read business dell'IA interna fissando un verdetto binario verificato e impedendo che backend, UI o chat facciano overpromise su letture live Firestore/Storage non dimostrate.
+- FILE TOCCATI:
+  - `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`
+  - `backend/internal-ai/server/internal-ai-firebase-readiness.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-repo-understanding.js`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/internal-ai/internalAiContracts.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_0937_confine-live-read-backend-ia.md`
+  - `docs/continuity-reports/2026-03-26_0937_continuity_confine-live-read-backend-ia.md`
+- COSA E STATO CAMBIATO:
+  - il boundary tecnico del backend IA ora dichiara `live_read_closed` e lascia i perimetri Firebase/Storage solo come candidati documentati, non attivi;
+  - la readiness Firestore/Storage espone uno stato esplicito `not_ready` con blocker e note che chiudono ogni ambiguita sul live-read business;
+  - la chat IA, l'orchestratore locale e la console `/next/ia/interna` distinguono chiaramente tra clone/read model, snapshot seedate dal clone e fonti live non ammesse;
+  - la tracciabilita ufficiale IA/NEXT/clone registra il verdetto binario senza riaprire scritture o bridge live.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: messaggi e badge piu onesti sul fatto che la lettura business live e chiusa;
+  - Lettura: restano attivi solo read model NEXT, snapshot D01/Dossier clone-seeded e snapshot repo/UI curate;
+  - Blocco scritture: invariato, nessuna scrittura business riaperta.
+- COME VERIFICARE:
+  - eseguire `npm --prefix backend/internal-ai run firebase-readiness` e verificare `firestoreReadOnly.status = not_ready` e `storageReadOnly.status = not_ready`;
+  - eseguire `npx eslint --no-error-on-unmatched-pattern src/next/internal-ai/*.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/*.js backend/internal-ai/*.js`;
+  - eseguire `npm run build`;
+  - aprire `/next/ia/interna` e verificare che la UI mostri `Lettura business live: Chiusa` e `Fonte business: clone + snapshot` o `clone/read model`;
+  - interrogare l'orchestrazione IA con `Questo dato lo stai leggendo live o dal clone?` e verificare che la risposta dichiari il live-read business chiuso con `Firestore live: not_ready` e `Storage live: not_ready`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica alla madre;
+  - nessuna apertura Firebase/Storage live senza task separato e verifica dedicata.
+
+### Voce 2026-03-26 95
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Rifinitura locale D06 procurement read-only per clone NEXT
+- OBIETTIVO: chiudere i piccoli residui emersi dall'audit di rivalutazione del Prompt 14 senza riaprire il dominio procurement, mantenendo D06 valido e read-only dopo la chiusura reale di D05.
+- FILE TOCCATI:
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/pages/Acquisti.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_0902_rifinitura-d06-procurement-readonly-next.md`
+  - `docs/continuity-reports/2026-03-26_0902_continuity_rifinitura-d06-procurement-readonly-next.md`
+- COSA E STATO CAMBIATO:
+  - chiuso il lint locale richiesto su `NextCapoCostiMezzoPage` e sulla superficie clone D06 di `Acquisti.tsx`;
+  - chiarito meglio nel copy del contenitore operativo globale che D06 resta separato da stock e movimenti materiali D05;
+  - riallineata la tracciabilita documentale D06 tra checklist IA, stato migrazione e registro clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: copy e segnali piu chiari sul boundary D05/D06, senza nuove funzioni;
+  - Lettura: nessun cambio al read model procurement, che resta invariato e read-only;
+  - Blocco scritture: invariato e ancora pienamente attivo.
+- COME VERIFICARE:
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/NextCapoCostiMezzoPage.tsx src/pages/Acquisti.tsx src/next/NextOperativitaGlobalePage.tsx`;
+  - aprire `/next/acquisti` e verificare che il workbench procurement resti `read-only` con CTA coerenti;
+  - aprire `/next/gestione-operativa` e verificare che la card procurement distingua meglio D06 dalle viste magazzino D05.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - nessuna modifica alla madre;
+  - nessuna riapertura di D05 o refactor largo di D06.
+
 ### Voce 2026-03-26 94
 - DATA: 2026-03-26
 - TITOLO MODIFICA: D05 magazzino reale read-only chiuso per clone NEXT e IA interna

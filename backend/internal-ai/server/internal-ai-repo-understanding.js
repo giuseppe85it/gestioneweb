@@ -472,6 +472,232 @@ const REPO_LAYER_BOUNDARIES = [
   },
 ];
 
+const REPO_DEPENDENCY_MAPS = [
+  {
+    id: "home_operativa",
+    label: "Home operativa e Centro di Controllo",
+    domainCodes: ["D10"],
+    featureLabel: "Cockpit operativo read-only",
+    routePaths: ["/next", "/next/centro-controllo", "/next/dossier/:targa"],
+    uiFilePaths: [
+      "src/next/NextHomePage.tsx",
+      "src/next/NextCentroControlloClonePage.tsx",
+      "src/next/NextCentroControlloPage.tsx",
+    ],
+    domainFilePaths: ["src/next/domain/nextCentroControlloDomain.ts"],
+    backendFilePaths: [],
+    legacyReferenceFiles: ["src/pages/Home.tsx", "src/pages/CentroControllo.tsx"],
+    docsFilePaths: [
+      "docs/STATO_ATTUALE_PROGETTO.md",
+      "docs/product/STATO_MIGRAZIONE_NEXT.md",
+      "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
+    ],
+    domainReaderPaths: ["src/next/domain/nextCentroControlloDomain.ts"],
+    upstreamModules: [
+      "D10 stato operativo, alert e promemoria",
+      "Home legacy",
+      "Centro di Controllo legacy",
+    ],
+    downstreamModules: ["Dossier Mezzo", "IA interna NEXT", "code operative globali"],
+    layerIds: ["docs_truth", "madre", "domain_read_model", "next", "renderer_ui"],
+    perimeterNotes: [
+      "Madre: Home e Centro di Controllo mostrano il flusso reale storico ma non si patchano.",
+      "NEXT: shell e wrapper clone-safe sono il perimetro da correggere o chiarire.",
+      "Domain/read model: il layer D10 governa alert, priorita e counters della superficie cockpit.",
+      "Backend IA: non e il layer owner del flusso, lo usa solo per spiegarlo in modo controllato.",
+    ],
+  },
+  {
+    id: "rifornimenti_flow",
+    label: "Flusso rifornimenti D04",
+    domainCodes: ["D04"],
+    featureLabel: "Rifornimenti e consumi mezzo-centrici",
+    routePaths: ["/next/dossier/:targa", "/next/analisi-economica/:targa", "/next/ia/interna"],
+    uiFilePaths: [
+      "src/next/NextDossierMezzoPage.tsx",
+      "src/next/NextDossierRifornimentiPage.tsx",
+      "src/next/NextRifornimentiEconomiaSection.tsx",
+      "src/next/NextAnalisiEconomicaPage.tsx",
+    ],
+    domainFilePaths: [
+      "src/next/domain/nextRifornimentiDomain.ts",
+      "src/next/nextRifornimentiConsumiDomain.ts",
+      "src/next/domain/nextDossierMezzoDomain.ts",
+    ],
+    backendFilePaths: [],
+    legacyReferenceFiles: ["src/pages/DossierRifornimenti.tsx", "src/pages/DossierMezzo.tsx"],
+    docsFilePaths: [
+      "docs/data/DOMINI_DATI_CANONICI.md",
+      "docs/data/MAPPA_COMPLETA_DATI.md",
+      "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
+      "docs/product/STATO_MIGRAZIONE_NEXT.md",
+    ],
+    domainReaderPaths: [
+      "src/next/domain/nextRifornimentiDomain.ts",
+      "src/next/nextRifornimentiConsumiDomain.ts",
+    ],
+    upstreamModules: ["Rifornimento autisti", "Autisti Admin", "@rifornimenti", "@rifornimenti_autisti_tmp"],
+    downstreamModules: ["Dossier Mezzo", "Analisi Economica", "report fuel", "IA interna NEXT"],
+    layerIds: ["docs_truth", "madre", "domain_read_model", "next", "renderer_ui"],
+    perimeterNotes: [
+      "Madre: le pagine legacy servono a leggere il flusso reale e le sue eccezioni storiche.",
+      "NEXT: il clone deve leggere D04 tramite il layer normalizzato e non da merge sparsi in pagina.",
+      "Domain/read model: D04 nella NEXT resta il punto di verita per normalizzazione, affidabilita e consumo UI.",
+      "Backend IA: consuma il risultato del layer D04; non deve diventare il posto dove ricostruire il flusso.",
+    ],
+  },
+  {
+    id: "dossier_mezzo",
+    label: "Dossier Mezzo e impatti collegati",
+    domainCodes: ["D01", "D02", "D04", "D07", "D08"],
+    featureLabel: "Aggregatore mezzo-centrico",
+    routePaths: ["/next/dossiermezzi", "/next/dossier/:targa", "/next/analisi-economica/:targa"],
+    uiFilePaths: [
+      "src/next/NextMezziDossierPage.tsx",
+      "src/next/NextDossierMezzoPage.tsx",
+      "src/next/NextDossierRifornimentiPage.tsx",
+      "src/next/NextDossierGommePage.tsx",
+      "src/next/NextAnalisiEconomicaPage.tsx",
+    ],
+    domainFilePaths: [
+      "src/next/domain/nextDossierMezzoDomain.ts",
+      "src/next/domain/nextRifornimentiDomain.ts",
+      "src/next/domain/nextDocumentiCostiDomain.ts",
+    ],
+    backendFilePaths: ["src/next/internal-ai/internalAiVehicleDossierHookFacade.ts"],
+    legacyReferenceFiles: ["src/pages/DossierMezzo.tsx", "src/pages/AnalisiEconomica.tsx"],
+    docsFilePaths: [
+      "docs/STATO_ATTUALE_PROGETTO.md",
+      "docs/STRUTTURA_COMPLETA_GESTIONALE.md",
+      "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
+      "docs/product/STATO_MIGRAZIONE_NEXT.md",
+    ],
+    domainReaderPaths: ["src/next/domain/nextDossierMezzoDomain.ts"],
+    upstreamModules: ["Lista Dossier Mezzi", "Centro di Controllo", "read model D01/D02/D04/D07/D08"],
+    downstreamModules: ["Analisi Economica", "rifornimenti", "gomme", "capability IA mezzo-centriche"],
+    layerIds: ["docs_truth", "madre", "domain_read_model", "next", "renderer_ui", "backend_ia"],
+    perimeterNotes: [
+      "Madre: Dossier e Analisi Economica legacy restano il riferimento del comportamento storico.",
+      "NEXT: il clone dossier e le sue estensioni sono il perimetro da far evolvere.",
+      "Domain/read model: il composite dossier decide cosa converge davvero sulla targa.",
+      "Backend IA: gli hook mezzo-centrici leggono a valle il composite del dossier e quindi vanno verificati quando cambi la convergenza.",
+    ],
+  },
+  {
+    id: "nuovo_modulo",
+    label: "Inserimento di un nuovo modulo",
+    domainCodes: [],
+    featureLabel: "Classificazione owner nella NEXT",
+    routePaths: ["/next/centro-controllo", "/next/dossier/:targa", "/next/gestione-operativa", "/next/ia/interna"],
+    uiFilePaths: [
+      "src/next/NextShell.tsx",
+      "src/next/nextStructuralPaths.ts",
+      "src/next/NextCentroControlloPage.tsx",
+      "src/next/NextDossierMezzoPage.tsx",
+      "src/next/NextOperativitaGlobalePage.tsx",
+      "src/next/NextInternalAiPage.tsx",
+    ],
+    domainFilePaths: [
+      "src/next/domain/nextCentroControlloDomain.ts",
+      "src/next/domain/nextDossierMezzoDomain.ts",
+      "src/next/domain/nextMaterialiMovimentiDomain.ts",
+    ],
+    backendFilePaths: ["backend/internal-ai/server/internal-ai-repo-understanding.js"],
+    legacyReferenceFiles: [],
+    docsFilePaths: [
+      "docs/STRUTTURA_COMPLETA_GESTIONALE.md",
+      "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
+      "docs/product/STATO_MIGRAZIONE_NEXT.md",
+    ],
+    domainReaderPaths: [
+      "src/next/domain/nextCentroControlloDomain.ts",
+      "src/next/domain/nextDossierMezzoDomain.ts",
+      "src/next/domain/nextMaterialiMovimentiDomain.ts",
+    ],
+    upstreamModules: ["Classificazione dominio", "macro-area owner", "route canoniche del clone"],
+    downstreamModules: ["card/page/tab/button corretti", "eventuale read model dedicato", "eventuale capability IA"],
+    layerIds: ["docs_truth", "next", "domain_read_model", "renderer_ui", "backend_ia"],
+    perimeterNotes: [
+      "NEXT: la macro-area owner decide se il modulo vive nel Dossier, nel cockpit, nell'operativita globale o nell'IA interna.",
+      "Domain/read model: se il modulo legge dati nuovi o sporchi, il read model viene prima della pagina.",
+      "Backend IA: si tocca solo se il nuovo modulo e una capability assistiva o repo-aware e non un flusso business puro.",
+    ],
+  },
+  {
+    id: "perimetro_logica",
+    label: "Distinzione madre / NEXT / backend IA / read model",
+    domainCodes: [],
+    featureLabel: "Ownership del layer",
+    routePaths: ["/next/dossier/:targa", "/next/centro-controllo", "/next/ia/interna"],
+    uiFilePaths: ["src/next/NextDossierMezzoPage.tsx", "src/next/NextCentroControlloPage.tsx"],
+    domainFilePaths: [
+      "src/next/domain/nextDossierMezzoDomain.ts",
+      "src/next/domain/nextCentroControlloDomain.ts",
+    ],
+    backendFilePaths: [
+      "backend/internal-ai/server/internal-ai-adapter.js",
+      "backend/internal-ai/server/internal-ai-repo-understanding.js",
+    ],
+    legacyReferenceFiles: ["src/pages/DossierMezzo.tsx", "src/pages/Home.tsx"],
+    docsFilePaths: [
+      "docs/STATO_ATTUALE_PROGETTO.md",
+      "docs/data/DOMINI_DATI_CANONICI.md",
+      "docs/product/STATO_MIGRAZIONE_NEXT.md",
+    ],
+    domainReaderPaths: [
+      "src/next/domain/nextDossierMezzoDomain.ts",
+      "src/next/domain/nextCentroControlloDomain.ts",
+    ],
+    upstreamModules: ["documentazione di verita", "madre legacy", "read model NEXT"],
+    downstreamModules: ["UI clone", "backend IA repo-aware", "chat/orchestrazione IA"],
+    layerIds: ["docs_truth", "madre", "next", "domain_read_model", "renderer_ui", "backend_ia"],
+    perimeterNotes: [
+      "Documentazione: definisce ownership, rischio e limiti prima del codice.",
+      "Madre: mostra il flusso reale storico e resta in sola lettura per questi task.",
+      "NEXT: ospita clone, shell, pagine e guard rail.",
+      "Domain/read model: e il punto corretto per logica, mapping e normalizzazione.",
+      "Backend IA: serve per orchestrazione server-side e repo-understanding, non come reader business live.",
+    ],
+  },
+  {
+    id: "ia_operational_flow",
+    label: "Nuova funzione IA legata ai flussi operativi",
+    domainCodes: ["IA_INTERNA"],
+    featureLabel: "Capability IA sopra read model NEXT",
+    routePaths: ["/next/ia/interna", "/next/dossier/:targa", "/next/centro-controllo"],
+    uiFilePaths: [
+      "src/next/NextInternalAiPage.tsx",
+      "src/next/internal-ai/internalAiOutputSelector.ts",
+    ],
+    domainFilePaths: [
+      "src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts",
+      "src/next/internal-ai/internalAiChatOrchestrator.ts",
+    ],
+    backendFilePaths: [
+      "backend/internal-ai/server/internal-ai-adapter.js",
+      "backend/internal-ai/server/internal-ai-repo-understanding.js",
+    ],
+    legacyReferenceFiles: [],
+    docsFilePaths: [
+      "docs/product/CHECKLIST_IA_INTERNA.md",
+      "docs/product/STATO_MIGRAZIONE_NEXT.md",
+      "docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md",
+    ],
+    domainReaderPaths: [
+      "src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts",
+      "src/next/internal-ai/internalAiChatOrchestrator.ts",
+    ],
+    upstreamModules: ["read model NEXT", "planner/orchestratore IA", "backend IA separato"],
+    downstreamModules: ["output selector", "NextInternalAiPage", "thread/report/artifact IA"],
+    layerIds: ["docs_truth", "domain_read_model", "next", "backend_ia", "renderer_ui"],
+    perimeterNotes: [
+      "NEXT: il planner locale e il renderer della console sono il perimetro frontend della capability.",
+      "Backend IA: si usa solo per retrieval o risposta server-side controllata, non per scritture business.",
+      "Madre: non deve diventare il punto di integrazione della nuova funzione IA.",
+    ],
+  },
+];
+
 const REPO_FLOW_PLAYBOOKS = [
   {
     id: "home_operativa",
@@ -865,6 +1091,24 @@ const REPO_UNDERSTANDING_KEYWORDS = [
   "runtime",
 ];
 
+const LIVE_BOUNDARY_PATTERNS = [
+  "lo stai leggendo live",
+  "lo stai leggendo dal clone",
+  "live o dal clone",
+  "lettura live verificata",
+  "live-read",
+  "live read",
+  "snapshot read-only",
+  "read-only del clone",
+  "read model della next",
+  "read model next",
+  "perimetro reale della lettura backend ia",
+  "la ia sta leggendo davvero tutti i dati attuali",
+  "questa funzione usa live-read",
+  "questa funzione usa live read",
+  "lettura backend ia",
+];
+
 function compactLine(line) {
   return line
     .replace(/^#+\s*/g, "")
@@ -1141,6 +1385,7 @@ export async function buildRepoUnderstandingSnapshot() {
     legacyNextRelations: LEGACY_NEXT_RELATIONS,
     layerBoundaries: REPO_LAYER_BOUNDARIES,
     flowPlaybooks: buildRepoFlowPlaybookSnapshot(),
+    dependencyMaps: buildRepoDependencyMapSnapshot(),
     firebaseReadiness,
     runtimeObserver,
     integrationGuidance: INTERNAL_AI_NEXT_UI_INTEGRATION_GUIDANCE,
@@ -1155,14 +1400,14 @@ export async function buildRepoUnderstandingSnapshot() {
     notes: [
       "Snapshot controllata costruita dal backend IA separato leggendo documenti chiave e un indice filesystem limitato di codice, route-like file, componenti e CSS collegati.",
       "L'indice resta read-only, curato e tracciabile: nessuna scansione indiscriminata dell'intero repository e nessuna autonomia di patch.",
-      "La snapshot include ora anche una mappa pratica dei layer madre/NEXT/backend IA/domain/UI e un catalogo operativo di flussi, impatti e punti di integrazione riusabili nella chat.",
+      "La snapshot include ora anche una dependency map pratica dei layer madre/NEXT/backend IA/domain/UI e un catalogo operativo di flussi, impatti e punti di integrazione riusabili nella chat.",
       "L'audit Firebase allegato descrive readiness e blocchi reali per Firestore/Storage read-only lato server, senza aprire accessi business.",
       "L'osservatore runtime NEXT resta read-only e limitato alle route /next/* whitelistate: nessun click generico, nessun submit e nessuna scrittura business.",
     ],
     limitations: [
       "L'indice repository non e una parse completa di AST, JSX o dipendenze runtime: e un livello metadata-driven e controllato.",
       "La relazione madre vs NEXT e mappata solo per aree chiave e file rappresentativi, non per ogni componente del repo.",
-      "Le risposte repo/flusso/infrastruttura restano guidate da playbook curati: aiutano su ownership, file e impatti, ma non sostituiscono una analisi completa di ogni edge case del runtime legacy.",
+      "Le risposte repo/flusso/infrastruttura restano guidate da dependency map e playbook curati: aiutano su ownership, file, route e impatti, ma non sostituiscono una analisi completa di ogni edge case del runtime legacy.",
       "Firestore e Storage read-only server-side non sono ancora attivi nel backend IA separato: mancano access layer dedicato, credenziali server-side dimostrate e policy verificabili.",
       "La vista runtime della NEXT resta parziale: copre solo schermate e stati whitelistati, senza aprire flussi che richiedono interazioni potenzialmente mutanti.",
     ],
@@ -1195,7 +1440,10 @@ export function buildRepoUnderstandingMeta(snapshot) {
 
 export function isRepoUnderstandingQuestion(prompt) {
   const normalized = normalizeRepoPrompt(prompt);
-  return REPO_UNDERSTANDING_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  return (
+    REPO_UNDERSTANDING_KEYWORDS.some((keyword) => normalized.includes(keyword)) ||
+    LIVE_BOUNDARY_PATTERNS.some((pattern) => normalized.includes(pattern))
+  );
 }
 
 export function buildRepoUnderstandingReferences(snapshot) {
@@ -1240,6 +1488,28 @@ function buildRepoFlowPlaybookSnapshot() {
     impactRisk: entry.impactRisk,
     recommendedIntegrationPoint: entry.recommendedIntegrationPoint,
     action: entry.action,
+  }));
+}
+
+function buildRepoDependencyMapSnapshot() {
+  return REPO_DEPENDENCY_MAPS.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    domainCodes: entry.domainCodes,
+    featureLabel: entry.featureLabel,
+    routePaths: entry.routePaths,
+    uiFilePaths: entry.uiFilePaths,
+    domainFilePaths: entry.domainFilePaths,
+    backendFilePaths: entry.backendFilePaths,
+    legacyReferenceFiles: entry.legacyReferenceFiles,
+    docsFilePaths: entry.docsFilePaths,
+    domainReaderPaths: entry.domainReaderPaths,
+    upstreamModules: entry.upstreamModules,
+    downstreamModules: entry.downstreamModules,
+    impactRisk:
+      REPO_FLOW_PLAYBOOKS.find((playbook) => playbook.id === entry.id)?.impactRisk ?? "NORMALE",
+    layerIds: entry.layerIds,
+    perimeterNotes: entry.perimeterNotes,
   }));
 }
 
@@ -1319,6 +1589,7 @@ export function trimRepoUnderstandingSnapshotForChat(snapshot) {
     legacyNextRelations: snapshot.legacyNextRelations.slice(0, 6),
     layerBoundaries: snapshot.layerBoundaries ?? REPO_LAYER_BOUNDARIES,
     flowPlaybooks: snapshot.flowPlaybooks?.slice(0, 6) ?? buildRepoFlowPlaybookSnapshot().slice(0, 6),
+    dependencyMaps: snapshot.dependencyMaps?.slice(0, 6) ?? buildRepoDependencyMapSnapshot().slice(0, 6),
     runtimeObserver: trimRuntimeObserverForChat(snapshot.runtimeObserver),
     integrationGuidance: snapshot.integrationGuidance,
     representativeRoutes: snapshot.representativeRoutes,
@@ -1353,6 +1624,10 @@ function findRepoFlowPlaybook(prompt) {
 
 function findLayerBoundary(layerId) {
   return REPO_LAYER_BOUNDARIES.find((entry) => entry.id === layerId) ?? null;
+}
+
+function findRepoDependencyMap(playbookId) {
+  return REPO_DEPENDENCY_MAPS.find((entry) => entry.id === playbookId) ?? null;
 }
 
 function findDocumentTitle(snapshot, documentPath) {
@@ -1412,7 +1687,7 @@ function findGuidanceEntryByPrompt(playbook, prompt, snapshot) {
   return null;
 }
 
-function buildRepoOperationalReferences(playbook, snapshot, guidanceEntry) {
+function buildRepoOperationalReferences(playbook, snapshot, guidanceEntry, dependencyMap) {
   const references = [];
   const seen = new Set();
 
@@ -1425,6 +1700,9 @@ function buildRepoOperationalReferences(playbook, snapshot, guidanceEntry) {
   };
 
   pushReference("repo_understanding", `Playbook repo/flussi: ${playbook.label}`);
+  if (dependencyMap?.featureLabel) {
+    pushReference("repo_understanding", `Dependency map: ${dependencyMap.featureLabel}`);
+  }
 
   for (const documentPath of playbook.referenceDocPaths.slice(0, 3)) {
     const title = findDocumentTitle(snapshot, documentPath);
@@ -1433,6 +1711,14 @@ function buildRepoOperationalReferences(playbook, snapshot, guidanceEntry) {
 
   for (const filePath of playbook.filePaths.slice(0, 3)) {
     pushReference("repo_understanding", `File chiave: ${filePath}`);
+  }
+
+  for (const readerPath of (dependencyMap?.domainReaderPaths ?? []).slice(0, 2)) {
+    pushReference("repo_understanding", `Read model: ${readerPath}`);
+  }
+
+  for (const routePath of (dependencyMap?.routePaths ?? []).slice(0, 2)) {
+    pushReference("repo_understanding", `Route: ${routePath}`);
   }
 
   if (guidanceEntry) {
@@ -1445,47 +1731,26 @@ function buildRepoOperationalReferences(playbook, snapshot, guidanceEntry) {
   return references;
 }
 
-function buildFileAndLayerLines(playbook) {
-  const lines = [];
-  const seen = new Set();
+function buildPerimeterLines(playbook, dependencyMap) {
+  const perimeterLines = dependencyMap?.perimeterNotes?.length
+    ? dependencyMap.perimeterNotes.map((entry) => `- ${entry}`)
+    : [];
 
-  for (const filePath of playbook.filePaths) {
-    if (seen.has(filePath)) {
-      continue;
-    }
-    seen.add(filePath);
-    lines.push(`- ${filePath}`);
-  }
-
-  for (const layerId of playbook.layerIds) {
-    const layer = findLayerBoundary(layerId);
-    if (!layer) {
-      continue;
-    }
-
-    const label = `${layer.label}: ${layer.rootPaths.join(", ")}`;
-    if (seen.has(label)) {
-      continue;
-    }
-
-    seen.add(label);
-    lines.push(`- ${label}`);
-  }
-
-  return lines;
-}
-
-function buildPerimeterLines(playbook) {
-  return playbook.layerIds
+  return [
+    ...perimeterLines,
+    ...playbook.layerIds
     .map((layerId) => findLayerBoundary(layerId))
     .filter(Boolean)
-    .map((layer) => `- ${layer.label}: ${layer.summary}`);
+    .map((layer) => `- ${layer.label}: ${layer.summary}`),
+  ];
 }
 
-function buildConnectedModuleLines(playbook, guidanceEntry) {
+function buildConnectedModuleLines(playbook, guidanceEntry, dependencyMap) {
   const items = Array.from(
     new Set([
       ...playbook.connectedModules,
+      ...(dependencyMap?.upstreamModules ?? []),
+      ...(dependencyMap?.downstreamModules ?? []),
       ...(guidanceEntry?.impactedModules ?? []),
     ]),
   );
@@ -1509,29 +1774,189 @@ function buildIntegrationPointLine(playbook, guidanceEntry) {
   );
 }
 
+function buildRouteLines(playbook, dependencyMap, guidanceEntry) {
+  const routes = Array.from(
+    new Set([
+      ...(dependencyMap?.routePaths ?? []),
+      ...(guidanceEntry?.recommendedRoutePaths ?? []),
+      ...(playbook.filePaths.includes("src/next/NextShell.tsx") ? ["/next"] : []),
+    ]),
+  );
+
+  return routes.length ? routes.map((entry) => `- ${entry}`) : ["- Nessuna route specifica: il focus qui e soprattutto sul layer e sull'owner del modulo."];
+}
+
+function buildBucketLines(entries, emptyLine) {
+  return entries.length ? entries.map((entry) => `- ${entry}`) : [`- ${emptyLine}`];
+}
+
+function buildReadFirstLines(playbook, dependencyMap) {
+  const orderedEntries = Array.from(
+    new Set([
+      ...(dependencyMap?.docsFilePaths ?? []),
+      ...(playbook.referenceDocPaths ?? []),
+      ...(dependencyMap?.domainReaderPaths ?? []),
+      ...(dependencyMap?.uiFilePaths ?? []),
+      ...(dependencyMap?.backendFilePaths ?? []),
+      ...(dependencyMap?.legacyReferenceFiles ?? []),
+    ]),
+  );
+
+  return orderedEntries.map((entry) => `- ${entry}`);
+}
+
+function buildDomainReaderLines(dependencyMap) {
+  return buildBucketLines(
+    dependencyMap?.domainReaderPaths ?? [],
+    "Nessun read model dedicato: prima classificare owner e dominio del flusso.",
+  );
+}
+
+function buildUiFileLines(dependencyMap) {
+  return buildBucketLines(
+    dependencyMap?.uiFilePaths ?? [],
+    "Nessuna UI specifica ancora owner del flusso.",
+  );
+}
+
+function buildDomainFileLines(dependencyMap) {
+  return buildBucketLines(
+    dependencyMap?.domainFilePaths ?? [],
+    "Nessun domain/read-model dedicato ancora censito per questo caso.",
+  );
+}
+
+function buildBackendFileLines(dependencyMap) {
+  return buildBucketLines(
+    dependencyMap?.backendFilePaths ?? [],
+    "Nessun backend IA specifico: qui il backend spiega il flusso ma non ne e il layer owner.",
+  );
+}
+
+function buildLegacyReferenceLines(dependencyMap) {
+  if (!dependencyMap?.legacyReferenceFiles?.length) {
+    return [];
+  }
+
+  return dependencyMap.legacyReferenceFiles.map((entry) => `- ${entry}`);
+}
+
+function buildFlowDirectionLines(playbook, dependencyMap) {
+  const upstream = dependencyMap?.upstreamModules?.length
+    ? dependencyMap.upstreamModules.map((entry) => `- A monte: ${entry}`)
+    : playbook.upstreamFlow.map((entry) => `- A monte: ${entry}`);
+  const downstream = dependencyMap?.downstreamModules?.length
+    ? dependencyMap.downstreamModules.map((entry) => `- A valle: ${entry}`)
+    : playbook.downstreamFlow.map((entry) => `- A valle: ${entry}`);
+
+  return [...upstream, ...downstream];
+}
+
 function formatSection(title, lines) {
   return `${title}:\n${lines.join("\n")}`;
 }
 
+function isLiveBoundaryQuestion(prompt) {
+  const normalized = normalizeRepoPrompt(prompt);
+  return LIVE_BOUNDARY_PATTERNS.some((pattern) => normalized.includes(pattern));
+}
+
+function buildLiveBoundaryReferences(snapshot) {
+  const references = [
+    {
+      type: "repo_understanding",
+      label: "Confine backend IA / clone / live-read",
+      targa: null,
+    },
+    {
+      type: "repo_understanding",
+      label: "Verdetto binario: live-read business chiuso",
+      targa: null,
+    },
+  ];
+
+  if (snapshot.documents[0]) {
+    references.push({
+      type: "architecture_doc",
+      label: snapshot.documents[0].title,
+      targa: null,
+    });
+  }
+
+  return references;
+}
+
+function buildLiveBoundaryOperationalAnswer(snapshot) {
+  const firestoreStatus = snapshot.firebaseReadiness?.firestoreReadOnly?.status ?? "not_ready";
+  const storageStatus = snapshot.firebaseReadiness?.storageReadOnly?.status ?? "not_ready";
+  const sections = [
+    formatSection("Sintesi breve", [
+      "- Oggi il live-read business del backend IA e chiuso.",
+      "- La IA usa solo clone/read model NEXT e snapshot read-only dedicate.",
+    ]),
+    formatSection("Perimetro reale", [
+      "- clone/read model NEXT: SI.",
+      "- snapshot D01 seedata dal clone: SI.",
+      "- snapshot Dossier mezzo seedata dal clone: SI.",
+      "- snapshot repo/UI curata del backend IA: SI.",
+      "- Firestore business live: NO.",
+      "- Storage business live: NO.",
+    ]),
+    formatSection("Come leggere i segnali", [
+      "- `retrieval server-side` significa snapshot read-only dedicata o repo/UI snapshot curata, non live-read business.",
+      "- `clone-safe` o `read-only` significa dato letto dai layer NEXT gia governati.",
+      "- Se il dato non e abbastanza forte va dichiarato come prudente, parziale o clone/read-only.",
+    ]),
+    formatSection("Boundary backend verificato", [
+      `- Firestore live: ${firestoreStatus}.`,
+      `- Storage live: ${storageStatus}.`,
+      "- Le whitelist candidate restano solo documentazione di massimo perimetro futuro e non sono attive.",
+    ]),
+    formatSection("Verdetto operativo", [
+      "- Nessun bridge live Firestore/Storage e oggi ammesso come fonte business attiva del backend IA separato.",
+    ]),
+  ];
+
+  return {
+    playbookId: "live_boundary_closed",
+    assistantText: sections.join("\n\n"),
+    references: buildLiveBoundaryReferences(snapshot),
+  };
+}
+
 export function buildRepoOperationalAnswer(prompt, snapshot) {
+  if (isLiveBoundaryQuestion(prompt)) {
+    return buildLiveBoundaryOperationalAnswer(snapshot);
+  }
+
   const playbook = findRepoFlowPlaybook(prompt);
   if (!playbook) {
     return null;
   }
 
+  const dependencyMap = findRepoDependencyMap(playbook.id);
   const guidanceEntry = findGuidanceEntryByPrompt(playbook, prompt, snapshot);
   const sections = [
     formatSection("Sintesi breve", [
       `- ${playbook.whereIntervene}`,
       `- Area architetturale: ${playbook.architecturalArea}.`,
+      ...(dependencyMap?.featureLabel ? [`- Feature/mappa: ${dependencyMap.featureLabel}.`] : []),
+      ...(dependencyMap?.domainCodes?.length
+        ? [`- Domini coinvolti: ${dependencyMap.domainCodes.join(", ")}.`]
+        : []),
     ]),
-    formatSection("Moduli collegati", buildConnectedModuleLines(playbook, guidanceEntry)),
-    formatSection("Flusso a monte e a valle", [
-      ...playbook.upstreamFlow.map((entry) => `- A monte: ${entry}`),
-      ...playbook.downstreamFlow.map((entry) => `- A valle: ${entry}`),
-    ]),
-    formatSection("File/layer da leggere prima", buildFileAndLayerLines(playbook)),
-    formatSection("Perimetro logica", buildPerimeterLines(playbook)),
+    formatSection("Moduli collegati", buildConnectedModuleLines(playbook, guidanceEntry, dependencyMap)),
+    formatSection("Route coinvolte", buildRouteLines(playbook, dependencyMap, guidanceEntry)),
+    formatSection("File/layer da leggere prima", buildReadFirstLines(playbook, dependencyMap)),
+    formatSection("File UI coinvolti", buildUiFileLines(dependencyMap)),
+    formatSection("File domain/read-model coinvolti", buildDomainFileLines(dependencyMap)),
+    formatSection("File backend IA coinvolti", buildBackendFileLines(dependencyMap)),
+    ...(buildLegacyReferenceLines(dependencyMap).length
+      ? [formatSection("File madre di riferimento", buildLegacyReferenceLines(dependencyMap))]
+      : []),
+    formatSection("Lettori dominio usati", buildDomainReaderLines(dependencyMap)),
+    formatSection("Flusso a monte e a valle", buildFlowDirectionLines(playbook, dependencyMap)),
+    formatSection("Perimetro logica", buildPerimeterLines(playbook, dependencyMap)),
     formatSection("Dove intervenire", [`- ${playbook.whereIntervene}`]),
     formatSection("Rischio impatto", [
       `- ${playbook.impactRisk}: verifica moduli collegati e dipendenze prima di toccare il layer owner.`,
@@ -1543,6 +1968,6 @@ export function buildRepoOperationalAnswer(prompt, snapshot) {
   return {
     playbookId: playbook.id,
     assistantText: sections.join("\n\n"),
-    references: buildRepoOperationalReferences(playbook, snapshot, guidanceEntry),
+    references: buildRepoOperationalReferences(playbook, snapshot, guidanceEntry, dependencyMap),
   };
 }

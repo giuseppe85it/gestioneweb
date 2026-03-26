@@ -231,7 +231,7 @@ export default function NextAutistiRifornimentoPage() {
           className="rf-change-mezzo"
           onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/cambio-mezzo`)}
         >
-          Targa errata? Cambia mezzo
+          Targa errata? Cambia mezzo locale
         </button>
       </div>
 

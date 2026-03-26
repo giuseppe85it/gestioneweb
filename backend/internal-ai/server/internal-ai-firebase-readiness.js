@@ -276,7 +276,7 @@ export async function buildFirebaseReadinessSnapshot() {
 
   return {
     firestoreReadOnly: {
-      status: firestoreHardPrerequisitesReady ? "partial" : "not_ready",
+      status: "not_ready",
       evidence: [
         hasClientFirebaseConfig
           ? "Base Firebase client presente in src/firebase.ts con projectId e bucket noti."
@@ -290,8 +290,12 @@ export async function buildFirebaseReadinessSnapshot() {
         firebaseJsonHasFirestoreRules
           ? "firebase.json collega esplicitamente firestore.rules."
           : "firebase.json non collega alcun file firestore.rules verificabile.",
+        firestoreHardPrerequisitesReady
+          ? "Alcuni prerequisiti tecnici sembrano presenti, ma il bridge resta comunque chiuso finche non esiste una riapertura esplicita e verificata."
+          : "I prerequisiti tecnici restano incompleti e non consentono alcuna apertura affidabile del live-read.",
       ],
       blockers: [
+        "Verdetto binario attuale: live-read business chiuso; il backend IA puo usare solo clone/read model e snapshot seedate dal clone.",
         "Nel backend/internal-ai non esiste ancora un access layer Firebase che legga Firestore in modo realmente dedicato e separato dai runtime legacy.",
         runtimeProbe.modulesReady
           ? null
@@ -304,11 +308,11 @@ export async function buildFirebaseReadinessSnapshot() {
           : "firestore.rules non e ancora versionato e collegato in modo verificabile dal repo.",
       ].filter(Boolean),
       nextStep:
-        "Aprire un adapter Firebase read-only dedicato in backend/internal-ai solo dopo bootstrap reale di firebase-admin nel suo runtime, credenziale server-side separata e policy Firestore versionate/collegate.",
+        "Il confine resta chiuso: nessuna apertura live e ammessa finche non esiste un task separato che attivi e verifichi un adapter Firebase read-only dedicato.",
       candidateReads: firestoreCandidateReads,
     },
     storageReadOnly: {
-      status: storageHardPrerequisitesReady ? "partial" : "not_ready",
+      status: "not_ready",
       evidence: [
         hasClientFirebaseConfig
           ? `Bucket client noto dal repo: ${STORAGE_BUCKET}.`
@@ -322,8 +326,12 @@ export async function buildFirebaseReadinessSnapshot() {
         storageRulesDenyAll
           ? "Il file storage.rules versionato blocca tutto con allow read, write: if false."
           : "Il file storage.rules versionato non mostra un blocco totale immediato.",
+        storageHardPrerequisitesReady
+          ? "Alcuni prerequisiti tecnici sembrano presenti, ma il bridge Storage resta comunque chiuso finche non esiste una riapertura esplicita e verificata."
+          : "I prerequisiti tecnici restano incompleti e non consentono alcuna apertura affidabile del live-read Storage.",
       ],
       blockers: [
+        "Verdetto binario attuale: live-read business chiuso; nessun file business viene letto live dal backend IA separato.",
         "Nel backend/internal-ai non esiste ancora un access layer Firebase che legga Storage in sola lettura con whitelist esplicita dei path ammessi.",
         runtimeProbe.modulesReady
           ? null
@@ -336,11 +344,12 @@ export async function buildFirebaseReadinessSnapshot() {
           : "Lo stato versionato di storage.rules resta ambiguo o in conflitto con l'uso legacy: prima del live va chiarito il boundary deployato reale.",
       ].filter(Boolean),
       nextStep:
-        "Aprire un bridge Storage read-only solo dopo bootstrap reale del runtime backend IA, credenziale server-side dedicata e chiarimento definitivo delle policy Storage deployate.",
+        "Il confine resta chiuso: nessuna apertura live e ammessa finche non esiste un task separato che attivi e verifichi un bridge Storage read-only dedicato.",
       candidateReads: storageCandidateReads,
     },
     sharedRequirements,
     notes: [
+      "Verdetto binario attuale: live-read business chiuso; la IA usa solo clone/read model NEXT e snapshot read-only dedicate.",
       "Questa readiness descrive solo cio che e verificabile dal repository e dall'ambiente del processo corrente.",
       "Le whitelist candidate restano NON attive: nessuna lettura business Firebase/Storage viene eseguita da questo modulo.",
       "Il backend legacy resta solo fonte di evidenze tecniche e non diventa backend canonico del sottosistema IA interno.",

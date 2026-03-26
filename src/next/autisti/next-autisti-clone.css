@@ -100,7 +100,7 @@
 }
 
 .next-autisti-clone [data-next-autisti-blocked="true"]::after {
-  content: "clone";
+  content: "locale clone";
   position: absolute;
   top: 8px;
   right: 10px;
