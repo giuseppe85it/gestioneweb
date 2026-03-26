@@ -50,6 +50,7 @@ export type NextAttrezzaturaMovimentoReadOnlyItem = {
   sourceCantiereLabel: string | null;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof ATTREZZATURE_KEY;
+  trackingStatus: "tracciata" | "parziale" | "da_verificare";
   quality: "certo" | "parziale" | "da_verificare";
   flags: string[];
 };
@@ -86,6 +87,7 @@ export type NextAttrezzatureCantieriSnapshot = {
     withPhoto: number;
     withNote: number;
     withSourceCantiere: number;
+    withTrackingGap: number;
   };
   limitations: string[];
 };
@@ -223,6 +225,27 @@ function buildMovementId(raw: RawRecord, index: number): string {
   return normalizeOptionalText(raw.id) ?? `attrezzatura:${index}`;
 }
 
+function deriveTrackingStatus(args: {
+  tipo: NextAttrezzaturaMovimentoTipo;
+  timestamp: number | null;
+  sourceCantiereLabel: string | null;
+  materialeCategoria: string | null;
+}): NextAttrezzaturaMovimentoReadOnlyItem["trackingStatus"] {
+  if (
+    args.timestamp !== null &&
+    args.materialeCategoria &&
+    (args.tipo !== "SPOSTATO" || args.sourceCantiereLabel)
+  ) {
+    return "tracciata";
+  }
+
+  if (args.timestamp !== null || args.sourceCantiereLabel || args.materialeCategoria) {
+    return "parziale";
+  }
+
+  return "da_verificare";
+}
+
 function toMovementItem(
   raw: RawRecord,
   index: number
@@ -260,6 +283,12 @@ function toMovementItem(
   if (!data && timestamp === null) flags.push("data_assente");
   if (tipo === "SPOSTATO" && !sourceCantiereLabel) flags.push("sorgente_spostamento_assente");
   if (!fotoUrl) flags.push("foto_assente");
+  const trackingStatus = deriveTrackingStatus({
+    tipo,
+    timestamp,
+    sourceCantiereLabel,
+    materialeCategoria,
+  });
 
   return {
     id: buildMovementId(raw, index),
@@ -279,6 +308,7 @@ function toMovementItem(
     sourceCantiereLabel,
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: ATTREZZATURE_KEY,
+    trackingStatus,
     quality:
       data && materialeCategoria && (tipo !== "SPOSTATO" || sourceCantiereLabel)
         ? "certo"
@@ -409,6 +439,7 @@ function buildLimitations(args: {
     items.some((item) => item.flags.includes("sorgente_spostamento_assente"))
       ? "Una parte degli spostamenti non espone il cantiere sorgente completo."
       : null,
+    "Il dominio attrezzature resta globale: nel clone non esiste ancora un collegamento canonico diretto tra attrezzature e singola targa mezzo.",
     "Il reader clone e solo read-only: nuovo movimento, modifica, delete, upload foto e rimozione foto restano bloccati.",
   ].filter((entry): entry is string => Boolean(entry));
 }
@@ -510,6 +541,7 @@ export async function readNextAttrezzatureCantieriSnapshot(): Promise<NextAttrez
       withPhoto: items.filter((item) => Boolean(item.fotoUrl)).length,
       withNote: items.filter((item) => Boolean(item.note)).length,
       withSourceCantiere: items.filter((item) => Boolean(item.sourceCantiereLabel)).length,
+      withTrackingGap: items.filter((item) => item.trackingStatus !== "tracciata").length,
     },
     limitations: buildLimitations({ datasetShape, items, skippedRawRecords }),
   };

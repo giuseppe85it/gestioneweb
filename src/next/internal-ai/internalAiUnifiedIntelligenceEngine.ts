@@ -7,8 +7,16 @@ import {
 import { readNextMezzoOperativitaTecnicaSnapshot } from "../nextOperativitaTecnicaDomain";
 import {
   buildNextMezzoMaterialiMovimentiSnapshot,
+  readNextMagazzinoRealeSnapshot,
   readNextMaterialiMovimentiSnapshot,
 } from "../domain/nextMaterialiMovimentiDomain";
+import { readNextAttrezzatureCantieriSnapshot } from "../domain/nextAttrezzatureCantieriDomain";
+import {
+  findNextAutistiAssignmentsByTarga,
+  readNextAutistiReadOnlySnapshot,
+  type NextAutistiCanonicalSignal,
+  type NextAutistiReadOnlySnapshot,
+} from "../domain/nextAutistiDomain";
 import { readNextCentroControlloSnapshot } from "../domain/nextCentroControlloDomain";
 import { readNextCisternaSnapshot } from "../domain/nextCisternaDomain";
 import { readNextColleghiSnapshot } from "../domain/nextColleghiDomain";
@@ -16,6 +24,7 @@ import {
   readNextDocumentiCostiFleetSnapshot,
   readNextDocumentiCostiProcurementSupportSnapshot,
   readNextMezzoDocumentiCostiPeriodView,
+  readNextProcurementReadOnlySnapshot,
 } from "../domain/nextDocumentiCostiDomain";
 import { readNextFornitoriSnapshot } from "../domain/nextFornitoriDomain";
 import { readNextInventarioSnapshot } from "../domain/nextInventarioDomain";
@@ -130,9 +139,13 @@ export type InternalAiUnifiedRegistrySummary = {
 type UnifiedOutputPreference = "thread" | "modale" | "pdf" | "report";
 
 type UnifiedBusinessIntentId =
+  | "drivers_readonly"
   | "vehicle_overview"
   | "fuel_report"
   | "fuel_anomalies"
+  | "vehicle_materials"
+  | "warehouse_attention"
+  | "procurement_readonly"
   | "vehicle_deadlines"
   | "fleet_deadlines"
   | "vehicle_criticality"
@@ -174,6 +187,7 @@ type UnifiedEntityHints = {
 };
 
 type InternalAiUnifiedScopeId =
+  | "autisti"
   | "quadro"
   | "criticita"
   | "scadenze"
@@ -385,6 +399,8 @@ type FleetPriorityRow = VehiclePrioritySummary & {
   hasD02Signals: boolean;
 };
 
+type AutistiReadOnlySnapshot = Awaited<ReturnType<typeof readNextAutistiReadOnlySnapshot>>;
+
 type CentroControlloSnapshot = Awaited<ReturnType<typeof readNextCentroControlloSnapshot>>;
 
 type VehicleTechnicalSnapshot = Awaited<ReturnType<typeof readNextMezzoOperativitaTecnicaSnapshot>>;
@@ -394,6 +410,8 @@ type VehicleFuelSnapshot = Awaited<ReturnType<typeof readNextMezzoRifornimentiSn
 type VehicleDocumentiCostiPeriodView = Awaited<
   ReturnType<typeof readNextMezzoDocumentiCostiPeriodView>
 >;
+
+type ProcurementReadOnlySnapshot = Awaited<ReturnType<typeof readNextProcurementReadOnlySnapshot>>;
 
 type OperativitaGlobaleSnapshot = Awaited<ReturnType<typeof readNextOperativitaGlobaleSnapshot>>;
 
@@ -435,6 +453,7 @@ const APPROVAL_STATE: InternalAiApprovalState = {
 };
 
 const ALL_OPERATIONAL_SCOPES: InternalAiUnifiedScopeId[] = [
+  "autisti",
   "criticita",
   "scadenze",
   "lavori",
@@ -452,6 +471,21 @@ const ALL_OPERATIONAL_SCOPES: InternalAiUnifiedScopeId[] = [
 ];
 
 const SCOPE_PATTERNS: ReadonlyArray<{ scope: InternalAiUnifiedScopeId; patterns: string[] }> = [
+  {
+    scope: "autisti",
+    patterns: [
+      "autista",
+      "autisti",
+      "badge",
+      "sessione autista",
+      "sessioni autisti",
+      "flusso autisti",
+      "app autisti",
+      "inbox autisti",
+      "eventi autisti",
+      "dominio autisti",
+    ],
+  },
   { scope: "quadro", patterns: ["quadro completo", "quadro generale mezzo", "panoramica completa", "tutte le fonti"] },
   { scope: "criticita", patterns: ["criticita", "criticita operative", "priorita", "piu critico", "problemi", "segnalazioni", "controlli ko"] },
   { scope: "scadenze", patterns: ["scadenze", "revisione", "collaudo", "precollaudo", "pre-collaudo"] },
@@ -459,11 +493,11 @@ const SCOPE_PATTERNS: ReadonlyArray<{ scope: InternalAiUnifiedScopeId; patterns:
   { scope: "manutenzioni", patterns: ["manutenzioni", "manutenzione"] },
   { scope: "gomme", patterns: ["gomme", "gomma"] },
   { scope: "rifornimenti", patterns: ["rifornimenti", "rifornimento", "consumi", "carburante", "gasolio", "diesel", "km/l", "km per lt", "km per litro", "l/100km", "litri per 100 km"] },
-  { scope: "materiali", patterns: ["materiali", "movimenti materiali", "consegne materiale"] },
-  { scope: "inventario", patterns: ["inventario", "magazzino"] },
-  { scope: "ordini", patterns: ["ordini", "ordine", "arrivi"] },
-  { scope: "preventivi", patterns: ["preventivi", "preventivo"] },
-  { scope: "fornitori", patterns: ["fornitori", "fornitore", "listino"] },
+  { scope: "materiali", patterns: ["materiali", "movimenti materiali", "consegne materiale", "attrezzature", "attrezzatura"] },
+  { scope: "inventario", patterns: ["inventario", "magazzino", "stock", "scorte"] },
+  { scope: "ordini", patterns: ["ordini", "ordine", "arrivi", "acquisti", "procurement"] },
+  { scope: "preventivi", patterns: ["preventivi", "preventivo", "approvazioni", "approvazione", "capo costi", "preview"] },
+  { scope: "fornitori", patterns: ["fornitori", "fornitore", "listino", "prezzi"] },
   { scope: "documenti", patterns: ["documenti", "documento", "libretto", "allegati", "documentale"] },
   { scope: "costi", patterns: ["costi", "costo", "analisi economica", "fatture", "spese", "storico costi"] },
   { scope: "cisterna", patterns: ["cisterna", "schede test", "caravate"] },
@@ -471,6 +505,16 @@ const SCOPE_PATTERNS: ReadonlyArray<{ scope: InternalAiUnifiedScopeId; patterns:
 ];
 
 const SCOPE_SOURCE_MAP: Record<InternalAiUnifiedScopeId, string[]> = {
+  autisti: [
+    "storage/@autisti_sessione_attive",
+    "storage/@storico_eventi_operativi",
+    "storage/@segnalazioni_autisti_tmp",
+    "storage/@controlli_mezzo_autisti",
+    "storage/@richieste_attrezzature_autisti_tmp",
+    "collection/autisti_eventi",
+    "localStorage/@next_clone_autisti:autista",
+    "localStorage/@next_clone_autisti:mezzo",
+  ],
   quadro: [],
   criticita: [
     "storage/@alerts_state",
@@ -487,7 +531,7 @@ const SCOPE_SOURCE_MAP: Record<InternalAiUnifiedScopeId, string[]> = {
   manutenzioni: ["storage/@manutenzioni"],
   gomme: ["storage/@cambi_gomme_autisti_tmp", "storage/@gomme_eventi", "storage/@manutenzioni"],
   rifornimenti: ["storage/@rifornimenti", "storage/@rifornimenti_autisti_tmp"],
-  materiali: ["storage/@materialiconsegnati", "storage-path/materials"],
+  materiali: ["storage/@materialiconsegnati", "storage/@attrezzature_cantieri", "storage-path/materials"],
   inventario: ["storage/@inventario", "storage-path/inventario"],
   ordini: ["storage/@ordini"],
   preventivi: ["storage/@preventivi", "storage/@preventivi_approvazioni", "storage-path/preventivi/ia"],
@@ -505,15 +549,15 @@ const UNIFIED_SOURCE_DESCRIPTORS: readonly UnifiedSourceDescriptor[] = [
   { sourceId: "storage/@manutenzioni", sourceLabel: "Manutenzioni", domainCode: "D02", kind: "next_reader", readerLabel: "readNextOperativitaGlobaleSnapshot" },
   { sourceId: "storage/@cambi_gomme_autisti_tmp", sourceLabel: "Eventi gomme temporanei", domainCode: "D02", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@cambi_gomme_autisti_tmp" },
   { sourceId: "storage/@gomme_eventi", sourceLabel: "Eventi gomme ufficiali", domainCode: "D02", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@gomme_eventi" },
-  { sourceId: "storage/@autisti_sessione_attive", sourceLabel: "Sessioni attive autisti", domainCode: "D03/D10", kind: "next_reader", readerLabel: "readNextCentroControlloSnapshot" },
-  { sourceId: "storage/@storico_eventi_operativi", sourceLabel: "Storico eventi operativi", domainCode: "D03/D10", kind: "next_reader", readerLabel: "readNextCentroControlloSnapshot" },
+  { sourceId: "storage/@autisti_sessione_attive", sourceLabel: "Sessioni attive autisti", domainCode: "D03", kind: "next_reader", readerLabel: "readNextAutistiReadOnlySnapshot" },
+  { sourceId: "storage/@storico_eventi_operativi", sourceLabel: "Storico eventi operativi", domainCode: "D03", kind: "next_reader", readerLabel: "readNextAutistiReadOnlySnapshot" },
   { sourceId: "storage/@richieste_attrezzature_autisti_tmp", sourceLabel: "Richieste attrezzature autisti", domainCode: "D03/D10", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@richieste_attrezzature_autisti_tmp" },
   { sourceId: "collection/autisti_eventi", sourceLabel: "Fallback eventi autisti legacy", domainCode: "D03", kind: "raw_collection", readerLabel: "Adapter raw read-only prudente", collectionName: "autisti_eventi" },
   { sourceId: "storage/@rifornimenti", sourceLabel: "Rifornimenti business", domainCode: "D04", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@rifornimenti" },
   { sourceId: "storage/@rifornimenti_autisti_tmp", sourceLabel: "Rifornimenti da campo", domainCode: "D04", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@rifornimenti_autisti_tmp" },
   { sourceId: "storage/@materialiconsegnati", sourceLabel: "Movimenti materiali", domainCode: "D05", kind: "next_reader", readerLabel: "readNextMaterialiMovimentiSnapshot" },
   { sourceId: "storage/@inventario", sourceLabel: "Inventario", domainCode: "D05", kind: "next_reader", readerLabel: "readNextInventarioSnapshot" },
-  { sourceId: "storage/@attrezzature_cantieri", sourceLabel: "Attrezzature cantieri", domainCode: "D05", kind: "next_reader", readerLabel: "readNextOperativitaGlobaleSnapshot" },
+  { sourceId: "storage/@attrezzature_cantieri", sourceLabel: "Attrezzature cantieri", domainCode: "D05", kind: "next_reader", readerLabel: "readNextAttrezzatureCantieriSnapshot" },
   { sourceId: "storage/@ordini", sourceLabel: "Ordini", domainCode: "D06", kind: "next_reader", readerLabel: "readNextProcurementSnapshot" },
   { sourceId: "storage/@preventivi", sourceLabel: "Preventivi", domainCode: "D06", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@preventivi", preferredArrayKeys: ["preventivi", "items", "value"] },
   { sourceId: "storage/@listino_prezzi", sourceLabel: "Listino prezzi", domainCode: "D06", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@listino_prezzi", preferredArrayKeys: ["voci", "items", "value"] },
@@ -540,8 +584,8 @@ const UNIFIED_SOURCE_DESCRIPTORS: readonly UnifiedSourceDescriptor[] = [
   { sourceId: "storage-path/documenti_pdf/cisterna", sourceLabel: "Storage documenti PDF cisterna", domainCode: "D09", kind: "storage_prefix", readerLabel: "Listing Storage read-only prudente", storagePrefix: "documenti_pdf/cisterna" },
   { sourceId: "storage-path/documenti_pdf/cisterna_schede", sourceLabel: "Storage crop schede cisterna", domainCode: "D09", kind: "storage_prefix", readerLabel: "Listing Storage read-only prudente", storagePrefix: "documenti_pdf/cisterna_schede" },
   { sourceId: "storage-path/preventivi/ia", sourceLabel: "Storage preventivi IA", domainCode: "D06", kind: "storage_prefix", readerLabel: "Listing Storage read-only prudente", storagePrefix: "preventivi/ia" },
-  { sourceId: "localStorage/@autista_attivo_local", sourceLabel: "Autista attivo locale", domainCode: "D03", kind: "local_storage", readerLabel: "LocalStorage isolato browser", localStorageKey: "@autista_attivo_local" },
-  { sourceId: "localStorage/@mezzo_attivo_autista_local", sourceLabel: "Mezzo attivo locale autista", domainCode: "D03", kind: "local_storage", readerLabel: "LocalStorage isolato browser", localStorageKey: "@mezzo_attivo_autista_local" },
+  { sourceId: "localStorage/@next_clone_autisti:autista", sourceLabel: "Autista attivo locale clone", domainCode: "D03", kind: "local_storage", readerLabel: "LocalStorage isolato browser", localStorageKey: "@next_clone_autisti:autista" },
+  { sourceId: "localStorage/@next_clone_autisti:mezzo", sourceLabel: "Mezzo attivo locale clone", domainCode: "D03", kind: "local_storage", readerLabel: "LocalStorage isolato browser", localStorageKey: "@next_clone_autisti:mezzo" },
 ];
 
 let registryCache:
@@ -1117,6 +1161,18 @@ function inferPrimaryIntent(args: {
   asksPriorityOrdering: boolean;
   asksActionAdvice: boolean;
 }): UnifiedBusinessIntentId {
+  const asksDrivers =
+    args.explicitScopes.includes("autisti") ||
+    args.normalizedPrompt.includes("autista") ||
+    args.normalizedPrompt.includes("autisti") ||
+    args.normalizedPrompt.includes("badge") ||
+    args.normalizedPrompt.includes("flusso autisti") ||
+    args.normalizedPrompt.includes("app autisti") ||
+    args.normalizedPrompt.includes("inbox autisti") ||
+    args.normalizedPrompt.includes("segnali aperti") ||
+    args.normalizedPrompt.includes("eventi che richiedono attenzione") ||
+    args.normalizedPrompt.includes("a quale autista") ||
+    args.normalizedPrompt.includes("dominio autisti");
   const asksFuel = args.explicitScopes.includes("rifornimenti");
   const asksFuelAnomalies =
     asksFuel &&
@@ -1125,6 +1181,57 @@ function inferPrimaryIntent(args: {
   const asksCriticality = args.explicitScopes.includes("criticita");
   const asksCostsDocuments =
     args.explicitScopes.includes("costi") || args.explicitScopes.includes("documenti");
+  const asksProcurement =
+    args.explicitScopes.includes("ordini") ||
+    args.explicitScopes.includes("preventivi") ||
+    args.explicitScopes.includes("fornitori") ||
+    args.normalizedPrompt.includes("procurement") ||
+    args.normalizedPrompt.includes("acquist") ||
+    args.normalizedPrompt.includes("approvaz") ||
+    args.normalizedPrompt.includes("capo costi") ||
+    args.normalizedPrompt.includes("listino");
+  const asksProcurementBoundary =
+    args.normalizedPrompt.includes("riepilogo read-only di ordini e preventivi") ||
+    args.normalizedPrompt.includes("approvazioni reali o solo preview") ||
+    args.normalizedPrompt.includes("cta di procurement") ||
+    args.normalizedPrompt.includes("stato reale di capo costi") ||
+    (!args.normalizedTarga &&
+      args.normalizedPrompt.includes("questa area") &&
+      (args.normalizedPrompt.includes("operativ") ||
+        args.normalizedPrompt.includes("lettura prudente") ||
+        args.normalizedPrompt.includes("sola lettura") ||
+        args.normalizedPrompt.includes("read-only")));
+  const hasWarehouseCue =
+    args.explicitScopes.includes("materiali") ||
+    args.explicitScopes.includes("inventario") ||
+    args.normalizedPrompt.includes("magazzino") ||
+    args.normalizedPrompt.includes("inventario") ||
+    args.normalizedPrompt.includes("material") ||
+    args.normalizedPrompt.includes("attrezzatur") ||
+    args.normalizedPrompt.includes("stock") ||
+    args.normalizedPrompt.includes("scorte") ||
+    args.normalizedPrompt.includes("consegn");
+  const asksWarehouseBoundary =
+    !asksProcurement &&
+    !asksProcurementBoundary &&
+    ((args.normalizedPrompt.includes("questa parte") ||
+      args.normalizedPrompt.includes("questa area") ||
+      hasWarehouseCue) &&
+      (args.normalizedPrompt.includes("operativa o solo") ||
+        args.normalizedPrompt.includes("solo in lettura") ||
+        args.normalizedPrompt.includes("sola lettura") ||
+        args.normalizedPrompt.includes("read-only") ||
+        args.normalizedPrompt.includes("read only")));
+  const asksWarehouseAttention =
+    hasWarehouseCue &&
+    (args.normalizedPrompt.includes("criticita") ||
+      args.normalizedPrompt.includes("richiedono attenzione") ||
+      args.normalizedPrompt.includes("stock bass") ||
+      args.normalizedPrompt.includes("scorte bass") ||
+      args.normalizedPrompt.includes("bloccare il lavoro") ||
+      args.normalizedPrompt.includes("bloccare il lavoro") ||
+      args.normalizedPrompt.includes("blocchi operativi") ||
+      args.normalizedPrompt.includes("blocco operativ"));
   const hasExplicitDeadlineCue =
     args.normalizedPrompt.includes("scadenz") ||
     args.normalizedPrompt.includes("revisione") ||
@@ -1165,8 +1272,28 @@ function inferPrimaryIntent(args: {
     return "fuel_report";
   }
 
+  if (!args.normalizedTarga && (asksProcurement || asksProcurementBoundary)) {
+    return "procurement_readonly";
+  }
+
+  if (asksDrivers && !args.asksFullOverview) {
+    return "drivers_readonly";
+  }
+
   if (args.asksFullOverview) {
     return "vehicle_overview";
+  }
+
+  if (asksWarehouseBoundary || asksWarehouseAttention) {
+    return "warehouse_attention";
+  }
+
+  if (hasWarehouseCue && args.normalizedTarga && !asksCostsDocuments) {
+    return "vehicle_materials";
+  }
+
+  if (hasWarehouseCue && !asksCostsDocuments) {
+    return "warehouse_attention";
   }
 
   if (
@@ -1336,9 +1463,19 @@ function parseUnifiedQuery(
 
   if (scopes.length === 0) {
     switch (primaryIntent) {
+      case "drivers_readonly":
+        scopes = ["autisti"];
+        break;
       case "fuel_report":
       case "fuel_anomalies":
         scopes = ["rifornimenti"];
+        break;
+      case "vehicle_materials":
+      case "warehouse_attention":
+        scopes = ["materiali", "inventario"];
+        break;
+      case "procurement_readonly":
+        scopes = ["ordini", "preventivi", "fornitori"];
         break;
       case "vehicle_deadlines":
       case "fleet_deadlines":
@@ -1424,6 +1561,8 @@ export function isInternalAiUnifiedIntelligenceCandidate(prompt: string): boolea
   }
 
   return (
+    spec.primaryIntent === "drivers_readonly" ||
+    spec.primaryIntent === "procurement_readonly" ||
     spec.normalizedPrompt.includes("pdf") ||
     spec.normalizedPrompt.includes("modale") ||
     spec.normalizedPrompt.includes("report") ||
@@ -1946,16 +2085,16 @@ function buildInventarioSourceSnapshot(
 
 function buildAttrezzatureSourceSnapshot(
   descriptor: UnifiedSourceDescriptor,
-  snapshot: Awaited<ReturnType<typeof readNextOperativitaGlobaleSnapshot>>,
+  snapshot: Awaited<ReturnType<typeof readNextAttrezzatureCantieriSnapshot>>,
 ): UnifiedSourceSnapshot {
   return {
     sourceId: descriptor.sourceId,
     sourceLabel: descriptor.sourceLabel,
     domainCode: descriptor.domainCode,
     kind: descriptor.kind,
-    status: mapQualityToStatus([...snapshot.attrezzature.limitations, ...snapshot.limitations]),
+    status: mapQualityToStatus(snapshot.limitations),
     records: limitRecords(
-      snapshot.attrezzature.items.map((item) =>
+      snapshot.items.map((item) =>
         buildBaseRecord({
           sourceId: descriptor.sourceId,
           sourceLabel: descriptor.sourceLabel,
@@ -1969,7 +2108,7 @@ function buildAttrezzatureSourceSnapshot(
         }),
       ),
     ),
-    notes: [...snapshot.attrezzature.limitations, ...snapshot.limitations],
+    notes: snapshot.limitations,
     readerLabel: descriptor.readerLabel,
   };
 }
@@ -2110,6 +2249,80 @@ function buildLibrettiSourceSnapshot(
   };
 }
 
+function buildAutistiSourceSnapshot(args: {
+  descriptor: UnifiedSourceDescriptor;
+  snapshot: AutistiReadOnlySnapshot;
+}): UnifiedSourceSnapshot {
+  let records: UnifiedRecord[] = [];
+
+  if (args.descriptor.sourceId === "storage/@autisti_sessione_attive") {
+    records = args.snapshot.assignments
+      .filter((item) => item.sourceDataset === "@autisti_sessione_attive")
+      .map((item) =>
+        buildBaseRecord({
+          sourceId: args.descriptor.sourceId,
+          sourceLabel: args.descriptor.sourceLabel,
+          id: item.id,
+          entityLabel: item.autistaNome ?? item.badgeAutista ?? item.id,
+          summary: [item.mezzoTarga, item.targaRimorchio, item.sessionStatus]
+            .filter(Boolean)
+            .join(" | "),
+          ts: item.timestamp,
+          reliability:
+            item.linkReliability === "forte"
+              ? "alta"
+              : item.linkReliability === "prudente"
+                ? "media"
+                : "bassa",
+          targa: [item.targaMotrice, item.targaRimorchio],
+          autistaBadge: [item.badgeAutista],
+          autistaNome: [item.autistaNome],
+          refIds: [item.id],
+          labels: [item.sessionStatus],
+          flags: item.flags,
+        }),
+      );
+  } else if (args.descriptor.sourceId === "storage/@storico_eventi_operativi") {
+    records = args.snapshot.assignments
+      .filter((item) => item.sourceDataset === "@storico_eventi_operativi")
+      .map((item) =>
+        buildBaseRecord({
+          sourceId: args.descriptor.sourceId,
+          sourceLabel: args.descriptor.sourceLabel,
+          id: item.id,
+          entityLabel: item.sessionStatus ?? item.autistaNome ?? item.id,
+          summary: [item.autistaNome, item.mezzoTarga, item.targaRimorchio]
+            .filter(Boolean)
+            .join(" | "),
+          ts: item.timestamp,
+          reliability:
+            item.linkReliability === "forte"
+              ? "alta"
+              : item.linkReliability === "prudente"
+                ? "media"
+                : "bassa",
+          targa: [item.targaMotrice, item.targaRimorchio],
+          autistaBadge: [item.badgeAutista],
+          autistaNome: [item.autistaNome],
+          refIds: [item.id],
+          labels: [item.sessionStatus],
+          flags: item.flags,
+        }),
+      );
+  }
+
+  return {
+    sourceId: args.descriptor.sourceId,
+    sourceLabel: args.descriptor.sourceLabel,
+    domainCode: args.descriptor.domainCode,
+    kind: args.descriptor.kind,
+    status: mapQualityToStatus(args.snapshot.limitations),
+    records: limitRecords(records),
+    notes: args.snapshot.limitations,
+    readerLabel: args.descriptor.readerLabel,
+  };
+}
+
 function buildCentroSourceSnapshot(args: {
   descriptor: UnifiedSourceDescriptor;
   snapshot: Awaited<ReturnType<typeof readNextCentroControlloSnapshot>>;
@@ -2244,10 +2457,12 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
       operativitaGlobaleResult,
       materialiResult,
       inventarioResult,
+      attrezzatureResult,
       procurementResult,
       fornitoriResult,
       documentiCostiResult,
       librettiResult,
+      autistiResult,
       centroResult,
     ] = await Promise.allSettled([
       readNextAnagraficheFlottaSnapshot(),
@@ -2257,10 +2472,12 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
       readNextOperativitaGlobaleSnapshot(),
       readNextMaterialiMovimentiSnapshot(),
       readNextInventarioSnapshot(),
+      readNextAttrezzatureCantieriSnapshot(),
       readNextProcurementSnapshot(),
       readNextFornitoriSnapshot(),
       readNextDocumentiCostiFleetSnapshot(),
       readNextLibrettiExportSnapshot(),
+      readNextAutistiReadOnlySnapshot(),
       readNextCentroControlloSnapshot(),
     ]);
 
@@ -2288,7 +2505,7 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
             if (inventarioResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildInventarioSourceSnapshot(descriptor, inventarioResult.value));
             break;
           case "storage/@attrezzature_cantieri":
-            if (operativitaGlobaleResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildAttrezzatureSourceSnapshot(descriptor, operativitaGlobaleResult.value));
+            if (attrezzatureResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildAttrezzatureSourceSnapshot(descriptor, attrezzatureResult.value));
             break;
           case "storage/@ordini":
             if (procurementResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildProcurementSourceSnapshot(descriptor, procurementResult.value));
@@ -2307,6 +2524,8 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
             break;
           case "storage/@autisti_sessione_attive":
           case "storage/@storico_eventi_operativi":
+            if (autistiResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildAutistiSourceSnapshot({ descriptor, snapshot: autistiResult.value }));
+            break;
           case "storage/@alerts_state":
           case "storage/@segnalazioni_autisti_tmp":
           case "storage/@controlli_mezzo_autisti":
@@ -2403,6 +2622,8 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
 
 function formatScopeLabel(scope: InternalAiUnifiedScopeId): string {
   switch (scope) {
+    case "autisti":
+      return "autisti";
     case "quadro":
       return "quadro completo";
     case "criticita":
@@ -2547,6 +2768,9 @@ function mapScopesToDomainCodes(scopes: InternalAiUnifiedScopeId[]): string[] {
   const codes = new Set<string>();
   for (const scope of scopes) {
     switch (scope) {
+      case "autisti":
+        codes.add("D03");
+        break;
       case "criticita":
       case "scadenze":
       case "attenzione_oggi":
@@ -2601,6 +2825,21 @@ function buildUnifiedQueryPlan(spec: UnifiedQuerySpec): UnifiedQueryPlan {
   const outputLabel = formatOutputLabel(spec);
 
   switch (spec.primaryIntent) {
+    case "drivers_readonly":
+      return {
+        primaryIntent: spec.primaryIntent,
+        selectedScopes: ["autisti"],
+        domainLabel: "D03 Autisti, badge, sessioni ed eventi",
+        domainCodes: ["D03"],
+        relations: [
+          "badge -> autista attivo",
+          "targa -> sessione o evento autista collegabile",
+          "madre -> clone locale separato",
+        ],
+        excludedScopes: ALL_OPERATIONAL_SCOPES.filter((scope) => scope !== "autisti"),
+        includeIdentitySection: false,
+        outputLabel,
+      };
     case "fuel_report":
     case "fuel_anomalies":
       return {
@@ -2652,6 +2891,57 @@ function buildUnifiedQueryPlan(spec: UnifiedQuerySpec): UnifiedQueryPlan {
         relations: ["targa -> documenti", "targa -> costi mezzo"],
         excludedScopes: ALL_OPERATIONAL_SCOPES.filter((scope) => !["documenti", "costi"].includes(scope)),
         includeIdentitySection: spec.outputPreference !== "thread",
+        outputLabel,
+      };
+    case "vehicle_materials":
+      return {
+        primaryIntent: spec.primaryIntent,
+        selectedScopes: ["materiali", "inventario"],
+        domainLabel: "D05 Magazzino reale, materiali e inventario",
+        domainCodes: ["D01", "D05"],
+        relations: [
+          "targa -> movimenti materiali collegabili",
+          "magazzino globale -> stock critico e blocchi potenziali",
+          "attrezzature -> tracking globale prudente",
+        ],
+        excludedScopes: ALL_OPERATIONAL_SCOPES.filter(
+          (scope) => !["materiali", "inventario"].includes(scope),
+        ),
+        includeIdentitySection: spec.outputPreference !== "thread",
+        outputLabel,
+      };
+    case "warehouse_attention":
+      return {
+        primaryIntent: spec.primaryIntent,
+        selectedScopes: ["materiali", "inventario"],
+        domainLabel: "D05 Magazzino reale, inventario, materiali e attrezzature",
+        domainCodes: ["D05"],
+        relations: [
+          "stock -> disponibilita leggibile",
+          "movimento materiale -> destinatario o mezzo",
+          "attrezzature -> tracking e gap operativi",
+        ],
+        excludedScopes: ALL_OPERATIONAL_SCOPES.filter(
+          (scope) => !["materiali", "inventario"].includes(scope),
+        ),
+        includeIdentitySection: false,
+        outputLabel,
+      };
+    case "procurement_readonly":
+      return {
+        primaryIntent: spec.primaryIntent,
+        selectedScopes: ["ordini", "preventivi", "fornitori"],
+        domainLabel: "D06 Procurement, ordini, preventivi e Capo Costi",
+        domainCodes: ["D06"],
+        relations: [
+          "ordini -> workbench read-only",
+          "preventivi -> supporto prudente e preview",
+          "approvazioni -> stato leggibile ma non operativo",
+        ],
+        excludedScopes: ALL_OPERATIONAL_SCOPES.filter(
+          (scope) => !["ordini", "preventivi", "fornitori"].includes(scope),
+        ),
+        includeIdentitySection: false,
         outputLabel,
       };
     case "vehicle_overview":
@@ -3999,6 +4289,7 @@ function composeVehicleOverviewAssistantText(args: {
   const deadlinesSection = args.preview.sections.find((section) => section.id === "decision-deadlines") ?? null;
   const backlogSection = args.preview.sections.find((section) => section.id === "decision-backlog") ?? null;
   const signalsSection = args.preview.sections.find((section) => section.id === "decision-signals") ?? null;
+  const materialsSection = args.preview.sections.find((section) => section.id === "decision-materials") ?? null;
   const fuelSection = args.preview.sections.find((section) => section.id === "decision-fuel") ?? null;
   const costsSection = args.preview.sections.find((section) => section.id === "decision-costs") ?? null;
   const noteSection = args.preview.sections.find((section) => section.id === "decision-note") ?? null;
@@ -4031,6 +4322,9 @@ function composeVehicleOverviewAssistantText(args: {
       "Segnali operativi",
       signalsSection?.bullets.slice(0, 4) ?? [],
     ),
+    materialsSection
+      ? formatBulletBlock("Materiali, attrezzature e magazzino", materialsSection.bullets.slice(0, 4))
+      : null,
     fuelSection
       ? formatBulletBlock("Consumi e rifornimenti", fuelSection.bullets.slice(0, 4))
       : null,
@@ -4044,6 +4338,199 @@ function composeVehicleOverviewAssistantText(args: {
         ...(noteSection?.bullets.slice(0, 3) ?? []),
       ].filter((entry): entry is string => Boolean(entry)),
     ),
+  ].join("\n\n");
+}
+
+function composeVehicleMaterialsAssistantText(args: {
+  targa: string;
+  periodContext: InternalAiReportPeriodContext;
+  section: InternalAiVehicleReportSection | null;
+  missingData: string[];
+}): string {
+  const bullets = args.section?.bullets.slice(0, 6) ?? [];
+  const notes = dedupeStrings([
+    ...(args.missingData.length > 0
+      ? args.missingData.slice(0, 4)
+      : args.section?.notes.slice(0, 3) ?? []),
+  ]).map((entry) => sanitizeBusinessText(entry));
+  const hasStrongVehicleSignals = bullets.some(
+    (entry) =>
+      entry.includes("Movimenti materiali legati al mezzo") || entry.includes("Match forti:"),
+  );
+  const summary =
+    args.section?.summary ??
+    `Non risultano movimenti materiali o segnali magazzino forti collegati a ${args.targa} nel periodo ${args.periodContext.label}.`;
+  const action =
+    (hasStrongVehicleSignals
+      ? "Controllare prima i movimenti materiali con aggancio forte al mezzo e verificare poi se lo stock critico globale puo rallentare il lavoro."
+      : null) ??
+    bullets.find((entry) => /magazzino critico|match prudenz|tracking|verificar/i.test(entry)) ??
+    (bullets.some((entry) => entry.includes("Match forti:") || entry.includes("Movimenti materiali legati al mezzo"))
+      ? "Controllare prima i movimenti materiali con aggancio forte al mezzo e verificare se lo stock critico globale puo rallentare il lavoro."
+      : null) ??
+    (bullets.length > 0
+      ? "Verificare prima i movimenti materiali piu recenti e confermare se esistono collegamenti forti con il mezzo."
+      : "Usare D05 in sola lettura: se serve una conferma piena sul mezzo, controllare i movimenti con aggancio targa forte.");
+
+  return [
+    `Materiali e magazzino ${args.targa}`,
+    `Sintesi breve: ${summary}`,
+    formatBulletBlock("Dati principali", bullets.slice(0, 4)),
+    formatBulletBlock("Limiti", notes),
+    formatBulletBlock("Azione consigliata", [sanitizeBusinessText(action)]),
+  ].join("\n\n");
+}
+
+function composeWarehouseAssistantText(args: {
+  prompt: string;
+  snapshot: Awaited<ReturnType<typeof readNextMagazzinoRealeSnapshot>>;
+  periodContext: InternalAiReportPeriodContext;
+}): string {
+  const normalizedPrompt = normalizeSearchText(args.prompt);
+  const materialLinkSignals = args.snapshot.vehicleLinks.slice(0, 4);
+  const focusIsVehicleLinks =
+    normalizedPrompt.includes("mezzi") &&
+    (normalizedPrompt.includes("material") || normalizedPrompt.includes("attrezzatur"));
+  const focusIsReadOnly =
+    normalizedPrompt.includes("solo in lettura") ||
+    normalizedPrompt.includes("sola lettura") ||
+    normalizedPrompt.includes("read only") ||
+    normalizedPrompt.includes("read-only") ||
+    normalizedPrompt.includes("operativa o solo");
+  const focusIsBlockers =
+    normalizedPrompt.includes("stock bass") ||
+    normalizedPrompt.includes("scorte bass") ||
+    normalizedPrompt.includes("bloccare il lavoro") ||
+    normalizedPrompt.includes("bloccare il lavoro") ||
+    normalizedPrompt.includes("criticita") ||
+    normalizedPrompt.includes("richiedono attenzione");
+  const limitBullets = dedupeStrings(
+    args.snapshot.limitations.slice(0, 6).map((entry) => sanitizeBusinessText(entry)),
+  ).slice(0, 5);
+  const summary = focusIsReadOnly
+    ? "L'area magazzino del clone NEXT e operativa solo in lettura: i dati sono leggibili e utili per la IA, ma nessuna scrittura stock o consegna e attiva."
+    : focusIsVehicleLinks
+      ? `Ho trovato ${formatCount(args.snapshot.vehicleLinks.length)} collegamenti materiali verso mezzi, di cui ${formatCount(args.snapshot.counts.vehicleLinksStrong)} forti e ${formatCount(args.snapshot.counts.vehicleLinksPlausible)} prudenziali, nel perimetro ${args.periodContext.label}.`
+      : `${formatCount(args.snapshot.attentionSignals.length)} segnali D05 richiedono attenzione; oggi leggo ${formatCount(args.snapshot.counts.inventoryItems)} articoli inventario, ${formatCount(args.snapshot.counts.materialMovements)} movimenti materiali e ${formatCount(args.snapshot.counts.attrezzatureMovements)} movimenti attrezzature nel perimetro ${args.periodContext.label}.`;
+  const mainBullets = focusIsReadOnly
+    ? [
+        `Stato area: ${args.snapshot.operationalStatus.label}`,
+        args.snapshot.operationalStatus.summary,
+        `Stock critico leggibile: ${formatCount(args.snapshot.counts.inventoryCritical)}`,
+        `Scritture abilitate: no`,
+      ]
+    : focusIsVehicleLinks
+      ? materialLinkSignals.map(
+          (entry) =>
+            `${entry.label} | ${entry.movementCount} movimenti | affidabilita ${entry.reliability} | ultimo ${entry.latestDate ?? "dato senza data"}`,
+        )
+      : [
+          ...args.snapshot.attentionSignals
+            .slice(0, 5)
+            .map((signal) => `${signal.title} | ${signal.summary}`),
+          args.snapshot.counts.vehicleLinksPlausible > 0
+            ? `${formatCount(args.snapshot.counts.vehicleLinksPlausible)} collegamenti materiali verso mezzo restano prudenziali.`
+            : null,
+        ].filter((entry): entry is string => Boolean(entry));
+  const action =
+    focusIsReadOnly
+      ? "Usa quest'area per consultare stock, movimenti e attrezzature, ma lascia bloccate variazioni stock, consegne, ritiri e fotografie operative."
+      : focusIsVehicleLinks && args.snapshot.counts.vehicleLinksStrong > 0
+        ? "Partire dai mezzi con aggancio materiale forte e verificare poi se lo stock critico globale impatta i lavori imminenti."
+      : args.snapshot.counts.inventoryCritical > 0
+        ? "Verificare prima gli articoli a stock zero o negativo e confermare se bloccano lavori o manutenzioni aperte."
+      : args.snapshot.counts.vehicleLinksPlausible > 0
+        ? "Confermare i collegamenti materiali verso mezzo che oggi restano solo prudenziali."
+        : args.snapshot.counts.attrezzatureTrackingGap > 0
+          ? "Usare le attrezzature con prudenza e controllare i movimenti che non espongono un tracking completo."
+          : "L'area e utile in sola lettura: puoi usarla per controllo e sintesi, ma non per aggiornare stock o consegne.";
+  const actionWithFocus =
+    focusIsBlockers && args.snapshot.counts.inventoryCritical > 0
+      ? "Verificare prima gli articoli a stock zero o negativo e allinearli con i lavori o le manutenzioni che potrebbero fermarsi."
+      : action;
+
+  return [
+    focusIsVehicleLinks ? "Materiali collegati ai mezzi" : "Magazzino reale",
+    `Sintesi breve: ${summary}`,
+    formatBulletBlock("Dati principali", mainBullets.slice(0, 6)),
+    formatBulletBlock("Limiti", limitBullets),
+    formatBulletBlock("Azione consigliata", [sanitizeBusinessText(actionWithFocus)]),
+  ].join("\n\n");
+}
+
+function formatProcurementSurfaceStateLabel(
+  state: ProcurementReadOnlySnapshot["surfaces"]["ordini"]["state"],
+): string {
+  if (state === "navigabile") return "navigabile in sola lettura";
+  if (state === "preview") return "solo preview";
+  return "bloccata";
+}
+
+function composeProcurementAssistantText(args: {
+  prompt: string;
+  snapshot: ProcurementReadOnlySnapshot;
+}): string {
+  const normalizedPrompt = normalizeSearchText(args.prompt);
+  const focusApprovals =
+    normalizedPrompt.includes("approvaz") || normalizedPrompt.includes("capo costi");
+  const focusCtas =
+    normalizedPrompt.includes("cta") ||
+    normalizedPrompt.includes("blocc") ||
+    normalizedPrompt.includes("operativa o solo") ||
+    normalizedPrompt.includes("operativ") ||
+    normalizedPrompt.includes("preview");
+  const summary = focusApprovals
+    ? `Nel perimetro NEXT le approvazioni procurement sono solo leggibili: risultano ${formatCount(args.snapshot.counts.approvazioniTotali)} stati, ma nessuna approvazione reale e eseguibile dal clone.`
+    : focusCtas
+      ? "D06 e un workbench read-only reale solo per ordini, arrivi e dettaglio ordine. Le CTA che scrivono o chiudono il workflow restano bloccate o solo preview."
+      : `D06 e oggi utile in sola lettura: ordini, arrivi e dettaglio ordine sono navigabili, mentre preventivi, approvazioni, PDF timbrati e listino restano prudenziali o bloccati.`;
+
+  const mainBullets = [
+    `Ordini leggibili: ${formatCount(args.snapshot.counts.ordiniTotali)} | in attesa ${formatCount(args.snapshot.counts.ordiniInAttesa)} | parziali ${formatCount(args.snapshot.counts.ordiniParziali)} | arrivati ${formatCount(args.snapshot.counts.ordiniArrivati)}`,
+    `Righe ordine: ${formatCount(args.snapshot.counts.righeOrdineTotali)} | pendenti ${formatCount(args.snapshot.counts.righeOrdinePendenti)} | arrivate ${formatCount(args.snapshot.counts.righeOrdineArrivate)}`,
+    `Preventivi letti: ${formatCount(args.snapshot.counts.preventiviTotali)} | con PDF ${formatCount(args.snapshot.counts.preventiviConPdf)} | con targa diretta ${formatCount(args.snapshot.counts.preventiviConTargaDiretta)}`,
+    `Approvazioni lette: ${formatCount(args.snapshot.counts.approvazioniTotali)} | pending ${formatCount(args.snapshot.counts.approvazioniPending)} | approved ${formatCount(args.snapshot.counts.approvazioniApproved)} | rejected ${formatCount(args.snapshot.counts.approvazioniRejected)}`,
+    `Listino leggibile: ${formatCount(args.snapshot.counts.listinoVoci)} voci | con fornitore ${formatCount(args.snapshot.counts.listinoConFornitore)}`,
+  ];
+
+  const relevantBullets = focusCtas
+    ? [
+        `Ordine materiali | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.ordineMateriali.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.ordineMateriali.reason)}`,
+        `Prezzi e preventivi | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.preventivi.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.preventivi.reason)}`,
+        `Listino prezzi | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.listino.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.listino.reason)}`,
+        `Capo Costi e approvazioni | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.approvazioniCapoCosti.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.approvazioniCapoCosti.reason)}`,
+        `PDF timbrato | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.pdfTimbrato.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.pdfTimbrato.reason)}`,
+      ]
+    : focusApprovals
+      ? [
+          `Capo Costi | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.approvazioniCapoCosti.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.approvazioniCapoCosti.reason)}`,
+          `Approvazioni pending: ${formatCount(args.snapshot.counts.approvazioniPending)}`,
+          `Approvazioni gia segnate approved/rejected: ${formatCount(args.snapshot.counts.approvazioniApproved + args.snapshot.counts.approvazioniRejected)} | stato leggibile ma non azionabile`,
+          `PDF timbrato | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.pdfTimbrato.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.pdfTimbrato.reason)}`,
+        ]
+      : [
+          `Ordini | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.ordini.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.ordini.reason)}`,
+          `Arrivi | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.arrivi.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.arrivi.reason)}`,
+          `Dettaglio ordine | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.dettaglioOrdine.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.dettaglioOrdine.reason)}`,
+          `Preventivi | ${formatProcurementSurfaceStateLabel(args.snapshot.surfaces.preventivi.state)} | ${sanitizeBusinessText(args.snapshot.surfaces.preventivi.reason)}`,
+        ];
+
+  const action = focusCtas
+    ? "Nel clone NEXT conviene lasciare attivi solo ordini, arrivi e dettaglio ordine in sola lettura; ordine materiali, salva, conferma, approva, rifiuta, aggiungi materiale e PDF timbrato vanno tenuti bloccati o dichiarati come preview."
+    : focusApprovals
+      ? "Usa Capo Costi per leggere stato e documenti gia presenti, ma tratta approva, rifiuta e PDF timbrato come funzioni non operative nel clone."
+      : args.snapshot.actionHint;
+
+  return [
+    "Procurement read-only",
+    `Sintesi breve: ${summary}`,
+    formatBulletBlock("Dati principali", mainBullets),
+    formatBulletBlock("Elementi rilevanti", relevantBullets),
+    formatBulletBlock(
+      "Limiti",
+      args.snapshot.limitations.slice(0, 5).map((entry) => sanitizeBusinessText(entry)),
+    ),
+    formatBulletBlock("Azione consigliata", [sanitizeBusinessText(action)]),
   ].join("\n\n");
 }
 
@@ -4491,28 +4978,43 @@ async function buildMaterialiInventarioSection(args: {
   periodContext: InternalAiReportPeriodContext;
   registry: UnifiedRegistrySnapshot;
 }): Promise<UnifiedSectionBuild> {
-  const [materialiBase, inventario, documentiFleet] = await Promise.all([
-    readNextMaterialiMovimentiSnapshot(),
-    readNextInventarioSnapshot(),
+  const [magazzino, documentiFleet] = await Promise.all([
+    readNextMagazzinoRealeSnapshot(),
     readNextDocumentiCostiFleetSnapshot(),
   ]);
   const materiali = buildNextMezzoMaterialiMovimentiSnapshot({
-    baseSnapshot: materialiBase,
+    baseSnapshot: magazzino.materials,
     targa: args.targa,
     mezzoId: args.mezzoId,
     materialCostSupportDocuments: documentiFleet.materialCostSupport.documents,
   });
   const materialItems = materiali.items.filter((item) => isTsInPeriod(item.timestamp, args.periodContext));
-  const inventarioCritico = inventario.items.filter((item) => item.quantita !== null && item.quantita <= 0);
+  const inventarioCritico = magazzino.inventory.items.filter((item) => item.stockStatus === "critico");
+  const attrezzatureGap = magazzino.attentionSignals.find(
+    (signal) => signal.kind === "tracciamento_attrezzature_parziale",
+  );
+  const hasUsefulWarehouseSignal =
+    materialItems.length > 0 || inventarioCritico.length > 0 || Boolean(attrezzatureGap);
   const bullets = [
     `Movimenti materiali legati al mezzo: ${materialItems.length}`,
     `Match forti: ${materiali.counts.matchedStrong}`,
+    materiali.counts.matchedPlausible > 0
+      ? `Match prudenziali: ${materiali.counts.matchedPlausible}`
+      : null,
     `Magazzino critico globale: ${inventarioCritico.length}`,
+    `Attrezzature cantieri: ${magazzino.counts.attrezzatureMovements} movimenti globali | gap tracking ${magazzino.counts.attrezzatureTrackingGap}`,
+    attrezzatureGap ? attrezzatureGap.title : null,
     ...materialItems.slice(0, 3).map((item) => `${item.materiale ?? item.descrizione ?? item.id}${item.fornitore ? ` | ${item.fornitore}` : ""}`),
     ...inventarioCritico.slice(0, 2).map((item) => `Magazzino critico: ${item.descrizione}`),
-  ];
+  ].filter((entry): entry is string => Boolean(entry));
   const sources = mergePreviewSources(
-    ["storage/@materialiconsegnati", "storage/@inventario", "storage-path/materials", "storage-path/inventario"]
+    [
+      "storage/@materialiconsegnati",
+      "storage/@inventario",
+      "storage/@attrezzature_cantieri",
+      "storage-path/materials",
+      "storage-path/inventario",
+    ]
       .map((sourceId) => args.registry.sources.find((entry) => entry.sourceId === sourceId))
       .filter((entry): entry is UnifiedSourceSnapshot => Boolean(entry))
       .map((entry) => buildSourcePreviewFromSource(entry, args.periodContext)),
@@ -4522,15 +5024,31 @@ async function buildMaterialiInventarioSection(args: {
     section: buildSection({
       id: "materiali-inventario",
       title: "Materiali e inventario",
-      summary: materialItems.length > 0 || inventarioCritico.length > 0 ? "D05 ha riscontri utili sia lato mezzo sia lato magazzino globale." : "Nessun movimento materiali legato al mezzo e nessuna criticita inventario rilevata.",
+      summary:
+        hasUsefulWarehouseSignal
+          ? "D05 ha riscontri utili sia lato mezzo sia lato magazzino globale."
+          : "Nessun movimento materiali legato al mezzo e nessuna criticita inventario rilevata.",
       bullets,
-      notes: dedupeStrings([...materiali.limitations.slice(0, 2), ...inventario.limitations.slice(0, 2)]),
-      status: materialItems.length > 0 || inventarioCritico.length > 0 ? "completa" : "parziale",
+      notes: dedupeStrings([
+        ...materiali.limitations.slice(0, 2),
+        ...magazzino.limitations.slice(0, 2),
+        attrezzatureGap?.summary ?? null,
+      ]),
+      status: hasUsefulWarehouseSignal ? "completa" : "parziale",
       periodContext: args.periodContext,
     }),
     sources,
-    keyPoints: bullets.slice(0, 3),
-    missingData: materialItems.length > 0 ? [] : ["I movimenti materiali sono presenti nel registry, ma non risultano agganci forti alla targa nel periodo richiesto."],
+    keyPoints: bullets.slice(0, 4),
+    missingData:
+      materialItems.length > 0
+        ? []
+        : [
+            "I movimenti materiali sono presenti nel dominio D05, ma non risultano agganci forti alla targa nel periodo richiesto.",
+            "Le attrezzature cantieri restano oggi una vista globale D05: non espongono ancora un legame targa canonico abbastanza forte per attribuirle con certezza al mezzo.",
+            materiali.counts.matchedPlausible > 0
+              ? "Sono presenti solo collegamenti materiali prudenziali verso il mezzo: vanno letti come indizi, non come allocazioni certe."
+              : null,
+          ].filter((entry): entry is string => Boolean(entry)),
     evidences: bullets.slice(0, 2),
   };
 }
@@ -4878,6 +5396,9 @@ function buildVehicleReportTitle(
   if (primaryIntent === "vehicle_overview") {
     return `Quadro mezzo ${targa}`;
   }
+  if (primaryIntent === "vehicle_materials") {
+    return `Report materiali e magazzino ${targa}`;
+  }
   if (primaryIntent === "costs_documents") {
     return `Report costi e documenti ${targa}`;
   }
@@ -5044,6 +5565,7 @@ function buildVehicleOverviewSections(args: {
 }): InternalAiVehicleReportSection[] {
   const sectionsById = new Map(args.sections.map((section) => [section.id, section]));
   const tyreSection = sectionsById.get("gomme") ?? null;
+  const materialsSection = sectionsById.get("materiali-inventario") ?? null;
   const costsSection = sectionsById.get("documenti-costi") ?? null;
   const operationalSignals = args.operational;
   const technicalSignals = args.technical;
@@ -5173,6 +5695,29 @@ function buildVehicleOverviewSections(args: {
           args.fuelAnalytics.reliability.final.status === "affidabile"
             ? "completa"
             : "parziale",
+        periodContext: args.periodContext,
+      }),
+    );
+  }
+
+  if (
+    materialsSection &&
+    (materialsSection.status === "completa" ||
+      materialsSection.bullets.length > 0 ||
+      materialsSection.notes.length > 0)
+  ) {
+    result.push(
+      buildSection({
+        id: "decision-materials",
+        title: "Materiali, attrezzature e magazzino",
+        summary: sanitizeBusinessText(materialsSection.summary),
+        bullets: materialsSection.bullets
+          .slice(0, 5)
+          .map((entry) => sanitizeBusinessText(entry)),
+        notes: materialsSection.notes
+          .slice(0, 3)
+          .map((entry) => sanitizeBusinessText(entry)),
+        status: materialsSection.status,
         periodContext: args.periodContext,
       }),
     );
@@ -5377,6 +5922,287 @@ function buildVehiclePreview(args: {
   };
 }
 
+function formatAutistiLinkReliabilityLabel(
+  reliability: NextAutistiReadOnlySnapshot["assignments"][number]["linkReliability"],
+): string {
+  switch (reliability) {
+    case "forte":
+      return "aggancio forte";
+    case "prudente":
+      return "aggancio prudente";
+    case "locale_clone":
+      return "solo locale clone";
+    default:
+      return "non dimostrabile";
+  }
+}
+
+function formatAutistiOriginLabel(
+  origin: NextAutistiReadOnlySnapshot["signals"][number]["sourceOrigin"],
+): string {
+  switch (origin) {
+    case "madre_storage":
+      return "madre in sola lettura";
+    case "madre_collection_legacy":
+      return "fallback legacy prudente";
+    default:
+      return "clone locale autisti";
+  }
+}
+
+function isTimestampToday(timestamp: number | null, now: number): boolean {
+  if (timestamp === null) return false;
+  const current = new Date(now);
+  const start = new Date(
+    current.getFullYear(),
+    current.getMonth(),
+    current.getDate(),
+    0,
+    0,
+    0,
+    0,
+  ).getTime();
+  const end = new Date(
+    current.getFullYear(),
+    current.getMonth(),
+    current.getDate(),
+    23,
+    59,
+    59,
+    999,
+  ).getTime();
+  return timestamp >= start && timestamp <= end;
+}
+
+function buildAutistiAttentionItems(args: {
+  snapshot: AutistiReadOnlySnapshot;
+  spec: UnifiedQuerySpec;
+  periodContext: InternalAiReportPeriodContext;
+}): NextAutistiCanonicalSignal[] {
+  return args.snapshot.signals
+    .filter((item) => item.requiresAttention)
+    .filter((item) => {
+      if (args.spec.periodExplicitRequested && args.periodContext.appliesFilter) {
+        return isTsInPeriod(item.timestamp, args.periodContext);
+      }
+      if (args.spec.normalizedPrompt.includes("oggi")) {
+        return isTimestampToday(item.timestamp, Date.now());
+      }
+      return true;
+    })
+    .sort((left, right) => {
+      const leftScore = left.sourceOrigin === "madre_storage" ? 2 : 1;
+      const rightScore = right.sourceOrigin === "madre_storage" ? 2 : 1;
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      return (right.timestamp ?? 0) - (left.timestamp ?? 0);
+    });
+}
+
+function composeDriversAssistantText(args: {
+  spec: UnifiedQuerySpec;
+  snapshot: AutistiReadOnlySnapshot;
+  periodContext: InternalAiReportPeriodContext;
+}): string {
+  const asksBoundary =
+    args.spec.normalizedPrompt.includes("madre") ||
+    args.spec.normalizedPrompt.includes("next") ||
+    args.spec.normalizedPrompt.includes("flusso locale") ||
+    args.spec.normalizedPrompt.includes("solo locale") ||
+    args.spec.normalizedPrompt.includes("solo in lettura") ||
+    args.spec.normalizedPrompt.includes("read-only");
+  const asksAnomalies =
+    args.spec.normalizedPrompt.includes("anomali") ||
+    args.spec.normalizedPrompt.includes("anomalie") ||
+    args.spec.normalizedPrompt.includes("incomplet");
+  const asksFlowSummary =
+    args.spec.normalizedPrompt.includes("riepilogo") ||
+    args.spec.normalizedPrompt.includes("flusso autisti") ||
+    args.spec.normalizedPrompt.includes("app autisti");
+  const asksAssociationExplicit =
+    args.spec.normalizedPrompt.includes("a quale autista") ||
+    args.spec.normalizedPrompt.includes("associat") ||
+    args.spec.normalizedPrompt.includes("collegat");
+  const asksAssociation =
+    asksAssociationExplicit ||
+    (args.spec.normalizedTarga !== null &&
+      !asksBoundary &&
+      !asksAnomalies &&
+      !asksFlowSummary);
+  const attentionItems = buildAutistiAttentionItems(args);
+
+  if (asksAnomalies) {
+    return [
+      "Anomalie dominio autisti",
+      `Sintesi breve: ho trovato ${args.snapshot.anomalies.length} punti da verificare nel perimetro D03 letto oggi.`,
+      formatBulletBlock("Anomalie e dati incompleti", args.snapshot.anomalies.slice(0, 6)),
+      formatBulletBlock(
+        "Azione consigliata",
+        [
+          "Correggi prima gli agganci senza badge o senza targa forte.",
+          "Se nel clone esistono segnali locali, non considerarli sincronizzati con la madre.",
+        ],
+      ),
+    ].join("\n\n");
+  }
+
+  if (asksFlowSummary || attentionItems.length === 0) {
+    return [
+      "Flusso autisti read-only",
+      `Sintesi breve: oggi vedo ${args.snapshot.counts.activeSessions} sessioni attive, ${args.snapshot.counts.attentionSignalsMother} segnali madre e ${args.snapshot.counts.attentionSignalsLocal} segnali solo locali clone.`,
+      formatBulletBlock("Dati principali", [
+        `Agganci forti autista-mezzo: ${args.snapshot.counts.assignmentsStrong}`,
+        `Agganci prudenziali: ${args.snapshot.counts.assignmentsPrudent}`,
+        `Fallback legacy: ${args.snapshot.counts.legacyEvents}`,
+      ]),
+      formatBulletBlock(
+        "Nota semplice",
+        dedupeStrings([
+          args.snapshot.operationalStatus.note,
+          ...args.snapshot.limitations,
+        ]).slice(0, 5),
+      ),
+      formatBulletBlock(
+        "Azione consigliata",
+        [
+          "Per rettifiche o approfondimenti usa il Centro di Controllo e l'area admin autisti nel perimetro clone-safe.",
+        ],
+      ),
+    ].join("\n\n");
+  }
+
+  if (asksBoundary) {
+    return [
+      "Confine reale del dominio autisti",
+      "Sintesi breve: D03 legge fonti madre in sola lettura, separa il clone locale autisti e tratta il fallback legacy solo come supporto prudente.",
+      formatBulletBlock(
+        "Perimetro",
+        args.snapshot.boundaries.map(
+          (item) => `${item.title}: ${item.count} elementi | ${item.note}`,
+        ),
+      ),
+      formatBulletBlock(
+        "Azione consigliata",
+        [
+          "Usa sessioni ed eventi madre per i collegamenti forti badge-targa.",
+          "Tratta controlli, segnalazioni e richieste salvati nel clone come solo locali finche non esiste sincronizzazione reale.",
+        ],
+      ),
+    ].join("\n\n");
+  }
+
+  if (asksAssociation && args.spec.normalizedTarga) {
+    const matches = findNextAutistiAssignmentsByTarga(
+      args.snapshot,
+      args.spec.normalizedTarga,
+    );
+    if (matches.length === 0) {
+      return [
+        `Collegamento autista per ${args.spec.normalizedTarga}`,
+        "Sintesi breve: non ho trovato un aggancio forte autista-targa nelle fonti D03 lette oggi.",
+        formatBulletBlock(
+          "Limiti",
+          dedupeStrings([
+            ...args.snapshot.limitations,
+            "Controlla se il mezzo e presente solo nel flusso locale clone o se la sessione madre non e ancora aggiornata.",
+          ]).slice(0, 5),
+        ),
+      ].join("\n\n");
+    }
+
+    const best = matches[0];
+    const relatedSignals = attentionItems
+      .filter(
+        (item) =>
+          item.mezzoTarga === args.spec.normalizedTarga ||
+          item.targaMotrice === args.spec.normalizedTarga ||
+          item.targaRimorchio === args.spec.normalizedTarga,
+      )
+      .slice(0, 4);
+
+    return [
+      `Collegamento autista ${args.spec.normalizedTarga}`,
+      `Sintesi breve: la targa ${args.spec.normalizedTarga} risulta collegata a ${best.autistaNome ?? "autista non nominato"}${best.badgeAutista ? ` (badge ${best.badgeAutista})` : ""}.`,
+      formatBulletBlock("Dati principali", [
+        `Mezzo principale: ${best.mezzoTarga ?? "-"}`,
+        `Origine: ${formatAutistiOriginLabel(best.sourceOrigin)}`,
+        `Affidabilita collegamento: ${formatAutistiLinkReliabilityLabel(best.linkReliability)}`,
+      ]),
+      formatBulletBlock(
+        "Segnali collegati",
+        relatedSignals.map(
+          (item) =>
+            `${item.titolo}: ${item.descrizione}${item.timestamp ? ` | ${formatDateLabel(item.timestamp)}` : ""}`,
+        ),
+      ),
+      formatBulletBlock(
+        "Azione consigliata",
+        relatedSignals.length > 0
+          ? ["Verifica prima i segnali aperti collegati a questa targa e poi conferma se l'aggancio autista e ancora attivo."]
+          : ["Usa questo collegamento come base read-only e conferma sul Centro di Controllo se la sessione e ancora aperta."],
+      ),
+    ].join("\n\n");
+  }
+
+  return [
+    "Autisti con segnali da attenzionare",
+    `Sintesi breve: risultano ${attentionItems.length} segnali aperti o prudenziali nel periodo ${args.periodContext.label}.`,
+    formatBulletBlock(
+      "Autisti da guardare",
+      attentionItems.slice(0, 6).map((item) => {
+        const who = item.autistaNome ?? item.badgeAutista ?? "Autista non identificato";
+        const targaLabel = item.mezzoTarga ?? item.targaMotrice ?? item.targaRimorchio ?? "-";
+        return `${who} | targa ${targaLabel} | ${item.titolo}: ${item.descrizione}`;
+      }),
+    ),
+    formatBulletBlock(
+      "Azione consigliata",
+      [
+        "Parti dai segnali madre con targa forte; usa quelli locali clone solo come promemoria non sincronizzato.",
+      ],
+    ),
+  ].join("\n\n");
+}
+
+async function runDriversUnifiedQuery(
+  spec: UnifiedQuerySpec,
+): Promise<InternalAiUnifiedExecutionResult> {
+  const plan = buildUnifiedQueryPlan(spec);
+  const periodContext = resolveInternalAiReportPeriodContext(spec.periodInput);
+  const snapshot = await readNextAutistiReadOnlySnapshot();
+  const reliabilityLabel =
+    snapshot.counts.assignmentsStrong > 0 || snapshot.counts.attentionSignalsMother > 0
+      ? "Parziale"
+      : snapshot.counts.attentionSignalsLocal > 0
+        ? "Prudente"
+        : "Da verificare";
+
+  return {
+    intent: "richiesta_generica",
+    status:
+      snapshot.counts.totalSignals > 0 || snapshot.counts.activeSessions > 0
+        ? "completed"
+        : "partial",
+    assistantText: composeDriversAssistantText({
+      spec,
+      snapshot,
+      periodContext,
+    }),
+    references: buildUnifiedReferences({
+      reliabilityLabel,
+      domainLabel: plan.domainLabel,
+      outputLabel: plan.outputLabel,
+      targa: spec.normalizedTarga,
+      extraLabels: [
+        `Stato D03: ${snapshot.operationalStatus.label}`,
+        "Confine D03: madre in sola lettura + clone locale autisti separato + fallback legacy prudente",
+      ],
+    }),
+    report: null,
+  };
+}
+
 async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalAiUnifiedExecutionResult> {
   const registry = await buildUnifiedRegistrySnapshot();
   const plan = buildUnifiedQueryPlan(spec);
@@ -5535,7 +6361,11 @@ async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalA
   const evidences = dedupeStrings(sections.flatMap((section) => section.evidences));
   const keyPoints = dedupeStrings(sections.flatMap((section) => section.keyPoints)).slice(0, 8);
   const reliabilityLabel =
-    fuelAnalytics !== null
+    plan.primaryIntent === "vehicle_materials"
+      ? keyPoints.length > 0
+        ? "Parziale"
+        : "Da verificare"
+      : fuelAnalytics !== null
       ? fuelAnalytics.reliability.final.label
       : documentiCostiView !== null
         ? formatReliabilityLabel(documentiCostiView.reliability.final)
@@ -5614,6 +6444,17 @@ async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalA
         preview,
       });
       break;
+    case "vehicle_materials":
+      assistantText = composeVehicleMaterialsAssistantText({
+        targa: mezzo.targa,
+        periodContext,
+        section:
+          preview.sections.find((section) => section.id === "decision-materials") ??
+          sections.find((section) => section.section.id === "materiali-inventario")?.section ??
+          null,
+        missingData,
+      });
+      break;
     case "costs_documents":
       if (documentiCostiView) {
         assistantText = composeCostsDocumentsAssistantText({
@@ -5632,7 +6473,12 @@ async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalA
     outputLabel: plan.outputLabel,
     targa: mezzo.targa,
     extraLabels:
-      fuelAnalytics !== null
+      plan.primaryIntent === "vehicle_materials"
+        ? [
+            "Stato area D05: Solo lettura",
+            "D05 distingue collegamenti mezzo forti, prudenziali e segnali globali di magazzino.",
+          ]
+        : fuelAnalytics !== null
         ? [
             `Fiducia sorgente: ${fuelAnalytics.reliability.source.label}`,
             `Fiducia filtro: ${fuelAnalytics.reliability.filter.label}`,
@@ -5767,6 +6613,101 @@ async function runFleetUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalAiU
   };
 }
 
+async function runWarehouseUnifiedQuery(
+  spec: UnifiedQuerySpec,
+): Promise<InternalAiUnifiedExecutionResult> {
+  const plan = buildUnifiedQueryPlan(spec);
+  const periodContext = resolveInternalAiReportPeriodContext(spec.periodInput);
+
+  if (spec.periodExplicitRequested && (!spec.periodResolved || !periodContext.isValid)) {
+    return {
+      intent: "richiesta_generica",
+      status: "partial",
+      assistantText:
+        "Ho rilevato una richiesta D05 con periodo esplicito, ma il periodo non e stato interpretato in modo affidabile.\n\n" +
+        "Per evitare un riepilogo magazzino sul perimetro sbagliato, fermo qui l'analisi e ti chiedo di riformulare il periodo.",
+      references: buildUnifiedReferences({
+        reliabilityLabel: "Parziale",
+        domainLabel: plan.domainLabel,
+        outputLabel: plan.outputLabel,
+      }),
+      report: null,
+    };
+  }
+
+  const magazzino = await readNextMagazzinoRealeSnapshot();
+  const reliabilityLabel =
+    magazzino.attentionSignals.length > 0 ||
+    magazzino.counts.vehicleLinksStrong > 0 ||
+    magazzino.counts.inventoryCritical > 0
+      ? "Parziale"
+      : "Da verificare";
+
+  return {
+    intent: "richiesta_generica",
+    status:
+      magazzino.attentionSignals.length > 0 || magazzino.vehicleLinks.length > 0
+        ? "completed"
+        : "partial",
+    assistantText: composeWarehouseAssistantText({
+      prompt: spec.visiblePrompt,
+      snapshot: magazzino,
+      periodContext,
+    }),
+    references: buildUnifiedReferences({
+      reliabilityLabel,
+      domainLabel: plan.domainLabel,
+      outputLabel: plan.outputLabel,
+      extraLabels: [
+        `Stato area D05: ${magazzino.operationalStatus.label}`,
+        spec.periodExplicitRequested
+          ? `Periodo richiesto: ${periodContext.label}. Su D05 globale l'inventario resta fotografia attuale e i movimenti usano il filtro solo quando la data e leggibile.`
+          : "D05 globale usa inventario corrente e movimenti/attrezzature read-only con limiti dichiarati.",
+      ],
+    }),
+    report: null,
+  };
+}
+
+async function runProcurementUnifiedQuery(
+  spec: UnifiedQuerySpec,
+): Promise<InternalAiUnifiedExecutionResult> {
+  const plan = buildUnifiedQueryPlan(spec);
+  const snapshot = await readNextProcurementReadOnlySnapshot();
+  const hasStrongReadModel = snapshot.counts.ordiniTotali > 0 || snapshot.counts.righeOrdineTotali > 0;
+  const hasPreviewSupport =
+    snapshot.counts.preventiviTotali > 0 ||
+    snapshot.counts.approvazioniTotali > 0 ||
+    snapshot.counts.listinoVoci > 0;
+  const reliabilityLabel = hasStrongReadModel
+    ? hasPreviewSupport
+      ? "Parziale"
+      : "Affidabile"
+    : hasPreviewSupport
+      ? "Da verificare"
+      : "Parziale";
+
+  return {
+    intent: "richiesta_generica",
+    status: hasStrongReadModel || hasPreviewSupport ? "completed" : "partial",
+    assistantText: composeProcurementAssistantText({
+      prompt: spec.visiblePrompt,
+      snapshot,
+    }),
+    references: buildUnifiedReferences({
+      reliabilityLabel,
+      domainLabel: plan.domainLabel,
+      outputLabel: plan.outputLabel,
+      extraLabels: [
+        `Ordini/arrivi: ${formatProcurementSurfaceStateLabel(snapshot.surfaces.ordini.state)}`,
+        `Preventivi: ${formatProcurementSurfaceStateLabel(snapshot.surfaces.preventivi.state)}`,
+        `Capo Costi: ${formatProcurementSurfaceStateLabel(snapshot.surfaces.approvazioniCapoCosti.state)}`,
+      ],
+    }),
+    report: null,
+  };
+}
+
 async function runGenericRegistryQuery(spec: UnifiedQuerySpec): Promise<InternalAiUnifiedExecutionResult> {
   const registry = await buildUnifiedRegistrySnapshot();
   const plan = buildUnifiedQueryPlan(spec);
@@ -5843,6 +6784,15 @@ export async function readInternalAiUnifiedRegistrySummary(): Promise<InternalAi
 export async function runInternalAiUnifiedIntelligenceQuery(prompt: string, fallbackPeriodInput?: InternalAiReportPeriodInput): Promise<InternalAiUnifiedExecutionResult | null> {
   if (!isInternalAiUnifiedIntelligenceCandidate(prompt)) return null;
   const spec = parseUnifiedQuery(prompt, fallbackPeriodInput);
+  if (spec.primaryIntent === "drivers_readonly") {
+    return runDriversUnifiedQuery(spec);
+  }
+  if (spec.primaryIntent === "warehouse_attention") {
+    return runWarehouseUnifiedQuery(spec);
+  }
+  if (spec.primaryIntent === "procurement_readonly") {
+    return runProcurementUnifiedQuery(spec);
+  }
   if (
     !spec.normalizedTarga &&
     [

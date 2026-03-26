@@ -1502,6 +1502,103 @@ Serve a:
   - `npx eslint src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/internal-ai-repo-understanding.js backend/internal-ai/server/internal-ai-adapter.js` -> OK
   - smoke test reali lato endpoint `orchestrator.chat` del backend IA separato con i 5 prompt bussola -> tutti `OK`, `intent=repo_understanding`, sezioni complete, `usedRealProvider=false`
 
+## 5.66 Aggiornamento 2026-03-25 - D06 Procurement reale read-only
+- Il clone NEXT e la console `/next/ia/interna` trattano ora `D06` come un workbench procurement read-only vero, invece che come insieme di preview e CTA potenzialmente ambigue.
+- Cosa cambia davvero:
+  - `nextDocumentiCostiDomain` espone ora uno snapshot procurement read-only che normalizza ordini, righe materiali, arrivi, preventivi, approvazioni e listino in una vista unica, con provenienza e stato superficie espliciti;
+  - la pagina `/next/acquisti` non usa piu nel subtree clone il workflow legacy scrivente: mostra un banco read-only in italiano dove `Ordini`, `Arrivi` e `Dettaglio ordine` restano leggibili, mentre `Ordine materiali`, `Prezzi & Preventivi` e `Listino Prezzi` vengono fermati con motivo chiaro;
+  - `Capo Costi Mezzo` espone meglio il confine reale del clone: stati e documenti leggibili, ma approvazioni reali, cambio stato, PDF timbrati e CTA equivalenti restano bloccati;
+  - la IA interna riconosce ora in modo stabile richieste D06 su ordini, preventivi, approvazioni, stato read-only, CTA da bloccare e Capo Costi, senza improvvisare sintesi su domini adiacenti;
+  - il dominio distingue ora `stato leggibile`, `preview`, `contesto prudente`, `workflow non importato` e `CTA non consentita`, cosi procurement non sembra piu piu operativo di quanto sia davvero.
+- Correzioni strutturali incluse:
+  - `Fammi un riepilogo read-only di ordini e preventivi.` -> ramo D06 con conteggi su ordini, righe, preventivi, approvazioni e listino;
+  - `Ci sono approvazioni reali o solo preview?` -> risposta D06 che dichiara le approvazioni solo leggibili e non eseguibili nel clone;
+  - `Quali CTA di procurement vanno bloccate nella NEXT?` -> elenco esplicito di CTA non consentite, senza governance finta;
+  - `Questa area e davvero operativa o solo in lettura prudente?` -> distinzione chiara tra superficie navigabile e superfici solo preview/bloccate;
+  - `Spiegami lo stato reale di Capo Costi nel perimetro NEXT.` -> routing corretto al dominio D06, non piu assorbito dal ramo costi/documenti generico.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessuna riapertura di approvazioni reali, ordine materiali, PDF timbrati o workflow procurement completi;
+  - nessun refactor largo di tutte le pagine acquisti.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextCapoCostiMezzoPage.tsx src/next/NextOperativitaGlobalePage.tsx src/pages/Acquisti.tsx` -> KO per debito lint legacy gia presente soprattutto in `src/pages/Acquisti.tsx` e in parte in `src/next/NextCapoCostiMezzoPage.tsx`
+  - `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextOperativitaGlobalePage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` con Playwright locale:
+    - `riepilogo read-only di ordini e preventivi` -> D06 con snapshot coerente e niente workflow simulati
+    - `approvazioni reali o solo preview` -> D06 con confine read-only esplicito
+    - `CTA di procurement da bloccare` -> D06 con elenco pratico delle superfici non consentite
+    - `area operativa o solo lettura prudente` -> D06 con distinzione navigabile/preview/bloccata
+    - `stato reale di Capo Costi` -> D06 corretto, senza sconfinare in costi/documenti generici
+
+## 5.67 Aggiornamento 2026-03-25 - D03 autisti canonico read-only
+- Il clone NEXT e la console `/next/ia/interna` trattano ora `D03` come dominio autisti read-only dedicato, con read model clone-safe, confine esplicito `madre / clone locale / fallback legacy` e collegamenti badge-autista-targa piu affidabili.
+- Cosa cambia davvero:
+  - esiste ora `src/next/domain/nextAutistiDomain.ts`, che legge in sola lettura `@autisti_sessione_attive`, `@storico_eventi_operativi`, `@segnalazioni_autisti_tmp`, `@controlli_mezzo_autisti`, `@richieste_attrezzature_autisti_tmp`, `autisti_eventi` e il contesto locale clone autisti, producendo uno snapshot canonico D03;
+  - il dominio normalizza badge, nome autista, mezzo/targa, timestamp evento, tipo segnale, provenienza e affidabilita del collegamento, distinguendo `forte`, `prudente`, `locale_clone` e `non_dimostrabile`;
+  - la IA interna riconosce prompt D03 su segnali autisti, collegamento targa-autista, riepilogo read-only del flusso, anomalie dati e confine `madre / NEXT / flusso locale autisti`, senza usare piu `D10` come scorciatoia principale;
+  - `NextCentroControllo` e `NextGestioneOperativa` dichiarano ora in pagina il confine D03 read-only e mostrano conteggi utili sulle sessioni madre, sui segnali madre e sugli elementi locali clone;
+  - l'area autisti clone-safe esplicita che i salvataggi restano locali: i pulsanti parlano ora di `salvataggio locale` e il layout chiarisce che sessioni ed eventi madre sono solo letti.
+- Correzioni strutturali incluse:
+  - `Quali autisti hanno oggi segnali o eventi che richiedono attenzione?` -> ramo D03 con focus su segnali aperti reali;
+  - `Questa targa a quale autista risulta collegata?` con `TI233827` selezionata -> aggancio forte a `ELTON SELIMI (badge 38)`;
+  - `Fammi un riepilogo read-only del flusso autisti per oggi.` -> riepilogo D03 con sessioni attive, segnali madre, segnali locali clone, agganci forti/prudenziali e fallback legacy;
+  - `Ci sono anomalie o dati incompleti nel dominio autisti?` -> elenco prudente di record da verificare e fallback non promossi a fonte forte;
+  - `Questo dato viene dalla madre, dalla NEXT o da un flusso locale autisti?` -> confine esplicito con perimetro madre, clone locale e fallback legacy.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessuna sincronizzazione reale del clone autisti verso la madre;
+  - nessun refactor largo delle pagine autisti legacy.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/domain/nextAutistiDomain.ts src/next/domain/nextStatoOperativoDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextCentroControlloPage.tsx src/next/NextGestioneOperativaPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` con Playwright locale:
+    - `autisti con segnali o eventi da attenzionare` -> 1 segnale aperto rilevato
+    - `targa TI233827 -> autista` -> aggancio forte `ELTON SELIMI`
+    - `riepilogo flusso autisti per oggi` -> `10 sessioni attive`, `35 segnali madre`, `0 locali clone`, `36 agganci forti`, `18 prudenziali`, `105 fallback legacy`
+    - `anomalie o dati incompleti nel dominio autisti` -> `24` eventi prudenziali/incompleti e `105` record legacy da tenere separati
+    - `madre / NEXT / flusso locale autisti` -> perimetro esplicito con `431` elementi madre, `0` locali clone e `105` fallback legacy
+
+## 5.68 Aggiornamento 2026-03-26 - D05 magazzino reale read-only chiuso
+- Il clone NEXT e la console `/next/ia/interna` trattano ora `D05` come dominio magazzino realmente chiuso in sola lettura, invece che come set di patch sparse o tracce parziali.
+- Cosa cambia davvero:
+  - `nextMaterialiMovimentiDomain` consolida il composito `readNextMagazzinoRealeSnapshot` sopra inventario, movimenti materiali e attrezzature, con limitazioni deduplicate e confine leggibile tra `dato forte`, `dato prudente` e `sola lettura`;
+  - il motore IA distingue ora meglio richieste globali su stock/blocchi, richieste su materiali collegati ai mezzi, richieste sul mezzo singolo e richieste sul confine `operativa o solo in lettura`, senza scivolare su rami non coerenti;
+  - le azioni consigliate D05 sono ora business-first: partono da stock critico, collegamenti forti verso mezzo e gap operativi leggibili, senza improvvisare conclusioni scriventi;
+  - la rotta reale `/next/gestione-operativa` non mostra piu il contenitore legacy della madre, ma il workbench read-only clone-safe di `NextOperativitaGlobalePage`, con banner D03/D05 e CTA esplicite `read-only`;
+  - la console IA espone anche il prompt rapido sul confine `Questa parte e davvero operativa o solo in lettura?`, che ora atterra davvero su D05.
+- Correzioni strutturali incluse:
+  - `Ci sono criticita di magazzino o inventario che richiedono attenzione?` -> `Magazzino reale` con stock critico e azione coerente;
+  - `Fammi un riepilogo utile dei materiali collegati ai mezzi.` -> `Materiali collegati ai mezzi` con collegamenti forti e azione operativa leggibile;
+  - `Questo mezzo ha ricevuto materiali o attrezzature rilevanti?` -> ramo mezzo-specifico D05 con focus su agganci forti e impatto dello stock critico globale;
+  - `Ci sono stock bassi o segnali che possono bloccare il lavoro?` -> resta nel ramo D05 globale, senza collassare su riepilogo mezzo;
+  - `Questa parte e davvero operativa o solo in lettura?` -> risposta D05 sul confine reale del workbench, senza finire in rami criticita generici.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessuna riapertura di carico/scarico, consegne, ritiri, foto o variazioni stock dal clone;
+  - nessuna fusione fittizia tra D05, D06 e D02.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npm run build` -> OK
+  - `npx eslint src/next/domain/nextInventarioDomain.ts src/next/domain/nextMaterialiMovimentiDomain.ts src/next/domain/nextAttrezzatureCantieriDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextOperativitaGlobalePage.tsx src/next/NextGestioneOperativaPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` con Playwright locale:
+    - `criticita di magazzino o inventario` -> `Magazzino reale`, `1` segnale D05, azione su stock critico
+    - `materiali collegati ai mezzi` -> `9` collegamenti forti, azione su mezzi con aggancio materiale forte
+    - `Questo mezzo ha ricevuto materiali o attrezzature rilevanti?` con `TI233827` -> `2` movimenti forti, azione su aggancio mezzo + stock critico globale
+    - `stock bassi o segnali che possono bloccare il lavoro` -> D05 globale, non overview mezzo
+    - `questa parte e davvero operativa o solo in lettura` -> D05 confine `sola lettura`
+  - smoke UI reale su `/next/gestione-operativa`:
+    - banner `D03 autisti in sola lettura` e `D05 magazzino in sola lettura` visibili
+    - CTA `Apri inventario read-only`, `Apri movimenti materiali`, `Apri attrezzature read-only` visibili
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

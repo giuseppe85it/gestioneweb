@@ -31,6 +31,125 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-26 94
+- DATA: 2026-03-26
+- TITOLO MODIFICA: D05 magazzino reale read-only chiuso per clone NEXT e IA interna
+- OBIETTIVO: completare il work-package D05 partito in modo parziale, consolidando il dominio magazzino come layer canonico read-only e chiudendo finalmente la superficie `/next/gestione-operativa` su un workbench clone-safe coerente.
+- FILE TOCCATI:
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_0631_d05-magazzino-reale-readonly-next.md`
+  - `docs/continuity-reports/2026-03-26_0631_continuity_d05-magazzino-reale-readonly-next.md`
+- COSA E STATO CAMBIATO:
+  - consolidato `nextMaterialiMovimentiDomain` come snapshot D05 unico per inventario, movimenti materiali e attrezzature, con limitazioni ripulite e piu leggibili;
+  - il motore IA distingue ora meglio prompt globali magazzino, prompt materiali verso mezzi e prompt sul confine `operativa o solo in lettura`;
+  - la resa D05 in chat espone azioni consigliate piu utili e meno meccaniche;
+  - la rotta reale `/next/gestione-operativa` usa ora il workbench clone-safe `NextOperativitaGlobalePage`, invece della superficie legacy della madre con CTA ambigue.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la superficie operativa D05 mostra banner D03/D05 e CTA `read-only` coerenti;
+  - Lettura: il dominio magazzino e ora leggibile come composito unico sopra inventario, movimenti materiali e attrezzature;
+  - Blocco scritture: rafforzato lato UX, perche il clone non mostra piu in primo piano verbi da scrittura o consegna sulla rotta operativa D05.
+- COME VERIFICARE:
+  - aprire `/next/ia/interna` e lanciare i 5 prompt bussola D05;
+  - verificare che `stock bassi o segnali che possono bloccare il lavoro` e `questa parte e davvero operativa o solo in lettura` restino nel ramo `Magazzino reale`;
+  - verificare che `materiali collegati ai mezzi` e `Questo mezzo ha ricevuto materiali o attrezzature rilevanti?` restituiscano azioni consigliate coerenti;
+  - aprire `/next/gestione-operativa` e verificare banner D03/D05 e CTA `Apri inventario read-only`, `Apri movimenti materiali`, `Apri attrezzature read-only`;
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/domain/nextInventarioDomain.ts src/next/domain/nextMaterialiMovimentiDomain.ts src/next/domain/nextAttrezzatureCantieriDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextOperativitaGlobalePage.tsx src/next/NextGestioneOperativaPage.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - D05 resta volutamente `read-only`: nessun writer stock, consegna, ritiro o foto viene riattivato;
+  - il dominio resta prudente dove il legame con mezzo/targa o la catena causale con manutenzioni e ordini non e abbastanza transazionale.
+
+### Voce 2026-03-25 93
+- DATA: 2026-03-25
+- TITOLO MODIFICA: D03 autisti canonico read-only per clone NEXT e IA interna
+- OBIETTIVO: chiudere `D03` come dominio autisti canonico read-only, leggibile e spiegabile per IA interna, Centro di Controllo, Gestione Operativa e area autisti clone-safe.
+- FILE TOCCATI:
+  - `src/next/domain/nextAutistiDomain.ts`
+  - `src/next/domain/nextStatoOperativoDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/autisti/NextAutistiRifornimentoPage.tsx`
+  - `src/next/autisti/NextAutistiSegnalazioniPage.tsx`
+  - `src/next/autisti/NextAutistiRichiestaAttrezzaturePage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_2318_d03-autisti-canonico-readonly-next.md`
+  - `docs/continuity-reports/2026-03-25_2318_continuity_d03-autisti-canonico-readonly-next.md`
+- COSA E STATO CAMBIATO:
+  - creato `nextAutistiDomain` come snapshot D03 che unisce sessioni attive, storico eventi operativi, segnalazioni, controlli, richieste attrezzature, fallback `autisti_eventi` e contesto locale clone;
+  - il dominio normalizza badge, nome autista, mezzo/targa, timestamp, tipo evento, provenienza e affidabilita del collegamento, separando `forte`, `prudente`, `locale_clone` e `non_dimostrabile`;
+  - la console `/next/ia/interna` riconosce ora prompt su segnali autisti, collegamento targa-autista, riepilogo del flusso autisti, anomalie e confine `madre / NEXT / locale`, invece di appoggiarsi solo a scorciatoie `D10`;
+  - `NextCentroControllo` e `NextGestioneOperativa` mostrano un riassunto D03 read-only in pagina;
+  - l'area autisti clone-safe rende esplicito che salvataggi e richieste restano locali al clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il confine `madre / clone locale / fallback legacy` e visibile in modo piu chiaro sia nella console IA sia nelle superfici operative;
+  - Lettura: la IA usa un read model D03 dedicato, con agganci badge-targa spiegabili e non improvvisati;
+  - Blocco scritture: rafforzato lato UX con banner e pulsanti `salvataggio locale`, senza nessuna sincronizzazione reale verso la madre.
+- COME VERIFICARE:
+  - aprire `/next/ia/interna` e lanciare i 5 prompt bussola D03;
+  - verificare che `TI233827` risulti collegata a `ELTON SELIMI (badge 38)` quando selezionata nel contesto targa;
+  - verificare che il riepilogo flusso autisti riporti conteggi separati per sessioni madre, segnali madre, segnali locali clone e fallback legacy;
+  - aprire `/next/centro-controllo` e verificare il blocco `D03 autisti canonico`;
+  - aprire `/next/gestione-operativa` e verificare il banner `D03 autisti in sola lettura`;
+  - aprire le pagine autisti clone-safe e verificare le etichette `Salva ... locale`;
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/domain/nextAutistiDomain.ts src/next/domain/nextStatoOperativoDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextCentroControlloPage.tsx src/next/NextGestioneOperativaPage.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il dominio resta volutamente read-only: il clone autisti continua a salvare solo in locale controlli, segnalazioni e richieste;
+  - `autisti_eventi` non viene promosso a fonte forte: resta fallback prudente e separato dai collegamenti madre.
+
+### Voce 2026-03-25 92
+- DATA: 2026-03-25
+- TITOLO MODIFICA: D06 procurement reale read-only per clone NEXT e IA interna
+- OBIETTIVO: rendere procurement, preventivi, approvazioni e Capo Costi leggibili in modo affidabile nel clone, fermando le CTA che oggi non corrispondono a workflow reali importati.
+- FILE TOCCATI:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/pages/Acquisti.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-25_2138_d06-procurement-read-only-reale-next.md`
+  - `docs/continuity-reports/2026-03-25_2138_continuity_d06-procurement-read-only-reale-next.md`
+- COSA E STATO CAMBIATO:
+  - introdotto uno snapshot procurement read-only che unisce ordini, arrivi, preventivi, approvazioni e listino in una vista unica con superfici `navigabile`, `preview` o `bloccata`;
+  - la console `/next/ia/interna` riconosce ora in modo stabile i prompt D06 su procurement, Capo Costi, sola lettura prudente e CTA da bloccare;
+  - la pagina clone `/next/acquisti` mostra un workbench procurement read-only in italiano, con `Ordini`, `Arrivi` e `Dettaglio ordine` navigabili e gli altri blocchi fermati con motivazione;
+  - la pagina `Capo Costi Mezzo` dichiara esplicitamente le CTA bloccate nel clone e non lascia piu intendere approvazioni o PDF timbrati come funzioni attive;
+  - i prompt D06 non collassano piu automaticamente nel ramo costi/documenti solo per la parola `costi` presente in `Capo Costi`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: procurement e Capo Costi diventano piu onesti e leggibili; le superfici non coperte smettono di sembrare operative;
+  - Lettura: la IA usa ora uno snapshot D06 read-only vero invece di improvvisare sintesi su dataset sparsi;
+  - Blocco scritture: rafforzato a livello UX del clone, con CTA disabilitate o fermate in modo esplicito su approvazioni, ordine materiali, aggiunta materiali e PDF timbrati.
+- COME VERIFICARE:
+  - aprire `/next/acquisti` e verificare badge `SOLA LETTURA`, tabs `Ordini` / `Arrivi` navigabili e blocchi espliciti su `Ordine materiali`, `Prezzi & Preventivi`, `Listino Prezzi`;
+  - aprire `/next/capo/costi/TI233827` e verificare il copy clone-safe e la riga `CTA bloccate nel clone`;
+  - aprire `/next/ia/interna` e lanciare i 5 prompt bussola D06, verificando che le risposte restino nel ramo procurement read-only;
+  - eseguire `npm run build`;
+  - eseguire `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextCapoCostiMezzoPage.tsx src/next/NextOperativitaGlobalePage.tsx src/pages/Acquisti.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il comando eslint richiesto resta rosso per debito legacy gia presente soprattutto in `src/pages/Acquisti.tsx` e in parte in `src/next/NextCapoCostiMezzoPage.tsx`;
+  - il task non apre approvazioni reali, non riattiva `stamp_pdf`, non tocca la madre e non promuove procurement a workflow completo.
+
 ### Voce 2026-03-25 91
 - DATA: 2026-03-25
 - TITOLO MODIFICA: Assistente repo, flussi e integrazione per sviluppo interno nella console IA NEXT

@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ChangeEvent, WheelEvent } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { MaterialeOrdine, Ordine, UnitaMisura } from "../types/ordini";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { uploadMaterialImage, deleteMaterialImage } from "../utils/materialImages";
@@ -18,6 +18,15 @@ import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { deleteObject, getDownloadURL, listAll, ref, uploadBytes } from "firebase/storage";
 import { db, functions, storage } from "../firebase";
+import {
+  buildNextProcurementListView,
+  findNextProcurementOrder,
+  readNextProcurementSnapshot,
+  type NextProcurementCloneTab,
+  type NextProcurementListTab,
+  type NextProcurementOrderItem,
+  type NextProcurementSnapshot,
+} from "../next/domain/nextProcurementDomain";
 import "./Acquisti.css";
 import "./MaterialiDaOrdinare.css";
 
@@ -268,6 +277,354 @@ function tabToKey(tab: AcquistiTab) {
 function keyToTab(key: string | null, fallback: AcquistiTab): AcquistiTab {
   if (!key) return fallback;
   return TAB_VALUES[key] || fallback;
+}
+
+function normalizeNextProcurementTab(
+  tabValue: string | null,
+  legacyStateValue: string | null,
+): NextProcurementCloneTab {
+  if (
+    tabValue === "ordine-materiali" ||
+    tabValue === "ordini" ||
+    tabValue === "arrivi" ||
+    tabValue === "preventivi" ||
+    tabValue === "listino"
+  ) {
+    return tabValue;
+  }
+  if (tabValue === "ordine") {
+    return "ordine-materiali";
+  }
+  if (legacyStateValue === "arrivato") return "arrivi";
+  if (legacyStateValue === "in_attesa" || legacyStateValue === "parziale") return "ordini";
+  return "ordini";
+}
+
+function normalizeNextProcurementBackTab(
+  value: string | null,
+  fallbackTab: NextProcurementCloneTab,
+): NextProcurementListTab {
+  if (value === "arrivi" || value === "ordini") return value;
+  return fallbackTab === "arrivi" ? "arrivi" : "ordini";
+}
+
+function formatNextProcurementStrictState(
+  order: NextProcurementOrderItem,
+): { label: string; className: string } {
+  if (order.state === "arrivato") {
+    return { label: "Arrivato", className: "is-ok" };
+  }
+  if (order.state === "parziale") {
+    return { label: "Parziale", className: "is-warn" };
+  }
+  return { label: "In attesa", className: "is-danger" };
+}
+
+function buildNextProcurementRawPricingLabel(order: NextProcurementOrderItem): {
+  summary: string;
+  missingRows: number;
+} {
+  const pricedRows = order.materials.filter(
+    (material) => material.lineTotal !== null && material.currency,
+  );
+  const missingRows = Math.max(order.materials.length - pricedRows.length, 0);
+
+  if (pricedRows.length === 0) {
+    return {
+      summary: "Prezzi raw non disponibili nel clone",
+      missingRows,
+    };
+  }
+
+  const currencies = Array.from(
+    new Set(
+      pricedRows.map((material) => material.currency).filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  if (currencies.length !== 1) {
+    return {
+      summary: "Totale raw non affidabile: valute miste",
+      missingRows,
+    };
+  }
+
+  const total = pricedRows.reduce(
+    (accumulator, material) => accumulator + (material.lineTotal ?? 0),
+    0,
+  );
+  const labelPrefix = missingRows > 0 ? "Totale raw parziale" : "Totale raw";
+  return {
+    summary: `${labelPrefix}: ${currencies[0]} ${total.toFixed(2)}`,
+    missingRows,
+  };
+}
+
+function renderNextProcurementListTable(props: {
+  title: string;
+  subtitle: string;
+  items: NextProcurementOrderItem[];
+  fromTab: NextProcurementListTab;
+  onOpenOrder: (orderId: string, fromTab: NextProcurementListTab) => void;
+}) {
+  const { title, subtitle, items, fromTab, onOpenOrder } = props;
+  return (
+    <div className="acq-tab-panel">
+      <div className="acq-section-header">
+        <h2>{title}</h2>
+        <p>{subtitle}</p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="acq-list-empty">
+          {fromTab === "ordini" ? "Nessun ordine in attesa." : "Nessun ordine arrivato."}
+        </div>
+      ) : (
+        <div className="acq-orders-table-wrap">
+          <table className="acq-orders-table">
+            <thead>
+              <tr>
+                <th>Ordine</th>
+                <th>Data</th>
+                <th>Fornitore</th>
+                <th>Stato</th>
+                <th>Materiali</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((order) => {
+                const state = formatNextProcurementStrictState(order);
+                return (
+                  <tr key={order.id}>
+                    <td>
+                      <div className="acq-orders-cell-main" title={order.id}>
+                        <strong>{order.orderReference}</strong>
+                      </div>
+                    </td>
+                    <td>{order.orderDateLabel ?? "-"}</td>
+                    <td>{order.supplierName}</td>
+                    <td>
+                      <span className={`acq-pill ${state.className}`}>{state.label}</span>
+                    </td>
+                    <td>
+                      <div className="acq-orders-stats-inline">
+                        <span>Tot {order.totalRows}</span>
+                        <span>Arr {order.arrivedRows}</span>
+                        <span>Att {order.pendingRows}</span>
+                      </div>
+                      {order.materialPreview.length > 0 ? (
+                        <div className="acq-orders-cell-main" style={{ marginTop: 4 }}>
+                          <small>{order.materialPreview.join(", ")}</small>
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div className="acq-orders-actions-inline">
+                        <button
+                          type="button"
+                          className="acq-btn acq-btn--primary"
+                          onClick={() => onOpenOrder(order.id, fromTab)}
+                        >
+                          Apri
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderNextProcurementBlockedTab(props: {
+  title: string;
+  subtitle: string;
+  reason: string;
+  onGoOrdini: () => void;
+  onGoArrivi: () => void;
+}) {
+  const { title, subtitle, reason, onGoOrdini, onGoArrivi } = props;
+  return (
+    <div className="acq-tab-panel">
+      <div className="acq-placeholder" style={{ display: "grid", gap: 12 }}>
+        <div className="acq-section-header">
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        <div className="acq-pill is-warn" style={{ width: "fit-content" }}>
+          Bloccato nel clone in sola lettura
+        </div>
+        <p>{reason}</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" className="acq-btn acq-btn--primary" onClick={onGoOrdini}>
+            Vai a ordini
+          </button>
+          <button type="button" className="acq-btn" onClick={onGoArrivi}>
+            Vai a arrivi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function renderNextProcurementOrderDetail(props: {
+  order: NextProcurementOrderItem;
+  backTab: NextProcurementListTab;
+  onCloseOrder: (backTab: NextProcurementListTab) => void;
+  detailDisabledReason: string;
+}) {
+  const { order, backTab, onCloseOrder, detailDisabledReason } = props;
+  const state = formatNextProcurementStrictState(order);
+  const pricing = buildNextProcurementRawPricingLabel(order);
+
+  return (
+    <div className="acq-tab-panel acq-tab-panel--detail">
+      <div className="acq-detail">
+        <div className="acq-detail-head">
+          <div>
+            <p className="acq-section-kicker">Dettaglio ordine</p>
+            <h3>{order.supplierName}</h3>
+            <p className="acq-detail-meta">
+              {order.orderReference}
+              {order.orderDateLabel ? ` - Ordine del ${order.orderDateLabel}` : ""}
+            </p>
+          </div>
+          <div className="acq-detail-head-actions">
+            <button type="button" className="acq-btn" onClick={() => onCloseOrder(backTab)}>
+              Indietro
+            </button>
+            <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
+              {order.state === "arrivato" ? "Segna non arrivato" : "Segna arrivato"}
+            </button>
+            <button
+              type="button"
+              className="acq-btn acq-btn--primary"
+              disabled
+              title={detailDisabledReason}
+            >
+              Modifica
+            </button>
+          </div>
+        </div>
+
+        <div className="acq-detail-summary">
+          <div className="acq-detail-summary-left">
+            <span className={`acq-pill ${state.className}`}>{state.label}</span>
+            <span className="acq-pill">Materiali: {order.totalRows}</span>
+            <span className="acq-pill">Arrivati: {order.arrivedRows}</span>
+            {order.latestArrivalLabel ? (
+              <span className="acq-pill">Ultimo arrivo: {order.latestArrivalLabel}</span>
+            ) : null}
+          </div>
+          <div className="acq-detail-totals">
+            <div className="acq-detail-pdf-actions">
+              <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
+                PDF Fornitori
+              </button>
+              <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
+                Anteprima PDF
+              </button>
+              <button
+                type="button"
+                className="acq-btn acq-btn--primary"
+                disabled
+                title={detailDisabledReason}
+              >
+                PDF interno
+              </button>
+            </div>
+            <strong>{pricing.summary}</strong>
+            {pricing.missingRows > 0 ? (
+              <span className="acq-pill">Righe senza prezzo: {pricing.missingRows}</span>
+            ) : null}
+          </div>
+        </div>
+
+        <button type="button" className="acq-btn" disabled title={detailDisabledReason}>
+          + Aggiungi materiale
+        </button>
+
+        <label className="acq-order-note acq-order-note--detail">
+          <span>Note ordine (sola lettura)</span>
+          <textarea
+            readOnly
+            value={order.orderNote ?? ""}
+            placeholder="Nessuna nota ordine disponibile"
+          />
+        </label>
+
+        <div className="acq-detail-table-wrap">
+          <table className="acq-detail-table">
+            <thead>
+              <tr>
+                <th>Foto</th>
+                <th>Descrizione</th>
+                <th>Q.ta</th>
+                <th>Unita</th>
+                <th>Arrivato</th>
+                <th>Data arrivo</th>
+                <th>Note</th>
+                <th>Totale riga</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.materials.length > 0 ? (
+                order.materials.map((material) => (
+                  <tr key={material.id}>
+                    <td>
+                      <div className="acq-detail-photo-cell">
+                        {material.photoUrl ? (
+                          <img src={material.photoUrl} alt={material.descrizione} />
+                        ) : (
+                          <span>-</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="acq-detail-desc-cell">
+                        <strong title={material.id}>{material.descrizione}</strong>
+                        {material.quality !== "certo" ? (
+                          <small>{material.flags.join(", ")}</small>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>{material.quantita ?? "-"}</td>
+                    <td>{material.unita ?? "-"}</td>
+                    <td>
+                      <span className={`acq-pill ${material.arrived ? "is-ok" : "is-danger"}`}>
+                        {material.arrived ? "Si" : "No"}
+                      </span>
+                    </td>
+                    <td>{material.arrivalDateLabel ?? "-"}</td>
+                    <td>{material.note ?? "-"}</td>
+                    <td>
+                      {material.lineTotal !== null && material.currency
+                        ? `${material.currency} ${material.lineTotal.toFixed(2)}`
+                        : "-"}
+                    </td>
+                    <td>-</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={9} className="acq-detail-state">
+                    Nessun materiale leggibile su questo ordine.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function normalizeDescrizione(v: string) {
@@ -6244,9 +6601,24 @@ function DettaglioOrdineView(props: { ordineId: string; onBack: () => void }) {
 }
 
 const Acquisti = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const { ordineId } = useParams<{ ordineId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [nextReadOnlySnapshot, setNextReadOnlySnapshot] = useState<NextProcurementSnapshot | null>(
+    null,
+  );
+  const [nextReadOnlyLoading, setNextReadOnlyLoading] = useState(false);
+  const [nextReadOnlyError, setNextReadOnlyError] = useState<string | null>(null);
+  const isNextCloneRoute = location.pathname.startsWith("/next/acquisti");
+  const nextCloneTab = normalizeNextProcurementTab(
+    searchParams.get("tab"),
+    searchParams.get("state"),
+  );
+  const nextCloneBackTab = normalizeNextProcurementBackTab(
+    searchParams.get("from"),
+    nextCloneTab,
+  );
 
   const derivedTab = keyToTab(searchParams.get("tab"), ordineId ? "Ordini" : "Ordine materiali");
   const [activeTab, setActiveTab] = useState<AcquistiTab>(derivedTab);
@@ -6254,8 +6626,199 @@ const Acquisti = () => {
   const [manualImportRequest, setManualImportRequest] = useState<{ requestId: string; row: ImportBozzaRiga } | null>(null);
 
   useEffect(() => {
+    if (!isNextCloneRoute) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        setNextReadOnlyLoading(true);
+        setNextReadOnlyError(null);
+        const snapshot = await readNextProcurementSnapshot();
+        if (cancelled) return;
+        setNextReadOnlySnapshot(snapshot);
+      } catch (error: any) {
+        if (cancelled) return;
+        setNextReadOnlySnapshot(null);
+        setNextReadOnlyError(
+          error?.message || "Impossibile leggere il workbench procurement in sola lettura.",
+        );
+      } finally {
+        if (!cancelled) {
+          setNextReadOnlyLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isNextCloneRoute]);
+
+  useEffect(() => {
     setActiveTab(derivedTab);
   }, [derivedTab]);
+
+  if (isNextCloneRoute) {
+    const openCloneTab = (tab: NextProcurementCloneTab) => {
+      navigate(`/next/acquisti?tab=${tab}`);
+    };
+
+    const openCloneOrder = (orderIdToOpen: string, fromTab: NextProcurementListTab) => {
+      navigate(`/next/acquisti/dettaglio/${encodeURIComponent(orderIdToOpen)}?tab=${fromTab}&from=${fromTab}`);
+    };
+
+    const closeCloneOrder = (backTab: NextProcurementListTab) => {
+      navigate(`/next/acquisti?tab=${backTab}`);
+    };
+
+    if (nextReadOnlyLoading) {
+      return (
+        <div className="acq-page">
+          <div className="acq-shell">
+            <div className="acq-list-empty">Caricamento workbench procurement in sola lettura...</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (nextReadOnlyError || !nextReadOnlySnapshot) {
+      return (
+        <div className="acq-page">
+          <div className="acq-shell">
+            <div className="acq-list-empty">
+              {nextReadOnlyError || "Workbench procurement in sola lettura non disponibile."}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const activeOrder = findNextProcurementOrder(nextReadOnlySnapshot, ordineId ?? null);
+    const requestedDetailMissing = Boolean(ordineId) && !activeOrder;
+    const visibleOrders = buildNextProcurementListView(
+      nextReadOnlySnapshot,
+      nextCloneTab === "arrivi" ? "arrivi" : "ordini",
+    );
+
+    return (
+      <div className={`acq-page${activeOrder ? " is-detail" : ""}`}>
+        <div className="acq-shell">
+          <header className="acq-header">
+            <div className="acq-header-brand">
+              <img src="/logo.png" alt="Logo" className="acq-header-logo" />
+              <div className="acq-header-copy">
+                <p className="acq-eyebrow">Gestione Acquisti</p>
+                <h1 className="acq-title">Acquisti</h1>
+                <p className="acq-subtitle">
+                  Modulo clone in sola lettura: ordini, arrivi e dettaglio ordine restano navigabili senza scritture.
+                </p>
+              </div>
+            </div>
+            <div className="acq-header-actions" style={{ minWidth: 0, marginLeft: "auto" }}>
+              <span className="next-clone-readonly-badge">SOLA LETTURA</span>
+            </div>
+          </header>
+
+          <div className="acq-tabs" role="tablist" aria-label="Schede acquisti clone">
+            {[
+              ["ordine-materiali", "Ordine materiali"],
+              ["ordini", "Ordini"],
+              ["arrivi", "Arrivi"],
+              ["preventivi", "Prezzi & Preventivi"],
+              ["listino", "Listino Prezzi"],
+            ].map(([tabId, label]) => {
+              const isActive = !activeOrder && nextCloneTab === tabId;
+              return (
+                <button
+                  key={tabId}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`acq-tab ${isActive ? "is-active" : ""}`}
+                  onClick={() => openCloneTab(tabId as NextProcurementCloneTab)}
+                >
+                  <span>{label}</span>
+                  {tabId === "ordini" ? (
+                    <span className="acq-badge">{nextReadOnlySnapshot.counts.ordiniTabOrders}</span>
+                  ) : null}
+                  {tabId === "arrivi" ? (
+                    <span className="acq-badge">{nextReadOnlySnapshot.counts.arriviTabOrders}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+            {activeOrder ? (
+              <div className="acq-tab acq-tab--detail-live">
+                <span>Dettaglio ordine</span>
+              </div>
+            ) : null}
+          </div>
+
+          <section className="acq-content">
+            {activeOrder ? (
+              renderNextProcurementOrderDetail({
+                order: activeOrder,
+                backTab: nextCloneBackTab,
+                onCloseOrder: closeCloneOrder,
+                detailDisabledReason: nextReadOnlySnapshot.navigability.dettaglioOrdine.reason,
+              })
+            ) : requestedDetailMissing ? (
+              <div className="acq-tab-panel acq-tab-panel--detail">
+                <div className="acq-detail-state">Ordine non trovato nel dataset in sola lettura del clone.</div>
+                <div style={{ marginTop: 12 }}>
+                  <button type="button" className="acq-btn" onClick={() => closeCloneOrder(nextCloneBackTab)}>
+                    Indietro
+                  </button>
+                </div>
+              </div>
+            ) : nextCloneTab === "ordini" ? (
+              renderNextProcurementListTable({
+                title: "Ordini in attesa",
+                subtitle: "Vista in sola lettura degli ordini con righe ancora pendenti.",
+                items: visibleOrders,
+                fromTab: "ordini",
+                onOpenOrder: openCloneOrder,
+              })
+            ) : nextCloneTab === "arrivi" ? (
+              renderNextProcurementListTable({
+                title: "Ordini arrivati",
+                subtitle: "Vista in sola lettura degli ordini con almeno una riga arrivata.",
+                items: visibleOrders,
+                fromTab: "arrivi",
+                onOpenOrder: openCloneOrder,
+              })
+            ) : nextCloneTab === "ordine-materiali" ? (
+              renderNextProcurementBlockedTab({
+                title: "Ordine materiali",
+                subtitle: "La bozza ordine della madre resta fuori perimetro nel clone.",
+                reason: nextReadOnlySnapshot.navigability.ordineMateriali.reason,
+                onGoOrdini: () => openCloneTab("ordini"),
+                onGoArrivi: () => openCloneTab("arrivi"),
+              })
+            ) : nextCloneTab === "preventivi" ? (
+              renderNextProcurementBlockedTab({
+                title: "Prezzi e preventivi",
+                subtitle: "Preventivi e allegati restano solo preview prudenziale nel clone.",
+                reason: nextReadOnlySnapshot.navigability.preventivi.reason,
+                onGoOrdini: () => openCloneTab("ordini"),
+                onGoArrivi: () => openCloneTab("arrivi"),
+              })
+            ) : (
+              renderNextProcurementBlockedTab({
+                title: "Listino prezzi",
+                subtitle: "Listino e fornitori restano consultabili solo come contesto, senza edit o consolidamento.",
+                reason: nextReadOnlySnapshot.navigability.listino.reason,
+                onGoOrdini: () => openCloneTab("ordini"),
+                onGoArrivi: () => openCloneTab("arrivi"),
+              })
+            )}
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   const setTab = (tab: AcquistiTab) => {
     setActiveTab(tab);

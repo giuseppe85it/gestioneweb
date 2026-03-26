@@ -1,6 +1,14 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import {
+  readNextAttrezzatureCantieriSnapshot,
+  type NextAttrezzatureCantieriSnapshot,
+} from "./nextAttrezzatureCantieriDomain";
+import {
+  readNextInventarioSnapshot,
+  type NextInventarioSnapshot,
+} from "./nextInventarioDomain";
 import type {
   NextDocumentiCostiCurrency,
   NextDocumentiMagazzinoSupportDocument,
@@ -257,6 +265,59 @@ export type NextMaterialiConsegnatiDestinatarioView = {
   items: NextMaterialeMovimentoReadOnlyItem[];
 };
 
+export type NextMagazzinoVehicleLinkSummary = {
+  key: string;
+  targa: string | null;
+  label: string;
+  reliability: NextMaterialeMovimentoMezzoMatchReliability;
+  movementCount: number;
+  latestDate: string | null;
+  latestTimestamp: number | null;
+  materiali: string[];
+  provenienze: string[];
+};
+
+export type NextMagazzinoAttentionSignal = {
+  id: string;
+  kind:
+    | "stock_critico"
+    | "collegamento_mezzo_prudente"
+    | "tracciamento_attrezzature_parziale";
+  severity: "alta" | "media";
+  title: string;
+  summary: string;
+  sourceArea: "inventario" | "materiali" | "attrezzature";
+  reliability: "alta" | "media";
+};
+
+export type NextMagazzinoRealeSnapshot = {
+  domainCode: "D05";
+  domainName: "Magazzino reale del clone NEXT";
+  normalizationStrategy: string;
+  inventory: NextInventarioSnapshot;
+  materials: NextMaterialiMovimentiSnapshot;
+  attrezzature: NextAttrezzatureCantieriSnapshot;
+  vehicleLinks: NextMagazzinoVehicleLinkSummary[];
+  attentionSignals: NextMagazzinoAttentionSignal[];
+  counts: {
+    inventoryItems: number;
+    inventoryCritical: number;
+    materialMovements: number;
+    vehicleLinksStrong: number;
+    vehicleLinksPlausible: number;
+    attrezzatureMovements: number;
+    attrezzatureTrackingGap: number;
+    attentionSignals: number;
+  };
+  operationalStatus: {
+    mode: "read_only";
+    writesEnabled: false;
+    label: "Solo lettura";
+    summary: string;
+  };
+  limitations: string[];
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -264,6 +325,16 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function dedupeStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value.length > 0),
+    ),
+  );
 }
 
 function normalizeMatchTarga(value: unknown): string {
@@ -1095,4 +1166,243 @@ export function buildNextMaterialiConsegnatiDestinatariView(
       }),
     }))
     .sort((left, right) => left.label.localeCompare(right.label, "it", { sensitivity: "base" }));
+}
+
+function resolveGlobalVehicleLink(
+  item: NextMaterialeMovimentoReadOnlyItem
+): Omit<NextMagazzinoVehicleLinkSummary, "movementCount" | "latestDate" | "latestTimestamp" | "materiali" | "provenienze"> | null {
+  if (item.mezzoTarga) {
+    return {
+      key: item.mezzoTarga,
+      targa: item.mezzoTarga,
+      label: item.mezzoTarga,
+      reliability: "forte",
+    };
+  }
+
+  const destinatarioLabelTarga = normalizeMatchTarga(item.destinatario.label);
+  if (item.tipoDestinatario === "MEZZO" && looksLikeVehicleTarga(destinatarioLabelTarga)) {
+    return {
+      key: destinatarioLabelTarga,
+      targa: destinatarioLabelTarga,
+      label: destinatarioLabelTarga,
+      reliability: "forte",
+    };
+  }
+
+  const destinatarioRefTarga = normalizeMatchTarga(item.destinatario.refId);
+  if (item.tipoDestinatario === "MEZZO" && looksLikeVehicleTarga(destinatarioRefTarga)) {
+    return {
+      key: destinatarioRefTarga,
+      targa: destinatarioRefTarga,
+      label: destinatarioRefTarga,
+      reliability: "forte",
+    };
+  }
+
+  if (item.tipoDestinatario === "MEZZO") {
+    const label =
+      item.destinatario.label ??
+      item.target ??
+      item.destinatario.refId ??
+      item.materiale ??
+      item.descrizione ??
+      item.id;
+    return {
+      key: `plausibile:${label.toUpperCase()}`,
+      targa: null,
+      label,
+      reliability: "plausibile",
+    };
+  }
+
+  return null;
+}
+
+function buildVehicleLinksView(
+  snapshot: NextMaterialiMovimentiSnapshot
+): NextMagazzinoVehicleLinkSummary[] {
+  const groups = new Map<string, NextMagazzinoVehicleLinkSummary>();
+
+  snapshot.items.forEach((item) => {
+    const link = resolveGlobalVehicleLink(item);
+    if (!link) {
+      return;
+    }
+
+    const current =
+      groups.get(link.key) ??
+      ({
+        ...link,
+        movementCount: 0,
+        latestDate: null,
+        latestTimestamp: null,
+        materiali: [],
+        provenienze: [],
+      } satisfies NextMagazzinoVehicleLinkSummary);
+
+    current.movementCount += 1;
+    current.materiali = Array.from(
+      new Set([
+        ...current.materiali,
+        item.materiale ?? item.descrizione ?? item.id,
+      ]),
+    );
+    current.provenienze = Array.from(
+      new Set([
+        ...current.provenienze,
+        item.destinatario.rawShape === "object"
+          ? "destinatario strutturato"
+          : item.destinatario.rawShape === "string"
+            ? "destinatario testuale"
+            : "record base",
+      ]),
+    );
+
+    if ((item.timestamp ?? 0) >= (current.latestTimestamp ?? 0)) {
+      current.latestTimestamp = item.timestamp;
+      current.latestDate = item.data;
+    }
+
+    groups.set(link.key, current);
+  });
+
+  return Array.from(groups.values()).sort((left, right) => {
+    if (left.reliability !== right.reliability) {
+      return left.reliability === "forte" ? -1 : 1;
+    }
+
+    const byMovements = right.movementCount - left.movementCount;
+    if (byMovements !== 0) {
+      return byMovements;
+    }
+
+    return left.label.localeCompare(right.label, "it", { sensitivity: "base" });
+  });
+}
+
+function buildMagazzinoAttentionSignals(args: {
+  inventory: NextInventarioSnapshot;
+  vehicleLinks: NextMagazzinoVehicleLinkSummary[];
+  attrezzature: NextAttrezzatureCantieriSnapshot;
+}): NextMagazzinoAttentionSignal[] {
+  const inventorySignals = args.inventory.items
+    .filter((item) => item.stockStatus === "critico")
+    .slice(0, 6)
+    .map((item) => ({
+      id: `stock:${item.id}`,
+      kind: "stock_critico",
+      severity: "alta",
+      title: `Stock critico: ${item.descrizione}`,
+      summary: item.quantita !== null
+        ? `Quantita attuale ${item.quantita}${item.unita ?? ""}; conviene verificare se il lavoro dipende da questo articolo.`
+        : "Quantita non leggibile in modo affidabile, ma il record risulta in area critica.",
+      sourceArea: "inventario",
+      reliability: item.quantita !== null ? "alta" : "media",
+    } satisfies NextMagazzinoAttentionSignal));
+
+  const plausibleVehicleLinks = args.vehicleLinks.filter((entry) => entry.reliability === "plausibile");
+  const linkSignal =
+    plausibleVehicleLinks.length > 0
+      ? ({
+          id: "materiali:collegamenti-prudenti",
+          kind: "collegamento_mezzo_prudente",
+          severity: "media",
+          title: "Collegamenti materiali verso mezzo da confermare",
+          summary: `${plausibleVehicleLinks.length} destinatari mezzo usano un aggancio solo prudente: il dominio resta utile, ma questi legami non vanno presentati come certi.`,
+          sourceArea: "materiali",
+          reliability: "media",
+        } satisfies NextMagazzinoAttentionSignal)
+      : null;
+
+  const trackingGapCount = args.attrezzature.counts.withTrackingGap;
+  const trackingSignal =
+    trackingGapCount > 0
+      ? ({
+          id: "attrezzature:tracking-parziale",
+          kind: "tracciamento_attrezzature_parziale",
+          severity: "media",
+          title: "Tracciamento attrezzature parziale",
+          summary: `${trackingGapCount} movimenti attrezzature non espongono tutti i dati minimi di tracking: serve prudenza se li usi per blocchi operativi o assegnazioni.`,
+          sourceArea: "attrezzature",
+          reliability: "media",
+        } satisfies NextMagazzinoAttentionSignal)
+      : null;
+
+  return [...inventorySignals, ...(linkSignal ? [linkSignal] : []), ...(trackingSignal ? [trackingSignal] : [])];
+}
+
+function buildMagazzinoLimitations(args: {
+  inventory: NextInventarioSnapshot;
+  materials: NextMaterialiMovimentiSnapshot;
+  attrezzature: NextAttrezzatureCantieriSnapshot;
+  vehicleLinks: NextMagazzinoVehicleLinkSummary[];
+}): string[] {
+  const nestedLimitations = [
+    ...args.inventory.limitations.slice(0, 2),
+    ...args.materials.limitations.slice(0, 2),
+    ...args.attrezzature.limitations.slice(0, 2),
+  ].filter(
+    (entry) =>
+      !/scorta minima canonica/i.test(entry) && !/reader clone e solo read-only/i.test(entry),
+  );
+
+  return dedupeStrings([
+    "L'area magazzino nel clone NEXT e solo in lettura: nessuna variazione stock, consegna, spostamento o foto viene scritta dal perimetro clone.",
+    "Nel clone non esiste ancora una scorta minima canonica: gli stock bassi affidabili coincidono solo con quantita zero o negativa.",
+    "Il legame tra inventario, consegne materiali, manutenzioni e ordini non e transazionale: la IA puo leggere segnali utili, ma non una catena causale completa.",
+    args.vehicleLinks.some((entry) => entry.reliability === "plausibile")
+      ? "Una parte dei materiali verso mezzo resta collegata in modo prudente tramite destinatario, non con un legame targa pienamente canonico."
+      : null,
+    ...nestedLimitations,
+  ]);
+}
+
+export async function readNextMagazzinoRealeSnapshot(): Promise<NextMagazzinoRealeSnapshot> {
+  const [inventory, materials, attrezzature] = await Promise.all([
+    readNextInventarioSnapshot(),
+    readNextMaterialiMovimentiSnapshot(),
+    readNextAttrezzatureCantieriSnapshot(),
+  ]);
+  const vehicleLinks = buildVehicleLinksView(materials);
+  const attentionSignals = buildMagazzinoAttentionSignals({
+    inventory,
+    vehicleLinks,
+    attrezzature,
+  });
+
+  return {
+    domainCode: "D05",
+    domainName: "Magazzino reale del clone NEXT",
+    normalizationStrategy:
+      "SNAPSHOT D05 READ-ONLY CHE UNISCE inventario, movimenti materiali e attrezzature sopra i reader NEXT dedicati",
+    inventory,
+    materials,
+    attrezzature,
+    vehicleLinks,
+    attentionSignals,
+    counts: {
+      inventoryItems: inventory.counts.total,
+      inventoryCritical: inventory.counts.critical,
+      materialMovements: materials.counts.total,
+      vehicleLinksStrong: vehicleLinks.filter((entry) => entry.reliability === "forte").length,
+      vehicleLinksPlausible: vehicleLinks.filter((entry) => entry.reliability === "plausibile").length,
+      attrezzatureMovements: attrezzature.counts.totalMovements,
+      attrezzatureTrackingGap: attrezzature.counts.withTrackingGap,
+      attentionSignals: attentionSignals.length,
+    },
+    operationalStatus: {
+      mode: "read_only",
+      writesEnabled: false,
+      label: "Solo lettura",
+      summary:
+        "D05 e leggibile nel clone NEXT e nella IA interna, ma resta volutamente non scrivente e prudente dove il dato non e abbastanza canonico.",
+    },
+    limitations: buildMagazzinoLimitations({
+      inventory,
+      materials,
+      attrezzature,
+      vehicleLinks,
+    }),
+  };
 }

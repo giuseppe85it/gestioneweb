@@ -1,11 +1,13 @@
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import { readNextProcurementSnapshot } from "./nextProcurementDomain";
 
 const STORAGE_COLLECTION = "storage";
 const COSTI_DATASET_KEY = "@costiMezzo";
 const PROCUREMENT_PREVENTIVI_DATASET_KEY = "@preventivi";
 const PROCUREMENT_APPROVALS_DATASET_KEY = "@preventivi_approvazioni";
+const PROCUREMENT_LISTINO_DATASET_KEY = "@listino_prezzi";
 const DOCUMENTI_COLLECTION_KEYS = [
   "@documenti_mezzi",
   "@documenti_magazzino",
@@ -282,6 +284,51 @@ export type NextDocumentiCostiProcurementSupportSnapshot = {
   };
   perimeterDecision: NextDocumentiCostiProcurementPerimeterDecision;
   limitations: string[];
+};
+
+export type NextProcurementReadOnlySurfaceState = "navigabile" | "preview" | "bloccata";
+
+export type NextProcurementReadOnlySnapshot = {
+  domainCode: "D06";
+  domainName: "Procurement read-only";
+  generatedAt: string;
+  datasets: readonly string[];
+  datasetShapes: {
+    ordini: NextLegacyDatasetShape;
+    preventivi: NextLegacyDatasetShape;
+    approvazioni: NextLegacyDatasetShape;
+    listino: NextLegacyDatasetShape;
+  };
+  counts: {
+    ordiniTotali: number;
+    ordiniInAttesa: number;
+    ordiniParziali: number;
+    ordiniArrivati: number;
+    righeOrdineTotali: number;
+    righeOrdinePendenti: number;
+    righeOrdineArrivate: number;
+    preventiviTotali: number;
+    preventiviConPdf: number;
+    preventiviConTargaDiretta: number;
+    approvazioniTotali: number;
+    approvazioniPending: number;
+    approvazioniApproved: number;
+    approvazioniRejected: number;
+    listinoVoci: number;
+    listinoConFornitore: number;
+  };
+  surfaces: {
+    ordini: { state: NextProcurementReadOnlySurfaceState; reason: string };
+    arrivi: { state: NextProcurementReadOnlySurfaceState; reason: string };
+    dettaglioOrdine: { state: NextProcurementReadOnlySurfaceState; reason: string };
+    ordineMateriali: { state: NextProcurementReadOnlySurfaceState; reason: string };
+    preventivi: { state: NextProcurementReadOnlySurfaceState; reason: string };
+    listino: { state: NextProcurementReadOnlySurfaceState; reason: string };
+    approvazioniCapoCosti: { state: NextProcurementReadOnlySurfaceState; reason: string };
+    pdfTimbrato: { state: NextProcurementReadOnlySurfaceState; reason: string };
+  };
+  limitations: string[];
+  actionHint: string;
 };
 
 export type NextDocumentiCostiFleetSnapshot = {
@@ -1536,6 +1583,52 @@ function buildProcurementSupportLimitations(args: {
   ].filter((entry): entry is string => Boolean(entry));
 }
 
+function normalizeProcurementApprovalStatus(value: unknown): "pending" | "approved" | "rejected" {
+  const normalized = normalizeText(value).toLowerCase();
+  if (normalized === "approved" || normalized === "rejected") {
+    return normalized;
+  }
+  return "pending";
+}
+
+function buildProcurementReadOnlyLimitations(args: {
+  ordiniShape: NextLegacyDatasetShape;
+  preventiviShape: NextLegacyDatasetShape;
+  approvazioniShape: NextLegacyDatasetShape;
+  listinoShape: NextLegacyDatasetShape;
+  counts: NextProcurementReadOnlySnapshot["counts"];
+  readFailures: string[];
+}): string[] {
+  const { ordiniShape, preventiviShape, approvazioniShape, listinoShape, counts, readFailures } = args;
+  return [
+    "Nel perimetro NEXT il procurement e davvero utile solo in sola lettura: ordini, arrivi e dettaglio ordine sono consultabili, ma nessuna scrittura business viene riattivata.",
+    counts.preventiviTotali > 0
+      ? `I preventivi letti sono ${counts.preventiviTotali}, ma restano supporto prudente: il clone non riapre upload, parsing IA, salvataggi o workflow approvativi reali.`
+      : "Il dataset `@preventivi` non restituisce oggi preventivi leggibili nel clone-safe letto da questo task.",
+    counts.approvazioniTotali > 0
+      ? `Le approvazioni lette sono ${counts.approvazioniTotali}, ma restano solo stato preview/read-only: nessun tasto approva, rifiuta o PDF timbrato e operativo nella NEXT.`
+      : "Il dataset `@preventivi_approvazioni` non restituisce oggi stati approvativi leggibili per questo riepilogo.",
+    counts.listinoVoci > 0
+      ? `Il listino espone ${counts.listinoVoci} voci leggibili, ma la superficie NEXT non apre edit, import o consolidamento listino.`
+      : "Il dataset `@listino_prezzi` non restituisce oggi voci leggibili abbastanza stabili per una superficie operativa.",
+    ordiniShape === "unsupported"
+      ? "Il dataset `@ordini` non e in una shape pienamente leggibile dal layer clone-safe."
+      : null,
+    preventiviShape === "unsupported"
+      ? "Il dataset `@preventivi` non e in una shape pienamente leggibile dal layer clone-safe."
+      : null,
+    approvazioniShape === "unsupported"
+      ? "Il dataset `@preventivi_approvazioni` non e in una shape pienamente leggibile dal layer clone-safe."
+      : null,
+    listinoShape === "unsupported"
+      ? "Il dataset `@listino_prezzi` non e in una shape pienamente leggibile dal layer clone-safe."
+      : null,
+    ...readFailures.map(
+      (entry) => `Lettura parziale: la sorgente ${entry} non e stata letta e viene trattata come non disponibile.`,
+    ),
+  ].filter((entry): entry is string => Boolean(entry));
+}
+
 export async function readNextDocumentiCostiProcurementSupportSnapshot(
   targa: string
 ): Promise<NextDocumentiCostiProcurementSupportSnapshot> {
@@ -1637,6 +1730,162 @@ export async function readNextDocumentiCostiProcurementSupportSnapshot(
       },
       readFailures,
     }),
+  };
+}
+
+export async function readNextProcurementReadOnlySnapshot(): Promise<NextProcurementReadOnlySnapshot> {
+  const [procurement, preventiviResult, approvalsResult, listinoResult] = await Promise.all([
+    readNextProcurementSnapshot(),
+    getDoc(doc(db, STORAGE_COLLECTION, PROCUREMENT_PREVENTIVI_DATASET_KEY)),
+    getDoc(doc(db, STORAGE_COLLECTION, PROCUREMENT_APPROVALS_DATASET_KEY)),
+    getDoc(doc(db, STORAGE_COLLECTION, PROCUREMENT_LISTINO_DATASET_KEY)),
+  ]);
+
+  const readFailures: string[] = [];
+  const preventiviDataset = unwrapStorageArrayWithPreferredKeys(
+    preventiviResult.exists()
+      ? ((preventiviResult.data() as Record<string, unknown>) ?? null)
+      : null,
+    ["preventivi"],
+  );
+  const approvalsDataset = unwrapStorageArray(
+    approvalsResult.exists()
+      ? ((approvalsResult.data() as Record<string, unknown>) ?? null)
+      : null,
+  );
+  const listinoDataset = unwrapStorageArrayWithPreferredKeys(
+    listinoResult.exists()
+      ? ((listinoResult.data() as Record<string, unknown>) ?? null)
+      : null,
+    ["voci"],
+  );
+
+  const preventiviItems = preventiviDataset.items.filter(
+    (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object",
+  );
+  const approvalItems = approvalsDataset.items.filter(
+    (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object",
+  );
+  const listinoItems = listinoDataset.items.filter(
+    (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object",
+  );
+
+  const counts = {
+    ordiniTotali: procurement.counts.totalOrders,
+    ordiniInAttesa: procurement.counts.pendingOrders,
+    ordiniParziali: procurement.counts.partialOrders,
+    ordiniArrivati: procurement.counts.arrivedOrders,
+    righeOrdineTotali: procurement.counts.totalRows,
+    righeOrdinePendenti: procurement.counts.pendingRows,
+    righeOrdineArrivate: procurement.counts.arrivedRows,
+    preventiviTotali: preventiviItems.length,
+    preventiviConPdf: preventiviItems.filter(
+      (entry) =>
+        Boolean(normalizeOptionalText(entry.pdfUrl)) ||
+        Boolean(normalizeOptionalText(entry.pdfStoragePath)),
+    ).length,
+    preventiviConTargaDiretta: preventiviItems.filter((entry) =>
+      Boolean(normalizeTarga(entry.targa ?? entry.mezzoTarga)),
+    ).length,
+    approvazioniTotali: approvalItems.length,
+    approvazioniPending: approvalItems.filter(
+      (entry) => normalizeProcurementApprovalStatus(entry.status) === "pending",
+    ).length,
+    approvazioniApproved: approvalItems.filter(
+      (entry) => normalizeProcurementApprovalStatus(entry.status) === "approved",
+    ).length,
+    approvazioniRejected: approvalItems.filter(
+      (entry) => normalizeProcurementApprovalStatus(entry.status) === "rejected",
+    ).length,
+    listinoVoci: listinoItems.length,
+    listinoConFornitore: listinoItems.filter((entry) =>
+      Boolean(normalizeOptionalText(entry.fornitoreNome ?? entry.fornitoreId ?? entry.fornitore)),
+    ).length,
+  } satisfies NextProcurementReadOnlySnapshot["counts"];
+
+  const detailReason =
+    procurement.navigability.dettaglioOrdine.reason ??
+    "Il dettaglio ordine clone resta consultabile solo in sola lettura.";
+  const surfaces = {
+    ordini: {
+      state: procurement.navigability.ordini.enabled ? "navigabile" : "bloccata",
+      reason:
+        procurement.navigability.ordini.reason ??
+        "La vista ordini legge `@ordini` e non riattiva salvataggi o side effect.",
+    },
+    arrivi: {
+      state: procurement.navigability.arrivi.enabled ? "navigabile" : "bloccata",
+      reason:
+        procurement.navigability.arrivi.reason ??
+        "La vista arrivi legge `@ordini` e non riattiva salvataggi o side effect.",
+    },
+    dettaglioOrdine: {
+      state: procurement.navigability.dettaglioOrdine.enabled ? "navigabile" : "bloccata",
+      reason: detailReason,
+    },
+    ordineMateriali: {
+      state: "bloccata",
+      reason: procurement.navigability.ordineMateriali.reason,
+    },
+    preventivi: {
+      state: counts.preventiviTotali > 0 ? "preview" : "bloccata",
+      reason:
+        counts.preventiviTotali > 0
+          ? "I preventivi sono leggibili come contesto read-only, ma il workflow legacy resta fuori perimetro."
+          : procurement.navigability.preventivi.reason,
+    },
+    listino: {
+      state: counts.listinoVoci > 0 ? "preview" : "bloccata",
+      reason:
+        counts.listinoVoci > 0
+          ? "Il listino e leggibile come supporto prezzi, ma edit e consolidamento restano bloccati nel clone."
+          : procurement.navigability.listino.reason,
+    },
+    approvazioniCapoCosti: {
+      state: counts.approvazioniTotali > 0 ? "preview" : "bloccata",
+      reason:
+        counts.approvazioniTotali > 0
+          ? "Capo Costi mostra stati e documenti in sola lettura, ma non esegue approvazioni o rifiuti reali."
+          : "Capo Costi nel clone resta una vista read-only: senza stati approvativi leggibili non va presentato come workflow attivo.",
+    },
+    pdfTimbrato: {
+      state: "bloccata",
+      reason: "PDF timbrati, `stamp_pdf` e conferme finali restano bloccati nel clone read-only.",
+    },
+  } satisfies NextProcurementReadOnlySnapshot["surfaces"];
+
+  return {
+    domainCode: "D06",
+    domainName: "Procurement read-only",
+    generatedAt: new Date().toISOString(),
+    datasets: [
+      "@ordini",
+      PROCUREMENT_PREVENTIVI_DATASET_KEY,
+      PROCUREMENT_APPROVALS_DATASET_KEY,
+      PROCUREMENT_LISTINO_DATASET_KEY,
+    ],
+    datasetShapes: {
+      ordini: procurement.datasetShape,
+      preventivi: preventiviDataset.datasetShape,
+      approvazioni: approvalsDataset.datasetShape,
+      listino: listinoDataset.datasetShape,
+    },
+    counts,
+    surfaces,
+    limitations: buildProcurementReadOnlyLimitations({
+      ordiniShape: procurement.datasetShape,
+      preventiviShape: preventiviDataset.datasetShape,
+      approvazioniShape: approvalsDataset.datasetShape,
+      listinoShape: listinoDataset.datasetShape,
+      counts,
+      readFailures,
+    }),
+    actionHint:
+      surfaces.ordineMateriali.state === "bloccata" ||
+      surfaces.preventivi.state === "preview" ||
+      surfaces.approvazioniCapoCosti.state === "preview"
+        ? "Usare D06 per controllo e contesto: nel clone conviene aprire ordini o arrivi per leggere lo stato reale, mentre preventivi, approvazioni e PDF timbrati vanno trattati come preview o bloccati."
+        : "Usare il workbench D06 in sola lettura per capire ordini, arrivi e stato preventivi senza eseguire scritture.",
   };
 }
 

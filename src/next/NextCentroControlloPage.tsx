@@ -11,6 +11,10 @@ import type { HomeEvent } from "../utils/homeEvents";
 import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
 import { formatDateInput, formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
 import {
+  readNextAutistiReadOnlySnapshot,
+  type NextAutistiReadOnlySnapshot,
+} from "./domain/nextAutistiDomain";
+import {
   readNextCentroControlloSnapshot,
   type D10MezzoItem,
   type D10MissingMezzoItem,
@@ -396,6 +400,9 @@ function Home() {
   const preCollaudoDatePickerRef = useRef<HTMLInputElement | null>(null);
   const revisioneDatePickerRef = useRef<HTMLInputElement | null>(null);
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
+  const [autistiSnapshot, setAutistiSnapshot] = useState<NextAutistiReadOnlySnapshot | null>(
+    null,
+  );
   const [alertsNow, setAlertsNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -451,9 +458,13 @@ function Home() {
 
     const loadSnapshot = async (now: number) => {
       try {
-        const nextSnapshot = await readNextCentroControlloSnapshot(now);
+        const [nextSnapshot, nextAutistiSnapshot] = await Promise.all([
+          readNextCentroControlloSnapshot(now),
+          readNextAutistiReadOnlySnapshot(now),
+        ]);
         if (!mounted) return;
         setSnapshot(nextSnapshot);
+        setAutistiSnapshot(nextAutistiSnapshot);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -470,10 +481,15 @@ function Home() {
 
     const refreshSnapshot = async () => {
       try {
-        const nextSnapshot = await readNextCentroControlloSnapshot(Date.now());
+        const [nextSnapshot, nextAutistiSnapshot] = await Promise.all([
+          readNextCentroControlloSnapshot(Date.now()),
+          readNextAutistiReadOnlySnapshot(Date.now()),
+        ]);
         if (!active) return;
         setSnapshot(nextSnapshot);
-      } catch {
+        setAutistiSnapshot(nextAutistiSnapshot);
+      } catch (error) {
+        void error;
       }
     };
 
@@ -487,29 +503,43 @@ function Home() {
     const timer = window.setInterval(() => {
       const now = Date.now();
       setAlertsNow(now);
-      void readNextCentroControlloSnapshot(now)
-        .then((nextSnapshot) => {
+      void Promise.all([
+        readNextCentroControlloSnapshot(now),
+        readNextAutistiReadOnlySnapshot(now),
+      ])
+        .then(([nextSnapshot, nextAutistiSnapshot]) => {
           setSnapshot(nextSnapshot);
+          setAutistiSnapshot(nextAutistiSnapshot);
         })
-        .catch(() => {
+        .catch((error) => {
+          void error;
         });
     }, 60_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const mezzi = snapshot?.mezzi ?? [];
-  const sessioni = snapshot?.sessioni ?? [];
-  const visibleAlerts = snapshot?.alerts ?? [];
-  const importantAutistiItems = snapshot?.importantAutistiItems ?? [];
-  const rimorchiDaMostrare = snapshot?.rimorchiDaMostrare ?? [];
-  const motriciTrattoriDaMostrare = snapshot?.motriciTrattoriDaMostrare ?? [];
-  const revisioniUrgenti = snapshot?.revisioniUrgenti ?? [];
-  const mezziIncompleti = snapshot?.missingMezzi ?? [];
+  const mezzi = useMemo(() => snapshot?.mezzi ?? [], [snapshot]);
+  const sessioni = useMemo(() => snapshot?.sessioni ?? [], [snapshot]);
+  const visibleAlerts = useMemo(() => snapshot?.alerts ?? [], [snapshot]);
+  const importantAutistiItems = useMemo(
+    () => snapshot?.importantAutistiItems ?? [],
+    [snapshot],
+  );
+  const rimorchiDaMostrare = useMemo(() => snapshot?.rimorchiDaMostrare ?? [], [snapshot]);
+  const motriciTrattoriDaMostrare = useMemo(
+    () => snapshot?.motriciTrattoriDaMostrare ?? [],
+    [snapshot],
+  );
+  const revisioniUrgenti = useMemo(() => snapshot?.revisioniUrgenti ?? [], [snapshot]);
+  const mezziIncompleti = useMemo(() => snapshot?.missingMezzi ?? [], [snapshot]);
   const revCounts = {
     scadute: snapshot?.counters.revisioniScadute ?? 0,
     inScadenza: snapshot?.counters.revisioniInScadenza ?? 0,
   };
   const sessioniAttive = sessioni;
+  const autistiBoundarySummary = autistiSnapshot
+    ? `Madre: ${autistiSnapshot.counts.activeSessions} sessioni | segnali madre: ${autistiSnapshot.counts.attentionSignalsMother} | solo locali clone: ${autistiSnapshot.counts.attentionSignalsLocal}`
+    : "Flusso autisti in caricamento";
 
   const handleAutistaSearch = () => {
     return;
@@ -773,6 +803,21 @@ function Home() {
       }
     };
 
+    autistiSnapshot?.assignments.forEach((assignment) => {
+      const priority =
+        assignment.linkReliability === "forte"
+          ? 3
+          : assignment.linkReliability === "prudente"
+            ? 2
+            : 1;
+      addCandidate(
+        assignment.autistaNome,
+        assignment.badgeAutista,
+        assignment.mezzoTarga ?? assignment.targaMotrice ?? assignment.targaRimorchio,
+        priority,
+      );
+    });
+
     sessioni.forEach((s) => {
       addCandidate(
         s.nomeAutista,
@@ -783,13 +828,20 @@ function Home() {
     });
 
     mezzi.forEach((m) => {
+      const mezzoRecord = m as D10MezzoItem & Record<string, unknown>;
       const mezzoBadge =
-        (m as any)?.badgeAutista || (m as any)?.badge || (m as any)?.autistaBadge;
+        typeof mezzoRecord.badgeAutista === "string"
+          ? mezzoRecord.badgeAutista
+          : typeof mezzoRecord.badge === "string"
+            ? mezzoRecord.badge
+            : typeof mezzoRecord.autistaBadge === "string"
+              ? mezzoRecord.autistaBadge
+              : undefined;
       addCandidate(m.autistaNome, mezzoBadge, m.targa, 1);
     });
 
     return Array.from(map.values());
-  }, [sessioni, mezzi]);
+  }, [autistiSnapshot, sessioni, mezzi]);
 
   const nameQueryKey = useMemo(() => normalizeNameKey(nameQuery), [nameQuery]);
 
@@ -1186,6 +1238,10 @@ function Home() {
                         </div>
                       </div>
                     </div>
+                    <div className="search-empty" style={{ marginTop: 10, textAlign: "left" }}>
+                      D03 read-only: {autistiBoundarySummary}. I dati creati nell&apos;app autisti clone
+                      restano locali finche non esiste sincronizzazione reale.
+                    </div>
                   </div>
                 </div>
               </section>
@@ -1406,10 +1462,32 @@ function Home() {
                   <div className="panel-head home-card__head">
                     <div>
                       <h2 className="home-card__title">Sessioni attive</h2>
-                      <span className="home-card__subtitle">Sessioni live</span>
+                      <span className="home-card__subtitle">Sessioni live e confine read-only D03</span>
                     </div>
                   </div>
                   <div className="panel-body home-card__body">
+                    {autistiSnapshot ? (
+                      <div className="panel-row">
+                        <div className="row-main">
+                          <div className="row-title">
+                            <span>D03 autisti canonico</span>
+                            <span className="badge">{autistiSnapshot.operationalStatus.label}</span>
+                          </div>
+                          <div className="row-meta row-meta-stack">
+                            <div className="row-meta-line" style={{ fontSize: "13px" }}>
+                              <span className="label">Agganci forti:</span>{" "}
+                              <strong>{autistiSnapshot.counts.assignmentsStrong}</strong>
+                              {" | "}
+                              <span className="label">prudenziali:</span>{" "}
+                              <strong>{autistiSnapshot.counts.assignmentsPrudent}</strong>
+                            </div>
+                            <div className="row-meta-line" style={{ fontSize: "13px" }}>
+                              <span>{autistiBoundarySummary}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                     {loading ? (
                       <div className="panel-row panel-row-empty">
                         Caricamento dati...

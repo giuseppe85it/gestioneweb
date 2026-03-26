@@ -273,7 +273,7 @@ const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
   {
     code: "D03",
     title: "Autisti, sessioni ed eventi di campo",
-    statusLabel: "BLOCCANTE PER IMPORTAZIONE",
+    statusLabel: "DA VERIFICARE",
     detectionPatterns: [
       "autista",
       "autisti",
@@ -288,22 +288,22 @@ const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
       "badge autista",
     ],
     mainFiles: [
-      "src/next/domain/nextCentroControlloDomain.ts",
-      "src/next/NextAutistiInboxHomePage.tsx",
-      "src/next/NextAutistiAdminPage.tsx",
-      "src/next/components/NextAutistiEventoModal.tsx",
+      "src/next/domain/nextAutistiDomain.ts",
+      "src/next/domain/nextStatoOperativoDomain.ts",
+      "src/next/NextCentroControlloPage.tsx",
+      "src/next/autisti/*",
     ],
     capabilityToday: [
-      "riconoscere il dominio e orientare sui moduli principali",
-      "indicare i file NEXT piu rilevanti e il legame con il cockpit D10",
-      "dichiarare i limiti senza promuovere D03 a dominio canonico della chat",
+      "leggere in sola lettura badge, sessioni, eventi e segnali autisti con confine madre/clone esplicito",
+      "spiegare quale autista e collegato a una targa quando l'aggancio e forte o prudente",
+      "distinguere i segnali madre dai dati solo locali del clone autisti",
     ],
     notReady: [
-      "il dominio e marcato BLOCCANTE PER IMPORTAZIONE nei documenti dati",
-      "la sorgente canonica degli eventi autisti non e ancora chiusa in modo definitivo",
+      "il fallback legacy autisti_eventi resta solo prudenziale",
+      "i dati salvati nel clone autisti non sono sincronizzati con la madre",
     ],
     nextStep:
-      "aprire un audit separato sul feed autisti e sulla sorgente canonica eventi prima di renderlo operativo in chat.",
+      "estendere D03 alle superfici admin/inbox root del clone senza riaprire scritture o sincronizzazioni.",
   },
   {
     code: "D04",
@@ -339,7 +339,7 @@ const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
   {
     code: "D05",
     title: "Magazzino, inventario e movimenti materiali",
-    statusLabel: "BLOCCANTE PER IMPORTAZIONE",
+    statusLabel: "SENSIBILE",
     detectionPatterns: [
       "magazzino",
       "inventario",
@@ -351,20 +351,22 @@ const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
     mainFiles: [
       "src/next/domain/nextMaterialiMovimentiDomain.ts",
       "src/next/domain/nextInventarioDomain.ts",
+      "src/next/domain/nextAttrezzatureCantieriDomain.ts",
+      "src/next/NextOperativitaGlobalePage.tsx",
       "src/next/NextInventarioPage.tsx",
       "src/next/NextMaterialiConsegnatiPage.tsx",
     ],
     capabilityToday: [
-      "riconoscere il dominio e orientare sui moduli globali principali",
-      "spiegare quali reader NEXT esistono gia in sola lettura",
-      "dichiarare perche non e ancora un dominio consolidato della chat",
+      "riconoscere il dominio D05 come area clone-safe in sola lettura per inventario, movimenti materiali e attrezzature",
+      "distinguere stock critico affidabile, collegamenti mezzo forti o prudenziali e tracking attrezzature parziale",
+      "rispondere in chat su materiali collegati ai mezzi, segnali magazzino e confine read-only del dominio",
     ],
     notReady: [
-      "il dominio e marcato BLOCCANTE PER IMPORTAZIONE nei documenti dati",
-      "stock, movimenti e consegne restano ancora troppo accoppiati per una chat affidabile",
+      "il dominio resta solo read-only per la parte scrivente e non va promosso a writer NEXT",
+      "stock, movimenti, manutenzioni e ordini non sono ancora una catena transazionale unica: alcuni collegamenti restano prudenziali",
     ],
     nextStep:
-      "separare con un task dedicato stock, movimenti e consegne prima di aprire una capability IA piu forte.",
+      "chiudere in task separati i legami causali tra D05, D02 e D06 prima di aprire suggerimenti operativi scriventi o approvvigionamenti automatici.",
   },
   {
     code: "D06",
@@ -384,22 +386,25 @@ const PRUDENT_DOMAIN_GUIDANCE: readonly PrudentDomainGuidance[] = [
     ],
     mainFiles: [
       "src/next/domain/nextProcurementDomain.ts",
+      "src/next/domain/nextDocumentiCostiDomain.ts",
       "src/next/domain/nextFornitoriDomain.ts",
+      "src/pages/Acquisti.tsx",
       "src/next/NextAcquistiPage.tsx",
       "src/next/NextDettaglioOrdinePage.tsx",
+      "src/next/NextCapoCostiMezzoPage.tsx",
       "src/next/NextFornitoriPage.tsx",
     ],
     capabilityToday: [
-      "riconoscere il dominio e mostrare dove passano ordini e fornitori nella NEXT",
-      "indicare i file/moduli principali senza inventare report procurement nel thread",
-      "dichiarare il confine con preventivi e approvazioni ancora non consolidati in chat",
+      "leggere in modo read-only ordini, arrivi e dettaglio ordine come workbench D06 realmente navigabile nel clone",
+      "distinguere tra superfici navigabili, preview prudenziali e CTA bloccate su preventivi, listino, approvazioni e PDF timbrati",
+      "rispondere in chat sullo stato reale di procurement, Capo Costi e confine read-only del dominio",
     ],
     notReady: [
       "il dominio resta SENSIBILE nei documenti dati",
-      "preventivi e allegati procurement non hanno ancora un percorso IA consolidato nella chat",
+      "preventivi, approvazioni e listino non sono ancora un workflow operativo completo nella NEXT",
     ],
     nextStep:
-      "aprire un task separato sul solo dominio D06 per decidere se portare prima ordini/fornitori o preventivi.",
+      "mantenere D06 onesto come workbench read-only e aprire workflow scriventi solo dopo un layer canonico separato per approvazioni, PDF timbrati e conferme business.",
   },
   {
     code: "D07",
@@ -1448,10 +1453,12 @@ function buildGenericResponse(): InternalAiChatTurnResult {
       '- "Fammi un report della targa AB123CD ultimi 30 giorni"\n' +
       '- "Analizza la home operativa"\n' +
       '- "Quali file devo toccare nel perimetro mezzo/Home"\n' +
+      '- "Quali autisti hanno oggi segnali o eventi che richiedono attenzione?"\n' +
+      '- "Questa targa a quale autista risulta collegata?"\n' +
       '- "Se modifico il Dossier Mezzo, quali moduli e file rischio di impattare?"\n' +
       '- "Voglio aggiungere un nuovo modulo nel gestionale: dove lo dovrei inserire?"\n' +
       '- "Questa logica vive nella madre, nella NEXT o nel backend IA?"\n\n' +
-      "Se la richiesta sconfina su autisti, rifornimenti, costi, documenti o preventivi, dichiaro il limite e non invento coperture fuori dominio.",
+      "Se la richiesta sconfina su domini non ancora chiusi, dichiaro il limite e non invento coperture fuori dominio.",
     references: [
       {
         type: "capabilities",

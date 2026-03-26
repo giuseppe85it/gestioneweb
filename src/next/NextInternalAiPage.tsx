@@ -154,6 +154,7 @@ type NextInternalAiPageProps = {
 };
 
 type UnifiedConsoleScopeFilter =
+  | "autisti"
   | "quadro"
   | "criticita"
   | "scadenze"
@@ -585,11 +586,24 @@ const CHAT_SUGGESTIONS = [
   "Se oggi dovessi controllare un solo mezzo, quale sceglieresti e perche?",
   "Dimmi quali mezzi nei prossimi 30 giorni richiedono collaudo o pre-collaudo, ordinati per priorita, e spiegami cosa conviene fare",
   "Fammi un quadro completo della targa TI233827, ma solo con le informazioni davvero utili per decidere cosa fare",
+  "Ci sono criticita di magazzino o inventario che richiedono attenzione?",
+  "Fammi un riepilogo utile dei materiali collegati ai mezzi",
+  "Ci sono stock bassi o segnali che possono bloccare il lavoro?",
+  "Questa parte e davvero operativa o solo in lettura?",
   "Fammi un report dei costi della targa TI233827 negli ultimi 12 mesi, in modo semplice e utile",
   "Quali documenti rilevanti risultano associati alla targa TI233827?",
   "Fammi uno storico decisionale del mezzo TI233827 con costi, documenti e segnali utili",
   "Ci sono anomalie nei rifornimenti del mezzo TI233827?",
   "Quale mezzo e piu critico questa settimana?",
+  "Fammi un riepilogo read-only di ordini e preventivi",
+  "Ci sono approvazioni reali o solo preview?",
+  "Quali CTA di procurement vanno bloccate nella NEXT?",
+  "Spiegami lo stato reale di Capo Costi nel perimetro NEXT",
+  "Quali autisti hanno oggi segnali o eventi che richiedono attenzione?",
+  "Questa targa a quale autista risulta collegata?",
+  "Fammi un riepilogo read-only del flusso autisti per oggi",
+  "Ci sono anomalie o dati incompleti nel dominio autisti?",
+  "Questo dato viene dalla madre, dalla NEXT o da un flusso locale autisti?",
 ];
 
 const PRIMARY_SECTION_NAV: NextInternalAiSectionId[] = ["overview", "artifacts"];
@@ -606,6 +620,7 @@ const UNIFIED_CONSOLE_SCOPE_OPTIONS: Array<{
   id: UnifiedConsoleScopeFilter;
   label: string;
 }> = [
+  { id: "autisti", label: "Autisti" },
   { id: "quadro", label: "Quadro completo" },
   { id: "criticita", label: "Criticita" },
   { id: "scadenze", label: "Scadenze" },
@@ -1308,6 +1323,16 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
 
   if (message.intent === "report_targa") {
     if (
+      normalized.includes("magazzin") ||
+      normalized.includes("inventar") ||
+      normalized.includes("material") ||
+      normalized.includes("attrezzatur") ||
+      normalized.includes("stock")
+    ) {
+      return "Materiali e magazzino";
+    }
+
+    if (
       normalized.includes("quadro mezzo") ||
       normalized.includes("cosa fare ora") ||
       normalized.includes("situazione del mezzo")
@@ -1340,6 +1365,16 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
   }
 
   if (message.intent === "mezzo_dossier") {
+    if (
+      normalized.includes("magazzin") ||
+      normalized.includes("inventar") ||
+      normalized.includes("material") ||
+      normalized.includes("attrezzatur") ||
+      normalized.includes("stock")
+    ) {
+      return "Materiali e magazzino";
+    }
+
     if (
       normalized.includes("quadro mezzo") ||
       normalized.includes("cosa fare ora") ||
@@ -1434,6 +1469,31 @@ function buildChatUseCaseLabel(message: InternalAiChatMessage): string | null {
   }
 
   if (message.intent === "richiesta_generica") {
+    if (
+      normalized.includes("procurement") ||
+      normalized.includes("ordini leggibili") ||
+      normalized.includes("righi ordine") ||
+      normalized.includes("righe ordine") ||
+      normalized.includes("preventivi letti") ||
+      normalized.includes("approvazioni lette") ||
+      normalized.includes("capo costi") ||
+      normalized.includes("listino leggibile") ||
+      normalized.includes("cta di procurement")
+    ) {
+      return "Procurement read-only";
+    }
+
+    if (
+      normalized.includes("magazzin") ||
+      normalized.includes("inventar") ||
+      normalized.includes("material") ||
+      normalized.includes("attrezzatur") ||
+      normalized.includes("stock") ||
+      normalized.includes("operativa o solo in lettura")
+    ) {
+      return normalized.includes("mezzi") ? "Materiali collegati ai mezzi" : "Magazzino reale";
+    }
+
     if (
       normalized.includes("scadenze, collaudi e pre-collaudi") ||
       normalized.includes("mezzi da seguire") ||
@@ -5367,7 +5427,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                       </button>
                     </div>
                     <div className="internal-ai-search__actions" style={{ flexWrap: "wrap" }}>
-                      {UNIFIED_CONSOLE_SCOPE_OPTIONS.slice(0, 6).map((entry) => {
+                      {UNIFIED_CONSOLE_SCOPE_OPTIONS.slice(0, 11).map((entry) => {
                         const active = unifiedConsoleScopes.includes(entry.id);
                         return (
                           <button

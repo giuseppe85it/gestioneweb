@@ -235,7 +235,7 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
           }}
           disabled={loading || attachmentPreparing}
         >
-          {loading ? "INVIO..." : "INVIA RICHIESTA"}
+          {loading ? "SALVATAGGIO..." : "SALVA RICHIESTA LOCALE"}
         </button>
       </div>
     </div>

@@ -613,7 +613,7 @@ export default function NextAutistiSegnalazioniPage() {
         }}
         disabled={loading || fotoPreparing}
       >
-        {loading ? "Invio..." : "INVIA SEGNALAZIONE"}
+        {loading ? "Salvataggio locale..." : "SALVA SEGNALAZIONE LOCALE"}
       </button>
 
       <button

@@ -10,7 +10,14 @@ import {
 import type { NextDocumentiCostiCurrency } from "./domain/nextDocumentiCostiDomain";
 
 const CLONE_BLOCKED_REASON =
-  "Clone read-only: approvazioni, stati preventivi e PDF timbrati restano bloccati.";
+  "Clone in sola lettura: stati e documenti sono leggibili, ma approvazioni reali, cambio stato e PDF timbrati restano bloccati.";
+
+const BLOCKED_CTA_LABELS = [
+  "APPROVA",
+  "RIFIUTA",
+  "DA VALUTARE",
+  "ANTEPRIMA TIMBRATO",
+] as const;
 
 type Currency = NextDocumentiCostiCurrency;
 type ActiveTab = "FATTURE" | "PREVENTIVI" | "TUTTI";
@@ -370,7 +377,7 @@ export default function NextCapoCostiMezzoPage() {
 
             <section className="capo-approvazioni">
               <div className="capo-approvazioni-head">
-                <h2>Approvazione Preventivi</h2>
+                <h2>Approvazione preventivi (sola lettura)</h2>
                 <div className="capo-approvazioni-controls">
                   <label className="capo-approvazioni-toggle">
                     <input
@@ -385,6 +392,9 @@ export default function NextCapoCostiMezzoPage() {
 
               <div className="capo-costi-state" style={{ marginBottom: "12px" }}>
                 {CLONE_BLOCKED_REASON}
+              </div>
+              <div className="capo-meta-muted" style={{ marginBottom: "12px" }}>
+                CTA bloccate nel clone: {BLOCKED_CTA_LABELS.join(" | ")}
               </div>
 
               {preventiviItems.length === 0 ? (
@@ -461,7 +471,7 @@ export default function NextCapoCostiMezzoPage() {
                               type="button"
                               className="capo-button secondary"
                               disabled
-                              title="Clone read-only: `stamp_pdf` e PDF timbrati restano bloccati."
+                              title="Clone in sola lettura: `stamp_pdf` e PDF timbrati restano bloccati."
                               style={{ opacity: 0.55, cursor: "not-allowed" }}
                             >
                               ANTEPRIMA TIMBRATO

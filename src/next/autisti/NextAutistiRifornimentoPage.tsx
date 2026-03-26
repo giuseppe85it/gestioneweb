@@ -376,7 +376,7 @@ export default function NextAutistiRifornimentoPage() {
         onClick={handleSave}
         disabled={loading || !targaConfirmed}
       >
-        {loading ? "Salvataggio..." : "Salva rifornimento"}
+        {loading ? "Salvataggio locale..." : "Salva rifornimento locale"}
       </button>
 
       <button

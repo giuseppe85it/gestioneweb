@@ -281,23 +281,27 @@ const GestioneOperativa: React.FC = () => {
           </div>
 
           <button className="go-link-btn" type="button" onClick={() => openCloneSection("inventario")}>
-            Apri inventario completo
+            Apri inventario read-only
           </button>
         </div>
 
         <div className="go-actions-section">
-          <div className="go-actions-title">AZIONI OPERATIVE</div>
+          <div className="go-actions-title">VISTE OPERATIVE READ-ONLY</div>
+          <div className="go-badge" style={{ marginBottom: 12, borderRadius: 10 }}>
+            D05 e consultabile in sola lettura: stock, movimenti materiali e attrezzature sono
+            leggibili dal clone NEXT, ma nessuna consegna o variazione viene scritta.
+          </div>
 
           <div className="go-actions">
             <div className="go-action-card use-materiale">
-              <h3>Usa materiale</h3>
-              <p>Consulta le uscite magazzino e i movimenti materiali in sola lettura.</p>
+              <h3>Consulta materiali</h3>
+              <p>Apri uscite magazzino e movimenti materiali in sola lettura, senza scritture operative.</p>
               <button
                 className="go-primary-btn"
                 type="button"
                 onClick={() => openCloneSection("materiali")}
               >
-                Vai a materiali consegnati
+                Apri movimenti materiali
               </button>
             </div>
 
@@ -340,14 +344,14 @@ const GestioneOperativa: React.FC = () => {
 
             <div className="go-action-card">
               <h3>Attrezzature cantieri</h3>
-              <p>Registra consegne, spostamenti e ritiro attrezzature.</p>
+              <p>Consulta consegne, spostamenti e ritiri attrezzature in sola lettura.</p>
               <button
                 className="go-primary-btn"
                 type="button"
                 onClick={() => openCloneSection("attrezzature")}
                 title={snapshot?.navigability.attrezzature.reason ?? undefined}
               >
-                Vai ad attrezzature cantieri
+                Apri attrezzature read-only
               </button>
             </div>
           </div>
@@ -377,6 +381,11 @@ const GestioneOperativa: React.FC = () => {
 
         <div className="go-section" ref={detailSectionRef}>
           <h2 className="go-section-title">Vista operativa read-only</h2>
+
+          <div className="go-badge" style={{ marginBottom: 12, borderRadius: 10 }}>
+            D05 resta consultabile: inventario, movimenti materiali e attrezzature sono leggibili,
+            ma carico, scarico, consegna, ritiro e variazioni stock restano fuori dal clone.
+          </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
             <button

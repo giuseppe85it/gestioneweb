@@ -30,6 +30,7 @@ export type NextInventarioReadOnlyItem = {
   fornitore: string | null;
   fotoUrl: string | null;
   fotoStoragePath: string | null;
+  stockStatus: "disponibile" | "critico" | "non_dimostrabile";
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof INVENTARIO_KEY;
   quality: "certo" | "parziale" | "da_verificare";
@@ -47,6 +48,7 @@ export type NextInventarioSnapshot = {
   counts: {
     total: number;
     critical: number;
+    withReliableQuantity: number;
     withSupplier: number;
     withPhoto: number;
   };
@@ -115,6 +117,18 @@ function buildInventoryId(raw: RawRecord, index: number): string {
   return normalizeOptionalText(raw.id) ?? `inventario:${index}`;
 }
 
+function deriveStockStatus(quantita: number | null): NextInventarioReadOnlyItem["stockStatus"] {
+  if (quantita === null) {
+    return "non_dimostrabile";
+  }
+
+  if (quantita <= 0) {
+    return "critico";
+  }
+
+  return "disponibile";
+}
+
 function toInventoryItem(raw: RawRecord, index: number): NextInventarioReadOnlyItem | null {
   const descrizione =
     normalizeOptionalText(raw.descrizione) ??
@@ -146,6 +160,7 @@ function toInventoryItem(raw: RawRecord, index: number): NextInventarioReadOnlyI
     fornitore,
     fotoUrl,
     fotoStoragePath,
+    stockStatus: deriveStockStatus(quantita),
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: INVENTARIO_KEY,
     quality:
@@ -186,6 +201,7 @@ function buildLimitations(args: {
     items.some((item) => item.flags.includes("fornitore_assente"))
       ? "Il fornitore non e valorizzato su tutti gli articoli inventario."
       : null,
+    "Nel clone non esiste ancora una scorta minima canonica: i segnali stock sono affidabili solo quando la quantita e zero o negativa.",
     "Il reader clone e solo read-only: nuovo materiale, modifica, delete, variazione quantita, PDF e foto restano fuori dal perimetro attivo.",
   ].filter((entry): entry is string => Boolean(entry));
 }
@@ -230,7 +246,8 @@ export async function readNextInventarioSnapshot(): Promise<NextInventarioSnapsh
     items,
     counts: {
       total: items.length,
-      critical: items.filter((item) => item.quantita !== null && item.quantita <= 0).length,
+      critical: items.filter((item) => item.stockStatus === "critico").length,
+      withReliableQuantity: items.filter((item) => item.quantita !== null).length,
       withSupplier: items.filter((item) => Boolean(item.fornitore)).length,
       withPhoto: items.filter((item) => Boolean(item.fotoUrl)).length,
     },

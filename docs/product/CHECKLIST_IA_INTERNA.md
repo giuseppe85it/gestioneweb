@@ -1867,3 +1867,96 @@ Stato macrofase: `NON FATTO`
     - `Voglio aggiungere un nuovo modulo nel gestionale...` -> risposta `repo_understanding` con macro-area owner e punto di integrazione
     - `Questa logica vive nella madre, nella NEXT o nel backend IA?...` -> risposta `repo_understanding` con distinzione perimetri e ordine di lettura file
     - `Se voglio aggiungere una nuova funzione IA legata ai flussi operativi...` -> risposta `repo_understanding` con punto corretto di integrazione della capability IA
+
+### M.40 Procurement reale read-only per NEXT e IA interna
+- Stato: `FATTO`
+- Note: il `2026-03-25` il dominio `D06` e stato riallineato come workbench procurement read-only vero per NEXT e come capability IA interna basata su stato reale, preview e CTA bloccate, senza fingere workflow operativi completi.
+- Cosa e stato chiuso:
+  - il layer `nextDocumentiCostiDomain` espone ora uno snapshot procurement read-only che unisce ordini, arrivi, preventivi, approvazioni Capo Costi e listino in una vista unica con superfici `navigabile`, `preview` o `bloccata`;
+  - la console `/next/ia/interna` riconosce prompt D06 su ordini, preventivi, approvazioni, CTA bloccate, sola lettura prudente e stato reale di Capo Costi, senza ricadere nel ramo costi/documenti generico;
+  - la pagina clone `/next/acquisti` smette di riusare nel subtree NEXT il workflow legacy pieno e mostra invece un workbench read-only in italiano: `Ordini`, `Arrivi` e `Dettaglio ordine` navigabili, `Ordine materiali`, `Prezzi & Preventivi` e `Listino Prezzi` fermati con motivazione esplicita;
+  - la vista `Capo Costi Mezzo` dichiara ora in primo piano che stati/documenti sono leggibili ma approvazioni reali, cambio stato e PDF timbrati restano bloccati, con CTA bloccate esplicitate in pagina;
+  - la IA interna risponde ora su base read-only reale, distinguendo `stato leggibile`, `preview`, `contesto prudente`, `workflow non importato` e `CTA non consentita`.
+- File/documenti collegati:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/pages/Acquisti.tsx`
+  - `docs/change-reports/2026-03-25_2138_d06-procurement-read-only-reale-next.md`
+  - `docs/continuity-reports/2026-03-25_2138_continuity_d06-procurement-read-only-reale-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextCapoCostiMezzoPage.tsx src/next/NextOperativitaGlobalePage.tsx src/pages/Acquisti.tsx` -> KO per debito lint legacy gia presente soprattutto in `src/pages/Acquisti.tsx` e in parte in `src/next/NextCapoCostiMezzoPage.tsx`
+  - `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextOperativitaGlobalePage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale:
+    - `Fammi un riepilogo read-only di ordini e preventivi.` -> ramo D06 con conteggi coerenti su ordini, preventivi, approvazioni e listino
+    - `Ci sono approvazioni reali o solo preview?` -> risposta D06 che ferma approvazioni e PDF timbrati come non operativi nel clone
+    - `Quali CTA di procurement vanno bloccate nella NEXT?` -> risposta D06 con CTA bloccate spiegate in modo esplicito
+    - `Questa area e davvero operativa o solo in lettura prudente?` -> risposta D06 che distingue area navigabile da superfici solo preview o bloccate
+    - `Spiegami lo stato reale di Capo Costi nel perimetro NEXT.` -> ramo D06 corretto, senza ricadere su costi/documenti generici
+
+### M.41 D03 autisti canonico read-only per NEXT e IA interna
+- Stato: `FATTO`
+- Note: il `2026-03-25` e stato chiuso da zero il dominio `D03` come read model clone-safe riusabile da IA interna, Centro di Controllo, Gestione Operativa e area autisti, senza scritture business e senza scorciatoie su `D10`.
+- Cosa e stato chiuso:
+  - creato `src/next/domain/nextAutistiDomain.ts` come layer canonico D03 che normalizza badge, nome autista, targa/mezzo, timestamp, tipo evento, provenienza dato e affidabilita del collegamento;
+  - il read model distingue ora in modo esplicito `aggancio forte`, `aggancio prudente`, `dato locale clone` e `fallback legacy non abbastanza affidabile`;
+  - la console `/next/ia/interna` riconosce ora prompt D03 su segnali autisti, collegamento targa-autista, riepilogo read-only del flusso, anomalie dati e confine `madre / NEXT / locale autisti`;
+  - `NextCentroControllo` e `NextGestioneOperativa` espongono un riassunto D03 read-only con conteggi e confine chiaro, senza scrivere nulla sulla madre;
+  - l'area autisti clone-safe smette di sembrare sincronizzata: i salvataggi locali sono etichettati come locali e il layout chiarisce che sessioni/eventi madre sono letti in sola lettura mentre controlli/segnalazioni/richieste restano locali al clone.
+- File/documenti collegati:
+  - `src/next/domain/nextAutistiDomain.ts`
+  - `src/next/domain/nextStatoOperativoDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/autisti/NextAutistiRifornimentoPage.tsx`
+  - `src/next/autisti/NextAutistiSegnalazioniPage.tsx`
+  - `src/next/autisti/NextAutistiRichiestaAttrezzaturePage.tsx`
+  - `docs/change-reports/2026-03-25_2318_d03-autisti-canonico-readonly-next.md`
+  - `docs/continuity-reports/2026-03-25_2318_continuity_d03-autisti-canonico-readonly-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/domain/nextAutistiDomain.ts src/next/domain/nextStatoOperativoDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextCentroControlloPage.tsx src/next/NextGestioneOperativaPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale:
+    - `Quali autisti hanno oggi segnali o eventi che richiedono attenzione?` -> ramo D03 con 1 segnale aperto su `PIERO LAURO | targa TI279216 | Controllo KO: GOMME`
+    - `Questa targa a quale autista risulta collegata?` con `TI233827` selezionata -> collegamento forte a `ELTON SELIMI (badge 38)`
+    - `Fammi un riepilogo read-only del flusso autisti per oggi.` -> `10 sessioni attive`, `35 segnali madre`, `0 segnali locali clone`, `36 agganci forti`, `18 prudenziali`, `105 fallback legacy`
+    - `Ci sono anomalie o dati incompleti nel dominio autisti?` -> `24 eventi` con aggancio prudente/incompleto e `105` record da fallback legacy
+    - `Questo dato viene dalla madre, dalla NEXT o da un flusso locale autisti?` -> perimetro chiaro con `431 elementi` madre letti in sola lettura, `0` locali clone e `105` fallback legacy
+
+### M.42 D05 magazzino reale read-only per NEXT e IA interna
+- Stato: `FATTO`
+- Note: il `2026-03-26` il work-package D05 e stato chiuso partendo dallo stato parziale: il dominio magazzino e ora leggibile come read model unico per inventario, movimenti materiali e attrezzature, con rotta operativa clone-safe coerente e prompt IA D05 stabili.
+- Cosa e stato chiuso:
+  - consolidato `readNextMagazzinoRealeSnapshot` sopra `nextInventarioDomain`, `nextMaterialiMovimentiDomain` e `nextAttrezzatureCantieriDomain`, con limitazioni deduplicate e distinzione leggibile tra stock critico, collegamenti mezzo forti/prudenziali e tracking attrezzature;
+  - il motore IA riconosce ora in modo piu affidabile prompt globali D05 (`stock bassi`, `criticita di magazzino`, `operativa o solo in lettura`) e prompt mezzo/materiali senza collassare sui rami sbagliati;
+  - la rotta `/next/gestione-operativa` usa adesso il workbench clone-safe `NextOperativitaGlobalePage` invece della superficie legacy della madre, cosi le CTA D05 visibili sono finalmente coerenti col perimetro `read-only`;
+  - la console IA ha una resa piu utile su D05: azione consigliata meno meccanica, distinzione chiara tra blocchi globali di stock e collegamenti materiali verso mezzo;
+  - il perimetro D05 resta formalmente `read-only`: nessun writer stock, nessuna consegna, nessun ritiro, nessuna foto o variazione inventario viene riaperta nel clone.
+- File/documenti collegati:
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextOperativitaGlobalePage.tsx`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `docs/change-reports/2026-03-26_0631_d05-magazzino-reale-readonly-next.md`
+  - `docs/continuity-reports/2026-03-26_0631_continuity_d05-magazzino-reale-readonly-next.md`
+- Verifiche eseguite:
+  - `npm run build` -> OK
+  - `npx eslint src/next/domain/nextInventarioDomain.ts src/next/domain/nextMaterialiMovimentiDomain.ts src/next/domain/nextAttrezzatureCantieriDomain.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts src/next/internal-ai/internalAiChatOrchestrator.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiOutputSelector.ts src/next/NextInternalAiPage.tsx src/next/NextOperativitaGlobalePage.tsx src/next/NextGestioneOperativaPage.tsx` -> OK
+  - smoke UI reale su `/next/ia/interna` via Playwright locale:
+    - `Ci sono criticita di magazzino o inventario che richiedono attenzione?` -> `Magazzino reale`, `1` segnale D05
+    - `Fammi un riepilogo utile dei materiali collegati ai mezzi.` -> `Materiali collegati ai mezzi`, `9` collegamenti forti
+    - `Questo mezzo ha ricevuto materiali o attrezzature rilevanti?` con `TI233827` -> `2` movimenti forti e azione coerente
+    - `Ci sono stock bassi o segnali che possono bloccare il lavoro?` -> ramo D05 globale
+    - `Questa parte e davvero operativa o solo in lettura?` -> confine D05 `sola lettura`
+  - smoke UI reale su `/next/gestione-operativa`:
+    - banner `D03 autisti in sola lettura` e `D05 magazzino in sola lettura`
+    - CTA `Apri inventario read-only`, `Apri movimenti materiali`, `Apri attrezzature read-only`
