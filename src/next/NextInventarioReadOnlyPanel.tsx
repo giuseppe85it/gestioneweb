@@ -9,6 +9,7 @@ import "../pages/Inventario.css";
 type NextInventarioReadOnlyPanelProps = {
   snapshot: NextInventarioSnapshot;
   blockedReason: string;
+  initialQuery?: string | null;
 };
 
 function formatQuantity(value: number | null): string {
@@ -54,8 +55,9 @@ function renderActions(item: NextInventarioReadOnlyItem, blockedReason: string) 
 export default function NextInventarioReadOnlyPanel({
   snapshot,
   blockedReason,
+  initialQuery = null,
 }: NextInventarioReadOnlyPanelProps) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [criticalOnly, setCriticalOnly] = useState(false);
 
   const items = useMemo(

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import NextClonePageScaffold from "./NextClonePageScaffold";
 import NextProcurementReadOnlyPanel from "./NextProcurementReadOnlyPanel";
@@ -7,10 +7,13 @@ import {
   buildNextDettaglioOrdinePath,
   NEXT_ACQUISTI_PATH,
   NEXT_GESTIONE_OPERATIVA_PATH,
+  NEXT_MATERIALI_DA_ORDINARE_PATH,
   NEXT_ORDINI_ARRIVATI_PATH,
   NEXT_ORDINI_IN_ATTESA_PATH,
 } from "./nextStructuralPaths";
 import { useNextOperativitaSnapshot } from "./useNextOperativitaSnapshot";
+import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
+import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 
 type ProcurementPageMode =
   | "acquisti"
@@ -62,30 +65,95 @@ function getBackLabel(mode: ProcurementPageMode) {
   return "Gestione Operativa";
 }
 
-function getActiveTab(mode: ProcurementPageMode): NextProcurementCloneTab {
-  if (mode === "ordine-materiali") return "ordine-materiali";
-  if (mode === "arrivi") return "arrivi";
-  if (mode === "dettaglio") return "ordini";
-  return "ordini";
-}
-
 export default function NextProcurementStandalonePage({
   mode,
 }: {
   mode: ProcurementPageMode;
 }) {
+  const handoff = useInternalAiUniversalHandoffConsumer({
+    moduleId: "next.procurement",
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const { ordineId } = useParams<{ ordineId: string }>();
   const { snapshot, loading, error } = useNextOperativitaSnapshot();
+  const lifecycleRef = useRef<string | null>(null);
 
   const detailBackTab = useMemo<NextProcurementListTab>(() => {
     const params = new URLSearchParams(location.search);
     return params.get("from") === "arrivi" ? "arrivi" : "ordini";
   }, [location.search]);
 
-  const activeTab = getActiveTab(mode);
-  const panelOrderId = mode === "dettaglio" ? ordineId ?? null : null;
+  const handoffOrderId = useMemo(() => {
+    if (handoff.state.status !== "ready") {
+      return null;
+    }
+
+    return handoff.state.payload.entityRef?.entityKind === "ordine"
+      ? handoff.state.payload.entityRef.matchedId ?? handoff.state.payload.entityRef.normalizedValue
+      : null;
+  }, [handoff.state]);
+
+  const activeTab = useMemo<NextProcurementCloneTab>(() => {
+    if (mode === "dettaglio") {
+      return "ordini";
+    }
+
+    const requestedTab = new URLSearchParams(location.search).get("tab");
+    if (requestedTab === "arrivi" || requestedTab === "ordini") {
+      return requestedTab;
+    }
+
+    return "ordini";
+  }, [location.search, mode]);
+
+  const panelOrderId = mode === "dettaglio" ? ordineId ?? handoffOrderId ?? null : handoffOrderId;
+
+  const iaPrefill = useMemo(() => {
+    if (handoff.state.status !== "ready") {
+      return null;
+    }
+
+    return {
+      handoffId: handoff.state.payload.handoffId,
+      fornitore: handoff.state.prefill.fornitore,
+      materiale: handoff.state.prefill.materiale,
+      documentoNome: handoff.state.prefill.documentoNome,
+      note: handoff.state.payload.motivoInstradamento,
+      statusLabel: handoff.state.payload.statoConsumo,
+      missingFields: handoff.state.payload.campiMancanti,
+      verifyFields: handoff.state.payload.campiDaVerificare,
+    };
+  }, [handoff.state]);
+
+  useEffect(() => {
+    if (handoff.state.status !== "ready" || !snapshot) {
+      return;
+    }
+
+    if (lifecycleRef.current === handoff.state.payload.handoffId) {
+      return;
+    }
+
+    handoff.acknowledge(
+      "prefill_applicato",
+      "Il modulo procurement ha applicato tab, filtro fornitore/materiale e contesto ordine del payload IA.",
+    );
+
+    if (handoff.state.requiresVerification) {
+      handoff.acknowledge(
+        "da_verificare",
+        "Il procurement e stato aperto con prefill, ma richiede ancora verifica dei campi segnalati dal payload.",
+      );
+    } else {
+      handoff.acknowledge(
+        "completato",
+        "Il procurement del clone ha agganciato il payload standard e mostra il punto corretto della UI.",
+      );
+    }
+
+    lifecycleRef.current = handoff.state.payload.handoffId;
+  }, [handoff, snapshot]);
 
   return (
     <NextClonePageScaffold
@@ -95,10 +163,22 @@ export default function NextProcurementStandalonePage({
       backTo={getBackPath(mode, detailBackTab)}
       backLabel={getBackLabel(mode)}
       notice={
-        <p>
-          La pagina mantiene l&apos;autonomia di routing della madre. Creazione ordini, preventivi,
-          listino, PDF operativi e modifiche restano bloccati nel clone.
-        </p>
+        <div style={{ display: "grid", gap: 12 }}>
+          {handoff.state.status === "ready" ? (
+            <InternalAiUniversalHandoffBanner
+              title="Handoff IA standard consumato"
+              description="Il procurement clone-safe legge il payload, applica il prefill coerente e mantiene il flusso in sola lettura."
+              payload={handoff.state.payload}
+            />
+          ) : null}
+          {handoff.state.status === "error" ? (
+            <div className="next-clone-placeholder">{handoff.state.errorMessage}</div>
+          ) : null}
+          <p>
+            La pagina mantiene l&apos;autonomia di routing della madre. Creazione ordini, preventivi,
+            listino, PDF operativi e modifiche restano bloccati nel clone.
+          </p>
+        </div>
       }
     >
       {loading ? <div className="next-clone-placeholder">Caricamento procurement...</div> : null}
@@ -109,8 +189,24 @@ export default function NextProcurementStandalonePage({
           activeTab={activeTab}
           orderId={panelOrderId}
           detailBackTab={detailBackTab}
-          onTabChange={() => {
-            return;
+          iaPrefill={iaPrefill}
+          onTabChange={(tab) => {
+            if (tab === "ordine-materiali") {
+              navigate(NEXT_MATERIALI_DA_ORDINARE_PATH);
+              return;
+            }
+
+            if (tab === "arrivi") {
+              navigate(NEXT_ORDINI_ARRIVATI_PATH);
+              return;
+            }
+
+            if (tab === "ordini") {
+              navigate(NEXT_ORDINI_IN_ATTESA_PATH);
+              return;
+            }
+
+            navigate(`${NEXT_ACQUISTI_PATH}?tab=${encodeURIComponent(tab)}`);
           }}
           onOpenOrder={(orderId, fromTab) => {
             navigate(`${buildNextDettaglioOrdinePath(orderId)}?from=${encodeURIComponent(fromTab)}`);

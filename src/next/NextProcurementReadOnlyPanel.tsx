@@ -19,6 +19,16 @@ type NextProcurementReadOnlyPanelProps = {
   onTabChange: (tab: NextProcurementCloneTab) => void;
   onOpenOrder: (orderId: string, fromTab: NextProcurementListTab) => void;
   onCloseOrder: (backTab: NextProcurementListTab) => void;
+  iaPrefill?: {
+    handoffId: string;
+    fornitore: string | null;
+    materiale: string | null;
+    documentoNome: string | null;
+    note: string;
+    statusLabel: string;
+    missingFields: string[];
+    verifyFields: string[];
+  } | null;
 };
 
 const EMBEDDED_PAGE_STYLE = {
@@ -38,6 +48,10 @@ const BLOCKED_CARD_STYLE = {
   display: "grid",
   gap: 12,
 } as const;
+
+function normalizeText(value: string | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
 
 function formatStrictState(order: NextProcurementOrderItem): { label: string; className: string } {
   if (order.state === "arrivato") {
@@ -362,13 +376,29 @@ const NextProcurementReadOnlyPanel: React.FC<NextProcurementReadOnlyPanelProps> 
   onTabChange,
   onOpenOrder,
   onCloseOrder,
+  iaPrefill = null,
 }) => {
   const activeOrder = findNextProcurementOrder(snapshot, orderId);
   const requestedDetailMissing = Boolean(orderId) && !activeOrder;
   const visibleOrders = buildNextProcurementListView(
     snapshot,
     activeTab === "arrivi" ? "arrivi" : "ordini"
-  );
+  ).filter((order) => {
+    if (!iaPrefill?.fornitore && !iaPrefill?.materiale) {
+      return true;
+    }
+
+    const supplierMatches = iaPrefill.fornitore
+      ? normalizeText(order.supplierName).includes(normalizeText(iaPrefill.fornitore))
+      : true;
+    const materialMatches = iaPrefill.materiale
+      ? order.materialPreview.some((entry) =>
+          normalizeText(entry).includes(normalizeText(iaPrefill.materiale)),
+        )
+      : true;
+
+    return supplierMatches && materialMatches;
+  });
 
   return (
     <div className={`acq-page${activeOrder ? " is-detail" : ""}`} style={EMBEDDED_PAGE_STYLE}>
@@ -388,6 +418,41 @@ const NextProcurementReadOnlyPanel: React.FC<NextProcurementReadOnlyPanelProps> 
             <span className="next-clone-readonly-badge">READ ONLY</span>
           </div>
         </header>
+
+        {iaPrefill ? (
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              marginBottom: 12,
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid #dbeafe",
+              background: "#eff6ff",
+              color: "#1d4ed8",
+            }}
+          >
+            <strong>Richiesta IA agganciata al procurement</strong>
+            <p style={{ margin: 0 }}>{iaPrefill.note}</p>
+            <p style={{ margin: 0 }}>
+              Stato consumo: {iaPrefill.statusLabel} | Handoff {iaPrefill.handoffId}
+            </p>
+            <p style={{ margin: 0 }}>
+              Fornitore: {iaPrefill.fornitore ?? "n/d"} | Materiale: {iaPrefill.materiale ?? "n/d"} |
+              Documento: {iaPrefill.documentoNome ?? "n/d"}
+            </p>
+            {iaPrefill.missingFields.length ? (
+              <p style={{ margin: 0 }}>
+                Campi mancanti: {iaPrefill.missingFields.join(", ")}
+              </p>
+            ) : null}
+            {iaPrefill.verifyFields.length ? (
+              <p style={{ margin: 0 }}>
+                Da verificare: {iaPrefill.verifyFields.join(", ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="acq-tabs" role="tablist" aria-label="Schede acquisti clone">
           <button

@@ -1675,6 +1675,79 @@ Serve a:
   - smoke test reali `POST /internal-ai-backend/orchestrator/chat` sui 5 prompt bussola del task -> OK, `intent=repo_understanding`, `status=completed`, output piu concreti su file, route, layer e integrazione
   - smoke test reale `POST /internal-ai-backend/retrieval/read` con `read_repo_understanding_snapshot` -> `dependencyMaps=6`
 
+## 5.73 Aggiornamento 2026-03-26 - Base universale chat/IA del clone NEXT
+- Il sottosistema `/next/ia/interna` compie il salto architetturale richiesto: non resta una console buona su alcuni domini, ma introduce nel clone/NEXT il primo gateway universale con registry totale, entity resolver, request resolver, reader/orchestrator, composer unico, router documenti e capability IA gia deployate censite come riuso.
+- Cosa cambia davvero:
+  - esiste un registry totale seedato del clone/NEXT con `10` moduli, `30` route, `4` modali, `10` tipi entita, `11` adapter standardizzati, `13` capability IA censite, `8` gia assorbite e `6` gap dichiarati;
+  - D03, D04, D05, D06, D07/D08, D10 e `repo-understanding` vengono rifusi come adapter specializzati sotto un layer universale, invece di restare roadmap finale a domini separati;
+  - il layer universale introduce un contract standard per moduli presenti e futuri, un resolver iniziale di entita trasversali (`targa`, `autista`, `fornitore`, `documento`, `cisterna`, `materiale`, `ordine`, `dossier`, `evento_operativo`, `modulo`) e un request resolver che sceglie adapter, capability e action intent del clone;
+  - il router documenti classifica gia i casi base `libretto`, `preventivo fornitore`, `documento cisterna`, `documento mezzo`, `tabella materiali`, `testo operativo`, `immagine generica`, `documento ambiguo` e li aggancia al punto corretto del clone o, nei casi ancora ambigui all'epoca, alla chat IA interna;
+  - la pagina `/next/ia/interna` espone ora una workbench universale che mostra perimetro censito, entita risolte, adapter scelti, composer, action intent e gap reali, mentre il bridge chat arricchisce le risposte con il `Piano universale clone/NEXT`.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business reale nel clone;
+  - nessuna riapertura del live-read business lato backend IA;
+  - nessun riuso runtime sporco dei backend legacy come canale canonico del nuovo sistema universale.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
+  - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
+## 5.74 Aggiornamento 2026-03-26 - Handoff standard, inbox documentale e prefill canonico
+- Il clone `/next/ia/interna` non si limita piu a capire richieste: emette ora handoff standard veri verso i moduli target del clone, con route `?iaHandoff=<id>`, payload persistito localmente nel repository IA isolato e inbox documentale universale dedicata su `/next/ia/interna/richieste`.
+- Cosa cambia davvero:
+  - il bridge chat/orchestrator persiste handoff e inbox a ogni turno reale;
+  - la sezione `Richieste` del subtree IA interno diventa la vera inbox documentale universale con handoff, prefill canonico e gate runtime per moduli futuri;
+  - `D06 procurement` viene chiuso lato sistema universale con vincolo forte `fornitore`, route target `Acquisti` e payload uniforme;
+  - `D09 cisterna` viene chiuso lato sistema universale con route target `Cisterna IA` e payload uniforme;
+  - `next.autisti`, `next.ia_hub` e `next.libretti_export` risultano ora instradabili e agganciabili dal gateway universale.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessuna riapertura del live-read business lato backend IA;
+  - il live-read business resta fuori perimetro; il limite sul consumo nativo del payload e stato poi chiuso nell'aggiornamento `5.75`.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
+  - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
+## 5.75 Aggiornamento 2026-03-26 - Chiusura operativa dei consumer `iaHandoff`
+- Il perimetro universale attuale del clone/NEXT non si ferma piu al bridge: i moduli target correnti consumano davvero `?iaHandoff=<id>`, recuperano il payload dal repository IA interno, applicano prefill reale e aggiornano lo stato consumo.
+- Cosa e stato chiuso davvero:
+  - lifecycle standard `creato -> instradato -> letto_dal_modulo -> prefill_applicato -> completato/da_verificare/errore` persistito nel repository IA isolato;
+  - consumer standard riusabile per `next.procurement`, `next.operativita` sulle viste `inventario` e `materiali`, `next.dossier`, `next.ia_hub` sui flussi `libretto` e `documenti`, `next.libretti_export`, `next.cisterna` su `Cisterna IA`, `next.autisti` su `Inbox` e `Admin`;
+  - banner/stato UI coerente nei moduli target con campi mancanti, campi da verificare, capability riusata e motivo instradamento;
+  - scenari E2E riallineati ai path reali e senza gap aperti nel perimetro corrente.
+- Cosa NON cambia:
+  - nessuna modifica alla madre;
+  - nessuna scrittura business;
+  - nessuna riapertura del live-read business lato backend IA.
+- Stato area NEXT coinvolta: `IMPORTATO READ-ONLY`
+- Aggiornato `REGISTRO_MODIFICHE_CLONE.md`? SI
+- Verifiche del task:
+  - `npx eslint src/next/NextAcquistiPage.tsx src/next/NextOrdiniInAttesaPage.tsx src/next/NextOrdiniArrivatiPage.tsx src/next/NextDettaglioOrdinePage.tsx src/next/NextProcurementReadOnlyPanel.tsx src/next/NextProcurementStandalonePage.tsx src/next/NextInventarioReadOnlyPanel.tsx src/next/NextInventarioPage.tsx src/next/NextMaterialiConsegnatiReadOnlyPanel.tsx src/next/NextMaterialiConsegnatiPage.tsx src/next/NextMezziPage.tsx src/next/NextIALibrettoPage.tsx src/next/NextIADocumentiPage.tsx src/next/NextLibrettiExportPage.tsx src/next/NextCisternaIAPage.tsx src/next/NextAutistiAdminPage.tsx src/next/NextAutistiInboxHomePage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
+  - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
+## 5.76 Aggiornamento 2026-03-26 - Audit runtime reale del Centro di Controllo NEXT
+- L'audit runtime del Centro di Controllo NEXT conferma che la route ufficiale `/next/centro-controllo` non usa oggi il layer `src/next/domain/nextCentroControlloDomain.ts`.
+- Il path ufficiale monta ancora `NextCentroControlloClonePage`, che a sua volta wrappa `src/pages/CentroControllo.tsx` con soli adattamenti clone-safe:
+  - banner e copy read-only;
+  - relabel di tab e CTA;
+  - intercetto del back verso `/next/gestione-operativa`.
+- `NextCentroControlloPage.tsx` esiste davvero e usa i layer `D10` e `D03` (`nextCentroControlloDomain.ts` + `nextAutistiDomain.ts`), ma oggi e una superficie alternativa non agganciata alla route ufficiale.
+- Conseguenza operativa:
+  - la NEXT ufficiale del Centro di Controllo e piu sicura della madre sul piano no-write e routing clone-safe;
+  - non e invece ancora piu pulita/affidabile della madre sul piano dati, perche la normalizzazione D10 non alimenta il path ufficiale.
+- Il read model `D10` resta comunque utile e dimostrato nel repo per:
+  - alert da revisioni/conflitti/segnalazioni nuove/eventi importanti;
+  - sessioni attive read-only;
+  - location asset da storico eventi;
+  - ricostruzione prudente delle revisioni da anagrafica flotta.
+- Riferimento audit completo:
+  - `docs/audit/AUDIT_CENTRO_DI_CONTROLLO_NEXT.md`
+
 ## 6. Regole di aggiornamento per il nuovo corso
 Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segnando almeno:
 1. cosa del clone e stato archiviato, creato o modificato;

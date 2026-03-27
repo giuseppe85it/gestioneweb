@@ -1404,6 +1404,65 @@ Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del s
   - `node --check backend/internal-ai/server/internal-ai-chat-attachments.js` -> OK
   - `npm --prefix backend/internal-ai run typecheck` -> OK
 
+## 12.44 Aggiornamento 2026-03-26 - Base universale chat/IA del clone NEXT
+- Il sottosistema IA interno cambia ruolo: la pagina `/next/ia/interna` non viene piu trattata come console buona solo su alcuni domini, ma come gateway universale del clone/NEXT.
+- Cosa e stato introdotto davvero:
+  - un registry totale seedato del clone/NEXT con moduli, route, modali, entita, adapter, capability IA, hook UI e gap reali;
+  - un contract standard adapter per moduli presenti e futuri;
+  - un entity resolver iniziale realmente collegato ai cataloghi clone-safe di mezzi, autisti e fornitori;
+  - un request resolver universale che interpreta richieste libere, seleziona adapter, capability e action intent;
+  - un reader/orchestrator universale che compone registry, resolver, router documenti, coverage, trust e gap;
+  - un composer unico che arricchisce la chat con un `Piano universale clone/NEXT` e rende esplicito l'aggancio UI consigliato;
+  - un router documenti che classifica allegati e li instrada verso `IA > Libretto`, `IA > Documenti`, `Acquisti`, `Cisterna`, `Inventario` o, nei casi ancora ambigui all'epoca, alla chat IA interna.
+- Le capability IA gia deployate non vengono ignorate:
+  - `backend.chat.controlled`, `backend.repo-understanding`, `backend.retrieval.clone-seeded`, preview clone di report/documenti/libretto/preventivi vengono assorbite come capability del sistema universale;
+  - le capability legacy di valore (`libretto`, `documenti`, `analisi economica`, `preventivi`, `cisterna`) vengono mappate e collocate nel registry senza trasformarle nel backend canonico del nuovo sistema.
+- Gap reali lasciati espliciti:
+  - handoff standard chat -> modulo target ancora incompleto;
+  - inbox documentale universale ancora assente;
+  - procurement preventivi senza prefill end-to-end;
+  - verticale cisterna non ancora fuso nel planner semplice;
+  - gate moduli futuri non ancora imposto;
+  - live-read business ancora chiuso.
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
+  - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
+## 12.45 Aggiornamento 2026-03-26 - Chiusura gap operativi handoff/inbox/prefill
+- La base universale introdotta nel prompt precedente non resta piu solo descrittiva: il runtime della chat `/next/ia/interna` emette ora handoff standard veri verso i moduli target del clone con query `?iaHandoff=<id>` e payload uniforme persistito nel repository isolato della IA interna.
+- Cosa e stato chiuso davvero:
+  - payload standard unico `chat -> modulo target` con `moduloTarget`, `routeTarget`, `tipoEntita`, `entityRef`, `documentType`, `datiEstrattiNormalizzati`, `prefillCanonico`, `confidence`, `statoRichiesta`, `motivoInstradamento`, `capabilityRiutilizzata`, `azioneRichiesta`, `campiMancanti`, `campiDaVerificare`;
+  - prefill canonico uniforme per `libretto mezzo`, `preventivo fornitore`, `documento cisterna`, `tabella materiali`, `documento ambiguo`, richieste su `mezzo`, `autista`, `cisterna`, `materiale`;
+  - inbox documentale universale reale in `/next/ia/interna/richieste`, con elenco documenti da verificare, motivi classificazione, modulo suggerito, entita candidate, stato, azioni possibili e handoff tracciato;
+  - bridge chat/orchestrator che persiste handoff e inbox a ogni turno reale, invece di limitarsi ad arricchire il testo assistente;
+  - gate runtime per moduli futuri tramite `conformance summary`, che dichiara il modulo non completo se mancano registry entry, contract adapter, hook UI o reader;
+  - scenari E2E documentati per i 7 casi minimi richiesti.
+- Chiusure reali sui domini piu sensibili:
+  - `D06 procurement` entra ora nel sistema universale con handoff standard, vincolo forte `fornitore`, route target `Acquisti` e payload canonico clone-safe;
+  - `D09 cisterna` entra ora nel planner universale con route target `Cisterna IA`, payload uniforme e capability legacy censita come riuso;
+  - `next.autisti`, `next.ia_hub` e `next.libretti_export` risultano ora agganciabili dal gateway universale con handoff dedicato.
+- Limiti residui dichiarati senza overpromise:
+  - il limite sul consumo nativo del payload `iaHandoff` nei moduli target principali e stato poi chiuso nell'aggiornamento `12.46`;
+  - il live-read business lato backend IA resta correttamente chiuso.
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
+  - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
+## 12.46 Aggiornamento 2026-03-26 - Chiusura finale dei consumer `iaHandoff` nel perimetro corrente
+- Il sistema universale non si ferma piu al solo instradamento: i moduli target correnti del clone/NEXT leggono davvero `?iaHandoff=<id>`, recuperano il payload dal repository IA isolato, applicano prefill reale e tracciano lo stato consumo.
+- Cosa e stato chiuso davvero:
+  - hook consumer standard riusabile con validazione modulo target, aggiornamento lifecycle e accesso uniforme a `flusso`, `targa`, `fornitore`, `materiale`, `autista`, `badge`, `documentoNome`, `queryMateriale` e `vistaTarget`;
+  - `next.procurement` chiuso su `Acquisti`, `Ordini in attesa`, `Ordini arrivati` e dettaglio ordine, con filtri/prefill reali;
+  - `next.operativita` chiuso sulle viste `Inventario` e `Materiali consegnati`, con query e selezione destinatario reali;
+  - `next.dossier`, `next.ia_hub` (`Libretto`, `Documenti`), `next.libretti_export`, `next.cisterna` (`Cisterna IA`) e `next.autisti` (`Inbox`, `Admin`) chiusi con banner, prefill e stato consumo coerente;
+  - repository IA aggiornato con cronologia consumo e sincronizzazione del payload anche sugli item della inbox documentale universale;
+  - registry, matrice e scenari E2E riallineati: nessun gap aperto nel perimetro operativo corrente del clone/NEXT.
+- Boundary ancora fuori perimetro:
+  - live-read business lato backend IA, che resta volutamente chiuso.
+- Verifiche eseguite:
+  - `npx eslint src/next/NextAcquistiPage.tsx src/next/NextOrdiniInAttesaPage.tsx src/next/NextOrdiniArrivatiPage.tsx src/next/NextDettaglioOrdinePage.tsx src/next/NextProcurementReadOnlyPanel.tsx src/next/NextProcurementStandalonePage.tsx src/next/NextInventarioReadOnlyPanel.tsx src/next/NextInventarioPage.tsx src/next/NextMaterialiConsegnatiReadOnlyPanel.tsx src/next/NextMaterialiConsegnatiPage.tsx src/next/NextMezziPage.tsx src/next/NextIALibrettoPage.tsx src/next/NextIADocumentiPage.tsx src/next/NextLibrettiExportPage.tsx src/next/NextCisternaIAPage.tsx src/next/NextAutistiAdminPage.tsx src/next/NextAutistiInboxHomePage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
+  - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
 ## 12. Cosa non va ancora fatto
 - Non implementare chat IA runtime collegata ai backend legacy.
 - Non agganciare la nuova IA a `aiCore`, `estrazioneDocumenti`, `analisi_economica_mezzo`, `stamp_pdf`, Cloud Run libretto o `server.js`.

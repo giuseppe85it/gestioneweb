@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   buildNextMaterialiConsegnatiDestinatariView,
   type NextMaterialeMovimentoReadOnlyItem,
@@ -11,6 +11,9 @@ type NextMaterialiConsegnatiReadOnlyPanelProps = {
   snapshot: NextMaterialiMovimentiSnapshot;
   blockedReason: string;
   onOpenDossier: (targa: string | null) => void;
+  preferredTarga?: string | null;
+  preferredLabel?: string | null;
+  preferredMateriale?: string | null;
 };
 
 function formatQuantity(value: number | null, unit: string | null): string {
@@ -29,26 +32,52 @@ export default function NextMaterialiConsegnatiReadOnlyPanel({
   snapshot,
   blockedReason,
   onOpenDossier,
+  preferredTarga = null,
+  preferredLabel = null,
+  preferredMateriale = null,
 }: NextMaterialiConsegnatiReadOnlyPanelProps) {
   const destinatari = useMemo(
     () => buildNextMaterialiConsegnatiDestinatariView(snapshot),
     [snapshot]
   );
   const [selectedDestId, setSelectedDestId] = useState<string | null>(null);
-
-  useEffect(() => {
+  const preferredDestId = useMemo(() => {
     if (!destinatari.length) {
-      setSelectedDestId(null);
-      return;
+      return null;
     }
-    if (!selectedDestId || !destinatari.some((dest) => dest.id === selectedDestId)) {
-      setSelectedDestId(destinatari[0].id);
+
+    const preferred = destinatari.find((dest) => {
+      const label = dest.label.toLowerCase();
+      const matchesLabel = preferredLabel ? label.includes(preferredLabel.toLowerCase()) : false;
+      const matchesTarga = preferredTarga ? label.includes(preferredTarga.toLowerCase()) : false;
+      const matchesMateriale = preferredMateriale
+        ? dest.items.some((item) =>
+            `${item.descrizione ?? ""} ${item.materiale ?? ""}`
+              .toLowerCase()
+              .includes(preferredMateriale.toLowerCase()),
+          )
+        : false;
+      return matchesLabel || matchesTarga || matchesMateriale;
+    });
+
+    return preferred?.id ?? destinatari[0].id;
+  }, [destinatari, preferredLabel, preferredMateriale, preferredTarga]);
+
+  const effectiveSelectedDestId = useMemo(() => {
+    if (!destinatari.length) {
+      return null;
     }
-  }, [destinatari, selectedDestId]);
+
+    if (selectedDestId && destinatari.some((dest) => dest.id === selectedDestId)) {
+      return selectedDestId;
+    }
+
+    return preferredDestId;
+  }, [destinatari, preferredDestId, selectedDestId]);
 
   const selectedDest = useMemo<NextMaterialiConsegnatiDestinatarioView | null>(
-    () => destinatari.find((dest) => dest.id === selectedDestId) ?? null,
-    [destinatari, selectedDestId]
+    () => destinatari.find((dest) => dest.id === effectiveSelectedDestId) ?? null,
+    [destinatari, effectiveSelectedDestId]
   );
 
   return (
@@ -76,7 +105,7 @@ export default function NextMaterialiConsegnatiReadOnlyPanel({
               {destinatari.map((dest) => (
                 <button
                   key={dest.id}
-                  className={`mc-dest-row${selectedDestId === dest.id ? " mc-dest-row-active" : ""}`}
+                  className={`mc-dest-row${effectiveSelectedDestId === dest.id ? " mc-dest-row-active" : ""}`}
                   type="button"
                   onClick={() =>
                     setSelectedDestId((current) => (current === dest.id ? null : dest.id))

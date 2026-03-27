@@ -2065,3 +2065,110 @@ Stato macrofase: `NON FATTO`
   - `npm run build` -> OK
   - smoke test reali `POST /internal-ai-backend/orchestrator/chat` sui 5 prompt bussola -> OK, `intent=repo_understanding`, `status=completed`, `usedRealProvider=false`, sezioni con `Route coinvolte`, `File UI`, `File domain/read-model`, `File backend IA`, `Lettori dominio usati`, `Punto consigliato di integrazione`
   - smoke test reale `POST /internal-ai-backend/retrieval/read` con `read_repo_understanding_snapshot` -> `dependencyMaps=6`, con route/file bucket coerenti per i sei casi censiti
+
+### M.47 Base universale chat/IA clone NEXT
+- Stato: `FATTO`
+- Note: il `2026-03-26` la chat `/next/ia/interna` smette di essere solo una console multi-capability e diventa il primo gateway universale del clone/NEXT, con registry totale, resolver di entita e richieste, orchestrator, composer, router documenti e riuso esplicito delle capability IA gia deployate.
+- Cosa e stato chiuso:
+  - introdotto un registry totale seedato del clone/NEXT con `10` moduli, `30` route, `11` adapter, `13` capability IA censite, `8` gia assorbite e `6` gap dichiarati;
+  - introdotto un contract standard unico per adapter presenti e futuri, cosi D03, D04, D05, D06, D07/D08, D10 e `repo-understanding` vengono da ora trattati come adapter specializzati e non come prodotto finale a isole;
+  - introdotti `entity resolver`, `request resolver`, `reader/orchestrator`, `composer unico` e `router documenti/input chat` nel perimetro `src/next/internal-ai/*`;
+  - agganciata la base universale alla pagina `/next/ia/interna` e al bridge chat, che ora espongono `Piano universale clone/NEXT`, action intent e routing allegati;
+  - censite e mappate nel registry le capability IA gia deployate davvero riusabili, incluse chat backend controllata, repo-understanding, retrieval clone-seeded e preview clone di report/documenti/libretto/preventivi.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/InternalAiUniversalWorkbench.tsx`
+  - `src/next/internal-ai/internalAiUniversalTypes.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalRegistry.ts`
+  - `src/next/internal-ai/internalAiUniversalEntityResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalComposer.ts`
+  - `src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+  - `docs/product/REGISTRY_TOTALE_CLONE_NEXT.md`
+  - `docs/product/MATRICE_COPERTURA_UNIVERSALE_IA_NEXT.md`
+  - `docs/architecture/CONTRATTO_STANDARD_ADAPTER_IA_NEXT.md`
+  - `docs/architecture/ENTITY_MODEL_RESOLVER_UNIVERSALE_IA_NEXT.md`
+  - `docs/product/PIANO_ASSORBIMENTO_MODULI_RESIDUI_IA_NEXT.md`
+  - `docs/change-reports/2026-03-26_1921_patch_base-universale-ia-clone-next.md`
+  - `docs/continuity-reports/2026-03-26_1921_continuity_base-universale-ia-clone-next.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
+  - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
+### M.48 Chiusura gap operativi handoff/inbox/prefill del gateway universale
+- Stato: `FATTO`
+- Note: il `2026-03-26` la base universale gia introdotta viene portata piu vicino alla chiusura end-to-end: il sistema emette handoff standard `iaHandoff`, prefill canonico, inbox documentale universale e gate runtime per moduli futuri, senza toccare la madre.
+- Cosa e stato chiuso:
+  - payload standard uniforme `chat -> modulo target` con `moduloTarget`, `routeTarget`, `entityRef`, `documentType`, `datiEstrattiNormalizzati`, `prefillCanonico`, `confidence`, `statoRichiesta`, `motivoInstradamento`, `capabilityRiutilizzata`, `azioneRichiesta`, `campiMancanti`, `campiDaVerificare`;
+  - handoff standard verso `IA > Libretto`, `Acquisti`, `Cisterna IA`, `Inventario`, `Materiali consegnati`, `Dossier`, `Autisti`, `IA > Documenti`, `Libretti export`, `Inbox documentale universale`;
+  - inbox documentale universale reale in `/next/ia/interna/richieste`;
+  - persistenza locale isolata di handoff e inbox nel bridge chat/orchestrator;
+  - gate runtime per moduli futuri tramite conformance summary;
+  - scenari E2E documentati per i 7 casi minimi richiesti.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/InternalAiUniversalWorkbench.tsx`
+  - `src/next/internal-ai/InternalAiUniversalRequestsPanel.tsx`
+  - `src/next/internal-ai/internalAiUniversalConformance.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestsRepository.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalEntityResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalComposer.ts`
+  - `src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+  - `docs/product/REGISTRY_TOTALE_CLONE_NEXT.md`
+  - `docs/product/MATRICE_COPERTURA_UNIVERSALE_IA_NEXT.md`
+  - `docs/architecture/CONTRATTO_STANDARD_ADAPTER_IA_NEXT.md`
+  - `docs/architecture/ENTITY_MODEL_RESOLVER_UNIVERSALE_IA_NEXT.md`
+  - `docs/product/PIANO_ASSORBIMENTO_MODULI_RESIDUI_IA_NEXT.md`
+  - `docs/product/SCENARI_E2E_IA_UNIVERSALE_NEXT.md`
+  - `docs/change-reports/2026-03-26_2015_prompt25_handoff-inbox-universale.md`
+  - `docs/continuity-reports/2026-03-26_2015_continuity_prompt25_handoff-inbox-universale.md`
+- Dipendenze o blocchi:
+  - il limite sul consumo nativo del payload `iaHandoff` e stato poi chiuso nella voce `M.49`;
+  - il live-read business lato backend IA resta correttamente chiuso.
+
+### M.49 Chiusura finale consumer `iaHandoff` del perimetro universale corrente
+- Stato: `FATTO`
+- Note: il `2026-03-26` il perimetro operativo attuale del clone/NEXT viene chiuso end-to-end: i moduli target correnti consumano davvero `iaHandoff`, applicano prefill reale e aggiornano lo stato consumo nel repository IA isolato.
+- Cosa e stato chiuso:
+  - lifecycle standard del payload con stati `creato`, `instradato`, `letto_dal_modulo`, `prefill_applicato`, `da_verificare`, `errore`, `completato`;
+  - consumer standard riusabile nei moduli target chiusi del clone;
+  - prefill reale su procurement, inventario/materiali, mezzi/dossier, IA libretto/documenti, libretti export, cisterna IA, autisti inbox/admin;
+  - pannello richieste IA con visibilita dello stato consumo e cronologia;
+  - registry, matrice e scenari E2E aggiornati a `nessun gap aperto nel perimetro corrente`.
+- File/documenti collegati:
+  - `src/next/NextAcquistiPage.tsx`
+  - `src/next/NextOrdiniInAttesaPage.tsx`
+  - `src/next/NextOrdiniArrivatiPage.tsx`
+  - `src/next/NextDettaglioOrdinePage.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/NextProcurementStandalonePage.tsx`
+  - `src/next/NextInventarioReadOnlyPanel.tsx`
+  - `src/next/NextInventarioPage.tsx`
+  - `src/next/NextMaterialiConsegnatiReadOnlyPanel.tsx`
+  - `src/next/NextMaterialiConsegnatiPage.tsx`
+  - `src/next/NextMezziPage.tsx`
+  - `src/next/NextIALibrettoPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/NextLibrettiExportPage.tsx`
+  - `src/next/NextCisternaIAPage.tsx`
+  - `src/next/NextAutistiAdminPage.tsx`
+  - `src/next/NextAutistiInboxHomePage.tsx`
+  - `src/next/internal-ai/internalAiUniversalHandoffLifecycle.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoffConsumer.ts`
+  - `src/next/internal-ai/InternalAiUniversalHandoffBanner.tsx`
+  - `src/next/internal-ai/InternalAiUniversalRequestsPanel.tsx`
+  - `src/next/internal-ai/internalAiUniversalRequestsRepository.ts`
+  - `docs/product/REGISTRY_TOTALE_CLONE_NEXT.md`
+  - `docs/product/MATRICE_COPERTURA_UNIVERSALE_IA_NEXT.md`
+  - `docs/product/SCENARI_E2E_IA_UNIVERSALE_NEXT.md`
+- Dipendenze o blocchi:
+  - nessun gap aperto nel perimetro operativo attuale del clone/NEXT;
+  - live-read business lato backend IA ancora correttamente fuori perimetro.

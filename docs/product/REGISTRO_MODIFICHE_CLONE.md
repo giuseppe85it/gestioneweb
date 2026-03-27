@@ -31,6 +31,169 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-26 101
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Chiusura finale consumer `iaHandoff` e allineamento stato universale NEXT
+- OBIETTIVO: chiudere il perimetro operativo corrente della chat/IA universale del clone/NEXT portando i moduli target correnti a consumo reale del payload `iaHandoff`, prefill reale e stato consumo tracciato.
+- FILE TOCCATI:
+  - `src/next/NextAcquistiPage.tsx`
+  - `src/next/NextOrdiniInAttesaPage.tsx`
+  - `src/next/NextOrdiniArrivatiPage.tsx`
+  - `src/next/NextDettaglioOrdinePage.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/NextProcurementStandalonePage.tsx`
+  - `src/next/NextInventarioReadOnlyPanel.tsx`
+  - `src/next/NextInventarioPage.tsx`
+  - `src/next/NextMaterialiConsegnatiReadOnlyPanel.tsx`
+  - `src/next/NextMaterialiConsegnatiPage.tsx`
+  - `src/next/NextMezziPage.tsx`
+  - `src/next/NextIALibrettoPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/NextLibrettiExportPage.tsx`
+  - `src/next/NextCisternaIAPage.tsx`
+  - `src/next/NextAutistiAdminPage.tsx`
+  - `src/next/NextAutistiInboxHomePage.tsx`
+  - `src/next/internal-ai/internalAiUniversalTypes.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoffLifecycle.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoffConsumer.ts`
+  - `src/next/internal-ai/InternalAiUniversalHandoffBanner.tsx`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `src/next/internal-ai/InternalAiUniversalRequestsPanel.tsx`
+  - `src/next/internal-ai/internalAiUniversalRequestsRepository.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/REGISTRY_TOTALE_CLONE_NEXT.md`
+  - `docs/product/MATRICE_COPERTURA_UNIVERSALE_IA_NEXT.md`
+  - `docs/product/PIANO_ASSORBIMENTO_MODULI_RESIDUI_IA_NEXT.md`
+  - `docs/product/SCENARI_E2E_IA_UNIVERSALE_NEXT.md`
+  - `docs/architecture/CONTRATTO_STANDARD_ADAPTER_IA_NEXT.md`
+  - `docs/architecture/ENTITY_MODEL_RESOLVER_UNIVERSALE_IA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_2240_prompt27_chiusura-finale-handoff-next.md`
+  - `docs/continuity-reports/2026-03-26_2240_continuity_prompt27_chiusura-finale-handoff-next.md`
+- COSA E STATO CAMBIATO:
+  - introdotto lifecycle completo del payload `iaHandoff` con persistenza e cronologia consumo;
+  - chiusi i consumer standard sui moduli target correnti del clone: procurement, inventario, materiali, mezzi/dossier, IA libretto, IA documenti, libretti export, cisterna IA, autisti inbox/admin;
+  - la inbox documentale universale consuma ora direttamente la query `?iaHandoff=<id>` e mette in evidenza il payload selezionato;
+  - aggiunti banner/stato UI coerenti e prefill reale nei moduli target;
+  - riallineati registry, matrice, piano residui e scenari E2E a `nessun gap aperto nel perimetro operativo corrente`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i moduli target reagiscono al payload `iaHandoff` e mostrano stato richiesta/prefill coerente;
+  - Lettura: il sistema continua a usare solo clone/read model, snapshot e repository IA isolato;
+  - Blocco scritture: invariato e pienamente attivo.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextAcquistiPage.tsx src/next/NextOrdiniInAttesaPage.tsx src/next/NextOrdiniArrivatiPage.tsx src/next/NextDettaglioOrdinePage.tsx src/next/NextProcurementReadOnlyPanel.tsx src/next/NextProcurementStandalonePage.tsx src/next/NextInventarioReadOnlyPanel.tsx src/next/NextInventarioPage.tsx src/next/NextMaterialiConsegnatiReadOnlyPanel.tsx src/next/NextMaterialiConsegnatiPage.tsx src/next/NextMezziPage.tsx src/next/NextIALibrettoPage.tsx src/next/NextIADocumentiPage.tsx src/next/NextLibrettiExportPage.tsx src/next/NextCisternaIAPage.tsx src/next/NextAutistiAdminPage.tsx src/next/NextAutistiInboxHomePage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx`;
+  - eseguire `npm run build`;
+  - aprire `/next/ia/interna`, generare un handoff reale e verificare modulo target, prefill applicato e stato consumo su `/next/ia/interna/richieste`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nel perimetro operativo attuale del clone/NEXT non restano gap aperti del sistema universale;
+  - il live-read business lato backend IA resta correttamente fuori perimetro.
+
+### Voce 2026-03-26 100
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Chiusura gap operativi handoff, prefill e inbox del gateway universale NEXT
+- OBIETTIVO: portare la chat `/next/ia/interna` dalla sola comprensione universale a un handoff reale verso i moduli target del clone, con payload standard, prefill canonico, inbox documentale e gate moduli futuri.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/InternalAiUniversalWorkbench.tsx`
+  - `src/next/internal-ai/InternalAiUniversalRequestsPanel.tsx`
+  - `src/next/internal-ai/internalAiUniversalConformance.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestsRepository.ts`
+  - `src/next/internal-ai/internalAiUniversalTypes.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalEntityResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalComposer.ts`
+  - `src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/REGISTRY_TOTALE_CLONE_NEXT.md`
+  - `docs/product/MATRICE_COPERTURA_UNIVERSALE_IA_NEXT.md`
+  - `docs/architecture/CONTRATTO_STANDARD_ADAPTER_IA_NEXT.md`
+  - `docs/architecture/ENTITY_MODEL_RESOLVER_UNIVERSALE_IA_NEXT.md`
+  - `docs/product/PIANO_ASSORBIMENTO_MODULI_RESIDUI_IA_NEXT.md`
+  - `docs/product/SCENARI_E2E_IA_UNIVERSALE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_2015_prompt25_handoff-inbox-universale.md`
+  - `docs/continuity-reports/2026-03-26_2015_continuity_prompt25_handoff-inbox-universale.md`
+- COSA E STATO CAMBIATO:
+  - introdotto il payload standard `iaHandoff` con route target uniformi, entita, documentType, dati estratti, prefill canonico, capability riusata, stato richiesta e campi da verificare;
+  - il bridge chat/orchestrator persiste ora handoff e inbox nel repository IA isolato a ogni turno reale;
+  - la sezione `Richieste` della IA interna e diventata la vera inbox documentale universale del clone, con azioni possibili e suggerimento modulo;
+  - `D06 procurement`, `D09 cisterna`, `next.autisti`, `next.ia_hub` e `next.libretti_export` risultano ora instradabili e agganciabili dal gateway universale con payload uniforme;
+  - attivato il gate runtime per moduli futuri tramite conformance summary.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `/next/ia/interna/richieste` mostra ora inbox documentale, handoff standard e prefill reale;
+  - Lettura: il sistema continua a usare solo clone/read model, snapshot e repository IA isolato; nessun live-read business nuovo;
+  - Blocco scritture: invariato e ancora pienamente attivo.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx`;
+  - eseguire `npm run build`;
+  - aprire `/next/ia/interna`, inviare prompt o allegati e poi verificare `/next/ia/interna/richieste`;
+  - controllare che i link target portino `?iaHandoff=<id>` e che il payload resti tracciato nel repository locale isolato.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il consumo nativo del payload `iaHandoff` nei moduli target resta il prossimo passo reale;
+  - la madre non viene toccata e il live-read business resta chiuso.
+
+### Voce 2026-03-26 99
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Base universale chat/IA clone NEXT
+- OBIETTIVO: trasformare `/next/ia/interna` da console multi-dominio ancora parziale a primo gateway universale del clone/NEXT, con registry totale, contract standard, resolver, orchestrator, router documenti e riuso delle capability IA gia deployate.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/InternalAiUniversalWorkbench.tsx`
+  - `src/next/internal-ai/internalAiUniversalTypes.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalRegistry.ts`
+  - `src/next/internal-ai/internalAiUniversalEntityResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalComposer.ts`
+  - `src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+  - `docs/product/REGISTRY_TOTALE_CLONE_NEXT.md`
+  - `docs/product/MATRICE_COPERTURA_UNIVERSALE_IA_NEXT.md`
+  - `docs/architecture/CONTRATTO_STANDARD_ADAPTER_IA_NEXT.md`
+  - `docs/architecture/ENTITY_MODEL_RESOLVER_UNIVERSALE_IA_NEXT.md`
+  - `docs/product/PIANO_ASSORBIMENTO_MODULI_RESIDUI_IA_NEXT.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_1921_patch_base-universale-ia-clone-next.md`
+  - `docs/continuity-reports/2026-03-26_1921_continuity_base-universale-ia-clone-next.md`
+- COSA E STATO CAMBIATO:
+  - e stato introdotto un registry totale seedato del clone/NEXT con moduli, route, modali, entita, adapter, capability IA e gap reali;
+  - i domini gia chiusi D03, D04, D05, D06, D07/D08, D10 e `repo-understanding` vengono da ora trattati come adapter specializzati e non come prodotto finale a isole;
+  - il layer universale aggiunge entity resolver, request resolver, reader/orchestrator, composer unico e router documenti/input chat nel perimetro `src/next/internal-ai/*`;
+  - `/next/ia/interna` mostra ora il perimetro universale, gli adapter selezionati, le capability assorbite, gli action intent e i gap reali, mentre il bridge chat arricchisce le risposte con il `Piano universale clone/NEXT`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la pagina IA interna espone un workbench universale e action intent verso i moduli giusti del clone;
+  - Lettura: il sistema universale continua a leggere solo clone/read model, snapshot clone-seeded e snapshot IA dedicate; nessun live-read business nuovo;
+  - Blocco scritture: invariato e ancora pienamente attivo.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx`;
+  - eseguire `npm run build`;
+  - aprire `/next/ia/interna` e verificare che la sezione `Sistema universale clone/NEXT` mostri perimetro censito, entita risolte, adapter selezionati, composer, action intent, routing documenti e buchi reali;
+  - provare un prompt su targa, un prompt su autista, un prompt su fornitore/preventivo e un allegato `libretto` o `pdf` per verificare il routing verso il modulo corretto del clone.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il task resta confinato a clone/NEXT e documentazione;
+  - nessun backend legacy e stato promosso a canale canonico del sistema universale;
+  - i gap residui restano dichiarati in modo esplicito nel registry e nel piano di assorbimento.
+
 ### Voce 2026-03-26 98
 - DATA: 2026-03-26
 - TITOLO MODIFICA: Dependency map repo strutturale per IA interna NEXT
@@ -4419,3 +4582,64 @@ Serve a:
 - NOTE:
   - Nel clone letto durante il task, la targa `TI233827` non restituisce ancora costi o documenti leggibili nel perimetro `D07/D08`; il valore dello step sta nel rendere il limite esplicito e il periodo corretto, non nel creare copertura artificiale.
   - `D06` resta fuori: nessuna promozione di procurement separato a backend diretto del report costi/documenti.
+
+### Voce 2026-03-26 59
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Audit reale Centro di Controllo madre e confronto duro con la NEXT
+- OBIETTIVO: Documentare in modo fedele cosa mostra davvero il modulo madre `CentroControllo`, da quali sorgenti legge, quali logiche usa, come converge con Home/Dossier e cosa la NEXT attuale copre o non copre davvero.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_CENTRO_DI_CONTROLLO_MADRE_ECOSISTEMA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_2204_docs_audit-centro-di-controllo-madre-next.md`
+  - `docs/continuity-reports/2026-03-26_2204_continuity_audit-centro-di-controllo-next.md`
+- COSA E STATO CAMBIATO:
+  - Creato un audit completo sul modulo madre `CentroControllo`, con struttura UI reale, mappa blocchi -> sorgenti dati, filtri, dipendenze e rischi tecnici.
+  - Fissata nel repo la distinzione tra `Home.tsx` e `CentroControllo.tsx`, che nel runtime reale restano superfici diverse ma sovrapposte.
+  - Chiarito che la route NEXT ufficiale `/next/centro-controllo` usa oggi il clone fedele wrapperizzato della pagina madre, mentre `NextCentroControlloPage.tsx` resta una superficie diversa e non equivalente al clone 1:1.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna modifica runtime.
+  - Lettura: nessun nuovo reader; il documento traccia solo le letture gia esistenti della madre e del clone.
+  - Blocco scritture: invariato; nessuna modifica della madre e nessun cambiamento del confine read-only del clone.
+- COME VERIFICARE:
+  - Leggere `docs/audit/AUDIT_CENTRO_DI_CONTROLLO_MADRE_ECOSISTEMA_NEXT.md`.
+  - Verificare che il report distingua esplicitamente:
+    - `Home.tsx`
+    - `CentroControllo.tsx`
+    - `/next`
+    - `/next/centro-controllo`
+    - `NextCentroControlloPage.tsx`
+  - Verificare che le sorgenti dati citate coincidano con i file runtime analizzati (`@mezzi_aziendali`, `@rifornimenti`, `@rifornimenti_autisti_tmp`, `@segnalazioni_autisti_tmp`, `@controlli_mezzo_autisti`, `@richieste_attrezzature_autisti_tmp`).
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: N/A
+- NOTE:
+  - Questo step non cambia lo stato funzionale del clone; aumenta solo la tracciabilita e riduce il rischio di clonazioni o redesign fatti su presupposti sbagliati.
+  - L'audit conferma una criticita documentale reale: nel repo la formula `Home = Centro di Controllo` non descrive fedelmente il runtime attuale.
+
+### Voce 2026-03-26 60
+- DATA: 2026-03-26
+- TITOLO MODIFICA: Audit reale del Centro di Controllo NEXT e verifica dell'uso effettivo del layer D10
+- OBIETTIVO: Documentare in modo verificabile cosa mostra davvero `/next/centro-controllo`, quali layer normalizzati usa davvero, quali dataset legge e quanto la NEXT sia realmente piu pulita della madre su questo modulo.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_CENTRO_DI_CONTROLLO_NEXT.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-26_2217_docs_audit-centro-di-controllo-next-runtime.md`
+  - `docs/continuity-reports/2026-03-26_2217_continuity_audit-centro-di-controllo-next-runtime.md`
+- COSA E STATO CAMBIATO:
+  - Creato un audit dedicato al solo runtime NEXT del Centro di Controllo, distinguendo il path ufficiale `/next/centro-controllo` dalla pagina alternativa `NextCentroControlloPage.tsx`.
+  - Fissato nel repo che la route ufficiale passa ancora dal wrapper `NextCentroControlloClonePage` e quindi non usa oggi il layer `nextCentroControlloDomain.ts`.
+  - Documentate le normalizzazioni reali di `D10` e `D03`, chiarendo pero che migliorano una superficie alternativa non agganciata al path ufficiale.
+  - Aggiornato lo stato migrazione con una nota esplicita sul mismatch tra layer disponibile e route ufficiale realmente montata.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna modifica runtime.
+  - Lettura: nessun reader nuovo; l'audit chiarisce solo quali reader NEXT siano realmente usati o non usati dal path ufficiale.
+  - Blocco scritture: invariato; nessuna riapertura di writer o side effect.
+- COME VERIFICARE:
+  - Leggere `docs/audit/AUDIT_CENTRO_DI_CONTROLLO_NEXT.md`.
+  - Verificare in `src/App.tsx` che `/next/centro-controllo` monti `NextCentroControlloClonePage`.
+  - Verificare in `src/next/NextCentroControlloClonePage.tsx` che il wrapper monti `CentroControllo` senza chiamare `readNextCentroControlloSnapshot`.
+  - Verificare in `src/next/NextCentroControlloPage.tsx` che la pagina alternativa richiami `readNextCentroControlloSnapshot` e `readNextAutistiReadOnlySnapshot`.
+  - Verificare in `src/next/domain/nextCentroControlloDomain.ts` i dataset effettivamente letti dal domain D10.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: N/A
+- NOTE:
+  - Il punto piu importante emerso dall'audit e architetturale ma concreto: la NEXT ha gia un layer D10 migliore della madre, ma il modulo ufficiale `Centro di Controllo` non lo consuma ancora.
+  - Finche la route ufficiale resta sul wrapper clone della madre, il Centro di Controllo NEXT non puo essere considerato davvero piu pulito della madre sul piano dati.

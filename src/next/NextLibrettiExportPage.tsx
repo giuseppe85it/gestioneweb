@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { openPreview, revokePdfPreviewUrl } from "../utils/pdfPreview";
 import "./next-shell.css";
@@ -9,6 +9,8 @@ import {
   readNextLibrettiExportSnapshot,
   type NextLibrettiExportItem,
 } from "./domain/nextLibrettiExportDomain";
+import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
+import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 
 const CATEGORY_ORDER = [
   "trattore stradale",
@@ -39,8 +41,12 @@ function resolveCategoryGroup(categoria: string): string {
 }
 
 function NextLibrettiExportPage() {
+  const handoff = useInternalAiUniversalHandoffConsumer({
+    moduleId: "next.libretti_export",
+  });
   const location = useLocation();
   const backToIa = location.search ? `/next/ia${location.search}` : "/next/ia";
+  const lifecycleRef = useRef<string | null>(null);
 
   const [rows, setRows] = useState<NextLibrettiExportItem[]>([]);
   const [totalMezzi, setTotalMezzi] = useState(0);
@@ -91,6 +97,43 @@ function NextLibrettiExportPage() {
     () => rows.filter((row) => selected[row.id]),
     [rows, selected]
   );
+
+  useEffect(() => {
+    if (handoff.state.status !== "ready" || !rows.length) {
+      return;
+    }
+
+    const targetTarga = handoff.state.prefill.targa?.toLowerCase();
+    if (!targetTarga) {
+      return;
+    }
+
+    const matched = rows.find((row) => row.targa.toLowerCase() === targetTarga);
+    if (!matched) {
+      return;
+    }
+
+    setSelected((current) => ({
+      ...current,
+      [matched.id]: true,
+    }));
+
+    if (lifecycleRef.current === handoff.state.payload.handoffId) {
+      return;
+    }
+
+    handoff.acknowledge(
+      "prefill_applicato",
+      "Libretti Export ha selezionato la targa richiesta dal payload IA.",
+    );
+    handoff.acknowledge(
+      handoff.state.requiresVerification ? "da_verificare" : "completato",
+      handoff.state.requiresVerification
+        ? "Libretti Export ha applicato il prefill ma resta una verifica aperta sui campi segnalati."
+        : "Libretti Export ha agganciato il payload IA e seleziona il libretto corretto.",
+    );
+    lifecycleRef.current = handoff.state.payload.handoffId;
+  }, [handoff, rows]);
 
   const groupedRows = useMemo(() => {
     const categoryMap = new Map<string, NextLibrettiExportItem[]>();
@@ -159,6 +202,18 @@ function NextLibrettiExportPage() {
         </header>
 
         <section className="next-clone-placeholder" style={{ marginBottom: 20 }}>
+          {handoff.state.status === "ready" ? (
+            <InternalAiUniversalHandoffBanner
+              title="Handoff IA consumato su Libretti Export"
+              description="La route export riceve il payload standard, seleziona la targa corretta e mantiene l'anteprima PDF nel perimetro clone-safe."
+              payload={handoff.state.payload}
+            />
+          ) : null}
+          {handoff.state.status === "error" ? (
+            <div className="next-clone-placeholder" style={{ marginBottom: 12 }}>
+              {handoff.state.errorMessage}
+            </div>
+          ) : null}
           <p>
             Nel clone questa pagina apre solo lista mezzi con libretto, selezione e
             anteprima PDF locale.

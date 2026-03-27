@@ -6,6 +6,9 @@ import {
   hasInternalAiServerChatAdapterCandidate,
   runInternalAiServerControlledChat,
 } from "./internalAiServerChatClient";
+import { buildInternalAiUniversalChatAugmentation } from "./internalAiUniversalComposer";
+import { orchestrateInternalAiUniversalRequest } from "./internalAiUniversalOrchestrator";
+import { syncInternalAiUniversalRequestsRepository } from "./internalAiUniversalRequestsRepository";
 import type {
   InternalAiChatAttachment,
   InternalAiChatMemoryHints,
@@ -105,6 +108,39 @@ function mergeServerChatResult(
   };
 }
 
+function applyUniversalAugmentation(
+  result: InternalAiChatTurnResult,
+  augmentation: ReturnType<typeof buildInternalAiUniversalChatAugmentation>,
+): InternalAiChatTurnResult {
+  if (!augmentation.shouldAugment) {
+    return result;
+  }
+
+  const appendix = augmentation.assistantAppendix?.trim();
+  const assistantText = appendix
+    ? `${result.assistantText.trim()}\n\n${appendix}`.trim()
+    : result.assistantText;
+
+  const references = [
+    ...result.references,
+    ...augmentation.references.filter(
+      (entry) =>
+        !result.references.some(
+          (reference) =>
+            reference.type === entry.type &&
+            reference.label === entry.label &&
+            reference.targa === entry.targa,
+        ),
+    ),
+  ];
+
+  return {
+    ...result,
+    assistantText,
+    references,
+  };
+}
+
 export async function runInternalAiChatTurnThroughBackend(
   prompt: string,
   fallbackPeriodInput?: InternalAiReportPeriodInput,
@@ -114,6 +150,15 @@ export async function runInternalAiChatTurnThroughBackend(
   },
 ): Promise<InternalAiChatOrchestratorBridgeResult> {
   const localResult = await runInternalAiChatTurn(prompt, fallbackPeriodInput);
+  const universalOrchestration = await orchestrateInternalAiUniversalRequest({
+    prompt,
+    attachments: options?.attachments ?? [],
+  });
+  syncInternalAiUniversalRequestsRepository({
+    handoffs: universalOrchestration.handoffPayloads,
+    inboxItems: universalOrchestration.documentInboxItems,
+  });
+  const universalAugmentation = buildInternalAiUniversalChatAugmentation(universalOrchestration);
 
   if (!hasInternalAiServerChatAdapterCandidate()) {
     return {
@@ -121,7 +166,7 @@ export async function runInternalAiChatTurnThroughBackend(
       transportMessage:
         "Adapter server-side non configurato nel browser corrente. Attivato fallback locale clone-safe della chat interna.",
       backendStatus: "not_enabled",
-      result: localResult,
+      result: applyUniversalAugmentation(localResult, universalAugmentation),
     };
   }
 
@@ -146,7 +191,7 @@ export async function runInternalAiChatTurnThroughBackend(
       transportMessage:
         "Endpoint chat server-side non raggiungibile. Attivato fallback locale clone-safe della chat interna.",
       backendStatus: "not_enabled",
-      result: localResult,
+      result: applyUniversalAugmentation(localResult, universalAugmentation),
     };
   }
 
@@ -157,7 +202,7 @@ export async function runInternalAiChatTurnThroughBackend(
         `Provider o adapter chat non disponibile (${serverResponse.message}). ` +
         "Attivato fallback locale clone-safe della chat interna.",
       backendStatus: serverResponse.status,
-      result: localResult,
+      result: applyUniversalAugmentation(localResult, universalAugmentation),
     };
   }
 
@@ -165,6 +210,9 @@ export async function runInternalAiChatTurnThroughBackend(
     transport: "server_http_provider",
     transportMessage: serverResponse.message,
     backendStatus: "ok",
-    result: mergeServerChatResult(localResult, serverResponse.payload.result),
+    result: applyUniversalAugmentation(
+      mergeServerChatResult(localResult, serverResponse.payload.result),
+      universalAugmentation,
+    ),
   };
 }

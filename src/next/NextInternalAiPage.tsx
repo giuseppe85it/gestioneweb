@@ -82,6 +82,8 @@ import {
   removeInternalAiServerChatAttachment,
   uploadInternalAiServerChatAttachment,
 } from "./internal-ai/internalAiChatAttachmentsClient";
+import InternalAiUniversalRequestsPanel from "./internal-ai/InternalAiUniversalRequestsPanel";
+import InternalAiUniversalWorkbench from "./internal-ai/InternalAiUniversalWorkbench";
 import {
   readInternalAiUnifiedRegistrySummary,
   type InternalAiUnifiedRegistrySummary,
@@ -451,7 +453,7 @@ const SECTION_CONFIGS: Record<
   },
   requests: {
     title: "Richieste",
-    description: "Stati `ai_requests` con anteprima, approvazione, revisione e scarto solo simulati.",
+    description: "Inbox documentale universale, handoff standard e payload di prefill tracciati nel runtime IA interno.",
     path: NEXT_INTERNAL_AI_REQUESTS_PATH,
   },
   artifacts: {
@@ -1633,11 +1635,11 @@ function buildChatDomainLabel(message: InternalAiChatMessage): string | null {
       reference.label.toLowerCase().includes(UNIFIED_ENGINE_REFERENCE.toLowerCase()),
     )
   ) {
-    return "Console unificata read-only";
+    return "Sistema universale clone/NEXT";
   }
 
   if (message.intent === "report_targa" || message.intent === "mezzo_dossier") {
-    return "Console unificata read-only";
+    return "Sistema universale clone/NEXT";
   }
 
   if (message.intent === "repo_understanding") {
@@ -5896,7 +5898,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
                 }}
               >
                 <div className="internal-ai-chat__status-inline">
-                  <span className="internal-ai-pill is-neutral">Console unificata read-only</span>
+                  <span className="internal-ai-pill is-neutral">Sistema universale clone/NEXT</span>
                   {unifiedRegistryState.status === "ready" && unifiedRegistryState.summary ? (
                     <span className="internal-ai-muted">
                       Fonti mappate {unifiedRegistryState.summary.counts.totalSources}, pronte{" "}
@@ -6088,6 +6090,12 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               </div>
             </details>
           </article>
+
+          <InternalAiUniversalWorkbench
+            promptDraft={chatInput}
+            attachments={chatAttachments}
+            preferredTarga={resolvedChatTarga}
+          />
 
           <section className="internal-ai-grid">
             <article className="internal-ai-card">
@@ -8707,32 +8715,39 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       ) : null}
 
       {sectionId === "requests" ? (
-        <article className="next-panel">
-          <div className="next-panel__header">
-            <h2>Richieste (`ai_requests`)</h2>
-          </div>
-          <div className="internal-ai-list">
-            {snapshot.requests.map((request) => (
-              <div key={request.id} className="internal-ai-list__row">
-                <div className="internal-ai-list__row-header">
-                  <strong>{request.title}</strong>
-                  <span className={statusToneClass(request.status)}>
-                    {APPROVAL_STATUS_LABELS[request.approvalState.status] ?? request.status}
-                  </span>
+        <div className="next-section-grid">
+          <InternalAiUniversalRequestsPanel />
+          <article className="next-panel">
+            <div className="next-panel__header">
+              <h2>Richieste (`ai_requests`)</h2>
+            </div>
+            <p className="next-panel__description">
+              Lo scaffold storico resta visibile come traccia tecnica, ma il punto corretto del
+              clone ora e l&apos;inbox documentale universale con handoff standard.
+            </p>
+            <div className="internal-ai-list">
+              {snapshot.requests.map((request) => (
+                <div key={request.id} className="internal-ai-list__row">
+                  <div className="internal-ai-list__row-header">
+                    <strong>{request.title}</strong>
+                    <span className={statusToneClass(request.status)}>
+                      {APPROVAL_STATUS_LABELS[request.approvalState.status] ?? request.status}
+                    </span>
+                  </div>
+                  <p className="internal-ai-muted">
+                    Obiettivo: {REQUEST_TARGET_LABELS[request.target] ?? request.target} | Contratti:{" "}
+                    {request.requestedAdapters
+                      .map((adapterId) => contractLabelMap.get(adapterId) ?? adapterId)
+                      .join(", ")}
+                  </p>
+                  {renderPreviewState(request.previewState)}
+                  {renderApprovalState(request.approvalState)}
+                  <p className="internal-ai-card__meta">{request.note}</p>
                 </div>
-                <p className="internal-ai-muted">
-                  Obiettivo: {REQUEST_TARGET_LABELS[request.target] ?? request.target} | Contratti:{" "}
-                  {request.requestedAdapters
-                    .map((adapterId) => contractLabelMap.get(adapterId) ?? adapterId)
-                    .join(", ")}
-                </p>
-                {renderPreviewState(request.previewState)}
-                {renderApprovalState(request.approvalState)}
-                <p className="internal-ai-card__meta">{request.note}</p>
-              </div>
-            ))}
-          </div>
-        </article>
+              ))}
+            </div>
+          </article>
+        </div>
       ) : null}
 
       {sectionId === "artifacts" ? (
