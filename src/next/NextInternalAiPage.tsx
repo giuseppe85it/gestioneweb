@@ -148,6 +148,7 @@ import type {
   InternalAiVehicleReportPreview,
   NextInternalAiSectionId,
 } from "./internal-ai/internalAiTypes";
+import { formatDateTimeUI } from "./nextDateFormat";
 import "./next-shell.css";
 import "./internal-ai/internal-ai.css";
 
@@ -965,11 +966,7 @@ function contractRuntimeClass(runtime: "disabled" | "mock_safe_backend") {
 
 function formatDateLabel(value: string | null | undefined) {
   if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleString("it-IT");
+  return formatDateTimeUI(value);
 }
 
 function renderPreviewState(previewState: InternalAiPreviewState) {
@@ -6950,19 +6947,21 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               <label className="internal-ai-search__field">
                 <span>Da</span>
                 <input
-                  type="date"
+                  type="text"
                   value={reportPeriodInput.fromDate ?? ""}
                   onChange={(event) => handleCustomPeriodFieldChange("fromDate", event.target.value)}
                   className="internal-ai-search__input"
+                  placeholder="gg mm aaaa"
                 />
               </label>
               <label className="internal-ai-search__field">
                 <span>A</span>
                 <input
-                  type="date"
+                  type="text"
                   value={reportPeriodInput.toDate ?? ""}
                   onChange={(event) => handleCustomPeriodFieldChange("toDate", event.target.value)}
                   className="internal-ai-search__input"
+                  placeholder="gg mm aaaa"
                 />
               </label>
             </div>

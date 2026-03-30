@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "../pages/IA/IAApiKey.css";
-import { readNextIaConfigSnapshot } from "./domain/nextIaConfigDomain";
+import {
+  readNextIaConfigSnapshot,
+  saveNextIaConfigSnapshot,
+} from "./domain/nextIaConfigDomain";
 
 type Status = "idle" | "loading" | "success" | "error";
-
-const CLONE_SAVE_MESSAGE =
-  "Clone read-only: il salvataggio della chiave resta disponibile solo nella madre.";
 
 export default function NextIAApiKeyPage() {
   const navigate = useNavigate();
@@ -51,7 +51,7 @@ export default function NextIAApiKeyPage() {
     };
   }, []);
 
-  const handleSave = (event: FormEvent) => {
+  const handleSave = async (event: FormEvent) => {
     event.preventDefault();
 
     const trimmed = apiKey.trim();
@@ -61,8 +61,19 @@ export default function NextIAApiKeyPage() {
       return;
     }
 
-    setStatus("error");
-    setMessage(CLONE_SAVE_MESSAGE);
+    setStatus("loading");
+    setMessage(null);
+
+    try {
+      await saveNextIaConfigSnapshot(trimmed);
+      setApiKey(trimmed);
+      setStatus("success");
+      setMessage("Chiave salvata correttamente.");
+    } catch (error) {
+      console.error("Errore salvataggio API Key Gemini clone:", error);
+      setStatus("error");
+      setMessage("Errore nel salvataggio della chiave. Riprova.");
+    }
   };
 
   return (
@@ -115,8 +126,8 @@ export default function NextIAApiKeyPage() {
           )}
 
           <div className="ia-apikey-actions">
-            <button type="submit" className="ia-apikey-save">
-              Salva chiave
+            <button type="submit" className="ia-apikey-save" disabled={status === "loading"}>
+              {status === "loading" ? "Salvataggio..." : "Salva chiave"}
             </button>
 
             <button type="button" className="ia-apikey-back" onClick={() => navigate("/next/ia")}>

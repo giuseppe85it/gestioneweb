@@ -7,6 +7,8 @@ import {
   type NextCisternaSchedaDetail,
   type NextCisternaSnapshot,
 } from "./domain/nextCisternaDomain";
+import { formatEditableDateUI } from "./nextDateFormat";
+import { upsertNextCisternaCloneScheda } from "./nextCisternaCloneState";
 import "../pages/CisternaCaravate/CisternaSchedeTest.css";
 
 type Mode = "manual" | "ia";
@@ -59,6 +61,7 @@ export default function NextCisternaSchedeTestPage() {
   );
   const [iaFileName, setIaFileName] = useState("");
   const [iaPreviewUrl, setIaPreviewUrl] = useState<string | null>(null);
+  const [iaExtractedRows, setIaExtractedRows] = useState<ManualRow[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,9 +188,34 @@ export default function NextCisternaSchedeTestPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      setNotice("Nel clone il salvataggio delle schede manuali resta bloccato: nessuna scrittura sulla collection cisterna.")
-                    }
+                    onClick={() => {
+                      const rows = manualRows
+                        .filter((row) => row.data || row.targa || row.nome || row.litri)
+                        .map((row) => ({
+                          data: row.data,
+                          targa: row.targa,
+                          nome: row.nome,
+                          litri: row.litri ? Number(String(row.litri).replace(",", ".")) : null,
+                          azienda: row.azienda,
+                          statoRevisione: "manuale_clone",
+                        }));
+                      if (rows.length === 0 || !snapshot) {
+                        setNotice("Inserisci almeno una riga valida prima di salvare.");
+                        return;
+                      }
+                      upsertNextCisternaCloneScheda({
+                        id: editId || `next-cisterna-scheda:${Date.now()}`,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        source: "manual",
+                        rowCount: rows.length,
+                        rows,
+                        needsReview: false,
+                        mese: snapshot.monthKey,
+                        yearMonth: snapshot.monthKey,
+                      });
+                      setNotice("Scheda manuale salvata nel clone locale.");
+                    }}
                   >
                     Conferma e salva
                   </button>
@@ -215,25 +243,88 @@ export default function NextCisternaSchedeTestPage() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
                     type="button"
-                    onClick={() =>
-                      setNotice(
-                        iaFileName
-                          ? "Nel clone l'estrazione IA delle schede resta bloccata: la route mostra solo archivio e preview locale."
-                          : "Seleziona prima una scheda da testare.",
-                      )
-                    }
+                    onClick={() => {
+                      if (!iaFileName) {
+                        setNotice("Seleziona prima una scheda da testare.");
+                        return;
+                      }
+                      setIaExtractedRows([
+                        {
+                          id: makeRowId(),
+                          data: formatEditableDateUI(new Date()),
+                          targa: "",
+                          nome: iaFileName,
+                          litri: "",
+                          azienda: "cementi",
+                        },
+                      ]);
+                      setNotice("Estrazione IA simulata nel clone: completa i campi e salva localmente.");
+                    }}
                   >
                     Estrai con IA
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      setNotice("Nel clone il salvataggio della scheda IA resta bloccato.")
-                    }
+                    onClick={() => {
+                      if (!snapshot || iaExtractedRows.length === 0) {
+                        setNotice("Esegui prima un'estrazione IA locale.");
+                        return;
+                      }
+                      upsertNextCisternaCloneScheda({
+                        id: editId || `next-cisterna-scheda-ia:${Date.now()}`,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        source: "ia",
+                        rowCount: iaExtractedRows.length,
+                        rows: iaExtractedRows.map((row) => ({
+                          data: row.data,
+                          targa: row.targa,
+                          nome: row.nome,
+                          litri: row.litri ? Number(String(row.litri).replace(",", ".")) : null,
+                          azienda: row.azienda,
+                          statoRevisione: "ia_clone",
+                        })),
+                        needsReview: true,
+                        mese: snapshot.monthKey,
+                        yearMonth: snapshot.monthKey,
+                      });
+                      setNotice("Scheda IA salvata nel clone locale.");
+                    }}
                   >
                     Conferma e salva
                   </button>
                 </div>
+                {iaExtractedRows.length > 0 ? (
+                  <div className="cisterna-schede-table-wrap">
+                    <table className="cisterna-schede-table">
+                      <thead>
+                        <tr>
+                          <th>Data</th>
+                          <th>Targa</th>
+                          <th>Nome</th>
+                          <th>Litri</th>
+                          <th>Azienda</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {iaExtractedRows.map((row) => (
+                          <tr key={row.id}>
+                            <td><input value={row.data} onChange={(event) => setIaExtractedRows((current) => current.map((entry) => entry.id === row.id ? { ...entry, data: event.target.value } : entry))} /></td>
+                            <td><input value={row.targa} onChange={(event) => setIaExtractedRows((current) => current.map((entry) => entry.id === row.id ? { ...entry, targa: event.target.value.toUpperCase() } : entry))} /></td>
+                            <td><input value={row.nome} onChange={(event) => setIaExtractedRows((current) => current.map((entry) => entry.id === row.id ? { ...entry, nome: event.target.value } : entry))} /></td>
+                            <td><input value={row.litri} onChange={(event) => setIaExtractedRows((current) => current.map((entry) => entry.id === row.id ? { ...entry, litri: event.target.value } : entry))} /></td>
+                            <td>
+                              <select value={row.azienda} onChange={(event) => setIaExtractedRows((current) => current.map((entry) => entry.id === row.id ? { ...entry, azienda: event.target.value as ManualRow["azienda"] } : entry))}>
+                                <option value="cementi">GHIELMICEMENTI</option>
+                                <option value="import">GHIELMIIMPORT</option>
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
               </div>
             )}
           </section>

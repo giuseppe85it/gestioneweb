@@ -1,5 +1,9 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
+import {
+  readNextInventarioCloneDeletedIds,
+  readNextInventarioCloneRecords,
+} from "../nextInventarioCloneState";
 
 const STORAGE_COLLECTION = "storage";
 const INVENTARIO_KEY = "@inventario";
@@ -202,7 +206,7 @@ function buildLimitations(args: {
       ? "Il fornitore non e valorizzato su tutti gli articoli inventario."
       : null,
     "Nel clone non esiste ancora una scorta minima canonica: i segnali stock sono affidabili solo quando la quantita e zero o negativa.",
-    "Il reader clone e solo read-only: nuovo materiale, modifica, delete, variazione quantita, PDF e foto restano fuori dal perimetro attivo.",
+    "Nel clone NEXT sono ammessi solo overlay locali su articolo, foto, quantita e PDF: nessuna variazione inventario viene scritta sulla madre.",
   ].filter((entry): entry is string => Boolean(entry));
 }
 
@@ -225,8 +229,19 @@ export async function readNextInventarioSnapshot(): Promise<NextInventarioSnapsh
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, INVENTARIO_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
+  const cloneRecords = readNextInventarioCloneRecords();
+  const deletedIds = new Set(readNextInventarioCloneDeletedIds());
+  const cloneIds = new Set(cloneRecords.map((entry) => entry.id));
+  const mergedRawItems = [
+    ...rawItems.filter((entry, index) => {
+      if (!entry || typeof entry !== "object") return true;
+      const itemId = buildInventoryId(entry as RawRecord, index);
+      return !cloneIds.has(itemId) && !deletedIds.has(itemId);
+    }),
+    ...cloneRecords.filter((entry) => !deletedIds.has(entry.id)),
+  ];
 
-  const mappedItems = rawItems.map((entry, index) => {
+  const mappedItems = mergedRawItems.map((entry, index) => {
     if (!entry || typeof entry !== "object") return null;
     return toInventoryItem(entry as RawRecord, index);
   });
@@ -251,6 +266,14 @@ export async function readNextInventarioSnapshot(): Promise<NextInventarioSnapsh
       withSupplier: items.filter((item) => Boolean(item.fornitore)).length,
       withPhoto: items.filter((item) => Boolean(item.fotoUrl)).length,
     },
-    limitations: buildLimitations({ datasetShape, items, skippedRawRecords }),
+    limitations: [
+      ...buildLimitations({ datasetShape, items, skippedRawRecords }),
+      cloneRecords.length > 0
+        ? `Il clone integra ${cloneRecords.length} articoli locali senza scrivere su @inventario nella madre.`
+        : null,
+      deletedIds.size > 0
+        ? `Il clone nasconde ${deletedIds.size} articoli in modo locale senza cancellarli dalla madre.`
+        : null,
+    ].filter((entry): entry is string => Boolean(entry)),
   };
 }

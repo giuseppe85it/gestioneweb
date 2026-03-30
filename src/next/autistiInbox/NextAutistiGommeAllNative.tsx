@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getItemSync } from "../../utils/storageSync";
-import { formatDateTimeUI } from "../../utils/dateFormat";
+import { getItemSync } from "../autisti/nextAutistiStorageSync";
+import { formatDateTimeUI } from "../nextDateFormat";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 import "../../autistiInbox/AutistiGommeAll.css";
 

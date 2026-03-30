@@ -2,6 +2,7 @@ import { getDownloadURL, ref } from "firebase/storage";
 import type { WheelPoint } from "../../components/wheels";
 import { wheelGeom } from "../../components/wheels";
 import { storage } from "../../firebase";
+import { formatDateTimeUI } from "../nextDateFormat";
 import {
   readNextStatoOperativoSnapshot,
   type D10SessionItem,
@@ -107,18 +108,7 @@ function formatDateLabel(value: string | null | undefined): string {
     return FALLBACK_UNAVAILABLE;
   }
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsed);
+  return formatDateTimeUI(value);
 }
 
 function normalizeSpace(value: string): string {

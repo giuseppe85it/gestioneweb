@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import "../autisti/autisti.css";
 import "../autisti/ControlloMezzo.css";
-import { getAutistaLocal, getMezzoLocal } from "../autisti/autistiStorage";
+import { getAutistaLocal, getMezzoLocal } from "./autisti/nextAutistiSessionStorage";
 import {
   NEXT_AUTISTI_BASE_PATH,
   NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,

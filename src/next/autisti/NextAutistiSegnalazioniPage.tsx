@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
 import "../../autisti/Segnalazioni.css";
-import { getAutistaLocal, getMezzoLocal } from "../../autisti/autistiStorage";
-import { getItemSync } from "../../utils/storageSync";
+import { getAutistaLocal, getMezzoLocal } from "./nextAutistiSessionStorage";
+import { getItemSync } from "./nextAutistiStorageSync";
 import {
   createNextAutistiCloneAttachmentFromFile,
   type NextAutistiCloneAttachment,

@@ -154,6 +154,7 @@
 - Ricostruita davvero anche `Home` nel clone: `/next` non monta piu `src/pages/Home.tsx`, ma usa una pagina NEXT vera che replica card, alert, modali prenotazione/pre-collaudo/revisione, export PDF e collegamenti rapidi sopra i reader `D10`/`D03`, con overlay clone-only per ack alert e modifiche locali di prenotazioni e luoghi mezzo.
 - Riallineato anche il blocco `Capo`: le route ufficiali `/next/capo/mezzi` e `/next/capo/costi/:targa` sono ora madri-like fuori ma completamente NEXT dentro, con approvazioni clone-only locali, anteprima PDF preventivi, anteprima PDF documento e preview timbrato, senza ricadere nel runtime legacy.
 - Ricostruiti nel clone anche `Dossier Mezzo`, `Analisi Economica` e `Materiali da ordinare`: le tre route ufficiali non montano piu `src/pages/*` come soluzione finale e usano ora pagine NEXT vere sopra il composite dossier `D01/D02/D04/D07-D08`, `nextDossierCloneState` e un overlay procurement clone-only che non scrive sulla madre.
+- Formalizzata la procedura ufficiale `madre -> clone/NEXT` in `docs/architecture/PROCEDURA_MADRE_TO_CLONE.md` e usata subito come contratto operativo per chiudere il backlog reale aperto dall'audit finale, compreso l'ultimo hardening critico di `Autisti / Inbox` su adapter NEXT locali e bridge admin clone-only.
 
 ## 6. Regola operativa obbligatoria
 Prima di ogni nuovo task bisogna leggere almeno:
@@ -170,7 +171,7 @@ Se il task tocca la NEXT, bisogna inoltre leggere e aggiornare:
 7. `docs/product/STATO_MIGRAZIONE_NEXT.md`
 
 ## 7. Prossimo passo consigliato
-Usare `/next/ia/interna` come cervello operativo gia chiuso del clone/NEXT nel perimetro corrente, mantenere allineati registry/contract/gate per ogni nuovo modulo, non riaprire il live-read business e continuare a trattare D03/D04/D05/D06/D07-D08/D10 come adapter sotto il gateway universale, non come prodotto finale a isole.
+Eseguire un audit separato della chiusura esecutiva prompt 42 prima di promuovere la NEXT a `autonoma sul perimetro target`, mantenendo `/next/ia/interna` come cervello operativo del clone/NEXT e senza riaprire scritture business o live-read.
 
 ## 8. Stato documento
 - **STATO: CURRENT**

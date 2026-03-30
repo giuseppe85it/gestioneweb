@@ -1,6 +1,6 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import { formatDateUI } from "../utils/dateFormat";
+import { formatDateUI } from "./nextDateFormat";
 import { normalizeNextMezzoTarga } from "./nextAnagraficheFlottaDomain";
 
 const STORAGE_COLLECTION = "storage";

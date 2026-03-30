@@ -4,13 +4,13 @@ import { useNavigate } from "react-router-dom";
 import type { ComponentType } from "react";
 import "../../autistiInbox/AutistiInboxHome.css";
 
-import { loadActiveSessions, loadHomeEvents } from "../../utils/homeEvents";
-import type { ActiveSession, HomeEvent } from "../../utils/homeEvents";
-import RifornimentiCard from "../../autistiInbox/components/RifornimentiCard";
-import SessioniAttiveCard from "../../autistiInbox/components/SessioniAttiveCard";
+import { loadActiveSessions, loadHomeEvents } from "../autisti/nextAutistiHomeEvents";
+import type { ActiveSession, HomeEvent } from "../autisti/nextAutistiHomeEvents";
+import NextRifornimentiCard from "./components/NextRifornimentiCard";
+import NextSessioniAttiveCard from "./components/NextSessioniAttiveCard";
 import AutistiEventoModal from "../components/NextAutistiEventoModal";
-import { formatDateTimeUI, formatDateUI } from "../../utils/dateFormat";
-import { getItemSync } from "../../utils/storageSync";
+import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
+import { getItemSync } from "../autisti/nextAutistiStorageSync";
 
 type ModalKind =
   | null
@@ -574,12 +574,12 @@ useEffect(() => {
         {/* LAYOUT */}
         <div className="autisti-layout">
           <aside className="sessioni-panel">
-            <SessioniAttiveCard sessions={activeSessions} />
+            <NextSessioniAttiveCard sessions={activeSessions} />
           </aside>
           {/* CARD GRID */}
           <div className="autisti-cards">
             {/* RIFORNIMENTI */}
-            <RifornimentiCard
+            <NextRifornimentiCard
               events={rifornimenti}
               cardRef={rifornimentiRef}
               onOpenAll={() => openModal("rifornimenti")}

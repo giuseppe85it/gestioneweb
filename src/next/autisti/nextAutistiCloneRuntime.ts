@@ -31,7 +31,6 @@ export type NextAutistiNoticeCode =
   | "sgancia-motrice"
   | "controllo-locale"
   | "cambio-mezzo-locale"
-  | "gomme-salvataggio-bloccato"
   | "route-outside-tranche";
 
 const NEXT_AUTISTI_NOTICE_CODES = new Set<NextAutistiNoticeCode>([
@@ -44,7 +43,6 @@ const NEXT_AUTISTI_NOTICE_CODES = new Set<NextAutistiNoticeCode>([
   "sgancia-motrice",
   "controllo-locale",
   "cambio-mezzo-locale",
-  "gomme-salvataggio-bloccato",
   "route-outside-tranche",
 ]);
 
@@ -55,9 +53,7 @@ type BlockedLegacyRouteConfig = {
 
 const BLOCKED_LEGACY_ROUTE_MAP: Record<string, BlockedLegacyRouteConfig> = {};
 
-const BLOCKED_HOME_ACTION_LABEL_MAP: Record<string, NextAutistiNoticeCode> = {
-  "SGANCIA MOTRICE": "sgancia-motrice",
-};
+const BLOCKED_HOME_ACTION_LABEL_MAP: Record<string, NextAutistiNoticeCode> = {};
 
 type ManagedAutistiNavigationTarget = {
   managed: boolean;
@@ -121,13 +117,11 @@ export function getNextAutistiNoticeMessage(code: NextAutistiNoticeCode): string
     case "richiesta-attrezzature-locale":
       return "Richiesta attrezzature salvata solo nel locale clone: testo e foto non vengono sincronizzati sulla madre.";
     case "sgancia-motrice":
-      return "Sgancio motrice resta bloccato nel clone finche la sessione madre non puo essere aggiornata.";
+      return "Sgancio motrice applicato solo nel clone: la sessione madre non viene aggiornata.";
     case "controllo-locale":
       return "Controllo salvato solo nel locale clone: il passaggio resta locale e non sincronizza la madre.";
     case "cambio-mezzo-locale":
       return "Cambio mezzo applicato solo nel locale clone: l'assetto madre non viene aggiornato.";
-    case "gomme-salvataggio-bloccato":
-      return "Gomme aperto in clone-safe: il salvataggio resta bloccato per non simulare una sincronizzazione sulla madre.";
     default:
       return "Questa schermata non e ancora importata nel perimetro clone-safe attuale dell'app autisti.";
   }

@@ -1,6 +1,7 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import { formatDateUI, toNextDateValue } from "../nextDateFormat";
 import {
   readNextAttrezzatureCantieriSnapshot,
   type NextAttrezzatureCantieriSnapshot,
@@ -129,60 +130,7 @@ async function readStorageDataset(key: string): Promise<{
 }
 
 function parseDateFlexible(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const millis = value > 1_000_000_000_000 ? value : value * 1000;
-    const date = new Date(millis);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  if (typeof value === "object" && value !== null) {
-    const maybe = value as {
-      toDate?: () => Date;
-      seconds?: number;
-      _seconds?: number;
-    };
-
-    if (typeof maybe.toDate === "function") {
-      const date = maybe.toDate();
-      return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
-    }
-
-    if (typeof maybe.seconds === "number") {
-      const date = new Date(maybe.seconds * 1000);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-
-    if (typeof maybe._seconds === "number") {
-      const date = new Date(maybe._seconds * 1000);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-  }
-
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
-  if (!raw) return null;
-
-  const direct = new Date(raw);
-  if (!Number.isNaN(direct.getTime())) return direct;
-
-  const dmyMatch = raw.match(
-    /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/
-  );
-  if (!dmyMatch) return null;
-
-  const yearRaw = Number(dmyMatch[3]);
-  const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-  const month = Number(dmyMatch[2]) - 1;
-  const day = Number(dmyMatch[1]);
-  const hours = Number(dmyMatch[4] ?? "12");
-  const minutes = Number(dmyMatch[5] ?? "00");
-  const date = new Date(year, month, day, hours, minutes, 0, 0);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return toNextDateValue(value);
 }
 
 function toTimestamp(value: unknown): number | null {
@@ -192,13 +140,7 @@ function toTimestamp(value: unknown): number | null {
 
 function formatLegacyDateLabel(timestamp: number | null): string | null {
   if (timestamp === null) return null;
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(date.getFullYear());
-  return `${dd} ${mm} ${yyyy}`;
+  return formatDateUI(new Date(timestamp));
 }
 
 function sortByTimestampDesc<T extends { id: string; timestamp: number | null }>(items: T[]): T[] {

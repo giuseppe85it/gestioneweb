@@ -8,9 +8,9 @@ import {
   loadRimorchiStatus,
   type HomeEvent,
   type RimorchioStatus,
-} from "../../utils/homeEvents";
+} from "../autisti/nextAutistiHomeEvents";
 import { db, storage, doc, getDoc, setDoc, ref, deleteObject } from "./nextAutistiAdminBridges";
-import { getItemSync, setItemSync } from "../../utils/storageSync";
+import { getItemSync, setItemSync } from "../autisti/nextAutistiStorageSync";
 import { generateControlloPDFBlob, generateSegnalazionePDFBlob } from "../../utils/pdfEngine";
 import PdfPreviewModal from "../../components/PdfPreviewModal";
 import {
@@ -23,7 +23,8 @@ import {
 } from "../../utils/pdfPreview";
 import { buildTargheList } from "../../utils/targhe";
 import TargaPicker from "../../components/TargaPicker";
-import { formatDateTimeUI, formatDateUI } from "../../utils/dateFormat";
+import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
+import { appendNextLavoriCloneRecords } from "../nextLavoriCloneState";
 
 const KEY_SESSIONI = "@autisti_sessione_attive";
 const KEY_MEZZI = "@mezzi_aziendali";
@@ -727,11 +728,24 @@ export default function AutistiAdmin() {
   }
 
   async function appendLavori(newItems: LavoroRecord[]) {
-    const raw = (await getItemSync("@lavori")) || [];
-    const list = Array.isArray(raw) ? raw : [];
-    const next = [...list, ...newItems];
-    await setItemSync("@lavori", next);
-    return next;
+    appendNextLavoriCloneRecords(
+      newItems.map((item) => ({
+        id: item.id,
+        gruppoId: item.gruppoId,
+        tipo: item.tipo,
+        descrizione: item.descrizione,
+        dettagli: undefined,
+        dataInserimento: item.dataInserimento,
+        eseguito: item.eseguito,
+        targa: item.targa || undefined,
+        urgenza: item.urgenza,
+        segnalatoDa: item.segnalatoDa,
+        sottoElementi: item.sottoElementi,
+        __nextCloneOnly: true,
+        __nextCloneSavedAt: Date.now(),
+      })),
+    );
+    return newItems;
   }
 
   function getFotoList(record: any) {

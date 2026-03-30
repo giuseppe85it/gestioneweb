@@ -31,6 +31,136 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-30 1408
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Chiusura execution degli ultimi 2 moduli aperti `Home` e `Libretti Export`
+- OBIETTIVO: portare a `CHIUSO` i soli moduli ancora `APERTO` nel perimetro target NEXT, senza toccare la madre e senza auto-certificare l'autonomia finale della NEXT.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/NextHomeAutistiEventoModal.tsx`
+  - `src/next/NextLibrettiExportPage.tsx`
+  - `src/next/domain/nextLibrettiExportDomain.ts`
+  - `docs/audit/BACKLOG_ULTIMI_2_APERTI_EXECUTION.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1408_prompt46_chiusura-home-libretti-export.md`
+  - `docs/continuity-reports/2026-03-30_1408_continuity_prompt46_chiusura-home-libretti-export.md`
+- COSA E STATO CAMBIATO:
+  - `Home` non passa piu da `NextLegacyStorageBoundary` e usa ora una modale eventi autisti NEXT clone-safe;
+  - `Libretti Export` abbandona la workbench tabellare e riallinea la UI alla madre con gruppi per categoria, card selezionabili e preview PDF;
+  - aggiornate backlog e fonti ufficiali sui due moduli ex `APERTO`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Home` e `Libretti Export` tornano a comportarsi fuori come la madre sui blocchi utili del clone;
+  - Lettura: `Home` usa solo snapshot/domain NEXT e stato clone locale gia riassorbito dal domain; `Libretti Export` usa il domain NEXT pulito su `@mezzi_aziendali`;
+  - Blocco scritture: invariato sul business reale; nessuna scrittura madre riaperta.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextHomePage.tsx src/next/NextCentroControlloPage.tsx src/next/components/NextHomeAutistiEventoModal.tsx src/next/NextLibrettiExportPage.tsx src/next/domain/nextLibrettiExportDomain.ts`
+  - `npm run build`
+  - verificare che `/next` non monti `NextLegacyStorageBoundary`
+  - verificare che `/next/libretti-export` mostri gruppi/carte e anteprima PDF come la madre.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - questo run chiude solo gli ultimi 2 moduli aperti;
+  - il verdetto finale di autonomia NEXT resta da audit separato.
+
+### Voce 2026-03-30 1755
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Audit finale moduli `DA VERIFICARE` e verdetto netto sulla autonomia NEXT
+- OBIETTIVO: verificare solo i moduli rimasti `DA VERIFICARE` dopo i prompt 42-44 e chiudere il verdetto finale sulla lavorabilita autonoma della NEXT.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_FINALE_DA_VERIFICARE_NEXT_AUTONOMA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1755_prompt45_audit-finale-da-verificare-next-autonoma.md`
+  - `docs/continuity-reports/2026-03-30_1755_continuity_prompt45_audit-finale-da-verificare-next-autonoma.md`
+- COSA E STATO CAMBIATO:
+  - creato l'audit finale del bucket `DA VERIFICARE`;
+  - promossi a `CHIUSO` i moduli con prove forti nel repo: `Centro di Controllo`, `Dossier Lista`, `Dossier Gomme`, `Dossier Rifornimenti`, `Capo Mezzi`;
+  - promossi a `APERTO` i moduli con gap reali confermati: `Home`, `Libretti Export`;
+  - riallineate le fonti ufficiali al verdetto finale `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - nessun impatto runtime;
+  - cambia il verdetto documentale ufficiale sul clone.
+- COME VERIFICARE:
+  - leggere `docs/audit/AUDIT_FINALE_DA_VERIFICARE_NEXT_AUTONOMA.md`;
+  - confrontare nel report i sette moduli del bucket con i file NEXT e madre citati;
+  - verificare `git status --short -- src/pages src/autisti src/autistiInbox` e `git diff --name-only -- src/pages src/autisti src/autistiInbox`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il bucket `DA VERIFICARE` non resta piu aperto per inerzia;
+  - la madre risulta intoccata nel worktree corrente, ma la storia completa non e dimostrabile da questo audit.
+
+### Voce 2026-03-30 1124
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Chiusura gap moduli parziali post audit finale 43
+- OBIETTIVO: trasformare tutti i moduli `PARZIALI` dell'audit finale post prompt 42 in `CHIUSO` oppure `APERTO`, lavorando solo nel clone/NEXT.
+- FILE TOCCATI:
+  - `src/next/NextInventarioPage.tsx`
+  - `src/next/NextMaterialiConsegnatiPage.tsx`
+  - `src/next/NextMezziPage.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/next/nextInventarioCloneState.ts`
+  - `src/next/nextMaterialiMovimentiCloneState.ts`
+  - `src/next/nextFlottaCloneState.ts`
+  - `src/next/domain/nextInventarioDomain.ts`
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `src/next/nextAnagraficheFlottaDomain.ts`
+  - `docs/audit/BACKLOG_GAP_PARZIALI_EXECUTION.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1124_prompt44_chiusura-gap-parziali.md`
+  - `docs/continuity-reports/2026-03-30_1124_continuity_prompt44_chiusura-gap-parziali.md`
+- COSA E STATO CAMBIATO:
+  - l'inventario NEXT non e piu un pannello con azioni disabilitate: ora gestisce add/edit/delete, foto, quantita e PDF nel clone;
+  - `Materiali consegnati` registra consegne, elimina movimenti, ripristina stock clone e genera PDF locali;
+  - `/next/mezzi` e stata resa superficie NEXT nativa con save/delete/foto/libretto locali sopra il layer D01;
+  - `Capo Costi` genera il PDF timbrato in locale nel clone e non chiama piu `stamp_pdf` reale;
+  - fissato il backlog persistente dei moduli ex `PARZIALI` e riallineate le fonti ufficiali.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - chiusi i blocchi UI che l'audit 43 aveva segnato come parita incompleta su inventario, materiali, mezzi e capo costi;
+  - confermato che gli altri moduli ex `PARZIALI` sono chiudibili nel metodo madre->clone come superfici NEXT con overlay locali del clone;
+  - nessuna scrittura business reale riaperta sulla madre.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextInventarioPage.tsx src/next/NextMaterialiConsegnatiPage.tsx src/next/NextMezziPage.tsx src/next/NextCapoCostiMezzoPage.tsx src/next/nextInventarioCloneState.ts src/next/nextMaterialiMovimentiCloneState.ts src/next/nextFlottaCloneState.ts src/next/domain/nextInventarioDomain.ts src/next/domain/nextMaterialiMovimentiDomain.ts src/next/nextAnagraficheFlottaDomain.ts`
+  - `npm run build`
+  - leggere `docs/audit/BACKLOG_GAP_PARZIALI_EXECUTION.md`
+  - verificare che nei moduli chiusi non restino i blocchi specifici contestati dall'audit 43.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - questo run chiude solo i moduli `PARZIALI`;
+  - i moduli `DA VERIFICARE` restano fuori dal presente prompt.
+
+### Voce 2026-03-30 1600
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Audit finale avversariale post prompt 42 sulla reale autonomia NEXT
+- OBIETTIVO: verificare contro il codice reale se il prompt 42 abbia davvero chiuso il perimetro target e se la NEXT sia lavorabile in autonomia.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_FINALE_POST_PROMPT_42_NEXT_AUTONOMA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1600_prompt43_audit-finale-post-prompt-42-next-autonoma.md`
+  - `docs/continuity-reports/2026-03-30_1600_continuity_prompt43_audit-finale-post-prompt-42-next-autonoma.md`
+- COSA E STATO CAMBIATO:
+  - creato un audit separato dall'execution del prompt 42;
+  - registrato che il prompt 42 conferma la rimozione dei mount finali madre, ma non chiude la parity esterna o l'autonomia reale;
+  - riallineate le fonti ufficiali del clone al verdetto `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - nessun impatto runtime;
+  - cambia la tracciabilita ufficiale del clone e corregge claim documentali troppo ottimistici.
+- COME VERIFICARE:
+  - leggere `docs/audit/AUDIT_FINALE_POST_PROMPT_42_NEXT_AUTONOMA.md`;
+  - verificare nel report la tabella route-per-route;
+  - confrontare i claim del prompt 42 con il codice reale e con le ricerche `git` e `rg` descritte.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - l'audit distingue tra `assenza runtime madre finale` e `autonomia reale NEXT`;
+  - fuori perimetro restano `Mezzo360 / Targa360` e `Autista360`, ma il perimetro target non risulta ancora chiuso.
+
 ### Voce 2026-03-30 0039
 - DATA: 2026-03-30
 - TITOLO MODIFICA: Audit finale avversariale del report 39 e verifica autonomia reale NEXT
@@ -5039,3 +5169,201 @@ Serve a:
 - NOTE:
   - Questo run non chiude ancora `Acquisti / Preventivi / Listino`: la superficie ufficiale resta nativa NEXT ma non replica ancora l'intero workflow madre.
   - Restano aperte anche le route IA legacy operative, `Cisterna` e `Autisti / Inbox`, che montano ancora runtime legacy come soluzione finale.
+
+### Voce 2026-03-30 65
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Procedura ufficiale madre->clone e chiusura execution dei gap confermati dall'audit finale
+- OBIETTIVO: Formalizzare in modo stabile la procedura `madre -> clone/NEXT` e usarla subito per chiudere nel perimetro whitelistato i gap reali aperti dall'audit finale, senza toccare la madre e senza auto-certificare la NEXT come autonoma.
+- FILE TOCCATI:
+  - `docs/architecture/PROCEDURA_MADRE_TO_CLONE.md`
+  - `docs/audit/BACKLOG_GAP_AUDIT_FINALE_EXECUTION.md`
+  - `src/next/autisti/nextAutistiStorageSync.ts`
+  - `src/next/autisti/nextAutistiHomeEvents.ts`
+  - `src/next/autisti/NextModalGomme.tsx`
+  - `src/next/autisti/NextGommeAutistaModal.tsx`
+  - `src/next/autisti/NextHomeAutistaNative.tsx`
+  - `src/next/autisti/NextLoginAutistaNative.tsx`
+  - `src/next/autisti/NextSetupMezzoNative.tsx`
+  - `src/next/autisti/NextAutistiSegnalazioniPage.tsx`
+  - `src/next/autistiInbox/nextAutistiAdminBridges.ts`
+  - `src/next/autistiInbox/NextAutistiAdminNative.tsx`
+  - `src/next/autistiInbox/NextAutistiInboxHomeNative.tsx`
+  - `src/next/autistiInbox/NextCambioMezzoInboxNative.tsx`
+  - `src/next/autistiInbox/NextAutistiControlliAllNative.tsx`
+  - `src/next/autistiInbox/NextAutistiGommeAllNative.tsx`
+  - `src/next/autistiInbox/NextAutistiLogAccessiAllNative.tsx`
+  - `src/next/autistiInbox/NextAutistiSegnalazioniAllNative.tsx`
+  - `src/next/autistiInbox/NextRichiestaAttrezzatureAllNative.tsx`
+  - `src/next/NextAutistiCambioMezzoPage.tsx`
+  - `src/next/NextAutistiGatePage.tsx`
+  - `src/next/domain/nextAutistiDomain.ts`
+  - `src/next/domain/nextCentroControlloDomain.ts`
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/domain/nextProcurementDomain.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1012_prompt42_procedura-madre-clone-chiusura-gap-audit.md`
+  - `docs/continuity-reports/2026-03-30_1012_continuity_prompt42_procedura-madre-clone-chiusura-gap-audit.md`
+- COSA E STATO CAMBIATO:
+  - La procedura ufficiale del repository chiarisce in modo definitivo: madre intoccabile, NEXT unico perimetro sicuro, regola `leggere la madre ma non montarla`, chiusura modulo meccanica, separazione `execution != audit` e blocco reale `SERVE FILE EXTRA`.
+  - Il backlog reale dell'audit finale viene tracciato e chiuso in `docs/audit/BACKLOG_GAP_AUDIT_FINALE_EXECUTION.md`.
+  - `Autisti / Inbox` sostituisce le ultime dipendenze runtime critiche su helper condivisi e bridge legacy:
+    - `storageSync` e `homeEvents` diventano adapter NEXT locali;
+    - la gestione gomme usa modali NEXT locali;
+    - il bridge admin non dipende piu da Firebase/Storage reali e resta clone-only locale;
+    - i lavori creati dall'admin passano da `appendNextLavoriCloneRecords()` e non scrivono shape raw legacy.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna route ufficiale del perimetro target monta piu runtime madre come soluzione finale.
+  - Lettura: il perimetro target usa route/page NEXT vere con layer NEXT puliti o adapter clone-safe locali.
+  - Blocco scritture: invariato sul business reale; le uniche mutazioni ammesse restano overlay clone-only locali.
+- COME VERIFICARE:
+  - Aprire `docs/architecture/PROCEDURA_MADRE_TO_CLONE.md` e verificare le regole fisse di chiusura modulo.
+  - Aprire `docs/audit/BACKLOG_GAP_AUDIT_FINALE_EXECUTION.md` e verificare che i gap confermati dall'audit finale risultino chiusi senza blocchi residui.
+  - Verificare in `src/App.tsx` che le route ufficiali del perimetro target montino componenti NEXT.
+  - Eseguire:
+    - `npx eslint src/next/autisti/nextAutistiStorageSync.ts src/next/autisti/nextAutistiHomeEvents.ts src/next/autisti/NextModalGomme.tsx src/next/autisti/NextGommeAutistaModal.tsx src/next/autisti/NextHomeAutistaNative.tsx src/next/autisti/NextLoginAutistaNative.tsx src/next/autisti/NextSetupMezzoNative.tsx src/next/autisti/NextAutistiSegnalazioniPage.tsx src/next/autistiInbox/nextAutistiAdminBridges.ts src/next/autistiInbox/NextAutistiAdminNative.tsx src/next/autistiInbox/NextAutistiInboxHomeNative.tsx src/next/autistiInbox/NextCambioMezzoInboxNative.tsx src/next/autistiInbox/NextAutistiControlliAllNative.tsx src/next/autistiInbox/NextAutistiGommeAllNative.tsx src/next/autistiInbox/NextAutistiLogAccessiAllNative.tsx src/next/autistiInbox/NextAutistiSegnalazioniAllNative.tsx src/next/autistiInbox/NextRichiestaAttrezzatureAllNative.tsx src/next/NextAutistiCambioMezzoPage.tsx src/next/NextAutistiGatePage.tsx src/next/domain/nextAutistiDomain.ts src/next/domain/nextCentroControlloDomain.ts src/next/autisti/nextAutistiCloneRuntime.ts`
+    - `npm run build`
+    - `rg -n "\.\./pages/|\.\./autisti/|\.\./autistiInbox/|NextMotherPage" src/next src/App.tsx`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI, come metodo e come layer NEXT pulito; NON come autocertificazione dell'autonomia finale.
+- NOTE:
+  - `NextCentroControlloClonePage.tsx` resta nel repo ma non e montata dalla route ufficiale `/next/centro-controllo`.
+  - Dopo questo run non restano blocchi tecnici reali dentro la whitelist del prompt 42; il passo successivo corretto e un audit separato.
+
+### Voce 2026-03-30 66
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Audit finale conclusivo dell'intero perimetro target NEXT
+- OBIETTIVO: verificare nel codice reale, senza patch runtime, se la NEXT sia davvero lavorabile in autonomia sul perimetro target dopo i prompt 42-46.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_FINALE_CONCLUSIVO_NEXT_AUTONOMA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1506_prompt47_audit-finale-conclusivo-next-autonoma.md`
+  - `docs/continuity-reports/2026-03-30_1506_continuity_prompt47_audit-finale-conclusivo-next-autonoma.md`
+- COSA E STATO CAMBIATO:
+  - creato l'audit finale conclusivo con verifica modulo per modulo di runtime finale, parity esterna, layer dati e madre intoccata;
+  - riallineati i documenti ufficiali del clone al verdetto reale emerso dal codice;
+  - fissato nel repo che non restano moduli `DA VERIFICARE`, ma restano ancora `APERTO`:
+    - `IA API Key`
+    - `Autisti`
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna patch runtime; l'audit verifica solo la coerenza reale delle route ufficiali NEXT.
+  - Lettura: confermato che il perimetro target usa runtime finali NEXT e non monta piu la madre.
+  - Blocco scritture: resta corretto sul business reale; il gap residuo `IA API Key` riguarda proprio il mancato recupero equivalente del writer nel clone, mentre `Autisti` blocca ancora il save `Gomme` in home.
+- COME VERIFICARE:
+  - aprire `docs/audit/AUDIT_FINALE_CONCLUSIVO_NEXT_AUTONOMA.md`;
+  - verificare in `src/App.tsx` che le route ufficiali del perimetro target montino componenti NEXT;
+  - verificare in `src/next/NextIAApiKeyPage.tsx` che il salvataggio sia ancora bloccato con il messaggio clone-only;
+  - verificare in `src/next/autisti/NextAutistiCloneLayout.tsx` che il save del modale `Gomme` sia ancora intercettato e bloccato.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO, questo e un audit e non una patch esecutiva.
+- NOTE:
+  - `git status --short -- src/pages src/autisti src/autistiInbox` e `git diff --name-only -- src/pages src/autisti src/autistiInbox` risultano vuoti nel worktree corrente.
+  - La storia completa `madre mai toccata` non e dimostrabile da questo audit; il fatto verificato e solo `madre non modificata nel worktree corrente`.
+
+### Voce 2026-03-30 67
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Chiusura execution dei 3 gap finali `IA API Key`, `Autisti`, `Gestione Operativa`
+- OBIETTIVO: chiudere solo i 3 gap reali finali del perimetro target NEXT senza toccare la madre e senza promuovere la NEXT autonoma in auto-certificazione.
+- FILE TOCCATI:
+  - `src/next/NextIAApiKeyPage.tsx`
+  - `src/next/domain/nextIaConfigDomain.ts`
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/autisti/nextAutistiCloneRuntime.ts`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `docs/audit/BACKLOG_3_GAP_FINALI_EXECUTION.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1538_prompt48_chiusura-3-gap-finali-next.md`
+  - `docs/continuity-reports/2026-03-30_1538_continuity_prompt48_chiusura-3-gap-finali-next.md`
+- COSA E STATO CAMBIATO:
+  - `IA API Key` usa ora un writer NEXT merge-safe sullo stesso documento Firestore della madre e non mostra piu il blocco `salvataggio solo nella madre`;
+  - `Autisti` non blocca piu il `SALVA` del modale `Gomme` nella home clone-safe e il banner area viene riallineato ai salvataggi locali effettivi;
+  - `Gestione Operativa` torna a essere un hub madre-like che apre inventario, materiali consegnati, manutenzioni, centro controllo e attrezzature come pagine dedicate, senza viste incorporate.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: chiusi i 3 mismatch finali reali del perimetro target NEXT.
+  - Lettura: invariata sui layer NEXT gia esistenti.
+  - Blocco scritture: nessuna riapertura di scritture business reali di dominio; `IA API Key` salva la configurazione IA come nella madre, mentre `Autisti` rimuove solo un blocco artificiale sul clone locale.
+- COME VERIFICARE:
+  - aprire `/next/ia/apikey` e verificare che il save non mostri piu il messaggio `solo nella madre`;
+  - aprire `/next/autisti/home`, aprire il modale `Gomme` e verificare che il pulsante `SALVA` non sia piu intercettato;
+  - aprire `/next/gestione-operativa` e verificare che la pagina non contenga piu viste operative incorporate ma solo preview + pulsanti verso le route figlie.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI, come allineamento di parity clone e metodo madre->clone; NO come verdetto finale di autonomia, che resta da audit separato.
+- NOTE:
+  - il backlog persistente di questo run e `docs/audit/BACKLOG_3_GAP_FINALI_EXECUTION.md`;
+  - dopo il prompt 48 non restano blocchi tecnici residui nei 3 moduli target dentro la whitelist di questo task.
+
+### Voce 2026-03-30 68
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Riallineamento `Manutenzioni` e formato date visibile in tutta la NEXT
+- OBIETTIVO: correggere il mismatch reale di `Manutenzioni` rispetto alla madre e uniformare tutte le date visibili della NEXT al formato `gg mm aaaa`.
+- FILE TOCCATI:
+  - `src/next/nextDateFormat.ts`
+  - `src/next/domain/nextManutenzioniDomain.ts`
+  - `src/next/domain/nextOperativitaGlobaleDomain.ts`
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextAnalisiEconomicaPage.tsx`
+  - `src/next/domain/nextCentroControlloDomain.ts`
+  - `src/next/domain/nextRifornimentiDomain.ts`
+  - `src/next/autisti/NextAutistiRifornimentoPage.tsx`
+  - `src/next/autistiInbox/NextAutistiControlliAllNative.tsx`
+  - `src/next/autistiInbox/NextAutistiAdminNative.tsx`
+  - `src/next/autistiInbox/NextAutistiGommeAllNative.tsx`
+  - `src/next/autistiInbox/components/NextRifornimentiCard.tsx`
+  - `src/next/autistiInbox/NextAutistiInboxHomeNative.tsx`
+  - `src/next/autistiInbox/components/NextSessioniAttiveCard.tsx`
+  - `src/next/autistiInbox/NextAutistiLogAccessiAllNative.tsx`
+  - `src/next/components/NextHomeAutistiEventoModal.tsx`
+  - `src/next/autistiInbox/NextAutistiSegnalazioniAllNative.tsx`
+  - `src/next/autistiInbox/NextRichiestaAttrezzatureAllNative.tsx`
+  - `src/next/autistiInbox/NextCambioMezzoInboxNative.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/NextMezziDossierPage.tsx`
+  - `src/next/nextRifornimentiConsumiDomain.ts`
+  - `src/next/NextRifornimentiEconomiaSection.tsx`
+  - `src/next/NextIACoperturaLibrettiPage.tsx`
+  - `src/next/NextCentroControlloParityPage.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiEconomicAnalysisFacade.ts`
+  - `src/next/internal-ai/internalAiLibrettoPreviewFacade.ts`
+  - `src/next/internal-ai/internalAiProfessionalVehicleReport.ts`
+  - `src/next/internal-ai/internalAiReportPdf.ts`
+  - `src/next/internal-ai/internalAiReportPeriod.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `src/next/internal-ai/internalAiVehicleReportFacade.ts`
+  - `src/next/internal-ai/InternalAiUniversalRequestsPanel.tsx`
+  - `src/next/internal-ai/internalAiChatOrchestrator.ts`
+  - `src/next/domain/nextCisternaDomain.ts`
+  - `src/next/NextMaterialiConsegnatiPage.tsx`
+  - `src/next/NextLavoriDaEseguirePage.tsx`
+  - `src/next/NextDettaglioLavoroPage.tsx`
+  - `src/next/NextMezziPage.tsx`
+  - `src/next/NextCisternaSchedeTestPage.tsx`
+  - `docs/audit/BACKLOG_MANUTENZIONI_DATEFORMAT_EXECUTION.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_1647_prompt49_manutenzioni-dateformat-next.md`
+  - `docs/continuity-reports/2026-03-30_1647_continuity_prompt49_manutenzioni-dateformat-next.md`
+- COSA E STATO CAMBIATO:
+  - introdotto un formatter/parser NEXT dedicato per le date visibili e i parser legacy `gg mm aaaa`;
+  - `Manutenzioni` legge ora lo storico dal domain dedicato con ordinamento coerente e senza scarto implicito delle righe senza targa;
+  - uniformate le date visibili di tutta la NEXT a `gg mm aaaa` e i timestamp visibili a `gg mm aaaa HH:mm`;
+  - lasciati `type="date"` solo i picker nativi nascosti (`aria-hidden="true"`), senza formato ISO visibile in UI.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la NEXT mostra date coerenti in tutte le superfici visibili toccate dal run.
+  - Lettura: `Manutenzioni` usa lo storico manutenzioni dedicato e non una snapshot operativa indiretta.
+  - Blocco scritture: invariato; nessuna scrittura business reale riaperta.
+- COME VERIFICARE:
+  - `& .\\node_modules\\.bin\\eslint.cmd <lista file prompt 49>` -> `OK` con soli warning preesistenti in `src/next/NextMezziDossierPage.tsx`
+  - `npm run build` -> `OK`
+  - `rg -n --glob 'src/next/**' '01/03/2026|31/03/2026|gg/mm/aaaa|dd/mm|DD/MM|YYYY-MM-DD|yyyy-mm-dd|dd-mm-yyyy|gg-mm-aaaa'` -> nessun match
+  - verificare che i `type="date"` residui in `src/next/**` abbiano `aria-hidden="true"`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI, come normalizzazione date e riallineamento di parity clone. NO come prova finale di autonomia NEXT.
+- NOTE:
+  - il confronto live del documento remoto `storage/@manutenzioni` non e eseguibile da CLI nel contesto corrente per `permission-denied`;
+  - la chiusura del prompt 49 resta quindi un'execution verificata sul codice NEXT e non un audit live del dataset remoto.

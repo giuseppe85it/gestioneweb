@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
 import "../../autisti/SetupMezzo.css";
-import { getItemSync, setItemSync } from "../../utils/storageSync";
-import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "../../autisti/autistiStorage";
+import { getItemSync, setItemSync } from "./nextAutistiStorageSync";
+import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./nextAutistiSessionStorage";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";

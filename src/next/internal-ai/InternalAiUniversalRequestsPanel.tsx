@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Link } from "react-router-dom";
+import { formatDateTimeUI } from "../nextDateFormat";
 import { readInternalAiUniversalConformanceSummary } from "./internalAiUniversalConformance";
 import InternalAiUniversalHandoffBanner from "./InternalAiUniversalHandoffBanner";
 import { useInternalAiUniversalHandoffConsumer } from "./internalAiUniversalHandoffConsumer";
@@ -205,7 +206,7 @@ export default function InternalAiUniversalRequestsPanel() {
                 <p className="internal-ai-card__meta">
                   Ultimo consumo: {handoff.ultimoModuloConsumatore ?? "n/d"} | Path:{" "}
                   {handoff.ultimoPathConsumatore ?? "n/d"} | Aggiornato:{" "}
-                  {handoff.ultimoAggiornamento ? new Date(handoff.ultimoAggiornamento).toLocaleString("it-IT") : "n/d"}
+                  {handoff.ultimoAggiornamento ? formatDateTimeUI(handoff.ultimoAggiornamento) : "n/d"}
                 </p>
                 <div className="internal-ai-list">
                   {Object.entries(handoff.prefillCanonico)
@@ -233,7 +234,7 @@ export default function InternalAiUniversalRequestsPanel() {
                       <div key={`${handoff.handoffId}:history:${index}`}>
                         <strong>{entry.status}</strong>
                         <p className="internal-ai-card__meta">
-                          {new Date(entry.at).toLocaleString("it-IT")} | {entry.moduleId ?? "n/d"} |{" "}
+                          {formatDateTimeUI(entry.at)} | {entry.moduleId ?? "n/d"} |{" "}
                           {entry.routePath ?? "n/d"}
                         </p>
                         {entry.note ? (

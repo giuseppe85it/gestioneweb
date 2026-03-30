@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { buildNextDossierPath, NEXT_HOME_PATH } from "./nextStructuralPaths";
 import "../pages/Mezzi.css";
 import "./next-shell.css";
-import { formatDateInput, formatDateUI } from "../utils/dateFormat";
+import { formatDateUI, formatEditableDateUI } from "./nextDateFormat";
 import {
   normalizeNextMezzoCategoria,
   readNextAnagraficheFlottaSnapshot,
@@ -67,7 +67,7 @@ function formatDateForDisplay(date: Date | null): string {
 }
 
 function formatDateForInput(date: Date | null): string {
-  return formatDateInput(date);
+  return formatEditableDateUI(date);
 }
 
 function normalizeTarga(value: string | null | undefined): string {
@@ -220,7 +220,7 @@ const Mezzi: React.FC = () => {
         const snapshot = await readNextAnagraficheFlottaSnapshot();
         setMezzi(snapshot.items);
         setColleghi(snapshot.colleghi);
-      } catch (err) {
+      } catch {
         setError("Impossibile caricare i dati.");
         setMezzi([]);
         setColleghi([]);
@@ -290,13 +290,13 @@ const Mezzi: React.FC = () => {
     setMassaComplessiva(m.massaComplessiva || "");
     setProprietario(m.proprietario || "");
     setAssicurazione(m.assicurazione || "");
-    setDataImmatricolazione(m.dataImmatricolazione || "");
-    setDataScadenzaRevisione(m.dataScadenzaRevisione || "");
-    setDataUltimoCollaudo(m.dataUltimoCollaudo || "");
+    setDataImmatricolazione(formatEditableDateUI(m.dataImmatricolazione || ""));
+    setDataScadenzaRevisione(formatEditableDateUI(m.dataScadenzaRevisione || ""));
+    setDataUltimoCollaudo(formatEditableDateUI(m.dataUltimoCollaudo || ""));
     setLastAutoProssimoCollaudo("");
     setManutenzioneProgrammata(!!m.manutenzioneProgrammata);
-    setManutenzioneDataInizio(m.manutenzioneDataInizio || "");
-    setManutenzioneDataFine(m.manutenzioneDataFine || "");
+    setManutenzioneDataInizio(formatEditableDateUI(m.manutenzioneDataInizio || ""));
+    setManutenzioneDataFine(formatEditableDateUI(m.manutenzioneDataFine || ""));
     setManutenzioneKmMax(m.manutenzioneKmMax || "");
     setManutenzioneContratto(m.manutenzioneContratto || "");
     setNote(m.note || "");
@@ -676,9 +676,9 @@ const handleChangeAutista = (value: string) => {
       .map(([targaNorm, count]) => ({ targaNorm, count }));
 
     const pianaleRows = pianaleList.map((m) => {
-      const missingFields = ["id", "targa", "marca", "modello", "categoria"].filter(
-        (k) => (m as any)?.[k] == null
-      );
+      const missingFields = (
+        ["id", "targa", "marca", "modello", "categoria"] as const
+      ).filter((key) => m[key] == null);
       return {
         id: m?.id ?? null,
         targa: m?.targa ?? null,
@@ -1146,16 +1146,17 @@ const handleChangeAutista = (value: string) => {
                   <div className="form-group">
                     <label>Data immatricolazione</label>
                     <input
-                      type="date"
+                      type="text"
                       value={dataImmatricolazione}
                       onChange={(e) => setDataImmatricolazione(e.target.value)}
+                      placeholder="gg mm aaaa"
                     />
                   </div>
 
                   <div className="form-group">
                     <label>Data ultimo collaudo</label>
                     <input
-                      type="date"
+                      type="text"
                       value={dataUltimoCollaudo}
                       onChange={(e) => {
                         const newVal = e.target.value;
@@ -1182,17 +1183,19 @@ const handleChangeAutista = (value: string) => {
                           }
                         }
                       }}
+                      placeholder="gg mm aaaa"
                     />
                   </div>
 
                   <div className="form-group">
                     <label>Prossimo collaudo</label>
                     <input
-                      type="date"
+                      type="text"
                       value={dataScadenzaRevisione}
                       onChange={(e) =>
                         setDataScadenzaRevisione(e.target.value)
                       }
+                      placeholder="gg mm aaaa"
                     />
                   </div>
                 </div>
@@ -1221,21 +1224,23 @@ const handleChangeAutista = (value: string) => {
                       <div className="form-group">
                         <label>Data inizio contratto</label>
                         <input
-                          type="date"
+                          type="text"
                           value={manutenzioneDataInizio}
                           onChange={(e) =>
                             setManutenzioneDataInizio(e.target.value)
                           }
+                          placeholder="gg mm aaaa"
                         />
                       </div>
                       <div className="form-group">
                         <label>Data prossima scadenza</label>
                         <input
-                          type="date"
+                          type="text"
                           value={manutenzioneDataFine}
                           onChange={(e) =>
                             setManutenzioneDataFine(e.target.value)
                           }
+                          placeholder="gg mm aaaa"
                         />
                       </div>
                       <div className="form-group">
@@ -1427,14 +1432,12 @@ const handleChangeAutista = (value: string) => {
                                 else if (giorniProg !== null && giorniProg <= 30)
                                   classeProg = "deadline-low";
                               }
-                              const debugMarcaRaw = (m as any)?.marca;
-                              const debugModelloRaw = (m as any)?.modello;
-                              const debugTargaRaw = (m as any)?.targa;
-                              const debugMissing = ["marca", "modello", "targa"].filter(
-                                (field) =>
-                                  !String((m as any)?.[field] ?? "")
-                                    .trim()
-                              );
+                              const debugMarcaRaw = m.marca;
+                              const debugModelloRaw = m.modello;
+                              const debugTargaRaw = m.targa;
+                              const debugMissing = (
+                                ["marca", "modello", "targa"] as const
+                              ).filter((field) => !String(m[field] ?? "").trim());
                               if (debugEnvEnabled && debugMissing.length > 0) {
                                 const logKey = `${String(m?.id ?? "no-id")}::${debugMissing.join(",")}`;
                                 if (!missingCardLogRef.current.has(logKey)) {

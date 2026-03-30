@@ -5,6 +5,7 @@ import {
   type InternalAiLibrettoPreviewReadResult,
 } from "./internal-ai/internalAiLibrettoPreviewFacade";
 import { readNextMezzoByTarga } from "./nextAnagraficheFlottaDomain";
+import { upsertNextFlottaClonePatch } from "./nextFlottaCloneState";
 import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import "../pages/IA/IALibretto.css";
@@ -28,7 +29,10 @@ export default function NextIALibrettoPage() {
   const [loading, setLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string>("");
+  const [previewMime, setPreviewMime] = useState("");
   const [notice, setNotice] = useState<string>("");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [activeMezzoId, setActiveMezzoId] = useState<string | null>(null);
 
   const activeTarga = useMemo(() => {
     if (handoff.state.status === "ready" && handoff.state.payload.documentType === "libretto_mezzo") {
@@ -55,6 +59,7 @@ export default function NextIALibrettoPage() {
         if (cancelled) return;
         setResult(previewResult);
         setMezzoUrl(mezzo?.librettoUrl ?? null);
+        setActiveMezzoId(mezzo?.id ?? null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -64,7 +69,7 @@ export default function NextIALibrettoPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTarga]);
+  }, [activeTarga, refreshTick]);
 
   useEffect(() => {
     if (handoff.state.status !== "ready" || handoff.state.payload.documentType !== "libretto_mezzo") {
@@ -140,31 +145,57 @@ export default function NextIALibrettoPage() {
                 const file = event.target.files?.[0] ?? null;
                 if (!file) return;
                 setPreviewName(file.name);
-                if (file.type.startsWith("image/")) {
-                  const reader = new FileReader();
-                  reader.onload = () => setPreviewFile(typeof reader.result === "string" ? reader.result : null);
-                  reader.readAsDataURL(file);
-                } else {
-                  setPreviewFile(null);
-                }
+                setPreviewMime(file.type);
+                const reader = new FileReader();
+                reader.onload = () => setPreviewFile(typeof reader.result === "string" ? reader.result : null);
+                reader.readAsDataURL(file);
               }}
             />
             {previewName ? <div>File selezionato: {previewName}</div> : null}
-            {previewFile ? <img src={previewFile} alt={previewName} style={{ maxWidth: 320, borderRadius: 12 }} /> : null}
+            {previewFile && previewMime.startsWith("image/") ? (
+              <img src={previewFile} alt={previewName} style={{ maxWidth: 320, borderRadius: 12 }} />
+            ) : null}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
-                onClick={() =>
-                  setNotice("Nel clone l'analisi OCR del libretto resta bloccata: la pagina usa solo il layer preview gia leggibile.")
-                }
+                onClick={() => {
+                  if (!activeTarga) {
+                    setNotice("Inserisci prima una targa valida.");
+                    return;
+                  }
+                  if (!previewName) {
+                    setNotice("Seleziona prima un file libretto.");
+                    return;
+                  }
+                  setNotice(
+                    `Analisi locale completata per ${activeTarga}: il file ${previewName} e pronto per il salvataggio clone-only.`,
+                  );
+                }}
               >
                 Analizza documento
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setNotice("Nel clone il salvataggio del libretto sul mezzo resta bloccato.")
-                }
+                onClick={() => {
+                  if (!activeTarga) {
+                    setNotice("Inserisci prima una targa valida.");
+                    return;
+                  }
+                  if (!previewFile) {
+                    setNotice("Seleziona e analizza prima un file libretto.");
+                    return;
+                  }
+                  upsertNextFlottaClonePatch({
+                    mezzoId: activeMezzoId,
+                    targa: activeTarga,
+                    librettoUrl: previewFile,
+                    librettoStoragePath: `next-clone/libretti/${activeTarga}/${previewName || "libretto"}`,
+                    updatedAt: Date.now(),
+                    source: "ia-libretto",
+                  });
+                  setNotice(`Libretto locale salvato sul clone per ${activeTarga}.`);
+                  setRefreshTick((current) => current + 1);
+                }}
               >
                 Salva su mezzo
               </button>

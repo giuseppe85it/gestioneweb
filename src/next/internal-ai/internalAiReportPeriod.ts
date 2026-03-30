@@ -2,6 +2,7 @@ import type {
   InternalAiReportPeriodContext,
   InternalAiReportPeriodInput,
 } from "./internalAiTypes";
+import { formatEditableDateUI, formatDateUI, toNextDateValue } from "../nextDateFormat";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -22,14 +23,11 @@ function endOfDay(value: Date): Date {
 }
 
 function formatDateInput(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatEditableDateUI(value);
 }
 
 function formatDateLabel(value: Date): string {
-  return value.toLocaleDateString("it-IT");
+  return formatDateUI(value);
 }
 
 function parseDateInput(value: string | null | undefined): Date | null {
@@ -38,19 +36,7 @@ function parseDateInput(value: string | null | undefined): Date | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) {
-    const parsed = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  const dmyMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
-  if (!dmyMatch) return null;
-
-  const yearRaw = Number(dmyMatch[3]);
-  const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-  const parsed = new Date(year, Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return toNextDateValue(trimmed);
 }
 
 export function createDefaultInternalAiReportPeriodInput(): InternalAiReportPeriodInput {

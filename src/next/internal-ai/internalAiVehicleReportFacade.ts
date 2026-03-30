@@ -21,6 +21,7 @@ import {
   type D10SessionItem,
   type D10Snapshot,
 } from "../domain/nextCentroControlloDomain";
+import { formatDateUI } from "../nextDateFormat";
 import {
   describeInternalAiPeriodApplication,
   filterItemsByInternalAiReportPeriod,
@@ -120,11 +121,7 @@ function parseDateFlexible(value: string | null | undefined): number | null {
 
 function formatDateFromTimestamp(value: number | null): string {
   if (value == null) return "non disponibile";
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(value));
+  return formatDateUI(value);
 }
 
 function mapSectionStateToStatus(args: {

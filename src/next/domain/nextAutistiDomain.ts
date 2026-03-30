@@ -16,6 +16,7 @@ import {
   readNextUnifiedCollection,
   readNextUnifiedStorageDocument,
 } from "./nextUnifiedReadRegistryDomain";
+import { readNextAutistiStorageOverlay } from "../autisti/nextAutistiStorageSync";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const EVENTI_KEY = "@storico_eventi_operativi";
@@ -1195,11 +1196,26 @@ export async function readNextAutistiReadOnlySnapshot(
   const cloneSegnalazioni = getNextAutistiCloneSegnalazioni();
   const cloneControlli = getNextAutistiCloneControlli();
   const cloneRichieste = getNextAutistiCloneRichiesteAttrezzature();
+  const sessioniRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(SESSIONI_KEY))
+    ? (readNextAutistiStorageOverlay<RawRecord[]>(SESSIONI_KEY) as RawRecord[])
+    : sessioniResult.records;
+  const eventiRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(EVENTI_KEY))
+    ? (readNextAutistiStorageOverlay<RawRecord[]>(EVENTI_KEY) as RawRecord[])
+    : eventiResult.records;
+  const segnalazioniRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(SEGNALAZIONI_KEY))
+    ? (readNextAutistiStorageOverlay<RawRecord[]>(SEGNALAZIONI_KEY) as RawRecord[])
+    : segnalazioniResult.records;
+  const controlliRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(CONTROLLI_KEY))
+    ? (readNextAutistiStorageOverlay<RawRecord[]>(CONTROLLI_KEY) as RawRecord[])
+    : controlliResult.records;
+  const richiesteRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(RICHIESTE_KEY))
+    ? (readNextAutistiStorageOverlay<RawRecord[]>(RICHIESTE_KEY) as RawRecord[])
+    : richiesteResult.records;
 
-  const sessionAssignments = sessioniResult.records.map((record, index) =>
+  const sessionAssignments = sessioniRecords.map((record, index) =>
     normalizeSessionAssignment(record, index),
   );
-  const eventAssignments = eventiResult.records
+  const eventAssignments = eventiRecords
     .map((record, index) =>
       normalizeEventAssignment(record, index, "madre_storage", EVENTI_KEY),
     )
@@ -1220,18 +1236,18 @@ export async function readNextAutistiReadOnlySnapshot(
   });
 
   const motherSignals = [
-    ...segnalazioniResult.records.map((record, index) =>
+    ...segnalazioniRecords.map((record, index) =>
       normalizeSegnalazioneSignal(record, index),
     ),
-    ...controlliResult.records.map((record, index) =>
+    ...controlliRecords.map((record, index) =>
       normalizeControlloSignal(record, index),
     ),
-    ...richiesteResult.records.map((record, index) =>
+    ...richiesteRecords.map((record, index) =>
       normalizeRichiestaSignal(record, index),
     ),
   ];
   const segnalazioniRows = dedupeSectionItems([
-    ...segnalazioniResult.records.map((record, index) =>
+    ...segnalazioniRecords.map((record, index) =>
       normalizeSegnalazioneSectionItem(record, index),
     ),
     ...cloneSegnalazioni.map((record, index) =>
@@ -1239,7 +1255,7 @@ export async function readNextAutistiReadOnlySnapshot(
     ),
   ]);
   const controlliRows = dedupeSectionItems([
-    ...controlliResult.records.map((record, index) =>
+    ...controlliRecords.map((record, index) =>
       normalizeControlloSectionItem(record, index),
     ),
     ...cloneControlli.map((record, index) =>
@@ -1247,7 +1263,7 @@ export async function readNextAutistiReadOnlySnapshot(
     ),
   ]);
   const richiesteRows = dedupeSectionItems([
-    ...richiesteResult.records.map((record, index) =>
+    ...richiesteRecords.map((record, index) =>
       normalizeRichiestaSectionItem(record, index),
     ),
     ...cloneRichieste.map((record, index) =>

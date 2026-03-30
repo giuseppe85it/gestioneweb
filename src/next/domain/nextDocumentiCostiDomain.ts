@@ -1,6 +1,7 @@
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import { readNextInternalAiCloneDocumenti } from "../internal-ai/nextInternalAiCloneState";
 import { readNextProcurementSnapshot } from "./nextProcurementDomain";
 
 const STORAGE_COLLECTION = "storage";
@@ -1331,8 +1332,42 @@ type NextDocumentiCostiSources = {
     items: unknown[];
   };
   documentSnapshots: Array<Awaited<ReturnType<typeof getDocs>> | null>;
+  cloneDocuments: ReturnType<typeof readNextInternalAiCloneDocumenti>;
   readFailures: string[];
 };
+
+function mapCloneDocumentoToRaw(
+  record: ReturnType<typeof readNextInternalAiCloneDocumenti>[number],
+): RawRecord {
+  return {
+    id: record.id,
+    categoriaArchivio: record.categoriaArchivio,
+    tipoDocumento: record.tipoDocumento,
+    targa: record.targa ?? record.mezzoTarga,
+    mezzoTarga: record.mezzoTarga ?? record.targa,
+    fornitore: record.fornitore,
+    numeroDocumento: record.numeroDocumento,
+    nomeFile: record.numeroDocumento,
+    dataDocumento: record.dataDocumento,
+    totaleDocumento: record.totaleDocumento,
+    valuta: record.valuta,
+    testo: record.testo,
+    fileUrl: record.fileUrl,
+    daVerificare: record.needsReview,
+    motivoVerifica: record.needsReview ? "documento_clone_locale" : null,
+    righe: record.righe.map((row) => ({
+      id: row.id,
+      descrizione: row.descrizione,
+      quantita: row.quantita,
+      unita: row.unita,
+      prezzoUnitario: row.prezzoUnitario,
+      importo: row.importo,
+    })),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    source: record.source,
+  };
+}
 
 async function readDocumentiCostiSources(): Promise<NextDocumentiCostiSources> {
   const [costiResult, ...documentResults] = await Promise.allSettled([
@@ -1359,6 +1394,7 @@ async function readDocumentiCostiSources(): Promise<NextDocumentiCostiSources> {
   return {
     costiDataset,
     documentSnapshots,
+    cloneDocuments: readNextInternalAiCloneDocumenti(),
     readFailures,
   };
 }
@@ -1366,11 +1402,12 @@ async function readDocumentiCostiSources(): Promise<NextDocumentiCostiSources> {
 function buildAllDocumentiCostiItems(args: {
   costiDataset: NextDocumentiCostiSources["costiDataset"];
   documentSnapshots: NextDocumentiCostiSources["documentSnapshots"];
+  cloneDocuments: NextDocumentiCostiSources["cloneDocuments"];
 }): {
   items: NextDocumentiCostiReadOnlyItem[];
   materialSupportDocuments: NextDocumentiMagazzinoSupportDocument[];
 } {
-  const { costiDataset, documentSnapshots } = args;
+  const { costiDataset, documentSnapshots, cloneDocuments } = args;
 
   const costiItems = costiDataset.items
     .map((entry, index) => {
@@ -1393,14 +1430,30 @@ function buildAllDocumentiCostiItems(args: {
       .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
   });
 
+  const cloneDocumentItems = cloneDocuments
+    .map((record) =>
+      mapDocumentoRecordAny({
+        raw: mapCloneDocumentoToRaw(record),
+        collectionKey: record.collectionKey,
+        sourceDocId: record.id,
+      }),
+    )
+    .filter((entry): entry is NextDocumentiCostiReadOnlyItem => Boolean(entry));
+
   const materialSupportDocuments = (documentSnapshots[1]?.docs ?? [])
     .map((docSnapshot) =>
       mapMaterialSupportDocument((docSnapshot.data() ?? {}) as RawRecord, docSnapshot.id)
     )
-    .filter((entry): entry is NextDocumentiMagazzinoSupportDocument => Boolean(entry));
+    .filter((entry): entry is NextDocumentiMagazzinoSupportDocument => Boolean(entry))
+    .concat(
+      cloneDocuments
+        .filter((record) => record.collectionKey === "@documenti_magazzino")
+        .map((record) => mapMaterialSupportDocument(mapCloneDocumentoToRaw(record), record.id))
+        .filter((entry): entry is NextDocumentiMagazzinoSupportDocument => Boolean(entry)),
+    );
 
   return {
-    items: sortItems(dedupItems([...costiItems, ...documentItems])),
+    items: sortItems(dedupItems([...costiItems, ...documentItems, ...cloneDocumentItems])),
     materialSupportDocuments,
   };
 }
@@ -1601,7 +1654,7 @@ function buildProcurementReadOnlyLimitations(args: {
 }): string[] {
   const { ordiniShape, preventiviShape, approvazioniShape, listinoShape, counts, readFailures } = args;
   return [
-    "Nel perimetro NEXT il procurement e davvero utile solo in sola lettura: ordini, arrivi e dettaglio ordine sono consultabili, ma nessuna scrittura business viene riattivata.",
+    "Nel perimetro NEXT il procurement resta clone-safe: ordini, arrivi e dettaglio ordine sono consultabili e aggiornabili solo localmente, senza scritture business sulla madre.",
     counts.preventiviTotali > 0
       ? `I preventivi letti sono ${counts.preventiviTotali}, ma restano supporto prudente: il clone non riapre upload, parsing IA, salvataggi o workflow approvativi reali.`
       : "Il dataset `@preventivi` non restituisce oggi preventivi leggibili nel clone-safe letto da questo task.",
@@ -1824,33 +1877,33 @@ export async function readNextProcurementReadOnlySnapshot(): Promise<NextProcure
       reason: detailReason,
     },
     ordineMateriali: {
-      state: "bloccata",
+      state: "navigabile",
       reason: procurement.navigability.ordineMateriali.reason,
     },
     preventivi: {
       state: counts.preventiviTotali > 0 ? "preview" : "bloccata",
       reason:
         counts.preventiviTotali > 0
-          ? "I preventivi sono leggibili come contesto read-only, ma il workflow legacy resta fuori perimetro."
+          ? "I preventivi sono leggibili come contesto read-only e convivono con allegati locali al clone."
           : procurement.navigability.preventivi.reason,
     },
     listino: {
       state: counts.listinoVoci > 0 ? "preview" : "bloccata",
       reason:
         counts.listinoVoci > 0
-          ? "Il listino e leggibile come supporto prezzi, ma edit e consolidamento restano bloccati nel clone."
+          ? "Il listino e leggibile come supporto prezzi, mentre edit e consolidamento restano fuori dalla madre e solo di contesto."
           : procurement.navigability.listino.reason,
     },
     approvazioniCapoCosti: {
       state: counts.approvazioniTotali > 0 ? "preview" : "bloccata",
       reason:
         counts.approvazioniTotali > 0
-          ? "Capo Costi mostra stati e documenti in sola lettura, ma non esegue approvazioni o rifiuti reali."
+          ? "Capo Costi mostra stati e documenti in sola lettura, senza eseguire approvazioni reali sulla madre."
           : "Capo Costi nel clone resta una vista read-only: senza stati approvativi leggibili non va presentato come workflow attivo.",
     },
     pdfTimbrato: {
       state: "bloccata",
-      reason: "PDF timbrati, `stamp_pdf` e conferme finali restano bloccati nel clone read-only.",
+      reason: "PDF timbrati e conferme finali restano fuori dalla madre; il clone genera solo PDF locali.",
     },
   } satisfies NextProcurementReadOnlySnapshot["surfaces"];
 
@@ -1881,7 +1934,6 @@ export async function readNextProcurementReadOnlySnapshot(): Promise<NextProcure
       readFailures,
     }),
     actionHint:
-      surfaces.ordineMateriali.state === "bloccata" ||
       surfaces.preventivi.state === "preview" ||
       surfaces.approvazioniCapoCosti.state === "preview"
         ? "Usare D06 per controllo e contesto: nel clone conviene aprire ordini o arrivi per leggere lo stato reale, mentre preventivi, approvazioni e PDF timbrati vanno trattati come preview o bloccati."
@@ -1890,10 +1942,11 @@ export async function readNextProcurementReadOnlySnapshot(): Promise<NextProcure
 }
 
 export async function readNextDocumentiCostiFleetSnapshot(): Promise<NextDocumentiCostiFleetSnapshot> {
-  const { costiDataset, documentSnapshots, readFailures } = await readDocumentiCostiSources();
+  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } = await readDocumentiCostiSources();
   const { items, materialSupportDocuments } = buildAllDocumentiCostiItems({
     costiDataset,
     documentSnapshots,
+    cloneDocuments,
   });
   const groups = {
     preventivi: items.filter((item) => item.category === "preventivo"),
@@ -1955,10 +2008,11 @@ export async function readNextMezzoDocumentiCostiSnapshot(
   targa: string
 ): Promise<NextMezzoDocumentiCostiSnapshot> {
   const mezzoTarga = normalizeTarga(targa);
-  const { costiDataset, documentSnapshots, readFailures } = await readDocumentiCostiSources();
+  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } = await readDocumentiCostiSources();
   const { items: fleetItems, materialSupportDocuments } = buildAllDocumentiCostiItems({
     costiDataset,
     documentSnapshots,
+    cloneDocuments,
   });
   const items = fleetItems.filter((item) => item.mezzoTarga === mezzoTarga);
   const groups = {

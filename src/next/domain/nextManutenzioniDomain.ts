@@ -1,6 +1,7 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import { formatDateUI, toNextDateValue } from "../nextDateFormat";
 
 const STORAGE_COLLECTION = "storage";
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -149,45 +150,12 @@ async function readStorageDataset(key: string): Promise<unknown[]> {
 }
 
 function parseDateFlexible(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const millis = value > 1_000_000_000_000 ? value : value * 1000;
-    const date = new Date(millis);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
-  if (!raw) return null;
-
-  const isoLike = Date.parse(raw);
-  if (!Number.isNaN(isoLike)) return new Date(isoLike);
-
-  const dmyMatch = raw.match(/^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})$/);
-  if (dmyMatch) {
-    const yearRaw = Number(dmyMatch[3]);
-    const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
-    const month = Number(dmyMatch[2]) - 1;
-    const day = Number(dmyMatch[1]);
-    const date = new Date(year, month, day, 12, 0, 0, 0);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  return null;
+  return toNextDateValue(value);
 }
 
 function formatLegacyDateLabel(value: unknown): string {
   const parsed = parseDateFlexible(value);
-  if (!parsed) return "";
-
-  const dd = String(parsed.getDate()).padStart(2, "0");
-  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(parsed.getFullYear());
-  return `${dd} ${mm} ${yyyy}`;
+  return parsed ? formatDateUI(parsed) : "";
 }
 
 function giorniDaOggi(target: Date | null, now: number): number | null {
@@ -289,8 +257,7 @@ function toLegacyDatasetRecord(
   raw: RawRecord,
   index: number,
 ): NextManutenzioniLegacyDatasetRecord | null {
-  const targa = normalizeNextMezzoTarga(raw.targa);
-  if (!targa) return null;
+  const targa = normalizeNextMezzoTarga(raw.targa) || normalizeText(raw.targa).toUpperCase();
 
   const tipo = normalizeLegacyTipo(raw);
   const materiali = sanitizeLegacyMateriali(raw.materiali);

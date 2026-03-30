@@ -1,5 +1,9 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
+import {
+  readNextColleghiCloneRecords,
+  readNextDeletedCollegaIds,
+} from "../nextAnagraficheCloneState";
 
 const STORAGE_COLLECTION = "storage";
 const COLLEGHI_KEY = "@colleghi";
@@ -193,6 +197,41 @@ function sortItems(items: NextCollegaReadOnlyItem[]): NextCollegaReadOnlyItem[] 
   );
 }
 
+function mapCloneCollegaItem(raw: {
+  id: string;
+  nome: string;
+  telefono: string | null;
+  telefonoPrivato: string | null;
+  badge: string | null;
+  codice: string | null;
+  descrizione: string | null;
+  pinSim: string | null;
+  pukSim: string | null;
+  schedeCarburante: { id: string; nomeCarta: string; pinCarta: string }[];
+}): NextCollegaReadOnlyItem {
+  return {
+    id: raw.id,
+    nome: raw.nome,
+    telefono: raw.telefono,
+    telefonoPrivato: raw.telefonoPrivato,
+    badge: raw.badge,
+    codice: raw.codice,
+    descrizione: raw.descrizione,
+    pinSim: raw.pinSim,
+    pukSim: raw.pukSim,
+    schedeCarburante: raw.schedeCarburante.map((entry) => ({
+      id: entry.id,
+      nomeCarta: entry.nomeCarta || null,
+      pinCarta: entry.pinCarta || null,
+      flags: ["clone_only"],
+    })),
+    sourceCollection: STORAGE_COLLECTION,
+    sourceKey: COLLEGHI_KEY,
+    quality: "certo",
+    flags: ["clone_only"],
+  };
+}
+
 function buildLimitations(args: {
   datasetShape: NextLegacyDatasetShape;
   items: NextCollegaReadOnlyItem[];
@@ -213,7 +252,7 @@ function buildLimitations(args: {
     items.some((item) => item.flags.includes("schede_carburante_assenti"))
       ? "Le schede carburante non sono presenti su tutti i colleghi."
       : null,
-    "Il clone e solo read-only: aggiunta, modifica, eliminazione e PDF restano bloccati.",
+    "Il clone mantiene aggiunta, modifica ed eliminazione solo nel layer locale NEXT; la madre resta intatta.",
   ].filter((entry): entry is string => Boolean(entry));
 }
 
@@ -221,16 +260,25 @@ export async function readNextColleghiSnapshot(): Promise<NextColleghiSnapshot> 
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, COLLEGHI_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
+  const deletedIds = new Set(readNextDeletedCollegaIds());
+  const cloneItems = readNextColleghiCloneRecords().map(mapCloneCollegaItem);
 
   const mappedItems = rawItems.map((entry, index) => {
     if (!entry || typeof entry !== "object") return null;
     return toCollegaItem(entry as RawRecord, index);
   });
 
+  const baseItems = mappedItems.filter((entry): entry is NextCollegaReadOnlyItem => Boolean(entry));
   const items = sortItems(
-    mappedItems.filter((entry): entry is NextCollegaReadOnlyItem => Boolean(entry))
+    [...baseItems.filter((entry) => !deletedIds.has(entry.id)), ...cloneItems].reduce<
+      NextCollegaReadOnlyItem[]
+    >((accumulator, entry) => {
+      const next = accumulator.filter((item) => item.id !== entry.id);
+      next.push(entry);
+      return next;
+    }, [])
   );
-  const skippedRawRecords = rawItems.length - items.length;
+  const skippedRawRecords = rawItems.length - baseItems.length;
 
   return {
     domainCode: NEXT_COLLEGHI_DOMAIN.code,

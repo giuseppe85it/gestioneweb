@@ -6,6 +6,10 @@ import {
   readNextFornitoriSnapshot,
   type NextFornitoreReadOnlyItem,
 } from "./domain/nextFornitoriDomain";
+import {
+  markNextFornitoreCloneDeleted,
+  upsertNextFornitoreCloneRecord,
+} from "./nextAnagraficheCloneState";
 
 type Fornitore = {
   id: string;
@@ -15,11 +19,6 @@ type Fornitore = {
   codice?: string;
   descrizione?: string;
 };
-
-const CLONE_SAVE_MESSAGE =
-  "Clone read-only: aggiunta e modifica fornitori restano disponibili solo nella madre.";
-const CLONE_DELETE_MESSAGE =
-  "Clone read-only: eliminazione fornitore disponibile solo nella madre.";
 
 function mapFornitore(item: NextFornitoreReadOnlyItem): Fornitore {
   return {
@@ -44,6 +43,7 @@ export default function NextFornitoriPage() {
   const [fornitori, setFornitori] = useState<Fornitore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [nome, setNome] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -90,8 +90,38 @@ export default function NextFornitoriPage() {
   };
 
   const handleSubmit = () => {
-    if (!nome.trim()) return;
-    window.alert(CLONE_SAVE_MESSAGE);
+    const normalizedName = nome.trim().toUpperCase();
+    if (!normalizedName) return;
+
+    const targetId = editId ?? `next-fornitore:${Date.now()}`;
+    const nextFornitore: Fornitore = {
+      id: targetId,
+      nome: normalizedName,
+      telefono: telefono.trim() || "",
+      badge: badge.trim() || "",
+      codice: codice.trim() || "",
+      descrizione: descrizione.trim() || "",
+    };
+
+    upsertNextFornitoreCloneRecord({
+      id: targetId,
+      nome: nextFornitore.nome,
+      telefono: nextFornitore.telefono || null,
+      badge: nextFornitore.badge || null,
+      codice: nextFornitore.codice || null,
+      descrizione: nextFornitore.descrizione || null,
+      __nextCloneOnly: true,
+      __nextCloneSavedAt: Date.now(),
+    });
+
+    setFornitori((current) => {
+      const next = current.filter((entry) => entry.id !== targetId);
+      return [...next, nextFornitore].sort((left, right) =>
+        left.nome.localeCompare(right.nome, "it", { sensitivity: "base" }),
+      );
+    });
+    setNotice(editId ? "Fornitore aggiornato nel clone NEXT." : "Fornitore aggiunto nel clone NEXT.");
+    resetForm();
   };
 
   const handleEdit = (fornitore: Fornitore) => {
@@ -106,9 +136,11 @@ export default function NextFornitoriPage() {
   const handleDelete = (id: string) => {
     if (!window.confirm("Eliminare questo fornitore?")) return;
     if (editId === id) {
-      setEditId(null);
+      resetForm();
     }
-    window.alert(CLONE_DELETE_MESSAGE);
+    markNextFornitoreCloneDeleted(id);
+    setFornitori((current) => current.filter((entry) => entry.id !== id));
+    setNotice("Fornitore eliminato dal clone NEXT.");
   };
 
   const esportaPDF = async (fornitore: Fornitore) => {
@@ -144,6 +176,11 @@ export default function NextFornitoriPage() {
         </header>
 
         {error && <div className="forn-error">{error}</div>}
+        {notice ? (
+          <div className="forn-error" style={{ background: "#ecfccb", color: "#365314" }}>
+            {notice}
+          </div>
+        ) : null}
 
         <div className="forn-form">
           <div className="forn-field">

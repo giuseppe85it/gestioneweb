@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import NextClonePageScaffold from "./NextClonePageScaffold";
 import {
   readNextAnagraficheFlottaSnapshot,
   type NextAnagraficheFlottaMezzoItem,
   type NextAnagraficheFlottaSnapshot,
 } from "./nextAnagraficheFlottaDomain";
+import { formatDateUI } from "./nextDateFormat";
+import { upsertNextFlottaClonePatch } from "./nextFlottaCloneState";
 import "../pages/IA/IACoperturaLibretti.css";
 
 type FilterMode = "ALL" | "MISSING_LIBRETTO" | "MISSING_FOTO" | "MISSING_BOTH";
@@ -21,6 +23,21 @@ function hasFoto(item: NextAnagraficheFlottaMezzoItem) {
   return Boolean(item.fotoUrl);
 }
 
+function buildCloneLibrettoDataUrl(targa: string) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520">
+      <rect width="900" height="520" rx="32" fill="#0f172a" />
+      <rect x="28" y="28" width="844" height="464" rx="24" fill="#e2e8f0" />
+      <text x="68" y="120" font-family="Arial, sans-serif" font-size="28" fill="#0f172a">Libretto clone locale</text>
+      <text x="68" y="200" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#111827">${targa}</text>
+      <text x="68" y="276" font-family="Arial, sans-serif" font-size="24" fill="#334155">Riparazione eseguita nel clone NEXT</text>
+      <text x="68" y="330" font-family="Arial, sans-serif" font-size="20" fill="#475569">Data: ${formatDateUI(new Date())}</text>
+    </svg>
+  `.trim();
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 export default function NextIACoperturaLibrettiPage() {
   const [snapshot, setSnapshot] = useState<NextAnagraficheFlottaSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +46,9 @@ export default function NextIACoperturaLibrettiPage() {
   const [filterMode, setFilterMode] = useState<FilterMode>("ALL");
   const [repairIdsInput, setRepairIdsInput] = useState("");
   const [notice, setNotice] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [uploadTarget, setUploadTarget] = useState<NextAnagraficheFlottaMezzoItem | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +76,7 @@ export default function NextIACoperturaLibrettiPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshTick]);
 
   const rows = useMemo(() => snapshot?.items ?? [], [snapshot]);
   const counts = useMemo(() => {
@@ -155,13 +175,35 @@ export default function NextIACoperturaLibrettiPage() {
                 <button
                   type="button"
                   className="iacover-action"
-                  onClick={() =>
-                    setNotice(
-                      repairIdsInput.trim()
-                        ? "Nel clone la riparazione batch dei libretti resta bloccata: nessun upload o update sulla madre."
-                        : "Incolla almeno un ID per simulare il flusso di riparazione nel clone.",
-                    )
-                  }
+                  onClick={() => {
+                    const requestedIds = repairIdsInput
+                      .split(/\r?\n/)
+                      .map((entry) => entry.trim())
+                      .filter(Boolean);
+                    if (requestedIds.length === 0) {
+                      setNotice("Incolla almeno un ID prima di eseguire la riparazione.");
+                      return;
+                    }
+                    const matchingRows = rows.filter(
+                      (row) => requestedIds.includes(row.id) || requestedIds.includes(row.targa),
+                    );
+                    if (matchingRows.length === 0) {
+                      setNotice("Nessun mezzo del clone corrisponde agli ID indicati.");
+                      return;
+                    }
+                    matchingRows.forEach((row) => {
+                      upsertNextFlottaClonePatch({
+                        mezzoId: row.id,
+                        targa: row.targa,
+                        librettoUrl: buildCloneLibrettoDataUrl(row.targa),
+                        librettoStoragePath: `next-clone/libretti/${row.targa}/repair-batch.svg`,
+                        updatedAt: Date.now(),
+                        source: "ia-copertura",
+                      });
+                    });
+                    setNotice(`Riparazione clone completata per ${matchingRows.length} mezzi.`);
+                    setRefreshTick((current) => current + 1);
+                  }}
                 >
                   ESEGUI RIPARAZIONE
                 </button>
@@ -215,9 +257,10 @@ export default function NextIACoperturaLibrettiPage() {
                               <button
                                 type="button"
                                 className="iacover-action"
-                                onClick={() =>
-                                  setNotice(`Nel clone il caricamento/ripristino del libretto di ${row.targa} resta bloccato.`)
-                                }
+                                onClick={() => {
+                                  setUploadTarget(row);
+                                  fileInputRef.current?.click();
+                                }}
                               >
                                 Carica libretto
                               </button>
@@ -244,6 +287,40 @@ export default function NextIACoperturaLibrettiPage() {
           </div>
         </div>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.pdf"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null;
+          const target = uploadTarget;
+          event.target.value = "";
+          if (!file || !target) {
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === "string" ? reader.result : null;
+            if (!result) {
+              setNotice(`Impossibile leggere il file selezionato per ${target.targa}.`);
+              return;
+            }
+            upsertNextFlottaClonePatch({
+              mezzoId: target.id,
+              targa: target.targa,
+              librettoUrl: result,
+              librettoStoragePath: `next-clone/libretti/${target.targa}/${file.name}`,
+              updatedAt: Date.now(),
+              source: "ia-copertura",
+            });
+            setNotice(`Libretto locale caricato nel clone per ${target.targa}.`);
+            setRefreshTick((current) => current + 1);
+            setUploadTarget(null);
+          };
+          reader.readAsDataURL(file);
+        }}
+      />
     </NextClonePageScaffold>
   );
 }

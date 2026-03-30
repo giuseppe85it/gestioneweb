@@ -1,4 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 
 const IA_CONFIG_COLLECTION = "@impostazioni_app";
@@ -41,8 +41,17 @@ export async function readNextIaConfigSnapshot(): Promise<NextIaConfigSnapshot> 
     apiKeyConfigured,
     apiKey: apiKeyRaw,
     limitations: [
-      "Il clone verifica solo la presenza della chiave API, senza esporre il valore sensibile nella UI.",
-      "La configurazione resta read-only nel clone: nessun salvataggio o aggiornamento viene riattivato qui.",
+      "La pagina NEXT legge e salva la chiave sullo stesso documento Firestore usato dalla madre.",
+      "La chiave resta confinata al modulo dedicato e non viene propagata automaticamente in altre UI.",
     ],
   };
+}
+
+export async function saveNextIaConfigSnapshot(apiKey: string): Promise<void> {
+  const normalized = apiKey.trim();
+  await setDoc(
+    doc(db, IA_CONFIG_COLLECTION, IA_CONFIG_DOC_ID),
+    { apiKey: normalized },
+    { merge: true },
+  );
 }

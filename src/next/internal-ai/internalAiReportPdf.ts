@@ -4,6 +4,7 @@ import {
   buildInternalAiProfessionalVehicleReportText,
   readInternalAiProfessionalVehicleReport,
 } from "./internalAiProfessionalVehicleReport";
+import { formatDateTimeUI } from "../nextDateFormat";
 import { generateInternalAiOperationalReportPdfBlob } from "../../utils/pdfEngine";
 
 const PREVIEW_STATUS_LABELS: Record<string, string> = {
@@ -75,18 +76,7 @@ function formatDateLabel(value: string | null | undefined): string {
     return "non disponibile";
   }
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsed);
+  return formatDateTimeUI(value);
 }
 
 function getReportTypeLabel(report: InternalAiReportPreview): string {

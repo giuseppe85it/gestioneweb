@@ -8,9 +8,8 @@ import {
   useState,
 } from "react";
 import type { HomeEvent } from "../utils/homeEvents";
-import AutistiEventoModal from "../components/AutistiEventoModal";
 import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
-import { formatDateInput, formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
+import { formatDateInput, formatDateTimeUI, formatDateUI } from "./nextDateFormat";
 import {
   applyAlertAction,
   createEmptyAlertsState,
@@ -63,6 +62,7 @@ import {
   upsertNextHomeCloneMezzoPatch,
   writeNextHomeCloneAlertsState,
 } from "./nextHomeCloneState";
+import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal";
 
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
@@ -740,7 +740,7 @@ function Home() {
       return;
     }
     if (!parseDateFlexible(data)) {
-      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      window.alert("Data non valida. Usa formato gg mm aaaa.");
       return;
     }
 
@@ -781,7 +781,7 @@ function Home() {
       return;
     }
     if (!parseDateFlexible(data)) {
-      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      window.alert("Data non valida. Usa formato gg mm aaaa.");
       return;
     }
 
@@ -817,7 +817,7 @@ function Home() {
     }
     const parsedDate = parseDateFlexible(dataRaw);
     if (!parsedDate) {
-      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      window.alert("Data non valida. Usa formato gg mm aaaa.");
       return;
     }
     const esito = revisioneForm.esito.trim();
@@ -2706,7 +2706,8 @@ function Home() {
         }}
       />
 
-      <AutistiEventoModal
+      <NextHomeAutistiEventoModal
+        key={selectedEvent?.id ?? "home-event-empty"}
         event={selectedEvent}
         onClose={() => setSelectedEvent(null)}
       />
@@ -2741,7 +2742,7 @@ function Home() {
                     onChange={(e) =>
                       setPrenotazioneForm((prev) => ({ ...prev, data: e.target.value }))
                     }
-                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
+                    placeholder="gg mm aaaa"
                   />
                   <button
                     type="button"
@@ -2852,7 +2853,7 @@ function Home() {
                     onChange={(e) =>
                       setPreCollaudoForm((prev) => ({ ...prev, data: e.target.value }))
                     }
-                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
+                    placeholder="gg mm aaaa"
                   />
                   <button
                     type="button"
@@ -2938,7 +2939,7 @@ function Home() {
                     onChange={(e) =>
                       setRevisioneForm((prev) => ({ ...prev, data: e.target.value }))
                     }
-                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
+                    placeholder="gg mm aaaa"
                   />
                   <button
                     type="button"

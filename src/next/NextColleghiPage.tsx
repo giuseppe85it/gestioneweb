@@ -6,6 +6,10 @@ import {
   readNextColleghiSnapshot,
   type NextCollegaReadOnlyItem,
 } from "./domain/nextColleghiDomain";
+import {
+  markNextCollegaCloneDeleted,
+  upsertNextCollegaCloneRecord,
+} from "./nextAnagraficheCloneState";
 
 type SchedaCarburante = {
   id: string;
@@ -25,11 +29,6 @@ type Collega = {
   pukSim?: string;
   schedeCarburante?: SchedaCarburante[];
 };
-
-const CLONE_SAVE_MESSAGE =
-  "Clone read-only: aggiunta e modifica colleghi restano disponibili solo nella madre.";
-const CLONE_DELETE_MESSAGE =
-  "Clone read-only: eliminazione collega disponibile solo nella madre.";
 
 function mapCollega(item: NextCollegaReadOnlyItem): Collega {
   return {
@@ -66,6 +65,7 @@ export default function NextColleghiPage() {
   const [colleghi, setColleghi] = useState<Collega[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [nome, setNome] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -145,8 +145,50 @@ export default function NextColleghiPage() {
   };
 
   const handleSubmit = () => {
-    if (!nome.trim()) return;
-    window.alert(CLONE_SAVE_MESSAGE);
+    const normalizedName = nome.trim().toUpperCase();
+    if (!normalizedName) return;
+
+    const targetId = editId ?? `next-collega:${Date.now()}`;
+    const nextCollega: Collega = {
+      id: targetId,
+      nome: normalizedName,
+      telefono: telefono.trim() || "",
+      telefonoPrivato: telefonoPrivato.trim() || "",
+      badge: badge.trim() || "",
+      codice: codice.trim() || "",
+      descrizione: descrizione.trim() || "",
+      pinSim: pinSim.trim() || "",
+      pukSim: pukSim.trim() || "",
+      schedeCarburante: schedeCarburante.map((entry) => ({
+        id: entry.id,
+        nomeCarta: entry.nomeCarta.trim(),
+        pinCarta: entry.pinCarta.trim(),
+      })),
+    };
+
+    upsertNextCollegaCloneRecord({
+      id: targetId,
+      nome: nextCollega.nome,
+      telefono: nextCollega.telefono || null,
+      telefonoPrivato: nextCollega.telefonoPrivato || null,
+      badge: nextCollega.badge || null,
+      codice: nextCollega.codice || null,
+      descrizione: nextCollega.descrizione || null,
+      pinSim: nextCollega.pinSim || null,
+      pukSim: nextCollega.pukSim || null,
+      schedeCarburante: nextCollega.schedeCarburante ?? [],
+      __nextCloneOnly: true,
+      __nextCloneSavedAt: Date.now(),
+    });
+
+    setColleghi((current) => {
+      const next = current.filter((entry) => entry.id !== targetId);
+      return [...next, nextCollega].sort((left, right) =>
+        left.nome.localeCompare(right.nome, "it", { sensitivity: "base" }),
+      );
+    });
+    setNotice(editId ? "Collega aggiornato nel clone NEXT." : "Collega aggiunto nel clone NEXT.");
+    resetForm();
   };
 
   const handleEdit = (collega: Collega) => {
@@ -165,9 +207,14 @@ export default function NextColleghiPage() {
   const handleDelete = (id: string) => {
     if (!window.confirm("Eliminare questo collega?")) return;
     if (editId === id) {
-      setEditId(null);
+      resetForm();
     }
-    window.alert(CLONE_DELETE_MESSAGE);
+    markNextCollegaCloneDeleted(id);
+    setColleghi((current) => current.filter((entry) => entry.id !== id));
+    if (selectedCollega?.id === id) {
+      setSelectedCollega(null);
+    }
+    setNotice("Collega eliminato dal clone NEXT.");
   };
 
   const esportaPDF = async (collega: Collega) => {
@@ -203,6 +250,11 @@ export default function NextColleghiPage() {
         </header>
 
         {error && <div className="coll-error">{error}</div>}
+        {notice ? (
+          <div className="coll-error" style={{ background: "#ecfccb", color: "#365314" }}>
+            {notice}
+          </div>
+        ) : null}
 
         <div className="coll-form">
           <div className="coll-field">

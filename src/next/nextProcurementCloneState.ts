@@ -7,8 +7,11 @@ type NextProcurementCloneMaterialRecord = {
   unita: string;
   arrivato: boolean;
   dataArrivo?: string;
+  note?: string | null;
   fotoUrl?: string | null;
   fotoStoragePath?: string | null;
+  prezzoUnitario?: number | null;
+  valuta?: string | null;
 };
 
 export type NextProcurementCloneOrderRecord = {
@@ -67,4 +70,8 @@ export function readNextProcurementCloneOrders(): NextProcurementCloneOrderRecor
 export function appendNextProcurementCloneOrder(order: NextProcurementCloneOrderRecord) {
   const current = readNextProcurementCloneOrders();
   writeState([order, ...current.filter((entry) => entry.id !== order.id)]);
+}
+
+export function upsertNextProcurementCloneOrder(order: NextProcurementCloneOrderRecord) {
+  appendNextProcurementCloneOrder(order);
 }

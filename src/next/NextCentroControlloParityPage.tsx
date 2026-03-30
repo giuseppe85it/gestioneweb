@@ -26,6 +26,7 @@ import {
   type NextRifornimentoReadOnlyItem,
 } from "./domain/nextRifornimentiDomain";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
+import { formatDateUI } from "./nextDateFormat";
 import "../pages/CentroControllo.css";
 
 type TabKey =
@@ -241,11 +242,7 @@ const shortText = (value: unknown, max = 90): string => {
 };
 
 const formatDateIt = (value: Date | null): string => {
-  if (!value) return "--/--/----";
-  const dd = String(value.getDate()).padStart(2, "0");
-  const mm = String(value.getMonth() + 1).padStart(2, "0");
-  const yyyy = value.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return value ? formatDateUI(value) : "-";
 };
 
 const formatNumberIt = (value: number | null, fractionDigits = 2): string => {
@@ -876,7 +873,7 @@ export default function NextCentroControlloParityPage() {
             dataReport: formatDateIt(new Date()),
             items: buildMaintenancePdfItems(),
           }),
-        fileName: `manutenzioni_programmate_${formatDateIt(new Date()).replace(/\//g, "-")}.pdf`,
+        fileName: `manutenzioni_programmate_${formatDateIt(new Date()).replace(/\s+/g, "-")}.pdf`,
         previousUrl: pdfPreviewUrl,
       });
 

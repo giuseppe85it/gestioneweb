@@ -7,6 +7,7 @@ import {
   readNextCisternaSnapshot,
   type NextCisternaSnapshot,
 } from "./domain/nextCisternaDomain";
+import { upsertNextCisternaCloneParametro } from "./nextCisternaCloneState";
 import "../pages/CisternaCaravate/CisternaCaravatePage.css";
 
 type TabKey = "archivio" | "report" | "targhe";
@@ -188,9 +189,20 @@ export default function NextCisternaPage() {
                   />
                   <button
                     type="button"
-                    onClick={() =>
-                      setNotice("Nel clone il salvataggio del cambio mensile resta bloccato: il report usa solo il valore gia letto dal layer NEXT.")
-                    }
+                    onClick={() => {
+                      const parsed = Number(String(cambioInput).replace(",", "."));
+                      if (!Number.isFinite(parsed) || parsed <= 0) {
+                        setNotice("Inserisci un cambio EUR/CHF valido prima di salvare.");
+                        return;
+                      }
+                      upsertNextCisternaCloneParametro({
+                        monthKey: snapshot.monthKey,
+                        cambioEurChf: parsed,
+                        updatedAt: Date.now(),
+                      });
+                      setNotice(`Cambio EUR/CHF clone salvato per ${snapshot.monthLabel}.`);
+                      setSelectedMonth(snapshot.monthKey);
+                    }}
                   >
                     Salva
                   </button>

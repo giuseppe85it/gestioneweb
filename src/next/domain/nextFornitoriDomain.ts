@@ -1,5 +1,9 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
+import {
+  readNextDeletedFornitoreIds,
+  readNextFornitoriCloneRecords,
+} from "../nextAnagraficheCloneState";
 
 const STORAGE_COLLECTION = "storage";
 const FORNITORI_KEY = "@fornitori";
@@ -141,6 +145,28 @@ function sortItems(items: NextFornitoreReadOnlyItem[]): NextFornitoreReadOnlyIte
   );
 }
 
+function mapCloneFornitoreItem(raw: {
+  id: string;
+  nome: string;
+  telefono: string | null;
+  badge: string | null;
+  codice: string | null;
+  descrizione: string | null;
+}): NextFornitoreReadOnlyItem {
+  return {
+    id: raw.id,
+    nome: raw.nome,
+    telefono: raw.telefono,
+    badge: raw.badge,
+    codice: raw.codice,
+    descrizione: raw.descrizione,
+    sourceCollection: STORAGE_COLLECTION,
+    sourceKey: FORNITORI_KEY,
+    quality: "certo",
+    flags: ["clone_only"],
+  };
+}
+
 function buildLimitations(args: {
   datasetShape: NextLegacyDatasetShape;
   items: NextFornitoreReadOnlyItem[];
@@ -161,7 +187,7 @@ function buildLimitations(args: {
     items.some((item) => item.flags.includes("codice_assente"))
       ? "Il codice non e valorizzato su tutti i fornitori."
       : null,
-    "Il clone e solo read-only: aggiunta, modifica, eliminazione e PDF restano bloccati.",
+    "Il clone mantiene aggiunta, modifica ed eliminazione solo nel layer locale NEXT; la madre resta intatta.",
   ].filter((entry): entry is string => Boolean(entry));
 }
 
@@ -169,16 +195,25 @@ export async function readNextFornitoriSnapshot(): Promise<NextFornitoriSnapshot
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, FORNITORI_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
+  const deletedIds = new Set(readNextDeletedFornitoreIds());
+  const cloneItems = readNextFornitoriCloneRecords().map(mapCloneFornitoreItem);
 
   const mappedItems = rawItems.map((entry, index) => {
     if (!entry || typeof entry !== "object") return null;
     return toFornitoreItem(entry as RawRecord, index);
   });
 
+  const baseItems = mappedItems.filter((entry): entry is NextFornitoreReadOnlyItem => Boolean(entry));
   const items = sortItems(
-    mappedItems.filter((entry): entry is NextFornitoreReadOnlyItem => Boolean(entry))
+    [...baseItems.filter((entry) => !deletedIds.has(entry.id)), ...cloneItems].reduce<
+      NextFornitoreReadOnlyItem[]
+    >((accumulator, entry) => {
+      const next = accumulator.filter((item) => item.id !== entry.id);
+      next.push(entry);
+      return next;
+    }, [])
   );
-  const skippedRawRecords = rawItems.length - items.length;
+  const skippedRawRecords = rawItems.length - baseItems.length;
 
   return {
     domainCode: NEXT_FORNITORI_DOMAIN.code,

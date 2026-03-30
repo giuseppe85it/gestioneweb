@@ -3,6 +3,7 @@ import {
   readNextDossierMezzoCompositeSnapshot,
   type NextDossierMezzoCompositeSnapshot,
 } from "../domain/nextDossierMezzoDomain";
+import { formatDateTimeUI } from "../nextDateFormat";
 import type {
   InternalAiEconomicAnalysisPreview,
   InternalAiPreviewState,
@@ -30,21 +31,7 @@ function takeNotes(notes: string[] | undefined, limit = 3): string[] {
 }
 
 function formatDateTimeLabel(timestamp: number | null): string {
-  if (!timestamp) {
-    return "non disponibile";
-  }
-
-  try {
-    return new Intl.DateTimeFormat("it-IT", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(timestamp));
-  } catch {
-    return "non disponibile";
-  }
+  return timestamp ? formatDateTimeUI(timestamp) : "non disponibile";
 }
 
 function trimText(value: string | null, maxLength = 220): string | null {

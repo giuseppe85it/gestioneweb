@@ -12,33 +12,21 @@ import {
   normalizeAutistiButtonLabel,
   resolveNextAutistiNavigationTarget,
 } from "./nextAutistiCloneRuntime";
-
 type PatchedHistory = History & {
   pushState: History["pushState"];
   replaceState: History["replaceState"];
 };
 
-function isGommeModalSaveButton(button: HTMLButtonElement): boolean {
-  if (normalizeAutistiButtonLabel(button.textContent) !== "SALVA") {
-    return false;
-  }
-
-  let current: Element | null = button;
-  while (current) {
-    const heading = current.querySelector?.("h3");
-    if (normalizeAutistiButtonLabel(heading?.textContent) === "GOMME") {
-      return true;
-    }
-    current = current.parentElement;
-  }
-
-  return false;
-}
+type StoragePrototypeOverrides = {
+  getItem: Storage["getItem"];
+  setItem: Storage["setItem"];
+  removeItem: Storage["removeItem"];
+};
 
 function NextAutistiCloneLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(typeof window === "undefined");
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,7 +50,9 @@ function NextAutistiCloneLayout() {
       return;
     }
 
-    setNotice(getNextAutistiNoticeMessage(noticeCode));
+    const deferredNoticeId = window.setTimeout(() => {
+      setNotice(getNextAutistiNoticeMessage(noticeCode));
+    }, 0);
     params.delete(NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM);
     const nextSearch = params.toString();
     navigate(
@@ -72,41 +62,53 @@ function NextAutistiCloneLayout() {
       },
       { replace: true },
     );
+
+    return () => {
+      window.clearTimeout(deferredNoticeId);
+    };
   }, [location.pathname, location.search, navigate]);
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") {
-      setReady(true);
       return;
     }
 
     bootstrapNextAutistiCloneStorage(window.localStorage);
 
-    const storageProto = Storage.prototype as any;
+    const storageProto: StoragePrototypeOverrides = Storage.prototype;
     const originalGetItem = storageProto.getItem;
     const originalSetItem = storageProto.setItem;
     const originalRemoveItem = storageProto.removeItem;
 
-    storageProto.getItem = function patchedGetItem(this: Storage, key: string) {
-      if (this === window.localStorage) {
-        return originalGetItem.call(this, namespaceNextAutistiStorageKey(key));
-      }
-      return originalGetItem.call(this, key);
-    };
+    storageProto.getItem = new Proxy(originalGetItem, {
+      apply(target, thisArg, argArray) {
+        const [key] = argArray as [string];
+        if (thisArg === window.localStorage) {
+          return Reflect.apply(target, thisArg, [namespaceNextAutistiStorageKey(key)]);
+        }
+        return Reflect.apply(target, thisArg, argArray);
+      },
+    });
 
-    storageProto.setItem = function patchedSetItem(this: Storage, key: string, value: string) {
-      if (this === window.localStorage) {
-        return originalSetItem.call(this, namespaceNextAutistiStorageKey(key), value);
-      }
-      return originalSetItem.call(this, key, value);
-    };
+    storageProto.setItem = new Proxy(originalSetItem, {
+      apply(target, thisArg, argArray) {
+        const [key, value] = argArray as [string, string];
+        if (thisArg === window.localStorage) {
+          return Reflect.apply(target, thisArg, [namespaceNextAutistiStorageKey(key), value]);
+        }
+        return Reflect.apply(target, thisArg, argArray);
+      },
+    });
 
-    storageProto.removeItem = function patchedRemoveItem(this: Storage, key: string) {
-      if (this === window.localStorage) {
-        return originalRemoveItem.call(this, namespaceNextAutistiStorageKey(key));
-      }
-      return originalRemoveItem.call(this, key);
-    };
+    storageProto.removeItem = new Proxy(originalRemoveItem, {
+      apply(target, thisArg, argArray) {
+        const [key] = argArray as [string];
+        if (thisArg === window.localStorage) {
+          return Reflect.apply(target, thisArg, [namespaceNextAutistiStorageKey(key)]);
+        }
+        return Reflect.apply(target, thisArg, argArray);
+      },
+    });
 
     const historyObject = window.history as PatchedHistory;
     const originalPushState = historyObject.pushState.bind(historyObject);
@@ -136,9 +138,12 @@ function NextAutistiCloneLayout() {
       return originalReplaceState(data, unused, url);
     };
 
-    setReady(true);
+    const readyFrameId = window.requestAnimationFrame(() => {
+      setReady(true);
+    });
 
     return () => {
+      window.cancelAnimationFrame(readyFrameId);
       storageProto.getItem = originalGetItem;
       storageProto.setItem = originalSetItem;
       storageProto.removeItem = originalRemoveItem;
@@ -164,18 +169,6 @@ function NextAutistiCloneLayout() {
         button.setAttribute("data-next-autisti-blocked", "true");
         button.setAttribute("title", getNextAutistiNoticeMessage(code));
       });
-
-      document.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
-        if (!isGommeModalSaveButton(button)) {
-          return;
-        }
-
-        button.setAttribute("data-next-autisti-blocked", "true");
-        button.setAttribute(
-          "title",
-          getNextAutistiNoticeMessage("gomme-salvataggio-bloccato"),
-        );
-      });
     };
 
     const handleBlockedHomeAction = (event: MouseEvent) => {
@@ -200,15 +193,6 @@ function NextAutistiCloneLayout() {
           setNotice(getNextAutistiNoticeMessage(code));
           return;
         }
-      }
-
-      if (isGommeModalSaveButton(button)) {
-        event.preventDefault();
-        event.stopPropagation();
-        if ("stopImmediatePropagation" in event && typeof event.stopImmediatePropagation === "function") {
-          event.stopImmediatePropagation();
-        }
-        setNotice(getNextAutistiNoticeMessage("gomme-salvataggio-bloccato"));
       }
     };
 
@@ -239,7 +223,7 @@ function NextAutistiCloneLayout() {
     <div className="next-autisti-clone">
       <div className="next-autisti-clone__banner">
         D03 autisti canonico: sessioni ed eventi madre sono letti in sola lettura; controlli,
-        segnalazioni e richieste salvati qui restano solo locali al clone.
+        gomme, segnalazioni e richieste salvati qui restano locali al clone.
       </div>
       {notice ? (
         <div className="next-autisti-clone__banner next-autisti-clone__banner--notice">{notice}</div>

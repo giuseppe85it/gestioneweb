@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import NextClonePageScaffold from "./NextClonePageScaffold";
 import { readNextCisternaSnapshot, type NextCisternaSnapshot } from "./domain/nextCisternaDomain";
+import { upsertNextCisternaCloneDocumento } from "./nextCisternaCloneState";
 import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import "../pages/CisternaCaravate/CisternaCaravateIA.css";
@@ -195,9 +196,34 @@ export default function NextCisternaIAPage() {
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setNotice("Nel clone il salvataggio nell'archivio Cisterna resta bloccato.")
-                }
+                onClick={() => {
+                  if (!form || !snapshot) {
+                    setNotice("Analizza prima un documento e verifica i campi.");
+                    return;
+                  }
+                  upsertNextCisternaCloneDocumento({
+                    id: `next-cisterna-doc:${Date.now()}`,
+                    tipoDocumento: form.tipoDocumento,
+                    fornitore: form.fornitore,
+                    destinatario: form.destinatario,
+                    numeroDocumento: form.numeroDocumento,
+                    dataDocumento: form.dataDocumento,
+                    litriTotali: form.litriTotali ? Number(form.litriTotali) : null,
+                    totaleDocumento: form.totaleDocumento ? Number(form.totaleDocumento) : null,
+                    valuta: form.valuta,
+                    prodotto: form.prodotto,
+                    testo: form.testo,
+                    needsReview: form.daVerificare,
+                    motivoVerifica: form.motivoVerifica,
+                    nomeFile: selectedFile?.name ?? null,
+                    fileUrl: previewUrl || null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    source: "next-clone-ia",
+                    monthKey: snapshot.monthKey,
+                  });
+                  setNotice("Documento cisterna salvato nel clone locale.");
+                }}
                 disabled={!form}
               >
                 Salva in archivio cisterna

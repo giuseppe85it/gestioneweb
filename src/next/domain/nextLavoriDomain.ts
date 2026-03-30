@@ -1,6 +1,12 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import {
+  readNextLavoriCloneOverrides,
+  readNextLavoriCloneRecords,
+  type NextLavoriCloneOverrideRecord,
+  type NextLavoriCloneRawRecord,
+} from "../nextLavoriCloneState";
+import {
   normalizeNextMezzoTarga,
   readNextAnagraficheFlottaSnapshot,
   type NextAnagraficheFlottaMezzoItem,
@@ -651,7 +657,64 @@ async function readLavoriDataset(): Promise<{
     ? ((snapshot.data() as Record<string, unknown>) ?? null)
     : null;
 
-  return unwrapStorageArray(rawDoc);
+  const dataset = unwrapStorageArray(rawDoc);
+  const cloneRecords = readNextLavoriCloneRecords();
+  const overrideMap = new Map<string, NextLavoriCloneOverrideRecord>();
+
+  readNextLavoriCloneOverrides().forEach((entry) => {
+    overrideMap.set(entry.id, entry);
+  });
+
+  const baseItems = dataset.items
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const record = entry as RawRecord;
+      const id = normalizeOptionalText(record.id);
+      const override = id ? overrideMap.get(id) ?? null : null;
+      if (override?.deleted) {
+        return null;
+      }
+
+      return override ? applyCloneOverride(record, override) : record;
+    })
+    .filter((entry): entry is RawRecord => Boolean(entry));
+
+  const existingIds = new Set(
+    baseItems
+      .map((entry) => normalizeOptionalText(entry.id))
+      .filter((entry): entry is string => Boolean(entry)),
+  );
+
+  const extraCloneItems = cloneRecords
+    .map((entry) => {
+      const override = overrideMap.get(entry.id) ?? null;
+      if (override?.deleted) {
+        return null;
+      }
+
+      return override ? applyCloneOverride(entry, override) : entry;
+    })
+    .filter((entry): entry is NextLavoriCloneRawRecord | RawRecord => Boolean(entry))
+    .filter((entry) => !existingIds.has(normalizeOptionalText((entry as RawRecord).id) ?? ""));
+
+  return {
+    datasetShape: dataset.datasetShape,
+    items: [...baseItems, ...extraCloneItems],
+  };
+}
+
+function applyCloneOverride(
+  record: RawRecord | NextLavoriCloneRawRecord,
+  override: NextLavoriCloneOverrideRecord,
+): RawRecord {
+  return {
+    ...record,
+    ...override.patch,
+    id: record.id,
+  };
 }
 
 async function readNormalizedLavoriDataset(): Promise<{

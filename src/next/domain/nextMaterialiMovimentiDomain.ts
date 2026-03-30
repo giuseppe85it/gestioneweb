@@ -2,6 +2,10 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import {
+  readNextMaterialiMovimentiCloneDeletedIds,
+  readNextMaterialiMovimentiCloneRecords,
+} from "../nextMaterialiMovimentiCloneState";
+import {
   readNextAttrezzatureCantieriSnapshot,
   type NextAttrezzatureCantieriSnapshot,
 } from "./nextAttrezzatureCantieriDomain";
@@ -109,6 +113,7 @@ export type NextMaterialeMovimentoReadOnlyItem = {
   id: string;
   targa: string | null;
   mezzoTarga: string | null;
+  inventarioRefId: string | null;
   destinatario: NextNormalizedDestinatario;
   target: string | null;
   tipoDestinatario: NextMaterialeMovimentoDestinatarioType;
@@ -229,6 +234,7 @@ export type NextMaterialiMovimentiLegacyDossierItem = {
   id: string;
   targa?: string;
   mezzoTarga?: string;
+  inventarioRefId?: string;
   destinatario?: {
     type?: string;
     refId?: string;
@@ -655,6 +661,7 @@ function toNextMaterialeMovimentoReadOnlyItem(
     id: buildItemId(raw, index),
     targa: mezzoTarga,
     mezzoTarga,
+    inventarioRefId: normalizeOptionalText(raw.inventarioRefId),
     destinatario,
     target: destinatario.label,
     tipoDestinatario: destinatario.type,
@@ -957,9 +964,22 @@ export async function readNextMaterialiMovimentiSnapshot(): Promise<NextMaterial
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, MATERIALI_MOVIMENTI_DATASET_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
+  const cloneRecords = readNextMaterialiMovimentiCloneRecords();
+  const deletedIds = new Set(readNextMaterialiMovimentiCloneDeletedIds());
+  const cloneIds = new Set(cloneRecords.map((entry) => entry.id));
+  const mergedRawItems = [
+    ...rawItems.filter((entry, index) => {
+      if (!entry || typeof entry !== "object") {
+        return true;
+      }
+      const itemId = buildItemId(entry as RawRecord, index);
+      return !cloneIds.has(itemId) && !deletedIds.has(itemId);
+    }),
+    ...cloneRecords.filter((entry) => !deletedIds.has(entry.id)),
+  ];
 
   const items = sortItems(
-    rawItems
+    mergedRawItems
       .map((entry, index) => {
         if (!entry || typeof entry !== "object") return null;
         return toNextMaterialeMovimentoReadOnlyItem(entry as RawRecord, index);
@@ -989,7 +1009,15 @@ export async function readNextMaterialiMovimentiSnapshot(): Promise<NextMaterial
     datasetShape,
     items,
     counts,
-    limitations: buildGlobalLimitations({ datasetShape, items, counts }),
+    limitations: [
+      ...buildGlobalLimitations({ datasetShape, items, counts }),
+      cloneRecords.length > 0
+        ? `Il clone integra ${cloneRecords.length} movimenti materiali locali senza scrivere su @materialiconsegnati nella madre.`
+        : null,
+      deletedIds.size > 0
+        ? `Il clone nasconde ${deletedIds.size} movimenti materiali in modo locale senza cancellarli dalla madre.`
+        : null,
+    ].filter((entry): entry is string => Boolean(entry)),
   };
 }
 
@@ -1086,6 +1114,7 @@ export function buildNextMaterialiMovimentiLegacyDossierView(
     id: item.id,
     targa: item.targa ?? undefined,
     mezzoTarga: item.mezzoTarga ?? undefined,
+    inventarioRefId: item.inventarioRefId ?? undefined,
     destinatario:
       item.destinatario.label || item.destinatario.refId || item.destinatario.type
         ? {
@@ -1348,7 +1377,7 @@ function buildMagazzinoLimitations(args: {
   );
 
   return dedupeStrings([
-    "L'area magazzino nel clone NEXT e solo in lettura: nessuna variazione stock, consegna, spostamento o foto viene scritta dal perimetro clone.",
+    "L'area magazzino nel clone NEXT non scrive mai la madre: le uniche variazioni ammesse restano overlay locali del clone su stock, consegne e foto.",
     "Nel clone non esiste ancora una scorta minima canonica: gli stock bassi affidabili coincidono solo con quantita zero o negativa.",
     "Il legame tra inventario, consegne materiali, manutenzioni e ordini non e transazionale: la IA puo leggere segnali utili, ma non una catena causale completa.",
     args.vehicleLinks.some((entry) => entry.reliability === "plausibile")
@@ -1396,7 +1425,7 @@ export async function readNextMagazzinoRealeSnapshot(): Promise<NextMagazzinoRea
       writesEnabled: false,
       label: "Solo lettura",
       summary:
-        "D05 e leggibile nel clone NEXT e nella IA interna, ma resta volutamente non scrivente e prudente dove il dato non e abbastanza canonico.",
+        "D05 e leggibile nel clone NEXT e nella IA interna; gli unici aggiornamenti ammessi restano overlay locali del clone e non toccano la madre.",
     },
     limitations: buildMagazzinoLimitations({
       inventory,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
 import "../../autistiInbox/RichiestaAttrezzatureAll.css";
-import { getItemSync } from "../../utils/storageSync";
+import { getItemSync } from "../autisti/nextAutistiStorageSync";
 import { generateRichiestaAttrezzaturePDFBlob } from "../../utils/pdfEngine";
 import PdfPreviewModal from "../../components/PdfPreviewModal";
 import {
@@ -13,7 +13,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../../utils/pdfPreview";
-import { formatDateTimeUI } from "../../utils/dateFormat";
+import { formatDateTimeUI } from "../nextDateFormat";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 
 const KEY_RICHIESTE = "@richieste_attrezzature_autisti_tmp";

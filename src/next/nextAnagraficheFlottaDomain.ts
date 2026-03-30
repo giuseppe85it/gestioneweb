@@ -1,5 +1,6 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { readNextFlottaClonePatches } from "./nextFlottaCloneState";
 
 const STORAGE_COLLECTION = "storage";
 const MEZZI_DATASET_KEY = "@mezzi_aziendali";
@@ -570,6 +571,185 @@ function sortMezzi(items: NextAnagraficheFlottaMezzoItem[]) {
   });
 }
 
+function applyMezzoClonePatch(
+  item: NextAnagraficheFlottaMezzoItem,
+  patchByTarga: Map<string, ReturnType<typeof readNextFlottaClonePatches>[number]>,
+): NextAnagraficheFlottaMezzoItem | null {
+  const patch = patchByTarga.get(item.targa);
+  if (!patch) {
+    return item;
+  }
+  if (patch.deleted) {
+    return null;
+  }
+
+  const immatricolazione =
+    patch.dataImmatricolazione !== undefined
+      ? normalizeDateInputValue(patch.dataImmatricolazione)
+      : {
+          value: item.dataImmatricolazione,
+          timestamp: item.dataImmatricolazioneTimestamp,
+          parsed: item.dataImmatricolazioneTimestamp !== null,
+        };
+  const revisione =
+    patch.dataScadenzaRevisione !== undefined
+      ? normalizeDateInputValue(patch.dataScadenzaRevisione)
+      : {
+          value: item.dataScadenzaRevisione,
+          timestamp: item.dataScadenzaRevisioneTimestamp,
+          parsed: item.dataScadenzaRevisioneTimestamp !== null,
+        };
+  const ultimoCollaudo =
+    patch.dataUltimoCollaudo !== undefined
+      ? normalizeDateInputValue(patch.dataUltimoCollaudo)
+      : {
+          value: item.dataUltimoCollaudo,
+          timestamp: item.dataUltimoCollaudoTimestamp,
+          parsed: item.dataUltimoCollaudoTimestamp !== null,
+        };
+  const manutenzioneDataInizio =
+    patch.manutenzioneDataInizio !== undefined
+      ? normalizeDateInputValue(patch.manutenzioneDataInizio)
+      : {
+          value: item.manutenzioneDataInizio,
+          timestamp: item.manutenzioneDataInizioTimestamp,
+          parsed: item.manutenzioneDataInizioTimestamp !== null,
+        };
+  const manutenzioneDataFine =
+    patch.manutenzioneDataFine !== undefined
+      ? normalizeDateInputValue(patch.manutenzioneDataFine)
+      : {
+          value: item.manutenzioneDataFine,
+          timestamp: item.manutenzioneDataFineTimestamp,
+          parsed: item.manutenzioneDataFineTimestamp !== null,
+        };
+
+  const flags = item.flags.filter((entry) => {
+    if (entry === "foto_assente" && patch.fotoUrl) return false;
+    if (entry === "libretto_assente" && patch.librettoUrl) return false;
+    return true;
+  });
+
+  if (patch.fotoUrl) flags.push("foto_clone_patch");
+  if (patch.librettoUrl) flags.push("libretto_clone_patch");
+  if (patch.source === "mezzi") flags.push("mezzo_clone_patch");
+
+  const marca = patch.marca ?? item.marca;
+  const modello = patch.modello ?? item.modello;
+  const telaio = patch.telaio ?? item.telaio;
+  const merged = {
+    ...item,
+    id: patch.mezzoId ?? item.id,
+    anno: patch.anno ?? item.anno,
+    categoria: patch.categoria ?? item.categoria,
+    tipo: patch.tipo ?? item.tipo,
+    marca,
+    modello,
+    marcaModello: [marca, modello].filter(Boolean).join(" ").trim() || item.marcaModello,
+    telaio,
+    colore: patch.colore ?? item.colore,
+    cilindrata: patch.cilindrata ?? item.cilindrata,
+    potenza: patch.potenza ?? item.potenza,
+    massaComplessiva: patch.massaComplessiva ?? item.massaComplessiva,
+    proprietario: patch.proprietario ?? item.proprietario,
+    assicurazione: patch.assicurazione ?? item.assicurazione,
+    dataImmatricolazione: immatricolazione.value,
+    dataImmatricolazioneTimestamp: immatricolazione.timestamp,
+    dataScadenzaRevisione: revisione.value,
+    dataScadenzaRevisioneTimestamp: revisione.timestamp,
+    dataUltimoCollaudo: ultimoCollaudo.value,
+    dataUltimoCollaudoTimestamp: ultimoCollaudo.timestamp,
+    manutenzioneProgrammata: patch.manutenzioneProgrammata ?? item.manutenzioneProgrammata,
+    manutenzioneDataInizio: manutenzioneDataInizio.value,
+    manutenzioneDataInizioTimestamp: manutenzioneDataInizio.timestamp,
+    manutenzioneDataFine: manutenzioneDataFine.value,
+    manutenzioneDataFineTimestamp: manutenzioneDataFine.timestamp,
+    manutenzioneKmMax: patch.manutenzioneKmMax ?? item.manutenzioneKmMax,
+    manutenzioneContratto: patch.manutenzioneContratto ?? item.manutenzioneContratto,
+    note: patch.note ?? item.note,
+    autistaId:
+      patch.autistaId !== undefined
+        ? patch.autistaId
+        : item.autistaId,
+    autistaNome:
+      patch.autistaNome !== undefined
+        ? patch.autistaNome
+        : item.autistaNome,
+    fotoUrl: patch.fotoUrl ?? item.fotoUrl,
+    fotoPath: patch.fotoPath ?? item.fotoPath,
+    fotoStoragePath: patch.fotoStoragePath ?? item.fotoStoragePath,
+    librettoUrl: patch.librettoUrl ?? item.librettoUrl,
+    quality: deriveMezzoQuality({
+      marca,
+      modello,
+      telaio,
+      dataImmatricolazioneTimestamp: immatricolazione.timestamp,
+      dataScadenzaRevisioneTimestamp: revisione.timestamp,
+    }),
+    flags: Array.from(new Set(flags)),
+  } satisfies NextAnagraficheFlottaMezzoItem;
+
+  return merged;
+}
+
+function buildMezzoFromClonePatch(args: {
+  patch: ReturnType<typeof readNextFlottaClonePatches>[number];
+  datasetShape: NextLegacyDatasetShape;
+  colleaguesById: Map<string, NextAnagraficheFlottaCollegaItem>;
+}): NextAnagraficheFlottaMezzoItem | null {
+  const { patch, datasetShape, colleaguesById } = args;
+  if (patch.deleted) {
+    return null;
+  }
+
+  const raw = {
+    id: patch.mezzoId ?? `next-clone-mezzo:${patch.targa}`,
+    targa: patch.targa,
+    anno: patch.anno ?? "",
+    categoria: patch.categoria ?? "",
+    tipo: patch.tipo ?? null,
+    marca: patch.marca ?? "",
+    modello: patch.modello ?? "",
+    telaio: patch.telaio ?? "",
+    colore: patch.colore ?? "",
+    cilindrata: patch.cilindrata ?? "",
+    potenza: patch.potenza ?? "",
+    massaComplessiva: patch.massaComplessiva ?? "",
+    proprietario: patch.proprietario ?? "",
+    assicurazione: patch.assicurazione ?? "",
+    dataImmatricolazione: patch.dataImmatricolazione ?? "",
+    dataScadenzaRevisione: patch.dataScadenzaRevisione ?? "",
+    dataUltimoCollaudo: patch.dataUltimoCollaudo ?? "",
+    manutenzioneProgrammata: patch.manutenzioneProgrammata ?? false,
+    manutenzioneDataInizio: patch.manutenzioneDataInizio ?? "",
+    manutenzioneDataFine: patch.manutenzioneDataFine ?? "",
+    manutenzioneKmMax: patch.manutenzioneKmMax ?? "",
+    manutenzioneContratto: patch.manutenzioneContratto ?? "",
+    note: patch.note ?? "",
+    autistaId: patch.autistaId ?? null,
+    autistaNome: patch.autistaNome ?? null,
+    fotoUrl: patch.fotoUrl ?? null,
+    fotoPath: patch.fotoPath ?? null,
+    fotoStoragePath: patch.fotoStoragePath ?? null,
+    librettoUrl: patch.librettoUrl ?? null,
+  } satisfies NextAnagraficheFlottaRaw;
+
+  const mapped = mapMezzoItem({
+    raw,
+    index: Number.MAX_SAFE_INTEGER,
+    datasetShape,
+    colleaguesById,
+  });
+  if (!mapped) {
+    return null;
+  }
+
+  return {
+    ...mapped,
+    flags: Array.from(new Set([...mapped.flags, "mezzo_clone_only"])),
+  };
+}
+
 export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagraficheFlottaSnapshot> {
   const [mezziSnapshot, colleghiSnapshot] = await Promise.all([
     getDoc(doc(db, STORAGE_COLLECTION, MEZZI_DATASET_KEY)),
@@ -606,20 +786,36 @@ export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagrafic
       ? count
       : count + 1;
   }, 0);
-
-  const items = sortMezzi(
-    mezziDataset.items
-      .map((entry, index) => {
-        if (!entry || typeof entry !== "object") return null;
-        return mapMezzoItem({
-          raw: entry as NextAnagraficheFlottaRaw,
-          index,
-          datasetShape: mezziDataset.datasetShape,
-          colleaguesById,
-        });
-      })
-      .filter((entry): entry is NextAnagraficheFlottaMezzoItem => Boolean(entry))
+  const patchByTarga = new Map(
+    readNextFlottaClonePatches().map((entry) => [normalizeTarga(entry.targa), entry]),
   );
+
+  const baseItems = mezziDataset.items
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      const mapped = mapMezzoItem({
+        raw: entry as NextAnagraficheFlottaRaw,
+        index,
+        datasetShape: mezziDataset.datasetShape,
+        colleaguesById,
+      });
+      return mapped ? applyMezzoClonePatch(mapped, patchByTarga) : null;
+    })
+    .filter((entry): entry is NextAnagraficheFlottaMezzoItem => Boolean(entry));
+
+  const existingTarghe = new Set(baseItems.map((entry) => entry.targa));
+  const extraCloneItems = readNextFlottaClonePatches()
+    .filter((entry) => !entry.deleted && !existingTarghe.has(normalizeTarga(entry.targa)))
+    .map((patch) =>
+      buildMezzoFromClonePatch({
+        patch,
+        datasetShape: mezziDataset.datasetShape,
+        colleaguesById,
+      }),
+    )
+    .filter((entry): entry is NextAnagraficheFlottaMezzoItem => Boolean(entry));
+
+  const items = sortMezzi([...baseItems, ...extraCloneItems]);
 
   return {
     domainCode: NEXT_ANAGRAFICHE_FLOTTA_DOMAIN.code,
@@ -643,7 +839,7 @@ export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagrafic
       totalColleghi: colleghi.length,
     },
     limitations: [
-      "Il layer flotta legge solo `@mezzi_aziendali` e `@colleghi` in read-only, senza attivare scritture, upload o flussi IA libretto.",
+      "Il layer flotta legge `@mezzi_aziendali` e `@colleghi` in read-only; gli unici aggiornamenti ammessi restano patch locali del clone su mezzo, foto e libretto.",
       "Il collegamento collega -> mezzo viene usato solo per risolvere `autistaNome` quando il mezzo espone un `autistaId` leggibile; nessun match debole su nome libero.",
       rawMissingTarga > 0
         ? "Una parte di `@mezzi_aziendali` non espone una targa leggibile ed e stata esclusa dalla flotta clone."
@@ -659,6 +855,9 @@ export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagrafic
         : null,
       items.some((entry) => entry.flags.includes("revisione_non_parseabile"))
         ? "Alcune scadenze revisione restano non parseabili nel formato legacy e non vengono forzate dal layer."
+        : null,
+      patchByTarga.size > 0
+        ? `Il clone applica ${patchByTarga.size} patch locali su libretti/foto senza scrivere sulla madre.`
         : null,
     ].filter((entry): entry is string => Boolean(entry)),
   };

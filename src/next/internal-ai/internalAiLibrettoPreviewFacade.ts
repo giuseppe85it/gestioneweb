@@ -3,6 +3,7 @@ import {
   readNextAnagraficheFlottaSnapshot,
   type NextAnagraficheFlottaMezzoItem,
 } from "../nextAnagraficheFlottaDomain";
+import { formatDateUI } from "../nextDateFormat";
 import { readNextLibrettiExportSnapshot } from "../domain/nextLibrettiExportDomain";
 import type {
   InternalAiLibrettoPreview,
@@ -51,14 +52,10 @@ function takeNotes(notes: string[] | undefined, limit = 3): string[] {
 
 function formatDateLabel(value: string, timestamp: number | null): string {
   if (timestamp) {
-    return new Intl.DateTimeFormat("it-IT", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(new Date(timestamp));
+    return formatDateUI(timestamp);
   }
 
-  return value || "non disponibile";
+  return value ? formatDateUI(value) : "non disponibile";
 }
 
 function pushIfPresent(

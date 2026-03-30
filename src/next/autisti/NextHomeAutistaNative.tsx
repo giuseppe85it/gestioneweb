@@ -7,8 +7,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
-import { getItemSync, setItemSync } from "../../utils/storageSync";
-import GommeAutistaModal from "../../autisti/GommeAutistaModal";
+import { getItemSync, setItemSync } from "./nextAutistiStorageSync";
+import NextGommeAutistaModal from "./NextGommeAutistaModal";
 import {
   clearLastHandledRevokedAt,
   getAutistaLocal,
@@ -18,7 +18,7 @@ import {
   removeMezzoLocal,
   saveMezzoLocal,
   setLastHandledRevokedAt,
-} from "../../autisti/autistiStorage";
+} from "./nextAutistiSessionStorage";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
@@ -488,7 +488,7 @@ export default function HomeAutista() {
         </div>
       )}
 
-      <GommeAutistaModal open={gommeOpen} onClose={() => setGommeOpen(false)} />
+      <NextGommeAutistaModal open={gommeOpen} onClose={() => setGommeOpen(false)} />
     </div>
   );
 }

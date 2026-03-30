@@ -37,6 +37,7 @@ import { readNextMezzoManutenzioniGommeSnapshot } from "../domain/nextManutenzio
 import { readNextOperativitaGlobaleSnapshot } from "../domain/nextOperativitaGlobaleDomain";
 import { readNextProcurementSnapshot } from "../domain/nextProcurementDomain";
 import { readNextMezzoRifornimentiSnapshot } from "../domain/nextRifornimentiDomain";
+import { formatDateUI } from "../nextDateFormat";
 import {
   readNextUnifiedCollection,
   readNextUnifiedLocalStorageKey,
@@ -718,14 +719,10 @@ function formatDateLabel(value: number | string | null | undefined): string {
 
   const ts = typeof value === "number" ? value : toTimestamp(value);
   if (ts === null) {
-    return typeof value === "string" ? value : "DA VERIFICARE";
+    return typeof value === "string" ? formatDateUI(value) : "DA VERIFICARE";
   }
 
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(ts));
+  return formatDateUI(ts);
 }
 
 function formatIsoDate(value: Date): string {
@@ -6217,7 +6214,7 @@ async function runVehicleUnifiedQuery(spec: UnifiedQuerySpec): Promise<InternalA
         "Per evitare di allargare il report allo storico completo, fermo qui il calcolo e ti chiedo di indicare il periodo in modo piu chiaro, ad esempio:\n" +
         '- "questo mese"\n' +
         '- "marzo 2026"\n' +
-        '- "dal 01/03/2026 al 31/03/2026"',
+        '- "dal 01 03 2026 al 31 03 2026"',
       references: buildUnifiedReferences({
         reliabilityLabel: "Parziale",
         domainLabel: plan.domainLabel,

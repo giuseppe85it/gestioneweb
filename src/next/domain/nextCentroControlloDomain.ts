@@ -8,9 +8,9 @@ import {
   type AlertMeta,
   type AlertsState,
 } from "../../utils/alertsState";
-import { formatDateTimeUI, formatDateUI } from "../../utils/dateFormat";
+import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
 import type { HomeEvent } from "../../utils/homeEvents";
-import { getItemSync } from "../../utils/storageSync";
+import { getItemSync } from "../autisti/nextAutistiStorageSync";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import {
   applyNextHomeCloneEventiOverlay,

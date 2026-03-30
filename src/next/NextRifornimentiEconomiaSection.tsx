@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatDateUI } from "../utils/dateFormat";
+import { formatDateUI } from "./nextDateFormat";
 import { readNextMezzoRifornimentiSnapshot } from "./domain/nextRifornimentiDomain";
 import {
   ResponsiveContainer,
@@ -20,6 +20,7 @@ type RifornimentoRecord = {
   targaCamion?: string | null;
   targaMotrice?: string | null;
   data?: string | number | null;
+  dataOra?: string | number | null;
   timestamp?: string | number | null;
   litri?: number | null;
   km?: number | null;
@@ -37,12 +38,24 @@ type RifornimentoNorm = RifornimentoRecord & {
   litriNum: number | null;
 };
 
+type TimestampLike = {
+  toDate?: () => Date;
+};
+
+type ChartPayloadLike = {
+  giorno?: string;
+  dayKey?: string;
+  labelLong?: string;
+  litri?: number | null;
+  kmMax?: number | null;
+};
+
 const toNumber = (value: unknown): number | null => {
   if (value == null) return null;
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const raw = String(value).trim();
   if (!raw) return null;
-  const normalized = raw.replace(",", ".").replace(/[^\d.\-]/g, "");
+  const normalized = raw.replace(",", ".").replace(/[^\d.-]/g, "");
   if (!normalized) return null;
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
@@ -51,8 +64,8 @@ const toNumber = (value: unknown): number | null => {
 const parseDateFlex = (value: unknown): Date | null => {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === "object" && (value as any)?.toDate) {
-    const d = (value as any).toDate();
+  if (typeof value === "object" && typeof (value as TimestampLike).toDate === "function") {
+    const d = (value as TimestampLike).toDate?.();
     return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
   }
   if (typeof value === "number") {
@@ -105,7 +118,7 @@ const formatDayKeyShort = (dayKey: string): string => {
 const formatDayKeyLong = (dayKey: string): string => {
   const [yyyy, mm, dd] = dayKey.split("-");
   if (!yyyy || !mm || !dd) return "—";
-  return `${dd}/${mm}/${yyyy}`;
+  return formatDateUI(`${dd} ${mm} ${yyyy}`);
 };
 
 const getDayKey = (value: Date): string => {
@@ -146,8 +159,8 @@ const FuelDot = ({
   cx?: number;
   cy?: number;
   value?: number;
-  payload?: any;
-  onPick?: (payload?: any) => void;
+  payload?: ChartPayloadLike;
+  onPick?: (payload?: ChartPayloadLike) => void;
 }) => {
   if (cx == null || cy == null) return null;
   const v = typeof value === "number" ? value : 0;
@@ -219,7 +232,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
       .map((r) => {
         const dateObj =
           parseDateFlex(r.data) ||
-          parseDateFlex((r as any)?.dataOra) ||
+          parseDateFlex(r.dataOra) ||
           parseDateFlex(r.timestamp);
         return {
           ...r,
@@ -806,7 +819,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
     setEndRef(null);
   };
 
-  const handlePickDay = (payload?: { [key: string]: any }) => {
+  const handlePickDay = (payload?: ChartPayloadLike) => {
     const labelKey = payload?.giorno;
     if (!labelKey) return;
     const dayKey =
@@ -836,7 +849,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
     setPeriodEndRef(null);
   };
 
-  const handlePickPeriodDay = (payload?: { [key: string]: any }) => {
+  const handlePickPeriodDay = (payload?: ChartPayloadLike) => {
     const dayKey = payload?.dayKey;
     if (!dayKey) return;
     pickPeriodDay(dayKey);
@@ -1052,7 +1065,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
               <Tooltip
                 content={({ active, payload }) => {
                   if (!active || !payload || !payload.length) return null;
-                  const row: any = payload[0]?.payload;
+                  const row = (payload[0]?.payload ?? null) as ChartPayloadLike | null;
                   if (!row) return null;
                   const dayKey = row.dayKey;
                   const label =
@@ -1212,7 +1225,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (!active || !payload || !payload.length) return null;
-                  const row: any = payload[0]?.payload;
+                  const row = (payload[0]?.payload ?? null) as ChartPayloadLike | null;
                   if (!row) return null;
                   const litri = row.litri;
                   const startKey = startRef ? getDayKey(startRef.dateObj) : null;

@@ -1,6 +1,11 @@
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
 import {
+  readNextCisternaCloneDocumenti,
+  readNextCisternaCloneParametri,
+  readNextCisternaCloneSchede,
+} from "../nextCisternaCloneState";
+import {
   CISTERNA_DOCUMENTI_COLLECTION,
   CISTERNA_PARAMETRI_COLLECTION,
   CISTERNA_REFUEL_TAG,
@@ -10,6 +15,7 @@ import {
   monthKeyFromDate,
   monthLabel,
 } from "../../cisterna/collections";
+import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
 import type {
   CisternaDocumento,
   CisternaParametroMensile,
@@ -265,7 +271,7 @@ function toDateFromUnknown(value: unknown): Date | null {
     const direct = new Date(value);
     if (!Number.isNaN(direct.getTime())) return direct;
 
-    const match = value.trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+    const match = value.trim().match(/^(\d{1,2})[./\s-](\d{1,2})[./\s-](\d{2,4})$/);
     if (!match) return null;
     const day = Number(match[1]);
     const month = Number(match[2]) - 1;
@@ -309,7 +315,7 @@ function formatDateKey(date: Date): string {
 function normalizeDateKey(value: unknown): string {
   const text = String(value ?? "").trim();
   if (!text) return "";
-  const match = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  const match = text.match(/^(\d{1,2})[./\s-](\d{1,2})[./\s-](\d{2,4})$/);
   if (!match) return "";
 
   const day = Number(match[1]);
@@ -477,7 +483,7 @@ function toArchiveDocumentItem(
   const date = getDocDate(docItem);
   return {
     id: docItem.id,
-    dateLabel: date ? date.toLocaleDateString("it-CH") : "-",
+    dateLabel: date ? formatDateUI(date) : "-",
     timestamp: date?.getTime() ?? null,
     tipoDocumento: normalizeOptionalText(docItem.tipoDocumento),
     fornitore: normalizeOptionalText(docItem.fornitore),
@@ -510,7 +516,31 @@ async function readDocuments(): Promise<CisternaDocumento[]> {
     return rightMs - leftMs;
   });
 
-  return rows;
+  const cloneRows = readNextCisternaCloneDocumenti().map((entry) => ({
+    id: entry.id,
+    tipoDocumento: entry.tipoDocumento,
+    fornitore: entry.fornitore,
+    destinatario: entry.destinatario,
+    numeroDocumento: entry.numeroDocumento,
+    dataDocumento: entry.dataDocumento,
+    litriTotali: entry.litriTotali,
+    totaleDocumento: entry.totaleDocumento,
+    valuta: entry.valuta,
+    prodotto: entry.prodotto,
+    testo: entry.testo,
+    needsReview: entry.needsReview,
+    motivoVerifica: entry.motivoVerifica,
+    nomeFile: entry.nomeFile,
+    fileUrl: entry.fileUrl,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  })) as CisternaDocumento[];
+
+  return [...cloneRows, ...rows].sort((left, right) => {
+    const leftMs = getDocDate(left)?.getTime() ?? 0;
+    const rightMs = getDocDate(right)?.getTime() ?? 0;
+    return rightMs - leftMs;
+  });
 }
 
 async function readRefuels(): Promise<{
@@ -544,7 +574,24 @@ async function readSchede(): Promise<CisternaSchedaDoc[]> {
     return getSchedaTarga(left).localeCompare(getSchedaTarga(right));
   });
 
-  return rows;
+  const cloneRows = readNextCisternaCloneSchede().map((entry) => ({
+    id: entry.id,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+    source: entry.source,
+    rowCount: entry.rowCount,
+    rows: entry.rows,
+    needsReview: entry.needsReview,
+    mese: entry.mese,
+    yearMonth: entry.yearMonth,
+  })) as CisternaSchedaDoc[];
+
+  return [...cloneRows, ...rows].sort((left, right) => {
+    const leftMs = getSchedaDate(left)?.getTime() ?? 0;
+    const rightMs = getSchedaDate(right)?.getTime() ?? 0;
+    if (rightMs !== leftMs) return rightMs - leftMs;
+    return getSchedaTarga(left).localeCompare(getSchedaTarga(right));
+  });
 }
 
 async function readParametriMensili(): Promise<Map<string, CisternaParametroMensile>> {
@@ -558,6 +605,13 @@ async function readParametriMensili(): Promise<Map<string, CisternaParametroMens
       mese: key,
       cambioEurChf: toNumberOrNull(raw.cambioEurChf),
       updatedAt: raw.updatedAt,
+    });
+  });
+  readNextCisternaCloneParametri().forEach((entry) => {
+    entries.set(entry.monthKey, {
+      mese: entry.monthKey,
+      cambioEurChf: entry.cambioEurChf,
+      updatedAt: entry.updatedAt,
     });
   });
   return entries;
@@ -618,7 +672,7 @@ function buildSupportRows(
     })
     .map((item, index) => {
       const date = getRefuelDate(item);
-      const dateLabel = date ? date.toLocaleDateString("it-CH") : "-";
+      const dateLabel = date ? formatDateUI(date) : "-";
       return {
         id: String(item.id ?? `${index}_${dateLabel}_${getRefuelTarga(item)}`),
         dateLabel,
@@ -752,7 +806,7 @@ function buildSchedeMonthItems(
       return {
         id: item.id,
         dateLabel: created
-          ? created.toLocaleString("it-CH")
+          ? formatDateTimeUI(created)
           : normalizeOptionalText(item.yearMonth ?? item.mese) ?? "-",
         sourceLabel,
         rowCount: item.rowCount ?? (Array.isArray(item.rows) ? item.rows.length : 0),
@@ -795,7 +849,7 @@ export async function readNextCisternaSchedaDetail(
     rowCount: item.rowCount ?? rows.length,
     targa: getSchedaTarga(item) || null,
     needsReview: Boolean(item.needsReview),
-    createdAtLabel: createdAt ? createdAt.toLocaleString("it-CH") : null,
+    createdAtLabel: createdAt ? formatDateTimeUI(createdAt) : null,
     rows: rows.map((row, index) => ({
       index,
       data: normalizeText(row.data) || "-",
@@ -915,7 +969,7 @@ function buildVeritaRows(
     hasManualTruth: true,
     latestManualSchedaId: latestManualScheda.id,
     latestManualSchedaLabel: createdAt
-      ? createdAt.toLocaleString("it-CH")
+      ? formatDateTimeUI(createdAt)
       : normalizeOptionalText(latestManualScheda.yearMonth ?? latestManualScheda.mese),
     veritaRows: manualRows,
     supportRows,
@@ -1089,7 +1143,7 @@ function buildReportData(args: {
 
     return {
       id: row.id,
-      data: row.dataKey,
+        data: formatDateUI(row.dataKey),
       targa: row.targa,
       litri: row.litri,
       nome: row.nome || "-",

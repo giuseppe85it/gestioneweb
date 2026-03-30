@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
-import { getItemSync, setItemSync } from "../../utils/storageSync";
-import { getAutistaLocal, getMezzoLocal, saveAutistaLocal } from "../../autisti/autistiStorage";
+import { getItemSync, setItemSync } from "./nextAutistiStorageSync";
+import { getAutistaLocal, getMezzoLocal, saveAutistaLocal } from "./nextAutistiSessionStorage";
 
 const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 

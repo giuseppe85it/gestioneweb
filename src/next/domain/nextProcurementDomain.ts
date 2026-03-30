@@ -191,12 +191,12 @@ export type NextProcurementSnapshot = {
     arrivi: NextProcurementOrderItem[];
   };
   navigability: {
-    ordineMateriali: { enabled: false; reason: string };
-    ordini: { enabled: true; reason: null };
-    arrivi: { enabled: true; reason: null };
-    preventivi: { enabled: true; reason: string };
-    listino: { enabled: true; reason: string };
-    dettaglioOrdine: { enabled: true; reason: string };
+    ordineMateriali: { enabled: boolean; reason: string };
+    ordini: { enabled: boolean; reason: null };
+    arrivi: { enabled: boolean; reason: null };
+    preventivi: { enabled: boolean; reason: string };
+    listino: { enabled: boolean; reason: string };
+    dettaglioOrdine: { enabled: boolean; reason: string };
   };
   limitations: string[];
 };
@@ -812,9 +812,19 @@ async function readOrdersDataset(): Promise<{
 }> {
   const dataset = await readStorageDataset(ORDINI_KEY);
   const cloneOrders = readNextProcurementCloneOrders();
+  const baseItems = dataset.items.filter((entry): entry is RawOrderRecord => Boolean(entry) && typeof entry === "object");
+  const byId = new Map<string, RawOrderRecord>();
+
+  baseItems.forEach((entry, index) => {
+    byId.set(buildOrderId(entry, index), entry);
+  });
+  cloneOrders.forEach((entry) => {
+    byId.set(entry.id, entry as unknown as RawOrderRecord);
+  });
+
   return {
     datasetShape: dataset.datasetShape,
-    items: [...dataset.items, ...cloneOrders],
+    items: Array.from(byId.values()),
     cloneOrdersCount: cloneOrders.length,
   };
 }
@@ -930,9 +940,9 @@ export async function readNextProcurementSnapshot(): Promise<NextProcurementSnap
     legacyViews,
     navigability: {
       ordineMateriali: {
-        enabled: false,
+        enabled: true,
         reason:
-          "Ordine materiali resta bloccato nel clone: il flusso madre scrive bozze e conferme su `@ordini`, carica foto e apre side effect non compatibili col perimetro read-only.",
+          "Ordine materiali e disponibile come workbench NEXT clone-only: conferme, allegati e PDF restano locali al clone e non scrivono sulla madre.",
       },
       ordini: { enabled: true, reason: null },
       arrivi: { enabled: true, reason: null },
@@ -949,13 +959,13 @@ export async function readNextProcurementSnapshot(): Promise<NextProcurementSnap
       dettaglioOrdine: {
         enabled: true,
         reason:
-          "Il dettaglio ordine clone legge solo `@ordini` in read-only: nessun passaggio a stock, PDF operativo, foto o salvataggio viene riattivato.",
+          "Il dettaglio ordine NEXT permette aggiornamenti clone-only su stato arrivo, righe, note e PDF senza scrivere sulla madre.",
       },
     },
     limitations: [
-      "Il layer D06 clone-safe legge ordini, preventivi, approvazioni e listino come superfici native NEXT, ma nessuna scrittura business viene riattivata.",
+      "Il layer D06 clone-safe legge ordini, preventivi, approvazioni e listino come superfici native NEXT; gli aggiornamenti ammessi restano solo clone-only e non scrivono sulla madre.",
       "Le viste `Ordini` e `Arrivi` replicano la semantica della madre su `Acquisti`: gli ordini parziali compaiono in entrambe perche hanno sia righe pendenti sia righe arrivate.",
-      "Il dettaglio clone resta read-only: pulsanti di modifica, PDF operativo, foto, toggle arrivo e aggiunta materiali non vengono eseguiti.",
+      "Il dettaglio clone mantiene edit, toggle arrivo, allegati locali e PDF clone-only senza aprire side effect business sulla madre.",
       dataset.datasetShape === "unsupported"
         ? "Il dataset `@ordini` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
         : null,

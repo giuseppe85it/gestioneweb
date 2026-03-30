@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
 import "../../autisti/Rifornimento.css";
-import { getAutistaLocal, getMezzoLocal } from "../../autisti/autistiStorage";
-import { formatDateTimeUI } from "../../utils/dateFormat";
+import { getAutistaLocal, getMezzoLocal } from "./nextAutistiSessionStorage";
+import { formatDateTimeUI } from "../nextDateFormat";
 import {
   NEXT_AUTISTI_BASE_PATH,
   NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,
@@ -15,6 +15,33 @@ import {
   type NextAutistiCloneRifornimentoRecord,
   type NextAutistiCloneTipoRifornimento,
 } from "./nextAutistiCloneRifornimenti";
+
+type NextAutistiSessioneAutista = {
+  id?: string | number | null;
+  nome?: string | null;
+  badge?: string | null;
+};
+
+type NextAutistiSessioneMezzo = {
+  targaCamion?: string | null;
+  targaRimorchio?: string | null;
+};
+
+function normalizeAutistaSession(
+  value: unknown,
+): NextAutistiSessioneAutista | null {
+  return value && typeof value === "object"
+    ? (value as NextAutistiSessioneAutista)
+    : null;
+}
+
+function normalizeMezzoSession(
+  value: unknown,
+): NextAutistiSessioneMezzo | null {
+  return value && typeof value === "object"
+    ? (value as NextAutistiSessioneMezzo)
+    : null;
+}
 
 function genId() {
   const cryptoApi = globalThis.crypto as Crypto | undefined;
@@ -53,8 +80,12 @@ function buildHomePathWithNotice(noticeCode: string) {
 export default function NextAutistiRifornimentoPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [autista, setAutista] = useState<any>(null);
-  const [mezzo, setMezzo] = useState<any>(null);
+  const [autista] = useState<NextAutistiSessioneAutista | null>(() =>
+    normalizeAutistaSession(getAutistaLocal()),
+  );
+  const [mezzo] = useState<NextAutistiSessioneMezzo | null>(() =>
+    normalizeMezzoSession(getMezzoLocal()),
+  );
   const [tipo, setTipo] = useState<NextAutistiCloneTipoRifornimento>("caravate");
   const [metodo, setMetodo] = useState<NextAutistiCloneMetodoPagamento | null>(null);
   const [paese, setPaese] = useState<NextAutistiClonePaese | null>(null);
@@ -69,23 +100,15 @@ export default function NextAutistiRifornimentoPage() {
   const [currentDate] = useState(() => new Date());
 
   useEffect(() => {
-    const autistaLocale = getAutistaLocal();
-    const mezzoLocale = getMezzoLocal();
-
-    if (!autistaLocale?.badge) {
+    if (!autista?.badge) {
       navigate(`${NEXT_AUTISTI_BASE_PATH}/login`, { replace: true });
       return;
     }
 
-    if (!mezzoLocale?.targaCamion) {
+    if (!mezzo?.targaCamion) {
       navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo`, { replace: true });
-      return;
     }
-
-    setAutista(autistaLocale);
-    setMezzo(mezzoLocale);
-    setTargaConfirmed(false);
-  }, [navigate]);
+  }, [autista, mezzo, navigate]);
 
   function validate() {
     const nextErrors: Record<string, string> = {};
@@ -216,8 +239,9 @@ export default function NextAutistiRifornimentoPage() {
                     return current;
                   }
 
-                  const { targa: _ignored, ...rest } = current;
-                  return rest;
+                  const nextErrors = { ...current };
+                  delete nextErrors.targa;
+                  return nextErrors;
                 });
               }
             }}

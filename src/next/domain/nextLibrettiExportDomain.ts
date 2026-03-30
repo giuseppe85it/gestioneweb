@@ -210,7 +210,7 @@ export async function readNextLibrettiExportSnapshot(): Promise<NextLibrettiExpo
       items.some((item) => item.flags.includes("storage_fallback_assente"))
         ? "Una parte dei libretti non espone `librettoStoragePath`: la preview prova il solo `librettoUrl` quando il fallback non e disponibile."
         : null,
-      "Il clone apre solo lista, selezione e anteprima locale: condivisione, copia link, WhatsApp e download restano bloccati.",
+      "Il clone esporta i libretti in sola lettura sopra il layer NEXT, senza modificare `@mezzi_aziendali` o riaprire scritture business.",
     ].filter((entry): entry is string => Boolean(entry)),
   };
 }

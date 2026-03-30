@@ -1887,7 +1887,7 @@ async function buildReportResponse(
       status: "partial",
       assistantText:
         "Ho rilevato una richiesta con periodo esplicito, ma il periodo non e stato interpretato in modo affidabile.\n\n" +
-        "Per evitare di allargare il report allo storico completo, fermo qui la preview e ti chiedo di indicare il periodo in modo piu chiaro, ad esempio \"questo mese\", \"marzo 2026\" oppure \"dal 01/03/2026 al 31/03/2026\".",
+        "Per evitare di allargare il report allo storico completo, fermo qui la preview e ti chiedo di indicare il periodo in modo piu chiaro, ad esempio \"questo mese\", \"marzo 2026\" oppure \"dal 01 03 2026 al 31 03 2026\".",
       references: [
         {
           type: "report_preview",

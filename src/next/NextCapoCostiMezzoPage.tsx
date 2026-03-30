@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { formatDateUI } from "../utils/dateFormat";
-import { generatePreventiviCapoPDFBlob } from "../utils/pdfEngine";
+import { formatDateUI } from "./nextDateFormat";
+import { generatePreventiviCapoPDFBlob, generateTablePDFBlob } from "../utils/pdfEngine";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
   buildPdfShareText,
@@ -481,11 +481,6 @@ export default function NextCapoCostiMezzoPage() {
   };
 
   const handleDownloadStamped = async (item: NextCapoCostiRecord) => {
-    if (!item.fileUrl) {
-      window.alert("Errore anteprima PDF timbrato.");
-      return;
-    }
-
     const status =
       item.approvalStatus === "approved"
         ? "APPROVATO"
@@ -499,35 +494,39 @@ export default function NextCapoCostiMezzoPage() {
     ).padStart(2, "0")}`;
 
     try {
-      const response = await fetch(
-        "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/stamp_pdf",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fileUrl: item.fileUrl,
-            status,
-            stampTimeHHmm,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`stamp_pdf failed: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      if (!data?.stampedUrl) {
-        throw new Error("stamp_pdf missing stampedUrl");
-      }
-
-      openPdfUrlPreview(
-        data.stampedUrl,
-        `Anteprima PDF timbrato ${status}`,
-        `Preventivo timbrato ${status}`
-      );
+      const fileDate = formatFileDate();
+      const preview = await openPreview({
+        source: async () =>
+          generateTablePDFBlob(
+            `Timbro clone ${status} ${String(targa ?? "").toUpperCase()}`,
+            [
+              {
+                targa: String(targa ?? "").toUpperCase() || "-",
+                fornitore: item.supplier || "Fornitore n/d",
+                data: formatDateShort(item.data, item.timestamp),
+                importo:
+                  typeof item.amount === "number"
+                    ? `${formatAmountValue(item.amount)} ${item.currency ?? "UNKNOWN"}`
+                    : "Importo n/d",
+                stato: status,
+                ora_timbro: stampTimeHHmm,
+                pdf_origine: item.fileUrl ? "Disponibile nel clone" : "Nessun PDF sorgente",
+              },
+            ],
+            ["targa", "fornitore", "data", "importo", "stato", "ora_timbro", "pdf_origine"],
+          ),
+        fileName: `preventivo-timbrato-clone-${String(targa ?? "targa").toUpperCase()}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF timbrato ${status}`);
+      setPdfShareContext(`Preventivo timbrato ${status}`);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
     } catch {
-      window.alert("Errore timbro");
+      window.alert("Errore anteprima PDF timbrato.");
     }
   };
 

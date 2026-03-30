@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../autisti/CambioMezzoAutista.css";
-import { getItemSync } from "../utils/storageSync";
+import { getItemSync } from "./autisti/nextAutistiStorageSync";
 import {
   getAutistaLocal,
   getMezzoLocal,
   saveMezzoLocal,
-} from "../autisti/autistiStorage";
+} from "./autisti/nextAutistiSessionStorage";
 import {
   NEXT_AUTISTI_BASE_PATH,
   NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,

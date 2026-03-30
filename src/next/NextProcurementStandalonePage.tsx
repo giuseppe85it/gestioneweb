@@ -37,18 +37,18 @@ function getTitle(mode: ProcurementPageMode) {
 
 function getDescription(mode: ProcurementPageMode) {
   if (mode === "ordine-materiali") {
-    return "La route clone esiste come pagina vera della madre, ma il flusso resta neutralizzato per evitare scritture o bozze ingannevoli.";
+    return "Workbench NEXT clone-only per ordini materiali, preventivi locali e PDF del clone.";
   }
   if (mode === "ordini") {
     return "Lista clone autonoma degli ordini in attesa, separata dal vecchio hub query-driven.";
   }
   if (mode === "arrivi") {
-    return "Lista clone autonoma degli ordini arrivati, con dettaglio leggibile e azioni bloccate.";
+    return "Lista clone autonoma degli ordini arrivati, con dettaglio e aggiornamenti locali al clone.";
   }
   if (mode === "dettaglio") {
-    return "Dettaglio ordine clone-safe su route dedicata, in sola lettura.";
+    return "Dettaglio ordine clone-safe su route dedicata, con modifica, PDF e materiali aggiunti solo nel clone.";
   }
-  return "Controparte clone read-only della pagina madre Acquisti, ora raggiungibile con route autonoma.";
+  return "Controparte clone-safe della pagina madre Acquisti, con azioni locali al clone e nessuna scrittura business sulla madre.";
 }
 
 function getBackPath(mode: ProcurementPageMode, backTab: NextProcurementListTab) {
@@ -175,8 +175,8 @@ export default function NextProcurementStandalonePage({
             <div className="next-clone-placeholder">{handoff.state.errorMessage}</div>
           ) : null}
           <p>
-            La pagina mantiene l&apos;autonomia di routing della madre. Creazione ordini, preventivi,
-            listino, PDF operativi e modifiche restano bloccati nel clone.
+            La pagina mantiene l&apos;autonomia di routing della madre. Ordini, arrivi, PDF e
+            aggiornamenti locali restano disponibili solo nel clone e non scrivono sulla madre.
           </p>
         </div>
       }

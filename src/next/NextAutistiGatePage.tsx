@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getItemSync } from "../utils/storageSync";
+import { getItemSync } from "./autisti/nextAutistiStorageSync";
 import {
   getAutistaLocal,
   getLastHandledRevokedAt,
@@ -8,7 +9,7 @@ import {
   removeMezzoLocal,
   saveMezzoLocal,
   setLastHandledRevokedAt,
-} from "../autisti/autistiStorage";
+} from "./autisti/nextAutistiSessionStorage";
 import { NEXT_AUTISTI_BASE_PATH } from "./autisti/nextAutistiCloneRuntime";
 import { getNextAutistiCloneControlli } from "./autisti/nextAutistiCloneState";
 

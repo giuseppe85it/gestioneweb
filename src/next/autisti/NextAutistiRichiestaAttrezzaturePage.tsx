@@ -2,7 +2,7 @@ import { useEffect, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
 import "../../autisti/RichiestaAttrezzature.css";
-import { getAutistaLocal, getMezzoLocal } from "../../autisti/autistiStorage";
+import { getAutistaLocal, getMezzoLocal } from "./nextAutistiSessionStorage";
 import {
   NEXT_AUTISTI_BASE_PATH,
   NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,

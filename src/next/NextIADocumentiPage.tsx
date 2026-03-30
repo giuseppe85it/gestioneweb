@@ -9,6 +9,11 @@ import {
   readInternalAiDocumentsPreview,
   type InternalAiDocumentsPreviewReadResult,
 } from "./internal-ai/internalAiDocumentsPreviewFacade";
+import {
+  upsertNextInternalAiCloneDocumento,
+  type NextInternalAiCloneDocumentoRecord,
+} from "./internal-ai/nextInternalAiCloneState";
+import { upsertNextInventarioCloneRecord } from "./nextInventarioCloneState";
 import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import "../pages/IA/IADocumenti.css";
@@ -48,6 +53,17 @@ function classLabel(value: "diretto" | "plausibile" | "fuori_perimetro") {
   return "Fuori perimetro";
 }
 
+function buildDraftTipoDocumento(
+  category: CategoriaArchivio,
+  fileName: string,
+): NextInternalAiCloneDocumentoRecord["tipoDocumento"] {
+  const normalized = fileName.toLowerCase();
+  if (normalized.includes("preventiv")) return "PREVENTIVO";
+  if (normalized.includes("fattur")) return "FATTURA";
+  if (category === "MAGAZZINO") return "FATTURA";
+  return "DOCUMENTO_UTILE";
+}
+
 export default function NextIADocumentiPage() {
   const handoff = useInternalAiUniversalHandoffConsumer({
     moduleId: "next.ia_hub",
@@ -61,8 +77,11 @@ export default function NextIADocumentiPage() {
   const [notice, setNotice] = useState("");
   const [previewFileName, setPreviewFileName] = useState("");
   const [previewFileUrl, setPreviewFileUrl] = useState<string | null>(null);
+  const [previewFileMime, setPreviewFileMime] = useState("");
   const [selectedDoc, setSelectedDoc] = useState<NextDocumentiCostiReadOnlyItem | null>(null);
   const [currencyOverrides, setCurrencyOverrides] = useState<Record<string, CurrencyOverride>>({});
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [analysisDraft, setAnalysisDraft] = useState<NextInternalAiCloneDocumentoRecord | null>(null);
 
   const activeTarga = useMemo(() => {
     if (handoff.state.status === "ready" && handoff.state.payload.documentType === "documento_mezzo") {
@@ -102,7 +121,7 @@ export default function NextIADocumentiPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTarga]);
+  }, [activeTarga, refreshTick]);
 
   useEffect(() => {
     if (handoff.state.status !== "ready" || handoff.state.payload.documentType !== "documento_mezzo") {
@@ -188,49 +207,145 @@ export default function NextIADocumentiPage() {
                   return;
                 }
                 setPreviewFileName(file.name);
-                if (file.type.startsWith("image/")) {
-                  const reader = new FileReader();
-                  reader.onload = () =>
-                    setPreviewFileUrl(typeof reader.result === "string" ? reader.result : null);
-                  reader.readAsDataURL(file);
-                } else {
-                  setPreviewFileUrl(null);
-                }
+                setPreviewFileMime(file.type);
+                const reader = new FileReader();
+                reader.onload = () =>
+                  setPreviewFileUrl(typeof reader.result === "string" ? reader.result : null);
+                reader.readAsDataURL(file);
+                setAnalysisDraft(null);
               }}
             />
             <div>Archivio target: {categoryLabel(categoriaArchivio)}</div>
             {previewFileName ? <div>File selezionato: {previewFileName}</div> : null}
-            {previewFileUrl ? (
+            {previewFileUrl && previewFileMime.startsWith("image/") ? (
               <img src={previewFileUrl} alt={previewFileName} style={{ maxWidth: 320, borderRadius: 12 }} />
             ) : null}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
-                onClick={() =>
-                  setNotice("Nel clone l'analisi OCR dei documenti resta bloccata: la pagina usa solo preview e dataset gia leggibili.")
-                }
+                onClick={() => {
+                  if (!activeTarga) {
+                    setNotice("Inserisci prima una targa valida.");
+                    return;
+                  }
+                  if (!previewFileName || !previewFileUrl) {
+                    setNotice("Seleziona prima un documento locale.");
+                    return;
+                  }
+                  const createdAt = Date.now();
+                  const documentId = `next-clone-doc:${activeTarga}:${createdAt}`;
+                  const draft: NextInternalAiCloneDocumentoRecord = {
+                    id: documentId,
+                    collectionKey:
+                      categoriaArchivio === "MEZZO"
+                        ? "@documenti_mezzi"
+                        : categoriaArchivio === "MAGAZZINO"
+                        ? "@documenti_magazzino"
+                        : "@documenti_generici",
+                    tipoDocumento: buildDraftTipoDocumento(categoriaArchivio, previewFileName),
+                    categoriaArchivio,
+                    targa: activeTarga,
+                    mezzoTarga: activeTarga,
+                    fornitore: selectedDoc?.supplier ?? "Documento locale clone",
+                    numeroDocumento: previewFileName,
+                    dataDocumento: new Date(createdAt).toISOString(),
+                    totaleDocumento: selectedDoc?.amount ?? null,
+                    valuta:
+                      currencyOverrides[selectedDoc?.id ?? ""] ??
+                      selectedDoc?.currency ??
+                      "UNKNOWN",
+                    testo: `Analisi locale clone del documento ${previewFileName} per ${activeTarga}.`,
+                    fileUrl: previewFileUrl,
+                    righe: [
+                      {
+                        id: `${documentId}:riga-1`,
+                        descrizione:
+                          selectedDoc?.title ??
+                          (categoriaArchivio === "MAGAZZINO"
+                            ? "Materiale da verificare"
+                            : "Documento locale clone"),
+                        quantita: 1,
+                        unita: "pz",
+                        prezzoUnitario: selectedDoc?.amount ?? null,
+                        importo: selectedDoc?.amount ?? null,
+                      },
+                    ],
+                    createdAt,
+                    updatedAt: createdAt,
+                    source: "next-clone-ia",
+                    needsReview: true,
+                  };
+                  setAnalysisDraft(draft);
+                  setNotice(
+                    `Analisi locale completata: ${previewFileName} e pronto per il salvataggio clone-only nell'archivio ${categoryLabel(categoriaArchivio)}.`,
+                  );
+                }}
               >
                 Analizza con IA
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setNotice("Nel clone il salvataggio del documento resta bloccato: nessuna scrittura su @documenti_* o Storage.")
-                }
+                onClick={() => {
+                  if (!analysisDraft) {
+                    setNotice("Analizza prima un documento locale.");
+                    return;
+                  }
+                  upsertNextInternalAiCloneDocumento({
+                    ...analysisDraft,
+                    updatedAt: Date.now(),
+                  });
+                  setNotice(`Documento locale salvato nel clone per ${activeTarga}.`);
+                  setRefreshTick((current) => current + 1);
+                }}
               >
                 Salva Documento
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setNotice("Nel clone l'importazione materiali in inventario resta bloccata.")
-                }
+                onClick={() => {
+                  if (!analysisDraft || analysisDraft.righe.length === 0) {
+                    setNotice("Analizza e salva prima un documento con almeno una riga.");
+                    return;
+                  }
+                  analysisDraft.righe.forEach((row, index) => {
+                    upsertNextInventarioCloneRecord({
+                      id: `${analysisDraft.id}:inventario:${row.id || index}`,
+                      descrizione: row.descrizione,
+                      quantita: Math.max(1, row.quantita ?? 1),
+                      unita: row.unita ?? "pz",
+                      fornitore: analysisDraft.fornitore,
+                      fotoUrl: previewFileMime.startsWith("image/") ? previewFileUrl : null,
+                      fotoStoragePath: null,
+                      __nextCloneOnly: true,
+                      __nextCloneSavedAt: Date.now(),
+                    });
+                  });
+                  setNotice(
+                    `Importazione clone completata: ${analysisDraft.righe.length} righe inviate nell'inventario locale NEXT.`,
+                  );
+                }}
               >
                 Importa materiali in Inventario
               </button>
             </div>
           </div>
         </section>
+
+        {analysisDraft ? (
+          <section className="next-clone-placeholder">
+            <strong>Bozza IA locale</strong>
+            <p style={{ margin: "8px 0 12px" }}>
+              {analysisDraft.tipoDocumento} | Archivio {categoryLabel(analysisDraft.categoriaArchivio)} | Fornitore {analysisDraft.fornitore}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {analysisDraft.righe.map((row) => (
+                <li key={row.id}>
+                  {row.descrizione} - q.ta {row.quantita ?? 0} {row.unita ?? "pz"}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         {result?.status === "ready" ? (
           <>

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getItemSync } from "../../utils/storageSync";
+import { getItemSync } from "../autisti/nextAutistiStorageSync";
 import { generateSegnalazionePDFBlob } from "../../utils/pdfEngine";
 import PdfPreviewModal from "../../components/PdfPreviewModal";
 import {
@@ -12,7 +12,7 @@ import {
   revokePdfPreviewUrl,
   sharePdfFile,
 } from "../../utils/pdfPreview";
-import { formatDateTimeUI } from "../../utils/dateFormat";
+import { formatDateTimeUI } from "../nextDateFormat";
 import { isCloneRuntime } from "../../utils/cloneWriteBarrier";
 import "../../autistiInbox/AutistiSegnalazioniAll.css";
 

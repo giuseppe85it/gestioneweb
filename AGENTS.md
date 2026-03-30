@@ -1,225 +1,118 @@
-# AGENTS.md - Guida Operativa Permanente Codex (GestioneManutenzione)
+# AGENTS.md - Regole Operative Codex
 
-## Fonte primaria operativa
-- `AGENTS.md` e la fonte primaria delle istruzioni operative permanenti di Codex in questo repository.
-- I prompt futuri possono essere piu corti: bastano `obiettivo`, `perimetro` e `output richiesto`, salvo vincoli extra specifici del task.
-- I documenti di progetto restano fonte di verita per stato, dati, sicurezza e decisioni; `AGENTS.md` li rende operativi in forma stabile e sintetica.
+## 1. Fonte primaria
+- `AGENTS.md` e la guida operativa primaria di Codex in questo repository.
+- I documenti di progetto restano fonte di verita per stato, dati, sicurezza e decisioni.
+- Se `AGENTS.md` e un report si contraddicono, conta il codice reale del repo e poi la documentazione ufficiale di stato, non il report esecutivo.
 
-## Workflow operativo rapido
-- Leggere i documenti obbligatori in base al task prima di patchare.
-- Classificare richiesta, perimetro e rischio prima di toccare file.
-- Tenere i task piccoli, separati e reversibili.
-- Preferire patch minimali e controllate; niente modifiche fuori perimetro.
-- Eseguire build/lint solo se il task tocca runtime, logica o contratti; non fare build inutili sui task solo markdown.
-- Chiudere sempre con file toccati, rischio/impatto, rischi residui e hash commit se presente.
-- Se il task modifica file del repository, creare change report e continuity report.
-
-## Regole progetto GestioneManutenzione
+## 2. Confini non negoziabili
 - Madre intoccabile.
-- `src/next/*` e area clone/NEXT sicura; nessuna scrittura business reale nel clone senza richiesta esplicita e coerente.
-- Il sottosistema IA interna resta isolato sotto `/next/ia/interna*`.
+- `src/next/*` e l'unico perimetro sicuro di evoluzione applicativa.
+- Nessuna scrittura business reale nel clone senza richiesta esplicita e coerente.
+- IA interna isolata sotto `/next/ia/interna*`.
 - Nessun riuso runtime dei moduli IA legacy nel nuovo sottosistema IA interna.
-- Tutti i testi visibili nel gestionale devono essere in italiano.
-- Matching e incroci dati devono essere accurati, strutturali e spiegabili; niente deduzioni cosmetiche presentate come certezze.
+- Tutti i testi visibili nel gestionale devono restare in italiano.
+- Matching, incroci e claim di parity devono essere strutturali e spiegabili.
 
-## Regola iniziale
-- **MODE = OPERAIO** e il default per i task operativi su questo repository.
-- Se il prompt specifica un altro mode, seguire il prompt.
+## 3. Letture obbligatorie prima di agire
+- Sempre: `docs/STATO_ATTUALE_PROGETTO.md`.
+- Se il task tocca la NEXT: leggere e poi aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`.
+- Se il task tocca il clone: aggiornare `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
+- Se il task riguarda IA interna: leggere e aggiornare `docs/product/CHECKLIST_IA_INTERNA.md`; leggere anche `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md` e `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`.
+- Se il task tocca dati o domini: leggere `docs/data/DOMINI_DATI_CANONICI.md`, `docs/data/MAPPA_COMPLETA_DATI.md`, `docs/data/REGOLE_STRUTTURA_DATI.md`.
+- Se il task e architetturale, rischioso o tocca sicurezza: applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md` e leggere gli audit rilevanti.
 
-## Regole operative per i prompt Codex
-- Ogni prompt futuro per Codex deve essere numerato e deve dichiarare sempre all'inizio:
-  - modello/agente da usare;
-  - livello di ragionamento da usare.
-- Regola modelli:
-  - `GPT-5.4 mini`: task piccoli, fix CSS/UI semplici, micro-fix, audit leggeri, wiring semplice, pochi file e basso rischio;
-  - `GPT-5.4 standard`: logica, architettura, flussi, dominio dati, IA interna, Firebase/Storage, task multi-file, audit seri e task con rischio medio/alto.
-- Regola livelli di ragionamento:
-  - `BASSO`: micro-fix, testo UI, ritocchi grafici piccoli, rename banali, import/path facili;
-  - `NORMALE`: UI/CSS non banale ma contenuta, piccoli componenti/modali/pagine, audit di un modulo singolo, documentazione limitata;
-  - `ELEVATO`: logica di dominio, flussi tra moduli, file multipli collegati, planner/capability/orchestrazione, observer runtime, suggerimenti integrazione moduli;
-  - `EXTRA ELEVATO`: architettura, multi-agent, Firebase/Storage, boundary read-only, audit ampi di repository, integrazione IA profonda, task in cui un errore puo sporcare il progetto.
-- Regola pratica per questo progetto:
-  - UI/CSS semplice -> `GPT-5.4 mini | BASSO o NORMALE`;
-  - modulo medio UI/logica locale -> `GPT-5.4 standard | NORMALE o ELEVATO`;
-  - logica/architettura/IA/dati/flussi -> `GPT-5.4 standard | ELEVATO`;
-  - multi-agent / Firebase / integrazione profonda / audit totale -> `GPT-5.4 standard | EXTRA ELEVATO`.
-- Regola anti-spreco:
-  - non usare `EXTRA ELEVATO` per puro CSS;
-  - non usare `GPT-5.4 standard` per micro-fix grafici;
-  - non usare `GPT-5.4 mini` per boundary Firebase o architettura IA;
-  - usare `GPT-5.4 standard + EXTRA ELEVATO` quando si toccano Firebase, Storage, IA interna profonda, multi-agent, domain layer o flussi tra moduli.
-- Regola facoltativa ma utile:
-  - quando l'uso disponibile e quasi finito, privilegiare task piccoli con `GPT-5.4 mini` per non sprecare plafond sui micro-fix.
+## 4. Regola anti auto-certificazione
+- Un report esecutivo non basta per dichiarare chiuso un modulo.
+- Change report e continuity report sono tracciabilita, non prova.
+- La prova valida e solo una combinazione di fatti verificati nel repo, tra cui:
+  - route e file reali verificati;
+  - assenza di mount legacy dove il target richiede autonomia NEXT;
+  - parity esterna dimostrata;
+  - layer NEXT usati davvero;
+  - audit separato quando il task e grande, multi-modulo o sensibile.
+- Se la prova non c'e, il modulo non e chiuso.
 
-## Regola di ingresso obbligatoria
-- Prima di qualsiasi task nuovo, leggere sempre `docs/STATO_ATTUALE_PROGETTO.md`.
-- Se il task cambia in modo importante lo stato del progetto (decisioni, priorita, punti aperti, fase), suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
-- Se il task tocca la NEXT (shell, pagine, moduli, importazioni, stato read-only/scrittura), leggere e aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`.
+## 5. Separazione execution / audit
+- Execution e audit vanno separati quando il rischio e alto o il perimetro e grande.
+- L'execution puo patchare; l'audit non deve patchare runtime.
+- L'execution non puo auto-promuoversi a verita finale.
+- L'audit deve verificare codice, route, mount, parity esterna, layer e blocchi reali.
 
-## Registro permanente modifiche clone (obbligatorio)
-- Il registro ufficiale centrale del clone `read-only` e `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
-- Qualsiasi patch futura che modifica il clone deve aggiornare automaticamente anche questo registro.
-- Per "modifica del clone" si intende almeno:
-  - modifica a `src/next/*`;
-  - modifica documentale che cambia stato, regole, perimetro o tracciabilita del clone;
-  - attivazione, blocco o rimozione di schermate, badge, guard-rail o azioni `read-only` del clone.
-- Nessuna patch clone e considerata completa se non aggiorna anche `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
-- Se un task tocca il clone ma il registro non viene aggiornato, Codex deve fermarsi e dichiararlo esplicitamente prima di chiudere il task.
+## 6. Regola meccanica di chiusura modulo
+- Un modulo clone/NEXT e `CHIUSO` solo se tutte le condizioni seguenti sono vere:
+  1. la route ufficiale NEXT non monta `NextMotherPage` come runtime finale;
+  2. non monta `src/pages/**`, `src/autisti/**` o `src/autistiInbox/**` come runtime finale quando il target e autonomia NEXT;
+  3. la UI esterna e equivalente alla madre;
+  4. i flussi principali sono equivalenti;
+  5. i modali principali sono equivalenti;
+  6. i report o PDF principali sono equivalenti, se fanno parte del modulo;
+  7. sotto usa layer NEXT puliti o chiaramente ripuliti.
+- Se una voce critica e `NO`, il modulo non e chiuso.
+- Stati ammessi: `CHIUSO`, `APERTO`, `PARZIALE`, `DA VERIFICARE`.
 
-## Sospensione strategia NEXT precedente (2026-03-10)
-- La strategia NEXT precedente basata su shell autonoma, import dominio-centrica progressiva e divieto di clone UX legacy e sospesa.
-- Fino a nuova decisione, la strategia ufficiale NEXT e:
-  1. archiviare la NEXT attuale;
-  2. ricreare `src/next/*` come clone fedele della madre;
-  3. mantenere il clone in sola lettura;
-  4. bloccare tutte le scritture, delete, upload, import e side effect nel clone;
-  5. leggere gli stessi dati reali della madre;
-  6. innestare solo in fase successiva layer puliti, IA e tracking sopra il clone.
-- Le regole NEXT precedenti su `dominio prima della pagina`, `no clone legacy`, `importazione modulo per modulo` e `shell target reinterpretata` sono sospese come criterio primario fino a nuova decisione.
-- Restano invece pienamente attive: madre intoccabile, zero nuove scritture business, whitelist, analisi impatto, prudenza su rischio elevato, tracciabilita documentale e aggiornamento dello stato progetto.
+## 7. Regola backlog persistente
+- Nei task grandi, backlog o multi-modulo, usare e aggiornare un file backlog persistente nel repo.
+- Se il prompt indica gia un backlog file, usare quello.
+- Se il prompt non lo indica, usare un file sotto `docs/audit/` con nome esplicito `BACKLOG`.
+- Il backlog deve contenere solo:
+  - moduli target;
+  - stato iniziale;
+  - stato finale;
+  - blocchi reali;
+  - path precisi.
 
-## Regola dominio-centrica per la NEXT (obbligatoria)
-- Questa regola e sospesa come criterio primario nella fase di clone read-only della madre.
-- Torna criterio primario solo dopo che il clone fedele e stato creato e stabilizzato.
-- Prima di importare, ricostruire o migrare qualsiasi modulo nella NEXT, verificare sempre il dominio corrispondente in `docs/data/DOMINI_DATI_CANONICI.md`.
-- Se il dominio non e mappato, e incoerente, e segnato `SENSIBILE`, `DA VERIFICARE` o `BLOCCANTE PER IMPORTAZIONE`, fermarsi e dichiararlo esplicitamente prima di patchare o importare.
-- Non importare nella NEXT strutture dati legacy incoerenti senza normalizzazione documentata.
-- Distinguere sempre:
-  - dominio logico
-  - dataset fisico
-  - writer/reader legacy
-  - target NEXT
-- `docs/data/MAPPA_COMPLETA_DATI.md` e `docs/data/REGOLE_STRUTTURA_DATI.md` vanno usati dopo il controllo dominio-centrico, non al suo posto.
+## 8. Divieto di linguaggio plausibile
+- Vietato usare formule vuote o auto-promozionali come:
+  - `quasi chiuso`
+  - `molto avanti`
+  - `parity piu stretta`
+  - `sostanzialmente chiuso`
+  - `fortemente migliorato`
+  - `non necessario` usato come scorciatoia
+  - `non dimostrato` usato come formula vuota
+- Se non e chiuso, va dichiarato aperto.
+- Se e solo in parte verificato, va dichiarato `PARZIALE` o `DA VERIFICARE`.
 
-## Regola layer di normalizzazione NEXT (obbligatoria)
-- Questa regola resta valida, ma non blocca piu il primo passo di clone read-only fedele della madre.
-- Nella fase attuale il clone puo partire anche riusando la lettura reale del madre, purche la scrittura sia completamente neutralizzata e la madre resti intatta.
-- Se un flusso del gestionale madre funziona gia in produzione e non va rotto, la prima scelta NON deve essere modificare il runtime legacy.
-- La prima scelta deve essere verificare se la NEXT puo leggere i dati reali del madre tramite un reader/layer di normalizzazione dedicato e separato.
-- Il layer NEXT deve distinguere sempre:
-  - sorgente legacy reale
-  - regole di normalizzazione
-  - modello pulito interno NEXT
-  - UI/Dossier/IA che leggono solo il modello pulito
-- Un dominio con dati legacy sporchi NON va bloccato automaticamente se esiste una normalizzazione NEXT possibile, controllata e documentabile senza toccare il madre.
-- Se Codex propone una modifica al runtime legacy invece del layer NEXT, deve motivare in modo esplicito perche la normalizzazione NEXT non basta.
-- La parita utile col madre va ottenuta nella NEXT tramite mapping e normalizzazione controllata, non copiando fallback, merge euristici o shape sporche dentro UI e Dossier NEXT.
-
-## Regola aggregatore Dossier / import moduli NEXT (obbligatoria)
-- Questa regola resta riferimento di qualita, ma non blocca la fase di clone UX read-only fedele della madre.
-- Durante il clone la priorita e mantenere copertura funzionale e ordine reale del madre, rinviando la pulizia completa dei layer alla fase successiva.
-- Quando si importa un modulo nella NEXT, non basta analizzare il modulo isolato.
-- Prima di patchare bisogna sempre verificare:
-  1. cosa mostra davvero il modulo madre;
-  2. da quali sorgenti reali legge;
-  3. a quali altri moduli, wrapper o sezioni e collegato;
-  4. quali dipendenze vanno dichiarate esplicitamente;
-  5. quale layer NEXT `read-only` deve normalizzare i dati sporchi;
-  6. quale copertura funzionale coerente col madre va mantenuta nella NEXT;
-  7. quali sottosezioni o funzioni reali del madre non devono andare perse.
-- Se il modulo entra nel `Dossier Mezzo` o in un altro aggregatore, Codex deve analizzare anche:
-  - pagina aggregatrice principale;
-  - eventuali wrapper/sottopagine dedicate;
-  - viste 360 o blocchi laterali che riusano gli stessi dati;
-  - documentazione repo gia esistente sulla convergenza del modulo.
-- La UI NEXT e la IA NEXT devono leggere solo il layer pulito prodotto da questa analisi; merge, fallback e caos legacy non devono finire dentro i componenti React.
-- Se l'analisi aggregata non e stata fatta, l'importazione NEXT va considerata incompleta e Codex deve dichiararlo prima di procedere.
-
-## Protocollo sicurezza modifiche (obbligatorio)
-- Prima di patchare, applicare `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`.
-- Controllare sempre: stato progetto, mappa dati e punti aperti (`REGISTRO_PUNTI_DA_VERIFICARE`).
-- Se rischio **ELEVATO** o **EXTRA ELEVATO**, non patchare alla cieca.
-- In caso di rischio alto: spiegare rischio + proporre soluzione sicura + proporre alternative operative.
-- Se un task chiude o apre dubbi architetturali/dati/sicurezza, suggerire aggiornamento di `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`.
-
-## Ruoli fissi del progetto
-- **Utente** = LOGICA / BUSINESS / realta operativa
-- **ChatGPT** = CTO / ARCHITETTO / struttura / strategia / prompt per Codex
-- **Codex** = OPERAIO che verifica il repo, legge la documentazione ufficiale e applica patch in modo controllato
-
-## Principi non negoziabili
-1. Leggere tutto il repository quando serve contesto completo.
-2. Modificare solo i file autorizzati dal prompt corrente (whitelist).
-3. Non modificare codice applicativo se il task e documentale.
-4. Non inventare: se un fatto non e dimostrabile, scrivere `DA VERIFICARE` o `NON DIMOSTRATO`.
-5. Seguire sempre il blueprint ufficiale prima di proporre o applicare modifiche.
-6. Fare analisi impatto prima di ogni patch (moduli, dati, contratti, rischio, legacy/next).
-7. Se la modifica impatta lo stato reale del progetto, suggerire aggiornamento di `docs/STATO_ATTUALE_PROGETTO.md`.
-8. Ogni task che tocca la NEXT deve aggiornare `docs/product/STATO_MIGRAZIONE_NEXT.md`; se il modulo/area cambia stato, Codex deve registrarlo.
-9. Se un task NEXT non aggiorna `docs/product/STATO_MIGRAZIONE_NEXT.md`, Codex deve spiegare esplicitamente perche.
-
-## Documenti da leggere prima di toccare codice
-1. `docs/STATO_ATTUALE_PROGETTO.md`
-2. `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
-3. `docs/data/DOMINI_DATI_CANONICI.md`
-4. `docs/product/STORICO_DECISIONI_PROGETTO.md`
-5. `docs/architecture/NUOVA_STRUTTURA_GESTIONALE.md`
-6. `docs/data/MAPPA_COMPLETA_DATI.md`
-7. `docs/data/REGOLE_STRUTTURA_DATI.md`
-8. `docs/security/SICUREZZA_E_PERMESSI.md`
-9. `docs/product/PROTOCOLLO_SICUREZZA_MODIFICHE.md`
-10. `docs/product/REGOLE_LAVORO_CODEX.md` come supporto sintetico/storico
-11. `docs/product/CHECKLIST_IA_INTERNA.md` quando il task riguarda il sottosistema IA interno
-12. `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md` quando il task riguarda il sottosistema IA interno
-13. `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md` quando il task riguarda il sottosistema IA interno
-14. `docs/product/STATO_MIGRAZIONE_NEXT.md` quando il task tocca la nuova app NEXT
-15. altri documenti rilevanti in `docs/` in base al task
-
-## Regole per i task IA interna
-- Operare solo nel perimetro clone/NEXT e del sottosistema isolato.
-- Niente backend IA reale, provider reali, segreti lato client o scritture business se non richiesti esplicitamente dal task.
-- Ogni task IA deve aggiornare obbligatoriamente `docs/product/CHECKLIST_IA_INTERNA.md`.
-- Per i task IA consultare anche `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md` e `docs/architecture/LINEE_GUIDA_SOTTOSISTEMA_IA_INTERNA.md`.
-- Ogni nuovo blocco IA deve restare verificabile, clone-safe e con limiti/copertura dichiarati.
-- Preferire audit + fix strutturale a soluzioni cosmetiche o demo poco spiegabili.
-
-## Formato preferito dei task
-- I task futuri possono arrivare in forma corta.
-- Formato preferito: `Obiettivo`.
-- Formato preferito: `Perimetro` oppure `Whitelist`.
-- Formato preferito: `Output richiesto`.
-- I vincoli stabili non vanno ripetuti ogni volta: si ereditano da `AGENTS.md` e dai documenti progetto.
-- Se il task riguarda la IA interna, l'obbligo di aggiornare la checklist vale anche se il prompt non lo ripete.
-
-## Regola whitelist (bloccante)
-- Se per implementare serve toccare file fuori whitelist, fermarsi subito e dichiarare solo:
+## 9. Regola sui blocchi reali
+- Se il task non e chiudibile nel perimetro consentito, fermarsi subito.
+- Risposta minima obbligatoria:
   - `SERVE FILE EXTRA: <path>`
-- Non eseguire altre modifiche finche la whitelist non viene aggiornata.
+- Aggiungere al massimo una riga con motivo tecnico preciso e dimostrabile se il prompt lo consente.
+- Non aggirare il blocco con patch laterali.
 
-## Classificazione rischio modifiche
-- **BASSO**: typo, import, path, fix minori non logici
-- **NORMALE**: UI/CSS e composizione visuale
-- **ELEVATO**: logica dati, `storageSync`, Firestore, sessioni, sincronizzazioni
-- **EXTRA ELEVATO**: refactor architetturale, nuove chiavi dati, migrazioni, cambi contract cross-modulo
+## 10. Protocollo operativo
+- `MODE = OPERAIO` e il default.
+- Ogni prompt operativo deve dichiarare numero, agente/modello e livello di ragionamento.
+- Prima di patchare: classificare richiesta, perimetro e rischio.
+- Modificare solo i file ammessi dal prompt.
+- Se il task e documentale, non toccare codice runtime.
+- Se il task modifica file del repo, change report e continuity report sono obbligatori.
+- Eseguire build o lint solo se il task tocca runtime, logica, contratti o se il prompt lo richiede.
+- Se un fatto non e dimostrabile, scrivere `DA VERIFICARE`.
 
-## Divieti operativi
-- Vietato inventare regole, flussi o strutture dati non dimostrate dal repository.
+## 11. Rischio e sicurezza
+- `BASSO`: typo, import, rename minori, micro-fix.
+- `NORMALE`: UI/CSS, composizione, documentazione non critica.
+- `ELEVATO`: logica dominio, dati, flussi cross-modulo, IA interna, shared boundary.
+- `EXTRA ELEVATO`: architettura, Firebase/Storage, contratti cross-modulo, migrazioni, boundary read-only.
+- Con rischio `ELEVATO` o `EXTRA ELEVATO` non si patcha alla cieca: prima analisi impatto, poi patch.
+
+## 12. Divieti permanenti
+- Vietato inventare regole, flussi o strutture dati non dimostrate dal repo.
+- Vietato chiudere un modulo solo perche il report esecutivo lo dichiara.
 - Vietato fare search-and-replace massivi o modifiche globali distruttive.
 - Vietato introdurre cambi non richiesti in routing, contratti dati, IA, PDF o sicurezza.
 
-## Coerenza obbligatoria
-Ogni task deve restare coerente con:
-- moduli e architettura target
-- domini dati canonici
-- data contract e mappa dati
-- regole trasversali PDF
-- integrazione IA
-- blueprint sicurezza/permessi
-- decision log ufficiale
+## 13. Formato minimo dei task
+- `Obiettivo`
+- `Perimetro` o `Whitelist`
+- `Output richiesto`
 
-## Obbligo report post-task
-- Dopo ogni task, creare report secondo:
-  - `docs/product/CODEX_CHANGE_REPORT_RULES.md`
-  - `docs/change-reports/_TEMPLATE_CHANGE_REPORT.md`
-  - `docs/product/CONTEXT_REPORT_WORKFLOW.md`
-  - `docs/continuity-reports/_TEMPLATE_CONTINUITY_REPORT.md`
-- Nei task NEXT, change report e continuity report non sostituiscono i registri permanenti `docs/product/STATO_MIGRAZIONE_NEXT.md` e `docs/product/REGISTRO_MODIFICHE_CLONE.md`.
-
-## Formato risposta atteso in chat
-- sintesi breve
-- file toccati
-- rischio + impatto sintetico
-- eventuali rischi residui
-- eventuale hash commit
-- nessun dump completo di codice/file
-
+## 14. Chiusura in chat
+- Sintesi secca.
+- File toccati.
+- Rischio e impatto.
+- Rischi residui.
+- Change report e continuity report creati.
+- Commit hash solo se esiste.
