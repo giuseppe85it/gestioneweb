@@ -5,6 +5,7 @@ import {
   readNextAnagraficheFlottaSnapshot,
   type NextAnagraficheFlottaMezzoItem,
 } from "../nextAnagraficheFlottaDomain";
+import { readNextCapoCloneApprovals } from "../nextCapoCloneState";
 import {
   readNextDocumentiCostiFleetSnapshot,
   readNextMezzoDocumentiCostiSnapshot,
@@ -350,8 +351,33 @@ async function readNextCapoApprovalsSnapshot(targa: string): Promise<{
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, APPROVALS_DATASET_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items } = unwrapStorageArray(rawDoc);
+  const localOverrides = readNextCapoCloneApprovals().map((entry) => ({
+    id: entry.id,
+    targa: entry.targa,
+    status: entry.status,
+    updatedAt: entry.updatedAt,
+  }));
+  const mergedItems = [...items];
+  const byId = new Map<string, number>();
+  mergedItems.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+    const rawId = normalizeText((entry as Record<string, unknown>).id);
+    if (!rawId) return;
+    byId.set(rawId, index);
+  });
+  localOverrides.forEach((entry) => {
+    const index = byId.get(entry.id);
+    if (index === undefined) {
+      mergedItems.push(entry);
+      return;
+    }
+    mergedItems[index] = {
+      ...(mergedItems[index] as Record<string, unknown>),
+      ...entry,
+    };
+  });
 
-  const approvals = items
+  const approvals = mergedItems
     .map((entry) => {
       if (!entry || typeof entry !== "object") return null;
       return mapApprovalRecord({
@@ -369,8 +395,8 @@ async function readNextCapoApprovalsSnapshot(targa: string): Promise<{
     items: approvals,
     byKey: new Map(approvals.map((entry) => [entry.approvalKey, entry])),
     limitations: [
-      "Le approvazioni vengono lette solo da `@preventivi_approvazioni` e mostrate come stato informativo read-only.",
-      "Nel clone non viene riattivata alcuna scrittura di stato su `@preventivi_approvazioni`.",
+      "Le approvazioni vengono lette da `@preventivi_approvazioni` e possono essere sovrapposte da uno stato clone-only locale.",
+      "Nel clone non viene riattivata alcuna scrittura business su `@preventivi_approvazioni`: gli stati restano confinati nel layer NEXT locale.",
       datasetShape === "unsupported"
         ? "Il dataset `@preventivi_approvazioni` non e in una shape pienamente leggibile e viene trattato come non conforme."
         : null,

@@ -11,6 +11,9 @@ type NextMotherPageId =
   | "materiali-da-ordinare"
   | "ordini-in-attesa"
   | "ordini-arrivati"
+  | "lavori-da-eseguire"
+  | "lavori-in-attesa"
+  | "lavori-eseguiti"
   | "dettaglio-ordine"
   | "dettaglio-lavoro"
   | "autisti-admin"
@@ -18,6 +21,7 @@ type NextMotherPageId =
   | "ia-libretto"
   | "ia-documenti"
   | "ia-copertura-libretti"
+  | "libretti-export"
   | "cisterna"
   | "mezzi"
   | "dossier-lista"
@@ -241,6 +245,16 @@ const PAGE_CONFIGS: Record<NextMotherPageId, NextMotherPageConfig> = {
   },
   "ordini-in-attesa": {},
   "ordini-arrivati": {},
+  "lavori-da-eseguire": {
+    rules: [
+      {
+        selector: "button",
+        matchText: [/^AGGIUNGI$/, /^SALVA GRUPPO LAVORI$/],
+      },
+    ],
+  },
+  "lavori-in-attesa": {},
+  "lavori-eseguiti": {},
   "dettaglio-ordine": {
     rules: [
       { selector: "input[type=\"file\"]" },
@@ -312,6 +326,7 @@ const PAGE_CONFIGS: Record<NextMotherPageId, NextMotherPageConfig> = {
       },
     ],
   },
+  "libretti-export": {},
   cisterna: {
     rules: [
       {

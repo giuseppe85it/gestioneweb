@@ -12,6 +12,11 @@ import { formatDateTimeUI, formatDateUI } from "../../utils/dateFormat";
 import type { HomeEvent } from "../../utils/homeEvents";
 import { getItemSync } from "../../utils/storageSync";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
+import {
+  applyNextHomeCloneEventiOverlay,
+  applyNextHomeCloneMezziPatches,
+  readNextHomeCloneAlertsState,
+} from "../nextHomeCloneState";
 
 const ALERTS_STATE_KEY = "@alerts_state";
 const MEZZI_KEY = "@mezzi_aziendali";
@@ -208,6 +213,7 @@ export type D10AlertItem = {
   kind: D10AlertKind;
   title: string;
   detailText: string;
+  meta: AlertMeta;
   severity: D10Severity;
   quality: D10Quality;
   mezzoTarga: string | null;
@@ -1521,6 +1527,7 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
         kind: candidate.kind,
         title: candidate.title,
         detailText: candidate.detailText,
+        meta: candidate.meta,
         severity: candidate.severity,
         quality: candidate.quality,
         mezzoTarga: candidate.mezzoTarga,
@@ -1591,7 +1598,7 @@ export function buildNextStatoOperativoSnapshot(input: D10BuildInput): D10Snapsh
 export async function readNextCentroControlloSnapshot(
   now: number = Date.now()
 ): Promise<D10Snapshot> {
-  const [alertsStateRaw, mezziRaw, sessioniRaw, eventiRaw, segnalazioniRaw, controlliRaw] =
+  const [alertsStateBase, mezziBase, sessioniRaw, eventiBase, segnalazioniRaw, controlliRaw] =
     await Promise.all([
       getItemSync(ALERTS_STATE_KEY),
       getItemSync(MEZZI_KEY),
@@ -1600,6 +1607,10 @@ export async function readNextCentroControlloSnapshot(
       getItemSync(SEGNALAZIONI_KEY),
       getItemSync(CONTROLLI_KEY),
     ]);
+
+  const alertsStateRaw = readNextHomeCloneAlertsState() ?? alertsStateBase;
+  const mezziRaw = applyNextHomeCloneMezziPatches(mezziBase);
+  const eventiRaw = applyNextHomeCloneEventiOverlay(eventiBase);
 
   return buildNextCentroControlloSnapshot({
     alertsStateRaw,

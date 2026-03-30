@@ -1,5 +1,11 @@
-import CambioMezzoInbox from "../autistiInbox/CambioMezzoInbox";
+import CambioMezzoInbox from "./autistiInbox/NextCambioMezzoInboxNative";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 export default function NextAutistiInboxCambioMezzoPage() {
-  return <CambioMezzoInbox />;
+  return (
+    <NextLegacyStorageBoundary presets={["autisti"]}>
+      <CambioMezzoInbox />
+    </NextLegacyStorageBoundary>
+  );
 }
+

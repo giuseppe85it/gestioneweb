@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import AutistiInboxHome from "../autistiInbox/AutistiInboxHome";
+import AutistiInboxHome from "./autistiInbox/NextAutistiInboxHomeNative";
 import NextAutistiEventoModal from "./components/NextAutistiEventoModal";
 import {
   readNextAutistiReadOnlySnapshot,
@@ -7,6 +7,7 @@ import {
 } from "./domain/nextAutistiDomain";
 import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 function normalizeText(value: string | null | undefined) {
   return String(value ?? "").trim().toLowerCase();
@@ -92,63 +93,66 @@ export default function NextAutistiInboxHomePage() {
   }, [handoff, snapshot]);
 
   return (
-    <>
-      {handoff.state.status === "ready" ? (
-        <InternalAiUniversalHandoffBanner
-          title="Handoff IA consumato su Autisti Inbox"
-          description="L'inbox autisti del clone legge il payload standard e filtra il contesto rilevante nel boundary NEXT."
-          payload={handoff.state.payload}
-        />
-      ) : null}
-      {filteredSignals.length ? (
-        <div
-          style={{
-            display: "grid",
-            gap: 10,
-            marginBottom: 16,
-            padding: "12px 16px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "#f8fafc",
+    <NextLegacyStorageBoundary presets={["autisti"]}>
+      <>
+        {handoff.state.status === "ready" ? (
+          <InternalAiUniversalHandoffBanner
+            title="Handoff IA consumato su Autisti Inbox"
+            description="L'inbox autisti del clone legge il payload standard e filtra il contesto rilevante nel boundary NEXT."
+            payload={handoff.state.payload}
+          />
+        ) : null}
+        {filteredSignals.length ? (
+          <div
+            style={{
+              display: "grid",
+              gap: 10,
+              marginBottom: 16,
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+              background: "#f8fafc",
+            }}
+          >
+            <strong>Segnali autisti agganciati</strong>
+            <p style={{ margin: 0 }}>
+              {filteredSignals.length} segnali coerenti con il payload IA.
+            </p>
+            <p style={{ margin: 0 }}>
+              Top segnali: {filteredSignals.slice(0, 3).map((entry) => entry.titolo).join(" | ")}
+            </p>
+          </div>
+        ) : null}
+        {error ? (
+          <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
+            {error}
+          </div>
+        ) : null}
+        {handoff.state.status === "error" ? (
+          <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
+            {handoff.state.errorMessage}
+          </div>
+        ) : null}
+        <AutistiInboxHome
+          cloneConfig={{
+            homePath: "/next",
+            adminPath: "/next/autisti-admin",
+            segnalazioniPath: "/next/autisti-inbox/segnalazioni",
+            controlliPath: "/next/autisti-inbox/controlli",
+            richiestaAttrezzaturePath: "/next/autisti-inbox/richiesta-attrezzature",
+            logAccessiPath: "/next/autisti-inbox/log-accessi",
+            gommePath: "/next/autisti-inbox/gomme",
+            buildCambioMezzoPath: (day) => {
+              const year = day.getFullYear();
+              const month = String(day.getMonth() + 1).padStart(2, "0");
+              const dayValue = String(day.getDate()).padStart(2, "0");
+              return `/next/autisti-inbox/cambio-mezzo?day=${year}-${month}-${dayValue}`;
+            },
           }}
-        >
-          <strong>Segnali autisti agganciati</strong>
-          <p style={{ margin: 0 }}>
-            {filteredSignals.length} segnali coerenti con il payload IA.
-          </p>
-          <p style={{ margin: 0 }}>
-            Top segnali: {filteredSignals.slice(0, 3).map((entry) => entry.titolo).join(" | ")}
-          </p>
-        </div>
-      ) : null}
-      {error ? (
-        <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
-          {error}
-        </div>
-      ) : null}
-      {handoff.state.status === "error" ? (
-        <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
-          {handoff.state.errorMessage}
-        </div>
-      ) : null}
-      <AutistiInboxHome
-        cloneConfig={{
-          homePath: "/next",
-          adminPath: "/next/autisti-admin",
-          segnalazioniPath: "/next/autisti-inbox/segnalazioni",
-          controlliPath: "/next/autisti-inbox/controlli",
-          richiestaAttrezzaturePath: "/next/autisti-inbox/richiesta-attrezzature",
-          logAccessiPath: "/next/autisti-inbox/log-accessi",
-          gommePath: "/next/autisti-inbox/gomme",
-          buildCambioMezzoPath: (day) => {
-            const year = day.getFullYear();
-            const month = String(day.getMonth() + 1).padStart(2, "0");
-            const dayValue = String(day.getDate()).padStart(2, "0");
-            return `/next/autisti-inbox/cambio-mezzo?day=${year}-${month}-${dayValue}`;
-          },
-        }}
-        eventModalComponent={NextAutistiEventoModal}
-      />
-    </>
+          eventModalComponent={NextAutistiEventoModal}
+        />
+      </>
+    </NextLegacyStorageBoundary>
   );
 }
+

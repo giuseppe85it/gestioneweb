@@ -124,6 +124,54 @@ export type NextAutistiBoundaryItem = {
   note: string;
 };
 
+export type NextAutistiSegnalazioneSectionItem = {
+  id: string;
+  timestamp: number | null;
+  targa: string | null;
+  autistaNome: string | null;
+  badgeAutista: string | null;
+  tipo: string;
+  descrizione: string;
+  stato: string;
+  letta: boolean | null;
+  isNuova: boolean;
+  fotoCount: number;
+  sourceDataset: string;
+  sourceOrigin: NextAutistiDataOrigin;
+  flags: string[];
+};
+
+export type NextAutistiControlloSectionItem = {
+  id: string;
+  timestamp: number | null;
+  targaMotrice: string | null;
+  targaRimorchio: string | null;
+  autistaNome: string | null;
+  badgeAutista: string | null;
+  koList: string[];
+  isKo: boolean;
+  note: string | null;
+  sourceDataset: string;
+  sourceOrigin: NextAutistiDataOrigin;
+  flags: string[];
+};
+
+export type NextAutistiRichiestaSectionItem = {
+  id: string;
+  timestamp: number | null;
+  targa: string | null;
+  autistaNome: string | null;
+  badgeAutista: string | null;
+  testo: string;
+  stato: string;
+  letta: boolean | null;
+  isNuova: boolean;
+  hasFoto: boolean;
+  sourceDataset: string;
+  sourceOrigin: NextAutistiDataOrigin;
+  flags: string[];
+};
+
 export type NextAutistiLocalContext = {
   autistaNome: string | null;
   badgeAutista: string | null;
@@ -136,6 +184,9 @@ export type NextAutistiReadOnlySnapshot = {
   generatedAt: string;
   assignments: NextAutistiCanonicalAssignment[];
   signals: NextAutistiCanonicalSignal[];
+  segnalazioniRows: NextAutistiSegnalazioneSectionItem[];
+  controlliRows: NextAutistiControlloSectionItem[];
+  richiesteRows: NextAutistiRichiestaSectionItem[];
   anomalies: string[];
   boundaries: NextAutistiBoundaryItem[];
   localContext: NextAutistiLocalContext;
@@ -450,6 +501,43 @@ function normalizeSegnalazioneSignal(
   };
 }
 
+function normalizeSegnalazioneSectionItem(
+  record: RawRecord,
+  index: number,
+): NextAutistiSegnalazioneSectionItem {
+  const targa = pickPrimaryTarga(record);
+  const letta = typeof record.letta === "boolean" ? record.letta : null;
+  return {
+    id:
+      normalizeOptionalText(record.id) ??
+      `segnalazione:${stableId([
+        targa.mezzo,
+        normalizeOptionalBadge(record.badgeAutista ?? record.badge),
+        index,
+      ])}`,
+    timestamp: toTimestamp(record.timestamp ?? record.data),
+    targa: targa.mezzo,
+    autistaNome: normalizeOptionalText(record.autistaNome ?? record.nomeAutista),
+    badgeAutista: normalizeOptionalBadge(record.badgeAutista ?? record.badge),
+    tipo: normalizeOptionalText(record.tipoProblema ?? record.tipo ?? record.titolo) ?? "-",
+    descrizione:
+      normalizeOptionalText(record.descrizione ?? record.note ?? record.messaggio) ?? "-",
+    stato: normalizeOptionalText(record.stato)?.toUpperCase() ?? "-",
+    letta,
+    isNuova: letta === false || normalizeLowerText(record.stato) === "nuova",
+    fotoCount: Array.isArray(record.fotoUrls) ? record.fotoUrls.filter(Boolean).length : 0,
+    sourceDataset: SEGNALAZIONI_KEY,
+    sourceOrigin: "madre_storage",
+    flags: [
+      !targa.mezzo ? "missing_targa" : "",
+      !normalizeOptionalBadge(record.badgeAutista ?? record.badge) &&
+      !normalizeOptionalText(record.autistaNome ?? record.nomeAutista)
+        ? "missing_autista"
+        : "",
+    ].filter(Boolean),
+  };
+}
+
 function extractCloneControlloIssues(record: NextAutistiCloneControlloRecord): string[] {
   return Object.entries(record.check)
     .filter(([, value]) => value === false)
@@ -518,6 +606,62 @@ function normalizeControlloSignal(record: RawRecord, index: number): NextAutisti
   };
 }
 
+function normalizeControlloSectionItem(
+  record: RawRecord,
+  index: number,
+): NextAutistiControlloSectionItem {
+  const targa = pickPrimaryTarga(record);
+  const koList: string[] = [];
+
+  if (record.check && typeof record.check === "object" && !Array.isArray(record.check)) {
+    Object.entries(record.check as RawRecord).forEach(([key, value]) => {
+      if (value === false) {
+        koList.push(String(key).toUpperCase());
+      }
+    });
+  }
+
+  if (Array.isArray(record.koItems)) {
+    record.koItems.forEach((entry) => {
+      if (typeof entry === "string" && entry.trim()) {
+        koList.push(entry.trim().toUpperCase());
+      }
+    });
+  }
+
+  return {
+    id:
+      normalizeOptionalText(record.id) ??
+      `controllo:${stableId([
+        targa.mezzo,
+        normalizeOptionalBadge(record.badgeAutista ?? record.badge),
+        index,
+      ])}`,
+    timestamp: toTimestamp(record.timestamp ?? record.data),
+    targaMotrice: targa.motrice,
+    targaRimorchio: targa.rimorchio,
+    autistaNome: normalizeOptionalText(record.autistaNome ?? record.nomeAutista),
+    badgeAutista: normalizeOptionalBadge(record.badgeAutista ?? record.badge),
+    koList,
+    isKo:
+      record.ko === true ||
+      record.ok === false ||
+      record.tuttoOk === false ||
+      normalizeLowerText(record.esito) === "ko" ||
+      koList.length > 0,
+    note: normalizeOptionalText(record.note ?? record.dettaglio ?? record.messaggio),
+    sourceDataset: CONTROLLI_KEY,
+    sourceOrigin: "madre_storage",
+    flags: [
+      !targa.mezzo ? "missing_targa" : "",
+      !normalizeOptionalBadge(record.badgeAutista ?? record.badge) &&
+      !normalizeOptionalText(record.autistaNome ?? record.nomeAutista)
+        ? "missing_autista"
+        : "",
+    ].filter(Boolean),
+  };
+}
+
 function normalizeRichiestaSignal(record: RawRecord, index: number): NextAutistiCanonicalSignal {
   const targa = pickPrimaryTarga(record);
   const flags: string[] = [];
@@ -556,6 +700,42 @@ function normalizeRichiestaSignal(record: RawRecord, index: number): NextAutisti
   };
 }
 
+function normalizeRichiestaSectionItem(
+  record: RawRecord,
+  index: number,
+): NextAutistiRichiestaSectionItem {
+  const targa = pickPrimaryTarga(record);
+  const letta = typeof record.letta === "boolean" ? record.letta : null;
+  return {
+    id:
+      normalizeOptionalText(record.id) ??
+      `richiesta:${stableId([
+        targa.mezzo,
+        normalizeOptionalBadge(record.badgeAutista ?? record.badge),
+        index,
+      ])}`,
+    timestamp: toTimestamp(record.timestamp ?? record.data),
+    targa: targa.mezzo,
+    autistaNome: normalizeOptionalText(record.autistaNome ?? record.nomeAutista),
+    badgeAutista: normalizeOptionalBadge(record.badgeAutista ?? record.badge),
+    testo:
+      normalizeOptionalText(record.testo ?? record.descrizione ?? record.note) ?? "-",
+    stato: normalizeOptionalText(record.stato)?.toUpperCase() ?? "-",
+    letta,
+    isNuova: letta === false || normalizeLowerText(record.stato) === "nuova",
+    hasFoto: Boolean(normalizeOptionalText(record.fotoUrl)),
+    sourceDataset: RICHIESTE_KEY,
+    sourceOrigin: "madre_storage",
+    flags: [
+      !targa.mezzo ? "missing_targa" : "",
+      !normalizeOptionalBadge(record.badgeAutista ?? record.badge) &&
+      !normalizeOptionalText(record.autistaNome ?? record.nomeAutista)
+        ? "missing_autista"
+        : "",
+    ].filter(Boolean),
+  };
+}
+
 function normalizeCloneSegnalazioneSignal(
   record: NextAutistiCloneSegnalazioneRecord,
   index: number,
@@ -575,6 +755,28 @@ function normalizeCloneSegnalazioneSignal(
     sourceDataset: "@next_clone_autisti:segnalazioni",
     sourceOrigin: "next_clone_locale",
     linkReliability: "locale_clone",
+    flags: ["local_only", "non_sincronizzato"],
+  };
+}
+
+function normalizeCloneSegnalazioneSectionItem(
+  record: NextAutistiCloneSegnalazioneRecord,
+  index: number,
+): NextAutistiSegnalazioneSectionItem {
+  return {
+    id: record.id || `clone-segnalazione:${index}`,
+    timestamp: toTimestamp(record.data),
+    targa: normalizeOptionalTarga(record.targa ?? record.targaCamion ?? record.targaRimorchio),
+    autistaNome: record.autistaNome,
+    badgeAutista: record.badgeAutista,
+    tipo: record.tipoProblema || "-",
+    descrizione: record.descrizione || record.note || "-",
+    stato: String(record.stato || "NUOVA").toUpperCase(),
+    letta: record.letta,
+    isNuova: true,
+    fotoCount: Array.isArray(record.fotoUrls) ? record.fotoUrls.filter(Boolean).length : 0,
+    sourceDataset: "@next_clone_autisti:segnalazioni",
+    sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],
   };
 }
@@ -609,6 +811,27 @@ function normalizeCloneControlloSignal(
   };
 }
 
+function normalizeCloneControlloSectionItem(
+  record: NextAutistiCloneControlloRecord,
+  index: number,
+): NextAutistiControlloSectionItem {
+  const issues = extractCloneControlloIssues(record);
+  return {
+    id: record.id || `clone-controllo:${index}`,
+    timestamp: toTimestamp(record.timestamp),
+    targaMotrice: normalizeOptionalTarga(record.targaCamion),
+    targaRimorchio: normalizeOptionalTarga(record.targaRimorchio),
+    autistaNome: record.autistaNome,
+    badgeAutista: record.badgeAutista,
+    koList: issues,
+    isKo: issues.length > 0,
+    note: record.note,
+    sourceDataset: "@next_clone_autisti:controlli",
+    sourceOrigin: "next_clone_locale",
+    flags: ["local_only", "non_sincronizzato"],
+  };
+}
+
 function normalizeCloneRichiestaSignal(
   record: NextAutistiCloneRichiestaAttrezzatureRecord,
   index: number,
@@ -631,6 +854,27 @@ function normalizeCloneRichiestaSignal(
     sourceDataset: "@next_clone_autisti:richieste-attrezzature",
     sourceOrigin: "next_clone_locale",
     linkReliability: "locale_clone",
+    flags: ["local_only", "non_sincronizzato"],
+  };
+}
+
+function normalizeCloneRichiestaSectionItem(
+  record: NextAutistiCloneRichiestaAttrezzatureRecord,
+  index: number,
+): NextAutistiRichiestaSectionItem {
+  return {
+    id: record.id || `clone-richiesta:${index}`,
+    timestamp: toTimestamp(record.timestamp),
+    targa: normalizeOptionalTarga(record.targaCamion ?? record.targaRimorchio),
+    autistaNome: record.autistaNome,
+    badgeAutista: record.badgeAutista,
+    testo: record.testo || "-",
+    stato: String(record.stato || "NUOVA").toUpperCase(),
+    letta: record.letta,
+    isNuova: true,
+    hasFoto: Boolean(record.fotoUrl),
+    sourceDataset: "@next_clone_autisti:richieste-attrezzature",
+    sourceOrigin: "next_clone_locale",
     flags: ["local_only", "non_sincronizzato"],
   };
 }
@@ -730,6 +974,26 @@ function dedupeSignals(signals: NextAutistiCanonicalSignal[]): NextAutistiCanoni
     ]);
     if (!map.has(key)) {
       map.set(key, entry);
+    }
+  });
+
+  return Array.from(map.values()).sort(
+    (left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0),
+  );
+}
+
+function dedupeSectionItems<
+  T extends {
+    id: string;
+    timestamp: number | null;
+  },
+>(items: T[]): T[] {
+  const map = new Map<string, T>();
+
+  items.forEach((entry) => {
+    const current = map.get(entry.id);
+    if (!current || (entry.timestamp ?? 0) >= (current.timestamp ?? 0)) {
+      map.set(entry.id, entry);
     }
   });
 
@@ -966,6 +1230,30 @@ export async function readNextAutistiReadOnlySnapshot(
       normalizeRichiestaSignal(record, index),
     ),
   ];
+  const segnalazioniRows = dedupeSectionItems([
+    ...segnalazioniResult.records.map((record, index) =>
+      normalizeSegnalazioneSectionItem(record, index),
+    ),
+    ...cloneSegnalazioni.map((record, index) =>
+      normalizeCloneSegnalazioneSectionItem(record, index),
+    ),
+  ]);
+  const controlliRows = dedupeSectionItems([
+    ...controlliResult.records.map((record, index) =>
+      normalizeControlloSectionItem(record, index),
+    ),
+    ...cloneControlli.map((record, index) =>
+      normalizeCloneControlloSectionItem(record, index),
+    ),
+  ]);
+  const richiesteRows = dedupeSectionItems([
+    ...richiesteResult.records.map((record, index) =>
+      normalizeRichiestaSectionItem(record, index),
+    ),
+    ...cloneRichieste.map((record, index) =>
+      normalizeCloneRichiestaSectionItem(record, index),
+    ),
+  ]);
   const localSignals = [
     ...cloneSegnalazioni.map((record, index) =>
       normalizeCloneSegnalazioneSignal(record, index),
@@ -1052,6 +1340,9 @@ export async function readNextAutistiReadOnlySnapshot(
     generatedAt: new Date().toISOString(),
     assignments,
     signals,
+    segnalazioniRows,
+    controlliRows,
+    richiesteRows,
     anomalies,
     boundaries,
     localContext,

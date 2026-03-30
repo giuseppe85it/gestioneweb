@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CentroControllo from "../pages/CentroControllo";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 import { NEXT_GESTIONE_OPERATIVA_PATH } from "./nextStructuralPaths";
 
 const CENTRO_CONTROLLO_CLONE_BANNER =
@@ -92,23 +93,25 @@ export default function NextCentroControlloClonePage() {
   }, [navigate]);
 
   return (
-    <div ref={rootRef}>
-      <div
-        style={{
-          marginBottom: 12,
-          padding: "12px 16px",
-          borderRadius: 12,
-          border: "1px solid #e5e7eb",
-          background: "#f8fafc",
-          color: "#0f172a",
-          fontSize: 14,
-          lineHeight: 1.45,
-        }}
-      >
-        <strong>Centro Controllo clone-safe.</strong> {CENTRO_CONTROLLO_CLONE_BANNER}
+    <NextLegacyStorageBoundary presets={["flotta", "autisti"]}>
+      <div ref={rootRef}>
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#f8fafc",
+            color: "#0f172a",
+            fontSize: 14,
+            lineHeight: 1.45,
+          }}
+        >
+          <strong>Centro Controllo clone-safe.</strong> {CENTRO_CONTROLLO_CLONE_BANNER}
+        </div>
+        <CentroControllo />
       </div>
-      <CentroControllo />
-    </div>
+    </NextLegacyStorageBoundary>
   );
 }
 

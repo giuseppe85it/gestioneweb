@@ -1,5 +1,11 @@
-import SetupMezzo from "../autisti/SetupMezzo";
+import SetupMezzo from "./autisti/NextSetupMezzoNative";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 export default function NextAutistiSetupMezzoPage() {
-  return <SetupMezzo />;
+  return (
+    <NextLegacyStorageBoundary presets={["flotta", "autisti"]}>
+      <SetupMezzo />
+    </NextLegacyStorageBoundary>
+  );
 }
+

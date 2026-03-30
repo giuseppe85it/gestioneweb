@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { formatDateUI } from "../utils/dateFormat";
+import { generatePreventiviCapoPDFBlob } from "../utils/pdfEngine";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import {
+  buildPdfShareText,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import "../pages/CapoCostiMezzo.css";
 import "./next-shell.css";
 import {
@@ -8,16 +18,7 @@ import {
   type NextCapoCostiRecord,
 } from "./domain/nextCapoDomain";
 import type { NextDocumentiCostiCurrency } from "./domain/nextDocumentiCostiDomain";
-
-const CLONE_BLOCKED_REASON =
-  "Clone in sola lettura: stati e documenti sono leggibili, ma approvazioni reali, cambio stato e PDF timbrati restano bloccati.";
-
-const BLOCKED_CTA_LABELS = [
-  "APPROVA",
-  "RIFIUTA",
-  "DA VALUTARE",
-  "ANTEPRIMA TIMBRATO",
-] as const;
+import { upsertNextCapoCloneApproval } from "./nextCapoCloneState";
 
 function readErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -78,10 +79,6 @@ function formatDateShort(value: string | null, timestamp: number | null): string
   return formatDateUI(parsed);
 }
 
-function openPdfPreview(url: string) {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
 const monthOptions = [
   { value: 1, label: "Gennaio" },
   { value: 2, label: "Febbraio" },
@@ -110,8 +107,16 @@ export default function NextCapoCostiMezzoPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("FATTURE");
   const [showPendingOnly, setShowPendingOnly] = useState(true);
+  const [exportAllYear, setExportAllYear] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("preventivi-mezzo.pdf");
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF");
+  const [pdfShareContext, setPdfShareContext] = useState("Costi mezzo");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +158,92 @@ export default function NextCapoCostiMezzoPage() {
     const current = now.getFullYear();
     return Array.from({ length: 6 }, (_, index) => current - index);
   }, [now]);
+
+  const formatFileDate = () => {
+    const date = new Date();
+    const dd = String(date.getDate()).padStart(2, "0");
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const yyyy = date.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  const resolveUrlFileName = (url: string, fallback: string) => {
+    try {
+      const parsed = new URL(url);
+      const candidate = parsed.pathname.split("/").pop();
+      if (!candidate) return fallback;
+      return decodeURIComponent(candidate);
+    } catch {
+      return fallback;
+    }
+  };
+
+  const closePdfPreview = () => {
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl(null);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+  };
+
+  const openPdfUrlPreview = (url: string, title: string, contextLabel: string) => {
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewBlob(null);
+    setPdfPreviewTitle(title);
+    setPdfShareContext(contextLabel);
+    setPdfPreviewFileName(resolveUrlFileName(url, `documento-${formatFileDate()}.pdf`));
+    setPdfPreviewUrl(url);
+    setPdfPreviewOpen(true);
+  };
+
+  const buildPdfShareMessage = () =>
+    buildPdfShareText({
+      contextLabel: pdfShareContext || "Costi mezzo",
+      dateLabel: formatFileDate(),
+      fileName: pdfPreviewFileName || "preventivi-mezzo.pdf",
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPdfShareMessage());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName || "preventivi-mezzo.pdf",
+      title: pdfPreviewTitle || "Anteprima PDF",
+      text: buildPdfShareMessage(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPdfShareMessage());
+    setPdfShareHint(copied ? "Testo copiato." : "Copia non disponibile.");
+  };
+
+  const handleWhatsAppPDF = () => {
+    const text = buildPdfShareMessage();
+    window.open(buildWhatsAppShareUrl(text), "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    return () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
 
   const computed = useMemo(() => {
     const summary = records.reduce(
@@ -290,6 +381,156 @@ export default function NextCapoCostiMezzoPage() {
     [records, showPendingOnly]
   );
 
+  const exportPreventivi = useMemo(() => {
+    return records
+      .filter((record) => record.category === "preventivo")
+      .map((record) => {
+        const dateValue = record.timestamp ? new Date(record.timestamp) : parseDateFlexible(record.data);
+        const status =
+          record.approvalStatus === "approved"
+            ? "APPROVATO"
+            : record.approvalStatus === "rejected"
+            ? "RIFIUTATO"
+            : "";
+        return {
+          data: record.data,
+          fornitore: record.supplier || "",
+          importo: record.amount ?? undefined,
+          status,
+          dateValue,
+        };
+      })
+      .filter((item) => {
+        if (!item.dateValue) return false;
+        const year = item.dateValue.getFullYear();
+        if (year !== selectedYear) return false;
+        if (exportAllYear) return true;
+        return item.dateValue.getMonth() + 1 === selectedMonth;
+      })
+      .sort((left, right) => {
+        const byDate = (right.dateValue?.getTime() ?? 0) - (left.dateValue?.getTime() ?? 0);
+        if (byDate !== 0) return byDate;
+        return (right.importo ?? 0) - (left.importo ?? 0);
+      });
+  }, [records, selectedYear, selectedMonth, exportAllYear]);
+
+  const handleApprovalChange = (record: NextCapoCostiRecord, status: "pending" | "approved" | "rejected") => {
+    const targaKey = String(targa ?? "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    const approvalKey =
+      record.approvalKey ??
+      `${targaKey}__${record.sourceKey || "manual"}__${record.sourceDocId || record.id || "manual"}`;
+    const updatedAt = new Date().toISOString();
+
+    upsertNextCapoCloneApproval({
+      id: approvalKey,
+      targa: targaKey,
+      status,
+      updatedAt,
+    });
+
+    setRecords((prev) =>
+      prev.map((item) =>
+        (item.approvalKey ?? `${targaKey}__${item.sourceKey || "manual"}__${item.sourceDocId || item.id || "manual"}`) === approvalKey
+          ? {
+              ...item,
+              approvalKey,
+              approvalStatus: status,
+              approvalUpdatedAt: updatedAt,
+              approvalUpdatedAtTimestamp: Date.parse(updatedAt),
+            }
+          : item
+      )
+    );
+  };
+
+  const handleExportPreventivi = async () => {
+    const targaKey = String(targa ?? "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    const payload = {
+      targa: targaKey,
+      anno: selectedYear,
+      mese: exportAllYear ? undefined : selectedMonth,
+      listaPreventivi: exportPreventivi.map((item) => ({
+        data: formatDateShort(item.data, item.dateValue?.getTime() ?? null),
+        fornitore: item.fornitore || "-",
+        importo: item.importo,
+        status: item.status || "",
+      })),
+    };
+
+    try {
+      const fileDate = formatFileDate();
+      const preview = await openPreview({
+        source: async () => generatePreventiviCapoPDFBlob(payload),
+        fileName: `preventivi-mezzo-${targaKey || "targa"}-${fileDate}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfShareHint(null);
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(`Anteprima PDF preventivi ${targaKey || ""}`.trim());
+      setPdfShareContext(`Preventivi mezzo ${targaKey || ""}`.trim());
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewOpen(true);
+    } catch {
+      window.alert("Errore durante la generazione dell'anteprima PDF.");
+    }
+  };
+
+  const handleDownloadStamped = async (item: NextCapoCostiRecord) => {
+    if (!item.fileUrl) {
+      window.alert("Errore anteprima PDF timbrato.");
+      return;
+    }
+
+    const status =
+      item.approvalStatus === "approved"
+        ? "APPROVATO"
+        : item.approvalStatus === "rejected"
+        ? "RIFIUTATO"
+        : null;
+    if (!status) return;
+
+    const stampTimeHHmm = `${String(now.getHours()).padStart(2, "0")}:${String(
+      now.getMinutes()
+    ).padStart(2, "0")}`;
+
+    try {
+      const response = await fetch(
+        "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/stamp_pdf",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileUrl: item.fileUrl,
+            status,
+            stampTimeHHmm,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`stamp_pdf failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data?.stampedUrl) {
+        throw new Error("stamp_pdf missing stampedUrl");
+      }
+
+      openPdfUrlPreview(
+        data.stampedUrl,
+        `Anteprima PDF timbrato ${status}`,
+        `Preventivo timbrato ${status}`
+      );
+    } catch {
+      window.alert("Errore timbro");
+    }
+  };
+
   return (
     <div className="capo-costi-wrapper">
       <div className="capo-costi-shell">
@@ -299,7 +540,7 @@ export default function NextCapoCostiMezzoPage() {
               type="button"
               className="capo-logo-button"
               onClick={() => navigate("/next")}
-              aria-label="Vai alla Home clone"
+              aria-label="Vai alla Home"
             >
               <img src="/logo.png" alt="Logo" />
             </button>
@@ -398,7 +639,7 @@ export default function NextCapoCostiMezzoPage() {
 
             <section className="capo-approvazioni">
               <div className="capo-approvazioni-head">
-                <h2>Approvazione preventivi (sola lettura)</h2>
+                <h2>Approvazione Preventivi</h2>
                 <div className="capo-approvazioni-controls">
                   <label className="capo-approvazioni-toggle">
                     <input
@@ -408,14 +649,22 @@ export default function NextCapoCostiMezzoPage() {
                     />
                     Solo da valutare
                   </label>
+                  <label className="capo-approvazioni-toggle">
+                    <input
+                      type="checkbox"
+                      checked={exportAllYear}
+                      onChange={(event) => setExportAllYear(event.target.checked)}
+                    />
+                    Tutto l'anno
+                  </label>
+                  <button
+                    type="button"
+                    className="capo-button"
+                    onClick={handleExportPreventivi}
+                  >
+                    ANTEPRIMA PDF PREVENTIVI
+                  </button>
                 </div>
-              </div>
-
-              <div className="capo-costi-state" style={{ marginBottom: "12px" }}>
-                {CLONE_BLOCKED_REASON}
-              </div>
-              <div className="capo-meta-muted" style={{ marginBottom: "12px" }}>
-                CTA bloccate nel clone: {BLOCKED_CTA_LABELS.join(" | ")}
               </div>
 
               {preventiviItems.length === 0 ? (
@@ -452,29 +701,23 @@ export default function NextCapoCostiMezzoPage() {
                         <button
                           type="button"
                           className="capo-action approve"
-                          disabled
-                          title={CLONE_BLOCKED_REASON}
-                          style={{ opacity: 0.55, cursor: "not-allowed" }}
+                          onClick={() => handleApprovalChange(item, "approved")}
                         >
-                          APPROVA (bloccato)
+                          APPROVA
                         </button>
                         <button
                           type="button"
                           className="capo-action reject"
-                          disabled
-                          title={CLONE_BLOCKED_REASON}
-                          style={{ opacity: 0.55, cursor: "not-allowed" }}
+                          onClick={() => handleApprovalChange(item, "rejected")}
                         >
-                          RIFIUTA (bloccato)
+                          RIFIUTA
                         </button>
                         <button
                           type="button"
                           className="capo-action pending"
-                          disabled
-                          title={CLONE_BLOCKED_REASON}
-                          style={{ opacity: 0.55, cursor: "not-allowed" }}
+                          onClick={() => handleApprovalChange(item, "pending")}
                         >
-                          DA VALUTARE (bloccato)
+                          DA VALUTARE
                         </button>
                       </div>
 
@@ -484,19 +727,25 @@ export default function NextCapoCostiMezzoPage() {
                             <button
                               type="button"
                               className="capo-button"
-                              onClick={() => openPdfPreview(String(item.fileUrl))}
+                              onClick={() =>
+                                openPdfUrlPreview(
+                                  String(item.fileUrl),
+                                  "Anteprima PDF documento",
+                                  "Documento preventivo"
+                                )
+                              }
                             >
-                              ANTEPRIMA PDF READ-ONLY
+                              ANTEPRIMA PDF
                             </button>
-                            <button
-                              type="button"
-                              className="capo-button secondary"
-                              disabled
-                              title="Clone in sola lettura: `stamp_pdf` e PDF timbrati restano bloccati."
-                              style={{ opacity: 0.55, cursor: "not-allowed" }}
-                            >
-                              ANTEPRIMA TIMBRATO (bloccata)
-                            </button>
+                            {item.approvalStatus !== "pending" ? (
+                              <button
+                                type="button"
+                                className="capo-button secondary"
+                                onClick={() => handleDownloadStamped(item)}
+                              >
+                                ANTEPRIMA TIMBRATO
+                              </button>
+                            ) : null}
                           </>
                         ) : (
                           <span className="capo-meta-muted">Nessun PDF</span>
@@ -568,9 +817,15 @@ export default function NextCapoCostiMezzoPage() {
                             <button
                               type="button"
                               className="capo-button"
-                              onClick={() => openPdfPreview(String(item.fileUrl))}
+                              onClick={() =>
+                                openPdfUrlPreview(
+                                  String(item.fileUrl),
+                                  "Anteprima PDF documento",
+                                  "Documento costi mezzo"
+                                )
+                              }
                             >
-                              ANTEPRIMA PDF READ-ONLY
+                              ANTEPRIMA PDF
                             </button>
                           ) : (
                             <span className="capo-meta-muted">Nessun PDF</span>
@@ -584,6 +839,17 @@ export default function NextCapoCostiMezzoPage() {
             </section>
           </>
         )}
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPDFText}
+          onWhatsApp={handleWhatsAppPDF}
+        />
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   NEXT_AUTISTI_BASE_PATH,
   NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,
 } from "./autisti/nextAutistiCloneRuntime";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 type Modalita = "motrice" | "rimorchio";
 type Luogo = "MEV" | "STABIO" | "ALTRO";
@@ -38,6 +39,18 @@ interface SessioneAttiva {
   timestamp: number;
 }
 
+type AutistaLocale = {
+  badge?: string | null;
+  nome?: string | null;
+};
+
+type MezzoLocale = {
+  targaCamion?: string | null;
+  targaCamionPrima?: string | null;
+  targaRimorchio?: string | null;
+  timestamp?: number | null;
+};
+
 const SESSIONI_KEY = "@autisti_sessione_attive";
 
 export default function NextAutistiCambioMezzoPage() {
@@ -58,7 +71,7 @@ export default function NextAutistiCambioMezzoPage() {
     let alive = true;
 
     async function load() {
-      const autista: any = getAutistaLocal();
+      const autista = getAutistaLocal() as AutistaLocale | null;
       if (!autista?.badge) {
         navigate(`${NEXT_AUTISTI_BASE_PATH}/login`, { replace: true });
         return;
@@ -98,10 +111,43 @@ export default function NextAutistiCambioMezzoPage() {
       | "specifiche.tubi",
   ) {
     setCondizioni((prev) => {
-      const copy: any = JSON.parse(JSON.stringify(prev));
-      const [group, key] = path.split(".") as ["generali" | "specifiche", string];
-      copy[group][key] = !copy[group][key];
-      return copy;
+      switch (path) {
+        case "generali.freni":
+          return {
+            ...prev,
+            generali: { ...prev.generali, freni: !prev.generali.freni },
+          };
+        case "generali.gomme":
+          return {
+            ...prev,
+            generali: { ...prev.generali, gomme: !prev.generali.gomme },
+          };
+        case "generali.perdite":
+          return {
+            ...prev,
+            generali: { ...prev.generali, perdite: !prev.generali.perdite },
+          };
+        case "specifiche.botole":
+          return {
+            ...prev,
+            specifiche: { ...prev.specifiche, botole: !prev.specifiche.botole },
+          };
+        case "specifiche.cinghie":
+          return {
+            ...prev,
+            specifiche: { ...prev.specifiche, cinghie: !prev.specifiche.cinghie },
+          };
+        case "specifiche.stecche":
+          return {
+            ...prev,
+            specifiche: { ...prev.specifiche, stecche: !prev.specifiche.stecche },
+          };
+        case "specifiche.tubi":
+          return {
+            ...prev,
+            specifiche: { ...prev.specifiche, tubi: !prev.specifiche.tubi },
+          };
+      }
     });
   }
 
@@ -121,8 +167,8 @@ export default function NextAutistiCambioMezzoPage() {
   function conferma() {
     setErrore("");
 
-    const autista: any = getAutistaLocal();
-    const mezzoLocale: any = getMezzoLocal();
+    const autista = getAutistaLocal() as AutistaLocale | null;
+    const mezzoLocale = getMezzoLocal() as MezzoLocale | null;
 
     if (!autista?.badge) {
       setErrore("Autista non valido. Fai login.");
@@ -179,14 +225,15 @@ export default function NextAutistiCambioMezzoPage() {
   }
 
   return (
-    <div className="cm-container">
-      <button
-        type="button"
-        className="cm-back"
-        onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/home`)}
-      >
-        {"<- INDIETRO"}
-      </button>
+    <NextLegacyStorageBoundary presets={["autisti"]}>
+      <div className="cm-container">
+        <button
+          type="button"
+          className="cm-back"
+          onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/home`)}
+        >
+          {"<- INDIETRO"}
+        </button>
 
       <h1>{titolo}</h1>
       {sessione ? (
@@ -334,9 +381,10 @@ export default function NextAutistiCambioMezzoPage() {
 
       {errore ? <div className="cm-error">{errore}</div> : null}
 
-      <button className="cm-confirm" onClick={conferma} type="button">
-        CONFERMA
-      </button>
-    </div>
+        <button className="cm-confirm" onClick={conferma} type="button">
+          CONFERMA
+        </button>
+      </div>
+    </NextLegacyStorageBoundary>
   );
 }

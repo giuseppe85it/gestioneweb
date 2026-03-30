@@ -1,7 +1,10 @@
 import type {
+  NextProcurementApprovalStatus,
   NextProcurementCloneTab,
+  NextProcurementListinoItem,
   NextProcurementListTab,
   NextProcurementOrderItem,
+  NextProcurementPreventivoItem,
   NextProcurementSnapshot,
 } from "./domain/nextProcurementDomain";
 import {
@@ -100,6 +103,202 @@ function buildRawPricingLabel(order: NextProcurementOrderItem): {
     missingRows,
     mixedCurrencies: false,
   };
+}
+
+function formatApprovalStatus(status: NextProcurementApprovalStatus) {
+  if (status === "approved") {
+    return { label: "APPROVATO", className: "is-ok" };
+  }
+  if (status === "rejected") {
+    return { label: "RIFIUTATO", className: "is-danger" };
+  }
+  return { label: "DA VALUTARE", className: "is-warn" };
+}
+
+function formatTrendLabel(trend: NextProcurementListinoItem["trend"]) {
+  if (trend === "down") return { label: "IN CALO", className: "is-ok" };
+  if (trend === "up") return { label: "IN AUMENTO", className: "is-danger" };
+  if (trend === "same") return { label: "STABILE", className: "is-warn" };
+  return { label: "NUOVO", className: "is-warn" };
+}
+
+function openDocumentAsset(url: string | null, imageUrls: string[] = []) {
+  const target = url ?? imageUrls[0] ?? null;
+  if (!target) {
+    return;
+  }
+  window.open(target, "_blank", "noopener,noreferrer");
+}
+
+function renderPreventiviTable(props: {
+  items: NextProcurementPreventivoItem[];
+  reason: string;
+}) {
+  const { items, reason } = props;
+
+  return (
+    <div className="acq-tab-panel">
+      <div className="acq-section-header">
+        <h2>Prezzi & Preventivi</h2>
+        <p>
+          Superficie NEXT nativa in sola lettura: elenco, allegati e stato approvativo restano
+          leggibili senza riattivare upload, OCR IA o salvataggi business.
+        </p>
+      </div>
+
+      <div className="acq-placeholder" style={{ marginBottom: 12 }}>
+        <strong>Perimetro clone-safe</strong>
+        <p style={{ margin: "6px 0 0" }}>{reason}</p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="acq-list-empty">Nessun preventivo leggibile nel dataset clone-safe.</div>
+      ) : (
+        <div className="acq-prev-table-wrap">
+          <table className="acq-prev-table">
+            <thead>
+              <tr>
+                <th>Fornitore</th>
+                <th>Numero</th>
+                <th>Data</th>
+                <th>Righe</th>
+                <th>Totale</th>
+                <th>Stato</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => {
+                const approval = formatApprovalStatus(item.approvalStatus);
+                return (
+                  <tr key={item.id}>
+                    <td>
+                      <div className="acq-orders-cell-main">
+                        <strong>{item.supplierName}</strong>
+                        {item.materialsPreview.length ? (
+                          <small>{item.materialsPreview.join(", ")}</small>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>{item.numeroPreventivo}</td>
+                    <td>{item.dataPreventivoLabel ?? "-"}</td>
+                    <td>{item.righeCount}</td>
+                    <td>
+                      {item.totalAmount !== null && item.currency
+                        ? `${item.currency} ${item.totalAmount.toFixed(2)}`
+                        : "-"}
+                    </td>
+                    <td>
+                      <div className="acq-orders-cell-main">
+                        <span className={`acq-pill ${approval.className}`}>{approval.label}</span>
+                        {item.approvalUpdatedAtLabel ? <small>{item.approvalUpdatedAtLabel}</small> : null}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="acq-prev-list-actions acq-prev-list-actions--compact">
+                        <button
+                          type="button"
+                          className="acq-btn acq-btn--primary"
+                          onClick={() => openDocumentAsset(item.pdfUrl, item.imageUrls)}
+                          disabled={!item.pdfUrl && item.imageUrls.length === 0}
+                          title={!item.pdfUrl && item.imageUrls.length === 0 ? "Nessun documento collegato" : "Apri documento"}
+                        >
+                          APRI DOCUMENTO
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderListinoTable(props: {
+  items: NextProcurementListinoItem[];
+  reason: string;
+}) {
+  const { items, reason } = props;
+
+  return (
+    <div className="acq-tab-panel">
+      <div className="acq-section-header">
+        <h2>Listino prezzi</h2>
+        <p>
+          Superficie NEXT nativa in sola lettura: voci, trend e fonte documento restano consultabili
+          senza aprire edit, import o consolidamento.
+        </p>
+      </div>
+
+      <div className="acq-placeholder" style={{ marginBottom: 12 }}>
+        <strong>Perimetro clone-safe</strong>
+        <p style={{ margin: "6px 0 0" }}>{reason}</p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="acq-list-empty">Nessuna voce listino leggibile nel dataset clone-safe.</div>
+      ) : (
+        <div className="acq-prev-table-wrap">
+          <table className="acq-prev-table">
+            <thead>
+              <tr>
+                <th>Fornitore</th>
+                <th>Articolo</th>
+                <th>Unita</th>
+                <th>Valuta</th>
+                <th>Prezzo</th>
+                <th>Trend</th>
+                <th>Preventivo</th>
+                <th>Data</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => {
+                const trend = formatTrendLabel(item.trend);
+                return (
+                  <tr key={item.id}>
+                    <td>{item.supplierName}</td>
+                    <td>
+                      <div className="acq-orders-cell-main">
+                        <strong>{item.articoloCanonico}</strong>
+                        {item.codiceArticolo ? <small>{item.codiceArticolo}</small> : null}
+                      </div>
+                    </td>
+                    <td>{item.unita ?? "-"}</td>
+                    <td>{item.valuta ?? "-"}</td>
+                    <td>{item.prezzoAttuale !== null ? item.prezzoAttuale.toFixed(2) : "-"}</td>
+                    <td>
+                      <span className={`acq-pill ${trend.className}`}>{trend.label}</span>
+                    </td>
+                    <td>{item.fonteNumeroPreventivo ? `N. ${item.fonteNumeroPreventivo}` : "-"}</td>
+                    <td>{item.fonteDataPreventivo ?? item.updatedAtLabel ?? "-"}</td>
+                    <td>
+                      <div className="acq-prev-list-actions acq-prev-list-actions--compact">
+                        <button
+                          type="button"
+                          className="acq-btn acq-btn--primary"
+                          onClick={() => openDocumentAsset(item.pdfUrl, item.imageUrls)}
+                          disabled={!item.pdfUrl && item.imageUrls.length === 0}
+                          title={!item.pdfUrl && item.imageUrls.length === 0 ? "Nessun documento collegato" : "Apri documento"}
+                        >
+                          APRI DOCUMENTO
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function renderListTable(props: {
@@ -399,6 +598,39 @@ const NextProcurementReadOnlyPanel: React.FC<NextProcurementReadOnlyPanelProps> 
 
     return supplierMatches && materialMatches;
   });
+  const visiblePreventivi = snapshot.preventivi.filter((item) => {
+    if (!iaPrefill?.fornitore && !iaPrefill?.materiale && !iaPrefill?.documentoNome) {
+      return true;
+    }
+
+    const supplierMatches = iaPrefill?.fornitore
+      ? normalizeText(item.supplierName).includes(normalizeText(iaPrefill.fornitore))
+      : true;
+    const materialMatches = iaPrefill?.materiale
+      ? item.materialsPreview.some((entry) =>
+          normalizeText(entry).includes(normalizeText(iaPrefill.materiale)),
+        )
+      : true;
+    const documentMatches = iaPrefill?.documentoNome
+      ? normalizeText(item.numeroPreventivo).includes(normalizeText(iaPrefill.documentoNome))
+      : true;
+
+    return supplierMatches && materialMatches && documentMatches;
+  });
+  const visibleListino = snapshot.listino.filter((item) => {
+    if (!iaPrefill?.fornitore && !iaPrefill?.materiale) {
+      return true;
+    }
+
+    const supplierMatches = iaPrefill?.fornitore
+      ? normalizeText(item.supplierName).includes(normalizeText(iaPrefill.fornitore))
+      : true;
+    const materialMatches = iaPrefill?.materiale
+      ? normalizeText(item.articoloCanonico).includes(normalizeText(iaPrefill.materiale))
+      : true;
+
+    return supplierMatches && materialMatches;
+  });
 
   return (
     <div className={`acq-page${activeOrder ? " is-detail" : ""}`} style={EMBEDDED_PAGE_STYLE}>
@@ -410,7 +642,7 @@ const NextProcurementReadOnlyPanel: React.FC<NextProcurementReadOnlyPanelProps> 
               <p className="acq-eyebrow">Gestione Acquisti</p>
               <h1 className="acq-title">Acquisti</h1>
               <p className="acq-subtitle">
-                Modulo clone-safe: ordini, arrivi e dettaglio ordine restano navigabili in sola lettura.
+                Modulo clone-safe: ordini, arrivi, preventivi e listino restano navigabili in sola lettura.
               </p>
             </div>
           </div>
@@ -545,22 +777,14 @@ const NextProcurementReadOnlyPanel: React.FC<NextProcurementReadOnlyPanelProps> 
               onOpenOrder,
             })
           ) : activeTab === "preventivi" ? (
-            renderBlockedTab({
-              title: "Prezzi & Preventivi",
-              subtitle:
-                "La scheda resta visibile nel clone per mantenere la UX della madre, ma non viene aperta oltre il perimetro sicuro.",
+            renderPreventiviTable({
+              items: visiblePreventivi,
               reason: snapshot.navigability.preventivi.reason,
-              onGoOrdini: () => onTabChange("ordini"),
-              onGoArrivi: () => onTabChange("arrivi"),
             })
           ) : activeTab === "listino" ? (
-            renderBlockedTab({
-              title: "Listino prezzi",
-              subtitle:
-                "La sezione listino non e stata forzata nel clone finche il runtime resta mescolato con editing e consolidamento.",
+            renderListinoTable({
+              items: visibleListino,
               reason: snapshot.navigability.listino.reason,
-              onGoOrdini: () => onTabChange("ordini"),
-              onGoArrivi: () => onTabChange("arrivi"),
             })
           ) : (
             renderBlockedTab({

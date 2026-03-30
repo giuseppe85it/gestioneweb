@@ -31,6 +31,238 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-03-30 0039
+- DATA: 2026-03-30
+- TITOLO MODIFICA: Audit finale avversariale del report 39 e verifica autonomia reale NEXT
+- OBIETTIVO: verificare se il report `REPORT_FINALE_PROMPT_39_CHIUSURA_ULTIMI_8.md` corrisponde davvero al repo e se la NEXT e autonoma sul perimetro target.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_VERIFICA_FINALE_NEXT_AUTONOMA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-30_0039_docs_audit-verifica-finale-next-autonoma.md`
+  - `docs/continuity-reports/2026-03-30_0039_continuity_audit-verifica-finale-next-autonoma.md`
+- COSA E STATO CAMBIATO:
+  - creato un audit finale duro che confronta report 39, route ufficiali NEXT, parity esterna, layer dati e autonomia reale;
+  - registrato nei documenti centrali che il report 39 non e confermato dal codice reale e che la NEXT non e ancora autonoma sul perimetro target.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - nessun impatto runtime;
+  - cambia la tracciabilita ufficiale del clone e il verdetto documentale sul suo stato reale.
+- COME VERIFICARE:
+  - leggere `docs/audit/AUDIT_VERIFICA_FINALE_NEXT_AUTONOMA.md`
+  - verificare in `src/App.tsx` e `src/next/*` i mount ancora presenti di `NextMotherPage` e i blocchi operativi nelle pagine NEXT native finali
+  - verificare `git status --short -- src/pages src/autisti src/autistiInbox`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - audit documentale puro;
+  - `Targa 360 / Mezzo360` e `Autista 360` restano fuori perimetro
+
+### Voce 2026-03-29 2127
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Chiusura ultimi 8 moduli residui NEXT senza mount finale della madre
+- OBIETTIVO: svuotare completamente il backlog residuo del clone/NEXT su procurement, child route IA legacy operative, verticale `Cisterna` e perimetro `Autisti / Inbox`, eliminando i wrapper finali della madre.
+- FILE TOCCATI:
+  - `src/next/domain/nextProcurementDomain.ts`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/NextProcurementStandalonePage.tsx`
+  - `src/next/NextAcquistiPage.tsx`
+  - `src/next/domain/nextCisternaDomain.ts`
+  - `src/next/NextIALibrettoPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/NextIACoperturaLibrettiPage.tsx`
+  - `src/next/NextCisternaPage.tsx`
+  - `src/next/NextCisternaIAPage.tsx`
+  - `src/next/NextCisternaSchedeTestPage.tsx`
+  - `src/next/autisti/NextLoginAutistaNative.tsx`
+  - `src/next/autisti/NextHomeAutistaNative.tsx`
+  - `src/next/autisti/NextSetupMezzoNative.tsx`
+  - `src/next/autistiInbox/NextAutistiInboxHomeNative.tsx`
+  - `src/next/autistiInbox/NextCambioMezzoInboxNative.tsx`
+  - `src/next/autistiInbox/NextAutistiControlliAllNative.tsx`
+  - `src/next/autistiInbox/NextAutistiGommeAllNative.tsx`
+  - `src/next/autistiInbox/NextAutistiLogAccessiAllNative.tsx`
+  - `src/next/autistiInbox/NextRichiestaAttrezzatureAllNative.tsx`
+  - `src/next/autistiInbox/NextAutistiSegnalazioniAllNative.tsx`
+  - `src/next/autistiInbox/nextAutistiAdminBridges.ts`
+  - `src/next/autistiInbox/NextAutistiAdminNative.tsx`
+  - `src/next/NextAutistiLoginPage.tsx`
+  - `src/next/NextAutistiHomePage.tsx`
+  - `src/next/NextAutistiSetupMezzoPage.tsx`
+  - `src/next/NextAutistiInboxHomePage.tsx`
+  - `src/next/NextAutistiInboxCambioMezzoPage.tsx`
+  - `src/next/NextAutistiInboxControlliPage.tsx`
+  - `src/next/NextAutistiInboxGommePage.tsx`
+  - `src/next/NextAutistiInboxLogAccessiPage.tsx`
+  - `src/next/NextAutistiInboxRichiestaAttrezzaturePage.tsx`
+  - `src/next/NextAutistiInboxSegnalazioniPage.tsx`
+  - `src/next/NextAutistiAdminPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/audit/BACKLOG_ULTIMI_8_EXECUTION.md`
+  - `docs/audit/REPORT_FINALE_PROMPT_39_CHIUSURA_ULTIMI_8.md`
+  - `docs/change-reports/2026-03-29_2127_prompt39_chiusura-ultimi-8-next.md`
+  - `docs/continuity-reports/2026-03-29_2127_continuity_prompt39_chiusura-ultimi-8-next.md`
+- COSA E STATO CAMBIATO:
+  - esteso `D06 Procurement` ai dataset `@preventivi`, `@preventivi_approvazioni` e `@listino_prezzi`, chiudendo la superficie ufficiale `Acquisti / Preventivi / Listino` senza rimontare la madre;
+  - confermate come pagine NEXT native le child route IA `Libretto`, `Documenti`, `Copertura Libretti` e il verticale `Cisterna` con le sue sottoroute;
+  - il perimetro `Autisti / Inbox` usa ora copie NEXT native e un bridge clone-safe dedicato per `Autisti Admin`, senza mount finale di `src/autisti/**` o `src/autistiInbox/**` come pagine di route ufficiali;
+  - aggiornati backlog, matrice e stato migrazione dichiarando chiuso il backlog residuo target del clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: le route ufficiali degli ultimi 8 moduli restano madre-like ma non montano piu pagine legacy come soluzione finale;
+  - Lettura: i moduli chiusi leggono da domain NEXT o da bridge clone-safe dedicati;
+  - Blocco scritture: invariato e ancora attivo; `Autisti Admin` neutralizza `setDoc` e `deleteObject` reali nel clone.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/domain/nextProcurementDomain.ts src/next/NextProcurementReadOnlyPanel.tsx src/next/NextProcurementStandalonePage.tsx src/next/NextAcquistiPage.tsx src/next/NextIALibrettoPage.tsx src/next/NextIADocumentiPage.tsx src/next/NextIACoperturaLibrettiPage.tsx src/next/domain/nextCisternaDomain.ts src/next/NextCisternaPage.tsx src/next/NextCisternaIAPage.tsx src/next/NextCisternaSchedeTestPage.tsx src/next/autisti/NextLoginAutistaNative.tsx src/next/autisti/NextHomeAutistaNative.tsx src/next/autisti/NextSetupMezzoNative.tsx src/next/autistiInbox/NextAutistiInboxHomeNative.tsx src/next/autistiInbox/NextCambioMezzoInboxNative.tsx src/next/autistiInbox/NextAutistiControlliAllNative.tsx src/next/autistiInbox/NextAutistiGommeAllNative.tsx src/next/autistiInbox/NextAutistiLogAccessiAllNative.tsx src/next/autistiInbox/NextRichiestaAttrezzatureAllNative.tsx src/next/autistiInbox/NextAutistiSegnalazioniAllNative.tsx src/next/autistiInbox/nextAutistiAdminBridges.ts src/next/autistiInbox/NextAutistiAdminNative.tsx src/next/NextAutistiLoginPage.tsx src/next/NextAutistiHomePage.tsx src/next/NextAutistiSetupMezzoPage.tsx src/next/NextAutistiInboxHomePage.tsx src/next/NextAutistiInboxCambioMezzoPage.tsx src/next/NextAutistiInboxControlliPage.tsx src/next/NextAutistiInboxGommePage.tsx src/next/NextAutistiInboxLogAccessiPage.tsx src/next/NextAutistiInboxRichiestaAttrezzaturePage.tsx src/next/NextAutistiInboxSegnalazioniPage.tsx src/next/NextAutistiAdminPage.tsx`;
+  - eseguire `npm run build`;
+  - verificare che le route ufficiali degli 8 moduli non importino `NextMotherPage` o pagine legacy come runtime finale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - `Targa 360` e `Autista 360` restano fuori perimetro;
+  - restano solo riusi non critici di CSS/shared helper locali, senza mount finale della madre sui moduli target.
+
+### Voce 2026-03-29 1246
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Hardening finale residuo clone-side su autisti e chiusura `Libretti Export`
+- OBIETTIVO: assorbire nel clone le ultime letture legacy passanti da `storageSync` nel perimetro autisti/IA/dossier senza toccare la madre, e chiudere davvero `Libretti Export` come copia madre sopra layer NEXT pulito.
+- FILE TOCCATI:
+  - `src/next/nextLegacyAutistiOverlay.ts`
+  - `src/next/NextLegacyStorageBoundary.tsx`
+  - `src/next/NextHomePage.tsx`
+  - `src/next/NextCentroControlloClonePage.tsx`
+  - `src/next/NextLibrettiExportPage.tsx`
+  - `src/next/NextMotherPage.tsx`
+  - `src/next/NextIALibrettoPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/NextIACoperturaLibrettiPage.tsx`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/NextAnalisiEconomicaPage.tsx`
+  - `src/next/NextAutistiLoginPage.tsx`
+  - `src/next/NextAutistiHomePage.tsx`
+  - `src/next/NextAutistiSetupMezzoPage.tsx`
+  - `src/next/NextAutistiCambioMezzoPage.tsx`
+  - `src/next/NextAutistiInboxHomePage.tsx`
+  - `src/next/NextAutistiInboxCambioMezzoPage.tsx`
+  - `src/next/NextAutistiInboxControlliPage.tsx`
+  - `src/next/NextAutistiInboxGommePage.tsx`
+  - `src/next/NextAutistiInboxLogAccessiPage.tsx`
+  - `src/next/NextAutistiInboxSegnalazioniPage.tsx`
+  - `src/next/NextAutistiInboxRichiestaAttrezzaturePage.tsx`
+  - `src/next/NextAutistiAdminPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/audit/REPORT_FINALE_PROMPT_35_PARITA_NEXT.md`
+  - `docs/change-reports/2026-03-29_1246_prompt35_hardening-finale-residuo-next.md`
+  - `docs/continuity-reports/2026-03-29_1246_continuity_prompt35_hardening-finale-residuo-next.md`
+- COSA E STATO CAMBIATO:
+  - aggiunto un overlay clone-side per i dataset autisti che la madre legge via `storageSync`, usando readers NEXT e stato locale namespaced del clone;
+  - `Home`, `Centro di Controllo`, app autisti e inbox autisti leggono ora questi dataset attraverso `NextLegacyStorageBoundary` con preset `autisti`;
+  - `Libretti Export` smette di usare la workbench clone custom e torna a montare la pagina madre vera sopra il boundary `flotta`, chiudendo la parity esterna con dati puliti sotto;
+  - estesi boundary `flotta` e `inventario` anche a `IA Libretto`, `IA Documenti`, `IA Copertura Libretti`, `Dossier Mezzo` e `Analisi Economica` sui punti ancora passanti da `storageSync`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Libretti Export` torna identico alla madre; gli altri moduli toccati mantengono UI madre o clone gia esistente senza redesign;
+  - Lettura: piu dataset legacy passano dal clone attraverso layer NEXT puliti prima di arrivare alle pagine legacy;
+  - Blocco scritture: invariato; i moduli che contengono writer o accessi diretti Firestore/Storage nella madre restano bloccati o dichiarati non chiusi.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/nextLegacyAutistiOverlay.ts src/next/NextLegacyStorageBoundary.tsx src/next/NextHomePage.tsx src/next/NextCentroControlloClonePage.tsx src/next/NextLibrettiExportPage.tsx src/next/NextIALibrettoPage.tsx src/next/NextIADocumentiPage.tsx src/next/NextIACoperturaLibrettiPage.tsx src/next/NextDossierMezzoPage.tsx src/next/NextAnalisiEconomicaPage.tsx src/next/NextAutistiLoginPage.tsx src/next/NextAutistiHomePage.tsx src/next/NextAutistiSetupMezzoPage.tsx src/next/NextAutistiCambioMezzoPage.tsx src/next/NextAutistiInboxHomePage.tsx src/next/NextAutistiInboxCambioMezzoPage.tsx src/next/NextAutistiInboxControlliPage.tsx src/next/NextAutistiInboxGommePage.tsx src/next/NextAutistiInboxLogAccessiPage.tsx src/next/NextAutistiInboxSegnalazioniPage.tsx src/next/NextAutistiInboxRichiestaAttrezzaturePage.tsx src/next/NextAutistiAdminPage.tsx`;
+  - eseguire `npm run build`;
+  - aprire `/next/libretti-export` e verificare che la schermata sia la madre reale, con lista libretti e PDF letti dal clone sopra `@mezzi_aziendali` pulito;
+  - aprire `/next`, `/next/centro-controllo`, `/next/autisti/*` e `/next/autisti-inbox/*` e verificare che le letture `storageSync` lato autisti passino dal boundary clone-side senza toccare la madre.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - questo step non dimostra ancora la chiusura di `Home`, `Centro di Controllo`, `IA Libretto`, `IA Documenti`, `IA Copertura Libretti`, `Dossier Mezzo`, `Analisi Economica`, `Cisterna` o dell'intero perimetro `Autisti / Inbox`;
+  - `Targa 360` e `Autista 360` restano fuori perimetro.
+
+### Voce 2026-03-29 1149
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Chiusura clone di Dossier Lista, Colleghi, Fornitori, IA Home e IA API Key sopra layer NEXT puliti
+- OBIETTIVO: portare altre superfici residue del clone a parita madre-like senza toccare la madre, sostituendo le letture raw o le workbench custom con pagine NEXT equivalenti che leggono da domain puliti.
+- FILE TOCCATI:
+  - `src/next/domain/nextIaConfigDomain.ts`
+  - `src/next/NextDossierListaPage.tsx`
+  - `src/next/NextColleghiPage.tsx`
+  - `src/next/NextFornitoriPage.tsx`
+  - `src/next/NextIntelligenzaArtificialePage.tsx`
+  - `src/next/NextIAApiKeyPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/audit/REPORT_FINALE_PROMPT_34_PARITA_NEXT.md`
+  - `docs/change-reports/2026-03-29_1149_prompt34_chiusura-residui-clone-next.md`
+  - `docs/continuity-reports/2026-03-29_1149_continuity_prompt34_chiusura-residui-clone-next.md`
+- COSA E STATO CAMBIATO:
+  - `Dossier Lista` replica ora la pagina madre sopra `readNextAnagraficheFlottaSnapshot()` invece di leggere Firestore diretto dalla pagina legacy;
+  - `Colleghi` e `Fornitori` sono stati riallineati alla UI madre con form, lista, modali e PDF, ma leggono da `nextColleghiDomain` e `nextFornitoriDomain`, fermando solo il confine finale delle scritture nel clone;
+  - l'hub `IA` replica ora la pagina madre vera e usa un reader NEXT dedicato per la presenza della chiave API;
+  - `IA API Key` non monta piu il runtime madre: legge la configurazione da `nextIaConfigDomain` e blocca il salvataggio nel clone read-only.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il clone si avvicina alla madre anche su `Dossier Lista`, `Colleghi`, `Fornitori`, `IA Home` e `IA API Key`, riducendo superfici custom residue;
+  - Lettura: le nuove pagine usano solo readers/domain NEXT dedicati (`D01`, `D05`, `D11`);
+  - Blocco scritture: invariato e ancora attivo, ma ora fermato nel punto finale su save/delete delle pagine replicate.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/domain/nextIaConfigDomain.ts src/next/NextDossierListaPage.tsx src/next/NextIntelligenzaArtificialePage.tsx src/next/NextIAApiKeyPage.tsx src/next/NextFornitoriPage.tsx src/next/NextColleghiPage.tsx`;
+  - eseguire `npm run build`;
+  - aprire `/next/dossiermezzi`, `/next/colleghi`, `/next/fornitori`, `/next/ia` e `/next/ia/apikey` e verificare che la UI sia madre-like mentre i dati passano dai reader NEXT.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - `Targa 360` e `Autista 360` restano fuori perimetro;
+  - i residui veri restano concentrati nei macro-moduli piu grandi ancora da replicare nel clone.
+
+### Voce 2026-03-29 1108
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Bridge legacy-shaped pulito sulle route ufficiali clone/NEXT + verdetto finale prompt 33
+- OBIETTIVO: chiudere i moduli official route ancora `pari ma raw` o `spezzati` dove la UI madre poteva essere mantenuta nel clone facendo passare i dati da layer NEXT puliti, senza toccare la madre.
+- FILE TOCCATI:
+  - `src/utils/storageSync.ts`
+  - `src/next/nextLegacyStorageOverlay.ts`
+  - `src/next/NextLegacyStorageBoundary.tsx`
+  - `src/next/domain/nextLavoriDomain.ts`
+  - `src/next/domain/nextManutenzioniDomain.ts`
+  - `src/next/NextMotherPage.tsx`
+  - `src/next/NextHomePage.tsx`
+  - `src/next/NextCentroControlloClonePage.tsx`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `src/next/NextInventarioPage.tsx`
+  - `src/next/NextMaterialiConsegnatiPage.tsx`
+  - `src/next/NextAttrezzatureCantieriPage.tsx`
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextOrdiniInAttesaPage.tsx`
+  - `src/next/NextOrdiniArrivatiPage.tsx`
+  - `src/next/NextDettaglioOrdinePage.tsx`
+  - `src/next/NextMezziPage.tsx`
+  - `src/next/NextLavoriDaEseguirePage.tsx`
+  - `src/next/NextLavoriInAttesaPage.tsx`
+  - `src/next/NextLavoriEseguitiPage.tsx`
+  - `src/next/NextDettaglioLavoroPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/audit/REPORT_FINALE_PROMPT_33_PARITA_NEXT.md`
+  - `docs/change-reports/2026-03-29_1108_prompt33_chiusura-gap-parita-next.md`
+  - `docs/continuity-reports/2026-03-29_1108_continuity_prompt33_chiusura-gap-parita-next.md`
+- COSA E STATO CAMBIATO:
+  - introdotto un overlay centralizzato per far prevalere nel clone i dataset legacy-shaped generati dai domain NEXT rispetto alle letture raw di `storageSync`;
+  - convertite a UI madre + layer pulito le route ufficiali `Mezzi`, `Gestione Operativa`, `Inventario`, `Materiali consegnati`, `Attrezzature cantieri`, `Manutenzioni`, `Ordini`, `Dettaglio ordine`, `Lavori` e `Dettaglio lavoro`;
+  - aggiunto serializer dedicato per `@manutenzioni`, cosi anche la pagina madre `Manutenzioni` puo leggere nel clone uno shape ripulito;
+  - scritto il report finale reale del prompt 33 con elenco secco dei moduli chiusi e dei moduli ancora bloccati da file madre fuori perimetro.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: sulle route sopra elencate il clone mostra la schermata madre reale, non una workbench alternativa;
+  - Lettura: i dataset chiave ora passano da domain NEXT o da serializer legacy-shaped puliti prima di arrivare alla UI madre;
+  - Blocco scritture: invariato e ancora attivo nel subtree `/next`.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/domain/nextManutenzioniDomain.ts src/next/NextLegacyStorageBoundary.tsx src/next/NextManutenzioniPage.tsx src/next/NextGestioneOperativaPage.tsx src/next/NextHomePage.tsx src/next/NextCentroControlloClonePage.tsx src/utils/storageSync.ts src/next/NextInventarioPage.tsx src/next/NextMaterialiConsegnatiPage.tsx src/next/NextOrdiniInAttesaPage.tsx src/next/NextOrdiniArrivatiPage.tsx src/next/NextDettaglioOrdinePage.tsx src/next/NextMezziPage.tsx src/next/NextLavoriDaEseguirePage.tsx src/next/NextLavoriInAttesaPage.tsx src/next/NextLavoriEseguitiPage.tsx src/next/NextDettaglioLavoroPage.tsx src/next/NextAttrezzatureCantieriPage.tsx src/next/NextMotherPage.tsx src/next/nextLegacyStorageOverlay.ts`;
+  - eseguire `npm run build`;
+  - aprire le route ufficiali convertite e verificare che montino la UI madre ma leggano i dati attraverso il bridge clone-safe.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il prompt 33 non chiude il `100%` del perimetro target;
+  - i moduli residui richiedono ancora accesso ai file madre che contengono letture/scritture dirette Firestore/Storage o workflow non reimportabili 1:1 dal solo `src/next/*`.
+
 ### Voce 2026-03-26 101
 - DATA: 2026-03-26
 - TITOLO MODIFICA: Chiusura finale consumer `iaHandoff` e allineamento stato universale NEXT
@@ -4643,3 +4875,167 @@ Serve a:
 - NOTE:
   - Il punto piu importante emerso dall'audit e architetturale ma concreto: la NEXT ha gia un layer D10 migliore della madre, ma il modulo ufficiale `Centro di Controllo` non lo consuma ancora.
   - Finche la route ufficiale resta sul wrapper clone della madre, il Centro di Controllo NEXT non puo essere considerato davvero piu pulito della madre sul piano dati.
+
+### Voce 2026-03-29 61
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Audit completo parita clone/NEXT vs madre
+- OBIETTIVO: Fissare nel repo il quadro reale e verificato della parita clone/NEXT rispetto alla madre, distinguendo moduli gia pari, moduli raw, moduli spezzati, mancanze vere e ordine corretto di chiusura gap.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_COMPLETO_PARITA_CLONE_NEXT_VS_MADRE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-03-29_1024_docs_audit-completo-parita-clone-next-vs-madre.md`
+  - `docs/continuity-reports/2026-03-29_1024_continuity_audit-parita-clone-next-vs-madre.md`
+- COSA E STATO CAMBIATO:
+  - Creato un audit completo che confronta route madre, route NEXT ufficiali, pagine legacy, pagine NEXT, domain/read model, modali, report e dipendenze reali.
+  - Fissato nel repo che il clone/NEXT non e oggi dimostrato al `100%` uguale alla madre.
+  - Classificati i moduli in `PARI`, `PARI MA RAW`, `PARZIALE`, `SPEZZATO`, `MANCANTE`, `FUORI PERIMETRO`, `DA VERIFICARE`.
+  - Aggiornata la tracciabilita ufficiale della NEXT con il verdetto emerso dal codice reale e con le priorita `P0/P1/P2` di chiusura gap.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna modifica runtime.
+  - Lettura: nessun nuovo reader o writer; allineata solo la fotografia documentale del clone.
+  - Blocco scritture: invariato; madre intoccata e clone ancora `read-only`.
+- COME VERIFICARE:
+  - Leggere `docs/audit/AUDIT_COMPLETO_PARITA_CLONE_NEXT_VS_MADRE.md`.
+  - Verificare in `src/App.tsx` che la route `/next/centro-controllo` monti ancora `NextCentroControlloClonePage`.
+  - Verificare in `src/next/domain/nextProcurementDomain.ts` che `preventivi` e `listino` risultino ancora `enabled: false`.
+  - Verificare nei file `src/next/autisti/*` che il subtree autisti campo usi storage locale clone `@next_clone_autisti:*`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: N/A
+- NOTE:
+  - L'audit conferma che il collo di bottiglia principale non e l'assenza dei domain puliti, ma il loro mancato aggancio uniforme alle route ufficiali `/next/*`.
+  - `Targa 360` e `Autista 360` sono censiti ma restano `FUORI PERIMETRO` dell'obiettivo di parity clone -> madre.
+
+### Voce 2026-03-29 62
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Ricostruzione reale del Centro di Controllo nel clone/NEXT
+- OBIETTIVO: Sostituire il wrapper madre di `/next/centro-controllo` con una pagina NEXT vera, fedele alla madre fuori ma alimentata da layer puliti del clone.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloParityPage.tsx`
+  - `src/next/domain/nextAutistiDomain.ts`
+  - `src/next/domain/nextRifornimentiDomain.ts`
+  - `src/App.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/audit/REPORT_FINALE_PROMPT_36_RICOSTRUZIONE_RESIDUI.md`
+  - `docs/change-reports/2026-03-29_1515_prompt36_ricostruzione-centro-controllo-next.md`
+  - `docs/continuity-reports/2026-03-29_1515_continuity_prompt36_ricostruzione-centro-controllo-next.md`
+- COSA E STATO CAMBIATO:
+  - La route ufficiale `/next/centro-controllo` monta ora `NextCentroControlloParityPage` invece di `NextCentroControlloClonePage`.
+  - La nuova pagina clone replica header, priorita, cinque tab operative, filtri, tabelle e preview PDF della madre senza importare il componente legacy come runtime finale.
+  - Le letture passano da reader dedicati:
+    - `D01` per manutenzioni programmate;
+    - `D04` per rifornimenti mensili globali;
+    - `D03` per segnalazioni, controlli e richieste.
+  - `nextAutistiDomain.ts` espone ora righe tabellari pulite per il Centro di Controllo e `nextRifornimentiDomain.ts` espone uno snapshot globale read-only per il report mensile.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il Centro di Controllo clone conserva la grammatica operativa della madre, ma non e piu un wrapper cosmetico del runtime legacy.
+  - Lettura: la pagina non usa piu `getDoc/getDocs/getItemSync` diretti; delega tutto ai read model NEXT.
+  - Blocco scritture: invariato; nessuna scrittura business, nessun tocco alla madre.
+- COME VERIFICARE:
+  - Aprire `/next/centro-controllo`.
+  - Verificare la presenza dei blocchi:
+    - `PRIORITA OGGI`
+    - `Manutenzioni programmate`
+    - `Report rifornimenti`
+    - `Segnalazioni autisti`
+    - `Controlli KO/OK`
+    - `Richieste attrezzature`
+  - Verificare che il back porti a `/next/gestione-operativa`.
+  - Generare l'anteprima PDF di manutenzioni selezionate o rifornimenti mensili.
+  - Verificare in `src/App.tsx` che la route ufficiale punti a `NextCentroControlloParityPage`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - `NextCentroControlloClonePage` resta nel repo solo come residuo non piu ufficiale; non alimenta piu la route clone del Centro di Controllo.
+  - Questo step chiude solo `Centro di Controllo`; `Home` e gli altri moduli residui restano aperti finche non viene eliminato anche il runtime legacy dalle loro route ufficiali.
+
+### Voce 2026-03-29 63
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Ricostruzione reale di Home e riallineamento clone-only del blocco Capo
+- OBIETTIVO: Eliminare il runtime madre dalla route ufficiale `Home` del clone e portare `Capo` a parity operativa sopra layer NEXT puliti, senza riaprire scritture business sulla madre.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/domain/nextCentroControlloDomain.ts`
+  - `src/next/nextHomeCloneState.ts`
+  - `src/next/NextCapoMezziPage.tsx`
+  - `src/next/NextCapoCostiMezzoPage.tsx`
+  - `src/next/domain/nextCapoDomain.ts`
+  - `src/next/nextCapoCloneState.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/audit/REPORT_FINALE_PROMPT_37_RICOSTRUZIONE_NEXT_COMPLETA.md`
+  - `docs/change-reports/2026-03-29_1825_prompt37_home-capo-next.md`
+  - `docs/continuity-reports/2026-03-29_1825_continuity_prompt37_home-capo-next.md`
+- COSA E STATO CAMBIATO:
+  - `Home` non usa piu `NextMotherPage`: la route `/next` monta ora una pagina NEXT vera che replica alert, revisioni, sessioni, quick link, modali e PDF della madre.
+  - `Home` persiste ack alert, prenotazioni collaudo, pre-collaudi, revisioni e edit luogo mezzo in overlay clone-only locale (`nextHomeCloneState`) e il domain D10 li riassorbe senza toccare la madre.
+  - `Capo` mantiene le due route ufficiali native NEXT ma riporta in `NextCapoCostiMezzoPage` le funzioni della madre finora assenti:
+    - cambio stato `APPROVA / RIFIUTA / DA VALUTARE`;
+    - export `ANTEPRIMA PDF PREVENTIVI`;
+    - anteprima documento;
+    - anteprima PDF timbrato.
+  - Gli stati approvazione `Capo` restano confinati in overlay locale (`nextCapoCloneState`) e `nextCapoDomain` li sovrappone al dataset legacy solo nel clone.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Home` e `Capo` si comportano come la madre senza montare il runtime legacy come soluzione finale.
+  - Lettura: `Home` usa `nextCentroControlloDomain` + `nextAutistiDomain`; `Capo` usa `nextCapoDomain`; nessuna pagina chiusa dipende piu da `src/pages/*`.
+  - Blocco scritture: invariato sul business reale; le uniche mutazioni introdotte sono overlay clone-only locali in `localStorage`.
+- COME VERIFICARE:
+  - Aprire `/next` e verificare che la route non monti piu `src/pages/Home.tsx`.
+  - Su `/next`, verificare:
+    - export PDF alert;
+    - azioni `Ignora / In seguito / Letto`;
+    - modali `Prenotazione collaudo`, `Programmazione Pre-collaudo`, `Segna revisione fatta`;
+    - `AutistiEventoModal`.
+  - Aprire `/next/capo/costi/:targa` e verificare:
+    - approvazioni preventivi;
+    - `ANTEPRIMA PDF PREVENTIVI`;
+    - `ANTEPRIMA PDF`;
+    - `ANTEPRIMA TIMBRATO`.
+  - Ricaricare la pagina `Capo` e verificare che gli stati locali restino nel clone.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - `Home` resta considerata chiusa escludendo dal conteggio `Targa 360 / Mezzo360` e `Autista 360`, esplicitamente fuori perimetro.
+  - I moduli ancora aperti non dipendono piu da `Home` o `Capo`, ma dai propri wrapper legacy ufficiali ancora presenti in `src/next/*`.
+
+### Voce 2026-03-29 64
+- DATA: 2026-03-29
+- TITOLO MODIFICA: Ricostruzione reale di Dossier Mezzo, Analisi Economica e Materiali da ordinare
+- OBIETTIVO: Sostituire tre route ufficiali ancora aperte con pagine NEXT vere, mantenendo la UI madre fuori ma spostando letture e stato operativo su layer puliti o clone-only.
+- FILE TOCCATI:
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/NextAnalisiEconomicaPage.tsx`
+  - `src/next/nextDossierCloneState.ts`
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/nextProcurementCloneState.ts`
+  - `src/next/domain/nextProcurementDomain.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/MATRICE_ESECUTIVA_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/audit/BACKLOG_RESIDUO_NEXT_EXECUTION.md`
+  - `docs/audit/REPORT_FINALE_PROMPT_38_SVUOTAMENTO_BACKLOG_NEXT.md`
+  - `docs/change-reports/2026-03-29_1817_prompt38_svuotamento-backlog-next.md`
+  - `docs/continuity-reports/2026-03-29_1817_continuity_prompt38_svuotamento-backlog-next.md`
+- COSA E STATO CAMBIATO:
+  - `Dossier Mezzo` non monta piu la madre: la route ufficiale usa una pagina NEXT che replica dati tecnici, foto, lavori, manutenzioni, materiali, rifornimenti, preventivi/fatture, modali e anteprima PDF sopra `readNextDossierMezzoCompositeSnapshot()`.
+  - `Analisi Economica` non monta piu la madre: la route ufficiale usa una pagina NEXT che replica riepilogo costi, fornitori, documenti recenti, blocco IA e anteprima PDF, con rigenerazione clone-only dell'analisi tramite `nextDossierCloneState`.
+  - `Materiali da ordinare` non monta piu la madre: la route ufficiale usa una pagina NEXT che replica header, tab, form fabbisogni, tabella materiali, modali placeholder e sticky action bar.
+  - Introdotto `nextProcurementCloneState`: gli ordini confermati da `Materiali da ordinare` vengono salvati solo in overlay locale clone-only e letti dal domain `D06`, senza scrivere su `@ordini`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: le tre route ufficiali chiuse non dipendono piu da `src/pages/*` come runtime finale.
+  - Lettura: `Dossier Mezzo` e `Analisi Economica` leggono dal composite dossier NEXT; `Materiali da ordinare` legge da `nextFornitoriDomain` e alimenta il procurement solo via overlay locale.
+  - Blocco scritture: invariato sul business reale; le uniche mutazioni introdotte sono overlay locali clone-only per analisi economica e ordini materiali.
+- COME VERIFICARE:
+  - Aprire `/next/dossier/<targa>` e verificare header, blocchi, modali e anteprima PDF senza dipendenze dirette dalla madre.
+  - Aprire `/next/analisi-economica/<targa>` e verificare rigenerazione analisi IA clone-only e anteprima PDF.
+  - Aprire `/next/materiali-da-ordinare`, aggiungere righe, confermare ordine e verificare che il salvataggio resti nel clone.
+  - Verificare in `src/next/domain/nextProcurementDomain.ts` che il layer D06 riassorba anche `readNextProcurementCloneOrders()`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: SI
+- NOTE:
+  - Questo run non chiude ancora `Acquisti / Preventivi / Listino`: la superficie ufficiale resta nativa NEXT ma non replica ancora l'intero workflow madre.
+  - Restano aperte anche le route IA legacy operative, `Cisterna` e `Autisti / Inbox`, che montano ancora runtime legacy come soluzione finale.

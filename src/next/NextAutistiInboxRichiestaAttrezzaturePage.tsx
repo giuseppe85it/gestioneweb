@@ -1,5 +1,11 @@
-import RichiestaAttrezzatureAll from "../autistiInbox/RichiestaAttrezzatureAll";
+import RichiestaAttrezzatureAll from "./autistiInbox/NextRichiestaAttrezzatureAllNative";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 export default function NextAutistiInboxRichiestaAttrezzaturePage() {
-  return <RichiestaAttrezzatureAll />;
+  return (
+    <NextLegacyStorageBoundary presets={["autisti"]}>
+      <RichiestaAttrezzatureAll />
+    </NextLegacyStorageBoundary>
+  );
 }
+

@@ -1,11 +1,16 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
+import { readNextProcurementCloneOrders } from "../nextProcurementCloneState";
 
 const STORAGE_COLLECTION = "storage";
 const ORDINI_KEY = "@ordini";
+const PREVENTIVI_KEY = "@preventivi";
+const APPROVALS_KEY = "@preventivi_approvazioni";
+const LISTINO_KEY = "@listino_prezzi";
 
 type RawOrderRecord = Record<string, unknown>;
 type RawMaterialRecord = Record<string, unknown>;
+type RawGenericRecord = Record<string, unknown>;
 
 type NextLegacyDatasetShape =
   | "items"
@@ -26,13 +31,14 @@ export type NextProcurementCloneTab =
 
 export type NextProcurementListTab = "ordini" | "arrivi";
 export type NextProcurementOrderState = "in_attesa" | "parziale" | "arrivato";
+export type NextProcurementApprovalStatus = "pending" | "approved" | "rejected";
 
 export const NEXT_PROCUREMENT_DOMAIN = {
   code: "D06",
   name: "Procurement, ordini e fornitori",
-  logicalDatasets: [ORDINI_KEY] as const,
+  logicalDatasets: [ORDINI_KEY, PREVENTIVI_KEY, APPROVALS_KEY, LISTINO_KEY] as const,
   activeReadOnlyDataset: ORDINI_KEY,
-  normalizationStrategy: "LAYER NEXT READ-ONLY PROCUREMENT SU @ordini",
+  normalizationStrategy: "LAYER NEXT READ-ONLY PROCUREMENT SU @ordini/@preventivi/@listino_prezzi",
 } as const;
 
 export type NextProcurementMaterialItem = {
@@ -77,6 +83,70 @@ export type NextProcurementOrderItem = {
   flags: string[];
 };
 
+export type NextProcurementApprovalItem = {
+  id: string;
+  approvalKey: string;
+  targa: string | null;
+  sourceKey: string | null;
+  sourceDocId: string | null;
+  status: NextProcurementApprovalStatus;
+  updatedAtLabel: string | null;
+  updatedAtTimestamp: number | null;
+  sourceCollection: typeof STORAGE_COLLECTION;
+  sourceKeyLabel: typeof APPROVALS_KEY;
+  quality: NextReadQuality;
+  flags: string[];
+};
+
+export type NextProcurementPreventivoItem = {
+  id: string;
+  supplierId: string | null;
+  supplierName: string;
+  numeroPreventivo: string;
+  dataPreventivoLabel: string | null;
+  dataPreventivoTimestamp: number | null;
+  pdfUrl: string | null;
+  pdfStoragePath: string | null;
+  imageUrls: string[];
+  imageStoragePaths: string[];
+  righeCount: number;
+  materialsPreview: string[];
+  totalAmount: number | null;
+  currency: string | null;
+  approvalStatus: NextProcurementApprovalStatus;
+  approvalUpdatedAtLabel: string | null;
+  approvalUpdatedAtTimestamp: number | null;
+  sourceCollection: typeof STORAGE_COLLECTION;
+  sourceKey: typeof PREVENTIVI_KEY;
+  quality: NextReadQuality;
+  flags: string[];
+};
+
+export type NextProcurementListinoItem = {
+  id: string;
+  supplierId: string | null;
+  supplierName: string;
+  articoloCanonico: string;
+  codiceArticolo: string | null;
+  note: string | null;
+  unita: string | null;
+  valuta: string | null;
+  prezzoAttuale: number | null;
+  trend: "down" | "up" | "same" | "new";
+  updatedAtLabel: string | null;
+  updatedAtTimestamp: number | null;
+  fonteNumeroPreventivo: string | null;
+  fonteDataPreventivo: string | null;
+  pdfUrl: string | null;
+  pdfStoragePath: string | null;
+  imageUrls: string[];
+  imageStoragePaths: string[];
+  sourceCollection: typeof STORAGE_COLLECTION;
+  sourceKey: typeof LISTINO_KEY;
+  quality: NextReadQuality;
+  flags: string[];
+};
+
 export type NextProcurementSnapshot = {
   domainCode: typeof NEXT_PROCUREMENT_DOMAIN.code;
   domainName: typeof NEXT_PROCUREMENT_DOMAIN.name;
@@ -84,6 +154,12 @@ export type NextProcurementSnapshot = {
   activeReadOnlyDataset: typeof NEXT_PROCUREMENT_DOMAIN.activeReadOnlyDataset;
   normalizationStrategy: typeof NEXT_PROCUREMENT_DOMAIN.normalizationStrategy;
   datasetShape: NextLegacyDatasetShape;
+  datasetShapes: {
+    ordini: NextLegacyDatasetShape;
+    preventivi: NextLegacyDatasetShape;
+    approvazioni: NextLegacyDatasetShape;
+    listino: NextLegacyDatasetShape;
+  };
   counts: {
     totalOrders: number;
     pendingOrders: number;
@@ -94,8 +170,17 @@ export type NextProcurementSnapshot = {
     arrivedRows: number;
     ordiniTabOrders: number;
     arriviTabOrders: number;
+    preventiviTotali: number;
+    preventiviConPdf: number;
+    preventiviApprovati: number;
+    preventiviRifiutati: number;
+    listinoVoci: number;
+    listinoConDocumento: number;
   };
   orders: NextProcurementOrderItem[];
+  preventivi: NextProcurementPreventivoItem[];
+  approvals: NextProcurementApprovalItem[];
+  listino: NextProcurementListinoItem[];
   groups: {
     pending: NextProcurementOrderItem[];
     partial: NextProcurementOrderItem[];
@@ -109,8 +194,8 @@ export type NextProcurementSnapshot = {
     ordineMateriali: { enabled: false; reason: string };
     ordini: { enabled: true; reason: null };
     arrivi: { enabled: true; reason: null };
-    preventivi: { enabled: false; reason: string };
-    listino: { enabled: false; reason: string };
+    preventivi: { enabled: true; reason: string };
+    listino: { enabled: true; reason: string };
     dettaglioOrdine: { enabled: true; reason: string };
   };
   limitations: string[];
@@ -145,7 +230,10 @@ function normalizeCurrency(value: unknown): string | null {
   return normalized ? normalized.toUpperCase() : null;
 }
 
-function unwrapStorageArray(rawDoc: unknown): {
+function unwrapStorageArrayWithPreferredKeys(
+  rawDoc: unknown,
+  preferredKeys: string[] = []
+): {
   datasetShape: NextLegacyDatasetShape;
   items: unknown[];
 } {
@@ -162,6 +250,13 @@ function unwrapStorageArray(rawDoc: unknown): {
   }
 
   const record = rawDoc as Record<string, unknown>;
+
+  for (const key of preferredKeys) {
+    const candidate = record[key];
+    if (Array.isArray(candidate)) {
+      return { datasetShape: "array", items: candidate };
+    }
+  }
 
   if (Array.isArray(record.items)) {
     return { datasetShape: "items", items: record.items };
@@ -452,6 +547,224 @@ function mapOrderRecord(raw: RawOrderRecord, index: number): NextProcurementOrde
   };
 }
 
+function normalizeApprovalStatus(value: unknown): NextProcurementApprovalStatus {
+  const normalized = normalizeText(value).toLowerCase();
+  if (normalized === "approved" || normalized === "rejected") {
+    return normalized;
+  }
+  return "pending";
+}
+
+function extractApprovalMeta(approvalKey: string | null): {
+  targa: string | null;
+  sourceKey: string | null;
+  sourceDocId: string | null;
+} {
+  if (!approvalKey) {
+    return { targa: null, sourceKey: null, sourceDocId: null };
+  }
+
+  const parts = approvalKey.split("__");
+  if (parts.length < 3) {
+    return { targa: null, sourceKey: null, sourceDocId: approvalKey };
+  }
+
+  return {
+    targa: normalizeOptionalText(parts[0]),
+    sourceKey: normalizeOptionalText(parts[1]),
+    sourceDocId: normalizeOptionalText(parts.slice(2).join("__")),
+  };
+}
+
+function mapApprovalRecord(raw: RawGenericRecord, index: number): NextProcurementApprovalItem {
+  const approvalKey = normalizeOptionalText(raw.id) ?? `approval:${index}`;
+  const meta = extractApprovalMeta(approvalKey);
+  const updatedAtTimestamp = toTimestamp(raw.updatedAt ?? raw.timestamp ?? raw.data);
+  const updatedAtLabel =
+    normalizeLegacyDateLabel(raw.updatedAt ?? raw.timestamp ?? raw.data) ??
+    normalizeOptionalText(raw.updatedAt);
+  const flags: string[] = [];
+
+  if (!normalizeOptionalText(raw.id)) flags.push("id_ricostruito");
+  if (!meta.sourceDocId) flags.push("source_doc_assente");
+
+  return {
+    id: approvalKey,
+    approvalKey,
+    targa: meta.targa,
+    sourceKey: meta.sourceKey,
+    sourceDocId: meta.sourceDocId,
+    status: normalizeApprovalStatus(raw.status),
+    updatedAtLabel,
+    updatedAtTimestamp,
+    sourceCollection: STORAGE_COLLECTION,
+    sourceKeyLabel: APPROVALS_KEY,
+    quality: deriveQuality(flags, !meta.sourceDocId),
+    flags,
+  };
+}
+
+function computePreventivoTotal(raw: RawGenericRecord, flags: string[]): number | null {
+  const direct =
+    normalizeNumber(raw.totale) ??
+    normalizeNumber(raw.importoTotale) ??
+    normalizeNumber(raw.totalePreventivo) ??
+    normalizeNumber(raw.importo);
+  if (direct !== null) {
+    return direct;
+  }
+
+  const righe = Array.isArray(raw.righe)
+    ? raw.righe.filter((entry): entry is RawGenericRecord => Boolean(entry) && typeof entry === "object")
+    : [];
+
+  if (!righe.length) {
+    return null;
+  }
+
+  let hasAny = false;
+  const total = righe.reduce((sum, row) => {
+    const qty = normalizeNumber(row.quantita) ?? 1;
+    const unit = normalizeNumber(row.prezzoUnitario);
+    if (unit === null) {
+      return sum;
+    }
+    hasAny = true;
+    return sum + qty * unit;
+  }, 0);
+
+  if (hasAny) {
+    flags.push("totale_ricostruito_da_righe");
+    return total;
+  }
+
+  return null;
+}
+
+function buildPreventivoApprovalIndex(
+  items: NextProcurementApprovalItem[]
+): Map<string, NextProcurementApprovalItem> {
+  const map = new Map<string, NextProcurementApprovalItem>();
+  items.forEach((item) => {
+    if (item.sourceDocId) {
+      map.set(item.sourceDocId, item);
+    }
+  });
+  return map;
+}
+
+function mapPreventivoRecord(
+  raw: RawGenericRecord,
+  index: number,
+  approvalIndex: Map<string, NextProcurementApprovalItem>
+): NextProcurementPreventivoItem {
+  const id = normalizeOptionalText(raw.id) ?? `preventivo:${index}`;
+  const righe = Array.isArray(raw.righe)
+    ? raw.righe.filter((entry): entry is RawGenericRecord => Boolean(entry) && typeof entry === "object")
+    : [];
+  const materialsPreview = righe
+    .map((entry) => normalizeOptionalText(entry.descrizione))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 3);
+  const flags: string[] = [];
+
+  if (!normalizeOptionalText(raw.id)) flags.push("id_ricostruito");
+  if (!normalizeOptionalText(raw.fornitoreNome)) flags.push("fornitore_assente");
+  if (!normalizeOptionalText(raw.numeroPreventivo)) flags.push("numero_assente");
+  if (!righe.length) flags.push("righe_assenti");
+
+  const approval =
+    approvalIndex.get(id) ??
+    approvalIndex.get(normalizeOptionalText(raw.numeroPreventivo) ?? "") ??
+    null;
+
+  return {
+    id,
+    supplierId: normalizeOptionalText(raw.fornitoreId),
+    supplierName: normalizeOptionalText(raw.fornitoreNome) ?? "Fornitore non valorizzato",
+    numeroPreventivo:
+      normalizeOptionalText(raw.numeroPreventivo) ?? `PREV-${String(index + 1).padStart(3, "0")}`,
+    dataPreventivoLabel: normalizeLegacyDateLabel(raw.dataPreventivo),
+    dataPreventivoTimestamp: toTimestamp(raw.dataPreventivo),
+    pdfUrl: normalizeOptionalText(raw.pdfUrl),
+    pdfStoragePath: normalizeOptionalText(raw.pdfStoragePath),
+    imageUrls: Array.isArray(raw.imageUrls)
+      ? raw.imageUrls.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [],
+    imageStoragePaths: Array.isArray(raw.imageStoragePaths)
+      ? raw.imageStoragePaths.filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+        )
+      : [],
+    righeCount: righe.length,
+    materialsPreview,
+    totalAmount: computePreventivoTotal(raw, flags),
+    currency:
+      normalizeCurrency(raw.valuta) ??
+      normalizeCurrency(raw.currency) ??
+      normalizeCurrency(righe.find((row) => normalizeCurrency(row.valuta))?.valuta),
+    approvalStatus: approval?.status ?? "pending",
+    approvalUpdatedAtLabel: approval?.updatedAtLabel ?? null,
+    approvalUpdatedAtTimestamp: approval?.updatedAtTimestamp ?? null,
+    sourceCollection: STORAGE_COLLECTION,
+    sourceKey: PREVENTIVI_KEY,
+    quality: deriveQuality(flags, !normalizeOptionalText(raw.fornitoreNome)),
+    flags,
+  };
+}
+
+function normalizeTrend(value: unknown): "down" | "up" | "same" | "new" {
+  const normalized = normalizeText(value).toLowerCase();
+  if (normalized === "down" || normalized === "up" || normalized === "same") {
+    return normalized;
+  }
+  return "new";
+}
+
+function mapListinoRecord(raw: RawGenericRecord, index: number): NextProcurementListinoItem {
+  const fonteAttuale =
+    raw.fonteAttuale && typeof raw.fonteAttuale === "object" ? (raw.fonteAttuale as RawGenericRecord) : {};
+  const flags: string[] = [];
+
+  if (!normalizeOptionalText(raw.id)) flags.push("id_ricostruito");
+  if (!normalizeOptionalText(raw.fornitoreNome)) flags.push("fornitore_assente");
+  if (!normalizeOptionalText(raw.articoloCanonico)) flags.push("articolo_assente");
+  if (normalizeNumber(raw.prezzoAttuale) === null) flags.push("prezzo_assente");
+
+  return {
+    id: normalizeOptionalText(raw.id) ?? `listino:${index}`,
+    supplierId: normalizeOptionalText(raw.fornitoreId),
+    supplierName: normalizeOptionalText(raw.fornitoreNome) ?? "Fornitore non valorizzato",
+    articoloCanonico: normalizeOptionalText(raw.articoloCanonico) ?? "Articolo non valorizzato",
+    codiceArticolo: normalizeOptionalText(raw.codiceArticolo),
+    note: normalizeOptionalText(raw.note),
+    unita: normalizeOptionalText(raw.unita),
+    valuta: normalizeCurrency(raw.valuta),
+    prezzoAttuale: normalizeNumber(raw.prezzoAttuale),
+    trend: normalizeTrend(raw.trend),
+    updatedAtLabel: normalizeLegacyDateLabel(raw.updatedAt ?? fonteAttuale.dataPreventivo),
+    updatedAtTimestamp: toTimestamp(raw.updatedAt ?? fonteAttuale.dataPreventivo),
+    fonteNumeroPreventivo: normalizeOptionalText(fonteAttuale.numeroPreventivo),
+    fonteDataPreventivo: normalizeLegacyDateLabel(fonteAttuale.dataPreventivo),
+    pdfUrl: normalizeOptionalText(fonteAttuale.pdfUrl),
+    pdfStoragePath: normalizeOptionalText(fonteAttuale.pdfStoragePath),
+    imageUrls: Array.isArray(fonteAttuale.imageUrls)
+      ? fonteAttuale.imageUrls.filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+        )
+      : [],
+    imageStoragePaths: Array.isArray(fonteAttuale.imageStoragePaths)
+      ? fonteAttuale.imageStoragePaths.filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+        )
+      : [],
+    sourceCollection: STORAGE_COLLECTION,
+    sourceKey: LISTINO_KEY,
+    quality: deriveQuality(flags, !normalizeOptionalText(raw.articoloCanonico)),
+    flags,
+  };
+}
+
 function sortOrders(items: NextProcurementOrderItem[]): NextProcurementOrderItem[] {
   return [...items].sort((left, right) => {
     const timestampDelta = (right.orderTimestamp ?? 0) - (left.orderTimestamp ?? 0);
@@ -460,13 +773,50 @@ function sortOrders(items: NextProcurementOrderItem[]): NextProcurementOrderItem
   });
 }
 
-async function readOrdersDataset(): Promise<{
+function sortPreventivi(items: NextProcurementPreventivoItem[]): NextProcurementPreventivoItem[] {
+  return [...items].sort((left, right) => {
+    const timeDelta = (right.dataPreventivoTimestamp ?? 0) - (left.dataPreventivoTimestamp ?? 0);
+    if (timeDelta !== 0) return timeDelta;
+    return left.supplierName.localeCompare(right.supplierName, "it", { sensitivity: "base" });
+  });
+}
+
+function sortListino(items: NextProcurementListinoItem[]): NextProcurementListinoItem[] {
+  return [...items].sort((left, right) => {
+    const supplierDelta = left.supplierName.localeCompare(right.supplierName, "it", {
+      sensitivity: "base",
+    });
+    if (supplierDelta !== 0) return supplierDelta;
+    return left.articoloCanonico.localeCompare(right.articoloCanonico, "it", {
+      sensitivity: "base",
+    });
+  });
+}
+
+async function readStorageDataset(
+  key: string,
+  preferredKeys: string[] = []
+): Promise<{
   datasetShape: NextLegacyDatasetShape;
   items: unknown[];
 }> {
-  const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, ORDINI_KEY));
+  const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, key));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
-  return unwrapStorageArray(rawDoc);
+  return unwrapStorageArrayWithPreferredKeys(rawDoc, preferredKeys);
+}
+
+async function readOrdersDataset(): Promise<{
+  datasetShape: NextLegacyDatasetShape;
+  items: unknown[];
+  cloneOrdersCount: number;
+}> {
+  const dataset = await readStorageDataset(ORDINI_KEY);
+  const cloneOrders = readNextProcurementCloneOrders();
+  return {
+    datasetShape: dataset.datasetShape,
+    items: [...dataset.items, ...cloneOrders],
+    cloneOrdersCount: cloneOrders.length,
+  };
 }
 
 export function buildNextProcurementListView(
@@ -485,7 +835,20 @@ export function findNextProcurementOrder(
 }
 
 export async function readNextProcurementSnapshot(): Promise<NextProcurementSnapshot> {
-  const dataset = await readOrdersDataset();
+  const [dataset, preventiviDataset, approvalsDataset, listinoDataset] = await Promise.all([
+    readOrdersDataset(),
+    readStorageDataset(PREVENTIVI_KEY, ["preventivi"]),
+    readStorageDataset(APPROVALS_KEY),
+    readStorageDataset(LISTINO_KEY, ["voci"]),
+  ]);
+
+  const approvals = approvalsDataset.items
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      return mapApprovalRecord(entry as RawGenericRecord, index);
+    })
+    .filter((entry): entry is NextProcurementApprovalItem => Boolean(entry));
+  const approvalIndex = buildPreventivoApprovalIndex(approvals);
 
   const orders = sortOrders(
     dataset.items
@@ -494,6 +857,24 @@ export async function readNextProcurementSnapshot(): Promise<NextProcurementSnap
         return mapOrderRecord(entry as RawOrderRecord, index);
       })
       .filter((entry): entry is NextProcurementOrderItem => Boolean(entry))
+  );
+
+  const preventivi = sortPreventivi(
+    preventiviDataset.items
+      .map((entry, index) => {
+        if (!entry || typeof entry !== "object") return null;
+        return mapPreventivoRecord(entry as RawGenericRecord, index, approvalIndex);
+      })
+      .filter((entry): entry is NextProcurementPreventivoItem => Boolean(entry))
+  );
+
+  const listino = sortListino(
+    listinoDataset.items
+      .map((entry, index) => {
+        if (!entry || typeof entry !== "object") return null;
+        return mapListinoRecord(entry as RawGenericRecord, index);
+      })
+      .filter((entry): entry is NextProcurementListinoItem => Boolean(entry))
   );
 
   const groups = {
@@ -514,6 +895,12 @@ export async function readNextProcurementSnapshot(): Promise<NextProcurementSnap
     activeReadOnlyDataset: NEXT_PROCUREMENT_DOMAIN.activeReadOnlyDataset,
     normalizationStrategy: NEXT_PROCUREMENT_DOMAIN.normalizationStrategy,
     datasetShape: dataset.datasetShape,
+    datasetShapes: {
+      ordini: dataset.datasetShape,
+      preventivi: preventiviDataset.datasetShape,
+      approvazioni: approvalsDataset.datasetShape,
+      listino: listinoDataset.datasetShape,
+    },
     counts: {
       totalOrders: orders.length,
       pendingOrders: groups.pending.length,
@@ -524,8 +911,21 @@ export async function readNextProcurementSnapshot(): Promise<NextProcurementSnap
       arrivedRows: orders.reduce((total, entry) => total + entry.arrivedRows, 0),
       ordiniTabOrders: legacyViews.ordini.length,
       arriviTabOrders: legacyViews.arrivi.length,
+      preventiviTotali: preventivi.length,
+      preventiviConPdf: preventivi.filter(
+        (entry) => Boolean(entry.pdfUrl) || entry.imageUrls.length > 0
+      ).length,
+      preventiviApprovati: preventivi.filter((entry) => entry.approvalStatus === "approved").length,
+      preventiviRifiutati: preventivi.filter((entry) => entry.approvalStatus === "rejected").length,
+      listinoVoci: listino.length,
+      listinoConDocumento: listino.filter(
+        (entry) => Boolean(entry.pdfUrl) || entry.imageUrls.length > 0
+      ).length,
     },
     orders,
+    preventivi,
+    approvals,
+    listino,
     groups,
     legacyViews,
     navigability: {
@@ -537,14 +937,14 @@ export async function readNextProcurementSnapshot(): Promise<NextProcurementSnap
       ordini: { enabled: true, reason: null },
       arrivi: { enabled: true, reason: null },
       preventivi: {
-        enabled: false,
+        enabled: true,
         reason:
-          "Prezzi & Preventivi resta bloccato nel clone: usa `@preventivi`, allegati Storage, IA di estrazione e cancellazioni/upload che oggi non entrano nel perimetro clone-safe.",
+          "La scheda `Prezzi & Preventivi` e ricostruita nel clone in sola lettura: elenco, documento sorgente e stato approvativo sono leggibili, ma upload, OCR IA, salvataggi e delete restano bloccati.",
       },
       listino: {
-        enabled: false,
+        enabled: true,
         reason:
-          "Listino Prezzi resta bloccato nel clone: il runtime legacy miscela edit, import e consolidamento sopra `@listino_prezzi` e `@fornitori`.",
+          "La scheda `Listino Prezzi` e ricostruita nel clone in sola lettura: voci, prezzo corrente e fonte documento sono leggibili, ma edit, import e consolidamento restano bloccati.",
       },
       dettaglioOrdine: {
         enabled: true,
@@ -553,25 +953,29 @@ export async function readNextProcurementSnapshot(): Promise<NextProcurementSnap
       },
     },
     limitations: [
-      "Il layer D06 clone-safe legge solo `@ordini` e non riapre preventivi, listino, allegati, approvazioni o import del procurement legacy.",
+      "Il layer D06 clone-safe legge ordini, preventivi, approvazioni e listino come superfici native NEXT, ma nessuna scrittura business viene riattivata.",
       "Le viste `Ordini` e `Arrivi` replicano la semantica della madre su `Acquisti`: gli ordini parziali compaiono in entrambe perche hanno sia righe pendenti sia righe arrivate.",
       "Il dettaglio clone resta read-only: pulsanti di modifica, PDF operativo, foto, toggle arrivo e aggiunta materiali non vengono eseguiti.",
       dataset.datasetShape === "unsupported"
         ? "Il dataset `@ordini` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
         : null,
+      preventiviDataset.datasetShape === "unsupported"
+        ? "Il dataset `@preventivi` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
+        : null,
+      listinoDataset.datasetShape === "unsupported"
+        ? "Il dataset `@listino_prezzi` non e in una shape pienamente leggibile dal layer e viene trattato come non conforme."
+        : null,
       orders.some((entry) => entry.flags.includes("righe_materiali_assenti"))
         ? "Una parte degli ordini legacy non espone righe materiali leggibili; il clone mostra comunque l'ordine senza ricostruire dati mancanti."
         : null,
-      orders.some((entry) => entry.flags.includes("fornitore_assente"))
-        ? "Una parte degli ordini non espone un fornitore leggibile e resta marcata con flag espliciti."
+      preventivi.some((entry) => entry.flags.includes("fornitore_assente"))
+        ? "Una parte dei preventivi non espone un fornitore leggibile e resta marcata con flag espliciti."
         : null,
-      orders.some((entry) => entry.flags.includes("data_ordine_non_parseabile"))
-        ? "Una parte degli ordini non espone una data parseabile; il layer conserva il valore legacy e lo segnala."
+      listino.some((entry) => entry.flags.includes("prezzo_assente"))
+        ? "Una parte del listino non espone un prezzo corrente leggibile e resta marcata con flag espliciti."
         : null,
-      orders.some((entry) =>
-        entry.materials.some((material) => material.flags.includes("valuta_assente"))
-      )
-        ? "Le eventuali informazioni prezzo presenti su `@ordini` possono essere parziali: il clone non ricostruisce listino o preventivi mancanti."
+      dataset.cloneOrdersCount > 0
+        ? `Il clone integra ${dataset.cloneOrdersCount} ordini confermati localmente senza scrivere su @ordini nella madre.`
         : null,
     ].filter((entry): entry is string => Boolean(entry)),
   };

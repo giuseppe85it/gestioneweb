@@ -1,5 +1,11 @@
-import AutistiControlliAll from "../autistiInbox/AutistiControlliAll";
+import AutistiControlliAll from "./autistiInbox/NextAutistiControlliAllNative";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 export default function NextAutistiInboxControlliPage() {
-  return <AutistiControlliAll />;
+  return (
+    <NextLegacyStorageBoundary presets={["autisti"]}>
+      <AutistiControlliAll />
+    </NextLegacyStorageBoundary>
+  );
 }
+

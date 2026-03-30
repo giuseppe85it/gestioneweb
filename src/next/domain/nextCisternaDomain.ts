@@ -34,6 +34,7 @@ type CisternaSchedaRow = {
   litri?: number | string | null;
   nome?: string | null;
   azienda?: string | null;
+  statoRevisione?: string | null;
 };
 
 type CisternaSchedaDoc = {
@@ -111,6 +112,28 @@ export type NextCisternaSchedaItem = {
   rowCount: number;
   targa: string | null;
   needsReview: boolean;
+};
+
+export type NextCisternaSchedaDetailRow = {
+  index: number;
+  data: string;
+  targa: string;
+  litri: number | null;
+  nome: string;
+  azienda: string;
+  statoRevisione: string;
+  note: string;
+};
+
+export type NextCisternaSchedaDetail = {
+  id: string;
+  sourceLabel: string;
+  monthKey: string | null;
+  rowCount: number;
+  targa: string | null;
+  needsReview: boolean;
+  createdAtLabel: string | null;
+  rows: NextCisternaSchedaDetailRow[];
 };
 
 export type NextCisternaPerTargaItem = {
@@ -737,6 +760,53 @@ function buildSchedeMonthItems(
         needsReview: Boolean(item.needsReview),
       } satisfies NextCisternaSchedaItem;
     });
+}
+
+export async function readNextCisternaSchedaDetail(
+  schedaId: string,
+): Promise<NextCisternaSchedaDetail | null> {
+  const targetId = normalizeText(schedaId);
+  if (!targetId) {
+    return null;
+  }
+
+  const schede = await readSchede();
+  const item = schede.find((entry) => entry.id === targetId);
+  if (!item) {
+    return null;
+  }
+
+  const sourceLabel =
+    item.source === "manual"
+      ? "Manuale"
+      : item.source === "ia"
+        ? "IA"
+        : normalizeOptionalText(item.source) ?? "-";
+  const createdAt = getSchedaDate(item);
+  const monthKey =
+    normalizeYearMonth(item.yearMonth ?? item.mese) ??
+    (createdAt ? monthKeyFromDate(createdAt) : null);
+  const rows = Array.isArray(item.rows) ? item.rows : [];
+
+  return {
+    id: item.id,
+    sourceLabel,
+    monthKey,
+    rowCount: item.rowCount ?? rows.length,
+    targa: getSchedaTarga(item) || null,
+    needsReview: Boolean(item.needsReview),
+    createdAtLabel: createdAt ? createdAt.toLocaleString("it-CH") : null,
+    rows: rows.map((row, index) => ({
+      index,
+      data: normalizeText(row.data) || "-",
+      targa: normalizeText(row.targa).toUpperCase() || "-",
+      litri: toNumberOrNull(row.litri),
+      nome: normalizeText(row.nome) || "-",
+      azienda: normalizeText(row.azienda).toUpperCase() || "-",
+      statoRevisione: normalizeText(row.statoRevisione) || "n/d",
+      note: "",
+    })),
+  };
 }
 
 function toSupportVeritaRows(items: NextCisternaSupportItem[]): VeritaRow[] {

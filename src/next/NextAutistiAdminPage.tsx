@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import AutistiAdmin from "../autistiInbox/AutistiAdmin";
-import NextMotherPage from "./NextMotherPage";
+import AutistiAdmin from "./autistiInbox/NextAutistiAdminNative";
 import {
   readNextAutistiReadOnlySnapshot,
   type NextAutistiReadOnlySnapshot,
 } from "./domain/nextAutistiDomain";
 import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 function normalizeText(value: string | null | undefined) {
   return String(value ?? "").trim().toLowerCase();
@@ -105,48 +105,48 @@ export default function NextAutistiAdminPage() {
   }, [handoff, snapshot]);
 
   return (
-    <>
-      {handoff.state.status === "ready" ? (
-        <InternalAiUniversalHandoffBanner
-          title="Handoff IA consumato su Autisti Admin"
-          description="Il boundary NEXT applica badge, autista e targa del payload e mantiene il modulo admin nel perimetro clone-safe."
-          payload={handoff.state.payload}
-        />
-      ) : null}
-      {filteredSummary ? (
-        <div
-          style={{
-            display: "grid",
-            gap: 10,
-            marginBottom: 16,
-            padding: "12px 16px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "#f8fafc",
-          }}
-        >
-          <strong>Contesto autisti agganciato</strong>
-          <p style={{ margin: 0 }}>
-            Assegnazioni rilevanti {filteredSummary.assignments.length} | Segnali rilevanti {filteredSummary.signals.length}
-          </p>
-          <p style={{ margin: 0 }}>
-            Top segnali: {filteredSummary.signals.slice(0, 3).map((entry) => entry.titolo).join(" | ") || "nessuno"}
-          </p>
-        </div>
-      ) : null}
-      {error ? (
-        <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
-          {error}
-        </div>
-      ) : null}
-      {handoff.state.status === "error" ? (
-        <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
-          {handoff.state.errorMessage}
-        </div>
-      ) : null}
-      <NextMotherPage pageId="autisti-admin">
+    <NextLegacyStorageBoundary presets={["flotta", "autisti", "lavori", "manutenzioni"]}>
+      <>
+        {handoff.state.status === "ready" ? (
+          <InternalAiUniversalHandoffBanner
+            title="Handoff IA consumato su Autisti Admin"
+            description="Il boundary NEXT applica badge, autista e targa del payload e mantiene il modulo admin nel perimetro clone-safe."
+            payload={handoff.state.payload}
+          />
+        ) : null}
+        {filteredSummary ? (
+          <div
+            style={{
+              display: "grid",
+              gap: 10,
+              marginBottom: 16,
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+              background: "#f8fafc",
+            }}
+          >
+            <strong>Contesto autisti agganciato</strong>
+            <p style={{ margin: 0 }}>
+              Assegnazioni rilevanti {filteredSummary.assignments.length} | Segnali rilevanti {filteredSummary.signals.length}
+            </p>
+            <p style={{ margin: 0 }}>
+              Top segnali: {filteredSummary.signals.slice(0, 3).map((entry) => entry.titolo).join(" | ") || "nessuno"}
+            </p>
+          </div>
+        ) : null}
+        {error ? (
+          <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
+            {error}
+          </div>
+        ) : null}
+        {handoff.state.status === "error" ? (
+          <div className="next-clone-placeholder" style={{ marginBottom: 16 }}>
+            {handoff.state.errorMessage}
+          </div>
+        ) : null}
         <AutistiAdmin />
-      </NextMotherPage>
-    </>
+      </>
+    </NextLegacyStorageBoundary>
   );
 }

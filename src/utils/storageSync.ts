@@ -5,6 +5,7 @@ import {
   CloneWriteBlockedError,
   isCloneRuntime,
 } from "./cloneWriteBarrier";
+import { readNextLegacyStorageOverride } from "../next/nextLegacyStorageOverlay";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 
@@ -19,13 +20,13 @@ function normalizeTargaKey(value: unknown): string {
     .replace(/[^A-Z0-9]/g, "");
 }
 
-function isObjectLike(value: unknown): value is Record<string, any> {
+function isObjectLike(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 export async function setItemSync(
   key: string,
-  value: any,
+  value: unknown,
   opts?: SetItemSyncOptions
 ) {
   try {
@@ -137,6 +138,13 @@ export async function setItemSync(
 
 export async function getItemSync(key: string) {
   try {
+    if (isCloneRuntime()) {
+      const override = readNextLegacyStorageOverride(key);
+      if (override !== undefined) {
+        return override;
+      }
+    }
+
     const ref = doc(db, "storage", key);
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data().value : null;

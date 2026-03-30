@@ -1,5 +1,13 @@
-import NextProcurementStandalonePage from "./NextProcurementStandalonePage";
+import OrdiniArrivati from "../pages/OrdiniArrivati";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
+import NextMotherPage from "./NextMotherPage";
 
 export default function NextOrdiniArrivatiPage() {
-  return <NextProcurementStandalonePage mode="arrivi" />;
+  return (
+    <NextLegacyStorageBoundary presets={["procurement"]}>
+      <NextMotherPage pageId="ordini-arrivati">
+        <OrdiniArrivati />
+      </NextMotherPage>
+    </NextLegacyStorageBoundary>
+  );
 }

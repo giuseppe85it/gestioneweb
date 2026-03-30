@@ -1,21 +1,83 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { generateSmartPDF } from "../utils/pdfEngine";
 import "../pages/Colleghi.css";
-import "./next-shell.css";
 import {
   readNextColleghiSnapshot,
   type NextCollegaReadOnlyItem,
 } from "./domain/nextColleghiDomain";
 
-const CLONE_BLOCKED_REASON =
-  "Clone read-only: aggiunta, modifica, eliminazione e PDF restano bloccati.";
+type SchedaCarburante = {
+  id: string;
+  nomeCarta: string;
+  pinCarta: string;
+};
 
-function NextColleghiPage() {
+type Collega = {
+  id: string;
+  nome: string;
+  telefono?: string;
+  telefonoPrivato?: string;
+  badge?: string;
+  codice?: string;
+  descrizione?: string;
+  pinSim?: string;
+  pukSim?: string;
+  schedeCarburante?: SchedaCarburante[];
+};
+
+const CLONE_SAVE_MESSAGE =
+  "Clone read-only: aggiunta e modifica colleghi restano disponibili solo nella madre.";
+const CLONE_DELETE_MESSAGE =
+  "Clone read-only: eliminazione collega disponibile solo nella madre.";
+
+function mapCollega(item: NextCollegaReadOnlyItem): Collega {
+  return {
+    id: item.id,
+    nome: item.nome,
+    telefono: item.telefono ?? "",
+    telefonoPrivato: item.telefonoPrivato ?? "",
+    badge: item.badge ?? "",
+    codice: item.codice ?? "",
+    descrizione: item.descrizione ?? "",
+    pinSim: item.pinSim ?? "",
+    pukSim: item.pukSim ?? "",
+    schedeCarburante: item.schedeCarburante.map((scheda) => ({
+      id: scheda.id,
+      nomeCarta: scheda.nomeCarta ?? "",
+      pinCarta: scheda.pinCarta ?? "",
+    })),
+  };
+}
+
+function createSchedaId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function readErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Errore durante il caricamento dei colleghi.";
+}
+
+export default function NextColleghiPage() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<NextCollegaReadOnlyItem[]>([]);
+  const [colleghi, setColleghi] = useState<Collega[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCollega, setSelectedCollega] = useState<NextCollegaReadOnlyItem | null>(null);
+
+  const [nome, setNome] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [telefonoPrivato, setTelefonoPrivato] = useState("");
+  const [pinSim, setPinSim] = useState("");
+  const [pukSim, setPukSim] = useState("");
+  const [badge, setBadge] = useState("");
+  const [codice, setCodice] = useState("");
+  const [descrizione, setDescrizione] = useState("");
+  const [schedeCarburante, setSchedeCarburante] = useState<SchedaCarburante[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [selectedCollega, setSelectedCollega] = useState<Collega | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,11 +88,12 @@ function NextColleghiPage() {
         setError(null);
         const snapshot = await readNextColleghiSnapshot();
         if (cancelled) return;
-        setItems(snapshot.items);
-      } catch (loadError: any) {
+        setColleghi(snapshot.items.map(mapCollega));
+      } catch (loadError: unknown) {
         if (cancelled) return;
-        setItems([]);
-        setError(loadError?.message || "Errore durante il caricamento dei colleghi.");
+        console.error("Errore caricamento colleghi clone:", loadError);
+        setError(readErrorMessage(loadError));
+        setColleghi([]);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -43,6 +106,86 @@ function NextColleghiPage() {
       cancelled = true;
     };
   }, []);
+
+  const resetForm = () => {
+    setNome("");
+    setTelefono("");
+    setTelefonoPrivato("");
+    setPinSim("");
+    setPukSim("");
+    setBadge("");
+    setCodice("");
+    setDescrizione("");
+    setSchedeCarburante([]);
+    setEditId(null);
+  };
+
+  const handleAddScheda = () => {
+    setSchedeCarburante((current) => [
+      ...current,
+      { id: createSchedaId(), nomeCarta: "", pinCarta: "" },
+    ]);
+  };
+
+  const handleChangeScheda = (
+    id: string,
+    field: "nomeCarta" | "pinCarta",
+    value: string
+  ) => {
+    setSchedeCarburante((current) =>
+      current.map((scheda) =>
+        scheda.id === id
+          ? {
+              ...scheda,
+              [field]: value,
+            }
+          : scheda
+      )
+    );
+  };
+
+  const handleSubmit = () => {
+    if (!nome.trim()) return;
+    window.alert(CLONE_SAVE_MESSAGE);
+  };
+
+  const handleEdit = (collega: Collega) => {
+    setEditId(collega.id);
+    setNome(collega.nome || "");
+    setTelefono(collega.telefono || "");
+    setTelefonoPrivato(collega.telefonoPrivato || "");
+    setBadge(collega.badge || "");
+    setCodice(collega.codice || "");
+    setDescrizione(collega.descrizione || "");
+    setPinSim(collega.pinSim || "");
+    setPukSim(collega.pukSim || "");
+    setSchedeCarburante(collega.schedeCarburante || []);
+  };
+
+  const handleDelete = (id: string) => {
+    if (!window.confirm("Eliminare questo collega?")) return;
+    if (editId === id) {
+      setEditId(null);
+    }
+    window.alert(CLONE_DELETE_MESSAGE);
+  };
+
+  const esportaPDF = async (collega: Collega) => {
+    const row = {
+      nome: collega.nome,
+      telefono: collega.telefono || "",
+      badge: collega.badge || "",
+      codice: collega.codice || "",
+      descrizione: collega.descrizione || "",
+    };
+
+    await generateSmartPDF({
+      kind: "table",
+      title: `Collega - ${collega.nome}`,
+      columns: ["nome", "telefono", "badge", "codice", "descrizione"],
+      rows: [row],
+    });
+  };
 
   return (
     <div className="coll-page">
@@ -59,145 +202,210 @@ function NextColleghiPage() {
           </div>
         </header>
 
-        <div className="coll-empty" style={{ marginBottom: 16 }}>
-          Clone read-only: puoi consultare anagrafica e dettagli, ma le azioni sulla madre restano bloccate.
-        </div>
-
         {error && <div className="coll-error">{error}</div>}
 
-        <fieldset className="next-clone-fieldset" disabled aria-label="Form collega bloccato nel clone">
-          <div className="coll-form next-clone-row-disabled" title={CLONE_BLOCKED_REASON}>
+        <div className="coll-form">
+          <div className="coll-field">
+            <label>Nome collega</label>
+            <input
+              type="text"
+              value={nome}
+              onChange={(event) => setNome(event.target.value)}
+              placeholder="NOME"
+            />
+          </div>
+
+          <div className="coll-grid">
             <div className="coll-field">
-              <label>Nome collega</label>
-              <input type="text" value="" readOnly placeholder="NOME" />
+              <label>Telefono</label>
+              <input
+                type="tel"
+                value={telefono}
+                onChange={(event) => setTelefono(event.target.value)}
+                placeholder="Telefono"
+              />
             </div>
-
-            <div className="coll-grid">
-              <div className="coll-field">
-                <label>Telefono</label>
-                <input type="tel" value="" readOnly placeholder="Telefono" />
-              </div>
-              <div className="coll-field">
-                <label>Badge</label>
-                <input type="text" value="" readOnly placeholder="Badge" />
-              </div>
-              <div className="coll-field">
-                <label>Codice</label>
-                <input type="text" value="" readOnly placeholder="Codice" />
-              </div>
-            </div>
-
             <div className="coll-field">
-              <label>Telefono privato</label>
-              <input type="tel" value="" readOnly placeholder="Numero privato" />
+              <label>Badge</label>
+              <input
+                type="text"
+                value={badge}
+                onChange={(event) => setBadge(event.target.value)}
+                placeholder="Badge"
+              />
             </div>
-
-            <div className="coll-grid-2">
-              <div className="coll-field">
-                <label>PIN SIM</label>
-                <input type="text" value="" readOnly placeholder="PIN SIM" />
-              </div>
-              <div className="coll-field">
-                <label>PUK SIM</label>
-                <input type="text" value="" readOnly placeholder="PUK SIM" />
-              </div>
-            </div>
-
             <div className="coll-field">
-              <label>Schede carburante</label>
-            </div>
-            <div className="coll-fuel-list">
-              <button
-                type="button"
-                className="coll-btn-add-fuel next-clone-button-disabled"
-                disabled
-                title={CLONE_BLOCKED_REASON}
-              >
-                + Aggiungi scheda carburante
-              </button>
-            </div>
-
-            <div className="coll-field">
-              <label>Descrizione / Note</label>
-              <textarea value="" readOnly rows={2} placeholder="Note aggiuntive" />
-            </div>
-
-            <div className="coll-actions">
-              <button
-                className="btn-primary next-clone-button-disabled"
-                disabled
-                title={CLONE_BLOCKED_REASON}
-              >
-                AGGIUNGI COLLEGA
-              </button>
+              <label>Codice</label>
+              <input
+                type="text"
+                value={codice}
+                onChange={(event) => setCodice(event.target.value)}
+                placeholder="Codice"
+              />
             </div>
           </div>
-        </fieldset>
+
+          <div className="coll-field">
+            <label>Telefono privato</label>
+            <input
+              type="tel"
+              value={telefonoPrivato}
+              onChange={(event) => setTelefonoPrivato(event.target.value)}
+              placeholder="Numero privato"
+            />
+          </div>
+
+          <div className="coll-grid-2">
+            <div className="coll-field">
+              <label>PIN SIM</label>
+              <input
+                type="text"
+                value={pinSim}
+                onChange={(event) => setPinSim(event.target.value)}
+                placeholder="PIN SIM"
+              />
+            </div>
+            <div className="coll-field">
+              <label>PUK SIM</label>
+              <input
+                type="text"
+                value={pukSim}
+                onChange={(event) => setPukSim(event.target.value)}
+                placeholder="PUK SIM"
+              />
+            </div>
+          </div>
+
+          <div className="coll-field">
+            <label>Schede carburante</label>
+          </div>
+          <div className="coll-fuel-list">
+            {schedeCarburante.map((scheda) => (
+              <div key={scheda.id} className="coll-fuel-card">
+                <div className="coll-field">
+                  <label>Nome carta</label>
+                  <input
+                    type="text"
+                    value={scheda.nomeCarta}
+                    onChange={(event) =>
+                      handleChangeScheda(scheda.id, "nomeCarta", event.target.value)
+                    }
+                    placeholder="Es. CARTA X, CARTA Y"
+                  />
+                </div>
+                <div className="coll-field coll-fuel-pin">
+                  <label>PIN carta</label>
+                  <input
+                    type="text"
+                    value={scheda.pinCarta}
+                    onChange={(event) =>
+                      handleChangeScheda(scheda.id, "pinCarta", event.target.value)
+                    }
+                    placeholder="PIN"
+                  />
+                </div>
+              </div>
+            ))}
+
+            <button type="button" className="coll-btn-add-fuel" onClick={handleAddScheda}>
+              + Aggiungi scheda carburante
+            </button>
+          </div>
+
+          <div className="coll-field">
+            <label>Descrizione / Note</label>
+            <textarea
+              value={descrizione}
+              onChange={(event) => setDescrizione(event.target.value)}
+              rows={2}
+              placeholder="Note aggiuntive"
+            />
+          </div>
+
+          <div className="coll-actions">
+            <button className="btn-primary" onClick={handleSubmit} disabled={!nome.trim()}>
+              {editId ? "SALVA MODIFICHE" : "AGGIUNGI COLLEGA"}
+            </button>
+            {editId && (
+              <button className="btn-secondary" onClick={resetForm}>
+                ANNULLA
+              </button>
+            )}
+          </div>
+        </div>
 
         <div className="coll-list">
           <div className="coll-list-header">
             <span>Colleghi</span>
-            <span>{items.length}</span>
+            <span>{colleghi.length}</span>
           </div>
 
           {loading ? (
             <div className="coll-empty">Caricamento colleghi...</div>
-          ) : items.length === 0 ? (
+          ) : colleghi.length === 0 ? (
             <div className="coll-empty">Nessun collega inserito.</div>
           ) : (
             <div className="coll-list-scroll">
-              {items.map((item) => (
+              {colleghi.map((collega) => (
                 <div
-                  key={item.id}
+                  key={collega.id}
                   className="coll-item"
-                  onClick={() => setSelectedCollega(item)}
+                  onClick={() => setSelectedCollega(collega)}
                 >
                   <div className="coll-item-main">
-                    <div className="coll-item-name">{item.nome}</div>
+                    <div className="coll-item-name">{collega.nome}</div>
                     <div className="coll-item-line">
-                      {item.telefono && (
+                      {collega.telefono && (
                         <span className="coll-tag">
-                          Tel: <strong>{item.telefono}</strong>
+                          Tel: <strong>{collega.telefono}</strong>
                         </span>
                       )}
-                      {item.telefonoPrivato && (
+                      {collega.telefonoPrivato && (
                         <span className="coll-tag">
-                          Privato: <strong>{item.telefonoPrivato}</strong>
+                          Privato: <strong>{collega.telefonoPrivato}</strong>
                         </span>
                       )}
-                      {item.badge && (
+                      {collega.badge && (
                         <span className="coll-tag">
-                          Badge: <strong>{item.badge}</strong>
+                          Badge: <strong>{collega.badge}</strong>
                         </span>
                       )}
-                      {item.codice && (
+                      {collega.codice && (
                         <span className="coll-tag">
-                          Codice: <strong>{item.codice}</strong>
+                          Codice: <strong>{collega.codice}</strong>
                         </span>
                       )}
                     </div>
-                    {item.descrizione && <div className="coll-item-desc">{item.descrizione}</div>}
+                    {collega.descrizione && (
+                      <div className="coll-item-desc">{collega.descrizione}</div>
+                    )}
                   </div>
 
                   <div className="coll-item-actions">
                     <button
-                      className="btn-secondary next-clone-button-disabled"
-                      disabled
-                      title={CLONE_BLOCKED_REASON}
+                      className="btn-secondary"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleEdit(collega);
+                      }}
                     >
                       Modifica
                     </button>
                     <button
-                      className="btn-secondary next-clone-button-disabled"
-                      disabled
-                      title={CLONE_BLOCKED_REASON}
+                      className="btn-secondary"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void esportaPDF(collega);
+                      }}
                     >
                       PDF
                     </button>
                     <button
-                      className="btn-danger next-clone-button-disabled"
-                      disabled
-                      title={CLONE_BLOCKED_REASON}
+                      className="btn-danger"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDelete(collega.id);
+                      }}
                     >
                       Elimina
                     </button>
@@ -278,22 +486,24 @@ function NextColleghiPage() {
                   </div>
                 )}
 
-                {selectedCollega.schedeCarburante.length > 0 && (
-                  <>
-                    <h3 className="modal-subtitle">Schede carburante</h3>
-                    {selectedCollega.schedeCarburante.map((scheda, index) => (
-                      <div key={scheda.id} className="modal-section fuel-card">
-                        <label>Scheda {index + 1}</label>
-                        <p>
-                          <strong>Carta:</strong> {scheda.nomeCarta || "-"}
-                        </p>
-                        <p>
-                          <strong>PIN:</strong> {scheda.pinCarta || "-"}
-                        </p>
-                      </div>
-                    ))}
-                  </>
-                )}
+                {selectedCollega.schedeCarburante &&
+                  selectedCollega.schedeCarburante.length > 0 && (
+                    <>
+                      <h3 className="modal-subtitle">Schede carburante</h3>
+
+                      {selectedCollega.schedeCarburante.map((scheda, index) => (
+                        <div key={scheda.id} className="modal-section fuel-card">
+                          <label>Scheda {index + 1}</label>
+                          <p>
+                            <strong>Carta:</strong> {scheda.nomeCarta || "-"}
+                          </p>
+                          <p>
+                            <strong>PIN:</strong> {scheda.pinCarta || "-"}
+                          </p>
+                        </div>
+                      ))}
+                    </>
+                  )}
               </div>
             </div>
 
@@ -306,5 +516,3 @@ function NextColleghiPage() {
     </div>
   );
 }
-
-export default NextColleghiPage;

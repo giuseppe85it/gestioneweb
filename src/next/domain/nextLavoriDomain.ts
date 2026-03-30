@@ -118,6 +118,22 @@ export type NextLavoriLegacyViewItem = {
   chiHaEseguito?: string;
 };
 
+export type NextLavoriLegacyDatasetRecord = {
+  id: string;
+  gruppoId: string;
+  tipo: "magazzino" | "targa";
+  descrizione: string;
+  dettagli?: string;
+  dataInserimento: string;
+  eseguito: boolean;
+  targa?: string;
+  urgenza?: "bassa" | "media" | "alta";
+  segnalatoDa?: string;
+  chiHaEseguito?: string;
+  dataEsecuzione?: string;
+  sottoElementi: unknown[];
+};
+
 export type NextMezzoLavoriSnapshot = {
   domainCode: typeof NEXT_LAVORI_DOMAIN.code;
   domainName: typeof NEXT_LAVORI_DOMAIN.name;
@@ -1023,4 +1039,24 @@ export function buildNextLavoriLegacyDossierView(
     lavoriInAttesa: mapNextLavoriItemsToLegacyView(snapshot.inAttesa),
     lavoriEseguiti: mapNextLavoriItemsToLegacyView(snapshot.eseguiti),
   };
+}
+
+export async function readNextLavoriLegacyDataset(): Promise<NextLavoriLegacyDatasetRecord[]> {
+  const dataset = await readNormalizedLavoriDataset();
+
+  return dataset.items.map((item) => ({
+    id: item.id,
+    gruppoId: item.gruppoId ?? item.groupKey,
+    tipo: item.groupKind === "magazzino" ? "magazzino" : "targa",
+    descrizione: item.descrizione ?? "-",
+    dettagli: item.dettagli ?? undefined,
+    dataInserimento: item.dataInserimento ?? "",
+    eseguito: item.eseguito,
+    targa: item.targa ?? undefined,
+    urgenza: item.urgenza ?? undefined,
+    segnalatoDa: item.segnalatoDa ?? undefined,
+    chiHaEseguito: item.chiHaEseguito ?? undefined,
+    dataEsecuzione: item.dataEsecuzione ?? undefined,
+    sottoElementi: [],
+  }));
 }

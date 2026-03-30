@@ -5,7 +5,7 @@ import { auth } from "./firebase";
 import { Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
 import "./App.css";
 import NextHomePage from "./next/NextHomePage";
-import NextCentroControlloClonePage from "./next/NextCentroControlloClonePage";
+import NextCentroControlloParityPage from "./next/NextCentroControlloParityPage";
 import NextIntelligenzaArtificialePage from "./next/NextIntelligenzaArtificialePage";
 import NextInternalAiPage from "./next/NextInternalAiPage";
 import NextIAApiKeyPage from "./next/NextIAApiKeyPage";
@@ -198,7 +198,7 @@ function App() {
           path="centro-controllo"
           element={
             <NextRoleGuard areaId="centro-controllo">
-              <NextCentroControlloClonePage />
+              <NextCentroControlloParityPage />
             </NextRoleGuard>
           }
         />

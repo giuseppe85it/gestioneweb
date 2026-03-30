@@ -31,9 +31,9 @@ export default function NextCapoMezziPage() {
         if (cancelled) return;
         setItems(snapshot.items);
         setLoading(false);
-      } catch (loadError: any) {
+      } catch (loadError: unknown) {
         if (cancelled) return;
-        setError(loadError?.message || "Errore caricamento mezzi.");
+        setError(loadError instanceof Error ? loadError.message : "Errore caricamento mezzi.");
         setItems([]);
         setLoading(false);
       }
@@ -69,7 +69,7 @@ export default function NextCapoMezziPage() {
               type="button"
               className="capo-logo-button"
               onClick={() => navigate("/next")}
-              aria-label="Vai alla Home clone"
+              aria-label="Vai alla Home"
             >
               <img src="/logo.png" alt="Logo" />
             </button>

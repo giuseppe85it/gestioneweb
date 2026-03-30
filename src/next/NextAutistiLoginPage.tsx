@@ -1,5 +1,11 @@
-import LoginAutista from "../autisti/LoginAutista";
+import LoginAutista from "./autisti/NextLoginAutistaNative";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 export default function NextAutistiLoginPage() {
-  return <LoginAutista />;
+  return (
+    <NextLegacyStorageBoundary presets={["flotta", "autisti"]}>
+      <LoginAutista />
+    </NextLegacyStorageBoundary>
+  );
 }
+

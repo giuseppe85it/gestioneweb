@@ -1,20 +1,56 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { generateSmartPDF } from "../utils/pdfEngine";
 import "../pages/Fornitori.css";
-import "./next-shell.css";
 import {
   readNextFornitoriSnapshot,
   type NextFornitoreReadOnlyItem,
 } from "./domain/nextFornitoriDomain";
 
-const CLONE_BLOCKED_REASON =
-  "Clone read-only: aggiunta, modifica, eliminazione e PDF restano bloccati.";
+type Fornitore = {
+  id: string;
+  nome: string;
+  telefono?: string;
+  badge?: string;
+  codice?: string;
+  descrizione?: string;
+};
 
-function NextFornitoriPage() {
+const CLONE_SAVE_MESSAGE =
+  "Clone read-only: aggiunta e modifica fornitori restano disponibili solo nella madre.";
+const CLONE_DELETE_MESSAGE =
+  "Clone read-only: eliminazione fornitore disponibile solo nella madre.";
+
+function mapFornitore(item: NextFornitoreReadOnlyItem): Fornitore {
+  return {
+    id: item.id,
+    nome: item.nome,
+    telefono: item.telefono ?? "",
+    badge: item.badge ?? "",
+    codice: item.codice ?? "",
+    descrizione: item.descrizione ?? "",
+  };
+}
+
+function readErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Errore durante il caricamento dei fornitori.";
+}
+
+export default function NextFornitoriPage() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<NextFornitoreReadOnlyItem[]>([]);
+  const [fornitori, setFornitori] = useState<Fornitore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [nome, setNome] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [badge, setBadge] = useState("");
+  const [codice, setCodice] = useState("");
+  const [descrizione, setDescrizione] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,11 +61,12 @@ function NextFornitoriPage() {
         setError(null);
         const snapshot = await readNextFornitoriSnapshot();
         if (cancelled) return;
-        setItems(snapshot.items);
-      } catch (loadError: any) {
+        setFornitori(snapshot.items.map(mapFornitore));
+      } catch (loadError: unknown) {
         if (cancelled) return;
-        setItems([]);
-        setError(loadError?.message || "Errore durante il caricamento dei fornitori.");
+        console.error("Errore caricamento fornitori clone:", loadError);
+        setError(readErrorMessage(loadError));
+        setFornitori([]);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -42,6 +79,54 @@ function NextFornitoriPage() {
       cancelled = true;
     };
   }, []);
+
+  const resetForm = () => {
+    setNome("");
+    setTelefono("");
+    setBadge("");
+    setCodice("");
+    setDescrizione("");
+    setEditId(null);
+  };
+
+  const handleSubmit = () => {
+    if (!nome.trim()) return;
+    window.alert(CLONE_SAVE_MESSAGE);
+  };
+
+  const handleEdit = (fornitore: Fornitore) => {
+    setEditId(fornitore.id);
+    setNome(fornitore.nome || "");
+    setTelefono(fornitore.telefono || "");
+    setBadge(fornitore.badge || "");
+    setCodice(fornitore.codice || "");
+    setDescrizione(fornitore.descrizione || "");
+  };
+
+  const handleDelete = (id: string) => {
+    if (!window.confirm("Eliminare questo fornitore?")) return;
+    if (editId === id) {
+      setEditId(null);
+    }
+    window.alert(CLONE_DELETE_MESSAGE);
+  };
+
+  const esportaPDF = async (fornitore: Fornitore) => {
+    const row = {
+      nome: fornitore.nome,
+      telefono: fornitore.telefono || "",
+      badge: fornitore.badge || "",
+      codice: fornitore.codice || "",
+      descrizione: fornitore.descrizione || "",
+    };
+
+    await generateSmartPDF({
+      kind: "table",
+      title: `Fornitore - ${fornitore.nome}`,
+      columns: ["nome", "telefono", "badge", "codice", "descrizione"],
+      rows: [row],
+    });
+  };
 
   return (
     <div className="forn-page">
@@ -58,107 +143,117 @@ function NextFornitoriPage() {
           </div>
         </header>
 
-        <div className="forn-empty" style={{ marginBottom: 16 }}>
-          Clone read-only: puoi consultare l'anagrafica fornitori, ma nessuna azione scrivente viene inoltrata alla madre.
-        </div>
-
         {error && <div className="forn-error">{error}</div>}
 
-        <fieldset className="next-clone-fieldset" disabled aria-label="Form fornitore bloccato nel clone">
-          <div className="forn-form next-clone-row-disabled" title={CLONE_BLOCKED_REASON}>
+        <div className="forn-form">
+          <div className="forn-field">
+            <label>Nome fornitore</label>
+            <input
+              type="text"
+              value={nome}
+              onChange={(event) => setNome(event.target.value)}
+              placeholder="NOME"
+            />
+          </div>
+
+          <div className="forn-grid">
             <div className="forn-field">
-              <label>Nome fornitore</label>
-              <input type="text" value="" readOnly placeholder="NOME" />
+              <label>Telefono</label>
+              <input
+                type="tel"
+                value={telefono}
+                onChange={(event) => setTelefono(event.target.value)}
+                placeholder="Telefono"
+              />
             </div>
-
-            <div className="forn-grid">
-              <div className="forn-field">
-                <label>Telefono</label>
-                <input type="tel" value="" readOnly placeholder="Telefono" />
-              </div>
-              <div className="forn-field">
-                <label>Badge</label>
-                <input type="text" value="" readOnly placeholder="Badge" />
-              </div>
-              <div className="forn-field">
-                <label>Codice</label>
-                <input type="text" value="" readOnly placeholder="Codice" />
-              </div>
-            </div>
-
             <div className="forn-field">
-              <label>Descrizione / Note</label>
-              <textarea value="" readOnly rows={2} placeholder="Note aggiuntive" />
+              <label>Badge</label>
+              <input
+                type="text"
+                value={badge}
+                onChange={(event) => setBadge(event.target.value)}
+                placeholder="Badge"
+              />
             </div>
-
-            <div className="forn-actions">
-              <button
-                className="btn-primary next-clone-button-disabled"
-                disabled
-                title={CLONE_BLOCKED_REASON}
-              >
-                AGGIUNGI FORNITORE
-              </button>
+            <div className="forn-field">
+              <label>Codice</label>
+              <input
+                type="text"
+                value={codice}
+                onChange={(event) => setCodice(event.target.value)}
+                placeholder="Codice"
+              />
             </div>
           </div>
-        </fieldset>
+
+          <div className="forn-field">
+            <label>Descrizione / Note</label>
+            <textarea
+              value={descrizione}
+              onChange={(event) => setDescrizione(event.target.value)}
+              rows={2}
+              placeholder="Note aggiuntive"
+            />
+          </div>
+
+          <div className="forn-actions">
+            <button className="btn-primary" onClick={handleSubmit} disabled={!nome.trim()}>
+              {editId ? "SALVA MODIFICHE" : "AGGIUNGI FORNITORE"}
+            </button>
+            {editId && (
+              <button className="btn-secondary" onClick={resetForm}>
+                ANNULLA
+              </button>
+            )}
+          </div>
+        </div>
 
         <div className="forn-list">
           <div className="forn-list-header">
             <span>Fornitori</span>
-            <span>{items.length}</span>
+            <span>{fornitori.length}</span>
           </div>
 
           {loading ? (
             <div className="forn-empty">Caricamento fornitori...</div>
-          ) : items.length === 0 ? (
+          ) : fornitori.length === 0 ? (
             <div className="forn-empty">Nessun fornitore inserito.</div>
           ) : (
             <div className="forn-list-scroll">
-              {items.map((item) => (
-                <div key={item.id} className="forn-item">
+              {fornitori.map((fornitore) => (
+                <div key={fornitore.id} className="forn-item">
                   <div className="forn-item-main">
-                    <div className="forn-item-name">{item.nome}</div>
+                    <div className="forn-item-name">{fornitore.nome}</div>
                     <div className="forn-item-line">
-                      {item.telefono && (
+                      {fornitore.telefono && (
                         <span className="forn-tag">
-                          Tel: <strong>{item.telefono}</strong>
+                          Tel: <strong>{fornitore.telefono}</strong>
                         </span>
                       )}
-                      {item.badge && (
+                      {fornitore.badge && (
                         <span className="forn-tag">
-                          Badge: <strong>{item.badge}</strong>
+                          Badge: <strong>{fornitore.badge}</strong>
                         </span>
                       )}
-                      {item.codice && (
+                      {fornitore.codice && (
                         <span className="forn-tag">
-                          Codice: <strong>{item.codice}</strong>
+                          Codice: <strong>{fornitore.codice}</strong>
                         </span>
                       )}
                     </div>
-                    {item.descrizione && <div className="forn-item-desc">{item.descrizione}</div>}
+                    {fornitore.descrizione && (
+                      <div className="forn-item-desc">{fornitore.descrizione}</div>
+                    )}
                   </div>
 
                   <div className="forn-item-actions">
-                    <button
-                      className="btn-secondary next-clone-button-disabled"
-                      disabled
-                      title={CLONE_BLOCKED_REASON}
-                    >
+                    <button className="btn-secondary" onClick={() => handleEdit(fornitore)}>
                       Modifica
                     </button>
-                    <button
-                      className="btn-secondary next-clone-button-disabled"
-                      disabled
-                      title={CLONE_BLOCKED_REASON}
-                    >
+                    <button className="btn-secondary" onClick={() => void esportaPDF(fornitore)}>
                       PDF
                     </button>
-                    <button
-                      className="btn-danger next-clone-button-disabled"
-                      disabled
-                      title={CLONE_BLOCKED_REASON}
-                    >
+                    <button className="btn-danger" onClick={() => handleDelete(fornitore.id)}>
                       Elimina
                     </button>
                   </div>
@@ -171,5 +266,3 @@ function NextFornitoriPage() {
     </div>
   );
 }
-
-export default NextFornitoriPage;

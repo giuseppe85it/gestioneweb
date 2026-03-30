@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
-import Home from "../pages/Home";
 import { getNextRoleFromSearch } from "./nextAccess";
-import NextMotherPage from "./NextMotherPage";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
+import NextHomeParityPage from "./NextCentroControlloPage";
 import { NEXT_AUTISTI_APP_PATH } from "./nextStructuralPaths";
 
 export default function NextHomePage() {
@@ -13,8 +13,8 @@ export default function NextHomePage() {
   }
 
   return (
-    <NextMotherPage pageId="home">
-      <Home />
-    </NextMotherPage>
+    <NextLegacyStorageBoundary presets={["flotta", "autisti"]}>
+      <NextHomeParityPage />
+    </NextLegacyStorageBoundary>
   );
 }

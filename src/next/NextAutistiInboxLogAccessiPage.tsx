@@ -1,5 +1,11 @@
-import AutistiLogAccessiAll from "../autistiInbox/AutistiLogAccessiAll";
+import AutistiLogAccessiAll from "./autistiInbox/NextAutistiLogAccessiAllNative";
+import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 export default function NextAutistiInboxLogAccessiPage() {
-  return <AutistiLogAccessiAll />;
+  return (
+    <NextLegacyStorageBoundary presets={["autisti"]}>
+      <AutistiLogAccessiAll />
+    </NextLegacyStorageBoundary>
+  );
 }
+

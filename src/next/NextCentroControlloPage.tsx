@@ -8,8 +8,16 @@ import {
   useState,
 } from "react";
 import type { HomeEvent } from "../utils/homeEvents";
+import AutistiEventoModal from "../components/AutistiEventoModal";
 import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
 import { formatDateInput, formatDateTimeUI, formatDateUI } from "../utils/dateFormat";
+import {
+  applyAlertAction,
+  createEmptyAlertsState,
+  parseAlertsState,
+  type AlertAction,
+} from "../utils/alertsState";
+import { generateTablePDF } from "../utils/pdfEngine";
 import {
   readNextAutistiReadOnlySnapshot,
   type NextAutistiReadOnlySnapshot,
@@ -49,6 +57,12 @@ import {
   NEXT_ORDINI_ARRIVATI_PATH,
   NEXT_ORDINI_IN_ATTESA_PATH,
 } from "./nextStructuralPaths";
+import {
+  appendNextHomeCloneEvento,
+  readNextHomeCloneAlertsState,
+  upsertNextHomeCloneMezzoPatch,
+  writeNextHomeCloneAlertsState,
+} from "./nextHomeCloneState";
 
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
@@ -203,6 +217,15 @@ function readQuickLinksStore(): QuickLinksStore {
   }
 }
 
+function writeQuickLinksStore(next: QuickLinksStore) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(QUICKLINKS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    return;
+  }
+}
+
 function normalizeMissingAlertState(value: unknown): MissingAlertState {
   if (!value || typeof value !== "object") {
     return { nextRemindAt: 0 };
@@ -227,7 +250,12 @@ function readMissingAlertState(): MissingAlertState {
 }
 
 function writeMissingAlertState(next: MissingAlertState) {
-  void next;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DOSSIER_MISSING_ALERT_KEY, JSON.stringify(next));
+  } catch {
+    return;
+  }
 }
 
 function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
@@ -239,58 +267,42 @@ function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
 }
 
 const QUICK_LINKS_OPERATIVO = buildQuickLinks([
-  {
-    to: "/gestione-operativa",
-    label: "Gestione Operativa",
-    description: "Workbench clone-safe con superfici consultabili e nessuna scrittura reale.",
-  },
-  {
-    to: "/attrezzature-cantieri",
-    label: "Attrezzature Cantieri read-only",
-    description: "Consulta consegne e spostamenti senza ritiri o variazioni reali.",
-  },
+  { to: "/gestione-operativa", label: "Gestione Operativa" },
+  { to: "/attrezzature-cantieri", label: "Attrezzature Cantieri" },
   {
     to: "/autisti-admin",
-    label: "Autisti Admin (lettura)",
-    description: "Consulta dati autisti e anomalie nel clone, senza rettifiche reali.",
+    label: "Centro rettifica dati (admin)",
+    description: "Correggi dati e risolvi anomalie operative.",
   },
   {
     to: "/autisti-inbox",
-    label: "Autisti Inbox (admin, lettura)",
-    description: "Consulta cio che arriva dagli autisti, senza presa in carico sulla madre.",
+    label: "Autisti Inbox (admin)",
+    description: "Vedi e gestisci cio che arriva dagli autisti.",
   },
-  { to: "/manutenzioni", label: "Manutenzioni read-only" },
-  { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire read-only" },
-  { to: "/lavori-eseguiti", label: "Lavori Eseguiti read-only" },
-  { to: "/lavori-in-attesa", label: "Lavori In Attesa read-only" },
-  {
-    to: "/materiali-da-ordinare",
-    label: "Materiali Da Ordinare (bloccato)",
-    description: "La bozza ordine non e importata davvero nel clone.",
-  },
-  { to: "/materiali-consegnati", label: "Materiali Consegnati read-only" },
-  { to: "/inventario", label: "Inventario read-only" },
-  { to: "/ordini-arrivati", label: "Ordini Arrivati read-only" },
-  { to: "/ordini-in-attesa", label: "Ordini In Attesa read-only" },
-  { to: "/ia", label: "IA interna clone-safe" },
-  { to: "/libretti-export", label: "Libretti Export" },
-  { to: "/ia/documenti", label: "IA Documenti (clone-safe)" },
+  { to: "/manutenzioni", label: "Manutenzioni" },
+  { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire" },
+  { to: "/lavori-eseguiti", label: "Lavori Eseguiti" },
+  { to: "/lavori-in-attesa", label: "Lavori In Attesa" },
+  { to: "/acquisti", label: "Materiali Da Ordinare" },
+  { to: "/materiali-consegnati", label: "Materiali Consegnati" },
+  { to: "/inventario", label: "Inventario" },
+  { to: "/ordini-arrivati", label: "Ordini Arrivati" },
+  { to: "/ordini-in-attesa", label: "Ordini In Attesa" },
+  { to: "/ia", label: "IA" },
+  { to: "/ia/libretto", label: "IA Libretto" },
+  { to: "/ia/documenti", label: "IA Documenti" },
   { to: "/cisterna", label: "Cisterna Caravate" },
 ]);
 
 const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([
-  { to: "/mezzi", label: "Mezzi read-only", description: "Anagrafiche flotta in consultazione." },
-  {
-    to: "/dossiermezzi",
-    label: "Dossier Mezzi read-only",
-    description: "Apre il Dossier clone-safe e non una vista 360 scrivente.",
-  },
-  { to: "/colleghi", label: "Colleghi read-only" },
-  { to: "/fornitori", label: "Fornitori read-only" },
+  { to: "/mezzi", label: "Mezzi" },
+  { to: "/dossiermezzi", label: "Dossier Mezzi" },
+  { to: "/colleghi", label: "Colleghi" },
+  { to: "/fornitori", label: "Fornitori" },
   {
     to: "/autisti",
     label: "Autisti App (telefono)",
-    description: "Nel clone gli invii restano locali e non sincronizzano la madre.",
+    description: "Usata dagli autisti per inviare rifornimenti, segnalazioni e controlli.",
   },
 ]);
 
@@ -427,7 +439,9 @@ function Home() {
   const [nameSuggestOpen, setNameSuggestOpen] = useState(false);
   const [rimorchioEdit, setRimorchioEdit] = useState<RimorchioEditState | null>(null);
   const [quickSearch, setQuickSearch] = useState("");
-  const [quickLinksStore] = useState<QuickLinksStore>(() => readQuickLinksStore());
+  const [quickLinksStore, setQuickLinksStore] = useState<QuickLinksStore>(() =>
+    readQuickLinksStore()
+  );
   const [missingAlertState, setMissingAlertState] = useState<MissingAlertState>(() =>
     readMissingAlertState()
   );
@@ -465,9 +479,18 @@ function Home() {
     note: "",
   });
   const [missingModalOpen, setMissingModalOpen] = useState(false);
-  const [, setSelectedEvent] = useState<HomeEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
   const [importantEventsOpen, setImportantEventsOpen] = useState(false);
   const location = useLocation();
+  const refreshSnapshots = async (now: number = Date.now()) => {
+    const [nextSnapshot, nextAutistiSnapshot] = await Promise.all([
+      readNextCentroControlloSnapshot(now),
+      readNextAutistiReadOnlySnapshot(now),
+    ]);
+    setAlertsNow(now);
+    setSnapshot(nextSnapshot);
+    setAutistiSnapshot(nextAutistiSnapshot);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -479,6 +502,7 @@ function Home() {
           readNextAutistiReadOnlySnapshot(now),
         ]);
         if (!mounted) return;
+        setAlertsNow(now);
         setSnapshot(nextSnapshot);
         setAutistiSnapshot(nextAutistiSnapshot);
       } finally {
@@ -497,11 +521,13 @@ function Home() {
 
     const refreshSnapshot = async () => {
       try {
+        const now = Date.now();
         const [nextSnapshot, nextAutistiSnapshot] = await Promise.all([
-          readNextCentroControlloSnapshot(Date.now()),
-          readNextAutistiReadOnlySnapshot(Date.now()),
+          readNextCentroControlloSnapshot(now),
+          readNextAutistiReadOnlySnapshot(now),
         ]);
         if (!active) return;
+        setAlertsNow(now);
         setSnapshot(nextSnapshot);
         setAutistiSnapshot(nextAutistiSnapshot);
       } catch (error) {
@@ -518,12 +544,12 @@ function Home() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       const now = Date.now();
-      setAlertsNow(now);
       void Promise.all([
         readNextCentroControlloSnapshot(now),
         readNextAutistiReadOnlySnapshot(now),
       ])
         .then(([nextSnapshot, nextAutistiSnapshot]) => {
+          setAlertsNow(now);
           setSnapshot(nextSnapshot);
           setAutistiSnapshot(nextAutistiSnapshot);
         })
@@ -554,11 +580,18 @@ function Home() {
   };
   const sessioniAttive = sessioni;
   const autistiBoundarySummary = autistiSnapshot
-    ? `Madre: ${autistiSnapshot.counts.activeSessions} sessioni | segnali madre: ${autistiSnapshot.counts.attentionSignalsMother} | solo locali clone: ${autistiSnapshot.counts.attentionSignalsLocal}`
+    ? `Sessioni ${autistiSnapshot.counts.activeSessions} | Segnali ${autistiSnapshot.counts.attentionSignalsMother + autistiSnapshot.counts.attentionSignalsLocal}`
     : "Flusso autisti in caricamento";
 
   const handleAutistaSearch = () => {
-    return;
+    const params = new URLSearchParams();
+    if (badgeQuery.trim()) {
+      params.set("badge", badgeQuery.trim());
+    }
+    if (nameQuery.trim()) {
+      params.set("autista", nameQuery.trim());
+    }
+    navigate(`${NEXT_AUTISTI_ADMIN_PATH}${params.toString() ? `?${params.toString()}` : ""}`);
   };
 
   const handleNameChange = (value: string) => {
@@ -583,7 +616,12 @@ function Home() {
     luogoEventId: string | null;
     luogoEventIndex: number | null;
   }) => {
-    void rimorchio;
+    setRimorchioEdit({
+      targa: rimorchio.targa,
+      luogo: rimorchio.luogoRaw,
+      eventId: rimorchio.luogoEventId,
+      eventIndex: rimorchio.luogoEventIndex,
+    });
   };
 
   const cancelRimorchioEdit = () => {
@@ -591,7 +629,37 @@ function Home() {
   };
 
   const saveRimorchioEdit = async () => {
-    return;
+    if (!rimorchioEdit) return;
+
+    const luogoValue = sanitizeBookingText(rimorchioEdit.luogo);
+    const assetto = mezzoByTarga.get(fmtTarga(rimorchioEdit.targa));
+
+    appendNextHomeCloneEvento({
+      id: `next-home:${rimorchioEdit.targa}:${Date.now()}`,
+      tipo: "CAMBIO_ASSETTO",
+      timestamp: Date.now(),
+      badgeAutista: "ADMIN",
+      autistaNome: "UFFICIO",
+      luogo: luogoValue || null,
+      prima: {
+        targaRimorchio: rimorchioEdit.targa,
+        rimorchio: rimorchioEdit.targa,
+        targaMotrice: null,
+        motrice: null,
+        targaCamion: null,
+      },
+      dopo: {
+        targaRimorchio: rimorchioEdit.targa,
+        rimorchio: rimorchioEdit.targa,
+        targaMotrice: assetto?.targa ?? null,
+        motrice: assetto?.targa ?? null,
+        targaCamion: assetto?.targa ?? null,
+      },
+      source: "NextHomePage",
+    });
+
+    setRimorchioEdit(null);
+    await refreshSnapshots();
   };
 
   const closePrenotazioneModal = () => {
@@ -610,39 +678,206 @@ function Home() {
   };
 
   const openRevisioneModal = (targa: string, current?: PrenotazioneCollaudo | null) => {
-    void targa;
-    void current;
+    const todayLabel = formatDateForDisplay(new Date());
+    const currentDateRaw = current?.completataIl ? String(current.completataIl).trim() : "";
+    const currentDate = currentDateRaw ? parseDateFlexible(currentDateRaw) : null;
+    setRevisioneTargetTarga(targa);
+    setRevisioneForm({
+      data: currentDate ? formatDateForDisplay(currentDate) : todayLabel,
+      esito: String(current?.esito ?? "").trim(),
+      note: String(current?.noteEsito ?? "").trim(),
+    });
+    setRevisioneModalOpen(true);
   };
 
   const openPreCollaudoModal = (targa: string, current?: PreCollaudo | null) => {
-    void targa;
-    void current;
+    setPreCollaudoTargetTarga(targa);
+    setPreCollaudoForm({
+      data: String(current?.data ?? "").trim(),
+      officina: String(current?.officina ?? "").trim(),
+    });
+    setPreCollaudoModalOpen(true);
   };
 
   const openPrenotazioneModal = (
     targa: string,
     current?: PrenotazioneCollaudo | null
   ) => {
-    void targa;
-    void current;
+    setPrenotazioneTargetTarga(targa);
+    const luogoValue = current ? String(current?.luogo ?? "") : "Camorino";
+    setPrenotazioneForm({
+      data: String(current?.data ?? ""),
+      ora: String(current?.ora ?? ""),
+      luogo: luogoValue,
+      note: String(current?.note ?? ""),
+    });
+    setPrenotazioneModalOpen(true);
   };
 
   const persistPrenotazioneCollaudo = (
     targa: string,
     prenotazione: PrenotazioneCollaudo | null
   ) => {
-    void targa;
-    void prenotazione;
+    const key = fmtTarga(targa);
+    if (!key) return;
+
+    upsertNextHomeCloneMezzoPatch(
+      {
+        id: mezzoByTarga.get(key)?.id,
+        targa: key,
+      },
+      {
+        prenotazioneCollaudo: prenotazione,
+      }
+    );
   };
-  void persistPrenotazioneCollaudo;
 
   const handlePrenotazioneSave = () => {
+    if (!prenotazioneTargetTarga) return;
+    const data = prenotazioneForm.data.trim();
+    if (!data) {
+      window.alert("Inserisci la data della prenotazione collaudo.");
+      return;
+    }
+    if (!parseDateFlexible(data)) {
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      return;
+    }
+
+    const rawOra = prenotazioneForm.ora ?? "";
+    let ora = rawOra.replace(/\u00A0/g, " ").trim().replace(/\./g, ":");
+    if (ora.length >= 5) ora = ora.slice(0, 5);
+    if (/^[0-9]:[0-5]\d$/.test(ora)) {
+      ora = `0${ora}`;
+    }
+    if (ora && !/^([01]\d|2[0-3]):[0-5]\d$/.test(ora)) {
+      window.alert("Ora non valida. Usa formato HH:mm.");
+      return;
+    }
+
+    const luogo = prenotazioneForm.luogo.trim();
+    const note = prenotazioneForm.note.trim();
+    const next: PrenotazioneCollaudo = {
+      data,
+      ora,
+      luogo: luogo || null,
+      note: note || null,
+      esito: null,
+      noteEsito: null,
+      completata: false,
+      completataIl: null,
+    };
+
+    persistPrenotazioneCollaudo(prenotazioneTargetTarga, next);
+    closePrenotazioneModal();
+    void refreshSnapshots();
   };
 
   const handlePreCollaudoSave = () => {
+    if (!preCollaudoTargetTarga) return;
+    const data = preCollaudoForm.data.trim();
+    if (!data) {
+      window.alert("Inserisci la data del pre-collaudo.");
+      return;
+    }
+    if (!parseDateFlexible(data)) {
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      return;
+    }
+
+    const officina = preCollaudoForm.officina.trim();
+    if (!officina) {
+      window.alert("Inserisci l'officina del pre-collaudo.");
+      return;
+    }
+
+    const key = fmtTarga(preCollaudoTargetTarga);
+    if (!key) return;
+
+    upsertNextHomeCloneMezzoPatch(
+      {
+        id: mezzoByTarga.get(key)?.id,
+        targa: key,
+      },
+      {
+        preCollaudo: { data, officina },
+      }
+    );
+
+    closePreCollaudoModal();
+    void refreshSnapshots();
   };
 
   const handleRevisioneSave = () => {
+    if (!revisioneTargetTarga) return;
+    const dataRaw = revisioneForm.data.trim();
+    if (!dataRaw) {
+      window.alert("Inserisci la data della revisione.");
+      return;
+    }
+    const parsedDate = parseDateFlexible(dataRaw);
+    if (!parsedDate) {
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
+      return;
+    }
+    const esito = revisioneForm.esito.trim();
+    if (!esito) {
+      window.alert("Inserisci l'esito della revisione.");
+      return;
+    }
+
+    const key = fmtTarga(revisioneTargetTarga);
+    const mezzo = mezzoByTarga.get(key);
+    if (!key || !mezzo) return;
+
+    const revisioneDateValue = formatDateForInput(parsedDate);
+    const revisioneDateLabel = formatDateForDisplay(parsedDate);
+    const scadenzaDate = new Date(parsedDate);
+    scadenzaDate.setHours(12, 0, 0, 0);
+    scadenzaDate.setFullYear(scadenzaDate.getFullYear() + 1);
+    const scadenzaValue = formatDateForInput(scadenzaDate);
+    const noteEsito = revisioneForm.note.trim();
+    const prenotazioneBase: PrenotazioneCollaudo =
+      (mezzo.prenotazioneCollaudo as PrenotazioneCollaudo | null) ?? {
+        data: "",
+        ora: null,
+        luogo: null,
+        note: null,
+        esito: null,
+        noteEsito: null,
+        completata: false,
+        completataIl: null,
+      };
+    const nextPrenotazione: PrenotazioneCollaudo = {
+      ...prenotazioneBase,
+      completata: true,
+      completataIl: revisioneDateValue,
+      esito,
+      ...(noteEsito ? { noteEsito } : {}),
+    };
+
+    let nextNote = mezzo.note;
+    if (noteEsito) {
+      const noteLine = `REVISIONE ${revisioneDateLabel}: ${esito} - ${noteEsito}`;
+      const noteBase = String(mezzo.note ?? "").trim();
+      nextNote = noteBase ? `${noteBase}\n${noteLine}` : noteLine;
+    }
+
+    upsertNextHomeCloneMezzoPatch(
+      {
+        id: mezzo.id,
+        targa: key,
+      },
+      {
+        dataUltimoCollaudo: revisioneDateValue,
+        dataScadenzaRevisione: scadenzaValue,
+        prenotazioneCollaudo: nextPrenotazione,
+        ...(noteEsito ? { note: nextNote } : {}),
+      }
+    );
+
+    closeRevisioneModal();
+    void refreshSnapshots();
   };
 
   const openDatePicker = () => {
@@ -703,11 +938,43 @@ function Home() {
   };
 
   const handlePrenotazioneDelete = (targa: string) => {
-    void targa;
+    if (!window.confirm("Cancellare la prenotazione collaudo per questo mezzo?")) {
+      return;
+    }
+    persistPrenotazioneCollaudo(targa, null);
+    void refreshSnapshots();
   };
 
   const recordQuickLinkUse = (id: string) => {
-    void id;
+    const now = Date.now();
+    setQuickLinksStore((prev) => {
+      const current = prev.usage[id] ?? { count: 0, lastUsedAt: 0 };
+      const nextUsage = {
+        ...prev.usage,
+        [id]: { count: current.count + 1, lastUsedAt: now },
+      };
+      const next = { ...prev, usage: nextUsage };
+      writeQuickLinksStore(next);
+      return next;
+    });
+  };
+
+  const toggleQuickLinkPin = (id: string) => {
+    setQuickLinksStore((prev) => {
+      const isPinned = prev.pins.includes(id);
+      if (isPinned) {
+        const next = {
+          ...prev,
+          pins: prev.pins.filter((pinId: string) => pinId !== id),
+        };
+        writeQuickLinksStore(next);
+        return next;
+      }
+      const trimmedPins = prev.pins.slice(0, 2);
+      const next = { ...prev, pins: [id, ...trimmedPins] };
+      writeQuickLinksStore(next);
+      return next;
+    });
   };
 
   const toggleQuickSectionOpen = (sectionId: QuickSectionId) => {
@@ -1018,9 +1285,8 @@ function Home() {
         <button
           type="button"
           className={`quick-pin-toggle ${isPinned ? "active" : ""}`}
-          disabled
           aria-pressed={isPinned}
-          title={CLONE_ACTION_BLOCKED_TITLE}
+          onClick={() => toggleQuickLinkPin(link.id)}
         >
           PIN
         </button>
@@ -1043,14 +1309,17 @@ function Home() {
     setMissingModalOpen(true);
   };
 
+  const handleMissingIgnore = () => {
+    updateMissingAlertState(Date.now() + 86_400_000);
+  };
+
+  const handleMissingLater = () => {
+    updateMissingAlertState(Date.now() + 259_200_000);
+  };
+
   const closeMissingModal = () => {
     setMissingModalOpen(false);
-    void readNextCentroControlloSnapshot(Date.now())
-      .then((nextSnapshot) => {
-        setSnapshot(nextSnapshot);
-      })
-      .catch(() => {
-      });
+    void refreshSnapshots();
   };
 
   const handleMissingSelect = (item: MissingMezzo) => {
@@ -1066,10 +1335,109 @@ function Home() {
     navigate(NEXT_DOSSIER_LISTA_PATH + (query ? `?${query}` : ""));
   };
 
-  const canExportAlerts = false;
+  const handleAlertAction = (alert: D10Snapshot["alerts"][number], action: AlertAction) => {
+    const base = parseAlertsState(readNextHomeCloneAlertsState() ?? createEmptyAlertsState());
+    const next = applyAlertAction(base, alert.id, alert.meta, action, Date.now());
+    writeNextHomeCloneAlertsState(next);
+    void refreshSnapshots();
+  };
 
-  const handleExportAlertsPdf = () => {
-    return;
+  const canExportAlerts = !loading && (visibleAlerts.length > 0 || missingAlertVisible);
+
+  const handleExportAlertsPdf = async () => {
+    if (!canExportAlerts) {
+      window.alert("Nessun alert da esportare.");
+      return;
+    }
+
+    const grouped = new Map<
+      string,
+      Array<{
+        categoria: string;
+        targa: string;
+        descrizione: string;
+        data: string;
+      }>
+    >();
+
+    const pushRow = (
+      categoriaInput: string | null | undefined,
+      row: { targa: string; descrizione: string; data: string }
+    ) => {
+      const categoria = String(categoriaInput ?? "").trim() || "SENZA CATEGORIA";
+      const list = grouped.get(categoria) ?? [];
+      list.push({
+        categoria,
+        targa: row.targa,
+        descrizione: row.descrizione,
+        data: row.data,
+      });
+      grouped.set(categoria, list);
+    };
+
+    if (missingAlertVisible) {
+      pushRow("Dossier", {
+        targa: "SENZA TARGA",
+        descrizione: "Dati mancanti nel Dossier. Alcuni mezzi hanno dati incompleti.",
+        data: "",
+      });
+    }
+
+    const autistiAlertVisible = visibleAlerts.some(
+      (alert) => alert.kind === "eventi_importanti_autisti"
+    );
+
+    visibleAlerts.forEach((alert) => {
+      if (alert.kind === "eventi_importanti_autisti") return;
+      const targa = String(alert.mezzoTarga ?? "").trim() || "SENZA TARGA";
+      const descrizione = alert.detailText ? `${alert.title} - ${alert.detailText}` : alert.title;
+      const data = String(alert.dateLabel ?? "").trim();
+      pushRow(alert.kind, { targa, descrizione, data });
+    });
+
+    if (autistiAlertVisible) {
+      const maxRows = 15;
+      const total = importantAutistiItems.length;
+      const slice = importantAutistiItems.slice(0, maxRows);
+
+      slice.forEach((item) => {
+        const targa = String(item.targa ?? "").trim() || "SENZA TARGA";
+        const descrizione = [item.tipo, item.preview].filter(Boolean).join(" - ") || "Evento autisti";
+        const data = formatDateTimeForDisplay(item.ts);
+        pushRow("Eventi autisti", { targa, descrizione, data });
+      });
+
+      const remaining = total - slice.length;
+      if (remaining > 0) {
+        pushRow("Eventi autisti", {
+          targa: "",
+          descrizione: `... +${remaining} altri (vedi Home)`,
+          data: "",
+        });
+      }
+    }
+
+    const rows: string[][] = [];
+    const categories = Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
+    categories.forEach((categoria) => {
+      rows.push([`--- ${categoria.toUpperCase()} ---`, "", "", ""]);
+      const list = grouped.get(categoria) ?? [];
+      list.sort((a, b) => a.targa.localeCompare(b.targa));
+      list.forEach((item) => {
+        rows.push([item.categoria, item.targa, item.descrizione, item.data]);
+      });
+    });
+
+    try {
+      await generateTablePDF("Alert Home", rows, [
+        "Categoria",
+        "Targa",
+        "Descrizione",
+        "Data",
+      ]);
+    } catch {
+      window.alert("Errore durante l'esportazione PDF.");
+    }
   };
 
   return (
@@ -1086,35 +1454,35 @@ function Home() {
                 <h1 className="home-title">Dashboard Admin</h1>
                 <p className="home-subtitle">
                   Panoramica rapida su rimorchi, sessioni attive e revisioni. Tutti i pannelli
-                  portano solo alle sezioni clone-safe gia leggibili.
+                  portano alle sezioni operative.
                 </p>
               </div>
             </div>
             <div className="home-hero-right homeTopRight">
               <Link to={NEXT_AUTISTI_ADMIN_PATH} className="hero-card">
-                <div className="hero-card-title">Autisti Admin (lettura)</div>
+                <div className="hero-card-title">Centro rettifica dati (admin)</div>
                 <div className="hero-card-value hero-card-subtext">
-                  Consulta dati autisti e anomalie nel clone, senza rettifiche reali.
+                  Correggi dati e risolvi anomalie operative.
                 </div>
               </Link>
               <Link to={NEXT_MEZZI_PATH} className="hero-card">
                 <div className="hero-card-title">Mezzi</div>
-                <div className="hero-card-value">Anagrafiche read-only</div>
+                <div className="hero-card-value">Anagrafiche</div>
               </Link>
               <Link to="/next/capo/mezzi" className="hero-card">
                 <div className="hero-card-title">Area Capo</div>
                 <div className="hero-card-value hero-card-subtext">
-                  Costi mezzi e documenti in sola lettura.
+                  Costi mezzi, fatture e riepiloghi.
                 </div>
               </Link>
               <Link to={NEXT_MANUTENZIONI_PATH} className="hero-card">
                 <div className="hero-card-title">Manutenzioni</div>
-                <div className="hero-card-value">Registro read-only</div>
+                <div className="hero-card-value">Registro</div>
               </Link>
               <Link to={NEXT_AUTISTI_INBOX_PATH} className="hero-card">
-                <div className="hero-card-title">Autisti Inbox (admin, lettura)</div>
+                <div className="hero-card-title">Autisti Inbox (admin)</div>
                 <div className="hero-card-value hero-card-subtext">
-                  Consulta cio che arriva dagli autisti, senza presa in carico sulla madre.
+                  Vedi e gestisci cio che arriva dagli autisti.
                 </div>
               </Link>
             </div>
@@ -1129,7 +1497,7 @@ function Home() {
                   <div>
                     <h2 className="home-card__title">Ricerca 360</h2>
                     <span className="home-card__subtitle">
-                      Cerca targa o autista e apri il Dossier Mezzo clone-safe
+                      Cerca targa o autista e apri la Vista Mezzo 360
                     </span>
                   </div>
                 </div>
@@ -1245,18 +1613,12 @@ function Home() {
                           <button
                             type="button"
                             className="badge-search-button"
-                            disabled
-                            title={CLONE_ACTION_BLOCKED_TITLE}
                             onClick={handleAutistaSearch}
                           >
-                            Vista 360 non importata
+                            Apri
                           </button>
                         </div>
                       </div>
-                    </div>
-                    <div className="search-empty" style={{ marginTop: 10, textAlign: "left" }}>
-                      D03 read-only: {autistiBoundarySummary}. I dati creati nell&apos;app autisti clone
-                      restano locali finche non esiste sincronizzazione reale.
                     </div>
                   </div>
                 </div>
@@ -1276,9 +1638,8 @@ function Home() {
                       className="alert-action"
                       onClick={handleExportAlertsPdf}
                       disabled={!canExportAlerts}
-                      title={CLONE_ACTION_BLOCKED_TITLE}
                     >
-                      PDF alert non disponibile
+                      ESPORTA PDF
                     </button>
                   </div>
                   <div className="panel-body alerts-list home-card__body">
@@ -1303,18 +1664,16 @@ function Home() {
                               <button
                                 type="button"
                                 className="alert-action"
-                                disabled
-                                title={CLONE_ACTION_BLOCKED_TITLE}
+                                onClick={handleMissingIgnore}
                               >
-                                Ignora (bloccato)
+                                Ignora
                               </button>
                               <button
                                 type="button"
                                 className="alert-action"
-                                disabled
-                                title={CLONE_ACTION_BLOCKED_TITLE}
+                                onClick={handleMissingLater}
                               >
-                                Rinvia (bloccato)
+                                In seguito
                               </button>
                               <button
                                 type="button"
@@ -1442,16 +1801,14 @@ function Home() {
                                 <button
                                   type="button"
                                   className={isTargaAlert ? "booking-action" : "alert-action"}
-                                  disabled
-                                  title={CLONE_ACTION_BLOCKED_TITLE}
+                                  onClick={() => handleAlertAction(alert, "snooze_1d")}
                                 >
                                   Ignora
                                 </button>
                                 <button
                                   type="button"
                                   className={isTargaAlert ? "booking-action" : "alert-action"}
-                                  disabled
-                                  title={CLONE_ACTION_BLOCKED_TITLE}
+                                  onClick={() => handleAlertAction(alert, "snooze_3d")}
                                 >
                                   In seguito
                                 </button>
@@ -1460,8 +1817,7 @@ function Home() {
                                   className={
                                     isTargaAlert ? "booking-action primary" : "alert-action primary"
                                   }
-                                  disabled
-                                  title={CLONE_ACTION_BLOCKED_TITLE}
+                                  onClick={() => handleAlertAction(alert, "ack")}
                                 >
                                   Letto
                                 </button>
@@ -1478,7 +1834,7 @@ function Home() {
                   <div className="panel-head home-card__head">
                     <div>
                       <h2 className="home-card__title">Sessioni attive</h2>
-                      <span className="home-card__subtitle">Sessioni live e confine read-only D03</span>
+                      <span className="home-card__subtitle">Sessioni live</span>
                     </div>
                   </div>
                   <div className="panel-body home-card__body">
@@ -1486,7 +1842,7 @@ function Home() {
                       <div className="panel-row">
                         <div className="row-main">
                           <div className="row-title">
-                            <span>D03 autisti canonico</span>
+                            <span>D03 autisti</span>
                             <span className="badge">{autistiSnapshot.operationalStatus.label}</span>
                           </div>
                           <div className="row-meta row-meta-stack">
@@ -1512,7 +1868,7 @@ function Home() {
                       <div className="panel-row panel-row-empty">
                         Nessuna sessione attiva
                       </div>
-                    ) : (
+                      ) : (
                       sessioniAttive.map((s, idx) => {
                         const motrice = fmtTarga(s.targaMotrice);
                         const rimorchio = fmtTarga(s.targaRimorchio);
@@ -1520,8 +1876,16 @@ function Home() {
                         return (
                           <div
                             key={`${s.badgeAutista || "s"}-${idx}`}
-                            className="panel-row next-clone-row-disabled"
-                            title={CLONE_ACTION_BLOCKED_TITLE}
+                            className="panel-row panel-row-link"
+                            role="link"
+                            tabIndex={0}
+                            onClick={() => navigate(NEXT_AUTISTI_INBOX_PATH)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                navigate(NEXT_AUTISTI_INBOX_PATH);
+                              }
+                            }}
                           >
                             <div className="row-main">
                               <div className="row-title">
@@ -1531,10 +1895,12 @@ function Home() {
                                   <button
                                     type="button"
                                     className="session-profile-link"
-                                    disabled
-                                    title={CLONE_ACTION_BLOCKED_TITLE}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      navigate(NEXT_AUTISTI_INBOX_PATH);
+                                    }}
                                   >
-                                    Profilo non importato
+                                    Profilo
                                   </button>
                                 ) : null}
                               </div>
@@ -1650,7 +2016,7 @@ function Home() {
                             ? "REVISIONE SCADUTA"
                             : "REVISIONE IN SCADENZA";
                         const mezzoLabel = [r.marca, r.modello].filter(Boolean).join(" ");
-                        const canEditPrenotazione = false;
+                        const canEditPrenotazione = Boolean(r.targa);
                         return (
                           <div
                             key={r.targa || `rev-${idx}`}
@@ -1836,7 +2202,7 @@ function Home() {
                   const labelModello = mezzo?.modello ? String(mezzo.modello).trim() : "";
                   const rimorchioLabel = [labelMarca, labelModello].filter(Boolean).join(" ");
                   const isEditing = rimorchioEdit?.targa === r.targa;
-                  const canEdit = false;
+                  const canEdit = !r.inUso;
 
                   if (isEditing) {
                     return (
@@ -1896,10 +2262,10 @@ function Home() {
                   }
 
                   return (
-                    <div
+                    <Link
                       key={r.targa || `rim-${idx}`}
-                      className="panel-row next-clone-row-disabled"
-                      title={CLONE_ACTION_BLOCKED_TITLE}
+                      to={NEXT_AUTISTI_ADMIN_PATH}
+                      className="panel-row"
                     >
                       <div className="row-main">
                         <div className="row-title rimorchi-title">
@@ -1931,7 +2297,7 @@ function Home() {
                         </div>
                       </div>
                       <span className="row-arrow">-&gt;</span>
-                    </div>
+                    </Link>
                   );
                 })
               )}
@@ -1963,7 +2329,7 @@ function Home() {
                   const labelModello = mezzo?.modello ? String(mezzo.modello).trim() : "";
                   const mezzoLabel = [labelMarca, labelModello].filter(Boolean).join(" ");
                   const isEditing = rimorchioEdit?.targa === r.targa;
-                  const canEdit = false;
+                  const canEdit = !r.inUso;
 
                   if (isEditing) {
                     return (
@@ -2023,10 +2389,10 @@ function Home() {
                   }
 
                   return (
-                    <div
+                    <Link
                       key={r.targa || `mot-${idx}`}
-                      className="panel-row next-clone-row-disabled"
-                      title={CLONE_ACTION_BLOCKED_TITLE}
+                      to={NEXT_AUTISTI_ADMIN_PATH}
+                      className="panel-row"
                     >
                       <div className="row-main">
                         <div className="row-title rimorchi-title">
@@ -2058,7 +2424,7 @@ function Home() {
                         </div>
                       </div>
                       <span className="row-arrow">-&gt;</span>
-                    </div>
+                    </Link>
                   );
                 })
               )}
@@ -2124,7 +2490,7 @@ function Home() {
                   const showMissingDanger = !prenotazione && r.giorni !== null && (r.giorni ?? 0) <= 30;
                   const scadenzaExtra =
                     r.giorni === null ? "" : ` (${formatGiorniLabel(r.giorni)})`;
-                  const canEditPrenotazione = false;
+                  const canEditPrenotazione = Boolean(r.targa);
                   return (
                     <div
                       key={r.targa || `rev-${idx}`}
@@ -2338,6 +2704,11 @@ function Home() {
           setSelectedEvent(event);
           setImportantEventsOpen(false);
         }}
+      />
+
+      <AutistiEventoModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
       />
 
       {prenotazioneModalOpen ? (

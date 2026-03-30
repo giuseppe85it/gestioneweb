@@ -81,6 +81,32 @@ export type NextMezzoManutenzioniSnapshot = {
   limitations: string[];
 };
 
+export type NextManutenzioniLegacyMaterialRecord = {
+  id: string;
+  label: string;
+  quantita: number;
+  unita: string;
+  fromInventario: boolean;
+  refId?: string;
+};
+
+export type NextManutenzioniLegacyDatasetRecord = {
+  id: string;
+  targa: string;
+  km: number | null;
+  ore: number | null;
+  sottotipo: SottoTipo | null;
+  descrizione: string;
+  eseguito: string | null;
+  data: string;
+  tipo: TipoVoce;
+  fornitore?: string;
+  materiali?: NextManutenzioniLegacyMaterialRecord[];
+};
+
+type TipoVoce = "mezzo" | "compressore";
+type SottoTipo = "motrice" | "trattore";
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -88,6 +114,10 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function normalizeLowerText(value: unknown): string {
+  return normalizeText(value).toLowerCase();
 }
 
 function normalizeNumber(value: unknown): number | null {
@@ -150,6 +180,16 @@ function parseDateFlexible(value: unknown): Date | null {
   return null;
 }
 
+function formatLegacyDateLabel(value: unknown): string {
+  const parsed = parseDateFlexible(value);
+  if (!parsed) return "";
+
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(parsed.getFullYear());
+  return `${dd} ${mm} ${yyyy}`;
+}
+
 function giorniDaOggi(target: Date | null, now: number): number | null {
   if (!target) return null;
   const today = new Date(now);
@@ -193,6 +233,92 @@ function buildHistoryId(raw: RawRecord, index: number, mezzoTarga: string): stri
   const id = normalizeText(raw.id);
   if (id) return id;
   return `manutenzione:${mezzoTarga}:${index}`;
+}
+
+function normalizeLegacyTipo(raw: RawRecord): TipoVoce {
+  const tipo = normalizeLowerText(raw.tipo);
+  if (tipo === "compressore") {
+    return "compressore";
+  }
+
+  if (normalizeNumber(raw.ore) !== null && normalizeNumber(raw.km) === null) {
+    return "compressore";
+  }
+
+  return "mezzo";
+}
+
+function normalizeLegacySottotipo(value: unknown): SottoTipo | null {
+  const normalized = normalizeLowerText(value);
+  if (normalized === "motrice" || normalized === "trattore") {
+    return normalized;
+  }
+  return null;
+}
+
+function sanitizeLegacyMateriali(value: unknown): NextManutenzioniLegacyMaterialRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map<NextManutenzioniLegacyMaterialRecord | null>((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      const raw = entry as RawRecord;
+      const label =
+        normalizeOptionalText(raw.label) ??
+        normalizeOptionalText(raw.descrizione) ??
+        normalizeOptionalText(raw.nome);
+      if (!label) return null;
+
+      const refId = normalizeOptionalText(raw.refId) ?? undefined;
+
+      return {
+        id: normalizeOptionalText(raw.id) ?? `materiale:${index}`,
+        label,
+        quantita: normalizeNumber(raw.quantita) ?? 0,
+        unita: normalizeOptionalText(raw.unita) ?? "pz",
+        fromInventario: Boolean(raw.fromInventario),
+        ...(refId ? { refId } : {}),
+      };
+    })
+    .filter((entry): entry is NextManutenzioniLegacyMaterialRecord => Boolean(entry));
+}
+
+function toLegacyDatasetRecord(
+  raw: RawRecord,
+  index: number,
+): NextManutenzioniLegacyDatasetRecord | null {
+  const targa = normalizeNextMezzoTarga(raw.targa);
+  if (!targa) return null;
+
+  const tipo = normalizeLegacyTipo(raw);
+  const materiali = sanitizeLegacyMateriali(raw.materiali);
+  const descrizione =
+    normalizeOptionalText(raw.descrizione) ??
+    normalizeOptionalText(raw.tipo) ??
+    "Manutenzione";
+  const data =
+    normalizeOptionalText(raw.data) ??
+    formatLegacyDateLabel(raw.timestamp ?? raw.createdAt ?? raw.updatedAt);
+
+  return {
+    id: buildHistoryId(raw, index, targa),
+    targa,
+    km: normalizeNumber(raw.km),
+    ore: normalizeNumber(raw.ore),
+    sottotipo: tipo === "compressore" ? normalizeLegacySottotipo(raw.sottotipo) : null,
+    descrizione,
+    eseguito: normalizeOptionalText(raw.eseguito),
+    data,
+    tipo,
+    fornitore:
+      normalizeOptionalText(raw.fornitore) ??
+      normalizeOptionalText(raw.fornitoreLabel) ??
+      normalizeOptionalText(raw.eseguito) ??
+      undefined,
+    materiali,
+  };
 }
 
 function toHistoryItem(
@@ -318,4 +444,23 @@ export async function readNextMezzoManutenzioniSnapshot(
       "La data dello storico viene ordinata solo quando il parsing della stringa legacy e affidabile; in caso contrario il record resta in coda.",
     ],
   };
+}
+
+export async function readNextManutenzioniLegacyDataset(): Promise<
+  NextManutenzioniLegacyDatasetRecord[]
+> {
+  const manutenzioniRaw = await readStorageDataset(MANUTENZIONI_KEY);
+
+  return manutenzioniRaw
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      return toLegacyDatasetRecord(entry as RawRecord, index);
+    })
+    .filter((entry): entry is NextManutenzioniLegacyDatasetRecord => Boolean(entry))
+    .sort((left, right) => {
+      const rightTs = parseDateFlexible(right.data)?.getTime() ?? 0;
+      const leftTs = parseDateFlexible(left.data)?.getTime() ?? 0;
+      if (rightTs !== leftTs) return rightTs - leftTs;
+      return right.id.localeCompare(left.id);
+    });
 }

@@ -238,6 +238,11 @@ export type NextMezzoRifornimentiSnapshot = {
   limitations: string[];
 };
 
+export type NextRifornimentiReadOnlySnapshot = Omit<
+  NextMezzoRifornimentiSnapshot,
+  "mezzoTarga"
+>;
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -1187,10 +1192,71 @@ async function readLegacyDataset(
   return unwrapLegacyDataset(snapshot.data() as Record<string, unknown>);
 }
 
-export async function readNextMezzoRifornimentiSnapshot(
-  targa: string
-): Promise<NextMezzoRifornimentiSnapshot> {
-  const mezzoTarga = normalizeNextMezzoTarga(targa);
+function buildSnapshotBase(args: {
+  items: NextRifornimentoReadOnlyItem[];
+  businessDatasetShape: NextLegacyDatasetShape;
+  fieldDatasetShape: NextLegacyDatasetShape;
+  reconstructionStats: NextMezzoRifornimentiSnapshot["reconstructionStats"];
+}) {
+  return {
+    counts: {
+      total: args.items.length,
+      businessOnly: args.items.filter((entry) => entry.provenienza === "business").length,
+      fieldOnly: args.items.filter((entry) => entry.provenienza === "campo").length,
+      reconstructed: args.items.filter((entry) => entry.provenienza === "ricostruito").length,
+      withTimestamp: args.items.filter((entry) => entry.timestampRicostruito !== null).length,
+      withAutista: args.items.filter((entry) => Boolean(entry.autistaNome)).length,
+      withBadge: args.items.filter((entry) => Boolean(entry.badgeAutista)).length,
+      withKm: args.items.filter((entry) => entry.km !== null).length,
+      withCosto: args.items.filter((entry) => entry.costo !== null).length,
+      withTipo: args.items.filter((entry) => Boolean(entry.tipo)).length,
+      withValuta: args.items.filter((entry) => entry.valuta !== null).length,
+    },
+    reconstructionStats: args.reconstructionStats,
+    datasetShapes: {
+      business: args.businessDatasetShape,
+      field: args.fieldDatasetShape,
+    },
+  };
+}
+
+function buildReadOnlySnapshot(args: {
+  items: NextRifornimentoReadOnlyItem[];
+  businessDatasetShape: NextLegacyDatasetShape;
+  fieldDatasetShape: NextLegacyDatasetShape;
+  reconstructionStats: NextMezzoRifornimentiSnapshot["reconstructionStats"];
+}): NextRifornimentiReadOnlySnapshot {
+  const snapshotBase = buildSnapshotBase(args);
+
+  return {
+    domainCode: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.code,
+    domainName: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.name,
+    logicalDatasets: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.logicalDatasets,
+    activeReadOnlyDataset: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset,
+    supportingReadOnlyDatasets:
+      NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.supportingReadOnlyDatasets,
+    normalizationStrategy: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.normalizationStrategy,
+    outputContract: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.outputContract,
+    datasetShapes: snapshotBase.datasetShapes,
+    items: args.items,
+    counts: snapshotBase.counts,
+    totals: {
+      litri: args.items.reduce((sum, entry) => sum + (entry.litri ?? 0), 0),
+      costo: args.items.reduce((sum, entry) => sum + (entry.costo ?? 0), 0),
+    },
+    reconstructionStats: snapshotBase.reconstructionStats,
+    trustModel: {
+      source: buildSourceTrustModel({
+        items: args.items,
+        datasetShapes: snapshotBase.datasetShapes,
+        reconstructionStats: args.reconstructionStats,
+      }),
+    },
+    limitations: buildLimitations(snapshotBase),
+  };
+}
+
+async function readNormalizedLegacyRows() {
   const [businessDataset, fieldDataset] = await Promise.all([
     readLegacyDataset(BUSINESS_DATASET_KEY),
     readLegacyDataset(FIELD_DATASET_KEY),
@@ -1205,65 +1271,55 @@ export async function readNextMezzoRifornimentiSnapshot(
         "business"
       );
     })
-    .filter((entry): entry is NextNormalizedLegacyRifornimento => Boolean(entry))
-    .filter((entry) => entry.mezzoTarga === mezzoTarga);
+    .filter((entry): entry is NextNormalizedLegacyRifornimento => Boolean(entry));
 
   const fieldRows = fieldDataset.items
     .map((entry, index) => {
       if (!entry || typeof entry !== "object") return null;
       return normalizeLegacyRifornimento(entry as NextRifornimentoRaw, index, "field");
     })
-    .filter((entry): entry is NextNormalizedLegacyRifornimento => Boolean(entry))
-    .filter((entry) => entry.mezzoTarga === mezzoTarga);
-
-  const { items, reconstructionStats } = mergeLegacyDatasets(businessRows, fieldRows);
-
-  const snapshotBase = {
-    counts: {
-      total: items.length,
-      businessOnly: items.filter((entry) => entry.provenienza === "business").length,
-      fieldOnly: items.filter((entry) => entry.provenienza === "campo").length,
-      reconstructed: items.filter((entry) => entry.provenienza === "ricostruito").length,
-      withTimestamp: items.filter((entry) => entry.timestampRicostruito !== null).length,
-      withAutista: items.filter((entry) => Boolean(entry.autistaNome)).length,
-      withBadge: items.filter((entry) => Boolean(entry.badgeAutista)).length,
-      withKm: items.filter((entry) => entry.km !== null).length,
-      withCosto: items.filter((entry) => entry.costo !== null).length,
-      withTipo: items.filter((entry) => Boolean(entry.tipo)).length,
-      withValuta: items.filter((entry) => entry.valuta !== null).length,
-    },
-    reconstructionStats,
-    datasetShapes: {
-      business: businessDataset.datasetShape,
-      field: fieldDataset.datasetShape,
-    },
-  };
+    .filter((entry): entry is NextNormalizedLegacyRifornimento => Boolean(entry));
 
   return {
-    domainCode: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.code,
-    domainName: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.name,
-    mezzoTarga,
-    logicalDatasets: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.logicalDatasets,
-    activeReadOnlyDataset: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.activeReadOnlyDataset,
-    supportingReadOnlyDatasets:
-      NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.supportingReadOnlyDatasets,
-    normalizationStrategy: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.normalizationStrategy,
-    outputContract: NEXT_RIFORNIMENTI_CONSUMI_DOMAIN.outputContract,
-    datasetShapes: snapshotBase.datasetShapes,
+    businessDataset,
+    fieldDataset,
+    businessRows,
+    fieldRows,
+  };
+}
+
+export async function readNextRifornimentiReadOnlySnapshot(): Promise<NextRifornimentiReadOnlySnapshot> {
+  const { businessDataset, fieldDataset, businessRows, fieldRows } =
+    await readNormalizedLegacyRows();
+  const { items, reconstructionStats } = mergeLegacyDatasets(businessRows, fieldRows);
+
+  return buildReadOnlySnapshot({
     items,
-    counts: snapshotBase.counts,
-    totals: {
-      litri: items.reduce((sum, entry) => sum + (entry.litri ?? 0), 0),
-      costo: items.reduce((sum, entry) => sum + (entry.costo ?? 0), 0),
-    },
-    reconstructionStats: snapshotBase.reconstructionStats,
-    trustModel: {
-      source: buildSourceTrustModel({
-        items,
-        datasetShapes: snapshotBase.datasetShapes,
-        reconstructionStats,
-      }),
-    },
-    limitations: buildLimitations(snapshotBase),
+    businessDatasetShape: businessDataset.datasetShape,
+    fieldDatasetShape: fieldDataset.datasetShape,
+    reconstructionStats,
+  });
+}
+
+export async function readNextMezzoRifornimentiSnapshot(
+  targa: string
+): Promise<NextMezzoRifornimentiSnapshot> {
+  const mezzoTarga = normalizeNextMezzoTarga(targa);
+  const { businessDataset, fieldDataset, businessRows, fieldRows } =
+    await readNormalizedLegacyRows();
+  const { items, reconstructionStats } = mergeLegacyDatasets(
+    businessRows.filter((entry) => entry.mezzoTarga === mezzoTarga),
+    fieldRows.filter((entry) => entry.mezzoTarga === mezzoTarga),
+  );
+  const base = buildReadOnlySnapshot({
+    items,
+    businessDatasetShape: businessDataset.datasetShape,
+    fieldDatasetShape: fieldDataset.datasetShape,
+    reconstructionStats,
+  });
+
+  return {
+    ...base,
+    mezzoTarga,
   };
 }
