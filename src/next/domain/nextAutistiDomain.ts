@@ -209,6 +209,11 @@ export type NextAutistiReadOnlySnapshot = {
   limitations: string[];
 };
 
+type ReadNextAutistiReadOnlySnapshotOptions = {
+  includeLocalClone?: boolean;
+  includeStorageOverlay?: boolean;
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -1170,7 +1175,10 @@ export function findNextAutistiAssignmentsByTarga(
 
 export async function readNextAutistiReadOnlySnapshot(
   now = Date.now(),
+  options: ReadNextAutistiReadOnlySnapshotOptions = {},
 ): Promise<NextAutistiReadOnlySnapshot> {
+  const includeLocalClone = options.includeLocalClone !== false;
+  const includeStorageOverlay = options.includeStorageOverlay !== false;
   const [
     sessioniResult,
     eventiResult,
@@ -1187,29 +1195,40 @@ export async function readNextAutistiReadOnlySnapshot(
     readNextUnifiedCollection({ collectionName: AUTISTI_EVENTI_COLLECTION }),
   ]);
 
-  const cloneAutista = readLocalJsonRecord(
-    namespaceNextAutistiStorageKey("@autista_attivo_local"),
-  );
-  const cloneMezzo = readLocalJsonRecord(
-    namespaceNextAutistiStorageKey("@mezzo_attivo_autista_local"),
-  );
-  const cloneSegnalazioni = getNextAutistiCloneSegnalazioni();
-  const cloneControlli = getNextAutistiCloneControlli();
-  const cloneRichieste = getNextAutistiCloneRichiesteAttrezzature();
-  const sessioniRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(SESSIONI_KEY))
-    ? (readNextAutistiStorageOverlay<RawRecord[]>(SESSIONI_KEY) as RawRecord[])
-    : sessioniResult.records;
-  const eventiRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(EVENTI_KEY))
-    ? (readNextAutistiStorageOverlay<RawRecord[]>(EVENTI_KEY) as RawRecord[])
-    : eventiResult.records;
-  const segnalazioniRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(SEGNALAZIONI_KEY))
-    ? (readNextAutistiStorageOverlay<RawRecord[]>(SEGNALAZIONI_KEY) as RawRecord[])
+  const cloneAutista = includeLocalClone
+    ? readLocalJsonRecord(namespaceNextAutistiStorageKey("@autista_attivo_local"))
+    : null;
+  const cloneMezzo = includeLocalClone
+    ? readLocalJsonRecord(namespaceNextAutistiStorageKey("@mezzo_attivo_autista_local"))
+    : null;
+  const cloneSegnalazioni = includeLocalClone ? getNextAutistiCloneSegnalazioni() : [];
+  const cloneControlli = includeLocalClone ? getNextAutistiCloneControlli() : [];
+  const cloneRichieste = includeLocalClone ? getNextAutistiCloneRichiesteAttrezzature() : [];
+  const sessioniOverlay = includeStorageOverlay
+    ? readNextAutistiStorageOverlay<RawRecord[]>(SESSIONI_KEY)
+    : undefined;
+  const eventiOverlay = includeStorageOverlay
+    ? readNextAutistiStorageOverlay<RawRecord[]>(EVENTI_KEY)
+    : undefined;
+  const segnalazioniOverlay = includeStorageOverlay
+    ? readNextAutistiStorageOverlay<RawRecord[]>(SEGNALAZIONI_KEY)
+    : undefined;
+  const controlliOverlay = includeStorageOverlay
+    ? readNextAutistiStorageOverlay<RawRecord[]>(CONTROLLI_KEY)
+    : undefined;
+  const richiesteOverlay = includeStorageOverlay
+    ? readNextAutistiStorageOverlay<RawRecord[]>(RICHIESTE_KEY)
+    : undefined;
+  const sessioniRecords = Array.isArray(sessioniOverlay) ? sessioniOverlay : sessioniResult.records;
+  const eventiRecords = Array.isArray(eventiOverlay) ? eventiOverlay : eventiResult.records;
+  const segnalazioniRecords = Array.isArray(segnalazioniOverlay)
+    ? segnalazioniOverlay
     : segnalazioniResult.records;
-  const controlliRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(CONTROLLI_KEY))
-    ? (readNextAutistiStorageOverlay<RawRecord[]>(CONTROLLI_KEY) as RawRecord[])
+  const controlliRecords = Array.isArray(controlliOverlay)
+    ? controlliOverlay
     : controlliResult.records;
-  const richiesteRecords = Array.isArray(readNextAutistiStorageOverlay<RawRecord[]>(RICHIESTE_KEY))
-    ? (readNextAutistiStorageOverlay<RawRecord[]>(RICHIESTE_KEY) as RawRecord[])
+  const richiesteRecords = Array.isArray(richiesteOverlay)
+    ? richiesteOverlay
     : richiesteResult.records;
 
   const sessionAssignments = sessioniRecords.map((record, index) =>

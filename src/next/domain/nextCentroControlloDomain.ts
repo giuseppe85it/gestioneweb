@@ -10,13 +10,8 @@ import {
 } from "../../utils/alertsState";
 import { formatDateTimeUI, formatDateUI } from "../nextDateFormat";
 import type { HomeEvent } from "../../utils/homeEvents";
-import { getItemSync } from "../autisti/nextAutistiStorageSync";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
-import {
-  applyNextHomeCloneEventiOverlay,
-  applyNextHomeCloneMezziPatches,
-  readNextHomeCloneAlertsState,
-} from "../nextHomeCloneState";
+import { readNextUnifiedStorageDocument } from "./nextUnifiedReadRegistryDomain";
 
 const ALERTS_STATE_KEY = "@alerts_state";
 const MEZZI_KEY = "@mezzi_aziendali";
@@ -1582,7 +1577,7 @@ export function buildNextCentroControlloSnapshot(input: D10BuildInput): D10Snaps
     motriciTrattoriDaMostrare: assetLocations.motriciTrattoriDaMostrare,
     missingMezzi,
     limitations: [
-      "Il clone legge @alerts_state solo in lettura per rispettare ack e snooze gia presenti, senza persistere nuovi stati dal runtime NEXT.",
+      "Il clone legge direttamente i dataset reali della madre in sola lettura, senza overlay locali Home per alert, mezzi o eventi.",
       "Eventi storici e luoghi mezzo derivano da @storico_eventi_operativi: se il feed non contiene luogo o targa, il limite resta esplicito nel layer.",
       "Alert e focus supportati in D10 riguardano revisioni, conflitti sessione, segnalazioni nuove, eventi autisti importanti, controlli KO e mezzi incompleti.",
       "Richieste attrezzature, gomme, rifornimenti e altri feed legacy restano fuori da questo layer per non introdurre aggregazioni non usate oggi dalla Home clone.",
@@ -1598,27 +1593,29 @@ export function buildNextStatoOperativoSnapshot(input: D10BuildInput): D10Snapsh
 export async function readNextCentroControlloSnapshot(
   now: number = Date.now()
 ): Promise<D10Snapshot> {
-  const [alertsStateBase, mezziBase, sessioniRaw, eventiBase, segnalazioniRaw, controlliRaw] =
-    await Promise.all([
-      getItemSync(ALERTS_STATE_KEY),
-      getItemSync(MEZZI_KEY),
-      getItemSync(SESSIONI_KEY),
-      getItemSync(EVENTI_KEY),
-      getItemSync(SEGNALAZIONI_KEY),
-      getItemSync(CONTROLLI_KEY),
-    ]);
-
-  const alertsStateRaw = readNextHomeCloneAlertsState() ?? alertsStateBase;
-  const mezziRaw = applyNextHomeCloneMezziPatches(mezziBase);
-  const eventiRaw = applyNextHomeCloneEventiOverlay(eventiBase);
+  const [
+    alertsStateResult,
+    mezziResult,
+    sessioniResult,
+    eventiResult,
+    segnalazioniResult,
+    controlliResult,
+  ] = await Promise.all([
+    readNextUnifiedStorageDocument({ key: ALERTS_STATE_KEY }),
+    readNextUnifiedStorageDocument({ key: MEZZI_KEY }),
+    readNextUnifiedStorageDocument({ key: SESSIONI_KEY }),
+    readNextUnifiedStorageDocument({ key: EVENTI_KEY }),
+    readNextUnifiedStorageDocument({ key: SEGNALAZIONI_KEY }),
+    readNextUnifiedStorageDocument({ key: CONTROLLI_KEY }),
+  ]);
 
   return buildNextCentroControlloSnapshot({
-    alertsStateRaw,
-    mezziRaw,
-    sessioniRaw,
-    eventiRaw,
-    segnalazioniRaw,
-    controlliRaw,
+    alertsStateRaw: alertsStateResult.rawDocument,
+    mezziRaw: mezziResult.rawDocument,
+    sessioniRaw: sessioniResult.rawDocument,
+    eventiRaw: eventiResult.rawDocument,
+    segnalazioniRaw: segnalazioniResult.rawDocument,
+    controlliRaw: controlliResult.rawDocument,
     now,
   });
 }

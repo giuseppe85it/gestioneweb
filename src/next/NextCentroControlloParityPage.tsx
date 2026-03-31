@@ -26,7 +26,6 @@ import {
   type NextRifornimentoReadOnlyItem,
 } from "./domain/nextRifornimentiDomain";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
-import { formatDateUI } from "./nextDateFormat";
 import "../pages/CentroControllo.css";
 
 type TabKey =
@@ -242,7 +241,11 @@ const shortText = (value: unknown, max = 90): string => {
 };
 
 const formatDateIt = (value: Date | null): string => {
-  return value ? formatDateUI(value) : "-";
+  if (!value) return "--/--/----";
+  const dd = String(value.getDate()).padStart(2, "0");
+  const mm = String(value.getMonth() + 1).padStart(2, "0");
+  const yyyy = value.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 };
 
 const formatNumberIt = (value: number | null, fractionDigits = 2): string => {
@@ -429,7 +432,7 @@ export default function NextCentroControlloParityPage() {
     setLoadingMezzi(true);
     setMezziError(null);
     try {
-      const snapshot = await readNextAnagraficheFlottaSnapshot();
+      const snapshot = await readNextAnagraficheFlottaSnapshot({ includeClonePatches: false });
       const today = new Date();
 
       const mapped = snapshot.items
@@ -526,7 +529,10 @@ export default function NextCentroControlloParityPage() {
     setRichiesteError(null);
 
     try {
-      const snapshot = await readNextAutistiReadOnlySnapshot();
+      const snapshot = await readNextAutistiReadOnlySnapshot(Date.now(), {
+        includeLocalClone: false,
+        includeStorageOverlay: false,
+      });
       setSegnalazioniRows(snapshot.segnalazioniRows.map(mapSegnalazioneRow));
       setControlliRows(snapshot.controlliRows.map(mapControlloRow));
       setRichiesteRows(snapshot.richiesteRows.map(mapRichiestaRow));
@@ -873,7 +879,7 @@ export default function NextCentroControlloParityPage() {
             dataReport: formatDateIt(new Date()),
             items: buildMaintenancePdfItems(),
           }),
-        fileName: `manutenzioni_programmate_${formatDateIt(new Date()).replace(/\s+/g, "-")}.pdf`,
+        fileName: `manutenzioni_programmate_${formatDateIt(new Date()).replace(/\//g, "-")}.pdf`,
         previousUrl: pdfPreviewUrl,
       });
 

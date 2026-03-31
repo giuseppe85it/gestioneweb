@@ -143,6 +143,10 @@ export type NextAnagraficheFlottaSnapshot = {
   limitations: string[];
 };
 
+type ReadNextAnagraficheFlottaSnapshotOptions = {
+  includeClonePatches?: boolean;
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -750,7 +754,10 @@ function buildMezzoFromClonePatch(args: {
   };
 }
 
-export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagraficheFlottaSnapshot> {
+export async function readNextAnagraficheFlottaSnapshot(
+  options: ReadNextAnagraficheFlottaSnapshotOptions = {},
+): Promise<NextAnagraficheFlottaSnapshot> {
+  const includeClonePatches = options.includeClonePatches === true;
   const [mezziSnapshot, colleghiSnapshot] = await Promise.all([
     getDoc(doc(db, STORAGE_COLLECTION, MEZZI_DATASET_KEY)),
     getDoc(doc(db, STORAGE_COLLECTION, COLLEGHI_DATASET_KEY)),
@@ -786,9 +793,8 @@ export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagrafic
       ? count
       : count + 1;
   }, 0);
-  const patchByTarga = new Map(
-    readNextFlottaClonePatches().map((entry) => [normalizeTarga(entry.targa), entry]),
-  );
+  const clonePatches = includeClonePatches ? readNextFlottaClonePatches() : [];
+  const patchByTarga = new Map(clonePatches.map((entry) => [normalizeTarga(entry.targa), entry]));
 
   const baseItems = mezziDataset.items
     .map((entry, index) => {
@@ -804,7 +810,7 @@ export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagrafic
     .filter((entry): entry is NextAnagraficheFlottaMezzoItem => Boolean(entry));
 
   const existingTarghe = new Set(baseItems.map((entry) => entry.targa));
-  const extraCloneItems = readNextFlottaClonePatches()
+  const extraCloneItems = clonePatches
     .filter((entry) => !entry.deleted && !existingTarghe.has(normalizeTarga(entry.targa)))
     .map((patch) =>
       buildMezzoFromClonePatch({
@@ -839,7 +845,9 @@ export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagrafic
       totalColleghi: colleghi.length,
     },
     limitations: [
-      "Il layer flotta legge `@mezzi_aziendali` e `@colleghi` in read-only; gli unici aggiornamenti ammessi restano patch locali del clone su mezzo, foto e libretto.",
+      includeClonePatches
+        ? "Il layer flotta legge `@mezzi_aziendali` e `@colleghi` in read-only; le patch locali restano disponibili solo su richiesta esplicita del chiamante."
+        : "Il layer flotta legge `@mezzi_aziendali` e `@colleghi` in read-only senza applicare patch locali del clone.",
       "Il collegamento collega -> mezzo viene usato solo per risolvere `autistaNome` quando il mezzo espone un `autistaId` leggibile; nessun match debole su nome libero.",
       rawMissingTarga > 0
         ? "Una parte di `@mezzi_aziendali` non espone una targa leggibile ed e stata esclusa dalla flotta clone."
@@ -856,8 +864,8 @@ export async function readNextAnagraficheFlottaSnapshot(): Promise<NextAnagrafic
       items.some((entry) => entry.flags.includes("revisione_non_parseabile"))
         ? "Alcune scadenze revisione restano non parseabili nel formato legacy e non vengono forzate dal layer."
         : null,
-      patchByTarga.size > 0
-        ? `Il clone applica ${patchByTarga.size} patch locali su libretti/foto senza scrivere sulla madre.`
+      includeClonePatches && patchByTarga.size > 0
+        ? `Il chiamante ha richiesto ${patchByTarga.size} patch locali opzionali su libretti/foto senza scrivere sulla madre.`
         : null,
     ].filter((entry): entry is string => Boolean(entry)),
   };

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type { HomeEvent } from "../../utils/homeEvents";
 import {
   generateCambioMezzoPDFBlob,
@@ -114,19 +113,10 @@ function getAutistaLabel(event: HomeEvent, payload: EventPayload | null) {
   return nome || badge || "Autista non indicato";
 }
 
-function getLinkedLavoroIds(payload: EventPayload | null): string[] {
-  if (!payload) return [];
-
-  const ids = new Set<string>();
-  const single = safeText(payload.linkedLavoroId);
-  if (single) ids.add(single);
-
-  asArray(payload.linkedLavoroIds).forEach((entry) => {
-    const normalized = safeText(entry);
-    if (normalized) ids.add(normalized);
-  });
-
-  return Array.from(ids);
+function hasLinkedLavoro(payload: EventPayload | null): boolean {
+  if (!payload) return false;
+  if (safeText(payload.linkedLavoroId)) return true;
+  return asArray(payload.linkedLavoroIds).some((entry) => Boolean(safeText(entry)));
 }
 
 function getFotoList(payload: EventPayload | null): string[] {
@@ -318,7 +308,6 @@ export default function NextHomeAutistiEventoModal({
   event,
   onClose,
 }: NextHomeAutistiEventoModalProps) {
-  const navigate = useNavigate();
   const [showJson, setShowJson] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
@@ -340,7 +329,6 @@ export default function NextHomeAutistiEventoModal({
   const mezzoRows = useMemo(() => (event ? buildMezzoRows(event, payload) : []), [event, payload]);
   const detailRows = useMemo(() => (event ? buildDetailsRows(event, payload) : []), [event, payload]);
   const fotoList = useMemo(() => getFotoList(payload), [payload]);
-  const linkedLavoroIds = useMemo(() => getLinkedLavoroIds(payload), [payload]);
   const canExportPdf = Boolean(
     event &&
       (event.tipo === "segnalazione" ||
@@ -422,9 +410,19 @@ export default function NextHomeAutistiEventoModal({
     }
   };
 
-  const openCloneLavoroDetail = (lavoroId: string) => {
-    if (!lavoroId) return;
-    navigate(`/next/dettagliolavori/${encodeURIComponent(lavoroId)}`);
+  const showReadOnlyActionBlocked = (message: string) => {
+    window.alert(message);
+  };
+
+  const handleCreateLavoroBlocked = () => {
+    if (hasLinkedLavoro(payload)) return;
+    showReadOnlyActionBlocked("Creazione lavoro disponibile solo nella madre. Il clone e read-only.");
+  };
+
+  const handleImportDossierBlocked = () => {
+    showReadOnlyActionBlocked(
+      "Importazione in dossier disponibile solo nella madre. Il clone e read-only.",
+    );
   };
 
   const isCambioMezzo = event.tipo === "cambio_mezzo";
@@ -514,19 +512,19 @@ export default function NextHomeAutistiEventoModal({
                   <strong>LAVORO</strong>
                 </div>
                 <div className="aix-row-bot">
-                  {linkedLavoroIds.length === 1 ? (
-                    <button
-                      type="button"
-                      className="aix-create-btn"
-                      onClick={() => openCloneLavoroDetail(linkedLavoroIds[0])}
-                    >
-                      APRI DETTAGLIO CLONE
-                    </button>
-                  ) : linkedLavoroIds.length > 1 ? (
-                    <span>{linkedLavoroIds.length} lavori collegati nel gestionale.</span>
-                  ) : (
-                    <span>Creazione lavoro non disponibile nel clone read-only.</span>
-                  )}
+                  <button
+                    type="button"
+                    className="aix-create-btn"
+                    disabled={hasLinkedLavoro(payload)}
+                    title={
+                      hasLinkedLavoro(payload)
+                        ? undefined
+                        : "Clone read-only: creazione disponibile solo nella madre"
+                    }
+                    onClick={handleCreateLavoroBlocked}
+                  >
+                    {hasLinkedLavoro(payload) ? "GIÀ CREATO" : "CREA LAVORO"}
+                  </button>
                 </div>
               </div>
             ) : null}
@@ -550,7 +548,14 @@ export default function NextHomeAutistiEventoModal({
                   <strong>DOSSIER</strong>
                 </div>
                 <div className="aix-row-bot">
-                  <span>Importazione in dossier non disponibile nel clone read-only.</span>
+                  <button
+                    type="button"
+                    className="aix-create-btn"
+                    title="Clone read-only: importazione disponibile solo nella madre"
+                    onClick={handleImportDossierBlocked}
+                  >
+                    IMPORTA IN DOSSIER
+                  </button>
                 </div>
               </div>
             ) : null}

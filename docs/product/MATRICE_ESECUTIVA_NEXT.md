@@ -1,5 +1,37 @@
 # MATRICE ESECUTIVA NEXT
 
+## Avvertenza critica audit generale 2026-03-30
+- L'audit generale totale `docs/audit/AUDIT_GENERALE_TOTALE_NEXT_VS_MADRE.md` e il verdetto piu duro e aggiornato sullo stato reale della NEXT.
+- Esito netto:
+  - `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`
+  - la maggioranza del perimetro target non puo essere considerata `CHIUSO`
+  - l'assenza di mount runtime madre sulle route ufficiali NON equivale a parity reale con la madre
+- Moduli promossi a `CHIUSO` da questo audit:
+  - `Gestione Operativa`
+  - `IA Home`
+  - `IA API Key`
+- Moduli critici confermati `APERTO`:
+  - `Home`
+  - `Mezzi`
+  - `Dossier Mezzo`
+  - `Inventario`
+  - `Materiali consegnati`
+  - `Materiali da ordinare`
+  - `Acquisti / Ordini / Preventivi / Listino`
+  - `Lavori`
+  - `Capo Costi`
+  - `IA Libretto`
+  - `IA Documenti`
+  - `IA Copertura Libretti`
+  - `Cisterna`
+  - `Cisterna IA`
+  - `Cisterna Schede Test`
+  - `Colleghi`
+  - `Fornitori`
+  - `Autisti`
+  - `Autisti Inbox / Admin`
+  - `Manutenzioni`
+
 ## Avvertenza critica 2026-03-30
 - L'audit finale `docs/audit/AUDIT_VERIFICA_FINALE_NEXT_AUTONOMA.md` resta la fonte che ha aperto il backlog reale sul perimetro target.
 - Il prompt 42 ha usato quell'audit come contratto di execution e ha chiuso i gap confermati nel perimetro whitelistato, tracciandoli in `docs/audit/BACKLOG_GAP_AUDIT_FINALE_EXECUTION.md`.
@@ -185,12 +217,14 @@ Scopo: fissare la nuova base esecutiva della NEXT dopo la sospensione della stra
 ## Aggiornamento operativo 2026-03-30 - Chiusura execution di `Home` e `Libretti Export`
 - Fonte esecutiva del run: `docs/audit/BACKLOG_ULTIMI_2_APERTI_EXECUTION.md`.
 - Stato aggiornato degli ultimi 2 moduli rimasti `APERTO`:
-  - `Home` -> `CHIUSO`
+  - `Home` -> `APERTO`
   - `Libretti Export` -> `CHIUSO`
 - Fatti runtime usati come base:
   - `/next` non dipende piu da `NextLegacyStorageBoundary` e usa una modale eventi NEXT clone-safe, senza passare da `storageSync` raw;
   - `/next/libretti-export` replica di nuovo la UI madre a gruppi/carte selezionabili, ma legge e genera PDF sopra il domain NEXT pulito;
   - nessuno dei due moduli monta runtime madre finale e nessuno riapre scritture business reali.
+- Nota specifica:
+  - le suggestioni autista della `Home` sono state riallineate al criterio madre `sessioni + mezzi`; il gap mirato e chiuso nel clone.
 - Limite che resta esplicito:
   - questa sezione chiude gli ultimi 2 moduli aperti come execution;
   - il verdetto finale `NEXT autonoma SI/NO` non viene promosso qui e resta demandato a un audit separato.
@@ -198,8 +232,8 @@ Scopo: fissare la nuova base esecutiva della NEXT dopo la sospensione della stra
 ## Aggiornamento operativo 2026-03-30 - Audit finale conclusivo del perimetro target
 - Fonte audit: `docs/audit/AUDIT_FINALE_CONCLUSIVO_NEXT_AUTONOMA.md`.
 - Stato aggiornato del perimetro target dopo la verifica codice reale:
-  - `CHIUSO`: Home, Centro di Controllo, Mezzi, Dossier Lista, Dossier Mezzo, Dossier Gomme, Dossier Rifornimenti, Gestione Operativa, Inventario, Materiali consegnati, Materiali da ordinare, Acquisti / Ordini / Preventivi / Listino, Lavori, Capo Mezzi, Capo Costi, IA Home, IA Libretto, IA Documenti, IA Copertura Libretti, Libretti Export, Cisterna, Cisterna IA, Cisterna Schede Test, Colleghi, Fornitori, Autisti Inbox / Admin.
-  - `APERTO`: IA API Key, Autisti.
+  - `CHIUSO`: Centro di Controllo, Mezzi, Dossier Lista, Dossier Mezzo, Dossier Gomme, Dossier Rifornimenti, Gestione Operativa, Inventario, Materiali consegnati, Materiali da ordinare, Acquisti / Ordini / Preventivi / Listino, Lavori, Capo Mezzi, Capo Costi, IA Home, IA Libretto, IA Documenti, IA Copertura Libretti, Libretti Export, Cisterna, Cisterna IA, Cisterna Schede Test, Colleghi, Fornitori, Autisti Inbox / Admin.
+  - `APERTO`: Home, IA API Key, Autisti.
   - `DA VERIFICARE`: nessuno.
 - Gap reali residui confermati dall'audit:
   - `IA API Key`: il clone mantiene il flusso di lettura ma non ricostruisce il salvataggio della chiave in forma equivalente.
@@ -237,3 +271,108 @@ Scopo: fissare la nuova base esecutiva della NEXT dopo la sospensione della stra
 - Limite che resta esplicito:
   - il controllo live del documento remoto `storage/@manutenzioni` non e eseguibile da CLI nel contesto corrente per `permission-denied`;
   - la parity chiusa in questo run e quindi verificata su codice NEXT, parser, ordinamento, filtri e sweep delle date visibili.
+
+## Aggiornamento operativo 2026-03-30 - Home read-only piu fedele, ma non promossa a chiusa
+- Fonte execution: `docs/audit/BACKLOG_HOME_EXECUTION.md`.
+- Stato modulo:
+  - `Home` -> `APERTO`
+- Fatti verificati nel run:
+  - `/next` continua a usare una pagina NEXT vera;
+  - la `Home` legge ora i dataset reali della madre senza overlay locali Home su alert, mezzi o eventi;
+  - le azioni che scriverebbero nella madre restano bloccate in modo esplicito nel clone;
+  - il pannello extra `D03 autisti`, assente nella madre, e stato rimosso dalla UI della `Home`.
+- Motivo per cui non passa a `CHIUSO`:
+  - il modulo e ora piu vicino a una copia fedele read-only della madre;
+  - i flussi principali che nella madre mutano davvero i dati restano bloccati, quindi la parity esterna utile non e ancora promuovibile a chiusa senza un audit dedicato di riconferma.
+
+## Aggiornamento operativo 2026-03-30 - Audit post execution Home
+- Fonte audit: `docs/audit/AUDIT_HOME_POST_EXECUTION.md`.
+  - Stato modulo:
+    - `Home` -> `APERTO`
+  - Fatti verificati nel codice:
+    - `/next` monta una pagina NEXT vera, non `NextMotherPage`;
+    - la `Home` legge i dataset reali della madre senza overlay clone-only locali;
+    - la UI utile resta fedele alla madre e il pannello extra `D03 autisti` non c'e piu;
+    - le scritture restano bloccate in modo read-only coerente;
+    - le suggestioni autista restano piu ampie della madre perche includono ancora `autistiSnapshot.assignments`.
+  - Conseguenza:
+    - la `Home` resta nel backlog aperto finche il gap di parity sulle suggestioni non viene chiuso.
+
+## Aggiornamento operativo 2026-03-30 - Audit finale separato `Home`
+- Fonte audit finale: `docs/audit/AUDIT_HOME_FINAL.md`.
+- Stato modulo:
+  - `Home` -> `APERTO`
+- Fatti verificati nel codice:
+  - `/next` monta una pagina NEXT vera e non usa runtime finale madre;
+  - la `Home` legge gli stessi dataset reali della madre tramite il layer D10 NEXT;
+  - le suggestioni autista sono allineate al criterio madre `sessioni + mezzi`;
+  - non restano overlay clone-only locali della `Home` su alert, mezzi o eventi;
+  - le scritture reali sono bloccate in modo esplicito e coerente col contratto read-only.
+- Gap residui che tengono il modulo aperto:
+  - il modal eventi autisti NEXT non replica la stessa superficie CTA della madre;
+  - i modali data NEXT non replicano i testi visibili della madre su placeholder e validazione.
+- Conseguenza:
+  - il problema non e piu `DA VERIFICARE`;
+  - il problema e parity visibile incompleta, quindi `APERTO`.
+
+## Aggiornamento operativo 2026-03-30 - Loop `Home` chiuso con audit PASS
+- Fonti del ciclo:
+  - execution: `docs/audit/BACKLOG_home.md`
+  - audit: `docs/audit/AUDIT_home_LOOP.md`
+- Stato modulo nel loop:
+  - `Home` -> `CHIUSO`
+- Fatti verificati nel codice:
+  - `/next` monta una pagina NEXT vera e non usa runtime finale madre;
+  - il modal eventi `Home` riallinea le CTA visibili alla madre (`CREA LAVORO` / `GIÀ CREATO`, `IMPORTA IN DOSSIER`) senza aggiungere superfici clone-only;
+  - i tre modali data riallineano placeholder e validazioni visibili alla madre;
+  - i dati reali letti restano quelli della madre e le scritture reali restano bloccate in modo esplicito.
+- Conseguenza di matrice:
+  - `Home` esce dal backlog aperto del loop corrente;
+  - il loop continua dal prossimo modulo non chiuso nel tracker, senza promozione globale della NEXT.
+
+## Aggiornamento operativo 2026-03-30 - Loop `Centro di Controllo` chiuso con audit PASS
+- Fonti del ciclo:
+  - execution: `docs/audit/BACKLOG_centro-di-controllo.md`
+  - audit: `docs/audit/AUDIT_centro-di-controllo_LOOP.md`
+- Stato modulo nel loop:
+  - `Centro di Controllo` -> `CHIUSO`
+- Fatti verificati nel codice:
+  - la route ufficiale monta `NextCentroControlloParityPage`, non la madre;
+  - il reader autisti usato dal runtime ufficiale non porta piu dati solo locali del clone;
+  - il reader flotta usato dal runtime ufficiale non applica piu patch clone-only;
+  - il formato data visibile torna uguale alla madre.
+- Conseguenza di matrice:
+  - `Centro di Controllo` esce dal backlog non chiuso del loop;
+  - il loop prosegue dal modulo `Mezzi`.
+
+## Aggiornamento operativo 2026-03-30 - Loop fermato su `Mezzi`
+- Fonti del ciclo:
+  - execution: `docs/audit/BACKLOG_mezzi.md`
+  - audit: `docs/audit/AUDIT_mezzi_LOOP.md`
+- Stato modulo nel loop:
+  - `Mezzi` -> `FAIL`
+- Fatti verificati nel codice:
+  - la route ufficiale monta `NextMezziPage`, non la madre;
+  - il runtime ufficiale usa ancora patch locali flotta e cancellazioni clone-only;
+  - la UI ufficiale dichiara esplicitamente salvataggi locali e `IA locale`;
+  - la lettura ufficiale non disattiva le patch clone-only del reader flotta.
+- Conseguenza di matrice:
+  - il loop si ferma su `Mezzi`;
+  - il prossimo run deve ripartire dallo stesso modulo, senza avanzare oltre.
+
+## Aggiornamento operativo 2026-03-31 - Loop `Mezzi` chiuso con audit PASS
+- Fonti del ciclo:
+  - execution: `docs/audit/BACKLOG_mezzi.md`
+  - audit: `docs/audit/AUDIT_mezzi_LOOP.md`
+- Stato modulo nel loop:
+  - `Mezzi` -> `CHIUSO`
+- Fatti verificati nel codice:
+  - la route ufficiale monta `NextMezziPage`, non la madre;
+  - il runtime ufficiale replica la superficie madre del modulo `Mezzi` su foto, blocco `LIBRETTO (IA)`, form completo, CTA visibili e lista per categoria;
+  - il runtime ufficiale legge `@mezzi_aziendali` e `@colleghi` tramite `readNextAnagraficheFlottaSnapshot({ includeClonePatches: false })`, quindi senza overlay clone-only nel modulo ufficiale;
+  - `handleSave()`, `handleDelete()` e `handleAnalyzeLibrettoWithIA()` bloccano le azioni scriventi o side-effect reali con messaggio read-only esplicito;
+  - `nextAnagraficheFlottaDomain` non applica piu patch clone-only per default.
+- Conseguenza di matrice:
+  - `Mezzi` esce dal backlog non chiuso del loop;
+  - il prossimo modulo non `CLOSED` del tracker e `Dossier Lista`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.

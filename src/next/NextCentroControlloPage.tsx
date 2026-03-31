@@ -10,17 +10,8 @@ import {
 import type { HomeEvent } from "../utils/homeEvents";
 import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
 import { formatDateInput, formatDateTimeUI, formatDateUI } from "./nextDateFormat";
-import {
-  applyAlertAction,
-  createEmptyAlertsState,
-  parseAlertsState,
-  type AlertAction,
-} from "../utils/alertsState";
+import type { AlertAction } from "../utils/alertsState";
 import { generateTablePDF } from "../utils/pdfEngine";
-import {
-  readNextAutistiReadOnlySnapshot,
-  type NextAutistiReadOnlySnapshot,
-} from "./domain/nextAutistiDomain";
 import {
   readNextCentroControlloSnapshot,
   type D10MezzoItem,
@@ -56,18 +47,16 @@ import {
   NEXT_ORDINI_ARRIVATI_PATH,
   NEXT_ORDINI_IN_ATTESA_PATH,
 } from "./nextStructuralPaths";
-import {
-  appendNextHomeCloneEvento,
-  readNextHomeCloneAlertsState,
-  upsertNextHomeCloneMezzoPatch,
-  writeNextHomeCloneAlertsState,
-} from "./nextHomeCloneState";
 import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal";
 
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
 const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
 
 const CLONE_ACTION_BLOCKED_TITLE = "Clone in sola lettura: azione non disponibile";
+
+function showReadOnlyActionBlocked(detail: string) {
+  window.alert(`${CLONE_ACTION_BLOCKED_TITLE}\n\n${detail}`);
+}
 
 function resolveCloneSafeRoute(path: string): string | null {
   if (path.startsWith("/next/")) return path;
@@ -428,9 +417,6 @@ function Home() {
   const preCollaudoDatePickerRef = useRef<HTMLInputElement | null>(null);
   const revisioneDatePickerRef = useRef<HTMLInputElement | null>(null);
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
-  const [autistiSnapshot, setAutistiSnapshot] = useState<NextAutistiReadOnlySnapshot | null>(
-    null,
-  );
   const [alertsNow, setAlertsNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -483,13 +469,9 @@ function Home() {
   const [importantEventsOpen, setImportantEventsOpen] = useState(false);
   const location = useLocation();
   const refreshSnapshots = async (now: number = Date.now()) => {
-    const [nextSnapshot, nextAutistiSnapshot] = await Promise.all([
-      readNextCentroControlloSnapshot(now),
-      readNextAutistiReadOnlySnapshot(now),
-    ]);
+    const nextSnapshot = await readNextCentroControlloSnapshot(now);
     setAlertsNow(now);
     setSnapshot(nextSnapshot);
-    setAutistiSnapshot(nextAutistiSnapshot);
   };
 
   useEffect(() => {
@@ -497,14 +479,10 @@ function Home() {
 
     const loadSnapshot = async (now: number) => {
       try {
-        const [nextSnapshot, nextAutistiSnapshot] = await Promise.all([
-          readNextCentroControlloSnapshot(now),
-          readNextAutistiReadOnlySnapshot(now),
-        ]);
+        const nextSnapshot = await readNextCentroControlloSnapshot(now);
         if (!mounted) return;
         setAlertsNow(now);
         setSnapshot(nextSnapshot);
-        setAutistiSnapshot(nextAutistiSnapshot);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -522,14 +500,10 @@ function Home() {
     const refreshSnapshot = async () => {
       try {
         const now = Date.now();
-        const [nextSnapshot, nextAutistiSnapshot] = await Promise.all([
-          readNextCentroControlloSnapshot(now),
-          readNextAutistiReadOnlySnapshot(now),
-        ]);
+        const nextSnapshot = await readNextCentroControlloSnapshot(now);
         if (!active) return;
         setAlertsNow(now);
         setSnapshot(nextSnapshot);
-        setAutistiSnapshot(nextAutistiSnapshot);
       } catch (error) {
         void error;
       }
@@ -544,14 +518,10 @@ function Home() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       const now = Date.now();
-      void Promise.all([
-        readNextCentroControlloSnapshot(now),
-        readNextAutistiReadOnlySnapshot(now),
-      ])
-        .then(([nextSnapshot, nextAutistiSnapshot]) => {
+      void readNextCentroControlloSnapshot(now)
+        .then((nextSnapshot) => {
           setAlertsNow(now);
           setSnapshot(nextSnapshot);
-          setAutistiSnapshot(nextAutistiSnapshot);
         })
         .catch((error) => {
           void error;
@@ -579,9 +549,6 @@ function Home() {
     inScadenza: snapshot?.counters.revisioniInScadenza ?? 0,
   };
   const sessioniAttive = sessioni;
-  const autistiBoundarySummary = autistiSnapshot
-    ? `Sessioni ${autistiSnapshot.counts.activeSessions} | Segnali ${autistiSnapshot.counts.attentionSignalsMother + autistiSnapshot.counts.attentionSignalsLocal}`
-    : "Flusso autisti in caricamento";
 
   const handleAutistaSearch = () => {
     const params = new URLSearchParams();
@@ -628,38 +595,17 @@ function Home() {
     setRimorchioEdit(null);
   };
 
-  const saveRimorchioEdit = async () => {
+  const saveRimorchioEdit = () => {
     if (!rimorchioEdit) return;
 
     const luogoValue = sanitizeBookingText(rimorchioEdit.luogo);
-    const assetto = mezzoByTarga.get(fmtTarga(rimorchioEdit.targa));
-
-    appendNextHomeCloneEvento({
-      id: `next-home:${rimorchioEdit.targa}:${Date.now()}`,
-      tipo: "CAMBIO_ASSETTO",
-      timestamp: Date.now(),
-      badgeAutista: "ADMIN",
-      autistaNome: "UFFICIO",
-      luogo: luogoValue || null,
-      prima: {
-        targaRimorchio: rimorchioEdit.targa,
-        rimorchio: rimorchioEdit.targa,
-        targaMotrice: null,
-        motrice: null,
-        targaCamion: null,
-      },
-      dopo: {
-        targaRimorchio: rimorchioEdit.targa,
-        rimorchio: rimorchioEdit.targa,
-        targaMotrice: assetto?.targa ?? null,
-        motrice: assetto?.targa ?? null,
-        targaCamion: assetto?.targa ?? null,
-      },
-      source: "NextHomePage",
-    });
-
-    setRimorchioEdit(null);
-    await refreshSnapshots();
+    if (!luogoValue) {
+      window.alert("Inserisci il luogo del rimorchio.");
+      return;
+    }
+    showReadOnlyActionBlocked(
+      "L'aggiornamento del luogo rimorchio e disponibile solo nella madre.",
+    );
   };
 
   const closePrenotazioneModal = () => {
@@ -714,24 +660,6 @@ function Home() {
     setPrenotazioneModalOpen(true);
   };
 
-  const persistPrenotazioneCollaudo = (
-    targa: string,
-    prenotazione: PrenotazioneCollaudo | null
-  ) => {
-    const key = fmtTarga(targa);
-    if (!key) return;
-
-    upsertNextHomeCloneMezzoPatch(
-      {
-        id: mezzoByTarga.get(key)?.id,
-        targa: key,
-      },
-      {
-        prenotazioneCollaudo: prenotazione,
-      }
-    );
-  };
-
   const handlePrenotazioneSave = () => {
     if (!prenotazioneTargetTarga) return;
     const data = prenotazioneForm.data.trim();
@@ -740,7 +668,7 @@ function Home() {
       return;
     }
     if (!parseDateFlexible(data)) {
-      window.alert("Data non valida. Usa formato gg mm aaaa.");
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
       return;
     }
 
@@ -755,22 +683,9 @@ function Home() {
       return;
     }
 
-    const luogo = prenotazioneForm.luogo.trim();
-    const note = prenotazioneForm.note.trim();
-    const next: PrenotazioneCollaudo = {
-      data,
-      ora,
-      luogo: luogo || null,
-      note: note || null,
-      esito: null,
-      noteEsito: null,
-      completata: false,
-      completataIl: null,
-    };
-
-    persistPrenotazioneCollaudo(prenotazioneTargetTarga, next);
-    closePrenotazioneModal();
-    void refreshSnapshots();
+    showReadOnlyActionBlocked(
+      "La prenotazione collaudo si puo registrare solo nella madre.",
+    );
   };
 
   const handlePreCollaudoSave = () => {
@@ -781,7 +696,7 @@ function Home() {
       return;
     }
     if (!parseDateFlexible(data)) {
-      window.alert("Data non valida. Usa formato gg mm aaaa.");
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
       return;
     }
 
@@ -791,21 +706,9 @@ function Home() {
       return;
     }
 
-    const key = fmtTarga(preCollaudoTargetTarga);
-    if (!key) return;
-
-    upsertNextHomeCloneMezzoPatch(
-      {
-        id: mezzoByTarga.get(key)?.id,
-        targa: key,
-      },
-      {
-        preCollaudo: { data, officina },
-      }
+    showReadOnlyActionBlocked(
+      "La programmazione del pre-collaudo si puo registrare solo nella madre.",
     );
-
-    closePreCollaudoModal();
-    void refreshSnapshots();
   };
 
   const handleRevisioneSave = () => {
@@ -817,7 +720,7 @@ function Home() {
     }
     const parsedDate = parseDateFlexible(dataRaw);
     if (!parsedDate) {
-      window.alert("Data non valida. Usa formato gg mm aaaa.");
+      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
       return;
     }
     const esito = revisioneForm.esito.trim();
@@ -826,58 +729,10 @@ function Home() {
       return;
     }
 
-    const key = fmtTarga(revisioneTargetTarga);
-    const mezzo = mezzoByTarga.get(key);
-    if (!key || !mezzo) return;
-
-    const revisioneDateValue = formatDateForInput(parsedDate);
-    const revisioneDateLabel = formatDateForDisplay(parsedDate);
-    const scadenzaDate = new Date(parsedDate);
-    scadenzaDate.setHours(12, 0, 0, 0);
-    scadenzaDate.setFullYear(scadenzaDate.getFullYear() + 1);
-    const scadenzaValue = formatDateForInput(scadenzaDate);
-    const noteEsito = revisioneForm.note.trim();
-    const prenotazioneBase: PrenotazioneCollaudo =
-      (mezzo.prenotazioneCollaudo as PrenotazioneCollaudo | null) ?? {
-        data: "",
-        ora: null,
-        luogo: null,
-        note: null,
-        esito: null,
-        noteEsito: null,
-        completata: false,
-        completataIl: null,
-      };
-    const nextPrenotazione: PrenotazioneCollaudo = {
-      ...prenotazioneBase,
-      completata: true,
-      completataIl: revisioneDateValue,
-      esito,
-      ...(noteEsito ? { noteEsito } : {}),
-    };
-
-    let nextNote = mezzo.note;
-    if (noteEsito) {
-      const noteLine = `REVISIONE ${revisioneDateLabel}: ${esito} - ${noteEsito}`;
-      const noteBase = String(mezzo.note ?? "").trim();
-      nextNote = noteBase ? `${noteBase}\n${noteLine}` : noteLine;
-    }
-
-    upsertNextHomeCloneMezzoPatch(
-      {
-        id: mezzo.id,
-        targa: key,
-      },
-      {
-        dataUltimoCollaudo: revisioneDateValue,
-        dataScadenzaRevisione: scadenzaValue,
-        prenotazioneCollaudo: nextPrenotazione,
-        ...(noteEsito ? { note: nextNote } : {}),
-      }
+    void parsedDate;
+    showReadOnlyActionBlocked(
+      "La chiusura della revisione si puo registrare solo nella madre.",
     );
-
-    closeRevisioneModal();
-    void refreshSnapshots();
   };
 
   const openDatePicker = () => {
@@ -941,8 +796,10 @@ function Home() {
     if (!window.confirm("Cancellare la prenotazione collaudo per questo mezzo?")) {
       return;
     }
-    persistPrenotazioneCollaudo(targa, null);
-    void refreshSnapshots();
+    void targa;
+    showReadOnlyActionBlocked(
+      "La cancellazione della prenotazione collaudo e disponibile solo nella madre.",
+    );
   };
 
   const recordQuickLinkUse = (id: string) => {
@@ -1086,21 +943,6 @@ function Home() {
       }
     };
 
-    autistiSnapshot?.assignments.forEach((assignment) => {
-      const priority =
-        assignment.linkReliability === "forte"
-          ? 3
-          : assignment.linkReliability === "prudente"
-            ? 2
-            : 1;
-      addCandidate(
-        assignment.autistaNome,
-        assignment.badgeAutista,
-        assignment.mezzoTarga ?? assignment.targaMotrice ?? assignment.targaRimorchio,
-        priority,
-      );
-    });
-
     sessioni.forEach((s) => {
       addCandidate(
         s.nomeAutista,
@@ -1124,7 +966,7 @@ function Home() {
     });
 
     return Array.from(map.values());
-  }, [autistiSnapshot, sessioni, mezzi]);
+  }, [sessioni, mezzi]);
 
   const nameQueryKey = useMemo(() => normalizeNameKey(nameQuery), [nameQuery]);
 
@@ -1336,10 +1178,14 @@ function Home() {
   };
 
   const handleAlertAction = (alert: D10Snapshot["alerts"][number], action: AlertAction) => {
-    const base = parseAlertsState(readNextHomeCloneAlertsState() ?? createEmptyAlertsState());
-    const next = applyAlertAction(base, alert.id, alert.meta, action, Date.now());
-    writeNextHomeCloneAlertsState(next);
-    void refreshSnapshots();
+    void alert;
+    const actionLabel =
+      action === "ack"
+        ? "marcare l'alert come letto"
+        : action === "snooze_1d"
+          ? "posticipare l'alert di 1 giorno"
+          : "posticipare l'alert di 3 giorni";
+    showReadOnlyActionBlocked(`${actionLabel} e disponibile solo nella madre.`);
   };
 
   const canExportAlerts = !loading && (visibleAlerts.length > 0 || missingAlertVisible);
@@ -1838,28 +1684,6 @@ function Home() {
                     </div>
                   </div>
                   <div className="panel-body home-card__body">
-                    {autistiSnapshot ? (
-                      <div className="panel-row">
-                        <div className="row-main">
-                          <div className="row-title">
-                            <span>D03 autisti</span>
-                            <span className="badge">{autistiSnapshot.operationalStatus.label}</span>
-                          </div>
-                          <div className="row-meta row-meta-stack">
-                            <div className="row-meta-line" style={{ fontSize: "13px" }}>
-                              <span className="label">Agganci forti:</span>{" "}
-                              <strong>{autistiSnapshot.counts.assignmentsStrong}</strong>
-                              {" | "}
-                              <span className="label">prudenziali:</span>{" "}
-                              <strong>{autistiSnapshot.counts.assignmentsPrudent}</strong>
-                            </div>
-                            <div className="row-meta-line" style={{ fontSize: "13px" }}>
-                              <span>{autistiBoundarySummary}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
                     {loading ? (
                       <div className="panel-row panel-row-empty">
                         Caricamento dati...
@@ -2742,7 +2566,7 @@ function Home() {
                     onChange={(e) =>
                       setPrenotazioneForm((prev) => ({ ...prev, data: e.target.value }))
                     }
-                    placeholder="gg mm aaaa"
+                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
                   />
                   <button
                     type="button"
@@ -2853,7 +2677,7 @@ function Home() {
                     onChange={(e) =>
                       setPreCollaudoForm((prev) => ({ ...prev, data: e.target.value }))
                     }
-                    placeholder="gg mm aaaa"
+                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
                   />
                   <button
                     type="button"
@@ -2939,7 +2763,7 @@ function Home() {
                     onChange={(e) =>
                       setRevisioneForm((prev) => ({ ...prev, data: e.target.value }))
                     }
-                    placeholder="gg mm aaaa"
+                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
                   />
                   <button
                     type="button"

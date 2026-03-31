@@ -1,5 +1,14 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Nota critica audit generale 2026-03-30
+- Audit generale totale: `docs/audit/AUDIT_GENERALE_TOTALE_NEXT_VS_MADRE.md`.
+- Verdetto corrente verificato nel repo:
+  - `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`
+  - le route ufficiali del perimetro target sono quasi tutte NEXT native, ma questo NON coincide con parity reale verso la madre
+  - molti moduli restano `APERTO` perche espongono ancora flussi `clone-only`, blocchi operativi o parity esterna non dimostrata
+  - i soli moduli promossi a `CHIUSO` da questo audit sono `Gestione Operativa`, `IA Home` e `IA API Key`
+  - `Manutenzioni` resta `APERTO` anche dopo il fix data del prompt 49: la parity operativa con la madre non e dimostrata e il confronto live remoto resta bloccato da `permission-denied`
+
 ## 0. Nota critica audit 2026-03-30
 - Il report `docs/audit/REPORT_FINALE_PROMPT_39_CHIUSURA_ULTIMI_8.md` non e allineato al codice reale del repository.
 - Audit finale di verifica: `docs/audit/AUDIT_VERIFICA_FINALE_NEXT_AUTONOMA.md`.
@@ -2072,7 +2081,7 @@ Serve a:
   - la route continua a leggere da `src/next/domain/nextLibrettiExportDomain.ts` e a generare l'anteprima via `generateNextLibrettiExportPreview()`;
   - il domain non dichiara piu come bloccate condivisione, copia link e WhatsApp, perche la pagina NEXT le supporta davvero.
 - Stato dei moduli ex `APERTO` in questo run:
-  - `Home` -> `CHIUSO`
+  - `Home` -> `APERTO`
   - `Libretti Export` -> `CHIUSO`
 - Limite esplicito:
   - questo run chiude gli ultimi 2 moduli aperti in execution, ma non auto-certifica la NEXT come `autonoma sul perimetro target`; il verdetto resta materia di audit separato.
@@ -2083,8 +2092,10 @@ Serve a:
 - Il perimetro target e stato ri-auditato modulo per modulo dopo i prompt 42-46.
 - Fatti confermati dall'audit:
   - le route ufficiali NEXT del perimetro target non montano `NextMotherPage`, `src/pages/**`, `src/autisti/**` o `src/autistiInbox/**` come runtime finale;
-  - `Home` e `Libretti Export` risultano davvero `CHIUSO` nel codice reale dopo il prompt 46;
+  - `Home` e `Libretti Export` non possono essere letti come chiusi in blocco: `Libretti Export` resta chiuso nel run 46, `Home` viene riaperto dall'audit post execution successivo per un gap di parity ancora presente;
   - il worktree corrente della madre risulta pulito su `src/pages`, `src/autisti`, `src/autistiInbox`.
+- Aggiornamento sul gap Home:
+  - il punto specifico delle suggestioni autista e stato riallineato al criterio madre `sessioni + mezzi`, quindi il delta mirato risulta risolto nel clone.
 - Moduli confermati `CHIUSO`:
   - Home, Centro di Controllo, Mezzi, Dossier Lista, Dossier Mezzo, Dossier Gomme, Dossier Rifornimenti, Gestione Operativa, Inventario, Materiali consegnati, Materiali da ordinare, Acquisti / Ordini / Preventivi / Listino, Lavori, Capo Mezzi, Capo Costi, IA Home, IA Libretto, IA Documenti, IA Copertura Libretti, Libretti Export, Cisterna, Cisterna IA, Cisterna Schede Test, Colleghi, Fornitori, Autisti Inbox / Admin.
 - Moduli confermati `APERTO`:
@@ -2154,3 +2165,110 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 
 ## 7. Stato documento
 - **STATO: CURRENT**
+
+## 5.92 Aggiornamento 2026-03-30 - Audit post execution Home
+- Fonte audit: `docs/audit/AUDIT_HOME_POST_EXECUTION.md`.
+  - Verifica sul codice reale:
+    - `Home` sulla route `/next` monta `src/next/NextHomePage.tsx` e `src/next/NextCentroControlloPage.tsx`, non `NextMotherPage`;
+    - `Home` legge i dataset reali della madre tramite `nextCentroControlloDomain` e `nextAutistiDomain`;
+    - non restano overlay clone-only locali della `Home` su alert, mezzi o eventi;
+    - il pannello extra `D03 autisti`, non presente nella madre, e stato rimosso dalla UI;
+    - resta pero un gap reale di parity nelle suggestioni autista, che in NEXT includono ancora `autistiSnapshot.assignments` oltre a `sessioni` e `mezzi`.
+  - Stato aggiornato del modulo:
+    - `Home` -> `APERTO`
+  - Motivo:
+    - la `Home` e ora molto piu fedele come copia `read-only`, ma non e ancora una replica 1:1 della madre sui suggerimenti autista; il blocco scritture e corretto, la parity esterna completa no.
+
+## 5.93 Aggiornamento 2026-03-30 - Audit finale separato `Home`
+- Fonte audit finale: `docs/audit/AUDIT_HOME_FINAL.md`.
+- Verifica sul codice reale:
+  - la route `/next` monta `src/next/NextHomePage.tsx` -> `src/next/NextCentroControlloPage.tsx`, senza `NextMotherPage` o runtime finale madre;
+  - le suggestioni autista sono ora allineate alla madre e usano solo `sessioni` + `mezzi`;
+  - i dataset letti dalla `Home` NEXT restano quelli reali della madre tramite `nextCentroControlloDomain` e `readNextUnifiedStorageDocument()`;
+  - non risultano overlay clone-only locali della `Home` su alert, mezzi o eventi.
+- Gap reali residui confermati:
+  - `NextHomeAutistiEventoModal.tsx` non replica in modo 1:1 la superficie madre del modal eventi: le CTA scriventi madre vengono sostituite da testo read-only o dal solo bottone `APRI DETTAGLIO CLONE`;
+  - i tre modali data della NEXT non replicano i testi visibili della madre su placeholder e validazione (`gg mm aaaa` vs `gg mm aaaa oppure YYYY-MM-DD`).
+- Stato aggiornato del modulo:
+  - `Home` -> `APERTO`
+- Motivo:
+  - la prova manca solo su parity visibile completa della UI/modali;
+  - non manca la prova del routing, dei dati reali o del blocco scritture.
+
+## 5.91 Aggiornamento 2026-03-30 - Home NEXT riallineata al read-only fedele senza overlay clone-only
+- Fonte execution del run: `docs/audit/BACKLOG_HOME_EXECUTION.md`.
+- Perimetro stretto del task:
+  - `Home` su `/next`
+  - senza toccare `src/pages/Home.tsx`
+  - senza introdurre scritture business reali
+- Riallineamenti applicati:
+  - `src/next/domain/nextCentroControlloDomain.ts` legge ora i dataset reali della madre (`@alerts_state`, `@mezzi_aziendali`, `@autisti_sessione_attive`, `@storico_eventi_operativi`, `@segnalazioni_autisti_tmp`, `@controlli_mezzo_autisti`) direttamente dal reader unificato NEXT, senza riassorbire overlay locali della `Home`;
+  - `src/next/NextCentroControlloPage.tsx` non persiste piu ack alert, prenotazioni collaudo, pre-collaudi, revisioni o luogo rimorchio in stato clone-only locale;
+  - le stesse azioni restano visibili ma sono bloccate in modo esplicito come read-only;
+  - la `Home` non mostra piu il pannello aggiuntivo `D03 autisti`, assente nella madre;
+  - `src/next/domain/nextAutistiDomain.ts` supporta ora una lettura della `Home` senza overlay storage locali e senza segnali clone-only.
+- Stato conseguente del modulo:
+  - `Home` resta `APERTO`
+- Motivo del mancato `CHIUSO`:
+  - la lettura dati e ora piu fedele alla madre e meno clone-only;
+  - i flussi utili che nella madre scrivono davvero restano necessariamente bloccati nel clone read-only, quindi la parity esterna completa non e ancora promuovibile a `CHIUSO`.
+
+## 5.94 Aggiornamento 2026-03-30 - Loop modulo `Home` chiuso con audit PASS
+- Fonte execution: `docs/audit/BACKLOG_home.md`.
+- Fonte audit separato: `docs/audit/AUDIT_home_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next` continua a montare `src/next/NextHomePage.tsx` e `src/next/NextCentroControlloPage.tsx`, senza `NextMotherPage` o runtime finale madre;
+  - `src/next/components/NextHomeAutistiEventoModal.tsx` ripristina la superficie madre delle CTA `CREA LAVORO` / `GIÀ CREATO` e `IMPORTA IN DOSSIER`;
+  - `src/next/NextCentroControlloPage.tsx` ripristina placeholder e validazioni visibili madre nei tre modali data (`gg mm aaaa oppure YYYY-MM-DD`);
+  - la `Home` continua a leggere gli stessi dataset reali della madre tramite `readNextUnifiedStorageDocument()` nel layer `nextCentroControlloDomain`;
+  - le scritture restano bloccate in modo esplicito su alert, luogo rimorchio, prenotazione collaudo, pre-collaudo, revisione, creazione lavoro e import dossier.
+- Stato aggiornato del modulo:
+  - `Home` -> `CHIUSO`
+- Limite esplicito:
+  - questa chiusura vale solo per il modulo `Home` nel loop corrente;
+  - non promuove automaticamente la NEXT a sostituta della madre.
+
+## 5.95 Aggiornamento 2026-03-30 - Loop modulo `Centro di Controllo` chiuso con audit PASS
+- Fonte execution: `docs/audit/BACKLOG_centro-di-controllo.md`.
+- Fonte audit separato: `docs/audit/AUDIT_centro-di-controllo_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/centro-controllo` monta `src/next/NextCentroControlloParityPage.tsx`, non `NextMotherPage`;
+  - il runtime ufficiale non usa piu overlay storage o clone locale del reader autisti;
+  - il runtime ufficiale non usa piu patch clone-only dell'anagrafica flotta;
+  - le date visibili tornano al formato madre `dd/mm/yyyy`;
+  - PDF, tabs, tabelle e filtri restano coerenti con la madre.
+- Stato aggiornato del modulo:
+  - `Centro di Controllo` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Centro di Controllo` nel loop corrente;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.96 Aggiornamento 2026-03-30 - Loop fermato su `Mezzi` con audit FAIL
+- Fonte execution del ciclo: `docs/audit/BACKLOG_mezzi.md`.
+- Fonte audit separato: `docs/audit/AUDIT_mezzi_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/mezzi` monta `src/next/NextMezziPage.tsx`, quindi la route ufficiale e NEXT autonoma;
+  - il runtime ufficiale resta pero un editor clone-local: dichiara salvataggi locali al clone, usa `upsertNextFlottaClonePatch()` / `markNextFlottaCloneDeleted()` e gestisce libretto/foto come stato locale;
+  - la lettura ufficiale usa ancora `readNextAnagraficheFlottaSnapshot()` con patch clone-only abilitate di default.
+- Stato aggiornato del modulo:
+  - `Mezzi` -> `FAIL`
+- Motivo:
+  - il modulo non replica la madre come clone read-only fedele;
+  - il gap e strutturale e non chiudibile onestamente nel budget residuo di questo run.
+
+## 5.97 Aggiornamento 2026-03-31 - Loop modulo `Mezzi` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_mezzi.md`.
+- Fonte audit separato: `docs/audit/AUDIT_mezzi_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/mezzi` continua a montare `src/next/NextMezziPage.tsx`, non `NextMotherPage` o `src/pages/Mezzi.tsx`;
+  - `src/next/NextMezziPage.tsx` replica ora la superficie madre di `Mezzi` su foto, blocco `LIBRETTO (IA)`, form completo, CTA visibili e lista per categoria;
+  - il runtime ufficiale legge i dataset reali della madre tramite `readNextAnagraficheFlottaSnapshot({ includeClonePatches: false })`;
+  - `src/next/nextAnagraficheFlottaDomain.ts` non applica piu patch clone-only per default: il reader resta read-only safe salvo richiesta esplicita del chiamante;
+  - `handleSave()`, `handleDelete()` e `handleAnalyzeLibrettoWithIA()` mantengono la UI madre ma bloccano il comportamento con messaggio read-only esplicito;
+  - il runtime ufficiale non usa piu `upsertNextFlottaClonePatch()` o `markNextFlottaCloneDeleted()`.
+- Stato aggiornato del modulo:
+  - `Mezzi` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Mezzi` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Dossier Lista`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
