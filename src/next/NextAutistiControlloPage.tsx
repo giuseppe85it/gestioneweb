@@ -1,25 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import "../autisti/autisti.css";
 import "../autisti/ControlloMezzo.css";
 import { getAutistaLocal, getMezzoLocal } from "./autisti/nextAutistiSessionStorage";
-import {
-  NEXT_AUTISTI_BASE_PATH,
-  NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,
-} from "./autisti/nextAutistiCloneRuntime";
-import {
-  appendNextAutistiCloneControllo,
-  type NextAutistiCloneTargetControllo,
-} from "./autisti/nextAutistiCloneState";
-
-function genId() {
-  const cryptoApi: Crypto | undefined = globalThis.crypto;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID();
-  }
-
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
+import { NEXT_AUTISTI_BASE_PATH } from "./autisti/nextAutistiCloneRuntime";
+import { type NextAutistiCloneTargetControllo } from "./autisti/nextAutistiCloneState";
 
 export default function NextAutistiControlloPage() {
   const navigate = useNavigate();
@@ -113,24 +100,9 @@ export default function NextAutistiControlloPage() {
       return;
     }
 
-    appendNextAutistiCloneControllo({
-      id: genId(),
-      autistaNome: autista.nome || null,
-      badgeAutista: autista.badge || null,
-      targaCamion: mezzo.targaCamion || null,
-      targaRimorchio: mezzo.targaRimorchio || null,
-      target: targetSelezionato,
-      check,
-      note: note || null,
-      obbligatorio: true,
-      timestamp: Date.now(),
-      source: "next-clone",
-    });
-
-    navigate(
-      `${NEXT_AUTISTI_BASE_PATH}/home?${NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM}=controllo-locale`,
-      { replace: true },
-    );
+    void check;
+    void note;
+    window.alert("Clone NEXT in sola lettura: il controllo mezzo non viene salvato.");
   }
 
   return (

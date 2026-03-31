@@ -72,7 +72,11 @@ export default function NextIAApiKeyPage() {
     } catch (error) {
       console.error("Errore salvataggio API Key Gemini clone:", error);
       setStatus("error");
-      setMessage("Errore nel salvataggio della chiave. Riprova.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Clone read-only: Salva chiave resta visibile come nella madre, ma non aggiorna Firestore.",
+      );
     }
   };
 

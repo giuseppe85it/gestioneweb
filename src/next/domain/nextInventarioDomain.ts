@@ -64,6 +64,10 @@ export type NextInventarioReadOnlyFilter = {
   criticalOnly?: boolean;
 };
 
+export type NextInventarioReadOptions = {
+  includeCloneOverlays?: boolean;
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -190,8 +194,9 @@ function buildLimitations(args: {
   datasetShape: NextLegacyDatasetShape;
   items: NextInventarioReadOnlyItem[];
   skippedRawRecords: number;
+  includeCloneOverlays: boolean;
 }): string[] {
-  const { datasetShape, items, skippedRawRecords } = args;
+  const { datasetShape, items, skippedRawRecords, includeCloneOverlays } = args;
   return [
     datasetShape === "unsupported"
       ? "Il dataset `@inventario` non espone una shape supportata fuori dai formati `array/value/items`."
@@ -206,7 +211,9 @@ function buildLimitations(args: {
       ? "Il fornitore non e valorizzato su tutti gli articoli inventario."
       : null,
     "Nel clone non esiste ancora una scorta minima canonica: i segnali stock sono affidabili solo quando la quantita e zero o negativa.",
-    "Nel clone NEXT sono ammessi solo overlay locali su articolo, foto, quantita e PDF: nessuna variazione inventario viene scritta sulla madre.",
+    includeCloneOverlays
+      ? "Nel clone NEXT sono ammessi solo overlay locali opzionali su articolo, foto, quantita e PDF: nessuna variazione inventario viene scritta sulla madre."
+      : "Questa lettura ufficiale usa solo i dati reali di `@inventario`, senza overlay clone-only.",
   ].filter((entry): entry is string => Boolean(entry));
 }
 
@@ -225,12 +232,17 @@ export function buildNextInventarioReadOnlyView(
   });
 }
 
-export async function readNextInventarioSnapshot(): Promise<NextInventarioSnapshot> {
+export async function readNextInventarioSnapshot(
+  options: NextInventarioReadOptions = {},
+): Promise<NextInventarioSnapshot> {
+  const includeCloneOverlays = options.includeCloneOverlays ?? true;
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, INVENTARIO_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
-  const cloneRecords = readNextInventarioCloneRecords();
-  const deletedIds = new Set(readNextInventarioCloneDeletedIds());
+  const cloneRecords = includeCloneOverlays ? readNextInventarioCloneRecords() : [];
+  const deletedIds = new Set(
+    includeCloneOverlays ? readNextInventarioCloneDeletedIds() : [],
+  );
   const cloneIds = new Set(cloneRecords.map((entry) => entry.id));
   const mergedRawItems = [
     ...rawItems.filter((entry, index) => {
@@ -267,11 +279,16 @@ export async function readNextInventarioSnapshot(): Promise<NextInventarioSnapsh
       withPhoto: items.filter((item) => Boolean(item.fotoUrl)).length,
     },
     limitations: [
-      ...buildLimitations({ datasetShape, items, skippedRawRecords }),
-      cloneRecords.length > 0
+      ...buildLimitations({
+        datasetShape,
+        items,
+        skippedRawRecords,
+        includeCloneOverlays,
+      }),
+      includeCloneOverlays && cloneRecords.length > 0
         ? `Il clone integra ${cloneRecords.length} articoli locali senza scrivere su @inventario nella madre.`
         : null,
-      deletedIds.size > 0
+      includeCloneOverlays && deletedIds.size > 0
         ? `Il clone nasconde ${deletedIds.size} articoli in modo locale senza cancellarli dalla madre.`
         : null,
     ].filter((entry): entry is string => Boolean(entry)),

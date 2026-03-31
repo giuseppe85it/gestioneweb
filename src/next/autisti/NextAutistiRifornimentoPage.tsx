@@ -4,15 +4,10 @@ import "../../autisti/autisti.css";
 import "../../autisti/Rifornimento.css";
 import { getAutistaLocal, getMezzoLocal } from "./nextAutistiSessionStorage";
 import { formatDateTimeUI } from "../nextDateFormat";
+import { NEXT_AUTISTI_BASE_PATH } from "./nextAutistiCloneRuntime";
 import {
-  NEXT_AUTISTI_BASE_PATH,
-  NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,
-} from "./nextAutistiCloneRuntime";
-import {
-  appendNextAutistiCloneRifornimento,
   type NextAutistiCloneMetodoPagamento,
   type NextAutistiClonePaese,
-  type NextAutistiCloneRifornimentoRecord,
   type NextAutistiCloneTipoRifornimento,
 } from "./nextAutistiCloneRifornimenti";
 
@@ -43,15 +38,6 @@ function normalizeMezzoSession(
     : null;
 }
 
-function genId() {
-  const cryptoApi = globalThis.crypto as Crypto | undefined;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID();
-  }
-
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 function parseDecimal(value: string) {
   const normalized = String(value ?? "").replace(",", ".").trim();
   if (!normalized) {
@@ -65,16 +51,6 @@ function parseDecimal(value: string) {
 function formatKm(value: string) {
   const numeric = value.replace(/\D/g, "");
   return numeric.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
-
-function buildHomePathWithNotice(noticeCode: string) {
-  const params = new URLSearchParams();
-  params.set(NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM, noticeCode);
-
-  return {
-    pathname: `${NEXT_AUTISTI_BASE_PATH}/home`,
-    search: `?${params.toString()}`,
-  };
 }
 
 export default function NextAutistiRifornimentoPage() {
@@ -176,34 +152,16 @@ export default function NextAutistiRifornimentoPage() {
     setLoading(true);
     setSaveError(null);
 
-    const record: NextAutistiCloneRifornimentoRecord = {
-      id: genId(),
-      autistaId: autista?.id ? String(autista.id) : null,
-      autistaNome: autista?.nome ? String(autista.nome) : null,
-      badgeAutista: autista?.badge ? String(autista.badge) : null,
-      targaCamion: mezzo?.targaCamion ? String(mezzo.targaCamion).toUpperCase().trim() : null,
-      targaRimorchio: mezzo?.targaRimorchio ? String(mezzo.targaRimorchio).toUpperCase().trim() : null,
-      tipo,
-      metodoPagamento: tipo === "distributore" ? metodo : null,
-      paese: tipo === "distributore" ? paese : null,
-      km: kmValue,
-      litri: litriValue,
-      importo: metodo === "contanti" ? parseDecimal(importo) : null,
-      note: note.trim() ? note.trim() : null,
-      data: Date.now(),
-      flagVerifica: forceConfirm,
-      confermatoAutista: true,
-      source: "next-clone",
-      syncState: "local-only",
-    };
-
-    try {
-      appendNextAutistiCloneRifornimento(record);
-      navigate(buildHomePathWithNotice("rifornimento-locale"), { replace: true });
-    } catch {
-      setSaveError("Errore salvataggio rifornimento nel clone");
-      setLoading(false);
-    }
+    void kmValue;
+    void litriValue;
+    void forceConfirm;
+    void tipo;
+    void metodo;
+    void paese;
+    void importo;
+    void note;
+    setSaveError("Clone NEXT in sola lettura: il rifornimento non viene salvato.");
+    setLoading(false);
   }
 
   function handleSave() {
@@ -219,9 +177,6 @@ export default function NextAutistiRifornimentoPage() {
   return (
     <div className="autisti-container rifornimento-container">
       <h1 className="autisti-title">Rifornimento</h1>
-      <p className="autisti-subtitle">
-        Compilazione clone-safe: il salvataggio resta locale a <code>/next/autisti</code> e non aggiorna la madre.
-      </p>
 
       <div className="rf-section rf-targa-section">
         <div className="rf-targa-label">Targa mezzo</div>
@@ -255,7 +210,7 @@ export default function NextAutistiRifornimentoPage() {
           className="rf-change-mezzo"
           onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/cambio-mezzo`)}
         >
-          Targa errata? Cambia mezzo locale
+          Targa errata? Cambia mezzo
         </button>
       </div>
 
@@ -400,7 +355,7 @@ export default function NextAutistiRifornimentoPage() {
         onClick={handleSave}
         disabled={loading || !targaConfirmed}
       >
-        {loading ? "Salvataggio locale..." : "Salva rifornimento locale"}
+        {loading ? "Salvataggio..." : "Salva rifornimento"}
       </button>
 
       <button

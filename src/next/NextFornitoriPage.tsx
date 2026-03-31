@@ -6,10 +6,6 @@ import {
   readNextFornitoriSnapshot,
   type NextFornitoreReadOnlyItem,
 } from "./domain/nextFornitoriDomain";
-import {
-  markNextFornitoreCloneDeleted,
-  upsertNextFornitoreCloneRecord,
-} from "./nextAnagraficheCloneState";
 
 type Fornitore = {
   id: string;
@@ -38,6 +34,20 @@ function readErrorMessage(error: unknown) {
   return "Errore durante il caricamento dei fornitori.";
 }
 
+const READ_ONLY_NOTICE_STYLE = {
+  background: "#fef3c7",
+  color: "#92400e",
+} as const;
+
+const SUCCESS_NOTICE_STYLE = {
+  background: "#ecfccb",
+  color: "#365314",
+} as const;
+
+function buildReadOnlyMessage(action: string) {
+  return `${action} bloccato: la NEXT e in sola lettura e non salva modifiche sui fornitori.`;
+}
+
 export default function NextFornitoriPage() {
   const navigate = useNavigate();
   const [fornitori, setFornitori] = useState<Fornitore[]>([]);
@@ -59,7 +69,7 @@ export default function NextFornitoriPage() {
       try {
         setLoading(true);
         setError(null);
-        const snapshot = await readNextFornitoriSnapshot();
+        const snapshot = await readNextFornitoriSnapshot({ includeCloneOverlays: false });
         if (cancelled) return;
         setFornitori(snapshot.items.map(mapFornitore));
       } catch (loadError: unknown) {
@@ -92,36 +102,12 @@ export default function NextFornitoriPage() {
   const handleSubmit = () => {
     const normalizedName = nome.trim().toUpperCase();
     if (!normalizedName) return;
-
-    const targetId = editId ?? `next-fornitore:${Date.now()}`;
-    const nextFornitore: Fornitore = {
-      id: targetId,
-      nome: normalizedName,
-      telefono: telefono.trim() || "",
-      badge: badge.trim() || "",
-      codice: codice.trim() || "",
-      descrizione: descrizione.trim() || "",
-    };
-
-    upsertNextFornitoreCloneRecord({
-      id: targetId,
-      nome: nextFornitore.nome,
-      telefono: nextFornitore.telefono || null,
-      badge: nextFornitore.badge || null,
-      codice: nextFornitore.codice || null,
-      descrizione: nextFornitore.descrizione || null,
-      __nextCloneOnly: true,
-      __nextCloneSavedAt: Date.now(),
-    });
-
-    setFornitori((current) => {
-      const next = current.filter((entry) => entry.id !== targetId);
-      return [...next, nextFornitore].sort((left, right) =>
-        left.nome.localeCompare(right.nome, "it", { sensitivity: "base" }),
-      );
-    });
-    setNotice(editId ? "Fornitore aggiornato nel clone NEXT." : "Fornitore aggiunto nel clone NEXT.");
-    resetForm();
+    setError(null);
+    setNotice(
+      buildReadOnlyMessage(
+        editId ? `Salvataggio modifiche per ${normalizedName}` : `Aggiunta fornitore ${normalizedName}`,
+      ),
+    );
   };
 
   const handleEdit = (fornitore: Fornitore) => {
@@ -135,12 +121,9 @@ export default function NextFornitoriPage() {
 
   const handleDelete = (id: string) => {
     if (!window.confirm("Eliminare questo fornitore?")) return;
-    if (editId === id) {
-      resetForm();
-    }
-    markNextFornitoreCloneDeleted(id);
-    setFornitori((current) => current.filter((entry) => entry.id !== id));
-    setNotice("Fornitore eliminato dal clone NEXT.");
+    const target = fornitori.find((entry) => entry.id === id);
+    setError(null);
+    setNotice(buildReadOnlyMessage(`Eliminazione fornitore ${target?.nome ?? id}`));
   };
 
   const esportaPDF = async (fornitore: Fornitore) => {
@@ -176,8 +159,14 @@ export default function NextFornitoriPage() {
         </header>
 
         {error && <div className="forn-error">{error}</div>}
+        <div className="forn-error" style={READ_ONLY_NOTICE_STYLE}>
+          La superficie replica la madre ma le azioni scriventi restano bloccate in sola lettura.
+        </div>
         {notice ? (
-          <div className="forn-error" style={{ background: "#ecfccb", color: "#365314" }}>
+          <div
+            className="forn-error"
+            style={notice.includes("bloccato") ? READ_ONLY_NOTICE_STYLE : SUCCESS_NOTICE_STYLE}
+          >
             {notice}
           </div>
         ) : null}

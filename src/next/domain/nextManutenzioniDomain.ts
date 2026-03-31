@@ -105,6 +105,19 @@ export type NextManutenzioniLegacyDatasetRecord = {
   materiali?: NextManutenzioniLegacyMaterialRecord[];
 };
 
+export type NextManutenzioniMezzoOption = {
+  id: string;
+  targa: string;
+  label: string;
+  categoria: string | null;
+};
+
+export type NextManutenzioniWorkspaceSnapshot = {
+  storico: NextManutenzioniLegacyDatasetRecord[];
+  mezzi: NextManutenzioniMezzoOption[];
+  limitations: string[];
+};
+
 type TipoVoce = "mezzo" | "compressore";
 type SottoTipo = "motrice" | "trattore";
 
@@ -288,6 +301,32 @@ function toLegacyDatasetRecord(
   };
 }
 
+function toMezzoOption(raw: RawRecord, index: number): NextManutenzioniMezzoOption | null {
+  const targa = normalizeNextMezzoTarga(raw.targa) || normalizeText(raw.targa).toUpperCase();
+  if (!targa) return null;
+
+  const marcaModello = normalizeOptionalText(raw.marcaModello);
+  const composedLabel = [normalizeText(raw.marca), normalizeText(raw.modello)]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const labelBase =
+    marcaModello ??
+    (composedLabel || null) ??
+    targa;
+  const categoria =
+    normalizeOptionalText(raw.categoria) ??
+    normalizeOptionalText(raw.tipologia) ??
+    normalizeOptionalText(raw.tipo);
+
+  return {
+    id: normalizeOptionalText(raw.id) ?? `mezzo:${targa}:${index}`,
+    targa,
+    label: labelBase && labelBase !== targa ? `${targa} - ${labelBase}` : targa,
+    categoria,
+  };
+}
+
 function toHistoryItem(
   raw: RawRecord,
   index: number
@@ -430,4 +469,30 @@ export async function readNextManutenzioniLegacyDataset(): Promise<
       if (rightTs !== leftTs) return rightTs - leftTs;
       return right.id.localeCompare(left.id);
     });
+}
+
+export async function readNextManutenzioniWorkspaceSnapshot(): Promise<
+  NextManutenzioniWorkspaceSnapshot
+> {
+  const [storico, mezziRaw] = await Promise.all([
+    readNextManutenzioniLegacyDataset(),
+    readStorageDataset(MEZZI_KEY),
+  ]);
+
+  const mezzi = mezziRaw
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      return toMezzoOption(entry as RawRecord, index);
+    })
+    .filter((entry): entry is NextManutenzioniMezzoOption => Boolean(entry))
+    .sort((left, right) => left.label.localeCompare(right.label, "it", { sensitivity: "base" }));
+
+  return {
+    storico,
+    mezzi,
+    limitations: [
+      "Lo storico manutenzioni usa solo `@manutenzioni` reale e le opzioni mezzo leggono `@mezzi_aziendali` reale.",
+      "Inventario, movimenti materiali, PDF e salvataggi restano fuori dal domain e vanno mantenuti read-only nel runtime ufficiale.",
+    ],
+  };
 }

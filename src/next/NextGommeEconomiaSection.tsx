@@ -15,9 +15,17 @@ import {
   type NextGommeLegacyViewItem,
 } from "./domain/nextManutenzioniGommeDomain";
 
-type Props = { targa: string };
+type DataScope = "legacy_parity" | "extended";
 
-export default function NextGommeEconomiaSection({ targa }: Props) {
+type Props = {
+  targa: string;
+  dataScope?: DataScope;
+};
+
+export default function NextGommeEconomiaSection({
+  targa,
+  dataScope = "extended",
+}: Props) {
   const [sostituzioni, setSostituzioni] = useState<NextGommeLegacyViewItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +43,13 @@ export default function NextGommeEconomiaSection({ targa }: Props) {
       try {
         const snapshot = await readNextMezzoManutenzioniGommeSnapshot(targa);
         if (cancelled) return;
-        setSostituzioni(mapNextGommeItemsToLegacyView(snapshot.gommeItems));
+        const visibleItems =
+          dataScope === "legacy_parity"
+            ? snapshot.gommeItems.filter(
+                (item) => item.sourceOrigin === "manutenzione_derivata",
+              )
+            : snapshot.gommeItems;
+        setSostituzioni(mapNextGommeItemsToLegacyView(visibleItems));
       } catch (error) {
         console.error("Errore caricamento DossierGomme NEXT:", error);
         if (cancelled) return;
@@ -52,7 +66,7 @@ export default function NextGommeEconomiaSection({ targa }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [targa]);
+  }, [dataScope, targa]);
 
   const sorted = [...sostituzioni].sort((a, b) => {
     const [ggA, mmA, yyyyA] = (a.data || "").split(" ");

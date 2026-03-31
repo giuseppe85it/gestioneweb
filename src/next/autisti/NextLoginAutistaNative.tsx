@@ -2,33 +2,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
-import { getItemSync, setItemSync } from "./nextAutistiStorageSync";
-import { getAutistaLocal, getMezzoLocal, saveAutistaLocal } from "./nextAutistiSessionStorage";
-
-const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
-
-type EventoOperativo = {
-  id: string;
-  tipo: string;
-  timestamp: number;
-  badgeAutista?: string;
-  nomeAutista?: string;
-  autistaNome?: string;
-  autista?: string;
-  source?: string;
-};
-
-async function appendEventoOperativo(evt: EventoOperativo) {
-  const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
-  const list: EventoOperativo[] = Array.isArray(raw)
-    ? raw
-    : raw?.value && Array.isArray(raw.value)
-    ? raw.value
-    : [];
-  if (list.some((e) => e?.id === evt.id)) return;
-  list.push(evt);
-  await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
-}
+import { getItemSync } from "./nextAutistiStorageSync";
+import { NEXT_AUTISTI_BASE_PATH } from "./nextAutistiCloneRuntime";
+import {
+  getAutistaLocal,
+  getMezzoLocal,
+  saveAutistaLocal,
+} from "./nextAutistiSessionStorage";
 
 export default function LoginAutista() {
   const navigate = useNavigate();
@@ -37,13 +17,12 @@ export default function LoginAutista() {
   const [errore, setErrore] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ðŸ”’ REDIRECT AUTOMATICO SE GIÃ€ LOGGATO
   useEffect(() => {
     const autista = getAutistaLocal();
     const mezzo = getMezzoLocal();
 
     if (autista && mezzo) {
-      navigate("/autisti/home", { replace: true });
+      navigate(NEXT_AUTISTI_BASE_PATH, { replace: true });
     }
   }, [navigate]);
 
@@ -58,9 +37,9 @@ export default function LoginAutista() {
 
     try {
       const colleghi = (await getItemSync("@colleghi")) || [];
-      const collega = colleghi.find(
-        (c: any) => String(c.badge) === badge.trim()
-      );
+      const collega = Array.isArray(colleghi)
+        ? colleghi.find((item: any) => String(item?.badge ?? "") === badge.trim())
+        : null;
 
       if (!collega) {
         setErrore("Badge non valido");
@@ -68,34 +47,13 @@ export default function LoginAutista() {
         return;
       }
 
-      const autista = {
+      saveAutistaLocal({
         id: collega.id,
         nome: collega.nome,
         badge: badge.trim(),
-      };
+      });
 
-      // ðŸ”¹ SALVATAGGIO PER ADMIN / STORICO
-
-      // ðŸ”¹ SALVATAGGIO LOCALE PER SESSIONE
-      saveAutistaLocal(autista);
-
-      try {
-        const now = Date.now();
-        await appendEventoOperativo({
-          id: `LOGIN_AUTISTA-${autista.badge}-${now}`,
-          tipo: "LOGIN_AUTISTA",
-          timestamp: now,
-          badgeAutista: autista.badge,
-          nomeAutista: autista.nome,
-          autistaNome: autista.nome,
-          autista: autista.nome,
-          source: "AUTISTI",
-        });
-      } catch (err) {
-        console.warn("Login autista: impossibile scrivere evento", err);
-      }
-
-      navigate("/autisti/setup-mezzo");
+      navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo`);
     } catch {
       setErrore("Errore durante il login");
     } finally {
@@ -115,20 +73,15 @@ export default function LoginAutista() {
           type="number"
           placeholder="Inserisci badge"
           value={badge}
-          onChange={(e) => setBadge(e.target.value)}
+          onChange={(event) => setBadge(event.target.value)}
         />
 
-        {errore && <div className="autisti-error">{errore}</div>}
+        {errore ? <div className="autisti-error">{errore}</div> : null}
 
-        <button
-          className="autisti-button"
-          onClick={handleLogin}
-          disabled={loading}
-        >
+        <button className="autisti-button" onClick={handleLogin} disabled={loading}>
           {loading ? "Verifica..." : "ENTRA"}
         </button>
       </div>
     </div>
   );
 }
-

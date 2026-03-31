@@ -20,7 +20,6 @@ import {
   type NextDossierManutenzioneLegacyItem,
   type NextDossierMezzoLegacyViewState,
 } from "./domain/nextDossierMezzoDomain";
-import { hideNextDossierDocument, readNextDossierHiddenDocumentIds } from "./nextDossierCloneState";
 import {
   buildNextAnalisiEconomicaPath,
   buildNextDossierGommePath,
@@ -31,6 +30,9 @@ import {
 } from "./nextStructuralPaths";
 
 type Currency = "EUR" | "CHF" | "UNKNOWN";
+
+const CLONE_READ_ONLY_PREVENTIVO_DELETE_MESSAGE =
+  "Clone read-only: eliminazione preventivo non disponibile.";
 
 function readErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -149,9 +151,8 @@ export default function NextDossierMezzoPage() {
 
   useEffect(() => () => revokePdfPreviewUrl(pdfUrl), [pdfUrl]);
 
-  const hiddenIds = useMemo(() => (targa ? new Set(readNextDossierHiddenDocumentIds(targa)) : new Set<string>()), [targa]);
   const mezzo = legacy?.mezzo ?? null;
-  const docs = useMemo(() => (legacy?.documentiCosti ?? []).filter((item) => !hiddenIds.has(item.id)), [hiddenIds, legacy]);
+  const docs = useMemo(() => legacy?.documentiCosti ?? [], [legacy]);
   const preventivi = useMemo(() => docs.filter((item) => item.tipo === "PREVENTIVO"), [docs]);
   const fatture = useMemo(() => docs.filter((item) => item.tipo === "FATTURA"), [docs]);
   const preventiviTotals = useMemo(() => buildTotals(preventivi), [preventivi]);
@@ -237,13 +238,8 @@ export default function NextDossierMezzoPage() {
     }
   };
 
-  const deleteLocalPreventivo = (item: NextDossierFatturaPreventivoLegacyItem) => {
-    if (!targa) return;
-    if (!window.confirm("Nel clone read-only il documento verra nascosto solo localmente. Continuare?")) return;
-    hideNextDossierDocument(targa, item.id);
-    setLegacy((current) =>
-      current ? { ...current, documentiCosti: current.documentiCosti.filter((entry) => entry.id !== item.id) } : current,
-    );
+  const blockPreventivoDelete = () => {
+    window.alert(CLONE_READ_ONLY_PREVENTIVO_DELETE_MESSAGE);
   };
 
   const openLavoro = (id: string) => navigate(`${NEXT_DETTAGLIO_LAVORI_PATH}/${encodeURIComponent(id)}`);
@@ -279,7 +275,7 @@ export default function NextDossierMezzoPage() {
               <span>{renderAmount(item.importo, resolveCurrency(item))}</span>
               <span>{item.fornitoreLabel || "-"}</span>
               {item.fileUrl ? <button className="dossier-button" type="button" onClick={() => openDocumentPdf(item.fileUrl!, `Anteprima PDF ${kind}`, `${kind}-${item.id}.pdf`)}>Anteprima PDF</button> : null}
-              {kind === "preventivo" ? <button className="dossier-button" type="button" onClick={() => deleteLocalPreventivo(item)}>Elimina</button> : null}
+              {kind === "preventivo" ? <button className="dossier-button" type="button" onClick={blockPreventivoDelete}>Elimina</button> : null}
             </div>
           </li>
         ))}

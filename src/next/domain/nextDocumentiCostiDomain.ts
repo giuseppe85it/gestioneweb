@@ -1336,6 +1336,123 @@ type NextDocumentiCostiSources = {
   readFailures: string[];
 };
 
+export type ReadNextDocumentiCostiSnapshotOptions = {
+  includeCloneDocuments?: boolean;
+};
+
+export type NextIADocumentiArchiveItem = {
+  id: string;
+  sourceKey: string;
+  sourceDocId: string;
+  tipoDocumento: string;
+  categoriaArchivio: string | null;
+  targa: string | null;
+  dataDocumento: string | null;
+  sortTimestamp: number | null;
+  totaleDocumento: string | number | null;
+  fornitore: string | null;
+  fileUrl: string | null;
+  valuta: NextDocumentiCostiCurrency;
+  currency: NextDocumentiCostiCurrency;
+  testo: string | null;
+  imponibile: string | null;
+  ivaImporto: string | null;
+  importoPagamento: string | null;
+  numeroDocumento: string | null;
+  daVerificare: boolean;
+};
+
+export type NextIADocumentiArchiveSnapshot = {
+  domainCode: "D08-IA-DOCUMENTI";
+  domainName: "Archivio documenti IA read-only";
+  logicalDatasets: readonly string[];
+  activeReadOnlyDatasets: readonly string[];
+  items: NextIADocumentiArchiveItem[];
+  counts: {
+    total: number;
+    documentiMezzo: number;
+    documentiMagazzino: number;
+    documentiGenerici: number;
+    withFile: number;
+    withoutFile: number;
+    valutaDaVerificare: number;
+    documentiDaVerificare: number;
+  };
+  limitations: string[];
+};
+
+function resolveArchiveTotalValue(raw: RawRecord): string | number | null {
+  const parsed = extractImportoFromRaw(raw);
+  if (parsed !== null) {
+    return parsed;
+  }
+
+  return (
+    normalizeOptionalText(raw.totaleDocumento) ??
+    normalizeOptionalText(raw.importo) ??
+    normalizeOptionalText(raw.totale) ??
+    normalizeOptionalText(raw.importoTotale) ??
+    normalizeOptionalText(raw.importoTotaleDocumento) ??
+    null
+  );
+}
+
+function mapIADocumentiArchiveRecord(args: {
+  raw: RawRecord;
+  collectionKey: string;
+  sourceDocId: string;
+}): NextIADocumentiArchiveItem {
+  const { raw, collectionKey, sourceDocId } = args;
+  const dateFields = resolveDateFields({
+    primary: raw.dataDocumento,
+    fallbacks: [raw.createdAt, raw.updatedAt],
+  });
+  const tipoDocumento = normalizeTipoDocumento(raw.tipoDocumento) || "DOCUMENTO";
+  const currency = resolveCurrencyFromRecord(raw);
+
+  return {
+    id: `${collectionKey}:${sourceDocId}`,
+    sourceKey: collectionKey,
+    sourceDocId,
+    tipoDocumento,
+    categoriaArchivio: normalizeOptionalText(raw.categoriaArchivio),
+    targa: normalizeOptionalText(raw.targa ?? raw.mezzoTarga),
+    dataDocumento: dateFields.dateLabel,
+    sortTimestamp: dateFields.sortTimestamp,
+    totaleDocumento: resolveArchiveTotalValue(raw),
+    fornitore: normalizeOptionalText(raw.fornitore),
+    fileUrl: normalizeOptionalText(raw.fileUrl),
+    valuta: currency,
+    currency,
+    testo: normalizeOptionalText(raw.testo),
+    imponibile: normalizeOptionalText(raw.imponibile),
+    ivaImporto: normalizeOptionalText(raw.ivaImporto),
+    importoPagamento: normalizeOptionalText(raw.importoPagamento),
+    numeroDocumento: normalizeOptionalText(raw.numeroDocumento ?? raw.nomeFile),
+    daVerificare:
+      raw.daVerificare === true || Boolean(normalizeOptionalText(raw.motivoVerifica)),
+  };
+}
+
+function sortIADocumentiArchiveItems(items: NextIADocumentiArchiveItem[]): NextIADocumentiArchiveItem[] {
+  return [...items].sort((left, right) => {
+    const timestampOrder = (right.sortTimestamp ?? -1) - (left.sortTimestamp ?? -1);
+    if (timestampOrder !== 0) return timestampOrder;
+
+    const dateOrder = (right.dataDocumento ?? "").localeCompare(left.dataDocumento ?? "", "it", {
+      sensitivity: "base",
+    });
+    if (dateOrder !== 0) return dateOrder;
+
+    const typeOrder = left.tipoDocumento.localeCompare(right.tipoDocumento, "it", {
+      sensitivity: "base",
+    });
+    if (typeOrder !== 0) return typeOrder;
+
+    return left.id.localeCompare(right.id, "it", { sensitivity: "base" });
+  });
+}
+
 function mapCloneDocumentoToRaw(
   record: ReturnType<typeof readNextInternalAiCloneDocumenti>[number],
 ): RawRecord {
@@ -1369,7 +1486,10 @@ function mapCloneDocumentoToRaw(
   };
 }
 
-async function readDocumentiCostiSources(): Promise<NextDocumentiCostiSources> {
+async function readDocumentiCostiSources(
+  options: ReadNextDocumentiCostiSnapshotOptions = {},
+): Promise<NextDocumentiCostiSources> {
+  const includeCloneDocuments = options.includeCloneDocuments !== false;
   const [costiResult, ...documentResults] = await Promise.allSettled([
     readCostiMezzoDataset(),
     ...DOCUMENTI_COLLECTION_KEYS.map((collectionKey) => getDocs(collection(db, collectionKey))),
@@ -1394,7 +1514,7 @@ async function readDocumentiCostiSources(): Promise<NextDocumentiCostiSources> {
   return {
     costiDataset,
     documentSnapshots,
-    cloneDocuments: readNextInternalAiCloneDocumenti(),
+    cloneDocuments: includeCloneDocuments ? readNextInternalAiCloneDocumenti() : [],
     readFailures,
   };
 }
@@ -1786,6 +1906,72 @@ export async function readNextDocumentiCostiProcurementSupportSnapshot(
   };
 }
 
+export async function readNextIADocumentiArchiveSnapshot(
+  options: ReadNextDocumentiCostiSnapshotOptions = {},
+): Promise<NextIADocumentiArchiveSnapshot> {
+  const includeCloneDocuments = options.includeCloneDocuments !== false;
+  const { documentSnapshots, cloneDocuments, readFailures } = await readDocumentiCostiSources({
+    includeCloneDocuments,
+  });
+
+  const documentItems = documentSnapshots.flatMap((snapshot, index) => {
+    if (!snapshot) return [];
+    const collectionKey = DOCUMENTI_COLLECTION_KEYS[index];
+    return snapshot.docs.map((docSnapshot) =>
+      mapIADocumentiArchiveRecord({
+        raw: (docSnapshot.data() ?? {}) as RawRecord,
+        collectionKey,
+        sourceDocId: docSnapshot.id,
+      }),
+    );
+  });
+
+  const cloneDocumentItems = cloneDocuments.map((record) =>
+    mapIADocumentiArchiveRecord({
+      raw: mapCloneDocumentoToRaw(record),
+      collectionKey: record.collectionKey,
+      sourceDocId: record.id,
+    }),
+  );
+
+  const items = sortIADocumentiArchiveItems([
+    ...documentItems,
+    ...cloneDocumentItems,
+  ]);
+
+  return {
+    domainCode: "D08-IA-DOCUMENTI",
+    domainName: "Archivio documenti IA read-only",
+    logicalDatasets: DOCUMENTI_COLLECTION_KEYS,
+    activeReadOnlyDatasets: DOCUMENTI_COLLECTION_KEYS,
+    items,
+    counts: {
+      total: items.length,
+      documentiMezzo: items.filter((item) => item.sourceKey === "@documenti_mezzi").length,
+      documentiMagazzino: items.filter((item) => item.sourceKey === "@documenti_magazzino").length,
+      documentiGenerici: items.filter((item) => item.sourceKey === "@documenti_generici").length,
+      withFile: items.filter((item) => Boolean(item.fileUrl)).length,
+      withoutFile: items.filter((item) => !item.fileUrl).length,
+      valutaDaVerificare: items.filter((item) => item.valuta === "UNKNOWN").length,
+      documentiDaVerificare: items.filter((item) => item.daVerificare).length,
+    },
+    limitations: [
+      includeCloneDocuments
+        ? "Il chiamante ha scelto di includere i documenti locali opzionali del clone nell'archivio IA."
+        : "L'archivio IA legge solo le collection reali `@documenti_mezzi`, `@documenti_magazzino` e `@documenti_generici`, senza overlay locali del clone.",
+      readFailures.length > 0
+        ? `Lettura parziale: ${readFailures.join(", ")} non e disponibile in questo snapshot.`
+        : null,
+      items.some((item) => item.valuta === "UNKNOWN")
+        ? "Alcuni documenti non espongono una valuta affidabile e restano da verificare."
+        : null,
+      items.some((item) => !item.fileUrl)
+        ? "Una parte dell'archivio non espone ancora un PDF leggibile e resta consultabile solo come metadato."
+        : null,
+    ].filter((entry): entry is string => Boolean(entry)),
+  };
+}
+
 export async function readNextProcurementReadOnlySnapshot(): Promise<NextProcurementReadOnlySnapshot> {
   const [procurement, preventiviResult, approvalsResult, listinoResult] = await Promise.all([
     readNextProcurementSnapshot(),
@@ -1941,8 +2127,11 @@ export async function readNextProcurementReadOnlySnapshot(): Promise<NextProcure
   };
 }
 
-export async function readNextDocumentiCostiFleetSnapshot(): Promise<NextDocumentiCostiFleetSnapshot> {
-  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } = await readDocumentiCostiSources();
+export async function readNextDocumentiCostiFleetSnapshot(
+  options: ReadNextDocumentiCostiSnapshotOptions = {},
+): Promise<NextDocumentiCostiFleetSnapshot> {
+  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } =
+    await readDocumentiCostiSources(options);
   const { items, materialSupportDocuments } = buildAllDocumentiCostiItems({
     costiDataset,
     documentSnapshots,
@@ -2005,10 +2194,12 @@ export async function readNextDocumentiCostiFleetSnapshot(): Promise<NextDocumen
 }
 
 export async function readNextMezzoDocumentiCostiSnapshot(
-  targa: string
+  targa: string,
+  options: ReadNextDocumentiCostiSnapshotOptions = {},
 ): Promise<NextMezzoDocumentiCostiSnapshot> {
   const mezzoTarga = normalizeTarga(targa);
-  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } = await readDocumentiCostiSources();
+  const { costiDataset, documentSnapshots, cloneDocuments, readFailures } =
+    await readDocumentiCostiSources(options);
   const { items: fleetItems, materialSupportDocuments } = buildAllDocumentiCostiItems({
     costiDataset,
     documentSnapshots,

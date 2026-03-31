@@ -95,6 +95,7 @@ export type NextCisternaDocumentItem = {
   dateLabel: string;
   timestamp: number | null;
   tipoDocumento: string | null;
+  numeroDocumento: string | null;
   fornitore: string | null;
   prodotto: string | null;
   litriLabel: string;
@@ -232,6 +233,14 @@ export type NextCisternaSnapshot = {
   derivationNotes: string[];
   blockedActions: string[];
   limitations: string[];
+};
+
+export type ReadNextCisternaSnapshotOptions = {
+  includeCloneOverlays?: boolean;
+};
+
+export type ReadNextCisternaSchedaDetailOptions = {
+  includeCloneOverlays?: boolean;
 };
 
 function normalizeText(value: unknown): string {
@@ -486,6 +495,7 @@ function toArchiveDocumentItem(
     dateLabel: date ? formatDateUI(date) : "-",
     timestamp: date?.getTime() ?? null,
     tipoDocumento: normalizeOptionalText(docItem.tipoDocumento),
+    numeroDocumento: normalizeOptionalText(docItem.numeroDocumento),
     fornitore: normalizeOptionalText(docItem.fornitore),
     prodotto: normalizeOptionalText(docItem.prodotto),
     litriLabel: `${formatLitri(getDocumentoLitri(docItem))} L`,
@@ -495,7 +505,7 @@ function toArchiveDocumentItem(
   };
 }
 
-async function readDocuments(): Promise<CisternaDocumento[]> {
+async function readDocuments(includeCloneOverlays = true): Promise<CisternaDocumento[]> {
   const snapshot = await getDocs(collection(db, CISTERNA_DOCUMENTI_COLLECTION));
   const rows: CisternaDocumento[] = [];
   snapshot.forEach((docSnap) => {
@@ -515,6 +525,10 @@ async function readDocuments(): Promise<CisternaDocumento[]> {
     const rightMs = getDocDate(right)?.getTime() ?? 0;
     return rightMs - leftMs;
   });
+
+  if (!includeCloneOverlays) {
+    return rows;
+  }
 
   const cloneRows = readNextCisternaCloneDocumenti().map((entry) => ({
     id: entry.id,
@@ -556,7 +570,7 @@ async function readRefuels(): Promise<{
   };
 }
 
-async function readSchede(): Promise<CisternaSchedaDoc[]> {
+async function readSchede(includeCloneOverlays = true): Promise<CisternaSchedaDoc[]> {
   const snapshot = await getDocs(collection(db, CISTERNA_SCHEDE_COLLECTION));
   const rows: CisternaSchedaDoc[] = [];
   snapshot.forEach((docSnap) => {
@@ -573,6 +587,10 @@ async function readSchede(): Promise<CisternaSchedaDoc[]> {
     if (rightMs !== leftMs) return rightMs - leftMs;
     return getSchedaTarga(left).localeCompare(getSchedaTarga(right));
   });
+
+  if (!includeCloneOverlays) {
+    return rows;
+  }
 
   const cloneRows = readNextCisternaCloneSchede().map((entry) => ({
     id: entry.id,
@@ -594,7 +612,9 @@ async function readSchede(): Promise<CisternaSchedaDoc[]> {
   });
 }
 
-async function readParametriMensili(): Promise<Map<string, CisternaParametroMensile>> {
+async function readParametriMensili(
+  includeCloneOverlays = true,
+): Promise<Map<string, CisternaParametroMensile>> {
   const snapshot = await getDocs(collection(db, CISTERNA_PARAMETRI_COLLECTION));
   const entries = new Map<string, CisternaParametroMensile>();
   snapshot.forEach((docSnap) => {
@@ -607,6 +627,9 @@ async function readParametriMensili(): Promise<Map<string, CisternaParametroMens
       updatedAt: raw.updatedAt,
     });
   });
+  if (!includeCloneOverlays) {
+    return entries;
+  }
   readNextCisternaCloneParametri().forEach((entry) => {
     entries.set(entry.monthKey, {
       mese: entry.monthKey,
@@ -818,13 +841,15 @@ function buildSchedeMonthItems(
 
 export async function readNextCisternaSchedaDetail(
   schedaId: string,
+  options: ReadNextCisternaSchedaDetailOptions = {},
 ): Promise<NextCisternaSchedaDetail | null> {
   const targetId = normalizeText(schedaId);
   if (!targetId) {
     return null;
   }
 
-  const schede = await readSchede();
+  const includeCloneOverlays = options.includeCloneOverlays ?? true;
+  const schede = await readSchede(includeCloneOverlays);
   const item = schede.find((entry) => entry.id === targetId);
   if (!item) {
     return null;
@@ -1214,13 +1239,15 @@ function buildReportData(args: {
 
 export async function readNextCisternaSnapshot(
   monthInput?: string | null,
+  options: ReadNextCisternaSnapshotOptions = {},
 ): Promise<NextCisternaSnapshot> {
+  const includeCloneOverlays = options.includeCloneOverlays ?? true;
   const requestedMonth = normalizeYearMonth(monthInput) ?? currentMonthKey();
   const [documents, refuelsState, schede, parametri] = await Promise.all([
-    readDocuments(),
+    readDocuments(includeCloneOverlays),
     readRefuels(),
-    readSchede(),
-    readParametriMensili(),
+    readSchede(includeCloneOverlays),
+    readParametriMensili(includeCloneOverlays),
   ]);
 
   const availableMonths = buildAvailableMonths({

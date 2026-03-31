@@ -1,366 +1,857 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import NextClonePageScaffold from "./NextClonePageScaffold";
 import PdfPreviewModal from "../components/PdfPreviewModal";
-import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
+import { generateSmartPDF, generateSmartPDFBlob } from "../utils/pdfEngine";
 import {
-  buildNextMaterialiConsegnatiDestinatariView,
-  readNextMaterialiMovimentiSnapshot,
-  type NextMaterialeMovimentoReadOnlyItem,
-  type NextMaterialiConsegnatiDestinatarioView,
-  type NextMaterialiMovimentiSnapshot,
-} from "./domain/nextMaterialiMovimentiDomain";
+  buildPdfShareText as buildPdfShareMessage,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import {
-  buildNextInventarioReadOnlyView,
   readNextInventarioSnapshot,
-  type NextInventarioSnapshot,
+  type NextInventarioReadOnlyItem,
 } from "./domain/nextInventarioDomain";
 import {
-  appendNextMaterialiMovimentiCloneRecord,
-  markNextMaterialiMovimentiCloneDeleted,
-} from "./nextMaterialiMovimentiCloneState";
-import { upsertNextInventarioCloneRecord } from "./nextInventarioCloneState";
-import { formatEditableDateUI } from "./nextDateFormat";
-import { buildNextDossierPath } from "./nextStructuralPaths";
-import { generateTablePDFBlob } from "../utils/pdfEngine";
-import { openPreview, revokePdfPreviewUrl } from "../utils/pdfPreview";
+  readNextMaterialiMovimentiSnapshot,
+  type NextMaterialeMovimentoReadOnlyItem,
+} from "./domain/nextMaterialiMovimentiDomain";
+import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
+import { NEXT_HOME_PATH } from "./nextStructuralPaths";
 import "../pages/MaterialiConsegnati.css";
 
-type DestinatarioMode = "MEZZO" | "COLLEGA" | "MAGAZZINO";
+type DestinatarioRef = {
+  type: "MEZZO" | "COLLEGA" | "MAGAZZINO";
+  refId: string;
+  label: string;
+};
 
-function readErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message ? error.message : fallback;
+type MaterialeConsegnatoView = {
+  id: string;
+  descrizione: string;
+  quantita: number;
+  unita: string;
+  destinatario: DestinatarioRef;
+  motivo?: string;
+  data: string;
+  fornitore?: string | null;
+};
+
+type InventarioItem = {
+  id: string;
+  descrizione: string;
+  quantita: number | null;
+  unita: string;
+  fornitore?: string | null;
+};
+
+type MezzoBasic = {
+  id: string;
+  targa?: string;
+  nome?: string;
+  descrizione?: string;
+};
+
+type CollegaBasic = {
+  id: string;
+  nome?: string;
+  cognome?: string;
+};
+
+type SuggestionDest = {
+  type: "MEZZO" | "COLLEGA" | "MAGAZZINO";
+  refId: string;
+  label: string;
+  extra?: string;
+};
+
+type SuggestionMat = {
+  id: string;
+  label: string;
+  quantita: number | null;
+  unita: string;
+  fornitore?: string | null;
+};
+
+const READ_ONLY_ADD_MESSAGE =
+  "Clone read-only: registrazione consegna non disponibile.";
+const READ_ONLY_DELETE_MESSAGE =
+  "Clone read-only: eliminazione consegna non disponibile.";
+
+const oggi = () => {
+  const now = new Date();
+  const gg = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyy = now.getFullYear();
+  return `${gg} ${mm} ${yyyy}`;
+};
+
+function formatInventoryQuantity(value: number | null, unit: string): string {
+  if (value === null) return `- ${unit}`;
+  return `${value} ${unit}`;
 }
 
-function createCloneMovementId() {
-  return `next-materiali:${Date.now()}`;
+function mapInventoryItem(item: NextInventarioReadOnlyItem): InventarioItem {
+  return {
+    id: item.id,
+    descrizione: item.descrizione,
+    quantita: item.quantita,
+    unita: item.unita ?? "pz",
+    fornitore: item.fornitore ?? null,
+  };
 }
 
-function formatQuantity(value: number | null, unit: string | null): string {
-  if (value === null) return "-";
-  const normalized = Number.isInteger(value)
-    ? String(value)
-    : value.toLocaleString("it-IT", { maximumFractionDigits: 2 });
-  return unit ? `${normalized} ${unit}` : normalized;
+function resolveDestType(
+  item: NextMaterialeMovimentoReadOnlyItem,
+): DestinatarioRef["type"] {
+  if (item.tipoDestinatario === "MEZZO") return "MEZZO";
+  if (item.tipoDestinatario === "MAGAZZINO") return "MAGAZZINO";
+  return "COLLEGA";
 }
 
-function todayInputValue() {
-  return formatEditableDateUI(new Date());
+function resolveDestLabel(item: NextMaterialeMovimentoReadOnlyItem): string {
+  return (
+    item.destinatario.label ??
+    item.target ??
+    item.destinatario.refId ??
+    (item.tipoDestinatario === "MAGAZZINO" ? "MAGAZZINO" : "DESTINATARIO")
+  );
+}
+
+function mapMovimentoItem(
+  item: NextMaterialeMovimentoReadOnlyItem,
+): MaterialeConsegnatoView {
+  const label = resolveDestLabel(item);
+  return {
+    id: item.id,
+    descrizione: item.descrizione ?? item.materiale ?? "-",
+    quantita: item.quantita ?? 0,
+    unita: item.unita ?? "pz",
+    destinatario: {
+      type: resolveDestType(item),
+      refId: item.destinatario.refId ?? label,
+      label,
+    },
+    motivo: item.motivo ?? "",
+    data: item.data ?? "",
+    fornitore: item.fornitore ?? null,
+  };
 }
 
 export default function NextMaterialiConsegnatiPage() {
   const navigate = useNavigate();
-  const [snapshot, setSnapshot] = useState<NextMaterialiMovimentiSnapshot | null>(null);
-  const [inventorySnapshot, setInventorySnapshot] = useState<NextInventarioSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [selectedInventoryId, setSelectedInventoryId] = useState("");
-  const [deliveryQty, setDeliveryQty] = useState("");
-  const [deliveryDate, setDeliveryDate] = useState(todayInputValue());
-  const [destMode, setDestMode] = useState<DestinatarioMode>("MEZZO");
-  const [destRef, setDestRef] = useState("");
+  const [inventario, setInventario] = useState<InventarioItem[]>([]);
+  const [consegne, setConsegne] = useState<MaterialeConsegnatoView[]>([]);
+  const [mezzi, setMezzi] = useState<MezzoBasic[]>([]);
+  const [colleghi, setColleghi] = useState<CollegaBasic[]>([]);
+  const [destinatarioInput, setDestinatarioInput] = useState("");
+  const [destinatarioObj, setDestinatarioObj] = useState<DestinatarioRef | null>(
+    null,
+  );
+  const [descrizione, setDescrizione] = useState("");
+  const [materialeSelezionato, setMaterialeSelezionato] =
+    useState<InventarioItem | null>(null);
+  const [quantita, setQuantita] = useState("");
+  const [unita, setUnita] = useState("pz");
   const [motivo, setMotivo] = useState("");
-  const [selectedDestId, setSelectedDestId] = useState<string | null>(null);
-  const [pdfOpen, setPdfOpen] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfFileName, setPdfFileName] = useState("materiali-consegnati-clone.pdf");
-  const [mezzi, setMezzi] = useState<Array<{ id: string; targa: string }>>([]);
-  const [colleghi, setColleghi] = useState<Array<{ id: string; label: string }>>([]);
-
-  const load = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [nextSnapshot, nextInventory, anagrafiche] = await Promise.all([
-        readNextMaterialiMovimentiSnapshot(),
-        readNextInventarioSnapshot(),
-        readNextAnagraficheFlottaSnapshot(),
-      ]);
-      setSnapshot(nextSnapshot);
-      setInventorySnapshot(nextInventory);
-      setMezzi(
-        anagrafiche.items.map((item) => ({
-          id: item.id,
-          targa: item.targa,
-        })),
-      );
-      setColleghi(
-        anagrafiche.colleghi.map((item) => ({
-          id: item.id,
-          label: item.nomeCompleto || item.nome,
-        })),
-      );
-    } catch (loadError) {
-      setSnapshot(null);
-      setInventorySnapshot(null);
-      setError(readErrorMessage(loadError, "Impossibile leggere i movimenti materiali."));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [data, setData] = useState(oggi());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedDest, setSelectedDest] = useState<string | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState(
+    "materiali-consegnati.pdf",
+  );
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF");
+  const [pdfShareContext, setPdfShareContext] = useState("Materiali consegnati");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
 
   useEffect(() => {
-    void load();
+    const loadAll = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [inventorySnapshot, materialsSnapshot, anagrafiche] = await Promise.all([
+          readNextInventarioSnapshot({ includeCloneOverlays: false }),
+          readNextMaterialiMovimentiSnapshot({ includeCloneOverlays: false }),
+          readNextAnagraficheFlottaSnapshot(),
+        ]);
+
+        setInventario(inventorySnapshot.items.map(mapInventoryItem));
+        setConsegne(materialsSnapshot.items.map(mapMovimentoItem));
+        setMezzi(
+          anagrafiche.items.map((item) => ({
+            id: item.id,
+            targa: item.targa,
+            nome: item.marcaModello,
+            descrizione: item.categoria,
+          })),
+        );
+        setColleghi(
+          anagrafiche.colleghi.map((item) => ({
+            id: item.id,
+            nome: item.nome,
+            cognome: item.cognome,
+          })),
+        );
+      } catch (error) {
+        console.error("Errore caricamento Materiali consegnati NEXT:", error);
+        setInventario([]);
+        setConsegne([]);
+        setMezzi([]);
+        setColleghi([]);
+        setLoadError("Impossibile leggere i materiali consegnati reali.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadAll();
   }, []);
 
-  useEffect(() => () => revokePdfPreviewUrl(pdfUrl), [pdfUrl]);
-
-  const inventoryItems = useMemo(
-    () => (inventorySnapshot ? buildNextInventarioReadOnlyView(inventorySnapshot) : []),
-    [inventorySnapshot],
-  );
-  const destinatari = useMemo(
-    () => (snapshot ? buildNextMaterialiConsegnatiDestinatariView(snapshot) : []),
-    [snapshot],
-  );
-  const selectedDest = useMemo<NextMaterialiConsegnatiDestinatarioView | null>(
-    () => destinatari.find((entry) => entry.id === selectedDestId) ?? destinatari[0] ?? null,
-    [destinatari, selectedDestId],
+  useEffect(
+    () => () => {
+      revokePdfPreviewUrl(pdfPreviewUrl);
+    },
+    [pdfPreviewUrl],
   );
 
-  const handleSaveMovement = async () => {
-    const inventoryItem = inventoryItems.find((item) => item.id === selectedInventoryId);
-    const parsedQty = Number(String(deliveryQty).replace(",", "."));
-    if (!inventoryItem || !Number.isFinite(parsedQty) || parsedQty <= 0) {
-      setNotice("Seleziona un materiale e una quantita valida prima di salvare.");
-      return;
-    }
+  const destSuggestions: SuggestionDest[] = useMemo(() => {
+    const term = destinatarioInput.trim().toUpperCase();
+    if (!term) return [];
 
-    let destinatario:
-      | { type: DestinatarioMode; refId: string; label: string }
-      | null = null;
-    if (destMode === "MEZZO") {
-      const mezzo = mezzi.find((item) => item.targa === destRef);
-      if (!mezzo) {
-        setNotice("Seleziona una targa valida.");
-        return;
+    const list: SuggestionDest[] = [];
+
+    mezzi.forEach((mezzo) => {
+      const rawLabel = mezzo.targa || mezzo.nome || mezzo.descrizione || "";
+      if (!rawLabel) return;
+      if (rawLabel.toUpperCase().includes(term)) {
+        list.push({
+          type: "MEZZO",
+          refId: mezzo.id,
+          label: rawLabel,
+          extra: "Mezzo",
+        });
       }
-      destinatario = { type: "MEZZO", refId: mezzo.targa, label: mezzo.targa };
-    } else if (destMode === "COLLEGA") {
-      const collega = colleghi.find((item) => item.id === destRef);
-      if (!collega) {
-        setNotice("Seleziona un collega valido.");
-        return;
-      }
-      destinatario = { type: "COLLEGA", refId: collega.id, label: collega.label };
-    } else {
-      destinatario = { type: "MAGAZZINO", refId: "MAGAZZINO", label: "MAGAZZINO" };
-    }
-
-    upsertNextInventarioCloneRecord({
-      id: inventoryItem.id,
-      descrizione: inventoryItem.descrizione,
-      quantita: (inventoryItem.quantita ?? 0) - parsedQty,
-      unita: inventoryItem.unita ?? "pz",
-      fornitore: inventoryItem.fornitore,
-      fotoUrl: inventoryItem.fotoUrl,
-      fotoStoragePath: inventoryItem.fotoStoragePath,
-      __nextCloneOnly: true,
-      __nextCloneSavedAt: Date.now(),
     });
 
-    appendNextMaterialiMovimentiCloneRecord({
-      id: createCloneMovementId(),
-      inventarioRefId: inventoryItem.id,
-      targa: destMode === "MEZZO" ? destinatario.refId : null,
-      mezzoTarga: destMode === "MEZZO" ? destinatario.refId : null,
-      destinatario,
-      descrizione: inventoryItem.descrizione,
-      materialeLabel: inventoryItem.descrizione,
-      quantita: parsedQty,
-      unita: inventoryItem.unita ?? "pz",
-      data: deliveryDate,
-      timestamp: Date.parse(`${deliveryDate}T12:00:00`),
-      fornitore: inventoryItem.fornitore,
-      motivo: motivo.trim() || null,
-      direzione: "OUT",
-      __nextCloneOnly: true,
-      __nextCloneSavedAt: Date.now(),
+    colleghi.forEach((collega) => {
+      const baseName = collega.nome || "";
+      const fullName =
+        collega.cognome && baseName ? `${baseName} ${collega.cognome}` : baseName;
+      const rawLabel = fullName || collega.cognome || "";
+      if (!rawLabel) return;
+      if (rawLabel.toUpperCase().includes(term)) {
+        list.push({
+          type: "COLLEGA",
+          refId: collega.id,
+          label: rawLabel,
+          extra: "Collega",
+        });
+      }
     });
 
-    setNotice("Consegna registrata nel clone e inventario aggiornato localmente.");
-    setDeliveryQty("");
-    setMotivo("");
-    await load();
-  };
-
-  const handleDeleteMovement = async (item: NextMaterialeMovimentoReadOnlyItem) => {
-    if (!window.confirm("Eliminare questa consegna dal clone?")) {
-      return;
-    }
-
-    const inventoryItem =
-      inventoryItems.find((entry) => entry.id === item.inventarioRefId) ??
-      inventoryItems.find((entry) => entry.descrizione === (item.descrizione ?? item.materiale ?? ""));
-
-    if (inventoryItem) {
-      upsertNextInventarioCloneRecord({
-        id: inventoryItem.id,
-        descrizione: inventoryItem.descrizione,
-        quantita: (inventoryItem.quantita ?? 0) + (item.quantita ?? 0),
-        unita: inventoryItem.unita ?? "pz",
-        fornitore: inventoryItem.fornitore,
-        fotoUrl: inventoryItem.fotoUrl,
-        fotoStoragePath: inventoryItem.fotoStoragePath,
-        __nextCloneOnly: true,
-        __nextCloneSavedAt: Date.now(),
+    if ("MAGAZZINO".includes(term)) {
+      list.push({
+        type: "MAGAZZINO",
+        refId: "MAGAZZINO",
+        label: "MAGAZZINO",
+        extra: "Magazzino",
       });
     }
 
-    markNextMaterialiMovimentiCloneDeleted(item.id);
-    setNotice("Consegna rimossa dal clone e quantita ripristinata localmente.");
-    await load();
+    return list.slice(0, 10);
+  }, [colleghi, destinatarioInput, mezzi]);
+
+  const matSuggestions: SuggestionMat[] = useMemo(() => {
+    const term = descrizione.trim().toUpperCase();
+    if (!term) return [];
+
+    return inventario
+      .filter((item) => item.descrizione.toUpperCase().includes(term))
+      .map((item) => ({
+        id: item.id,
+        label: item.descrizione,
+        quantita: item.quantita,
+        unita: item.unita,
+        fornitore: item.fornitore ?? null,
+      }))
+      .slice(0, 10);
+  }, [descrizione, inventario]);
+
+  const destinatari = useMemo(() => {
+    const map = new Map<string, DestinatarioRef>();
+    consegne.forEach((consegna) => {
+      const dest = consegna.destinatario;
+      if (!dest || !dest.refId) return;
+      if (!map.has(dest.refId)) {
+        map.set(dest.refId, dest);
+      }
+    });
+    return Array.from(map.values());
+  }, [consegne]);
+
+  const consegneSelezionate = useMemo(
+    () =>
+      selectedDest
+        ? consegne
+            .filter((consegna) => consegna.destinatario.refId === selectedDest)
+            .sort((left, right) => left.data.localeCompare(right.data))
+        : [],
+    [consegne, selectedDest],
+  );
+
+  const selectedDestLabel = useMemo(() => {
+    if (!selectedDest) return "";
+    const dest = destinatari.find((entry) => entry.refId === selectedDest);
+    return dest?.label || "";
+  }, [destinatari, selectedDest]);
+
+  const handleSelectDestSuggestion = (suggestion: SuggestionDest) => {
+    setDestinatarioObj({
+      type: suggestion.type,
+      refId: suggestion.refId,
+      label: suggestion.label,
+    });
+    setDestinatarioInput(suggestion.label);
   };
 
-  const handlePreviewPdf = async () => {
-    const rows = (selectedDest?.items ?? snapshot?.items ?? []).map((item) => ({
-      data: item.data ?? "-",
-      destinatario: item.destinatario.label ?? item.target ?? "-",
-      descrizione: item.descrizione ?? item.materiale ?? "-",
-      quantita: formatQuantity(item.quantita, item.unita),
-      fornitore: item.fornitore ?? "-",
-    }));
+  const handleSelectMateriale = (suggestion: SuggestionMat) => {
+    const item = inventario.find((entry) => entry.id === suggestion.id);
+    if (!item) return;
+    setMaterialeSelezionato(item);
+    setDescrizione(item.descrizione);
+    setUnita(item.unita);
+  };
 
-    if (rows.length === 0) {
-      setNotice("Nessun movimento da esportare.");
+  const handleResetDestinatario = () => {
+    setDestinatarioObj(null);
+    setDestinatarioInput("");
+  };
+
+  const handleResetMateriale = () => {
+    setMaterialeSelezionato(null);
+    setDescrizione("");
+  };
+
+  const handleAdd = () => {
+    if (!destinatarioObj) {
+      window.alert("Seleziona un destinatario valido dalla lista.");
       return;
     }
 
-    const preview = await openPreview({
-      source: async () =>
-        generateTablePDFBlob(
-          "Materiali consegnati clone",
-          rows,
-          ["data", "destinatario", "descrizione", "quantita", "fornitore"],
-        ),
-      previousUrl: pdfUrl,
-      fileName: "materiali-consegnati-clone.pdf",
+    if (!materialeSelezionato) {
+      window.alert("Seleziona un materiale valido dall'inventario.");
+      return;
+    }
+
+    if (!descrizione.trim() || !quantita.trim()) {
+      window.alert("Compila descrizione e quantita.");
+      return;
+    }
+
+    const parsedQuantity = Number(quantita.replace(",", "."));
+    if (Number.isNaN(parsedQuantity) || parsedQuantity <= 0) {
+      window.alert("La quantita deve essere un numero valido.");
+      return;
+    }
+
+    window.alert(READ_ONLY_ADD_MESSAGE);
+  };
+
+  const handleDeleteConsegna = (id: string) => {
+    const record = consegne.find((entry) => entry.id === id);
+    if (!record) return;
+
+    if (!window.confirm("Vuoi eliminare questa consegna e ripristinare il magazzino?")) {
+      return;
+    }
+
+    window.alert(READ_ONLY_DELETE_MESSAGE);
+  };
+
+  const getTotalePerDestinatario = (destRefId: string) =>
+    consegne
+      .filter((entry) => entry.destinatario.refId === destRefId)
+      .reduce((sum, entry) => sum + entry.quantita, 0);
+
+  const buildPdfPayloadPerDestinatario = (destRefId: string) => {
+    const list = consegne
+      .filter((entry) => entry.destinatario.refId === destRefId)
+      .sort((left, right) => left.data.localeCompare(right.data));
+
+    const destLabel = list[0]?.destinatario.label || "Destinatario";
+    const rows = list.map((entry) => ({
+      data: entry.data,
+      descrizione: entry.descrizione,
+      fornitore: entry.fornitore || "",
+      quantita: String(entry.quantita),
+      unita: entry.unita,
+      motivo: entry.motivo || "",
+    }));
+
+    return {
+      kind: "table" as const,
+      title: `Materiali consegnati a ${destLabel}`,
+      columns: ["data", "descrizione", "fornitore", "quantita", "unita", "motivo"],
+      rows,
+      destLabel,
+    };
+  };
+
+  const buildPdfPayloadGlobale = () => {
+    const rows = consegne
+      .slice()
+      .sort((left, right) => left.data.localeCompare(right.data))
+      .map((entry) => ({
+        data: entry.data,
+        destinatario: entry.destinatario.label,
+        descrizione: entry.descrizione,
+        fornitore: entry.fornitore || "",
+        quantita: String(entry.quantita),
+        unita: entry.unita,
+        motivo: entry.motivo || "",
+      }));
+
+    return {
+      kind: "table" as const,
+      title: "Storico materiali consegnati",
+      columns: [
+        "data",
+        "destinatario",
+        "descrizione",
+        "fornitore",
+        "quantita",
+        "unita",
+        "motivo",
+      ],
+      rows,
+    };
+  };
+
+  const closePdfPreview = () => {
+    setPdfPreviewOpen(false);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
+  };
+
+  const ensurePdfPreviewReady = async (params: {
+    source: () => Promise<{ blob: Blob; fileName: string }>;
+    fileName: string;
+    title: string;
+    contextLabel: string;
+  }) => {
+    try {
+      const preview = await openPreview({
+        source: async () => params.source(),
+        fileName: params.fileName,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewTitle(params.title);
+      setPdfShareContext(params.contextLabel);
+      setPdfPreviewUrl(preview.url);
+      return preview;
+    } catch (error) {
+      console.error("Errore anteprima PDF materiali consegnati NEXT:", error);
+      window.alert("Impossibile generare l'anteprima PDF.");
+      return null;
+    }
+  };
+
+  const buildPreviewShareText = () =>
+    buildPdfShareMessage({
+      contextLabel: pdfShareContext || "Materiali consegnati",
+      fileName: pdfPreviewFileName || "materiali-consegnati.pdf",
+      url: pdfPreviewUrl,
     });
-    revokePdfPreviewUrl(pdfUrl);
-    setPdfUrl(preview.url);
-    setPdfFileName(preview.fileName);
-    setPdfOpen(true);
+
+  const handleSharePDF = async () => {
+    const blob = pdfPreviewBlob;
+    const fileName = pdfPreviewFileName || "materiali-consegnati.pdf";
+
+    if (!blob) {
+      setPdfShareHint("Apri prima un'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob,
+      fileName,
+      title: pdfPreviewTitle || "Anteprima PDF",
+      text: `Condivisione ${fileName}`,
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+    if (result.status === "unsupported") {
+      setPdfShareHint(
+        "Condivisione file non disponibile su questo dispositivo. Usa Copia link o Apri WhatsApp.",
+      );
+      return;
+    }
+    setPdfShareHint("Condivisione non riuscita. Usa Copia link o Apri WhatsApp.");
+  };
+
+  const handleCopyPDFText = async () => {
+    const copied = await copyTextToClipboard(buildPreviewShareText());
+    setPdfShareHint(
+      copied
+        ? "Testo copiato negli appunti."
+        : "Impossibile copiare automaticamente. Copia il testo manualmente.",
+    );
+  };
+
+  const handleOpenWhatsApp = () => {
+    const url = buildWhatsAppShareUrl(buildPreviewShareText());
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const exportPDFPerDestinatario = async (destRefId: string) => {
+    const payload = buildPdfPayloadPerDestinatario(destRefId);
+    if (!payload.rows.length) {
+      window.alert("Nessun materiale consegnato per questo destinatario.");
+      return;
+    }
+    await generateSmartPDF(payload);
+  };
+
+  const previewPDFPerDestinatario = async (destRefId: string) => {
+    const payload = buildPdfPayloadPerDestinatario(destRefId);
+    if (!payload.rows.length) {
+      window.alert("Nessun materiale consegnato per questo destinatario.");
+      return;
+    }
+    const preview = await ensurePdfPreviewReady({
+      source: async () => generateSmartPDFBlob(payload),
+      fileName: `materiali-consegnati-${payload.destLabel || "destinatario"}.pdf`,
+      title: `Anteprima PDF - ${payload.destLabel || "Destinatario"}`,
+      contextLabel: `Materiali consegnati a ${payload.destLabel || "Destinatario"}`,
+    });
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
+  };
+
+  const exportPDFGlobale = async () => {
+    const payload = buildPdfPayloadGlobale();
+    if (!payload.rows.length) {
+      window.alert("Nessun materiale consegnato.");
+      return;
+    }
+    await generateSmartPDF(payload);
+  };
+
+  const previewPDFGlobale = async () => {
+    const payload = buildPdfPayloadGlobale();
+    if (!payload.rows.length) {
+      window.alert("Nessun materiale consegnato.");
+      return;
+    }
+    const preview = await ensurePdfPreviewReady({
+      source: async () => generateSmartPDFBlob(payload),
+      fileName: "storico-materiali-consegnati.pdf",
+      title: "Anteprima PDF storico materiali consegnati",
+      contextLabel: "Storico materiali consegnati",
+    });
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
   };
 
   return (
-    <NextClonePageScaffold
-      eyebrow="Gestione Operativa / Materiali"
-      title="Materiali consegnati"
-      description="Route NEXT nativa per storico consegne, ripristino stock clone e PDF senza riaprire il runtime madre."
-      backTo="/next/gestione-operativa"
-      backLabel="Gestione Operativa"
-      notice={
-        <div style={{ display: "grid", gap: 12 }}>
-          {loading ? (
-            <div className="next-clone-placeholder">Caricamento movimenti materiali...</div>
-          ) : null}
-          {error ? <div className="next-clone-placeholder">{error}</div> : null}
-          {notice ? <div className="next-clone-placeholder">{notice}</div> : null}
-          {snapshot ? (
-            <p style={{ margin: 0 }}>
-              Movimenti letti: {snapshot.counts.total} | Verso mezzo: {snapshot.counts.versoMezzo} |
-              Con data: {snapshot.counts.conData}
-            </p>
-          ) : null}
-        </div>
-      }
-      actions={
-        <button type="button" className="next-clone-header-action" onClick={() => void handlePreviewPdf()}>
-          Scarica PDF
-        </button>
-      }
-    >
-      <div style={{ display: "grid", gap: 16 }}>
-        <div className="mc-form">
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-            <label>
-              Materiale
-              <select value={selectedInventoryId} onChange={(event) => setSelectedInventoryId(event.target.value)}>
-                <option value="">Seleziona materiale</option>
-                {inventoryItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.descrizione} ({formatQuantity(item.quantita, item.unita)})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Quantita
-              <input value={deliveryQty} onChange={(event) => setDeliveryQty(event.target.value)} type="number" />
-            </label>
-            <label>
-              Data
-              <input value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} type="text" placeholder="gg mm aaaa" />
-            </label>
-            <label>
-              Destinatario
-              <select value={destMode} onChange={(event) => setDestMode(event.target.value as DestinatarioMode)}>
-                <option value="MEZZO">Mezzo</option>
-                <option value="COLLEGA">Collega</option>
-                <option value="MAGAZZINO">Magazzino</option>
-              </select>
-            </label>
-            {destMode === "MEZZO" ? (
-              <label>
-                Targa
-                <select value={destRef} onChange={(event) => setDestRef(event.target.value)}>
-                  <option value="">Seleziona targa</option>
-                  {mezzi.map((item) => (
-                    <option key={item.id} value={item.targa}>
-                      {item.targa}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            {destMode === "COLLEGA" ? (
-              <label>
-                Collega
-                <select value={destRef} onChange={(event) => setDestRef(event.target.value)}>
-                  <option value="">Seleziona collega</option>
-                  {colleghi.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <label style={{ gridColumn: "1 / -1" }}>
-              Motivo
-              <input value={motivo} onChange={(event) => setMotivo(event.target.value)} />
-            </label>
+    <div className="mc-page">
+      <div className="mc-card">
+        <div className="mc-header">
+          <div className="mc-logo-title">
+            <img
+              src="/logo.png"
+              alt="logo"
+              className="mc-logo"
+              onClick={() => navigate(NEXT_HOME_PATH)}
+            />
+            <div>
+              <h1 className="mc-title">Materiali consegnati</h1>
+              <p className="mc-subtitle">
+                Movimentazioni in uscita da magazzino (colleghi / mezzi)
+              </p>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-            <button className="mc-add-btn" type="button" onClick={() => void handleSaveMovement()}>
-              Registra consegna
-            </button>
-            <button className="mc-pdf-global-btn" type="button" onClick={() => void handlePreviewPdf()}>
+
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              className="mc-pdf-global-btn"
+              type="button"
+              onClick={() => void previewPDFGlobale()}
+              style={{ background: "#2d6a4f", color: "#fdfaf4" }}
+            >
               Anteprima PDF
+            </button>
+            <button
+              className="mc-pdf-global-btn"
+              type="button"
+              onClick={() => void exportPDFGlobale()}
+            >
+              Scarica PDF
             </button>
           </div>
         </div>
 
+        <div className="mc-form">
+          <label className="mc-label">
+            Destinatario (mezzo / collega / MAGAZZINO)
+            <input
+              type="text"
+              className="mc-input"
+              value={destinatarioInput}
+              readOnly={Boolean(destinatarioObj)}
+              onChange={(event) => {
+                setDestinatarioInput(event.target.value);
+                setDestinatarioObj(null);
+              }}
+              placeholder="Es. MARIO ROSSI / TI 315407 / MAGAZZINO"
+            />
+          </label>
+
+          {destinatarioObj ? (
+            <button
+              type="button"
+              className="mc-add-btn"
+              style={{
+                marginTop: "4px",
+                marginBottom: "8px",
+                padding: "4px 10px",
+                fontSize: "0.8rem",
+              }}
+              onClick={handleResetDestinatario}
+            >
+              Cambia destinatario
+            </button>
+          ) : null}
+
+          {!destinatarioObj &&
+          destinatarioInput.trim().length > 0 &&
+          destSuggestions.length > 0 ? (
+            <div
+              style={{
+                backgroundColor: "#f8f4e8",
+                border: "1px solid #d0c7b8",
+                borderRadius: "8px",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                marginBottom: "12px",
+                maxHeight: "220px",
+                overflowY: "auto",
+              }}
+            >
+              {destSuggestions.map((suggestion) => (
+                <button
+                  key={`${suggestion.type}-${suggestion.refId}`}
+                  type="button"
+                  onClick={() => handleSelectDestSuggestion(suggestion)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 12px",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                  }}
+                  onMouseOver={(event) => {
+                    event.currentTarget.style.backgroundColor = "#e9dfcf";
+                  }}
+                  onMouseOut={(event) => {
+                    event.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{suggestion.label}</div>
+                  {suggestion.extra ? (
+                    <div style={{ fontSize: "0.8rem", opacity: 0.7 }}>
+                      {suggestion.extra}
+                    </div>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <label className="mc-label">
+            Descrizione materiale
+            <input
+              type="text"
+              className="mc-input"
+              value={descrizione}
+              readOnly={Boolean(materialeSelezionato)}
+              onChange={(event) => {
+                setDescrizione(event.target.value);
+                setMaterialeSelezionato(null);
+              }}
+              placeholder="Es. TUBO 40MM"
+            />
+          </label>
+
+          {materialeSelezionato ? (
+            <button
+              type="button"
+              className="mc-add-btn"
+              style={{
+                marginTop: "4px",
+                marginBottom: "8px",
+                padding: "4px 10px",
+                fontSize: "0.8rem",
+              }}
+              onClick={handleResetMateriale}
+            >
+              Cambia materiale
+            </button>
+          ) : null}
+
+          {!materialeSelezionato &&
+          descrizione.trim().length > 0 &&
+          matSuggestions.length > 0 ? (
+            <div
+              style={{
+                backgroundColor: "#f8f4e8",
+                border: "1px solid #d0c7b8",
+                borderRadius: "8px",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                marginBottom: "12px",
+                maxHeight: "220px",
+                overflowY: "auto",
+              }}
+            >
+              {matSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.id}
+                  type="button"
+                  onClick={() => handleSelectMateriale(suggestion)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 12px",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                  }}
+                  onMouseOver={(event) => {
+                    event.currentTarget.style.backgroundColor = "#e9dfcf";
+                  }}
+                  onMouseOut={(event) => {
+                    event.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{suggestion.label}</div>
+                  <div style={{ fontSize: "0.8rem", opacity: 0.7 }}>
+                    {formatInventoryQuantity(suggestion.quantita, suggestion.unita)} disponibili
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mc-row-inline">
+            <label className="mc-label flex1">
+              Quantita
+              <input
+                type="number"
+                className="mc-input"
+                value={quantita}
+                onChange={(event) => setQuantita(event.target.value)}
+              />
+            </label>
+
+            <label className="mc-label flex1">
+              Unita
+              <select
+                className="mc-input"
+                value={unita}
+                onChange={(event) => setUnita(event.target.value)}
+              >
+                <option value="pz">pz</option>
+                <option value="mt">mt</option>
+                <option value="kg">kg</option>
+                <option value="lt">lt</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="mc-label">
+            Motivo consegna (opzionale)
+            <input
+              type="text"
+              className="mc-input"
+              value={motivo}
+              onChange={(event) => setMotivo(event.target.value)}
+              placeholder="Es. Intervento manutenzione cisterna"
+            />
+          </label>
+
+          <label className="mc-label">
+            Data consegna
+            <input
+              type="text"
+              className="mc-input"
+              value={data}
+              onChange={(event) => setData(event.target.value)}
+              placeholder="gg mm aaaa"
+            />
+          </label>
+
+          <button className="mc-add-btn" type="button" onClick={handleAdd}>
+            Registra consegna
+          </button>
+        </div>
+
         <div className="mc-list-wrapper">
-          {!destinatari.length ? (
-            <div className="mc-empty">Nessuna consegna registrata.</div>
+          {loading ? (
+            <div className="mc-empty">Caricamento...</div>
+          ) : loadError ? (
+            <div className="mc-empty">{loadError}</div>
+          ) : !consegne.length ? (
+            <div className="mc-empty">
+              Nessuna consegna registrata. Registra una nuova uscita dal magazzino.
+            </div>
           ) : (
             <>
               <div className="mc-dest-list">
                 {destinatari.map((dest) => (
                   <button
-                    key={dest.id}
-                    className={`mc-dest-row${(selectedDest?.id ?? null) === dest.id ? " mc-dest-row-active" : ""}`}
+                    key={dest.refId}
+                    className={
+                      "mc-dest-row" +
+                      (selectedDest === dest.refId ? " mc-dest-row-active" : "")
+                    }
                     type="button"
-                    onClick={() => setSelectedDestId(dest.id)}
+                    onClick={() =>
+                      setSelectedDest((current) =>
+                        current === dest.refId ? null : dest.refId,
+                      )
+                    }
                   >
                     <div className="mc-dest-main">
                       <span className="mc-dest-name">{dest.label}</span>
-                      <span className="mc-dest-badge">Tot: {dest.totalQuantita}</span>
+                      <span className="mc-dest-badge">
+                        Tot: {getTotalePerDestinatario(dest.refId)}
+                      </span>
                     </div>
                     <div className="mc-dest-meta">
-                      <span className="mc-dest-meta-text">Movimenti: {dest.movementCount}</span>
+                      <span className="mc-dest-meta-text">
+                        Movimenti:{" "}
+                        {
+                          consegne.filter(
+                            (entry) => entry.destinatario.refId === dest.refId,
+                          ).length
+                        }
+                      </span>
                       <span className="mc-dest-meta-link">Dettaglio ▾</span>
                     </div>
                   </button>
@@ -371,52 +862,51 @@ export default function NextMaterialiConsegnatiPage() {
                 <div className="mc-detail-panel">
                   <div className="mc-detail-header">
                     <div>
-                      <h2 className="mc-detail-title">{selectedDest.label}</h2>
-                      <p className="mc-detail-subtitle">Storico materiali consegnati</p>
+                      <h2 className="mc-detail-title">{selectedDestLabel}</h2>
+                      <p className="mc-detail-subtitle">
+                        Storico materiali consegnati
+                      </p>
                     </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                       <button
                         className="mc-pdf-btn"
                         type="button"
-                        onClick={() => void handlePreviewPdf()}
+                        onClick={() => void previewPDFPerDestinatario(selectedDest)}
                         style={{ background: "#2d6a4f", color: "#fdfaf4" }}
                       >
                         Anteprima
+                      </button>
+                      <button
+                        className="mc-pdf-btn"
+                        type="button"
+                        onClick={() => void exportPDFPerDestinatario(selectedDest)}
+                      >
+                        Scarica PDF
                       </button>
                     </div>
                   </div>
 
                   <div className="mc-detail-list">
-                    {selectedDest.items.map((item) => (
-                      <div key={item.id} className="mc-detail-row">
+                    {consegneSelezionate.map((consegna) => (
+                      <div key={consegna.id} className="mc-detail-row">
                         <div className="mc-detail-main">
-                          <span className="mc-detail-date">{item.data ?? "-"}</span>
+                          <span className="mc-detail-date">{consegna.data}</span>
                           <span className="mc-detail-desc">
-                            {item.descrizione ?? item.materiale ?? "-"} -{" "}
-                            {formatQuantity(item.quantita, item.unita)}
+                            {consegna.descrizione} - {consegna.quantita} {consegna.unita}
                           </span>
-                          {item.fornitore ? (
-                            <span className="mc-detail-motivo">Fornitore: {item.fornitore}</span>
+                          {consegna.fornitore ? (
+                            <span className="mc-detail-motivo">
+                              Fornitore: {consegna.fornitore}
+                            </span>
                           ) : null}
-                          {item.motivo ? (
-                            <span className="mc-detail-motivo">{item.motivo}</span>
-                          ) : null}
-                          {item.targa ? (
-                            <div style={{ marginTop: 6 }}>
-                              <button
-                                type="button"
-                                className="go-link-btn"
-                                onClick={() => navigate(buildNextDossierPath(item.targa!))}
-                              >
-                                Apri dossier {item.targa}
-                              </button>
-                            </div>
+                          {consegna.motivo ? (
+                            <span className="mc-detail-motivo">{consegna.motivo}</span>
                           ) : null}
                         </div>
                         <button
                           className="mc-delete-btn"
                           type="button"
-                          onClick={() => void handleDeleteMovement(item)}
+                          onClick={() => handleDeleteConsegna(consegna.id)}
                         >
                           Elimina
                         </button>
@@ -428,19 +918,19 @@ export default function NextMaterialiConsegnatiPage() {
             </>
           )}
         </div>
-      </div>
 
-      <PdfPreviewModal
-        open={pdfOpen}
-        title="Anteprima PDF materiali consegnati"
-        pdfUrl={pdfUrl}
-        fileName={pdfFileName}
-        onClose={() => {
-          revokePdfPreviewUrl(pdfUrl);
-          setPdfOpen(false);
-          setPdfUrl(null);
-        }}
-      />
-    </NextClonePageScaffold>
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={() => void handleSharePDF()}
+          onCopyLink={() => void handleCopyPDFText()}
+          onWhatsApp={handleOpenWhatsApp}
+        />
+      </div>
+    </div>
   );
 }

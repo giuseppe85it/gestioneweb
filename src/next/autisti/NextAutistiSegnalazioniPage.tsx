@@ -9,16 +9,11 @@ import {
   createNextAutistiCloneAttachmentFromFile,
   type NextAutistiCloneAttachment,
 } from "./nextAutistiCloneAttachments";
+import { NEXT_AUTISTI_BASE_PATH } from "./nextAutistiCloneRuntime";
 import {
-  NEXT_AUTISTI_BASE_PATH,
-  NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,
-} from "./nextAutistiCloneRuntime";
-import {
-  appendNextAutistiCloneSegnalazione,
   type NextAutistiClonePosizioneGomma,
   type NextAutistiCloneProblemaGomma,
   type NextAutistiCloneSegnalazioneAmbito,
-  type NextAutistiCloneSegnalazioneRecord,
   type NextAutistiCloneSegnalazioneTipoProblema,
 } from "./nextAutistiCloneSegnalazioni";
 
@@ -35,15 +30,6 @@ type MezzoAttivoLocal = {
 };
 
 const KEY_MEZZI = "@mezzi_aziendali";
-
-function genId() {
-  const cryptoApi = globalThis.crypto as Crypto | undefined;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID();
-  }
-
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
 function toItDateTime(ts: number) {
   const date = new Date(ts);
@@ -136,16 +122,6 @@ function labelProblemaGomma(problema: NextAutistiCloneProblemaGomma) {
   }
 }
 
-function buildHomePathWithNotice(noticeCode: string) {
-  const params = new URLSearchParams();
-  params.set(NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM, noticeCode);
-
-  return {
-    pathname: `${NEXT_AUTISTI_BASE_PATH}/home`,
-    search: `?${params.toString()}`,
-  };
-}
-
 function extractMezziAziendali(raw: unknown): MezzoAziendale[] {
   if (Array.isArray(raw)) {
     return raw as MezzoAziendale[];
@@ -221,29 +197,31 @@ export default function NextAutistiSegnalazioniPage() {
     })();
   }, [navigate]);
 
-  function findMezzoByTarga(targa?: string | null) {
-    if (!targa) {
+  const targaMotrice = mezzoAttivo?.targaCamion ?? null;
+  const targaRimorchio = mezzoAttivo?.targaRimorchio ?? null;
+
+  const mezzoMotrice = useMemo(() => {
+    if (!targaMotrice) {
       return null;
     }
 
     return (
       mezziAziendali.find(
-        (mezzo) => (mezzo.targa || "").toUpperCase() === String(targa).toUpperCase(),
+        (mezzo) => (mezzo.targa || "").toUpperCase() === String(targaMotrice).toUpperCase(),
       ) || null
     );
-  }
+  }, [mezziAziendali, targaMotrice]);
+  const mezzoRimorchio = useMemo(() => {
+    if (!targaRimorchio) {
+      return null;
+    }
 
-  const targaMotrice = mezzoAttivo?.targaCamion ?? null;
-  const targaRimorchio = mezzoAttivo?.targaRimorchio ?? null;
-
-  const mezzoMotrice = useMemo(
-    () => findMezzoByTarga(targaMotrice),
-    [mezziAziendali, targaMotrice],
-  );
-  const mezzoRimorchio = useMemo(
-    () => findMezzoByTarga(targaRimorchio),
-    [mezziAziendali, targaRimorchio],
-  );
+    return (
+      mezziAziendali.find(
+        (mezzo) => (mezzo.targa || "").toUpperCase() === String(targaRimorchio).toUpperCase(),
+      ) || null
+    );
+  }, [mezziAziendali, targaRimorchio]);
 
   const categoriaSelezionata = useMemo(() => {
     if (!ambito) {
@@ -366,7 +344,7 @@ export default function NextAutistiSegnalazioniPage() {
       );
       setFoto((current) => [...current, ...prepared]);
     } catch {
-      setAlertMsg("Errore nella preparazione foto locale.");
+      setAlertMsg("Errore nella preparazione foto.");
     } finally {
       setFotoPreparing(false);
       event.target.value = "";
@@ -392,42 +370,17 @@ export default function NextAutistiSegnalazioniPage() {
     const targaSelezionata = isMotrice ? targaMotrice : targaRimorchio;
     const mezzoRef = isMotrice ? mezzoMotrice : mezzoRimorchio;
 
-    const record: NextAutistiCloneSegnalazioneRecord = {
-      id: genId(),
-      ambito: ambito as NextAutistiCloneSegnalazioneAmbito,
-      mezzoId: mezzoRef?.id || null,
-      targa: targaSelezionata || null,
-      categoriaMezzo: mezzoRef?.categoria || null,
-      targaCamion: targaMotrice || null,
-      targaRimorchio: targaRimorchio || null,
-      autistaId: autista?.id ? String(autista.id) : null,
-      autistaNome: autista?.nome ? String(autista.nome) : null,
-      badgeAutista: autista?.badge ? String(autista.badge) : null,
-      tipoProblema: tipo as NextAutistiCloneSegnalazioneTipoProblema,
-      posizioneGomma: tipo === "gomme" ? posizioneGomma : null,
-      problemaGomma: tipo === "gomme" ? problemaGomma : null,
-      descrizione: descrizione.trim(),
-      note: note.trim() || null,
-      fotoUrls: foto.map((item) => item.previewUrl),
-      fotoStoragePaths: [],
-      attachments: foto,
-      data: nowTs,
-      stato: "nuova",
-      letta: false,
-      flagVerifica: false,
-      motivoVerifica: null,
-      source: "next-clone",
-      syncState: "local-only",
-    };
-
-    try {
-      appendNextAutistiCloneSegnalazione(record);
-      setFoto([]);
-      navigate(buildHomePathWithNotice("segnalazioni-locale"), { replace: true });
-    } catch {
-      setLoading(false);
-      setAlertMsg("Errore salvataggio. Riprova.");
-    }
+    void mezzoRef;
+    void targaSelezionata;
+    void tipo;
+    void posizioneGomma;
+    void problemaGomma;
+    void descrizione;
+    void note;
+    void foto;
+    void nowTs;
+    setLoading(false);
+    setAlertMsg("Clone NEXT in sola lettura: la segnalazione non viene inviata.");
   }
 
   if (!autista || !mezzoAttivo) {
@@ -443,11 +396,6 @@ export default function NextAutistiSegnalazioniPage() {
         {targaRimorchio ? `- Rimorchio: ${targaRimorchio}` : "- Rimorchio: -"}{" "}
         {autista?.nome ? `- Autista: ${autista.nome}` : ""}
       </div>
-
-      <p className="autisti-subtitle">
-        Segnalazione e foto restano locali al clone: nessun upload, nessun side effect anticipato e nessuna sincronizzazione sulla madre.
-      </p>
-
       {alertMsg ? <div className="seg-alert">{alertMsg}</div> : null}
 
       <div className="seg-section">
@@ -535,7 +483,7 @@ export default function NextAutistiSegnalazioniPage() {
           </div>
           {errors.problemaGomma ? <div className="seg-error">{errors.problemaGomma}</div> : null}
 
-          <div className="seg-hint">Consigliato: aggiungi una foto locale (massimo 3).</div>
+          <div className="seg-hint">Consigliato: aggiungi una foto (massimo 3).</div>
         </div>
       ) : null}
 
@@ -543,7 +491,7 @@ export default function NextAutistiSegnalazioniPage() {
         <div className="seg-label">Foto (opzionale)</div>
 
         <label className="seg-photoBtn">
-          + AGGIUNGI FOTO LOCALE
+          + AGGIUNGI FOTO
           <input
             type="file"
             accept="image/*"
@@ -554,12 +502,8 @@ export default function NextAutistiSegnalazioniPage() {
           />
         </label>
 
-        <div className="seg-hint">
-          Le immagini restano solo nel clone: viene creata un&apos;anteprima locale e non parte nessun upload.
-        </div>
-
         {fotoPreparing ? (
-          <div style={{ marginTop: 8, fontSize: 12 }}>Preparazione foto locale in corso...</div>
+          <div style={{ marginTop: 8, fontSize: 12 }}>Preparazione foto in corso...</div>
         ) : null}
 
         {foto.length > 0 ? (
@@ -572,7 +516,7 @@ export default function NextAutistiSegnalazioniPage() {
                   className="seg-photoRemove"
                   onClick={() => removeFoto(item.id)}
                 >
-                  RIMUOVI FOTO LOCALE
+                  RIMUOVI FOTO
                 </button>
               </div>
             ))}
@@ -614,7 +558,7 @@ export default function NextAutistiSegnalazioniPage() {
         }}
         disabled={loading || fotoPreparing}
       >
-        {loading ? "Salvataggio locale..." : "SALVA SEGNALAZIONE LOCALE"}
+        {loading ? "Invio..." : "INVIA SEGNALAZIONE"}
       </button>
 
       <button

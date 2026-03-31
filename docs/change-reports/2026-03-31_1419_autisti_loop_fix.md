@@ -1,0 +1,24 @@
+# CHANGE REPORT - Loop `Autisti`
+
+- Timestamp: `2026-03-31 14:19 Europe/Rome`
+- Obiettivo: chiudere il perimetro ufficiale `/next/autisti/*` come clone fedele read-only della madre.
+- File runtime toccati:
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/autisti/NextLoginAutistaNative.tsx`
+  - `src/next/autisti/NextSetupMezzoNative.tsx`
+  - `src/next/autisti/NextHomeAutistaNative.tsx`
+  - `src/next/NextAutistiControlloPage.tsx`
+  - `src/next/NextAutistiCambioMezzoPage.tsx`
+  - `src/next/autisti/NextAutistiRifornimentoPage.tsx`
+  - `src/next/autisti/NextAutistiRichiestaAttrezzaturePage.tsx`
+  - `src/next/autisti/NextAutistiSegnalazioniPage.tsx`
+  - `src/next/autisti/NextGommeAutistaModal.tsx`
+  - `src/next/autisti/next-autisti-clone.css`
+  - `src/next/autisti/nextAutistiCloneRuntime.ts`
+  - `src/next/autisti/nextAutistiCloneState.ts`
+  - `src/next/autisti/nextAutistiStorageSync.ts`
+- Effetto applicato:
+  - route ufficiali riallineate alla grammatica pratica della madre;
+  - chiavi D03 gestite lette senza overlay locali sul solo perimetro `/next/autisti/*`;
+  - login/setup mantengono solo contesto UI locale coerente con una sessione madre gia attiva;
+  - controllo, cambio mezzo, rifornimento, richiesta attrezzature, segnalazioni, `SGANCIA MOTRICE` e `Gomme` bloccano i side effect con messaggi read-only espliciti.

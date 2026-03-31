@@ -194,6 +194,10 @@ export type NextMaterialiMovimentiSnapshot = {
   limitations: string[];
 };
 
+export type NextMaterialiMovimentiReadOptions = {
+  includeCloneOverlays?: boolean;
+};
+
 export type NextMezzoMaterialiMovimentiSnapshot = {
   domainCode: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.code;
   domainName: typeof NEXT_MATERIALI_MOVIMENTI_DOMAIN.name;
@@ -960,12 +964,17 @@ function derivePeriodFilterCoverage(
   return "affidabile";
 }
 
-export async function readNextMaterialiMovimentiSnapshot(): Promise<NextMaterialiMovimentiSnapshot> {
+export async function readNextMaterialiMovimentiSnapshot(
+  options: NextMaterialiMovimentiReadOptions = {},
+): Promise<NextMaterialiMovimentiSnapshot> {
+  const includeCloneOverlays = options.includeCloneOverlays ?? true;
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, MATERIALI_MOVIMENTI_DATASET_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
-  const cloneRecords = readNextMaterialiMovimentiCloneRecords();
-  const deletedIds = new Set(readNextMaterialiMovimentiCloneDeletedIds());
+  const cloneRecords = includeCloneOverlays ? readNextMaterialiMovimentiCloneRecords() : [];
+  const deletedIds = new Set(
+    includeCloneOverlays ? readNextMaterialiMovimentiCloneDeletedIds() : [],
+  );
   const cloneIds = new Set(cloneRecords.map((entry) => entry.id));
   const mergedRawItems = [
     ...rawItems.filter((entry, index) => {
@@ -1011,10 +1020,13 @@ export async function readNextMaterialiMovimentiSnapshot(): Promise<NextMaterial
     counts,
     limitations: [
       ...buildGlobalLimitations({ datasetShape, items, counts }),
-      cloneRecords.length > 0
+      includeCloneOverlays
+        ? "Il layer materiali puo integrare overlay locali del clone solo su richiesta esplicita del chiamante."
+        : "La lettura ufficiale del clone usa solo `@materialiconsegnati` reale senza overlay locali.",
+      includeCloneOverlays && cloneRecords.length > 0
         ? `Il clone integra ${cloneRecords.length} movimenti materiali locali senza scrivere su @materialiconsegnati nella madre.`
         : null,
-      deletedIds.size > 0
+      includeCloneOverlays && deletedIds.size > 0
         ? `Il clone nasconde ${deletedIds.size} movimenti materiali in modo locale senza cancellarli dalla madre.`
         : null,
     ].filter((entry): entry is string => Boolean(entry)),

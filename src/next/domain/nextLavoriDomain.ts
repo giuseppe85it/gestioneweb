@@ -35,6 +35,9 @@ export type NextLavoroRecordQuality = "certo" | "parziale" | "da_verificare";
 export type NextLavoroTipo = "magazzino" | "targa" | null;
 export type NextLavoroUrgenza = "bassa" | "media" | "alta" | null;
 export type NextLavoroStatoVista = "da_eseguire" | "in_attesa" | "eseguito";
+export type ReadNextLavoriSnapshotOptions = {
+  includeCloneOverlays?: boolean;
+};
 
 export const NEXT_LAVORI_DOMAIN = {
   code: "D02-LAVORI",
@@ -607,8 +610,12 @@ function sortExecutedItems<
 function buildLimitations(snapshot: {
   datasetShape: NextLegacyDatasetShape;
   counts: NextMezzoLavoriSnapshot["counts"];
+  includeCloneOverlays: boolean;
 }): string[] {
   return [
+    snapshot.includeCloneOverlays
+      ? "Il layer Lavori puo integrare overlay clone-only solo quando il chiamante li richiede in modo esplicito."
+      : "Il layer Lavori legge `@lavori` in read-only senza applicare overlay locali del clone.",
     "Il layer Lavori legge solo `@lavori` e mantiene nel dominio la distinzione tra backlog aperto (`eseguito !== true`), vista Dossier `In attesa` (`gruppoId` presente) e chiusi.",
     snapshot.counts.apertiSenzaGruppo > 0
       ? "Una parte dei lavori aperti non ha `gruppoId`: il clone li conserva nel backlog read-only ma non li forza dentro la vista legacy `In attesa` del Dossier."
@@ -630,11 +637,15 @@ function buildListaLimitations(args: {
   routeId: NextLavoriListaRouteId;
   datasetShape: NextLegacyDatasetShape;
   counts: NextLavoriListaSnapshot["counts"];
+  includeCloneOverlays: boolean;
 }): string[] {
   const routeLabel =
     args.routeId === "lavori-in-attesa" ? "Lavori in attesa" : "Lavori eseguiti";
 
   return [
+    args.includeCloneOverlays
+      ? "Il chiamante ha richiesto la lettura dei lavori con overlay clone-only opzionali."
+      : "La lista ufficiale legge `@lavori` in read-only senza overlay clone-only.",
     `La lista clone \`${routeLabel}\` legge solo \`@lavori\` tramite il layer NEXT e apre il dettaglio solo sulla controparte clone-safe dedicata.`,
     args.counts.senzaTarga > 0
       ? "I record senza targa o marcati `magazzino` vengono raggruppati sotto `MAGAZZINO`, come nelle viste legacy della madre."
@@ -648,16 +659,22 @@ function buildListaLimitations(args: {
   ].filter((entry): entry is string => Boolean(entry));
 }
 
-async function readLavoriDataset(): Promise<{
+async function readLavoriDataset(
+  options: ReadNextLavoriSnapshotOptions = {},
+): Promise<{
   datasetShape: NextLegacyDatasetShape;
   items: unknown[];
 }> {
+  const includeCloneOverlays = options.includeCloneOverlays !== false;
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, LAVORI_DATASET_KEY));
   const rawDoc = snapshot.exists()
     ? ((snapshot.data() as Record<string, unknown>) ?? null)
     : null;
 
   const dataset = unwrapStorageArray(rawDoc);
+  if (!includeCloneOverlays) {
+    return dataset;
+  }
   const cloneRecords = readNextLavoriCloneRecords();
   const overrideMap = new Map<string, NextLavoriCloneOverrideRecord>();
 
@@ -717,11 +734,13 @@ function applyCloneOverride(
   };
 }
 
-async function readNormalizedLavoriDataset(): Promise<{
+async function readNormalizedLavoriDataset(
+  options: ReadNextLavoriSnapshotOptions = {},
+): Promise<{
   datasetShape: NextLegacyDatasetShape;
   items: NextLavoroBaseReadOnlyItem[];
 }> {
-  const dataset = await readLavoriDataset();
+  const dataset = await readLavoriDataset(options);
   const items = dataset.items
     .map((entry, index) => {
       if (!entry || typeof entry !== "object") return null;
@@ -808,8 +827,12 @@ function buildDetailLimitations(args: {
   resolution: NextLavoriDetailResolution;
   target: NextLavoroBaseReadOnlyItem;
   groupWarnings: string[];
+  includeCloneOverlays: boolean;
 }): string[] {
   return [
+    args.includeCloneOverlays
+      ? "Il chiamante ha richiesto la lettura del dettaglio con overlay clone-only opzionali."
+      : "Il dettaglio ufficiale legge `@lavori` in read-only senza overlay clone-only.",
     "Il dettaglio clone legge solo `@lavori` tramite il layer NEXT e non riusa la pagina legacy scrivente.",
     args.resolution === "single-record"
       ? "Il record non espone un `gruppoId` affidabile: il clone mostra solo il lavoro richiesto e non aggrega altri record senza gruppo."
@@ -825,10 +848,12 @@ function buildDetailLimitations(args: {
 }
 
 async function readNextLavoriListaSnapshot(
-  routeId: NextLavoriListaRouteId
+  routeId: NextLavoriListaRouteId,
+  options: ReadNextLavoriSnapshotOptions = {},
 ): Promise<NextLavoriListaSnapshot> {
+  const includeCloneOverlays = options.includeCloneOverlays !== false;
   const [{ datasetShape, items }, anagrafiche] = await Promise.all([
-    readNormalizedLavoriDataset(),
+    readNormalizedLavoriDataset(options),
     readNextAnagraficheFlottaSnapshot(),
   ]);
 
@@ -897,16 +922,25 @@ async function readNextLavoriListaSnapshot(
     datasetShape,
     groups,
     counts,
-    limitations: buildListaLimitations({ routeId, datasetShape, counts }),
+    limitations: buildListaLimitations({
+      routeId,
+      datasetShape,
+      counts,
+      includeCloneOverlays,
+    }),
   };
 }
 
-export async function readNextLavoriInAttesaSnapshot(): Promise<NextLavoriListaSnapshot> {
-  return readNextLavoriListaSnapshot("lavori-in-attesa");
+export async function readNextLavoriInAttesaSnapshot(
+  options: ReadNextLavoriSnapshotOptions = {},
+): Promise<NextLavoriListaSnapshot> {
+  return readNextLavoriListaSnapshot("lavori-in-attesa", options);
 }
 
-export async function readNextLavoriEseguitiSnapshot(): Promise<NextLavoriListaSnapshot> {
-  return readNextLavoriListaSnapshot("lavori-eseguiti");
+export async function readNextLavoriEseguitiSnapshot(
+  options: ReadNextLavoriSnapshotOptions = {},
+): Promise<NextLavoriListaSnapshot> {
+  return readNextLavoriListaSnapshot("lavori-eseguiti", options);
 }
 
 export function buildNextDettaglioLavoroPath(args: {
@@ -929,13 +963,15 @@ export function buildNextDettaglioLavoroPath(args: {
 }
 
 export async function readNextDettaglioLavoroSnapshot(
-  lavoroId: string
+  lavoroId: string,
+  options: ReadNextLavoriSnapshotOptions = {},
 ): Promise<NextLavoriDetailSnapshot | null> {
+  const includeCloneOverlays = options.includeCloneOverlays !== false;
   const normalizedLavoroId = normalizeOptionalText(lavoroId);
   if (!normalizedLavoroId) return null;
 
   const [{ datasetShape, items }, anagrafiche] = await Promise.all([
-    readNormalizedLavoriDataset(),
+    readNormalizedLavoriDataset(options),
     readNextAnagraficheFlottaSnapshot(),
   ]);
 
@@ -1022,15 +1058,18 @@ export async function readNextDettaglioLavoroSnapshot(
       resolution,
       target,
       groupWarnings,
+      includeCloneOverlays,
     }),
   };
 }
 
 export async function readNextMezzoLavoriSnapshot(
-  targa: string
+  targa: string,
+  options: ReadNextLavoriSnapshotOptions = {},
 ): Promise<NextMezzoLavoriSnapshot> {
   const mezzoTarga = normalizeNextMezzoTarga(targa);
-  const dataset = await readNormalizedLavoriDataset();
+  const includeCloneOverlays = options.includeCloneOverlays !== false;
+  const dataset = await readNormalizedLavoriDataset(options);
 
   const items = dataset.items.filter(isMezzoScopedLavoro).filter((entry) => entry.mezzoTarga === mezzoTarga);
 
@@ -1068,6 +1107,7 @@ export async function readNextMezzoLavoriSnapshot(
     limitations: buildLimitations({
       datasetShape: dataset.datasetShape,
       counts,
+      includeCloneOverlays,
     }),
   };
 }
@@ -1104,8 +1144,10 @@ export function buildNextLavoriLegacyDossierView(
   };
 }
 
-export async function readNextLavoriLegacyDataset(): Promise<NextLavoriLegacyDatasetRecord[]> {
-  const dataset = await readNormalizedLavoriDataset();
+export async function readNextLavoriLegacyDataset(
+  options: ReadNextLavoriSnapshotOptions = {},
+): Promise<NextLavoriLegacyDatasetRecord[]> {
+  const dataset = await readNormalizedLavoriDataset(options);
 
   return dataset.items.map((item) => ({
     id: item.id,

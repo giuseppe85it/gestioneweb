@@ -1,0 +1,27 @@
+# BACKLOG Autisti Inbox / Admin
+
+- Modulo target: `Autisti Inbox / Admin`
+- Route ufficiali NEXT:
+  - `/next/autisti-inbox`
+  - `/next/autisti-inbox/cambio-mezzo`
+  - `/next/autisti-inbox/log-accessi`
+  - `/next/autisti-inbox/gomme`
+  - `/next/autisti-inbox/controlli`
+  - `/next/autisti-inbox/segnalazioni`
+  - `/next/autisti-inbox/richiesta-attrezzature`
+  - `/next/autisti-admin`
+- Stato iniziale: `CLOSED` nel tracker ma `APERTO` nel codice reale dopo audit finale globale V2
+- Stato finale: `CLOSED`
+- Blocchi reali riscontrati:
+  - `src/next/NextAutistiInboxHomePage.tsx` montava ancora `NextLegacyStorageBoundary` con preset `autisti` sul wrapper ufficiale home inbox.
+  - `src/next/NextAutistiAdminPage.tsx` montava ancora `NextLegacyStorageBoundary` con preset `autisti` sul wrapper ufficiale admin.
+  - `src/next/NextLegacyStorageBoundary.tsx` neutralizzava il preset `autisti` solo su `/next/autisti/*`, non anche su `/next/autisti-inbox*` e `/next/autisti-admin`.
+  - `src/utils/storageSync.ts` continuava a dare precedenza agli override legacy-shaped in clone runtime, quindi il boundary poteva falsare la lettura ufficiale inbox/admin.
+  - `src/next/autistiInbox/NextAutistiAdminNative.tsx` manteneva gia i blocchi no-write corretti, quindi il problema reale era di lettura e non di scrittura.
+- Path precisi:
+  - `src/next/NextAutistiInboxHomePage.tsx`
+  - `src/next/NextAutistiAdminPage.tsx`
+  - `src/next/NextLegacyStorageBoundary.tsx`
+  - `src/next/autisti/nextAutistiStorageSync.ts`
+  - `src/utils/storageSync.ts`
+  - `src/next/autistiInbox/NextAutistiAdminNative.tsx`

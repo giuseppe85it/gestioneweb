@@ -5,12 +5,8 @@ import { getItemSync } from "./autisti/nextAutistiStorageSync";
 import {
   getAutistaLocal,
   getMezzoLocal,
-  saveMezzoLocal,
 } from "./autisti/nextAutistiSessionStorage";
-import {
-  NEXT_AUTISTI_BASE_PATH,
-  NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,
-} from "./autisti/nextAutistiCloneRuntime";
+import { NEXT_AUTISTI_BASE_PATH } from "./autisti/nextAutistiCloneRuntime";
 import NextLegacyStorageBoundary from "./NextLegacyStorageBoundary";
 
 type Modalita = "motrice" | "rimorchio";
@@ -151,19 +147,6 @@ export default function NextAutistiCambioMezzoPage() {
     });
   }
 
-  function navigateWithNotice(pathname: string, search = "") {
-    const params = new URLSearchParams(search);
-    params.set(NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM, "cambio-mezzo-locale");
-    const nextSearch = params.toString();
-    navigate(
-      {
-        pathname,
-        search: nextSearch ? `?${nextSearch}` : "",
-      },
-      { replace: true },
-    );
-  }
-
   function conferma() {
     setErrore("");
 
@@ -203,25 +186,14 @@ export default function NextAutistiCambioMezzoPage() {
       return;
     }
 
-    const now = Date.now();
+    const assettoCorrente =
+      modalita === "rimorchio"
+        ? corrente.targaRimorchio || "NESSUN RIMORCHIO"
+        : corrente.targaMotrice || "NESSUNA MOTRICE";
 
-    if (modalita === "rimorchio") {
-      saveMezzoLocal({
-        targaCamion: corrente.targaMotrice || null,
-        targaRimorchio: null,
-        timestamp: now,
-      });
-      navigateWithNotice(`${NEXT_AUTISTI_BASE_PATH}/home`);
-      return;
-    }
-
-    saveMezzoLocal({
-      targaCamion: null,
-      targaCamionPrima: corrente.targaMotrice || null,
-      targaRimorchio: corrente.targaRimorchio || null,
-      timestamp: now,
-    });
-    navigateWithNotice(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo`, "mode=motrice");
+    setErrore(
+      `Clone NEXT in sola lettura: ${titolo.toLowerCase()} non applicato. Assetto madre corrente: ${assettoCorrente}.`,
+    );
   }
 
   return (

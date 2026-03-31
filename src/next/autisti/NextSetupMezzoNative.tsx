@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/autisti/SetupMezzo.tsx
-
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
 import "../../autisti/SetupMezzo.css";
-import { getItemSync, setItemSync } from "./nextAutistiStorageSync";
-import { getAutistaLocal, getMezzoLocal, saveMezzoLocal } from "./nextAutistiSessionStorage";
+import { getItemSync } from "./nextAutistiStorageSync";
+import { NEXT_AUTISTI_BASE_PATH } from "./nextAutistiCloneRuntime";
+import {
+  getAutistaLocal,
+  getMezzoLocal,
+  saveMezzoLocal,
+} from "./nextAutistiSessionStorage";
 
 const MEZZI_KEY = "@mezzi_aziendali";
 const SESSIONI_KEY = "@autisti_sessione_attive";
-const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
 
 type Mode = "rimorchio" | "motrice" | "none";
 
@@ -39,123 +41,90 @@ interface SessioneAttiva {
   targaRimorchio: string | null;
   badgeAutista: string;
   nomeAutista: string;
-  autistaNome?: string | null;
-  autista?: string | null;
-  revoked?: {
-    at: number;
-    scope: "MOTRICE" | "RIMORCHIO" | "TUTTO";
-    by?: string;
-    reason?: string;
-  };
   timestamp: number;
 }
 
-type EventoOperativo = {
-  id: string;
-  tipo: string;
-  timestamp: number;
-  badgeAutista: string;
-  nomeAutista: string;
-  autista?: string;
-  autistaNome?: string;
-  prima: {
-    targaMotrice: string | null;
-    targaRimorchio: string | null;
-    motrice?: string | null;
-    rimorchio?: string | null;
-  };
-  dopo: {
-    targaMotrice: string | null;
-    targaRimorchio: string | null;
-    motrice?: string | null;
-    rimorchio?: string | null;
-  };
-  luogo: string | null;
-  statoCarico: string | null;
-  condizioni: any;
-  source: string;
-};
-
-function norm(s: string) {
-  return (s || "").trim().toLowerCase();
+function norm(value: string) {
+  return (value || "").trim().toLowerCase();
 }
 
-const fmtTarga = (t: string) => (t || "").trim().toUpperCase();
-const fmtText = (t: any) => String(t ?? "").trim();
-
-function getCategoriaLabel(mezzo: any) {
-  const value =
-    mezzo?.categoria ?? mezzo?.categoriaMezzo ?? mezzo?.tipoMezzo ?? mezzo?.tipo ?? "";
-  return fmtText(value) || "-";
+function fmtTarga(value: string) {
+  return (value || "").trim().toUpperCase();
 }
 
-function getAutistaSolito(mezzo: any) {
-  const value = mezzo?.autistaNome ?? mezzo?.driverName ?? "";
-  return fmtText(value) || "-";
+function fmtText(value: unknown) {
+  return String(value ?? "").trim();
 }
 
-async function appendEventoOperativo(evt: EventoOperativo) {
-  const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
-  const list: EventoOperativo[] = Array.isArray(raw) ? raw : [];
-  if (list.some((e) => e?.id === evt.id)) return;
-  list.push(evt);
-  await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
+function getCategoriaLabel(mezzo: Mezzo) {
+  return fmtText(mezzo?.categoria) || "-";
+}
+
+function getAutistaSolito(mezzo: Mezzo) {
+  return fmtText(mezzo?.autistaNome) || "-";
 }
 
 export default function SetupMezzo() {
-  const nav = useNavigate();
-  const loc = useLocation();
-
-  const qs = new URLSearchParams(loc.search);
-  const mode = (qs.get("mode") as Mode) || "none";
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const mode = (params.get("mode") as Mode) || "none";
 
   const autista = useMemo(() => {
-    const a: any = getAutistaLocal();
-    if (!a?.badge || !a?.nome) return null;
-    return { badge: String(a.badge), nome: String(a.nome) };
+    const current: any = getAutistaLocal();
+    if (!current?.badge || !current?.nome) {
+      return null;
+    }
+
+    return {
+      badge: String(current.badge),
+      nome: String(current.nome),
+    };
   }, []);
 
-  const mezzoLocal = useMemo(() => {
-    const m: any = getMezzoLocal();
-    if (!m) return null;
+  const mezzoLocale = useMemo(() => {
+    const current: any = getMezzoLocal();
+    if (!current) {
+      return null;
+    }
+
     return {
-      targaCamion: m?.targaCamion ? String(m.targaCamion) : null,
-      targaCamionPrima: m?.targaCamionPrima ? String(m.targaCamionPrima) : null,
-      targaRimorchio: m?.targaRimorchio ? String(m.targaRimorchio) : null,
-      timestamp: typeof m?.timestamp === "number" ? m.timestamp : null,
+      targaCamion: current?.targaCamion ? String(current.targaCamion) : null,
+      targaCamionPrima: current?.targaCamionPrima ? String(current.targaCamionPrima) : null,
+      targaRimorchio: current?.targaRimorchio ? String(current.targaRimorchio) : null,
+      timestamp: typeof current?.timestamp === "number" ? current.timestamp : null,
     };
   }, []);
 
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState("");
-
   const [mezziAll, setMezziAll] = useState<Mezzo[]>([]);
   const [sessioni, setSessioni] = useState<SessioneAttiva[]>([]);
-
+  const [sessioneAttiva, setSessioneAttiva] = useState<SessioneAttiva | null>(null);
   const [targaCamion, setTargaCamion] = useState("");
   const [targaRimorchio, setTargaRimorchio] = useState<string | null>(null);
 
-  const lockMotrice = mode === "rimorchio" && !!mezzoLocal?.targaCamion;
-  const lockRimorchio = mode === "motrice" && !!mezzoLocal?.targaRimorchio;
+  const lockMotrice = mode === "rimorchio" && !!mezzoLocale?.targaCamion;
+  const lockRimorchio = mode === "motrice" && !!mezzoLocale?.targaRimorchio;
 
   const motriciAll = useMemo(() => {
-    return mezziAll.filter((m) => {
-      const cat = norm(String(m.categoria || ""));
-      return cat.includes("motrice") || cat.includes("trattore");
+    return mezziAll.filter((mezzo) => {
+      const categoria = norm(String(mezzo.categoria || ""));
+      return categoria.includes("motrice") || categoria.includes("trattore");
     });
   }, [mezziAll]);
 
   const rimorchiAll = useMemo(() => {
-    return mezziAll.filter((m) => {
-      const cat = norm(String(m.categoria || ""));
+    return mezziAll.filter((mezzo) => {
+      const categoria = norm(String(mezzo.categoria || ""));
       return (
-        cat.includes("semirimorchio") ||
-        cat.includes("rimorchio") ||
-        cat.includes("porta silo container") ||
-        cat.includes("pianale") ||
-        cat.includes("biga") ||
-        cat.includes("centina") ||
-        cat.includes("vasca")
+        categoria.includes("semirimorchio")
+        || categoria.includes("rimorchio")
+        || categoria.includes("porta silo container")
+        || categoria.includes("pianale")
+        || categoria.includes("biga")
+        || categoria.includes("centina")
+        || categoria.includes("vasca")
       );
     });
   }, [mezziAll]);
@@ -174,63 +143,67 @@ export default function SetupMezzo() {
         }
 
         const rawMezzi = (await getItemSync(MEZZI_KEY)) || [];
-        const mezzi: Mezzo[] = Array.isArray(rawMezzi) ? rawMezzi : [];
-        const fixed = mezzi.map((m: any) => ({
-          id: String(m?.id ?? ""),
-          targa: fmtTarga(String(m?.targa ?? "")),
-          categoria: m?.categoria,
-          autistaNome: m?.autistaNome ?? null,
-        }));
-        if (!alive) return;
-        setMezziAll(fixed);
+        const mezzi = Array.isArray(rawMezzi)
+          ? rawMezzi.map((item: any) => ({
+              id: String(item?.id ?? ""),
+              targa: fmtTarga(String(item?.targa ?? "")),
+              categoria: item?.categoria,
+              autistaNome: item?.autistaNome ?? null,
+            }))
+          : [];
+        const rawSessioni = (await getItemSync(SESSIONI_KEY)) || [];
+        const liveSessioni = Array.isArray(rawSessioni) ? rawSessioni : [];
+        const currentSession =
+          liveSessioni.find((item: SessioneAttiva) => item?.badgeAutista === autista.badge) || null;
 
-        const rawSess = (await getItemSync(SESSIONI_KEY)) || [];
-        const sessArr: SessioneAttiva[] = Array.isArray(rawSess) ? rawSess : [];
-        if (!alive) return;
-        setSessioni(sessArr);
+        if (!alive) {
+          return;
+        }
 
-        // preselect coerente
-        const preCamion = fmtTarga(
-          (mode === "rimorchio" ? mezzoLocal?.targaCamion : mezzoLocal?.targaCamion) || ""
+        setMezziAll(mezzi);
+        setSessioni(liveSessioni);
+        setSessioneAttiva(currentSession);
+
+        const motricePredefinita = fmtTarga(
+          currentSession?.targaMotrice
+            || mezzoLocale?.targaCamion
+            || mezzoLocale?.targaCamionPrima
+            || "",
         );
-        const preRimorchio = fmtTarga(mezzoLocal?.targaRimorchio || "");
+        const rimorchioPredefinito = fmtTarga(
+          currentSession?.targaRimorchio || mezzoLocale?.targaRimorchio || "",
+        );
 
-        if (preCamion) setTargaCamion(preCamion);
-
-        if (lockRimorchio) {
-          // cambio motrice: rimorchio bloccato sul locale se c'Ã¨
-          setTargaRimorchio(preRimorchio || null);
-        } else {
-          // setup normale / cambio rimorchio: rimorchio selezionabile
-          if (preRimorchio) {
-            setTargaRimorchio(preRimorchio);
-          } else if (autista?.nome) {
-            const rimAssegnato = fixed
-              .filter((m) => rimorchiAll.some((r) => r.targa === m.targa))
-              .find((m) => norm(String(m.autistaNome || "")) === norm(autista.nome));
-            if (rimAssegnato) setTargaRimorchio(rimAssegnato.targa);
-            else setTargaRimorchio(null);
-          } else {
-            setTargaRimorchio(null);
-          }
+        if (motricePredefinita) {
+          setTargaCamion(motricePredefinita);
+        }
+        if (rimorchioPredefinito) {
+          setTargaRimorchio(rimorchioPredefinito);
         }
       } finally {
-        if (alive) setLoading(false);
+        if (alive) {
+          setLoading(false);
+        }
       }
     }
 
-    init();
+    void init();
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [autista?.badge, mezzoLocale?.targaCamion, mezzoLocale?.targaCamionPrima, mezzoLocale?.targaRimorchio]);
 
   function statoUso(targa: string) {
-    const s = sessioni.find((x) => x.targaMotrice === targa || x.targaRimorchio === targa);
-    if (!s) return null;
-    if (s.badgeAutista === autista?.badge) return null;
-    return `IN USO da ${s.nomeAutista}`;
+    const sessione = sessioni.find(
+      (item) => item.targaMotrice === targa || item.targaRimorchio === targa,
+    );
+    if (!sessione) {
+      return null;
+    }
+    if (sessione.badgeAutista === autista?.badge) {
+      return null;
+    }
+    return `IN USO da ${sessione.nomeAutista}`;
   }
 
   async function handleConfirm() {
@@ -246,164 +219,35 @@ export default function SetupMezzo() {
       return;
     }
 
-    const now = Date.now();
-
-    const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-    const prev: SessioneAttiva[] = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-
-    const prevSession = prev.find((s) => s.badgeAutista === autista.badge) || null;
-
-    const motriceKey = targaCamion ? fmtTarga(String(targaCamion)) : "";
-    const conflittiMotrice = motriceKey
-      ? prev.filter(
-          (s) =>
-            s?.badgeAutista !== autista.badge &&
-            fmtTarga(String(s?.targaMotrice ?? "")) === motriceKey
-        )
-      : [];
-    if (conflittiMotrice.length > 0) {
-      const elenco = conflittiMotrice
-        .map((s) => {
-          const badge = s?.badgeAutista ? `BADGE ${s.badgeAutista}` : "BADGE -";
-          const nome = s?.nomeAutista ?? s?.autistaNome ?? s?.autista ?? "-";
-          return `${nome} (${badge})`;
-        })
-        .join(", ");
-      const ok = window.confirm(
-        `MOTRICE gia in uso da ${elenco}. Vuoi continuare?`
+    if (!sessioneAttiva?.targaMotrice) {
+      setErrore(
+        "Clone NEXT in sola lettura: l'assetto si legge solo da una sessione madre gia attiva.",
       );
-      if (!ok) return;
+      return;
     }
 
-    const rimorchioKey = targaRimorchio ? fmtTarga(String(targaRimorchio)) : "";
-    const conflittiRimorchio = rimorchioKey
-      ? prev.filter(
-          (s) =>
-            s?.badgeAutista !== autista.badge &&
-            fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey
-        )
-      : [];
-    if (conflittiRimorchio.length > 0) {
-      const elenco = conflittiRimorchio
-        .map((s) => {
-          const badge = s?.badgeAutista ? `BADGE ${s.badgeAutista}` : "BADGE -";
-          const nome = s?.nomeAutista ?? s?.autistaNome ?? s?.autista ?? "-";
-          return `${nome} (${badge})`;
-        })
-        .join(", ");
-      const ok = window.confirm(
-        `RIMORCHIO gia in uso da ${elenco}. Vuoi continuare?`
+    const motriceSelezionata = fmtTarga(targaCamion);
+    const rimorchioSelezionato = targaRimorchio ? fmtTarga(targaRimorchio) : null;
+    const motriceMadre = fmtTarga(sessioneAttiva.targaMotrice || "");
+    const rimorchioMadre = sessioneAttiva.targaRimorchio
+      ? fmtTarga(sessioneAttiva.targaRimorchio)
+      : null;
+
+    if (motriceSelezionata !== motriceMadre || rimorchioSelezionato !== rimorchioMadre) {
+      setErrore(
+        "Clone NEXT in sola lettura: l'assetto visibile resta quello gia presente nella sessione madre.",
       );
-      if (!ok) return;
+      return;
     }
 
-    const nuove = prev
-      .filter((s) => s.badgeAutista !== autista.badge)
-      .map((s) => {
-        const motriceConflict =
-          !!motriceKey && fmtTarga(String(s?.targaMotrice ?? "")) === motriceKey;
-        const rimorchioConflict =
-          !!rimorchioKey && fmtTarga(String(s?.targaRimorchio ?? "")) === rimorchioKey;
-        if (!motriceConflict && !rimorchioConflict) return s;
-
-        const scope = motriceConflict && rimorchioConflict
-          ? "TUTTO"
-          : motriceConflict
-          ? "MOTRICE"
-          : "RIMORCHIO";
-        const reason =
-          scope === "MOTRICE"
-            ? `Motrice assegnata a ${autista.badge}`
-            : scope === "RIMORCHIO"
-            ? `Rimorchio assegnato a ${autista.badge}`
-            : `Assetto assegnato a ${autista.badge}`;
-        return {
-          ...s,
-          targaMotrice: motriceConflict ? null : s?.targaMotrice ?? null,
-          targaRimorchio: rimorchioConflict ? null : s?.targaRimorchio ?? null,
-          revoked: {
-            ...(s?.revoked || {}),
-            by: "AUTO",
-            at: now,
-            scope,
-            reason,
-          },
-        };
-      });
-
-    const prima = {
-      targaMotrice:
-        prevSession?.targaMotrice ??
-        (mezzoLocal?.targaCamion ? String(mezzoLocal.targaCamion) : null) ??
-        (mezzoLocal?.targaCamionPrima ? String(mezzoLocal.targaCamionPrima) : null),
-      targaRimorchio:
-        prevSession?.targaRimorchio ??
-        (mezzoLocal?.targaRimorchio ? String(mezzoLocal.targaRimorchio) : null),
-    };
-
-    const dopo = {
-      targaMotrice: targaCamion ? String(targaCamion) : null,
-      targaRimorchio: targaRimorchio ? String(targaRimorchio) : null,
-    };
-
-    const sessione: SessioneAttiva = {
-      targaMotrice: targaCamion,
-      targaRimorchio: targaRimorchio || null,
-      badgeAutista: autista.badge,
-      nomeAutista: autista.nome,
-      timestamp: now,
-    };
-
-    const tipoAssetto =
-      prima.targaMotrice || prima.targaRimorchio ? "CAMBIO_ASSETTO" : "INIZIO_ASSETTO";
-    const eventoAssetto: EventoOperativo = {
-      id: `${tipoAssetto}-${autista.badge}-${now}-${dopo.targaMotrice || ""}-${dopo.targaRimorchio || ""}`,
-      tipo: tipoAssetto,
-      timestamp: now,
-      badgeAutista: autista.badge,
-      nomeAutista: autista.nome,
-      autista: autista.nome,
-      autistaNome: autista.nome,
-      prima: {
-        targaMotrice: prima.targaMotrice,
-        targaRimorchio: prima.targaRimorchio,
-        motrice: prima.targaMotrice,
-        rimorchio: prima.targaRimorchio,
-      },
-      dopo: {
-        targaMotrice: dopo.targaMotrice,
-        targaRimorchio: dopo.targaRimorchio,
-        motrice: dopo.targaMotrice,
-        rimorchio: dopo.targaRimorchio,
-      },
-      luogo: null,
-      statoCarico: null,
-      condizioni: null,
-      source: "setup_confirm",
-    };
-    await appendEventoOperativo(eventoAssetto);
-
-    nuove.push(sessione);
-    await setItemSync(SESSIONI_KEY, nuove);
-
-    // locale per dispositivo
     saveMezzoLocal({
-      targaCamion,
+      targaCamion: motriceMadre,
       targaCamionPrima: null,
-      targaRimorchio: targaRimorchio || null,
-      timestamp: now,
+      targaRimorchio: rimorchioMadre,
+      timestamp: sessioneAttiva.timestamp || Date.now(),
     });
 
-    const target =
-      mode === "rimorchio"
-        ? "rimorchio"
-        : mode === "motrice"
-        ? "motrice"
-        : targaRimorchio
-        ? "entrambi"
-        : "motrice";
-
-    nav(`/autisti/controllo?target=${encodeURIComponent(target)}`, { replace: true });
+    navigate(NEXT_AUTISTI_BASE_PATH, { replace: true });
   }
 
   if (loading) {
@@ -420,35 +264,37 @@ export default function SetupMezzo() {
 
       <h2 className="setup-subtitle">Motrice / Trattore</h2>
 
-      {lockMotrice && (
+      {lockMotrice ? (
         <div className="setup-error" style={{ marginBottom: 12 }}>
           Motrice bloccata: stai facendo CAMBIO RIMORCHIO
         </div>
-      )}
+      ) : null}
 
       <div className="targhe-list">
-        {motriciAll.map((m) => {
-          const warn = statoUso(m.targa);
+        {motriciAll.map((mezzo) => {
+          const warning = statoUso(mezzo.targa);
           return (
             <div
-              key={m.id}
-              className={`targa-card ${targaCamion === m.targa ? "selected" : ""} ${
-                warn ? "warn" : ""
+              key={mezzo.id}
+              className={`targa-card ${targaCamion === mezzo.targa ? "selected" : ""} ${
+                warning ? "warn" : ""
               }`}
               onClick={() => {
-                if (!lockMotrice) setTargaCamion(m.targa);
+                if (!lockMotrice) {
+                  setTargaCamion(mezzo.targa);
+                }
               }}
               style={lockMotrice ? { cursor: "not-allowed", opacity: 0.85 } : undefined}
-              title={warn ?? undefined}
+              title={warning ?? undefined}
             >
-              <div className="targa-text">{m.targa}</div>
+              <div className="targa-text">{mezzo.targa}</div>
               <div className="mezzo-meta">
-                <span className="mezzo-badge">{getCategoriaLabel(m)}</span>
+                <span className="mezzo-badge">{getCategoriaLabel(mezzo)}</span>
                 <span className="mezzo-autista">
-                  Autista solito: {getAutistaSolito(m)}
+                  Autista solito: {getAutistaSolito(mezzo)}
                 </span>
               </div>
-              {warn && <div className="targa-warn">{warn}</div>}
+              {warning ? <div className="targa-warn">{warning}</div> : null}
             </div>
           );
         })}
@@ -458,17 +304,19 @@ export default function SetupMezzo() {
         Rimorchio / Semirimorchio (opzionale)
       </h2>
 
-      {lockRimorchio && (
+      {lockRimorchio ? (
         <div className="setup-error" style={{ marginBottom: 12 }}>
           Rimorchio bloccato: stai facendo CAMBIO MOTRICE
         </div>
-      )}
+      ) : null}
 
       <div className="targhe-list">
         <div
           className={`targa-card ${!targaRimorchio ? "selected" : ""}`}
           onClick={() => {
-            if (!lockRimorchio) setTargaRimorchio(null);
+            if (!lockRimorchio) {
+              setTargaRimorchio(null);
+            }
           }}
           style={lockRimorchio ? { cursor: "not-allowed", opacity: 0.85 } : undefined}
         >
@@ -479,34 +327,36 @@ export default function SetupMezzo() {
           </div>
         </div>
 
-        {rimorchiAll.map((m) => {
-          const warn = statoUso(m.targa);
+        {rimorchiAll.map((mezzo) => {
+          const warning = statoUso(mezzo.targa);
           return (
             <div
-              key={m.id}
-              className={`targa-card ${targaRimorchio === m.targa ? "selected" : ""} ${
-                warn ? "warn" : ""
+              key={mezzo.id}
+              className={`targa-card ${targaRimorchio === mezzo.targa ? "selected" : ""} ${
+                warning ? "warn" : ""
               }`}
               onClick={() => {
-                if (!lockRimorchio) setTargaRimorchio(m.targa);
+                if (!lockRimorchio) {
+                  setTargaRimorchio(mezzo.targa);
+                }
               }}
               style={lockRimorchio ? { cursor: "not-allowed", opacity: 0.85 } : undefined}
-              title={warn ?? undefined}
+              title={warning ?? undefined}
             >
-              <div className="targa-text">{m.targa}</div>
+              <div className="targa-text">{mezzo.targa}</div>
               <div className="mezzo-meta">
-                <span className="mezzo-badge">{getCategoriaLabel(m)}</span>
+                <span className="mezzo-badge">{getCategoriaLabel(mezzo)}</span>
                 <span className="mezzo-autista">
-                  Autista solito: {getAutistaSolito(m)}
+                  Autista solito: {getAutistaSolito(mezzo)}
                 </span>
               </div>
-              {warn && <div className="targa-warn">{warn}</div>}
+              {warning ? <div className="targa-warn">{warning}</div> : null}
             </div>
           );
         })}
       </div>
 
-      {errore && <div className="setup-error">{errore}</div>}
+      {errore ? <div className="setup-error">{errore}</div> : null}
 
       <div className="setup-actions">
         <button className="setup-confirm" onClick={handleConfirm}>
@@ -516,4 +366,3 @@ export default function SetupMezzo() {
     </div>
   );
 }
-

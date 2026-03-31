@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import NextClonePageScaffold from "./NextClonePageScaffold";
-import { readNextCisternaSnapshot, type NextCisternaSnapshot } from "./domain/nextCisternaDomain";
-import { upsertNextCisternaCloneDocumento } from "./nextCisternaCloneState";
-import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
+import { useLocation, useNavigate } from "react-router-dom";
+import { currentMonthKey } from "../cisterna/collections";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import "../pages/CisternaCaravate/CisternaCaravateIA.css";
 
@@ -22,7 +19,31 @@ type DocumentoForm = {
   motivoVerifica: string;
 };
 
-function buildInitialForm(fileName: string, note: string): DocumentoForm {
+const YEAR_MONTH_REGEX = /^(\d{4})-(\d{2})$/;
+
+function isValidYearMonth(value: string): boolean {
+  const match = String(value || "").match(YEAR_MONTH_REGEX);
+  if (!match) return false;
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12;
+}
+
+function isHeicFile(file: File): boolean {
+  const mime = String(file.type || "").toLowerCase();
+  const name = file.name.toLowerCase();
+  return (
+    mime.includes("heic") ||
+    mime.includes("heif") ||
+    name.endsWith(".heic") ||
+    name.endsWith(".heif")
+  );
+}
+
+function isImage(file: File): boolean {
+  return String(file.type || "").toLowerCase().startsWith("image/");
+}
+
+function buildBlockedPreviewForm(fileName: string): DocumentoForm {
   const lower = fileName.toLowerCase();
   return {
     tipoDocumento: lower.includes("boll") || lower.includes("ddt") ? "bollettino" : "fattura",
@@ -34,45 +55,42 @@ function buildInitialForm(fileName: string, note: string): DocumentoForm {
     totaleDocumento: "",
     valuta: "",
     prodotto: "",
-    testo: note,
+    testo: "",
     daVerificare: true,
-    motivoVerifica: "preview_clone_safe",
+    motivoVerifica: "preview_read_only",
   };
 }
 
 export default function NextCisternaIAPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const handoff = useInternalAiUniversalHandoffConsumer({
     moduleId: "next.cisterna",
   });
   const lifecycleRef = useRef<string | null>(null);
-  const [snapshot, setSnapshot] = useState<NextCisternaSnapshot | null>(null);
+
+  const monthFromQuery = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get("month");
+    const value = String(raw ?? "").trim();
+    return isValidYearMonth(value) ? value : "";
+  }, [location.search]);
+  const fallbackYearMonth = monthFromQuery || currentMonthKey();
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [form, setForm] = useState<DocumentoForm | null>(null);
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [savedDocId, setSavedDocId] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        setLoading(true);
-        const nextSnapshot = await readNextCisternaSnapshot();
-        if (!cancelled) {
-          setSnapshot(nextSnapshot);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
       }
     };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [previewUrl]);
 
   useEffect(() => {
     if (handoff.state.status !== "ready") {
@@ -94,261 +112,282 @@ export default function NextCisternaIAPage() {
     lifecycleRef.current = handoff.state.payload.handoffId;
   }, [handoff]);
 
-  const handoffNote = useMemo(() => {
-    if (handoff.state.status !== "ready") {
-      return "";
+  const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
     }
-    return handoff.state.payload.motivoInstradamento;
-  }, [handoff.state]);
+    setSelectedFile(file);
+    setForm(null);
+    setSavedDocId("");
+    setError("");
+    if (file && isImage(file)) {
+      setPreviewUrl(URL.createObjectURL(file));
+    } else {
+      setPreviewUrl("");
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!selectedFile) {
+      setError("Seleziona un file prima dell'analisi.");
+      return;
+    }
+    if (isHeicFile(selectedFile)) {
+      setError("Formato HEIC/HEIF non supportato. Converti in JPG/PNG o PDF.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSavedDocId("");
+
+    try {
+      setForm(buildBlockedPreviewForm(selectedFile.name));
+      setError("Nel clone l'upload e l'analisi IA non vengono eseguiti sulla madre.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFormChange = <K extends keyof DocumentoForm>(
+    key: K,
+    value: DocumentoForm[K],
+  ) => {
+    setForm((prev) => {
+      if (!prev) return prev;
+      return { ...prev, [key]: value };
+    });
+    setSavedDocId("");
+  };
+
+  const handleSave = async () => {
+    if (!form || !selectedFile) {
+      setError("Analizza prima il documento.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      setError("Nel clone il salvataggio nell'archivio Cisterna resta bloccato.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusLabel = form?.daVerificare ? "DA VERIFICARE" : "OK";
+  const statusClass = form?.daVerificare ? "is-warning" : "is-ok";
 
   return (
-    <NextClonePageScaffold
-      eyebrow="Cisterna / IA"
-      title="Cisterna Caravate IA"
-      description="Pagina NEXT nativa del verticale IA cisterna: stessa forma operativa del modulo madre, ma senza upload, analisi provider o salvataggi business reali."
-      backTo="/next/cisterna"
-      backLabel="Torna a Cisterna"
-      notice={
-        <div style={{ display: "grid", gap: 12 }}>
-          {handoff.state.status === "ready" ? (
-            <InternalAiUniversalHandoffBanner
-              title="Handoff IA consumato su Cisterna"
-              description="Il verticale cisterna del clone aggancia il payload standard e apre il contesto specialistico corretto."
-              payload={handoff.state.payload}
+    <div className="cisterna-ia-page">
+      <div className="cisterna-ia-shell">
+        <header className="cisterna-ia-head">
+          <div>
+            <h1>Cisterna Caravate IA</h1>
+            <p>
+              Upload, estrazione e salvataggio in
+              <code> @documenti_cisterna</code>.
+            </p>
+            <p style={{ marginTop: 8, color: "#4a6078" }}>
+              Nel clone la pagina resta navigabile, ma upload, analisi IA e salvataggio
+              archivio vengono fermati dalla barriera no-write.
+            </p>
+          </div>
+          <div className="cisterna-ia-actions">
+            <button type="button" onClick={() => navigate(`/next/cisterna?month=${encodeURIComponent(fallbackYearMonth)}`)}>
+              Vai a Cisterna
+            </button>
+            <button type="button" onClick={() => navigate("/next/ia")}>
+              Torna a IA
+            </button>
+          </div>
+        </header>
+
+        <section className="cisterna-ia-card">
+          <h2>Fatture e Bollettini</h2>
+          <label className="cisterna-ia-field">
+            <span>File documento (PDF o immagine)</span>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={handleFile}
+              disabled={loading || saving}
             />
-          ) : null}
-          {notice ? <div className="next-clone-placeholder">{notice}</div> : null}
-          {loading ? <div className="next-clone-placeholder">Caricamento contesto cisterna...</div> : null}
-          {snapshot ? (
-            <div className="next-clone-placeholder">
-              Mese {snapshot.monthLabel} | Documenti {snapshot.counts.documents} | Schede {snapshot.counts.schede} | Supporto rifornimenti {snapshot.counts.supportRefuels}
+          </label>
+
+          {selectedFile ? (
+            <div className="cisterna-ia-preview">
+              {previewUrl ? (
+                <img src={previewUrl} alt={selectedFile.name} />
+              ) : (
+                <div className="cisterna-ia-preview-file">
+                  <strong>{selectedFile.name}</strong>
+                  <span>Anteprima immagine non disponibile (file PDF o non immagine).</span>
+                </div>
+              )}
             </div>
           ) : null}
-        </div>
-      }
-      actions={
-        <>
-          <button type="button" className="next-clone-header-action" onClick={() => navigate("/next/cisterna")}>
-            Vai a Cisterna
-          </button>
-          <button
-            type="button"
-            className="next-clone-header-action"
-            onClick={() => navigate(`/next/cisterna/schede-test?month=${encodeURIComponent(snapshot?.monthKey ?? "")}`)}
-          >
-            Schede Test
-          </button>
-        </>
-      }
-    >
-      <div className="cisterna-ia-page">
-        <div className="cisterna-ia-shell">
+
+          <div className="cisterna-ia-row">
+            <button
+              type="button"
+              onClick={handleAnalyze}
+              disabled={!selectedFile || loading || saving}
+            >
+              {loading ? "Analisi in corso..." : "Analizza documento (IA)"}
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!form || loading || saving}
+            >
+              {saving ? "Salvataggio..." : "Salva in archivio cisterna"}
+            </button>
+          </div>
+
+          {error ? <div className="cisterna-ia-error">{error}</div> : null}
+          {savedDocId ? (
+            <div className="cisterna-ia-ok">
+              Documento salvato con id: <strong>{savedDocId}</strong>
+            </div>
+          ) : null}
+        </section>
+
+        {form ? (
           <section className="cisterna-ia-card">
-            <h2>Fatture e Bollettini</h2>
+            <div className="cisterna-ia-result-head">
+              <h2>Risultato estrazione</h2>
+              <span className={`cisterna-ia-badge ${statusClass}`}>{statusLabel}</span>
+            </div>
+
+            <div className="cisterna-ia-form-grid">
+              <label className="cisterna-ia-field">
+                <span>Tipo documento</span>
+                <select
+                  value={form.tipoDocumento}
+                  onChange={(event) =>
+                    handleFormChange(
+                      "tipoDocumento",
+                      event.target.value as DocumentoForm["tipoDocumento"],
+                    )
+                  }
+                >
+                  <option value="fattura">Fattura</option>
+                  <option value="bollettino">Bollettino / DAS</option>
+                </select>
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Data documento</span>
+                <input
+                  value={form.dataDocumento}
+                  onChange={(event) => handleFormChange("dataDocumento", event.target.value)}
+                  placeholder="gg/mm/aaaa"
+                />
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Litri totali</span>
+                <input
+                  type="number"
+                  step={0.01}
+                  min={0}
+                  value={form.litriTotali}
+                  onChange={(event) => handleFormChange("litriTotali", event.target.value)}
+                />
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Totale documento</span>
+                <input
+                  type="number"
+                  step={0.01}
+                  min={0}
+                  value={form.totaleDocumento}
+                  onChange={(event) => handleFormChange("totaleDocumento", event.target.value)}
+                />
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Valuta</span>
+                <select
+                  value={form.valuta}
+                  onChange={(event) =>
+                    handleFormChange("valuta", event.target.value as DocumentoForm["valuta"])
+                  }
+                >
+                  <option value="">Non definita</option>
+                  <option value="EUR">EUR</option>
+                  <option value="CHF">CHF</option>
+                </select>
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Numero documento</span>
+                <input
+                  value={form.numeroDocumento}
+                  onChange={(event) => handleFormChange("numeroDocumento", event.target.value)}
+                />
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Fornitore</span>
+                <input
+                  value={form.fornitore}
+                  onChange={(event) => handleFormChange("fornitore", event.target.value)}
+                />
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Destinatario</span>
+                <input
+                  value={form.destinatario}
+                  onChange={(event) => handleFormChange("destinatario", event.target.value)}
+                />
+              </label>
+
+              <label className="cisterna-ia-field">
+                <span>Prodotto</span>
+                <input
+                  value={form.prodotto}
+                  onChange={(event) => handleFormChange("prodotto", event.target.value)}
+                />
+              </label>
+            </div>
+
             <label className="cisterna-ia-field">
-              <span>File documento (PDF o immagine)</span>
-              <input
-                type="file"
-                accept=".pdf,image/*"
-                onChange={(event) => {
-                  const file = event.target.files?.[0] ?? null;
-                  if (previewUrl) {
-                    URL.revokeObjectURL(previewUrl);
-                  }
-                  setSelectedFile(file);
-                  setForm(null);
-                  setNotice("");
-                  if (file && file.type.startsWith("image/")) {
-                    setPreviewUrl(URL.createObjectURL(file));
-                  } else {
-                    setPreviewUrl("");
-                  }
-                }}
+              <span>Testo estratto (opzionale)</span>
+              <textarea
+                rows={4}
+                value={form.testo}
+                onChange={(event) => handleFormChange("testo", event.target.value)}
               />
             </label>
 
-            {selectedFile ? (
-              <div className="cisterna-ia-preview">
-                {previewUrl ? (
-                  <img src={previewUrl} alt={selectedFile.name} />
-                ) : (
-                  <div className="cisterna-ia-preview-file">
-                    <strong>{selectedFile.name}</strong>
-                    <span>Anteprima immagine non disponibile.</span>
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            <div className="cisterna-ia-row">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!selectedFile) {
-                    setNotice("Seleziona un file prima dell'analisi.");
-                    return;
-                  }
-                  setForm(buildInitialForm(selectedFile.name, handoffNote));
-                  setNotice("Nel clone l'analisi IA non chiama il provider reale: la scheda resta in preview manuale da verificare.");
-                }}
-              >
-                Analizza documento (IA)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!form || !snapshot) {
-                    setNotice("Analizza prima un documento e verifica i campi.");
-                    return;
-                  }
-                  upsertNextCisternaCloneDocumento({
-                    id: `next-cisterna-doc:${Date.now()}`,
-                    tipoDocumento: form.tipoDocumento,
-                    fornitore: form.fornitore,
-                    destinatario: form.destinatario,
-                    numeroDocumento: form.numeroDocumento,
-                    dataDocumento: form.dataDocumento,
-                    litriTotali: form.litriTotali ? Number(form.litriTotali) : null,
-                    totaleDocumento: form.totaleDocumento ? Number(form.totaleDocumento) : null,
-                    valuta: form.valuta,
-                    prodotto: form.prodotto,
-                    testo: form.testo,
-                    needsReview: form.daVerificare,
-                    motivoVerifica: form.motivoVerifica,
-                    nomeFile: selectedFile?.name ?? null,
-                    fileUrl: previewUrl || null,
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
-                    source: "next-clone-ia",
-                    monthKey: snapshot.monthKey,
-                  });
-                  setNotice("Documento cisterna salvato nel clone locale.");
-                }}
-                disabled={!form}
-              >
-                Salva in archivio cisterna
-              </button>
+            <div className="cisterna-ia-review">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={form.daVerificare}
+                  onChange={(event) => handleFormChange("daVerificare", event.target.checked)}
+                />
+                <span>Marca come da verificare</span>
+              </label>
             </div>
+
+            <label className="cisterna-ia-field">
+              <span>Motivo verifica</span>
+              <input
+                value={form.motivoVerifica}
+                onChange={(event) => handleFormChange("motivoVerifica", event.target.value)}
+                placeholder="Es. data poco leggibile"
+              />
+            </label>
           </section>
-
-          {form ? (
-            <section className="cisterna-ia-card">
-              <div className="cisterna-ia-result-head">
-                <h2>Risultato estrazione</h2>
-                <span className="cisterna-ia-badge is-warning">DA VERIFICARE</span>
-              </div>
-
-              <div className="cisterna-ia-form-grid">
-                <label className="cisterna-ia-field">
-                  <span>Tipo documento</span>
-                  <select
-                    value={form.tipoDocumento}
-                    onChange={(event) =>
-                      setForm((current) => (current ? { ...current, tipoDocumento: event.target.value as DocumentoForm["tipoDocumento"] } : current))
-                    }
-                  >
-                    <option value="fattura">Fattura</option>
-                    <option value="bollettino">Bollettino / DAS</option>
-                  </select>
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Data documento</span>
-                  <input value={form.dataDocumento} onChange={(event) => setForm((current) => (current ? { ...current, dataDocumento: event.target.value } : current))} />
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Litri totali</span>
-                  <input value={form.litriTotali} onChange={(event) => setForm((current) => (current ? { ...current, litriTotali: event.target.value } : current))} />
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Totale documento</span>
-                  <input value={form.totaleDocumento} onChange={(event) => setForm((current) => (current ? { ...current, totaleDocumento: event.target.value } : current))} />
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Valuta</span>
-                  <select
-                    value={form.valuta}
-                    onChange={(event) => setForm((current) => (current ? { ...current, valuta: event.target.value as DocumentoForm["valuta"] } : current))}
-                  >
-                    <option value="">Non definita</option>
-                    <option value="EUR">EUR</option>
-                    <option value="CHF">CHF</option>
-                  </select>
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Numero documento</span>
-                  <input value={form.numeroDocumento} onChange={(event) => setForm((current) => (current ? { ...current, numeroDocumento: event.target.value } : current))} />
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Fornitore</span>
-                  <input value={form.fornitore} onChange={(event) => setForm((current) => (current ? { ...current, fornitore: event.target.value } : current))} />
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Destinatario</span>
-                  <input value={form.destinatario} onChange={(event) => setForm((current) => (current ? { ...current, destinatario: event.target.value } : current))} />
-                </label>
-
-                <label className="cisterna-ia-field">
-                  <span>Prodotto</span>
-                  <input value={form.prodotto} onChange={(event) => setForm((current) => (current ? { ...current, prodotto: event.target.value } : current))} />
-                </label>
-              </div>
-
-              <label className="cisterna-ia-field">
-                <span>Testo estratto (opzionale)</span>
-                <textarea rows={4} value={form.testo} onChange={(event) => setForm((current) => (current ? { ...current, testo: event.target.value } : current))} />
-              </label>
-
-              <label className="cisterna-ia-field">
-                <span>Motivo verifica</span>
-                <input value={form.motivoVerifica} onChange={(event) => setForm((current) => (current ? { ...current, motivoVerifica: event.target.value } : current))} />
-              </label>
-            </section>
-          ) : null}
-
-          {snapshot ? (
-            <section className="cisterna-ia-card">
-              <h2>Archivio cisterna del mese</h2>
-              <div className="cisterna-ia-form-grid">
-                <div className="cisterna-ia-field">
-                  <span>Documenti mese</span>
-                  <strong>{snapshot.counts.documents}</strong>
-                </div>
-                <div className="cisterna-ia-field">
-                  <span>Fatture</span>
-                  <strong>{snapshot.counts.fatture}</strong>
-                </div>
-                <div className="cisterna-ia-field">
-                  <span>Bollettini</span>
-                  <strong>{snapshot.counts.bollettini}</strong>
-                </div>
-                <div className="cisterna-ia-field">
-                  <span>Schede</span>
-                  <strong>{snapshot.counts.schede}</strong>
-                </div>
-              </div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {snapshot.archive.documents.slice(0, 8).map((item) => (
-                  <div key={item.id} className="next-clone-placeholder">
-                    <strong>{item.dateLabel}</strong> - {item.fornitore || "-"} - {item.prodotto || "-"} - {item.litriLabel}
-                    {item.fileUrl ? (
-                      <a style={{ marginLeft: 8 }} href={item.fileUrl} target="_blank" rel="noopener noreferrer">
-                        Apri
-                      </a>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
-        </div>
+        ) : null}
       </div>
-    </NextClonePageScaffold>
+    </div>
   );
 }

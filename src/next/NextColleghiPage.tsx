@@ -6,10 +6,6 @@ import {
   readNextColleghiSnapshot,
   type NextCollegaReadOnlyItem,
 } from "./domain/nextColleghiDomain";
-import {
-  markNextCollegaCloneDeleted,
-  upsertNextCollegaCloneRecord,
-} from "./nextAnagraficheCloneState";
 
 type SchedaCarburante = {
   id: string;
@@ -60,6 +56,20 @@ function readErrorMessage(error: unknown) {
   return "Errore durante il caricamento dei colleghi.";
 }
 
+const READ_ONLY_NOTICE_STYLE = {
+  background: "#fef3c7",
+  color: "#92400e",
+} as const;
+
+const SUCCESS_NOTICE_STYLE = {
+  background: "#ecfccb",
+  color: "#365314",
+} as const;
+
+function buildReadOnlyMessage(action: string) {
+  return `${action} bloccato: la NEXT e in sola lettura e non salva modifiche sui colleghi.`;
+}
+
 export default function NextColleghiPage() {
   const navigate = useNavigate();
   const [colleghi, setColleghi] = useState<Collega[]>([]);
@@ -86,7 +96,7 @@ export default function NextColleghiPage() {
       try {
         setLoading(true);
         setError(null);
-        const snapshot = await readNextColleghiSnapshot();
+        const snapshot = await readNextColleghiSnapshot({ includeCloneOverlays: false });
         if (cancelled) return;
         setColleghi(snapshot.items.map(mapCollega));
       } catch (loadError: unknown) {
@@ -147,48 +157,10 @@ export default function NextColleghiPage() {
   const handleSubmit = () => {
     const normalizedName = nome.trim().toUpperCase();
     if (!normalizedName) return;
-
-    const targetId = editId ?? `next-collega:${Date.now()}`;
-    const nextCollega: Collega = {
-      id: targetId,
-      nome: normalizedName,
-      telefono: telefono.trim() || "",
-      telefonoPrivato: telefonoPrivato.trim() || "",
-      badge: badge.trim() || "",
-      codice: codice.trim() || "",
-      descrizione: descrizione.trim() || "",
-      pinSim: pinSim.trim() || "",
-      pukSim: pukSim.trim() || "",
-      schedeCarburante: schedeCarburante.map((entry) => ({
-        id: entry.id,
-        nomeCarta: entry.nomeCarta.trim(),
-        pinCarta: entry.pinCarta.trim(),
-      })),
-    };
-
-    upsertNextCollegaCloneRecord({
-      id: targetId,
-      nome: nextCollega.nome,
-      telefono: nextCollega.telefono || null,
-      telefonoPrivato: nextCollega.telefonoPrivato || null,
-      badge: nextCollega.badge || null,
-      codice: nextCollega.codice || null,
-      descrizione: nextCollega.descrizione || null,
-      pinSim: nextCollega.pinSim || null,
-      pukSim: nextCollega.pukSim || null,
-      schedeCarburante: nextCollega.schedeCarburante ?? [],
-      __nextCloneOnly: true,
-      __nextCloneSavedAt: Date.now(),
-    });
-
-    setColleghi((current) => {
-      const next = current.filter((entry) => entry.id !== targetId);
-      return [...next, nextCollega].sort((left, right) =>
-        left.nome.localeCompare(right.nome, "it", { sensitivity: "base" }),
-      );
-    });
-    setNotice(editId ? "Collega aggiornato nel clone NEXT." : "Collega aggiunto nel clone NEXT.");
-    resetForm();
+    setError(null);
+    setNotice(
+      buildReadOnlyMessage(editId ? `Salvataggio modifiche per ${normalizedName}` : `Aggiunta collega ${normalizedName}`)
+    );
   };
 
   const handleEdit = (collega: Collega) => {
@@ -206,15 +178,9 @@ export default function NextColleghiPage() {
 
   const handleDelete = (id: string) => {
     if (!window.confirm("Eliminare questo collega?")) return;
-    if (editId === id) {
-      resetForm();
-    }
-    markNextCollegaCloneDeleted(id);
-    setColleghi((current) => current.filter((entry) => entry.id !== id));
-    if (selectedCollega?.id === id) {
-      setSelectedCollega(null);
-    }
-    setNotice("Collega eliminato dal clone NEXT.");
+    const target = colleghi.find((entry) => entry.id === id);
+    setError(null);
+    setNotice(buildReadOnlyMessage(`Eliminazione collega ${target?.nome ?? id}`));
   };
 
   const esportaPDF = async (collega: Collega) => {
@@ -250,8 +216,14 @@ export default function NextColleghiPage() {
         </header>
 
         {error && <div className="coll-error">{error}</div>}
+        <div className="coll-error" style={READ_ONLY_NOTICE_STYLE}>
+          La superficie replica la madre ma le azioni scriventi restano bloccate in sola lettura.
+        </div>
         {notice ? (
-          <div className="coll-error" style={{ background: "#ecfccb", color: "#365314" }}>
+          <div
+            className="coll-error"
+            style={notice.includes("bloccato") ? READ_ONLY_NOTICE_STYLE : SUCCESS_NOTICE_STYLE}
+          >
             {notice}
           </div>
         ) : null}

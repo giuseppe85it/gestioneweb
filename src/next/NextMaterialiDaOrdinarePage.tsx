@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { UnitaMisura } from "../types/ordini";
 import "../pages/MaterialiDaOrdinare.css";
-import { generateSmartPDF } from "../utils/pdfEngine";
 import { readNextFornitoriSnapshot } from "./domain/nextFornitoriDomain";
-import { appendNextProcurementCloneOrder } from "./nextProcurementCloneState";
 import {
-  NEXT_ACQUISTI_PATH,
   NEXT_HOME_PATH,
   NEXT_ORDINI_ARRIVATI_PATH,
   NEXT_ORDINI_IN_ATTESA_PATH,
@@ -17,8 +14,6 @@ type Fornitore = {
   nome: string;
 };
 
-type FabbisogniTab = "Fabbisogni" | "Ordini" | "Arrivi" | "Prezzi & Preventivi";
-
 type DraftMaterial = {
   id: string;
   descrizione: string;
@@ -27,18 +22,24 @@ type DraftMaterial = {
   arrivato: false;
   fotoUrl: string | null;
   fotoStoragePath: null;
-  fornitoreScelto: string;
-  residuo: string;
-  fontePrezzo: string;
-  note: string;
-  allegati: {
-    id: string;
-    name: string;
-    previewUrl: string | null;
-  }[];
 };
 
+type FabbisogniTab = "Fabbisogni" | "Ordini" | "Arrivi" | "Prezzi & Preventivi";
+
 const TABS: FabbisogniTab[] = ["Fabbisogni", "Ordini", "Arrivi", "Prezzi & Preventivi"];
+
+const READ_ONLY_ADD_MESSAGE =
+  "Clone read-only: aggiunta materiale non disponibile.";
+const READ_ONLY_DELETE_MESSAGE =
+  "Clone read-only: eliminazione materiale non disponibile.";
+const READ_ONLY_SAVE_MESSAGE =
+  "Clone read-only: conferma ordine non disponibile.";
+const READ_ONLY_FOTO_MESSAGE =
+  "Clone read-only: upload foto non disponibile.";
+const READ_ONLY_PREVENTIVO_MESSAGE =
+  "Clone read-only: upload preventivo non disponibile.";
+const READ_ONLY_PDF_MESSAGE =
+  "Clone read-only: esportazione PDF non disponibile.";
 
 const immaginiAutomatiche: { pattern: RegExp; url: string }[] = [
   { pattern: /cemento/i, url: "/materiali/cemento.png" },
@@ -46,15 +47,6 @@ const immaginiAutomatiche: { pattern: RegExp; url: string }[] = [
   { pattern: /piastrella/i, url: "/materiali/piastrelle.png" },
   { pattern: /legno|assi/i, url: "/materiali/legno.png" },
 ];
-
-function generaId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function oggi() {
-  const date = new Date();
-  return `${String(date.getDate()).padStart(2, "0")} ${String(date.getMonth() + 1).padStart(2, "0")} ${date.getFullYear()}`;
-}
 
 function trovaImmagineAutomatica(desc: string): string | null {
   for (const matcher of immaginiAutomatiche) {
@@ -69,46 +61,28 @@ function readErrorMessage(error: unknown) {
     : "Errore durante il caricamento dei fornitori.";
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Impossibile leggere il file selezionato."));
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function NextMaterialiDaOrdinarePage() {
   const navigate = useNavigate();
   const [fornitori, setFornitori] = useState<Fornitore[]>([]);
   const [fornitoreId, setFornitoreId] = useState("");
   const [fornitoreNome, setFornitoreNome] = useState("");
   const [isNuovoFornitore, setIsNuovoFornitore] = useState(false);
-  const [nomeFornitorePersonalizzato, setNomeFornitorePersonalizzato] = useState("");
+  const [nomeFornitorePersonalizzato, setNomeFornitorePersonalizzato] =
+    useState("");
   const [descrizione, setDescrizione] = useState("");
   const [quantita, setQuantita] = useState("");
   const [unita, setUnita] = useState<UnitaMisura>("pz");
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
-  const [materiali, setMateriali] = useState<DraftMaterial[]>([]);
+  const [materiali] = useState<DraftMaterial[]>([]);
   const [loadingFornitori, setLoadingFornitori] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FabbisogniTab>("Fabbisogni");
   const [searchText, setSearchText] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
-  const [localPreventivi, setLocalPreventivi] = useState<
-    { id: string; name: string; previewUrl: string | null }[]
-  >([]);
-  const [materialEditor, setMaterialEditor] = useState<{
+  const [placeholderModal, setPlaceholderModal] = useState<{
     action: "Prezzi" | "Allegati" | "Note";
     materialeId: string;
     descrizione: string;
   } | null>(null);
-  const [editorValue, setEditorValue] = useState("");
-  const [editorAuxValue, setEditorAuxValue] = useState("");
-  const preventivoInputRef = useRef<HTMLInputElement | null>(null);
-  const allegatoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,7 +91,9 @@ export default function NextMaterialiDaOrdinarePage() {
       try {
         setLoadingFornitori(true);
         setError(null);
-        const snapshot = await readNextFornitoriSnapshot();
+        const snapshot = await readNextFornitoriSnapshot({
+          includeCloneOverlays: false,
+        });
         if (cancelled) return;
         setFornitori(snapshot.items.map((item) => ({ id: item.id, nome: item.nome })));
       } catch (loadError) {
@@ -148,77 +124,44 @@ export default function NextMaterialiDaOrdinarePage() {
     setIsNuovoFornitore(false);
     setFornitoreId(id);
     const fornitore = fornitori.find((entry) => entry.id === id);
-    setFornitoreNome(fornitore?.nome ?? "");
+    setFornitoreNome(fornitore?.nome || "");
   };
 
   const handleDescrizioneBlur = () => {
     if (fotoPreview) return;
     const auto = trovaImmagineAutomatica(descrizione);
-    if (auto) {
-      setFotoPreview(auto);
-    }
+    if (auto) setFotoPreview(auto);
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const nextPreview = await readFileAsDataUrl(file);
-      setFotoPreview(nextPreview || null);
-    } catch (fileError) {
-      window.alert(readErrorMessage(fileError));
-    } finally {
-      event.target.value = "";
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files?.[0]) {
+      window.alert(READ_ONLY_FOTO_MESSAGE);
     }
-  };
-
-  const resetMateriale = () => {
-    setDescrizione("");
-    setQuantita("");
-    setUnita("pz");
-    setFotoPreview(null);
+    event.target.value = "";
   };
 
   const aggiungiMateriale = () => {
     if (!descrizione.trim() || !quantita.trim()) return;
+
     const fornitoreAttivo = isNuovoFornitore
       ? nomeFornitorePersonalizzato.trim().toUpperCase()
       : fornitoreNome.trim();
+
     if (!fornitoreAttivo) {
       window.alert("Seleziona un fornitore prima di aggiungere il materiale.");
       return;
     }
 
-    const nuovo: DraftMaterial = {
-      id: generaId(),
-      descrizione: descrizione.trim().toUpperCase(),
-      quantita: Number(quantita),
-      unita,
-      arrivato: false,
-      fotoUrl: fotoPreview,
-      fotoStoragePath: null,
-      fornitoreScelto: fornitoreAttivo,
-      residuo: "—",
-      fontePrezzo: "—",
-      note: "",
-      allegati: [],
-    };
-
-    setMateriali((current) => [...current, nuovo]);
-    setSaveMessage(null);
-    setNotice(null);
-    resetMateriale();
+    window.alert(READ_ONLY_ADD_MESSAGE);
   };
 
-  const eliminaMateriale = (id: string) => {
-    setMateriali((current) => current.filter((entry) => entry.id !== id));
+  const eliminaMateriale = () => {
+    window.alert(READ_ONLY_DELETE_MESSAGE);
   };
 
-  const salvaOrdine = async () => {
-    if (materiali.length === 0) return;
-
+  const salvaOrdine = () => {
     let nomeFinale = fornitoreNome.trim();
+
     if (isNuovoFornitore && nomeFornitorePersonalizzato.trim()) {
       nomeFinale = nomeFornitorePersonalizzato.trim().toUpperCase();
     }
@@ -228,39 +171,8 @@ export default function NextMaterialiDaOrdinarePage() {
       return;
     }
 
-    setSaving(true);
-    try {
-      const orderId = `next-clone-ord:${generaId()}`;
-      appendNextProcurementCloneOrder({
-        id: orderId,
-        idFornitore: fornitoreId === "nuovo" ? `next-clone-supplier:${generaId()}` : fornitoreId,
-        nomeFornitore: nomeFinale,
-        dataOrdine: oggi(),
-        materiali: materiali.map((item) => ({
-          id: item.id,
-          descrizione: item.descrizione,
-          quantita: item.quantita,
-          unita: item.unita,
-          arrivato: false,
-          fotoUrl: item.fotoUrl,
-          fotoStoragePath: null,
-        })),
-        arrivato: false,
-        __nextCloneOnly: true,
-        __nextCloneSavedAt: Date.now(),
-      });
-
-      setMateriali([]);
-      setFornitoreId("");
-      setFornitoreNome("");
-      setNomeFornitorePersonalizzato("");
-      setIsNuovoFornitore(false);
-      resetMateriale();
-      setSaveMessage("Ordine clone-only confermato. Lo trovi nella vista NEXT Acquisti senza scrivere sulla madre.");
-      setNotice(null);
-    } finally {
-      setSaving(false);
-    }
+    if (!materiali.length) return;
+    window.alert(READ_ONLY_SAVE_MESSAGE);
   };
 
   const materialiFiltrati = useMemo(() => {
@@ -268,156 +180,30 @@ export default function NextMaterialiDaOrdinarePage() {
     if (!query) return materiali;
 
     return materiali.filter((item) => {
+      const fornitoreRiga = String((item as { fornitore?: string }).fornitore || "").toLowerCase();
       return (
         item.descrizione.toLowerCase().includes(query) ||
-        item.fornitoreScelto.toLowerCase().includes(query) ||
+        fornitoreRiga.includes(query) ||
         item.id.toLowerCase().includes(query)
       );
     });
   }, [materiali, searchText]);
 
   const canSaveOrdine =
-    !saving &&
     materiali.length > 0 &&
-    (Boolean(fornitoreNome.trim()) || Boolean(nomeFornitorePersonalizzato.trim()));
+    (Boolean(fornitoreNome) || Boolean(nomeFornitorePersonalizzato.trim()));
+
+  const getOptionalText = (materiale: DraftMaterial, keys: string[]) => {
+    for (const key of keys) {
+      const value = (materiale as Record<string, unknown>)[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        return String(value);
+      }
+    }
+    return "—";
+  };
 
   const showFabbisogni = activeTab === "Fabbisogni";
-
-  const openEditor = (action: "Prezzi" | "Allegati" | "Note", materiale: DraftMaterial) => {
-    setMaterialEditor({
-      action,
-      materialeId: materiale.id,
-      descrizione: materiale.descrizione,
-    });
-
-    if (action === "Prezzi") {
-      setEditorValue(materiale.fontePrezzo === "—" ? "" : materiale.fontePrezzo);
-      setEditorAuxValue(materiale.residuo === "—" ? "" : materiale.residuo);
-      return;
-    }
-
-    if (action === "Note") {
-      setEditorValue(materiale.note);
-      setEditorAuxValue("");
-      return;
-    }
-
-    setEditorValue("");
-    setEditorAuxValue("");
-  };
-
-  const applyEditor = () => {
-    if (!materialEditor) {
-      return;
-    }
-
-    setMateriali((current) =>
-      current.map((item) => {
-        if (item.id !== materialEditor.materialeId) {
-          return item;
-        }
-
-        if (materialEditor.action === "Prezzi") {
-          return {
-            ...item,
-            fontePrezzo: editorValue.trim() || "—",
-            residuo: editorAuxValue.trim() || "—",
-          };
-        }
-
-        if (materialEditor.action === "Note") {
-          return {
-            ...item,
-            note: editorValue.trim(),
-          };
-        }
-
-        return item;
-      }),
-    );
-
-    setNotice(`Scheda ${materialEditor.action.toLowerCase()} aggiornata nel clone.`);
-    setMaterialEditor(null);
-    setEditorValue("");
-    setEditorAuxValue("");
-  };
-
-  const handlePreventivoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const previewUrl = file.type.startsWith("image/") ? await readFileAsDataUrl(file) : null;
-      setLocalPreventivi((current) => [
-        {
-          id: generaId(),
-          name: file.name,
-          previewUrl,
-        },
-        ...current,
-      ]);
-      setNotice("Preventivo locale agganciato al clone.");
-    } catch (uploadError) {
-      window.alert(readErrorMessage(uploadError));
-    } finally {
-      event.target.value = "";
-    }
-  };
-
-  const handleAllegatoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !materialEditor || materialEditor.action !== "Allegati") {
-      return;
-    }
-
-    try {
-      const previewUrl = file.type.startsWith("image/") ? await readFileAsDataUrl(file) : null;
-      setMateriali((current) =>
-        current.map((item) =>
-          item.id === materialEditor.materialeId
-            ? {
-                ...item,
-                allegati: [
-                  ...item.allegati,
-                  { id: generaId(), name: file.name, previewUrl },
-                ],
-              }
-            : item,
-        ),
-      );
-      setNotice("Allegato locale aggiunto al materiale.");
-    } catch (uploadError) {
-      window.alert(readErrorMessage(uploadError));
-    } finally {
-      event.target.value = "";
-    }
-  };
-
-  const exportPdf = async (kind: "fornitori" | "direzione") => {
-    if (materiali.length === 0) {
-      setNotice("Aggiungi almeno un materiale prima di esportare il PDF.");
-      return;
-    }
-
-    await generateSmartPDF({
-      kind: "table",
-      title: kind === "fornitori" ? "PDF Fornitori clone" : "PDF Direzione clone",
-      columns: ["descrizione", "quantita", "unita", "fornitoreScelto", "fontePrezzo", "residuo"],
-      rows: materiali.map((item) => ({
-        descrizione: item.descrizione,
-        quantita: item.quantita,
-        unita: item.unita,
-        fornitoreScelto: item.fornitoreScelto,
-        fontePrezzo: item.fontePrezzo,
-        residuo: item.residuo,
-      })),
-    });
-    setNotice(
-      kind === "fornitori"
-        ? "PDF fornitori generato dal clone."
-        : "PDF direzione generato dal clone.",
-    );
-  };
 
   return (
     <div className="mdo-page">
@@ -450,34 +236,33 @@ export default function NextMaterialiDaOrdinarePage() {
               <button
                 type="button"
                 className="mdo-cta-button"
-                onClick={() => preventivoInputRef.current?.click()}
+                onClick={() => window.alert(READ_ONLY_PREVENTIVO_MESSAGE)}
               >
-                Carica preventivo locale
+                Carica preventivo
               </button>
-              <button type="button" className="mdo-cta-button" onClick={() => void exportPdf("fornitori")}>
+              <button
+                type="button"
+                className="mdo-cta-button"
+                onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
+              >
                 PDF Fornitori
               </button>
               <button
                 type="button"
                 className="mdo-cta-button mdo-cta-primary"
-                onClick={() => void exportPdf("direzione")}
+                onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
               >
                 PDF Direzione
               </button>
-              <input
-                ref={preventivoInputRef}
-                type="file"
-                accept="image/*,.pdf"
-                onChange={handlePreventivoUpload}
-                style={{ display: "none" }}
-              />
             </div>
           </div>
         </header>
 
-        {error ? <div className="mdo-placeholder-panel"><p>{error}</p></div> : null}
-        {saveMessage ? <div className="mdo-placeholder-panel"><p>{saveMessage}</p></div> : null}
-        {notice ? <div className="mdo-placeholder-panel"><p>{notice}</p></div> : null}
+        {error ? (
+          <div className="mdo-placeholder-panel">
+            <p>{error}</p>
+          </div>
+        ) : null}
 
         <div className="mdo-tabs" role="tablist" aria-label="Sezioni acquisti">
           {TABS.map((tab) => (
@@ -490,86 +275,20 @@ export default function NextMaterialiDaOrdinarePage() {
               onClick={() => setActiveTab(tab)}
             >
               <span>{tab}</span>
-              {tab === "Prezzi & Preventivi" ? (
-                <span className="mdo-tab-badge">{localPreventivi.length} locali</span>
+              {tab !== "Fabbisogni" ? (
+                <span className="mdo-tab-badge">In arrivo</span>
               ) : null}
             </button>
           ))}
         </div>
 
         {!showFabbisogni ? (
-          <section className="mdo-placeholder-panel" aria-live="polite" style={{ display: "grid", gap: 16 }}>
+          <section className="mdo-placeholder-panel" aria-live="polite">
             <h2>{activeTab}</h2>
-            {activeTab === "Ordini" ? (
-              <>
-                <p>La tab ordini del clone apre la lista NEXT vera senza riattivare il runtime legacy.</p>
-                <div className="mdo-footer">
-                  <button type="button" className="mdo-footer-button" onClick={() => navigate(NEXT_ORDINI_IN_ATTESA_PATH)}>
-                    Apri ordini in attesa
-                  </button>
-                  <button type="button" className="mdo-footer-button mdo-footer-alt" onClick={() => navigate(NEXT_ACQUISTI_PATH)}>
-                    Apri hub acquisti
-                  </button>
-                </div>
-              </>
-            ) : null}
-            {activeTab === "Arrivi" ? (
-              <>
-                <p>La tab arrivi del clone apre la lista NEXT vera degli ordini gia arrivati.</p>
-                <div className="mdo-footer">
-                  <button type="button" className="mdo-footer-button" onClick={() => navigate(NEXT_ORDINI_ARRIVATI_PATH)}>
-                    Apri ordini arrivati
-                  </button>
-                  <button type="button" className="mdo-footer-button mdo-footer-alt" onClick={() => navigate(`${NEXT_ACQUISTI_PATH}?tab=arrivi`)}>
-                    Apri arrivi in acquisti
-                  </button>
-                </div>
-              </>
-            ) : null}
-            {activeTab === "Prezzi & Preventivi" ? (
-              <>
-                <p>I preventivi locali restano nel clone e convivono con la vista NEXT read-only dei preventivi reali.</p>
-                {localPreventivi.length === 0 ? (
-                  <div className="mdo-empty">Nessun preventivo locale caricato.</div>
-                ) : (
-                  <div className="mdo-table-wrap">
-                    <table className="mdo-table">
-                      <thead>
-                        <tr>
-                          <th>Nome file</th>
-                          <th>Anteprima</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {localPreventivi.map((item) => (
-                          <tr key={item.id}>
-                            <td>{item.name}</td>
-                            <td>
-                              {item.previewUrl ? (
-                                <button
-                                  type="button"
-                                  className="mdo-chip-button"
-                                  onClick={() => window.open(item.previewUrl ?? undefined, "_blank", "noopener,noreferrer")}
-                                >
-                                  Apri anteprima
-                                </button>
-                              ) : (
-                                <span>PDF locale</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <div className="mdo-footer">
-                  <button type="button" className="mdo-footer-button" onClick={() => navigate(`${NEXT_ACQUISTI_PATH}?tab=preventivi`)}>
-                    Apri preventivi NEXT
-                  </button>
-                </div>
-              </>
-            ) : null}
+            <p>
+              Sezione read-only in arrivo. In questa patch resta attiva solo la tab
+              Fabbisogni con i dati esistenti della pagina.
+            </p>
           </section>
         ) : (
           <div className="mdo-workspace">
@@ -607,7 +326,9 @@ export default function NextMaterialiDaOrdinarePage() {
                       <input
                         type="text"
                         value={nomeFornitorePersonalizzato}
-                        onChange={(event) => setNomeFornitorePersonalizzato(event.target.value)}
+                        onChange={(event) =>
+                          setNomeFornitorePersonalizzato(event.target.value)
+                        }
                       />
                     </div>
                   ) : null}
@@ -632,7 +353,10 @@ export default function NextMaterialiDaOrdinarePage() {
                     </div>
                     <div className="mdo-field">
                       <label>Unita</label>
-                      <select value={unita} onChange={(event) => setUnita(event.target.value as UnitaMisura)}>
+                      <select
+                        value={unita}
+                        onChange={(event) => setUnita(event.target.value as UnitaMisura)}
+                      >
                         <option value="pz">pz</option>
                         <option value="m">m</option>
                         <option value="kg">kg</option>
@@ -679,19 +403,20 @@ export default function NextMaterialiDaOrdinarePage() {
 
               <section className="mdo-panel mdo-side-nav-panel">
                 <h3>Collegamenti rapidi</h3>
-                <p>Accesso alle liste ordini clone-safe senza riaprire il runtime legacy.</p>
+                <p>Accesso alle liste ordini esistenti senza cambiare i flussi.</p>
                 <div className="mdo-footer">
                   <button
                     type="button"
                     className="mdo-footer-button"
-                    onClick={() => navigate(`${NEXT_ACQUISTI_PATH}?tab=ordini`)}
+                    onClick={() => navigate(NEXT_ORDINI_IN_ATTESA_PATH)}
                   >
                     Vai a ordini in attesa
                   </button>
+
                   <button
                     type="button"
                     className="mdo-footer-button mdo-footer-alt"
-                    onClick={() => navigate(`${NEXT_ACQUISTI_PATH}?tab=arrivi`)}
+                    onClick={() => navigate(NEXT_ORDINI_ARRIVATI_PATH)}
                   >
                     Vai a ordini arrivati
                   </button>
@@ -755,9 +480,23 @@ export default function NextMaterialiDaOrdinarePage() {
                           </td>
                           <td>{materiale.quantita}</td>
                           <td>{materiale.unita}</td>
-                          <td>{materiale.fornitoreScelto}</td>
-                          <td>{materiale.residuo}</td>
-                          <td>{materiale.fontePrezzo}</td>
+                          <td>
+                            {getOptionalText(materiale, [
+                              "fornitoreScelto",
+                              "fornitore",
+                              "nomeFornitore",
+                            ])}
+                          </td>
+                          <td>
+                            {getOptionalText(materiale, ["residuo", "quantitaResidua"])}
+                          </td>
+                          <td>
+                            {getOptionalText(materiale, [
+                              "fontePrezzo",
+                              "prezzoFonte",
+                              "preventivoFonte",
+                            ])}
+                          </td>
                           <td>
                             <div className="mdo-row-actions">
                               {(["Prezzi", "Allegati", "Note"] as const).map((action) => (
@@ -765,7 +504,13 @@ export default function NextMaterialiDaOrdinarePage() {
                                   key={action}
                                   type="button"
                                   className="mdo-chip-button"
-                                  onClick={() => openEditor(action, materiale)}
+                                  onClick={() =>
+                                    setPlaceholderModal({
+                                      action,
+                                      materialeId: materiale.id,
+                                      descrizione: materiale.descrizione,
+                                    })
+                                  }
                                 >
                                   {action}
                                 </button>
@@ -773,7 +518,7 @@ export default function NextMaterialiDaOrdinarePage() {
                               <button
                                 type="button"
                                 className="mdo-delete"
-                                onClick={() => eliminaMateriale(materiale.id)}
+                                onClick={eliminaMateriale}
                                 aria-label={`Elimina ${materiale.descrizione}`}
                               >
                                 Elimina
@@ -807,117 +552,49 @@ export default function NextMaterialiDaOrdinarePage() {
             <button
               type="button"
               className="mdo-secondary-button"
-              onClick={() => navigate(`${NEXT_ACQUISTI_PATH}?tab=ordini`)}
+              onClick={() => navigate(NEXT_ORDINI_IN_ATTESA_PATH)}
             >
               Ordini in attesa
             </button>
             <button
               type="button"
               className="mdo-secondary-button"
-              onClick={() => navigate(`${NEXT_ACQUISTI_PATH}?tab=arrivi`)}
+              onClick={() => navigate(NEXT_ORDINI_ARRIVATI_PATH)}
             >
               Ordini arrivati
             </button>
             <button
               type="button"
               className="mdo-header-button"
-              onClick={() => void salvaOrdine()}
+              onClick={salvaOrdine}
               disabled={!canSaveOrdine}
             >
-              {saving ? "SALVO..." : "CONFERMA ORDINE"}
+              CONFERMA ORDINE
             </button>
           </div>
         </div>
       </div>
 
-      {materialEditor ? (
+      {placeholderModal ? (
         <div
           className="mdo-modal-backdrop"
           role="presentation"
-          onClick={() => setMaterialEditor(null)}
+          onClick={() => setPlaceholderModal(null)}
         >
           <div
             className="mdo-modal"
             role="dialog"
             aria-modal="true"
-            aria-label={`${materialEditor.action} ${materialEditor.descrizione}`}
+            aria-label={`${placeholderModal.action} ${placeholderModal.descrizione}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <h3>{materialEditor.action}</h3>
-            <p className="mdo-modal-title">{materialEditor.descrizione}</p>
-            {materialEditor.action === "Prezzi" ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                <input
-                  type="text"
-                  placeholder="Fonte prezzo locale"
-                  value={editorValue}
-                  onChange={(event) => setEditorValue(event.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Residuo / disponibilita"
-                  value={editorAuxValue}
-                  onChange={(event) => setEditorAuxValue(event.target.value)}
-                />
-                <button type="button" className="mdo-header-button" onClick={applyEditor}>
-                  Salva nel clone
-                </button>
-              </div>
-            ) : null}
-            {materialEditor.action === "Note" ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                <textarea
-                  rows={4}
-                  placeholder="Note locali sul materiale"
-                  value={editorValue}
-                  onChange={(event) => setEditorValue(event.target.value)}
-                  style={{ width: "100%" }}
-                />
-                <button type="button" className="mdo-header-button" onClick={applyEditor}>
-                  Salva nel clone
-                </button>
-              </div>
-            ) : null}
-            {materialEditor.action === "Allegati" ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                <p>Nessun upload business: gli allegati restano locali al clone.</p>
-                <button
-                  type="button"
-                  className="mdo-header-button"
-                  onClick={() => allegatoInputRef.current?.click()}
-                >
-                  Aggiungi allegato locale
-                </button>
-                <input
-                  ref={allegatoInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={handleAllegatoUpload}
-                  style={{ display: "none" }}
-                />
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {(materiali.find((item) => item.id === materialEditor.materialeId)?.allegati ?? []).map((entry) => (
-                    <li key={entry.id}>
-                      {entry.name}
-                      {entry.previewUrl ? (
-                        <button
-                          type="button"
-                          className="mdo-chip-button"
-                          style={{ marginLeft: 8 }}
-                          onClick={() => window.open(entry.previewUrl ?? undefined, "_blank", "noopener,noreferrer")}
-                        >
-                          Apri
-                        </button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+            <h3>{placeholderModal.action}</h3>
+            <p className="mdo-modal-title">{placeholderModal.descrizione}</p>
+            <p>Placeholder UI. Nessuna nuova logica o salvataggio introdotti in questa fase.</p>
             <button
               type="button"
               className="mdo-header-button"
-              onClick={() => setMaterialEditor(null)}
+              onClick={() => setPlaceholderModal(null)}
             >
               Chiudi
             </button>

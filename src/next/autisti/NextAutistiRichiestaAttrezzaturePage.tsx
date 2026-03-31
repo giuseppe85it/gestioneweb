@@ -1,40 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
 import "../../autisti/RichiestaAttrezzature.css";
 import { getAutistaLocal, getMezzoLocal } from "./nextAutistiSessionStorage";
-import {
-  NEXT_AUTISTI_BASE_PATH,
-  NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM,
-} from "./nextAutistiCloneRuntime";
+import { NEXT_AUTISTI_BASE_PATH } from "./nextAutistiCloneRuntime";
 import {
   createNextAutistiCloneAttachmentFromFile,
-  formatNextAutistiCloneAttachmentSize,
   type NextAutistiCloneAttachment,
 } from "./nextAutistiCloneAttachments";
-import {
-  appendNextAutistiCloneRichiestaAttrezzature,
-  type NextAutistiCloneRichiestaAttrezzatureRecord,
-} from "./nextAutistiCloneRichiesteAttrezzature";
-
-function genId() {
-  const cryptoApi = globalThis.crypto as Crypto | undefined;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID();
-  }
-
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function buildHomePathWithNotice(noticeCode: string) {
-  const params = new URLSearchParams();
-  params.set(NEXT_AUTISTI_CLONE_NOTICE_QUERY_PARAM, noticeCode);
-
-  return {
-    pathname: `${NEXT_AUTISTI_BASE_PATH}/home`,
-    search: `?${params.toString()}`,
-  };
-}
 
 export default function NextAutistiRichiestaAttrezzaturePage() {
   const navigate = useNavigate();
@@ -76,7 +50,7 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
       const attachment = await createNextAutistiCloneAttachmentFromFile(file);
       setAttachments([attachment]);
     } catch {
-      setErrore("Errore preparazione foto locale");
+      setErrore("Errore preparazione foto");
     } finally {
       setAttachmentPreparing(false);
       event.target.value = "";
@@ -103,38 +77,10 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
 
     setLoading(true);
 
-    const now = Date.now();
-    const record: NextAutistiCloneRichiestaAttrezzatureRecord = {
-      id: genId(),
-      testo: messaggio,
-      autistaNome: autista?.nome ? String(autista.nome) : null,
-      badgeAutista: autista?.badge ? String(autista.badge) : null,
-      targaCamion: mezzo?.targaCamion ? String(mezzo.targaCamion).toUpperCase().trim() : null,
-      targaRimorchio: mezzo?.targaRimorchio
-        ? String(mezzo.targaRimorchio).toUpperCase().trim()
-        : null,
-      attachments,
-      attachmentCount: attachments.length,
-      fotoUrl: attachments[0]?.previewUrl ?? null,
-      fotoStoragePath: null,
-      timestamp: now,
-      stato: "nuova",
-      letta: false,
-      source: "next-clone",
-      syncState: "local-only",
-    };
-
-    try {
-      appendNextAutistiCloneRichiestaAttrezzature(record);
-      setTesto("");
-      setAttachments([]);
-      navigate(buildHomePathWithNotice("richiesta-attrezzature-locale"), {
-        replace: true,
-      });
-    } catch {
-      setLoading(false);
-      setErrore("Errore invio richiesta nel clone");
-    }
+    void messaggio;
+    void attachments;
+    setErrore("Clone NEXT in sola lettura: la richiesta attrezzature non viene inviata.");
+    setLoading(false);
   }
 
   if (!autista || !mezzo) {
@@ -156,11 +102,6 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
           </button>
           <h1 className="richiesta-title">Richiesta attrezzature</h1>
         </div>
-
-        <p className="autisti-subtitle">
-          Richiesta e foto restano locali al clone: nessun upload, nessuna delete e nessuna sincronizzazione sulla madre.
-        </p>
-
         <div className="richiesta-section richiesta-meta">
           <div className="richiesta-meta-row">
             <strong>Motrice:</strong> {mezzo?.targaCamion || "-"}
@@ -189,7 +130,7 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
         <div className="richiesta-section">
           <div className="richiesta-label">Foto (opzionale)</div>
           <label className="richiesta-photo-btn">
-            {attachment ? "Sostituisci foto locale" : "Aggiungi foto locale"}
+            {attachment ? "Sostituisci foto" : "Aggiungi foto"}
             <input
               type="file"
               accept="image/*"
@@ -199,27 +140,20 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
             />
           </label>
 
-          <div className="richiesta-uploading">
-            Foto locale al clone: viene solo preparata un&apos;anteprima e non parte nessun upload.
-          </div>
-
           {attachmentPreparing ? (
-            <div className="richiesta-uploading">Preparazione anteprima locale...</div>
+            <div className="richiesta-uploading">Preparazione anteprima...</div>
           ) : null}
 
           {attachment ? (
             <div className="richiesta-photo-preview">
               <img src={attachment.previewUrl} alt={attachment.name} />
-              <div className="richiesta-uploading">
-                {attachment.name} · {formatNextAutistiCloneAttachmentSize(attachment.size)}
-              </div>
               <button
                 className="autisti-button secondary"
                 type="button"
                 onClick={() => handleRemoveAttachment(attachment.id)}
                 disabled={attachmentPreparing}
               >
-                Rimuovi foto locale
+                Rimuovi foto
               </button>
             </div>
           ) : null}
@@ -235,7 +169,7 @@ export default function NextAutistiRichiestaAttrezzaturePage() {
           }}
           disabled={loading || attachmentPreparing}
         >
-          {loading ? "SALVATAGGIO..." : "SALVA RICHIESTA LOCALE"}
+          {loading ? "INVIO..." : "INVIA RICHIESTA"}
         </button>
       </div>
     </div>

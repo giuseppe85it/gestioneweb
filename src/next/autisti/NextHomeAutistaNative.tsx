@@ -1,14 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// ======================================================
-// HomeAutista.tsx
-// HOME PRINCIPALE APP AUTISTI
-// ======================================================
-
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../autisti/autisti.css";
-import { getItemSync, setItemSync } from "./nextAutistiStorageSync";
+import { getItemSync } from "./nextAutistiStorageSync";
 import NextGommeAutistaModal from "./NextGommeAutistaModal";
+import { NEXT_AUTISTI_BASE_PATH } from "./nextAutistiCloneRuntime";
 import {
   clearLastHandledRevokedAt,
   getAutistaLocal,
@@ -21,45 +18,6 @@ import {
 } from "./nextAutistiSessionStorage";
 
 const SESSIONI_KEY = "@autisti_sessione_attive";
-const KEY_STORICO_EVENTI_OPERATIVI = "@storico_eventi_operativi";
-
-type EventoOperativo = {
-  id: string;
-  tipo: string;
-  timestamp: number;
-  badgeAutista?: string;
-  nomeAutista?: string;
-  autistaNome?: string;
-  autista?: string;
-  prima?: {
-    targaMotrice: string | null;
-    targaRimorchio: string | null;
-    motrice?: string | null;
-    rimorchio?: string | null;
-  };
-  dopo?: {
-    targaMotrice: string | null;
-    targaRimorchio: string | null;
-    motrice?: string | null;
-    rimorchio?: string | null;
-  };
-  luogo?: string | null;
-  statoCarico?: string | null;
-  condizioni?: unknown;
-  source?: string;
-};
-
-async function appendEventoOperativo(evt: EventoOperativo) {
-  const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
-  const list: EventoOperativo[] = Array.isArray(raw)
-    ? raw
-    : raw?.value && Array.isArray(raw.value)
-    ? raw.value
-    : [];
-  if (list.some((e) => e?.id === evt.id)) return;
-  list.push(evt);
-  await setItemSync(KEY_STORICO_EVENTI_OPERATIVI, list);
-}
 
 export default function HomeAutista() {
   const navigate = useNavigate();
@@ -68,33 +26,36 @@ export default function HomeAutista() {
   const [mezzo, setMezzo] = useState<any>(null);
   const [gommeOpen, setGommeOpen] = useState(false);
   const [sgancioOpen, setSgancioOpen] = useState(false);
-  const [sgancioLuogoPreset, setSgancioLuogoPreset] = useState<
-    "STABIO" | "MEV" | "ALTRO"
-  >("STABIO");
+  const [sgancioLuogoPreset, setSgancioLuogoPreset] = useState<"STABIO" | "MEV" | "ALTRO">(
+    "STABIO",
+  );
   const [sgancioLuogoAltro, setSgancioLuogoAltro] = useState("");
   const [sgancioErrore, setSgancioErrore] = useState<string | null>(null);
-  const [sgancioLoading, setSgancioLoading] = useState(false);
 
-  // ======================================================
-  // REVOCHE + COERENZA LIVE/LOCALE
-  // ======================================================
   useEffect(() => {
     let cancelled = false;
     let intervalId: number | null = null;
 
     async function checkRevocaAndCoerenza() {
-      if (cancelled) return;
-      const a = getAutistaLocal();
-      if (!a?.badge) return;
-      const m = getMezzoLocal();
+      if (cancelled) {
+        return;
+      }
 
+      const autistaLocale = getAutistaLocal();
+      if (!autistaLocale?.badge) {
+        return;
+      }
+
+      const mezzoLocale = getMezzoLocal();
       const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
       const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-      const badgeKey = String(a.badge).trim();
+      const badgeKey = String(autistaLocale.badge).trim();
       const sessioneLive = sessioni.find(
-        (s: any) => String(s?.badgeAutista ?? s?.badge ?? "").trim() === badgeKey
+        (item: any) => String(item?.badgeAutista ?? item?.badge ?? "").trim() === badgeKey,
       );
-      if (!sessioneLive) return;
+      if (!sessioneLive) {
+        return;
+      }
 
       const revokedAt =
         typeof sessioneLive?.revoked?.at === "number" ? sessioneLive.revoked.at : 0;
@@ -103,9 +64,10 @@ export default function HomeAutista() {
         const scope = String(sessioneLive?.revoked?.scope ?? "TUTTO");
         const by = String(sessioneLive?.revoked?.by ?? "ADMIN");
         const reason = String(sessioneLive?.revoked?.reason ?? "");
+
         if (scope === "RIMORCHIO") {
-          if (m?.targaCamion) {
-            const updated = { ...m, targaRimorchio: null };
+          if (mezzoLocale?.targaCamion) {
+            const updated = { ...mezzoLocale, targaRimorchio: null };
             saveMezzoLocal(updated);
             setMezzo(updated);
           } else {
@@ -113,8 +75,8 @@ export default function HomeAutista() {
             setMezzo(null);
           }
         } else if (scope === "MOTRICE") {
-          if (m?.targaRimorchio) {
-            const updated = { ...m, targaCamion: null };
+          if (mezzoLocale?.targaRimorchio) {
+            const updated = { ...mezzoLocale, targaCamion: null };
             saveMezzoLocal(updated);
             setMezzo(updated);
           } else {
@@ -133,20 +95,22 @@ export default function HomeAutista() {
         window.alert(`Sessione revocata (${scopeLabel}) da ${by}.${reasonText}`);
 
         if (scope === "TUTTO") {
-          navigate("/autisti/setup-mezzo", { replace: true });
+          navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo`, { replace: true });
           return;
         }
 
         const mode = scope === "MOTRICE" ? "motrice" : "rimorchio";
-        navigate(`/autisti/setup-mezzo?mode=${encodeURIComponent(mode)}`, { replace: true });
+        navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo?mode=${encodeURIComponent(mode)}`, {
+          replace: true,
+        });
         return;
       }
 
       const liveMotrice = sessioneLive?.targaMotrice ?? null;
       const liveRimorchio = sessioneLive?.targaRimorchio ?? null;
 
-      if (!liveMotrice && m?.targaCamion) {
-        const updated = { ...m, targaCamion: null };
+      if (!liveMotrice && mezzoLocale?.targaCamion) {
+        const updated = { ...mezzoLocale, targaCamion: null };
         if (updated.targaRimorchio) {
           saveMezzoLocal(updated);
           setMezzo(updated);
@@ -155,12 +119,12 @@ export default function HomeAutista() {
           setMezzo(null);
         }
         window.alert("Motrice revocata da admin: reimposta la motrice.");
-        navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
+        navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo?mode=motrice`, { replace: true });
         return;
       }
 
-      if (!liveRimorchio && m?.targaRimorchio) {
-        const updated = { ...m, targaRimorchio: null };
+      if (!liveRimorchio && mezzoLocale?.targaRimorchio) {
+        const updated = { ...mezzoLocale, targaRimorchio: null };
         if (updated.targaCamion) {
           saveMezzoLocal(updated);
           setMezzo(updated);
@@ -169,180 +133,80 @@ export default function HomeAutista() {
           setMezzo(null);
         }
         window.alert("Rimorchio revocato da admin: reimposta il rimorchio.");
-        navigate("/autisti/setup-mezzo?mode=rimorchio", { replace: true });
+        navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo?mode=rimorchio`, { replace: true });
       }
     }
 
-    checkRevocaAndCoerenza();
+    void checkRevocaAndCoerenza();
     const onFocus = () => {
-      checkRevocaAndCoerenza();
+      void checkRevocaAndCoerenza();
     };
     const onVisibility = () => {
-      if (document.visibilityState === "visible") checkRevocaAndCoerenza();
+      if (document.visibilityState === "visible") {
+        void checkRevocaAndCoerenza();
+      }
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     intervalId = window.setInterval(() => {
-      checkRevocaAndCoerenza();
+      void checkRevocaAndCoerenza();
     }, 15000);
 
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
-      if (intervalId) window.clearInterval(intervalId);
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
     };
   }, [navigate]);
 
-  // ======================================================
-  // LOAD SESSIONE (SOLO LOCALE)
-  // ======================================================
   useEffect(() => {
-    const a = getAutistaLocal();
-    const m = getMezzoLocal();
+    const autistaLocale = getAutistaLocal();
+    const mezzoLocale = getMezzoLocal();
 
-    if (!a || !a.badge) {
-      navigate("/autisti/login", { replace: true });
+    if (!autistaLocale?.badge) {
+      navigate(`${NEXT_AUTISTI_BASE_PATH}/login`, { replace: true });
       return;
     }
 
-    // autista ok ma mezzo non selezionato -> setup
-    if (!m || !m.targaCamion) {
-      navigate("/autisti/setup-mezzo", { replace: true });
+    if (!mezzoLocale?.targaCamion) {
+      navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo`, { replace: true });
       return;
     }
 
-    setAutista(a);
-    setMezzo(m);
+    setAutista(autistaLocale);
+    setMezzo(mezzoLocale);
   }, [navigate]);
 
-  // ======================================================
-  // LOGOUT
-  // ======================================================
-  async function handleLogout() {
-    const a = getAutistaLocal();
-    if (!a?.badge) return;
-
-    try {
-      const now = Date.now();
-      await appendEventoOperativo({
-        id: `LOGOUT_AUTISTA-${a.badge}-${now}`,
-        tipo: "LOGOUT_AUTISTA",
-        timestamp: now,
-        badgeAutista: a.badge,
-        nomeAutista: a.nome ?? "",
-        autistaNome: a.nome ?? "",
-        autista: a.nome ?? "",
-        source: "AUTISTI",
-      });
-    } catch (err) {
-      console.warn("Logout autista: impossibile scrivere evento", err);
+  function handleLogout() {
+    const autistaLocale = getAutistaLocal();
+    if (!autistaLocale?.badge) {
+      return;
     }
 
-    // opzionale: pulizia sessione attiva lato Firestore (non usata per gating)
-    const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-    const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-    const aggiornate = sessioni.filter((s: any) => s?.badgeAutista !== a.badge);
-    await setItemSync(SESSIONI_KEY, aggiornate);
-
-    // pulizia locale (questa Ã¨ quella che conta)
-    clearLastHandledRevokedAt(a.badge);
+    clearLastHandledRevokedAt(autistaLocale.badge);
     removeAutistaLocal();
     removeMezzoLocal();
-
-    navigate("/autisti/login", { replace: true });
+    navigate(`${NEXT_AUTISTI_BASE_PATH}/login`, { replace: true });
   }
 
-  async function handleSgancioMotriceConfirm() {
-    if (sgancioLoading) return;
+  function handleSgancioMotriceConfirm() {
     if (sgancioLuogoPreset === "ALTRO" && !sgancioLuogoAltro.trim()) {
       setSgancioErrore("Inserisci dove lasci la motrice.");
       return;
     }
 
-    const a = getAutistaLocal();
-    const m = getMezzoLocal();
-    if (!a?.badge || !m?.targaCamion) {
-      setSgancioErrore("Sessione non valida.");
-      return;
-    }
-
-    setSgancioErrore(null);
-    setSgancioLoading(true);
-
-    const now = Date.now();
-    const prima = {
-      targaMotrice: m?.targaCamion ?? null,
-      targaRimorchio: m?.targaRimorchio ?? null,
-    };
-    const dopo = {
-      targaMotrice: null,
-      targaRimorchio: m?.targaRimorchio ?? null,
-    };
-    const luogoFinale =
-      sgancioLuogoPreset === "ALTRO"
-        ? sgancioLuogoAltro.trim().toUpperCase()
-        : sgancioLuogoPreset;
-
-    try {
-      const sessioniRaw = (await getItemSync(SESSIONI_KEY)) || [];
-      const sessioni = Array.isArray(sessioniRaw) ? sessioniRaw : [];
-      const aggiornate = sessioni.map((s: any) => {
-        if (s?.badgeAutista !== a.badge) return s;
-        return { ...s, targaMotrice: null };
-      });
-      await setItemSync(SESSIONI_KEY, aggiornate);
-
-      await appendEventoOperativo({
-        id: `CAMBIO_ASSETTO-${a.badge}-${now}-${prima.targaMotrice || ""}-${prima.targaRimorchio || ""}`,
-        tipo: "CAMBIO_ASSETTO",
-        timestamp: now,
-        badgeAutista: a.badge,
-        nomeAutista: a.nome ?? "",
-        autistaNome: a.nome ?? "",
-        autista: a.nome ?? "",
-        prima: {
-          targaMotrice: prima.targaMotrice,
-          targaRimorchio: prima.targaRimorchio,
-          motrice: prima.targaMotrice,
-          rimorchio: prima.targaRimorchio,
-        },
-        dopo: {
-          targaMotrice: dopo.targaMotrice,
-          targaRimorchio: dopo.targaRimorchio,
-          motrice: dopo.targaMotrice,
-          rimorchio: dopo.targaRimorchio,
-        },
-        luogo: luogoFinale,
-        statoCarico: null,
-        condizioni: null,
-        source: "AUTISTI",
-      });
-
-      const updatedLocal = {
-        ...m,
-        targaCamion: null,
-        timestamp: now,
-      };
-      saveMezzoLocal(updatedLocal);
-      setMezzo(updatedLocal);
-      setSgancioOpen(false);
-      setSgancioLuogoPreset("STABIO");
-      setSgancioLuogoAltro("");
-      navigate("/autisti/setup-mezzo?mode=motrice", { replace: true });
-    } catch (err) {
-      console.warn("Sgancio motrice: errore", err);
-      setSgancioErrore("Errore durante lo sgancio. Riprova.");
-    } finally {
-      setSgancioLoading(false);
-    }
+    setSgancioErrore("Clone NEXT in sola lettura: lo sgancio motrice non viene applicato.");
   }
 
-  if (!autista || !mezzo) return null;
+  if (!autista || !mezzo) {
+    return null;
+  }
 
   return (
     <div className="autisti-home">
-      {/* HEADER */}
       <div className="autisti-header">
         <div>
           <h1>Area Autista</h1>
@@ -356,57 +220,51 @@ export default function HomeAutista() {
         </button>
       </div>
 
-      {/* MEZZO ATTIVO */}
       <div className="autisti-mezzo-attivo">
         <h2>Mezzo attivo</h2>
         <div className="autisti-mezzo-card">
           <div>
             <strong>Motrice:</strong> {mezzo.targaCamion || "-"}
           </div>
-          {mezzo.targaRimorchio && (
+          {mezzo.targaRimorchio ? (
             <div>
               <strong>Rimorchio:</strong> {mezzo.targaRimorchio}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {/* AZIONI */}
       <div className="autisti-actions">
-        <button onClick={() => navigate("/autisti/rifornimento")}>
+        <button onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/rifornimento`)}>
           Rifornimento
         </button>
 
-        <button onClick={() => navigate("/autisti/segnalazioni")}>
+        <button onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/segnalazioni`)}>
           Segnalazioni
         </button>
 
-        <button onClick={() => setGommeOpen(true)}>
-          Gomme
-        </button>
+        <button onClick={() => setGommeOpen(true)}>Gomme</button>
 
-        <button onClick={() => navigate("/autisti/richiesta-attrezzature")}>
+        <button onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/richiesta-attrezzature`)}>
           Richiesta attrezzature
         </button>
 
-        {!mezzo.targaRimorchio && (
-          <button onClick={() => navigate("/autisti/setup-mezzo?mode=rimorchio")}>
+        {!mezzo.targaRimorchio ? (
+          <button onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/setup-mezzo?mode=rimorchio`)}>
             AGGANCIA RIMORCHIO
           </button>
-        )}
+        ) : null}
 
-        {mezzo.targaCamion && (
-          <button onClick={() => setSgancioOpen(true)}>
-            SGANCIA MOTRICE
-          </button>
-        )}
+        {mezzo.targaCamion ? (
+          <button onClick={() => setSgancioOpen(true)}>SGANCIA MOTRICE</button>
+        ) : null}
 
-        <button onClick={() => navigate("/autisti/cambio-mezzo")}>
+        <button onClick={() => navigate(`${NEXT_AUTISTI_BASE_PATH}/cambio-mezzo`)}>
           Cambio mezzo
         </button>
       </div>
 
-      {sgancioOpen && (
+      {sgancioOpen ? (
         <div
           style={{
             position: "fixed",
@@ -434,42 +292,38 @@ export default function HomeAutista() {
             <div style={{ marginBottom: 12 }}>
               <label className="autisti-label">Dove la lascio?</label>
               <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                {(["STABIO", "MEV", "ALTRO"] as const).map((opt) => (
+                {(["STABIO", "MEV", "ALTRO"] as const).map((option) => (
                   <button
-                    key={opt}
+                    key={option}
                     type="button"
                     className="autisti-button secondary"
                     style={{
                       width: "auto",
                       padding: "10px 14px",
                       fontSize: 14,
-                      background: sgancioLuogoPreset === opt ? "#2e7d32" : undefined,
-                      color: sgancioLuogoPreset === opt ? "#fff" : undefined,
+                      background: sgancioLuogoPreset === option ? "#2e7d32" : undefined,
+                      color: sgancioLuogoPreset === option ? "#fff" : undefined,
                     }}
-                    onClick={() => setSgancioLuogoPreset(opt)}
+                    onClick={() => setSgancioLuogoPreset(option)}
                   >
-                    {opt}
+                    {option}
                   </button>
                 ))}
               </div>
-              {sgancioLuogoPreset === "ALTRO" && (
+              {sgancioLuogoPreset === "ALTRO" ? (
                 <input
                   className="autisti-input"
                   type="text"
                   placeholder="Inserisci luogo"
                   value={sgancioLuogoAltro}
-                  onChange={(e) => setSgancioLuogoAltro(e.target.value)}
+                  onChange={(event) => setSgancioLuogoAltro(event.target.value)}
                 />
-              )}
+              ) : null}
             </div>
-            {sgancioErrore && <div className="autisti-error">{sgancioErrore}</div>}
+            {sgancioErrore ? <div className="autisti-error">{sgancioErrore}</div> : null}
             <div style={{ display: "flex", gap: 10 }}>
-              <button
-                className="autisti-button"
-                onClick={handleSgancioMotriceConfirm}
-                disabled={sgancioLoading}
-              >
-                {sgancioLoading ? "Salvataggio..." : "CONFERMA"}
+              <button className="autisti-button" onClick={handleSgancioMotriceConfirm}>
+                CONFERMA
               </button>
               <button
                 className="autisti-button secondary"
@@ -479,17 +333,15 @@ export default function HomeAutista() {
                   setSgancioLuogoAltro("");
                   setSgancioErrore(null);
                 }}
-                disabled={sgancioLoading}
               >
                 ANNULLA
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       <NextGommeAutistaModal open={gommeOpen} onClose={() => setGommeOpen(false)} />
     </div>
   );
 }
-

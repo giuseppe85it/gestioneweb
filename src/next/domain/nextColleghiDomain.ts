@@ -68,6 +68,10 @@ export type NextColleghiSnapshot = {
   limitations: string[];
 };
 
+export type ReadNextColleghiSnapshotOptions = {
+  includeCloneOverlays?: boolean;
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -236,8 +240,9 @@ function buildLimitations(args: {
   datasetShape: NextLegacyDatasetShape;
   items: NextCollegaReadOnlyItem[];
   skippedRawRecords: number;
+  includeCloneOverlays: boolean;
 }): string[] {
-  const { datasetShape, items, skippedRawRecords } = args;
+  const { datasetShape, items, skippedRawRecords, includeCloneOverlays } = args;
 
   return [
     datasetShape === "unsupported"
@@ -252,16 +257,23 @@ function buildLimitations(args: {
     items.some((item) => item.flags.includes("schede_carburante_assenti"))
       ? "Le schede carburante non sono presenti su tutti i colleghi."
       : null,
-    "Il clone mantiene aggiunta, modifica ed eliminazione solo nel layer locale NEXT; la madre resta intatta.",
+    includeCloneOverlays
+      ? "Il clone mantiene aggiunta, modifica ed eliminazione solo nel layer locale NEXT; la madre resta intatta."
+      : "Il runtime ufficiale NEXT legge `@colleghi` in sola lettura senza applicare overlay locali del clone.",
   ].filter((entry): entry is string => Boolean(entry));
 }
 
-export async function readNextColleghiSnapshot(): Promise<NextColleghiSnapshot> {
+export async function readNextColleghiSnapshot(
+  options: ReadNextColleghiSnapshotOptions = {}
+): Promise<NextColleghiSnapshot> {
+  const { includeCloneOverlays = true } = options;
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, COLLEGHI_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
-  const deletedIds = new Set(readNextDeletedCollegaIds());
-  const cloneItems = readNextColleghiCloneRecords().map(mapCloneCollegaItem);
+  const deletedIds = includeCloneOverlays ? new Set(readNextDeletedCollegaIds()) : new Set<string>();
+  const cloneItems = includeCloneOverlays
+    ? readNextColleghiCloneRecords().map(mapCloneCollegaItem)
+    : [];
 
   const mappedItems = rawItems.map((entry, index) => {
     if (!entry || typeof entry !== "object") return null;
@@ -295,6 +307,11 @@ export async function readNextColleghiSnapshot(): Promise<NextColleghiSnapshot> 
       withTelefonoPrivato: items.filter((item) => Boolean(item.telefonoPrivato)).length,
       withFuelCards: items.filter((item) => item.schedeCarburante.length > 0).length,
     },
-    limitations: buildLimitations({ datasetShape, items, skippedRawRecords }),
+    limitations: buildLimitations({
+      datasetShape,
+      items,
+      skippedRawRecords,
+      includeCloneOverlays,
+    }),
   };
 }

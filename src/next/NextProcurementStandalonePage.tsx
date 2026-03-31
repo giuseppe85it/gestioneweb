@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import NextClonePageScaffold from "./NextClonePageScaffold";
 import NextProcurementReadOnlyPanel from "./NextProcurementReadOnlyPanel";
-import type { NextProcurementCloneTab, NextProcurementListTab } from "./domain/nextProcurementDomain";
+import {
+  readNextProcurementSnapshot,
+  type NextProcurementCloneTab,
+  type NextProcurementListTab,
+  type NextProcurementSnapshot,
+} from "./domain/nextProcurementDomain";
 import {
   buildNextDettaglioOrdinePath,
   NEXT_ACQUISTI_PATH,
-  NEXT_GESTIONE_OPERATIVA_PATH,
-  NEXT_MATERIALI_DA_ORDINARE_PATH,
   NEXT_ORDINI_ARRIVATI_PATH,
   NEXT_ORDINI_IN_ATTESA_PATH,
 } from "./nextStructuralPaths";
-import { useNextOperativitaSnapshot } from "./useNextOperativitaSnapshot";
-import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 
 type ProcurementPageMode =
@@ -27,44 +27,6 @@ const PROCUREMENT_PATH_BY_TAB: Record<NextProcurementListTab, string> = {
   arrivi: NEXT_ORDINI_ARRIVATI_PATH,
 };
 
-function getTitle(mode: ProcurementPageMode) {
-  if (mode === "ordine-materiali") return "Materiali da ordinare";
-  if (mode === "ordini") return "Ordini in attesa";
-  if (mode === "arrivi") return "Ordini arrivati";
-  if (mode === "dettaglio") return "Dettaglio ordine";
-  return "Acquisti";
-}
-
-function getDescription(mode: ProcurementPageMode) {
-  if (mode === "ordine-materiali") {
-    return "Workbench NEXT clone-only per ordini materiali, preventivi locali e PDF del clone.";
-  }
-  if (mode === "ordini") {
-    return "Lista clone autonoma degli ordini in attesa, separata dal vecchio hub query-driven.";
-  }
-  if (mode === "arrivi") {
-    return "Lista clone autonoma degli ordini arrivati, con dettaglio e aggiornamenti locali al clone.";
-  }
-  if (mode === "dettaglio") {
-    return "Dettaglio ordine clone-safe su route dedicata, con modifica, PDF e materiali aggiunti solo nel clone.";
-  }
-  return "Controparte clone-safe della pagina madre Acquisti, con azioni locali al clone e nessuna scrittura business sulla madre.";
-}
-
-function getBackPath(mode: ProcurementPageMode, backTab: NextProcurementListTab) {
-  if (mode === "ordine-materiali") return NEXT_GESTIONE_OPERATIVA_PATH;
-  if (mode === "ordini" || mode === "arrivi") return NEXT_ACQUISTI_PATH;
-  if (mode === "dettaglio") return PROCUREMENT_PATH_BY_TAB[backTab];
-  return NEXT_GESTIONE_OPERATIVA_PATH;
-}
-
-function getBackLabel(mode: ProcurementPageMode) {
-  if (mode === "ordine-materiali") return "Gestione Operativa";
-  if (mode === "ordini" || mode === "arrivi") return "Acquisti";
-  if (mode === "dettaglio") return "Torna alla lista";
-  return "Gestione Operativa";
-}
-
 export default function NextProcurementStandalonePage({
   mode,
 }: {
@@ -76,8 +38,48 @@ export default function NextProcurementStandalonePage({
   const location = useLocation();
   const navigate = useNavigate();
   const { ordineId } = useParams<{ ordineId: string }>();
-  const { snapshot, loading, error } = useNextOperativitaSnapshot();
+  const [snapshot, setSnapshot] = useState<NextProcurementSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const lifecycleRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const nextSnapshot = await readNextProcurementSnapshot({
+          includeCloneOverlays: false,
+        });
+        if (cancelled) {
+          return;
+        }
+        setSnapshot(nextSnapshot);
+      } catch (loadError) {
+        if (cancelled) {
+          return;
+        }
+        setSnapshot(null);
+        setError(
+          loadError instanceof Error && loadError.message
+            ? loadError.message
+            : "Impossibile leggere il workbench procurement in sola lettura.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const detailBackTab = useMemo<NextProcurementListTab>(() => {
     const params = new URLSearchParams(location.search);
@@ -90,24 +92,44 @@ export default function NextProcurementStandalonePage({
     }
 
     return handoff.state.payload.entityRef?.entityKind === "ordine"
-      ? handoff.state.payload.entityRef.matchedId ?? handoff.state.payload.entityRef.normalizedValue
+      ? handoff.state.payload.entityRef.matchedId ??
+          handoff.state.payload.entityRef.normalizedValue
       : null;
   }, [handoff.state]);
 
   const activeTab = useMemo<NextProcurementCloneTab>(() => {
     if (mode === "dettaglio") {
+      return detailBackTab === "arrivi" ? "arrivi" : "ordini";
+    }
+
+    if (mode === "ordine-materiali") {
+      return "ordine-materiali";
+    }
+
+    if (mode === "ordini") {
       return "ordini";
     }
 
+    if (mode === "arrivi") {
+      return "arrivi";
+    }
+
     const requestedTab = new URLSearchParams(location.search).get("tab");
-    if (requestedTab === "arrivi" || requestedTab === "ordini") {
+    if (
+      requestedTab === "ordine-materiali" ||
+      requestedTab === "ordini" ||
+      requestedTab === "arrivi" ||
+      requestedTab === "preventivi" ||
+      requestedTab === "listino"
+    ) {
       return requestedTab;
     }
 
     return "ordini";
-  }, [location.search, mode]);
+  }, [detailBackTab, location.search, mode]);
 
-  const panelOrderId = mode === "dettaglio" ? ordineId ?? handoffOrderId ?? null : handoffOrderId;
+  const panelOrderId =
+    mode === "dettaglio" ? ordineId ?? handoffOrderId ?? null : handoffOrderId;
 
   const iaPrefill = useMemo(() => {
     if (handoff.state.status !== "ready") {
@@ -155,67 +177,60 @@ export default function NextProcurementStandalonePage({
     lifecycleRef.current = handoff.state.payload.handoffId;
   }, [handoff, snapshot]);
 
-  return (
-    <NextClonePageScaffold
-      eyebrow="Gestione Operativa / Procurement"
-      title={getTitle(mode)}
-      description={getDescription(mode)}
-      backTo={getBackPath(mode, detailBackTab)}
-      backLabel={getBackLabel(mode)}
-      notice={
-        <div style={{ display: "grid", gap: 12 }}>
-          {handoff.state.status === "ready" ? (
-            <InternalAiUniversalHandoffBanner
-              title="Handoff IA standard consumato"
-              description="Il procurement clone-safe legge il payload, applica il prefill coerente e mantiene il flusso in sola lettura."
-              payload={handoff.state.payload}
-            />
-          ) : null}
-          {handoff.state.status === "error" ? (
-            <div className="next-clone-placeholder">{handoff.state.errorMessage}</div>
-          ) : null}
-          <p>
-            La pagina mantiene l&apos;autonomia di routing della madre. Ordini, arrivi, PDF e
-            aggiornamenti locali restano disponibili solo nel clone e non scrivono sulla madre.
-          </p>
+  if (loading) {
+    return (
+      <div className="acq-page">
+        <div className="acq-shell">
+          <div className="acq-list-empty">
+            Caricamento workbench procurement in sola lettura...
+          </div>
         </div>
-      }
-    >
-      {loading ? <div className="next-clone-placeholder">Caricamento procurement...</div> : null}
-      {error ? <div className="next-clone-placeholder">{error}</div> : null}
-      {snapshot ? (
-        <NextProcurementReadOnlyPanel
-          snapshot={snapshot.procurement}
-          activeTab={activeTab}
-          orderId={panelOrderId}
-          detailBackTab={detailBackTab}
-          iaPrefill={iaPrefill}
-          onTabChange={(tab) => {
-            if (tab === "ordine-materiali") {
-              navigate(NEXT_MATERIALI_DA_ORDINARE_PATH);
-              return;
-            }
+      </div>
+    );
+  }
 
-            if (tab === "arrivi") {
-              navigate(NEXT_ORDINI_ARRIVATI_PATH);
-              return;
-            }
+  if (error || !snapshot) {
+    return (
+      <div className="acq-page">
+        <div className="acq-shell">
+          <div className="acq-list-empty">
+            {error || "Workbench procurement in sola lettura non disponibile."}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-            if (tab === "ordini") {
-              navigate(NEXT_ORDINI_IN_ATTESA_PATH);
-              return;
-            }
+  return (
+    <NextProcurementReadOnlyPanel
+      snapshot={snapshot}
+      activeTab={activeTab}
+      orderId={panelOrderId}
+      detailBackTab={detailBackTab}
+      iaPrefill={iaPrefill}
+      onTabChange={(tab) => {
+        if (tab === "ordini") {
+          navigate(NEXT_ORDINI_IN_ATTESA_PATH);
+          return;
+        }
 
-            navigate(`${NEXT_ACQUISTI_PATH}?tab=${encodeURIComponent(tab)}`);
-          }}
-          onOpenOrder={(orderId, fromTab) => {
-            navigate(`${buildNextDettaglioOrdinePath(orderId)}?from=${encodeURIComponent(fromTab)}`);
-          }}
-          onCloseOrder={(backTab) => {
-            navigate(PROCUREMENT_PATH_BY_TAB[backTab]);
-          }}
-        />
-      ) : null}
-    </NextClonePageScaffold>
+        if (tab === "arrivi") {
+          navigate(NEXT_ORDINI_ARRIVATI_PATH);
+          return;
+        }
+
+        navigate(`${NEXT_ACQUISTI_PATH}?tab=${encodeURIComponent(tab)}`);
+      }}
+      onOpenOrder={(orderIdToOpen, fromTab) => {
+        navigate(
+          `${buildNextDettaglioOrdinePath(orderIdToOpen)}?from=${encodeURIComponent(
+            fromTab,
+          )}`,
+        );
+      }}
+      onCloseOrder={(backTab) => {
+        navigate(PROCUREMENT_PATH_BY_TAB[backTab]);
+      }}
+    />
   );
 }

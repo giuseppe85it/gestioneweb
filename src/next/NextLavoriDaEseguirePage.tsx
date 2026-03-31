@@ -1,241 +1,274 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import NextClonePageScaffold from "./NextClonePageScaffold";
-import {
-  appendNextLavoriCloneRecords,
-  type NextLavoriCloneRawRecord,
-} from "./nextLavoriCloneState";
+import { Link, useNavigate } from "react-router-dom";
+import { formatDateInput } from "../utils/dateFormat";
+import type { Urgenza } from "../types/lavori";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
-import { formatEditableDateUI } from "./nextDateFormat";
+import "../pages/LavoriDaEseguire.css";
 
-type LavoroDraft = {
+type MezzoBasic = {
   id: string;
-  tipo: "magazzino" | "targa";
-  descrizione: string;
-  dataInserimento: string;
   targa: string;
-  urgenza: "bassa" | "media" | "alta";
+  marcaModello: string | null;
 };
 
-function createId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+const normalizeTarga = (value: string) =>
+  value.toUpperCase().replace(/\s+/g, "").trim();
 
-function todayInputValue() {
-  return formatEditableDateUI(new Date());
-}
+const todayInputValue = () => formatDateInput(new Date());
 
-function normalizeTarga(value: string) {
-  return value.toUpperCase().replace(/\s+/g, "").trim();
-}
+const labelUrgenza = (urgenza: Urgenza) => urgenza.toUpperCase();
 
 export default function NextLavoriDaEseguirePage() {
+  const navigate = useNavigate();
   const [tipo, setTipo] = useState<"magazzino" | "targa">("magazzino");
   const [targa, setTarga] = useState("");
+  const [filtroTarga, setFiltroTarga] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [dataInserimento, setDataInserimento] = useState(todayInputValue());
-  const [urgenza, setUrgenza] = useState<"bassa" | "media" | "alta">("bassa");
-  const [mezzi, setMezzi] = useState<string[]>([]);
-  const [drafts, setDrafts] = useState<LavoroDraft[]>([]);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [loadingMezzi, setLoadingMezzi] = useState(true);
+  const [urgenza, setUrgenza] = useState<Urgenza>("bassa");
+  const [mezzi, setMezzi] = useState<MezzoBasic[]>([]);
+  const [readonlyNotice, setReadonlyNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    const load = async () => {
-      setLoadingMezzi(true);
+    const loadMezzi = async () => {
       try {
-        const snapshot = await readNextAnagraficheFlottaSnapshot();
+        const snapshot = await readNextAnagraficheFlottaSnapshot({
+          includeClonePatches: false,
+        });
         if (!mounted) {
           return;
         }
-        setMezzi(snapshot.items.map((item) => item.targa).filter(Boolean));
+
+        setMezzi(
+          snapshot.items.map((item) => ({
+            id: item.id,
+            targa: item.targa,
+            marcaModello: item.marcaModello ?? null,
+          })),
+        );
       } catch {
         if (mounted) {
           setMezzi([]);
         }
-      } finally {
-        if (mounted) {
-          setLoadingMezzi(false);
-        }
       }
     };
 
-    void load();
+    void loadMezzi();
     return () => {
       mounted = false;
     };
   }, []);
 
-  const canAdd = descrizione.trim().length > 0 && (tipo === "magazzino" || normalizeTarga(targa).length > 0);
-
   const mezziSuggestions = useMemo(() => {
-    const query = normalizeTarga(targa);
+    const query = normalizeTarga(filtroTarga || targa);
     if (!query) {
-      return mezzi.slice(0, 12);
+      return mezzi.slice(0, 5);
     }
-    return mezzi.filter((entry) => entry.includes(query)).slice(0, 12);
-  }, [mezzi, targa]);
 
-  const addDraft = () => {
-    if (!canAdd) {
+    return mezzi
+      .filter((entry) => normalizeTarga(entry.targa).includes(query))
+      .slice(0, 5);
+  }, [filtroTarga, mezzi, targa]);
+
+  const handleAdd = () => {
+    if (!descrizione.trim()) {
+      window.alert("Inserisci una descrizione");
       return;
     }
 
-    setDrafts((current) => [
-      ...current,
-      {
-        id: createId(),
-        tipo,
-        descrizione: descrizione.trim(),
-        dataInserimento,
-        targa: tipo === "targa" ? normalizeTarga(targa) : "",
-        urgenza,
-      },
-    ]);
-    setDescrizione("");
-    setTarga("");
-    setUrgenza("bassa");
-    setNotice(null);
-  };
-
-  const removeDraft = (id: string) => {
-    setDrafts((current) => current.filter((entry) => entry.id !== id));
-  };
-
-  const saveDraftGroup = () => {
-    if (drafts.length === 0) {
+    if (tipo === "targa" && !targa.trim()) {
+      window.alert("Inserisci la targa");
       return;
     }
 
-    const gruppoId = createId();
-    const savedAt = Date.now();
-    const records: NextLavoriCloneRawRecord[] = drafts.map((entry) => ({
-      id: entry.id,
-      gruppoId,
-      tipo: entry.tipo,
-      descrizione: entry.descrizione,
-      dataInserimento: entry.dataInserimento,
-      eseguito: false,
-      targa: entry.tipo === "targa" ? entry.targa : undefined,
-      urgenza: entry.urgenza,
-      segnalatoDa: "clone_next",
-      sottoElementi: [],
-      __nextCloneOnly: true,
-      __nextCloneSavedAt: savedAt,
-    }));
+    setReadonlyNotice(
+      "Aggiunta lavoro bloccata: la NEXT e in sola lettura e non scrive su @lavori.",
+    );
+  };
 
-    appendNextLavoriCloneRecords(records);
-    setDrafts([]);
-    setNotice("Gruppo lavori salvato nel clone. Le liste NEXT lo leggono senza scrivere sulla madre.");
+  const handleSaveGroup = () => {
+    window.alert("Non ci sono lavori da salvare");
   };
 
   return (
-    <NextClonePageScaffold
-      eyebrow="Gestione Operativa / Lavori"
-      title="Lavori da eseguire"
-      description="Route NEXT autonoma per aprire nuovi lavori nel clone con stato locale, senza scrivere su `@lavori` della madre."
-      backTo="/next/gestione-operativa"
-      backLabel="Gestione Operativa"
-      notice={
-        <div style={{ display: "grid", gap: 12 }}>
-          {loadingMezzi ? <div className="next-clone-placeholder">Caricamento anagrafica mezzi...</div> : null}
-          {notice ? <div className="next-clone-placeholder">{notice}</div> : null}
-          <p style={{ margin: 0 }}>
-            Il writer e clone-local: la madre resta intatta, ma la route mantiene il flusso di apertura gruppo e lo rende visibile nelle liste NEXT.
-          </p>
+    <div className="lde-page">
+      <div className="lde-phone">
+        <div className="lavori-header">
+          <img
+            src="/logo.png"
+            alt="logo"
+            className="lavori-header-logo"
+            onClick={() => navigate("/next")}
+          />
+          <div className="lavori-header-text">
+            <div className="lavori-header-eyebrow">LAVORI</div>
+            <h1 className="lavori-header-title">Lavori da eseguire</h1>
+          </div>
         </div>
-      }
-    >
-      <div style={{ display: "grid", gap: 16 }}>
-        <div className="next-clone-placeholder" style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => setTipo("magazzino")} disabled={tipo === "magazzino"}>
-              Magazzino
+
+        <div className="lde-tabs">
+          <Link
+            to="/next/lavori-in-attesa"
+            className="lde-tab lavori-btn is-primary"
+          >
+            LAVORI IN ATTESA
+          </Link>
+          <Link
+            to="/next/lavori-eseguiti"
+            className="lde-tab lavori-btn is-ghost"
+          >
+            LAVORI ESEGUITI
+          </Link>
+        </div>
+
+        <section className="lde-section">
+          <h2 className="lde-section-title">AGGIUNGI LAVORO</h2>
+
+          <div className="lde-switch">
+            <button
+              type="button"
+              className={
+                "lde-switch-btn lde-toggle-btn lavori-btn is-ghost" +
+                (tipo === "magazzino" ? " is-selected" : "")
+              }
+              onClick={() => setTipo("magazzino")}
+            >
+              MAGAZZINO
             </button>
-            <button type="button" onClick={() => setTipo("targa")} disabled={tipo === "targa"}>
-              Targa
+            <button
+              type="button"
+              className={
+                "lde-switch-btn lde-toggle-btn lavori-btn is-ghost" +
+                (tipo === "targa" ? " is-selected" : "")
+              }
+              onClick={() => setTipo("targa")}
+            >
+              TARGA
             </button>
-            <Link to="/next/lavori-in-attesa">Lavori in attesa</Link>
-            <Link to="/next/lavori-eseguiti">Lavori eseguiti</Link>
           </div>
 
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span>Data inserimento</span>
-              <input type="text" value={dataInserimento} onChange={(event) => setDataInserimento(event.target.value)} placeholder="gg mm aaaa" />
-            </label>
-
-            {tipo === "targa" ? (
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Targa</span>
-                <input
-                  type="text"
-                  value={targa}
-                  onChange={(event) => setTarga(event.target.value)}
-                  list="next-lavori-mezzi"
-                  placeholder="Es. TI233827"
-                />
-                <datalist id="next-lavori-mezzi">
-                  {mezziSuggestions.map((entry) => (
-                    <option key={entry} value={entry} />
-                  ))}
-                </datalist>
-              </label>
-            ) : null}
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <span>Urgenza</span>
-              <select value={urgenza} onChange={(event) => setUrgenza(event.target.value as "bassa" | "media" | "alta")}>
-                <option value="bassa">Bassa</option>
-                <option value="media">Media</option>
-                <option value="alta">Alta</option>
-              </select>
-            </label>
-          </div>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span>Descrizione lavoro</span>
+          <div className="lde-form-grid">
             <input
-              type="text"
-              value={descrizione}
-              onChange={(event) => setDescrizione(event.target.value)}
-              placeholder="Descrivi il lavoro da aprire"
+              type="date"
+              className="lde-input lde-input-date"
+              value={dataInserimento}
+              onChange={(event) => setDataInserimento(event.target.value)}
             />
-          </label>
+          </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={addDraft} disabled={!canAdd}>
-              Aggiungi riga
+          {tipo === "targa" ? (
+            <div className="autosuggest-wrap">
+              <input
+                type="text"
+                className="lde-input"
+                placeholder="Targa"
+                value={targa}
+                onChange={(event) => {
+                  const value = event.target.value.toUpperCase();
+                  setTarga(value);
+                  setFiltroTarga(value);
+                }}
+              />
+
+              {filtroTarga.length > 0 ? (
+                <div className="autosuggest-box">
+                  {mezziSuggestions.map((mezzo) => (
+                    <div
+                      key={mezzo.id}
+                      className="autosuggest-item"
+                      onClick={() => {
+                        setTarga(mezzo.targa);
+                        setFiltroTarga("");
+                      }}
+                    >
+                      {mezzo.targa} - {mezzo.marcaModello || ""}
+                    </div>
+                  ))}
+
+                  {mezziSuggestions.length === 0 ? (
+                    <div className="autosuggest-item autosuggest-empty">
+                      Nessuna targa trovata
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <input
+            type="text"
+            className="lde-input lde-input-wide"
+            placeholder="Descrizione lavoro"
+            value={descrizione}
+            onChange={(event) => setDescrizione(event.target.value)}
+          />
+
+          <div className="lde-priority-row">
+            <button
+              type="button"
+              className={
+                "lde-priority lde-prio-btn prio-bassa lavori-btn is-secondary" +
+                (urgenza === "bassa" ? " is-selected" : "")
+              }
+              onClick={() => setUrgenza("bassa")}
+            >
+              {labelUrgenza("bassa")}
             </button>
-            <button type="button" onClick={saveDraftGroup} disabled={drafts.length === 0}>
-              Salva gruppo nel clone
+            <button
+              type="button"
+              className={
+                "lde-priority lde-prio-btn prio-media lavori-btn is-secondary" +
+                (urgenza === "media" ? " is-selected" : "")
+              }
+              onClick={() => setUrgenza("media")}
+            >
+              {labelUrgenza("media")}
+            </button>
+            <button
+              type="button"
+              className={
+                "lde-priority lde-prio-btn prio-alta lavori-btn is-secondary" +
+                (urgenza === "alta" ? " is-selected" : "")
+              }
+              onClick={() => setUrgenza("alta")}
+            >
+              {labelUrgenza("alta")}
             </button>
           </div>
-        </div>
 
-        <div className="next-clone-placeholder" style={{ display: "grid", gap: 12 }}>
-          <strong>Gruppo in preparazione</strong>
-          {drafts.length > 0 ? (
-            drafts.map((entry) => (
-              <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                <div>
-                  <strong>{entry.descrizione}</strong>
-                  <div style={{ fontSize: 12, color: "#475569" }}>
-                    {entry.tipo === "targa" ? entry.targa : "MAGAZZINO"} | {entry.dataInserimento} | {entry.urgenza.toUpperCase()}
-                  </div>
-                </div>
-                <button type="button" onClick={() => removeDraft(entry.id)}>
-                  Elimina
-                </button>
-              </div>
-            ))
-          ) : (
-            <div>Nessun lavoro in preparazione.</div>
-          )}
-        </div>
+          <button
+            type="button"
+            className="lde-main-btn lavori-btn is-primary"
+            onClick={handleAdd}
+          >
+            AGGIUNGI
+          </button>
+        </section>
+
+        <section className="lde-section lde-section-bottom">
+          <h2 className="lde-section-title">LISTA LAVORI TEMPORANEI</h2>
+
+          <div className="lde-list">
+            <div className="lde-empty">Nessun lavoro temporaneo</div>
+          </div>
+
+          {readonlyNotice ? (
+            <div className="lde-empty" style={{ marginTop: 12 }}>
+              {readonlyNotice}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            className="lde-main-btn lde-save-btn lavori-btn is-primary"
+            onClick={handleSaveGroup}
+          >
+            SALVA GRUPPO LAVORI
+          </button>
+        </section>
       </div>
-    </NextClonePageScaffold>
+    </div>
   );
 }

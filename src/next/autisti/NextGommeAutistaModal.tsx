@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from "react";
-import { getAutistaLocal, getMezzoLocal } from "./nextAutistiSessionStorage";
-import { getItemSync, setItemSync } from "./nextAutistiStorageSync";
+import { getMezzoLocal } from "./nextAutistiSessionStorage";
+import { getItemSync } from "./nextAutistiStorageSync";
 import NextModalGomme, { type CambioGommeData } from "./NextModalGomme";
 
 type TargetType = "motrice" | "rimorchio";
@@ -12,7 +12,6 @@ type TipoIntervento = "sostituzione" | "riparazione";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSaved?: () => void;
 };
 
 type MezzoRecord = {
@@ -28,8 +27,6 @@ type MezzoRecord = {
 
 type AsseConfig = { id: string; label: string; wheelsCount: number };
 type ConfigGomme = { assi: AsseConfig[] };
-
-const KEY_GOMME_TMP = "@cambi_gomme_autisti_tmp";
 
 function normalizeTarga(value?: string | null) {
   return value ? String(value).toUpperCase().replace(/\s+/g, "").trim() : "";
@@ -107,15 +104,6 @@ function buildAssiRotationOptions(categoria?: string) {
   return [];
 }
 
-function genId() {
-  const cryptoApi = globalThis.crypto as Crypto | undefined;
-  if (cryptoApi?.randomUUID) {
-    return cryptoApi.randomUUID();
-  }
-
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 function asArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object" && Array.isArray((value as { value?: unknown[] }).value)) {
@@ -124,7 +112,7 @@ function asArray<T>(value: unknown): T[] {
   return [];
 }
 
-export default function NextGommeAutistaModal({ open, onClose, onSaved }: Props) {
+export default function NextGommeAutistaModal({ open, onClose }: Props) {
   const [targetType, setTargetType] = useState<TargetType>("motrice");
   const [mode, setMode] = useState<ModeType>("cambio");
   const [tipoIntervento, setTipoIntervento] = useState<TipoIntervento>("sostituzione");
@@ -135,14 +123,12 @@ export default function NextGommeAutistaModal({ open, onClose, onSaved }: Props)
   const [haSpostatoAssi, setHaSpostatoAssi] = useState<"si" | "no">("no");
   const [haSostituitoGomme, setHaSostituitoGomme] = useState<"si" | "no" | null>(null);
   const [mezzoLocal, setMezzoLocal] = useState<any>(null);
-  const [autistaLocal, setAutistaLocal] = useState<any>(null);
   const [mezziList, setMezziList] = useState<MezzoRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setMezzoLocal(getMezzoLocal());
-    setAutistaLocal(getAutistaLocal());
     void (async () => {
       const raw = await getItemSync("@mezzi_aziendali");
       setMezziList(asArray<MezzoRecord>(raw));
@@ -211,101 +197,12 @@ export default function NextGommeAutistaModal({ open, onClose, onSaved }: Props)
     && rotazioneCambioOk;
   const canSave = targetOk && categoriaOk && kmValid && (cambioOk || rotazioneOk);
 
-  async function handleSave() {
+  function handleSave() {
     if (!canSave) {
       setError("Compila i campi obbligatori.");
       return;
     }
-
-    const asseCambioNum = (() => {
-      const asseId = gommeData?.asseId || "";
-      const match = /asse(\d+)/i.exec(String(asseId));
-      if (match) return Number(match[1]);
-      const labelMatch = /(\d+)/.exec(String(gommeData?.asseLabel || ""));
-      return labelMatch ? Number(labelMatch[1]) : null;
-    })();
-
-    const assiCambioList =
-      mode === "rotazione" && rotazioneHaCambio && Number.isFinite(asseCambioNum)
-        ? [Number(asseCambioNum)]
-        : [];
-    const assiCambioLabel = assiCambioList.join(", ");
-    const rotazioneTextValue =
-      mode === "rotazione" && haSpostatoAssi === "si" && rotazioneSchema
-        ? `Rotazione assi ${rotazioneSchema}${assiCambioList.length ? `; cambio gomme assi: ${assiCambioLabel}` : ""}`
-        : "";
-    const rotazioneAssiValue =
-      mode === "rotazione" && haSpostatoAssi === "si" && rotazioneSchema
-        ? (() => {
-            const match = /(\d)\s*<->\s*(\d)/.exec(rotazioneSchema);
-            if (!match) return null;
-            const from = Number(match[1]);
-            const to = Number(match[2]);
-            return Number.isFinite(from) && Number.isFinite(to) ? { from, to } : null;
-          })()
-        : null;
-
-    const record = {
-      id: genId(),
-      targetType,
-      targetTarga,
-      categoria,
-      km: kmNum,
-      data: Date.now(),
-      marca:
-        mode === "cambio"
-          ? String(gommeData?.marca ?? "").trim() || null
-          : mode === "rotazione" && rotazioneHaCambio
-            ? String(gommeData?.marca ?? "").trim() || null
-            : null,
-      tipo: mode === "cambio" ? tipoIntervento : "rotazione",
-      gommeIds:
-        mode === "cambio"
-          ? gommeData?.gommeIds ?? []
-          : mode === "rotazione" && rotazioneHaCambio
-            ? gommeData?.gommeIds ?? []
-            : [],
-      asseId:
-        mode === "cambio"
-          ? gommeData?.asseId ?? null
-          : mode === "rotazione" && rotazioneHaCambio
-            ? gommeData?.asseId ?? null
-            : null,
-      asseLabel:
-        mode === "cambio"
-          ? gommeData?.asseLabel ?? null
-          : mode === "rotazione" && rotazioneHaCambio
-            ? gommeData?.asseLabel ?? null
-            : null,
-      rotazioneSchema: mode === "rotazione" ? (haSpostatoAssi === "si" ? rotazioneSchema : "") : null,
-      rotazioneText: mode === "rotazione" ? rotazioneTextValue || "" : null,
-      rotazioneAssi: rotazioneAssiValue,
-      assiConCambioGomme: assiCambioList,
-      autista: {
-        id: autistaLocal?.id ?? null,
-        nome: autistaLocal?.nome ?? null,
-        badge: autistaLocal?.badge ?? null,
-      },
-      contesto: {
-        targaCamion: mezzoLocal?.targaCamion ?? null,
-        targaRimorchio: mezzoLocal?.targaRimorchio ?? null,
-      },
-      stato: "nuovo",
-      letta: false,
-      source: "next-clone",
-      syncState: "local-only",
-    };
-
-    const raw = await getItemSync(KEY_GOMME_TMP);
-    const list = asArray<any>(raw);
-    await setItemSync(KEY_GOMME_TMP, [record, ...list]);
-    setError(null);
-    setGommeData(null);
-    setRotazioneSchema("");
-    setHaSpostatoAssi("no");
-    setHaSostituitoGomme(null);
-    onSaved?.();
-    onClose();
+    setError("Clone NEXT in sola lettura: il salvataggio gomme non viene eseguito.");
   }
 
   return (
@@ -381,10 +278,18 @@ export default function NextGommeAutistaModal({ open, onClose, onSaved }: Props)
           <div style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Tipo intervento</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={() => setTipoIntervento("sostituzione")}>
+              <button
+                type="button"
+                onClick={() => setTipoIntervento("sostituzione")}
+                aria-pressed={tipoIntervento === "sostituzione"}
+              >
                 Sostituzione
               </button>
-              <button type="button" onClick={() => setTipoIntervento("riparazione")}>
+              <button
+                type="button"
+                onClick={() => setTipoIntervento("riparazione")}
+                aria-pressed={tipoIntervento === "riparazione"}
+              >
                 Riparazione
               </button>
             </div>
@@ -442,8 +347,8 @@ export default function NextGommeAutistaModal({ open, onClose, onSaved }: Props)
           <button type="button" onClick={onClose}>
             Annulla
           </button>
-          <button type="button" onClick={() => void handleSave()} disabled={!canSave}>
-            SALVA LOCALE
+          <button type="button" onClick={handleSave} disabled={!canSave}>
+            SALVA
           </button>
         </div>
       </div>

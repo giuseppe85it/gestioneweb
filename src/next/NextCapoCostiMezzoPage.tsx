@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { formatDateUI } from "./nextDateFormat";
-import { generatePreventiviCapoPDFBlob, generateTablePDFBlob } from "../utils/pdfEngine";
+import { generatePreventiviCapoPDFBlob } from "../utils/pdfEngine";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import {
   buildPdfShareText,
@@ -18,7 +18,6 @@ import {
   type NextCapoCostiRecord,
 } from "./domain/nextCapoDomain";
 import type { NextDocumentiCostiCurrency } from "./domain/nextDocumentiCostiDomain";
-import { upsertNextCapoCloneApproval } from "./nextCapoCloneState";
 
 function readErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -131,7 +130,10 @@ export default function NextCapoCostiMezzoPage() {
       try {
         setLoading(true);
         setError(null);
-        const snapshot = await readNextCapoCostiMezzoSnapshot(targa);
+        const snapshot = await readNextCapoCostiMezzoSnapshot(targa, {
+          includeCloneApprovals: false,
+          includeCloneDocuments: false,
+        });
 
         if (cancelled) return;
 
@@ -415,33 +417,15 @@ export default function NextCapoCostiMezzoPage() {
   }, [records, selectedYear, selectedMonth, exportAllYear]);
 
   const handleApprovalChange = (record: NextCapoCostiRecord, status: "pending" | "approved" | "rejected") => {
-    const targaKey = String(targa ?? "")
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "");
-    const approvalKey =
-      record.approvalKey ??
-      `${targaKey}__${record.sourceKey || "manual"}__${record.sourceDocId || record.id || "manual"}`;
-    const updatedAt = new Date().toISOString();
-
-    upsertNextCapoCloneApproval({
-      id: approvalKey,
-      targa: targaKey,
-      status,
-      updatedAt,
-    });
-
-    setRecords((prev) =>
-      prev.map((item) =>
-        (item.approvalKey ?? `${targaKey}__${item.sourceKey || "manual"}__${item.sourceDocId || item.id || "manual"}`) === approvalKey
-          ? {
-              ...item,
-              approvalKey,
-              approvalStatus: status,
-              approvalUpdatedAt: updatedAt,
-              approvalUpdatedAtTimestamp: Date.parse(updatedAt),
-            }
-          : item
-      )
+    const label =
+      status === "approved"
+        ? "APPROVA"
+        : status === "rejected"
+        ? "RIFIUTA"
+        : "DA VALUTARE";
+    const supplierLabel = record.supplier || "il preventivo selezionato";
+    window.alert(
+      `${label} resta visibile come nella madre, ma nel clone read-only non aggiorna ${supplierLabel}.`,
     );
   };
 
@@ -488,46 +472,10 @@ export default function NextCapoCostiMezzoPage() {
         ? "RIFIUTATO"
         : null;
     if (!status) return;
-
-    const stampTimeHHmm = `${String(now.getHours()).padStart(2, "0")}:${String(
-      now.getMinutes()
-    ).padStart(2, "0")}`;
-
-    try {
-      const fileDate = formatFileDate();
-      const preview = await openPreview({
-        source: async () =>
-          generateTablePDFBlob(
-            `Timbro clone ${status} ${String(targa ?? "").toUpperCase()}`,
-            [
-              {
-                targa: String(targa ?? "").toUpperCase() || "-",
-                fornitore: item.supplier || "Fornitore n/d",
-                data: formatDateShort(item.data, item.timestamp),
-                importo:
-                  typeof item.amount === "number"
-                    ? `${formatAmountValue(item.amount)} ${item.currency ?? "UNKNOWN"}`
-                    : "Importo n/d",
-                stato: status,
-                ora_timbro: stampTimeHHmm,
-                pdf_origine: item.fileUrl ? "Disponibile nel clone" : "Nessun PDF sorgente",
-              },
-            ],
-            ["targa", "fornitore", "data", "importo", "stato", "ora_timbro", "pdf_origine"],
-          ),
-        fileName: `preventivo-timbrato-clone-${String(targa ?? "targa").toUpperCase()}-${fileDate}.pdf`,
-        previousUrl: pdfPreviewUrl,
-      });
-      setPdfShareHint(null);
-      setPdfPreviewBlob(preview.blob);
-      setPdfPreviewFileName(preview.fileName);
-      setPdfPreviewTitle(`Anteprima PDF timbrato ${status}`);
-      setPdfShareContext(`Preventivo timbrato ${status}`);
-      setPdfPreviewUrl(preview.url);
-      setPdfPreviewOpen(true);
-    } catch {
-      window.alert("Errore anteprima PDF timbrato.");
-    }
+    const supplierLabel = item.supplier || "il preventivo selezionato";
+    window.alert(
+      `ANTEPRIMA TIMBRATO resta visibile come nella madre, ma nel clone read-only non genera PDF timbrati per ${supplierLabel}.`,
+    );
   };
 
   return (

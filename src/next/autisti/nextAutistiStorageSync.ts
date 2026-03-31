@@ -1,4 +1,5 @@
 import { getItemSync as readLegacyStorageValue } from "../../utils/storageSync";
+import { isNextAutistiClonePath } from "./nextAutistiCloneRuntime";
 import { readNextAutistiLegacyStorageOverrides } from "../nextLegacyAutistiOverlay";
 
 type SetItemSyncOptions = {
@@ -20,6 +21,21 @@ const NEXT_AUTISTI_MANAGED_KEYS = new Set([
 
 function canUseLocalStorage() {
   return typeof window !== "undefined" && Boolean(window.localStorage);
+}
+
+function isNextAutistiOfficialAppRuntime() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const pathname = String(window.location.pathname ?? "").trim();
+  return (
+    isNextAutistiClonePath(pathname) ||
+    pathname === "/next/autisti-inbox" ||
+    pathname.startsWith("/next/autisti-inbox/") ||
+    pathname === "/next/autisti-admin" ||
+    pathname.startsWith("/next/autisti-admin/")
+  );
 }
 
 function cloneValue<T>(value: T): T {
@@ -51,6 +67,10 @@ function parseOverlayValue<T>(raw: string | null): T | undefined {
 }
 
 export function readNextAutistiStorageOverlay<T = unknown>(key: string): T | undefined {
+  if (NEXT_AUTISTI_MANAGED_KEYS.has(key) && isNextAutistiOfficialAppRuntime()) {
+    return undefined;
+  }
+
   if (!canUseLocalStorage()) {
     return undefined;
   }
@@ -60,7 +80,7 @@ export function readNextAutistiStorageOverlay<T = unknown>(key: string): T | und
 }
 
 async function readManagedDataset(key: string) {
-  if (!NEXT_AUTISTI_MANAGED_KEYS.has(key)) {
+  if (!NEXT_AUTISTI_MANAGED_KEYS.has(key) || isNextAutistiOfficialAppRuntime()) {
     return readLegacyStorageValue(key);
   }
 
@@ -88,7 +108,12 @@ export async function setItemSync(
   _opts?: SetItemSyncOptions,
 ) {
   void _opts;
+  void value;
   if (!canUseLocalStorage()) {
+    return;
+  }
+
+  if (NEXT_AUTISTI_MANAGED_KEYS.has(key) && isNextAutistiOfficialAppRuntime()) {
     return;
   }
 
@@ -97,6 +122,10 @@ export async function setItemSync(
 
 export async function removeItemSync(key: string) {
   if (!canUseLocalStorage()) {
+    return;
+  }
+
+  if (NEXT_AUTISTI_MANAGED_KEYS.has(key) && isNextAutistiOfficialAppRuntime()) {
     return;
   }
 

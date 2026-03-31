@@ -1,3 +1,5 @@
+import { isNextAutistiClonePath } from "./nextAutistiCloneRuntime";
+
 export type NextAutistiCloneTargetControllo = "motrice" | "rimorchio" | "entrambi";
 
 export type NextAutistiCloneControlloRecord = {
@@ -34,7 +36,15 @@ function parseCloneArray<T>(raw: string | null): T[] {
   }
 }
 
+function shouldIgnoreCloneControlli() {
+  return typeof window !== "undefined" && isNextAutistiClonePath(window.location.pathname);
+}
+
 export function getNextAutistiCloneControlli(): NextAutistiCloneControlloRecord[] {
+  if (shouldIgnoreCloneControlli()) {
+    return [];
+  }
+
   if (typeof window === "undefined") {
     return [];
   }
@@ -47,6 +57,11 @@ export function getNextAutistiCloneControlli(): NextAutistiCloneControlloRecord[
 export function appendNextAutistiCloneControllo(
   record: NextAutistiCloneControlloRecord,
 ) {
+  void record;
+  if (shouldIgnoreCloneControlli()) {
+    return;
+  }
+
   if (typeof window === "undefined") {
     return;
   }

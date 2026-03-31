@@ -38,6 +38,18 @@ type NextLegacyStorageBoundaryProps = {
   fallback?: ReactNode;
 };
 
+function isOfficialNextAutistiPath(pathname: string | undefined | null) {
+  const value = String(pathname ?? "").trim();
+  return (
+    value === "/next/autisti" ||
+    value.startsWith("/next/autisti/") ||
+    value === "/next/autisti-inbox" ||
+    value.startsWith("/next/autisti-inbox/") ||
+    value === "/next/autisti-admin" ||
+    value.startsWith("/next/autisti-admin/")
+  );
+}
+
 function toLegacyMezzoRecord(item: Awaited<
   ReturnType<typeof readNextAnagraficheFlottaSnapshot>
 >["items"][number]) {
@@ -160,7 +172,10 @@ function toLegacyOrdineRecord(item: NextProcurementOrderItem) {
   };
 }
 
-async function buildOverrides(presets: NextLegacyStoragePreset[]) {
+async function buildOverrides(
+  presets: NextLegacyStoragePreset[],
+  pathname?: string,
+) {
   const overrides: Record<string, unknown> = {};
   const requested = new Set(presets);
 
@@ -198,7 +213,7 @@ async function buildOverrides(presets: NextLegacyStoragePreset[]) {
     overrides["@lavori"] = await readNextLavoriLegacyDataset();
   }
 
-  if (requested.has("autisti")) {
+  if (requested.has("autisti") && !isOfficialNextAutistiPath(pathname)) {
     Object.assign(overrides, await readNextAutistiLegacyStorageOverrides());
   }
 
@@ -226,7 +241,10 @@ export default function NextLegacyStorageBoundary({
       try {
         setLoading(true);
         setError(null);
-        const overrides = await buildOverrides(stablePresets);
+        const overrides = await buildOverrides(
+          stablePresets,
+          typeof window === "undefined" ? undefined : window.location.pathname,
+        );
         if (cancelled) {
           return;
         }

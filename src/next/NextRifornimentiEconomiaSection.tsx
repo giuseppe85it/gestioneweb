@@ -30,7 +30,12 @@ type RifornimentoRecord = {
   note?: string | null;
 };
 
-type Props = { targa: string };
+type DataScope = "legacy_parity" | "extended";
+
+type Props = {
+  targa: string;
+  dataScope?: DataScope;
+};
 type RangeFilter = "MESE" | 3 | 6 | 9 | 12;
 type RifornimentoNorm = RifornimentoRecord & {
   dateObj: Date;
@@ -182,7 +187,10 @@ const FuelDot = ({
   );
 };
 
-export default function RifornimentiEconomiaSection({ targa }: Props) {
+export default function RifornimentiEconomiaSection({
+  targa,
+  dataScope = "extended",
+}: Props) {
   const [items, setItems] = useState<RifornimentoRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [rangeMonths, setRangeMonths] = useState<RangeFilter>(6);
@@ -202,8 +210,12 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
       setLoading(true);
       try {
         const snapshot = await readNextMezzoRifornimentiSnapshot(targa);
+        const visibleItems =
+          dataScope === "legacy_parity"
+            ? snapshot.items.filter((entry) => entry.provenienza !== "campo")
+            : snapshot.items;
         setItems(
-          snapshot.items.map((entry) => ({
+          visibleItems.map((entry) => ({
             id: entry.id,
             mezzoTarga: entry.mezzoTarga,
             data: entry.dataDisplay ?? entry.timestampRicostruito,
@@ -225,7 +237,7 @@ export default function RifornimentiEconomiaSection({ targa }: Props) {
     };
 
     load();
-  }, [targa]);
+  }, [dataScope, targa]);
 
   const normalized = useMemo(() => {
     return items

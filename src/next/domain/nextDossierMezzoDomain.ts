@@ -763,7 +763,7 @@ export async function readNextDossierMezzoCompositeSnapshot(
   ] = await Promise.allSettled([
     readNextMezzoOperativitaTecnicaSnapshot(mezzoTarga),
     readNextMezzoLavoriSnapshot(mezzoTarga),
-    readNextMaterialiMovimentiSnapshot(),
+    readNextMaterialiMovimentiSnapshot({ includeCloneOverlays: false }),
     readNextMezzoManutenzioniGommeSnapshot(mezzoTarga),
     readNextMezzoRifornimentiSnapshot(mezzoTarga),
     readNextMezzoDocumentiCostiSnapshot(mezzoTarga),

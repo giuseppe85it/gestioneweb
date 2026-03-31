@@ -9,6 +9,7 @@ import { readNextCapoCloneApprovals } from "../nextCapoCloneState";
 import {
   readNextDocumentiCostiFleetSnapshot,
   readNextMezzoDocumentiCostiSnapshot,
+  type ReadNextDocumentiCostiSnapshotOptions,
   type NextDocumentiCostiReadOnlyItem,
 } from "./nextDocumentiCostiDomain";
 
@@ -104,6 +105,11 @@ export type NextCapoCostiMezzoSnapshot = {
     };
   };
   limitations: string[];
+};
+
+export type ReadNextCapoSnapshotOptions = {
+  includeCloneApprovals?: boolean;
+  includeCloneDocuments?: boolean;
 };
 
 function normalizeText(value: unknown): string {
@@ -341,22 +347,28 @@ function mapApprovalRecord(args: {
   };
 }
 
-async function readNextCapoApprovalsSnapshot(targa: string): Promise<{
+async function readNextCapoApprovalsSnapshot(
+  targa: string,
+  options: ReadNextCapoSnapshotOptions = {},
+): Promise<{
   datasetShape: NextLegacyDatasetShape;
   items: NextCapoPreventivoApproval[];
   byKey: Map<string, NextCapoPreventivoApproval>;
   limitations: string[];
 }> {
   const targaKey = normalizeTarga(targa);
+  const includeCloneApprovals = options.includeCloneApprovals !== false;
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, APPROVALS_DATASET_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items } = unwrapStorageArray(rawDoc);
-  const localOverrides = readNextCapoCloneApprovals().map((entry) => ({
-    id: entry.id,
-    targa: entry.targa,
-    status: entry.status,
-    updatedAt: entry.updatedAt,
-  }));
+  const localOverrides = includeCloneApprovals
+    ? readNextCapoCloneApprovals().map((entry) => ({
+        id: entry.id,
+        targa: entry.targa,
+        status: entry.status,
+        updatedAt: entry.updatedAt,
+      }))
+    : [];
   const mergedItems = [...items];
   const byId = new Map<string, number>();
   mergedItems.forEach((entry, index) => {
@@ -395,8 +407,12 @@ async function readNextCapoApprovalsSnapshot(targa: string): Promise<{
     items: approvals,
     byKey: new Map(approvals.map((entry) => [entry.approvalKey, entry])),
     limitations: [
-      "Le approvazioni vengono lette da `@preventivi_approvazioni` e possono essere sovrapposte da uno stato clone-only locale.",
-      "Nel clone non viene riattivata alcuna scrittura business su `@preventivi_approvazioni`: gli stati restano confinati nel layer NEXT locale.",
+      includeCloneApprovals
+        ? "Le approvazioni vengono lette da `@preventivi_approvazioni` e possono essere sovrapposte da uno stato clone-only locale."
+        : "Le approvazioni vengono lette dal dataset reale `@preventivi_approvazioni` senza overlay clone-only locali.",
+      includeCloneApprovals
+        ? "Nel clone non viene riattivata alcuna scrittura business su `@preventivi_approvazioni`: gli stati restano confinati nel layer NEXT locale."
+        : "Nel clone le approvazioni restano di sola lettura: il runtime ufficiale non applica stati locali o scritture business su `@preventivi_approvazioni`.",
       datasetShape === "unsupported"
         ? "Il dataset `@preventivi_approvazioni` non e in una shape pienamente leggibile e viene trattato come non conforme."
         : null,
@@ -412,10 +428,14 @@ function findMezzoByTarga(
   return mezzi.find((mezzo) => normalizeTarga(mezzo.targa) === targaKey) ?? null;
 }
 
-export async function readNextCapoMezziSnapshot(): Promise<NextCapoMezziSnapshot> {
+export async function readNextCapoMezziSnapshot(
+  options: ReadNextCapoSnapshotOptions = {},
+): Promise<NextCapoMezziSnapshot> {
   const [flottaSnapshot, costiSnapshot] = await Promise.all([
     readNextAnagraficheFlottaSnapshot(),
-    readNextDocumentiCostiFleetSnapshot(),
+    readNextDocumentiCostiFleetSnapshot({
+      includeCloneDocuments: options.includeCloneDocuments,
+    } satisfies ReadNextDocumentiCostiSnapshotOptions),
   ]);
   const costIndex = buildCostIndex(costiSnapshot.items, new Date());
 
@@ -485,13 +505,16 @@ export async function readNextCapoMezziSnapshot(): Promise<NextCapoMezziSnapshot
 }
 
 export async function readNextCapoCostiMezzoSnapshot(
-  targa: string
+  targa: string,
+  options: ReadNextCapoSnapshotOptions = {},
 ): Promise<NextCapoCostiMezzoSnapshot> {
   const mezzoTarga = normalizeTarga(targa);
   const [flottaSnapshot, documentiCostiSnapshot, approvalsSnapshot] = await Promise.all([
     readNextAnagraficheFlottaSnapshot(),
-    readNextMezzoDocumentiCostiSnapshot(mezzoTarga),
-    readNextCapoApprovalsSnapshot(mezzoTarga),
+    readNextMezzoDocumentiCostiSnapshot(mezzoTarga, {
+      includeCloneDocuments: options.includeCloneDocuments,
+    } satisfies ReadNextDocumentiCostiSnapshotOptions),
+    readNextCapoApprovalsSnapshot(mezzoTarga, options),
   ]);
   const mezzo = findMezzoByTarga(flottaSnapshot.items, mezzoTarga);
 

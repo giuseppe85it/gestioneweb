@@ -233,11 +233,11 @@ export function buildNextOperativitaOrdiniView(
 export async function readNextOperativitaGlobaleSnapshot(): Promise<NextOperativitaGlobaleSnapshot> {
   const [inventario, materialiMovimenti, attrezzature, manutenzioniDataset, procurement] =
     await Promise.all([
-      readNextInventarioSnapshot(),
-      readNextMaterialiMovimentiSnapshot(),
+      readNextInventarioSnapshot({ includeCloneOverlays: false }),
+      readNextMaterialiMovimentiSnapshot({ includeCloneOverlays: false }),
       readNextAttrezzatureCantieriSnapshot(),
       readStorageDataset(MANUTENZIONI_KEY),
-      readNextProcurementSnapshot(),
+      readNextProcurementSnapshot({ includeCloneOverlays: false }),
     ]);
 
   const mappedManutenzioni = manutenzioniDataset.items.map((entry, index) => {

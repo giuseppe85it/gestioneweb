@@ -56,6 +56,10 @@ export type NextFornitoriSnapshot = {
   limitations: string[];
 };
 
+export type NextFornitoriReadOptions = {
+  includeCloneOverlays?: boolean;
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -171,10 +175,14 @@ function buildLimitations(args: {
   datasetShape: NextLegacyDatasetShape;
   items: NextFornitoreReadOnlyItem[];
   skippedRawRecords: number;
+  includeCloneOverlays: boolean;
 }): string[] {
-  const { datasetShape, items, skippedRawRecords } = args;
+  const { datasetShape, items, skippedRawRecords, includeCloneOverlays } = args;
 
   return [
+    includeCloneOverlays
+      ? "Il layer fornitori puo integrare overlay locali del clone solo su richiesta esplicita del chiamante."
+      : "La lettura ufficiale del clone usa solo `@fornitori` reale senza overlay locali.",
     datasetShape === "unsupported"
       ? "Il dataset `@fornitori` non espone una shape supportata fuori dai formati `array/value/items`."
       : null,
@@ -187,16 +195,25 @@ function buildLimitations(args: {
     items.some((item) => item.flags.includes("codice_assente"))
       ? "Il codice non e valorizzato su tutti i fornitori."
       : null,
-    "Il clone mantiene aggiunta, modifica ed eliminazione solo nel layer locale NEXT; la madre resta intatta.",
+    includeCloneOverlays
+      ? "Il clone mantiene aggiunta, modifica ed eliminazione solo nel layer locale NEXT; la madre resta intatta."
+      : null,
   ].filter((entry): entry is string => Boolean(entry));
 }
 
-export async function readNextFornitoriSnapshot(): Promise<NextFornitoriSnapshot> {
+export async function readNextFornitoriSnapshot(
+  options: NextFornitoriReadOptions = {},
+): Promise<NextFornitoriSnapshot> {
+  const includeCloneOverlays = options.includeCloneOverlays ?? true;
   const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, FORNITORI_KEY));
   const rawDoc = snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
   const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
-  const deletedIds = new Set(readNextDeletedFornitoreIds());
-  const cloneItems = readNextFornitoriCloneRecords().map(mapCloneFornitoreItem);
+  const deletedIds = new Set(
+    includeCloneOverlays ? readNextDeletedFornitoreIds() : [],
+  );
+  const cloneItems = includeCloneOverlays
+    ? readNextFornitoriCloneRecords().map(mapCloneFornitoreItem)
+    : [];
 
   const mappedItems = rawItems.map((entry, index) => {
     if (!entry || typeof entry !== "object") return null;
@@ -229,6 +246,11 @@ export async function readNextFornitoriSnapshot(): Promise<NextFornitoriSnapshot
       withBadge: items.filter((item) => Boolean(item.badge)).length,
       withCodice: items.filter((item) => Boolean(item.codice)).length,
     },
-    limitations: buildLimitations({ datasetShape, items, skippedRawRecords }),
+    limitations: buildLimitations({
+      datasetShape,
+      items,
+      skippedRawRecords,
+      includeCloneOverlays,
+    }),
   };
 }

@@ -1,0 +1,38 @@
+# BACKLOG - `Autisti`
+
+- Modulo target: `Autisti`
+- Route target:
+  - `/next/autisti`
+  - `/next/autisti/controllo`
+  - `/next/autisti/cambio-mezzo`
+  - `/next/autisti/rifornimento`
+  - `/next/autisti/richiesta-attrezzature`
+  - `/next/autisti/segnalazioni`
+- Stato iniziale: `APERTO`
+- Stato finale: `CLOSED`
+- Blocchi reali rilevati:
+  - l'audit finale globale ha dimostrato un falso `CLOSED`: il runtime ufficiale `/next/autisti/*` usciva ancora verso `/autisti/*` da `NextLoginAutistaNative.tsx`, `NextSetupMezzoNative.tsx` e `NextHomeAutistaNative.tsx`;
+  - il boundary `NextLegacyStorageBoundary.tsx` poteva ancora iniettare override `autisti` legacy-shaped sul solo perimetro ufficiale, mantenendo un rischio strutturale secondario non coerente con l'autonomia NEXT;
+  - il fix finale ha chiuso il gap confinando di nuovo tutto il flusso ufficiale in `/next/autisti/*` e lasciando `Autisti Inbox / Admin` fuori dal perimetro della patch.
+- Path precisi:
+  - `src/next/autisti/NextAutistiCloneLayout.tsx`
+  - `src/next/autisti/NextLoginAutistaNative.tsx`
+  - `src/next/autisti/NextSetupMezzoNative.tsx`
+  - `src/next/autisti/NextHomeAutistaNative.tsx`
+  - `src/next/NextAutistiControlloPage.tsx`
+  - `src/next/NextAutistiCambioMezzoPage.tsx`
+  - `src/next/autisti/NextAutistiRifornimentoPage.tsx`
+  - `src/next/autisti/NextAutistiSegnalazioniPage.tsx`
+  - `src/next/autisti/NextAutistiRichiestaAttrezzaturePage.tsx`
+  - `src/next/autisti/NextGommeAutistaModal.tsx`
+  - `src/next/autisti/nextAutistiCloneRuntime.ts`
+  - `src/next/autisti/nextAutistiCloneState.ts`
+  - `src/next/autisti/nextAutistiStorageSync.ts`
+  - `src/next/NextLegacyStorageBoundary.tsx`
+  - `src/autisti/HomeAutista.tsx`
+  - `src/autisti/ControlloMezzo.tsx`
+  - `src/autisti/CambioMezzoAutista.tsx`
+  - `src/autisti/Rifornimento.tsx`
+  - `src/autisti/Segnalazioni.tsx`
+  - `src/autisti/RichiestaAttrezzature.tsx`
+  - `src/autisti/GommeAutistaModal.tsx`

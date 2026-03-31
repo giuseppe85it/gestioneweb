@@ -721,15 +721,23 @@ export default function AutistiAdmin() {
     return new Date().toISOString().substring(0, 10);
   }
 
-  function genId() {
-    const c: any = globalThis.crypto;
-    if (c?.randomUUID) return c.randomUUID();
-    return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  }
+function genId() {
+  const c: any = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
 
-  async function appendLavori(newItems: LavoroRecord[]) {
-    appendNextLavoriCloneRecords(
-      newItems.map((item) => ({
+function showReadOnlyAdminBlock(action: string) {
+  window.alert(`Clone NEXT in sola lettura: ${action}.`);
+}
+
+function shouldBlockAdminMutations() {
+  return typeof window !== "undefined";
+}
+
+async function appendLavori(newItems: LavoroRecord[]) {
+  appendNextLavoriCloneRecords(
+    newItems.map((item) => ({
         id: item.id,
         gruppoId: item.gruppoId,
         tipo: item.tipo,
@@ -1000,6 +1008,14 @@ export default function AutistiAdmin() {
     scope: "MOTRICE" | "RIMORCHIO" | "TUTTO",
     reason: string
   ) {
+    if (shouldBlockAdminMutations()) {
+      void badgeAutista;
+      void scope;
+      void reason;
+      showReadOnlyAdminBlock("l'azione resta visibile ma non modifica le sessioni attive");
+      return;
+    }
+
     const sess = (await getItemSync(KEY_SESSIONI)) || [];
     if (!Array.isArray(sess)) return;
 
@@ -1075,6 +1091,11 @@ export default function AutistiAdmin() {
   }
 
   async function saveForceCambio() {
+    if (shouldBlockAdminMutations()) {
+      showReadOnlyAdminBlock("il cambio forzato resta visibile ma non aggiorna la sessione");
+      return;
+    }
+
     if (!forceCambioBadge || !forceCambioScope) return;
     const nextTarga = normTarga(forceCambioTarga);
     if (!nextTarga) {
@@ -1123,6 +1144,12 @@ export default function AutistiAdmin() {
   }
 
   async function deleteSessione(badgeAutista: string) {
+    if (shouldBlockAdminMutations()) {
+      void badgeAutista;
+      showReadOnlyAdminBlock("l'eliminazione sessione resta visibile ma non rimuove dati");
+      return;
+    }
+
     const sess = (await getItemSync(KEY_SESSIONI)) || [];
     if (!Array.isArray(sess)) return;
 
@@ -1146,6 +1173,11 @@ export default function AutistiAdmin() {
   }
 
   async function saveEditSession() {
+    if (shouldBlockAdminMutations()) {
+      showReadOnlyAdminBlock("la modifica sessione resta visibile ma non salva dati");
+      return;
+    }
+
     if (!editTargetTarga) return;
 
     const sess = (await getItemSync(KEY_SESSIONI)) || [];
@@ -1343,6 +1375,11 @@ export default function AutistiAdmin() {
   }
 
   async function saveCanonEdit() {
+    if (shouldBlockAdminMutations()) {
+      showReadOnlyAdminBlock("la rettifica storico cambio resta visibile ma non salva dati");
+      return;
+    }
+
     const raw = (await getItemSync(KEY_STORICO_EVENTI_OPERATIVI)) || [];
     if (!Array.isArray(raw)) return;
 
@@ -1405,6 +1442,11 @@ export default function AutistiAdmin() {
   }
 
   async function deleteCanonEvent() {
+    if (shouldBlockAdminMutations()) {
+      showReadOnlyAdminBlock("l'eliminazione evento resta visibile ma non rimuove dati");
+      return;
+    }
+
     if (!canonEditId && canonEditIndex == null) return;
     const confirmDelete = window.confirm("Eliminare questo evento?");
     if (!confirmDelete) return;
@@ -1437,6 +1479,12 @@ export default function AutistiAdmin() {
   }
 
   async function deleteSegnalazione(record: any) {
+    if (shouldBlockAdminMutations()) {
+      void record;
+      showReadOnlyAdminBlock("l'eliminazione segnalazione resta visibile ma non rimuove dati");
+      return;
+    }
+
     const id = String(record?.id ?? "");
     if (!id) return;
     const confirmDelete = window.confirm("Eliminare questa segnalazione?");
@@ -1456,6 +1504,12 @@ export default function AutistiAdmin() {
   }
 
   async function deleteAttrezzature(record: any) {
+    if (shouldBlockAdminMutations()) {
+      void record;
+      showReadOnlyAdminBlock("l'eliminazione richiesta resta visibile ma non rimuove dati");
+      return;
+    }
+
     const id = String(record?.id ?? "");
     if (!id) return;
     const confirmDelete = window.confirm("Eliminare questa richiesta?");
@@ -1484,6 +1538,12 @@ export default function AutistiAdmin() {
   }
 
   async function createLavoroFromSegnalazione(record: any) {
+    if (shouldBlockAdminMutations()) {
+      void record;
+      showReadOnlyAdminBlock("la creazione lavoro da segnalazione resta visibile ma non genera lavori");
+      return;
+    }
+
     if (!record) return;
     if (hasLinkedLavoro(record)) {
       window.alert("Lavoro già creato per questa segnalazione.");
@@ -1543,6 +1603,12 @@ export default function AutistiAdmin() {
   }
 
   async function createLavoroFromControllo(record: any) {
+    if (shouldBlockAdminMutations()) {
+      void record;
+      showReadOnlyAdminBlock("la creazione lavoro da controllo resta visibile ma non genera lavori");
+      return;
+    }
+
     if (!record) return;
     if (hasLinkedLavoro(record)) {
       window.alert("Lavoro già creato per questo controllo.");
@@ -1627,6 +1693,13 @@ export default function AutistiAdmin() {
   }
 
   async function updateGommeRecord(recordId: string, patch: any) {
+    if (shouldBlockAdminMutations()) {
+      void recordId;
+      void patch;
+      showReadOnlyAdminBlock("l'aggiornamento gomme resta visibile ma non salva dati");
+      return;
+    }
+
     if (!recordId) return;
     const raw = (await getItemSync(KEY_GOMME_TMP)) || [];
     const list = Array.isArray(raw) ? raw : [];
@@ -1639,6 +1712,12 @@ export default function AutistiAdmin() {
   }
 
   async function importGommeRecord(record: any) {
+    if (shouldBlockAdminMutations()) {
+      void record;
+      showReadOnlyAdminBlock("l'import gomme resta visibile ma non salva dati");
+      return;
+    }
+
     if (!record?.id) return;
     const raw = (await getItemSync(KEY_GOMME_EVENTI)) || [];
     const list = Array.isArray(raw) ? raw : [];
@@ -1674,6 +1753,11 @@ export default function AutistiAdmin() {
   }
 
   async function saveAdminEdit() {
+    if (shouldBlockAdminMutations()) {
+      showReadOnlyAdminBlock("il salvataggio admin resta visibile ma non scrive dati");
+      return;
+    }
+
     if (!adminEditKind) return;
 
     if (isAdminCreateRifornimento) {
@@ -2061,6 +2145,11 @@ export default function AutistiAdmin() {
   }
 
   async function deleteAdminEdit() {
+    if (shouldBlockAdminMutations()) {
+      showReadOnlyAdminBlock("l'eliminazione admin resta visibile ma non rimuove dati");
+      return;
+    }
+
     if (!adminEditKind || !adminEditId) return;
 
     const ok = window.confirm("Operazione irreversibile. Eliminare questo elemento?");

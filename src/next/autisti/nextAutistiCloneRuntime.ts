@@ -105,25 +105,25 @@ export function bootstrapNextAutistiCloneStorage(storage: Storage) {
 export function getNextAutistiNoticeMessage(code: NextAutistiNoticeCode): string {
   switch (code) {
     case "rifornimento":
-      return "Rifornimento resta fuori dal perimetro clone-safe oggi importato nell'app autisti.";
+      return "Rifornimento disponibile in lettura: nella NEXT Autisti l'azione resta visibile ma non salva dati.";
     case "rifornimento-locale":
-      return "Rifornimento salvato solo nel locale clone: il dato non viene sincronizzato sulla madre.";
+      return "Clone NEXT in sola lettura: il rifornimento non viene salvato.";
     case "segnalazioni":
-      return "Segnalazioni nel clone restano locali e non sincronizzano la madre.";
+      return "Segnalazioni disponibili in lettura: nella NEXT Autisti l'azione resta visibile ma non salva dati.";
     case "segnalazioni-locale":
-      return "Segnalazione salvata solo nel locale clone: testo e foto non vengono sincronizzati sulla madre.";
+      return "Clone NEXT in sola lettura: la segnalazione non viene inviata.";
     case "richiesta-attrezzature":
-      return "Richiesta attrezzature nel clone resta locale e non sincronizza la madre.";
+      return "Richiesta attrezzature disponibile in lettura: nella NEXT Autisti l'azione resta visibile ma non salva dati.";
     case "richiesta-attrezzature-locale":
-      return "Richiesta attrezzature salvata solo nel locale clone: testo e foto non vengono sincronizzati sulla madre.";
+      return "Clone NEXT in sola lettura: la richiesta attrezzature non viene inviata.";
     case "sgancia-motrice":
-      return "Sgancio motrice applicato solo nel clone: la sessione madre non viene aggiornata.";
+      return "Clone NEXT in sola lettura: lo sgancio motrice non viene applicato.";
     case "controllo-locale":
-      return "Controllo salvato solo nel locale clone: il passaggio resta locale e non sincronizza la madre.";
+      return "Clone NEXT in sola lettura: il controllo mezzo non viene salvato.";
     case "cambio-mezzo-locale":
-      return "Cambio mezzo applicato solo nel locale clone: l'assetto madre non viene aggiornato.";
+      return "Clone NEXT in sola lettura: il cambio mezzo non viene applicato.";
     default:
-      return "Questa schermata non e ancora importata nel perimetro clone-safe attuale dell'app autisti.";
+      return "Questa schermata non e disponibile nel perimetro ufficiale NEXT Autisti.";
   }
 }
 

@@ -21,7 +21,7 @@ export default function NextDossierRifornimentiPage() {
     <div className="dossier-wrapper">
       <div className="dossier-header-bar">
         <button className="dossier-button ghost" type="button" onClick={handleBack}>
-          Dossier
+          &larr; Dossier
         </button>
 
         <div className="dossier-header-center">
@@ -36,7 +36,9 @@ export default function NextDossierRifornimentiPage() {
       </div>
 
       <div className="dossier-grid">
-        {targa ? <NextRifornimentiEconomiaSection targa={targa} /> : null}
+        {targa ? (
+          <NextRifornimentiEconomiaSection targa={targa} dataScope="legacy_parity" />
+        ) : null}
       </div>
     </div>
   );

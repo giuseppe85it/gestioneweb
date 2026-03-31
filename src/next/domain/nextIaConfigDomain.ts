@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 
 const IA_CONFIG_COLLECTION = "@impostazioni_app";
@@ -41,7 +41,8 @@ export async function readNextIaConfigSnapshot(): Promise<NextIaConfigSnapshot> 
     apiKeyConfigured,
     apiKey: apiKeyRaw,
     limitations: [
-      "La pagina NEXT legge e salva la chiave sullo stesso documento Firestore usato dalla madre.",
+      "La pagina NEXT legge la chiave sullo stesso documento Firestore usato dalla madre.",
+      "Nel clone il salvataggio della chiave resta bloccato in modo read-only esplicito.",
       "La chiave resta confinata al modulo dedicato e non viene propagata automaticamente in altre UI.",
     ],
   };
@@ -49,9 +50,10 @@ export async function readNextIaConfigSnapshot(): Promise<NextIaConfigSnapshot> 
 
 export async function saveNextIaConfigSnapshot(apiKey: string): Promise<void> {
   const normalized = apiKey.trim();
-  await setDoc(
-    doc(db, IA_CONFIG_COLLECTION, IA_CONFIG_DOC_ID),
-    { apiKey: normalized },
-    { merge: true },
+  if (!normalized) {
+    throw new Error("Inserisci una chiave valida prima di salvare.");
+  }
+  throw new Error(
+    "Clone read-only: Salva chiave resta visibile come nella madre, ma non aggiorna Firestore.",
   );
 }

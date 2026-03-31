@@ -27,7 +27,9 @@ export default function NextCapoMezziPage() {
       try {
         setLoading(true);
         setError(null);
-        const snapshot = await readNextCapoMezziSnapshot();
+        const snapshot = await readNextCapoMezziSnapshot({
+          includeCloneDocuments: false,
+        });
         if (cancelled) return;
         setItems(snapshot.items);
         setLoading(false);

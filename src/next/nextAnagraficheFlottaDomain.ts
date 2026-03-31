@@ -112,6 +112,7 @@ export type NextAnagraficheFlottaMezzoItem = {
   fotoPath: string | null;
   fotoStoragePath: string | null;
   librettoUrl: string | null;
+  librettoStoragePath: string | null;
   datasetShape: NextLegacyDatasetShape;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof MEZZI_DATASET_KEY;
@@ -497,7 +498,9 @@ function mapMezzoItem(args: {
     flags.push("autista_id_senza_match_collega");
   }
   if (!normalizeOptionalText(raw.fotoUrl)) flags.push("foto_assente");
-  if (!normalizeOptionalText(raw.librettoUrl)) flags.push("libretto_assente");
+  if (!normalizeOptionalText(raw.librettoUrl) && !normalizeOptionalText(raw.librettoStoragePath)) {
+    flags.push("libretto_assente");
+  }
   if (normalizeOptionalText(raw.dataImmatricolazione) && !immatricolazione.parsed) {
     flags.push("immatricolazione_non_parseabile");
   }
@@ -545,6 +548,7 @@ function mapMezzoItem(args: {
     fotoPath: normalizeOptionalText(raw.fotoPath),
     fotoStoragePath: normalizeOptionalText(raw.fotoStoragePath),
     librettoUrl: normalizeOptionalText(raw.librettoUrl),
+    librettoStoragePath: normalizeOptionalText(raw.librettoStoragePath),
     datasetShape,
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: MEZZI_DATASET_KEY,
@@ -630,12 +634,12 @@ function applyMezzoClonePatch(
 
   const flags = item.flags.filter((entry) => {
     if (entry === "foto_assente" && patch.fotoUrl) return false;
-    if (entry === "libretto_assente" && patch.librettoUrl) return false;
+    if (entry === "libretto_assente" && (patch.librettoUrl || patch.librettoStoragePath)) return false;
     return true;
   });
 
   if (patch.fotoUrl) flags.push("foto_clone_patch");
-  if (patch.librettoUrl) flags.push("libretto_clone_patch");
+  if (patch.librettoUrl || patch.librettoStoragePath) flags.push("libretto_clone_patch");
   if (patch.source === "mezzi") flags.push("mezzo_clone_patch");
 
   const marca = patch.marca ?? item.marca;
@@ -683,6 +687,7 @@ function applyMezzoClonePatch(
     fotoPath: patch.fotoPath ?? item.fotoPath,
     fotoStoragePath: patch.fotoStoragePath ?? item.fotoStoragePath,
     librettoUrl: patch.librettoUrl ?? item.librettoUrl,
+    librettoStoragePath: patch.librettoStoragePath ?? item.librettoStoragePath,
     quality: deriveMezzoQuality({
       marca,
       modello,
@@ -736,6 +741,7 @@ function buildMezzoFromClonePatch(args: {
     fotoPath: patch.fotoPath ?? null,
     fotoStoragePath: patch.fotoStoragePath ?? null,
     librettoUrl: patch.librettoUrl ?? null,
+    librettoStoragePath: patch.librettoStoragePath ?? null,
   } satisfies NextAnagraficheFlottaRaw;
 
   const mapped = mapMezzoItem({

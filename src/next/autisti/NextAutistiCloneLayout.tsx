@@ -219,12 +219,8 @@ function NextAutistiCloneLayout() {
     return <div className="next-autisti-clone__loading">Avvio clone autisti...</div>;
   }
 
-      return (
+  return (
     <div className="next-autisti-clone">
-      <div className="next-autisti-clone__banner">
-        D03 autisti canonico: sessioni ed eventi madre sono letti in sola lettura; controlli,
-        gomme, segnalazioni e richieste salvati qui restano locali al clone.
-      </div>
       {notice ? (
         <div className="next-autisti-clone__banner next-autisti-clone__banner--notice">{notice}</div>
       ) : null}

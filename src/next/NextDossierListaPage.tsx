@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "../pages/DossierLista.css";
 import { readNextAnagraficheFlottaSnapshot } from "./nextAnagraficheFlottaDomain";
-import { buildNextDossierPath } from "./nextStructuralPaths";
+import { buildNextDossierListaDetailPath } from "./nextStructuralPaths";
 
 type DossierListaMezzo = {
   targa: string;
@@ -38,7 +38,9 @@ export default function NextDossierListaPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const snapshot = await readNextAnagraficheFlottaSnapshot();
+        const snapshot = await readNextAnagraficheFlottaSnapshot({
+          includeClonePatches: false,
+        });
         if (cancelled) return;
 
         setMezzi(
@@ -123,7 +125,7 @@ export default function NextDossierListaPage() {
             {mezziCategoria.map((mezzo) => (
               <Link
                 key={mezzo.targa}
-                to={buildNextDossierPath(mezzo.targa)}
+                to={buildNextDossierListaDetailPath(mezzo.targa)}
                 className="dossierlista-card"
               >
                 {mezzo.fotoUrl ? (

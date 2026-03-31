@@ -1,5 +1,91 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Audit finale globale V4 2026-03-31 - blocco extra-tracker `IA interna`
+- Audit separato finale aggiornato: `docs/audit/AUDIT_FINALE_GLOBALE_NEXT_POST_LOOP_V4.md`.
+- Verdetto corrente verificato nel repo:
+  - `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`
+- Tutti i moduli del tracker e le route ufficiali gia corrette reggono nel codice reale, inclusi i fix finali di `Autisti`, `Autisti Inbox / Admin`, `Dossier Mezzo` e `Gestione Operativa`.
+- Il nuovo blocco grave non e nel tracker ma su route ufficiali NEXT extra-tracker montate in `src/App.tsx`:
+  - `/next/ia/interna`
+  - `/next/ia/interna/sessioni`
+  - `/next/ia/interna/richieste`
+  - `/next/ia/interna/artifacts`
+  - `/next/ia/interna/audit`
+- `src/next/NextInternalAiPage.tsx` esegue ancora scritture reali isolate del sottosistema IA interno: upload/rimozione allegati, save/archive artifact e workflow preview/approve/reject/rollback.
+- Conseguenza:
+  - il tracker tutto `CLOSED` non basta ancora a promuovere la NEXT;
+  - finche `ia/interna*` resta route ufficiale NEXT con persistenza attiva, la NEXT non puo essere dichiarata lavorabile in autonomia come clone read-only sul perimetro target.
+
+## 0. Correzione post-audit globale V3 2026-03-31 - `Gestione Operativa` route ufficiale
+- Il blocco grave trovato dall'audit finale globale V3 sulla route ufficiale `Gestione Operativa` e stato corretto nel codice reale.
+- `src/next/domain/nextOperativitaGlobaleDomain.ts` non legge piu `Inventario`, `Materiali` e `Procurement` del percorso ufficiale con i default permissivi dei domain condivisi, ma passa esplicitamente `includeCloneOverlays: false`.
+- Badge, preview inventario e contatore consegne del runtime ufficiale `src/next/NextGestioneOperativaPage.tsx` leggono quindi solo dati reali madre-like nel path `/next/gestione-operativa`.
+- Questa correzione chiude il blocco emerso dall'audit finale globale V3, ma NON aggiorna da sola il verdetto globale della NEXT: serve un nuovo audit finale separato.
+
+## 0. Riesecuzione audit finale globale V3 2026-03-31 - blocco `Gestione Operativa`
+- Audit separato finale aggiornato: `docs/audit/AUDIT_FINALE_GLOBALE_NEXT_POST_LOOP_V3.md`.
+- Verdetto corrente verificato nel repo:
+  - `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`
+- I fix finali di `Autisti`, `Autisti Inbox / Admin` e `Dossier Mezzo` reggono nel codice reale.
+- Il nuovo audit globale V3 aggiornato trova pero un blocco grave ancora attivo su una route ufficiale NEXT:
+  - `src/App.tsx` monta `/next/gestione-operativa` su `src/next/NextGestioneOperativaPage.tsx`;
+  - `src/next/useNextOperativitaSnapshot.ts` chiama `readNextOperativitaGlobaleSnapshot()`;
+  - `src/next/domain/nextOperativitaGlobaleDomain.ts` legge ancora `Inventario`, `Materiali` e `Procurement` senza spegnere gli overlay clone;
+  - i domain condivisi mantengono il default `includeCloneOverlays ?? true`;
+  - badge e preview visibili del runtime ufficiale possono quindi ancora assorbire dati clone-local.
+- Conseguenza:
+  - il tracker tutto `CLOSED` non basta ancora a promuovere la NEXT;
+  - serve un fix separato sulla route ufficiale `Gestione Operativa`, poi un nuovo audit finale globale separato.
+
+## 0. Correzione post-audit globale V3 2026-03-31 - `Dossier Mezzo`
+- Il blocco grave trovato dall'audit finale globale V3 sul modulo `Dossier Mezzo` e stato corretto nel codice reale.
+- `src/next/domain/nextDossierMezzoDomain.ts` non legge piu i movimenti materiali del percorso ufficiale con il default permissivo del domain condiviso, ma usa esplicitamente `readNextMaterialiMovimentiSnapshot({ includeCloneOverlays: false })`.
+- La tabella `Materiali e movimenti inventario` del runtime ufficiale `src/next/NextDossierMezzoPage.tsx` legge quindi solo `@materialiconsegnati` reale, senza overlay clone-only nel percorso ufficiale.
+- Questa correzione chiude il falso `CLOSED` emerso dall'audit finale globale V3, ma NON aggiorna da sola il verdetto globale della NEXT: serve un nuovo audit finale separato.
+
+## 0. Audit finale globale post-loop V3 2026-03-31
+- Audit separato finale aggiornato: `docs/audit/AUDIT_FINALE_GLOBALE_NEXT_POST_LOOP_V3.md`.
+- Verdetto corrente verificato nel repo:
+  - `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`
+- Il fix finale di `Autisti Inbox / Admin` regge, ma il nuovo audit globale da zero trova un altro falso `CLOSED` nel codice reale:
+  - `Dossier Mezzo` resta marcato `CLOSED` nel tracker;
+  - il reader ufficiale `src/next/domain/nextDossierMezzoDomain.ts` chiama ancora `readNextMaterialiMovimentiSnapshot()` senza disabilitare gli overlay clone;
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts` mantiene il default `includeCloneOverlays ?? true`;
+  - il blocco finisce davvero nella UI ufficiale `Materiali e movimenti inventario` di `src/next/NextDossierMezzoPage.tsx`.
+- Finche questo punto resta, la NEXT non puo essere promossa a clone lavorabile in autonomia.
+
+## 0. Correzione post-audit globale V2 2026-03-31 - `Autisti Inbox / Admin`
+- Il blocco grave trovato dall'audit finale globale V2 sul modulo `Autisti Inbox / Admin` e stato corretto nel codice reale.
+- `src/next/NextAutistiInboxHomePage.tsx` e `src/next/NextAutistiAdminPage.tsx` non montano piu `NextLegacyStorageBoundary` nei wrapper ufficiali home/admin.
+- `src/next/NextLegacyStorageBoundary.tsx` non inietta piu override `autisti` legacy-shaped neppure sul perimetro ufficiale `/next/autisti-inbox*` e `/next/autisti-admin`.
+- Il perimetro inbox/admin continua a leggere i dataset reali via `src/next/autisti/nextAutistiStorageSync.ts`, con scritture reali e clone-only gia bloccate nel runtime.
+- Questa correzione chiude il falso `CLOSED` emerso dall'audit finale globale V2, ma NON aggiorna da sola il verdetto globale della NEXT: serve un nuovo audit finale separato.
+
+## 0. Audit finale globale post-loop V2 2026-03-31
+- Audit separato finale aggiornato: `docs/audit/AUDIT_FINALE_GLOBALE_NEXT_POST_LOOP_V2.md`.
+- Verdetto corrente verificato nel repo:
+  - `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`
+- Il fix finale di `Autisti` ha corretto il vecchio blocco sulle navigazioni verso `/autisti/*`, ma il nuovo audit globale separato ha trovato un altro blocco grave nel codice reale:
+  - `Autisti Inbox / Admin` e marcato `CLOSED` nel tracker, ma le route ufficiali `/next/autisti-inbox*` e `/next/autisti-admin` passano ancora da `NextLegacyStorageBoundary` con preset `autisti`;
+  - quel preset continua a costruire override legacy-shaped che fondono dati reali con overlay clone-local di segnalazioni, controlli, richieste e rifornimenti;
+  - quindi almeno un modulo dichiarato chiuso non e chiuso davvero nel codice reale.
+- Finche questo blocco resta, la NEXT non puo essere promossa a clone lavorabile in autonomia.
+
+## 0. Correzione post-audit globale 2026-03-31 - `Autisti`
+- Il blocco grave trovato dall'audit finale globale sul modulo `Autisti` e stato corretto nel codice reale.
+- `src/next/autisti/NextLoginAutistaNative.tsx`, `src/next/autisti/NextSetupMezzoNative.tsx` e `src/next/autisti/NextHomeAutistaNative.tsx` non navigano piu verso `/autisti/*`, ma restano confinati a `/next/autisti/*`.
+- `src/next/NextLegacyStorageBoundary.tsx` non inietta piu override `autisti` legacy-shaped nel solo perimetro ufficiale `/next/autisti/*`.
+- Questo chiude il falso `CLOSED` emerso dall'audit finale globale, ma NON aggiorna da solo il verdetto globale della NEXT: serve un nuovo audit finale separato.
+
+## 0. Audit finale globale post-loop 2026-03-31
+- Audit separato finale: `docs/audit/AUDIT_FINALE_GLOBALE_NEXT_POST_LOOP.md`.
+- Verdetto corrente verificato nel repo:
+  - `NO, NEXT non ancora lavorabile in autonomia sul perimetro target`
+- Blocco grave confermato nel codice reale:
+  - il tracker risulta tutto `CLOSED`, ma `Autisti` non e chiuso davvero;
+  - `src/App.tsx` monta le route ufficiali `/next/autisti/*`, pero i runtime `src/next/autisti/NextLoginAutistaNative.tsx`, `src/next/autisti/NextSetupMezzoNative.tsx` e `src/next/autisti/NextHomeAutistaNative.tsx` navigano ancora verso route madre `/autisti/*`;
+  - finche questo blocco resta, la NEXT non puo essere promossa a clone lavorabile in autonomia.
+
 ## 0. Nota critica audit generale 2026-03-30
 - Audit generale totale: `docs/audit/AUDIT_GENERALE_TOTALE_NEXT_VS_MADRE.md`.
 - Verdetto corrente verificato nel repo:
@@ -17,6 +103,13 @@
   - gli ultimi 8 moduli del report 39 non sono tutti chiusi davvero
   - molte route ufficiali del perimetro target montano ancora `NextMotherPage` e pagine `src/pages/**`
   - diverse pagine NEXT native del blocco finale restano clone-safe ma non equivalenti alla madre lato flussi operativi
+
+## 0.1 Aggiornamento operativo 2026-03-31 - `Autisti` chiuso sul runtime ufficiale
+- Il modulo `Autisti` e ora `CLOSED` nel loop ufficiale modulo-per-modulo con audit separato `PASS`.
+- Le route ufficiali `/next/autisti`, `/next/autisti/controllo`, `/next/autisti/cambio-mezzo`, `/next/autisti/rifornimento`, `/next/autisti/richiesta-attrezzature` e `/next/autisti/segnalazioni` restano NEXT native e non montano `src/autisti/**` come runtime finale.
+- Il boundary `src/next/autisti/nextAutistiStorageSync.ts` esclude overlay locali e scritture clone-only per le chiavi D03 gestite sul solo pathname `/next/autisti/*`, lasciando fuori da questo run `Autisti Inbox / Admin`.
+- `Login`, `Setup mezzo`, `Home`, `Controllo`, `Cambio mezzo`, `Rifornimento`, `Richiesta attrezzature`, `Segnalazioni` e il modal `Gomme` mantengono la grammatica pratica della madre, ma bloccano ogni side effect con messaggi read-only espliciti.
+- Login e setup mantengono solo contesto UI locale dell'app autisti; nessuna sessione madre viene creata o modificata dal clone.
 
 ## 1. Scopo del documento
 Questo documento resta il registro ufficiale dello stato della NEXT, ma dal `2026-03-10` segue una strategia diversa rispetto alla versione precedente.
@@ -66,7 +159,7 @@ Serve a:
 
 ## 5.1 Aggiornamento 2026-03-12 - Parita UI reale clone/madre
 - La shell `/next` e la shell `/next/autisti/*` sono state alleggerite dal chrome clone-only: il clone presenta ora la stessa percezione base della madre, con notice minimi e senza topbar clone dedicata.
-- Le principali pagine clone non usano piu pannelli custom o reader-first: su `/next` vengono montate direttamente le pagine madre reali per `Home`, `Gestione Operativa`, procurement, `Dettaglio Lavoro`, `Autisti Admin`, child route IA prioritarie, `Cisterna`, `Mezzi`, `Dossier Lista`, `Dossier Mezzo` e `Analisi Economica`.
+- Le principali pagine clone non usano piu pannelli custom o reader-first: su `/next` vengono montate direttamente le pagine madre reali per `Home`, `Gestione Operativa`, `Dettaglio Lavoro`, `Autisti Admin`, child route IA prioritarie, `Cisterna`, `Mezzi`, `Dossier Lista`, `Dossier Mezzo` e `Analisi Economica`, mentre il gruppo procurement usa ora runtime NEXT dedicato ma riallineato alla stessa superficie read-only della madre.
 - Il blocco no-write resta confinato al clone tramite `NextMotherPage` e `nextCloneNavigation`: i writer madre restano visibili ma vengono disabilitati o neutralizzati nel subtree `/next`, senza riaprire scritture vere.
 - Il modal eventi autisti non e piu impoverito nel clone: CTA e modale madre restano visibili, ma la conferma finale e bloccata nel runtime clone.
 - Restano esplicitamente fuori dalla parita 1:1 di questa patch `Autista 360` e `Mezzo 360`, che rimangono bucket di rifondazione e non semplice riallineamento.
@@ -2272,3 +2365,406 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
   - la chiusura vale solo per il modulo `Mezzi` nel loop corrente;
   - il prossimo modulo non `CLOSED` del tracker e `Dossier Lista`;
   - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.98 Aggiornamento 2026-03-31 - Loop modulo `Dossier Lista` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_dossier-lista.md`.
+- Fonte audit separato: `docs/audit/AUDIT_dossier-lista_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/dossiermezzi` monta `src/next/NextDossierListaPage.tsx`, non `NextMotherPage` o `src/pages/DossierLista.tsx`;
+  - `src/next/NextDossierListaPage.tsx` replica la superficie madre di `Dossier Lista` su titolo, categorie, card mezzo, placeholder foto e flusso pratico `categorie -> mezzi -> dossier`;
+  - il runtime ufficiale legge `@mezzi_aziendali` tramite `readNextAnagraficheFlottaSnapshot({ includeClonePatches: false })`, quindi senza overlay clone-only impliciti;
+  - il click sulle card usa `/next/dossiermezzi/:targa`, alias NEXT coerente con il flusso madre e montato su `NextDossierMezzoPage`;
+  - il modulo non espone scritture, modali operativi o PDF da riallineare.
+- Stato aggiornato del modulo:
+  - `Dossier Lista` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Dossier Lista` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Dossier Mezzo`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.99 Aggiornamento 2026-03-31 - Loop modulo `Dossier Mezzo` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_dossier-mezzo.md`.
+- Fonte audit separato: `docs/audit/AUDIT_dossier-mezzo_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/dossier/:targa` monta `src/next/NextDossierMezzoPage.tsx`, non `NextMotherPage` o `src/pages/DossierMezzo.tsx`;
+  - `src/next/NextDossierMezzoPage.tsx` replica la superficie madre su header, dati tecnici, foto, lavori, manutenzioni, materiali, rifornimenti, preventivi/fatture, modali e anteprima PDF;
+  - il runtime ufficiale legge il composite `readNextDossierMezzoCompositeSnapshot()` sopra layer NEXT puliti;
+  - il bottone `Elimina` dei preventivi non nasconde piu documenti localmente nel clone, ma blocca l'azione con messaggio read-only esplicito;
+  - il runtime ufficiale non usa piu overlay clone-only per alterare la lista visibile dei documenti.
+- Stato aggiornato del modulo:
+  - `Dossier Mezzo` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Dossier Mezzo` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Dossier Gomme`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.100 Aggiornamento 2026-03-31 - Loop modulo `Dossier Gomme` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_dossier-gomme.md`.
+- Fonte audit separato: `docs/audit/AUDIT_dossier-gomme_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/dossier/:targa/gomme` monta `src/next/NextDossierGommePage.tsx`, non `NextMotherPage` o `src/pages/DossierGomme.tsx`;
+  - `src/next/NextDossierGommePage.tsx` replica la superficie madre su header, CTA di ritorno, titolo mezzo, cards statistiche, storico e grafici;
+  - il runtime ufficiale usa `NextGommeEconomiaSection` con `dataScope="legacy_parity"`, quindi mostra solo i record `manutenzione_derivata`, cioe la stessa sorgente visibile usata dalla madre;
+  - il layer NEXT gomme resta read-only e strutturato, ma il dossier ufficiale non espone piu eventi extra-manutenzione che altererebbero la parity esterna del modulo;
+  - il modulo non espone scritture, modali operativi o PDF da riallineare.
+- Stato aggiornato del modulo:
+  - `Dossier Gomme` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Dossier Gomme` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Dossier Rifornimenti`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.101 Aggiornamento 2026-03-31 - Loop modulo `Dossier Rifornimenti` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_dossier-rifornimenti.md`.
+- Fonte audit separato: `docs/audit/AUDIT_dossier-rifornimenti_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/dossier/:targa/rifornimenti` monta `src/next/NextDossierRifornimentiPage.tsx`, non `NextMotherPage` o `src/pages/DossierRifornimenti.tsx`;
+  - `src/next/NextDossierRifornimentiPage.tsx` replica la superficie madre su header, CTA di ritorno, riepilogo, ultimi rifornimenti e grafici interattivi;
+  - il runtime ufficiale usa `NextRifornimentiEconomiaSection` con `dataScope="legacy_parity"`, quindi esclude i record `solo_campo` e mantiene il perimetro dati visibile della madre;
+  - il layer NEXT D04 resta read-only e strutturato, ma il dossier ufficiale non espone piu append di record solo feed campo che altererebbero la parity esterna del modulo;
+  - il modulo non espone scritture, modali operativi o PDF da riallineare.
+- Stato aggiornato del modulo:
+  - `Dossier Rifornimenti` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Dossier Rifornimenti` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Inventario`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.102 Aggiornamento 2026-03-31 - Loop modulo `Inventario` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_inventario.md`.
+- Fonte audit separato: `docs/audit/AUDIT_inventario_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/inventario` monta `src/next/NextInventarioPage.tsx`, non `NextMotherPage` o `src/pages/Inventario.tsx`;
+  - `src/next/NextInventarioPage.tsx` replica la superficie madre su header, CTA PDF, form, suggerimenti fornitore, lista articoli, controlli quantita, modale modifica e modale `Anteprima PDF`;
+  - il runtime ufficiale legge `@inventario` tramite `readNextInventarioSnapshot({ includeCloneOverlays: false })`, quindi senza overlay clone-only nel modulo ufficiale;
+  - `handleAdd()`, `handleDelete()`, `handleSaveEdit()` e i blocchi qty/foto mantengono la UI madre ma bloccano il comportamento con messaggi read-only espliciti;
+  - il runtime ufficiale non usa piu `upsertNextInventarioCloneRecord()` o `markNextInventarioCloneDeleted()`.
+- Stato aggiornato del modulo:
+  - `Inventario` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Inventario` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Materiali consegnati`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.103 Aggiornamento 2026-03-31 - Loop modulo `Materiali consegnati` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_materiali_consegnati.md`.
+- Fonte audit separato: `docs/audit/AUDIT_materiali_consegnati_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/materiali-consegnati` monta `src/next/NextMaterialiConsegnatiPage.tsx`, non `NextMotherPage` o `src/pages/MaterialiConsegnati.tsx`;
+  - `src/next/NextMaterialiConsegnatiPage.tsx` replica la superficie madre su header, CTA PDF, form nuova consegna, suggerimenti destinatario/materiale, lista destinatari, dettaglio storico e modale `Anteprima PDF`;
+  - il runtime ufficiale legge `@materialiconsegnati` tramite `readNextMaterialiMovimentiSnapshot({ includeCloneOverlays: false })`, quindi senza overlay clone-only nel modulo ufficiale;
+  - il runtime ufficiale legge anche `@inventario` tramite `readNextInventarioSnapshot({ includeCloneOverlays: false })` e usa la flotta reale per mezzi/colleghi sopra layer NEXT puliti;
+  - `handleAdd()` e `handleDeleteConsegna()` mantengono la UI madre ma bloccano il comportamento con messaggi read-only espliciti;
+  - il runtime ufficiale non usa piu `appendNextMaterialiMovimentiCloneRecord()`, `markNextMaterialiMovimentiCloneDeleted()` o `upsertNextInventarioCloneRecord()`.
+- Stato aggiornato del modulo:
+  - `Materiali consegnati` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Materiali consegnati` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Materiali da ordinare`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.104 Aggiornamento 2026-03-31 - Loop modulo `Materiali da ordinare` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_materiali-da-ordinare.md`.
+- Fonte audit separato: `docs/audit/AUDIT_materiali-da-ordinare_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/materiali-da-ordinare` monta `src/next/NextMaterialiDaOrdinarePage.tsx`, non `NextMotherPage` o `src/pages/MaterialiDaOrdinare.tsx`;
+  - `src/next/NextMaterialiDaOrdinarePage.tsx` replica la superficie madre su header, tab, form fabbisogni, tabella materiali, sticky action bar e modale placeholder;
+  - il runtime ufficiale legge `@fornitori` tramite `readNextFornitoriSnapshot({ includeCloneOverlays: false })`, quindi senza overlay clone-only nel modulo ufficiale;
+  - `Carica foto`, `Carica preventivo`, `Aggiungi materiale` e `CONFERMA ORDINE` mantengono la UI madre ma bloccano il comportamento con messaggi read-only espliciti;
+  - il runtime ufficiale non usa piu `appendNextProcurementCloneOrder()`, editor locali, preventivi locali o PDF clone-only.
+- Stato aggiornato del modulo:
+  - `Materiali da ordinare` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Materiali da ordinare` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Acquisti / Ordini / Preventivi / Listino`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.105 Aggiornamento 2026-03-31 - Loop gruppo `Acquisti / Ordini / Preventivi / Listino` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_acquisti-ordini-preventivi-listino.md`.
+- Fonte audit separato: `docs/audit/AUDIT_acquisti-ordini-preventivi-listino_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/acquisti`, `/next/ordini-in-attesa`, `/next/ordini-arrivati` e `/next/dettaglio-ordine/:ordineId` montano route NEXT autonome, non `NextMotherPage` o `src/pages/Acquisti.tsx`;
+  - `src/next/NextProcurementStandalonePage.tsx` legge il gruppo tramite `readNextProcurementSnapshot({ includeCloneOverlays: false })`, quindi senza overlay clone-only nel runtime ufficiale;
+  - `src/next/NextProcurementReadOnlyPanel.tsx` replica la stessa superficie read-only della madre su header, tab, liste, dettaglio ordine e schede bloccate;
+  - le azioni scriventi restano visibili ma disabilitate con motivazione read-only esplicita;
+  - il runtime ufficiale non usa piu `upsertNextProcurementCloneOrder()`, editor locali, materiali clone-only o PDF locali.
+- Stato aggiornato del modulo:
+  - `Acquisti / Ordini / Preventivi / Listino` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il gruppo `Acquisti / Ordini / Preventivi / Listino` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Lavori`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.106 Aggiornamento 2026-03-31 - Loop modulo `Lavori` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_lavori.md`.
+- Fonte audit separato: `docs/audit/AUDIT_lavori_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/lavori-da-eseguire`, `/next/lavori-in-attesa`, `/next/lavori-eseguiti` e `/next/dettagliolavori/:lavoroId` montano runtime NEXT autonomi, non `NextMotherPage` o `src/pages/**`;
+  - `src/next/NextLavoriDaEseguirePage.tsx` replica la superficie madre su header, form, suggerimenti, pulsanti urgenza, lista temporanea e CTA visibili;
+  - `src/next/NextLavoriInAttesaPage.tsx` e `src/next/NextLavoriEseguitiPage.tsx` replicano la superficie madre su ricerca targa, accordion mezzi/magazzino, PDF e ritorno;
+  - `src/next/NextDettaglioLavoroPage.tsx` replica la superficie madre su cards, pulsanti `MODIFICA` / `ELIMINA` / `ESEGUI` e modali principali;
+  - il runtime ufficiale legge `@lavori` tramite `readNextLavoriInAttesaSnapshot({ includeCloneOverlays: false })`, `readNextLavoriEseguitiSnapshot({ includeCloneOverlays: false })` e `readNextDettaglioLavoroSnapshot(..., { includeCloneOverlays: false })`, quindi senza overlay clone-only nel modulo ufficiale;
+  - `AGGIUNGI`, `SALVA GRUPPO LAVORI`, `ELIMINA` e i due `Salva` dei modali restano visibili ma bloccano il comportamento con messaggi read-only espliciti;
+  - il runtime ufficiale non usa piu `appendNextLavoriCloneRecords()`, `upsertNextLavoriCloneOverride()` o `markNextLavoriCloneDeleted()`.
+- Stato aggiornato del modulo:
+  - `Lavori` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Lavori` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Capo Mezzi`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.107 Aggiornamento 2026-03-31 - Loop modulo `Capo Mezzi` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_capo-mezzi.md`.
+- Fonte audit separato: `docs/audit/AUDIT_capo-mezzi_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/capo/mezzi` monta `src/next/NextCapoMezziPage.tsx`, non `NextMotherPage` o `src/pages/CapoMezzi.tsx`;
+  - `src/next/NextCapoMezziPage.tsx` replica la superficie madre su header, ricerca, gruppi categoria, card mezzo, costi reali, potenziale e badge dati;
+  - il runtime ufficiale legge il riepilogo costi tramite `readNextCapoMezziSnapshot({ includeCloneDocuments: false })`, quindi senza documenti clone-only locali nel modulo ufficiale;
+  - il modulo resta di sola lettura e non espone writer business o clone-only.
+- Stato aggiornato del modulo:
+  - `Capo Mezzi` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Capo Mezzi` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Capo Costi`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.108 Aggiornamento 2026-03-31 - Loop modulo `Capo Costi` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_capo-costi.md`.
+- Fonte audit separato: `docs/audit/AUDIT_capo-costi_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/capo/costi/:targa` monta `src/next/NextCapoCostiMezzoPage.tsx`, non `NextMotherPage` o `src/pages/CapoCostiMezzo.tsx`;
+  - `src/next/NextCapoCostiMezzoPage.tsx` replica la superficie madre su header, filtri, KPI, approvazioni preventivi, tabs, lista documenti e preview PDF;
+  - il runtime ufficiale legge il dettaglio tramite `readNextCapoCostiMezzoSnapshot(targa, { includeCloneApprovals: false, includeCloneDocuments: false })`, quindi senza overlay clone-only su approvazioni o documenti nel modulo ufficiale;
+  - `APPROVA`, `RIFIUTA`, `DA VALUTARE` e `ANTEPRIMA TIMBRATO` restano visibili ma bloccano il comportamento con messaggi read-only espliciti;
+  - il runtime ufficiale non usa piu `upsertNextCapoCloneApproval()` e non genera PDF timbrati clone-side.
+- Stato aggiornato del modulo:
+  - `Capo Costi` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Capo Costi` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `IA Home`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.109 Aggiornamento 2026-03-31 - Loop modulo `IA Home` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_ia-home.md`.
+- Fonte audit separato: `docs/audit/AUDIT_ia-home_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/ia` monta `src/next/NextIntelligenzaArtificialePage.tsx`, non `NextMotherPage` o `src/pages/IA/IAHome.tsx`;
+  - `src/next/NextIntelligenzaArtificialePage.tsx` replica la superficie madre su hero, badge API key, card strumenti attivi e card `In arrivo`;
+  - il runtime ufficiale legge lo stesso documento `@impostazioni_app/gemini` tramite `readNextIaConfigSnapshot()`;
+  - il modulo non espone scritture reali o clone-only.
+- Stato aggiornato del modulo:
+  - `IA Home` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `IA Home` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `IA API Key`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.110 Aggiornamento 2026-03-31 - Loop modulo `IA API Key` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_ia-apikey.md`.
+- Fonte audit separato: `docs/audit/AUDIT_ia-apikey_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/ia/apikey` monta `src/next/NextIAApiKeyPage.tsx`, non `NextMotherPage` o `src/pages/IA/IAApiKey.tsx`;
+  - `src/next/NextIAApiKeyPage.tsx` replica la superficie madre su header, banner, input, toggle, pulsanti e nota finale;
+  - il runtime ufficiale legge lo stesso documento `@impostazioni_app/gemini` tramite `readNextIaConfigSnapshot()`;
+  - `saveNextIaConfigSnapshot()` non scrive piu in Firestore e rilancia un blocco read-only esplicito;
+  - `Salva chiave` resta visibile ma blocca il comportamento con messaggio read-only esplicito.
+- Stato aggiornato del modulo:
+  - `IA API Key` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `IA API Key` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `IA Libretto`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.111 Aggiornamento 2026-03-31 - Loop modulo `IA Libretto` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_ia-libretto.md`.
+- Fonte audit separato: `docs/audit/AUDIT_ia-libretto_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/ia/libretto` monta `src/next/NextIALibrettoPage.tsx`, non `NextMotherPage` o `src/pages/IA/IALibretto.tsx`;
+  - `src/next/NextIALibrettoPage.tsx` replica la superficie madre su header, step, upload, pulsanti, archivio libretti e viewer modale;
+  - il runtime ufficiale legge gli stessi documenti reali della madre tramite `readNextIaConfigSnapshot()` su `@impostazioni_app/gemini` e il nuovo reader `readNextIaLibrettoArchiveSnapshot()` su `storage/@mezzi_aziendali`;
+  - il runtime ufficiale non usa piu `NextClonePageScaffold`, handoff IA dedicato, facade preview locale o `upsertNextFlottaClonePatch()`;
+  - `Analizza con IA` e `Salva nei documenti del mezzo` restano visibili ma bloccano il comportamento con messaggi read-only espliciti, senza Cloud Run, upload Storage, `setItemSync()` o patch clone-only.
+- Stato aggiornato del modulo:
+  - `IA Libretto` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `IA Libretto` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `IA Documenti`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.112 Aggiornamento 2026-03-31 - Loop modulo `IA Documenti` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_ia-documenti.md`.
+- Fonte audit separato: `docs/audit/AUDIT_ia-documenti_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/ia/documenti` monta `src/next/NextIADocumentiPage.tsx`, non `NextMotherPage` o `src/pages/IA/IADocumenti.tsx`;
+  - `src/next/NextIADocumentiPage.tsx` replica la superficie madre su caricamento, anteprima, risultati analisi, archivio documenti salvati e modale valuta;
+  - il runtime ufficiale legge gli stessi dati reali della madre tramite `readNextIaConfigSnapshot()` su `@impostazioni_app/gemini`, `readNextIADocumentiArchiveSnapshot({ includeCloneDocuments: false })` su `@documenti_*` e `readNextAnagraficheFlottaSnapshot({ includeClonePatches: false })` su `@mezzi_aziendali`;
+  - il runtime ufficiale non usa piu `NextClonePageScaffold`, preview legacy, handoff IA dedicato, `upsertNextInternalAiCloneDocumento()` o `upsertNextInventarioCloneRecord()`;
+  - `Analizza con IA`, `Salva Documento` e `Imposta valuta` restano visibili ma bloccano il comportamento con messaggi read-only espliciti, senza Cloud Function, Storage, Firestore o import inventario.
+- Stato aggiornato del modulo:
+  - `IA Documenti` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `IA Documenti` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `IA Copertura Libretti`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.113 Aggiornamento 2026-03-31 - Loop modulo `IA Copertura Libretti` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_ia-copertura-libretti.md`.
+- Fonte audit separato: `docs/audit/AUDIT_ia-copertura-libretti_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/ia/copertura-libretti` monta `src/next/NextIACoperturaLibrettiPage.tsx`, non `NextMotherPage` o `src/pages/IA/IACoperturaLibretti.tsx`;
+  - `src/next/NextIACoperturaLibrettiPage.tsx` replica la superficie madre su filtri, tabella copertura, area `Ripara libretti da lista ID` e debug DEV;
+  - il runtime ufficiale legge `@mezzi_aziendali` tramite `readNextAnagraficheFlottaSnapshot({ includeClonePatches: false })`, con parity madre-like anche sul caso `librettoStoragePath`;
+  - il runtime ufficiale non usa piu `NextClonePageScaffold` o `upsertNextFlottaClonePatch()`;
+  - `ESEGUI RIPARAZIONE`, `Carica libretto` e `Ripara libretto` restano visibili ma bloccano il comportamento con messaggi read-only espliciti, senza upload, Storage, Firestore o patch locali.
+- Stato aggiornato del modulo:
+  - `IA Copertura Libretti` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `IA Copertura Libretti` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Libretti Export`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.114 Aggiornamento 2026-03-31 - Loop modulo `Libretti Export` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_libretti-export.md`.
+- Fonte audit separato: `docs/audit/AUDIT_libretti-export_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/libretti-export` monta `src/next/NextLibrettiExportPage.tsx`, non `NextMotherPage` o `src/pages/LibrettiExport.tsx`;
+  - il runtime ufficiale replica la superficie madre su header, toolbar, selezione per categoria, anteprima PDF e azioni di condivisione;
+  - il modulo usa `readNextLibrettiExportSnapshot()` e `generateNextLibrettiExportPreview()` sopra `@mezzi_aziendali` in sola lettura, con preview PDF locale e fallback `librettoStoragePath`;
+  - non risultano scritture business reali o clone-only nel runtime ufficiale.
+- Stato aggiornato del modulo:
+  - `Libretti Export` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Libretti Export` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Cisterna`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.115 Aggiornamento 2026-03-31 - Loop modulo `Cisterna` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_cisterna.md`.
+- Fonte audit separato: `docs/audit/AUDIT_cisterna_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/cisterna` monta `src/next/NextCisternaPage.tsx`, non `NextMotherPage` o `src/pages/CisternaCaravate/CisternaCaravatePage.tsx`;
+  - `src/next/NextCisternaPage.tsx` replica la superficie madre su header, month picker, CTA visibili, archivio, `DOPPIO BOLLETTINO`, report mensile, targhe e dettaglio;
+  - il runtime ufficiale legge gli stessi dati reali della madre tramite `readNextCisternaSnapshot(month, { includeCloneOverlays: false })` sopra `cisterna_documenti`, `cisterna_schede`, `cisterna_parametri_mensili` e `storage/@rifornimenti_autisti_tmp`;
+  - il runtime ufficiale non usa piu `NextClonePageScaffold`, `jsPDF`, `jspdf-autotable`, `pdf.save(...)` o `upsertNextCisternaCloneParametro()`;
+  - `Salva`, `Conferma scelta`, `Apri IA Cisterna`, `Scheda carburante`, `Apri/Modifica` ed `Esporta PDF` restano visibili ma bloccano il comportamento con messaggi read-only espliciti, senza scritture Firestore, patch locali o export locale.
+- Stato aggiornato del modulo:
+  - `Cisterna` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Cisterna` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Cisterna IA`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.116 Aggiornamento 2026-03-31 - Loop modulo `Cisterna IA` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_cisterna-ia.md`.
+- Fonte audit separato: `docs/audit/AUDIT_cisterna-ia_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/cisterna/ia` monta `src/next/NextCisternaIAPage.tsx`, non `NextMotherPage` o `src/pages/CisternaCaravate/CisternaCaravateIA.tsx`;
+  - `src/next/NextCisternaIAPage.tsx` replica la superficie madre su header, note operative, upload, preview, pulsanti, risultato estrazione e campi del form;
+  - il runtime ufficiale non usa piu `NextClonePageScaffold`, `InternalAiUniversalHandoffBanner`, upload Storage, `extractCisternaDocumento()`, `addDoc()` o salvataggi clone-only;
+  - `Analizza documento (IA)` e `Salva in archivio cisterna` restano visibili ma bloccano il comportamento con messaggi read-only espliciti, senza upload, IA reale o salvataggi su `@documenti_cisterna`.
+- Stato aggiornato del modulo:
+  - `Cisterna IA` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Cisterna IA` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Cisterna Schede Test`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.117 Aggiornamento 2026-03-31 - Loop fermato su `Cisterna Schede Test`
+- Fonte analisi del ciclo: `docs/audit/BACKLOG_cisterna-schede-test.md`.
+- Fonte audit preliminare: `docs/audit/AUDIT_cisterna-schede-test_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/cisterna/schede-test` monta `src/next/NextCisternaSchedeTestPage.tsx`, ma il runtime ufficiale resta ancora clone-specifico;
+  - la pagina usa ancora `NextClonePageScaffold`, `upsertNextCisternaCloneScheda()` e messaggi espliciti di salvataggio locale del clone;
+  - la controparte madre `src/pages/CisternaCaravate/CisternaSchedeTest.tsx` resta molto piu ampia su crop, calibrazione, estrazione IA, modal, edit mode e conferma finale, quindi il gap non e piccolo.
+- Stato aggiornato del modulo:
+  - `Cisterna Schede Test` -> `APERTO`
+- Limite esplicito:
+  - il loop si ferma qui per budget operativo non sufficiente a chiudere onestamente il modulo corrente;
+  - il prossimo run deve ripartire da `Cisterna Schede Test`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.118 Aggiornamento 2026-03-31 - Loop modulo `Cisterna Schede Test` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_cisterna-schede-test.md`.
+- Fonte audit separato: `docs/audit/AUDIT_cisterna-schede-test_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/cisterna/schede-test` monta `src/next/NextCisternaSchedeTestPage.tsx`, non `NextMotherPage` o `src/pages/CisternaCaravate/CisternaSchedeTest.tsx`;
+  - `src/next/NextCisternaSchedeTestPage.tsx` replica la grammatica madre su header, month picker, archivio, `EDIT MODE`, tabs, inserimento manuale, crop/calibrazione, tabella IA, modal anteprima e `Riepilogo salvataggio`;
+  - il runtime ufficiale legge gli stessi dati reali della madre tramite `readNextCisternaSnapshot(..., { includeCloneOverlays: false })` e `readNextCisternaSchedaDetail(..., { includeCloneOverlays: false })`;
+  - il runtime ufficiale non usa piu `NextClonePageScaffold`, `upsertNextCisternaCloneScheda()` o conferme di salvataggio clone-only;
+  - `Precompila da Autisti (supporto)`, `Conferma e salva`, `Estrai da ritaglio`, `Estrai rapido (senza upload)`, `Salva ritaglio`, `Salva calibrazione` e `Conferma modifiche` restano visibili ma bloccano il comportamento con messaggi read-only espliciti.
+- Stato aggiornato del modulo:
+  - `Cisterna Schede Test` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Cisterna Schede Test` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Colleghi`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.119 Aggiornamento 2026-03-31 - `Colleghi` e `Fornitori` chiusi; `Autisti` resta aperto
+- Fonti execution del ciclo:
+  - `docs/audit/BACKLOG_colleghi.md`
+  - `docs/audit/BACKLOG_fornitori.md`
+  - `docs/audit/BACKLOG_autisti.md`
+- Fonti audit del ciclo:
+  - `docs/audit/AUDIT_colleghi_LOOP.md`
+  - `docs/audit/AUDIT_fornitori_LOOP.md`
+  - `docs/audit/AUDIT_autisti_LOOP.md`
+- Verifica sul codice reale:
+  - `/next/colleghi` monta `src/next/NextColleghiPage.tsx`, mantiene la UI pratica della madre e legge `storage/@colleghi` tramite `readNextColleghiSnapshot({ includeCloneOverlays: false })`;
+  - `/next/fornitori` monta `src/next/NextFornitoriPage.tsx`, mantiene la UI pratica della madre e legge `storage/@fornitori` tramite `readNextFornitoriSnapshot({ includeCloneOverlays: false })`;
+  - in entrambi i moduli `Aggiungi`, `Salva modifiche` ed `Elimina` restano visibili ma bloccano il comportamento con messaggi read-only espliciti; il PDF resta equivalente alla madre;
+  - il pacchetto `/next/autisti/*` resta invece ancora clone-local su sessione, rifornimento, segnalazioni, richieste attrezzature, gomme e cambio mezzo, quindi non e stato chiuso in questo run.
+- Stato aggiornato dei moduli:
+  - `Colleghi` -> `CHIUSO`
+  - `Fornitori` -> `CHIUSO`
+  - `Autisti` -> `APERTO`
+- Limite esplicito:
+  - il prossimo modulo non `CLOSED` del tracker resta `Autisti`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.120 Aggiornamento 2026-03-31 - Loop modulo `Autisti Inbox / Admin` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_autisti-inbox-admin.md`.
+- Fonte audit separato: `docs/audit/AUDIT_autisti-inbox-admin_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/autisti-inbox*` e `/next/autisti-admin` montano runtime NEXT ufficiali, non `src/autistiInbox/**` come mount finale;
+  - `src/next/NextAutistiInboxHomePage.tsx` e `src/next/NextAutistiAdminPage.tsx` non espongono piu banner o summary clone-specifici estranei alla madre;
+  - `src/next/autisti/nextAutistiStorageSync.ts` ignora overlay locali D03 anche nel perimetro ufficiale inbox/admin;
+  - `src/next/autistiInbox/NextAutistiAdminNative.tsx` mantiene la stessa UI pratica della madre ma blocca in modo esplicito tutte le mutation su sessioni, storico, segnalazioni, richieste, gomme, rifornimenti, dossier e lavori;
+  - lint e build risultano `OK`.
+- Stato aggiornato del modulo:
+  - `Autisti Inbox / Admin` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Autisti Inbox / Admin` nel loop corrente;
+  - il prossimo modulo non `CLOSED` del tracker e `Manutenzioni`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.121 Aggiornamento 2026-03-31 - Loop fermato su `Manutenzioni`
+- Fonte analisi del ciclo: `docs/audit/BACKLOG_manutenzioni.md`.
+- Fonte audit preliminare: `docs/audit/AUDIT_manutenzioni_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/manutenzioni` monta `src/next/NextManutenzioniPage.tsx`, ma il runtime ufficiale resta uno scaffold clone-specifico;
+  - `src/next/NextManutenzioniPage.tsx` usa ancora `NextClonePageScaffold` e una vista summary limitata;
+  - la madre `src/pages/Manutenzioni.tsx` copre un perimetro molto piu ampio su form, inventario, movimenti materiali, modal gomme e PDF;
+  - il gap non e riducibile con un micro-fix onesto nel budget residuo del run.
+- Stato aggiornato del modulo:
+  - `Manutenzioni` -> `APERTO`
+- Limite esplicito:
+  - il loop si ferma qui per budget operativo non sufficiente a chiudere onestamente il modulo corrente;
+  - il prossimo run deve ripartire da `Manutenzioni`;
+  - nessuna promozione globale della NEXT viene inferita da questa sezione.
+
+## 5.122 Aggiornamento 2026-03-31 - Loop modulo `Manutenzioni` chiuso con audit PASS
+- Fonte execution del ciclo: `docs/audit/BACKLOG_manutenzioni.md`.
+- Fonte audit separato: `docs/audit/AUDIT_manutenzioni_LOOP.md`.
+- Verifica sul codice reale:
+  - `/next/manutenzioni` monta `src/next/NextManutenzioniPage.tsx`, non `NextMotherPage` o `src/pages/Manutenzioni.tsx`;
+  - `src/next/NextManutenzioniPage.tsx` replica la superficie pratica della madre su form manutenzione, storico, materiali utilizzati, modal gomme e CTA principali;
+  - il runtime ufficiale legge `@manutenzioni` e `@mezzi_aziendali` tramite `readNextManutenzioniWorkspaceSnapshot()` e legge `@inventario` tramite `readNextInventarioSnapshot({ includeCloneOverlays: false })`;
+  - il runtime ufficiale non usa piu `NextClonePageScaffold`, `setItemSync`, `getItemSync`, writer clone-only o export PDF locale;
+  - `Salva manutenzione`, `Elimina`, `Esporta PDF` e la conferma del modal gomme restano visibili ma bloccano il comportamento con messaggi read-only espliciti;
+  - lint e build risultano `OK`.
+- Stato aggiornato del modulo:
+  - `Manutenzioni` -> `CHIUSO`
+- Limite esplicito:
+  - la chiusura vale solo per il modulo `Manutenzioni` nel loop corrente;
+  - il tracker corrente risulta interamente `CLOSED`;
+  - loop modulo-per-modulo completato; consigliato audit finale globale separato.

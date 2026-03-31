@@ -1,513 +1,823 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import NextClonePageScaffold from "./NextClonePageScaffold";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import "../pages/IA/IADocumenti.css";
+import { readNextIaConfigSnapshot } from "./domain/nextIaConfigDomain";
 import {
-  readNextMezzoDocumentiCostiSnapshot,
-  type NextDocumentiCostiReadOnlyItem,
-  type NextMezzoDocumentiCostiSnapshot,
+  readNextIADocumentiArchiveSnapshot,
+  type NextIADocumentiArchiveItem,
 } from "./domain/nextDocumentiCostiDomain";
 import {
-  readInternalAiDocumentsPreview,
-  type InternalAiDocumentsPreviewReadResult,
-} from "./internal-ai/internalAiDocumentsPreviewFacade";
-import {
-  upsertNextInternalAiCloneDocumento,
-  type NextInternalAiCloneDocumentoRecord,
-} from "./internal-ai/nextInternalAiCloneState";
-import { upsertNextInventarioCloneRecord } from "./nextInventarioCloneState";
-import InternalAiUniversalHandoffBanner from "./internal-ai/InternalAiUniversalHandoffBanner";
-import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
-import "../pages/IA/IADocumenti.css";
+  readNextAnagraficheFlottaSnapshot,
+  type NextMezzoListItem,
+} from "./nextAnagraficheFlottaDomain";
 
+type TipoDocumento = "PREVENTIVO" | "FATTURA" | "MAGAZZINO" | "GENERICO" | "";
 type CategoriaArchivio = "MEZZO" | "MAGAZZINO" | "GENERICO";
-type CurrencyOverride = "EUR" | "CHF";
+type Currency = "EUR" | "CHF" | "UNKNOWN";
 
-function normalizeTarga(value: string | null | undefined) {
-  return String(value ?? "").trim().toUpperCase();
+type VoceDocumento = {
+  descrizione?: string;
+  quantita?: string;
+  prezzoUnitario?: string;
+  importo?: string;
+};
+
+type DocumentoAnalizzato = {
+  tipoDocumento: TipoDocumento;
+  categoriaArchivio: CategoriaArchivio;
+  fornitore: string;
+  numeroDocumento: string;
+  dataDocumento: string;
+  targa: string;
+  marca: string;
+  modello: string;
+  telaio: string;
+  km: string;
+  riferimentoPreventivoNumero: string;
+  riferimentoPreventivoData: string;
+  imponibile: string;
+  ivaPercentuale: string;
+  ivaImporto: string;
+  totaleDocumento: string;
+  iban: string;
+  beneficiario: string;
+  riferimentoPagamento: string;
+  banca: string;
+  importoPagamento: string;
+  testo: string;
+  voci: VoceDocumento[];
+};
+
+function buildEmptyResults(categoriaArchivio: CategoriaArchivio): DocumentoAnalizzato {
+  return {
+    tipoDocumento: "",
+    categoriaArchivio,
+    fornitore: "",
+    numeroDocumento: "",
+    dataDocumento: "",
+    targa: "",
+    marca: "",
+    modello: "",
+    telaio: "",
+    km: "",
+    riferimentoPreventivoNumero: "",
+    riferimentoPreventivoData: "",
+    imponibile: "",
+    ivaPercentuale: "",
+    ivaImporto: "",
+    totaleDocumento: "",
+    iban: "",
+    beneficiario: "",
+    riferimentoPagamento: "",
+    banca: "",
+    importoPagamento: "",
+    testo: "",
+    voci: [],
+  };
 }
 
-function formatImporto(item: NextDocumentiCostiReadOnlyItem, override?: CurrencyOverride | null) {
-  if (item.amount == null || !Number.isFinite(item.amount)) {
-    return "Importo n/d";
+function fmtTarga(value?: unknown) {
+  return typeof value === "string" ? value.toUpperCase().replace(/\s+/g, " ").trim() : "";
+}
+
+function exactMatch(estratta?: unknown, listaMezzi: NextMezzoListItem[] = []) {
+  const targa = fmtTarga(estratta);
+  if (!targa) return null;
+  return listaMezzi.find((mezzo) => fmtTarga(mezzo.targa) === targa) ?? null;
+}
+
+function formatImporto(value?: string | number | null) {
+  if (value == null || value === "") return "-";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toFixed(2);
   }
-
-  const currency = override ?? (item.currency === "EUR" || item.currency === "CHF" ? item.currency : "N/D");
-  return `${currency} ${item.amount.toFixed(2)}`;
+  const raw = String(value).trim();
+  return raw || "-";
 }
 
-function currencyNeedsVerify(item: NextDocumentiCostiReadOnlyItem, override?: CurrencyOverride | null) {
-  if (override) {
-    return false;
-  }
-  return item.currency !== "EUR" && item.currency !== "CHF";
-}
-
-function categoryLabel(value: CategoriaArchivio) {
-  if (value === "MEZZO") return "MEZZO";
-  if (value === "MAGAZZINO") return "MAGAZZINO";
-  return "GENERICO";
-}
-
-function classLabel(value: "diretto" | "plausibile" | "fuori_perimetro") {
-  if (value === "diretto") return "Diretto";
-  if (value === "plausibile") return "Plausibile";
-  return "Fuori perimetro";
-}
-
-function buildDraftTipoDocumento(
-  category: CategoriaArchivio,
-  fileName: string,
-): NextInternalAiCloneDocumentoRecord["tipoDocumento"] {
-  const normalized = fileName.toLowerCase();
-  if (normalized.includes("preventiv")) return "PREVENTIVO";
-  if (normalized.includes("fattur")) return "FATTURA";
-  if (category === "MAGAZZINO") return "FATTURA";
-  return "DOCUMENTO_UTILE";
+function updateResultsField(
+  current: DocumentoAnalizzato | null,
+  patch: Partial<DocumentoAnalizzato>,
+): DocumentoAnalizzato | null {
+  if (!current) return current;
+  return { ...current, ...patch };
 }
 
 export default function NextIADocumentiPage() {
-  const handoff = useInternalAiUniversalHandoffConsumer({
-    moduleId: "next.ia_hub",
-  });
-  const lifecycleRef = useRef<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [categoriaArchivio, setCategoriaArchivio] = useState<CategoriaArchivio>("GENERICO");
-  const [result, setResult] = useState<InternalAiDocumentsPreviewReadResult | null>(null);
-  const [snapshot, setSnapshot] = useState<NextMezzoDocumentiCostiSnapshot | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [previewFileName, setPreviewFileName] = useState("");
-  const [previewFileUrl, setPreviewFileUrl] = useState<string | null>(null);
-  const [previewFileMime, setPreviewFileMime] = useState("");
-  const [selectedDoc, setSelectedDoc] = useState<NextDocumentiCostiReadOnlyItem | null>(null);
-  const [currencyOverrides, setCurrencyOverrides] = useState<Record<string, CurrencyOverride>>({});
-  const [refreshTick, setRefreshTick] = useState(0);
-  const [analysisDraft, setAnalysisDraft] = useState<NextInternalAiCloneDocumentoRecord | null>(null);
+  const navigate = useNavigate();
 
-  const activeTarga = useMemo(() => {
-    if (handoff.state.status === "ready" && handoff.state.payload.documentType === "documento_mezzo") {
-      return normalizeTarga(handoff.state.prefill.targa);
-    }
-    return normalizeTarga(query);
-  }, [handoff.state, query]);
+  const [apiKeyExists, setApiKeyExists] = useState<boolean | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [tipoArchivio, setTipoArchivio] = useState<CategoriaArchivio>("GENERICO");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<DocumentoAnalizzato | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [mezzi, setMezzi] = useState<NextMezzoListItem[]>([]);
+  const [targaEstrattaIA, setTargaEstrattaIA] = useState("");
+  const [targaSelezionata, setTargaSelezionata] = useState("");
+  const [sectionsOpen, setSectionsOpen] = useState({
+    documento: true,
+    mezzo: false,
+    voci: false,
+    pagamento: false,
+  });
+  const [documentiLista, setDocumentiLista] = useState<NextIADocumentiArchiveItem[]>([]);
+  const [documentiLoading, setDocumentiLoading] = useState(false);
+  const [documentiError, setDocumentiError] = useState<string | null>(null);
+  const [valutaModalDoc, setValutaModalDoc] = useState<NextIADocumentiArchiveItem | null>(null);
 
   useEffect(() => {
-    if (!activeTarga) {
-      setResult(null);
-      setSnapshot(null);
-      return;
-    }
-
     let cancelled = false;
-    const load = async () => {
+
+    const loadApiKey = async () => {
       try {
-        setLoading(true);
-        const [previewResult, nextSnapshot] = await Promise.all([
-          readInternalAiDocumentsPreview(activeTarga),
-          readNextMezzoDocumentiCostiSnapshot(activeTarga),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setResult(previewResult);
-        setSnapshot(nextSnapshot);
-      } finally {
+        const snapshot = await readNextIaConfigSnapshot();
         if (!cancelled) {
-          setLoading(false);
+          setApiKeyExists(snapshot.apiKeyConfigured);
+        }
+      } catch (error) {
+        console.error("Errore lettura API Key Gemini clone:", error);
+        if (!cancelled) {
+          setApiKeyExists(false);
         }
       }
     };
 
-    void load();
+    void loadApiKey();
     return () => {
       cancelled = true;
     };
-  }, [activeTarga, refreshTick]);
+  }, []);
 
   useEffect(() => {
-    if (handoff.state.status !== "ready" || handoff.state.payload.documentType !== "documento_mezzo") {
+    let cancelled = false;
+
+    const loadArchive = async () => {
+      try {
+        setDocumentiLoading(true);
+        setDocumentiError(null);
+
+        const [mezziSnapshot, archiveSnapshot] = await Promise.all([
+          readNextAnagraficheFlottaSnapshot({ includeClonePatches: false }),
+          readNextIADocumentiArchiveSnapshot({ includeCloneDocuments: false }),
+        ]);
+
+        if (cancelled) return;
+
+        setMezzi(mezziSnapshot.items);
+        setDocumentiLista(archiveSnapshot.items);
+      } catch (error) {
+        console.error("Errore caricamento archivio documenti IA clone:", error);
+        if (!cancelled) {
+          setDocumentiError("Errore caricamento documenti.");
+          setMezzi([]);
+          setDocumentiLista([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setDocumentiLoading(false);
+        }
+      }
+    };
+
+    void loadArchive();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const currentTargaCandidate = useMemo(() => {
+    return fmtTarga(targaSelezionata || results?.targa || targaEstrattaIA);
+  }, [results?.targa, targaEstrattaIA, targaSelezionata]);
+
+  const matchedMezzo = useMemo(() => {
+    return exactMatch(currentTargaCandidate, mezzi);
+  }, [currentTargaCandidate, mezzi]);
+
+  const needsManualTarga = Boolean(currentTargaCandidate) && !matchedMezzo;
+
+  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+
+    setSelectedFile(file);
+    setErrorMessage(null);
+    setResults(null);
+    setTargaEstrattaIA("");
+    setTargaSelezionata("");
+
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => setPreview(typeof reader.result === "string" ? reader.result : null);
+      reader.readAsDataURL(file);
       return;
     }
 
-    if (lifecycleRef.current === handoff.state.payload.handoffId) {
+    setPreview(null);
+  };
+
+  const handleAnalyze = async () => {
+    if (!selectedFile) {
+      setErrorMessage("Carica un file prima.");
       return;
     }
 
-    handoff.acknowledge(
-      "prefill_applicato",
-      "Documenti IA ha agganciato la targa del payload e apre la preview documentale clone-safe.",
+    try {
+      setLoading(true);
+      setErrorMessage(null);
+      setResults(buildEmptyResults(tipoArchivio));
+      setTargaEstrattaIA("");
+      setTargaSelezionata("");
+      setErrorMessage(
+        "Clone read-only: Analizza con IA resta visibile come nella madre, ma non invia il file al servizio IA.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!results || !selectedFile) {
+      setErrorMessage("Nessun risultato o file mancante.");
+      return;
+    }
+
+    if (currentTargaCandidate && !matchedMezzo && !targaSelezionata) {
+      setErrorMessage("Targa non valida o non trovata nei mezzi. Seleziona manualmente il mezzo corretto.");
+      return;
+    }
+
+    setErrorMessage(
+      "Clone read-only: Salva Documento resta visibile come nella madre, ma non carica file su Storage e non salva su Firestore.",
     );
-    handoff.acknowledge(
-      handoff.state.requiresVerification ? "da_verificare" : "completato",
-      handoff.state.requiresVerification
-        ? "Preview documenti aperta con prefill, ma alcuni campi restano da verificare."
-        : "Preview documenti aperta sul mezzo corretto nel clone.",
+  };
+
+  const handleOpenPdf = (url?: string | null) => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleSetValuta = (currency: Currency) => {
+    setValutaModalDoc(null);
+    setErrorMessage(
+      `Clone read-only: Imposta valuta (${currency}) resta visibile come nella madre, ma non aggiorna il documento reale.`,
     );
-    lifecycleRef.current = handoff.state.payload.handoffId;
-  }, [handoff]);
+  };
+
+  const toggleSection = (section: keyof typeof sectionsOpen) => {
+    setSectionsOpen((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
+
+  if (apiKeyExists === false) {
+    return (
+      <div className="iadoc-page">
+        <div className="iadoc-shell">
+          <div className="iadoc-panel ia-state-card">
+            <span className="ia-state-title">API Key IA mancante</span>
+            <p className="ia-state-text">
+              Inserisci la tua chiave Gemini per usare i documenti IA.
+            </p>
+            <button
+              type="button"
+              className="ia-btn primary"
+              onClick={() => navigate("/next/ia/apikey")}
+            >
+              Vai alla pagina API Key
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (apiKeyExists === null) {
+    return <div className="iadoc-loading">Caricamento...</div>;
+  }
 
   return (
-    <NextClonePageScaffold
-      eyebrow="IA / Documenti"
-      title="IA Documenti"
-      description="Pagina NEXT nativa: stessa grammatica operativa del modulo documenti, ma sopra preview e dataset clone-safe senza OCR, upload o scritture business."
-      backTo="/next/ia"
-      backLabel="Torna a IA"
-      notice={
-        <div style={{ display: "grid", gap: 12 }}>
-          {handoff.state.status === "ready" && handoff.state.payload.documentType === "documento_mezzo" ? (
-            <InternalAiUniversalHandoffBanner
-              title="Handoff IA consumato su Documenti"
-              description="La route NEXT usa la targa del payload per aprire subito il contesto documentale corretto."
-              payload={handoff.state.payload}
-            />
-          ) : null}
-          {notice ? <div className="next-clone-placeholder">{notice}</div> : null}
-          {loading ? <div className="next-clone-placeholder">Caricamento preview documenti...</div> : null}
-          {result && result.status !== "ready" ? (
-            <div className="next-clone-placeholder">{result.message}</div>
-          ) : null}
+    <div className="iadoc-page">
+      <div className="iadoc-shell">
+        <div className="ia-page-head">
+          <div>
+            <span className="ia-kicker">Intelligenza artificiale</span>
+            <h1 className="iadoc-title">Documenti IA</h1>
+            <p className="ia-subtitle">
+              Carica un documento, analizzalo con IA e verifica i campi prima di salvare.
+            </p>
+          </div>
+          <div className="ia-steps">
+            <span>1 Carica</span>
+            <span>2 Analizza</span>
+            <span>3 Verifica</span>
+            <span>4 Salva</span>
+          </div>
         </div>
-      }
-    >
-      <div style={{ display: "grid", gap: 16 }}>
-        <section className="next-clone-placeholder">
-          <div style={{ display: "grid", gap: 10 }}>
-            <strong>Ricerca targa</strong>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Inserisci targa"
-                style={{ minWidth: 220 }}
-              />
-              <button type="button" onClick={() => setQuery((current) => current.trim().toUpperCase())}>
-                Carica contesto
-              </button>
+
+        <div className="iadoc-grid">
+          <div className="iadoc-panel">
+            <div className="ia-panel-head">
+              <h2>Caricamento</h2>
+              <span>Seleziona categoria e carica il file da analizzare.</span>
+            </div>
+
+            <div className="iadoc-field">
+              <label>Categoria archivio</label>
               <select
-                value={categoriaArchivio}
-                onChange={(event) => setCategoriaArchivio(event.target.value as CategoriaArchivio)}
+                className="iadoc-select"
+                value={tipoArchivio}
+                onChange={(event) => setTipoArchivio(event.target.value as CategoriaArchivio)}
               >
-                <option value="GENERICO">GENERICO</option>
-                <option value="MEZZO">MEZZO</option>
-                <option value="MAGAZZINO">MAGAZZINO</option>
+                <option value="GENERICO">Generico</option>
+                <option value="MEZZO">Mezzo</option>
+                <option value="MAGAZZINO">Magazzino</option>
               </select>
             </div>
-          </div>
-        </section>
 
-        <section className="next-clone-placeholder">
-          <div style={{ display: "grid", gap: 10 }}>
-            <strong>Nuovo documento</strong>
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                if (!file) {
-                  return;
-                }
-                setPreviewFileName(file.name);
-                setPreviewFileMime(file.type);
-                const reader = new FileReader();
-                reader.onload = () =>
-                  setPreviewFileUrl(typeof reader.result === "string" ? reader.result : null);
-                reader.readAsDataURL(file);
-                setAnalysisDraft(null);
+            <label className="upload-label">
+              Carica PDF o Immagine
+              <input type="file" accept="image/*,application/pdf" onChange={handleFile} />
+            </label>
+
+            {errorMessage ? <div className="iadoc-error">{errorMessage}</div> : null}
+
+            <button
+              type="button"
+              className="ia-btn primary"
+              disabled={!selectedFile || loading}
+              onClick={() => {
+                void handleAnalyze();
               }}
-            />
-            <div>Archivio target: {categoryLabel(categoriaArchivio)}</div>
-            {previewFileName ? <div>File selezionato: {previewFileName}</div> : null}
-            {previewFileUrl && previewFileMime.startsWith("image/") ? (
-              <img src={previewFileUrl} alt={previewFileName} style={{ maxWidth: 320, borderRadius: 12 }} />
-            ) : null}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!activeTarga) {
-                    setNotice("Inserisci prima una targa valida.");
-                    return;
-                  }
-                  if (!previewFileName || !previewFileUrl) {
-                    setNotice("Seleziona prima un documento locale.");
-                    return;
-                  }
-                  const createdAt = Date.now();
-                  const documentId = `next-clone-doc:${activeTarga}:${createdAt}`;
-                  const draft: NextInternalAiCloneDocumentoRecord = {
-                    id: documentId,
-                    collectionKey:
-                      categoriaArchivio === "MEZZO"
-                        ? "@documenti_mezzi"
-                        : categoriaArchivio === "MAGAZZINO"
-                        ? "@documenti_magazzino"
-                        : "@documenti_generici",
-                    tipoDocumento: buildDraftTipoDocumento(categoriaArchivio, previewFileName),
-                    categoriaArchivio,
-                    targa: activeTarga,
-                    mezzoTarga: activeTarga,
-                    fornitore: selectedDoc?.supplier ?? "Documento locale clone",
-                    numeroDocumento: previewFileName,
-                    dataDocumento: new Date(createdAt).toISOString(),
-                    totaleDocumento: selectedDoc?.amount ?? null,
-                    valuta:
-                      currencyOverrides[selectedDoc?.id ?? ""] ??
-                      selectedDoc?.currency ??
-                      "UNKNOWN",
-                    testo: `Analisi locale clone del documento ${previewFileName} per ${activeTarga}.`,
-                    fileUrl: previewFileUrl,
-                    righe: [
-                      {
-                        id: `${documentId}:riga-1`,
-                        descrizione:
-                          selectedDoc?.title ??
-                          (categoriaArchivio === "MAGAZZINO"
-                            ? "Materiale da verificare"
-                            : "Documento locale clone"),
-                        quantita: 1,
-                        unita: "pz",
-                        prezzoUnitario: selectedDoc?.amount ?? null,
-                        importo: selectedDoc?.amount ?? null,
-                      },
-                    ],
-                    createdAt,
-                    updatedAt: createdAt,
-                    source: "next-clone-ia",
-                    needsReview: true,
-                  };
-                  setAnalysisDraft(draft);
-                  setNotice(
-                    `Analisi locale completata: ${previewFileName} e pronto per il salvataggio clone-only nell'archivio ${categoryLabel(categoriaArchivio)}.`,
-                  );
-                }}
-              >
-                Analizza con IA
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!analysisDraft) {
-                    setNotice("Analizza prima un documento locale.");
-                    return;
-                  }
-                  upsertNextInternalAiCloneDocumento({
-                    ...analysisDraft,
-                    updatedAt: Date.now(),
-                  });
-                  setNotice(`Documento locale salvato nel clone per ${activeTarga}.`);
-                  setRefreshTick((current) => current + 1);
-                }}
-              >
-                Salva Documento
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!analysisDraft || analysisDraft.righe.length === 0) {
-                    setNotice("Analizza e salva prima un documento con almeno una riga.");
-                    return;
-                  }
-                  analysisDraft.righe.forEach((row, index) => {
-                    upsertNextInventarioCloneRecord({
-                      id: `${analysisDraft.id}:inventario:${row.id || index}`,
-                      descrizione: row.descrizione,
-                      quantita: Math.max(1, row.quantita ?? 1),
-                      unita: row.unita ?? "pz",
-                      fornitore: analysisDraft.fornitore,
-                      fotoUrl: previewFileMime.startsWith("image/") ? previewFileUrl : null,
-                      fotoStoragePath: null,
-                      __nextCloneOnly: true,
-                      __nextCloneSavedAt: Date.now(),
-                    });
-                  });
-                  setNotice(
-                    `Importazione clone completata: ${analysisDraft.righe.length} righe inviate nell'inventario locale NEXT.`,
-                  );
-                }}
-              >
-                Importa materiali in Inventario
-              </button>
-            </div>
+            >
+              {loading ? "Analisi..." : "Analizza con IA"}
+            </button>
           </div>
-        </section>
 
-        {analysisDraft ? (
-          <section className="next-clone-placeholder">
-            <strong>Bozza IA locale</strong>
-            <p style={{ margin: "8px 0 12px" }}>
-              {analysisDraft.tipoDocumento} | Archivio {categoryLabel(analysisDraft.categoriaArchivio)} | Fornitore {analysisDraft.fornitore}
-            </p>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {analysisDraft.righe.map((row) => (
-                <li key={row.id}>
-                  {row.descrizione} - q.ta {row.quantita ?? 0} {row.unita ?? "pz"}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+          <div className="iadoc-panel">
+            <div className="ia-panel-head">
+              <h2>Anteprima e risultati</h2>
+              <span>Controlla le informazioni estratte prima di salvare.</span>
+            </div>
 
-        {result?.status === "ready" ? (
-          <>
-            <section className="next-clone-placeholder">
-              <strong>{result.preview.title}</strong>
-              <p style={{ margin: "8px 0 0" }}>{result.preview.subtitle}</p>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 10,
-                  marginTop: 12,
-                }}
-              >
-                {result.preview.cards.map((card) => (
-                  <div
-                    key={card.label}
-                    style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#fff" }}
-                  >
-                    <div style={{ fontSize: 12, color: "#64748b" }}>{card.label}</div>
-                    <strong style={{ display: "block", marginTop: 4 }}>{card.value}</strong>
-                    <div style={{ marginTop: 6, fontSize: 12 }}>{card.meta}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {result.preview.buckets.map((bucket) => (
-              <section key={bucket.id} className="next-clone-placeholder">
-                <strong>{bucket.title}</strong>
-                <p style={{ margin: "8px 0 12px" }}>{bucket.summary}</p>
-                <div style={{ display: "grid", gap: 10 }}>
-                  {bucket.items.map((item) => (
-                    <div
-                      key={item.id}
-                      style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#fff" }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                        <strong>{item.title}</strong>
-                        <span className="next-clone-readonly-badge">{classLabel(item.classification)}</span>
-                      </div>
-                      <div style={{ marginTop: 8 }}>{item.summary}</div>
-                      <div style={{ marginTop: 8, fontSize: 12, color: "#475569" }}>
-                        Fonte {item.sourceLabel} - {item.traceabilityLabel}
-                      </div>
-                      {item.notes.length ? (
-                        <ul style={{ margin: "8px 0 0 16px" }}>
-                          {item.notes.map((note) => (
-                            <li key={note}>{note}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </>
-        ) : null}
-
-        {snapshot ? (
-          <section className="next-clone-placeholder">
-            <strong>Documenti IA salvati</strong>
-            <p style={{ margin: "8px 0 12px" }}>
-              Targa {snapshot.mezzoTarga} | Totali {snapshot.counts.total} | Preventivi {snapshot.counts.preventivi} | Fatture {snapshot.counts.fatture}
-            </p>
-            {snapshot.items.length === 0 ? (
-              <p style={{ margin: 0 }}>Nessun documento leggibile per questa targa.</p>
+            {preview ? (
+              <img src={preview} alt="preview" className="iadoc-preview" />
             ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {snapshot.items.map((item) => {
-                  const override = currencyOverrides[item.id] ?? null;
-                  const needsVerify = currencyNeedsVerify(item, override);
-                  return (
-                    <div
-                      key={item.id}
-                      style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#fff" }}
+              <div className="iadoc-empty">Nessuna anteprima disponibile.</div>
+            )}
+
+            {results ? (
+              <div className="iadoc-results">
+                <h2>Risultati analisi</h2>
+                <div className="iadoc-empty">
+                  Nel clone read-only l&apos;analisi resta visibile come nella madre, ma non invia
+                  il file al backend IA e non genera estrazioni automatiche persistenti.
+                </div>
+
+                <div className="iadoc-section">
+                  <button
+                    type="button"
+                    className="iadoc-section-toggle"
+                    onClick={() => toggleSection("documento")}
+                  >
+                    <span>Dati documento</span>
+                    <span
+                      className={`iadoc-toggle-icon ${sectionsOpen.documento ? "open" : ""}`}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                        <strong>{item.title}</strong>
-                        <span className="next-clone-readonly-badge">{item.documentTypeLabel}</span>
+                      {sectionsOpen.documento ? "-" : "+"}
+                    </span>
+                  </button>
+                  {sectionsOpen.documento ? (
+                    <div className="iadoc-section-body">
+                      <label>Tipo documento</label>
+                      <input
+                        value={results.tipoDocumento}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, {
+                              tipoDocumento: event.target.value as TipoDocumento,
+                            }),
+                          )
+                        }
+                      />
+
+                      <label>Fornitore</label>
+                      <input
+                        value={results.fornitore}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { fornitore: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Numero documento</label>
+                      <input
+                        value={results.numeroDocumento}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { numeroDocumento: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Data documento</label>
+                      <input
+                        value={results.dataDocumento}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { dataDocumento: event.target.value }),
+                          )
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="iadoc-section">
+                  <button
+                    type="button"
+                    className="iadoc-section-toggle"
+                    onClick={() => toggleSection("mezzo")}
+                  >
+                    <span>Dati mezzo</span>
+                    <span className={`iadoc-toggle-icon ${sectionsOpen.mezzo ? "open" : ""}`}>
+                      {sectionsOpen.mezzo ? "-" : "+"}
+                    </span>
+                  </button>
+                  {sectionsOpen.mezzo ? (
+                    <div className="iadoc-section-body">
+                      <label>Targa</label>
+                      <input
+                        value={results.targa}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setResults((current) => updateResultsField(current, { targa: value }));
+                          setTargaEstrattaIA(value);
+                        }}
+                      />
+
+                      {matchedMezzo ? (
+                        <div className="iadoc-targa-ok">
+                          Targa riconosciuta: {matchedMezzo.targa || currentTargaCandidate}
+                        </div>
+                      ) : null}
+
+                      {needsManualTarga ? (
+                        <div className="iadoc-targa-verify">
+                          <span className="iadoc-badge-warn">DA VERIFICARE</span>
+                          <label>Seleziona targa mezzo</label>
+                          <select
+                            className="iadoc-select"
+                            value={targaSelezionata}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setTargaSelezionata(value);
+                              setResults((current) => updateResultsField(current, { targa: value }));
+                            }}
+                          >
+                            <option value="">Seleziona targa...</option>
+                            {mezzi.map((mezzo, index) => (
+                              <option key={`${mezzo.targa}_${index}`} value={mezzo.targa}>
+                                {mezzo.targa || "-"}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
+
+                      <label>Marca</label>
+                      <input
+                        value={results.marca}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { marca: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Modello</label>
+                      <input
+                        value={results.modello}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { modello: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Telaio</label>
+                      <input
+                        value={results.telaio}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { telaio: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>KM</label>
+                      <input
+                        value={results.km}
+                        onChange={(event) =>
+                          setResults((current) => updateResultsField(current, { km: event.target.value }))
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="iadoc-section">
+                  <button
+                    type="button"
+                    className="iadoc-section-toggle"
+                    onClick={() => toggleSection("pagamento")}
+                  >
+                    <span>Pagamento</span>
+                    <span
+                      className={`iadoc-toggle-icon ${sectionsOpen.pagamento ? "open" : ""}`}
+                    >
+                      {sectionsOpen.pagamento ? "-" : "+"}
+                    </span>
+                  </button>
+                  {sectionsOpen.pagamento ? (
+                    <div className="iadoc-section-body">
+                      <label>Numero preventivo</label>
+                      <input
+                        value={results.riferimentoPreventivoNumero}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, {
+                              riferimentoPreventivoNumero: event.target.value,
+                            }),
+                          )
+                        }
+                      />
+
+                      <label>Data preventivo</label>
+                      <input
+                        value={results.riferimentoPreventivoData}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, {
+                              riferimentoPreventivoData: event.target.value,
+                            }),
+                          )
+                        }
+                      />
+
+                      <label>Imponibile</label>
+                      <input
+                        value={results.imponibile}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { imponibile: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>IVA %</label>
+                      <input
+                        value={results.ivaPercentuale}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { ivaPercentuale: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>IVA importo</label>
+                      <input
+                        value={results.ivaImporto}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { ivaImporto: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Totale documento</label>
+                      <input
+                        value={results.totaleDocumento}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { totaleDocumento: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>IBAN</label>
+                      <input
+                        value={results.iban}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { iban: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Beneficiario</label>
+                      <input
+                        value={results.beneficiario}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { beneficiario: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Riferimento pagamento</label>
+                      <input
+                        value={results.riferimentoPagamento}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, {
+                              riferimentoPagamento: event.target.value,
+                            }),
+                          )
+                        }
+                      />
+
+                      <label>Banca</label>
+                      <input
+                        value={results.banca}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { banca: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Importo pagamento</label>
+                      <input
+                        value={results.importoPagamento}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { importoPagamento: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Testo / Note</label>
+                      <textarea
+                        className="iadoc-textarea"
+                        value={results.testo}
+                        onChange={(event) =>
+                          setResults((current) =>
+                            updateResultsField(current, { testo: event.target.value }),
+                          )
+                        }
+                      />
+
+                      <label>Categoria archivio</label>
+                      <input value={results.categoriaArchivio} disabled />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="iadoc-section">
+                  <button
+                    type="button"
+                    className="iadoc-section-toggle"
+                    onClick={() => toggleSection("voci")}
+                  >
+                    <span>Voci</span>
+                    <span className={`iadoc-toggle-icon ${sectionsOpen.voci ? "open" : ""}`}>
+                      {sectionsOpen.voci ? "-" : "+"}
+                    </span>
+                  </button>
+                  {sectionsOpen.voci ? (
+                    <div className="iadoc-section-body">
+                      {results.voci.length > 0 ? (
+                        <>
+                          <h3>Voci documento</h3>
+                          {results.voci.map((voce, index) => (
+                            <div key={index} className="iadoc-voce-row">
+                              <input placeholder="Descrizione" value={voce.descrizione || ""} readOnly />
+                              <input placeholder="Quantità" value={voce.quantita || ""} readOnly />
+                              <input placeholder="Prezzo unitario" value={voce.prezzoUnitario || ""} readOnly />
+                              <input placeholder="Importo" value={voce.importo || ""} readOnly />
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <div className="iadoc-empty">Nessuna voce disponibile.</div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="iadoc-actions">
+                  <button
+                    type="button"
+                    className="ia-btn primary"
+                    onClick={() => {
+                      void handleSave();
+                    }}
+                    disabled={loading || (needsManualTarga && !targaSelezionata)}
+                  >
+                    Salva Documento
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="iadoc-panel iadoc-docs-panel">
+          <div className="ia-panel-head">
+            <h2>Documenti IA salvati</h2>
+            <span>Gestisci la valuta e apri i PDF originali.</span>
+          </div>
+
+          {documentiLoading ? <div className="iadoc-empty">Caricamento documenti...</div> : null}
+          {documentiError && !documentiLoading ? (
+            <div className="iadoc-error">{documentiError}</div>
+          ) : null}
+
+          {!documentiLoading && !documentiError && documentiLista.length === 0 ? (
+            <div className="iadoc-empty">Nessun documento salvato.</div>
+          ) : null}
+
+          {!documentiLoading && !documentiError && documentiLista.length > 0 ? (
+            <div className="iadoc-docs-list">
+              {documentiLista.map((docItem) => {
+                const needsVerify = docItem.valuta === "UNKNOWN";
+                return (
+                  <div key={docItem.id} className="iadoc-docs-item">
+                    <div className="iadoc-docs-main">
+                      <div className="iadoc-docs-title">
+                        {docItem.tipoDocumento || "Documento"}
                       </div>
-                      <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
-                        <span>Targa: {item.targa || "-"}</span>
-                        <span>Data: {item.dateLabel || "-"}</span>
-                        <span>{formatImporto(item, override)}</span>
-                        <span>Fornitore: {item.supplier || "-"}</span>
+                      <div className="iadoc-docs-meta">
+                        <span>Targa: {docItem.targa || "-"}</span>
+                        <span>Data: {docItem.dataDocumento || "-"}</span>
+                        <span>Totale: {formatImporto(docItem.totaleDocumento)}</span>
                       </div>
-                      <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {item.fileUrl ? (
-                          <a href={item.fileUrl} target="_blank" rel="noopener noreferrer">
-                            APRI PDF
-                          </a>
-                        ) : (
-                          <span>Nessun PDF</span>
-                        )}
-                        <span>Valuta: {override ?? item.currency}</span>
+                      <div className="iadoc-docs-meta">
+                        <span>Fornitore: {docItem.fornitore || "-"}</span>
+                        <span>Valuta: {docItem.valuta}</span>
                         {needsVerify ? (
-                          <button type="button" onClick={() => setSelectedDoc(item)}>
+                          <button
+                            type="button"
+                            className="iadoc-badge-verify"
+                            onClick={() => setValutaModalDoc(docItem)}
+                          >
                             VALUTA DA VERIFICARE
                           </button>
                         ) : null}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        ) : null}
-
-        {snapshot?.limitations.length ? (
-          <section className="next-clone-placeholder">
-            <strong>Limiti del layer documenti</strong>
-            <ul style={{ margin: "8px 0 0 16px" }}>
-              {snapshot.limitations.map((entry) => (
-                <li key={entry}>{entry}</li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+                    <div className="iadoc-docs-actions">
+                      {docItem.fileUrl ? (
+                        <button
+                          type="button"
+                          className="ia-btn outline"
+                          onClick={() => handleOpenPdf(docItem.fileUrl)}
+                        >
+                          APRI PDF
+                        </button>
+                      ) : (
+                        <span className="iadoc-empty">Nessun PDF</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {selectedDoc ? (
-        <div className="iadoc-modal-overlay" onClick={() => setSelectedDoc(null)}>
+      {valutaModalDoc ? (
+        <div className="iadoc-modal-overlay" onClick={() => setValutaModalDoc(null)}>
           <div className="iadoc-modal-card" onClick={(event) => event.stopPropagation()}>
             <h3>Imposta valuta</h3>
             <div className="iadoc-modal-meta">
-              <span>Targa: {selectedDoc.targa || "-"}</span>
-              <span>Data: {selectedDoc.dateLabel || "-"}</span>
-              <span>{formatImporto(selectedDoc, currencyOverrides[selectedDoc.id] ?? null)}</span>
+              <span>Targa: {valutaModalDoc.targa || "-"}</span>
+              <span>Data: {valutaModalDoc.dataDocumento || "-"}</span>
+              <span>Totale: {formatImporto(valutaModalDoc.totaleDocumento)}</span>
             </div>
             <div className="iadoc-modal-actions">
-              <button
-                type="button"
-                className="ia-btn"
-                onClick={() => {
-                  setCurrencyOverrides((current) => ({ ...current, [selectedDoc.id]: "EUR" }));
-                  setSelectedDoc(null);
-                  setNotice("Valuta applicata solo nel clone locale della pagina documenti.");
-                }}
-              >
+              <button type="button" className="ia-btn" onClick={() => handleSetValuta("EUR")}>
                 EUR
               </button>
-              <button
-                type="button"
-                className="ia-btn"
-                onClick={() => {
-                  setCurrencyOverrides((current) => ({ ...current, [selectedDoc.id]: "CHF" }));
-                  setSelectedDoc(null);
-                  setNotice("Valuta applicata solo nel clone locale della pagina documenti.");
-                }}
-              >
+              <button type="button" className="ia-btn" onClick={() => handleSetValuta("CHF")}>
                 CHF
               </button>
-              <button type="button" className="ia-btn outline" onClick={() => setSelectedDoc(null)}>
+              <button
+                type="button"
+                className="ia-btn outline"
+                onClick={() => setValutaModalDoc(null)}
+              >
                 Annulla
               </button>
             </div>
           </div>
         </div>
       ) : null}
-    </NextClonePageScaffold>
+    </div>
   );
 }

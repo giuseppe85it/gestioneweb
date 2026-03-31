@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import NextClonePageScaffold from "./NextClonePageScaffold";
 import {
   readNextDettaglioLavoroSnapshot,
+  type NextLavoriDetailItem,
   type NextLavoriDetailSnapshot,
 } from "./domain/nextLavoriDomain";
-import {
-  markNextLavoriCloneDeleted,
-  upsertNextLavoriCloneOverride,
-} from "./nextLavoriCloneState";
-import { formatEditableDateUI } from "./nextDateFormat";
+import "../pages/DettaglioLavoro.css";
 
 export default function NextDettaglioLavoroPage() {
   const navigate = useNavigate();
@@ -19,9 +15,13 @@ export default function NextDettaglioLavoroPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [esecutore, setEsecutore] = useState("");
-  const [editDescrizione, setEditDescrizione] = useState("");
-  const [editData, setEditData] = useState("");
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalModifica, setModalModifica] = useState(false);
+  const [nomeEsecutore, setNomeEsecutore] = useState("");
+  const [descrizioneMod, setDescrizioneMod] = useState("");
+  const [dataMod, setDataMod] = useState("");
+  const [lavoroSelezionato, setLavoroSelezionato] =
+    useState<NextLavoriDetailItem | null>(null);
 
   const backTo = useMemo(() => {
     return searchParams.get("from") === "lavori-eseguiti"
@@ -39,13 +39,19 @@ export default function NextDettaglioLavoroPage() {
     setLoading(true);
     setError(null);
     try {
-      const nextSnapshot = await readNextDettaglioLavoroSnapshot(lavoroId);
+      const nextSnapshot = await readNextDettaglioLavoroSnapshot(lavoroId, {
+        includeCloneOverlays: false,
+      });
       setSnapshot(nextSnapshot);
-      setEditDescrizione(nextSnapshot?.target.descrizione ?? "");
-      setEditData(formatEditableDateUI(nextSnapshot?.target.dataInserimento ?? ""));
+      setDescrizioneMod(nextSnapshot?.target.descrizione ?? "");
+      setDataMod(nextSnapshot?.target.dataInserimento ?? "");
     } catch (loadError) {
       setSnapshot(null);
-      setError(loadError instanceof Error ? loadError.message : "Impossibile leggere il dettaglio lavoro.");
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Impossibile leggere il dettaglio lavoro.",
+      );
     } finally {
       setLoading(false);
     }
@@ -55,134 +61,223 @@ export default function NextDettaglioLavoroPage() {
     void reload();
   }, [reload]);
 
-  const applyExecute = async () => {
-    if (!snapshot?.target) {
+  const openExecuteModal = (itemId: string) => {
+    const target = snapshot?.items.find((item) => item.id === itemId) ?? null;
+    if (!target || target.eseguito) {
       return;
     }
-    upsertNextLavoriCloneOverride(snapshot.target.id, {
-      eseguito: true,
-      chiHaEseguito: esecutore.trim() || "clone_next",
-      dataEsecuzione: new Date().toISOString(),
-    });
-    setNotice("Lavoro marcato come eseguito nel clone.");
-    await reload();
+
+    setNotice(null);
+    setLavoroSelezionato(target);
+    setNomeEsecutore("");
+    setModalVisible(true);
   };
 
-  const applyEdit = async () => {
-    if (!snapshot?.target) {
+  const openEditModal = (itemId: string) => {
+    const target = snapshot?.items.find((item) => item.id === itemId) ?? null;
+    if (!target) {
       return;
     }
-    upsertNextLavoriCloneOverride(snapshot.target.id, {
-      descrizione: editDescrizione.trim() || snapshot.target.descrizione,
-      dataInserimento: editData || snapshot.target.dataInserimento || "",
-    });
-    setNotice("Dettaglio lavoro aggiornato nel clone.");
-    await reload();
+
+    setNotice(null);
+    setLavoroSelezionato(target);
+    setDescrizioneMod(target.descrizione);
+    setDataMod(target.dataInserimento ?? "");
+    setModalModifica(true);
   };
 
-  const applyDelete = async () => {
-    if (!snapshot?.target) {
+  const handleDelete = (itemId: string) => {
+    const target = snapshot?.items.find((item) => item.id === itemId) ?? null;
+    if (!target) {
       return;
     }
-    markNextLavoriCloneDeleted(snapshot.target.id);
-    navigate(backTo);
+
+    if (!window.confirm("Vuoi eliminare questo lavoro?")) {
+      return;
+    }
+
+    setNotice(
+      `Eliminazione bloccata: il clone NEXT e in sola lettura e non rimuove il lavoro "${target.descrizione}".`,
+    );
+  };
+
+  const handleSaveExecute = () => {
+    if (!lavoroSelezionato) {
+      return;
+    }
+    if (!nomeEsecutore.trim()) {
+      window.alert("Inserisci chi ha eseguito");
+      return;
+    }
+
+    setModalVisible(false);
+    setNotice(
+      `Segnatura eseguito bloccata: il clone NEXT e in sola lettura e non aggiorna il lavoro "${lavoroSelezionato.descrizione}".`,
+    );
+  };
+
+  const handleSaveEdit = () => {
+    if (!lavoroSelezionato) {
+      return;
+    }
+    if (!descrizioneMod.trim()) {
+      window.alert("Inserisci una descrizione");
+      return;
+    }
+    if (!dataMod.trim()) {
+      window.alert("Inserisci la data");
+      return;
+    }
+
+    setModalModifica(false);
+    setNotice(
+      `Modifica bloccata: il clone NEXT e in sola lettura e non aggiorna il lavoro "${lavoroSelezionato.descrizione}".`,
+    );
   };
 
   return (
-    <NextClonePageScaffold
-      eyebrow="Gestione Operativa / Lavori"
-      title="Dettaglio lavoro"
-      description="Route NEXT autonoma del dettaglio lavoro: gruppo, stato e aggiornamenti clone-local restano nel perimetro NEXT."
-      backTo={backTo}
-      backLabel="Torna alla lista"
-      notice={
-        <div style={{ display: "grid", gap: 12 }}>
-          {loading ? <div className="next-clone-placeholder">Caricamento dettaglio lavoro...</div> : null}
-          {error ? <div className="next-clone-placeholder">{error}</div> : null}
-          {notice ? <div className="next-clone-placeholder">{notice}</div> : null}
-          {snapshot ? (
-            <p style={{ margin: 0 }}>
-              Gruppo: {snapshot.detailGroup.label} | Elementi: {snapshot.counts.totalItems} | Aperti: {snapshot.counts.aperti}
-            </p>
-          ) : null}
-        </div>
-      }
-    >
-      {snapshot ? (
-        <div style={{ display: "grid", gap: 16 }}>
-          <div className="next-clone-placeholder" style={{ display: "grid", gap: 12 }}>
-            <strong>{snapshot.target.descrizione}</strong>
-            <div style={{ fontSize: 12, color: "#475569" }}>
-              {snapshot.target.targa ?? "MAGAZZINO"} | Inserito {snapshot.target.dataInserimento ?? "-"} |
-              Stato {snapshot.target.eseguito ? "ESEGUITO" : "APERTO"}
-            </div>
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Esecutore clone</span>
-                <input value={esecutore} onChange={(event) => setEsecutore(event.target.value)} placeholder="Chi ha eseguito" />
-              </label>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Descrizione</span>
-                <input value={editDescrizione} onChange={(event) => setEditDescrizione(event.target.value)} />
-              </label>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Data inserimento</span>
-                <input type="text" value={editData} onChange={(event) => setEditData(event.target.value)} placeholder="gg mm aaaa" />
-              </label>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" onClick={() => void applyEdit()}>
-                Salva modifica nel clone
-              </button>
-              <button type="button" onClick={() => void applyExecute()} disabled={snapshot.target.eseguito}>
-                {snapshot.target.eseguito ? "Gia eseguito" : "Segna eseguito nel clone"}
-              </button>
-              <button type="button" onClick={() => void applyDelete()}>
-                Elimina dal clone
-              </button>
-            </div>
+    <div className="dl-page">
+      <div className="dl-container">
+        <div className="lavori-header">
+          <img src="/logo.png" alt="logo" className="lavori-header-logo" />
+          <div className="lavori-header-text">
+            <div className="lavori-header-eyebrow">LAVORI</div>
+            <div className="lavori-header-title">Dettaglio lavoro</div>
           </div>
+        </div>
 
-          <div className="next-clone-placeholder" style={{ display: "grid", gap: 12 }}>
-            <strong>Elementi del gruppo</strong>
-            {snapshot.items.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  background: item.isPrimary ? "#f8fafc" : "#ffffff",
-                }}
-              >
-                <div>
-                  <strong>{item.descrizione}</strong>
-                  <div style={{ fontSize: 12, color: "#475569" }}>
-                    {item.targa ?? "MAGAZZINO"} | {item.dataInserimento ?? "-"} | {item.urgenza ?? "media"}
-                  </div>
-                </div>
-                <span className="next-clone-readonly-badge">
-                  {item.eseguito ? "ESEGUITO" : "APERTO"}
+        {loading ? (
+          <div className="lavori-empty">Caricamento dettaglio lavoro...</div>
+        ) : null}
+        {error ? <div className="lavori-empty">{error}</div> : null}
+        {notice ? <div className="lavori-empty">{notice}</div> : null}
+
+        {snapshot?.items.map((item) => (
+          <div
+            className={`lavoro-card ${item.eseguito ? "lavoro-card-eseguito" : ""}`}
+            key={item.id}
+          >
+            <div className="lavoro-top-row">
+              <div className="lavoro-descrizione">{item.descrizione}</div>
+              {item.urgenza ? (
+                <span className={`lavori-badge lavori-badge-${item.urgenza}`}>
+                  {String(item.urgenza).toUpperCase()}
                 </span>
-              </div>
-            ))}
-          </div>
-
-          {snapshot.limitations.length ? (
-            <div className="next-clone-placeholder">
-              <strong>Limiti del reader</strong>
-              <ul style={{ margin: "8px 0 0 16px" }}>
-                {snapshot.limitations.map((entry) => (
-                  <li key={entry}>{entry}</li>
-                ))}
-              </ul>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-      ) : null}
-    </NextClonePageScaffold>
+
+            {item.targa ? (
+              <div className="lavoro-dettaglio">Targa: {item.targa}</div>
+            ) : null}
+
+            <div className="lavoro-dettaglio lavoro-data">
+              Inserito: {item.dataInserimento || "-"}
+            </div>
+
+            <div className="dl-buttons">
+              <button
+                type="button"
+                className="dl-btn lavori-btn is-secondary"
+                onClick={() => openEditModal(item.id)}
+              >
+                MODIFICA
+              </button>
+
+              <button
+                type="button"
+                className="dl-btn lavori-btn is-danger"
+                onClick={() => handleDelete(item.id)}
+              >
+                ELIMINA
+              </button>
+
+              <button
+                type="button"
+                className={`dl-btn lavori-btn ${item.eseguito ? "is-ghost" : "is-primary"}`}
+                onClick={() => openExecuteModal(item.id)}
+              >
+                {item.eseguito ? "ESEGUITO" : "ESEGUI"}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {modalVisible ? (
+          <div className="modal-overlay">
+            <div className="modal-box">
+              <p className="modal-label">Chi ha eseguito?</p>
+              <input
+                className="modal-input"
+                value={nomeEsecutore}
+                onChange={(event) => setNomeEsecutore(event.target.value)}
+              />
+
+              <div className="modal-buttons">
+                <button
+                  type="button"
+                  className="modal-btn lavori-btn is-ghost"
+                  onClick={() => setModalVisible(false)}
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  className="modal-btn lavori-btn is-primary"
+                  onClick={handleSaveExecute}
+                >
+                  Salva
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {modalModifica ? (
+          <div className="modal-overlay">
+            <div className="modal-box">
+              <p className="modal-label">Descrizione</p>
+              <input
+                className="modal-input"
+                value={descrizioneMod}
+                onChange={(event) => setDescrizioneMod(event.target.value)}
+              />
+
+              <p className="modal-label">Data inserimento</p>
+              <input
+                className="modal-input"
+                type="text"
+                value={dataMod}
+                onChange={(event) => setDataMod(event.target.value)}
+              />
+
+              <div className="modal-buttons">
+                <button
+                  type="button"
+                  className="modal-btn lavori-btn is-ghost"
+                  onClick={() => setModalModifica(false)}
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  className="modal-btn lavori-btn is-primary"
+                  onClick={handleSaveEdit}
+                >
+                  Salva
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          className="btn-indietro lavori-btn is-primary"
+          onClick={() => navigate(backTo)}
+        >
+          TORNA INDIETRO
+        </button>
+      </div>
+    </div>
   );
 }
