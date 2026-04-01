@@ -31,6 +31,321 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-01 150
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Layout desktop deterministico della coppia `Alert` + `Stato operativo`
+- OBIETTIVO: Rendere la riga alta della Home NEXT una coppia coerente e progettata insieme, con stessa altezza esterna desktop e sole liste interne scrollabili.
+- FILE TOCCATI:
+  - `src/next/components/HomeAlertCard.tsx`
+  - `src/next/components/StatoOperativoCard.tsx`
+  - `src/next/next-shell.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1915_home-next-layout-desktop-deterministico-coppia-alta.md`
+  - `docs/continuity-reports/2026-04-01_1915_continuity_home-next-layout-desktop-deterministico-coppia-alta.md`
+- COSA E STATO CAMBIATO: Impostata una shell desktop esplicita con colonne `1.15fr / 1fr` e altezza esterna `620px`; in `Alert` e `Stato operativo` header e controlli restano fissi, mentre scorre solo la lista. `Stato operativo` torna a 5 righe nel riepilogo Home e mantiene il footer coerente in basso.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo correzione di layout e numero righe visibili nel riepilogo; nessuna modifica a logica business, writer, modali o dati.
+- COME VERIFICARE: Aprire la Home NEXT su desktop e verificare la coppia alta con stessa altezza esterna, colonne `Alert` / `Stato operativo`, header fissi e liste scrollabili; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Correzione confinata ai componenti e agli stili NEXT della riga alta.
+
+### Voce 2026-04-01 149
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Riga alta Home NEXT con shell comune e liste scrollabili
+- OBIETTIVO: Rendere `Alert` e `Stato operativo` visivamente coerenti nella riga alta della Home, evitando l'effetto di card stirate e mantenendo header e controlli sempre visibili.
+- FILE TOCCATI:
+  - `src/next/components/HomeAlertCard.tsx`
+  - `src/next/components/StatoOperativoCard.tsx`
+  - `src/next/next-shell.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1900_home-next-riga-alta-shell-comune-scroll-interno.md`
+  - `docs/continuity-reports/2026-04-01_1900_continuity_home-next-riga-alta-shell-comune-scroll-interno.md`
+- COSA E STATO CAMBIATO: `Alert` e `Stato operativo` usano ora una shell verticale comune; header e controlli restano fissi nella card, mentre le liste interne scorrono. La riga alta ha altezza desktop controllata e `Stato operativo` mostra 6 righe invece di 5 nel riepilogo Home per riempire meglio la card.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo affinamento di layout e numero righe visibili nel riepilogo; nessuna modifica a logica business, writer, modali o dati.
+- COME VERIFICARE: Aprire la Home NEXT e verificare che `Alert` e `Stato operativo` abbiano stessa altezza esterna su desktop, header sempre visibili e scroll interno solo nell'area elenco; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Correzione confinata a componenti e stile NEXT della riga alta.
+
+### Voce 2026-04-01 148
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Rifinitura visiva della riga alta Home NEXT
+- OBIETTIVO: Allineare meglio visivamente `Alert` e `Stato operativo` mantenendo invariati contenuti, logiche e comportamento interno.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/next-shell.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1848_home-next-rifinitura-riga-alta-alert-stato-operativo.md`
+  - `docs/continuity-reports/2026-04-01_1848_continuity_home-next-rifinitura-riga-alta-alert-stato-operativo.md`
+- COSA E STATO CAMBIATO: Aggiunti wrapper locali coerenti per le due colonne della riga alta e regole CSS NEXT per stretch verticale, altezza piena del blocco e scroll interno del body dove necessario, senza introdurre altezze rigide.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo affinamento visivo e di layout; nessun impatto su dati, writer o logica business.
+- COME VERIFICARE: Aprire la Home NEXT, verificare che `Alert` e `Stato operativo` appaiano piu omogenee e allineate nella riga alta, poi eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Rifinitura confinata al perimetro NEXT e a stili locali gia usati dal layout clone.
+
+### Voce 2026-04-01 147
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Correzione mount reale Home per `Alert` e `Stato operativo`
+- OBIETTIVO: Ripristinare la gerarchia richiesta della Home NEXT con `Alert` e `Stato operativo` nello stesso blocco alto, `Navigazione rapida` sotto e `IA interna` in terza riga.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1835_home-next-fix-layout-alert-stato-operativo.md`
+  - `docs/continuity-reports/2026-04-01_1835_continuity_home-next-fix-layout-alert-stato-operativo.md`
+- COSA E STATO CAMBIATO: Nel blocco alto della Home il mount di `Alert` e `Stato operativo` e stato reso esplicito tramite due colonne locali con wrapper dedicati; sotto restano `Navigazione rapida` e poi `IA interna`, senza modificare logiche o contenuti interni delle card.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo correzione di ordine e contenitore layout; nessun cambio business, nessuna modifica alla madre.
+- COME VERIFICARE: Aprire la Home NEXT e verificare l'ordine `Alert` + `Stato operativo`, poi `Navigazione rapida`, poi `IA interna`; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Correzione confinata al solo file pagina autorizzato.
+
+### Voce 2026-04-01 146
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Home NEXT riordinata con `Navigazione rapida` minimale e overlay completo
+- OBIETTIVO: Ridurre il caos visivo della Home NEXT portando `Alert` e `Stato operativo` nel blocco alto, spostando `Navigazione rapida` sopra `IA interna` e alleggerendo la card di navigazione visibile in pagina.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/QuickNavigationCard.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1815_home-next-riordino-gerarchia-navigazione-overlay.md`
+  - `docs/continuity-reports/2026-04-01_1815_continuity_home-next-riordino-gerarchia-navigazione-overlay.md`
+- COSA E STATO CAMBIATO: La Home monta ora `Alert` e `Stato operativo` in riga alta tramite griglia responsive locale; `Navigazione rapida` e stata ridotta a cerca + preferiti + CTA `Tutte le sezioni`; il menu completo si apre in overlay full-screen con una sola sezione aperta per volta; `IA interna` e stata spostata sotto la navigazione rapida.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Home piu pulita e gerarchica; nessun cambio a route, writer o logica business; nessuna modifica alla madre.
+- COME VERIFICARE: Aprire la Home NEXT, verificare ordine `Alert` / `Stato operativo` / `Navigazione rapida` / `IA interna`, aprire `Tutte le sezioni`, controllare overlay full-screen, chiusura visibile e blocco della pagina sottostante, poi eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Il vecchio layout Home resta solo disattivato nel runtime come fallback tecnico per minimizzare il rischio della patch.
+
+### Voce 2026-04-01 145
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Verifica export unico `QuickNavigationCard`
+- OBIETTIVO: Chiudere subito il falso errore di compilazione relativo al doppio default export della card `QuickNavigationCard`.
+- FILE TOCCATI:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1735_quick-navigation-card-export-default-check.md`
+  - `docs/continuity-reports/2026-04-01_1735_continuity_quick-navigation-card-export-default-check.md`
+- COSA E STATO CAMBIATO: Verificato il runtime corrente del file `src/next/components/QuickNavigationCard.tsx`; nello stato reale del repo e presente un solo `export default QuickNavigationCard;` e la build conferma l'assenza dell'errore Vite sul doppio export.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Nessun cambio UI o logica business; solo tracciabilita del controllo e conferma build.
+- COME VERIFICARE: Aprire `src/next/components/QuickNavigationCard.tsx`, controllare che esista un solo `export default QuickNavigationCard;`, eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Nessuna modifica runtime necessaria nel turno corrente.
+
+### Voce 2026-04-01 144
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Home NEXT con `Navigazione rapida` come hub unico
+- OBIETTIVO: Eliminare il doppione funzionale tra le hero-card alte e `Collegamenti rapidi`, trasformando la card finale nell'unico hub di navigazione compatto della Home.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/QuickNavigationCard.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1715_home-next-navigazione-rapida-hub-unico.md`
+  - `docs/continuity-reports/2026-04-01_1715_continuity_home-next-navigazione-rapida-hub-unico.md`
+- COSA E STATO CAMBIATO: Le hero-card vicine a `Dashboard` sono state rimosse dal layout; il blocco `Collegamenti rapidi` e stato sostituito con `Navigazione rapida`, una card compatta con cerca, preferiti, pin solo sui preferiti e macro-sezioni richiudibili con una sola sezione aperta alla volta.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Home piu ordinata, con navigazione concentrata in un solo hub; nessuna modifica alla logica business, alle route esistenti o ai writer del clone.
+- COME VERIFICARE: Aprire la Home NEXT, verificare l'assenza delle hero-card in alto, controllare che la card finale si chiami `Navigazione rapida`, testare la ricerca, i preferiti e l'apertura di una sola macro-sezione per volta.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: La nuova card usa solo link e metriche gia disponibili nel runtime `NextCentroControlloPage`.
+
+### Voce 2026-04-01 143
+- DATA: 2026-04-01
+- TITOLO MODIFICA: `Stato operativo` con `Vedi tutto` contestuale e overlay completo
+- OBIETTIVO: Rendere utile la card `Stato operativo` correggendo `Vedi tutto` con un modale contestuale alla tab attiva e affiancando la card a `Alert` nella parte alta della Home.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/StatoOperativoCard.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1600_home-next-stato-operativo-modale-contestuale-layout-affiancato.md`
+  - `docs/continuity-reports/2026-04-01_1600_continuity_home-next-stato-operativo-modale-contestuale-layout-affiancato.md`
+- COSA E STATO CAMBIATO: `Vedi tutto` apre ora un modale full-overlay con lista completa e filtri locali coerenti con la tab attiva; `Alert` e `Stato operativo` sono stati montati nello stesso blocco alto tramite griglia responsive locale.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: UI Home piu coerente e utile; nessuna nuova logica business, nessun writer nuovo, nessuna modifica alla madre.
+- COME VERIFICARE: Aprire Home NEXT, controllare che `Alert` e `Stato operativo` siano affiancati su desktop, usare `Vedi tutto` su ogni tab e verificare titolo, chiusura, full overlay e filtri richiesti.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Il modale usa solo i dataset gia presenti nel runtime `NextCentroControlloPage`.
+
+### Voce 2026-04-01 142
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Home NEXT con card unica `Stato operativo`
+- OBIETTIVO: Ridurre l'ingombro verticale della Home NEXT unificando `Sessioni attive`, `Rimorchi: dove sono` e `Motrici e trattori: dove sono` in una sola card compatta, senza reintrodurre dipendenze da `360`.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/StatoOperativoCard.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1505_home-next-stato-operativo-card-unificata.md`
+  - `docs/continuity-reports/2026-04-01_1505_continuity_home-next-stato-operativo-card-unificata.md`
+- COSA E STATO CAMBIATO: La Home monta ora una sola card `Stato operativo` con tre tab locali (`Sessioni`, `Rimorchi`, `Motrici`), contatori ricavati dai dati gia letti e vista compatta limitata. `Sessioni` porta ad `Autisti Inbox (admin)` e `Rimorchi` / `Motrici` mantengono il collegamento alla superficie NEXT `Autisti/Admin`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: UI Home piu compatta; nessuna modifica ai domain dati, nessun writer nuovo, nessun ritorno a `360`.
+- COME VERIFICARE: Aprire Home NEXT, verificare la presenza della sola card `Stato operativo`, cambiare tab, controllare i conteggi, usare `Vedi tutto` su `Sessioni` verso `Autisti Inbox` e su `Rimorchi` / `Motrici` verso `Autisti/Admin`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Compressione ottenuta nel solo perimetro `src/next/*` tramite composizione UI.
+
+### Voce 2026-04-01 141
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Alert Home NEXT `Segnalazioni` riallineata al record reale
+- OBIETTIVO: Eliminare il payload sintetico della categoria `Segnalazioni` e riaprire il dettaglio madre-like sul record completo nel perimetro NEXT.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1420_home-next-alert-segnalazioni-payload-reale-madre-like.md`
+  - `docs/continuity-reports/2026-04-01_1420_continuity_home-next-alert-segnalazioni-payload-reale-madre-like.md`
+- COSA E STATO CAMBIATO: La Home NEXT legge ora direttamente `@segnalazioni_autisti_tmp`, ricostruisce un lookup madre-like dei record reali e apre il modale evento autista sulla segnalazione completa invece che su un payload sintetico derivato dall'alert.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Il dettaglio `Segnalazioni` mostra dati e allegati reali gia supportati dal modale; nessuna modifica ai writer, nessuna modifica alla madre.
+- COME VERIFICARE: Aprire Home NEXT, filtrare `Segnalazioni`, selezionare una riga e verificare che il modale mostri problema, descrizione, urgenza, stato, foto e azioni PDF coerenti con il record reale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Correzione confinata al solo runtime NEXT della Home.
+
+### Voce 2026-04-01 140
+- DATA: 2026-04-01
+- TITOLO MODIFICA: IA Home con modale full-overlay e superficie dedicata
+- OBIETTIVO: Tenere il blocco IA della Home minimale e aprire all'invio una conversazione IA dedicata, utile e non appesantita dalla pagina completa.
+- FILE TOCCATI:
+  - `src/next/components/HomeInternalAiLauncher.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO: Il launcher Home apre ora un overlay applicativo vero via portal; `NextInternalAiPage` supporta una variante `home-modal` che riusa la logica reale di chat e allegati ma mostra solo thread, risposta, allegati e composer.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: UI Home piu focalizzata; nessuna nuova logica business, nessuna modifica alla madre, nessun cambiamento ai writer IA esistenti.
+- COME VERIFICARE: Dalla Home NEXT inviare una richiesta dal launcher IA, verificare apertura full-overlay, auto-submit iniziale, risposta visibile, prosecuzione della conversazione e persistenza della pagina completa su `/next/ia/interna`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Separazione ottenuta nel solo perimetro `src/next/*`.
+
+### Voce 2026-04-01 139
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Modale IA interna viewport-safe nella Home NEXT
+- OBIETTIVO: Correggere il layout del modale della chat IA interna per mantenere header visibile, body scrollabile e pagina sottostante bloccata.
+- FILE TOCCATI:
+  - `src/next/components/HomeInternalAiLauncher.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+- COSA E STATO CAMBIATO: Il launcher IA ora apre un modale centrato dentro la viewport, con shell a colonna, header sticky e area contenuti con scroll interno.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: UI piu usabile; nessun impatto sulla logica IA o sulle scritture business.
+- COME VERIFICARE: Aprire la Home NEXT, lanciare la chat IA interna e verificare che il tasto `Chiudi` resti sempre accessibile e che il contenuto scorra nel modale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Correzione puramente di composizione/layout.
+
+### Voce 2026-04-01 138
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Home IA interna ridotta a launcher compatto con modale operativo
+- OBIETTIVO: Alleggerire il blocco IA della Home NEXT lasciando solo un launcher compatto e aprendo la vera esperienza IA interna in modale, senza duplicare la logica della pagina esistente.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/components/HomeInternalAiLauncher.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1046_home-next-ia-launcher-compatta-modale-operativo.md`
+  - `docs/continuity-reports/2026-04-01_1046_continuity_home-next-ia-launcher-compatta-modale-operativo.md`
+- COSA E STATO CAMBIATO:
+  - sostituita la superficie IA completa embedddata nella Home con un launcher compatto;
+  - aggiunto il menu `+` con l'azione `Allega file`;
+  - aperta la vera esperienza IA interna in un modale riusando `NextInternalAiPage`;
+  - passato il draft iniziale dal launcher al modale tramite props iniziali;
+  - rinominata l'etichetta `Lascia nel thread` in `Mantieni nella conversazione` dove il significato era gia dimostrato dal controllo UI.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la Home libera spazio verticale e mostra solo il punto di ingresso alla IA;
+  - Lettura: nessuna nuova shape dati e nessuna nuova logica di dominio;
+  - Blocco scritture: invariato, nessun writer nuovo introdotto.
+- COME VERIFICARE:
+  - verificare che in Home ci sia solo il launcher compatto IA e che il modale apra `NextInternalAiPage`;
+  - verificare che `/next/ia/interna` continui a funzionare;
+  - eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - perimetro confinato a `src/next/*` e documentazione autorizzata;
+  - nessuna modifica alla logica alert/revisioni gia sistemata.
+
+### Voce 2026-04-01 137
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Alert Home NEXT con filtro unico e categorie reali filtrabili
+- OBIETTIVO: Trasformare la card Alert della Home NEXT in un contenitore unico con filtro visibile sopra, riusando solo le categorie realmente gia disponibili nel runtime e senza cambiare la logica di scrittura o i writer.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/HomeAlertCard.tsx`
+  - `src/pages/Home.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1034_home-next-alert-card-con-filtro-visibile-e-categorie-reali.md`
+  - `docs/continuity-reports/2026-04-01_1034_continuity_home-next-alert-card-con-filtro-visibile-e-categorie-reali.md`
+- COSA E STATO CAMBIATO:
+  - mantenuta una sola card `Alert` nella Home NEXT;
+  - aggiunta una barra filtro con `Tutti`, `Revisioni`, `Segnalazioni`, `Eventi autisti` e `Conflitti sessione`;
+  - ricavati i contatori dalle liste alert gia disponibili nel runtime;
+  - preservata l'apertura del modale revisione sulle singole righe revisione;
+  - lasciati invariati i comportamenti degli altri alert gia presenti nel codice.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: alert piu leggibili con filtro immediato sopra la lista;
+  - Lettura: nessuna nuova shape dati e nessuna nuova aggregazione di dominio;
+  - Blocco scritture: invariato, nessun writer o flusso di salvataggio nuovo introdotto.
+- COME VERIFICARE:
+  - verificare che la card `Alert` mostri la barra filtro e la lista filtrabile;
+  - verificare che le revisioni aprano il modale esistente;
+  - eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - perimetro confinato a `src/next/*` e CSS gia usato dalla Home NEXT;
+  - nessuna modifica alla patch precedente sulla chat IA interna o sulla logica revisioni.
+
+### Voce 2026-04-01 136
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Correzione entry Home NEXT da link a vera chat IA interna montata
+- OBIETTIVO: Correggere la patch precedente sostituendo il semplice collegamento con la vera superficie della chat IA interna gia presente nel progetto, senza toccare alert, revisioni o logica di salvataggio.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_0932_home-next-embedded-internal-ai-surface.md`
+  - `docs/continuity-reports/2026-04-01_0932_continuity_home-next-embedded-internal-ai-surface.md`
+- COSA E STATO CAMBIATO:
+  - rimossa la scorciatoia `CHAT IA INTERNA` che puntava a `/next/ia/interna`;
+  - montata nella Home la pagina reale della chat IA interna tramite `NextInternalAiPage`;
+  - ripulito il codice morto della vecchia ricerca targa/autista nel blocco alto della Home;
+  - lasciate intatte le correzioni su `Alert`, modale revisione e sezione `Revisioni`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il blocco alto mostra la vera superficie chat IA interna, non una scorciatoia;
+  - Lettura: nessuna variazione di shape dati;
+  - Blocco scritture: invariato, nessun writer nuovo introdotto.
+- COME VERIFICARE:
+  - verificare che il blocco alto della Home renderizzi `NextInternalAiPage`;
+  - verificare che `Alert` mostri solo revisioni e che la sezione `Revisioni` resti nascosta;
+  - eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - madre non toccata;
+  - correzione confinata a `src/next/*` e documentazione autorizzata.
+
+### Voce 2026-04-01 135
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Semplificazione top area Home NEXT con Alert solo revisioni e accesso IA interna
+- OBIETTIVO: Ridurre la densita della parte alta della Home NEXT senza toccare la madre, sostituendo l'entry legacy `360` con la chat IA interna e riusando la logica revisione gia esistente nel solo perimetro autorizzato.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_0920_home-next-top-area-alert-revisioni-ia-interna.md`
+  - `docs/continuity-reports/2026-04-01_0920_continuity_home-next-top-area-alert-revisioni-ia-interna.md`
+- COSA E STATO CAMBIATO:
+  - sostituita la entry `360` con il link alla chat IA interna ufficiale `/next/ia/interna`;
+  - filtrato il blocco `Alert` per mostrare solo revisioni dei mezzi;
+  - reso cliccabile ogni riga revisione dentro `Alert` per aprire il modale revisione riusando la stessa logica e lo stesso salvataggio gia presenti;
+  - nascosto il blocco separato `Revisioni` dal layout principale della Home NEXT;
+  - eliminato il codice morto legato agli eventi autisti importanti nel runtime della pagina Home NEXT.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: parte alta piu compatta, con accesso IA interna esplicito e sezione Alert concentrata sulle revisioni;
+  - Lettura: nessuna forma di cambio dati o shape;
+  - Blocco scritture: invariato, nessun nuovo writer introdotto.
+- COME VERIFICARE:
+  - verificare `src/next/NextCentroControlloPage.tsx` su entry IA interna, alert revisioni e modale revisione;
+  - verificare che la sezione `Revisioni` non sia piu visibile nel layout principale;
+  - eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - madre non toccata;
+  - perimetro rimasto confinato a `src/next/*` e documentazione autorizzata.
+
 ### Voce 2026-03-31 134
 - DATA: 2026-03-31
 - TITOLO MODIFICA: Audit finale globale V4 su tutte le route ufficiali NEXT montate in `App.tsx`
@@ -6768,3 +7083,32 @@ Serve a:
 - NOTE:
   - il modulo `Manutenzioni` risulta `CHIUSO` solo nel loop corrente, con audit separato `PASS`;
   - il tracker corrente risulta completamente `CLOSED`; loop modulo-per-modulo completato; consigliato audit finale globale separato.
+
+### Voce 2026-04-01 124
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Alert Home NEXT riallineato alle categorie madre-like
+- OBIETTIVO: Mantenere il filtro visibile nella card `Alert` della Home NEXT ma correggere il comportamento delle categorie per avvicinarlo alla madre senza toccare la madre e senza introdurre writer nuovi.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/HomeAlertCard.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_1118_home-next-alert-madre-like-categorie-specifiche.md`
+  - `docs/continuity-reports/2026-04-01_1118_continuity_home-next-alert-madre-like-categorie-specifiche.md`
+- COSA E STATO CAMBIATO:
+  - `Revisioni` apre ora il modal revisione e mantiene il pre-collaudo sul mezzo corrente con azioni madre-like;
+  - `Segnalazioni` apre il dettaglio evento nella vera esperienza eventi autisti invece di un redirect diretto al dossier;
+  - `Eventi autisti` mostra i primi elementi ordinati per data e permette di aprire il modal lista completo o il dettaglio singolo;
+  - `Conflitti sessione` resta nel flusso collegato esistente, senza introdurre una logica nuova.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la card `Alert` resta unica ma le categorie non sono piu tutte renderizzate nello stesso modo;
+  - Lettura: nessuna shape dati nuova; si riusano `alerts`, `revisioni` e `importantAutistiItems` gia presenti nel runtime NEXT;
+  - Blocco scritture: nessun writer nuovo e nessun cambiamento al metodo di salvataggio delle revisioni.
+- COME VERIFICARE:
+  - `npm run build`
+  - aprire `/next`, filtrare la card `Alert` per `Revisioni`, `Segnalazioni`, `Eventi autisti` e `Conflitti sessione`;
+  - verificare che `Revisioni` apra il modal e che `Pre-collaudo` resti disponibile, che `Segnalazioni` apra il dettaglio evento e che `Eventi autisti` apra la lista/il dettaglio.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VERIFICARE; la modifica e solo di composizione NEXT e non introduce nuovi contratti.
+- NOTE:
+  - build `OK`;
+  - i report di change e continuity sono stati aggiornati per la tracciabilita del run.

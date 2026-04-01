@@ -1004,6 +1004,28 @@
   display: flex;
   gap: 10px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.alert-filter-bar {
+  margin-bottom: 14px;
+}
+
+.alert-filter-chip {
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.alert-filter-chip.is-active {
+  background: #2f2618;
+  border-color: #2f2618;
+  color: #fff8ee;
+}
+
+.alert-filter-chip.is-active .stat-label,
+.alert-filter-chip.is-active .stat-value {
+  color: inherit;
 }
 
 .panel-revisioni .panel-row {

@@ -1,25 +1,27 @@
 import "../pages/Home.css";
 import "./next-shell.css";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { HomeEvent } from "../utils/homeEvents";
-import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
-import { formatDateInput, formatDateTimeUI, formatDateUI } from "./nextDateFormat";
-import type { AlertAction } from "../utils/alertsState";
+import { useEffect, useMemo, useRef, useState } from "react";
+import HomeAlertCard from "./components/HomeAlertCard";
+import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
+import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal";
+import QuickNavigationCard from "./components/QuickNavigationCard";
+import StatoOperativoCard from "./components/StatoOperativoCard";
+import { formatDateInput, formatDateUI } from "./nextDateFormat";
 import { generateTablePDF } from "../utils/pdfEngine";
+import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
+import type { HomeEvent } from "../utils/homeEvents";
+import { stableHash32 } from "../utils/alertsState";
 import {
   readNextCentroControlloSnapshot,
-  type D10MezzoItem,
+  type D10AlertItem,
+  type D10ImportantAutistiEventItem,
   type D10MissingMezzoItem,
   type D10PrenotazioneCollaudo,
   type D10PreCollaudo,
   type D10Snapshot,
 } from "./domain/nextCentroControlloDomain";
+import { readNextUnifiedStorageDocument } from "./domain/nextUnifiedReadRegistryDomain";
 import {
   buildNextDossierPath,
   NEXT_AUTISTI_ADMIN_PATH,
@@ -47,10 +49,8 @@ import {
   NEXT_ORDINI_ARRIVATI_PATH,
   NEXT_ORDINI_IN_ATTESA_PATH,
 } from "./nextStructuralPaths";
-import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal";
-
+import { normalizeNextMezzoTarga } from "./nextAnagraficheFlottaDomain";
 const QUICKLINKS_STORAGE_KEY = "gm_quicklinks_favs_v1";
-const DOSSIER_MISSING_ALERT_KEY = "gm_dossier_missing_alert_v1";
 
 const CLONE_ACTION_BLOCKED_TITLE = "Clone in sola lettura: azione non disponibile";
 
@@ -99,13 +99,6 @@ function resolveCloneSafeRoute(path: string): string | null {
   return null;
 }
 
-type AutistaSuggestion = {
-  name: string;
-  badge?: string;
-  targa?: string;
-  priority: number;
-};
-
 type QuickLink = {
   id: string;
   to: string;
@@ -123,12 +116,6 @@ type QuickLinksStore = {
   usage: Record<string, QuickLinkUsage>;
 };
 
-type QuickSectionId = "autisti" | "lavori" | "materiali" | "ia";
-
-type MissingAlertState = {
-  nextRemindAt: number;
-};
-
 type RimorchioEditState = {
   targa: string;
   luogo: string;
@@ -136,10 +123,40 @@ type RimorchioEditState = {
   eventIndex: number | null;
 };
 
-type MezzoRecord = D10MezzoItem;
+type MezzoRecord = {
+  targa: string | null | undefined;
+  categoria?: string | null | undefined;
+  autistaNome?: string | null | undefined;
+  marca?: string | null | undefined;
+  modello?: string | null | undefined;
+  prenotazioneCollaudo?: D10PrenotazioneCollaudo | null | undefined;
+  preCollaudo?: D10PreCollaudo | null | undefined;
+  id?: string | null | undefined;
+};
+type SegnalazioneRecord = Record<string, unknown>;
 type MissingMezzo = D10MissingMezzoItem;
 type PrenotazioneCollaudo = D10PrenotazioneCollaudo;
 type PreCollaudo = D10PreCollaudo;
+type AlertFilterId = "all" | D10AlertItem["kind"];
+type SegnalazioneLookupEntry = {
+  record: SegnalazioneRecord;
+  explicitId: string | null;
+  lookupId: string;
+  timestamp: number | null;
+  targa: string | null;
+  autista: string | null;
+  tipoProblema: string;
+  preview: string;
+};
+
+const ALERT_FILTER_LABELS: Record<AlertFilterId, string> = {
+  all: "Tutti",
+  revisione: "Revisioni",
+  conflitto_sessione: "Conflitti sessione",
+  segnalazione_nuova: "Segnalazioni",
+  eventi_importanti_autisti: "Eventi autisti",
+};
+const SEGNALAZIONI_STORAGE_KEY = "@segnalazioni_autisti_tmp";
 
 function createQuickLinkId(item: { id?: string; to?: string; label: string }): string {
   if (item.id) return item.id;
@@ -215,38 +232,6 @@ function writeQuickLinksStore(next: QuickLinksStore) {
   }
 }
 
-function normalizeMissingAlertState(value: unknown): MissingAlertState {
-  if (!value || typeof value !== "object") {
-    return { nextRemindAt: 0 };
-  }
-  const raw = (value as { nextRemindAt?: unknown }).nextRemindAt;
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    return { nextRemindAt: Math.max(0, raw) };
-  }
-  return { nextRemindAt: 0 };
-}
-
-function readMissingAlertState(): MissingAlertState {
-  if (typeof window === "undefined") return { nextRemindAt: 0 };
-  try {
-    const raw = window.localStorage.getItem(DOSSIER_MISSING_ALERT_KEY);
-    if (!raw) return { nextRemindAt: 0 };
-    const parsed: unknown = JSON.parse(raw);
-    return normalizeMissingAlertState(parsed);
-  } catch {
-    return { nextRemindAt: 0 };
-  }
-}
-
-function writeMissingAlertState(next: MissingAlertState) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(DOSSIER_MISSING_ALERT_KEY, JSON.stringify(next));
-  } catch {
-    return;
-  }
-}
-
 function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
   if (!lastUsedAt) return 0;
   const delta = now - lastUsedAt;
@@ -304,22 +289,168 @@ function fmtTarga(value: string | null | undefined): string {
   return String(value || "").trim().toUpperCase();
 }
 
-function normalizeName(value: string | null | undefined): string {
-  return String(value || "")
+function normalizeSegnalazioneText(value: unknown): string {
+  return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function normalizeNameKey(value: string | null | undefined): string {
-  return normalizeName(value).toLowerCase();
+function normalizeSegnalazioneOptionalText(value: unknown): string | null {
+  const normalized = normalizeSegnalazioneText(value);
+  return normalized || null;
 }
 
-function normalizeBadge(value: string | null | undefined): string {
-  return String(value || "").trim();
+function toSegnalazioneTimestamp(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return null;
+    const numeric = Number(normalized);
+    if (Number.isFinite(numeric)) return numeric;
+    const parsed = Date.parse(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (value && typeof value === "object") {
+    const maybeTimestamp = value as {
+      seconds?: unknown;
+      nanoseconds?: unknown;
+      toMillis?: (() => number) | unknown;
+    };
+    if (typeof maybeTimestamp.toMillis === "function") {
+      const millis = maybeTimestamp.toMillis();
+      return Number.isFinite(millis) ? millis : null;
+    }
+    if (typeof maybeTimestamp.seconds === "number" && Number.isFinite(maybeTimestamp.seconds)) {
+      const nanoseconds =
+        typeof maybeTimestamp.nanoseconds === "number" && Number.isFinite(maybeTimestamp.nanoseconds)
+          ? maybeTimestamp.nanoseconds
+          : 0;
+      return maybeTimestamp.seconds * 1000 + Math.floor(nanoseconds / 1_000_000);
+    }
+  }
+  return null;
 }
 
-function normalizeBadgeKey(value: string | null | undefined): string {
-  return normalizeBadge(value).toLowerCase();
+function getSegnalazioneRecordTimestamp(record: SegnalazioneRecord): number | null {
+  return toSegnalazioneTimestamp(record.timestamp) ?? toSegnalazioneTimestamp(record.data);
+}
+
+function getSegnalazioneRecordTarga(record: SegnalazioneRecord): string | null {
+  const normalized = normalizeNextMezzoTarga(
+    record.targa ?? record.targaCamion ?? record.targaRimorchio
+  );
+  return normalized || null;
+}
+
+function getSegnalazionePreview(record: SegnalazioneRecord): string {
+  const tipo = normalizeSegnalazioneText(record.tipoProblema);
+  const descrizione = normalizeSegnalazioneText(record.descrizione);
+  const note = normalizeSegnalazioneText(record.note ?? record.messaggio);
+  return descrizione || note || tipo || "Segnalazione";
+}
+
+function buildSegnalazioneRecordLookupEntry(
+  record: SegnalazioneRecord,
+  index: number
+): SegnalazioneLookupEntry {
+  const timestamp = getSegnalazioneRecordTimestamp(record);
+  const targa = getSegnalazioneRecordTarga(record);
+  const explicitId = normalizeSegnalazioneOptionalText(record.id);
+  const lookupId =
+    explicitId ??
+    stableHash32(
+      [
+        String(timestamp ?? 0),
+        targa ?? "",
+        normalizeSegnalazioneText(record.badgeAutista),
+        normalizeSegnalazioneText(record.tipoProblema),
+        normalizeSegnalazioneText(record.descrizione),
+        String(index),
+      ].join("|")
+    );
+
+  return {
+    record,
+    explicitId,
+    lookupId,
+    timestamp,
+    targa,
+    autista:
+      normalizeSegnalazioneOptionalText(record.autistaNome) ??
+      normalizeSegnalazioneOptionalText(record.nomeAutista),
+    tipoProblema: normalizeSegnalazioneText(record.tipoProblema),
+    preview: getSegnalazionePreview(record),
+  };
+}
+
+function buildHomeEventFromSegnalazioneRecord(
+  entry: SegnalazioneLookupEntry,
+  fallbackId: string
+): HomeEvent {
+  return {
+    id: entry.explicitId ?? fallbackId,
+    tipo: "segnalazione",
+    targa: entry.targa,
+    autista: entry.autista,
+    timestamp: entry.timestamp ?? 0,
+    payload: entry.record,
+  };
+}
+
+async function readSegnalazioniRecords(): Promise<SegnalazioneRecord[]> {
+  const result = await readNextUnifiedStorageDocument({ key: SEGNALAZIONI_STORAGE_KEY });
+  if (result.status !== "ready") return [];
+  return result.records.filter(
+    (entry): entry is SegnalazioneRecord => Boolean(entry) && typeof entry === "object"
+  );
+}
+
+function findSegnalazioneEntryForAlert(
+  alert: D10AlertItem,
+  lookup: {
+    entries: SegnalazioneLookupEntry[];
+    byId: Map<string, SegnalazioneLookupEntry>;
+  }
+): SegnalazioneLookupEntry | null {
+  const sourceRecordId = normalizeSegnalazioneOptionalText(alert.sourceRecordId);
+  if (sourceRecordId) {
+    const directMatch = lookup.byId.get(sourceRecordId);
+    if (directMatch) return directMatch;
+  }
+
+  const alertTarga = fmtTarga(alert.mezzoTarga);
+  const alertTimestamp = alert.eventTs ?? null;
+  const alertAutista = normalizeSegnalazioneOptionalText(alert.autistaNome);
+  const detailText = normalizeSegnalazioneText(alert.detailText);
+  const titleText = normalizeSegnalazioneText(alert.title);
+
+  let bestMatch: SegnalazioneLookupEntry | null = null;
+  let bestScore = -1;
+
+  lookup.entries.forEach((entry) => {
+    let score = 0;
+
+    if (alertTarga && entry.targa === alertTarga) score += 6;
+    if (alertTimestamp !== null && entry.timestamp === alertTimestamp) score += 6;
+    if (
+      alertTimestamp !== null &&
+      entry.timestamp !== null &&
+      Math.abs(entry.timestamp - alertTimestamp) <= 60_000
+    ) {
+      score += 3;
+    }
+    if (alertAutista && entry.autista === alertAutista) score += 2;
+    if (detailText && entry.preview && detailText.includes(entry.preview)) score += 4;
+    if (detailText && entry.tipoProblema && detailText.includes(entry.tipoProblema)) score += 3;
+    if (titleText && entry.tipoProblema && titleText.includes(entry.tipoProblema)) score += 1;
+
+    if (score > bestScore) {
+      bestMatch = entry;
+      bestScore = score;
+    }
+  });
+
+  return bestScore >= 8 ? bestMatch : null;
 }
 
 function buildDate(yyyyStr: string, mmStr: string, ddStr: string): Date | null {
@@ -372,10 +503,6 @@ function formatDateForInput(date: Date | null): string {
   return formatDateInput(date);
 }
 
-function formatDateTimeForDisplay(ts?: number | null): string {
-  return formatDateTimeUI(ts ?? null);
-}
-
 function normalizeFreeText(value: string | null | undefined): string {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -412,37 +539,15 @@ function formatGiorniLabel(giorni: number): string {
 
 function Home() {
   const navigate = useNavigate();
-  const nameSuggestRef = useRef<HTMLDivElement | null>(null);
   const datePickerRef = useRef<HTMLInputElement | null>(null);
   const preCollaudoDatePickerRef = useRef<HTMLInputElement | null>(null);
   const revisioneDatePickerRef = useRef<HTMLInputElement | null>(null);
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
-  const [alertsNow, setAlertsNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [badgeQuery, setBadgeQuery] = useState("");
-  const [nameQuery, setNameQuery] = useState("");
-  const [nameSuggestOpen, setNameSuggestOpen] = useState(false);
   const [rimorchioEdit, setRimorchioEdit] = useState<RimorchioEditState | null>(null);
-  const [quickSearch, setQuickSearch] = useState("");
   const [quickLinksStore, setQuickLinksStore] = useState<QuickLinksStore>(() =>
     readQuickLinksStore()
   );
-  const [missingAlertState, setMissingAlertState] = useState<MissingAlertState>(() =>
-    readMissingAlertState()
-  );
-  const [quickSectionsOpen, setQuickSectionsOpen] = useState({
-    autisti: true,
-    lavori: false,
-    materiali: false,
-    ia: false,
-  });
-  const [quickSectionsExpanded, setQuickSectionsExpanded] = useState({
-    autisti: false,
-    lavori: false,
-    materiali: false,
-    ia: false,
-  });
   const [prenotazioneModalOpen, setPrenotazioneModalOpen] = useState(false);
   const [prenotazioneTargetTarga, setPrenotazioneTargetTarga] = useState<string | null>(null);
   const [prenotazioneForm, setPrenotazioneForm] = useState({
@@ -464,25 +569,25 @@ function Home() {
     esito: "",
     note: "",
   });
+  const [segnalazioniRecords, setSegnalazioniRecords] = useState<SegnalazioneRecord[]>([]);
   const [missingModalOpen, setMissingModalOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<HomeEvent | null>(null);
+  const [alertFilter, setAlertFilter] = useState<AlertFilterId>("all");
+  const [selectedAlertEvent, setSelectedAlertEvent] = useState<HomeEvent | null>(null);
   const [importantEventsOpen, setImportantEventsOpen] = useState(false);
   const location = useLocation();
-  const refreshSnapshots = async (now: number = Date.now()) => {
-    const nextSnapshot = await readNextCentroControlloSnapshot(now);
-    setAlertsNow(now);
-    setSnapshot(nextSnapshot);
-  };
 
   useEffect(() => {
     let mounted = true;
 
     const loadSnapshot = async (now: number) => {
       try {
-        const nextSnapshot = await readNextCentroControlloSnapshot(now);
+        const [nextSnapshot, segnalazioni] = await Promise.all([
+          readNextCentroControlloSnapshot(now),
+          readSegnalazioniRecords(),
+        ]);
         if (!mounted) return;
-        setAlertsNow(now);
         setSnapshot(nextSnapshot);
+        setSegnalazioniRecords(segnalazioni);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -499,11 +604,13 @@ function Home() {
 
     const refreshSnapshot = async () => {
       try {
-        const now = Date.now();
-        const nextSnapshot = await readNextCentroControlloSnapshot(now);
+        const [nextSnapshot, segnalazioni] = await Promise.all([
+          readNextCentroControlloSnapshot(Date.now()),
+          readSegnalazioniRecords(),
+        ]);
         if (!active) return;
-        setAlertsNow(now);
         setSnapshot(nextSnapshot);
+        setSegnalazioniRecords(segnalazioni);
       } catch (error) {
         void error;
       }
@@ -517,11 +624,13 @@ function Home() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      const now = Date.now();
-      void readNextCentroControlloSnapshot(now)
-        .then((nextSnapshot) => {
-          setAlertsNow(now);
+      void Promise.all([
+        readNextCentroControlloSnapshot(Date.now()),
+        readSegnalazioniRecords(),
+      ])
+        .then(([nextSnapshot, segnalazioni]) => {
           setSnapshot(nextSnapshot);
+          setSegnalazioniRecords(segnalazioni);
         })
         .catch((error) => {
           void error;
@@ -532,11 +641,12 @@ function Home() {
 
   const mezzi = useMemo(() => snapshot?.mezzi ?? [], [snapshot]);
   const sessioni = useMemo(() => snapshot?.sessioni ?? [], [snapshot]);
-  const visibleAlerts = useMemo(() => snapshot?.alerts ?? [], [snapshot]);
+  const alertItems = useMemo(() => snapshot?.alerts ?? [], [snapshot]);
   const importantAutistiItems = useMemo(
     () => snapshot?.importantAutistiItems ?? [],
     [snapshot],
   );
+  const revisionItems = useMemo(() => snapshot?.revisioni ?? [], [snapshot]);
   const rimorchiDaMostrare = useMemo(() => snapshot?.rimorchiDaMostrare ?? [], [snapshot]);
   const motriciTrattoriDaMostrare = useMemo(
     () => snapshot?.motriciTrattoriDaMostrare ?? [],
@@ -544,38 +654,68 @@ function Home() {
   );
   const revisioniUrgenti = useMemo(() => snapshot?.revisioniUrgenti ?? [], [snapshot]);
   const mezziIncompleti = useMemo(() => snapshot?.missingMezzi ?? [], [snapshot]);
+  const alertCounts = useMemo(() => {
+    const counts: Record<AlertFilterId, number> = {
+      all: alertItems.length,
+      revisione: 0,
+      conflitto_sessione: 0,
+      segnalazione_nuova: 0,
+      eventi_importanti_autisti: 0,
+    };
+    alertItems.forEach((alert) => {
+      counts[alert.kind] += 1;
+    });
+    return counts;
+  }, [alertItems]);
+  const visibleAlertItems = useMemo(() => {
+    if (alertFilter === "all") return alertItems;
+    return alertItems.filter((alert) => alert.kind === alertFilter);
+  }, [alertFilter, alertItems]);
+  const alertFilterOptions = useMemo<
+    Array<{ id: AlertFilterId; label: string; count: number }>
+  >(
+    () => [
+      { id: "all", label: "Tutti", count: alertCounts.all },
+      { id: "revisione", label: "Revisioni", count: alertCounts.revisione },
+      {
+        id: "segnalazione_nuova",
+        label: "Segnalazioni",
+        count: alertCounts.segnalazione_nuova,
+      },
+      {
+        id: "eventi_importanti_autisti",
+        label: "Eventi autisti",
+        count: alertCounts.eventi_importanti_autisti,
+      },
+      {
+        id: "conflitto_sessione",
+        label: "Conflitti sessione",
+        count: alertCounts.conflitto_sessione,
+      },
+    ],
+    [alertCounts],
+  );
+  const revisionByTarga = useMemo(() => {
+    return new Map(
+      revisionItems
+        .filter((item) => Boolean(fmtTarga(item.targa)))
+        .map((item) => [fmtTarga(item.targa), item] as const),
+    );
+  }, [revisionItems]);
+  const segnalazioniLookup = useMemo(() => {
+    const entries = segnalazioniRecords.map(buildSegnalazioneRecordLookupEntry);
+    const byId = new Map<string, SegnalazioneLookupEntry>();
+    entries.forEach((entry) => {
+      if (entry.explicitId) byId.set(entry.explicitId, entry);
+      byId.set(entry.lookupId, entry);
+    });
+    return { entries, byId };
+  }, [segnalazioniRecords]);
   const revCounts = {
     scadute: snapshot?.counters.revisioniScadute ?? 0,
     inScadenza: snapshot?.counters.revisioniInScadenza ?? 0,
   };
   const sessioniAttive = sessioni;
-
-  const handleAutistaSearch = () => {
-    const params = new URLSearchParams();
-    if (badgeQuery.trim()) {
-      params.set("badge", badgeQuery.trim());
-    }
-    if (nameQuery.trim()) {
-      params.set("autista", nameQuery.trim());
-    }
-    navigate(`${NEXT_AUTISTI_ADMIN_PATH}${params.toString() ? `?${params.toString()}` : ""}`);
-  };
-
-  const handleNameChange = (value: string) => {
-    setNameQuery(value);
-    const normalized = normalizeNameKey(value);
-    if (normalized.length >= 2) {
-      setNameSuggestOpen(true);
-    } else {
-      setNameSuggestOpen(false);
-    }
-  };
-
-  const handleNameSuggestion = (suggestion: AutistaSuggestion) => {
-    setNameQuery(suggestion.name);
-    setBadgeQuery(suggestion.badge || "");
-    setNameSuggestOpen(false);
-  };
 
   const startRimorchioEdit = (rimorchio: {
     targa: string;
@@ -802,6 +942,58 @@ function Home() {
     );
   };
 
+  const openAlertItem = (alert: D10AlertItem) => {
+    if (alert.kind === "revisione") {
+      const mezzo = mezzoByTarga.get(fmtTarga(alert.mezzoTarga));
+      openRevisioneModal(alert.mezzoTarga || "", mezzo?.prenotazioneCollaudo ?? null);
+      return;
+    }
+
+    if (alert.kind === "segnalazione_nuova") {
+      const segnalazioneEntry = findSegnalazioneEntryForAlert(alert, segnalazioniLookup);
+      if (!segnalazioneEntry) {
+        showReadOnlyActionBlocked(
+          "Il dettaglio completo della segnalazione non e disponibile nel clone read-only."
+        );
+        return;
+      }
+      setSelectedAlertEvent(
+        buildHomeEventFromSegnalazioneRecord(
+          segnalazioneEntry,
+          alert.sourceRecordId ?? alert.id
+        )
+      );
+      return;
+    }
+
+    if (alert.kind === "eventi_importanti_autisti") {
+      setImportantEventsOpen(true);
+      return;
+    }
+
+    const targetRoute = alert.targetRoute ? resolveCloneSafeRoute(alert.targetRoute) : null;
+    if (targetRoute) {
+      navigate(targetRoute);
+    }
+  };
+
+  const closeMissingModal = () => {
+    setMissingModalOpen(false);
+  };
+
+  const handleMissingSelect = (item: MissingMezzo) => {
+    const params = new URLSearchParams();
+    if (item.id) {
+      params.set("mezzoId", item.id);
+    } else if (item.targa) {
+      params.set("targa", item.targa);
+    }
+    params.set("highlightMissing", "1");
+    setMissingModalOpen(false);
+    const query = params.toString();
+    navigate(NEXT_DOSSIER_LISTA_PATH + (query ? `?${query}` : ""));
+  };
+
   const recordQuickLinkUse = (id: string) => {
     const now = Date.now();
     setQuickLinksStore((prev) => {
@@ -834,32 +1026,6 @@ function Home() {
     });
   };
 
-  const toggleQuickSectionOpen = (sectionId: QuickSectionId) => {
-    setQuickSectionsOpen((prev) => ({
-      ...prev,
-      [sectionId]: !prev[sectionId],
-    }));
-  };
-
-  const toggleQuickSectionExpanded = (sectionId: QuickSectionId) => {
-    setQuickSectionsExpanded((prev) => ({
-      ...prev,
-      [sectionId]: !prev[sectionId],
-    }));
-  };
-
-  useEffect(() => {
-    if (!nameSuggestOpen) return;
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target || !nameSuggestRef.current) return;
-      if (nameSuggestRef.current.contains(target)) return;
-      setNameSuggestOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [nameSuggestOpen]);
-
   const mezzoByTarga = useMemo(() => {
     const map = new Map<string, MezzoRecord>();
     mezzi.forEach((m) => {
@@ -879,109 +1045,13 @@ function Home() {
     return `Categoria: ${categoria}\nAutista: ${autista}`;
   };
 
-  const searchResults = useMemo(() => {
-    const queryRaw = searchQuery.trim();
-    if (!queryRaw) return [];
-    const queryLower = queryRaw.toLowerCase();
-    const queryUpper = queryRaw.toUpperCase();
-    return mezzi
-      .map((m) => {
-        const targa = fmtTarga(m.targa);
-        return {
-          targa,
-          autistaNome: m.autistaNome || "",
-          categoria: m.categoria || "",
-          marca: m.marca || "",
-          modello: m.modello || "",
-        };
-      })
-      .filter((m) => {
-        if (!m.targa) return false;
-        const targaMatch = m.targa.includes(queryUpper);
-        const autistaMatch = String(m.autistaNome || "")
-          .toLowerCase()
-          .includes(queryLower);
-        return targaMatch || autistaMatch;
-      })
-      .slice(0, 8);
-  }, [mezzi, searchQuery]);
-
-  const allAutistaSuggestions = useMemo(() => {
-    const map = new Map<string, AutistaSuggestion>();
-    const addCandidate = (
-      nameRaw: string | null | undefined,
-      badgeRaw: string | null | undefined,
-      targaRaw: string | null | undefined,
-      priority: number
-    ) => {
-      const nameLabel = normalizeName(nameRaw);
-      if (!nameLabel) return;
-      const badgeLabel = normalizeBadge(badgeRaw);
-      const badgeKey = normalizeBadgeKey(badgeLabel);
-      const nameKey = normalizeNameKey(nameLabel);
-      const key = badgeKey ? `${nameKey}|${badgeKey}` : nameKey;
-      const targaLabel = targaRaw ? fmtTarga(targaRaw) : "";
-      const existing = map.get(key);
-      if (!existing) {
-        map.set(key, {
-          name: nameLabel,
-          badge: badgeLabel || undefined,
-          targa: targaLabel || undefined,
-          priority,
-        });
-        return;
-      }
-      if (priority > existing.priority && nameLabel) {
-        existing.name = nameLabel;
-        existing.priority = priority;
-      }
-      if (!existing.badge && badgeLabel) {
-        existing.badge = badgeLabel;
-      }
-      if (targaLabel && (!existing.targa || priority > existing.priority)) {
-        existing.targa = targaLabel;
-      }
-    };
-
-    sessioni.forEach((s) => {
-      addCandidate(
-        s.nomeAutista,
-        s.badgeAutista,
-        s.targaMotrice || s.targaRimorchio,
-        2
-      );
-    });
-
-    mezzi.forEach((m) => {
-      const mezzoRecord = m as D10MezzoItem & Record<string, unknown>;
-      const mezzoBadge =
-        typeof mezzoRecord.badgeAutista === "string"
-          ? mezzoRecord.badgeAutista
-          : typeof mezzoRecord.badge === "string"
-            ? mezzoRecord.badge
-            : typeof mezzoRecord.autistaBadge === "string"
-              ? mezzoRecord.autistaBadge
-              : undefined;
-      addCandidate(m.autistaNome, mezzoBadge, m.targa, 1);
-    });
-
-    return Array.from(map.values());
-  }, [sessioni, mezzi]);
-
-  const nameQueryKey = useMemo(() => normalizeNameKey(nameQuery), [nameQuery]);
-
-  const nameSuggestions = useMemo(() => {
-    if (nameQueryKey.length < 2) return [];
-    return allAutistaSuggestions
-      .filter((s) => normalizeNameKey(s.name).includes(nameQueryKey))
-      .sort((a, b) => {
-        if (a.priority !== b.priority) return b.priority - a.priority;
-        return a.name.localeCompare(b.name);
-      })
-      .slice(0, 8);
-  }, [allAutistaSuggestions, nameQueryKey]);
-
-  const showNameSuggestions = nameSuggestOpen && nameSuggestions.length > 0;
+  const getMezzoLabel = (targa: string | null | undefined) => {
+    const mezzo = mezzoByTarga.get(fmtTarga(targa));
+    return [mezzo?.marca, mezzo?.modello]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join(" ");
+  };
 
   const prenotazioneDateValue = formatDateForInput(
     parseDateFlexible(prenotazioneForm.data)
@@ -992,16 +1062,6 @@ function Home() {
   const revisioneDateValue = formatDateForInput(
     parseDateFlexible(revisioneForm.data)
   );
-
-  const quickSearchValue = quickSearch.trim();
-  const quickSearchActive = quickSearchValue.length > 0;
-  const quickSearchResults = quickSearchActive
-    ? [...QUICK_LINKS_ALL]
-        .filter((link) =>
-          link.label.toLowerCase().includes(quickSearchValue.toLowerCase())
-        )
-        .sort((a, b) => a.label.localeCompare(b.label))
-    : [];
 
   const quickPinnedIds = quickLinksStore.pins.filter((id) =>
     QUICK_LINKS_BY_ID.has(id)
@@ -1033,162 +1093,7 @@ function Home() {
     return [...pinnedLinks, ...scoredLinks].slice(0, 6);
   })();
 
-  const quickCategories: Array<{ id: QuickSectionId; title: string; links: QuickLink[] }> =
-    (() => {
-      const autisti: QuickLink[] = [];
-      const lavori: QuickLink[] = [];
-      const materiali: QuickLink[] = [];
-      const ia: QuickLink[] = [];
-
-      QUICK_LINKS_OPERATIVO.forEach((link) => {
-        if (
-          link.to === "/autisti" ||
-          link.to.startsWith("/autisti/") ||
-          link.to.startsWith("/autisti-inbox") ||
-          link.to.startsWith("/autisti-admin") ||
-          link.to.startsWith("/next/autisti-admin")
-        ) {
-          autisti.push(link);
-          return;
-        }
-        if (
-          link.to.startsWith("/lavori-") ||
-          link.to.startsWith("/manutenzioni") ||
-          link.to === "/gestione-operativa"
-        ) {
-          lavori.push(link);
-          return;
-        }
-        if (
-          link.to.startsWith("/materiali-") ||
-          link.to.startsWith("/inventario") ||
-          link.to.startsWith("/ordini-") ||
-          link.to.startsWith("/attrezzature-cantieri")
-        ) {
-          materiali.push(link);
-          return;
-        }
-        if (
-          link.to.startsWith("/ia") ||
-          link.to.startsWith("/libretti-export") ||
-          link.to.startsWith("/cisterna")
-        ) {
-          ia.push(link);
-          return;
-        }
-        lavori.push(link);
-      });
-
-      return [
-        { id: "autisti", title: "Autisti (app + admin)", links: autisti },
-        { id: "lavori", title: "Lavori e Manutenzioni", links: lavori },
-        { id: "materiali", title: "Materiali e Magazzino", links: materiali },
-        { id: "ia", title: "IA", links: ia },
-      ];
-    })();
-
-  const quickSectionPills: Record<QuickSectionId, string> = {
-    autisti: "AUTISTI",
-    lavori: "OPERATIVO",
-    materiali: "MAGAZZINO",
-    ia: "IA",
-  };
-
-  const renderQuickLink = (link: QuickLink) => {
-    const isPinned = quickPinnedSet.has(link.id);
-    const safeTo = resolveCloneSafeRoute(link.to);
-    return (
-      <div key={link.id} className="quick-link-item">
-        {safeTo ? (
-          <Link
-            to={safeTo}
-            className={`quick-link ${isPinned ? "pinned" : ""}`}
-            onClick={() => recordQuickLinkUse(link.id)}
-          >
-            <span className="quick-link-label">{link.label}</span>
-            {link.description ? (
-              <span className="quick-link-desc">{link.description}</span>
-            ) : null}
-            {isPinned ? <span className="quick-link-badge">PIN</span> : null}
-          </Link>
-        ) : (
-          <div
-            className={`quick-link quick-link--disabled ${isPinned ? "pinned" : ""} next-clone-link-disabled`}
-            aria-disabled="true"
-            title={CLONE_ACTION_BLOCKED_TITLE}
-          >
-            <span className="quick-link-label">{link.label}</span>
-            {link.description ? (
-              <span className="quick-link-desc">{link.description}</span>
-            ) : null}
-            {isPinned ? <span className="quick-link-badge">PIN</span> : null}
-          </div>
-        )}
-        <button
-          type="button"
-          className={`quick-pin-toggle ${isPinned ? "active" : ""}`}
-          aria-pressed={isPinned}
-          onClick={() => toggleQuickLinkPin(link.id)}
-        >
-          PIN
-        </button>
-      </div>
-    );
-  };
-
-  const missingAlertVisible =
-    mezziIncompleti.length > 0 &&
-    alertsNow >= missingAlertState.nextRemindAt;
-
-  const updateMissingAlertState = (nextRemindAt: number) => {
-    const next = { nextRemindAt };
-    setMissingAlertState(next);
-    writeMissingAlertState(next);
-  };
-  void updateMissingAlertState;
-
-  const handleMissingNow = () => {
-    setMissingModalOpen(true);
-  };
-
-  const handleMissingIgnore = () => {
-    updateMissingAlertState(Date.now() + 86_400_000);
-  };
-
-  const handleMissingLater = () => {
-    updateMissingAlertState(Date.now() + 259_200_000);
-  };
-
-  const closeMissingModal = () => {
-    setMissingModalOpen(false);
-    void refreshSnapshots();
-  };
-
-  const handleMissingSelect = (item: MissingMezzo) => {
-    const params = new URLSearchParams();
-    if (item.id) {
-      params.set("mezzoId", item.id);
-    } else if (item.targa) {
-      params.set("targa", item.targa);
-    }
-    params.set("highlightMissing", "1");
-    setMissingModalOpen(false);
-    const query = params.toString();
-    navigate(NEXT_DOSSIER_LISTA_PATH + (query ? `?${query}` : ""));
-  };
-
-  const handleAlertAction = (alert: D10Snapshot["alerts"][number], action: AlertAction) => {
-    void alert;
-    const actionLabel =
-      action === "ack"
-        ? "marcare l'alert come letto"
-        : action === "snooze_1d"
-          ? "posticipare l'alert di 1 giorno"
-          : "posticipare l'alert di 3 giorni";
-    showReadOnlyActionBlocked(`${actionLabel} e disponibile solo nella madre.`);
-  };
-
-  const canExportAlerts = !loading && (visibleAlerts.length > 0 || missingAlertVisible);
+  const canExportAlerts = !loading && visibleAlertItems.length > 0;
 
   const handleExportAlertsPdf = async () => {
     if (!canExportAlerts) {
@@ -1196,89 +1101,20 @@ function Home() {
       return;
     }
 
-    const grouped = new Map<
-      string,
-      Array<{
-        categoria: string;
-        targa: string;
-        descrizione: string;
-        data: string;
-      }>
-    >();
-
-    const pushRow = (
-      categoriaInput: string | null | undefined,
-      row: { targa: string; descrizione: string; data: string }
-    ) => {
-      const categoria = String(categoriaInput ?? "").trim() || "SENZA CATEGORIA";
-      const list = grouped.get(categoria) ?? [];
-      list.push({
-        categoria,
-        targa: row.targa,
-        descrizione: row.descrizione,
-        data: row.data,
-      });
-      grouped.set(categoria, list);
-    };
-
-    if (missingAlertVisible) {
-      pushRow("Dossier", {
-        targa: "SENZA TARGA",
-        descrizione: "Dati mancanti nel Dossier. Alcuni mezzi hanno dati incompleti.",
-        data: "",
-      });
-    }
-
-    const autistiAlertVisible = visibleAlerts.some(
-      (alert) => alert.kind === "eventi_importanti_autisti"
-    );
-
-    visibleAlerts.forEach((alert) => {
-      if (alert.kind === "eventi_importanti_autisti") return;
-      const targa = String(alert.mezzoTarga ?? "").trim() || "SENZA TARGA";
-      const descrizione = alert.detailText ? `${alert.title} - ${alert.detailText}` : alert.title;
-      const data = String(alert.dateLabel ?? "").trim();
-      pushRow(alert.kind, { targa, descrizione, data });
-    });
-
-    if (autistiAlertVisible) {
-      const maxRows = 15;
-      const total = importantAutistiItems.length;
-      const slice = importantAutistiItems.slice(0, maxRows);
-
-      slice.forEach((item) => {
-        const targa = String(item.targa ?? "").trim() || "SENZA TARGA";
-        const descrizione = [item.tipo, item.preview].filter(Boolean).join(" - ") || "Evento autisti";
-        const data = formatDateTimeForDisplay(item.ts);
-        pushRow("Eventi autisti", { targa, descrizione, data });
-      });
-
-      const remaining = total - slice.length;
-      if (remaining > 0) {
-        pushRow("Eventi autisti", {
-          targa: "",
-          descrizione: `... +${remaining} altri (vedi Home)`,
-          data: "",
-        });
-      }
-    }
-
-    const rows: string[][] = [];
-    const categories = Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
-    categories.forEach((categoria) => {
-      rows.push([`--- ${categoria.toUpperCase()} ---`, "", "", ""]);
-      const list = grouped.get(categoria) ?? [];
-      list.sort((a, b) => a.targa.localeCompare(b.targa));
-      list.forEach((item) => {
-        rows.push([item.categoria, item.targa, item.descrizione, item.data]);
-      });
-    });
+    const rows = visibleAlertItems.map((alert) => [
+      ALERT_FILTER_LABELS[alert.kind],
+      alert.mezzoTarga || "-",
+      alert.title,
+      alert.detailText || "-",
+      alert.dateLabel || (alert.eventTs ? formatDateForDisplay(new Date(alert.eventTs)) : "-"),
+    ]);
 
     try {
       await generateTablePDF("Alert Home", rows, [
         "Categoria",
         "Targa",
-        "Descrizione",
+        "Titolo",
+        "Dettaglio",
         "Data",
       ]);
     } catch {
@@ -1291,7 +1127,7 @@ function Home() {
       <div className="home-shell">
         <header className="home-hero">
           <div className="homeTopGrid">
-            <div className="homeTopLeft">
+            <div className="homeTopLeft" style={{ gridColumn: "1 / -1" }}>
               <div className="home-hero-logo">
                 <img src="/logo.png" alt="Logo" />
               </div>
@@ -1299,38 +1135,10 @@ function Home() {
                 <div className="home-kicker">Centrale Operativa</div>
                 <h1 className="home-title">Dashboard Admin</h1>
                 <p className="home-subtitle">
-                  Panoramica rapida su rimorchi, sessioni attive e revisioni. Tutti i pannelli
+                  Panoramica rapida su stato operativo, alert e revisioni. Tutti i pannelli
                   portano alle sezioni operative.
                 </p>
               </div>
-            </div>
-            <div className="home-hero-right homeTopRight">
-              <Link to={NEXT_AUTISTI_ADMIN_PATH} className="hero-card">
-                <div className="hero-card-title">Centro rettifica dati (admin)</div>
-                <div className="hero-card-value hero-card-subtext">
-                  Correggi dati e risolvi anomalie operative.
-                </div>
-              </Link>
-              <Link to={NEXT_MEZZI_PATH} className="hero-card">
-                <div className="hero-card-title">Mezzi</div>
-                <div className="hero-card-value">Anagrafiche</div>
-              </Link>
-              <Link to="/next/capo/mezzi" className="hero-card">
-                <div className="hero-card-title">Area Capo</div>
-                <div className="hero-card-value hero-card-subtext">
-                  Costi mezzi, fatture e riepiloghi.
-                </div>
-              </Link>
-              <Link to={NEXT_MANUTENZIONI_PATH} className="hero-card">
-                <div className="hero-card-title">Manutenzioni</div>
-                <div className="hero-card-value">Registro</div>
-              </Link>
-              <Link to={NEXT_AUTISTI_INBOX_PATH} className="hero-card">
-                <div className="hero-card-title">Autisti Inbox (admin)</div>
-                <div className="hero-card-value hero-card-subtext">
-                  Vedi e gestisci cio che arriva dagli autisti.
-                </div>
-              </Link>
             </div>
           </div>
         </header>
@@ -1338,417 +1146,137 @@ function Home() {
         <div className="home-dashboard">
           <div className="home-grid">
             <section className="home-span2">
+              <div className="home-top-row">
+                <div className="home-top-card-slot">
+                  <HomeAlertCard
+                    canExportAlerts={canExportAlerts}
+                    activeFilterId={alertFilter}
+                    filterOptions={alertFilterOptions}
+                    getTargaTooltip={getTargaTooltip}
+                    loading={loading || !snapshot}
+                    onExportAlertsPdf={handleExportAlertsPdf}
+                    onFilterChange={setAlertFilter}
+                    onOpenAlertItem={openAlertItem}
+                    onOpenImportantEventsModal={() => setImportantEventsOpen(true)}
+                    onOpenImportantEvent={(event) => setSelectedAlertEvent(event)}
+                    onOpenPreCollaudoModal={openPreCollaudoModal}
+                    onOpenRevisionModal={openRevisioneModal}
+                    importantAutistiItems={importantAutistiItems}
+                    revisionByTarga={revisionByTarga}
+                    visibleAlertItems={visibleAlertItems}
+                  />
+                </div>
+
+                <div className="home-top-card-slot">
+                  <StatoOperativoCard
+                    assetPath={NEXT_AUTISTI_ADMIN_PATH}
+                    getMezzoLabel={getMezzoLabel}
+                    getTargaTooltip={getTargaTooltip}
+                    loading={loading}
+                    motrici={motriciTrattoriDaMostrare}
+                    onCancelRimorchioEdit={cancelRimorchioEdit}
+                    onRimorchioDraftChange={(value) =>
+                      setRimorchioEdit((prev) => (prev ? { ...prev, luogo: value } : prev))
+                    }
+                    onSaveRimorchioEdit={saveRimorchioEdit}
+                    onStartRimorchioEdit={startRimorchioEdit}
+                    rimorchioEdit={rimorchioEdit}
+                    rimorchi={rimorchiDaMostrare}
+                    sessioni={sessioniAttive}
+                    sessioniPath={NEXT_AUTISTI_INBOX_PATH}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="home-span2">
+              <QuickNavigationCard
+                allLinks={QUICK_LINKS_ALL}
+                favorites={quickFavorites}
+                anagraficheLinks={QUICK_LINKS_ANAGRAFICHE}
+                operativoLinks={QUICK_LINKS_OPERATIVO}
+                pinnedIds={quickPinnedIds}
+                blockedTitle={CLONE_ACTION_BLOCKED_TITLE}
+                onRecordLinkUse={recordQuickLinkUse}
+                onTogglePin={toggleQuickLinkPin}
+                resolveCloneSafeRoute={resolveCloneSafeRoute}
+              />
+            </section>
+
+            <section className="home-span2">
               <section className="panel panel-search home-card home-full" style={{ animationDelay: "40ms" }}>
                 <div className="panel-head home-card__head">
                   <div>
-                    <h2 className="home-card__title">Ricerca 360</h2>
+                    <h2 className="home-card__title">IA interna</h2>
                     <span className="home-card__subtitle">
-                      Cerca targa o autista e apri la Vista Mezzo 360
+                      Apri la conversazione completa in un modale operativo
                     </span>
                   </div>
                 </div>
                 <div className="home-card__body">
-                  <div className="search-field">
-                    <input
-                      className="search-input"
-                      type="text"
-                      placeholder="Cerca targa o autista"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  <div className="search-results">
-                    {loading ? (
-                      <div className="search-empty">Caricamento dati...</div>
-                    ) : !searchQuery.trim() ? (
-                      <div className="search-empty">Digita per cercare</div>
-                    ) : searchResults.length === 0 ? (
-                      <div className="search-empty">Nessun risultato</div>
-                    ) : (
-                      searchResults.map((r, idx) => {
-                        const tooltip = getTargaTooltip(r.targa);
-                        return (
-                          <Link
-                            key={`${r.targa}-${idx}`}
-                            to={buildNextDossierPath(r.targa)}
-                            className="search-item"
-                          >
-                            <div className="search-item-main">
-                              <span className="targa" title={tooltip || undefined}>
-                                {r.targa}
-                              </span>
-                              <span className="search-meta">
-                                {r.autistaNome ? `Autista: ${r.autistaNome}` : "Autista: -"}
-                              </span>
-                            </div>
-                            <span className="row-arrow">-&gt;</span>
-                          </Link>
-                        );
-                      })
-                    )}
-                  </div>
-                  <div className="badge-search">
-                    <div className="badge-search-label">Cerca badge</div>
-                    <div className="badge-search-form">
-                      <div className="homeBadgeRowGrid">
-                        <div className="badge-search-field homeBadgeCol">
-                          <input
-                            className="badge-search-input"
-                            type="text"
-                            placeholder="Inserisci badge"
-                            value={badgeQuery}
-                            onChange={(e) => setBadgeQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAutistaSearch();
-                              }
-                            }}
-                          />
-                        </div>
-                        <div className="badge-search-field homeNomeCol">
-                          <div className="homeSuggestWrap" ref={nameSuggestRef}>
-                            <input
-                              className="badge-search-input"
-                              type="text"
-                              placeholder="Nome autista..."
-                              value={nameQuery}
-                              onChange={(e) => handleNameChange(e.target.value)}
-                              onFocus={() => {
-                                if (nameQueryKey.length >= 2) setNameSuggestOpen(true);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  setNameSuggestOpen(false);
-                                  return;
-                                }
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  handleAutistaSearch();
-                                }
-                              }}
-                            />
-                            {showNameSuggestions ? (
-                              <div className="badge-suggest homeSuggestList">
-                                {nameSuggestions.map((suggestion) => (
-                                  <button
-                                    key={`${suggestion.name}-${suggestion.badge || "no-badge"}`}
-                                    type="button"
-                                    className="badge-suggest-item"
-                                    onClick={() => handleNameSuggestion(suggestion)}
-                                  >
-                                    <div className="badge-suggest-main">
-                                      <span className="badge-suggest-name">{suggestion.name}</span>
-                                      <span className="badge-suggest-meta">
-                                        {suggestion.badge ? `Badge ${suggestion.badge}` : "Badge -"}
-                                      </span>
-                                      {suggestion.targa ? (
-                                        <span className="badge-suggest-meta">
-                                          Targa {suggestion.targa}
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="homeApriCol">
-                          <button
-                            type="button"
-                            className="badge-search-button"
-                            onClick={handleAutistaSearch}
-                          >
-                            Apri
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <HomeInternalAiLauncher />
                 </div>
               </section>
             </section>
-            <div className="home-col">
-                <section className="panel panel-alerts home-card" style={{ animationDelay: "20ms" }}>
-                  <div className="panel-head home-card__head">
-                    <div>
-                      <h2 className="home-card__title">ALERT</h2>
-                      <span className="home-card__subtitle">
-                        Revisioni, segnalazioni non lette, conflitti agganci e dati mancanti
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="alert-action"
-                      onClick={handleExportAlertsPdf}
-                      disabled={!canExportAlerts}
-                    >
-                      ESPORTA PDF
-                    </button>
-                  </div>
-                  <div className="panel-body alerts-list home-card__body">
-                    {loading || !snapshot ? (
-                      <div className="panel-row panel-row-empty">Caricamento alert...</div>
-                    ) : visibleAlerts.length === 0 && !missingAlertVisible ? (
-                      <div className="panel-row panel-row-empty">Nessun alert attivo</div>
-                    ) : (
-                      <>
-                        {missingAlertVisible ? (
-                          <div className="alert-row alert-warning alert-missing">
-                            <div className="alert-main">
-                              <div className="alert-title">
-                                <span className="alert-title-text">Dati mancanti nel Dossier</span>
-                                <span className="status deadline-medium">ATTENZIONE</span>
-                              </div>
-                              <div className="alert-detail">
-                                Alcuni mezzi hanno dati incompleti: completa per evitare problemi nel dossier.
-                              </div>
-                            </div>
-                            <div className="alert-actions">
-                              <button
-                                type="button"
-                                className="alert-action"
-                                onClick={handleMissingIgnore}
-                              >
-                                Ignora
-                              </button>
-                              <button
-                                type="button"
-                                className="alert-action"
-                                onClick={handleMissingLater}
-                              >
-                                In seguito
-                              </button>
-                              <button
-                                type="button"
-                                className="alert-action primary"
-                                onClick={handleMissingNow}
-                              >
-                                Adesso
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                        {visibleAlerts.map((alert) => {
-                          const badgeClass =
-                            alert.severity === "danger"
-                              ? "deadline-danger"
-                              : alert.severity === "warning"
-                              ? "deadline-medium"
-                              : "deadline-low";
-                          const badgeLabel =
-                            alert.severity === "danger"
-                              ? "URGENTE"
-                              : alert.severity === "warning"
-                              ? "ATTENZIONE"
-                              : "INFO";
-                          const alertTarga = fmtTarga(alert.mezzoTarga);
-                          const isTargaAlert = Boolean(alertTarga);
-                          const isImportantEventsAlert =
-                            alert.kind === "eventi_importanti_autisti";
-                          const topImportantItems = isImportantEventsAlert
-                            ? importantAutistiItems.slice(0, 5)
-                            : [];
-                          const remainingImportantItems = isImportantEventsAlert
-                            ? Math.max(0, importantAutistiItems.length - topImportantItems.length)
-                            : 0;
-                          return (
-                            <div
-                              key={alert.id}
-                              className={`alert-row alert-${alert.severity}`}
-                            >
-                              <div className="alert-main">
-                                {isTargaAlert ? (
-                                  <>
-                                    <div className="row-title">
-                                      <span
-                                        className="targa"
-                                        style={{ fontSize: "18px", fontWeight: 700 }}
-                                      >
-                                        {alertTarga}
-                                      </span>
-                                      <span
-                                        className={`status ${badgeClass}`}
-                                        style={{ fontSize: "12px", fontWeight: 600 }}
-                                      >
-                                        {badgeLabel}
-                                      </span>
-                                    </div>
-                                    <div className="row-meta row-meta-stack">
-                                      <div className="row-meta-line" style={{ fontSize: "14px" }}>
-                                        <span className="label">Stato:</span>{" "}
-                                        <strong>{alert.title}</strong>
-                                      </div>
-                                      <div className="row-meta-line" style={{ fontSize: "14px" }}>
-                                        <span className="label">Dettaglio:</span>{" "}
-                                        <span>{alert.detailText}</span>
-                                      </div>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="alert-title">
-                                      <span className="alert-title-text">{alert.title}</span>
-                                      <span className={`status ${badgeClass}`}>{badgeLabel}</span>
-                                    </div>
-                                    {isImportantEventsAlert ? (
-                                      <div className="alert-detail">
-                                        {topImportantItems.map((item) => (
-                                          <div
-                                            key={item.id}
-                                            className="alert-detail-row"
-                                            role="button"
-                                            tabIndex={0}
-                                            style={{ cursor: "pointer" }}
-                                            onClick={() => setSelectedEvent(item.event)}
-                                            onKeyDown={(event) => {
-                                              if (event.key === "Enter" || event.key === " ") {
-                                                event.preventDefault();
-                                                setSelectedEvent(item.event);
-                                              }
-                                            }}
-                                          >
-                                            <span className="targa">{item.targa || "-"}</span>
-                                            <span className="alert-detail">
-                                              {formatDateTimeForDisplay(item.ts)}
-                                            </span>
-                                            <span className="alert-detail">{item.tipo}</span>
-                                            <span className="alert-detail">{item.preview || "-"}</span>
-                                          </div>
-                                        ))}
-                                        {remainingImportantItems > 0 ? (
-                                          <div className="alert-detail-row">
-                                            <span className="alert-detail">
-                                              +{remainingImportantItems} altri eventi
-                                            </span>
-                                          </div>
-                                        ) : null}
-                                        {importantAutistiItems.length > 5 ? (
-                                          <div className="alert-detail-row">
-                                            <button
-                                              type="button"
-                                              className="alert-action"
-                                              onClick={() => setImportantEventsOpen(true)}
-                                            >
-                                              Vedi tutto
-                                            </button>
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                    ) : (
-                                      <div className="alert-detail">{alert.detailText}</div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                              <div className={`alert-actions ${isTargaAlert ? "booking-actions" : ""}`}>
-                                <button
-                                  type="button"
-                                  className={isTargaAlert ? "booking-action" : "alert-action"}
-                                  onClick={() => handleAlertAction(alert, "snooze_1d")}
-                                >
-                                  Ignora
-                                </button>
-                                <button
-                                  type="button"
-                                  className={isTargaAlert ? "booking-action" : "alert-action"}
-                                  onClick={() => handleAlertAction(alert, "snooze_3d")}
-                                >
-                                  In seguito
-                                </button>
-                                <button
-                                  type="button"
-                                  className={
-                                    isTargaAlert ? "booking-action primary" : "alert-action primary"
-                                  }
-                                  onClick={() => handleAlertAction(alert, "ack")}
-                                >
-                                  Letto
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                  </div>
-                </section>
 
-                <section className="panel panel-sessioni home-card" style={{ animationDelay: "120ms" }}>
-                  <div className="panel-head home-card__head">
-                    <div>
-                      <h2 className="home-card__title">Sessioni attive</h2>
-                      <span className="home-card__subtitle">Sessioni live</span>
-                    </div>
+            {false ? (
+              <>
+            <section className="home-span2">
+              <section className="panel panel-search home-card home-full" style={{ animationDelay: "40ms" }}>
+                <div className="panel-head home-card__head">
+                  <div>
+                    <h2 className="home-card__title">IA interna</h2>
+                    <span className="home-card__subtitle">
+                      Apri la conversazione completa in un modale operativo
+                    </span>
                   </div>
-                  <div className="panel-body home-card__body">
-                    {loading ? (
-                      <div className="panel-row panel-row-empty">
-                        Caricamento dati...
-                      </div>
-                    ) : sessioniAttive.length === 0 ? (
-                      <div className="panel-row panel-row-empty">
-                        Nessuna sessione attiva
-                      </div>
-                      ) : (
-                      sessioniAttive.map((s, idx) => {
-                        const motrice = fmtTarga(s.targaMotrice);
-                        const rimorchio = fmtTarga(s.targaRimorchio);
-                        const badgeValue = String(s.badgeAutista || "").trim();
-                        return (
-                          <div
-                            key={`${s.badgeAutista || "s"}-${idx}`}
-                            className="panel-row panel-row-link"
-                            role="link"
-                            tabIndex={0}
-                            onClick={() => navigate(NEXT_AUTISTI_INBOX_PATH)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                navigate(NEXT_AUTISTI_INBOX_PATH);
-                              }
-                            }}
-                          >
-                            <div className="row-main">
-                              <div className="row-title">
-                                <span>{s.nomeAutista || "Autista"}</span>
-                                <span className="badge">badge {s.badgeAutista || "-"}</span>
-                                {badgeValue ? (
-                                  <button
-                                    type="button"
-                                    className="session-profile-link"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      navigate(NEXT_AUTISTI_INBOX_PATH);
-                                    }}
-                                  >
-                                    Profilo
-                                  </button>
-                                ) : null}
-                              </div>
-                              <div className="row-meta">
-                                <span className="label">Motrice:</span>{" "}
-                                <span className="targa" title={getTargaTooltip(motrice) || undefined}>
-                                  {motrice || "-"}
-                                </span>{" "}
-                                <span className="label">Rimorchio:</span>{" "}
-                                <span className="targa" title={getTargaTooltip(rimorchio) || undefined}>
-                                  {rimorchio || "-"}
-                                </span>
-                              </div>
-                            </div>
-                            <span className="row-arrow">-&gt;</span>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </section>
+                </div>
+                <div className="home-card__body">
+                  <HomeInternalAiLauncher />
+                </div>
+              </section>
+            </section>            <div className="home-col">
+                <HomeAlertCard
+                  canExportAlerts={canExportAlerts}
+                  activeFilterId={alertFilter}
+                  filterOptions={alertFilterOptions}
+                  getTargaTooltip={getTargaTooltip}
+                  loading={loading || !snapshot}
+                  onExportAlertsPdf={handleExportAlertsPdf}
+                  onFilterChange={setAlertFilter}
+                  onOpenAlertItem={openAlertItem}
+                  onOpenImportantEventsModal={() => setImportantEventsOpen(true)}
+                  onOpenImportantEvent={(event) => setSelectedAlertEvent(event)}
+                  onOpenPreCollaudoModal={openPreCollaudoModal}
+                  onOpenRevisionModal={openRevisioneModal}
+                  importantAutistiItems={importantAutistiItems}
+                  revisionByTarga={revisionByTarga}
+                  visibleAlertItems={visibleAlertItems}
+                />
+
+                <StatoOperativoCard
+                  assetPath={NEXT_AUTISTI_ADMIN_PATH}
+                  getMezzoLabel={getMezzoLabel}
+                  getTargaTooltip={getTargaTooltip}
+                  loading={loading}
+                  motrici={motriciTrattoriDaMostrare}
+                  onCancelRimorchioEdit={cancelRimorchioEdit}
+                  onRimorchioDraftChange={(value) =>
+                    setRimorchioEdit((prev) => (prev ? { ...prev, luogo: value } : prev))
+                  }
+                  onSaveRimorchioEdit={saveRimorchioEdit}
+                  onStartRimorchioEdit={startRimorchioEdit}
+                  rimorchioEdit={rimorchioEdit}
+                  rimorchi={rimorchiDaMostrare}
+                  sessioni={sessioniAttive}
+                  sessioniPath={NEXT_AUTISTI_INBOX_PATH}
+                />
               </div>
               <div className="home-col">
-                <section className="panel panel-revisioni home-card" style={{ animationDelay: "180ms" }}>
+                <section
+                  className="panel panel-revisioni home-card"
+                  style={{ animationDelay: "180ms", display: "none" }}
+                >
                   <div className="panel-head home-card__head">
                     <div>
                       <h2 className="home-card__title">Revisioni</h2>
@@ -2001,6 +1529,8 @@ function Home() {
                   </div>
                 </section>
               </div>
+            {false ? (
+              <>
             <div className="home-col">
                 <section className="panel panel-rimorchi home-card" style={{ animationDelay: "60ms" }}>
             <div className="panel-head home-card__head">
@@ -2254,7 +1784,9 @@ function Home() {
               )}
             </div>
                 </section>
-              </div>
+            </div>
+              </>
+            ) : null}
 
           {/*
           <section className="panel panel-revisioni home-card" style={{ animationDelay: "180ms" }}>
@@ -2413,128 +1945,23 @@ function Home() {
           */}
 
             <section className="home-span2">
-              <section className="panel panel-quick home-card home-full" style={{ animationDelay: "240ms" }}>
-            <div className="panel-head home-card__head">
-              <div>
-                <h2 className="home-card__title">Collegamenti rapidi</h2>
-                <span className="home-card__subtitle">Tutte le sezioni in un click</span>
-              </div>
-            </div>
-            <div className="home-card__body">
-              <div className="quick-toolbar">
-                <input
-                  className="quick-search-input"
-                  value={quickSearch}
-                  onChange={(e) => setQuickSearch(e.target.value)}
-                  placeholder="Cerca sezione..."
-                  aria-label="Cerca sezione"
-                />
-              </div>
-              {quickSearchActive ? (
-                <div className="quick-search-results">
-                  {quickSearchResults.length > 0 ? (
-                    <div className="quick-grid quick-search-grid">
-                      {quickSearchResults.map(renderQuickLink)}
-                    </div>
-                  ) : (
-                    <div className="quick-empty">Nessun risultato</div>
-                  )}
-                </div>
-              ) : (
-                <div className="quick-sections">
-                  <div className="quick-section quick-favorites">
-                    <div className="quick-title">
-                      <span>Preferiti</span>
-                      <span className="quick-pill quick-pill-favorites">TOP 6</span>
-                    </div>
-                    <div className="quick-grid quick-favorites-grid">
-                      {quickFavorites.map(renderQuickLink)}
-                    </div>
-                  </div>
-
-                  <div className="quick-accordion">
-                    {quickCategories.map((section) => {
-                      const isOpen = quickSectionsOpen[section.id];
-                      const isExpanded = quickSectionsExpanded[section.id];
-                      const visibleLinks = isExpanded
-                        ? section.links
-                        : section.links.slice(0, 4);
-                      const hasMore = section.links.length > 4;
-                      return (
-                        <div key={section.id} className="quick-accordion-item">
-                          <button
-                            type="button"
-                            className="quick-accordion-toggle"
-                            onClick={() => toggleQuickSectionOpen(section.id)}
-                            aria-expanded={isOpen}
-                          >
-                            <span className="quick-accordion-title">
-                              <span>{section.title}</span>
-                              <span className={`quick-pill quick-pill-${section.id}`}>
-                                {quickSectionPills[section.id]}
-                              </span>
-                            </span>
-                            <span className="quick-accordion-meta">
-                              {section.links.length}
-                            </span>
-                            <span className={`quick-accordion-arrow ${isOpen ? "open" : ""}`}>
-                              &gt;
-                            </span>
-                          </button>
-                          {isOpen ? (
-                            <div className="quick-accordion-body">
-                              <div className="quick-grid quick-category-grid">
-                                {visibleLinks.map(renderQuickLink)}
-                              </div>
-                              {hasMore ? (
-                                <button
-                                  type="button"
-                                  className="quick-more-btn"
-                                  onClick={() => toggleQuickSectionExpanded(section.id)}
-                                >
-                                  {isExpanded ? "Mostra meno" : "Mostra tutti"}
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="quick-section quick-anagrafiche">
-                    <div className="quick-title">
-                      <span>Anagrafiche</span>
-                      <span className="quick-pill quick-pill-anagrafiche">ANAGRAFICHE</span>
-                    </div>
-                    <div className="quick-grid quick-anagrafiche-grid">
-                      {QUICK_LINKS_ANAGRAFICHE.map(renderQuickLink)}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        </section>
+              <QuickNavigationCard
+                allLinks={QUICK_LINKS_ALL}
+                favorites={quickFavorites}
+                anagraficheLinks={QUICK_LINKS_ANAGRAFICHE}
+                operativoLinks={QUICK_LINKS_OPERATIVO}
+                pinnedIds={quickPinnedIds}
+                blockedTitle={CLONE_ACTION_BLOCKED_TITLE}
+                onRecordLinkUse={recordQuickLinkUse}
+                onTogglePin={toggleQuickLinkPin}
+                resolveCloneSafeRoute={resolveCloneSafeRoute}
+              />
+            </section>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
-
-      <AutistiImportantEventsModal
-        open={importantEventsOpen}
-        items={importantAutistiItems}
-        onClose={() => setImportantEventsOpen(false)}
-        onSelect={(event) => {
-          setSelectedEvent(event);
-          setImportantEventsOpen(false);
-        }}
-      />
-
-      <NextHomeAutistiEventoModal
-        key={selectedEvent?.id ?? "home-event-empty"}
-        event={selectedEvent}
-        onClose={() => setSelectedEvent(null)}
-      />
 
       {prenotazioneModalOpen ? (
         <div
@@ -2832,6 +2259,21 @@ function Home() {
         </div>
       ) : null}
 
+      <AutistiImportantEventsModal
+        open={importantEventsOpen}
+        items={importantAutistiItems as D10ImportantAutistiEventItem[]}
+        onClose={() => setImportantEventsOpen(false)}
+        onSelect={(event) => {
+          setSelectedAlertEvent(event);
+          setImportantEventsOpen(false);
+        }}
+      />
+
+      <NextHomeAutistiEventoModal
+        event={selectedAlertEvent}
+        onClose={() => setSelectedAlertEvent(null)}
+      />
+
       {missingModalOpen ? (
         <div
           className="home-modal-backdrop"
@@ -2928,4 +2370,5 @@ function Home() {
 }
 
 export default Home;
+
 

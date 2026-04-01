@@ -1,5 +1,157 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-01 - Coppia alta Home con layout desktop deterministico
+- `Alert` e `Stato operativo` usano ora una coppia desktop esplicita e progettata insieme.
+- Su desktop la riga alta adotta:
+  - griglia a due colonne;
+  - rapporto `1.15fr / 1fr`;
+  - altezza esterna uniforme di `620px`.
+- Dentro entrambe le card:
+  - header fisso;
+  - controlli/filtro/tab fissi;
+  - solo la lista interna e scrollabile.
+- `Stato operativo` mostra 5 righe nel riepilogo Home e mantiene il footer `Vedi tutto` coerente in basso.
+- Su mobile le card tornano in colonna.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Riga alta Home NEXT con altezza coerente e liste scrollabili
+- `Alert` e `Stato operativo` usano ora una shell comune per la riga alta della Home.
+- Su desktop le due card hanno la stessa altezza esterna controllata.
+- Header e controlli restano visibili; scorre solo la parte elenco interna.
+- In `Stato operativo` il numero righe visibili nel riepilogo Home e stato alzato da 5 a 6 per riempire meglio la card senza cambiare logica o dati.
+- Su mobile le card tornano in colonna.
+- Nessuna modifica a modali, click, writer o logica business.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Rifinitura visiva riga alta Home NEXT
+- La riga alta della Home NEXT usa ora wrapper locali dedicati in `NextCentroControlloPage.tsx` e `next-shell.css`.
+- `Alert` e `Stato operativo` restano affiancate su desktop e in colonna su mobile.
+- I due slot della riga alta sono ora allineati con:
+  - griglia locale in stretch;
+  - wrapper a tutta altezza;
+  - card interne estese alla stessa altezza disponibile;
+  - body interno scrollabile senza introdurre altezze fisse aggressive.
+- Nessuna modifica a contenuti, logiche o comportamenti interni delle due card.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Correzione mount Home `Alert` / `Stato operativo`
+- Verificato e corretto il mount reale della Home in `src/next/NextCentroControlloPage.tsx`.
+- Il blocco alto monta ora esplicitamente:
+  - `Alert`
+  - `Stato operativo`
+  in due colonne locali affiancate su desktop e in colonna su mobile.
+- Subito sotto restano nell'ordine:
+  - `Navigazione rapida`
+  - `IA interna`.
+- Nessuna modifica ai contenuti o alle logiche interne delle card.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Home NEXT riordinata con `Navigazione rapida` minimale
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- La gerarchia della Home e stata riordinata cosi:
+  - riga 1: `Alert` e `Stato operativo`;
+  - riga 2: `Navigazione rapida`;
+  - riga 3: `IA interna`.
+- `Alert` e `Stato operativo` stanno nello stesso blocco alto tramite griglia locale responsive, affiancati su desktop e in colonna su viewport piu piccole.
+- `Navigazione rapida` in Home mostra ora solo:
+  - barra cerca;
+  - `Preferiti` compatti;
+  - CTA `Tutte le sezioni`.
+- Le sezioni complete di navigazione sono state spostate in un overlay full-screen con:
+  - pagina sotto bloccata;
+  - chiusura sempre visibile;
+  - una sola sezione aperta per volta;
+  - moduli reali del runtime NEXT corrente.
+- Nessuna modifica alla madre, nessuna route nuova, nessun cambio di logica business.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Verifica export unico `QuickNavigationCard`
+- Verificato il file `src/next/components/QuickNavigationCard.tsx`.
+- Nel file e presente un solo `export default QuickNavigationCard;`.
+- La build runtime conferma che l'errore Vite `Multiple exports with the same name "default"` non e presente nello stato attuale del repo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Home NEXT con `Navigazione rapida` come hub unico
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- Le hero-card piccole vicino a `Dashboard` non sono piu montate nel layout principale della Home.
+- La card finale `Collegamenti rapidi` e stata sostituita con `Navigazione rapida`, che resta l'unico hub di navigazione rapido della Home.
+- La nuova card mantiene:
+  - una barra cerca unica;
+  - la sezione `Preferiti` con massimo 6 elementi visibili;
+  - il concetto di `PIN` solo dentro i preferiti;
+  - macro-sezioni compatte richiudibili con una sola sezione aperta per volta.
+- Le sezioni mostrate (`Operativita`, `Autisti`, `IA`, `Anagrafiche`, `Acquisti e Magazzino`, `Cisterna`) usano solo moduli e route gia presenti nel runtime NEXT corrente.
+- Nessuna modifica alla madre, nessun cambio di route business, nessun writer nuovo.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - `Stato operativo` con modale contestuale e layout affiancato
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- La card `Stato operativo` non usa piu `Vedi tutto` come link verso superfici fuori contesto, ma apre un modale full-overlay coerente con la tab attiva.
+- Il modale mostra:
+  - tutte le `Sessioni` con filtro per `targa` e `autista`;
+  - tutti i `Rimorchi` con filtro per `targa`;
+  - tutte le `Motrici` con filtro per `targa`.
+- La card `Stato operativo` e ora affiancata alla card `Alert` nella parte alta della Home su desktop, mentre torna in colonna su viewport piu piccole tramite griglia responsive locale.
+- Nessuna modifica alla madre, nessuna modifica ai writer o ai dati di dominio.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Home NEXT con card unica `Stato operativo`
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- Le tre card separate `Sessioni attive`, `Rimorchi: dove sono` e `Motrici e trattori: dove sono` sono state ricomposte in una sola card `Stato operativo`.
+- La card espone tre tab compatte con conteggi reali gia disponibili: `Sessioni`, `Rimorchi`, `Motrici`.
+- `Sessioni` non apre modali duplicati e rimanda alla superficie NEXT gia esistente `Autisti Inbox (admin)`, senza dipendenze da `360`.
+- `Rimorchi` e `Motrici` restano leggibili in Home in forma compatta e mantengono il collegamento alla superficie NEXT `Autisti/Admin` gia usata dal runtime corrente.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Alert Home NEXT `Segnalazioni` con record reale
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- La categoria `Segnalazioni` della card `Alert` non costruisce piu un payload sintetico derivato dal solo alert.
+- Il click sulla singola segnalazione recupera ora il record reale da `@segnalazioni_autisti_tmp` e apre `NextHomeAutistiEventoModal` con payload completo madre-like.
+- Il dettaglio mostra quindi i campi, gli allegati foto e le azioni PDF gia supportate dal modale eventi autisti sul record vero.
+- Le altre categorie della card `Alert` restano invariate.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - IA Home con launcher minimale e modale dedicato
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- Il blocco IA in Home resta minimale con campo richiesta, menu `+`, allegati e submit.
+- Il submit apre ora un vero modale full-overlay renderizzato fuori dalla card Home.
+- Il modale Home non monta piu la pagina IA completa come schermata ristretta, ma una superficie dedicata `home-modal` sopra la stessa logica reale di chat, allegati e orchestrazione.
+- La richiesta iniziale puo partire automaticamente nel modale e la conversazione continua nello stesso thread semplificato.
+- La route `/next/ia/interna` continua a funzionare come pagina completa separata.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - modale IA interna viewport-safe
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- Il launcher della chat IA interna apre ora la vera esperienza IA in un modale con shell viewport-safe.
+- Il modale resta entro la viewport, blocca lo scroll della pagina sotto e tiene sempre visibile l'header con `Chiudi`.
+- L'area contenuti del modale scorre in modo interno e la chat resta usabile fino al composer.
+- La logica IA, gli alert e le revisioni restano invariati.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - IA interna ridotta a launcher compatto e modale operativo
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- Il blocco IA interna in Home e stato ridotto a launcher compatto con solo richiesta testuale e menu `+`.
+- Dal launcher si apre la vera esperienza IA interna in un modale operativo riusando `NextInternalAiPage`.
+- La route ufficiale `/next/ia/interna` continua a funzionare senza modifiche al contratto di pagina.
+- Il testo visibile `Lascia nel thread` e stato rinominato in `Mantieni nella conversazione`, coerentemente con il significato del controllo UI.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Alert unico con filtro visibile
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- La card `Alert` e rimasta unica e ora mostra una barra filtro sopra la lista.
+- Il filtro iniziale e `Tutti` e le categorie esposte sono quelle gia presenti nel runtime: `Revisioni`, `Segnalazioni`, `Eventi autisti` e `Conflitti sessione`.
+- I contatori visibili sulle pillole filtro sono ricavati dai record gia disponibili senza nuove aggregazioni di dominio.
+- Le revisioni restano cliccabili e aprono il modale revisione gia esistente.
+- Segnalazioni, eventi autisti e altri alert continuano a usare i comportamenti gia presenti nel codice corrente.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Home NEXT top area semplificata
+- La Home NEXT ufficiale usa ancora il runtime `src/next/NextCentroControlloPage.tsx`.
+- Nell'area alta la entry legacy `360` e stata sostituita con la vera superficie della chat IA interna gia esistente nel progetto.
+- Il blocco `Alert` mostra solo le revisioni dei mezzi.
+- Ogni riga revisione dentro `Alert` apre il modale revisione riusando la stessa logica e lo stesso salvataggio gia presenti.
+- La sezione `Revisioni` separata resta nascosta dal layout principale della Home NEXT.
+- Build runtime verificata con esito positivo.
+
 ## 0. Audit finale globale V4 2026-03-31 - blocco extra-tracker `IA interna`
 - Audit separato finale aggiornato: `docs/audit/AUDIT_FINALE_GLOBALE_NEXT_POST_LOOP_V4.md`.
 - Verdetto corrente verificato nel repo:
@@ -2768,3 +2920,13 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
   - la chiusura vale solo per il modulo `Manutenzioni` nel loop corrente;
   - il tracker corrente risulta interamente `CLOSED`;
   - loop modulo-per-modulo completato; consigliato audit finale globale separato.
+
+## 5.123 Aggiornamento 2026-04-01 - Alert Home NEXT riallineato alle categorie madre-like
+- La card `Alert` della Home NEXT mantiene il filtro visibile ma ora rende le categorie in modo piu fedele alla madre:
+  - `Revisioni` apre il modal revisione e conserva il pre-collaudo sul mezzo;
+  - `Segnalazioni` apre il dettaglio evento nella vera esperienza eventi autisti;
+  - `Eventi autisti` mostra i primi eventi ordinati e apre il modal lista completo;
+  - `Conflitti sessione` resta nel flusso collegato gia esistente.
+- Il cambiamento resta confinato a `src/next/*` e non introduce writer nuovi o shape dati diverse.
+- Verifica eseguita:
+  - `npm run build` -> `OK`.

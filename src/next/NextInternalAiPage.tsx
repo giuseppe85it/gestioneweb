@@ -154,6 +154,10 @@ import "./internal-ai/internal-ai.css";
 
 type NextInternalAiPageProps = {
   sectionId?: NextInternalAiSectionId;
+  initialChatInput?: string;
+  initialChatAttachments?: File[];
+  surfaceVariant?: "page" | "home-modal";
+  autoSubmitInitialChat?: boolean;
 };
 
 type UnifiedConsoleScopeFilter =
@@ -656,7 +660,7 @@ const UNIFIED_CONSOLE_SCOPE_OPTIONS: Array<{
 ];
 
 const UNIFIED_OUTPUT_LABELS: Record<UnifiedConsoleOutputPreference, string> = {
-  thread: "Lascia nel thread",
+  thread: "Mantieni nella conversazione",
   modale: "Apri modale IA",
   pdf: "Apri PDF IA-only",
   report: "Apri report IA",
@@ -2128,7 +2132,13 @@ function buildContractLabelMap(contractCatalog: ReturnType<typeof readInternalAi
   return new Map<string, string>(contractCatalog.map((entry) => [entry.id, entry.title]));
 }
 
-function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps) {
+function NextInternalAiPage({
+  sectionId = "overview",
+  initialChatInput,
+  initialChatAttachments,
+  surfaceVariant = "page",
+  autoSubmitInitialChat = false,
+}: NextInternalAiPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [snapshotVersion, setSnapshotVersion] = useState(0);
@@ -2183,7 +2193,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   });
   const [selectedVehicle, setSelectedVehicle] = useState<InternalAiVehicleLookupCandidate | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<InternalAiDriverLookupCandidate | null>(null);
-  const [chatInput, setChatInput] = useState("");
+  const [chatInput, setChatInput] = useState(() => initialChatInput?.trim() ?? "");
   const [selectedQuickRequest, setSelectedQuickRequest] = useState("");
   const [unifiedConsoleTarga, setUnifiedConsoleTarga] = useState("");
   const [unifiedConsoleScopes, setUnifiedConsoleScopes] = useState<UnifiedConsoleScopeFilter[]>([
@@ -2460,7 +2470,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
 
       setChatAttachmentRepositoryState({
         status: "loading",
-        message: "Caricamento degli allegati IA-only del thread...",
+        message: "Caricamento degli allegati IA-only della conversazione...",
         items: chatAttachmentsRef.current,
         transport: "server_http_retrieval",
         transportMessage: "Tentativo di lettura allegati dal backend IA separato.",
@@ -4141,7 +4151,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     chatAttachmentInputRef.current?.click();
   };
 
-  const handleChatAttachmentSelection = async (files: FileList | null) => {
+  const handleChatAttachmentSelection = async (files: FileList | File[] | null) => {
     const fileItems = Array.from(files ?? []).slice(0, 6);
     if (
       !fileItems.length ||
@@ -4153,7 +4163,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
 
     const nextAttachments = [...chatAttachments];
     let nextTransport: ChatAttachmentRepositoryState["transport"] = "server_http_retrieval";
-    let nextMessage = "Allegati IA-only aggiornati nel thread.";
+    let nextMessage = "Allegati IA-only aggiornati nella conversazione.";
     let sawServerUpload = false;
 
     setChatAttachmentRepositoryState((current) => ({
@@ -4206,6 +4216,30 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     });
   };
 
+  const initialLauncherAttachmentsProcessedRef = useRef(false);
+  const [initialChatAttachmentsReady, setInitialChatAttachmentsReady] = useState(
+    () => !initialChatAttachments?.length,
+  );
+
+  useEffect(() => {
+    if (initialLauncherAttachmentsProcessedRef.current) {
+      return;
+    }
+
+    if (!initialChatAttachments?.length) {
+      return;
+    }
+
+    if (chatAttachmentRepositoryState.status === "loading") {
+      return;
+    }
+
+    initialLauncherAttachmentsProcessedRef.current = true;
+    void handleChatAttachmentSelection(initialChatAttachments).finally(() => {
+      setInitialChatAttachmentsReady(true);
+    });
+  }, [chatAttachmentRepositoryState.status, initialChatAttachments]);
+
   const handleOpenChatAttachment = (attachment: InternalAiChatAttachment) => {
     const url = buildInternalAiChatAttachmentAssetUrl(attachment);
     if (!url || typeof window === "undefined") {
@@ -4240,13 +4274,13 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
 
         return {
           status: "ready",
-          message: "Allegato locale rimosso dal thread.",
+          message: "Allegato locale rimosso dalla conversazione.",
           items: nextItems,
           transport:
             nextItems.some((entry) => entry.storageMode === "server_file_isolated")
               ? "server_http_retrieval"
               : "frontend_fallback",
-          transportMessage: "Allegato locale rimosso dal thread.",
+          transportMessage: "Allegato locale rimosso dalla conversazione.",
         };
       });
       return;
@@ -4285,8 +4319,8 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     const attachmentLabel =
       memoryHints.attachmentsCount > 0
         ? memoryHints.attachmentsCount === 1
-          ? "1 allegato IA-only nel thread"
-          : `${memoryHints.attachmentsCount} allegati IA-only nel thread`
+          ? "1 allegato IA-only nella conversazione"
+          : `${memoryHints.attachmentsCount} allegati IA-only nella conversazione`
         : null;
 
     if (memoryHints.repoUiRequested) {
@@ -4703,6 +4737,35 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
       setChatStatus("idle");
     }
   };
+
+  const initialChatSubmittedRef = useRef(false);
+
+  useEffect(() => {
+    if (initialChatSubmittedRef.current || !autoSubmitInitialChat || sectionId !== "overview") {
+      return;
+    }
+
+    if (chatStatus === "running" || chatMessages.length > 0 || !initialChatAttachmentsReady) {
+      return;
+    }
+
+    const initialPrompt = initialChatInput?.trim();
+    if (!initialPrompt) {
+      return;
+    }
+
+    initialChatSubmittedRef.current = true;
+    void handleChatSubmit(initialPrompt);
+    // handleChatSubmit changes identity every render; this effect is intentionally gated by refs/state above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    autoSubmitInitialChat,
+    chatMessages.length,
+    chatStatus,
+    initialChatAttachmentsReady,
+    initialChatInput,
+    sectionId,
+  ]);
 
   const applyReportState = (next: {
     previewState: InternalAiPreviewState;
@@ -5190,6 +5253,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
   };
 
   const hasActiveConversation = chatMessages.length > 0 || chatStatus === "running";
+  const isHomeModalSurface = sectionId === "overview" && surfaceVariant === "home-modal";
   const shouldShowLookupStatus =
     Boolean(targaInput.trim()) ||
     Boolean(selectedVehicle) ||
@@ -5197,7 +5261,11 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
     lookupUiState.status === "error";
 
   return (
-    <section className="next-page internal-ai-page">
+    <section
+      className={
+        surfaceVariant === "home-modal" ? "internal-ai-home-modal" : "next-page internal-ai-page"
+      }
+    >
       {sectionId !== "overview" ? (
         <header className="internal-ai-hero">
           <div className="next-panel">
@@ -5239,7 +5307,248 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
         </header>
       ) : null}
 
-      {sectionId === "overview" ? (
+      {sectionId === "overview" ? isHomeModalSurface ? (
+        <article className="internal-ai-home-modal__panel">
+          <div className="internal-ai-home-modal__lead">
+            <div>
+              <p className="internal-ai-card__eyebrow">IA interna</p>
+              <h2>Conversazione operativa</h2>
+              <p className="internal-ai-card__meta">
+                La richiesta parte qui e continua nel modale, senza pannelli secondari o layout amministrativi.
+              </p>
+            </div>
+            {chatBridgeState.transportMessage || chatAttachmentRepositoryState.transportMessage ? (
+              <div className="internal-ai-home-modal__transport">
+                {chatBridgeState.transportMessage ? (
+                  <span className={backendPreviewTransportClass(chatBridgeState.transport)}>
+                    {BACKEND_PREVIEW_TRANSPORT_LABELS[chatBridgeState.transport]}
+                  </span>
+                ) : null}
+                {chatAttachmentRepositoryState.transportMessage ? (
+                  <span
+                    className={backendPreviewTransportClass(chatAttachmentRepositoryState.transport)}
+                  >
+                    Allegati pronti
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="internal-ai-home-modal__conversation">
+            <div className="internal-ai-chat__messages internal-ai-home-modal__messages">
+              {chatMessages.length ? (
+                chatMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`internal-ai-chat__message ${
+                      message.role === "utente" ? "is-user" : "is-assistant"
+                    }`}
+                  >
+                    <div className="internal-ai-chat__message-header">
+                      <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
+                      <div className="internal-ai-pill-row">
+                        <span className={statusToneClass(message.status)}>
+                          {CHAT_STATUS_LABELS[message.status]}
+                        </span>
+                        <span className="internal-ai-pill is-neutral">
+                          {formatDateLabel(message.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                    {message.role === "assistente" && message.outputMode ? (
+                      <div className="internal-ai-chat__message-delivery">
+                        <span className={outputModeToneClass(message.outputMode)}>
+                          {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
+                        </span>
+                        {buildChatReliabilityLabel(message) ? (
+                          <span className="internal-ai-pill is-neutral">
+                            {buildChatReliabilityLabel(message)}
+                          </span>
+                        ) : null}
+                        {message.outputReason ? (
+                          <span className="internal-ai-chat__message-reason">
+                            {message.outputReason}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {message.role === "assistente" ? (
+                      <>
+                        {buildChatUseCaseLabel(message) ? (
+                          <p className="internal-ai-card__eyebrow">{buildChatUseCaseLabel(message)}</p>
+                        ) : null}
+                        {renderChatMessageText(message.text)}
+                      </>
+                    ) : (
+                      <p className="internal-ai-chat__message-text">{message.text}</p>
+                    )}
+                    {message.attachments.length ? (
+                      <div className="internal-ai-chat__message-attachments">
+                        {message.attachments.map((attachment) => (
+                          <button
+                            key={`${message.id}:attachment:${attachment.id}`}
+                            type="button"
+                            className="internal-ai-chat__attachment-pill"
+                            onClick={() => handleOpenChatAttachment(attachment)}
+                          >
+                            <strong>{attachment.fileName}</strong>
+                            <span>{buildInternalAiChatAttachmentPreviewLabel(attachment)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {buildVisibleChatReferences(message).length ? (
+                      <div className="internal-ai-chat__references">
+                        {buildVisibleChatReferences(message).map((reference) =>
+                          reference.artifactId ? (
+                            <button
+                              key={`${message.id}:${reference.type}:${reference.label}:${reference.artifactId}`}
+                              type="button"
+                              className="internal-ai-chat__reference"
+                              onClick={() => handleOpenArtifact(reference.artifactId!)}
+                            >
+                              {reference.label}
+                              {reference.targa ? ` - ${reference.targa}` : ""}
+                            </button>
+                          ) : (
+                            <span
+                              key={`${message.id}:${reference.type}:${reference.label}`}
+                              className="internal-ai-pill is-neutral"
+                            >
+                              {reference.label}
+                              {reference.targa ? ` - ${reference.targa}` : ""}
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ))
+              ) : hasActiveConversation ? null : (
+                <div className="internal-ai-chat__empty" aria-live="polite">
+                  <p className="internal-ai-chat__empty-title">Nessuna conversazione in corso.</p>
+                  <p className="internal-ai-chat__empty-copy">
+                    Scrivi una richiesta o allega un documento per aprire subito la conversazione.
+                  </p>
+                </div>
+              )}
+              {chatStatus === "running" ? (
+                <div className="internal-ai-chat__message is-assistant">
+                  <div className="internal-ai-chat__message-header">
+                    <strong>Assistente interno</strong>
+                    <span className={statusToneClass("running")}>In elaborazione</span>
+                  </div>
+                  <p className="internal-ai-chat__message-text">
+                    Sto preparando una risposta controllata con il backend IA separato.
+                  </p>
+                </div>
+              ) : null}
+              <div ref={chatMessagesEndRef} />
+            </div>
+
+            <div className="internal-ai-home-modal__composer-shell">
+              <div className="internal-ai-chat__composer internal-ai-home-modal__composer">
+                <label className="internal-ai-search__field">
+                  <span>Scrivi una richiesta</span>
+                  <textarea
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    placeholder="Esempio: mostrami le criticita del mezzo, spiegami cosa richiede attenzione oggi o analizza gli allegati."
+                    className="internal-ai-search__input internal-ai-chat__composer-input"
+                    rows={3}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleChatSubmit();
+                      }
+                    }}
+                  />
+                </label>
+
+                <div className="internal-ai-chat__composer-actions">
+                  <p className="internal-ai-card__meta">
+                    `Invio` manda la richiesta. `Shift + Invio` va a capo.
+                  </p>
+                  <div className="internal-ai-search__actions">
+                    <button
+                      type="button"
+                      className="internal-ai-search__button internal-ai-search__button--secondary"
+                      disabled={
+                        chatStatus === "running" || chatAttachmentRepositoryState.status === "loading"
+                      }
+                      onClick={handleChatAttachmentPicker}
+                    >
+                      Allega file
+                    </button>
+                    <button
+                      type="button"
+                      className="internal-ai-search__button"
+                      disabled={
+                        chatStatus === "running" ||
+                        chatAttachmentRepositoryState.status === "loading" ||
+                        !canSubmitUnifiedConsole
+                      }
+                      onClick={() => void handleChatSubmit()}
+                    >
+                      {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
+                    </button>
+                  </div>
+                </div>
+
+                {chatAttachments.length ? (
+                  <div className="internal-ai-chat__attachments">
+                    {chatAttachments.map((attachment) => (
+                      <article key={attachment.id} className="internal-ai-chat__attachment-row">
+                        <div className="internal-ai-chat__attachment-copy">
+                          <strong>{attachment.fileName}</strong>
+                          <p className="internal-ai-card__meta">{attachment.note}</p>
+                          <p className="internal-ai-card__meta">
+                            {buildInternalAiChatAttachmentPreviewLabel(attachment)} -{" "}
+                            {attachment.storageMode === "server_file_isolated"
+                              ? "server IA isolato"
+                              : "browser locale"}
+                            {" - "}
+                            {(attachment.sizeBytes / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                        <div className="internal-ai-pill-row">
+                          <button
+                            type="button"
+                            className="internal-ai-chat__reference"
+                            onClick={() => handleOpenChatAttachment(attachment)}
+                          >
+                            Apri
+                          </button>
+                          <button
+                            type="button"
+                            className="internal-ai-chat__reference"
+                            onClick={() => void handleRemoveChatAttachment(attachment)}
+                          >
+                            Rimuovi
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+
+                <input
+                  ref={chatAttachmentInputRef}
+                  type="file"
+                  multiple
+                  className="internal-ai-sr-only"
+                  accept=".pdf,image/*,text/plain,text/markdown,.txt,.md,.doc,.docx,.odt,.xls,.xlsx,.csv,application/pdf"
+                  onChange={(event) => {
+                    void handleChatAttachmentSelection(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </article>
+      ) : (
         <>
           <article className="next-panel internal-ai-chat internal-ai-chat--primary">
             <div className="internal-ai-chat__shell">
@@ -6080,7 +6389,7 @@ function NextInternalAiPage({ sectionId = "overview" }: NextInternalAiPageProps)
               <div className="internal-ai-card internal-ai-chat__guide">
                 <p className="internal-ai-card__eyebrow">Come rispondo</p>
                 <ul className="internal-ai-inline-list">
-                  <li>Le domande normali restano nel thread.</li>
+                  <li>Le domande normali restano nella conversazione.</li>
                   <li>I report strutturati si aprono come anteprima PDF dedicata.</li>
                   <li>Fonti, limiti e fallback restano visibili ma non invasivi.</li>
                 </ul>
