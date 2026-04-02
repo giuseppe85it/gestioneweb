@@ -31,6 +31,120 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-01 157
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Riallineamento madre-like del modale procurement NEXT
+- OBIETTIVO: Auditare il modale reale della madre nel modulo `Materiali da ordinare` e riallineare la controparte NEXT riducendo il delta UI senza toccare l'architettura procurement.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_2362_materiali-da-ordinare-next-modal-madre-like.md`
+  - `docs/continuity-reports/2026-04-01_2362_continuity_materiali-da-ordinare-next-modal-madre-like.md`
+- COSA E STATO CAMBIATO: Auditati il modale madre `mdo-modal` e la controparte NEXT. La differenza reale era nell'ereditarieta visiva: la NEXT faceva usare al popup palette e variabili della variante embedded della pagina, mentre la madre usa la shell standard del modulo standalone. Il modale NEXT usa ora backdrop, card, titolo e testo esplicitamente madre-like.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo riallineamento UI del modale procurement NEXT; nessun cambio a route, logica business, writer, shape dati o runtime procurement secondari.
+- COME VERIFICARE: Aprire `/next/materiali-da-ordinare`, aprire una delle azioni placeholder (`Prezzi`, `Allegati`, `Note`), verificare che il modale abbia shell madre-like coerente e poi eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Patch confinata al perimetro NEXT autorizzato; il ruolo top-level di `Materiali da ordinare` non cambia.
+
+### Voce 2026-04-01 156
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Riallineamento madre-like della shell `/next/materiali-da-ordinare`
+- OBIETTIVO: Correggere le rotture reali di layout del modulo procurement NEXT aperto da `Gestione Operativa`, mantenendo invariata l'architettura procurement gia decisa dagli audit.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_2356_materiali-da-ordinare-next-layout-madre-like.md`
+  - `docs/continuity-reports/2026-04-01_2356_continuity_materiali-da-ordinare-next-layout-madre-like.md`
+- COSA E STATO CAMBIATO: La pagina NEXT usa ora una shell madre-like piu vicina al procurement reale della madre: sfondo e cornice caldi, header e tabs piu stabili, workspace riequilibrato, pannello destro con altezza minima coerente e barra finale non piu sovrapposta ai campi. La pagina resta top-level su `Materiali da ordinare` e non reintroduce come ingressi famiglia `Ordini in attesa`, `Ordini arrivati`, `Dettaglio ordine` o `/next/acquisti`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo fix di layout/composizione del runtime NEXT procurement; nessuna modifica a route, writer, shape dati o logica business; runtime procurement secondari lasciati intatti.
+- COME VERIFICARE: Aprire `/next/materiali-da-ordinare`, verificare shell piu larga e madre-like, pannello destro non collassato e barra inferiore che non copre piu il form; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Patch confinata al solo perimetro NEXT autorizzato; la correzione non cambia il ruolo del modulo come unico ingresso procurement top-level della NEXT.
+
+### Voce 2026-04-01 155
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Riallineamento visivo madre-like di `Gestione Operativa` NEXT
+- OBIETTIVO: Riprendere la resa estetica della `Gestione Operativa` della madre senza cambiare la nuova architettura NEXT a 4 famiglie e senza riaprire ingressi procurement declassati.
+- FILE TOCCATI:
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_2359_gestione-operativa-next-madre-like-4-famiglie.md`
+  - `docs/continuity-reports/2026-04-01_2359_continuity_gestione-operativa-next-madre-like-4-famiglie.md`
+- COSA E STATO CAMBIATO: La pagina NEXT e stata ricomposta usando la grammatica visiva della madre (`header`, `badge`, blocco centrale tipo `AZIONI OPERATIVE`, card grandi e sezione finale sintetica), ma mantenendo solo le 4 famiglie approvate. La card `Acquisti e ordini` resta centrata su `Materiali da ordinare` come unico ingresso top-level e non espone piu come ingressi principali `Ordini in attesa`, `Ordini arrivati`, `Dettaglio ordine` o `/next/acquisti`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo riallineamento estetico/layout della pagina NEXT; nessuna modifica a route, writer, shape dati o logica business; madre e CSS legacy non toccati.
+- COME VERIFICARE: Aprire `/next/gestione-operativa`, verificare header, badge, blocco centrale a card grandi e CTA procurement solo su `Materiali da ordinare`; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Patch confinata al solo runtime NEXT autorizzato; la pagina usa la grammatica visiva della madre ma conserva l'architettura approvata dal set di audit di aprile 2026.
+
+### Voce 2026-04-01 154
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Riallineamento finale della card procurement al punto di ingresso canonico NEXT
+- OBIETTIVO: Chiudere il problema delle pagine bianche sui link procurement della card `Acquisti e ordini` e tenere in `Gestione Operativa` solo ingressi procurement stabili.
+- FILE TOCCATI:
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_2340_procurement-card-ingresso-canonico-next.md`
+  - `docs/continuity-reports/2026-04-01_2340_continuity_procurement-card-ingresso-canonico-next.md`
+- COSA E STATO CAMBIATO: Verificate le route procurement realmente montate, la card `Acquisti e ordini` usa ora come ingresso principale `Materiali da ordinare`; i deep link `Ordini in attesa` e `Ordini arrivati` non sono piu esposti come secondari nella card, per non lasciare collegamenti runtime riportati come non affidabili.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo fix funzionale di instradamento procurement nella card famiglia; nessun restyling, nessun cambio a dati, writer o logica business.
+- COME VERIFICARE: Aprire `/next/gestione-operativa`, cliccare la card `Acquisti e ordini` e verificare l'apertura di `/next/materiali-da-ordinare`; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Le route procurement read-only restano montate nel runtime NEXT, ma non vengono piu usate come ingressi diretti dalla card famiglia finche non sono considerate stabili nel flusso reale.
+
+### Voce 2026-04-01 153
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Fix CTA `Acquisti e ordini` in `Gestione Operativa`
+- OBIETTIVO: Eliminare la pagina bianca aperta dalla famiglia `Acquisti e ordini` e riallineare la CTA a una route procurement NEXT realmente funzionante.
+- FILE TOCCATI:
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_2310_fix-cta-acquisti-e-ordini-gestione-operativa.md`
+  - `docs/continuity-reports/2026-04-01_2310_continuity_fix-cta-acquisti-e-ordini-gestione-operativa.md`
+- COSA E STATO CAMBIATO: La CTA `Apri modulo` della card `Acquisti e ordini` non usa piu il parent `/next/acquisti`, ma punta a `/next/ordini-in-attesa`, che nel runtime corrente monta una vista procurement read-only stabile e coerente con la famiglia.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo fix funzionale del collegamento della card famiglia; nessun restyling, nessun cambio a dati, writer o logica business.
+- COME VERIFICARE: Aprire `/next/gestione-operativa`, cliccare `Apri modulo` nella card `Acquisti e ordini`, verificare l'apertura della pagina ordini read-only e poi eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: I link secondari della card restano invariati; il fix e confinato alla CTA principale della famiglia procurement.
+
+### Voce 2026-04-01 152
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Ripristino accesso diretto a `Gestione Operativa` nei preferiti Home
+- OBIETTIVO: Rendere di nuovo visibile in Home un accesso diretto a `Gestione Operativa` senza alterare la nuova architettura tra Home, `Navigazione rapida` e hub operativo.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_2245_home-next-ripristino-accesso-gestione-operativa.md`
+  - `docs/continuity-reports/2026-04-01_2245_continuity_home-next-ripristino-accesso-gestione-operativa.md`
+- COSA E STATO CAMBIATO: `Gestione Operativa` e stata aggiunta come link prioritario separato dal set delle sezioni overlay e forzata come primo elemento dei `Preferiti` di `Navigazione rapida`, cosi da essere visibile direttamente nella Home minimale senza duplicare il vecchio menu operativo.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Solo ripristino di un accesso diretto visibile in Home; nessun cambio a logica business, route, writer o dati.
+- COME VERIFICARE: Aprire `/next`, verificare che `Gestione Operativa` compaia nei `Preferiti` di `Navigazione rapida`, poi eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: La pagina `Gestione Operativa` resta fuori dalle sezioni overlay per non rompere la distinzione tra hub operativo e navigazione delle famiglie esterne.
+
+### Voce 2026-04-01 151
+- DATA: 2026-04-01
+- TITOLO MODIFICA: Home leggera e `Gestione Operativa` riallineata al nuovo hub operativo
+- OBIETTIVO: Applicare la nuova architettura UI concordata tra Home, `Navigazione rapida` e `Gestione Operativa`, mantenendo la Home come sintesi leggera e restringendo `Gestione Operativa` alle sole 4 famiglie operative approvate.
+- FILE TOCCATI:
+  - `src/next/NextCentroControlloPage.tsx`
+  - `src/next/components/QuickNavigationCard.tsx`
+  - `src/next/NextGestioneOperativaPage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-01_2230_home-next-gestione-operativa-hub-4-famiglie.md`
+  - `docs/continuity-reports/2026-04-01_2230_continuity_home-next-gestione-operativa-hub-4-famiglie.md`
+- COSA E STATO CAMBIATO: La Home mantiene `Alert`, `Stato operativo`, `Navigazione rapida` e `IA interna` nello stesso ordine gia validato; `QuickNavigationCard` usa ora sezioni esplicite limitate alle famiglie fuori da `Gestione Operativa` (`Autisti`, `Dossier / Mezzi`, `IA`, `Anagrafiche`, `Cisterna`, `Area capo / Costi / Analisi`); `NextGestioneOperativaPage.tsx` e stata ricomposta come hub delle sole 4 famiglie `Magazzino e materiali`, `Acquisti e ordini`, `Manutenzioni`, `Lavori`, con CTA ai moduli reali NEXT gia esistenti e senza inserire famiglie escluse.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Home piu coerente con l'architettura di sintesi; `Gestione Operativa` non mostra piu accessi misti o extra-famiglia; nessun cambio a writer, shape dati o logica business; madre non toccata.
+- COME VERIFICARE: Aprire `/next` e verificare che `Navigazione rapida` mostri in overlay solo le famiglie non operative; aprire `/next/gestione-operativa` e verificare le sole 4 card famiglia `Magazzino e materiali`, `Acquisti e ordini`, `Manutenzioni`, `Lavori`; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Patch confinata al perimetro NEXT e aderente alla decisione architetturale documentata negli audit di aprile 2026.
+
 ### Voce 2026-04-01 150
 - DATA: 2026-04-01
 - TITOLO MODIFICA: Layout desktop deterministico della coppia `Alert` + `Stato operativo`

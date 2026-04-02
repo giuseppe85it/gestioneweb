@@ -12,8 +12,7 @@ type QuickLink = {
 type QuickNavigationCardProps = {
   allLinks: QuickLink[];
   favorites: QuickLink[];
-  anagraficheLinks: QuickLink[];
-  operativoLinks: QuickLink[];
+  sections: QuickNavigationSection[];
   pinnedIds: string[];
   blockedTitle: string;
   onRecordLinkUse: (id: string) => void;
@@ -21,16 +20,16 @@ type QuickNavigationCardProps = {
   resolveCloneSafeRoute: (path: string) => string | null;
 };
 
-type QuickSectionId =
-  | "operativita"
+export type QuickNavigationSectionId =
   | "autisti"
+  | "dossier_mezzi"
   | "ia"
   | "anagrafiche"
-  | "acquisti_magazzino"
-  | "cisterna";
+  | "cisterna"
+  | "area_capo";
 
-type QuickSection = {
-  id: QuickSectionId;
+export type QuickNavigationSection = {
+  id: QuickNavigationSectionId;
   title: string;
   links: QuickLink[];
 };
@@ -47,8 +46,7 @@ function QuickNavigationCard(props: QuickNavigationCardProps) {
   const {
     allLinks,
     favorites,
-    anagraficheLinks,
-    operativoLinks,
+    sections,
     pinnedIds,
     blockedTitle,
     onRecordLinkUse,
@@ -58,70 +56,31 @@ function QuickNavigationCard(props: QuickNavigationCardProps) {
   const [homeQuery, setHomeQuery] = useState("");
   const [overlayQuery, setOverlayQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [openSectionId, setOpenSectionId] = useState<QuickSectionId>("operativita");
+  const [openSectionId, setOpenSectionId] = useState<QuickNavigationSectionId | null>(null);
 
   const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
   const normalizedOverlayQuery = overlayQuery.trim().toLowerCase();
-
-  const sections = useMemo<QuickSection[]>(() => {
-    const autisti: QuickLink[] = [];
-    const ia: QuickLink[] = [];
-    const acquistiMagazzino: QuickLink[] = [];
-    const cisterna: QuickLink[] = [];
-    const operativita: QuickLink[] = [];
-
-    operativoLinks.forEach((link) => {
-      if (
-        link.to === "/autisti" ||
-        link.to.startsWith("/autisti/") ||
-        link.to.startsWith("/autisti-inbox") ||
-        link.to.startsWith("/autisti-admin") ||
-        link.to.startsWith("/next/autisti-admin")
-      ) {
-        autisti.push(link);
-        return;
-      }
-      if (link.to.startsWith("/cisterna")) {
-        cisterna.push(link);
-        return;
-      }
-      if (
-        link.to.startsWith("/ia") ||
-        link.to.startsWith("/libretti-export")
-      ) {
-        ia.push(link);
-        return;
-      }
-      if (
-        link.to === "/acquisti" ||
-        link.to.startsWith("/materiali-") ||
-        link.to.startsWith("/inventario") ||
-        link.to.startsWith("/ordini-") ||
-        link.to.startsWith("/attrezzature-cantieri")
-      ) {
-        acquistiMagazzino.push(link);
-        return;
-      }
-      operativita.push(link);
-    });
-
-    const anagrafiche = anagraficheLinks.filter((link) => !link.to.startsWith("/autisti"));
-
-    const nextSections: QuickSection[] = [
-      { id: "operativita", title: "Operativita", links: operativita },
-      { id: "autisti", title: "Autisti", links: autisti },
-      { id: "ia", title: "IA", links: ia },
-      { id: "anagrafiche", title: "Anagrafiche", links: anagrafiche },
-      { id: "acquisti_magazzino", title: "Acquisti e Magazzino", links: acquistiMagazzino },
-      { id: "cisterna", title: "Cisterna", links: cisterna },
-    ];
-    return nextSections.filter((section) => section.links.length > 0);
-  }, [anagraficheLinks, operativoLinks]);
+  const visibleSections = useMemo(
+    () => sections.filter((section) => section.links.length > 0),
+    [sections]
+  );
 
   const searchResults = useMemo(() => {
     if (!normalizedOverlayQuery) return [];
     return allLinks.filter((link) => link.label.toLowerCase().includes(normalizedOverlayQuery));
   }, [allLinks, normalizedOverlayQuery]);
+
+  useEffect(() => {
+    if (visibleSections.length === 0) {
+      if (openSectionId !== null) {
+        setOpenSectionId(null);
+      }
+      return;
+    }
+    if (!openSectionId || !visibleSections.some((section) => section.id === openSectionId)) {
+      setOpenSectionId(visibleSections[0].id);
+    }
+  }, [visibleSections, openSectionId]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -376,7 +335,7 @@ function QuickNavigationCard(props: QuickNavigationCardProps) {
                     </div>
                   ) : (
                     <div style={{ display: "grid", gap: 10 }}>
-                      {sections.map((section) => {
+                      {visibleSections.map((section) => {
                         const isOpen = openSectionId === section.id;
                         return (
                           <div

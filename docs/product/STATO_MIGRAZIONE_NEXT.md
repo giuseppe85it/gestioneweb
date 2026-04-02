@@ -1,5 +1,126 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-01 - Modale procurement NEXT riallineato alla madre
+- Audit eseguito sul modale reale della madre in:
+  - `src/pages/MaterialiDaOrdinare.tsx`
+  - `src/pages/MaterialiDaOrdinare.css`
+- Audit eseguito sulla controparte NEXT in:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+- Il modale auditato e il placeholder procurement aperto dalle azioni `Prezzi`, `Allegati`, `Note` del modulo `Materiali da ordinare`.
+- Differenza reale trovata:
+  - la madre usa il modale `mdo-modal` su variabili e palette standard del modulo standalone;
+  - la NEXT, dopo il riallineamento shell della pagina, faceva ereditare al modale la variante embedded del procurement e quindi il popup risultava meno fedele su bordo, colori testo e percezione generale.
+- Correzione applicata:
+  - shell del modale NEXT riportata a stile madre-like esplicito su backdrop, card, titolo e testo;
+  - nessuna modifica alla logica del modale o al runtime procurement secondario.
+- `Materiali da ordinare` resta l'ingresso procurement top-level della NEXT.
+- `Ordini in attesa`, `Ordini arrivati`, `Dettaglio ordine` restano invariati dietro le quinte.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - `/next/materiali-da-ordinare` riallineato alla shell madre-like
+- Verificato il modulo procurement equivalente della madre in:
+  - `src/pages/MaterialiDaOrdinare.tsx`
+  - `src/pages/MaterialiDaOrdinare.css`
+  - `src/pages/Acquisti.tsx`
+  - `src/pages/Acquisti.css`
+- Verificato il runtime reale NEXT in `src/next/NextMaterialiDaOrdinarePage.tsx`.
+- La pagina NEXT mantiene l'architettura procurement gia decisa:
+  - ingresso top-level procurement = `/next/materiali-da-ordinare`
+  - `Ordini in attesa`, `Ordini arrivati`, `Dettaglio ordine` restano moduli runtime secondari e non vengono rimossi.
+- Il riallineamento ha corretto solo la shell/layout della pagina:
+  - sfondo e shell madre-like piu coerenti con il procurement della madre;
+  - header e tabs riportati dentro una cornice procurement piu stabile;
+  - workspace riequilibrato con pannello sinistro e pannello destro proporzionati;
+  - pannello destro con altezza minima coerente anche quando il dataset temporaneo e vuoto;
+  - barra inferiore non piu sticky/sovrapposta ai campi, quindi non copre piu il form.
+- Nessuna modifica a route, writer, shape dati o logica business procurement.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - `Gestione Operativa` NEXT riallineata visivamente alla madre
+- Verificato il runtime reale della madre in `src/pages/GestioneOperativa.tsx` e `src/pages/GestioneOperativa.css`.
+- Verificato il runtime reale NEXT in `src/next/NextGestioneOperativaPage.tsx`.
+- La pagina NEXT mantiene la nuova architettura approvata a 4 famiglie:
+  - `Magazzino e materiali`
+  - `Acquisti e ordini`
+  - `Manutenzioni`
+  - `Lavori`
+- La resa visiva e stata riallineata alla madre usando la stessa grammatica di layout:
+  - header compatto con badge;
+  - sezione centrale tipo `AZIONI OPERATIVE`;
+  - card grandi padre-sezione, senza pannelli tecnici sparsi;
+  - sezione finale sintetica `Segnali rapidi`.
+- Procurement resta coerente con l'audit chiuso:
+  - card famiglia `Acquisti e ordini`;
+  - unico ingresso top-level `Materiali da ordinare`;
+  - nessun link top-level a `Ordini in attesa`, `Ordini arrivati`, `Dettaglio ordine` o `/next/acquisti`.
+- Nessuna modifica a route, writer, shape dati o logica business.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Famiglia procurement riallineata al punto di ingresso stabile della card
+- Verificata la mappa route procurement NEXT in `src/App.tsx`:
+  - `/next/acquisti`
+  - `/next/acquisti/dettaglio/:ordineId`
+  - `/next/materiali-da-ordinare`
+  - `/next/ordini-in-attesa`
+  - `/next/ordini-arrivati`
+  - `/next/dettaglio-ordine/:ordineId`
+- Verificato il runtime:
+  - `/next/acquisti`, `/next/ordini-in-attesa`, `/next/ordini-arrivati` e `dettaglio ordine` montano tutti lo stesso workbench `NextProcurementStandalonePage` / `NextProcurementReadOnlyPanel`;
+  - `/next/materiali-da-ordinare` monta invece la pagina dedicata `NextMaterialiDaOrdinarePage`.
+- Per la card `Acquisti e ordini` di `Gestione Operativa` il punto di ingresso canonico e stato riallineato a `/next/materiali-da-ordinare`, perche e la superficie procurement NEXT dedicata e piu stabile nel runtime corrente.
+- I deep link procurement secondari `Ordini in attesa` e `Ordini arrivati` non restano piu esposti nella card famiglia.
+- Nessuna modifica a Home, altre famiglie, writer o route.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - CTA `Acquisti e ordini` riallineata a una route procurement funzionante
+- In `src/next/NextGestioneOperativaPage.tsx` la CTA della famiglia `Acquisti e ordini` non punta piu alla route padre generica `/next/acquisti`.
+- La CTA apre ora direttamente `/next/ordini-in-attesa`, gia montata e funzionante come ingresso read-only stabile della famiglia procurement nel clone.
+- I link secondari della card restano invariati:
+  - `Materiali da ordinare`
+  - `Ordini in attesa`
+  - `Ordini arrivati`
+- Nessuna modifica al resto dell'architettura Home / Navigazione rapida / Gestione Operativa.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Accesso diretto a `Gestione Operativa` ripristinato in Home
+- In `src/next/NextCentroControlloPage.tsx` `Gestione Operativa` e stata reintrodotta come accesso diretto visibile nei `Preferiti` di `Navigazione rapida`.
+- L'accesso compare di nuovo nella card minimale della Home, senza riaprire le sezioni operative dentro l'overlay.
+- La nuova architettura resta invariata:
+  - riga 1 `Alert` + `Stato operativo`
+  - riga 2 `Navigazione rapida`
+  - riga 3 `IA interna`
+- Nessuna route nuova, nessun cambio a logiche, dati o writer.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-01 - Home leggera e `Gestione Operativa` come hub delle 4 famiglie
+- La Home NEXT ufficiale resta montata su `src/next/NextCentroControlloPage.tsx`.
+- La gerarchia Home non cambia rispetto alle patch gia validate:
+  - riga 1: `Alert` + `Stato operativo`;
+  - riga 2: `Navigazione rapida`;
+  - riga 3: `IA interna`.
+- `Navigazione rapida` resta minimale in Home e il suo overlay mostra ora solo le famiglie fuori dal perimetro operativo stretto:
+  - `Autisti`
+  - `Dossier / Mezzi`
+  - `IA`
+  - `Anagrafiche`
+  - `Cisterna`
+  - `Area capo / Costi / Analisi`
+- I link delle 4 famiglie operative non vengono piu duplicati nel menu completo della Home.
+- `Gestione Operativa` usa ora `src/next/NextGestioneOperativaPage.tsx` come hub stretto delle sole 4 famiglie approvate:
+  - `Magazzino e materiali`
+  - `Acquisti e ordini`
+  - `Manutenzioni`
+  - `Lavori`
+- Restano fuori da `Gestione Operativa`:
+  - `Cisterna`
+  - `Dossier / Mezzi`
+  - `Autisti / Autisti Inbox / Admin`
+  - `IA / IA interna / IA Libretto / IA Documenti`
+  - `Anagrafiche`
+  - `Area capo / costi / analisi`
+- Nessuna route nuova, nessun cambio a writer o shape dati, madre intoccata.
+- Build runtime verificata con esito positivo.
+
 ## 0. Aggiornamento operativo 2026-04-01 - Coppia alta Home con layout desktop deterministico
 - `Alert` e `Stato operativo` usano ora una coppia desktop esplicita e progettata insieme.
 - Su desktop la riga alta adotta:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import type { UnitaMisura } from "../types/ordini";
 import "../pages/MaterialiDaOrdinare.css";
@@ -61,8 +61,136 @@ function readErrorMessage(error: unknown) {
     : "Errore durante il caricamento dei fornitori.";
 }
 
+const motherLikePageStyle: CSSProperties = {
+  minHeight: "100vh",
+  padding: "24px 16px 40px",
+  boxSizing: "border-box",
+  background:
+    "radial-gradient(circle at top, #ece4d4 0, #dcd2c0 35%, #c9c0ae 70%, #b3ab9a 100%)",
+};
+
+const motherLikeCardStyle: CSSProperties = {
+  width: "min(1200px, 100%)",
+  margin: "0 auto",
+  gap: "16px",
+};
+
+const motherLikeHeaderStyle: CSSProperties = {
+  background: "rgba(248, 244, 232, 0.98)",
+  border: "1px solid rgba(180, 167, 144, 0.42)",
+  boxShadow:
+    "0 14px 35px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.12) inset",
+};
+
+const motherLikeHeaderMetaStyle: CSSProperties = {
+  display: "grid",
+  gap: "4px",
+};
+
+const motherLikeHeaderSubtitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#5b574c",
+  fontSize: "13px",
+  lineHeight: 1.35,
+};
+
+const motherLikeTabsStyle: CSSProperties = {
+  background: "rgba(248, 244, 232, 0.98)",
+  border: "1px solid rgba(180, 167, 144, 0.42)",
+  boxShadow: "0 10px 24px rgba(0, 0, 0, 0.08)",
+};
+
+const motherLikePlaceholderStyle: CSSProperties = {
+  padding: "24px",
+  background: "rgba(255, 252, 245, 0.92)",
+  border: "1px solid rgba(180, 167, 144, 0.35)",
+  borderRadius: "16px",
+  boxShadow: "0 12px 26px rgba(0, 0, 0, 0.08)",
+};
+
+const motherLikeWorkspaceStyle: CSSProperties = {
+  gridTemplateColumns: "minmax(360px, 0.92fr) minmax(0, 1.18fr)",
+  alignItems: "stretch",
+};
+
+const motherLikeSidebarStyle: CSSProperties = {
+  minHeight: "100%",
+  paddingBottom: "18px",
+};
+
+const motherLikeTablePanelStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  minHeight: "620px",
+};
+
+const motherLikeEmptyStateStyle: CSSProperties = {
+  flex: "1 1 auto",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  minHeight: "320px",
+};
+
+const motherLikeTableWrapStyle: CSSProperties = {
+  flex: "1 1 auto",
+  minHeight: 0,
+};
+
+const motherLikeStickyBarStyle: CSSProperties = {
+  position: "static",
+  bottom: "auto",
+  marginTop: "6px",
+  gridTemplateColumns:
+    "minmax(180px, 1fr) minmax(180px, 1fr) minmax(360px, 1.4fr)",
+};
+
+const motherLikeModalBackdropStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.4)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "20px",
+  zIndex: 30,
+};
+
+const motherLikeModalCardStyle: CSSProperties = {
+  width: "min(460px, 100%)",
+  background: "#ffffff",
+  border: "1px solid #d8e0ea",
+  borderRadius: "16px",
+  boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
+  padding: "18px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+};
+
+const motherLikeModalHeadingStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "18px",
+};
+
+const motherLikeModalTitleStyle: CSSProperties = {
+  margin: 0,
+  fontWeight: 700,
+  color: "#0f172a",
+};
+
+const motherLikeModalBodyTextStyle: CSSProperties = {
+  margin: 0,
+  color: "#64748b",
+  lineHeight: 1.4,
+};
+
 export default function NextMaterialiDaOrdinarePage() {
   const navigate = useNavigate();
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1440 : window.innerWidth,
+  );
   const [fornitori, setFornitori] = useState<Fornitore[]>([]);
   const [fornitoreId, setFornitoreId] = useState("");
   const [fornitoreNome, setFornitoreNome] = useState("");
@@ -111,6 +239,15 @@ export default function NextMaterialiDaOrdinarePage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   const handleSelectFornitore = (id: string) => {
@@ -204,11 +341,34 @@ export default function NextMaterialiDaOrdinarePage() {
   };
 
   const showFabbisogni = activeTab === "Fabbisogni";
+  const isCompactLayout = viewportWidth <= 1180;
+  const isMobileLayout = viewportWidth <= 760;
+  const pageStyle: CSSProperties = {
+    ...motherLikePageStyle,
+    padding: isMobileLayout ? "14px 10px 28px" : motherLikePageStyle.padding,
+  };
+  const workspaceStyle: CSSProperties = {
+    ...motherLikeWorkspaceStyle,
+    gridTemplateColumns: isCompactLayout ? "1fr" : motherLikeWorkspaceStyle.gridTemplateColumns,
+  };
+  const tablePanelStyle: CSSProperties = {
+    ...motherLikeTablePanelStyle,
+    minHeight: isCompactLayout ? "unset" : motherLikeTablePanelStyle.minHeight,
+  };
+  const emptyStateStyle: CSSProperties = {
+    ...motherLikeEmptyStateStyle,
+    minHeight: isCompactLayout ? "220px" : motherLikeEmptyStateStyle.minHeight,
+  };
+  const stickyBarStyle: CSSProperties = {
+    ...motherLikeStickyBarStyle,
+    gridTemplateColumns: isCompactLayout ? "1fr" : motherLikeStickyBarStyle.gridTemplateColumns,
+    marginTop: isCompactLayout ? "10px" : motherLikeStickyBarStyle.marginTop,
+  };
 
   return (
-    <div className="mdo-page">
-      <div className="mdo-card">
-        <header className="mdo-shell-header">
+    <div className="mdo-page mdo-page--embedded" style={pageStyle}>
+      <div className="mdo-card mdo-card--embedded" style={motherLikeCardStyle}>
+        <header className="mdo-shell-header" style={motherLikeHeaderStyle}>
           <div className="mdo-header-left">
             <img
               src="/logo.png"
@@ -216,9 +376,12 @@ export default function NextMaterialiDaOrdinarePage() {
               alt="logo"
               onClick={() => navigate(NEXT_HOME_PATH)}
             />
-            <div>
+            <div style={motherLikeHeaderMetaStyle}>
               <p className="mdo-eyebrow">Acquisti</p>
               <h1 className="mdo-header-title">Materiali da ordinare</h1>
+              <p style={motherLikeHeaderSubtitleStyle}>
+                Fabbisogni procurement con accesso guidato a ordini e arrivi read-only.
+              </p>
             </div>
           </div>
 
@@ -259,12 +422,17 @@ export default function NextMaterialiDaOrdinarePage() {
         </header>
 
         {error ? (
-          <div className="mdo-placeholder-panel">
+          <div className="mdo-placeholder-panel" style={motherLikePlaceholderStyle}>
             <p>{error}</p>
           </div>
         ) : null}
 
-        <div className="mdo-tabs" role="tablist" aria-label="Sezioni acquisti">
+        <div
+          className="mdo-tabs"
+          role="tablist"
+          aria-label="Sezioni acquisti"
+          style={motherLikeTabsStyle}
+        >
           {TABS.map((tab) => (
             <button
               key={tab}
@@ -283,7 +451,11 @@ export default function NextMaterialiDaOrdinarePage() {
         </div>
 
         {!showFabbisogni ? (
-          <section className="mdo-placeholder-panel" aria-live="polite">
+          <section
+            className="mdo-placeholder-panel"
+            aria-live="polite"
+            style={motherLikePlaceholderStyle}
+          >
             <h2>{activeTab}</h2>
             <p>
               Sezione read-only in arrivo. In questa patch resta attiva solo la tab
@@ -291,8 +463,8 @@ export default function NextMaterialiDaOrdinarePage() {
             </p>
           </section>
         ) : (
-          <div className="mdo-workspace">
-            <aside className="mdo-sidebar">
+          <div className="mdo-workspace" style={workspaceStyle}>
+            <aside className="mdo-sidebar" style={motherLikeSidebarStyle}>
               <section className="mdo-panel mdo-form-panel">
                 <div className="mdo-panel-header">
                   <div>
@@ -424,7 +596,7 @@ export default function NextMaterialiDaOrdinarePage() {
               </section>
             </aside>
 
-            <section className="mdo-panel mdo-table-panel">
+            <section className="mdo-panel mdo-table-panel" style={tablePanelStyle}>
               <div className="mdo-panel-header">
                 <div>
                   <h2>Fabbisogni correnti</h2>
@@ -443,11 +615,14 @@ export default function NextMaterialiDaOrdinarePage() {
               </div>
 
               {materiali.length === 0 ? (
-                <div className="mdo-empty mdo-empty-state">
+                <div
+                  className="mdo-empty mdo-empty-state"
+                  style={emptyStateStyle}
+                >
                   Nessun materiale inserito. Usa il pannello a sinistra per aggiungere righe.
                 </div>
               ) : (
-                <div className="mdo-table-wrap">
+                <div className="mdo-table-wrap" style={motherLikeTableWrapStyle}>
                   <table className="mdo-table">
                     <thead>
                       <tr>
@@ -535,7 +710,7 @@ export default function NextMaterialiDaOrdinarePage() {
           </div>
         )}
 
-        <div className="mdo-sticky-bar">
+        <div className="mdo-sticky-bar" style={stickyBarStyle}>
           <div className="mdo-sticky-info">
             <span>Fornitore</span>
             <strong>
@@ -578,19 +753,25 @@ export default function NextMaterialiDaOrdinarePage() {
       {placeholderModal ? (
         <div
           className="mdo-modal-backdrop"
+          style={motherLikeModalBackdropStyle}
           role="presentation"
           onClick={() => setPlaceholderModal(null)}
         >
           <div
             className="mdo-modal"
+            style={motherLikeModalCardStyle}
             role="dialog"
             aria-modal="true"
             aria-label={`${placeholderModal.action} ${placeholderModal.descrizione}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <h3>{placeholderModal.action}</h3>
-            <p className="mdo-modal-title">{placeholderModal.descrizione}</p>
-            <p>Placeholder UI. Nessuna nuova logica o salvataggio introdotti in questa fase.</p>
+            <h3 style={motherLikeModalHeadingStyle}>{placeholderModal.action}</h3>
+            <p className="mdo-modal-title" style={motherLikeModalTitleStyle}>
+              {placeholderModal.descrizione}
+            </p>
+            <p style={motherLikeModalBodyTextStyle}>
+              Placeholder UI. Nessuna nuova logica o salvataggio introdotti in questa fase.
+            </p>
             <button
               type="button"
               className="mdo-header-button"

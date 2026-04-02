@@ -6,6 +6,7 @@ import HomeAlertCard from "./components/HomeAlertCard";
 import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
 import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal";
 import QuickNavigationCard from "./components/QuickNavigationCard";
+import type { QuickNavigationSection } from "./components/QuickNavigationCard";
 import StatoOperativoCard from "./components/StatoOperativoCard";
 import { formatDateInput, formatDateUI } from "./nextDateFormat";
 import { generateTablePDF } from "../utils/pdfEngine";
@@ -240,39 +241,17 @@ function getQuickLinkRecencyBonus(lastUsedAt: number, now: number): number {
   return 0;
 }
 
-const QUICK_LINKS_OPERATIVO = buildQuickLinks([
-  { to: "/gestione-operativa", label: "Gestione Operativa" },
-  { to: "/attrezzature-cantieri", label: "Attrezzature Cantieri" },
-  {
-    to: "/autisti-admin",
-    label: "Centro rettifica dati (admin)",
-    description: "Correggi dati e risolvi anomalie operative.",
-  },
+const QUICK_LINKS_NAV_AUTISTI = buildQuickLinks([
   {
     to: "/autisti-inbox",
     label: "Autisti Inbox (admin)",
     description: "Vedi e gestisci cio che arriva dagli autisti.",
   },
-  { to: "/manutenzioni", label: "Manutenzioni" },
-  { to: "/lavori-da-eseguire", label: "Lavori Da Eseguire" },
-  { to: "/lavori-eseguiti", label: "Lavori Eseguiti" },
-  { to: "/lavori-in-attesa", label: "Lavori In Attesa" },
-  { to: "/acquisti", label: "Materiali Da Ordinare" },
-  { to: "/materiali-consegnati", label: "Materiali Consegnati" },
-  { to: "/inventario", label: "Inventario" },
-  { to: "/ordini-arrivati", label: "Ordini Arrivati" },
-  { to: "/ordini-in-attesa", label: "Ordini In Attesa" },
-  { to: "/ia", label: "IA" },
-  { to: "/ia/libretto", label: "IA Libretto" },
-  { to: "/ia/documenti", label: "IA Documenti" },
-  { to: "/cisterna", label: "Cisterna Caravate" },
-]);
-
-const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([
-  { to: "/mezzi", label: "Mezzi" },
-  { to: "/dossiermezzi", label: "Dossier Mezzi" },
-  { to: "/colleghi", label: "Colleghi" },
-  { to: "/fornitori", label: "Fornitori" },
+  {
+    to: "/autisti-admin",
+    label: "Centro rettifica dati (admin)",
+    description: "Correggi dati e risolvi anomalie operative.",
+  },
   {
     to: "/autisti",
     label: "Autisti App (telefono)",
@@ -280,7 +259,67 @@ const QUICK_LINKS_ANAGRAFICHE = buildQuickLinks([
   },
 ]);
 
-const QUICK_LINKS_ALL = [...QUICK_LINKS_OPERATIVO, ...QUICK_LINKS_ANAGRAFICHE];
+const QUICK_LINKS_NAV_DOSSIER_MEZZI = buildQuickLinks([
+  { to: "/mezzi", label: "Mezzi" },
+  { to: "/dossiermezzi", label: "Dossier Mezzi" },
+]);
+
+const QUICK_LINKS_NAV_IA = buildQuickLinks([
+  { to: "/ia", label: "IA" },
+  { to: "/ia/libretto", label: "IA Libretto" },
+  { to: "/ia/documenti", label: "IA Documenti" },
+]);
+
+const QUICK_LINKS_NAV_ANAGRAFICHE = buildQuickLinks([
+  { to: "/colleghi", label: "Colleghi" },
+  { to: "/fornitori", label: "Fornitori" },
+]);
+
+const QUICK_LINKS_NAV_CISTERNA = buildQuickLinks([
+  { to: "/cisterna", label: "Cisterna Caravate" },
+]);
+
+const QUICK_LINKS_NAV_AREA_CAPO = buildQuickLinks([
+  {
+    to: "/capo/mezzi",
+    label: "Area capo mezzi",
+    description: "Accesso all'area capo con approfondimenti costi e analisi dai mezzi.",
+  },
+]);
+
+const QUICK_LINK_GESTIONE_OPERATIVA = buildQuickLinks([
+  {
+    to: "/gestione-operativa",
+    label: "Gestione Operativa",
+    description: "Hub operativo delle 4 famiglie approvate.",
+  },
+])[0];
+
+const QUICK_NAV_SECTIONS: QuickNavigationSection[] = [
+  { id: "autisti", title: "Autisti", links: QUICK_LINKS_NAV_AUTISTI },
+  {
+    id: "dossier_mezzi",
+    title: "Dossier / Mezzi",
+    links: QUICK_LINKS_NAV_DOSSIER_MEZZI,
+  },
+  { id: "ia", title: "IA", links: QUICK_LINKS_NAV_IA },
+  {
+    id: "anagrafiche",
+    title: "Anagrafiche",
+    links: QUICK_LINKS_NAV_ANAGRAFICHE,
+  },
+  { id: "cisterna", title: "Cisterna", links: QUICK_LINKS_NAV_CISTERNA },
+  {
+    id: "area_capo",
+    title: "Area capo / Costi / Analisi",
+    links: QUICK_LINKS_NAV_AREA_CAPO,
+  },
+];
+
+const QUICK_LINKS_ALL = [
+  QUICK_LINK_GESTIONE_OPERATIVA,
+  ...QUICK_NAV_SECTIONS.flatMap((section) => section.links),
+];
 const QUICK_LINKS_BY_ID = new Map(
   QUICK_LINKS_ALL.map((link) => [link.id, link])
 );
@@ -1090,7 +1129,12 @@ function Home() {
         return a.link.label.localeCompare(b.link.label);
       })
       .map((item) => item.link);
-    return [...pinnedLinks, ...scoredLinks].slice(0, 6);
+    const ordered = [
+      QUICK_LINK_GESTIONE_OPERATIVA,
+      ...pinnedLinks,
+      ...scoredLinks.filter((link) => link.id !== QUICK_LINK_GESTIONE_OPERATIVA.id),
+    ];
+    return Array.from(new Map(ordered.map((link) => [link.id, link])).values()).slice(0, 6);
   })();
 
   const canExportAlerts = !loading && visibleAlertItems.length > 0;
@@ -1193,8 +1237,7 @@ function Home() {
               <QuickNavigationCard
                 allLinks={QUICK_LINKS_ALL}
                 favorites={quickFavorites}
-                anagraficheLinks={QUICK_LINKS_ANAGRAFICHE}
-                operativoLinks={QUICK_LINKS_OPERATIVO}
+                sections={QUICK_NAV_SECTIONS}
                 pinnedIds={quickPinnedIds}
                 blockedTitle={CLONE_ACTION_BLOCKED_TITLE}
                 onRecordLinkUse={recordQuickLinkUse}
@@ -1948,8 +1991,7 @@ function Home() {
               <QuickNavigationCard
                 allLinks={QUICK_LINKS_ALL}
                 favorites={quickFavorites}
-                anagraficheLinks={QUICK_LINKS_ANAGRAFICHE}
-                operativoLinks={QUICK_LINKS_OPERATIVO}
+                sections={QUICK_NAV_SECTIONS}
                 pinnedIds={quickPinnedIds}
                 blockedTitle={CLONE_ACTION_BLOCKED_TITLE}
                 onRecordLinkUse={recordQuickLinkUse}
