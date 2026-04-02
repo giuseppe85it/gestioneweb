@@ -28,6 +28,8 @@ type NextProcurementReadOnlyPanelProps = {
     missingFields: string[];
     verifyFields: string[];
   } | null;
+  searchQuery?: string;
+  embedded?: boolean;
 };
 
 const EMBEDDED_PAGE_STYLE = {
@@ -429,6 +431,8 @@ export default function NextProcurementReadOnlyPanel({
   onOpenOrder,
   onCloseOrder,
   iaPrefill = null,
+  searchQuery = "",
+  embedded = false,
 }: NextProcurementReadOnlyPanelProps) {
   const activeOrder = findNextProcurementOrder(snapshot, orderId);
   const requestedDetailMissing = Boolean(orderId) && !activeOrder;
@@ -439,8 +443,16 @@ export default function NextProcurementReadOnlyPanel({
         snapshot,
         activeTab === "arrivi" ? "arrivi" : "ordini",
       ).filter((order) => {
+        const normalizedSearch = normalizeText(searchQuery);
         if (!iaPrefill?.fornitore && !iaPrefill?.materiale) {
-          return true;
+          return normalizedSearch
+            ? normalizeText(order.orderReference).includes(normalizedSearch) ||
+                normalizeText(order.supplierName).includes(normalizedSearch) ||
+                normalizeText(order.id).includes(normalizedSearch) ||
+                order.materialPreview.some((entry) =>
+                  normalizeText(entry).includes(normalizedSearch),
+                )
+            : true;
         }
 
         const supplierMatches = iaPrefill.fornitore
@@ -455,11 +467,96 @@ export default function NextProcurementReadOnlyPanel({
               ),
             )
           : true;
+        const searchMatches = normalizedSearch
+          ? normalizeText(order.orderReference).includes(normalizedSearch) ||
+            normalizeText(order.supplierName).includes(normalizedSearch) ||
+            normalizeText(order.id).includes(normalizedSearch) ||
+            order.materialPreview.some((entry) =>
+              normalizeText(entry).includes(normalizedSearch),
+            )
+          : true;
 
-        return supplierMatches && materialMatches;
+        return supplierMatches && materialMatches && searchMatches;
       }),
-    [activeTab, iaPrefill, snapshot],
+    [activeTab, iaPrefill, searchQuery, snapshot],
   );
+
+  const content = (
+    <section className={`acq-content${embedded ? " acq-content--embedded" : ""}`}>
+      {activeOrder ? (
+        renderOrderDetail({
+          order: activeOrder,
+          backTab: detailBackTab,
+          onCloseOrder,
+          detailDisabledReason: snapshot.navigability.dettaglioOrdine.reason,
+        })
+      ) : requestedDetailMissing ? (
+        <div className="acq-tab-panel acq-tab-panel--detail">
+          <div className="acq-detail-state">
+            Ordine non trovato nel dataset in sola lettura del clone.
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="acq-btn"
+              onClick={() => onCloseOrder(detailBackTab)}
+            >
+              Indietro
+            </button>
+          </div>
+        </div>
+      ) : activeTab === "ordini" ? (
+        renderListTable({
+          title: "Ordini in attesa",
+          subtitle:
+            "Vista in sola lettura degli ordini con righe ancora pendenti.",
+          items: visibleOrders,
+          fromTab: "ordini",
+          onOpenOrder,
+        })
+      ) : activeTab === "arrivi" ? (
+        renderListTable({
+          title: "Ordini arrivati",
+          subtitle:
+            "Vista in sola lettura degli ordini con almeno una riga arrivata.",
+          items: visibleOrders,
+          fromTab: "arrivi",
+          onOpenOrder,
+        })
+      ) : activeTab === "ordine-materiali" ? (
+        renderBlockedTab({
+          title: "Ordine materiali",
+          subtitle:
+            "La bozza ordine della madre resta fuori perimetro nel clone.",
+          reason: snapshot.navigability.ordineMateriali.reason,
+          onGoOrdini: () => onTabChange("ordini"),
+          onGoArrivi: () => onTabChange("arrivi"),
+        })
+      ) : activeTab === "preventivi" ? (
+        renderBlockedTab({
+          title: "Prezzi e preventivi",
+          subtitle:
+            "Preventivi e allegati restano solo preview prudenziale nel clone.",
+          reason: snapshot.navigability.preventivi.reason,
+          onGoOrdini: () => onTabChange("ordini"),
+          onGoArrivi: () => onTabChange("arrivi"),
+        })
+      ) : (
+        renderBlockedTab({
+          title: "Listino prezzi",
+          subtitle:
+            "Listino e fornitori restano consultabili solo come contesto, senza edit o consolidamento.",
+          reason: snapshot.navigability.listino.reason,
+          onGoOrdini: () => onTabChange("ordini"),
+          onGoArrivi: () => onTabChange("arrivi"),
+        })
+      )}
+    </section>
+  );
+
+  if (embedded) {
+    return content;
+  }
 
   return (
     <div
@@ -525,77 +622,7 @@ export default function NextProcurementReadOnlyPanel({
           ) : null}
         </div>
 
-        <section className="acq-content">
-          {activeOrder ? (
-            renderOrderDetail({
-              order: activeOrder,
-              backTab: detailBackTab,
-              onCloseOrder,
-              detailDisabledReason:
-                snapshot.navigability.dettaglioOrdine.reason,
-            })
-          ) : requestedDetailMissing ? (
-            <div className="acq-tab-panel acq-tab-panel--detail">
-              <div className="acq-detail-state">
-                Ordine non trovato nel dataset in sola lettura del clone.
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <button
-                  type="button"
-                  className="acq-btn"
-                  onClick={() => onCloseOrder(detailBackTab)}
-                >
-                  Indietro
-                </button>
-              </div>
-            </div>
-          ) : activeTab === "ordini" ? (
-            renderListTable({
-              title: "Ordini in attesa",
-              subtitle:
-                "Vista in sola lettura degli ordini con righe ancora pendenti.",
-              items: visibleOrders,
-              fromTab: "ordini",
-              onOpenOrder,
-            })
-          ) : activeTab === "arrivi" ? (
-            renderListTable({
-              title: "Ordini arrivati",
-              subtitle:
-                "Vista in sola lettura degli ordini con almeno una riga arrivata.",
-              items: visibleOrders,
-              fromTab: "arrivi",
-              onOpenOrder,
-            })
-          ) : activeTab === "ordine-materiali" ? (
-            renderBlockedTab({
-              title: "Ordine materiali",
-              subtitle:
-                "La bozza ordine della madre resta fuori perimetro nel clone.",
-              reason: snapshot.navigability.ordineMateriali.reason,
-              onGoOrdini: () => onTabChange("ordini"),
-              onGoArrivi: () => onTabChange("arrivi"),
-            })
-          ) : activeTab === "preventivi" ? (
-            renderBlockedTab({
-              title: "Prezzi e preventivi",
-              subtitle:
-                "Preventivi e allegati restano solo preview prudenziale nel clone.",
-              reason: snapshot.navigability.preventivi.reason,
-              onGoOrdini: () => onTabChange("ordini"),
-              onGoArrivi: () => onTabChange("arrivi"),
-            })
-          ) : (
-            renderBlockedTab({
-              title: "Listino prezzi",
-              subtitle:
-                "Listino e fornitori restano consultabili solo come contesto, senza edit o consolidamento.",
-              reason: snapshot.navigability.listino.reason,
-              onGoOrdini: () => onTabChange("ordini"),
-              onGoArrivi: () => onTabChange("arrivi"),
-            })
-          )}
-        </section>
+        {content}
       </div>
     </div>
   );

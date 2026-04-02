@@ -1,5 +1,152 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-02 - Fix runtime reale procurement da browser e conflitto CSS globale
+- Verifica eseguita con browser headless locale sulla route reale `http://localhost:5173/next/materiali-da-ordinare`, leggendo DOM e computed styles del runtime.
+- Causa reale trovata nel browser:
+  - `.mdo-page` e `.mdo-card` venivano sovrascritte da `src/pages/DettaglioOrdine.css`, caricato globalmente nel bundle;
+  - il runtime reale mostrava:
+    - `.mdo-card` larga `430px`;
+    - `.mdo-workspace` con `grid-template-columns: 414px 0px`;
+    - `.mdo-sticky-bar` dark sticky con `bottom: 12px`.
+- La shell `/next` non era il problema:
+  - `NextShell` e `App.css` non imponevano `max-width` o centrature anomale sulla route.
+- Correzione applicata:
+  - aggiunto wrapper locale `next-mdo-route`;
+  - aggiunto file stile locale `src/next/next-procurement-route.css`;
+  - riportato il ramo `Fabbisogni` al runtime madre reale visto in `/acquisti`:
+    - `mdo-page mdo-page--embedded mdo-page--single`
+    - `mdo-card mdo-card--embedded mdo-card--single`
+    - `mdo-single-card`
+    - `mdo-card-footer-bar`
+  - override scoped dei selettori globali che strozzavano la pagina.
+- Verifica runtime reale dopo il fix:
+  - `.mdo-card` = `1400px`;
+  - `.mdo-shell-header` = `1400px`;
+  - `.mdo-tabs` = `1400px`;
+  - nessuna `.mdo-sticky-bar` presente;
+  - nessuna `.mdo-workspace` presente;
+  - footer reale = `.mdo-card-footer-bar` con `position: static`.
+- Convergenza procurement invariata:
+  - `Materiali da ordinare` resta il solo procurement top-level;
+  - `Ordini`, `Arrivi`, `Prezzi & Preventivi` restano nel modulo convergente.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-02 - Procurement desktop top-level riportato sul ramo standalone della madre
+- Verificato il mount reale della route `/next/materiali-da-ordinare`:
+  - `src/App.tsx` monta `NextMaterialiDaOrdinarePage` dentro `NextShell`;
+  - `NextShell` e `App.css` non impongono il max-width desktop che rendeva la pagina embedded.
+- Causa reale trovata:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx` continuava a usare sul top-level le classi madre pensate per l'embedded dentro `Acquisti`:
+    - `mdo-page--embedded`
+    - `mdo-card--embedded`
+    - `mdo-page--single`
+    - `mdo-card--single`
+  - questo teneva il procurement convergente in una shell da card embedded invece che nel layout desktop standalone della madre.
+- Correzione applicata:
+  - il top-level della pagina torna a usare la shell standalone reale della madre:
+    - `mdo-page`
+    - `mdo-card`
+    - `mdo-workspace`
+    - `mdo-sticky-bar`
+  - il ramo `Fabbisogni` e stato riallineato alla struttura desktop madre a due pannelli con sidebar, tabella larga e footer sticky della pagina;
+  - le tab convergenti `Ordini`, `Arrivi`, `Prezzi & Preventivi` restano intatte.
+- Nessuna modifica a:
+  - `NextShell`
+  - `App.css`
+  - architettura procurement convergente
+  - route top-level procurement
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-02 - Fix layout desktop procurement convergente madre-like
+- Corretto il layout desktop di `/next/materiali-da-ordinare` riallineandolo al ramo desktop embedded/single-card della madre reale di `Materiali da ordinare`.
+- File runtime toccato:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+- Vincoli desktop errati rimossi dal clone:
+  - shell standalone troppo stretta e centrata;
+  - workspace a due colonne con pannello destro fuori proporzione;
+  - sticky bar scura flottante in basso che copriva il contenuto desktop.
+- Riallineamento applicato:
+  - shell `mdo-page--embedded mdo-page--single`;
+  - card `mdo-card--embedded mdo-card--single`;
+  - toolbar single-card della madre;
+  - tabella singola `mdo-table-wrap--single`;
+  - footer azioni dentro `mdo-card-footer-bar` invece di overlay sticky.
+- Nessuna modifica all'architettura procurement gia decisa:
+  - `Materiali da ordinare` resta il solo procurement top-level visibile;
+  - le tab convergenti `Ordini`, `Arrivi`, `Prezzi & Preventivi` restano intatte;
+  - nessuna route secondaria top-level reintrodotta.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-02 - Fix loop runtime procurement convergente
+- Corretto il crash di `/next/materiali-da-ordinare` introdotto dal procurement convergente:
+  - `The result of getSnapshot should be cached to avoid an infinite loop`
+  - `Maximum update depth exceeded`
+- Causa reale trovata nel repository IA universale usato dal procurement:
+  - `src/next/internal-ai/internalAiUniversalRequestsRepository.ts`
+  - `readInternalAiUniversalRequestsRepositorySnapshot()` restituiva a ogni render un nuovo oggetto con nuovi array clonati;
+  - il consumer `useInternalAiUniversalHandoffConsumer()` usa `useSyncExternalStore`, quindi React rilevava snapshot instabile e rilanciava render in loop.
+- Fix applicato:
+  - snapshot repository ora cacheato e restituito identico finche lo stato reale non cambia;
+  - rimossa la funzione locale di clone ormai non piu usata.
+- Nessuna modifica all'architettura procurement convergente:
+  - `Materiali da ordinare` resta il modulo procurement top-level unico;
+  - nessun restyling;
+  - nessuna modifica alla madre.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-02 - Convergenza definitiva procurement NEXT sul modulo unico
+- Eseguita convergenza runtime della famiglia procurement NEXT con madre come fonte di verita e con `Materiali da ordinare` come unico modulo top-level visibile.
+- File runtime procurement NEXT toccati:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/NextProcurementStandalonePage.tsx`
+- `NextMaterialiDaOrdinarePage.tsx` ora mantiene la shell madre-like gia convergente e assorbe nello stesso modulo:
+  - vista `Ordini`;
+  - vista `Arrivi`;
+  - drill-down `Dettaglio ordine`;
+  - preview procurement `Prezzi & Preventivi` / `Listino` usando lo snapshot NEXT read-only.
+- Le CTA e i quick link del modulo non aprono piu route procurement secondarie come mondo separato:
+  - passano tutte dal path canonico `/next/materiali-da-ordinare`;
+  - cambiano solo tab o dettaglio via querystring canonica.
+- `NextProcurementReadOnlyPanel` e stato declassato a renderer riusabile:
+  - modalita full per i consumer ancora vivi;
+  - modalita embedded per il procurement convergente dentro `Materiali da ordinare`.
+- `NextProcurementStandalonePage` non e piu un workbench procurement separato:
+  - e ora un alias di compatibilita che redirige i path storici procurement al modulo unico canonico.
+- Effetto architetturale risultante:
+  - `/next/materiali-da-ordinare` = solo procurement top-level reale;
+  - `/next/acquisti`, `/next/ordini-in-attesa`, `/next/ordini-arrivati`, `/next/dettaglio-ordine/:ordineId` = ingressi declassati di compatibilita verso il modulo unico;
+  - nessuna rimozione cieca del renderer read-only usato ancora da altri consumer NEXT fuori perimetro prompt.
+- Build runtime verificata con esito positivo.
+
+## 0. Aggiornamento operativo 2026-04-02 - Convergenza procurement NEXT sul ramo standalone della madre
+- Eseguito audit operativo madre vs NEXT sul procurement con focus su:
+  - `src/pages/MaterialiDaOrdinare.tsx`
+  - `src/pages/MaterialiDaOrdinare.css`
+  - `src/pages/Acquisti.tsx`
+  - `src/pages/OrdiniInAttesa.tsx`
+  - `src/pages/OrdiniArrivati.tsx`
+  - `src/pages/DettaglioOrdine.tsx`
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementStandalonePage.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/App.tsx`
+- La pagina `/next/materiali-da-ordinare` e stata riportata sul ramo standalone reale della madre:
+  - shell `mdo-page` / `mdo-card` standard;
+  - header, tabs, workspace, quick link, tabella, sticky bar e modale placeholder allineati alla struttura madre;
+  - rimossi gli override clone-specifici della shell embedded e gli inline style introdotti nelle patch precedenti.
+- Adattamenti NEXT rimasti volutamente minimi:
+  - lettura fornitori da `readNextFornitoriSnapshot`;
+  - navigate verso `NEXT_HOME_PATH`, `NEXT_ORDINI_IN_ATTESA_PATH`, `NEXT_ORDINI_ARRIVATI_PATH`;
+  - aggiunta materiale, eliminazione materiale, conferma ordine, PDF e upload bloccati in `read-only`;
+  - foto materiale gestita solo come preview locale o automatica, senza upload business.
+- Decisione procurement invariata:
+  - `Materiali da ordinare` resta l'unico ingresso procurement top-level visibile;
+  - `Ordini in attesa`, `Ordini arrivati`, `Dettaglio ordine` restano runtime secondari vivi e non vengono rimossi dal codice.
+- Nessuna modifica a `src/App.tsx` o alle route procurement secondarie, perche i consumer runtime reali restano presenti nel clone.
+- Build runtime verificata con esito positivo.
+
 ## 0. Aggiornamento operativo 2026-04-01 - Modale procurement NEXT riallineato alla madre
 - Audit eseguito sul modale reale della madre in:
   - `src/pages/MaterialiDaOrdinare.tsx`
@@ -3051,3 +3198,30 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 - Il cambiamento resta confinato a `src/next/*` e non introduce writer nuovi o shape dati diverse.
 - Verifica eseguita:
   - `npm run build` -> `OK`.
+
+## 5.124 Aggiornamento 2026-04-02 - Procurement NEXT riallineato sul comportamento pratico del modulo unico
+- Sul runtime ufficiale `/next/materiali-da-ordinare` il procurement NEXT mantiene il modulo unico convergente ma corregge alcuni delta comportamentali reali rispetto alla madre:
+  - il prefill `iaHandoff` viene ora applicato davvero a fornitore, descrizione, ricerca e tab target coerente;
+  - la bozza locale procurement viene persistita in `sessionStorage` e ripristinata al reload, in linea con il comportamento pratico del procurement madre completo;
+  - le righe temporanee `Fabbisogni` conservano il fornitore scelto, quindi la tabella non perde piu il contesto riga;
+  - la ricerca top-level filtra anche `Ordini`, `Arrivi`, `Preventivi` e `Listino` nel modulo convergente.
+- Il clone resta read-only:
+  - `CONFERMA ORDINE` continua a non scrivere business data reali;
+  - dopo la conferma read-only la bozza locale viene svuotata per allinearsi al flusso madre post-salvataggio.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - restano fuori parity completa i writer business reali, i PDF reali, l'upload preventivi e le azioni riga avanzate della madre `Acquisti`.
+
+## 5.125 Aggiornamento 2026-04-02 - Procurement NEXT esteso su preview fornitore, listino e totali del modulo unico
+- Sul runtime ufficiale `/next/materiali-da-ordinare` il ramo `Fabbisogni` replica ora piu fedelmente il comportamento madre di `Ordine materiali` senza riaprire moduli top-level separati:
+  - suggerimenti listino filtrati per fornitore attivo e descrizione articolo;
+  - selezione di una voce listino che precompila descrizione, UDM, prezzo, valuta e riferimento preventivo;
+  - preview del fornitore selezionato con storico listino/preventivi e ultimo prezzo noto;
+  - righe materiali con nota locale, foto locale, prezzo sorgente, totale calcolato e warning UDM da verificare;
+  - footer laterale con note ordine, totali per valuta, conteggio prezzi mancanti, conteggio UDM da verificare e indicatore `Bozza salvata`.
+- La sezione convergente `Prezzi & Preventivi` non tronca piu i risultati a 12 righe, quindi il listino/preventivi renderizzano tutto il dataset leggibile del clone.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - la parity totale con la madre completa resta aperta finche la NEXT non replica anche i blocchi vivi di `Acquisti.tsx` su `Prezzi & Preventivi`, `Listino Prezzi`, `Dettaglio ordine`, PDF/share e writer business clone-safe.

@@ -32,15 +32,11 @@ let state: InternalAiUniversalRequestsRepositoryState = {
   updatedAt: null,
 };
 let hydrated = false;
+let cachedSnapshot: InternalAiUniversalRequestsRepositorySnapshot | null = null;
+let cachedSnapshotSource: InternalAiUniversalRequestsRepositoryState | null = null;
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
-function cloneState(
-  input: InternalAiUniversalRequestsRepositoryState,
-): InternalAiUniversalRequestsRepositoryState {
-  return JSON.parse(JSON.stringify(input)) as InternalAiUniversalRequestsRepositoryState;
 }
 
 function parsePersistedState(raw: string | null): InternalAiUniversalRequestsRepositoryState | null {
@@ -142,12 +138,19 @@ function mergeInboxItems(
 export function readInternalAiUniversalRequestsRepositorySnapshot(): InternalAiUniversalRequestsRepositorySnapshot {
   ensureHydrated();
 
-  return {
+  if (cachedSnapshot && cachedSnapshotSource === state) {
+    return cachedSnapshot;
+  }
+
+  cachedSnapshotSource = state;
+  cachedSnapshot = {
     mode: canUseStorage() ? "local_storage_isolated" : "memory_only",
-    handoffs: cloneState(state).handoffs,
-    inboxItems: cloneState(state).inboxItems,
+    handoffs: state.handoffs,
+    inboxItems: state.inboxItems,
     updatedAt: state.updatedAt,
   };
+
+  return cachedSnapshot;
 }
 
 export function readInternalAiUniversalHandoffById(

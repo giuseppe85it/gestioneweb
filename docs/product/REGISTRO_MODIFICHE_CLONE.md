@@ -31,6 +31,106 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-02 163
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Fix definitivo runtime browser del procurement NEXT con override scoped del conflitto CSS
+- OBIETTIVO: Correggere `/next/materiali-da-ordinare` sulla base del runtime reale a browser e non dei report, eliminando la shell stretta e il footer overlay dovuti a collisioni CSS globali.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/next-procurement-route.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_1110_materiali-da-ordinare-runtime-browser-fix-definitivo.md`
+  - `docs/continuity-reports/2026-04-02_1110_continuity_materiali-da-ordinare-runtime-browser-fix-definitivo.md`
+- COSA E STATO CAMBIATO: Verificato con browser headless che la shell `/next` non imponeva il layout sbagliato; il problema reale era il conflitto globale di `src/pages/DettaglioOrdine.css` su `.mdo-page` e `.mdo-card`, che stringeva il procurement a `430px` e lasciava attiva la `mdo-sticky-bar` dark overlay. Ho introdotto un wrapper locale `next-mdo-route`, un CSS scoped procurement NEXT e ho riallineato la pagina alla resa madre reale vista in `/acquisti`: `mdo-page--embedded mdo-page--single`, `mdo-card--embedded mdo-card--single`, `mdo-single-card`, `mdo-card-footer-bar`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Runtime desktop procurement verificato largo e non piu embedded; nessuna scrittura business riaperta; convergenza procurement mantenuta.
+- COME VERIFICARE: Aprire `http://localhost:5173/next/materiali-da-ordinare` e verificare nel browser che `.mdo-card` sia larga circa `1400px`, che non esistano `.mdo-sticky-bar` o `.mdo-workspace` e che il footer sia `mdo-card-footer-bar`; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Fix basato su DOM e computed styles reali del browser; il conflitto CSS deriva da classi globali madre omonime e viene neutralizzato solo nel perimetro NEXT.
+
+### Voce 2026-04-02 162
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Procurement NEXT top-level riportato al layout desktop standalone della madre
+- OBIETTIVO: Eliminare definitivamente la resa embedded/stretta di `/next/materiali-da-ordinare` e riportare il modulo canonico sul layout desktop reale della madre, senza rompere la convergenza procurement.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_1010_materiali-da-ordinare-next-layout-desktop-standalone-madre.md`
+  - `docs/continuity-reports/2026-04-02_1010_continuity_materiali-da-ordinare-next-layout-desktop-standalone-madre.md`
+- COSA E STATO CAMBIATO: Verificato che la shell `/next` non imponeva il layout stretto. Il vincolo errato era interno a `NextMaterialiDaOrdinarePage.tsx`, che usava ancora al top-level il ramo embedded della madre (`mdo-page--embedded`, `mdo-card--embedded`, `mdo-page--single`, `mdo-card--single`). Il modulo canonico torna ora al ramo standalone desktop della madre con `mdo-page`, `mdo-card`, `mdo-workspace` e `mdo-sticky-bar`, mantenendo intatte le tab convergenti.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Pagina procurement desktop larga e strutturata come modulo vero, non piu come card embedded; nessuna scrittura business riaperta; convergenza `Ordini` / `Arrivi` / `Prezzi & Preventivi` invariata.
+- COME VERIFICARE: Aprire `/next/materiali-da-ordinare` su desktop e verificare shell larga, header non compresso, workspace a due pannelli, tabella larga e footer sticky dentro la grammatica standalone della madre; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Il wrapper esterno `/next` e stato verificato e non e il responsabile del layout stretto; il problema era locale al top-level procurement NEXT.
+
+### Voce 2026-04-02 161
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Fix layout desktop di `Materiali da ordinare` sul ramo embedded della madre
+- OBIETTIVO: Eliminare shell stretta, pannello destro spezzato e sticky bar scura overlay da `/next/materiali-da-ordinare`, copiando il layout desktop reale della madre il piu 1:1 possibile senza cambiare la convergenza procurement.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_0940_materiali-da-ordinare-next-fix-layout-desktop-madre.md`
+  - `docs/continuity-reports/2026-04-02_0940_continuity_materiali-da-ordinare-next-fix-layout-desktop-madre.md`
+- COSA E STATO CAMBIATO: La pagina NEXT ha abbandonato il ramo standalone stretto a due colonne e usa ora la shell embedded/single-card reale della madre: toolbar unica, tabella larga dentro la card e footer azioni interno `mdo-card-footer-bar`. La `mdo-sticky-bar` dark overlay e stata rimossa dal runtime della pagina.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Desktop procurement piu fedele alla madre e senza overlay che coprono il form; nessuna scrittura business riaperta; tab convergenti e architettura procurement invariati.
+- COME VERIFICARE: Aprire `/next/materiali-da-ordinare` su desktop e verificare shell larga, assenza di pannello destro spezzato, assenza di barra scura overlay in basso; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: La fonte di verita usata e il ramo desktop embedded/single-card di `src/pages/MaterialiDaOrdinare.tsx` / `MaterialiDaOrdinare.css`, non una reinterpretazione clone-specifica.
+
+### Voce 2026-04-02 160
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Fix loop runtime nel procurement convergente NEXT
+- OBIETTIVO: Eliminare il loop infinito che mandava in crash `/next/materiali-da-ordinare` dopo la convergenza procurement, senza toccare la madre o cambiare l'architettura appena approvata.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiUniversalRequestsRepository.ts`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_0915_fix-loop-procurement-convergente-getsnapshot.md`
+  - `docs/continuity-reports/2026-04-02_0915_continuity_fix-loop-procurement-convergente-getsnapshot.md`
+- COSA E STATO CAMBIATO: Il repository IA universale usato dal procurement restituiva uno snapshot nuovo a ogni `getSnapshot`, con nuovi array clonati, causando il loop di `useSyncExternalStore`. Ho introdotto una cache stabile dello snapshot finche lo stato repository non cambia e ho rimosso la funzione di clone locale non piu usata.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Crash eliminato; convergenza procurement e UI restano invariate; nessuna scrittura business riaperta.
+- COME VERIFICARE: Aprire `/next/materiali-da-ordinare` senza overlay errore React/Vite; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Il fix e tecnico e locale al clone/NEXT; non cambia moduli procurement secondari, route o layout.
+
+### Voce 2026-04-02 159
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Convergenza definitiva procurement NEXT sul modulo unico `Materiali da ordinare`
+- OBIETTIVO: Rendere `/next/materiali-da-ordinare` l'unico procurement top-level reale della NEXT, assorbendo ordini, arrivi e dettaglio nel modulo canonico e declassando i vecchi ingressi secondari a compatibilita.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/NextProcurementStandalonePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_0835_procurement-next-convergenza-definitiva-materiali-unico.md`
+  - `docs/continuity-reports/2026-04-02_0835_continuity_procurement-next-convergenza-definitiva-materiali-unico.md`
+- COSA E STATO CAMBIATO: `Materiali da ordinare` conserva la shell madre-like ma ora incorpora ordini, arrivi, dettaglio ordine e preview prezzi/preventivi nello stesso modulo canonico. Le CTA interne non aprono piu moduli procurement paralleli: cambiano tab o dettaglio nel path canonico `/next/materiali-da-ordinare`. `NextProcurementReadOnlyPanel` e stato riusato in modalita embedded e `NextProcurementStandalonePage` e stato ridotto a redirect di compatibilita dai path procurement storici verso il modulo unico.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Un solo procurement top-level visibile nella NEXT; ordini/arrivi/dettaglio restano consultabili ma dentro il modulo unico; nessuna scrittura business riaperta.
+- COME VERIFICARE: Aprire `/next/materiali-da-ordinare`, passare tra `Fabbisogni`, `Ordini`, `Arrivi`, `Prezzi & Preventivi`, aprire un dettaglio ordine e verificare che i vecchi path `/next/acquisti`, `/next/ordini-in-attesa`, `/next/ordini-arrivati`, `/next/dettaglio-ordine/:ordineId` redirigano tutti al modulo unico; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: `NextProcurementReadOnlyPanel` non e stato rimosso dal codice perche resta consumato da runtime NEXT fuori perimetro prompt; il declassamento e stato quindi fatto in modo compatibile e non distruttivo.
+
+### Voce 2026-04-02 158
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Convergenza procurement NEXT sul ramo standalone della madre
+- OBIETTIVO: Portare `/next/materiali-da-ordinare` il piu vicino possibile al modulo madre reale lato struttura, UI e comportamento pratico, senza toccare la madre e senza rompere i runtime procurement secondari ancora vivi.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_0700_procurement-convergenza-madre-like-materiali-da-ordinare.md`
+  - `docs/continuity-reports/2026-04-02_0700_continuity_procurement-convergenza-madre-like-materiali-da-ordinare.md`
+- COSA E STATO CAMBIATO: La pagina NEXT e stata riscritta seguendo il ramo standalone reale della madre `MaterialiDaOrdinare`: header, tabs, workspace a due pannelli, quick link, tabella, sticky bar e modale placeholder. Sono stati rimossi gli override clone-specifici `embedded` e gli inline style madre-like locali. Restano solo gli adattamenti strettamente necessari al clone: lettura fornitori dal domain NEXT, navigate ai path `/next/*`, preview foto locale/automatica e blocco read-only di aggiunta materiale, eliminazione materiale, conferma ordine, PDF e preventivo.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE: Parity esterna del modulo principale procurement piu fedele alla madre; nessuna scrittura business riaperta; `Ordini in attesa`, `Ordini arrivati` e `Dettaglio ordine` restano secondari dietro le quinte e non vengono rimossi.
+- COME VERIFICARE: Aprire `/next/materiali-da-ordinare`, verificare shell standalone della madre, aggiunta/rimozione locale materiali, quick link verso ordini/arrivi, sticky bar e modale placeholder; eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: Nessuna modifica a `src/App.tsx` o ai runtime procurement secondari, perche i consumer clone-side reali risultano ancora vivi dagli audit.
+
 ### Voce 2026-04-01 157
 - DATA: 2026-04-01
 - TITOLO MODIFICA: Riallineamento madre-like del modale procurement NEXT
@@ -7226,3 +7326,65 @@ Serve a:
 - NOTE:
   - build `OK`;
   - i report di change e continuity sono stati aggiornati per la tracciabilita del run.
+
+### Voce 2026-04-02 125
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Procurement convergente NEXT allineato su prefill, bozza locale e ricerca cross-tab
+- OBIETTIVO: Ridurre i delta comportamentali reali di `/next/materiali-da-ordinare` rispetto alla madre senza riaprire moduli procurement top-level secondari e senza introdurre scritture business.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_1215_materiali-da-ordinare-next-parity-comportamentale-base.md`
+  - `docs/continuity-reports/2026-04-02_1215_continuity_materiali-da-ordinare-next-parity-comportamentale-base.md`
+- COSA E STATO CAMBIATO:
+  - il payload `iaHandoff` procurement viene applicato davvero a fornitore, descrizione, ricerca e tab canonica;
+  - la bozza locale del modulo unico viene salvata/ripristinata in `sessionStorage`;
+  - la riga materiale temporanea conserva il fornitore scelto;
+  - la ricerca top-level filtra anche le viste convergenti `Ordini`, `Arrivi`, `Preventivi` e `Listino`;
+  - `CONFERMA ORDINE` resta read-only ma svuota la bozza locale come nel post-salvataggio madre.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun redesign; il modulo unico si comporta in modo piu coerente tra form, tab e dettaglio;
+  - Lettura: si continuano a usare `@fornitori`, `@ordini`, `@preventivi`, `@preventivi_approvazioni`, `@listino_prezzi` tramite layer NEXT read-only;
+  - Blocco scritture: nessuna scrittura business reale aggiunta.
+- COME VERIFICARE:
+  - `npm run build`
+  - aprire `/next/materiali-da-ordinare`;
+  - verificare prefill `iaHandoff`, aggiunta materiale con fornitore visibile in tabella, persistenza locale del draft e ricerca nelle tab convergenti.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; il comportamento converge meglio ma il modulo resta ancora read-only e non replica i writer reali della madre.
+- NOTE:
+  - build `OK`;
+  - il procurement top-level resta `PARZIALE`, non `CHIUSO`.
+
+### Voce 2026-04-02 126
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Procurement convergente NEXT esteso su listino fornitore, preview e totali del modulo unico
+- OBIETTIVO: Ridurre altri delta reali tra madre completa e `/next/materiali-da-ordinare` portando nel modulo unico preview fornitore, suggerimenti listino, prezzo/totale riga e risultati completi `Prezzi & Preventivi`.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_1335_procurement-next-parity-estesa-materiali-da-ordinare.md`
+  - `docs/continuity-reports/2026-04-02_1335_continuity_procurement-next-parity-estesa-materiali-da-ordinare.md`
+- COSA E STATO CAMBIATO:
+  - il ramo `Fabbisogni` usa ora suggerimenti listino filtrati per fornitore attivo e descrizione articolo;
+  - la selezione listino precompila prezzo, valuta, UDM e riferimento preventivo della riga temporanea;
+  - la UI mostra preview sintetica del fornitore selezionato, warning UDM, prezzi mancanti, totali per valuta e note ordine della bozza;
+  - le azioni riga restano clone-safe ma ora espongono nota, foto, documento collegato e jump a `Listino` quando manca il prezzo;
+  - `Prezzi & Preventivi` non taglia piu il dataset a 12 record.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la parte `Ordine materiali` converge meglio sulla madre `Acquisti` senza riaprire moduli procurement separati;
+  - Lettura: si continua a usare il layer NEXT read-only su `@fornitori`, `@ordini`, `@preventivi`, `@preventivi_approvazioni`, `@listino_prezzi`;
+  - Blocco scritture: nessuna scrittura business reale introdotta; conferma ordine, PDF e upload preventivi restano bloccati.
+- COME VERIFICARE:
+  - `npm run build`
+  - aprire `/next/materiali-da-ordinare`;
+  - selezionare un fornitore, digitare una descrizione compatibile con il listino e verificare suggerimenti, preview prezzo, totale e footer con warning/bozza;
+  - aprire `Prezzi & Preventivi` e verificare che il dataset non sia piu troncato a 12 righe.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; la convergenza comportamentale cresce ma la parity totale resta aperta.
+- NOTE:
+  - build `OK`;
+  - il procurement top-level resta `PARZIALE`, non `CHIUSO`.

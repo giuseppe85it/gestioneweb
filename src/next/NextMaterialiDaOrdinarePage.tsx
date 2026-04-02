@@ -1,45 +1,98 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useNavigate } from "react-router-dom";
-import type { UnitaMisura } from "../types/ordini";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import type { MaterialeOrdine, UnitaMisura } from "../types/ordini";
 import "../pages/MaterialiDaOrdinare.css";
+import "../pages/Acquisti.css";
+import "./next-procurement-route.css";
 import { readNextFornitoriSnapshot } from "./domain/nextFornitoriDomain";
 import {
+  type NextProcurementListinoItem,
+  readNextProcurementSnapshot,
+  type NextProcurementListTab,
+  type NextProcurementSnapshot,
+} from "./domain/nextProcurementDomain";
+import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
+import NextProcurementConvergedSection from "./NextProcurementConvergedSection";
+import {
   NEXT_HOME_PATH,
-  NEXT_ORDINI_ARRIVATI_PATH,
-  NEXT_ORDINI_IN_ATTESA_PATH,
+  NEXT_MATERIALI_DA_ORDINARE_PATH,
 } from "./nextStructuralPaths";
 
-type Fornitore = {
+interface Fornitore {
   id: string;
   nome: string;
+}
+
+type ProcurementDraftMaterial = MaterialeOrdine & {
+  fornitoreScelto?: string;
+  fornitore?: string;
+  nomeFornitore?: string;
+  note?: string;
+  prezzoUnitario?: number | null;
+  valuta?: string | null;
+  unitaPrezzo?: string | null;
+  fonteNumeroPreventivo?: string | null;
+  fonteDataPreventivo?: string | null;
+  pdfUrl?: string | null;
+  pdfStoragePath?: string | null;
+  imageUrls?: string[];
+  imageStoragePaths?: string[];
+  codiceArticolo?: string | null;
 };
 
-type DraftMaterial = {
-  id: string;
+type ProcurementDraftState = {
+  fornitoreId: string;
+  fornitoreNome: string;
+  isNuovoFornitore: boolean;
+  nomeFornitorePersonalizzato: string;
   descrizione: string;
-  quantita: number;
+  quantita: string;
   unita: UnitaMisura;
-  arrivato: false;
-  fotoUrl: string | null;
-  fotoStoragePath: null;
+  fotoPreview: string | null;
+  materiali: ProcurementDraftMaterial[];
+  searchText: string;
+  noteByMaterialeId: Record<string, string>;
+  ordineNote: string;
+  newMaterialeNota: string;
+  conversionFactorInput: string;
 };
 
-type FabbisogniTab = "Fabbisogni" | "Ordini" | "Arrivi" | "Prezzi & Preventivi";
+type FabbisogniTab =
+  | "Fabbisogni"
+  | "Ordini"
+  | "Arrivi"
+  | "Prezzi & Preventivi";
 
-const TABS: FabbisogniTab[] = ["Fabbisogni", "Ordini", "Arrivi", "Prezzi & Preventivi"];
+type CanonicalProcurementTab =
+  | "fabbisogni"
+  | "ordini"
+  | "arrivi"
+  | "preventivi"
+  | "listino";
 
-const READ_ONLY_ADD_MESSAGE =
-  "Clone read-only: aggiunta materiale non disponibile.";
-const READ_ONLY_DELETE_MESSAGE =
-  "Clone read-only: eliminazione materiale non disponibile.";
+const TABS: FabbisogniTab[] = [
+  "Fabbisogni",
+  "Ordini",
+  "Arrivi",
+  "Prezzi & Preventivi",
+];
+
 const READ_ONLY_SAVE_MESSAGE =
   "Clone read-only: conferma ordine non disponibile.";
-const READ_ONLY_FOTO_MESSAGE =
-  "Clone read-only: upload foto non disponibile.";
 const READ_ONLY_PREVENTIVO_MESSAGE =
-  "Clone read-only: upload preventivo non disponibile.";
+  "Clone read-only: caricamento preventivo non disponibile.";
 const READ_ONLY_PDF_MESSAGE =
   "Clone read-only: esportazione PDF non disponibile.";
+const PROCUREMENT_DRAFT_KEY = "next.procurement.materiali-da-ordinare.draft";
+
+const generaId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const immaginiAutomatiche: { pattern: RegExp; url: string }[] = [
   { pattern: /cemento/i, url: "/materiali/cemento.png" },
@@ -61,136 +114,337 @@ function readErrorMessage(error: unknown) {
     : "Errore durante il caricamento dei fornitori.";
 }
 
-const motherLikePageStyle: CSSProperties = {
-  minHeight: "100vh",
-  padding: "24px 16px 40px",
-  boxSizing: "border-box",
-  background:
-    "radial-gradient(circle at top, #ece4d4 0, #dcd2c0 35%, #c9c0ae 70%, #b3ab9a 100%)",
-};
+function normalizeSearchToken(value: string | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
 
-const motherLikeCardStyle: CSSProperties = {
-  width: "min(1200px, 100%)",
-  margin: "0 auto",
-  gap: "16px",
-};
+function normalizeStoredPreview(value: unknown) {
+  if (typeof value !== "string") return null;
+  if (!value.trim() || value.startsWith("blob:")) return null;
+  return value;
+}
 
-const motherLikeHeaderStyle: CSSProperties = {
-  background: "rgba(248, 244, 232, 0.98)",
-  border: "1px solid rgba(180, 167, 144, 0.42)",
-  boxShadow:
-    "0 14px 35px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.12) inset",
-};
+function normalizeDescrizione(value: string) {
+  return String(value || "")
+    .toUpperCase()
+    .trim()
+    .replace(/[.\-_/]/g, " ")
+    .replace(/\s+/g, " ");
+}
 
-const motherLikeHeaderMetaStyle: CSSProperties = {
-  display: "grid",
-  gap: "4px",
-};
+function normalizeUnita(value: string) {
+  return String(value || "").toUpperCase().trim();
+}
 
-const motherLikeHeaderSubtitleStyle: CSSProperties = {
-  margin: 0,
-  color: "#5b574c",
-  fontSize: "13px",
-  lineHeight: 1.35,
-};
+function normalizeUom(value: string): "PZ" | "NR" | "MT" | "LT" | "KG" | "M" {
+  const normalized = normalizeUnita(value);
+  if (normalized === "PZ" || normalized === "PEZZO" || normalized === "PEZZI") {
+    return "PZ";
+  }
+  if (normalized === "NR" || normalized === "N" || normalized === "NUMERO") {
+    return "NR";
+  }
+  if (normalized === "MT" || normalized === "METRO" || normalized === "METRI") {
+    return "MT";
+  }
+  if (normalized === "M") {
+    return "M";
+  }
+  if (normalized === "LT" || normalized === "L" || normalized === "LITRO" || normalized === "LITRI") {
+    return "LT";
+  }
+  if (normalized === "KG" || normalized === "KILO" || normalized === "KILOGRAMMO" || normalized === "KILOGRAMMI") {
+    return "KG";
+  }
+  return "PZ";
+}
 
-const motherLikeTabsStyle: CSSProperties = {
-  background: "rgba(248, 244, 232, 0.98)",
-  border: "1px solid rgba(180, 167, 144, 0.42)",
-  boxShadow: "0 10px 24px rgba(0, 0, 0, 0.08)",
-};
+function normalizeArticoloCanonico(value: string) {
+  return normalizeDescrizione(value);
+}
 
-const motherLikePlaceholderStyle: CSSProperties = {
-  padding: "24px",
-  background: "rgba(255, 252, 245, 0.92)",
-  border: "1px solid rgba(180, 167, 144, 0.35)",
-  borderRadius: "16px",
-  boxShadow: "0 12px 26px rgba(0, 0, 0, 0.08)",
-};
+function parseConversionFactor(note: string | null | undefined): number | null {
+  const raw = String(note || "");
+  if (!raw.trim()) return null;
+  const match = raw.match(/(?:^|[\s|;,])conv\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+  if (!match) return null;
+  const parsed = Number(String(match[1]).replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
-const motherLikeWorkspaceStyle: CSSProperties = {
-  gridTemplateColumns: "minmax(360px, 0.92fr) minmax(0, 1.18fr)",
-  alignItems: "stretch",
-};
+function upsertConversionFactorInNote(note: string | null | undefined, factorRaw: string) {
+  const cleanNote = String(note || "").trim();
+  const cleanFactor = String(factorRaw || "").trim();
+  const withoutToken = cleanNote
+    .replace(/(?:^|[\s|;,])conv\s*:\s*[0-9]+(?:[.,][0-9]+)?/gi, " ")
+    .replace(/\s+\|\s+\|/g, " | ")
+    .replace(/\s+/g, " ")
+    .replace(/(^[|;,]\s*|\s*[|;,]$)/g, "")
+    .trim();
 
-const motherLikeSidebarStyle: CSSProperties = {
-  minHeight: "100%",
-  paddingBottom: "18px",
-};
+  const factor = Number(cleanFactor.replace(",", "."));
+  if (!Number.isFinite(factor) || factor <= 0) {
+    return withoutToken;
+  }
+  const token = `conv:${factor.toString().replace(".", ",")}`;
+  if (!withoutToken) return token;
+  return `${withoutToken} | ${token}`.trim();
+}
 
-const motherLikeTablePanelStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  minHeight: "620px",
-};
+function computeLineTotal(params: {
+  qty: number;
+  unitPrice: number;
+  selectedUom: string | null | undefined;
+  priceUom: string | null | undefined;
+  note?: string | null;
+}) {
+  const qty = Number(params.qty);
+  const unitPrice = Number(params.unitPrice);
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+    return { total: null as number | null, status: "ok" as const, factor: null as number | null };
+  }
 
-const motherLikeEmptyStateStyle: CSSProperties = {
-  flex: "1 1 auto",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textAlign: "center",
-  minHeight: "320px",
-};
+  const selected = normalizeUnita(String(params.selectedUom || ""));
+  const source = normalizeUnita(String(params.priceUom || selected));
+  if (!selected || !source || selected === source) {
+    return { total: qty * unitPrice, status: "ok" as const, factor: null as number | null };
+  }
 
-const motherLikeTableWrapStyle: CSSProperties = {
-  flex: "1 1 auto",
-  minHeight: 0,
-};
+  const factor = parseConversionFactor(params.note);
+  if (!factor) {
+    return { total: null as number | null, status: "needs_factor" as const, factor: null as number | null };
+  }
 
-const motherLikeStickyBarStyle: CSSProperties = {
-  position: "static",
-  bottom: "auto",
-  marginTop: "6px",
-  gridTemplateColumns:
-    "minmax(180px, 1fr) minmax(180px, 1fr) minmax(360px, 1.4fr)",
-};
+  return { total: qty * factor * unitPrice, status: "ok" as const, factor };
+}
 
-const motherLikeModalBackdropStyle: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.4)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "20px",
-  zIndex: 30,
-};
+function coerceDraftMaterial(value: unknown): ProcurementDraftMaterial | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
 
-const motherLikeModalCardStyle: CSSProperties = {
-  width: "min(460px, 100%)",
-  background: "#ffffff",
-  border: "1px solid #d8e0ea",
-  borderRadius: "16px",
-  boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
-  padding: "18px",
-  display: "flex",
-  flexDirection: "column",
-  gap: "10px",
-};
+  const raw = value as Record<string, unknown>;
+  const descrizione = String(raw.descrizione ?? "").trim();
+  const quantita = Number(raw.quantita);
+  const unita = String(raw.unita ?? "").trim();
+  if (!descrizione || !Number.isFinite(quantita) || !unita) {
+    return null;
+  }
 
-const motherLikeModalHeadingStyle: CSSProperties = {
-  margin: 0,
-  fontSize: "18px",
-};
+  return {
+    id: String(raw.id ?? generaId()),
+    descrizione,
+    quantita,
+    unita,
+    arrivato: Boolean(raw.arrivato),
+    dataArrivo:
+      typeof raw.dataArrivo === "string" && raw.dataArrivo.trim()
+        ? raw.dataArrivo
+        : undefined,
+    fotoUrl: normalizeStoredPreview(raw.fotoUrl),
+    fotoStoragePath:
+      typeof raw.fotoStoragePath === "string" && raw.fotoStoragePath.trim()
+        ? raw.fotoStoragePath
+        : null,
+    fornitoreScelto:
+      typeof raw.fornitoreScelto === "string" && raw.fornitoreScelto.trim()
+        ? raw.fornitoreScelto
+        : undefined,
+    fornitore:
+      typeof raw.fornitore === "string" && raw.fornitore.trim()
+        ? raw.fornitore
+        : undefined,
+    nomeFornitore:
+      typeof raw.nomeFornitore === "string" && raw.nomeFornitore.trim()
+        ? raw.nomeFornitore
+        : undefined,
+    note:
+      typeof raw.note === "string" && raw.note.trim()
+        ? raw.note
+        : undefined,
+    prezzoUnitario:
+      typeof raw.prezzoUnitario === "number" ? raw.prezzoUnitario : null,
+    valuta:
+      typeof raw.valuta === "string" && raw.valuta.trim()
+        ? raw.valuta
+        : null,
+    unitaPrezzo:
+      typeof raw.unitaPrezzo === "string" && raw.unitaPrezzo.trim()
+        ? raw.unitaPrezzo
+        : null,
+    fonteNumeroPreventivo:
+      typeof raw.fonteNumeroPreventivo === "string" && raw.fonteNumeroPreventivo.trim()
+        ? raw.fonteNumeroPreventivo
+        : null,
+    fonteDataPreventivo:
+      typeof raw.fonteDataPreventivo === "string" && raw.fonteDataPreventivo.trim()
+        ? raw.fonteDataPreventivo
+        : null,
+    pdfUrl:
+      typeof raw.pdfUrl === "string" && raw.pdfUrl.trim()
+        ? raw.pdfUrl
+        : null,
+    pdfStoragePath:
+      typeof raw.pdfStoragePath === "string" && raw.pdfStoragePath.trim()
+        ? raw.pdfStoragePath
+        : null,
+    imageUrls: Array.isArray(raw.imageUrls)
+      ? raw.imageUrls.filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+        )
+      : [],
+    imageStoragePaths: Array.isArray(raw.imageStoragePaths)
+      ? raw.imageStoragePaths.filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+        )
+      : [],
+    codiceArticolo:
+      typeof raw.codiceArticolo === "string" && raw.codiceArticolo.trim()
+        ? raw.codiceArticolo
+        : null,
+  };
+}
 
-const motherLikeModalTitleStyle: CSSProperties = {
-  margin: 0,
-  fontWeight: 700,
-  color: "#0f172a",
-};
+function readProcurementDraftState(): ProcurementDraftState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
 
-const motherLikeModalBodyTextStyle: CSSProperties = {
-  margin: 0,
-  color: "#64748b",
-  lineHeight: 1.4,
-};
+  try {
+    const raw = window.sessionStorage.getItem(PROCUREMENT_DRAFT_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<ProcurementDraftState>;
+    return {
+      fornitoreId: String(parsed.fornitoreId ?? ""),
+      fornitoreNome: String(parsed.fornitoreNome ?? ""),
+      isNuovoFornitore: Boolean(parsed.isNuovoFornitore),
+      nomeFornitorePersonalizzato: String(parsed.nomeFornitorePersonalizzato ?? ""),
+      descrizione: String(parsed.descrizione ?? ""),
+      quantita: String(parsed.quantita ?? ""),
+      unita: String(parsed.unita ?? "pz"),
+      fotoPreview: normalizeStoredPreview(parsed.fotoPreview),
+      materiali: Array.isArray(parsed.materiali)
+        ? parsed.materiali
+            .map((entry) => coerceDraftMaterial(entry))
+            .filter((entry): entry is ProcurementDraftMaterial => entry !== null)
+        : [],
+      searchText: String(parsed.searchText ?? ""),
+      noteByMaterialeId:
+        parsed.noteByMaterialeId && typeof parsed.noteByMaterialeId === "object"
+          ? Object.entries(parsed.noteByMaterialeId).reduce<Record<string, string>>(
+              (accumulator, [key, value]) => {
+                const normalizedKey = String(key || "").trim();
+                const normalizedValue = String(value ?? "").trim();
+                if (!normalizedKey || !normalizedValue) {
+                  return accumulator;
+                }
+                accumulator[normalizedKey] = normalizedValue;
+                return accumulator;
+              },
+              {},
+            )
+          : {},
+      ordineNote: String(parsed.ordineNote ?? ""),
+      newMaterialeNota: String(parsed.newMaterialeNota ?? ""),
+      conversionFactorInput: String(parsed.conversionFactorInput ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveHandoffTab(args: {
+  orderId: string | null;
+  routeSecondaria: string | null;
+  vistaTarget: string | null;
+  flusso: string | null;
+}): CanonicalProcurementTab {
+  const hints = [args.routeSecondaria, args.vistaTarget, args.flusso]
+    .map((value) => normalizeSearchToken(value))
+    .filter(Boolean)
+    .join(" ");
+
+  if (normalizeSearchToken(args.vistaTarget).includes("listino")) {
+    return "listino";
+  }
+  if (hints.includes("preventiv") || hints.includes("prezz")) {
+    return "preventivi";
+  }
+  if (hints.includes("arriv")) {
+    return "arrivi";
+  }
+  if (args.orderId || hints.includes("ordin")) {
+    return "ordini";
+  }
+
+  return "fabbisogni";
+}
+
+function normalizeCanonicalTab(search: URLSearchParams): CanonicalProcurementTab {
+  const rawTab = search.get("tab");
+  if (rawTab === "ordini") return "ordini";
+  if (rawTab === "arrivi") return "arrivi";
+  if (rawTab === "preventivi") return "preventivi";
+  if (rawTab === "listino") return "listino";
+  if (rawTab === "ordine-materiali") return "fabbisogni";
+  return "fabbisogni";
+}
+
+function mapVisibleTab(tab: CanonicalProcurementTab): FabbisogniTab {
+  if (tab === "ordini") return "Ordini";
+  if (tab === "arrivi") return "Arrivi";
+  if (tab === "preventivi" || tab === "listino") return "Prezzi & Preventivi";
+  return "Fabbisogni";
+}
+
+function buildCanonicalSearch(args: {
+  currentSearch: URLSearchParams;
+  tab: CanonicalProcurementTab;
+  orderId?: string | null;
+  from?: NextProcurementListTab | null;
+}) {
+  const nextSearch = new URLSearchParams();
+  const iaHandoff = args.currentSearch.get("iaHandoff");
+
+  if (iaHandoff) {
+    nextSearch.set("iaHandoff", iaHandoff);
+  }
+
+  if (args.tab !== "fabbisogni") {
+    nextSearch.set("tab", args.tab);
+  }
+  if (args.orderId) {
+    nextSearch.set("orderId", args.orderId);
+  }
+  if (args.from) {
+    nextSearch.set("from", args.from);
+  }
+
+  return nextSearch;
+}
 
 export default function NextMaterialiDaOrdinarePage() {
   const navigate = useNavigate();
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window === "undefined" ? 1440 : window.innerWidth,
+  const location = useLocation();
+  const searchParams = useMemo(
+    () => new URLSearchParams(location.search),
+    [location.search],
   );
+  const canonicalTab = useMemo(
+    () => normalizeCanonicalTab(searchParams),
+    [searchParams],
+  );
+  const activeTab = useMemo(() => mapVisibleTab(canonicalTab), [canonicalTab]);
+  const selectedOrderId = searchParams.get("orderId");
+  const detailBackTab = (searchParams.get("from") === "arrivi"
+    ? "arrivi"
+    : canonicalTab === "arrivi"
+      ? "arrivi"
+      : "ordini") as NextProcurementListTab;
+
   const [fornitori, setFornitori] = useState<Fornitore[]>([]);
   const [fornitoreId, setFornitoreId] = useState("");
   const [fornitoreNome, setFornitoreNome] = useState("");
@@ -201,16 +455,122 @@ export default function NextMaterialiDaOrdinarePage() {
   const [quantita, setQuantita] = useState("");
   const [unita, setUnita] = useState<UnitaMisura>("pz");
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
-  const [materiali] = useState<DraftMaterial[]>([]);
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [materiali, setMateriali] = useState<ProcurementDraftMaterial[]>([]);
   const [loadingFornitori, setLoadingFornitori] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<FabbisogniTab>("Fabbisogni");
   const [searchText, setSearchText] = useState("");
-  const [placeholderModal, setPlaceholderModal] = useState<{
-    action: "Prezzi" | "Allegati" | "Note";
-    materialeId: string;
-    descrizione: string;
-  } | null>(null);
+  const [procurementSnapshot, setProcurementSnapshot] =
+    useState<NextProcurementSnapshot | null>(null);
+  const [loadingProcurement, setLoadingProcurement] = useState(true);
+  const [procurementError, setProcurementError] = useState<string | null>(null);
+  const [noteByMaterialeId, setNoteByMaterialeId] = useState<Record<string, string>>({});
+  const [ordineNote, setOrdineNote] = useState("");
+  const [newMaterialeNota, setNewMaterialeNota] = useState("");
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [selectedListinoVoce, setSelectedListinoVoce] =
+    useState<NextProcurementListinoItem | null>(null);
+  const [showEntryDetails, setShowEntryDetails] = useState(false);
+  const [conversionFactorInput, setConversionFactorInput] = useState("");
+  const procurementHandoff = useInternalAiUniversalHandoffConsumer({
+    moduleId: "next.procurement",
+  });
+  const procurementLifecycleRef = useRef<string | null>(null);
+  const openCanonicalProcurementView = useCallback(
+    (args: {
+      tab: CanonicalProcurementTab;
+      orderId?: string | null;
+      from?: NextProcurementListTab | null;
+    }) => {
+      const nextSearch = buildCanonicalSearch({
+        currentSearch: searchParams,
+        tab: args.tab,
+        orderId: args.orderId,
+        from: args.from,
+      });
+      navigate(
+        `${NEXT_MATERIALI_DA_ORDINARE_PATH}${
+          nextSearch.toString() ? `?${nextSearch.toString()}` : ""
+        }`,
+      );
+    },
+    [navigate, searchParams],
+  );
+  const clearProcurementDraftState = useCallback(() => {
+    setFornitoreId("");
+    setFornitoreNome("");
+    setIsNuovoFornitore(false);
+    setNomeFornitorePersonalizzato("");
+    setDescrizione("");
+    setQuantita("");
+    setUnita("pz");
+    setFotoFile(null);
+    setFotoPreview(null);
+    setMateriali([]);
+    setNoteByMaterialeId({});
+    setOrdineNote("");
+    setNewMaterialeNota("");
+    setDraftSavedAt(null);
+    setShowSuggest(false);
+    setSelectedListinoVoce(null);
+    setShowEntryDetails(false);
+    setConversionFactorInput("");
+    setSearchText("");
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(PROCUREMENT_DRAFT_KEY);
+    }
+  }, []);
+
+  const handoffOrderId = useMemo(() => {
+    if (procurementHandoff.state.status !== "ready") {
+      return null;
+    }
+
+    return procurementHandoff.state.payload.entityRef?.entityKind === "ordine"
+      ? procurementHandoff.state.payload.entityRef.matchedId ??
+          procurementHandoff.state.payload.entityRef.normalizedValue
+      : null;
+  }, [procurementHandoff.state]);
+
+  const iaPrefill = useMemo(() => {
+    if (procurementHandoff.state.status !== "ready") {
+      return null;
+    }
+
+    return {
+      handoffId: procurementHandoff.state.payload.handoffId,
+      fornitore: procurementHandoff.state.prefill.fornitore,
+      materiale: procurementHandoff.state.prefill.materiale,
+      documentoNome: procurementHandoff.state.prefill.documentoNome,
+      note: procurementHandoff.state.payload.motivoInstradamento,
+      statusLabel: procurementHandoff.state.payload.statoConsumo,
+      missingFields: procurementHandoff.state.payload.campiMancanti,
+      verifyFields: procurementHandoff.state.payload.campiDaVerificare,
+    };
+  }, [procurementHandoff.state]);
+
+  useEffect(() => {
+    const draft = readProcurementDraftState();
+    if (!draft) {
+      return;
+    }
+
+    setFornitoreId(draft.fornitoreId);
+    setFornitoreNome(draft.fornitoreNome);
+    setIsNuovoFornitore(draft.isNuovoFornitore);
+    setNomeFornitorePersonalizzato(draft.nomeFornitorePersonalizzato);
+    setDescrizione(draft.descrizione);
+    setQuantita(draft.quantita);
+    setUnita(draft.unita);
+    setFotoPreview(draft.fotoPreview);
+    setMateriali(draft.materiali);
+    setSearchText(draft.searchText);
+    setNoteByMaterialeId(draft.noteByMaterialeId);
+    setOrdineNote(draft.ordineNote);
+    setNewMaterialeNota(draft.newMaterialeNota);
+    setConversionFactorInput(draft.conversionFactorInput);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,11 +583,16 @@ export default function NextMaterialiDaOrdinarePage() {
           includeCloneOverlays: false,
         });
         if (cancelled) return;
-        setFornitori(snapshot.items.map((item) => ({ id: item.id, nome: item.nome })));
+        setFornitori(
+          snapshot.items.map((item) => ({
+            id: item.id || generaId(),
+            nome: item.nome,
+          })),
+        );
       } catch (loadError) {
         if (cancelled) return;
-        setError(readErrorMessage(loadError));
         setFornitori([]);
+        setError(readErrorMessage(loadError));
       } finally {
         if (!cancelled) {
           setLoadingFornitori(false);
@@ -242,58 +607,430 @@ export default function NextMaterialiDaOrdinarePage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
+    let cancelled = false;
 
-    const handleResize = () => setViewportWidth(window.innerWidth);
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    const loadProcurement = async () => {
+      try {
+        setLoadingProcurement(true);
+        setProcurementError(null);
+        const snapshot = await readNextProcurementSnapshot({
+          includeCloneOverlays: false,
+        });
+        if (cancelled) return;
+        setProcurementSnapshot(snapshot);
+      } catch (loadError) {
+        if (cancelled) return;
+        setProcurementSnapshot(null);
+        setProcurementError(
+          loadError instanceof Error && loadError.message
+            ? loadError.message
+            : "Snapshot procurement clone non disponibile.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoadingProcurement(false);
+        }
+      }
+    };
+
+    void loadProcurement();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      const draft: ProcurementDraftState = {
+        fornitoreId,
+        fornitoreNome,
+        isNuovoFornitore,
+        nomeFornitorePersonalizzato,
+        descrizione,
+        quantita,
+        unita,
+        fotoPreview: fotoFile ? null : normalizeStoredPreview(fotoPreview),
+        materiali,
+        searchText,
+        noteByMaterialeId,
+        ordineNote,
+        newMaterialeNota,
+        conversionFactorInput,
+      };
+
+      const isEmpty =
+        !draft.fornitoreId &&
+        !draft.fornitoreNome &&
+        !draft.isNuovoFornitore &&
+        !draft.nomeFornitorePersonalizzato.trim() &&
+        !draft.descrizione.trim() &&
+        !draft.quantita.trim() &&
+        draft.unita === "pz" &&
+        !draft.fotoPreview &&
+        !draft.searchText.trim() &&
+        !draft.ordineNote.trim() &&
+        !draft.newMaterialeNota.trim() &&
+        !draft.conversionFactorInput.trim() &&
+        Object.keys(draft.noteByMaterialeId).length === 0 &&
+        draft.materiali.length === 0;
+
+      if (isEmpty) {
+        window.sessionStorage.removeItem(PROCUREMENT_DRAFT_KEY);
+        setDraftSavedAt(null);
+        return;
+      }
+
+      window.sessionStorage.setItem(PROCUREMENT_DRAFT_KEY, JSON.stringify(draft));
+      setDraftSavedAt(Date.now());
+    }, 400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    descrizione,
+    fornitoreId,
+    fornitoreNome,
+    fotoFile,
+    fotoPreview,
+    isNuovoFornitore,
+    materiali,
+    newMaterialeNota,
+    noteByMaterialeId,
+    ordineNote,
+    nomeFornitorePersonalizzato,
+    quantita,
+    searchText,
+    unita,
+    conversionFactorInput,
+  ]);
+
+  useEffect(() => {
+    if (
+      procurementHandoff.state.status !== "ready" ||
+      loadingFornitori ||
+      !procurementSnapshot ||
+      procurementLifecycleRef.current === procurementHandoff.state.payload.handoffId
+    ) {
+      return;
+    }
+
+    const prefill = procurementHandoff.state.prefill;
+    const materialePrefill = prefill.materiale ?? prefill.queryMateriale;
+    const targetTab = resolveHandoffTab({
+      orderId: handoffOrderId,
+      routeSecondaria: prefill.routeSecondaria,
+      vistaTarget: prefill.vistaTarget,
+      flusso: prefill.flusso,
+    });
+
+    if (prefill.fornitore) {
+      const normalizedSupplier = normalizeSearchToken(prefill.fornitore);
+      const matchingSupplier = fornitori.find((entry) =>
+        normalizeSearchToken(entry.nome).includes(normalizedSupplier),
+      );
+      if (matchingSupplier) {
+        setIsNuovoFornitore(false);
+        setFornitoreId(matchingSupplier.id);
+        setFornitoreNome(matchingSupplier.nome);
+        setNomeFornitorePersonalizzato("");
+      } else if (!fornitoreNome.trim() && !nomeFornitorePersonalizzato.trim()) {
+        setIsNuovoFornitore(true);
+        setFornitoreId("nuovo");
+        setFornitoreNome("");
+        setNomeFornitorePersonalizzato(prefill.fornitore.toUpperCase());
+      }
+    }
+
+    if (materialePrefill && !descrizione.trim()) {
+      setDescrizione(materialePrefill.toUpperCase());
+    }
+
+    if (!searchText.trim()) {
+      setSearchText(
+        materialePrefill ??
+          prefill.fornitore ??
+          prefill.documentoNome ??
+          "",
+      );
+    }
+
+    if (
+      targetTab !== canonicalTab ||
+      (handoffOrderId && selectedOrderId !== handoffOrderId)
+    ) {
+      openCanonicalProcurementView({
+        tab: targetTab,
+        orderId: handoffOrderId,
+        from:
+          targetTab === "arrivi"
+            ? "arrivi"
+            : targetTab === "ordini"
+              ? "ordini"
+              : null,
+      });
+    }
+
+    procurementHandoff.acknowledge(
+      "prefill_applicato",
+      "Il procurement convergente ha applicato il payload IA al modulo unico Materiali da ordinare.",
+    );
+
+    if (procurementHandoff.state.requiresVerification) {
+      procurementHandoff.acknowledge(
+        "da_verificare",
+        "Il payload IA procurement richiede ancora verifica manuale nel modulo convergente.",
+      );
+    } else {
+      procurementHandoff.acknowledge(
+        "completato",
+        "Il procurement convergente ha agganciato il payload standard nel modulo unico.",
+      );
+    }
+
+    procurementLifecycleRef.current = procurementHandoff.state.payload.handoffId;
+  }, [
+    canonicalTab,
+    descrizione,
+    fornitori,
+    fornitoreNome,
+    handoffOrderId,
+    loadingFornitori,
+    nomeFornitorePersonalizzato,
+    openCanonicalProcurementView,
+    procurementHandoff,
+    procurementSnapshot,
+    searchText,
+    selectedOrderId,
+  ]);
 
   const handleSelectFornitore = (id: string) => {
     if (id === "nuovo") {
       setIsNuovoFornitore(true);
       setFornitoreId("nuovo");
       setFornitoreNome("");
+      setSelectedListinoVoce(null);
       return;
     }
 
     setIsNuovoFornitore(false);
     setFornitoreId(id);
+
     const fornitore = fornitori.find((entry) => entry.id === id);
     setFornitoreNome(fornitore?.nome || "");
+    setSelectedListinoVoce(null);
   };
 
+  const fornitoreAttivoNome = isNuovoFornitore
+    ? nomeFornitorePersonalizzato.trim().toUpperCase()
+    : fornitoreNome.trim();
+  const fornitoreAttivoId = !isNuovoFornitore ? fornitoreId : "";
+
+  const suggestListino = useMemo(() => {
+    if (!showSuggest || !procurementSnapshot || !fornitoreAttivoId) {
+      return [];
+    }
+
+    const query = descrizione.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+
+    return procurementSnapshot.listino
+      .filter((entry) => entry.supplierId === fornitoreAttivoId)
+      .filter((entry) => {
+        const articolo = String(entry.articoloCanonico || "").toLowerCase();
+        const codice = String(entry.codiceArticolo || "").toLowerCase();
+        return articolo.includes(query) || codice.includes(query);
+      })
+      .sort(
+        (left, right) =>
+          (right.updatedAtTimestamp ?? 0) - (left.updatedAtTimestamp ?? 0),
+      )
+      .slice(0, 8);
+  }, [descrizione, fornitoreAttivoId, procurementSnapshot, showSuggest]);
+
   const handleDescrizioneBlur = () => {
-    if (fotoPreview) return;
+    window.setTimeout(() => {
+      setShowSuggest(false);
+    }, 120);
+    if (fotoFile || fotoPreview) return;
     const auto = trovaImmagineAutomatica(descrizione);
     if (auto) setFotoPreview(auto);
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files?.[0]) {
-      window.alert(READ_ONLY_FOTO_MESSAGE);
+  const handleDescrizioneChange = (value: string) => {
+    setDescrizione(value);
+    setShowSuggest(true);
+    if (
+      selectedListinoVoce &&
+      normalizeArticoloCanonico(value) !==
+        normalizeArticoloCanonico(selectedListinoVoce.articoloCanonico)
+    ) {
+      setSelectedListinoVoce(null);
     }
-    event.target.value = "";
   };
+
+  const selectListinoSuggestion = (voce: NextProcurementListinoItem) => {
+    setDescrizione(voce.articoloCanonico);
+    const autoUnita = normalizeUom(String(voce.unita || ""));
+    setUnita(autoUnita.toLowerCase() as UnitaMisura);
+    setConversionFactorInput("");
+    setSelectedListinoVoce(voce);
+    setShowSuggest(false);
+    setShowEntryDetails(true);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFotoFile(file);
+    setFotoPreview(URL.createObjectURL(file));
+  };
+
+  const resetMateriale = () => {
+    setDescrizione("");
+    setQuantita("");
+    setUnita("pz");
+    setFotoFile(null);
+    setFotoPreview(null);
+    setSelectedListinoVoce(null);
+    setShowSuggest(false);
+    setNewMaterialeNota("");
+    setConversionFactorInput("");
+    setShowEntryDetails(false);
+  };
+
+  const getMaterialNote = useCallback(
+    (materiale: ProcurementDraftMaterial) =>
+      noteByMaterialeId[materiale.id] || String(materiale.note || "").trim(),
+    [noteByMaterialeId],
+  );
+
+  const selectedUomNorm = normalizeUom(String(unita || ""));
+  const selectedPriceUom = selectedListinoVoce
+    ? normalizeUom(String(selectedListinoVoce.unita || ""))
+    : null;
+  const needsConversionFactorInput =
+    Boolean(selectedListinoVoce) &&
+    Boolean(selectedPriceUom) &&
+    selectedUomNorm !== selectedPriceUom;
+  const parsedConversionFactorInput = Number(
+    String(conversionFactorInput || "").replace(",", "."),
+  );
+  const hasValidConversionFactorInput =
+    Number.isFinite(parsedConversionFactorInput) && parsedConversionFactorInput > 0;
 
   const aggiungiMateriale = () => {
     if (!descrizione.trim() || !quantita.trim()) return;
 
-    const fornitoreAttivo = isNuovoFornitore
-      ? nomeFornitorePersonalizzato.trim().toUpperCase()
-      : fornitoreNome.trim();
-
-    if (!fornitoreAttivo) {
+    if (!fornitoreAttivoNome) {
       window.alert("Seleziona un fornitore prima di aggiungere il materiale.");
       return;
     }
 
-    window.alert(READ_ONLY_ADD_MESSAGE);
+    const quantitaNumerica = Number.parseFloat(quantita);
+    if (!Number.isFinite(quantitaNumerica) || quantitaNumerica <= 0) {
+      window.alert("Inserisci una quantità valida.");
+      return;
+    }
+
+    const noteConFattore = upsertConversionFactorInNote(
+      newMaterialeNota,
+      conversionFactorInput,
+    );
+    const id = generaId();
+    const nuovo: ProcurementDraftMaterial = {
+      id,
+      descrizione: normalizeDescrizione(descrizione),
+      quantita: quantitaNumerica,
+      unita,
+      arrivato: false,
+      fotoUrl: fotoPreview,
+      fotoStoragePath: null,
+      fornitoreScelto: fornitoreAttivoNome,
+      fornitore: fornitoreAttivoNome,
+      nomeFornitore: fornitoreAttivoNome,
+      note: noteConFattore || undefined,
+      prezzoUnitario: selectedListinoVoce?.prezzoAttuale ?? null,
+      valuta: selectedListinoVoce?.valuta ?? null,
+      unitaPrezzo: selectedListinoVoce?.unita ?? null,
+      fonteNumeroPreventivo: selectedListinoVoce?.fonteNumeroPreventivo ?? null,
+      fonteDataPreventivo: selectedListinoVoce?.fonteDataPreventivo ?? null,
+      pdfUrl: selectedListinoVoce?.pdfUrl ?? null,
+      pdfStoragePath: selectedListinoVoce?.pdfStoragePath ?? null,
+      imageUrls: selectedListinoVoce?.imageUrls ?? [],
+      imageStoragePaths: selectedListinoVoce?.imageStoragePaths ?? [],
+      codiceArticolo: selectedListinoVoce?.codiceArticolo ?? null,
+    };
+
+    setMateriali((current) => [...current, nuovo]);
+    if (noteConFattore) {
+      setNoteByMaterialeId((current) => ({
+        ...current,
+        [id]: noteConFattore,
+      }));
+    }
+    resetMateriale();
   };
 
-  const eliminaMateriale = () => {
-    window.alert(READ_ONLY_DELETE_MESSAGE);
+  const eliminaMateriale = (id: string) => {
+    setMateriali((current) => current.filter((item) => item.id !== id));
+    setNoteByMaterialeId((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const aggiornaFotoMateriale = (materialId: string, file: File) => {
+    const preview = URL.createObjectURL(file);
+    setMateriali((current) =>
+      current.map((item) =>
+        item.id === materialId
+          ? {
+              ...item,
+              fotoUrl: preview,
+              fotoStoragePath: null,
+            }
+          : item,
+      ),
+    );
+  };
+
+  const rimuoviFotoMateriale = (materialId: string) => {
+    setMateriali((current) =>
+      current.map((item) =>
+        item.id === materialId
+          ? {
+              ...item,
+              fotoUrl: null,
+              fotoStoragePath: null,
+            }
+          : item,
+      ),
+    );
+  };
+
+  const openDocumentoMateriale = (materiale: ProcurementDraftMaterial) => {
+    const documentCandidates = [
+      materiale.pdfUrl,
+      ...(materiale.imageUrls ?? []),
+      materiale.fotoUrl,
+    ].filter((entry): entry is string => Boolean(entry && entry.trim()));
+
+    if (documentCandidates.length === 0) {
+      window.alert("Nessun documento collegato alla riga.");
+      return;
+    }
+
+    window.open(documentCandidates[0], "_blank", "noopener,noreferrer");
+  };
+
+  const openBozzaListinoManuale = (materiale: ProcurementDraftMaterial) => {
+    setSearchText(materiale.descrizione);
+    openCanonicalProcurementView({ tab: "listino" });
   };
 
   const salvaOrdine = () => {
@@ -310,65 +1047,186 @@ export default function NextMaterialiDaOrdinarePage() {
 
     if (!materiali.length) return;
     window.alert(READ_ONLY_SAVE_MESSAGE);
+    clearProcurementDraftState();
   };
 
   const materialiFiltrati = useMemo(() => {
     const query = searchText.trim().toLowerCase();
     if (!query) return materiali;
 
-    return materiali.filter((item) => {
-      const fornitoreRiga = String((item as { fornitore?: string }).fornitore || "").toLowerCase();
+    return materiali.filter((materiale) => {
+      const materialeConFornitore = materiale as unknown as {
+        fornitoreScelto?: string;
+        fornitore?: string;
+        nomeFornitore?: string;
+      };
+      const fornitoreRiga = String(
+        materialeConFornitore.fornitoreScelto ??
+          materialeConFornitore.fornitore ??
+          materialeConFornitore.nomeFornitore ??
+          "",
+      ).toLowerCase();
+
       return (
-        item.descrizione.toLowerCase().includes(query) ||
+        materiale.descrizione.toLowerCase().includes(query) ||
         fornitoreRiga.includes(query) ||
-        item.id.toLowerCase().includes(query)
+        String(materiale.id).toLowerCase().includes(query)
       );
     });
   }, [materiali, searchText]);
+
+  const prezzoSourceByMaterialeId = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        prezzoUnitario: number;
+        valuta: string | null;
+        unita: string | null;
+        codiceArticolo: string | null;
+        numeroPreventivo: string | null;
+        dataPreventivo: string | null;
+      }
+    >();
+
+    materiali.forEach((materiale) => {
+      if (typeof materiale.prezzoUnitario === "number" && Number.isFinite(materiale.prezzoUnitario)) {
+        map.set(materiale.id, {
+          prezzoUnitario: materiale.prezzoUnitario,
+          valuta: materiale.valuta ?? null,
+          unita: materiale.unitaPrezzo ?? null,
+          codiceArticolo: materiale.codiceArticolo ?? null,
+          numeroPreventivo: materiale.fonteNumeroPreventivo ?? null,
+          dataPreventivo: materiale.fonteDataPreventivo ?? null,
+        });
+        return;
+      }
+
+      const supplierName = normalizeSearchToken(
+        materiale.fornitoreScelto ?? materiale.fornitore ?? materiale.nomeFornitore,
+      );
+      const fallback = procurementSnapshot?.listino.find((entry) => {
+        const sameSupplier = supplierName
+          ? normalizeSearchToken(entry.supplierName) === supplierName
+          : true;
+        return (
+          sameSupplier &&
+          normalizeArticoloCanonico(entry.articoloCanonico) ===
+            normalizeArticoloCanonico(materiale.descrizione)
+        );
+      });
+
+      if (fallback && typeof fallback.prezzoAttuale === "number") {
+        map.set(materiale.id, {
+          prezzoUnitario: fallback.prezzoAttuale,
+          valuta: fallback.valuta ?? null,
+          unita: fallback.unita ?? null,
+          codiceArticolo: fallback.codiceArticolo ?? null,
+          numeroPreventivo: fallback.fonteNumeroPreventivo ?? null,
+          dataPreventivo: fallback.fonteDataPreventivo ?? null,
+        });
+      }
+    });
+
+    return map;
+  }, [materiali, procurementSnapshot]);
+
+  const totalsSummary = useMemo(() => {
+    const totalsByValuta = { CHF: 0, EUR: 0 };
+    let totaleSenzaValuta = 0;
+    let prezziMancanti = 0;
+    let udmDaVerificare = 0;
+
+    materiali.forEach((materiale) => {
+      const prezzoInfo = prezzoSourceByMaterialeId.get(materiale.id);
+      if (!prezzoInfo) {
+        prezziMancanti += 1;
+        return;
+      }
+
+      const note = getMaterialNote(materiale);
+      const line = computeLineTotal({
+        qty: Number(materiale.quantita || 0),
+        unitPrice: prezzoInfo.prezzoUnitario,
+        selectedUom: materiale.unita,
+        priceUom: prezzoInfo.unita,
+        note,
+      });
+
+      if (line.status === "needs_factor") {
+        udmDaVerificare += 1;
+        return;
+      }
+
+      if (line.total === null) {
+        prezziMancanti += 1;
+        return;
+      }
+
+      if (prezzoInfo.valuta === "CHF" || prezzoInfo.valuta === "EUR") {
+        totalsByValuta[prezzoInfo.valuta] += line.total;
+      } else {
+        totaleSenzaValuta += line.total;
+      }
+    });
+
+    const usedValute = (["CHF", "EUR"] as const).filter(
+      (currency) => totalsByValuta[currency] > 0,
+    );
+    return {
+      totalsByValuta,
+      totaleSenzaValuta,
+      prezziMancanti,
+      udmDaVerificare,
+      usedValute,
+      mixedValute: usedValute.length > 1,
+      totaleStimato: totalsByValuta.CHF + totalsByValuta.EUR + totaleSenzaValuta,
+    };
+  }, [getMaterialNote, materiali, prezzoSourceByMaterialeId]);
+
+  const supplierPreview = useMemo(() => {
+    if (!procurementSnapshot || !fornitoreAttivoNome.trim()) {
+      return null;
+    }
+
+    const normalizedSupplier = normalizeSearchToken(fornitoreAttivoNome);
+    const listinoMatches = procurementSnapshot.listino.filter(
+      (entry) => normalizeSearchToken(entry.supplierName) === normalizedSupplier,
+    );
+    const preventiviMatches = procurementSnapshot.preventivi.filter(
+      (entry) => normalizeSearchToken(entry.supplierName) === normalizedSupplier,
+    );
+    const latestListino = [...listinoMatches].sort(
+      (left, right) => (right.updatedAtTimestamp ?? 0) - (left.updatedAtTimestamp ?? 0),
+    )[0];
+
+    return {
+      listinoCount: listinoMatches.length,
+      preventiviCount: preventiviMatches.length,
+      lastArticle: latestListino?.articoloCanonico ?? null,
+      lastUpdated: latestListino?.updatedAtLabel ?? null,
+      lastPrice:
+        latestListino && typeof latestListino.prezzoAttuale === "number"
+          ? `${latestListino.prezzoAttuale.toFixed(2)} ${latestListino.valuta ?? ""}`.trim()
+          : null,
+    };
+  }, [fornitoreAttivoNome, procurementSnapshot]);
 
   const canSaveOrdine =
     materiali.length > 0 &&
     (Boolean(fornitoreNome) || Boolean(nomeFornitorePersonalizzato.trim()));
 
-  const getOptionalText = (materiale: DraftMaterial, keys: string[]) => {
-    for (const key of keys) {
-      const value = (materiale as Record<string, unknown>)[key];
-      if (value !== undefined && value !== null && String(value).trim() !== "") {
-        return String(value);
-      }
-    }
-    return "—";
-  };
+  const pricingView = canonicalTab === "listino" ? "listino" : "preventivi";
+  const resolvedOrderId = selectedOrderId ?? handoffOrderId;
 
   const showFabbisogni = activeTab === "Fabbisogni";
-  const isCompactLayout = viewportWidth <= 1180;
-  const isMobileLayout = viewportWidth <= 760;
-  const pageStyle: CSSProperties = {
-    ...motherLikePageStyle,
-    padding: isMobileLayout ? "14px 10px 28px" : motherLikePageStyle.padding,
-  };
-  const workspaceStyle: CSSProperties = {
-    ...motherLikeWorkspaceStyle,
-    gridTemplateColumns: isCompactLayout ? "1fr" : motherLikeWorkspaceStyle.gridTemplateColumns,
-  };
-  const tablePanelStyle: CSSProperties = {
-    ...motherLikeTablePanelStyle,
-    minHeight: isCompactLayout ? "unset" : motherLikeTablePanelStyle.minHeight,
-  };
-  const emptyStateStyle: CSSProperties = {
-    ...motherLikeEmptyStateStyle,
-    minHeight: isCompactLayout ? "220px" : motherLikeEmptyStateStyle.minHeight,
-  };
-  const stickyBarStyle: CSSProperties = {
-    ...motherLikeStickyBarStyle,
-    gridTemplateColumns: isCompactLayout ? "1fr" : motherLikeStickyBarStyle.gridTemplateColumns,
-    marginTop: isCompactLayout ? "10px" : motherLikeStickyBarStyle.marginTop,
-  };
+  const pageClassName = `mdo-page${showFabbisogni ? " mdo-page--embedded mdo-page--single" : ""}`;
+  const cardClassName = `mdo-card${showFabbisogni ? " mdo-card--embedded mdo-card--single" : ""}`;
 
   return (
-    <div className="mdo-page mdo-page--embedded" style={pageStyle}>
-      <div className="mdo-card mdo-card--embedded" style={motherLikeCardStyle}>
-        <header className="mdo-shell-header" style={motherLikeHeaderStyle}>
+    <div className="next-mdo-route">
+      <div className={pageClassName}>
+        <div className={cardClassName}>
+        <header className="mdo-shell-header">
           <div className="mdo-header-left">
             <img
               src="/logo.png"
@@ -376,12 +1234,9 @@ export default function NextMaterialiDaOrdinarePage() {
               alt="logo"
               onClick={() => navigate(NEXT_HOME_PATH)}
             />
-            <div style={motherLikeHeaderMetaStyle}>
+            <div>
               <p className="mdo-eyebrow">Acquisti</p>
               <h1 className="mdo-header-title">Materiali da ordinare</h1>
-              <p style={motherLikeHeaderSubtitleStyle}>
-                Fabbisogni procurement con accesso guidato a ordini e arrivi read-only.
-              </p>
             </div>
           </div>
 
@@ -422,17 +1277,13 @@ export default function NextMaterialiDaOrdinarePage() {
         </header>
 
         {error ? (
-          <div className="mdo-placeholder-panel" style={motherLikePlaceholderStyle}>
+          <section className="mdo-placeholder-panel" aria-live="polite">
+            <h2>Fornitori</h2>
             <p>{error}</p>
-          </div>
+          </section>
         ) : null}
 
-        <div
-          className="mdo-tabs"
-          role="tablist"
-          aria-label="Sezioni acquisti"
-          style={motherLikeTabsStyle}
-        >
+        <div className="mdo-tabs" role="tablist" aria-label="Sezioni acquisti">
           {TABS.map((tab) => (
             <button
               key={tab}
@@ -440,168 +1291,99 @@ export default function NextMaterialiDaOrdinarePage() {
               role="tab"
               aria-selected={activeTab === tab}
               className={`mdo-tab ${activeTab === tab ? "is-active" : ""}`}
-              onClick={() => setActiveTab(tab)}
+              onClick={() =>
+                openCanonicalProcurementView({
+                  tab:
+                    tab === "Ordini"
+                      ? "ordini"
+                      : tab === "Arrivi"
+                        ? "arrivi"
+                        : tab === "Prezzi & Preventivi"
+                          ? "preventivi"
+                          : "fabbisogni",
+                })
+              }
             >
               <span>{tab}</span>
-              {tab !== "Fabbisogni" ? (
-                <span className="mdo-tab-badge">In arrivo</span>
-              ) : null}
             </button>
           ))}
         </div>
 
         {!showFabbisogni ? (
-          <section
-            className="mdo-placeholder-panel"
-            aria-live="polite"
-            style={motherLikePlaceholderStyle}
-          >
-            <h2>{activeTab}</h2>
-            <p>
-              Sezione read-only in arrivo. In questa patch resta attiva solo la tab
-              Fabbisogni con i dati esistenti della pagina.
-            </p>
-          </section>
+          <NextProcurementConvergedSection
+            snapshot={procurementSnapshot}
+            activeTab={activeTab}
+            orderId={resolvedOrderId}
+            detailBackTab={detailBackTab}
+            pricingView={pricingView}
+            searchQuery={searchText}
+            iaPrefill={iaPrefill}
+            procurementError={procurementError}
+            procurementLoading={loadingProcurement}
+            onGoOrdini={() => openCanonicalProcurementView({ tab: "ordini" })}
+            onGoArrivi={() => openCanonicalProcurementView({ tab: "arrivi" })}
+            onPricingViewChange={(view) =>
+              openCanonicalProcurementView({ tab: view })
+            }
+            onOpenOrder={(orderId, fromTab) =>
+              openCanonicalProcurementView({
+                tab: fromTab,
+                orderId,
+                from: fromTab,
+              })
+            }
+            onCloseOrder={(backTab) =>
+              openCanonicalProcurementView({ tab: backTab, from: backTab })
+            }
+          />
         ) : (
-          <div className="mdo-workspace" style={workspaceStyle}>
-            <aside className="mdo-sidebar" style={motherLikeSidebarStyle}>
-              <section className="mdo-panel mdo-form-panel">
-                <div className="mdo-panel-header">
-                  <div>
-                    <h2>Nuovo fabbisogno</h2>
-                    <p>Compila i campi e aggiungi una riga ai materiali temporanei.</p>
-                  </div>
-                  <span className="mdo-panel-chip">{materiali.length} righe</span>
+          <section className="mdo-single-card acq-tab-panel--fabbisogni">
+            <div className="mdo-single-toolbar om-filters">
+              <div className="mdo-single-toolbar-main">
+                <div className="mdo-field">
+                  <label>Fornitore</label>
+                  <select
+                    value={fornitoreId}
+                    onChange={(event) => handleSelectFornitore(event.target.value)}
+                    disabled={loadingFornitori}
+                  >
+                    <option value="">
+                      {loadingFornitori ? "Caricamento..." : "Seleziona"}
+                    </option>
+                    {fornitori.map((fornitore) => (
+                      <option key={fornitore.id} value={fornitore.id}>
+                        {fornitore.nome}
+                      </option>
+                    ))}
+                    <option value="nuovo">+ Nuovo fornitore</option>
+                  </select>
                 </div>
 
-                <div className="mdo-form">
+                {isNuovoFornitore ? (
                   <div className="mdo-field">
-                    <label>Fornitore</label>
-                    <select
-                      value={fornitoreId}
-                      onChange={(event) => handleSelectFornitore(event.target.value)}
-                      disabled={loadingFornitori}
-                    >
-                      <option value="">Seleziona</option>
-                      {fornitori.map((fornitore) => (
-                        <option key={fornitore.id} value={fornitore.id}>
-                          {fornitore.nome}
-                        </option>
-                      ))}
-                      <option value="nuovo">+ Nuovo fornitore</option>
-                    </select>
+                    <label>Nome nuovo fornitore</label>
+                    <input
+                      type="text"
+                      value={nomeFornitorePersonalizzato}
+                      onChange={(event) =>
+                        setNomeFornitorePersonalizzato(event.target.value)
+                      }
+                    />
                   </div>
+                ) : null}
 
-                  {isNuovoFornitore ? (
-                    <div className="mdo-field">
-                      <label>Nome nuovo fornitore</label>
-                      <input
-                        type="text"
-                        value={nomeFornitorePersonalizzato}
-                        onChange={(event) =>
-                          setNomeFornitorePersonalizzato(event.target.value)
-                        }
-                      />
-                    </div>
-                  ) : null}
+                <label className="mdo-search mdo-search--embedded">
+                  <span>Cerca</span>
+                  <input
+                    type="search"
+                    placeholder="Descrizione o fornitore"
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                  />
+                </label>
+              </div>
 
-                  <div className="mdo-grid">
-                    <div className="mdo-field">
-                      <label>Descrizione</label>
-                      <input
-                        type="text"
-                        value={descrizione}
-                        onChange={(event) => setDescrizione(event.target.value)}
-                        onBlur={handleDescrizioneBlur}
-                      />
-                    </div>
-                    <div className="mdo-field">
-                      <label>Q.ta</label>
-                      <input
-                        type="number"
-                        value={quantita}
-                        onChange={(event) => setQuantita(event.target.value)}
-                      />
-                    </div>
-                    <div className="mdo-field">
-                      <label>Unita</label>
-                      <select
-                        value={unita}
-                        onChange={(event) => setUnita(event.target.value as UnitaMisura)}
-                      >
-                        <option value="pz">pz</option>
-                        <option value="m">m</option>
-                        <option value="kg">kg</option>
-                        <option value="lt">lt</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mdo-photo-row">
-                    <div className="mdo-photo-preview">
-                      {fotoPreview ? (
-                        <img src={fotoPreview} alt="Anteprima materiale" />
-                      ) : (
-                        <div className="mdo-photo-placeholder">Nessuna foto</div>
-                      )}
-                    </div>
-
-                    <div className="mdo-photo-actions">
-                      <label className="mdo-upload-button">
-                        Carica foto
-                        <input type="file" accept="image/*" onChange={handleFileChange} />
-                      </label>
-
-                      <button
-                        type="button"
-                        className="mdo-secondary-button"
-                        onClick={() => setFotoPreview(null)}
-                      >
-                        Rimuovi foto
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="mdo-add-button"
-                    onClick={aggiungiMateriale}
-                    disabled={!descrizione.trim() || !quantita.trim()}
-                  >
-                    Aggiungi materiale
-                  </button>
-                </div>
-              </section>
-
-              <section className="mdo-panel mdo-side-nav-panel">
-                <h3>Collegamenti rapidi</h3>
-                <p>Accesso alle liste ordini esistenti senza cambiare i flussi.</p>
-                <div className="mdo-footer">
-                  <button
-                    type="button"
-                    className="mdo-footer-button"
-                    onClick={() => navigate(NEXT_ORDINI_IN_ATTESA_PATH)}
-                  >
-                    Vai a ordini in attesa
-                  </button>
-
-                  <button
-                    type="button"
-                    className="mdo-footer-button mdo-footer-alt"
-                    onClick={() => navigate(NEXT_ORDINI_ARRIVATI_PATH)}
-                  >
-                    Vai a ordini arrivati
-                  </button>
-                </div>
-              </section>
-            </aside>
-
-            <section className="mdo-panel mdo-table-panel" style={tablePanelStyle}>
-              <div className="mdo-panel-header">
-                <div>
-                  <h2>Fabbisogni correnti</h2>
-                  <p>Tabella gestionale dei materiali temporanei in preparazione ordine.</p>
-                </div>
+              <div className="mdo-single-toolbar-side">
                 <div className="mdo-kpi-strip">
                   <div className="mdo-kpi">
                     <span>Righe</span>
@@ -612,88 +1394,415 @@ export default function NextMaterialiDaOrdinarePage() {
                     <strong>{materialiFiltrati.length}</strong>
                   </div>
                 </div>
-              </div>
-
-              {materiali.length === 0 ? (
-                <div
-                  className="mdo-empty mdo-empty-state"
-                  style={emptyStateStyle}
-                >
-                  Nessun materiale inserito. Usa il pannello a sinistra per aggiungere righe.
+                <div className="om-entry-detail-ref">
+                  <strong>
+                    {fornitoreAttivoNome || "Nessun fornitore selezionato"}
+                  </strong>
+                  <span>
+                    {supplierPreview
+                      ? `${supplierPreview.listinoCount} voci listino • ${supplierPreview.preventiviCount} preventivi${
+                          supplierPreview.lastArticle ? ` • ${supplierPreview.lastArticle}` : ""
+                        }${supplierPreview.lastPrice ? ` • ${supplierPreview.lastPrice}` : ""}`
+                      : "Seleziona un fornitore per vedere preview e storico prezzi"}
+                  </span>
                 </div>
-              ) : (
-                <div className="mdo-table-wrap" style={motherLikeTableWrapStyle}>
-                  <table className="mdo-table">
-                    <thead>
-                      <tr>
-                        <th>Descrizione</th>
-                        <th>Q.ta</th>
-                        <th>Unita</th>
-                        <th>Fornitore scelto</th>
-                        <th>Residuo</th>
-                        <th>Fonte prezzo</th>
-                        <th>Azioni</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {materialiFiltrati.map((materiale) => (
-                        <tr key={materiale.id}>
-                          <td>
-                            <div className="mdo-desc-cell">
-                              <div className="mdo-item-photo">
-                                {materiale.fotoUrl ? (
-                                  <img src={materiale.fotoUrl} alt={materiale.descrizione} />
-                                ) : (
-                                  <div className="mdo-photo-placeholder small">Foto</div>
-                                )}
+                <div className="mdo-cta-row mdo-cta-row--embedded">
+                  <button
+                    type="button"
+                    className="mdo-cta-button"
+                    onClick={() => window.alert(READ_ONLY_PREVENTIVO_MESSAGE)}
+                  >
+                    Carica preventivo
+                  </button>
+                  <button
+                    type="button"
+                    className="mdo-cta-button"
+                    onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
+                  >
+                    PDF Fornitori
+                  </button>
+                  <button
+                    type="button"
+                    className="mdo-cta-button mdo-cta-primary"
+                    onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
+                  >
+                    PDF Direzione
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mdo-table-wrap mdo-table-wrap--single om-list om-leftCard">
+              <table className="om-material-table">
+                <thead>
+                  <tr>
+                    <th>Descrizione</th>
+                    <th>Q.ta</th>
+                    <th>Prezzo</th>
+                    <th>Totale</th>
+                    <th className="om-material-actions-col">Azioni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="mdo-insert-row">
+                    <td>
+                      <div className="mdo-insert-desc om-entry-desc-wrap">
+                        <div className="mdo-item-photo mdo-item-photo--insert">
+                          {fotoPreview ? (
+                            <img src={fotoPreview} alt="Anteprima materiale" />
+                          ) : (
+                            <div className="mdo-photo-placeholder small">Foto</div>
+                          )}
+                        </div>
+                        <input
+                          className="mdo-table-input"
+                          type="text"
+                          placeholder="Descrizione articolo"
+                          value={descrizione}
+                          onChange={(event) => handleDescrizioneChange(event.target.value)}
+                          onFocus={() => setShowSuggest(true)}
+                          onBlur={handleDescrizioneBlur}
+                        />
+                        {!fornitoreAttivoId && descrizione.trim() ? (
+                          <div className="acq-suggest-empty">
+                            Seleziona fornitore per vedere i suggerimenti listino.
+                          </div>
+                        ) : null}
+                        {fornitoreAttivoId && showSuggest && suggestListino.length > 0 ? (
+                          <div className="acq-suggest-panel om-suggest openDown">
+                            {suggestListino.map((entry) => (
+                              <button
+                                key={entry.id}
+                                type="button"
+                                className="acq-suggest-item"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => selectListinoSuggestion(entry)}
+                              >
+                                <span className="acq-suggest-main">
+                                  {entry.articoloCanonico}
+                                </span>
+                                <span className="acq-suggest-meta">
+                                  {entry.codiceArticolo
+                                    ? `Codice ${entry.codiceArticolo} - `
+                                    : ""}
+                                  {typeof entry.prezzoAttuale === "number"
+                                    ? `${entry.prezzoAttuale.toFixed(2)} ${entry.valuta ?? ""}/${String(
+                                        entry.unita || "",
+                                      ).toLowerCase()}`
+                                    : "Prezzo non disponibile"}
+                                  {entry.fonteNumeroPreventivo
+                                    ? ` - N. ${entry.fonteNumeroPreventivo}`
+                                    : ""}
+                                  {entry.fonteDataPreventivo
+                                    ? ` del ${entry.fonteDataPreventivo}`
+                                    : ""}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        className="mdo-table-input mdo-table-input--qty"
+                        type="number"
+                        placeholder="0"
+                        value={quantita}
+                        onChange={(event) => setQuantita(event.target.value)}
+                      />
+                    </td>
+                    <td>
+                      {selectedListinoVoce?.prezzoAttuale !== null &&
+                      selectedListinoVoce?.prezzoAttuale !== undefined
+                        ? `${selectedListinoVoce.prezzoAttuale.toFixed(2)} ${selectedListinoVoce.valuta ?? ""}`
+                        : "—"}
+                    </td>
+                    <td>
+                      {selectedListinoVoce?.prezzoAttuale !== null &&
+                      selectedListinoVoce?.prezzoAttuale !== undefined
+                        ? (() => {
+                            const preview = computeLineTotal({
+                              qty: Number.parseFloat(quantita || "0"),
+                              unitPrice: selectedListinoVoce.prezzoAttuale,
+                              selectedUom: unita,
+                              priceUom: selectedListinoVoce.unita,
+                              note: upsertConversionFactorInNote(
+                                newMaterialeNota,
+                                conversionFactorInput,
+                              ),
+                            });
+                            if (preview.status === "needs_factor" || preview.total === null) {
+                              return "—";
+                            }
+                            return `${preview.total.toFixed(2)} ${selectedListinoVoce.valuta ?? ""}`;
+                          })()
+                        : "—"}
+                    </td>
+                    <td>
+                      <div className="mdo-row-actions mdo-row-actions--insert">
+                        <select
+                          className="mdo-table-input"
+                          value={normalizeUom(String(unita || "PZ"))}
+                          onChange={(event) =>
+                            setUnita(
+                              normalizeUom(event.target.value).toLowerCase() as UnitaMisura,
+                            )
+                          }
+                        >
+                          <option value="PZ">PZ</option>
+                          <option value="NR">NR</option>
+                          <option value="MT">MT</option>
+                          <option value="M">M</option>
+                          <option value="KG">KG</option>
+                          <option value="LT">LT</option>
+                        </select>
+                        <label className="mdo-chip-button mdo-chip-upload">
+                          Foto
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="mdo-chip-button"
+                          onClick={() => {
+                            setFotoFile(null);
+                            setFotoPreview(null);
+                          }}
+                        >
+                          Pulisci
+                        </button>
+                        <button
+                          type="button"
+                          className="mdo-chip-button"
+                          onClick={() => setShowEntryDetails((current) => !current)}
+                        >
+                          {showEntryDetails ? "Meno" : "Dettagli"}
+                        </button>
+                        <button
+                          type="button"
+                          className="mdo-add-button"
+                          onClick={aggiungiMateriale}
+                          disabled={!descrizione.trim() || !quantita.trim() || !fornitoreAttivoNome}
+                        >
+                          Aggiungi
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {showEntryDetails ? (
+                    <tr>
+                      <td colSpan={5}>
+                        <div className="om-entry-details">
+                          <div className="om-entry-details-grid">
+                            <div className="om-entry-detail-field om-entry-detail-readonly">
+                              <span>Prezzo da listino</span>
+                              <strong className="om-entry-readonly-value">
+                                {selectedListinoVoce?.prezzoAttuale !== null &&
+                                selectedListinoVoce?.prezzoAttuale !== undefined
+                                  ? selectedListinoVoce.prezzoAttuale.toFixed(2)
+                                  : "—"}
+                              </strong>
+                            </div>
+                            <div className="om-entry-detail-field om-entry-detail-readonly">
+                              <span>Valuta</span>
+                              <strong className="om-entry-readonly-value">
+                                {selectedListinoVoce?.valuta ?? "—"}
+                              </strong>
+                            </div>
+                            <label className="om-entry-detail-field om-entry-detail-note">
+                              <span>Nota</span>
+                              <input
+                                className="mdo-table-input"
+                                type="text"
+                                placeholder="Nota riga (opzionale)"
+                                value={newMaterialeNota}
+                                onChange={(event) => setNewMaterialeNota(event.target.value)}
+                              />
+                            </label>
+                            {selectedListinoVoce ? (
+                              <div className="om-entry-detail-ref">
+                                <strong>
+                                  {selectedListinoVoce.fonteNumeroPreventivo
+                                    ? `N. ${selectedListinoVoce.fonteNumeroPreventivo}`
+                                    : "Listino senza documento"}
+                                </strong>
+                                <span>
+                                  {selectedListinoVoce.fonteDataPreventivo
+                                    ? `Data ${selectedListinoVoce.fonteDataPreventivo}`
+                                    : "Prezzo da listino corrente"}
+                                </span>
                               </div>
-                              <div>
-                                <div className="mdo-item-desc">{materiale.descrizione}</div>
-                                <div className="mdo-item-meta">ID: {materiale.id}</div>
+                            ) : null}
+                            {needsConversionFactorInput ? (
+                              <label className="om-entry-detail-field">
+                                <span>Fattore conversione UDM</span>
+                                <input
+                                  className="mdo-table-input mdo-table-input--factor"
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="Fattore"
+                                  value={conversionFactorInput}
+                                  onChange={(event) =>
+                                    setConversionFactorInput(event.target.value)
+                                  }
+                                />
+                                {!hasValidConversionFactorInput ? (
+                                  <div className="mdo-row-warning">
+                                    UDM diverse: totale bloccato finche non inserisci fattore.
+                                  </div>
+                                ) : null}
+                              </label>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+
+                  {materialiFiltrati.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>
+                        <div className="mdo-empty mdo-empty-state mdo-empty-state--table">
+                          Nessun materiale inserito.
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    materialiFiltrati.map((materiale) => {
+                      const prezzoInfo = prezzoSourceByMaterialeId.get(materiale.id);
+                      const noteRiga = getMaterialNote(materiale);
+                      const line = prezzoInfo
+                        ? computeLineTotal({
+                            qty: Number(materiale.quantita || 0),
+                            unitPrice: prezzoInfo.prezzoUnitario,
+                            selectedUom: materiale.unita,
+                            priceUom: prezzoInfo.unita,
+                            note: noteRiga,
+                          })
+                        : null;
+                      const valuta =
+                        prezzoInfo?.valuta === "CHF" || prezzoInfo?.valuta === "EUR"
+                          ? prezzoInfo.valuta
+                          : prezzoInfo?.valuta ?? "-";
+                      const prezzoLabel = prezzoInfo
+                        ? `${prezzoInfo.prezzoUnitario.toFixed(2)} ${valuta}`
+                        : "—";
+                      const totaleLabel =
+                        line && line.total !== null && line.status !== "needs_factor"
+                          ? `${line.total.toFixed(2)} ${valuta}`
+                          : "—";
+                      const hasDocumento =
+                        Boolean(materiale.pdfUrl) ||
+                        Boolean(materiale.imageUrls?.length) ||
+                        Boolean(materiale.fotoUrl);
+
+                      return (
+                        <tr key={materiale.id} className="om-row">
+                          <td>
+                            <div className="om-material-desc">
+                              <div className="om-material-title">
+                                {materiale.descrizione}
+                              </div>
+                              <div className="om-material-meta">
+                                UDM {String(materiale.unita || "PZ").toUpperCase()}
+                                {materiale.fotoUrl ? " • Foto" : ""}
+                                {noteRiga ? " • Nota presente" : ""}
+                                {prezzoInfo?.numeroPreventivo
+                                  ? ` • N. ${prezzoInfo.numeroPreventivo}`
+                                  : ""}
                               </div>
                             </div>
                           </td>
-                          <td>{materiale.quantita}</td>
-                          <td>{materiale.unita}</td>
                           <td>
-                            {getOptionalText(materiale, [
-                              "fornitoreScelto",
-                              "fornitore",
-                              "nomeFornitore",
-                            ])}
+                            <div className="om-material-qty">
+                              <strong>{materiale.quantita}</strong>
+                              <span>{String(materiale.unita || "PZ").toUpperCase()}</span>
+                            </div>
                           </td>
+                          <td>{prezzoLabel}</td>
                           <td>
-                            {getOptionalText(materiale, ["residuo", "quantitaResidua"])}
+                            {totaleLabel}
+                            {line?.status === "needs_factor" ? (
+                              <span className="om-badge om-badge--warn">
+                                UDM da verificare
+                              </span>
+                            ) : null}
                           </td>
-                          <td>
-                            {getOptionalText(materiale, [
-                              "fontePrezzo",
-                              "prezzoFonte",
-                              "preventivoFonte",
-                            ])}
-                          </td>
-                          <td>
+                          <td className="om-material-actions-cell">
                             <div className="mdo-row-actions">
-                              {(["Prezzi", "Allegati", "Note"] as const).map((action) => (
+                              <label className="mdo-chip-button mdo-chip-upload">
+                                Foto
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (!file) return;
+                                    aggiornaFotoMateriale(materiale.id, file);
+                                    event.currentTarget.value = "";
+                                  }}
+                                />
+                              </label>
+                              {hasDocumento ? (
                                 <button
-                                  key={action}
                                   type="button"
                                   className="mdo-chip-button"
-                                  onClick={() =>
-                                    setPlaceholderModal({
-                                      action,
-                                      materialeId: materiale.id,
-                                      descrizione: materiale.descrizione,
-                                    })
-                                  }
+                                  onClick={() => openDocumentoMateriale(materiale)}
                                 >
-                                  {action}
+                                  Documento
                                 </button>
-                              ))}
+                              ) : null}
+                              <button
+                                type="button"
+                                className="mdo-chip-button"
+                                onClick={() => {
+                                  const nextNote = window.prompt(
+                                    "Nota materiale",
+                                    noteRiga,
+                                  );
+                                  if (nextNote === null) return;
+                                  const trimmed = nextNote.trim();
+                                  setNoteByMaterialeId((current) => {
+                                    const next = { ...current };
+                                    if (!trimmed) {
+                                      delete next[materiale.id];
+                                      return next;
+                                    }
+                                    next[materiale.id] = trimmed;
+                                    return next;
+                                  });
+                                }}
+                              >
+                                Nota
+                              </button>
+                              {!prezzoInfo ? (
+                                <button
+                                  type="button"
+                                  className="mdo-chip-button"
+                                  onClick={() => openBozzaListinoManuale(materiale)}
+                                >
+                                  + Listino
+                                </button>
+                              ) : null}
+                              {materiale.fotoUrl ? (
+                                <button
+                                  type="button"
+                                  className="mdo-chip-button"
+                                  onClick={() => rimuoviFotoMateriale(materiale.id)}
+                                >
+                                  Rimuovi foto
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 className="mdo-delete"
-                                onClick={eliminaMateriale}
+                                onClick={() => eliminaMateriale(materiale.id)}
                                 aria-label={`Elimina ${materiale.descrizione}`}
                               >
                                 Elimina
@@ -701,87 +1810,109 @@ export default function NextMaterialiDaOrdinarePage() {
                             </div>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          </div>
-        )}
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        <div className="mdo-sticky-bar" style={stickyBarStyle}>
-          <div className="mdo-sticky-info">
-            <span>Fornitore</span>
-            <strong>
-              {isNuovoFornitore
-                ? nomeFornitorePersonalizzato.trim() || "Nuovo fornitore"
-                : fornitoreNome || "Non selezionato"}
-            </strong>
-          </div>
-          <div className="mdo-sticky-info">
-            <span>Materiali temporanei</span>
-            <strong>{materiali.length}</strong>
-          </div>
-          <div className="mdo-sticky-actions">
-            <button
-              type="button"
-              className="mdo-secondary-button"
-              onClick={() => navigate(NEXT_ORDINI_IN_ATTESA_PATH)}
-            >
-              Ordini in attesa
-            </button>
-            <button
-              type="button"
-              className="mdo-secondary-button"
-              onClick={() => navigate(NEXT_ORDINI_ARRIVATI_PATH)}
-            >
-              Ordini arrivati
-            </button>
-            <button
-              type="button"
-              className="mdo-header-button"
-              onClick={salvaOrdine}
-              disabled={!canSaveOrdine}
-            >
-              CONFERMA ORDINE
-            </button>
-          </div>
+            <div className="mdo-card-footer-bar om-side om-right om-rightCard">
+              <div className="om-side-cards om-kpiGrid">
+                <div className="mdo-sticky-info om-stat-card om-kpiCard">
+                  <span>Fornitore</span>
+                  <strong>{fornitoreAttivoNome || "Non selezionato"}</strong>
+                </div>
+                <div className="mdo-sticky-info om-stat-card om-kpiCard">
+                  <span>Materiali temporanei</span>
+                  <strong>{materiali.length}</strong>
+                </div>
+                <div className="mdo-sticky-info om-stat-card om-kpiCard">
+                  <span>Totale stimato</span>
+                  <strong>
+                    {totalsSummary.mixedValute
+                      ? `CHF ${totalsSummary.totalsByValuta.CHF.toFixed(2)} / EUR ${totalsSummary.totalsByValuta.EUR.toFixed(2)}`
+                      : totalsSummary.usedValute.length === 1
+                        ? `${totalsSummary.usedValute[0]} ${totalsSummary.totalsByValuta[totalsSummary.usedValute[0]].toFixed(2)}`
+                        : totalsSummary.totaleSenzaValuta > 0
+                          ? `${totalsSummary.totaleStimato.toFixed(2)} -`
+                          : "-"}
+                  </strong>
+                </div>
+                <div className="mdo-sticky-info om-stat-card om-kpiCard">
+                  <span>Prezzi mancanti</span>
+                  <strong>{totalsSummary.prezziMancanti}</strong>
+                </div>
+                <div className="mdo-sticky-info om-stat-card om-kpiCard">
+                  <span>UDM da verificare</span>
+                  <strong>{totalsSummary.udmDaVerificare}</strong>
+                </div>
+              </div>
+              <label className="acq-order-note om-order-note om-notes">
+                <span>Note ordine (solo bozza/PDF)</span>
+                <textarea
+                  value={ordineNote}
+                  onChange={(event) => setOrdineNote(event.target.value)}
+                  placeholder="Inserisci note generali ordine"
+                />
+              </label>
+              <div className="mdo-sticky-actions om-side-actions om-footerActions">
+                <button
+                  type="button"
+                  className="mdo-header-button mdo-header-button--secondary"
+                  onClick={clearProcurementDraftState}
+                >
+                  Pulisci bozza
+                </button>
+                <button
+                  type="button"
+                  className="mdo-secondary-button"
+                  onClick={() => openCanonicalProcurementView({ tab: "ordini" })}
+                >
+                  Ordini
+                </button>
+                <button
+                  type="button"
+                  className="mdo-secondary-button"
+                  onClick={() => openCanonicalProcurementView({ tab: "arrivi" })}
+                >
+                  Arrivi
+                </button>
+                <button
+                  type="button"
+                  className="mdo-secondary-button"
+                  onClick={() => openCanonicalProcurementView({ tab: "preventivi" })}
+                >
+                  Prezzi & Preventivi
+                </button>
+                <button
+                  type="button"
+                  className="mdo-header-button"
+                  onClick={salvaOrdine}
+                  disabled={!canSaveOrdine}
+                >
+                  CONFERMA ORDINE
+                </button>
+              </div>
+              {totalsSummary.prezziMancanti > 0 || totalsSummary.udmDaVerificare > 0 ? (
+                <div className="mdo-footer-warning">
+                  Totale parziale:
+                  {totalsSummary.prezziMancanti > 0
+                    ? ` ${totalsSummary.prezziMancanti} righe senza prezzo.`
+                    : ""}
+                  {totalsSummary.udmDaVerificare > 0
+                    ? ` ${totalsSummary.udmDaVerificare} righe con UDM diverse da verificare.`
+                    : ""}
+                </div>
+              ) : null}
+              {draftSavedAt ? (
+                <div className="acq-draft-indicator">Bozza salvata</div>
+              ) : null}
+            </div>
+          </section>
+        )}
         </div>
       </div>
-
-      {placeholderModal ? (
-        <div
-          className="mdo-modal-backdrop"
-          style={motherLikeModalBackdropStyle}
-          role="presentation"
-          onClick={() => setPlaceholderModal(null)}
-        >
-          <div
-            className="mdo-modal"
-            style={motherLikeModalCardStyle}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${placeholderModal.action} ${placeholderModal.descrizione}`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 style={motherLikeModalHeadingStyle}>{placeholderModal.action}</h3>
-            <p className="mdo-modal-title" style={motherLikeModalTitleStyle}>
-              {placeholderModal.descrizione}
-            </p>
-            <p style={motherLikeModalBodyTextStyle}>
-              Placeholder UI. Nessuna nuova logica o salvataggio introdotti in questa fase.
-            </p>
-            <button
-              type="button"
-              className="mdo-header-button"
-              onClick={() => setPlaceholderModal(null)}
-            >
-              Chiudi
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

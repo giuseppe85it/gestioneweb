@@ -1,0 +1,63 @@
+.next-mdo-route .mdo-page {
+  min-height: auto;
+  width: 100%;
+  display: block;
+  justify-content: normal;
+  background: transparent;
+  padding: 0;
+}
+
+.next-mdo-route .mdo-card {
+  width: min(1400px, calc(100vw - 32px));
+  max-width: none;
+  margin: 0 auto;
+  padding: 0;
+  gap: 12px;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.next-mdo-route .mdo-shell-header,
+.next-mdo-route .mdo-tabs,
+.next-mdo-route .mdo-panel,
+.next-mdo-route .mdo-placeholder-panel,
+.next-mdo-route .mdo-single-card {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.next-mdo-route .mdo-page--single .mdo-card--single {
+  gap: 12px;
+}
+
+.next-mdo-route .mdo-single-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.next-mdo-route .mdo-single-toolbar-side {
+  align-items: flex-start;
+}
+
+.next-mdo-route .mdo-card-footer-bar {
+  position: static;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.next-mdo-route .mdo-card-footer-bar .mdo-sticky-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1180px) {
+  .next-mdo-route .mdo-card {
+    width: min(100vw - 24px, 1400px);
+  }
+
+  .next-mdo-route .mdo-card-footer-bar .mdo-sticky-actions {
+    justify-content: flex-start;
+  }
+}
