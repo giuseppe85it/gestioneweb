@@ -1,9 +1,20 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import { generateSmartPDFBlob } from "../utils/pdfEngine";
+import {
+  buildPdfShareText as buildPdfShareMessage,
+  buildWhatsAppShareUrl,
+  copyTextToClipboard,
+  openPreview,
+  revokePdfPreviewUrl,
+  sharePdfFile,
+} from "../utils/pdfPreview";
 import {
   buildNextProcurementListView,
   findNextProcurementOrder,
   type NextProcurementCloneTab,
   type NextProcurementListTab,
+  type NextProcurementListinoItem,
   type NextProcurementOrderItem,
   type NextProcurementSnapshot,
 } from "./domain/nextProcurementDomain";
@@ -43,78 +54,205 @@ const HEADER_ACTIONS_STYLE = {
   marginLeft: "auto",
 } as const;
 
+const LABELS_IT = {
+  menu: {
+    trigger: "AZIONI",
+    open: "Apri",
+    edit: "Modifica",
+    delete: "Elimina",
+  },
+} as const;
+
+type FloatingMenuPosition = {
+  top: number;
+  left: number;
+  openUp: boolean;
+};
+
+type DetailWorkingMaterial = NextProcurementOrderItem["materials"][number] & {
+  sourceUnitPrice: number | null;
+  sourceCurrency: string | null;
+  sourceUnitPriceUnit: string | null;
+  sourcePreventivoNumero: string | null;
+  sourcePreventivoData: string | null;
+};
+
+type DetailWorkingOrder = Omit<NextProcurementOrderItem, "materials"> & {
+  materials: DetailWorkingMaterial[];
+};
+
 function normalizeText(value: string | null | undefined) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function formatStrictState(
-  order: NextProcurementOrderItem,
-): { label: string; className: string } {
-  if (order.state === "arrivato") {
-    return { label: "Arrivato", className: "is-ok" };
-  }
-  if (order.state === "parziale") {
-    return { label: "Parziale", className: "is-warn" };
-  }
-  return { label: "In attesa", className: "is-danger" };
+function normalizeCanonicalText(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[.\-_/]/g, " ")
+    .replace(/\s+/g, " ");
 }
 
-function buildRawPricingLabel(
+function normalizeUnit(value: string | null | undefined) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function formatTodayLabel() {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const year = String(now.getFullYear());
+  return `${day} ${month} ${year}`;
+}
+
+function parseConversionFactor(note: string | null | undefined): number | null {
+  const raw = String(note ?? "");
+  if (!raw.trim()) return null;
+  const match = raw.match(/(?:^|[\s|;,])conv\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+  if (!match) return null;
+  const parsed = Number(String(match[1]).replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function computeLineTotal(params: {
+  qty: number | null;
+  unitPrice: number | null;
+  selectedUom: string | null | undefined;
+  priceUom: string | null | undefined;
+  note?: string | null;
+}) {
+  const qty = Number(params.qty);
+  const unitPrice = Number(params.unitPrice);
+
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+    return { total: null as number | null, status: "missing_price" as const };
+  }
+
+  const selected = normalizeUnit(params.selectedUom);
+  const source = normalizeUnit(params.priceUom || params.selectedUom);
+  if (!selected || !source || selected === source) {
+    return { total: qty * unitPrice, status: "ok" as const };
+  }
+
+  const factor = parseConversionFactor(params.note);
+  if (!factor) {
+    return { total: null as number | null, status: "needs_factor" as const };
+  }
+
+  return { total: qty * factor * unitPrice, status: "ok" as const };
+}
+
+function findListinoMatch(
+  snapshot: NextProcurementSnapshot,
   order: NextProcurementOrderItem,
-): { summary: string; missingRows: number } {
-  const pricedRows = order.materials.filter(
-    (material) => material.lineTotal !== null && material.currency,
-  );
-  const missingRows = Math.max(order.materials.length - pricedRows.length, 0);
+  descrizione: string,
+): NextProcurementListinoItem | null {
+  const target = normalizeCanonicalText(descrizione);
+  if (!target) return null;
 
-  if (pricedRows.length === 0) {
-    return {
-      summary: "Prezzi raw non disponibili nel clone",
-      missingRows,
-    };
-  }
+  const supplierId = String(order.supplierId ?? "").trim();
+  const supplierName = normalizeText(order.supplierName);
 
-  const currencies = Array.from(
-    new Set(
-      pricedRows
-        .map((material) => material.currency)
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
+  const matches = snapshot.listino
+    .filter((entry) => {
+      const supplierMatches = supplierId
+        ? entry.supplierId === supplierId
+        : normalizeText(entry.supplierName) === supplierName;
+      return (
+        supplierMatches &&
+        normalizeCanonicalText(entry.articoloCanonico) === target
+      );
+    })
+    .sort((left, right) => (right.updatedAtTimestamp ?? 0) - (left.updatedAtTimestamp ?? 0));
 
-  if (currencies.length !== 1) {
-    return {
-      summary: "Totale raw non affidabile: valute miste",
-      missingRows,
-    };
-  }
+  return matches[0] ?? null;
+}
 
-  const total = pricedRows.reduce(
-    (accumulator, material) => accumulator + (material.lineTotal ?? 0),
-    0,
-  );
-  const labelPrefix = missingRows > 0 ? "Totale raw parziale" : "Totale raw";
-
+function decorateWorkingMaterial(
+  snapshot: NextProcurementSnapshot,
+  order: NextProcurementOrderItem,
+  material: NextProcurementOrderItem["materials"][number],
+): DetailWorkingMaterial {
+  const match = findListinoMatch(snapshot, order, material.descrizione);
   return {
-    summary: `${labelPrefix}: ${currencies[0]} ${total.toFixed(2)}`,
-    missingRows,
+    ...material,
+    sourceUnitPrice: material.unitPrice ?? match?.prezzoAttuale ?? null,
+    sourceCurrency: material.currency ?? match?.valuta ?? null,
+    sourceUnitPriceUnit: material.unitPriceUnit ?? match?.unita ?? null,
+    sourcePreventivoNumero: match?.fonteNumeroPreventivo ?? null,
+    sourcePreventivoData: match?.fonteDataPreventivo ?? null,
   };
 }
 
-function renderListTable(props: {
+function buildWorkingOrder(
+  snapshot: NextProcurementSnapshot,
+  order: NextProcurementOrderItem,
+): DetailWorkingOrder {
+  return {
+    ...order,
+    materials: order.materials.map((material) =>
+      decorateWorkingMaterial(snapshot, order, material),
+    ),
+  };
+}
+
+function formatListState(fromTab: NextProcurementListTab) {
+  return fromTab === "ordini"
+    ? { label: "In attesa", className: "is-warn" }
+    : { label: "Arrivato", className: "is-ok" };
+}
+
+function OrderListTable(props: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   items: NextProcurementOrderItem[];
   fromTab: NextProcurementListTab;
   onOpenOrder: (orderId: string, fromTab: NextProcurementListTab) => void;
 }) {
   const { title, subtitle, items, fromTab, onOpenOrder } = props;
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [openMenuPosition, setOpenMenuPosition] =
+    useState<FloatingMenuPosition | null>(null);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const closeMenu = () => {
+      setOpenMenuId(null);
+      setOpenMenuPosition(null);
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-menu-root="ordini"]')) return;
+      closeMenu();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [openMenuId]);
+
+  const handleDeleteOrder = (order: NextProcurementOrderItem) => {
+    if (order.arrivedRows > 0) {
+      window.alert("Eliminazione bloccata: l'ordine contiene materiali arrivati.");
+      return;
+    }
+    window.alert("Clone read-only: eliminazione ordine non disponibile.");
+  };
 
   return (
     <div className="acq-tab-panel">
       <div className="acq-section-header">
         <h2>{title}</h2>
-        <p>{subtitle}</p>
+        {subtitle ? <p>{subtitle}</p> : null}
       </div>
 
       {items.length === 0 ? (
@@ -138,7 +276,8 @@ function renderListTable(props: {
             </thead>
             <tbody>
               {items.map((order) => {
-                const state = formatStrictState(order);
+                const state = formatListState(fromTab);
+                const canDelete = order.arrivedRows === 0;
                 return (
                   <tr key={order.id}>
                     <td>
@@ -159,14 +298,6 @@ function renderListTable(props: {
                         <span>Arr {order.arrivedRows}</span>
                         <span>Att {order.pendingRows}</span>
                       </div>
-                      {order.materialPreview.length > 0 ? (
-                        <div
-                          className="acq-orders-cell-main"
-                          style={{ marginTop: 4 }}
-                        >
-                          <small>{order.materialPreview.join(", ")}</small>
-                        </div>
-                      ) : null}
                     </td>
                     <td>
                       <div className="acq-orders-actions-inline">
@@ -175,8 +306,80 @@ function renderListTable(props: {
                           className="acq-btn acq-btn--primary"
                           onClick={() => onOpenOrder(order.id, fromTab)}
                         >
-                          Apri dettaglio read-only
+                          {LABELS_IT.menu.open}
                         </button>
+                        <div className="acq-kebab" data-menu-root="ordini">
+                          <button
+                            type="button"
+                            className="acq-btn acq-kebab-trigger"
+                            aria-label="Altre azioni"
+                            onClick={(event) => {
+                              if (openMenuId === order.id) {
+                                setOpenMenuId(null);
+                                setOpenMenuPosition(null);
+                                return;
+                              }
+                              const rect = (
+                                event.currentTarget as HTMLButtonElement
+                              ).getBoundingClientRect();
+                              const menuWidth = 190;
+                              const menuHeight = 120;
+                              const left = Math.min(
+                                window.innerWidth - menuWidth - 8,
+                                Math.max(8, rect.right - menuWidth),
+                              );
+                              const openUp =
+                                rect.bottom + menuHeight > window.innerHeight - 8;
+                              const top = openUp
+                                ? Math.max(8, rect.top - 8)
+                                : rect.bottom + 8;
+                              setOpenMenuId(order.id);
+                              setOpenMenuPosition({ top, left, openUp });
+                            }}
+                          >
+                            {LABELS_IT.menu.trigger}
+                          </button>
+                          {openMenuId === order.id && openMenuPosition ? (
+                            <div
+                              className={`acq-kebab-menu acq-kebab-menu--fixed${
+                                openMenuPosition.openUp ? " is-up" : ""
+                              }`}
+                              style={{
+                                top: `${openMenuPosition.top}px`,
+                                left: `${openMenuPosition.left}px`,
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className="acq-kebab-item"
+                                onClick={() => {
+                                  onOpenOrder(order.id, fromTab);
+                                  setOpenMenuId(null);
+                                  setOpenMenuPosition(null);
+                                }}
+                              >
+                                {LABELS_IT.menu.edit}
+                              </button>
+                              <button
+                                type="button"
+                                className="acq-kebab-item acq-kebab-item--danger"
+                                onClick={() => {
+                                  handleDeleteOrder(order);
+                                  setOpenMenuId(null);
+                                  setOpenMenuPosition(null);
+                                }}
+                                disabled={!canDelete}
+                                title={
+                                  !canDelete
+                                    ? "Non eliminabile: presenti materiali arrivati"
+                                    : "Elimina ordine"
+                                }
+                              >
+                                {LABELS_IT.menu.delete}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -227,121 +430,508 @@ function renderBlockedTab(props: {
   );
 }
 
-function renderOrderDetail(props: {
+function OrderDetailPanel(props: {
+  snapshot: NextProcurementSnapshot;
   order: NextProcurementOrderItem;
   backTab: NextProcurementListTab;
   onCloseOrder: (backTab: NextProcurementListTab) => void;
-  detailDisabledReason: string;
 }) {
-  const { order, backTab, onCloseOrder, detailDisabledReason } = props;
-  const state = formatStrictState(order);
-  const pricing = buildRawPricingLabel(order);
+  const { snapshot, order, backTab, onCloseOrder } = props;
+  const [workingOrder, setWorkingOrder] = useState<DetailWorkingOrder>(() =>
+    buildWorkingOrder(snapshot, order),
+  );
+  const [editing, setEditing] = useState(false);
+  const [addingMaterial, setAddingMaterial] = useState(false);
+  const [newDesc, setNewDesc] = useState("");
+  const [newQty, setNewQty] = useState("");
+  const [newUnit, setNewUnit] = useState("pz");
+  const [newNote, setNewNote] = useState("");
+  const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null);
+  const [detailSuggestOpen, setDetailSuggestOpen] = useState(false);
+  const [selectedDetailListino, setSelectedDetailListino] =
+    useState<NextProcurementListinoItem | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("Anteprima PDF interno");
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewFileName, setPdfPreviewFileName] = useState("ordine.pdf");
+  const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
+
+  const sortedMaterials = useMemo(
+    () =>
+      [...workingOrder.materials].sort((left, right) =>
+        left.arrived === right.arrived ? 0 : left.arrived ? 1 : -1,
+      ),
+    [workingOrder.materials],
+  );
+
+  const detailSuggestList = useMemo(() => {
+    const query = normalizeText(newDesc);
+    if (!query) return [];
+
+    return snapshot.listino
+      .filter((entry) => {
+        const supplierMatches = workingOrder.supplierId
+          ? entry.supplierId === workingOrder.supplierId
+          : normalizeText(entry.supplierName) === normalizeText(workingOrder.supplierName);
+        return (
+          supplierMatches &&
+          (normalizeText(entry.articoloCanonico).includes(query) ||
+            normalizeText(entry.codiceArticolo).includes(query))
+        );
+      })
+      .sort((left, right) => (right.updatedAtTimestamp ?? 0) - (left.updatedAtTimestamp ?? 0))
+      .slice(0, 8);
+  }, [newDesc, snapshot.listino, workingOrder.supplierId, workingOrder.supplierName]);
+
+  const totals = useMemo(() => {
+    const totalsByCurrency = { CHF: 0, EUR: 0 };
+    let missing = 0;
+    let udm = 0;
+
+    workingOrder.materials.forEach((material) => {
+      const line = computeLineTotal({
+        qty: material.quantita,
+        unitPrice: material.sourceUnitPrice,
+        selectedUom: material.unita,
+        priceUom: material.sourceUnitPriceUnit || material.unita,
+        note: material.note,
+      });
+
+      if (line.status === "needs_factor") {
+        udm += 1;
+        return;
+      }
+      if (line.total === null || !material.sourceCurrency) {
+        missing += 1;
+        return;
+      }
+      if (material.sourceCurrency === "CHF" || material.sourceCurrency === "EUR") {
+        totalsByCurrency[material.sourceCurrency] += line.total;
+      } else {
+        missing += 1;
+      }
+    });
+
+    const used = (["CHF", "EUR"] as const).filter((currency) => totalsByCurrency[currency] > 0);
+    return { totalsByCurrency, used, mixed: used.length > 1, missing, udm };
+  }, [workingOrder.materials]);
+
+  const localState = useMemo(() => {
+    const totalRows = workingOrder.materials.length;
+    const arrivedRows = workingOrder.materials.filter((material) => material.arrived).length;
+    if (arrivedRows === 0) return { label: "IN ATTESA", className: "is-danger" };
+    if (arrivedRows < totalRows) return { label: "PARZIALE", className: "is-warn" };
+    return { label: "ARRIVATO", className: "is-ok" };
+  }, [workingOrder.materials]);
+
+  const setMaterial = (
+    materialId: string,
+    updater: (material: DetailWorkingMaterial) => DetailWorkingMaterial,
+  ) => {
+    setWorkingOrder((current) => ({
+      ...current,
+      materials: current.materials.map((material) =>
+        material.id === materialId ? updater(material) : material,
+      ),
+    }));
+  };
+
+  const toggleOrderArrived = () => {
+    const nextArrived = workingOrder.materials.some((material) => !material.arrived);
+    setWorkingOrder((current) => ({
+      ...current,
+      materials: current.materials.map((material) => ({
+        ...material,
+        arrived: nextArrived,
+        arrivalDateLabel: nextArrived ? material.arrivalDateLabel || formatTodayLabel() : null,
+      })),
+    }));
+  };
+
+  const saveDetail = () => {
+    setEditing(false);
+    setAddingMaterial(false);
+  };
+
+  const onDetailDescChange = (value: string) => {
+    setNewDesc(value);
+    setDetailSuggestOpen(true);
+    if (
+      selectedDetailListino &&
+      normalizeCanonicalText(value) !==
+        normalizeCanonicalText(selectedDetailListino.articoloCanonico)
+    ) {
+      setSelectedDetailListino(null);
+    }
+  };
+
+  const selectDetailSuggestion = (entry: NextProcurementListinoItem) => {
+    setNewDesc(entry.articoloCanonico);
+    setNewUnit(String(entry.unita || "pz").toLowerCase());
+    setSelectedDetailListino(entry);
+    setDetailSuggestOpen(false);
+  };
+
+  const deleteMaterial = (materialId: string) => {
+    setWorkingOrder((current) => ({
+      ...current,
+      materials: current.materials.filter((material) => material.id !== materialId),
+    }));
+  };
+
+  const uploadPhoto = (materialId: string, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setMaterial(materialId, (material) => ({
+      ...material,
+      photoUrl: preview,
+      photoStoragePath: null,
+    }));
+    event.currentTarget.value = "";
+  };
+
+  const removePhoto = (materialId: string) => {
+    setMaterial(materialId, (material) => ({
+      ...material,
+      photoUrl: null,
+      photoStoragePath: null,
+    }));
+  };
+
+  const saveNewMaterial = () => {
+    if (!newDesc.trim() || !newQty.trim()) return;
+    const quantity = Number.parseInt(newQty, 10);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      window.alert("Inserisci una quantita valida.");
+      return;
+    }
+
+    const nextMaterial: DetailWorkingMaterial = {
+      id: `detail-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      descrizione: newDesc.trim().toUpperCase(),
+      quantita: quantity,
+      unita: newUnit,
+      arrived: false,
+      arrivalDateLabel: null,
+      arrivalTimestamp: null,
+      note: newNote.trim() || null,
+      photoUrl: newPhotoFile ? URL.createObjectURL(newPhotoFile) : null,
+      photoStoragePath: null,
+      unitPrice: selectedDetailListino?.prezzoAttuale ?? null,
+      currency: selectedDetailListino?.valuta ?? null,
+      unitPriceUnit: selectedDetailListino?.unita ?? null,
+      lineTotal: null,
+      sourceCollection: order.sourceCollection,
+      sourceKey: order.sourceKey,
+      quality: "parziale",
+      flags: ["clone_readonly_local"],
+      sourceUnitPrice: selectedDetailListino?.prezzoAttuale ?? null,
+      sourceCurrency: selectedDetailListino?.valuta ?? null,
+      sourceUnitPriceUnit: selectedDetailListino?.unita ?? null,
+      sourcePreventivoNumero: selectedDetailListino?.fonteNumeroPreventivo ?? null,
+      sourcePreventivoData: selectedDetailListino?.fonteDataPreventivo ?? null,
+    };
+
+    setWorkingOrder((current) => ({
+      ...current,
+      materials: [...current.materials, nextMaterial],
+    }));
+    setAddingMaterial(false);
+    setNewDesc("");
+    setNewQty("");
+    setNewUnit("pz");
+    setNewNote("");
+    setNewPhotoFile(null);
+    setSelectedDetailListino(null);
+    setDetailSuggestOpen(false);
+  };
+
+  const buildPdfPayload = (mode: "fornitori" | "interno") => ({
+    kind: "table" as const,
+    title:
+      mode === "fornitori"
+        ? `Ordine Fornitore - ${workingOrder.supplierName}`
+        : `Ordine Interno - ${workingOrder.supplierName}`,
+    columns:
+      mode === "fornitori"
+        ? ["descrizione", "quantita", "unita", "stato", "dataArrivo", "note"]
+        : ["descrizione", "quantita", "unita", "stato", "dataArrivo", "note", "totaleRiga"],
+    rows: sortedMaterials.map((material) => {
+      const line = computeLineTotal({
+        qty: material.quantita,
+        unitPrice: material.sourceUnitPrice,
+        selectedUom: material.unita,
+        priceUom: material.sourceUnitPriceUnit || material.unita,
+        note: material.note,
+      });
+
+      return {
+        descrizione: material.descrizione,
+        quantita: material.quantita != null ? String(material.quantita) : "",
+        unita: material.unita || "",
+        stato: material.arrived ? "ARRIVATO" : "IN ATTESA",
+        dataArrivo: material.arrivalDateLabel || "",
+        note: material.note || "",
+        totaleRiga:
+          line.status === "needs_factor"
+            ? "DA VERIFICARE UDM"
+            : line.total !== null && material.sourceCurrency
+              ? `${line.total.toFixed(2)} ${material.sourceCurrency}`
+              : "-",
+      };
+    }),
+  });
+
+  const ensurePdfPreviewReady = async (mode: "fornitori" | "interno") => {
+    try {
+      const preview = await openPreview({
+        source: async () => generateSmartPDFBlob(buildPdfPayload(mode)),
+        fileName:
+          mode === "fornitori"
+            ? `ordine-fornitori-${workingOrder.id}.pdf`
+            : `ordine-interno-${workingOrder.id}.pdf`,
+        previousUrl: pdfPreviewUrl,
+      });
+      setPdfPreviewBlob(preview.blob);
+      setPdfPreviewFileName(preview.fileName);
+      setPdfPreviewUrl(preview.url);
+      setPdfPreviewTitle(
+        mode === "fornitori" ? "Anteprima PDF fornitori" : "Anteprima PDF interno",
+      );
+      return preview;
+    } catch (error) {
+      console.error("Errore anteprima PDF procurement NEXT:", error);
+      window.alert("Impossibile generare l'anteprima PDF.");
+      return null;
+    }
+  };
+
+  const openPdf = async (mode: "fornitori" | "interno") => {
+    const preview = await ensurePdfPreviewReady(mode);
+    if (!preview) return;
+    setPdfShareHint(null);
+    setPdfPreviewOpen(true);
+  };
+
+  const buildPreviewShareText = () =>
+    buildPdfShareMessage({
+      contextLabel: pdfPreviewTitle,
+      dateLabel: workingOrder.orderDateLabel,
+      fileName: pdfPreviewFileName,
+      url: pdfPreviewUrl,
+    });
+
+  const handleSharePDF = async () => {
+    if (!pdfPreviewBlob) {
+      const copied = await copyTextToClipboard(buildPreviewShareText());
+      setPdfShareHint(copied ? "Link copiato." : "Apri prima l'anteprima PDF.");
+      return;
+    }
+
+    const result = await sharePdfFile({
+      blob: pdfPreviewBlob,
+      fileName: pdfPreviewFileName,
+      title: pdfPreviewTitle,
+      text: buildPreviewShareText(),
+    });
+
+    if (result.status === "shared") {
+      setPdfShareHint("PDF condiviso.");
+      return;
+    }
+    if (result.status === "aborted") return;
+    const copied = await copyTextToClipboard(buildPreviewShareText());
+    setPdfShareHint(
+      copied ? "Condivisione non disponibile: testo copiato." : "Condivisione non disponibile.",
+    );
+  };
+
+  const handleCopyPdfLink = async () => {
+    const copied = await copyTextToClipboard(buildPreviewShareText());
+    setPdfShareHint(copied ? "Testo copiato negli appunti." : "Impossibile copiare automaticamente.");
+  };
+
+  const handleOpenWhatsApp = () => {
+    const text = buildPreviewShareText();
+    const url = buildWhatsAppShareUrl(text);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const closePdfPreview = () => {
+    setPdfPreviewOpen(false);
+    setPdfPreviewBlob(null);
+    setPdfShareHint(null);
+    revokePdfPreviewUrl(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
+  };
 
   return (
     <div className="acq-tab-panel acq-tab-panel--detail">
       <div className="acq-detail">
         <div className="acq-detail-head">
           <div>
-            <p className="acq-section-kicker">Dettaglio ordine read-only</p>
-            <h3>{order.supplierName}</h3>
-            <p className="acq-detail-meta">
-              {order.orderReference}
-              {order.orderDateLabel
-                ? ` - Ordine del ${order.orderDateLabel}`
-                : ""}
-            </p>
+            <p className="acq-section-kicker">Dettaglio ordine</p>
+            <h3>{workingOrder.supplierName}</h3>
+            <p className="acq-detail-meta">Ordine del {workingOrder.orderDateLabel ?? "-"}</p>
           </div>
           <div className="acq-detail-head-actions">
-            <button
-              type="button"
-              className="acq-btn"
-              onClick={() => onCloseOrder(backTab)}
-            >
+            <button type="button" className="acq-btn" onClick={() => onCloseOrder(backTab)}>
               Indietro
             </button>
-            <button
-              type="button"
-              className="acq-btn"
-              disabled
-              title={detailDisabledReason}
-            >
-              {order.state === "arrivato"
-                ? "Segna non arrivato (bloccato)"
-                : "Segna arrivato (bloccato)"}
-            </button>
-            <button
-              type="button"
-              className="acq-btn acq-btn--primary"
-              disabled
-              title={detailDisabledReason}
-            >
-              Modifica (bloccata)
-            </button>
+            {!editing ? (
+              <button type="button" className="acq-btn" onClick={toggleOrderArrived}>
+                {localState.label === "ARRIVATO" ? "Segna NON Arrivato" : "Segna Arrivato"}
+              </button>
+            ) : null}
+            {!editing ? (
+              <button type="button" className="acq-btn acq-btn--primary" onClick={() => setEditing(true)}>
+                Modifica
+              </button>
+            ) : (
+              <button type="button" className="acq-btn acq-btn--primary" onClick={saveDetail}>
+                Salva
+              </button>
+            )}
           </div>
         </div>
 
         <div className="acq-detail-summary">
           <div className="acq-detail-summary-left">
-            <span className={`acq-pill ${state.className}`}>{state.label}</span>
-            <span className="acq-pill">Materiali: {order.totalRows}</span>
-            <span className="acq-pill">Arrivati: {order.arrivedRows}</span>
-            {order.latestArrivalLabel ? (
-              <span className="acq-pill">
-                Ultimo arrivo: {order.latestArrivalLabel}
-              </span>
-            ) : null}
+            <span className={`acq-pill ${localState.className}`}>{localState.label}</span>
+            <span className="acq-pill">Materiali: {workingOrder.materials.length}</span>
+            <span className="acq-pill">
+              Arrivati: {workingOrder.materials.filter((material) => material.arrived).length}
+            </span>
           </div>
           <div className="acq-detail-totals">
             <div className="acq-detail-pdf-actions">
-              <button
-                type="button"
-                className="acq-btn"
-                disabled
-                title={detailDisabledReason}
-              >
-                PDF fornitori (bloccato)
+              <button type="button" className="acq-btn" onClick={() => void openPdf("fornitori")}>
+                PDF Fornitori
               </button>
-              <button
-                type="button"
-                className="acq-btn"
-                disabled
-                title={detailDisabledReason}
-              >
-                Anteprima PDF (bloccata)
+              <button type="button" className="acq-btn" onClick={() => void openPdf("interno")}>
+                ANTEPRIMA PDF
               </button>
               <button
                 type="button"
                 className="acq-btn acq-btn--primary"
-                disabled
-                title={detailDisabledReason}
+                onClick={() => void openPdf("interno")}
               >
-                PDF interno (bloccato)
+                PDF Interno
               </button>
             </div>
-            <strong>{pricing.summary}</strong>
-            {pricing.missingRows > 0 ? (
-              <span className="acq-pill">
-                Righe senza prezzo: {pricing.missingRows}
-              </span>
-            ) : null}
+            {totals.mixed ? (
+              <>
+                <span className="acq-pill is-warn">Valute miste</span>
+                <strong>Totale CHF: CHF {totals.totalsByCurrency.CHF.toFixed(2)}</strong>
+                <strong>Totale EUR: EUR {totals.totalsByCurrency.EUR.toFixed(2)}</strong>
+              </>
+            ) : (
+              <strong>
+                {totals.missing > 0 || totals.udm > 0 ? "Totale parziale: " : "Totale ordine: "}
+                {totals.used.length === 0
+                  ? "-"
+                  : `${totals.used[0]} ${totals.totalsByCurrency[totals.used[0]].toFixed(2)}`}
+              </strong>
+            )}
+            {totals.missing > 0 ? <span className="acq-pill">Prezzi mancanti: {totals.missing}</span> : null}
+            {totals.udm > 0 ? <span className="acq-pill is-warn">UDM da verificare: {totals.udm}</span> : null}
           </div>
         </div>
 
-        <button
-          type="button"
-          className="acq-btn"
-          disabled
-          title={detailDisabledReason}
-        >
-          + Aggiungi materiale (bloccato)
-        </button>
+        {!editing && !addingMaterial ? (
+          <button type="button" className="acq-btn" onClick={() => setAddingMaterial(true)}>
+            + Aggiungi materiale
+          </button>
+        ) : null}
+
+        {addingMaterial ? (
+          <div className="acq-detail-addbox">
+            <div className="acq-detail-add-desc">
+              <input
+                className="acq-input"
+                placeholder="DESCRIZIONE"
+                value={newDesc}
+                onChange={(event) => onDetailDescChange(event.target.value)}
+                onFocus={() => setDetailSuggestOpen(true)}
+                onBlur={() => window.setTimeout(() => setDetailSuggestOpen(false), 120)}
+              />
+              {detailSuggestOpen && detailSuggestList.length > 0 ? (
+                <div className="acq-detail-suggest">
+                  {detailSuggestList.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="acq-detail-suggest-item"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectDetailSuggestion(entry)}
+                    >
+                      <strong>{entry.articoloCanonico}</strong>
+                      <small>
+                        {entry.codiceArticolo ? `Codice ${entry.codiceArticolo} - ` : ""}
+                        {entry.prezzoAttuale !== null ? entry.prezzoAttuale.toFixed(2) : "-"} {entry.valuta}/
+                        {String(entry.unita || "").toLowerCase()}
+                        {entry.fonteNumeroPreventivo ? ` - N. ${entry.fonteNumeroPreventivo}` : ""}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="acq-detail-addrow">
+              <input
+                className="acq-input"
+                placeholder="QTA"
+                value={newQty}
+                onChange={(event) => setNewQty(event.target.value.replace(/\D/g, "").slice(0, 3))}
+              />
+              <select className="acq-input" value={newUnit} onChange={(event) => setNewUnit(event.target.value)}>
+                <option value="pz">PZ</option>
+                <option value="kg">KG</option>
+                <option value="m">M</option>
+                <option value="lt">LT</option>
+              </select>
+            </div>
+            <input
+              className="acq-input"
+              placeholder="Nota riga (opzionale)"
+              value={newNote}
+              onChange={(event) => setNewNote(event.target.value)}
+            />
+            {selectedDetailListino ? (
+              <div className="acq-detail-match-hint">
+                Prezzo suggerito: {selectedDetailListino.prezzoAttuale?.toFixed(2) ?? "-"}{" "}
+                {selectedDetailListino.valuta}/{String(selectedDetailListino.unita || "").toLowerCase()}
+              </div>
+            ) : null}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => setNewPhotoFile(event.target.files?.[0] || null)}
+            />
+            <div className="acq-detail-head-actions">
+              <button type="button" className="acq-btn acq-btn--primary" onClick={saveNewMaterial}>
+                Salva
+              </button>
+              <button type="button" className="acq-btn" onClick={() => setAddingMaterial(false)}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <label className="acq-order-note acq-order-note--detail">
-          <span>Note ordine (sola lettura)</span>
+          <span>Note ordine (solo PDF)</span>
           <textarea
-            readOnly
-            value={order.orderNote ?? ""}
-            placeholder="Nessuna nota ordine disponibile"
+            value={workingOrder.orderNote ?? ""}
+            onChange={(event) =>
+              setWorkingOrder((current) => ({
+                ...current,
+                orderNote: event.target.value,
+              }))
+            }
+            placeholder="Inserisci note generali ordine"
           />
         </label>
 
@@ -361,50 +951,176 @@ function renderOrderDetail(props: {
               </tr>
             </thead>
             <tbody>
-              {order.materials.length > 0 ? (
-                order.materials.map((material) => (
+              {sortedMaterials.length > 0 ? (
+                sortedMaterials.map((material) => (
                   <tr key={material.id}>
                     <td>
                       <div className="acq-detail-photo-cell">
-                        {material.photoUrl ? (
-                          <img
-                            src={material.photoUrl}
-                            alt={material.descrizione}
-                          />
-                        ) : (
-                          <span>-</span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="acq-detail-desc-cell">
-                        <strong title={material.id}>
-                          {material.descrizione}
-                        </strong>
-                        {material.quality !== "certo" ? (
-                          <small>{material.flags.join(", ")}</small>
+                        {material.photoUrl ? <img src={material.photoUrl} alt={material.descrizione} /> : <span>-</span>}
+                        {editing ? (
+                          <div className="acq-detail-photo-buttons">
+                            <label className="acq-btn acq-btn--small">
+                              Foto
+                              <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: "none" }}
+                                onChange={(event) => uploadPhoto(material.id, event)}
+                              />
+                            </label>
+                            {material.photoUrl ? (
+                              <button
+                                type="button"
+                                className="acq-btn acq-btn--danger acq-btn--small"
+                                onClick={() => removePhoto(material.id)}
+                              >
+                                Rimuovi
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     </td>
-                    <td>{material.quantita ?? "-"}</td>
-                    <td>{material.unita ?? "-"}</td>
                     <td>
-                      <span
-                        className={`acq-pill ${
-                          material.arrived ? "is-ok" : "is-danger"
-                        }`}
-                      >
-                        {material.arrived ? "Si" : "No"}
-                      </span>
+                      {!editing ? (
+                        <div className="acq-detail-desc-cell">
+                          <strong title={material.id}>{material.descrizione}</strong>
+                        </div>
+                      ) : (
+                        <input
+                          className="acq-input"
+                          value={material.descrizione}
+                          onChange={(event) =>
+                            setMaterial(material.id, (current) => ({
+                              ...current,
+                              descrizione: event.target.value.toUpperCase(),
+                            }))
+                          }
+                        />
+                      )}
                     </td>
-                    <td>{material.arrivalDateLabel ?? "-"}</td>
-                    <td>{material.note ?? "-"}</td>
                     <td>
-                      {material.lineTotal !== null && material.currency
-                        ? `${material.currency} ${material.lineTotal.toFixed(2)}`
-                        : "-"}
+                      {!editing ? (
+                        material.quantita ?? "-"
+                      ) : (
+                        <input
+                          className="acq-input acq-input--sm"
+                          value={String(material.quantita ?? "")}
+                          onChange={(event) =>
+                            setMaterial(material.id, (current) => ({
+                              ...current,
+                              quantita:
+                                Number.parseInt(event.target.value.replace(/\D/g, "").slice(0, 3), 10) || 0,
+                            }))
+                          }
+                        />
+                      )}
                     </td>
-                    <td>-</td>
+                    <td>
+                      {!editing ? (
+                        material.unita ?? "-"
+                      ) : (
+                        <select
+                          className="acq-input acq-input--sm"
+                          value={material.unita ?? "pz"}
+                          onChange={(event) =>
+                            setMaterial(material.id, (current) => ({
+                              ...current,
+                              unita: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="pz">PZ</option>
+                          <option value="kg">KG</option>
+                          <option value="m">M</option>
+                          <option value="lt">LT</option>
+                        </select>
+                      )}
+                    </td>
+                    <td>
+                      {!editing ? (
+                        <span className={`acq-pill ${material.arrived ? "is-ok" : "is-danger"}`}>
+                          {material.arrived ? "Si" : "No"}
+                        </span>
+                      ) : (
+                        <label className="acq-check-inline">
+                          <input
+                            type="checkbox"
+                            checked={material.arrived}
+                            onChange={(event) =>
+                              setMaterial(material.id, (current) => ({
+                                ...current,
+                                arrived: event.target.checked,
+                                arrivalDateLabel: event.target.checked
+                                  ? current.arrivalDateLabel || formatTodayLabel()
+                                  : null,
+                              }))
+                            }
+                          />
+                          Arrivato
+                        </label>
+                      )}
+                    </td>
+                    <td>
+                      {!editing ? (
+                        material.arrivalDateLabel ?? "-"
+                      ) : (
+                        <input
+                          className="acq-input acq-input--sm"
+                          value={material.arrivalDateLabel ?? ""}
+                          placeholder="gg mm aaaa"
+                          onChange={(event) =>
+                            setMaterial(material.id, (current) => ({
+                              ...current,
+                              arrivalDateLabel: event.target.value,
+                            }))
+                          }
+                        />
+                      )}
+                    </td>
+                    <td>
+                      {!editing ? (
+                        material.note ?? "-"
+                      ) : (
+                        <input
+                          className="acq-input acq-input--sm"
+                          value={material.note ?? ""}
+                          onChange={(event) =>
+                            setMaterial(material.id, (current) => ({
+                              ...current,
+                              note: event.target.value,
+                            }))
+                          }
+                        />
+                      )}
+                    </td>
+                    <td>
+                      {(() => {
+                        const line = computeLineTotal({
+                          qty: material.quantita,
+                          unitPrice: material.sourceUnitPrice,
+                          selectedUom: material.unita,
+                          priceUom: material.sourceUnitPriceUnit || material.unita,
+                          note: material.note,
+                        });
+                        if (line.status === "needs_factor") return "DA VERIFICARE UDM";
+                        if (line.total === null || !material.sourceCurrency) return "-";
+                        return `${material.sourceCurrency} ${line.total.toFixed(2)}`;
+                      })()}
+                    </td>
+                    <td>
+                      {editing ? (
+                        <button
+                          type="button"
+                          className="acq-btn acq-btn--danger acq-btn--small"
+                          onClick={() => deleteMaterial(material.id)}
+                        >
+                          Elimina
+                        </button>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                   </tr>
                 ))
               ) : (
@@ -417,6 +1133,18 @@ function renderOrderDetail(props: {
             </tbody>
           </table>
         </div>
+
+        <PdfPreviewModal
+          open={pdfPreviewOpen}
+          title={pdfPreviewTitle}
+          pdfUrl={pdfPreviewUrl}
+          fileName={pdfPreviewFileName}
+          hint={pdfShareHint}
+          onClose={closePdfPreview}
+          onShare={handleSharePDF}
+          onCopyLink={handleCopyPdfLink}
+          onWhatsApp={handleOpenWhatsApp}
+        />
       </div>
     </div>
   );
@@ -484,17 +1212,16 @@ export default function NextProcurementReadOnlyPanel({
   const content = (
     <section className={`acq-content${embedded ? " acq-content--embedded" : ""}`}>
       {activeOrder ? (
-        renderOrderDetail({
-          order: activeOrder,
-          backTab: detailBackTab,
-          onCloseOrder,
-          detailDisabledReason: snapshot.navigability.dettaglioOrdine.reason,
-        })
+        <OrderDetailPanel
+          key={`${activeOrder.id}:${activeOrder.arrivedRows}:${activeOrder.pendingRows}:${activeOrder.materials.length}`}
+          snapshot={snapshot}
+          order={activeOrder}
+          backTab={detailBackTab}
+          onCloseOrder={onCloseOrder}
+        />
       ) : requestedDetailMissing ? (
         <div className="acq-tab-panel acq-tab-panel--detail">
-          <div className="acq-detail-state">
-            Ordine non trovato nel dataset in sola lettura del clone.
-          </div>
+          <div className="acq-detail-state">Ordine non trovato.</div>
           <div style={{ marginTop: 12 }}>
             <button
               type="button"
@@ -506,23 +1233,19 @@ export default function NextProcurementReadOnlyPanel({
           </div>
         </div>
       ) : activeTab === "ordini" ? (
-        renderListTable({
-          title: "Ordini in attesa",
-          subtitle:
-            "Vista in sola lettura degli ordini con righe ancora pendenti.",
-          items: visibleOrders,
-          fromTab: "ordini",
-          onOpenOrder,
-        })
+        <OrderListTable
+          title="Ordini in attesa"
+          items={visibleOrders}
+          fromTab="ordini"
+          onOpenOrder={onOpenOrder}
+        />
       ) : activeTab === "arrivi" ? (
-        renderListTable({
-          title: "Ordini arrivati",
-          subtitle:
-            "Vista in sola lettura degli ordini con almeno una riga arrivata.",
-          items: visibleOrders,
-          fromTab: "arrivi",
-          onOpenOrder,
-        })
+        <OrderListTable
+          title="Ordini arrivati"
+          items={visibleOrders}
+          fromTab="arrivi"
+          onOpenOrder={onOpenOrder}
+        />
       ) : activeTab === "ordine-materiali" ? (
         renderBlockedTab({
           title: "Ordine materiali",

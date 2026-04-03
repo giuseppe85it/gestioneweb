@@ -20,6 +20,7 @@ import {
 } from "./domain/nextProcurementDomain";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import NextProcurementConvergedSection from "./NextProcurementConvergedSection";
+import NextProcurementReadOnlyPanel from "./NextProcurementReadOnlyPanel";
 import {
   NEXT_HOME_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
@@ -64,11 +65,12 @@ type ProcurementDraftState = {
   conversionFactorInput: string;
 };
 
-type FabbisogniTab =
-  | "Fabbisogni"
+type ProcurementSurfaceTab =
+  | "Ordine materiali"
   | "Ordini"
   | "Arrivi"
-  | "Prezzi & Preventivi";
+  | "Prezzi & Preventivi"
+  | "Listino Prezzi";
 
 type CanonicalProcurementTab =
   | "fabbisogni"
@@ -77,11 +79,12 @@ type CanonicalProcurementTab =
   | "preventivi"
   | "listino";
 
-const TABS: FabbisogniTab[] = [
-  "Fabbisogni",
+const TABS: ProcurementSurfaceTab[] = [
+  "Ordine materiali",
   "Ordini",
   "Arrivi",
   "Prezzi & Preventivi",
+  "Listino Prezzi",
 ];
 
 const READ_ONLY_SAVE_MESSAGE =
@@ -393,11 +396,12 @@ function normalizeCanonicalTab(search: URLSearchParams): CanonicalProcurementTab
   return "fabbisogni";
 }
 
-function mapVisibleTab(tab: CanonicalProcurementTab): FabbisogniTab {
+function mapVisibleTab(tab: CanonicalProcurementTab): ProcurementSurfaceTab {
   if (tab === "ordini") return "Ordini";
   if (tab === "arrivi") return "Arrivi";
-  if (tab === "preventivi" || tab === "listino") return "Prezzi & Preventivi";
-  return "Fabbisogni";
+  if (tab === "preventivi") return "Prezzi & Preventivi";
+  if (tab === "listino") return "Listino Prezzi";
+  return "Ordine materiali";
 }
 
 function buildCanonicalSearch(args: {
@@ -1215,175 +1219,122 @@ export default function NextMaterialiDaOrdinarePage() {
     materiali.length > 0 &&
     (Boolean(fornitoreNome) || Boolean(nomeFornitorePersonalizzato.trim()));
 
-  const pricingView = canonicalTab === "listino" ? "listino" : "preventivi";
   const resolvedOrderId = selectedOrderId ?? handoffOrderId;
-
-  const showFabbisogni = activeTab === "Fabbisogni";
-  const pageClassName = `mdo-page${showFabbisogni ? " mdo-page--embedded mdo-page--single" : ""}`;
-  const cardClassName = `mdo-card${showFabbisogni ? " mdo-card--embedded mdo-card--single" : ""}`;
+  const showFabbisogni = activeTab === "Ordine materiali";
+  const showReadOnlyProcurementView =
+    activeTab === "Ordini" || activeTab === "Arrivi" || Boolean(resolvedOrderId);
+  const readOnlyProcurementTab: NextProcurementListTab =
+    detailBackTab === "arrivi" || activeTab === "Arrivi" ? "arrivi" : "ordini";
 
   return (
     <div className="next-mdo-route">
-      <div className={pageClassName}>
-        <div className={cardClassName}>
-        <header className="mdo-shell-header">
-          <div className="mdo-header-left">
-            <img
-              src="/logo.png"
-              className="mdo-logo"
-              alt="logo"
-              onClick={() => navigate(NEXT_HOME_PATH)}
-            />
-            <div>
-              <p className="mdo-eyebrow">Acquisti</p>
-              <h1 className="mdo-header-title">Materiali da ordinare</h1>
-            </div>
-          </div>
-
-          <div className="mdo-header-right">
-            <label className="mdo-search">
-              <span>Cerca</span>
-              <input
-                type="search"
-                placeholder="Descrizione o fornitore"
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-              />
-            </label>
-            <div className="mdo-cta-row">
+      <div className={`acq-page${resolvedOrderId ? " is-detail" : ""}`}>
+        <div className="acq-shell">
+          <header className="acq-header">
+            <div className="acq-header-brand">
               <button
                 type="button"
-                className="mdo-cta-button"
-                onClick={() => window.alert(READ_ONLY_PREVENTIVO_MESSAGE)}
+                className="acq-logo-link"
+                aria-label="Torna alla Home"
+                onClick={() => navigate(NEXT_HOME_PATH)}
               >
-                Carica preventivo
+                <img src="/logo.png" alt="Logo" className="acq-header-logo" />
               </button>
-              <button
-                type="button"
-                className="mdo-cta-button"
-                onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
-              >
-                PDF Fornitori
-              </button>
-              <button
-                type="button"
-                className="mdo-cta-button mdo-cta-primary"
-                onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
-              >
-                PDF Direzione
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {error ? (
-          <section className="mdo-placeholder-panel" aria-live="polite">
-            <h2>Fornitori</h2>
-            <p>{error}</p>
-          </section>
-        ) : null}
-
-        <div className="mdo-tabs" role="tablist" aria-label="Sezioni acquisti">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab}
-              className={`mdo-tab ${activeTab === tab ? "is-active" : ""}`}
-              onClick={() =>
-                openCanonicalProcurementView({
-                  tab:
-                    tab === "Ordini"
-                      ? "ordini"
-                      : tab === "Arrivi"
-                        ? "arrivi"
-                        : tab === "Prezzi & Preventivi"
-                          ? "preventivi"
-                          : "fabbisogni",
-                })
-              }
-            >
-              <span>{tab}</span>
-            </button>
-          ))}
-        </div>
-
-        {!showFabbisogni ? (
-          <NextProcurementConvergedSection
-            snapshot={procurementSnapshot}
-            activeTab={activeTab}
-            orderId={resolvedOrderId}
-            detailBackTab={detailBackTab}
-            pricingView={pricingView}
-            searchQuery={searchText}
-            iaPrefill={iaPrefill}
-            procurementError={procurementError}
-            procurementLoading={loadingProcurement}
-            onGoOrdini={() => openCanonicalProcurementView({ tab: "ordini" })}
-            onGoArrivi={() => openCanonicalProcurementView({ tab: "arrivi" })}
-            onPricingViewChange={(view) =>
-              openCanonicalProcurementView({ tab: view })
-            }
-            onOpenOrder={(orderId, fromTab) =>
-              openCanonicalProcurementView({
-                tab: fromTab,
-                orderId,
-                from: fromTab,
-              })
-            }
-            onCloseOrder={(backTab) =>
-              openCanonicalProcurementView({ tab: backTab, from: backTab })
-            }
-          />
-        ) : (
-          <section className="mdo-single-card acq-tab-panel--fabbisogni">
-            <div className="mdo-single-toolbar om-filters">
-              <div className="mdo-single-toolbar-main">
-                <div className="mdo-field">
-                  <label>Fornitore</label>
-                  <select
-                    value={fornitoreId}
-                    onChange={(event) => handleSelectFornitore(event.target.value)}
-                    disabled={loadingFornitori}
-                  >
-                    <option value="">
-                      {loadingFornitori ? "Caricamento..." : "Seleziona"}
-                    </option>
-                    {fornitori.map((fornitore) => (
-                      <option key={fornitore.id} value={fornitore.id}>
-                        {fornitore.nome}
-                      </option>
-                    ))}
-                    <option value="nuovo">+ Nuovo fornitore</option>
-                  </select>
-                </div>
-
-                {isNuovoFornitore ? (
-                  <div className="mdo-field">
-                    <label>Nome nuovo fornitore</label>
-                    <input
-                      type="text"
-                      value={nomeFornitorePersonalizzato}
-                      onChange={(event) =>
-                        setNomeFornitorePersonalizzato(event.target.value)
-                      }
-                    />
-                  </div>
-                ) : null}
-
-                <label className="mdo-search mdo-search--embedded">
-                  <span>Cerca</span>
-                  <input
-                    type="search"
-                    placeholder="Descrizione o fornitore"
-                    value={searchText}
-                    onChange={(event) => setSearchText(event.target.value)}
-                  />
-                </label>
+              <div className="acq-header-copy">
+                <p className="acq-eyebrow">Gestione Acquisti</p>
+                <h1 className="acq-title">Acquisti</h1>
+                <p className="acq-subtitle">
+                  Modulo unico: ordine materiali, liste ordini e dettaglio ordine.
+                </p>
               </div>
+            </div>
+          </header>
 
-              <div className="mdo-single-toolbar-side">
+          <div className="acq-tabs" role="tablist" aria-label="Schede acquisti">
+            {TABS.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={!resolvedOrderId && activeTab === tab}
+                className={`acq-tab${!resolvedOrderId && activeTab === tab ? " is-active" : ""}`}
+                onClick={() =>
+                  openCanonicalProcurementView({
+                    tab:
+                      tab === "Ordine materiali"
+                        ? "fabbisogni"
+                        : tab === "Ordini"
+                          ? "ordini"
+                          : tab === "Arrivi"
+                            ? "arrivi"
+                            : tab === "Listino Prezzi"
+                              ? "listino"
+                              : tab === "Prezzi & Preventivi"
+                                ? "preventivi"
+                                : "fabbisogni",
+                  })
+                }
+              >
+                <span>{tab}</span>
+              </button>
+            ))}
+            {resolvedOrderId ? (
+              <div className="acq-tab acq-tab--detail-live" aria-live="polite">
+                <span>Dettaglio ordine</span>
+              </div>
+            ) : null}
+          </div>
+          {showFabbisogni ? (
+            <section className="acq-content">
+              <div className="acq-tab-panel acq-tab-panel--fabbisogni">
+                {error ? <div className="acq-list-error">{error}</div> : null}
+                <section className="mdo-single-card">
+                  <div className="mdo-single-toolbar om-filters">
+                    <div className="mdo-single-toolbar-main">
+                      <div className="mdo-field">
+                        <label>Fornitore</label>
+                        <select
+                          value={fornitoreId}
+                          onChange={(event) => handleSelectFornitore(event.target.value)}
+                          disabled={loadingFornitori}
+                        >
+                          <option value="">
+                            {loadingFornitori ? "Caricamento..." : "Seleziona"}
+                          </option>
+                          {fornitori.map((fornitore) => (
+                            <option key={fornitore.id} value={fornitore.id}>
+                              {fornitore.nome}
+                            </option>
+                          ))}
+                          <option value="nuovo">+ Nuovo fornitore</option>
+                        </select>
+                      </div>
+
+                      {isNuovoFornitore ? (
+                        <div className="mdo-field">
+                          <label>Nome nuovo fornitore</label>
+                          <input
+                            type="text"
+                            value={nomeFornitorePersonalizzato}
+                            onChange={(event) =>
+                              setNomeFornitorePersonalizzato(event.target.value)
+                            }
+                          />
+                        </div>
+                      ) : null}
+
+                      <label className="mdo-search mdo-search--embedded">
+                        <span>Cerca</span>
+                        <input
+                          type="search"
+                          placeholder="Descrizione o fornitore"
+                          value={searchText}
+                          onChange={(event) => setSearchText(event.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mdo-single-toolbar-side">
                 <div className="mdo-kpi-strip">
                   <div className="mdo-kpi">
                     <span>Righe</span>
@@ -1887,6 +1838,13 @@ export default function NextMaterialiDaOrdinarePage() {
                 </button>
                 <button
                   type="button"
+                  className="mdo-secondary-button"
+                  onClick={() => openCanonicalProcurementView({ tab: "listino" })}
+                >
+                  Listino Prezzi
+                </button>
+                <button
+                  type="button"
                   className="mdo-header-button"
                   onClick={salvaOrdine}
                   disabled={!canSaveOrdine}
@@ -1909,8 +1867,92 @@ export default function NextMaterialiDaOrdinarePage() {
                 <div className="acq-draft-indicator">Bozza salvata</div>
               ) : null}
             </div>
-          </section>
-        )}
+                </section>
+              </div>
+            </section>
+          ) : showReadOnlyProcurementView ? (
+            loadingProcurement ? (
+              <section className="acq-content">
+                <div className="acq-tab-panel">
+                  <div className="acq-list-empty">Caricamento ordini procurement...</div>
+                </div>
+              </section>
+            ) : procurementError ? (
+              <section className="acq-content">
+                <div className="acq-tab-panel">
+                  <div className="acq-list-error">{procurementError}</div>
+                </div>
+              </section>
+            ) : procurementSnapshot ? (
+              <NextProcurementReadOnlyPanel
+                snapshot={procurementSnapshot}
+                activeTab={readOnlyProcurementTab}
+                orderId={resolvedOrderId}
+                detailBackTab={detailBackTab}
+                searchQuery=""
+                iaPrefill={iaPrefill}
+                embedded
+                onTabChange={(tab) =>
+                  openCanonicalProcurementView({
+                    tab:
+                      tab === "arrivi"
+                        ? "arrivi"
+                        : tab === "preventivi"
+                          ? "preventivi"
+                          : tab === "listino"
+                            ? "listino"
+                            : tab === "ordine-materiali"
+                              ? "fabbisogni"
+                              : "ordini",
+                  })
+                }
+                onOpenOrder={(orderId, fromTab) =>
+                  openCanonicalProcurementView({
+                    tab: fromTab,
+                    orderId,
+                    from: fromTab,
+                  })
+                }
+                onCloseOrder={(backTab) =>
+                  openCanonicalProcurementView({ tab: backTab, from: backTab })
+                }
+              />
+            ) : (
+              <section className="acq-content">
+                <div className="acq-tab-panel">
+                  <div className="acq-list-empty">Snapshot ordini non disponibile.</div>
+                </div>
+              </section>
+            )
+          ) : (
+            <NextProcurementConvergedSection
+              snapshot={procurementSnapshot}
+              activeTab={activeTab}
+              orderId={resolvedOrderId}
+              detailBackTab={detailBackTab}
+              searchQuery={
+                activeTab === "Prezzi & Preventivi" || activeTab === "Listino Prezzi"
+                  ? searchText
+                  : ""
+              }
+              onSearchQueryChange={setSearchText}
+              iaPrefill={iaPrefill}
+              procurementError={procurementError}
+              procurementLoading={loadingProcurement}
+              onGoOrdini={() => openCanonicalProcurementView({ tab: "ordini" })}
+              onGoArrivi={() => openCanonicalProcurementView({ tab: "arrivi" })}
+              onOpenOrder={(orderId, fromTab) =>
+                openCanonicalProcurementView({
+                  tab: fromTab,
+                  orderId,
+                  from: fromTab,
+                })
+              }
+              onCloseOrder={(backTab) =>
+                openCanonicalProcurementView({ tab: backTab, from: backTab })
+              }
+            />
+          )}
         </div>
       </div>
     </div>

@@ -31,6 +31,64 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-02 165
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Chiusura delta UI residuo procurement NEXT su liste, dettaglio, preventivi e listino
+- OBIETTIVO: Portare dentro il clone NEXT solo i pezzi UI ancora diversi dalla madre `Acquisti` su `/next/materiali-da-ordinare`, senza toccare il domain e senza riaprire scritture business.
+- FILE TOCCATI:
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_2339_procurement-next-ui-residua-liste-dettaglio-preventivi-listino.md`
+  - `docs/continuity-reports/2026-04-02_2339_continuity_procurement-next-ui-residua-liste-dettaglio-preventivi-listino.md`
+- COSA E STATO CAMBIATO:
+  - `NextProcurementReadOnlyPanel.tsx` riallinea le tabelle `Ordini` / `Arrivi` con menu `AZIONI`, voci `Modifica` / `Elimina`, pill stato madre per tab e un `Dettaglio ordine` visivamente piu fedele alla madre su header, riepilogo e tabella materiali;
+  - `NextProcurementConvergedSection.tsx` ricostruisce `Prezzi & Preventivi` come `Registro Preventivi` e `Listino Prezzi` come tabella madre-like con filtri, CTA documentali, menu azioni e modale esterna coerente;
+  - `src/next/NextMaterialiDaOrdinarePage.tsx` e `src/next/domain/nextProcurementDomain.ts` non sono stati toccati in questo prompt.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il delta visivo residuo rispetto ad `Acquisti` si riduce sui quattro blocchi indicati dal prompt;
+  - Lettura: il clone continua a vivere solo sui dati gia normalizzati del domain NEXT e sullo snapshot procurement passato dal container;
+  - Blocco scritture: i pulsanti restano visibili ma i side effect reali restano bloccati e dichiarati clone-safe.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextProcurementReadOnlyPanel.tsx src/next/NextProcurementConvergedSection.tsx`
+  - `npm run build`
+  - `npm run lint`
+  - aprire `/next/materiali-da-ordinare` e verificare:
+    - `Ordini` / `Arrivi` con `Apri` + `AZIONI`;
+    - `Dettaglio ordine` con meta `Ordine del ...` e riepilogo pill madre-like;
+    - `Prezzi & Preventivi` con `Registro Preventivi`, gruppi fornitore e menu azioni;
+    - `Listino Prezzi` con tabella madre, `APRI DOCUMENTO` e modale `Modifica voce listino`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Patch `PARZIALE`; la parity esterna avanza, ma i workflow vivi della madre restano bloccati in modalita clone-safe.
+
+### Voce 2026-04-02 164
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Ordini, arrivi e dettaglio procurement NEXT ricostruiti nella shell `Acquisti`
+- OBIETTIVO: Portare `Ordini`, `Arrivi` e `Dettaglio ordine` dentro la stessa superficie visiva madre `src/pages/Acquisti.tsx` su `/next/materiali-da-ordinare`, eliminando il ramo convergente come render principale di queste viste senza toccare il domain NEXT.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_2309_procurement-next-acquisti-shell-ordini-arrivi-dettaglio.md`
+  - `docs/continuity-reports/2026-04-02_2309_continuity_procurement-next-acquisti-shell-ordini-arrivi-dettaglio.md`
+- COSA E STATO CAMBIATO:
+  - `NextMaterialiDaOrdinarePage.tsx` usa ora `NextProcurementReadOnlyPanel` in modalita `embedded` per `Ordini`, `Arrivi` e `Dettaglio ordine`, mantenendo la shell `acq-*` della madre `Acquisti`;
+  - `NextProcurementConvergedSection` non e piu la superficie principale di queste tre viste e resta usato solo per `Prezzi & Preventivi` e `Listino Prezzi`;
+  - le liste ordini/arrivi hanno titoli e CTA madre-like (`Ordini in attesa`, `Ordini arrivati`, `Apri`) e il messaggio di dettaglio mancante e stato reso neutro (`Ordine non trovato.`);
+  - il dettaglio embedded non usa piu un reset stato via `useEffect`, ma un remount keyed che mantiene pulito il lint mirato sul perimetro toccato.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Ordini`, `Arrivi` e `Dettaglio ordine` risultano visivamente dentro la stessa shell `Acquisti` che l'utente vede nella madre;
+  - Lettura: restano in uso solo `readNextProcurementSnapshot()`, `buildNextProcurementListView()` e `findNextProcurementOrder()` su dati NEXT puliti;
+  - Blocco scritture: nessuna scrittura business reale riaperta, nessun `storageSync`, nessuna lettura raw legacy reintrodotta.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextMaterialiDaOrdinarePage.tsx src/next/NextProcurementReadOnlyPanel.tsx`
+  - `npm run build`
+  - aprire `/next/materiali-da-ordinare?tab=ordini`, `/next/materiali-da-ordinare?tab=arrivi` e un dettaglio ordine dal tab, verificando shell `Acquisti`, titoli madre e CTA `Apri`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: Il modulo procurement top-level resta `PARZIALE`; `Prezzi & Preventivi` / `Listino Prezzi` restano consultivi clone-safe e la parity 1:1 completa delle azioni tabellari ordini non e ancora chiusa.
+
 ### Voce 2026-04-02 163
 - DATA: 2026-04-02
 - TITOLO MODIFICA: Fix definitivo runtime browser del procurement NEXT con override scoped del conflitto CSS
@@ -7357,6 +7415,123 @@ Serve a:
 - NOTE:
   - build `OK`;
   - il procurement top-level resta `PARZIALE`, non `CHIUSO`.
+
+### Voce 2026-04-02 129
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Procurement convergente NEXT riallineato sul top-level di tab, sottoviste e riepiloghi
+- OBIETTIVO: Chiudere altro delta reale della superficie principale `/next/materiali-da-ordinare` rispetto alla madre su struttura visiva, tab, sottoviste, footer, badge e passaggi utente, senza sporcare il layer dati NEXT.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_2206_procurement-next-top-level-parity-materiali-da-ordinare.md`
+  - `docs/continuity-reports/2026-04-02_2206_continuity_procurement-next-top-level-parity-materiali-da-ordinare.md`
+- COSA E STATO CAMBIATO:
+  - il modulo unico espone ora le tab top-level madre-like `Ordine materiali`, `Ordini`, `Arrivi`, `Prezzi & Preventivi`, `Listino Prezzi`;
+  - badge e riepiloghi visibili mostrano contatori reali del procurement NEXT pulito e marcano il `Dettaglio ordine` aperto senza uscire dal modulo;
+  - il ramo documentale usa shell, titoli, riepiloghi e footer azioni piu vicini alla madre, distinguendo meglio `Registro Preventivi` e `Listino Prezzi`;
+  - il footer di `Ordine materiali` riallinea anche il passaggio verso `Listino Prezzi`, non solo verso ordini/arrivi/preventivi.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il procurement unico risulta piu coerente tra top-level, sottoviste e risultati visibili, senza redesign creativo;
+  - Lettura: restano in uso solo `readNextFornitoriSnapshot()` e `readNextProcurementSnapshot()` con i dati gia normalizzati dal layer NEXT;
+  - Blocco scritture: nessuna scrittura business reale reintrodotta; `Carica preventivo` resta visibile ma bloccato in modo esplicito.
+- COME VERIFICARE:
+  - `npm run build`
+  - `npx eslint src/next/NextMaterialiDaOrdinarePage.tsx src/next/NextProcurementConvergedSection.tsx`
+  - aprire `/next/materiali-da-ordinare` e verificare tab top-level, badge contatori, riepilogo `SOLA LETTURA`, vista `Listino Prezzi` visibile e footer azioni coerente nei rami documentali.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; la superficie converge meglio ma il procurement top-level resta `PARZIALE`.
+- NOTE:
+  - build `OK`;
+  - `npm run lint` resta `KO` per errori preesistenti diffusi fuori scope;
+  - il procurement top-level non puo essere dichiarato `CHIUSO`.
+
+### Voce 2026-04-02 130
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Procurement NEXT riallineato sulla UI madre `Acquisti` come shell top-level
+- OBIETTIVO: Portare `/next/materiali-da-ordinare` a copia esterna piu fedele della pagina madre `Gestione Acquisti`, mantenendo il procurement NEXT pulito e senza riaprire moduli top-level separati.
+- FILE TOCCATI:
+  - `src/next/NextMaterialiDaOrdinarePage.tsx`
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_2247_procurement-next-acquisti-master-ui-materiali-da-ordinare.md`
+  - `docs/continuity-reports/2026-04-02_2247_continuity_procurement-next-acquisti-master-ui-materiali-da-ordinare.md`
+- COSA E STATO CAMBIATO:
+  - la pagina NEXT usa ora shell, header, tab, titolo e gerarchia blocchi della madre `Acquisti` invece della vecchia pelle `Materiali da ordinare`;
+  - `Ordine materiali` resta nel modulo unico ma dentro un `acq-tab-panel--fabbisogni` coerente con la madre;
+  - `Prezzi & Preventivi` espone topbar `Registro Preventivi`, CTA `Carica preventivo`, filtri e tabella in shell `acq-prev-*` piu coerente con la madre;
+  - `Listino Prezzi` adotta filtri e tabella `acq-listino-*` / `acq-prev-table` senza footer custom estranei alla madre.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il top-level di `/next/materiali-da-ordinare` segue ora molto piu direttamente `src/pages/Acquisti.tsx`;
+  - Lettura: restano in uso solo `readNextFornitoriSnapshot()` e `readNextProcurementSnapshot()` con dataset NEXT pulito;
+  - Blocco scritture: nessuna scrittura business reale reintrodotta; `Carica preventivo` e `CONFERMA ORDINE` restano clone-safe.
+- COME VERIFICARE:
+  - `npm run build`
+  - `node_modules\\.bin\\eslint.cmd src/next/NextMaterialiDaOrdinarePage.tsx src/next/NextProcurementConvergedSection.tsx`
+  - aprire `/next/materiali-da-ordinare` e verificare header `Gestione Acquisti`, titolo `Acquisti`, tab madre, shell `Registro Preventivi` e shell `Listino Prezzi` coerenti con `src/pages/Acquisti.tsx`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; il top-level converge meglio ma il modulo procurement resta `PARZIALE`.
+- NOTE:
+  - build `OK`;
+  - eslint mirato `OK`;
+  - `src/next/NextProcurementReadOnlyPanel.tsx` e `src/next/domain/nextProcurementDomain.ts` sono rimasti intatti.
+
+### Voce 2026-04-02 127
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Procurement convergente NEXT esteso su tab secondarie, documenti e drill-down consultivo
+- OBIETTIVO: Ridurre altri delta reali del modulo unico `/next/materiali-da-ordinare` rispetto alla madre completa sulle viste `Prezzi & Preventivi` e `Dettaglio ordine`, senza riaprire moduli procurement top-level separati.
+- FILE TOCCATI:
+  - `src/next/NextProcurementConvergedSection.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_1505_procurement-next-tab-secondarie-documenti-drilldown.md`
+  - `docs/continuity-reports/2026-04-02_1505_continuity_procurement-next-tab-secondarie-documenti-drilldown.md`
+- COSA E STATO CAMBIATO:
+  - `Prezzi & Preventivi` espone ora filtri locali per `Fornitore` e `Valuta` piu vicini all'uso reale della madre;
+  - preventivi e listino mostrano un'azione `Apri documento` quando il clone legge PDF o immagini collegate;
+  - il `Dettaglio ordine` read-only apre la foto materiale dalla riga quando presente;
+  - il procurement resta top-level unico e non riapre route procurement secondarie come moduli separati.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la consultazione dei tab secondari risulta piu utile e piu aderente alla madre completa;
+  - Lettura: restano in uso solo `readNextProcurementSnapshot()`, `buildNextProcurementListView()` e `findNextProcurementOrder()` con dataset NEXT ripulito;
+  - Blocco scritture: nessuna scrittura business reale reintrodotta.
+- COME VERIFICARE:
+  - `npm run build`
+  - aprire `/next/materiali-da-ordinare`;
+  - entrare in `Prezzi & Preventivi`, filtrare per fornitore/valuta e verificare `Apri documento` su righe con allegati;
+  - aprire un ordine dal modulo unico e verificare `Apri foto` sulla riga materiale quando la foto esiste.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; il delta su consultazione e ridotto, ma il procurement top-level resta `PARZIALE`.
+- NOTE:
+  - build `OK`;
+  - la parity totale con la madre completa resta aperta.
+
+### Voce 2026-04-02 128
+- DATA: 2026-04-02
+- TITOLO MODIFICA: Procurement convergente NEXT esteso sul dettaglio ordine operativo clone-safe
+- OBIETTIVO: Portare dentro il modulo unico `/next/materiali-da-ordinare` il blocco operativo vivo della madre su `Dettaglio ordine`, senza riaprire moduli top-level procurement separati e senza sporcare il layer dati NEXT.
+- FILE TOCCATI:
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-02_2155_procurement-next-dettaglio-ordine-operativo-clone-safe.md`
+  - `docs/continuity-reports/2026-04-02_2155_continuity_procurement-next-dettaglio-ordine-operativo-clone-safe.md`
+- COSA E STATO CAMBIATO:
+  - il dettaglio ordine convergente espone ora `Segna Arrivato`, `Modifica`, `Salva`, `+ Aggiungi materiale`, note ordine, modifica riga, foto riga, totale riga e riepilogo valute in modalita locale clone-safe;
+  - i pulsanti `PDF Fornitori`, `ANTEPRIMA PDF` e `PDF Interno` non sono piu bloccati e generano preview/share locale coerente con la superficie madre;
+  - la lista ordini/arrivi apre il dettaglio come percorso operativo interno, non piu come semplice pannello read-only bloccato.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il percorso `Ordini` / `Arrivi` -> `Dettaglio ordine` e molto piu vicino alla madre lato passaggi utente;
+  - Lettura: restano in uso solo `readNextProcurementSnapshot()`, `buildNextProcurementListView()` e `findNextProcurementOrder()` con dati NEXT normalizzati;
+  - Blocco scritture: nessuna scrittura business reale, nessun `storageSync`, nessun upload legacy e nessun writer inventario/ordini reintrodotto.
+- COME VERIFICARE:
+  - `npm run build`
+  - aprire `/next/materiali-da-ordinare?tab=ordini`
+  - aprire un ordine e verificare `Segna Arrivato`, `Modifica`, `Salva`, `+ Aggiungi materiale`, PDF locali, note ordine e gestione foto riga senza uscire dal modulo unico.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; il flusso di superficie converge, ma il procurement top-level resta `PARZIALE`.
+- NOTE:
+  - build `OK`;
+  - i writer business reali della madre restano fuori perimetro.
 
 ### Voce 2026-04-02 126
 - DATA: 2026-04-02

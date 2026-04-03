@@ -1,5 +1,24 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-02 - Procurement top-level riallineato su tab, sottoviste e riepiloghi
+- Sul runtime ufficiale `/next/materiali-da-ordinare` la superficie principale del modulo unico converge di piu verso la madre `Acquisti` senza riaprire moduli procurement top-level separati:
+  - tab top-level riallineati a `Ordine materiali`, `Ordini`, `Arrivi`, `Prezzi & Preventivi`, `Listino Prezzi`;
+  - badge contatori reali su ordini/arrivi/preventivi/listino e chip live su `Dettaglio ordine`;
+  - placeholder ricerca e CTA header coerenti con la vista corrente, evitando azioni top-level fuori contesto sui tab secondari;
+  - barra riepilogo madre-like con stato `SOLA LETTURA`, contatori e descrizione pratica del flusso attivo.
+- `NextProcurementConvergedSection` riduce il delta top-level sui rami documentali:
+  - `Prezzi & Preventivi` usa una shell piu vicina alla madre `Registro Preventivi`;
+  - `Listino Prezzi` torna vista top-level visibile, non solo toggle implicito;
+  - footer azioni e riepiloghi mantengono il passaggio pratico tra `Ordine materiali`, `Ordini`, `Arrivi`, `Preventivi` e `Listino`.
+- Boundary dati preservato:
+  - nessuna modifica a `src/next/domain/nextProcurementDomain.ts`;
+  - nessuna modifica a `src/next/NextProcurementReadOnlyPanel.tsx`;
+  - nessuna lettura raw legacy di `@ordini`, `@preventivi`, `@listino_prezzi`, `storageSync` o `materialImages`.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - restano fuori il writer business 1:1 della madre, il caricamento preventivi reale e l'operativita completa di `Prezzi & Preventivi` / `Listino Prezzi`.
+
 ## 0. Aggiornamento operativo 2026-04-02 - Fix runtime reale procurement da browser e conflitto CSS globale
 - Verifica eseguita con browser headless locale sulla route reale `http://localhost:5173/next/materiali-da-ordinare`, leggendo DOM e computed styles del runtime.
 - Causa reale trovata nel browser:
@@ -3225,3 +3244,81 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
   - `Materiali da ordinare` -> `PARZIALE`
 - Limite esplicito:
   - la parity totale con la madre completa resta aperta finche la NEXT non replica anche i blocchi vivi di `Acquisti.tsx` su `Prezzi & Preventivi`, `Listino Prezzi`, `Dettaglio ordine`, PDF/share e writer business clone-safe.
+
+## 5.126 Aggiornamento 2026-04-02 - Procurement NEXT esteso su tab secondarie e drill-down consultivo
+- Sul runtime ufficiale `/next/materiali-da-ordinare` il procurement convergente riduce altri delta reali rispetto alla madre completa anche nei tab secondari:
+  - `Prezzi & Preventivi` espone ora filtri fornitore/valuta piu vicini alla madre e pulsanti `Apri documento` su preventivi e listino quando il clone legge un riferimento documento;
+  - `Dettaglio ordine` read-only mantiene il drill-down interno al modulo unico ma apre ora la foto materiale direttamente dalla riga quando presente;
+  - il procurement resta top-level unico e non riapre route separate visibili per `Ordini`, `Arrivi`, `Dettaglio ordine` o `Acquisti`.
+- Boundary dati invariato:
+  - la pagina continua a leggere solo tramite `readNextFornitoriSnapshot()`, `readNextProcurementSnapshot()`, `buildNextProcurementListView()` e `findNextProcurementOrder()`;
+  - nessuna lettura raw legacy madre e stata reintrodotta nel runtime NEXT.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - restano ancora fuori parity totale i workflow vivi madre di edit/save ordini, import preventivi/listino, PDF/preview/share reali e scritture business clone-safe.
+
+## 5.127 Aggiornamento 2026-04-02 - Procurement NEXT esteso sul dettaglio ordine operativo clone-safe
+- Sul runtime ufficiale `/next/materiali-da-ordinare` il ramo `Dettaglio ordine` non resta piu sul vecchio pannello bloccato:
+  - `Segna Arrivato` / `Segna NON Arrivato`, `Modifica`, `Salva` e `+ Aggiungi materiale` replicano ora il percorso madre come interazioni locali clone-safe;
+  - il dettaglio mantiene `PDF Fornitori`, `ANTEPRIMA PDF` e `PDF Interno` con generazione/preview locale invece del solo bottone disabilitato;
+  - righe ordine modificabili localmente con foto, note, stato arrivo, data arrivo, eliminazione e totale riga calcolato sul listino NEXT pulito;
+  - `Note ordine (solo PDF)` e riepilogo totale/valute/UDM si comportano ora piu come la madre completa di `Acquisti` e `DettaglioOrdine`.
+- Boundary dati invariato:
+  - il dettaglio continua a partire da `readNextProcurementSnapshot()`, `buildNextProcurementListView()` e `findNextProcurementOrder()`;
+  - nessuna lettura raw legacy di `@ordini`, `@inventario`, `storageSync` o upload `materialImages` e stata reintrodotta.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - restano aperti i writer business reali della madre, il workflow pieno di `Prezzi & Preventivi` / `Listino Prezzi` e il `Dettaglio ordine` persistente 1:1.
+
+## 5.128 Aggiornamento 2026-04-02 - Procurement NEXT riallineato sulla shell madre `Acquisti`
+- Sul runtime ufficiale `/next/materiali-da-ordinare` la UI principale prende ora come master esterno `src/pages/Acquisti.tsx`, non piu una convergenza astratta del procurement:
+  - la shell top-level usa struttura `Acquisti` con header `Gestione Acquisti`, titolo `Acquisti`, tab madre e gerarchia `acq-header` -> `acq-tabs` -> `acq-content`;
+  - `Ordine materiali` resta dentro il modulo unico ma viene ospitato nel pannello `acq-tab-panel--fabbisogni` coerente con la madre;
+  - `Prezzi & Preventivi` riallinea topbar `Registro Preventivi`, CTA `Carica preventivo`, filtri `Fornitore` / `Cerca` e tabella in shell `acq-prev-*`;
+  - `Listino Prezzi` usa ora la shell `acq-listino-*` con filtri `Fornitore`, `Valuta`, `Cerca` e tabella madre-like senza footer custom ibridi.
+- Boundary dati invariato:
+  - non sono stati toccati `src/next/NextProcurementReadOnlyPanel.tsx` e `src/next/domain/nextProcurementDomain.ts`;
+  - il runtime continua a leggere tramite `readNextFornitoriSnapshot()` e `readNextProcurementSnapshot()`;
+  - nessuna lettura raw legacy, nessun `storageSync`, nessun mount runtime di `src/pages/*`.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - `Ordini` / `Arrivi` restano appoggiati al pannello convergente read-only gia esistente;
+  - `Prezzi & Preventivi` e `Listino Prezzi` restano consultivi clone-safe e non riaprono writer business o upload reali madre.
+
+## 5.129 Aggiornamento 2026-04-02 - Procurement NEXT porta `Ordini`, `Arrivi` e `Dettaglio ordine` nella shell `Acquisti`
+- Sul runtime ufficiale `/next/materiali-da-ordinare` le viste interne principali non usano piu `NextProcurementConvergedSection` come superficie visiva dominante:
+  - `Ordini`, `Arrivi` e `Dettaglio ordine` vengono ora renderizzati dentro la stessa gabbia `acq-content` della shell madre `Acquisti`;
+  - `NextMaterialiDaOrdinarePage.tsx` instrada questi tre rami verso `NextProcurementReadOnlyPanel` in modalita `embedded`, lasciando al converged solo `Prezzi & Preventivi` e `Listino Prezzi`;
+  - le liste allineano titoli e CTA alla madre con `Ordini in attesa`, `Ordini arrivati` e bottone riga `Apri`;
+  - il dettaglio ordine resta clone-safe ma si apre ora come vista principale interna al modulo unico, non come pannello convergente separato.
+- Boundary dati invariato:
+  - non sono stati toccati `src/next/domain/nextProcurementDomain.ts` e `src/next/NextProcurementConvergedSection.tsx`;
+  - il runtime continua a leggere tramite `readNextProcurementSnapshot()`, `buildNextProcurementListView()` e `findNextProcurementOrder()`;
+  - nessuna reintroduzione di `storageSync`, letture raw legacy di `@ordini` / `@preventivi` / `@listino_prezzi` o mount runtime di `src/pages/*`.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - `Ordini` / `Arrivi` non replicano ancora 1:1 tutte le azioni secondarie della madre dentro la tabella ordini;
+  - `Dettaglio ordine` resta locale clone-safe e non riapre i writer business reali della madre;
+  - `Prezzi & Preventivi` e `Listino Prezzi` restano consultivi clone-safe.
+
+## 5.130 Aggiornamento 2026-04-02 - Procurement NEXT chiude il delta UI residuo su liste, dettaglio, preventivi e listino
+- Sul runtime ufficiale `/next/materiali-da-ordinare` sono stati riallineati solo i pezzi ancora visibilmente diversi dalla madre `Acquisti`:
+  - `Ordini` / `Arrivi` espongono ora menu secondario `AZIONI` con voci `Modifica` e `Elimina`, bottone riga `Apri` e pill stato coerente con la madre per tab (`In attesa` su ordini, `Arrivato` su arrivi);
+  - `Dettaglio ordine` mostra intestazione e riepilogo madre-like con meta `Ordine del ...`, pill `IN ATTESA` / `PARZIALE` / `ARRIVATO`, conteggi `Materiali` / `Arrivati`, rimozione del pill `Ultimo arrivo` e della nota clone-only in testata;
+  - la tabella materiali del dettaglio in sola lettura non mostra piu preview secondarie o CTA extra non presenti nella madre, lasciando la colonna azioni vuota fuori editing;
+  - `Prezzi & Preventivi` usa shell `Registro Preventivi` con CTA `Carica preventivo`, card `Nuovo preventivo`, tools `PULISCI ALLEGATI IA` / `Apri tutti` / `Chiudi tutti`, filtri `Fornitore` / `Cerca` / `Solo non importati`, gruppi per fornitore e menu azioni documentali;
+  - `Listino Prezzi` usa tabella madre con colonne `Fornitore`, `Articolo`, `Unita`, `Valuta`, `Prezzo`, `Trend`, `Preventivo`, `Data`, `Azioni`, bottone `APRI DOCUMENTO`, menu `Apri documento` / `Modifica` / `Elimina` e modale `Modifica voce listino`.
+- Boundary dati invariato nel prompt:
+  - non sono stati toccati `src/next/domain/nextProcurementDomain.ts` e `src/next/NextMaterialiDaOrdinarePage.tsx`;
+  - `NextProcurementReadOnlyPanel.tsx` continua a usare `readNextProcurementSnapshot()`, `buildNextProcurementListView()` e `findNextProcurementOrder()` tramite props/snapshot gia presenti;
+  - `NextProcurementConvergedSection.tsx` continua a lavorare solo sui dati gia esposti dal domain NEXT (`snapshot.preventivi`, `snapshot.listino`) senza reintrodurre letture raw legacy, `storageSync` o mount runtime di `src/pages/*`.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - i workflow vivi madre di `Nuovo preventivo`, import listino, modifica listino ed eliminazioni restano clone-safe e non persistono scritture business reali;
+  - `Dettaglio ordine` resta locale clone-safe su foto, editing materiali e PDF;
+  - il modulo non e dichiarabile `CHIUSO` perche la parity 1:1 completa dei side effect della madre non e stata riaperta.
