@@ -89,10 +89,6 @@ const TABS: ProcurementSurfaceTab[] = [
 
 const READ_ONLY_SAVE_MESSAGE =
   "Clone read-only: conferma ordine non disponibile.";
-const READ_ONLY_PREVENTIVO_MESSAGE =
-  "Clone read-only: caricamento preventivo non disponibile.";
-const READ_ONLY_PDF_MESSAGE =
-  "Clone read-only: esportazione PDF non disponibile.";
 const PROCUREMENT_DRAFT_KEY = "next.procurement.materiali-da-ordinare.draft";
 
 const generaId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -477,6 +473,12 @@ export default function NextMaterialiDaOrdinarePage() {
     useState<NextProcurementListinoItem | null>(null);
   const [showEntryDetails, setShowEntryDetails] = useState(false);
   const [conversionFactorInput, setConversionFactorInput] = useState("");
+  const [openMaterialMenuId, setOpenMaterialMenuId] = useState<string | null>(null);
+  const [openMaterialMenuPosition, setOpenMaterialMenuPosition] = useState<{
+    top: number;
+    left: number;
+    openUp: boolean;
+  } | null>(null);
   const procurementHandoff = useInternalAiUniversalHandoffConsumer({
     moduleId: "next.procurement",
   });
@@ -520,6 +522,8 @@ export default function NextMaterialiDaOrdinarePage() {
     setSelectedListinoVoce(null);
     setShowEntryDetails(false);
     setConversionFactorInput("");
+    setOpenMaterialMenuId(null);
+    setOpenMaterialMenuPosition(null);
     setSearchText("");
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem(PROCUREMENT_DRAFT_KEY);
@@ -855,6 +859,37 @@ export default function NextMaterialiDaOrdinarePage() {
       .slice(0, 8);
   }, [descrizione, fornitoreAttivoId, procurementSnapshot, showSuggest]);
 
+  useEffect(() => {
+    if (!openMaterialMenuId) return;
+
+    const closeMenu = () => {
+      setOpenMaterialMenuId(null);
+      setOpenMaterialMenuPosition(null);
+    };
+
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-menu-root="ordini-materiali-riga"]')) return;
+      closeMenu();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [openMaterialMenuId]);
+
   const handleDescrizioneBlur = () => {
     window.setTimeout(() => {
       setShowSuggest(false);
@@ -1187,34 +1222,10 @@ export default function NextMaterialiDaOrdinarePage() {
     };
   }, [getMaterialNote, materiali, prezzoSourceByMaterialeId]);
 
-  const supplierPreview = useMemo(() => {
-    if (!procurementSnapshot || !fornitoreAttivoNome.trim()) {
-      return null;
-    }
-
-    const normalizedSupplier = normalizeSearchToken(fornitoreAttivoNome);
-    const listinoMatches = procurementSnapshot.listino.filter(
-      (entry) => normalizeSearchToken(entry.supplierName) === normalizedSupplier,
-    );
-    const preventiviMatches = procurementSnapshot.preventivi.filter(
-      (entry) => normalizeSearchToken(entry.supplierName) === normalizedSupplier,
-    );
-    const latestListino = [...listinoMatches].sort(
-      (left, right) => (right.updatedAtTimestamp ?? 0) - (left.updatedAtTimestamp ?? 0),
-    )[0];
-
-    return {
-      listinoCount: listinoMatches.length,
-      preventiviCount: preventiviMatches.length,
-      lastArticle: latestListino?.articoloCanonico ?? null,
-      lastUpdated: latestListino?.updatedAtLabel ?? null,
-      lastPrice:
-        latestListino && typeof latestListino.prezzoAttuale === "number"
-          ? `${latestListino.prezzoAttuale.toFixed(2)} ${latestListino.valuta ?? ""}`.trim()
-          : null,
-    };
-  }, [fornitoreAttivoNome, procurementSnapshot]);
-
+  const canAddMateriale =
+    descrizione.trim().length > 0 &&
+    quantita.trim().length > 0 &&
+    fornitoreAttivoNome.trim().length > 0;
   const canSaveOrdine =
     materiali.length > 0 &&
     (Boolean(fornitoreNome) || Boolean(nomeFornitorePersonalizzato.trim()));
@@ -1288,7 +1299,7 @@ export default function NextMaterialiDaOrdinarePage() {
             <section className="acq-content">
               <div className="acq-tab-panel acq-tab-panel--fabbisogni">
                 {error ? <div className="acq-list-error">{error}</div> : null}
-                <section className="mdo-single-card">
+                <section className="mdo-single-card om-wrap">
                   <div className="mdo-single-toolbar om-filters">
                     <div className="mdo-single-toolbar-main">
                       <div className="mdo-field">
@@ -1334,287 +1345,222 @@ export default function NextMaterialiDaOrdinarePage() {
                       </label>
                     </div>
 
-                    <div className="mdo-single-toolbar-side">
-                <div className="mdo-kpi-strip">
-                  <div className="mdo-kpi">
-                    <span>Righe</span>
-                    <strong>{materiali.length}</strong>
+                    <div className="mdo-single-toolbar-side" />
                   </div>
-                  <div className="mdo-kpi">
-                    <span>Filtrate</span>
-                    <strong>{materialiFiltrati.length}</strong>
-                  </div>
-                </div>
-                <div className="om-entry-detail-ref">
-                  <strong>
-                    {fornitoreAttivoNome || "Nessun fornitore selezionato"}
-                  </strong>
-                  <span>
-                    {supplierPreview
-                      ? `${supplierPreview.listinoCount} voci listino • ${supplierPreview.preventiviCount} preventivi${
-                          supplierPreview.lastArticle ? ` • ${supplierPreview.lastArticle}` : ""
-                        }${supplierPreview.lastPrice ? ` • ${supplierPreview.lastPrice}` : ""}`
-                      : "Seleziona un fornitore per vedere preview e storico prezzi"}
-                  </span>
-                </div>
-                <div className="mdo-cta-row mdo-cta-row--embedded">
-                  <button
-                    type="button"
-                    className="mdo-cta-button"
-                    onClick={() => window.alert(READ_ONLY_PREVENTIVO_MESSAGE)}
-                  >
-                    Carica preventivo
-                  </button>
-                  <button
-                    type="button"
-                    className="mdo-cta-button"
-                    onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
-                  >
-                    PDF Fornitori
-                  </button>
-                  <button
-                    type="button"
-                    className="mdo-cta-button mdo-cta-primary"
-                    onClick={() => window.alert(READ_ONLY_PDF_MESSAGE)}
-                  >
-                    PDF Direzione
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="mdo-table-wrap mdo-table-wrap--single om-list om-leftCard">
-              <table className="om-material-table">
-                <thead>
-                  <tr>
-                    <th>Descrizione</th>
-                    <th>Q.ta</th>
-                    <th>Prezzo</th>
-                    <th>Totale</th>
-                    <th className="om-material-actions-col">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="mdo-insert-row">
-                    <td>
-                      <div className="mdo-insert-desc om-entry-desc-wrap">
-                        <div className="mdo-item-photo mdo-item-photo--insert">
-                          {fotoPreview ? (
-                            <img src={fotoPreview} alt="Anteprima materiale" />
-                          ) : (
-                            <div className="mdo-photo-placeholder small">Foto</div>
-                          )}
-                        </div>
-                        <input
-                          className="mdo-table-input"
-                          type="text"
-                          placeholder="Descrizione articolo"
-                          value={descrizione}
-                          onChange={(event) => handleDescrizioneChange(event.target.value)}
-                          onFocus={() => setShowSuggest(true)}
-                          onBlur={handleDescrizioneBlur}
-                        />
-                        {!fornitoreAttivoId && descrizione.trim() ? (
-                          <div className="acq-suggest-empty">
-                            Seleziona fornitore per vedere i suggerimenti listino.
-                          </div>
-                        ) : null}
-                        {fornitoreAttivoId && showSuggest && suggestListino.length > 0 ? (
-                          <div className="acq-suggest-panel om-suggest openDown">
-                            {suggestListino.map((entry) => (
-                              <button
-                                key={entry.id}
-                                type="button"
-                                className="acq-suggest-item"
-                                onMouseDown={(event) => event.preventDefault()}
-                                onClick={() => selectListinoSuggestion(entry)}
-                              >
-                                <span className="acq-suggest-main">
-                                  {entry.articoloCanonico}
-                                </span>
-                                <span className="acq-suggest-meta">
-                                  {entry.codiceArticolo
-                                    ? `Codice ${entry.codiceArticolo} - `
-                                    : ""}
-                                  {typeof entry.prezzoAttuale === "number"
-                                    ? `${entry.prezzoAttuale.toFixed(2)} ${entry.valuta ?? ""}/${String(
-                                        entry.unita || "",
-                                      ).toLowerCase()}`
-                                    : "Prezzo non disponibile"}
-                                  {entry.fonteNumeroPreventivo
-                                    ? ` - N. ${entry.fonteNumeroPreventivo}`
-                                    : ""}
-                                  {entry.fonteDataPreventivo
-                                    ? ` del ${entry.fonteDataPreventivo}`
-                                    : ""}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>
-                      <input
-                        className="mdo-table-input mdo-table-input--qty"
-                        type="number"
-                        placeholder="0"
-                        value={quantita}
-                        onChange={(event) => setQuantita(event.target.value)}
-                      />
-                    </td>
-                    <td>
-                      {selectedListinoVoce?.prezzoAttuale !== null &&
-                      selectedListinoVoce?.prezzoAttuale !== undefined
-                        ? `${selectedListinoVoce.prezzoAttuale.toFixed(2)} ${selectedListinoVoce.valuta ?? ""}`
-                        : "—"}
-                    </td>
-                    <td>
-                      {selectedListinoVoce?.prezzoAttuale !== null &&
-                      selectedListinoVoce?.prezzoAttuale !== undefined
-                        ? (() => {
-                            const preview = computeLineTotal({
-                              qty: Number.parseFloat(quantita || "0"),
-                              unitPrice: selectedListinoVoce.prezzoAttuale,
-                              selectedUom: unita,
-                              priceUom: selectedListinoVoce.unita,
-                              note: upsertConversionFactorInNote(
-                                newMaterialeNota,
-                                conversionFactorInput,
-                              ),
-                            });
-                            if (preview.status === "needs_factor" || preview.total === null) {
-                              return "—";
-                            }
-                            return `${preview.total.toFixed(2)} ${selectedListinoVoce.valuta ?? ""}`;
-                          })()
-                        : "—"}
-                    </td>
-                    <td>
-                      <div className="mdo-row-actions mdo-row-actions--insert">
-                        <select
-                          className="mdo-table-input"
-                          value={normalizeUom(String(unita || "PZ"))}
-                          onChange={(event) =>
-                            setUnita(
-                              normalizeUom(event.target.value).toLowerCase() as UnitaMisura,
-                            )
-                          }
-                        >
-                          <option value="PZ">PZ</option>
-                          <option value="NR">NR</option>
-                          <option value="MT">MT</option>
-                          <option value="M">M</option>
-                          <option value="KG">KG</option>
-                          <option value="LT">LT</option>
-                        </select>
-                        <label className="mdo-chip-button mdo-chip-upload">
-                          Foto
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileChange}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="mdo-chip-button"
-                          onClick={() => {
-                            setFotoFile(null);
-                            setFotoPreview(null);
-                          }}
-                        >
-                          Pulisci
-                        </button>
-                        <button
-                          type="button"
-                          className="mdo-chip-button"
-                          onClick={() => setShowEntryDetails((current) => !current)}
-                        >
-                          {showEntryDetails ? "Meno" : "Dettagli"}
-                        </button>
-                        <button
-                          type="button"
-                          className="mdo-add-button"
-                          onClick={aggiungiMateriale}
-                          disabled={!descrizione.trim() || !quantita.trim() || !fornitoreAttivoNome}
-                        >
-                          Aggiungi
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  {showEntryDetails ? (
-                    <tr>
-                      <td colSpan={5}>
-                        <div className="om-entry-details">
-                          <div className="om-entry-details-grid">
-                            <div className="om-entry-detail-field om-entry-detail-readonly">
-                              <span>Prezzo da listino</span>
-                              <strong className="om-entry-readonly-value">
-                                {selectedListinoVoce?.prezzoAttuale !== null &&
-                                selectedListinoVoce?.prezzoAttuale !== undefined
-                                  ? selectedListinoVoce.prezzoAttuale.toFixed(2)
-                                  : "—"}
-                              </strong>
-                            </div>
-                            <div className="om-entry-detail-field om-entry-detail-readonly">
-                              <span>Valuta</span>
-                              <strong className="om-entry-readonly-value">
-                                {selectedListinoVoce?.valuta ?? "—"}
-                              </strong>
-                            </div>
-                            <label className="om-entry-detail-field om-entry-detail-note">
-                              <span>Nota</span>
-                              <input
-                                className="mdo-table-input"
-                                type="text"
-                                placeholder="Nota riga (opzionale)"
-                                value={newMaterialeNota}
-                                onChange={(event) => setNewMaterialeNota(event.target.value)}
-                              />
-                            </label>
-                            {selectedListinoVoce ? (
-                              <div className="om-entry-detail-ref">
-                                <strong>
-                                  {selectedListinoVoce.fonteNumeroPreventivo
-                                    ? `N. ${selectedListinoVoce.fonteNumeroPreventivo}`
-                                    : "Listino senza documento"}
-                                </strong>
-                                <span>
-                                  {selectedListinoVoce.fonteDataPreventivo
-                                    ? `Data ${selectedListinoVoce.fonteDataPreventivo}`
-                                    : "Prezzo da listino corrente"}
-                                </span>
+                  <div className="om-content om-grid">
+                    <div className="om-main om-left">
+                      <div className="om-entry-card om-leftCard">
+                        <div className="om-entry-primary">
+                          <div className="om-entry-desc-wrap">
+                            <input
+                              className="mdo-table-input om-descInput"
+                              type="text"
+                              placeholder="Descrizione articolo"
+                              value={descrizione}
+                              onChange={(event) => handleDescrizioneChange(event.target.value)}
+                              onFocus={() => setShowSuggest(true)}
+                              onBlur={handleDescrizioneBlur}
+                            />
+                            {!fornitoreAttivoId && descrizione.trim() ? (
+                              <div className="acq-suggest-empty">
+                                Seleziona fornitore per vedere i suggerimenti listino.
                               </div>
                             ) : null}
-                            {needsConversionFactorInput ? (
-                              <label className="om-entry-detail-field">
-                                <span>Fattore conversione UDM</span>
-                                <input
-                                  className="mdo-table-input mdo-table-input--factor"
-                                  type="number"
-                                  inputMode="decimal"
-                                  step="0.01"
-                                  min="0"
-                                  placeholder="Fattore"
-                                  value={conversionFactorInput}
-                                  onChange={(event) =>
-                                    setConversionFactorInput(event.target.value)
-                                  }
-                                />
-                                {!hasValidConversionFactorInput ? (
-                                  <div className="mdo-row-warning">
-                                    UDM diverse: totale bloccato finche non inserisci fattore.
-                                  </div>
-                                ) : null}
-                              </label>
+                            {fornitoreAttivoId && showSuggest && suggestListino.length > 0 ? (
+                              <div className="acq-suggest-panel om-suggest openDown">
+                                {suggestListino.map((entry) => (
+                                  <button
+                                    key={entry.id}
+                                    type="button"
+                                    className="acq-suggest-item"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => selectListinoSuggestion(entry)}
+                                  >
+                                    <span className="acq-suggest-main">
+                                      {entry.articoloCanonico}
+                                    </span>
+                                    <span className="acq-suggest-meta">
+                                      {entry.codiceArticolo
+                                        ? `Codice ${entry.codiceArticolo} - `
+                                        : ""}
+                                      {typeof entry.prezzoAttuale === "number"
+                                        ? `${entry.prezzoAttuale.toFixed(2)} ${entry.valuta ?? ""}/${String(
+                                            entry.unita || "",
+                                          ).toLowerCase()}`
+                                        : "Prezzo non disponibile"}
+                                      {entry.fonteNumeroPreventivo
+                                        ? ` - N. ${entry.fonteNumeroPreventivo}`
+                                        : ""}
+                                      {entry.fonteDataPreventivo
+                                        ? ` del ${entry.fonteDataPreventivo}`
+                                        : ""}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
                             ) : null}
                           </div>
+                          <div className="om-entry-main">
+                            <input
+                              className="mdo-table-input om-entry-qty-input"
+                              type="number"
+                              placeholder="Quantità"
+                              value={quantita}
+                              onChange={(event) => setQuantita(event.target.value)}
+                            />
+                            <button
+                              type="button"
+                              className="mdo-add-button om-entry-add-button"
+                              onClick={aggiungiMateriale}
+                              disabled={!canAddMateriale}
+                            >
+                              AGGIUNGI
+                            </button>
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  ) : null}
+                        <button
+                          type="button"
+                          className="om-entry-toggle"
+                          onClick={() => setShowEntryDetails((current) => !current)}
+                        >
+                          {showEntryDetails
+                            ? "Nascondi dettagli ▴"
+                            : "Mostra dettagli ▾"}
+                        </button>
+                        {showEntryDetails ? (
+                          <div className="om-entry-details">
+                            <div className="om-entry-details-grid">
+                              <div className="om-entry-detail-field om-entry-detail-readonly">
+                                <span>Prezzo da listino</span>
+                                <strong className="om-entry-readonly-value">
+                                  {selectedListinoVoce?.prezzoAttuale !== null &&
+                                  selectedListinoVoce?.prezzoAttuale !== undefined
+                                    ? selectedListinoVoce.prezzoAttuale.toFixed(2)
+                                    : "—"}
+                                </strong>
+                              </div>
+                              <div className="om-entry-detail-field om-entry-detail-readonly">
+                                <span>Valuta</span>
+                                <strong className="om-entry-readonly-value">
+                                  {selectedListinoVoce?.valuta ?? "—"}
+                                </strong>
+                              </div>
+                              <label className="om-entry-detail-field">
+                                <span>UDM</span>
+                                <select
+                                  className="mdo-table-input"
+                                  value={normalizeUom(String(unita || "PZ"))}
+                                  onChange={(event) =>
+                                    setUnita(
+                                      normalizeUom(event.target.value).toLowerCase() as UnitaMisura,
+                                    )
+                                  }
+                                >
+                                  <option value="PZ">PZ</option>
+                                  <option value="NR">NR</option>
+                                  <option value="MT">MT</option>
+                                  <option value="M">M</option>
+                                  <option value="KG">KG</option>
+                                  <option value="LT">LT</option>
+                                </select>
+                              </label>
+                              <div className="om-entry-detail-field om-entry-detail-photo">
+                                <span>Foto</span>
+                                <div className="om-entry-photo-actions">
+                                  <label className="mdo-chip-button mdo-chip-upload">
+                                    Carica foto
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={handleFileChange}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className="mdo-chip-button"
+                                    onClick={() => {
+                                      setFotoFile(null);
+                                      setFotoPreview(null);
+                                    }}
+                                  >
+                                    Pulisci
+                                  </button>
+                                </div>
+                                {fotoPreview ? (
+                                  <div className="om-entry-photo-preview">
+                                    <img src={fotoPreview} alt="Anteprima materiale" />
+                                  </div>
+                                ) : null}
+                              </div>
+                              <label className="om-entry-detail-field om-entry-detail-note">
+                                <span>Nota</span>
+                                <input
+                                  className="mdo-table-input"
+                                  type="text"
+                                  placeholder="Nota riga (opzionale)"
+                                  value={newMaterialeNota}
+                                  onChange={(event) => setNewMaterialeNota(event.target.value)}
+                                />
+                              </label>
+                              {selectedListinoVoce ? (
+                                <div className="om-entry-detail-ref">
+                                  <strong>
+                                    Listino:{" "}
+                                    {typeof selectedListinoVoce.prezzoAttuale === "number"
+                                      ? selectedListinoVoce.prezzoAttuale.toFixed(2)
+                                      : "—"}{" "}
+                                    {selectedListinoVoce.valuta}/
+                                    {normalizeUom(String(selectedListinoVoce.unita || ""))}
+                                  </strong>
+                                  <span>
+                                    {selectedListinoVoce.fonteNumeroPreventivo
+                                      ? `N. ${selectedListinoVoce.fonteNumeroPreventivo}`
+                                      : "Listino senza documento"}
+                                    {selectedListinoVoce.fonteDataPreventivo
+                                      ? ` del ${selectedListinoVoce.fonteDataPreventivo}`
+                                      : ""}
+                                  </span>
+                                </div>
+                              ) : null}
+                              {needsConversionFactorInput ? (
+                                <label className="om-entry-detail-field">
+                                  <span>Fattore conversione UDM</span>
+                                  <input
+                                    className="mdo-table-input mdo-table-input--factor"
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="Fattore"
+                                    value={conversionFactorInput}
+                                    onChange={(event) =>
+                                      setConversionFactorInput(event.target.value)
+                                    }
+                                  />
+                                  {!hasValidConversionFactorInput ? (
+                                    <div className="mdo-row-warning">
+                                      UDM diverse: totale bloccato finche non inserisci fattore.
+                                    </div>
+                                  ) : null}
+                                </label>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mdo-table-wrap mdo-table-wrap--single om-list om-leftCard">
+                        <table className="om-material-table">
+                          <thead className="om-head">
+                            <tr>
+                              <th>Descrizione</th>
+                              <th>Q.tà</th>
+                              <th>Prezzo</th>
+                              <th>Totale</th>
+                              <th className="om-material-actions-col">Azioni</th>
+                            </tr>
+                          </thead>
+                          <tbody>
 
                   {materialiFiltrati.length === 0 ? (
                     <tr>
@@ -1685,13 +1631,13 @@ export default function NextMaterialiDaOrdinarePage() {
                               </span>
                             ) : null}
                           </td>
-                          <td className="om-material-actions-cell">
-                            <div className="mdo-row-actions">
-                              <label className="mdo-chip-button mdo-chip-upload">
-                                Foto
+                            <td className="om-material-actions-cell">
+                              <div className="om-row-actions-menu">
                                 <input
+                                  id={`om-photo-${materiale.id}`}
                                   type="file"
                                   accept="image/*"
+                                  className="mdo-hidden-file"
                                   onChange={(event) => {
                                     const file = event.target.files?.[0];
                                     if (!file) return;
@@ -1699,67 +1645,145 @@ export default function NextMaterialiDaOrdinarePage() {
                                     event.currentTarget.value = "";
                                   }}
                                 />
-                              </label>
-                              {hasDocumento ? (
-                                <button
-                                  type="button"
-                                  className="mdo-chip-button"
-                                  onClick={() => openDocumentoMateriale(materiale)}
+                                <div
+                                  className="acq-kebab om-row-kebab"
+                                  data-menu-root="ordini-materiali-riga"
                                 >
-                                  Documento
-                                </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                className="mdo-chip-button"
-                                onClick={() => {
-                                  const nextNote = window.prompt(
-                                    "Nota materiale",
-                                    noteRiga,
-                                  );
-                                  if (nextNote === null) return;
-                                  const trimmed = nextNote.trim();
-                                  setNoteByMaterialeId((current) => {
-                                    const next = { ...current };
-                                    if (!trimmed) {
-                                      delete next[materiale.id];
-                                      return next;
-                                    }
-                                    next[materiale.id] = trimmed;
-                                    return next;
-                                  });
-                                }}
-                              >
-                                Nota
-                              </button>
-                              {!prezzoInfo ? (
-                                <button
-                                  type="button"
-                                  className="mdo-chip-button"
-                                  onClick={() => openBozzaListinoManuale(materiale)}
-                                >
-                                  + Listino
-                                </button>
-                              ) : null}
-                              {materiale.fotoUrl ? (
-                                <button
-                                  type="button"
-                                  className="mdo-chip-button"
-                                  onClick={() => rimuoviFotoMateriale(materiale.id)}
-                                >
-                                  Rimuovi foto
-                                </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                className="mdo-delete"
-                                onClick={() => eliminaMateriale(materiale.id)}
-                                aria-label={`Elimina ${materiale.descrizione}`}
-                              >
-                                Elimina
-                              </button>
-                            </div>
-                          </td>
+                                  <button
+                                    type="button"
+                                    className="acq-btn acq-kebab-trigger acq-kebab-trigger--icon om-row-kebab-trigger"
+                                    aria-label={`Azioni riga ${materiale.descrizione}`}
+                                    onClick={(event) => {
+                                      if (openMaterialMenuId === materiale.id) {
+                                        setOpenMaterialMenuId(null);
+                                        setOpenMaterialMenuPosition(null);
+                                        return;
+                                      }
+                                      const rect = (
+                                        event.currentTarget as HTMLButtonElement
+                                      ).getBoundingClientRect();
+                                      const menuWidth = 220;
+                                      const menuHeight = 240;
+                                      const left = Math.min(
+                                        window.innerWidth - menuWidth - 8,
+                                        Math.max(8, rect.right - menuWidth),
+                                      );
+                                      const openUp =
+                                        rect.bottom + menuHeight > window.innerHeight - 8;
+                                      const top = openUp
+                                        ? Math.max(8, rect.top - 8)
+                                        : rect.bottom + 8;
+                                      setOpenMaterialMenuId(materiale.id);
+                                      setOpenMaterialMenuPosition({ top, left, openUp });
+                                    }}
+                                  >
+                                    ⋮
+                                  </button>
+                                  {openMaterialMenuId === materiale.id &&
+                                  openMaterialMenuPosition ? (
+                                    <div
+                                      className={`acq-kebab-menu acq-kebab-menu--fixed${
+                                        openMaterialMenuPosition.openUp ? " is-up" : ""
+                                      }`}
+                                      style={{
+                                        top: `${openMaterialMenuPosition.top}px`,
+                                        left: `${openMaterialMenuPosition.left}px`,
+                                      }}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="acq-kebab-item"
+                                        onClick={() => {
+                                          const inputElement = document.getElementById(
+                                            `om-photo-${materiale.id}`,
+                                          ) as HTMLInputElement | null;
+                                          inputElement?.click();
+                                          setOpenMaterialMenuId(null);
+                                          setOpenMaterialMenuPosition(null);
+                                        }}
+                                      >
+                                        Foto
+                                      </button>
+                                      {hasDocumento ? (
+                                        <button
+                                          type="button"
+                                          className="acq-kebab-item"
+                                          onClick={() => {
+                                            openDocumentoMateriale(materiale);
+                                            setOpenMaterialMenuId(null);
+                                            setOpenMaterialMenuPosition(null);
+                                          }}
+                                        >
+                                          Documento
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        className="acq-kebab-item"
+                                        onClick={() => {
+                                          const nextNote = window.prompt(
+                                            "Nota materiale",
+                                            noteRiga,
+                                          );
+                                          if (nextNote === null) return;
+                                          const trimmed = nextNote.trim();
+                                          setNoteByMaterialeId((current) => {
+                                            const next = { ...current };
+                                            if (!trimmed) {
+                                              delete next[materiale.id];
+                                              return next;
+                                            }
+                                            next[materiale.id] = trimmed;
+                                            return next;
+                                          });
+                                          setOpenMaterialMenuId(null);
+                                          setOpenMaterialMenuPosition(null);
+                                        }}
+                                      >
+                                        Nota
+                                      </button>
+                                      {!prezzoInfo ? (
+                                        <button
+                                          type="button"
+                                          className="acq-kebab-item"
+                                          onClick={() => {
+                                            openBozzaListinoManuale(materiale);
+                                            setOpenMaterialMenuId(null);
+                                            setOpenMaterialMenuPosition(null);
+                                          }}
+                                        >
+                                          + Listino
+                                        </button>
+                                      ) : null}
+                                      {materiale.fotoUrl ? (
+                                        <button
+                                          type="button"
+                                          className="acq-kebab-item"
+                                          onClick={() => {
+                                            rimuoviFotoMateriale(materiale.id);
+                                            setOpenMaterialMenuId(null);
+                                            setOpenMaterialMenuPosition(null);
+                                          }}
+                                        >
+                                          Rimuovi foto
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        className="acq-kebab-item acq-kebab-item--danger"
+                                        onClick={() => {
+                                          eliminaMateriale(materiale.id);
+                                          setOpenMaterialMenuId(null);
+                                          setOpenMaterialMenuPosition(null);
+                                        }}
+                                      >
+                                        Elimina
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </td>
                         </tr>
                       );
                     })
@@ -1767,6 +1791,7 @@ export default function NextMaterialiDaOrdinarePage() {
                 </tbody>
               </table>
             </div>
+          </div>
 
             <div className="mdo-card-footer-bar om-side om-right om-rightCard">
               <div className="om-side-cards om-kpiGrid">
@@ -1779,7 +1804,11 @@ export default function NextMaterialiDaOrdinarePage() {
                   <strong>{materiali.length}</strong>
                 </div>
                 <div className="mdo-sticky-info om-stat-card om-kpiCard">
-                  <span>Totale stimato</span>
+                  <span>
+                    {totalsSummary.prezziMancanti > 0 || totalsSummary.udmDaVerificare > 0
+                      ? "Totale parziale"
+                      : "Totale stimato"}
+                  </span>
                   <strong>
                     {totalsSummary.mixedValute
                       ? `CHF ${totalsSummary.totalsByValuta.CHF.toFixed(2)} / EUR ${totalsSummary.totalsByValuta.EUR.toFixed(2)}`
@@ -1817,34 +1846,6 @@ export default function NextMaterialiDaOrdinarePage() {
                 </button>
                 <button
                   type="button"
-                  className="mdo-secondary-button"
-                  onClick={() => openCanonicalProcurementView({ tab: "ordini" })}
-                >
-                  Ordini
-                </button>
-                <button
-                  type="button"
-                  className="mdo-secondary-button"
-                  onClick={() => openCanonicalProcurementView({ tab: "arrivi" })}
-                >
-                  Arrivi
-                </button>
-                <button
-                  type="button"
-                  className="mdo-secondary-button"
-                  onClick={() => openCanonicalProcurementView({ tab: "preventivi" })}
-                >
-                  Prezzi & Preventivi
-                </button>
-                <button
-                  type="button"
-                  className="mdo-secondary-button"
-                  onClick={() => openCanonicalProcurementView({ tab: "listino" })}
-                >
-                  Listino Prezzi
-                </button>
-                <button
-                  type="button"
                   className="mdo-header-button"
                   onClick={salvaOrdine}
                   disabled={!canSaveOrdine}
@@ -1867,6 +1868,7 @@ export default function NextMaterialiDaOrdinarePage() {
                 <div className="acq-draft-indicator">Bozza salvata</div>
               ) : null}
             </div>
+          </div>
                 </section>
               </div>
             </section>

@@ -42,6 +42,22 @@
   align-items: flex-start;
 }
 
+.next-mdo-route .mdo-chip-button,
+.next-mdo-route .mdo-secondary-button,
+.next-mdo-route .mdo-footer-button {
+  background: #f1e7d6;
+  color: #3a352b;
+  border-color: rgba(180, 167, 144, 0.45);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.next-mdo-route .mdo-add-button,
+.next-mdo-route .mdo-header-button {
+  background: #2d6a4f;
+  color: #fdfaf4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
 .next-mdo-route .mdo-card-footer-bar {
   position: static;
   width: 100%;

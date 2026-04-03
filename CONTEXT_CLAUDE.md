@@ -1,0 +1,223 @@
+# CONTEXT_CLAUDE
+
+## 1. STACK TECNICO
+- Frontend: React 19.2, React DOM 19.2, TypeScript 5.9, Vite 7.2, React Router DOM 7.9.
+- Data layer client: Firebase Web SDK 12.6 (`firestore`, `storage`, `functions`, `auth`).
+- Auth attuale: bootstrap con `signInAnonymously()` in `src/App.tsx`; nessun login admin dedicato nel frontend principale.
+- Backend e servizi server-side nel repo: Express 5, `body-parser`, `dotenv`, `firebase-admin`, `node-fetch`, OpenAI SDK 6.
+- PDF e documenti: `jspdf`, `jspdf-autotable`, `pdf-lib`, `sharp`.
+- UI/analisi: `recharts`, `react-easy-crop`.
+- Audit/runtime: `playwright`.
+- Script root disponibili: `dev`, `build`, `lint`, `preview`, `internal-ai-backend:start`, `internal-ai:observe-next`.
+- Script test automatici dedicati: assenti nel `package.json` root.
+
+### Struttura cartelle principali
+- `src/pages/*`: app legacy admin/madre.
+- `src/next/*`: clone NEXT read-only, shell separata, pages, domini read-only, IA interna, bridge clone-safe.
+- `src/next/domain/*`: read model NEXT e accesso dati normalizzato per il clone.
+- `src/autisti/*`: app autisti legacy.
+- `src/autistiInbox/*`: inbox/admin autisti legacy.
+- `src/components/*`: componenti UI condivisi legacy.
+- `src/utils/*`: helper condivisi, storage sync, PDF, barrier clone, formattazioni.
+- `backend/internal-ai/*`: backend IA separato del sottosistema `/next/ia/interna`.
+- `functions/*`: Cloud Functions Firebase legacy.
+- `functions-schede/*`: Functions legacy dedicate alla verticale cisterna/schede.
+- `api/*`: endpoint edge/serverless separati dal backend IA interno.
+- `docs/*`: stato, architettura, dati, audit, change report, continuity report.
+
+## 2. MODULI ESISTENTI
+| Modulo | Cosa fa | Stato |
+|---|---|---|
+| Legacy admin shell | Monta tutte le route principali a `/` e resta la madre operativa di riferimento. | completo |
+| Home + Centro di Controllo legacy | Dashboard, alert, priorita, ingressi rapidi ai moduli. | completo |
+| Mezzi + Dossier + Analisi legacy | Lista mezzi, dossier per targa, gomme, rifornimenti, analisi economica. | completo |
+| Operativita + Lavori legacy | Liste lavori, dettaglio lavoro, workbench operativo globale. | completo |
+| Procurement + Magazzino legacy | `Acquisti`, `MaterialiDaOrdinare`, `Ordini`, `DettaglioOrdine`, `Inventario`, `MaterialiConsegnati`, `AttrezzatureCantieri`. | completo |
+| Area Capo legacy | Overview mezzi e costi per targa. | completo |
+| Anagrafiche legacy | `Colleghi`, `Fornitori`, `Mezzi`. | completo |
+| IA legacy | `IAHome`, `IAApiKey`, `IALibretto`, `IADocumenti`, `IACoperturaLibretti`, `LibrettiExport`. | completo |
+| Cisterna legacy | Archivio cisterna, IA cisterna, schede test, report mensili. | completo |
+| App Autisti legacy | Login, gate, home, setup mezzo, cambio mezzo, controllo, rifornimento, segnalazioni, richiesta attrezzature. | completo |
+| Autisti Inbox/Admin legacy | Inbox admin, listati controlli/segnalazioni/gomme/log/richieste e rettifiche. | completo |
+| Shell NEXT | Route sotto `/next/*`, shell separata, role preset frontend, redirect tecnici. | in sviluppo |
+| NEXT Home + Centro di Controllo | Controparti clone read-only di Home e Centro di Controllo. | in sviluppo |
+| NEXT Mezzi + Dossier | Controparti clone di `Mezzi`, `DossierLista`, `DossierMezzo`, `DossierGomme`, `DossierRifornimenti`, `AnalisiEconomica`. | in sviluppo |
+| NEXT Operativita globale | Controparti clone di `Gestione Operativa`, `Inventario`, `MaterialiConsegnati`, `AttrezzatureCantieri`, `Manutenzioni`, `Lavori`. | in sviluppo |
+| NEXT Procurement | Modulo unico clone su `/next/materiali-da-ordinare` con tab ordini/arrivi/dettaglio/prezzi/listino. | in sviluppo |
+| NEXT Area Capo + Anagrafiche | Controparti clone di `Capo`, `Colleghi`, `Fornitori`. | in sviluppo |
+| NEXT IA hub | Controparti clone di `IA`, `apikey`, `libretto`, `documenti`, `copertura-libretti`, `libretti-export`. | in sviluppo |
+| NEXT IA interna universale | Chat controllata, richieste, sessioni, artifacts, audit, registry universale, handoff IA. | in sviluppo |
+| NEXT Cisterna | Controparti clone di archivio cisterna, IA cisterna e schede test. | in sviluppo |
+| NEXT Autisti + Inbox/Admin | Esperienza autista separata sotto `/next/autisti` e controparti clone di inbox/admin. | in sviluppo |
+| Functions/API legacy | Endpoint Firebase/Node/Vercel per IA documentale, PDF e verticale cisterna. | in sviluppo |
+| Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
+
+## 3. STATO ATTUALE
+- Ultimo task completato: riallineamento runtime visivo della tab `Ordine materiali` tra madre `Acquisti` e `/next/materiali-da-ordinare`, verificato nel browser il 2026-04-03.
+- Stato app legacy: attiva e fonte di verita operativa.
+- Stato NEXT: clone read-only esistente ma non promosso a perimetro autonomo chiuso.
+- Stato build root: `npm run build` = OK.
+- Stato lint root: `npm run lint` = KO con 584 problemi totali (568 errori, 16 warning).
+- Aree con piu errori lint verificati: `src/autistiInbox/*`, `src/autisti/*`, `src/pages/*`, `src/utils/*`, `api/pdf-ai-enhance.ts`, `pdfEngine.ts`.
+- Warning build verificati: bundle client molto grande e doppio uso di `jspdf`.
+
+### In sospeso
+- Chiusura reale del perimetro NEXT ancora aperto; il repo non dimostra autonomia completa del clone.
+- Matrice permessi reale non definita; il NEXT usa ancora preset frontend simulati via `role`.
+- Bridge live Firebase/Storage del backend IA separato ancora chiuso.
+- Standardizzazione finale di eventi autisti, allegati preventivi, policy Firestore/Storage e canale backend IA/PDF.
+
+### Cosa e rotto o critico
+- `npm run lint` globale fallisce.
+- `firestore.rules` non e presente nel repo; le policy Firestore effettive non sono verificabili da file versionati.
+- `storage.rules` nel repo e deny-all, ma il codice usa upload/download/listing su molti path Storage reali.
+- Esistono piu canali backend per IA/PDF: `functions/*`, `functions-schede/*`, `api/pdf-ai-enhance.ts`, `server.js`, `backend/internal-ai/*`.
+- Stream eventi autisti doppio: `@storico_eventi_operativi` e `autisti_eventi`.
+- Contratto allegati preventivi non unico: `preventivi/ia/*` e `preventivi/<id>.pdf`.
+
+## 4. DECISIONI ARCHITETTURALI
+1. La madre resta l'app operativa a `/`; `src/App.tsx` continua a montare tutte le route legacy.
+2. Il clone NEXT vive sotto `/next/*` per coesistere con la madre senza sostituirla.
+3. Il clone NEXT e read-only; le scritture sono bloccate da `src/utils/cloneWriteBarrier.ts` e da state/overlay locali.
+4. Il clone legge i dati tramite reader dedicati in `src/next/domain/*` e non usa i writer business come canale canonico.
+5. L'esperienza autista resta separata dall'admin shell sia in legacy sia in NEXT.
+6. L'IA interna del clone e isolata in due perimetri: UI `src/next/internal-ai/*` e backend `backend/internal-ai/*`.
+7. Il backend IA separato puo usare provider reali solo lato server e non apre scritture business.
+8. Il bridge live del backend IA separato resta chiuso finche credenziali server-side e policy Firestore/Storage non sono verificabili.
+9. Il motore PDF condiviso resta `src/utils/pdfEngine.ts`; i moduli generano PDF sopra lo stesso asse comune.
+10. Il routing NEXT usa guard frontend (`NextRoleGuard`) e preset `admin/gestionale/autista`; non esiste ancora auth/ACL reale lato prodotto.
+11. La route `/next/materiali-da-ordinare` e il modulo procurement canonico del clone; ordini/arrivi/dettaglio/preventivi/listino passano da li.
+
+## 5. CONVENZIONI
+### Dati e chiavi
+- Collection key-value principale: `storage/<key>`.
+- Le chiavi business principali su `storage` usano prefisso `@`, per esempio `@mezzi_aziendali`, `@lavori`, `@manutenzioni`, `@rifornimenti`, `@inventario`, `@ordini`, `@preventivi`, `@listino_prezzi`, `@fornitori`, `@colleghi`.
+- `@mezzi_aziendali` ha merge speciale in `setItemSync()`; le altre key vengono sovrascritte in blocco.
+- Collection dedicate verificate: `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, `@impostazioni_app/gemini`, `@analisi_economica_mezzi`, `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili`.
+- Local storage autisti verificato: `@autista_attivo_local`, `@mezzo_attivo_autista_local`.
+
+### Date e formati
+- Formato data UI canonico: `dd/mm/yyyy`.
+- Formato data+ora UI canonico: `dd/mm/yyyy hh:mm`.
+- Formato input HTML date: `yyyy-mm-dd`.
+- Parser date accetta stringhe UI, ISO, `number`, oggetti con `toDate()` e oggetti con `seconds`.
+
+### Routing e naming
+- Legacy admin: route root `/...`.
+- Clone NEXT: route `/next/...`.
+- App autisti legacy: `/autisti/...`.
+- App autisti clone: `/next/autisti/...`.
+- Pagine routed NEXT: `src/next/Next*Page.tsx`.
+- Reader/domain NEXT: `src/next/domain/next*Domain.ts`.
+- Clone state locale NEXT: file `next*CloneState.ts`.
+- Path builder NEXT: `src/next/nextStructuralPaths.ts`.
+
+### UI e lingua
+- Lingua UI: italiana.
+- La madre resta la sorgente di verita della UI; il clone replica la superficie ma non deve aprire side effect business.
+- Il clone rileva il runtime tramite path `/next` e blocca fetch mutanti noti (`/api/*`, cloudfunctions write-heavy, extraction libretto).
+
+### Storage path verificati
+- `materiali/<materialId>-<timestamp>.<ext>`
+- `inventario/<itemId>/foto.jpg`
+- `autisti/segnalazioni/<recordId>/<timestamp>_<n>.<ext>`
+- `autisti/richieste-attrezzature/<recordId>/<timestamp>.<ext>`
+- `mezzi_aziendali/<mezzoId>/libretto.jpg`
+- `documenti_pdf/<...>`
+- `documenti_pdf/cisterna/<YYYY>/<MM>/<...>`
+- `documenti_pdf/cisterna_schede/<YYYY>/<MM>/<...>_crop.jpg`
+- `preventivi/ia/<...>`
+- `preventivi/<id>.pdf`
+
+## 6. PROSSIMI TASK
+1. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
+2. Versionare o rendere verificabili le policy Firestore effettive e riallinearle al codice.
+3. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
+4. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
+5. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.
+6. Continuare l'hardening del clone NEXT sui moduli ancora `ACTIVE_PARTIAL`, soprattutto procurement, area capo, cisterna, autisti admin e IA legacy clone.
+7. Chiudere la matrice ruoli/permessi reale oltre ai preset frontend `role`.
+8. Consolidare i canali server-side IA/PDF; oggi il repo ha backend multipli concorrenti.
+9. Aprire il live-read del backend IA separato solo dopo credenziali server-side dedicate e boundary whitelisted verificati.
+10. Ridurre il peso del bundle client e la duplicazione `jspdf` se si apre un task performance.
+
+## 7. FILE CHIAVE
+### Routing e bootstrap
+- `src/App.tsx`
+- `src/main.tsx`
+- `src/firebase.ts`
+
+### Legacy madre
+- `src/pages/Home.tsx`
+- `src/pages/CentroControllo.tsx`
+- `src/pages/GestioneOperativa.tsx`
+- `src/pages/DossierMezzo.tsx`
+- `src/pages/Acquisti.tsx`
+- `src/pages/MaterialiDaOrdinare.tsx`
+- `src/pages/DettaglioOrdine.tsx`
+
+### Legacy autisti
+- `src/autisti/AutistiGate.tsx`
+- `src/autisti/HomeAutista.tsx`
+- `src/autisti/Rifornimento.tsx`
+- `src/autistiInbox/AutistiInboxHome.tsx`
+- `src/autistiInbox/AutistiAdmin.tsx`
+
+### Shell NEXT
+- `src/next/NextShell.tsx`
+- `src/next/nextData.ts`
+- `src/next/nextAccess.ts`
+- `src/next/nextStructuralPaths.ts`
+
+### NEXT mezzi e dossier
+- `src/next/NextMezziPage.tsx`
+- `src/next/NextDossierListaPage.tsx`
+- `src/next/NextDossierMezzoPage.tsx`
+- `src/next/domain/nextDossierMezzoDomain.ts`
+- `src/next/domain/nextRifornimentiDomain.ts`
+
+### NEXT operativita e procurement
+- `src/next/NextGestioneOperativaPage.tsx`
+- `src/next/NextMaterialiDaOrdinarePage.tsx`
+- `src/next/NextProcurementReadOnlyPanel.tsx`
+- `src/next/NextProcurementConvergedSection.tsx`
+- `src/next/domain/nextProcurementDomain.ts`
+- `src/next/domain/nextInventarioDomain.ts`
+
+### NEXT home e centro controllo
+- `src/next/NextHomePage.tsx`
+- `src/next/NextCentroControlloParityPage.tsx`
+- `src/next/domain/nextCentroControlloDomain.ts`
+- `src/next/domain/nextStatoOperativoDomain.ts`
+
+### NEXT IA e IA interna
+- `src/next/NextInternalAiPage.tsx`
+- `src/next/internal-ai/internalAiUniversalRegistry.ts`
+- `src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+- `src/next/internal-ai/internalAiUniversalRequestsRepository.ts`
+- `backend/internal-ai/server/internal-ai-adapter.js`
+- `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`
+
+### Shared data, barrier e PDF
+- `src/utils/storageSync.ts`
+- `src/utils/cloneWriteBarrier.ts`
+- `src/utils/dateFormat.ts`
+- `src/utils/pdfEngine.ts`
+- `src/components/PdfPreviewModal.tsx`
+
+### Functions e API
+- `functions/index.js`
+- `functions/analisiEconomica.js`
+- `functions/estrazioneDocumenti.js`
+- `functions/iaCisternaExtract.js`
+- `functions-schede/index.js`
+- `api/pdf-ai-enhance.ts`
+- `server.js`
+
+### Documenti sorgente piu utili
+- `AGENTS.md`
+- `docs/STATO_ATTUALE_PROGETTO.md`
+- `docs/STRUTTURA_COMPLETA_GESTIONALE.md`
+- `docs/data/MAPPA_COMPLETA_DATI.md`
+- `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+- `docs/product/STATO_MIGRAZIONE_NEXT.md`

@@ -110,6 +110,7 @@ export type NextProcurementPreventivoItem = {
   imageUrls: string[];
   imageStoragePaths: string[];
   righeCount: number;
+  rows: NextProcurementPreventivoRow[];
   materialsPreview: string[];
   totalAmount: number | null;
   currency: string | null;
@@ -135,6 +136,7 @@ export type NextProcurementListinoItem = {
   trend: "down" | "up" | "same" | "new";
   updatedAtLabel: string | null;
   updatedAtTimestamp: number | null;
+  fontePreventivoId: string | null;
   fonteNumeroPreventivo: string | null;
   fonteDataPreventivo: string | null;
   pdfUrl: string | null;
@@ -143,6 +145,16 @@ export type NextProcurementListinoItem = {
   imageStoragePaths: string[];
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof LISTINO_KEY;
+  quality: NextReadQuality;
+  flags: string[];
+};
+
+export type NextProcurementPreventivoRow = {
+  id: string;
+  descrizione: string;
+  unita: string | null;
+  note: string | null;
+  prezzoUnitario: number | null;
   quality: NextReadQuality;
   flags: string[];
 };
@@ -657,16 +669,49 @@ function buildPreventivoApprovalIndex(
   return map;
 }
 
+function mapPreventivoRow(
+  raw: RawGenericRecord,
+  index: number
+): NextProcurementPreventivoRow {
+  const descrizioneRaw =
+    normalizeOptionalText(raw.descrizione) ??
+    normalizeOptionalText(raw.materiale) ??
+    normalizeOptionalText(raw.materialeLabel) ??
+    normalizeOptionalText(raw.label) ??
+    normalizeOptionalText(raw.nome);
+  const flags: string[] = [];
+
+  if (!normalizeOptionalText(raw.id)) flags.push("id_ricostruito");
+  if (!descrizioneRaw) flags.push("descrizione_assente");
+
+  return {
+    id: normalizeOptionalText(raw.id) ?? `preventivo-riga:${index}`,
+    descrizione: descrizioneRaw ?? "Riga preventivo non valorizzata",
+    unita:
+      normalizeOptionalText(raw.unita) ??
+      normalizeOptionalText(raw.udm) ??
+      normalizeOptionalText(raw.unitaMisura),
+    note: normalizeOptionalText(raw.note) ?? normalizeOptionalText(raw.nota),
+    prezzoUnitario:
+      normalizeNumber(raw.prezzoUnitario) ??
+      normalizeNumber(raw.prezzo) ??
+      normalizeNumber(raw.costoUnitario),
+    quality: deriveQuality(flags, !descrizioneRaw),
+    flags,
+  };
+}
+
 function mapPreventivoRecord(
   raw: RawGenericRecord,
   index: number,
   approvalIndex: Map<string, NextProcurementApprovalItem>
 ): NextProcurementPreventivoItem {
   const id = normalizeOptionalText(raw.id) ?? `preventivo:${index}`;
-  const righe = Array.isArray(raw.righe)
+  const righeRaw = Array.isArray(raw.righe)
     ? raw.righe.filter((entry): entry is RawGenericRecord => Boolean(entry) && typeof entry === "object")
     : [];
-  const materialsPreview = righe
+  const rows = righeRaw.map((entry, rowIndex) => mapPreventivoRow(entry, rowIndex));
+  const materialsPreview = rows
     .map((entry) => normalizeOptionalText(entry.descrizione))
     .filter((entry): entry is string => Boolean(entry))
     .slice(0, 3);
@@ -675,7 +720,8 @@ function mapPreventivoRecord(
   if (!normalizeOptionalText(raw.id)) flags.push("id_ricostruito");
   if (!normalizeOptionalText(raw.fornitoreNome)) flags.push("fornitore_assente");
   if (!normalizeOptionalText(raw.numeroPreventivo)) flags.push("numero_assente");
-  if (!righe.length) flags.push("righe_assenti");
+  if (!rows.length) flags.push("righe_assenti");
+  if (rows.some((entry) => entry.quality !== "certo")) flags.push("righe_parziali");
 
   const approval =
     approvalIndex.get(id) ??
@@ -700,13 +746,14 @@ function mapPreventivoRecord(
           (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
         )
       : [],
-    righeCount: righe.length,
+    righeCount: rows.length,
+    rows,
     materialsPreview,
     totalAmount: computePreventivoTotal(raw, flags),
     currency:
       normalizeCurrency(raw.valuta) ??
       normalizeCurrency(raw.currency) ??
-      normalizeCurrency(righe.find((row) => normalizeCurrency(row.valuta))?.valuta),
+      normalizeCurrency(righeRaw.find((row) => normalizeCurrency(row.valuta))?.valuta),
     approvalStatus: approval?.status ?? "pending",
     approvalUpdatedAtLabel: approval?.updatedAtLabel ?? null,
     approvalUpdatedAtTimestamp: approval?.updatedAtTimestamp ?? null,
@@ -748,6 +795,7 @@ function mapListinoRecord(raw: RawGenericRecord, index: number): NextProcurement
     trend: normalizeTrend(raw.trend),
     updatedAtLabel: normalizeLegacyDateLabel(raw.updatedAt ?? fonteAttuale.dataPreventivo),
     updatedAtTimestamp: toTimestamp(raw.updatedAt ?? fonteAttuale.dataPreventivo),
+    fontePreventivoId: normalizeOptionalText(fonteAttuale.preventivoId),
     fonteNumeroPreventivo: normalizeOptionalText(fonteAttuale.numeroPreventivo),
     fonteDataPreventivo: normalizeLegacyDateLabel(fonteAttuale.dataPreventivo),
     pdfUrl: normalizeOptionalText(fonteAttuale.pdfUrl),

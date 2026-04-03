@@ -50,12 +50,39 @@ const LABELS_IT = {
   },
 } as const;
 
+function normalizeDescrizione(value: string | null | undefined) {
+  return String(value ?? "")
+    .toUpperCase()
+    .trim()
+    .replace(/[.\-_/]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 function normalizeText(value: string | null | undefined) {
   return String(value ?? "").trim().toLowerCase();
 }
 
 function normalizeCanonicalText(value: string | null | undefined) {
-  return String(value ?? "").trim().toUpperCase().replace(/[.\-_/]/g, " ").replace(/\s+/g, " ");
+  return normalizeDescrizione(value);
+}
+
+function normalizeUnita(value: string | null | undefined) {
+  return String(value ?? "").toUpperCase().trim();
+}
+
+function extractValutaFromNote(note: string | null | undefined): "CHF" | "EUR" | null {
+  const text = String(note ?? "").toUpperCase();
+  if (!text) return null;
+  if (/(^|\W)(EUR|EURO)(\W|$)/.test(text)) return "EUR";
+  if (/(^|\W)(CHF|FR\.?\s*SVI|FRANCHI?\s*SVIZZERI?)(\W|$)/.test(text)) return "CHF";
+  return null;
+}
+
+function extractArticleCodeFromNote(note: string | null | undefined) {
+  const text = String(note ?? "");
+  if (!text) return "";
+  const match = text.match(/(?:\bcode\b|\bcodice\b)\s*[:=]\s*([A-Za-z0-9._/-]+)/i);
+  return match ? String(match[1] ?? "").trim().toUpperCase() : "";
 }
 
 function formatTodayLabel() {
@@ -107,17 +134,109 @@ function buildMenuPosition(rect: DOMRect, width: number, height: number): MenuPo
 }
 
 function buildPreventivoImportStatus(item: NextProcurementPreventivoItem, listino: NextProcurementListinoItem[]): PreventivoImportStatus {
-  if (item.righeCount === 0) return { imported: 0, total: 0, label: LABELS_IT.import.zeroRows, className: "neutral" };
-  const supplierId = String(item.supplierId || "").trim();
-  const supplierName = normalizeText(item.supplierName);
-  const scoped = listino.filter((entry) => supplierId ? entry.supplierId === supplierId : normalizeText(entry.supplierName) === supplierName);
-  const sourceMatches = scoped.filter((entry) => normalizeText(entry.fonteNumeroPreventivo) === normalizeText(item.numeroPreventivo));
-  const previewSet = new Set(item.materialsPreview.map((entry) => normalizeCanonicalText(entry)).filter(Boolean));
-  const previewMatches = scoped.filter((entry) => previewSet.has(normalizeCanonicalText(entry.articoloCanonico)));
-  const imported = Math.min(item.righeCount, Math.max(sourceMatches.length, previewMatches.length));
-  if (imported === 0) return { imported, total: item.righeCount, label: LABELS_IT.import.not, className: "not" };
-  if (imported < item.righeCount) return { imported, total: item.righeCount, label: LABELS_IT.import.partial, className: "partial" };
-  return { imported, total: item.righeCount, label: LABELS_IT.import.full, className: "full" };
+  const rows = Array.isArray(item.rows) ? item.rows : [];
+  const total = rows.length;
+
+  if (total === 0) {
+    return { imported: 0, total: 0, label: LABELS_IT.import.zeroRows, className: "neutral" };
+  }
+
+  const supplierId = String(item.supplierId ?? "").trim();
+  const supplierName = normalizeDescrizione(item.supplierName);
+  const scoped = listino.filter((entry) => {
+    const entrySupplierId = String(entry.supplierId ?? "").trim();
+    if (supplierId) return entrySupplierId === supplierId;
+    if (entrySupplierId) return false;
+    return normalizeDescrizione(entry.supplierName) === supplierName;
+  });
+
+  const preventivoHasSource = hasAnyDocument(item);
+  const usedListinoIds = new Set<string>();
+  const linkOnlyByListinoId = new Set<string>();
+  let imported = 0;
+  let missingCount = 0;
+  let verifyCount = 0;
+
+  rows.forEach((row) => {
+    const descKey = normalizeCanonicalText(row.descrizione);
+    const codeKey = extractArticleCodeFromNote(row.note);
+    const rowUom = normalizeUnita(row.unita);
+    const rowValuta = extractValutaFromNote(row.note);
+
+    const getScore = (entry: NextProcurementListinoItem) => {
+      const codice = String(entry.codiceArticolo ?? "").trim().toUpperCase();
+      const desc = normalizeCanonicalText(entry.articoloCanonico);
+      let score = 0;
+      if (codeKey && codice === codeKey) score += 100;
+      if (desc === descKey) score += 80;
+      if (rowUom && normalizeUnita(entry.unita) === rowUom) score += 10;
+      if (rowValuta && entry.valuta === rowValuta) score += 5;
+      if (String(entry.fontePreventivoId ?? "").trim() === String(item.id ?? "").trim()) score += 3;
+      return score;
+    };
+
+    const matchingPool = scoped.filter((entry) => {
+      const codice = String(entry.codiceArticolo ?? "").trim().toUpperCase();
+      const desc = normalizeCanonicalText(entry.articoloCanonico);
+      if (codeKey && codice === codeKey) return true;
+      return desc === descKey;
+    });
+    const availablePool = matchingPool.filter((entry) => !usedListinoIds.has(entry.id));
+
+    if (matchingPool.length === 0) {
+      missingCount += 1;
+      return;
+    }
+
+    if (availablePool.length === 0) {
+      imported += 1;
+      return;
+    }
+
+    const matched = [...availablePool].sort((left, right) => getScore(right) - getScore(left))[0];
+    if (!matched) {
+      missingCount += 1;
+      return;
+    }
+
+    usedListinoIds.add(matched.id);
+    imported += 1;
+
+    const listinoUom = normalizeUnita(matched.unita);
+    if (rowUom && listinoUom && rowUom !== listinoUom) {
+      verifyCount += 1;
+    }
+    if (rowValuta && matched.valuta !== rowValuta) {
+      verifyCount += 1;
+    }
+    if (preventivoHasSource && !hasAnyDocument(matched)) {
+      linkOnlyByListinoId.add(matched.id);
+    }
+  });
+
+  const linkOnlyCount = linkOnlyByListinoId.size;
+  const actionableCount = missingCount + linkOnlyCount;
+
+  if (imported === 0) {
+    return { imported, total, label: LABELS_IT.import.not, className: "not" };
+  }
+  if (actionableCount > 0) {
+    return {
+      imported,
+      total,
+      label: missingCount === 0 && linkOnlyCount > 0 ? "FONTE DA COLLEGARE" : LABELS_IT.import.partial,
+      className: "partial",
+    };
+  }
+  if (verifyCount > 0) {
+    return {
+      imported,
+      total,
+      label: `IMPORTATO (DA VERIFICARE ${verifyCount})`,
+      className: "full",
+    };
+  }
+  return { imported, total, label: LABELS_IT.import.full, className: "full" };
 }
 
 export default function NextProcurementConvergedSection({

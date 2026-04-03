@@ -1,3 +1,26 @@
+import {
+  NEXT_ATTREZZATURE_CANTIERI_PATH,
+  NEXT_AUTISTI_ADMIN_PATH,
+  NEXT_AUTISTI_APP_PATH,
+  NEXT_AUTISTI_INBOX_PATH,
+  NEXT_CENTRO_CONTROLLO_PATH,
+  NEXT_CISTERNA_PATH,
+  NEXT_DOSSIER_LISTA_PATH,
+  NEXT_HOME_PATH,
+  NEXT_INTERNAL_AI_PATH,
+  NEXT_INVENTARIO_PATH,
+  NEXT_IA_APIKEY_PATH,
+  NEXT_IA_COPERTURA_LIBRETTI_PATH,
+  NEXT_IA_DOCUMENTI_PATH,
+  NEXT_IA_LIBRETTO_PATH,
+  NEXT_LIBRETTI_EXPORT_PATH,
+  NEXT_LAVORI_DA_ESEGUIRE_PATH,
+  NEXT_MANUTENZIONI_PATH,
+  NEXT_MATERIALI_CONSEGNATI_PATH,
+  NEXT_MATERIALI_DA_ORDINARE_PATH,
+  NEXT_MEZZI_PATH,
+} from "./nextStructuralPaths";
+
 export type NextAreaId =
   | "centro-controllo"
   | "mezzi-dossier"
@@ -75,6 +98,139 @@ export type NextRouteModuleEntry = {
   status: NextRouteModuleStatus;
   note: string;
 };
+
+export type NextShellNavSectionId =
+  | "principale"
+  | "flotta"
+  | "operativita"
+  | "magazzino"
+  | "anagrafiche"
+  | "cisterna"
+  | "ia"
+  | "autisti"
+  | "gestione"
+  | "sistema";
+
+export type NextShellNavItem = {
+  id: string;
+  label: string;
+  path?: string;
+  exact?: boolean;
+  disabled?: boolean;
+};
+
+export type NextShellNavSection = {
+  id: NextShellNavSectionId;
+  title: string;
+  items: readonly NextShellNavItem[];
+};
+
+export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
+  {
+    id: "principale",
+    title: "PRINCIPALE",
+    items: [
+      { id: "dashboard", label: "Dashboard", path: NEXT_HOME_PATH, exact: true },
+      { id: "alert", label: "Alert", path: NEXT_CENTRO_CONTROLLO_PATH },
+      {
+        id: "segnalazioni",
+        label: "Segnalazioni",
+        path: `${NEXT_AUTISTI_INBOX_PATH}/segnalazioni`,
+      },
+    ],
+  },
+  {
+    id: "flotta",
+    title: "FLOTTA",
+    items: [
+      { id: "motrici", label: "Motrici e trattori", path: NEXT_MEZZI_PATH },
+      { id: "rimorchi", label: "Rimorchi", disabled: true },
+      { id: "scadenze", label: "Scadenze", disabled: true },
+      { id: "dossier", label: "Dossier mezzo", path: NEXT_DOSSIER_LISTA_PATH },
+    ],
+  },
+  {
+    id: "operativita",
+    title: "OPERATIVITA'",
+    items: [
+      { id: "lavori", label: "Lavori", path: NEXT_LAVORI_DA_ESEGUIRE_PATH },
+      { id: "manutenzioni", label: "Manutenzioni", path: NEXT_MANUTENZIONI_PATH },
+    ],
+  },
+  {
+    id: "magazzino",
+    title: "MAGAZZINO",
+    items: [
+      {
+        id: "materiali-da-ordinare",
+        label: "Materiali da ordinare",
+        path: NEXT_MATERIALI_DA_ORDINARE_PATH,
+      },
+      { id: "inventario", label: "Inventario", path: NEXT_INVENTARIO_PATH },
+      {
+        id: "materiali-consegnati",
+        label: "Mat. consegnati",
+        path: NEXT_MATERIALI_CONSEGNATI_PATH,
+      },
+      {
+        id: "attrezzature",
+        label: "Attrezzature cantieri",
+        path: NEXT_ATTREZZATURE_CANTIERI_PATH,
+      },
+    ],
+  },
+  {
+    id: "anagrafiche",
+    title: "ANAGRAFICHE",
+    items: [
+      { id: "colleghi", label: "Colleghi", path: "/next/colleghi" },
+      { id: "fornitori", label: "Fornitori", path: "/next/fornitori" },
+      { id: "mezzi-aziendali", label: "Mezzi aziendali", path: NEXT_MEZZI_PATH },
+    ],
+  },
+  {
+    id: "cisterna",
+    title: "CISTERNA",
+    items: [{ id: "cisterna-caravate", label: "Cisterna Caravate", path: NEXT_CISTERNA_PATH }],
+  },
+  {
+    id: "ia",
+    title: "IA",
+    items: [
+      { id: "ia-libretto", label: "Libretto", path: NEXT_IA_LIBRETTO_PATH },
+      { id: "ia-documenti", label: "Documenti", path: NEXT_IA_DOCUMENTI_PATH },
+      {
+        id: "ia-copertura-libretti",
+        label: "Copertura libretti",
+        path: NEXT_IA_COPERTURA_LIBRETTI_PATH,
+      },
+      { id: "libretti-export", label: "Export libretti", path: NEXT_LIBRETTI_EXPORT_PATH },
+      { id: "ia-interna", label: "IA interna", path: NEXT_INTERNAL_AI_PATH },
+    ],
+  },
+  {
+    id: "autisti",
+    title: "AUTISTI",
+    items: [
+      { id: "app-autisti", label: "App Autisti", path: NEXT_AUTISTI_APP_PATH },
+      { id: "autisti-inbox", label: "Autisti Inbox", path: NEXT_AUTISTI_INBOX_PATH },
+      { id: "autisti-admin", label: "Autisti Admin", path: NEXT_AUTISTI_ADMIN_PATH },
+    ],
+  },
+  {
+    id: "gestione",
+    title: "GESTIONE",
+    items: [{ id: "area-capo", label: "Area capo", path: "/next/capo/mezzi" }],
+  },
+  {
+    id: "sistema",
+    title: "SISTEMA",
+    items: [
+      { id: "api-key", label: "API Key", path: NEXT_IA_APIKEY_PATH },
+      { id: "impostazioni", label: "Impostazioni", disabled: true },
+    ],
+  },
+] as const;
 
 // Ingressi top-level della shell clone. Non coincidono con l'intero catalogo delle
 // route attive, che e descritto in NEXT_ROUTE_MODULES.

@@ -1,5 +1,152 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-03 - Fix CSS scoped shell NEXT su `autisti-inbox` e conferma `autisti-admin`
+- Corretto il problema residuo di layout dentro la shell globale NEXT, senza toccare madre, route, `NextShell.tsx`, domain o dati:
+  - `/next/autisti-inbox` non usa piu il breakout desktop legacy che invadeva la colonna sinistra della shell;
+  - `/next/autisti-admin` resta corretta con il precedente override scoped e non presenta overlap con la sidebar.
+- Causa reale verificata nel runtime:
+  - il wrapper legacy `.autisti-inbox-wrap` applicava ancora nel contesto shell la gabbia desktop `width: min(1500px, calc(100vw - 48px))` con margini negativi derivati da `calc(50% - 50vw + 24px)`, finendo sotto la sidebar;
+  - nel browser, prima del fix, `/next/autisti-inbox` mostrava `.autisti-inbox-wrap` a `1392px` con `left = 184` mentre la colonna contenuto della shell iniziava a `328px`.
+- Correzione applicata solo in `src/next/next-shell.css`:
+  - override scoped su `.next-shell .autisti-home`;
+  - override scoped su `.next-shell .autisti-inbox-wrap`;
+  - override scoped su `.next-shell .autisti-layout`.
+- Verifica finale eseguita:
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/autisti-inbox`, `/next/autisti-admin`, `/next/materiali-da-ordinare`;
+  - dopo il fix `/next/autisti-inbox` mostra `.autisti-inbox-wrap` a `1068px`, `left = 346`, `max-width = 100%`, `margin-left = 0`, nessun overlap con la sidebar;
+  - `/next/autisti-admin` resta con `.autisti-admin-page` allineata alla colonna contenuto (`left = 328`, nessun overlap);
+  - nessuna regressione rilevata su `/next/materiali-da-ordinare`.
+- Stato aggiornato del modulo:
+  - `Home NEXT` -> `PARZIALE`
+- Limite esplicito:
+  - fix stretto e solo CSS scoped della shell; nessuna modifica a file legacy o runtime page component.
+
+## 0. Aggiornamento operativo 2026-04-03 - Shell globale NEXT corretta su toggle visibile e push layout reale
+- Corretti due bug residui della shell globale senza toccare madre, route, Home, domain o dati:
+  - il toggle sidebar ora rispetta la UX richiesta dal runtime: da aperta resta visibile dentro l'header della sidebar; da chiusa resta visibile un bottone flottante esterno per riaprire la nav;
+  - il layout shell continua a comportarsi come colonne reali anche su superfici sensibili come `/next/autisti-admin` e `/next/autisti-inbox`, con contenuto spinto a destra e nessun overlap della colonna sinistra.
+- Correzione applicata solo in:
+  - `src/next/NextShell.tsx`
+  - `src/next/next-shell.css`
+- Boundary preservato:
+  - nessuna modifica a `src/App.tsx`, route, file madre, `src/next/NextHomePage.tsx`, domain/read model, Firebase, storage o writer;
+  - nessuna modifica a `src/autistiInbox/AutistiAdmin.css` o `src/pages/CentroControllo.css`.
+- Verifica finale eseguita:
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/autisti-admin`, `/next/autisti-inbox`, `/next/materiali-da-ordinare`;
+  - da aperta: toggle visibile dentro l'header sidebar, `contentLeft = 328`, `sidebarRight = 328`, nessun contenuto coperto;
+  - da chiusa: `frameWidth = 0`, contenuto a tutta larghezza e bottone flottante visibile per riaprire la sidebar.
+- Stato aggiornato del modulo:
+  - `Home NEXT` -> `PARZIALE`
+- Limite esplicito:
+  - patch stretta di shell UI; nessuna estensione a dati reali, Home o routing.
+
+## 0. Aggiornamento operativo 2026-04-03 - Fix CSS shell globale su `autisti-admin` e `centro-controllo`
+- Corretti due bug visivi reali introdotti dalla shell globale, senza toccare madre, route, runtime page component o CSS legacy esterni alla whitelist.
+- Correzione applicata solo in `src/next/next-shell.css`:
+  - aggiunto `z-index` esplicito a `.next-shell__sidebar` per evitare che la card principale di `/next/centro-controllo` venga dipinta sopra il bordo/sidebar;
+  - aggiunto override scoped `.next-shell .autisti-admin-page` con precedenza sul legacy per neutralizzare il pattern full-bleed di `AutistiAdmin.css` (`width: 100vw`, `left: 50%`, `transform: translateX(-50%)`) solo dentro la shell NEXT.
+- Boundary preservato:
+  - nessuna modifica a `src/autistiInbox/AutistiAdmin.css`;
+  - nessuna modifica a `src/pages/CentroControllo.css`;
+  - nessuna modifica a `src/App.tsx`, route, madre, dati, domain o writer.
+- Verifica finale eseguita:
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/autisti-admin` con sidebar visibile e non piu invasa dal contenitore admin full-bleed;
+  - runtime locale verificato su `/next/centro-controllo` con sidebar sopra il bordo card e senza overlap visivo della `.cc-shell`.
+- Stato aggiornato del modulo:
+  - `Home NEXT` -> `PARZIALE`
+- Limite esplicito:
+  - fix circoscritto ai soli due bug visivi della shell globale richiesti dal prompt.
+
+## 0. Aggiornamento operativo 2026-04-03 - Sidebar NEXT portata nella shell globale
+- La sidebar della nuova Home non resta piu confinata a `/next`: il layout globale delle route figlie di `NextShell` mostra ora una shell stabile a due colonne con nav sinistra persistente e `Outlet` a destra.
+- Implementazione applicata solo nel perimetro consentito:
+  - `src/next/nextData.ts` espone ora il catalogo sidebar globale `NEXT_SHELL_NAV_SECTIONS`, con sezioni centralizzate, voci attive e disabled, `IA interna` e sezione `AUTISTI`;
+  - `src/next/NextShell.tsx` importa `next-shell.css`, renderizza header/sidebar/footer globali, gestisce sezioni collassabili, stato attivo per route, toggle globale della sidebar e contenuto shell con `Outlet`;
+  - `src/next/NextHomePage.tsx` mantiene solo la dashboard destra placeholder, senza piu markup sidebar locale;
+  - `src/next/next-shell.css` ospita ora gli stili della shell globale e conserva i blocchi legacy gia usati dalle altre pagine NEXT;
+  - `src/next/next-home.css` mantiene solo gli stili della dashboard Home.
+- Boundary preservato:
+  - nessuna modifica a `src/App.tsx`, route, madre, subtree `/next/autisti/*`, writer, storage, Firebase o domain/read model;
+  - nessuna reintroduzione di `storageSync` o letture raw legacy.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextShell.tsx src/next/NextHomePage.tsx src/next/nextData.ts` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next`, `/next/mezzi`, `/next/manutenzioni`, `/next/materiali-da-ordinare`, `/next/ia/interna`, `/next/autisti-inbox`, `/next/autisti-admin` con sidebar visibile e attiva;
+  - toggle shell verificato nel browser con stato `next-shell--sidebar-open` -> `next-shell--sidebar-closed`, colonna sidebar `320px` -> `0px` -> `320px`;
+  - `/next/autisti` continua a non montare la shell e usa ancora il layout separato `NextAutistiCloneLayout`.
+- Stato aggiornato del modulo:
+  - `Home NEXT` -> `PARZIALE`
+- Limite esplicito:
+  - la dashboard Home resta placeholder statica e non legge ancora dati reali;
+  - la nav globale copre il catalogo richiesto dal prompt ma non pretende di rappresentare tutte le route tecniche/dinamiche della NEXT.
+
+## 0. Aggiornamento operativo 2026-04-03 - Nuova Home NEXT UI placeholder implementata
+- Sulla route ufficiale `/next` la Home NEXT non monta piu la parity runtime del vecchio centro controllo, ma una dashboard placeholder autonoma costruita solo nel perimetro `src/next/*`.
+- Implementazione applicata solo nel perimetro consentito:
+  - `src/next/NextHomePage.tsx` renderizza ora la nuova Home con sidebar a categorie collassabili, topbar, banner alert, pannello `IA interna`, stat card e widget placeholder;
+  - `src/next/next-home.css` definisce il layout desktop-first approvato, con sidebar scura, area contenuto chiara, card morbide e comportamento responsive minimo;
+  - le voci sidebar usano solo route NEXT gia esistenti quando coerenti; le voci non pronte restano visibili ma disabled.
+- Boundary dati preservato:
+  - nessun collegamento a Firebase, Firestore, snapshot NEXT, domain o dati reali;
+  - nessuna modifica a `src/App.tsx`, writer, route, storage, PDF engine o file madre;
+  - nessuna reintroduzione di `storageSync` o letture raw legacy.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx` -> `OK`;
+  - `npm run build` -> `OK`;
+  - verifica runtime visiva locale su `http://127.0.0.1:4173/next` con screenshot finale della nuova Home -> `OK`.
+- Stato aggiornato del modulo:
+  - `Home NEXT` -> `PARZIALE`
+- Limite esplicito:
+  - la Home usa solo placeholder statici e non collega ancora dati reali, logiche business o navigazione avanzata fuori dalle route NEXT gia presenti.
+
+## 0. Aggiornamento operativo 2026-04-03 - Stato import preventivi NEXT riallineato alla logica madre
+- Sul runtime ufficiale `/next/materiali-da-ordinare?tab=preventivi` il calcolo dello stato import dei preventivi non usa piu il conteggio povero basato su `sourceMatches`, `previewMatches` e `materialsPreview` parziale.
+- Correzione applicata solo nel perimetro consentito:
+  - `src/next/domain/nextProcurementDomain.ts` espone ora nel read model procurement le righe complete del preventivo (`descrizione`, `unita`, `note`, `prezzoUnitario`) e il `fontePreventivoId` della voce listino;
+  - `src/next/NextProcurementConvergedSection.tsx` replica il criterio reale della madre `Acquisti` con analisi riga-per-riga, match per codice articolo o descrizione normalizzata, score su UDM/valuta/preventivo sorgente e conteggio valido anche quando una riga riusa un match compatibile gia consumato;
+  - la UI del tab `Prezzi & Preventivi` resta invariata fuori dallo stretto necessario: cambia solo il calcolo di `NON IMPORTATO` / `IMPORTATO PARZIALE` / `IMPORTATO COMPLETO`.
+- Boundary dati preservato:
+  - nessuna modifica a `src/next/NextMaterialiDaOrdinarePage.tsx`;
+  - nessuna modifica a `src/next/NextProcurementReadOnlyPanel.tsx`;
+  - nessuna modifica a writer business, route, PDF engine o file madre;
+  - nessuna reintroduzione di `storageSync`, letture raw legacy o mount runtime di `src/pages/*`.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextProcurementConvergedSection.tsx src/next/domain/nextProcurementDomain.ts` -> `OK`;
+  - `npm run build` -> `OK`;
+  - confronto browser headless locale su `/acquisti?tab=preventivi` vs `/next/materiali-da-ordinare?tab=preventivi`:
+    - `MARIBA / XC/STD/2600119` -> madre `IMPORTATO COMPLETO 5/5`, NEXT `IMPORTATO COMPLETO 5/5`;
+    - `MARIBA / 534909` -> madre `IMPORTATO COMPLETO 7/7`, NEXT `IMPORTATO COMPLETO 7/7`.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - il prompt chiude il delta logico sullo stato import dei preventivi nel tab `Prezzi & Preventivi`, ma non promuove a `CHIUSO` l'intero procurement top-level.
+
+## 0. Aggiornamento operativo 2026-04-03 - Tab `Ordine materiali` riallineata al runtime reale della madre
+- Sul runtime ufficiale `/next/materiali-da-ordinare` la sola tab `Ordine materiali` e stata riallineata prendendo come master esterno la resa browser reale di `src/pages/Acquisti.tsx`.
+- Correzioni visive applicate solo nel perimetro consentito:
+  - rimossa dal footer della tab la navigazione extra verso `Ordini`, `Arrivi`, `Prezzi & Preventivi` e `Listino Prezzi`;
+  - riportata la gabbia `Ordine materiali` al wrapper madre `om-wrap` / `om-content`, chiudendo il delta di composizione compatta visto nel browser;
+  - riallineati microcopy e controlli visibili della riga di inserimento a `AGGIUNGI` e `Mostra dettagli`;
+  - sostituiti i pulsanti riga sempre visibili con il menu `kebab` madre-like sulla colonna `Azioni`;
+  - riportata la palette pulsanti del ramo al tema embedded della madre e riallineata l'etichetta KPI `Totale parziale` quando ci sono prezzi mancanti o UDM da verificare.
+- Boundary dati preservato:
+  - nessuna modifica a `src/next/NextProcurementReadOnlyPanel.tsx`;
+  - nessuna modifica a `src/next/NextProcurementConvergedSection.tsx`;
+  - nessuna modifica a `src/next/domain/nextProcurementDomain.ts`;
+  - nessuna reintroduzione di `storageSync`, letture raw legacy o mount runtime di `src/pages/*`.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextMaterialiDaOrdinarePage.tsx` -> `OK`;
+  - `node_modules\\.bin\\eslint.cmd src/next/next-procurement-route.css` -> file ignorato da ESLint per assenza config CSS;
+  - `npm run build` -> `OK`;
+  - confronto browser headless locale su `/acquisti` vs `/next/materiali-da-ordinare` con screenshot runtime della sola tab `Ordine materiali` -> `UGUALE` lato shell UI visibile.
+- Stato aggiornato del procurement top-level:
+  - `Materiali da ordinare` -> `PARZIALE`
+- Limite esplicito:
+  - il prompt chiude il delta visivo reale di `Ordine materiali`, non promuove a `CHIUSO` l'intero procurement top-level e non cambia i limiti read-only dei writer business.
+
 ## 0. Aggiornamento operativo 2026-04-02 - Procurement top-level riallineato su tab, sottoviste e riepiloghi
 - Sul runtime ufficiale `/next/materiali-da-ordinare` la superficie principale del modulo unico converge di piu verso la madre `Acquisti` senza riaprire moduli procurement top-level separati:
   - tab top-level riallineati a `Ordine materiali`, `Ordini`, `Arrivi`, `Prezzi & Preventivi`, `Listino Prezzi`;

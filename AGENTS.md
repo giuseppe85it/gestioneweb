@@ -116,3 +116,18 @@
 - Rischi residui.
 - Change report e continuity report creati.
 - Commit hash solo se esiste.
+## 15. Aggiornamento CONTEXT_CLAUDE.md
+- `CONTEXT_CLAUDE.md` nella root è il file di contesto sintetico 
+  per l'AI assistant esterno (Claude).
+- Dopo ogni patch che modifica uno o più dei seguenti elementi, 
+  aggiornare `CONTEXT_CLAUDE.md`:
+  - stato di un modulo (APERTO -> PARZIALE -> CHIUSO)
+  - nuove route aggiunte o rimosse
+  - nuove convenzioni o chiavi Firestore
+  - cambi architetturali rilevanti
+  - nuovi task completati o aperti
+- L'aggiornamento deve essere sintetico e verificato — 
+  non copiare log, solo stato attuale.
+- Il file non deve superare 400 righe totali.
+- Se l'aggiornamento richiederebbe più di 400 righe, 
+  sintetizzare eliminando storia superata.
