@@ -31,6 +31,353 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-04 182
+- DATA: 2026-04-04
+- TITOLO MODIFICA: Riallineamento visivo della `Mappa impianto` Home `Euromecc` alla reference
+- OBIETTIVO: Rifare solo la composizione SVG della mappa Home di `/next/euromecc` per avvicinarla alla reference utente, senza toccare fullscreen, dominio, route o sidebar.
+- FILE TOCCATI:
+  - `src/next/NextEuromeccPage.tsx`
+  - `src/next/next-euromecc.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_1106_euromecc_home_map_reference_alignment.md`
+  - `docs/continuity-reports/2026-04-04_1106_continuity_euromecc_home_map_reference_alignment.md`
+- COSA E STATO CAMBIATO:
+  - introdotta una composizione SVG Home con collettore superiore etichettato;
+  - aggiunti i gruppi doppi `Silo 2` e `Silo 6` con contenitore esterno e sottosezioni interne;
+  - aggiunte le barre `Filtri silo - famiglia trasversale`, `Coclee / motori / ingrassaggi linee`, `Filtri punti di carico`;
+  - redistribuiti carichi e componenti bassi per aderire alla reference.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la Home `Euromecc` ha ora una mappa impianto piu vicina alla reference utente;
+  - Lettura: invariata, nessuna modifica a dati o domain;
+  - Scritture: invariate, nessun tocco a Firestore, writer o rules.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4181`
+  - aprire `/next/euromecc`, verificare la tab `Home`, i gruppi doppi dei sili, le etichette strutturali e il funzionamento del pannello `Focus area`
+  - cliccare i nodi principali e confermare apertura/uso del fullscreen senza regressioni
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - fix limitato al solo SVG Home del modulo nativo NEXT `Euromecc`;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-04 181
+- DATA: 2026-04-04
+- TITOLO MODIFICA: Correzione geometria SVG della `Mappa impianto` Home di `Euromecc`
+- OBIETTIVO: Correggere il problema reale residuo della mappa Home di `/next/euromecc`, agendo sul disegno SVG interno e non sul solo contenitore.
+- FILE TOCCATI:
+  - `src/next/NextEuromeccPage.tsx`
+  - `src/next/next-euromecc.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_1012_euromecc_home_map_geometry_fix.md`
+  - `docs/continuity-reports/2026-04-04_1012_continuity_euromecc_home_map_geometry_fix.md`
+- COSA E STATO CAMBIATO:
+  - ridisegnate le coordinate dei sili, delle connessioni verticali e dei box tecnici della mappa Home;
+  - aumentato il respiro verticale tra batteria sili, fascia centrale e componenti bassi;
+  - allargati e redistribuiti i componenti per ridurre l'effetto compresso del disegno;
+  - aggiornato solo il supporto CSS minimo della larghezza utile della mappa Home.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la mappa Home ha ora proporzioni piu ariose e usa meglio lo spazio disponibile;
+  - Lettura: invariata, nessuna modifica a dati o domain;
+  - Scritture: invariate, nessun tocco a Firestore o writer.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4180`
+  - aprire `/next/euromecc`, verificare che la `Mappa impianto` della tab `Home` sia meno schiacciata e che `Focus area` resti usabile
+  - aprire un fullscreen dettaglio area e confermare assenza di peggioramenti
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - fix limitato alla sola mappa Home del modulo nativo NEXT `Euromecc`;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-04 180
+- DATA: 2026-04-04
+- TITOLO MODIFICA: Fix UI modulo `Euromecc` su mappa Home, schema tecnico fullscreen e blocco problemi
+- OBIETTIVO: Migliorare la leggibilita reale di `/next/euromecc` senza toccare dominio Firestore, route, sidebar o architettura, e correggere il bug del fullscreen che rendeva come chiuse anche le issue aperte.
+- FILE TOCCATI:
+  - `src/next/NextEuromeccPage.tsx`
+  - `src/next/next-euromecc.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_0918_euromecc_ui_map_fullscreen_fix.md`
+  - `docs/continuity-reports/2026-04-04_0918_continuity_euromecc_ui_map_fullscreen_fix.md`
+- COSA E STATO CAMBIATO:
+  - la `Mappa impianto` della tab `Home` usa ora piu spazio utile e non resta compressa dalla colonna laterale;
+  - il fullscreen dei sili rende lo `Schema tecnico` con label hotspot piu piccole e multilinea dove serve;
+  - il blocco `Problemi riscontrati` del fullscreen separa correttamente issue aperte e issue chiuse, usando il kind corretto.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: mappa Home piu leggibile, schema tecnico fullscreen meno affollato, stato problemi coerente con il record reale;
+  - Lettura: invariata, nessuna modifica al domain `nextEuromeccDomain.ts`;
+  - Scritture: invariate, nessun cambio a Firestore, writer o rules.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4179`
+  - aprire `/next/euromecc`, verificare la tab `Home`, aprire il fullscreen di un'area e controllare:
+    - mappa Home piu ampia e meno schiacciata;
+    - schema tecnico con testi non piu sovrapposti in modo evidente;
+    - `Problemi riscontrati` con issue aperte mostrate come aperte e issue chiuse mostrate come chiuse.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - patch solo visiva/UI del modulo nativo NEXT `Euromecc`;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-03 179
+- DATA: 2026-04-03
+- TITOLO MODIFICA: V1 modulo nativo NEXT `Euromecc` con route, sidebar e persistenza Firestore dedicata
+- OBIETTIVO: Introdurre in `/next` un nuovo modulo nativo `Euromecc` con route reale, item sidebar in `MAGAZZINO`, 4 tab operative e scrittura reale solo sulle collection Firestore dedicate, senza dipendenze dalla madre.
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/nextStructuralPaths.ts`
+  - `src/next/nextData.ts`
+  - `src/next/domain/nextEuromeccDomain.ts`
+  - `src/next/euromeccAreas.ts`
+  - `src/next/NextEuromeccPage.tsx`
+  - `src/next/next-euromecc.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2305_euromecc_modulo_nativo_next.md`
+  - `docs/continuity-reports/2026-04-03_2305_continuity_euromecc_modulo_nativo_next.md`
+- COSA E STATO CAMBIATO:
+  - aggiunta la route `/next/euromecc` sotto `NextShell` con guard `operativita-globale`;
+  - aggiunta la voce `Euromecc` come item flat nella sezione sidebar `MAGAZZINO`;
+  - introdotto `nextEuromeccDomain.ts` con reader, writer e tipi separati per le collection `euromecc_pending`, `euromecc_done`, `euromecc_issues`;
+  - introdotto `euromeccAreas.ts` con la topologia statica dell'impianto e senza date manutentive dinamiche;
+  - introdotta `NextEuromeccPage.tsx` con tab `Home`, `Manutenzione`, `Problemi`, `Riepilogo`, mappa SVG, modale fullscreen, hotspot silo, form operativi e riepilogo copiabile/stampabile;
+  - aggiunto `next-euromecc.css` con solo stile scoped `eur-*`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nuovo modulo specialistico navigabile dalla shell NEXT, indipendente dalla madre;
+  - Lettura: il modulo legge solo le collection Firestore dedicate e la topologia statica locale;
+  - Scritture: abilitate solo per questo modulo e solo su `euromecc_pending`, `euromecc_done`, `euromecc_issues`; nessun uso di writer legacy o `storage/@...`.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextEuromeccPage.tsx src/next/domain/nextEuromeccDomain.ts src/next/euromeccAreas.ts`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4175`
+  - aprire `/next`, cliccare `Euromecc` dalla sidebar e verificare apertura della route `/next/euromecc`
+  - aprire un nodo della mappa, verificare il modale fullscreen, poi salvare una manutenzione da fare, una manutenzione fatta, una segnalazione e chiudere il problema
+  - aprire `Riepilogo`, verificare il testo generato e `Copia testo`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - modulo nativo NEXT, non clone della madre;
+  - stato corretto dopo la V1: `PARZIALE`;
+  - la sicurezza finale lato regole Firestore resta `DA VERIFICARE` per assenza di `firestore.rules` versionato nel repo.
+
+### Voce 2026-04-03 178
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Home NEXT riallinea il widget `Magazzino` ai dati reali di `Inventario`
+- OBIETTIVO: Eliminare la semantica mista inventario/procurement dal widget `Magazzino` della Home NEXT e collegarlo solo al read model inventario gia esistente, senza toccare domain, route, shell o moduli esterni.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2106_next-home-magazzino-inventario.md`
+  - `docs/continuity-reports/2026-04-03_2106_continuity_next-home-magazzino-inventario.md`
+- COSA E STATO CAMBIATO:
+  - `NextHomePage.tsx` legge ora `readNextInventarioSnapshot({ includeCloneOverlays: false })` dentro il caricamento iniziale della Home;
+  - il widget `Magazzino` usa solo righe reali inventario costruite da `descrizione`, `quantita`, `unita`, `fornitore` e `stockStatus`;
+  - la CTA del widget punta a `/next/inventario`;
+  - rimossi dal widget i placeholder e i riferimenti misti al procurement.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il widget `Magazzino` e ora un widget reale di `Inventario`, con massimo 4 righe compatte e badge coerenti con `stockStatus`;
+  - Lettura: nessun domain modificato, solo riuso read-only del layer `D05-INVENTARIO`;
+  - Blocco scritture: nessuna scrittura business, nessuna modifica a route, shell, storage o procurement.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx`
+  - `npm run build`
+  - avviare `npm run dev -- --host 127.0.0.1 --port 4178`
+  - aprire `/next` e verificare:
+    - il widget `Magazzino` mostra righe reali inventario;
+    - la CTA punta a `/next/inventario`;
+    - non compaiono piu placeholder tipo `Ordine #204`, `consegna prevista`, `riordino consigliato`.
+  - aprire `/next/inventario` e `/next/materiali-da-ordinare` per confermare assenza di regressioni.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a `src/next/domain/*`, `NextShell.tsx`, `next-home.css`, file madre o widget diversi da `Magazzino`.
+
+### Voce 2026-04-03 177
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Home NEXT rende espandibili i widget flotta e mostra la categoria per riga
+- OBIETTIVO: Migliorare solo i widget `Motrici e trattori` e `Rimorchi` della Home NEXT aggiungendo toggle `Mostra tutti / Mostra meno` e categoria visibile per ogni riga, senza toccare domain, madre, route o altri blocchi della dashboard.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `src/next/next-home.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2059_next-home-fleet-widgets-expand-category.md`
+  - `docs/continuity-reports/2026-04-03_2059_continuity_next-home-fleet-widgets-expand-category.md`
+- COSA E STATO CAMBIATO:
+  - `NextHomePage.tsx` non tronca piu rigidamente i dati flotta in `buildFleetWidgetRows`;
+  - aggiunti due stati separati di espansione per `Motrici e trattori` e `Rimorchi`;
+  - ogni widget mostra ora il toggle `Mostra tutti` / `Mostra meno`;
+  - ogni riga mostra la categoria reale del record usando il campo `categoria` gia esposto dal read model;
+  - mantenuti invariati il rebucket `pianale -> Rimorchi`, il click verso `/next/autisti-admin` e l'editor inline clone-safe del luogo.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i due widget flotta possono passare da preview compatta a elenco completo e mostrano la categoria per ogni riga;
+  - Lettura: nessun domain modificato, solo riuso locale del campo `categoria` gia disponibile;
+  - Blocco scritture: nessuna scrittura business, nessuna modifica a route, shell o storage.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx`
+  - `npm run build`
+  - avviare `npm run dev -- --host 127.0.0.1 --port 4178`
+  - aprire `/next` e verificare:
+    - categoria visibile in ogni riga dei due widget;
+    - `Mostra tutti` espande correttamente `Motrici e trattori` e `Rimorchi`;
+    - `Mostra meno` richiude correttamente entrambi;
+    - `pianale` resta visibile solo in `Rimorchi`.
+  - aprire `/next/autisti-admin` e `/next/materiali-da-ordinare` per confermare assenza di regressioni.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - `Magazzino`, stat card, banner alert e pannello IA restano invariati;
+  - nessuna modifica a `src/next/domain/*`, `NextShell.tsx` o file madre.
+
+### Voce 2026-04-03 176
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Home NEXT riallinea i widget `Motrici e trattori` e `Rimorchi` al flusso madre
+- OBIETTIVO: Portare nella Home NEXT i due widget flotta al comportamento reale della madre, mantenendo il rebucket prodotto `pianale -> Rimorchi`, senza toccare domain, route, shell o madre.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `src/next/next-home.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2045_next-home-fleet-widgets-mother-flow.md`
+  - `docs/continuity-reports/2026-04-03_2045_continuity_next-home-fleet-widgets-mother-flow.md`
+- COSA E STATO CAMBIATO:
+  - rimosso il link header `Vai -> /next/mezzi` dal widget `Motrici e trattori`;
+  - rimossa la CTA disabled generica dal widget `Rimorchi`;
+  - le righe di entrambi i widget sono ora cliccabili verso `/next/autisti-admin`;
+  - ogni riga mostra il bottone `Modifica`;
+  - `Modifica` apre un editor luogo inline nella stessa card, con input, `Annulla` e `Salva`;
+  - `Salva` aggiorna solo uno stato locale clone-safe nella Home, senza scrivere su dataset business;
+  - mantenuto il rebucket locale `pianale -> Rimorchi`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i widget flotta della Home seguono ora la grammatica madre di riga cliccabile piu edit inline, senza modali;
+  - Lettura: la Home continua a leggere solo `readNextCentroControlloSnapshot()` e non modifica il domain `D10`;
+  - Blocco scritture: nessuna scrittura business, nessuna modifica a route, shell o storage.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx`
+  - `npm run build`
+  - avviare `npm run dev -- --host 127.0.0.1 --port 4178`
+  - aprire `/next` e verificare:
+    - `Motrici e trattori` senza CTA header;
+    - `Rimorchi` senza CTA disabled header;
+    - `Modifica` presente su ogni riga dei due widget;
+    - click su `Modifica` -> editor inline con `Annulla` / `Salva`;
+    - click sulla riga -> `/next/autisti-admin`;
+    - `pianale` visibile in `Rimorchi` e non in `Motrici e trattori`.
+  - aprire `/next/autisti-admin` e `/next/materiali-da-ordinare` per confermare assenza di regressioni.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a `src/next/domain/*`, `NextShell.tsx`, route o file madre;
+  - nessun modale introdotto; il salvataggio luogo resta solo locale alla Home NEXT.
+
+### Voce 2026-04-03 175
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Home NEXT riclassifica `pianale` dal widget `Motrici e trattori` a `Rimorchi`
+- OBIETTIVO: Applicare solo nella Home NEXT una decisione prodotto esplicita: trattare `pianale` come `Rimorchio`, senza toccare mother, route, shell, stat card, banner, IA o domain.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2024_next-home-pianale-rimorchi.md`
+  - `docs/continuity-reports/2026-04-03_2024_continuity_next-home-pianale-rimorchi.md`
+- COSA E STATO CAMBIATO:
+  - `NextHomePage.tsx` usa ora il campo gia esposto `categoria` dei record `D10AssetLocationItem` per fare un rebucket locale dei soli widget Home;
+  - gli item con `categoria = pianale` vengono rimossi dal gruppo visivo `Motrici e trattori` e aggiunti al gruppo visivo `Rimorchi`;
+  - nel widget `Rimorchi` gli item `pianale` vengono prioritizzati nelle prime righe mostrate, cosi il loro spostamento resta effettivamente visibile anche col limite a 3 righe.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nella Home `/next` il `pianale` non compare piu tra `Motrici e trattori` e compare nel widget `Rimorchi`;
+  - Lettura: nessun domain modificato, solo riuso locale dei dati gia letti dalla Home;
+  - Blocco scritture: nessuna scrittura business, nessuna modifica a route, shell o storage.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx`
+  - `npm run build`
+  - avviare `npm run dev -- --host 127.0.0.1 --port 4178`
+  - aprire `/next` e verificare che una targa `pianale` reale, per esempio `TI285997`, non compaia piu nel widget `Motrici e trattori` e compaia nel widget `Rimorchi`
+  - aprire `/next/autisti-admin` e verificare assenza di regressioni shell
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - task confinato alla Home NEXT;
+  - nessuna modifica a `src/next/domain/*`, `NextShell.tsx`, `next-home.css`, route o file madre.
+
+### Voce 2026-04-03 174
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Home NEXT collega tre widget reali con read model gia esistenti
+- OBIETTIVO: Sostituire nella Home NEXT solo i widget `Motrici e trattori`, `Rimorchi` e `Lavori aperti` con dati reali NEXT, lasciando invariato `Magazzino` e senza toccare stat card, banner, IA, route, shell o domain.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `src/next/next-home.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_1915_next-home-real-widgets.md`
+  - `docs/continuity-reports/2026-04-03_1915_continuity_next-home-real-widgets.md`
+- COSA E STATO CAMBIATO:
+  - `NextHomePage.tsx` usa `motriciTrattoriDaMostrare` e `rimorchiDaMostrare` da `readNextCentroControlloSnapshot()` per popolare i due widget flotta con `targa`, `luogo` e `statusLabel`;
+  - `NextHomePage.tsx` usa `readNextLavoriInAttesaSnapshot()` per popolare il widget `Lavori aperti` con fino a 3 righe reali ricavate dai gruppi aperti, mostrando `descrizione`, `targa` e `urgenza`;
+  - la CTA del widget `Lavori aperti` punta ora a `/next/lavori-in-attesa`;
+  - `Magazzino` resta invariato come placeholder statico;
+  - `next-home.css` aggiunge solo uno stato vuoto sobrio per i widget senza dati.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: tre widget della Home mostrano ora dati reali NEXT senza cambiare struttura, shell o semantica del quarto widget;
+  - Lettura: la Home usa solo read model NEXT gia esistenti, senza modificare domain o introdurre logiche nuove fuori dai campi esposti;
+  - Blocco scritture: nessuna scrittura business, nessuna modifica a route, shell, storage o file madre.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx`
+  - `npm run build`
+  - `npm run preview -- --host 127.0.0.1 --port 4176`
+  - aprire `/next` e verificare:
+    - `Motrici e trattori` con dati reali e CTA `/next/mezzi`;
+    - `Rimorchi` con dati reali e CTA disabilitata;
+    - `Lavori aperti` con dati reali e CTA `/next/lavori-in-attesa`;
+    - `Magazzino` ancora placeholder;
+    - stat card, banner e modal IA ancora funzionanti.
+  - aprire `/next/autisti-inbox` e `/next/materiali-da-ordinare` per confermare assenza di regressioni shell.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a `src/next/domain/*`, `NextShell.tsx`, route o file madre;
+  - il task resta confinato alla Home read-only.
+
+### Voce 2026-04-03 173
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Home NEXT collega tre stat card reali con read model gia esistenti
+- OBIETTIVO: Sostituire nella Home NEXT solo le stat card `Lavori aperti`, `Ordini in attesa` e `Segnalazioni` con dati reali NEXT, lasciando invariata `Mezzi attivi` e senza toccare widget, route, shell o domain.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_1844_next-home-real-stat-cards.md`
+  - `docs/continuity-reports/2026-04-03_1844_continuity_next-home-real-stat-cards.md`
+- COSA E STATO CAMBIATO:
+  - `NextHomePage.tsx` legge ora in sola lettura `readNextLavoriInAttesaSnapshot()`, `readNextProcurementSnapshot()` e `readNextCentroControlloSnapshot()`;
+  - la card `Lavori aperti` mostra `counts.totalLavori` e come sottotitolo il numero di urgenze gia esposto nei gruppi (`groups[].counts.alta`);
+  - la card `Ordini in attesa` mostra `counts.pendingOrders` e come sottotitolo il numero di ordini `partialOrders`;
+  - la card `Segnalazioni` mostra `counters.segnalazioniNuove` con sottotitolo `da gestire` o `nessuna`;
+  - `Mezzi attivi` resta identica al placeholder approvato (`12`, `su 15 totali`).
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: tre stat card della Home mostrano ora dati reali NEXT senza cambiare layout, banner, IA o widget;
+  - Lettura: la Home usa solo read model NEXT gia esistenti, senza modificare domain o costruire metriche non verificate;
+  - Blocco scritture: nessuna scrittura business, nessuna modifica a route, shell, storage o file madre.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx`
+  - `npm run build`
+  - `npm run preview -- --host 127.0.0.1 --port 4175`
+  - aprire `/next` e verificare:
+    - `Lavori aperti` con valore reale e sottotitolo urgenze;
+    - `Ordini in attesa` con valore reale e sottotitolo parziali;
+    - `Segnalazioni` con valore reale e sottotitolo coerente;
+    - `Mezzi attivi` ancora fermo al placeholder;
+    - banner alert e modal IA ancora funzionanti.
+  - aprire `/next/autisti-inbox` e `/next/materiali-da-ordinare` per confermare assenza di regressioni shell.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a `src/next/domain/*`, `NextShell.tsx`, `next-home.css`, route o file madre;
+  - widget e card `Mezzi attivi` restano fuori perimetro.
+
 ### Voce 2026-04-03 172
 - DATA: 2026-04-03
 - TITOLO MODIFICA: Fix CSS scoped shell NEXT per `autisti-inbox` e conferma `autisti-admin`
@@ -7772,3 +8119,126 @@ Serve a:
 - NOTE:
   - build `OK`;
   - il procurement top-level resta `PARZIALE`, non `CHIUSO`.
+
+### Voce 2026-04-03 127
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Home NEXT collega banner alert reale e launcher IA interna
+- OBIETTIVO: Sostituire nella nuova Home NEXT solo i due placeholder di testata con componenti e dati reali gia esistenti, senza toccare stat card, widget, route, shell o domain.
+- FILE TOCCATI:
+  - `src/next/NextHomePage.tsx`
+  - `src/next/next-home.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_1815_next-home-real-alert-banner-internal-ai.md`
+  - `docs/continuity-reports/2026-04-03_1815_continuity_next-home-real-alert-banner-internal-ai.md`
+- COSA E STATO CAMBIATO:
+  - il banner dashboard legge `readNextCentroControlloSnapshot()` e mostra un testo sintetico reale con 1-2 segnali prioritari;
+  - il pannello `IA interna` usa ora `HomeInternalAiLauncher`, con apertura del modal reale di `NextInternalAiPage`;
+  - il mock chat hardcoded e il banner statico sono stati rimossi dalla Home.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la Home smette di mostrare i due placeholder principali in alto;
+  - Lettura: solo read model NEXT gia esistenti e componenti gia presenti nel repo;
+  - Blocco scritture: nessuna scrittura business, nessuna modifica a route, domain o shell globale.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextHomePage.tsx`
+  - `npm run build`
+  - aprire `/next` e verificare banner reale + apertura modal IA;
+  - aprire `/next/autisti-inbox` e `/next/materiali-da-ordinare` per confermare assenza di regressioni shell.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; il task riguarda solo la Home NEXT e non modifica la madre.
+- NOTE:
+  - build `OK`;
+  - stat card e widget restano placeholder fuori perimetro.
+
+### Voce 2026-04-03 128
+- DATA: 2026-04-03
+- TITOLO MODIFICA: NEXT aggiunge modale globale unico `Scadenze` con trigger da sidebar e banner Home
+- OBIETTIVO: Portare nella shell/Home NEXT una sola vista read-only delle revisioni, accessibile sia dal menu sinistro sia dal banner alert, senza nuove route e senza riaprire writer reali.
+- FILE TOCCATI:
+  - `src/next/components/NextScadenzeModal.tsx`
+  - `src/next/NextShell.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/NextHomePage.tsx`
+  - `src/next/next-shell.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2142_next-scadenze-modal-unico.md`
+  - `docs/continuity-reports/2026-04-03_2142_continuity_next-scadenze-modal-unico.md`
+- COSA E STATO CAMBIATO:
+  - aggiunto `NextScadenzeModal` come unico componente modale read-only;
+  - `NextShell` osserva il query param `scadenze`, apre il modale e lo chiude rimuovendo il parametro;
+  - la voce sidebar `Scadenze` apre `?scadenze=tutte`;
+  - il banner alert Home apre `?scadenze=urgenti`;
+  - il modale mostra contatori `Scadute` / `In scadenza`, elenco revisioni, riepilogo prenotazione collaudo e badge `Pre-collaudo programmato`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: un solo contenitore modale coerente, riusato da due trigger;
+  - Lettura: solo `readNextCentroControlloSnapshot()` e dati D10 gia esposti;
+  - Blocco scritture: nessuna CTA operativa, nessuna riapertura di writer su collaudi o revisioni.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/components/NextScadenzeModal.tsx src/next/NextShell.tsx src/next/nextData.ts src/next/NextHomePage.tsx`
+  - `npm run build`
+  - aprire `/next`, cliccare il banner alert e verificare `?scadenze=urgenti`;
+  - aprire `/next/materiali-da-ordinare`, cliccare sidebar `Scadenze` e verificare `?scadenze=tutte`;
+  - chiudere il modale e verificare la rimozione del query param.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; il task implementa solo un contenitore read-only nel layer NEXT.
+- NOTE:
+  - build `OK`;
+  - nessuna route nuova introdotta;
+  - nessun file fuori whitelist toccato.
+
+### Voce 2026-04-03 129
+- DATA: 2026-04-03
+- TITOLO MODIFICA: `Scadenze` NEXT aggiunge flussi operativi madre-like read-only e corregge il bug data/delta
+- OBIETTIVO: Evolvere il modale unico `Scadenze` per replicare i passaggi operativi madre-like di prenotazione collaudo, pre-collaudo e revisione fatta, mantenendo bloccata la conferma finale e correggendo alla radice il parsing date nel domain D10.
+- FILE TOCCATI:
+  - `src/next/components/NextScadenzeModal.tsx`
+  - `src/next/domain/nextCentroControlloDomain.ts`
+  - `src/next/next-shell.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2204_next-scadenze-operativita-readonly.md`
+  - `docs/continuity-reports/2026-04-03_2204_continuity_next-scadenze-operativita-readonly.md`
+- COSA E STATO CAMBIATO:
+  - `NextScadenzeModal` mantiene la lista unica ma aggiunge le superfici operative interne per `Prenotazione collaudo`, `Pre-collaudo`, `Segna revisione fatta` e `Cancella prenotazione`;
+  - le CTA madre-like compaiono ora direttamente sulle righe scadenza e aprono form compilabili nello stesso contenitore modale;
+  - al click finale su `Salva` o `Cancella` il clone mostra un blocco read-only esplicito, senza alcun side effect reale;
+  - il parser date del domain D10 e stato corretto per trattare in modo esplicito stringhe `gg/mm/aa(aa)` e `YYYY-MM-DD`, eliminando il bug che leggeva alcune date future come date del secolo scorso.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il sistema `Scadenze` diventa madre-like nei passaggi utente, ma resta un solo modale globale;
+  - Lettura: sempre e solo `readNextCentroControlloSnapshot()` e i dati D10 gia previsti;
+  - Blocco scritture: nessuna riapertura di writer, `setItemSync` o update su `@mezzi_aziendali`.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/components/NextScadenzeModal.tsx src/next/domain/nextCentroControlloDomain.ts`
+  - `npm run build`
+  - aprire `/next?scadenze=tutte` e verificare che una revisione futura 2026 mostri delta futuro corretto;
+  - aprire i flussi `Prenota`, `Pre-collaudo`, `Segna revisione fatta` e verificare il blocco read-only solo al salvataggio finale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`; il clone resta esplicitamente read-only.
+- NOTE:
+  - build `OK`;
+  - nessun file fuori whitelist toccato.
+
+### Voce 2026-04-03 130
+- DATA: 2026-04-03
+- TITOLO MODIFICA: Fix sidebar NEXT per separare `Mezzi aziendali` da `Motrici e trattori`
+- OBIETTIVO: Ripristinare due collegamenti distinti e coerenti nel menu sinistro NEXT senza toccare pagine, domain o logiche dati.
+- FILE TOCCATI:
+  - `src/next/nextData.ts`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/2026-04-03_2229_next-sidebar-mezzi-route-fix.md`
+  - `docs/continuity-reports/2026-04-03_2229_continuity_next-sidebar-mezzi-route-fix.md`
+- COSA E STATO CAMBIATO:
+  - identificata la causa reale in un path duplicato nel catalogo nav della shell;
+  - mantenuto `Mezzi aziendali` su `/next/mezzi`;
+  - spostato `Motrici e trattori` su `/next/dossiermezzi`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: le due voci sidebar non convergono piu sulla stessa destinazione;
+  - Lettura: nessun impatto sui reader o sui domain;
+  - Blocco scritture: invariato, nessuna scrittura business coinvolta.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/nextData.ts src/next/NextShell.tsx`
+  - `npm run build`
+  - aprire la sidebar NEXT e verificare che `Mezzi aziendali` apra `/next/mezzi` e `Motrici e trattori` apra `/next/dossiermezzi`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `NO`; fix limitato al wiring della shell NEXT.
+- NOTE:
+  - build `OK`;
+  - nessun file fuori whitelist toccato.

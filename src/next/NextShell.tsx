@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import NextScadenzeModal from "./components/NextScadenzeModal";
 import { NEXT_SHELL_NAV_SECTIONS, type NextShellNavItem } from "./nextData";
 import { useNextCloneNavigation } from "./nextCloneNavigation";
 import "./next-shell.css";
@@ -11,7 +12,11 @@ function buildInitialSectionsState() {
   }, {});
 }
 
-function isShellNavItemActive(pathname: string, item: NextShellNavItem) {
+function isShellNavItemActive(pathname: string, search: string, item: NextShellNavItem) {
+  if (item.queryParamKey && item.queryParamValue) {
+    const params = new URLSearchParams(search);
+    return params.get(item.queryParamKey) === item.queryParamValue;
+  }
   if (!item.path) return false;
   if (item.exact) return pathname === item.path;
   return pathname === item.path || pathname.startsWith(`${item.path}/`);
@@ -19,6 +24,7 @@ function isShellNavItemActive(pathname: string, item: NextShellNavItem) {
 
 function NextShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   useNextCloneNavigation();
 
   const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>(
@@ -33,6 +39,32 @@ function NextShell() {
   ]
     .filter(Boolean)
     .join(" ");
+
+  const scadenzeMode = useMemo(() => {
+    const value = new URLSearchParams(location.search).get("scadenze");
+    return value === "tutte" || value === "urgenti" ? value : null;
+  }, [location.search]);
+
+  const openShellQueryModal = (key: string, value: string) => {
+    const params = new URLSearchParams(location.search);
+    params.set(key, value);
+    navigate({
+      pathname: location.pathname,
+      search: params.toString() ? `?${params.toString()}` : "",
+    });
+  };
+
+  const closeScadenzeModal = () => {
+    const params = new URLSearchParams(location.search);
+    params.delete("scadenze");
+    navigate(
+      {
+        pathname: location.pathname,
+        search: params.toString() ? `?${params.toString()}` : "",
+      },
+      { replace: true },
+    );
+  };
 
   return (
     <div className={shellClassName}>
@@ -93,7 +125,7 @@ function NextShell() {
                       {section.items.map((item) => {
                         const itemClassName = [
                           "next-shell__nav-item",
-                          isShellNavItemActive(location.pathname, item)
+                          isShellNavItemActive(location.pathname, location.search, item)
                             ? "next-shell__nav-item--active"
                             : "",
                           item.disabled ? "next-shell__nav-item--disabled" : "",
@@ -101,7 +133,7 @@ function NextShell() {
                           .filter(Boolean)
                           .join(" ");
 
-                        if (item.disabled || !item.path) {
+                        if (item.disabled || (!item.path && !item.queryParamKey)) {
                           return (
                             <span key={item.id} className={itemClassName} aria-disabled="true">
                               <span className="next-shell__nav-icon" aria-hidden="true" />
@@ -110,10 +142,26 @@ function NextShell() {
                           );
                         }
 
+                        if (item.queryParamKey && item.queryParamValue) {
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`${itemClassName} next-shell__nav-item--button`}
+                              onClick={() =>
+                                openShellQueryModal(item.queryParamKey as string, item.queryParamValue as string)
+                              }
+                            >
+                              <span className="next-shell__nav-icon" aria-hidden="true" />
+                              <span>{item.label}</span>
+                            </button>
+                          );
+                        }
+
                         return (
                           <NavLink
                             key={item.id}
-                            to={item.path}
+                            to={item.path as string}
                             end={item.exact}
                             className={itemClassName}
                           >
@@ -154,6 +202,10 @@ function NextShell() {
           <Outlet />
         </main>
       </div>
+
+      {scadenzeMode ? (
+        <NextScadenzeModal mode={scadenzeMode} onClose={closeScadenzeModal} />
+      ) : null}
     </div>
   );
 }

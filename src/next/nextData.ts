@@ -6,6 +6,7 @@ import {
   NEXT_CENTRO_CONTROLLO_PATH,
   NEXT_CISTERNA_PATH,
   NEXT_DOSSIER_LISTA_PATH,
+  NEXT_EUROMECC_PATH,
   NEXT_HOME_PATH,
   NEXT_INTERNAL_AI_PATH,
   NEXT_INVENTARIO_PATH,
@@ -35,6 +36,7 @@ export type NextAreaId =
 export type NextRouteModuleId =
   | "home"
   | NextAreaId
+  | "euromecc"
   | "autisti-inbox"
   | "autisti-admin"
   | "autista-separato"
@@ -117,6 +119,8 @@ export type NextShellNavItem = {
   path?: string;
   exact?: boolean;
   disabled?: boolean;
+  queryParamKey?: string;
+  queryParamValue?: string;
 };
 
 export type NextShellNavSection = {
@@ -143,9 +147,14 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "flotta",
     title: "FLOTTA",
     items: [
-      { id: "motrici", label: "Motrici e trattori", path: NEXT_MEZZI_PATH },
+      { id: "motrici", label: "Motrici e trattori", path: NEXT_DOSSIER_LISTA_PATH },
       { id: "rimorchi", label: "Rimorchi", disabled: true },
-      { id: "scadenze", label: "Scadenze", disabled: true },
+      {
+        id: "scadenze",
+        label: "Scadenze",
+        queryParamKey: "scadenze",
+        queryParamValue: "tutte",
+      },
       { id: "dossier", label: "Dossier mezzo", path: NEXT_DOSSIER_LISTA_PATH },
     ],
   },
@@ -176,6 +185,11 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
         id: "attrezzature",
         label: "Attrezzature cantieri",
         path: NEXT_ATTREZZATURE_CANTIERI_PATH,
+      },
+      {
+        id: "euromecc",
+        label: "Euromecc",
+        path: NEXT_EUROMECC_PATH,
       },
     ],
   },
@@ -336,6 +350,13 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     label: "Operativita Globale",
     status: "ACTIVE_PARTIAL",
     note: "Famiglia clone read-only riallineata a route autonome per `Gestione Operativa`, `Inventario`, `Materiali Consegnati`, `Attrezzature Cantieri`, `Manutenzioni`, `Acquisti`, `Materiali Da Ordinare`, `Ordini`, `Dettaglio Ordine`, liste lavori, `Autisti Inbox` e `Autisti Admin` reader-first.",
+  },
+  {
+    id: "euromecc",
+    path: NEXT_EUROMECC_PATH,
+    label: "Euromecc",
+    status: "ACTIVE_PARTIAL",
+    note: "Modulo nativo NEXT sotto `MAGAZZINO`, senza dipendenze dalla madre e con scrittura reale limitata alle collection Firestore dedicate `euromecc_pending`, `euromecc_done`, `euromecc_issues`.",
   },
   {
     id: "mezzi-dossier",

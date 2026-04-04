@@ -44,6 +44,7 @@
 | NEXT Mezzi + Dossier | Controparti clone di `Mezzi`, `DossierLista`, `DossierMezzo`, `DossierGomme`, `DossierRifornimenti`, `AnalisiEconomica`. | in sviluppo |
 | NEXT Operativita globale | Controparti clone di `Gestione Operativa`, `Inventario`, `MaterialiConsegnati`, `AttrezzatureCantieri`, `Manutenzioni`, `Lavori`. | in sviluppo |
 | NEXT Procurement | Modulo unico clone su `/next/materiali-da-ordinare` con tab ordini/arrivi/dettaglio/prezzi/listino. | in sviluppo |
+| NEXT Euromecc | Modulo nativo NEXT su `/next/euromecc` con mappa impianto, manutenzioni, problemi, riepilogo, fullscreen area e scrittura reale solo su collection dedicate. | in sviluppo |
 | NEXT Area Capo + Anagrafiche | Controparti clone di `Capo`, `Colleghi`, `Fornitori`. | in sviluppo |
 | NEXT IA hub | Controparti clone di `IA`, `apikey`, `libretto`, `documenti`, `copertura-libretti`, `libretti-export`. | in sviluppo |
 | NEXT IA interna universale | Chat controllata, richieste, sessioni, artifacts, audit, registry universale, handoff IA. | in sviluppo |
@@ -53,7 +54,7 @@
 | Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
 
 ## 3. STATO ATTUALE
-- Ultimo task completato: riallineamento runtime visivo della tab `Ordine materiali` tra madre `Acquisti` e `/next/materiali-da-ordinare`, verificato nel browser il 2026-04-03.
+- Ultimo task completato: riallineamento della `Mappa impianto` Home del modulo nativo NEXT `Euromecc` alla reference visiva, con gruppi doppi corretti per `Silo 2` e `Silo 6`, etichette strutturali e composizione SVG Home coerente, senza toccare dominio o architettura.
 - Stato app legacy: attiva e fonte di verita operativa.
 - Stato NEXT: clone read-only esistente ma non promosso a perimetro autonomo chiuso.
 - Stato build root: `npm run build` = OK.
@@ -87,6 +88,10 @@
 9. Il motore PDF condiviso resta `src/utils/pdfEngine.ts`; i moduli generano PDF sopra lo stesso asse comune.
 10. Il routing NEXT usa guard frontend (`NextRoleGuard`) e preset `admin/gestionale/autista`; non esiste ancora auth/ACL reale lato prodotto.
 11. La route `/next/materiali-da-ordinare` e il modulo procurement canonico del clone; ordini/arrivi/dettaglio/preventivi/listino passano da li.
+12. `Euromecc` e un modulo nativo NEXT, non clone della madre, e puo scrivere solo su collection Firestore dedicate.
+13. Le collection canoniche del modulo `Euromecc` sono `euromecc_pending`, `euromecc_done`, `euromecc_issues`; non usa `storage/@...`.
+14. In `Euromecc` i dati statici impianto stanno in `src/next/euromeccAreas.ts`; i dati dinamici stanno solo in Firestore.
+15. In `Euromecc` le date business usano ISO `yyyy-mm-dd`; `createdAt` / `updatedAt` restano `Timestamp` Firestore.
 
 ## 5. CONVENZIONI
 ### Dati e chiavi
@@ -94,6 +99,7 @@
 - Le chiavi business principali su `storage` usano prefisso `@`, per esempio `@mezzi_aziendali`, `@lavori`, `@manutenzioni`, `@rifornimenti`, `@inventario`, `@ordini`, `@preventivi`, `@listino_prezzi`, `@fornitori`, `@colleghi`.
 - `@mezzi_aziendali` ha merge speciale in `setItemSync()`; le altre key vengono sovrascritte in blocco.
 - Collection dedicate verificate: `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, `@impostazioni_app/gemini`, `@analisi_economica_mezzi`, `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili`.
+- Collection dedicate modulo nativo NEXT `Euromecc`: `euromecc_pending`, `euromecc_done`, `euromecc_issues`.
 - Local storage autisti verificato: `@autista_attivo_local`, `@mezzo_attivo_autista_local`.
 
 ### Date e formati
@@ -133,13 +139,15 @@
 1. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
 2. Versionare o rendere verificabili le policy Firestore effettive e riallinearle al codice.
 3. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
-4. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
-5. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.
-6. Continuare l'hardening del clone NEXT sui moduli ancora `ACTIVE_PARTIAL`, soprattutto procurement, area capo, cisterna, autisti admin e IA legacy clone.
-7. Chiudere la matrice ruoli/permessi reale oltre ai preset frontend `role`.
-8. Consolidare i canali server-side IA/PDF; oggi il repo ha backend multipli concorrenti.
-9. Aprire il live-read del backend IA separato solo dopo credenziali server-side dedicate e boundary whitelisted verificati.
-10. Ridurre il peso del bundle client e la duplicazione `jspdf` se si apre un task performance.
+4. Definire e verificare le regole Firestore dedicate per `euromecc_pending`, `euromecc_done`, `euromecc_issues`.
+5. Fare audit V1 del modulo `Euromecc` prima di promuoverlo oltre `PARZIALE`.
+6. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
+7. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.
+8. Continuare l'hardening del clone NEXT sui moduli ancora `ACTIVE_PARTIAL`, soprattutto procurement, area capo, cisterna, autisti admin e IA legacy clone.
+9. Chiudere la matrice ruoli/permessi reale oltre ai preset frontend `role`.
+10. Consolidare i canali server-side IA/PDF; oggi il repo ha backend multipli concorrenti.
+11. Aprire il live-read del backend IA separato solo dopo credenziali server-side dedicate e boundary whitelisted verificati.
+12. Ridurre il peso del bundle client e la duplicazione `jspdf` se si apre un task performance.
 
 ## 7. FILE CHIAVE
 ### Routing e bootstrap
@@ -183,6 +191,12 @@
 - `src/next/NextProcurementConvergedSection.tsx`
 - `src/next/domain/nextProcurementDomain.ts`
 - `src/next/domain/nextInventarioDomain.ts`
+
+### NEXT Euromecc
+- `src/next/NextEuromeccPage.tsx`
+- `src/next/domain/nextEuromeccDomain.ts`
+- `src/next/euromeccAreas.ts`
+- `src/next/next-euromecc.css`
 
 ### NEXT home e centro controllo
 - `src/next/NextHomePage.tsx`

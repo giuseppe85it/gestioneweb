@@ -361,7 +361,28 @@ function truncateText(value: string, maxLen: number): string {
   return `${value.slice(0, sliceLen).trimEnd()}...`;
 }
 
-function parseDateFlexible(value: unknown): Date | null {
+function buildDate(year: number, month: number, day: number, hour: number = 12, minute: number = 0): Date | null {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+export function parseNextCentroControlloDate(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value;
@@ -400,28 +421,41 @@ function parseDateFlexible(value: unknown): Date | null {
   const raw = value.trim();
   if (!raw) return null;
 
-  const isoLike = Date.parse(raw);
-  if (!Number.isNaN(isoLike)) return new Date(isoLike);
+  const isoMatch = raw.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T\s,]+(\d{1,2}):(\d{2}))?/
+  );
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    const hour = Number(isoMatch[4] ?? "12");
+    const minute = Number(isoMatch[5] ?? "00");
+    return buildDate(year, month, day, hour, minute);
+  }
 
   const dmyMatch = raw.match(
     /^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2}))?$/
   );
   if (dmyMatch) {
     const day = Number(dmyMatch[1]);
-    const month = Number(dmyMatch[2]) - 1;
+    const month = Number(dmyMatch[2]);
     const yearRaw = Number(dmyMatch[3]);
     const year = dmyMatch[3].length === 2 ? Number(`20${yearRaw}`) : yearRaw;
     const hh = Number(dmyMatch[4] ?? "12");
     const mm = Number(dmyMatch[5] ?? "00");
-    const date = new Date(year, month, day, hh, mm, 0, 0);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return buildDate(year, month, day, hh, mm);
+  }
+
+  const isoLike = Date.parse(raw);
+  if (!Number.isNaN(isoLike)) {
+    return new Date(isoLike);
   }
 
   return null;
 }
 
 function toTimestamp(value: unknown): number | null {
-  const parsed = parseDateFlexible(value);
+  const parsed = parseNextCentroControlloDate(value);
   return parsed ? parsed.getTime() : null;
 }
 

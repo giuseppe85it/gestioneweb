@@ -67,6 +67,7 @@ import NextCapoMezziPage from "./next/NextCapoMezziPage";
 import NextCapoCostiMezzoPage from "./next/NextCapoCostiMezzoPage";
 import NextColleghiPage from "./next/NextColleghiPage";
 import NextFornitoriPage from "./next/NextFornitoriPage";
+import NextEuromeccPage from "./next/NextEuromeccPage";
 
 /* ==================== APP PRINCIPALE ==================== */
 import Home from "./pages/Home";
@@ -271,6 +272,14 @@ function App() {
           element={
             <NextRoleGuard areaId="operativita-globale">
               <NextMaterialiDaOrdinarePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="euromecc"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextEuromeccPage />
             </NextRoleGuard>
           }
         />

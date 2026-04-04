@@ -9,6 +9,7 @@ export const NEXT_MANUTENZIONI_PATH = "/next/manutenzioni";
 export const NEXT_ACQUISTI_PATH = "/next/acquisti";
 export const NEXT_ACQUISTI_DETTAGLIO_PREFIX = "/next/acquisti/dettaglio";
 export const NEXT_MATERIALI_DA_ORDINARE_PATH = "/next/materiali-da-ordinare";
+export const NEXT_EUROMECC_PATH = "/next/euromecc";
 export const NEXT_ORDINI_IN_ATTESA_PATH = "/next/ordini-in-attesa";
 export const NEXT_ORDINI_ARRIVATI_PATH = "/next/ordini-arrivati";
 export const NEXT_DETTAGLIO_ORDINE_PREFIX = "/next/dettaglio-ordine";
