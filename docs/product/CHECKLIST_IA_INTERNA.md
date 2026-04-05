@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-03-26  
+Ultimo aggiornamento: 2026-04-04  
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -2172,3 +2172,31 @@ Stato macrofase: `NON FATTO`
 - Dipendenze o blocchi:
   - nessun gap aperto nel perimetro operativo attuale del clone/NEXT;
   - live-read business lato backend IA ancora correttamente fuori perimetro.
+
+### M.50 Integrazione Euromecc read-only nella chat libera `/next/ia/interna`
+- Stato: `FATTO`
+- Note: il `2026-04-04` la chat libera del sottosistema IA interno puo leggere davvero il modulo nativo NEXT `Euromecc` tramite un retriever read-only dedicato, senza aprire nessuna scrittura business nuova e senza riusare runtime IA legacy.
+- Cosa e stato chiuso:
+  - introdotto `src/next/internal-ai/internalAiEuromeccReadonly.ts` come retriever/read-model dedicato che legge solo `readEuromeccSnapshot()` e costruisce uno snapshot spiegabile con aree, sili, cemento, pending, issue, contatori e incroci critici;
+  - il bridge `runInternalAiChatTurnThroughBackend()` intercetta i prompt Euromecc e serve una risposta deterministica, prudente e read-only sopra lo snapshot del retriever;
+  - il planner universale ora censisce `Euromecc` come modulo/adapter/capability reali (`next.euromecc`, `adapter.euromecc`, `clone.euromecc-readonly`) con route target `/next/euromecc` e vincolo esplicito di sola lettura lato IA;
+  - intenti minimi chiusi davvero: stato generale impianto, problemi aperti, manutenzioni da fare, tipo cemento per silo, riepilogo per area, sili senza cemento, area piu critica per issue aperte + pending.
+- File/documenti collegati:
+  - `src/next/internal-ai/internalAiEuromeccReadonly.ts`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_2224_ia_interna_euromecc_readonly.md`
+  - `docs/continuity-reports/2026-04-04_2224_continuity_ia_interna_euromecc_readonly.md`
+- Verifiche eseguite:
+  - `node_modules\\.bin\\eslint.cmd src/next/internal-ai/internalAiEuromeccReadonly.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiUniversalContracts.ts src/next/internal-ai/internalAiUniversalRequestResolver.ts` -> OK
+  - `npm run build` -> OK
+  - runtime locale verificato su `/next/ia/interna` con prompt liberi reali su cemento silo, problemi aperti, manutenzioni da fare, sili senza cemento e riepilogo generale Euromecc -> OK
+- Dipendenze o blocchi:
+  - nessuna scrittura Euromecc viene aperta dalla IA;
+  - il backend IA separato non viene esteso a live-read business Euromecc in questo step.

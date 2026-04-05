@@ -1,5 +1,125 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-05 - pulizia dei base status statici della mappa `Euromecc`
+- Sul runtime ufficiale `/next/euromecc`, con collection `Euromecc` vuote, la mappa non mostra piu warning gialli ereditati dalla sola topologia statica.
+- Correzione applicata solo nel perimetro consentito:
+  - `src/next/euromeccAreas.ts` porta a `ok` tutti i `base` statici che prima partivano da `check`;
+  - nessuna modifica al domain runtime `nextEuromeccDomain.ts`, che continua a supportare `check` se in futuro verra introdotta una regola dati esplicita;
+  - nessuna modifica a Firestore, route, fullscreen o UI generale del modulo.
+- Boundary preservato:
+  - i colori restano guidati dai dati reali:
+    - pending reale -> `maint`
+    - issue reale non osservazione -> `issue`
+    - issue osservazione -> `obs`
+    - done recente -> `done`
+    - base/default neutro -> `ok`
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/euromeccAreas.ts` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/euromecc` con collection Euromecc vuote:
+    - assenza di pallini gialli di default nella Home map;
+    - fullscreen ancora funzionante.
+- Stato aggiornato del modulo:
+  - `Euromecc` -> `PARZIALE`
+- Limite esplicito:
+  - il change pulisce solo il default statico iniziale della topologia e non introduce nuove regole stato o nuove sorgenti dati.
+
+## 0. Aggiornamento operativo 2026-04-04 - hardening Firestore del modulo `Euromecc`
+- Il repository versiona ora anche il perimetro sicurezza Firestore del modulo nativo NEXT `Euromecc`.
+- Correzione applicata solo nel perimetro consentito:
+  - creato `firestore.rules`;
+  - aggiornato `firebase.json` per puntare esplicitamente a `firestore.rules`;
+  - introdotte regole esplicite per:
+    - `euromecc_pending`
+    - `euromecc_done`
+    - `euromecc_issues`
+    - `euromecc_area_meta`
+- Modello auth reale verificato nel repo:
+  - bootstrap globale con `signInAnonymously()` in `src/App.tsx`;
+  - nessun login admin dedicato o claims per-ruolo dimostrati nel runtime corrente.
+- Protezione chiusa davvero nel repo per il modello attuale:
+  - nessuna regola `allow ... if true`;
+  - accesso consentito solo se `request.auth != null`;
+  - validazione strutturale esplicita dei documenti Euromecc in scrittura;
+  - chiusura issue limitata all'update coerente `aperta -> chiusa`;
+  - le 4 collection Euromecc hanno `match` dedicati e piu stretti del fallback generale.
+- Limite residuo dichiarato apertamente:
+  - la sicurezza per-ruolo non e chiusa nel repo, perche il codice reale non dimostra ancora ruoli/claims server-side verificabili;
+  - il modulo `Euromecc` resta quindi `PARZIALE`, ma il suo boundary Firestore e ora esplicitato e versionato secondo il modello auth oggi realmente usato dall'app.
+- Verifica finale eseguita:
+  - `firestore.rules` presente nel repo;
+  - `firebase.json` collegato al file corretto;
+  - `npm run build` -> `OK`;
+  - validazione Firebase locale senza deploy `DA VERIFICARE`, perche il repo non espone un comando/tooling dedicato gia governato per compilare le rules in locale.
+
+## 0. Aggiornamento operativo 2026-04-04 - Euromecc integrato nella chat libera della IA interna in sola lettura
+- La chat libera `/next/ia/interna` puo ora leggere e intrecciare i dati veri del modulo nativo NEXT `Euromecc`, senza aprire nessuna scrittura business nuova.
+- Integrazione applicata solo nel perimetro consentito:
+  - `src/next/internal-ai/internalAiEuromeccReadonly.ts` introduce il retriever/read-model dedicato Euromecc in sola lettura, costruito sopra `readEuromeccSnapshot()` e `euromeccAreas.ts`;
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts` intercetta i prompt Euromecc e risponde tramite snapshot aggregato spiegabile;
+  - `src/next/internal-ai/internalAiUniversalContracts.ts` e `src/next/internal-ai/internalAiUniversalRequestResolver.ts` censiscono `Euromecc` come modulo/adapter/capability reale del planner universale IA.
+- Boundary preservato:
+  - nessuna modifica a `src/App.tsx`, route, sidebar, shell o UI Euromecc;
+  - nessuna modifica a `firestore.rules`, `firebase.json`, writer legacy o runtime IA legacy;
+  - nessun writer Euromecc viene chiamato dalla chat.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/internal-ai/internalAiEuromeccReadonly.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiUniversalContracts.ts src/next/internal-ai/internalAiUniversalRequestResolver.ts` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/ia/interna` con richieste reali su cemento silo, problemi aperti, manutenzioni da fare, sili senza cemento e riepilogo generale Euromecc.
+- Stato aggiornato dei moduli:
+  - `Euromecc` -> `PARZIALE`
+  - `IA interna universale` -> `PARZIALE`
+- Limite esplicito:
+  - l'integrazione Euromecc lato IA resta strettamente read-only e non apre live-read backend business o azioni operative sul modulo.
+
+## 0. Aggiornamento operativo 2026-04-04 - `Tipo cemento` Euromecc con short label, preset rapidi e compatibilita retroattiva
+- Sul runtime ufficiale `/next/euromecc` la gestione del `tipo cemento` dei sili e stata evoluta senza rompere i dati gia salvati.
+- Correzione applicata solo nel perimetro consentito:
+  - `src/next/domain/nextEuromeccDomain.ts` estende `euromecc_area_meta` con `cementTypeShort?`, mantiene compatibilita con i vecchi record che contengono solo `cementType` e introduce il fallback puro `deriveEuromeccCementTypeShortLabel()`;
+  - `src/next/NextEuromeccPage.tsx` mostra nella Home map solo la sigla breve, mentre `Focus area` e fullscreen mostrano il nome completo con sigla secondaria;
+  - `src/next/NextEuromeccPage.tsx` aggiorna il modale con preset rapidi, input libero per nome completo e campo opzionale per sigla breve;
+  - `src/next/next-euromecc.css` aggiunge solo lo stretto necessario per short label, preset e leggibilita del modale.
+- Boundary preservato:
+  - nessuna modifica a route, sidebar, fullscreen operativo, `euromeccAreas.ts`, file madre, writer legacy, rules o collection diverse da `euromecc_area_meta`;
+  - nessuna modifica a `src/App.tsx`, `src/next/nextData.ts`, `src/firebase.ts`, `firestore.rules`.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx src/next/domain/nextEuromeccDomain.ts` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/euromecc`:
+    - il modale preset/custom si apre da un silo;
+    - il salvataggio reale aggiorna `euromecc_area_meta`;
+    - la Home map mostra la short label;
+    - `Focus area` e fullscreen mostrano il nome completo;
+    - dopo refresh il valore resta persistente;
+    - i record vecchi senza `cementTypeShort` continuano a funzionare via fallback;
+    - i non-silo non espongono il controllo.
+- Stato aggiornato del modulo:
+  - `Euromecc` -> `PARZIALE`
+- Limite esplicito:
+  - il flusso resta limitato ai soli sili e non apre altri metadati area oltre al `tipo cemento`.
+
+## 0. Aggiornamento operativo 2026-04-04 - `Tipo cemento` persistente per i sili del modulo `Euromecc`
+- Sul runtime ufficiale `/next/euromecc` i soli sili possono ora leggere e salvare un `tipo cemento` persistente, senza sporcare `euromeccAreas.ts`.
+- Correzione applicata solo nel perimetro consentito:
+  - `src/next/domain/nextEuromeccDomain.ts` introduce la collection dedicata `euromecc_area_meta`, il meta-doc `areaKey/cementType/updatedAt/updatedBy?`, il merge nel reader `readEuromeccSnapshot()` e il writer `saveEuromeccAreaCementType()`;
+  - `src/next/NextEuromeccPage.tsx` mostra il valore nella Home map dentro ogni silo, in grassetto e leggibile, e apre un modale di modifica dal pannello `Focus area` solo se l'area corrente e un silo;
+  - `src/next/next-euromecc.css` aggiunge solo lo stile minimo per testo cemento, card `Focus area` e modale piccolo.
+- Boundary preservato:
+  - nessuna modifica a route, sidebar, fullscreen principale, `euromeccAreas.ts`, file madre, writer legacy o `storage/@...`;
+  - nessuna modifica a `src/App.tsx`, `src/next/nextData.ts`, `src/firebase.ts`, `firestore.rules`.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx src/next/domain/nextEuromeccDomain.ts` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/euromecc`:
+    - il tipo cemento e visibile dentro un silo nella Home;
+    - il modale si apre dal `Focus area` solo sui sili;
+    - il salvataggio aggiorna Firestore su `euromecc_area_meta`;
+    - dopo refresh il valore resta persistente.
+- Stato aggiornato del modulo:
+  - `Euromecc` -> `PARZIALE`
+- Limite esplicito:
+  - il flusso e disponibile solo per i sili e non viene esposto ai nodi non-silo.
+
 ## 0. Aggiornamento operativo 2026-04-04 - Riallineamento della `Mappa impianto` Home `Euromecc` alla reference
 - Sul runtime ufficiale `/next/euromecc` la `Mappa impianto` della tab `Home` non usa piu una composizione semplificata e diversa dalla reference utente.
 - Correzione applicata solo nel perimetro consentito:
@@ -98,6 +218,34 @@
 - Limite esplicito:
   - la V1 e funzionante ma non e dichiarabile `CHIUSO`;
   - le policy Firestore effettive non sono versionate nel repo, quindi la messa in sicurezza definitiva del modulo resta `DA VERIFICARE`.
+
+## 0. Aggiornamento operativo 2026-04-05 - `Euromecc` aggiunge un pannello nascosto di gestione dati
+- Nel modulo nativo NEXT `Euromecc` esiste ora un accesso discreto `Impostazioni` nell'header, senza nuova tab pubblica e senza nuova voce sidebar.
+- Il pulsante apre un solo pannello/modale `Gestione dati Euromecc` interno al modulo con tre sezioni:
+  - `Segnalazioni`
+  - `Da fare`
+  - `Fatte`
+- Il pannello legge e scrive sui dati reali delle collection dedicate gia esistenti:
+  - `euromecc_issues`
+  - `euromecc_pending`
+  - `euromecc_done`
+- Per ogni record il pannello consente:
+  - visualizzazione sintetica;
+  - modifica reale del documento esistente;
+  - eliminazione reale con conferma esplicita.
+- Boundary preservato:
+  - nessuna nuova route;
+  - nessuna nuova voce sidebar;
+  - nessuna modifica a Firebase config o rules;
+  - nessuna promessa falsa di sicurezza per ruolo: il pannello e solo discreto/nascosto a livello UI.
+- Verifiche eseguite:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx src/next/domain/nextEuromeccDomain.ts` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime locale su `/next/euromecc` con creazione temporanea record, modifica ed eliminazione reale in tutte e tre le sezioni del manager, poi cleanup finale dei dati di prova.
+- Stato aggiornato del modulo:
+  - `Euromecc` -> `PARZIALE`
+- Limite esplicito:
+  - il pannello resta un accesso UI discreto e non sostituisce un modello ACL per-ruolo verificato nel repo.
 
 ## 0. Aggiornamento operativo 2026-04-03 - Widget `Magazzino` Home NEXT riallineato a `Inventario`
 - Sulla route ufficiale `/next` il widget `Magazzino` non usa piu placeholder misti con semantica procurement.

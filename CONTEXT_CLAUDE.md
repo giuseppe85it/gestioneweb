@@ -44,17 +44,17 @@
 | NEXT Mezzi + Dossier | Controparti clone di `Mezzi`, `DossierLista`, `DossierMezzo`, `DossierGomme`, `DossierRifornimenti`, `AnalisiEconomica`. | in sviluppo |
 | NEXT Operativita globale | Controparti clone di `Gestione Operativa`, `Inventario`, `MaterialiConsegnati`, `AttrezzatureCantieri`, `Manutenzioni`, `Lavori`. | in sviluppo |
 | NEXT Procurement | Modulo unico clone su `/next/materiali-da-ordinare` con tab ordini/arrivi/dettaglio/prezzi/listino. | in sviluppo |
-| NEXT Euromecc | Modulo nativo NEXT su `/next/euromecc` con mappa impianto, manutenzioni, problemi, riepilogo, fullscreen area e scrittura reale solo su collection dedicate. | in sviluppo |
+| NEXT Euromecc | Modulo nativo NEXT su `/next/euromecc` con mappa impianto, manutenzioni, problemi, riepilogo, fullscreen area e scrittura reale solo su collection dedicate, inclusa meta area per `tipo cemento` dei sili con nome completo e short label. | in sviluppo |
 | NEXT Area Capo + Anagrafiche | Controparti clone di `Capo`, `Colleghi`, `Fornitori`. | in sviluppo |
 | NEXT IA hub | Controparti clone di `IA`, `apikey`, `libretto`, `documenti`, `copertura-libretti`, `libretti-export`. | in sviluppo |
-| NEXT IA interna universale | Chat controllata, richieste, sessioni, artifacts, audit, registry universale, handoff IA. | in sviluppo |
+| NEXT IA interna universale | Chat controllata, richieste, sessioni, artifacts, audit, registry universale, handoff IA e retriever Euromecc read-only. | in sviluppo |
 | NEXT Cisterna | Controparti clone di archivio cisterna, IA cisterna e schede test. | in sviluppo |
 | NEXT Autisti + Inbox/Admin | Esperienza autista separata sotto `/next/autisti` e controparti clone di inbox/admin. | in sviluppo |
 | Functions/API legacy | Endpoint Firebase/Node/Vercel per IA documentale, PDF e verticale cisterna. | in sviluppo |
 | Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
 
 ## 3. STATO ATTUALE
-- Ultimo task completato: riallineamento della `Mappa impianto` Home del modulo nativo NEXT `Euromecc` alla reference visiva, con gruppi doppi corretti per `Silo 2` e `Silo 6`, etichette strutturali e composizione SVG Home coerente, senza toccare dominio o architettura.
+- Ultimo task completato: pannello nascosto `Gestione dati Euromecc` con edit/delete reale di segnalazioni, manutenzioni da fare e manutenzioni fatte.
 - Stato app legacy: attiva e fonte di verita operativa.
 - Stato NEXT: clone read-only esistente ma non promosso a perimetro autonomo chiuso.
 - Stato build root: `npm run build` = OK.
@@ -70,7 +70,7 @@
 
 ### Cosa e rotto o critico
 - `npm run lint` globale fallisce.
-- `firestore.rules` non e presente nel repo; le policy Firestore effettive non sono verificabili da file versionati.
+- `firestore.rules` e ora presente nel repo e copre esplicitamente il perimetro `Euromecc`, ma la matrice sicurezza per-ruolo dell'app non e ancora dimostrata da claims o login admin dedicati.
 - `storage.rules` nel repo e deny-all, ma il codice usa upload/download/listing su molti path Storage reali.
 - Esistono piu canali backend per IA/PDF: `functions/*`, `functions-schede/*`, `api/pdf-ai-enhance.ts`, `server.js`, `backend/internal-ai/*`.
 - Stream eventi autisti doppio: `@storico_eventi_operativi` e `autisti_eventi`.
@@ -89,9 +89,14 @@
 10. Il routing NEXT usa guard frontend (`NextRoleGuard`) e preset `admin/gestionale/autista`; non esiste ancora auth/ACL reale lato prodotto.
 11. La route `/next/materiali-da-ordinare` e il modulo procurement canonico del clone; ordini/arrivi/dettaglio/preventivi/listino passano da li.
 12. `Euromecc` e un modulo nativo NEXT, non clone della madre, e puo scrivere solo su collection Firestore dedicate.
-13. Le collection canoniche del modulo `Euromecc` sono `euromecc_pending`, `euromecc_done`, `euromecc_issues`; non usa `storage/@...`.
-14. In `Euromecc` i dati statici impianto stanno in `src/next/euromeccAreas.ts`; i dati dinamici stanno solo in Firestore.
-15. In `Euromecc` le date business usano ISO `yyyy-mm-dd`; `createdAt` / `updatedAt` restano `Timestamp` Firestore.
+13. Le collection canoniche del modulo `Euromecc` sono `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta`; non usa `storage/@...`.
+14. In `euromecc_area_meta` il contratto corrente per i sili supporta `cementType` e `cementTypeShort?`; se la short label manca, il reader NEXT la deriva in fallback senza migrazione distruttiva.
+15. In `Euromecc` i dati statici impianto stanno in `src/next/euromeccAreas.ts`; i dati dinamici stanno solo in Firestore.
+16. In `Euromecc` le date business usano ISO `yyyy-mm-dd`; `createdAt` / `updatedAt` restano `Timestamp` Firestore.
+17. La chat libera `/next/ia/interna` puo leggere `Euromecc` solo tramite il retriever `src/next/internal-ai/internalAiEuromeccReadonly.ts`; nessun writer Euromecc e esposto alla IA.
+18. Il boundary Firestore del modulo `Euromecc` e versionato in `firestore.rules`: le collection `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta` hanno `match` espliciti con `request.auth != null` e validazione shape; il fallback del resto Firestore resta sul modello auth attuale e non esiste ancora una chiusura per-ruolo verificabile nel repo.
+19. La topologia statica di `Euromecc` in `src/next/euromeccAreas.ts` parte ora neutra (`base: ok`); i warning gialli non devono comparire senza dati reali.
+20. `Euromecc` include un pannello discreto `Gestione dati Euromecc` aperto da `Impostazioni` nell'header del modulo; il pannello permette edit/delete reale su `euromecc_issues`, `euromecc_pending`, `euromecc_done`, ma non equivale a sicurezza per-ruolo.
 
 ## 5. CONVENZIONI
 ### Dati e chiavi
@@ -99,7 +104,7 @@
 - Le chiavi business principali su `storage` usano prefisso `@`, per esempio `@mezzi_aziendali`, `@lavori`, `@manutenzioni`, `@rifornimenti`, `@inventario`, `@ordini`, `@preventivi`, `@listino_prezzi`, `@fornitori`, `@colleghi`.
 - `@mezzi_aziendali` ha merge speciale in `setItemSync()`; le altre key vengono sovrascritte in blocco.
 - Collection dedicate verificate: `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, `@impostazioni_app/gemini`, `@analisi_economica_mezzi`, `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili`.
-- Collection dedicate modulo nativo NEXT `Euromecc`: `euromecc_pending`, `euromecc_done`, `euromecc_issues`.
+- Collection dedicate modulo nativo NEXT `Euromecc`: `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta`.
 - Local storage autisti verificato: `@autista_attivo_local`, `@mezzo_attivo_autista_local`.
 
 ### Date e formati
@@ -137,9 +142,9 @@
 
 ## 6. PROSSIMI TASK
 1. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
-2. Versionare o rendere verificabili le policy Firestore effettive e riallinearle al codice.
+2. Estendere oltre `Euromecc` la versione verificabile delle policy Firestore effettive e riallinearle al codice.
 3. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
-4. Definire e verificare le regole Firestore dedicate per `euromecc_pending`, `euromecc_done`, `euromecc_issues`.
+4. Chiudere il modello sicurezza per-ruolo reale oltre l'attuale bootstrap con auth anonima globale.
 5. Fare audit V1 del modulo `Euromecc` prima di promuoverlo oltre `PARZIALE`.
 6. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
 7. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.

@@ -71,13 +71,13 @@ function makeGenericArea(
 }
 
 const SILO_01 = makeSilo("01", "ok");
-const SILO_02A = makeSilo("02A", "check");
+const SILO_02A = makeSilo("02A", "ok");
 const SILO_02B = makeSilo("02B", "ok");
 const SILO_03 = makeSilo("03", "ok");
-const SILO_04 = makeSilo("04", "check");
+const SILO_04 = makeSilo("04", "ok");
 const SILO_05 = makeSilo("05", "ok");
-const SILO_06A = makeSilo("06A", "check");
-const SILO_06B = makeSilo("06B", "check");
+const SILO_06A = makeSilo("06A", "ok");
+const SILO_06B = makeSilo("06B", "ok");
 const SILO_07 = makeSilo("07", "ok");
 
 export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
@@ -95,8 +95,8 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "Filtri silo",
     "FIL-SIL",
     "Copertura sili",
-    "check",
-    [{ key: "set", name: "Set filtri silo", code: "FIL-SIL-SET", base: "check", family: "filtri" }],
+    "ok",
+    [{ key: "set", name: "Set filtri silo", code: "FIL-SIL-SET", base: "ok", family: "filtri" }],
   ),
   lineeSilo: makeGenericArea(
     "lineeSilo",
@@ -107,7 +107,7 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     [
       { key: "coclee", name: "Coclee", code: "LIN-SIL-COC", base: "ok", family: "trasporto" },
       { key: "motori", name: "Motori", code: "LIN-SIL-MOT", base: "ok", family: "trasporto" },
-      { key: "ingrassi", name: "Ingrassi", code: "LIN-SIL-ING", base: "check", family: "trasporto" },
+      { key: "ingrassi", name: "Ingrassi", code: "LIN-SIL-ING", base: "ok", family: "trasporto" },
     ] as const,
   ),
   carico1: makeGenericArea(
@@ -118,7 +118,7 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "ok",
     [
       { key: "proboscide", name: "Proboscide", code: "CAR-CAM-01-PRO", base: "ok", family: "carico" },
-      { key: "filtro", name: "Filtro", code: "CAR-CAM-01-FIL", base: "check", family: "carico" },
+      { key: "filtro", name: "Filtro", code: "CAR-CAM-01-FIL", base: "ok", family: "carico" },
       { key: "sensori", name: "Sensori", code: "CAR-CAM-01-SEN", base: "ok", family: "carico" },
     ] as const,
   ),
@@ -131,7 +131,7 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     [
       { key: "proboscide", name: "Proboscide", code: "CAR-CAM-02-PRO", base: "ok", family: "carico" },
       { key: "filtro", name: "Filtro", code: "CAR-CAM-02-FIL", base: "ok", family: "carico" },
-      { key: "sensori", name: "Sensori", code: "CAR-CAM-02-SEN", base: "check", family: "carico" },
+      { key: "sensori", name: "Sensori", code: "CAR-CAM-02-SEN", base: "ok", family: "carico" },
     ] as const,
   ),
   caricoRail: makeGenericArea(
@@ -139,11 +139,11 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "Carico ferrovia",
     "CAR-RAIL-01",
     "Area ferrovia",
-    "check",
+    "ok",
     [
       { key: "proboscide", name: "Proboscide", code: "CAR-RAIL-01-PRO", base: "ok", family: "carico" },
-      { key: "filtro", name: "Filtro", code: "CAR-RAIL-01-FIL", base: "check", family: "carico" },
-      { key: "pesatura", name: "Pesatura", code: "CAR-RAIL-01-PES", base: "check", family: "carico" },
+      { key: "filtro", name: "Filtro", code: "CAR-RAIL-01-FIL", base: "ok", family: "carico" },
+      { key: "pesatura", name: "Pesatura", code: "CAR-RAIL-01-PES", base: "ok", family: "carico" },
     ] as const,
   ),
   filtriCarico: makeGenericArea(
@@ -151,8 +151,8 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "Filtri punti di carico",
     "FIL-CAR",
     "Aree carico",
-    "check",
-    [{ key: "set", name: "Set filtri carico", code: "FIL-CAR-SET", base: "check", family: "filtri" }],
+    "ok",
+    [{ key: "set", name: "Set filtri carico", code: "FIL-CAR-SET", base: "ok", family: "filtri" }],
   ),
   compressore: makeGenericArea(
     "compressore",
@@ -162,8 +162,8 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "ok",
     [
       { key: "blower", name: "Blower", code: "CMP-01-BLO", base: "ok", family: "servizi" },
-      { key: "filtroAria", name: "Filtro aria", code: "CMP-01-FIL", base: "check", family: "servizi" },
-      { key: "lubrificazione", name: "Lubrificazione", code: "CMP-01-LUB", base: "check", family: "servizi" },
+      { key: "filtroAria", name: "Filtro aria", code: "CMP-01-FIL", base: "ok", family: "servizi" },
+      { key: "lubrificazione", name: "Lubrificazione", code: "CMP-01-LUB", base: "ok", family: "servizi" },
     ] as const,
   ),
   fluidificanti: makeGenericArea(
@@ -171,8 +171,8 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "Fluidificanti",
     "FLU-SIL",
     "Sili / linea aria",
-    "check",
-    [{ key: "set", name: "Set fluidificanti", code: "FLU-SIL-SET", base: "check", family: "aria" }],
+    "ok",
+    [{ key: "set", name: "Set fluidificanti", code: "FLU-SIL-SET", base: "ok", family: "aria" }],
   ),
   plc: makeGenericArea(
     "plc",
@@ -182,7 +182,7 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "ok",
     [
       { key: "plc", name: "Quadro / PLC", code: "PLC-01-PLC", base: "ok", family: "automazione" },
-      { key: "hmi", name: "Touchscreen / HMI", code: "PLC-01-HMI", base: "check", family: "automazione" },
+      { key: "hmi", name: "Touchscreen / HMI", code: "PLC-01-HMI", base: "ok", family: "automazione" },
     ] as const,
   ),
   buffer: makeGenericArea(
@@ -193,7 +193,7 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     "ok",
     [
       { key: "buffer", name: "Buffer silo", code: "BUF-RAIL-01-BUF", base: "ok", family: "buffer" },
-      { key: "celle", name: "Celle di carico", code: "BUF-RAIL-01-CEL", base: "check", family: "buffer" },
+      { key: "celle", name: "Celle di carico", code: "BUF-RAIL-01-CEL", base: "ok", family: "buffer" },
     ] as const,
   ),
 };
@@ -207,4 +207,3 @@ export function getEuromeccArea(areaKey: string): EuromeccAreaStatic | null {
 export function getEuromeccAreaLabel(areaKey: string): string {
   return EUROMECC_AREAS[areaKey]?.title ?? areaKey;
 }
-

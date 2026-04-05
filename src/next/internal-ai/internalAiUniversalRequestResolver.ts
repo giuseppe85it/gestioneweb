@@ -418,6 +418,32 @@ export function resolveInternalAiUniversalRequest(args: {
       );
   }
 
+  if (
+    /\b(euromecc|cemento|silo|fluidificant|blower|plc|hmi|carico ferrovia|carico camion)\b/.test(
+      prompt,
+    )
+  ) {
+    pushUnique(selectedAdapterIds, ["adapter.euromecc"]);
+    pushUnique(selectedModuleIds, ["next.euromecc"]);
+    pushUnique(reusableCapabilityIds, ["clone.euromecc-readonly"]);
+    pushReason(
+      reasoning,
+      "Il prompt entra nel perimetro Euromecc e va letto tramite snapshot read-only dedicato del modulo nativo NEXT.",
+    );
+    pushConstraint(
+      explicitConstraints,
+      "Euromecc in IA interna resta strettamente read-only: nessuna scrittura o modifica alle collection dedicate del modulo.",
+    );
+    primaryActionIntent =
+      primaryActionIntent ??
+      buildActionIntentByHookId(
+        "euromecc.main",
+        "Il modulo target corretto per richieste sull'impianto Euromecc e la pagina nativa NEXT dedicata.",
+        args.entityResolution,
+        "clone.euromecc-readonly",
+      );
+  }
+
   if (/\b(cisterna|scheda test|impianto)\b/.test(prompt) || entityKinds.includes("cisterna")) {
     pushUnique(selectedAdapterIds, ["adapter.d09"]);
     pushUnique(selectedModuleIds, ["next.cisterna"]);

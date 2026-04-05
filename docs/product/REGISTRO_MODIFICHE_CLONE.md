@@ -31,6 +31,171 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-05 187
+- DATA: 2026-04-05
+- TITOLO MODIFICA: Pulizia dei base status statici della mappa `Euromecc`
+- OBIETTIVO: Eliminare i pallini gialli di default dalla Home map `Euromecc` quando le collection del modulo sono vuote, lasciando gli stati colorati solo ai dati reali.
+- FILE TOCCATI:
+  - `src/next/euromeccAreas.ts`
+  - `docs/product/SPEC_MODULO_EUROMECC_NEXT.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-05_0807_euromecc_default_status_cleanup.md`
+  - `docs/continuity-reports/2026-04-05_0807_continuity_euromecc_default_status_cleanup.md`
+- COSA E STATO CAMBIATO:
+  - portati a `ok` tutti i `base` statici topologici che prima partivano da `check`;
+  - mantenuto invariato il dominio, che continua a supportare `check` come stato derivato o futuro ma non piu come default statico della mappa;
+  - aggiornata la spec tecnica del modulo per chiarire che la topologia iniziale deve partire neutra.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la Home map `Euromecc` parte pulita quando non esistono dati reali;
+  - Lettura: nessuna modifica a reader Firestore o merge snapshot;
+  - Scritture: nessuna modifica a collection, writer o rules.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/euromeccAreas.ts`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4173`
+  - aprire `/next/euromecc` con collection Euromecc vuote e verificare assenza di pallini gialli di default e fullscreen ancora funzionante
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - fix limitato al default statico della topologia del modulo nativo NEXT `Euromecc`;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-04 186
+- DATA: 2026-04-04
+- TITOLO MODIFICA: Hardening Firestore del modulo nativo NEXT `Euromecc`
+- OBIETTIVO: Versionare nel repo regole Firestore esplicite per le collection dedicate del modulo `Euromecc`, coerenti con il modello auth reale oggi dimostrato dall'app.
+- FILE TOCCATI:
+  - `firestore.rules`
+  - `firebase.json`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_2310_euromecc_firestore_rules_hardening.md`
+  - `docs/continuity-reports/2026-04-04_2310_continuity_euromecc_firestore_rules_hardening.md`
+- COSA E STATO CAMBIATO:
+  - creato `firestore.rules` con regole esplicite per `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta`;
+  - ogni collection Euromecc richiede `request.auth != null`;
+  - le scritture sono validate anche per shape/tipi campi attesi dal domain;
+  - `firebase.json` punta ora esplicitamente al file `firestore.rules`;
+  - il fallback resto-app resta coerente con il modello auth oggi dimostrato (`request.auth != null`), senza fingere una matrice per-ruolo non presente nel repo.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun cambiamento;
+  - Lettura: il boundary Euromecc e ora documentato e protetto nel repo per il modello auth corrente;
+  - Scritture: restano possibili solo per utenti autenticati e solo con documenti coerenti al contratto Euromecc versionato nelle rules.
+- COME VERIFICARE:
+  - controllare che `firestore.rules` esista nel repo;
+  - controllare che `firebase.json` contenga `\"firestore\": { \"rules\": \"firestore.rules\" }`;
+  - verificare che le 4 collection Euromecc abbiano `match` dedicati e che il fallback generale non sia pubblico;
+  - eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il modello auth reale verificato oggi resta `signInAnonymously()` globale;
+  - la sicurezza per-ruolo resta aperta e non viene fingibilmente dichiarata chiusa.
+
+### Voce 2026-04-04 185
+- DATA: 2026-04-04
+- TITOLO MODIFICA: Integrazione read-only di `Euromecc` nella chat libera della IA interna
+- OBIETTIVO: Permettere alla chat `/next/ia/interna` di leggere davvero i dati Euromecc in sola lettura e rispondere a prompt su cemento silo, problemi, pending e stato impianto.
+- FILE TOCCATI:
+  - `src/next/internal-ai/internalAiEuromeccReadonly.ts`
+  - `src/next/internal-ai/internalAiChatOrchestratorBridge.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_2224_ia_interna_euromecc_readonly.md`
+  - `docs/continuity-reports/2026-04-04_2224_continuity_ia_interna_euromecc_readonly.md`
+- COSA E STATO CAMBIATO:
+  - aggiunto un retriever/read-model Euromecc nel sottosistema IA interno;
+  - il bridge della chat usa quello snapshot read-only per servire le richieste Euromecc in modo spiegabile;
+  - il planner universale IA censisce ora `Euromecc` come modulo, adapter e capability reale del clone/NEXT.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la chat libera risponde davvero su Euromecc senza cambiare layout o route;
+  - Lettura: usa dati veri di `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta` tramite `readEuromeccSnapshot()`;
+  - Scritture: nessun writer Euromecc viene esposto o chiamato dalla IA.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/internal-ai/internalAiEuromeccReadonly.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiUniversalContracts.ts src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `npm run build`
+  - aprire `/next/ia/interna` e inviare richieste su problemi Euromecc, tipo cemento di un silo, manutenzioni da fare, sili senza cemento e riepilogo stato Euromecc
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - integrazione strettamente clone/NEXT e read-only;
+  - nessuna scrittura business nuova autorizzata.
+
+### Voce 2026-04-04 184
+- DATA: 2026-04-04
+- TITOLO MODIFICA: Evoluzione `tipo cemento` Euromecc con short label, preset rapidi e compatibilita record vecchi
+- OBIETTIVO: Rendere piu leggibile il `tipo cemento` dei sili del modulo `Euromecc`, mostrando una sigla breve nella Home map, il nome completo nel dettaglio e un modale piu robusto con preset rapidi e input custom.
+- FILE TOCCATI:
+  - `src/next/domain/nextEuromeccDomain.ts`
+  - `src/next/NextEuromeccPage.tsx`
+  - `src/next/next-euromecc.css`
+  - `docs/product/SPEC_MODULO_EUROMECC_NEXT.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_1348_euromecc_cement_type_shortlabel_presets.md`
+  - `docs/continuity-reports/2026-04-04_1348_continuity_euromecc_cement_type_shortlabel_presets.md`
+- COSA E STATO CAMBIATO:
+  - esteso il meta silo con `cementTypeShort?`;
+  - aggiunto nel domain il fallback puro per derivare la short label quando manca nei record vecchi;
+  - la Home map mostra ora solo la sigla breve dentro il silo;
+  - `Focus area` e fullscreen mostrano il nome completo con sigla secondaria;
+  - il modale usa preset rapidi, nome completo libero e sigla breve opzionale.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: mappa Home piu pulita e modale piu guidato;
+  - Lettura: compatibile con i record vecchi che hanno solo `cementType`;
+  - Scritture: restano limitate a `euromecc_area_meta`, senza toccare writer legacy.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx src/next/domain/nextEuromeccDomain.ts`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4183`
+  - aprire `/next/euromecc`, selezionare un silo, usare un preset dal modale, salvare, verificare short label nella Home e nome completo in `Focus area`/fullscreen, poi ricaricare la pagina
+  - verificare che i record vecchi senza `cementTypeShort` mostrino comunque una short label derivata
+  - verificare che i non-silo non espongano il controllo
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - `euromeccAreas.ts` resta statico e invariato;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-04 183
+- DATA: 2026-04-04
+- TITOLO MODIFICA: Tipo cemento persistente per i sili nel modulo `Euromecc`
+- OBIETTIVO: Aggiungere la gestione reale del `tipo cemento` per i soli sili, con persistenza Firestore dedicata, visualizzazione nella Home map e modifica via modale.
+- FILE TOCCATI:
+  - `src/next/domain/nextEuromeccDomain.ts`
+  - `src/next/NextEuromeccPage.tsx`
+  - `src/next/next-euromecc.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-04_1222_euromecc_cement_type_per_silo.md`
+  - `docs/continuity-reports/2026-04-04_1222_continuity_euromecc_cement_type_per_silo.md`
+- COSA E STATO CAMBIATO:
+  - introdotta la collection Firestore dedicata `euromecc_area_meta` con meta-doc per area/silo;
+  - esteso il reader Euromecc con `areaMeta` e `cementTypesByArea`;
+  - aggiunto il writer `saveEuromeccAreaCementType()` nel domain;
+  - mostrato il `tipo cemento` dentro i sili nella Home map;
+  - aggiunto un modale di `IMPOSTA/MODIFICA CEMENTO` dal pannello `Focus area`, disponibile solo per i sili.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il tipo cemento e visibile nella mappa Home e modificabile via modale piccolo;
+  - Lettura: il modulo legge anche `euromecc_area_meta` e fonde il dato nel snapshot UI;
+  - Scritture: abilitate solo sulla nuova collection dedicata `euromecc_area_meta`, senza writer legacy.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx src/next/domain/nextEuromeccDomain.ts`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4182`
+  - aprire `/next/euromecc`, selezionare un silo, aprire `IMPOSTA CEMENTO` dal `Focus area`, salvare un valore, aggiornare la pagina e verificare la persistenza
+  - verificare che i non-silo non espongano il controllo
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il file statico `euromeccAreas.ts` resta invariato;
+  - stato modulo invariato: `PARZIALE`.
+
 ### Voce 2026-04-04 182
 - DATA: 2026-04-04
 - TITOLO MODIFICA: Riallineamento visivo della `Mappa impianto` Home `Euromecc` alla reference
@@ -8215,6 +8380,38 @@ Serve a:
 - NOTE:
   - build `OK`;
   - nessun file fuori whitelist toccato.
+
+### Voce 2026-04-05 131
+- DATA: 2026-04-05
+- TITOLO MODIFICA: Pannello nascosto `Gestione dati Euromecc` con edit/delete reale dei record
+- OBIETTIVO: Tenere la UI principale del modulo Euromecc pulita e aggiungere un backoffice discreto interno per visualizzare, modificare ed eliminare segnalazioni, manutenzioni da fare e manutenzioni fatte.
+- FILE TOCCATI:
+  - `src/next/domain/nextEuromeccDomain.ts`
+  - `src/next/NextEuromeccPage.tsx`
+  - `src/next/next-euromecc.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-05_0835_euromecc_hidden_data_manager.md`
+  - `docs/continuity-reports/2026-04-05_0835_continuity_euromecc_hidden_data_manager.md`
+- COSA E STATO CAMBIATO:
+  - aggiunto un accesso discreto `Impostazioni` nell'header Euromecc;
+  - introdotto un solo modale `Gestione dati Euromecc` con tre sezioni: `Segnalazioni`, `Da fare`, `Fatte`;
+  - aggiunti nel domain i writer mancanti per aggiornare ed eliminare documenti su `euromecc_issues`, `euromecc_pending`, `euromecc_done`;
+  - aggiunti ricerca testuale semplice e filtro area nel pannello;
+  - aggiunte conferme esplicite prima della delete e refresh snapshot dopo ogni operazione.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna nuova tab pubblica o voce sidebar; il manager resta discreto e interno al modulo;
+  - Lettura: il pannello usa solo il dominio Euromecc gia esistente e i dati reali del modulo;
+  - Scritture: update/delete reali limitati alle collection Euromecc gia autorizzate; nessun writer legacy e nessun nuovo dataset.
+- COME VERIFICARE:
+  - `node_modules\\.bin\\eslint.cmd src/next/NextEuromeccPage.tsx src/next/domain/nextEuromeccDomain.ts`
+  - `npm run build`
+  - aprire `/next/euromecc`, creare un record di test per `Segnalazioni`, `Da fare`, `Fatte`, aprire `Impostazioni`, verificare visibilita delle tre sezioni, poi modificare ed eliminare i record dal manager con aggiornamento UI.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `NO`; il pannello e pensato per il modulo nativo NEXT e non sostituisce un modello ACL per-ruolo.
+- NOTE:
+  - runtime locale verificato con record temporanei e cleanup finale dei dati di prova;
+  - build `OK`.
 
 ### Voce 2026-04-03 130
 - DATA: 2026-04-03

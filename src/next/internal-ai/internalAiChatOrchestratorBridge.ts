@@ -6,6 +6,11 @@ import {
   hasInternalAiServerChatAdapterCandidate,
   runInternalAiServerControlledChat,
 } from "./internalAiServerChatClient";
+import {
+  buildInternalAiEuromeccChatResult,
+  isInternalAiEuromeccPromptCandidate,
+  readInternalAiEuromeccReadonlySnapshot,
+} from "./internalAiEuromeccReadonly";
 import { buildInternalAiUniversalChatAugmentation } from "./internalAiUniversalComposer";
 import { orchestrateInternalAiUniversalRequest } from "./internalAiUniversalOrchestrator";
 import { syncInternalAiUniversalRequestsRepository } from "./internalAiUniversalRequestsRepository";
@@ -149,7 +154,10 @@ export async function runInternalAiChatTurnThroughBackend(
     memoryHints?: InternalAiChatMemoryHints;
   },
 ): Promise<InternalAiChatOrchestratorBridgeResult> {
-  const localResult = await runInternalAiChatTurn(prompt, fallbackPeriodInput);
+  const euromeccResult = isInternalAiEuromeccPromptCandidate(prompt)
+    ? buildInternalAiEuromeccChatResult(prompt, await readInternalAiEuromeccReadonlySnapshot())
+    : null;
+  const localResult = euromeccResult ?? (await runInternalAiChatTurn(prompt, fallbackPeriodInput));
   const universalOrchestration = await orchestrateInternalAiUniversalRequest({
     prompt,
     attachments: options?.attachments ?? [],
@@ -159,6 +167,16 @@ export async function runInternalAiChatTurnThroughBackend(
     inboxItems: universalOrchestration.documentInboxItems,
   });
   const universalAugmentation = buildInternalAiUniversalChatAugmentation(universalOrchestration);
+
+  if (euromeccResult) {
+    return {
+      transport: "frontend_fallback",
+      transportMessage:
+        "Richiesta Euromecc servita dal retriever read-only dell'IA interna sopra snapshot aggregato e spiegabile del modulo nativo NEXT.",
+      backendStatus: "not_enabled",
+      result: applyUniversalAugmentation(localResult, universalAugmentation),
+    };
+  }
 
   if (!hasInternalAiServerChatAdapterCandidate()) {
     return {

@@ -5,6 +5,7 @@ import {
   doc,
   getDocs,
   serverTimestamp,
+  setDoc,
   Timestamp,
   updateDoc,
 } from "firebase/firestore";
@@ -19,6 +20,7 @@ import { formatDateInput, formatDateUI, toNextDateValue } from "../nextDateForma
 export const EUROMECC_PENDING_COLLECTION = "euromecc_pending";
 export const EUROMECC_DONE_COLLECTION = "euromecc_done";
 export const EUROMECC_ISSUES_COLLECTION = "euromecc_issues";
+export const EUROMECC_AREA_META_COLLECTION = "euromecc_area_meta";
 
 export type EuromeccStatus = EuromeccBaseStatus | "maint" | "issue" | "done" | "obs";
 export type EuromeccPriority = "alta" | "media" | "bassa";
@@ -62,6 +64,13 @@ export type EuromeccIssueDoc = EuromeccFirestoreMeta & {
   reportedBy: string;
   note: string;
   closedDate?: string | null;
+};
+
+export type EuromeccAreaMetaDoc = EuromeccFirestoreMeta & {
+  areaKey: string;
+  cementType: string;
+  cementTypeShort?: string | null;
+  updatedBy?: string | null;
 };
 
 export type EuromeccPendingTask = {
@@ -112,16 +121,37 @@ export type EuromeccIssue = {
   updatedAt: string | null;
 };
 
+export type EuromeccAreaMeta = {
+  id: string;
+  areaKey: string;
+  cementType: string;
+  cementTypeShort: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
 export type EuromeccSnapshot = {
   pending: EuromeccPendingTask[];
   done: EuromeccDoneTask[];
   issues: EuromeccIssue[];
+  areaMeta: EuromeccAreaMeta[];
+  cementTypesByArea: Record<string, string>;
+  cementTypeShortByArea: Record<string, string>;
   loadedAt: string;
 };
 
 export type AddEuromeccPendingTaskInput = Omit<EuromeccPendingDoc, "createdAt" | "updatedAt">;
 export type AddEuromeccDoneTaskInput = Omit<EuromeccDoneDoc, "createdAt" | "updatedAt">;
 export type AddEuromeccIssueInput = Omit<EuromeccIssueDoc, "createdAt" | "updatedAt" | "state" | "closedDate">;
+export type UpdateEuromeccPendingTaskInput = AddEuromeccPendingTaskInput & { id: string };
+export type UpdateEuromeccDoneTaskInput = AddEuromeccDoneTaskInput & { id: string };
+export type UpdateEuromeccIssueInput = Omit<EuromeccIssueDoc, "createdAt" | "updatedAt"> & { id: string };
+export type SaveEuromeccAreaMetaInput = {
+  areaKey: string;
+  cementType: string;
+  cementTypeShort?: string | null;
+  updatedBy?: string | null;
+};
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -186,6 +216,20 @@ function normalizeIssueType(value: unknown): EuromeccIssueType {
 
 function normalizeIssueState(value: unknown): EuromeccIssueState {
   return normalizeText(value).toLowerCase() === "chiusa" ? "chiusa" : "aperta";
+}
+
+export function deriveEuromeccCementTypeShortLabel(value: string): string {
+  const normalized = normalizeText(value);
+  if (!normalized) return "";
+
+  const withoutPrefix = normalized.replace(/^CEM\s+/i, "").replace(/\s+/g, " ").trim();
+  const collapsedSuffix = withoutPrefix.replace(/(\d+(?:\.\d+)?)\s+([A-Z])$/i, "$1$2");
+
+  if (collapsedSuffix.length <= 18) {
+    return collapsedSuffix;
+  }
+
+  return `${collapsedSuffix.slice(0, 15).trimEnd()}...`;
 }
 
 function todayIso(): string {
@@ -266,6 +310,20 @@ function mapIssueDoc(id: string, raw: Partial<EuromeccIssueDoc>): EuromeccIssue 
   };
 }
 
+function mapAreaMetaDoc(id: string, raw: Partial<EuromeccAreaMetaDoc>): EuromeccAreaMeta {
+  const cementType = normalizeText(raw.cementType);
+  const cementTypeShort =
+    normalizeText(raw.cementTypeShort) || deriveEuromeccCementTypeShortLabel(cementType);
+  return {
+    id,
+    areaKey: normalizeRequiredText(raw.areaKey, "areaKey"),
+    cementType,
+    cementTypeShort,
+    updatedAt: formatDateInput(raw.updatedAt ?? null) || null,
+    updatedBy: normalizeText(raw.updatedBy),
+  };
+}
+
 export function daysAgo(dateStr: string): number {
   const parsed = toNextDateValue(dateStr);
   if (!parsed) return Number.POSITIVE_INFINITY;
@@ -334,10 +392,11 @@ export function getAreaStatus(
 }
 
 export async function readEuromeccSnapshot(): Promise<EuromeccSnapshot> {
-  const [pendingSnapshot, doneSnapshot, issuesSnapshot] = await Promise.all([
+  const [pendingSnapshot, doneSnapshot, issuesSnapshot, areaMetaSnapshot] = await Promise.all([
     getDocs(collection(db, EUROMECC_PENDING_COLLECTION)),
     getDocs(collection(db, EUROMECC_DONE_COLLECTION)),
     getDocs(collection(db, EUROMECC_ISSUES_COLLECTION)),
+    getDocs(collection(db, EUROMECC_AREA_META_COLLECTION)),
   ]);
 
   const pending = pendingSnapshot.docs
@@ -366,10 +425,31 @@ export async function readEuromeccSnapshot(): Promise<EuromeccSnapshot> {
       return right.id.localeCompare(left.id, "it");
     });
 
+  const areaMeta = areaMetaSnapshot.docs
+    .map((entry) => mapAreaMetaDoc(entry.id, entry.data() as Partial<EuromeccAreaMetaDoc>))
+    .sort((left, right) => left.areaKey.localeCompare(right.areaKey, "it"));
+
+  const cementTypesByArea = areaMeta.reduce<Record<string, string>>((accumulator, item) => {
+    if (item.cementType) {
+      accumulator[item.areaKey] = item.cementType;
+    }
+    return accumulator;
+  }, {});
+
+  const cementTypeShortByArea = areaMeta.reduce<Record<string, string>>((accumulator, item) => {
+    if (item.cementTypeShort) {
+      accumulator[item.areaKey] = item.cementTypeShort;
+    }
+    return accumulator;
+  }, {});
+
   return {
     pending,
     done,
     issues,
+    areaMeta,
+    cementTypesByArea,
+    cementTypeShortByArea,
     loadedAt: new Date().toISOString(),
   };
 }
@@ -394,6 +474,21 @@ export async function addEuromeccPendingTask(
 export async function deleteEuromeccPendingTask(id: string): Promise<void> {
   const taskId = normalizeRequiredText(id, "id");
   await deleteDoc(doc(db, EUROMECC_PENDING_COLLECTION, taskId));
+}
+
+export async function updateEuromeccPendingTask(
+  payload: UpdateEuromeccPendingTaskInput,
+): Promise<void> {
+  const taskId = normalizeRequiredText(payload.id, "id");
+  await updateDoc(doc(db, EUROMECC_PENDING_COLLECTION, taskId), {
+    areaKey: normalizeRequiredText(payload.areaKey, "areaKey"),
+    subKey: normalizeRequiredText(payload.subKey, "subKey"),
+    title: normalizeRequiredText(payload.title, "title"),
+    priority: normalizePriority(payload.priority),
+    dueDate: normalizeIsoDate(payload.dueDate, "dueDate"),
+    note: normalizeText(payload.note),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function closeEuromeccPendingByAreaSub(
@@ -436,6 +531,28 @@ export async function addEuromeccDoneTask(
   return ref.id;
 }
 
+export async function updateEuromeccDoneTask(
+  payload: UpdateEuromeccDoneTaskInput,
+): Promise<void> {
+  const taskId = normalizeRequiredText(payload.id, "id");
+  await updateDoc(doc(db, EUROMECC_DONE_COLLECTION, taskId), {
+    areaKey: normalizeRequiredText(payload.areaKey, "areaKey"),
+    subKey: normalizeRequiredText(payload.subKey, "subKey"),
+    title: normalizeRequiredText(payload.title, "title"),
+    doneDate: normalizeIsoDate(payload.doneDate, "doneDate"),
+    by: normalizeRequiredText(payload.by, "by"),
+    note: normalizeText(payload.note),
+    nextDate: normalizeIsoDate(payload.nextDate, "nextDate", false),
+    closedPending: Boolean(payload.closedPending),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteEuromeccDoneTask(id: string): Promise<void> {
+  const taskId = normalizeRequiredText(id, "id");
+  await deleteDoc(doc(db, EUROMECC_DONE_COLLECTION, taskId));
+}
+
 export async function addEuromeccIssue(
   payload: AddEuromeccIssueInput,
 ): Promise<string> {
@@ -457,6 +574,31 @@ export async function addEuromeccIssue(
   return ref.id;
 }
 
+export async function updateEuromeccIssue(
+  payload: UpdateEuromeccIssueInput,
+): Promise<void> {
+  const issueId = normalizeRequiredText(payload.id, "id");
+  const state = normalizeIssueState(payload.state);
+  const closedDate =
+    state === "chiusa"
+      ? normalizeIsoDate(payload.closedDate, "closedDate", false) ?? todayIso()
+      : null;
+
+  await updateDoc(doc(db, EUROMECC_ISSUES_COLLECTION, issueId), {
+    areaKey: normalizeRequiredText(payload.areaKey, "areaKey"),
+    subKey: normalizeRequiredText(payload.subKey, "subKey"),
+    title: normalizeRequiredText(payload.title, "title"),
+    check: normalizeRequiredText(payload.check, "check"),
+    type: normalizeIssueType(payload.type),
+    state,
+    reportedAt: normalizeIsoDate(payload.reportedAt, "reportedAt"),
+    reportedBy: normalizeRequiredText(payload.reportedBy, "reportedBy"),
+    note: normalizeText(payload.note),
+    closedDate,
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function closeEuromeccIssue(id: string): Promise<void> {
   const issueId = normalizeRequiredText(id, "id");
   await updateDoc(doc(db, EUROMECC_ISSUES_COLLECTION, issueId), {
@@ -466,9 +608,38 @@ export async function closeEuromeccIssue(id: string): Promise<void> {
   });
 }
 
+export async function deleteEuromeccIssue(id: string): Promise<void> {
+  const issueId = normalizeRequiredText(id, "id");
+  await deleteDoc(doc(db, EUROMECC_ISSUES_COLLECTION, issueId));
+}
+
+export async function saveEuromeccAreaCementType(
+  payload: SaveEuromeccAreaMetaInput,
+): Promise<void> {
+  const areaKey = normalizeRequiredText(payload.areaKey, "areaKey");
+  const area = EUROMECC_AREAS[areaKey];
+  if (!area || area.type !== "silo") {
+    throw new Error("Il tipo cemento e disponibile solo per i sili.");
+  }
+
+  const cementType = normalizeText(payload.cementType);
+  const cementTypeShort = normalizeText(payload.cementTypeShort);
+  const metaRef = doc(db, EUROMECC_AREA_META_COLLECTION, areaKey);
+  await setDoc(
+    metaRef,
+    {
+      areaKey,
+      cementType,
+      cementTypeShort,
+      updatedBy: normalizeText(payload.updatedBy),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
 export function getEuromeccTimestampAgeLabel(value: Timestamp | null | undefined): string {
   const millis = timestampToMillis(value);
   if (!millis) return "-";
   return formatDateUI(millis);
 }
-

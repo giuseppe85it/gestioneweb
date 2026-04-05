@@ -1,0 +1,223 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isNonEmptyString(value) {
+      return value is string && value.size() > 0;
+    }
+
+    function isPlainString(value) {
+      return value is string;
+    }
+
+    function isNullableString(value) {
+      return value == null || value is string;
+    }
+
+    function isIsoDate(value) {
+      return value is string && value.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function isNullableIsoDate(value) {
+      return value == null || isIsoDate(value);
+    }
+
+    function isTimestampField(value) {
+      return value is timestamp;
+    }
+
+    function isPriority(value) {
+      return value == 'alta' || value == 'media' || value == 'bassa';
+    }
+
+    function isIssueType(value) {
+      return value == 'criticita' || value == 'anomalia' || value == 'osservazione';
+    }
+
+    function isIssueState(value) {
+      return value == 'aperta' || value == 'chiusa';
+    }
+
+    function isValidPendingData(data) {
+      return data.keys().hasOnly([
+          'areaKey',
+          'subKey',
+          'title',
+          'priority',
+          'dueDate',
+          'note',
+          'createdAt',
+          'updatedAt',
+        ]) &&
+        data.keys().hasAll([
+          'areaKey',
+          'subKey',
+          'title',
+          'priority',
+          'dueDate',
+          'note',
+          'createdAt',
+          'updatedAt',
+        ]) &&
+        isNonEmptyString(data.areaKey) &&
+        isNonEmptyString(data.subKey) &&
+        isNonEmptyString(data.title) &&
+        isPriority(data.priority) &&
+        isIsoDate(data.dueDate) &&
+        isPlainString(data.note) &&
+        isTimestampField(data.createdAt) &&
+        isTimestampField(data.updatedAt);
+    }
+
+    function isValidDoneData(data) {
+      return data.keys().hasOnly([
+          'areaKey',
+          'subKey',
+          'title',
+          'doneDate',
+          'by',
+          'note',
+          'nextDate',
+          'closedPending',
+          'createdAt',
+          'updatedAt',
+        ]) &&
+        data.keys().hasAll([
+          'areaKey',
+          'subKey',
+          'title',
+          'doneDate',
+          'by',
+          'note',
+          'nextDate',
+          'closedPending',
+          'createdAt',
+          'updatedAt',
+        ]) &&
+        isNonEmptyString(data.areaKey) &&
+        isNonEmptyString(data.subKey) &&
+        isNonEmptyString(data.title) &&
+        isIsoDate(data.doneDate) &&
+        isNonEmptyString(data.by) &&
+        isPlainString(data.note) &&
+        isNullableIsoDate(data.nextDate) &&
+        data.closedPending is bool &&
+        isTimestampField(data.createdAt) &&
+        isTimestampField(data.updatedAt);
+    }
+
+    function isValidIssueData(data) {
+      return data.keys().hasOnly([
+          'areaKey',
+          'subKey',
+          'title',
+          'check',
+          'type',
+          'state',
+          'reportedAt',
+          'reportedBy',
+          'note',
+          'closedDate',
+          'createdAt',
+          'updatedAt',
+        ]) &&
+        data.keys().hasAll([
+          'areaKey',
+          'subKey',
+          'title',
+          'check',
+          'type',
+          'state',
+          'reportedAt',
+          'reportedBy',
+          'note',
+          'closedDate',
+          'createdAt',
+          'updatedAt',
+        ]) &&
+        isNonEmptyString(data.areaKey) &&
+        isNonEmptyString(data.subKey) &&
+        isNonEmptyString(data.title) &&
+        isNonEmptyString(data.check) &&
+        isIssueType(data.type) &&
+        isIssueState(data.state) &&
+        isIsoDate(data.reportedAt) &&
+        isNonEmptyString(data.reportedBy) &&
+        isPlainString(data.note) &&
+        isNullableIsoDate(data.closedDate) &&
+        isTimestampField(data.createdAt) &&
+        isTimestampField(data.updatedAt);
+    }
+
+    function isValidAreaMetaData(areaKey, data) {
+      return data.keys().hasOnly([
+          'areaKey',
+          'cementType',
+          'cementTypeShort',
+          'updatedAt',
+          'updatedBy',
+        ]) &&
+        data.keys().hasAll([
+          'areaKey',
+          'cementType',
+          'cementTypeShort',
+          'updatedAt',
+          'updatedBy',
+        ]) &&
+        areaKey == data.areaKey &&
+        isNonEmptyString(data.areaKey) &&
+        isPlainString(data.cementType) &&
+        isNullableString(data.cementTypeShort) &&
+        isTimestampField(data.updatedAt) &&
+        isNullableString(data.updatedBy);
+    }
+
+    function isValidIssueClose() {
+      return isValidIssueData(request.resource.data) &&
+        resource.data.state == 'aperta' &&
+        request.resource.data.state == 'chiusa' &&
+        isIsoDate(request.resource.data.closedDate) &&
+        request.resource.data.areaKey == resource.data.areaKey &&
+        request.resource.data.subKey == resource.data.subKey &&
+        request.resource.data.title == resource.data.title &&
+        request.resource.data.check == resource.data.check &&
+        request.resource.data.type == resource.data.type &&
+        request.resource.data.reportedAt == resource.data.reportedAt &&
+        request.resource.data.reportedBy == resource.data.reportedBy &&
+        request.resource.data.note == resource.data.note &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    match /euromecc_pending/{taskId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidPendingData(request.resource.data);
+      allow delete: if isSignedIn();
+    }
+
+    match /euromecc_done/{taskId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidDoneData(request.resource.data);
+    }
+
+    match /euromecc_issues/{issueId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidIssueData(request.resource.data) &&
+        request.resource.data.state == 'aperta' &&
+        request.resource.data.closedDate == null;
+      allow update: if isSignedIn() && isValidIssueClose();
+    }
+
+    match /euromecc_area_meta/{areaKey} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidAreaMetaData(areaKey, request.resource.data);
+    }
+
+    match /{document=**} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

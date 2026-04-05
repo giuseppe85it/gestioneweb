@@ -1,7 +1,7 @@
 # STATO AVANZAMENTO IA INTERNA GESTIONALE
 
 Data audit: 2026-03-11  
-Ultimo aggiornamento scaffolding: 2026-03-23  
+Ultimo aggiornamento scaffolding: 2026-04-04  
 Stato generale: SCAFFOLDING V1 ISOLATO AVVIATO  
 Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del sottosistema IA interno in forma non operativa, sicura e reversibile.
 
@@ -1462,6 +1462,38 @@ Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del s
 - Verifiche eseguite:
   - `npx eslint src/next/NextAcquistiPage.tsx src/next/NextOrdiniInAttesaPage.tsx src/next/NextOrdiniArrivatiPage.tsx src/next/NextDettaglioOrdinePage.tsx src/next/NextProcurementReadOnlyPanel.tsx src/next/NextProcurementStandalonePage.tsx src/next/NextInventarioReadOnlyPanel.tsx src/next/NextInventarioPage.tsx src/next/NextMaterialiConsegnatiReadOnlyPanel.tsx src/next/NextMaterialiConsegnatiPage.tsx src/next/NextMezziPage.tsx src/next/NextIALibrettoPage.tsx src/next/NextIADocumentiPage.tsx src/next/NextLibrettiExportPage.tsx src/next/NextCisternaIAPage.tsx src/next/NextAutistiAdminPage.tsx src/next/NextAutistiInboxHomePage.tsx src/next/internal-ai/*.ts src/next/internal-ai/*.tsx` -> OK
   - `npm run build` -> OK, warning Vite invariati su chunk grandi e doppio import `jspdf`
+
+## 12.47 Aggiornamento 2026-04-04 - Euromecc read-only dentro la chat libera IA
+- La chat `/next/ia/interna` puo ora rispondere davvero su `Euromecc` senza interrogazioni sparse nella pagina e senza riaprire alcuna scrittura business.
+- Architettura applicata:
+  - retriever/read-model dedicato `src/next/internal-ai/internalAiEuromeccReadonly.ts`;
+  - sorgenti lette davvero: topologia statica `euromeccAreas.ts` + snapshot dominio `readEuromeccSnapshot()` che aggrega `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta`;
+  - bridge chat `internalAiChatOrchestratorBridge.ts` che intercetta i prompt Euromecc e serve una risposta read-only spiegabile dallo snapshot aggregato;
+  - planner universale aggiornato con `next.euromecc`, `adapter.euromecc`, `clone.euromecc-readonly`, route target `/next/euromecc` e vincolo esplicito di sola lettura.
+- Copertura reale verificata:
+  - stato generale impianto;
+  - problemi aperti;
+  - manutenzioni da fare;
+  - tipo cemento per silo;
+  - riepilogo per area;
+  - sili senza cemento impostato;
+  - area piu critica in base a issue aperte + pending.
+- Boundary preservato:
+  - nessun writer Euromecc chiamato dalla IA;
+  - nessuna modifica a route, shell, sicurezza o moduli legacy IA;
+  - nessun backend live-read business aggiuntivo.
+- Verifiche eseguite:
+  - `node_modules\\.bin\\eslint.cmd src/next/internal-ai/internalAiEuromeccReadonly.ts src/next/internal-ai/internalAiChatOrchestratorBridge.ts src/next/internal-ai/internalAiUniversalContracts.ts src/next/internal-ai/internalAiUniversalRequestResolver.ts` -> OK
+  - `npm run build` -> OK
+  - runtime locale su `/next/ia/interna`:
+    - `che cemento c'e nel silo 1?` -> risposta con `CEM III/A 42.5 N`
+    - `quali problemi aperti ci sono nell'impianto euromecc?` -> nessun problema aperto
+    - `quali manutenzioni risultano da fare in euromecc?` -> nessuna manutenzione aperta
+    - `quali sili sono senza cemento impostato in euromecc?` -> elenco sili senza cemento
+    - `fammi un riepilogo stato euromecc` -> contatori e stato generale
+- Limiti residui dichiarati:
+  - la risposta Euromecc e oggi deterministica e read-only nel bridge chat, non un live-read business lato backend IA separato;
+  - nessun writer, update o chiusura problemi viene esposto alla chat IA.
 
 ## 12. Cosa non va ancora fatto
 - Non implementare chat IA runtime collegata ai backend legacy.

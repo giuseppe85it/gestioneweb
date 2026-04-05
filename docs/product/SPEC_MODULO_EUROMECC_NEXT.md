@@ -4,6 +4,27 @@
 
 **Rischio**: ELEVATO (nuovo modulo con scritture Firestore, nuove collection, nuova route)
 
+## Normalizzazione runtime attiva
+
+Lo stato reale del modulo nel repo ha gia superato questa prima bozza spec in alcuni punti chiave:
+- il modulo usa collection Firestore dedicate vere e non `storage/@...`;
+- i metadati area/silo usano anche `euromecc_area_meta`;
+- la topologia statica corrente parte neutra: i `base` iniziali delle aree/componenti sono `ok`, quindi i warning gialli non devono comparire senza dati reali;
+- per i soli sili il meta supporta:
+  - `areaKey`
+  - `cementType` (nome completo)
+  - `cementTypeShort?` (sigla breve per la Home map)
+  - `updatedAt`
+  - `updatedBy?`
+- se `cementTypeShort` manca nei record vecchi, il reader NEXT deve derivare una short label fallback senza migrazione distruttiva;
+- Home map: mostrare la short label;
+- Focus area / fullscreen: mostrare il nome completo e, se presente, anche la short label come informazione secondaria.
+- il modale di modifica cemento deve supportare:
+  - preset rapidi;
+  - nome completo libero;
+  - sigla breve opzionale e modificabile.
+- lo stato `check` resta supportato dal dominio, ma non deve essere usato come default statico della mappa finche non esiste una regola dati reale che lo giustifichi.
+
 **Letture obbligatorie prima di agire** (come da AGENTS.md):
 - `docs/STATO_ATTUALE_PROGETTO.md`
 - `docs/product/STATO_MIGRAZIONE_NEXT.md`
@@ -35,12 +56,23 @@ docs/product/REGISTRO_MODIFICHE_CLONE.md     ← voce obbligatoria
 ## 2. COLLECTIONS FIRESTORE (nuove, non toccano la madre)
 
 ```
-storage/@euromecc_manutenzioni_pending   ← attività di manutenzione da fare
-storage/@euromecc_manutenzioni_done      ← manutenzioni eseguite
-storage/@euromecc_problemi               ← segnalazioni / anomalie
+euromecc_pending         ← attività di manutenzione da fare
+euromecc_done            ← manutenzioni eseguite
+euromecc_issues          ← segnalazioni / anomalie
+euromecc_area_meta       ← metadati area/silo, incluso tipo cemento
 ```
 
-Seguono il pattern `storage/<key>` già usato nel progetto.
+Per `euromecc_area_meta` il contratto minimo da mantenere è:
+
+```typescript
+{
+  areaKey: string;
+  cementType: string;
+  cementTypeShort?: string;
+  updatedAt?: Timestamp;
+  updatedBy?: string | null;
+}
+```
 
 ---
 

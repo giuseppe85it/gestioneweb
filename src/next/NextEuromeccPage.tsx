@@ -10,10 +10,17 @@ import {
   addEuromeccPendingTask,
   closeEuromeccIssue,
   daysAgo,
+  deriveEuromeccCementTypeShortLabel,
+  deleteEuromeccDoneTask,
+  deleteEuromeccIssue,
   deleteEuromeccPendingTask,
   getAreaStatus,
   getSubStatus,
   readEuromeccSnapshot,
+  saveEuromeccAreaCementType,
+  updateEuromeccDoneTask,
+  updateEuromeccIssue,
+  updateEuromeccPendingTask,
   withinRange,
   type EuromeccDoneTask,
   type EuromeccIssue,
@@ -23,11 +30,15 @@ import {
   type EuromeccRange,
   type EuromeccSnapshot,
   type EuromeccStatus,
+  type UpdateEuromeccDoneTaskInput,
+  type UpdateEuromeccIssueInput,
+  type UpdateEuromeccPendingTaskInput,
 } from "./domain/nextEuromeccDomain";
 import { formatDateInput, formatDateUI } from "./nextDateFormat";
 import "./next-euromecc.css";
 
 type TabKey = "home" | "maintenance" | "issues" | "report";
+type DataManagerTabKey = "issues" | "pending" | "done";
 
 type MapNodeLayout = {
   key: string;
@@ -60,6 +71,19 @@ type KpiItem = {
   label: string;
   value: string;
   meta: string;
+};
+
+type CementPreset = {
+  full: string;
+  short: string;
+};
+
+type DoneEditState = Omit<UpdateEuromeccDoneTaskInput, "nextDate"> & {
+  nextDate: string;
+};
+
+type IssueEditState = Omit<UpdateEuromeccIssueInput, "closedDate"> & {
+  closedDate: string;
 };
 
 const STATUS_COLORS: Record<EuromeccStatus, string> = {
@@ -104,6 +128,12 @@ const TAB_ITEMS: Array<{ key: TabKey; label: string }> = [
   { key: "maintenance", label: "Manutenzione" },
   { key: "issues", label: "Problemi" },
   { key: "report", label: "Riepilogo" },
+];
+
+const DATA_MANAGER_TABS: Array<{ key: DataManagerTabKey; label: string }> = [
+  { key: "issues", label: "Segnalazioni" },
+  { key: "pending", label: "Da fare" },
+  { key: "done", label: "Fatte" },
 ];
 
 const MAP_SILOS: readonly MapNodeLayout[] = [
@@ -187,6 +217,17 @@ const EMPTY_ISSUE_FORM = {
   note: "",
 };
 
+const EMPTY_CEMENT_TYPE = "";
+const EMPTY_CEMENT_TYPE_SHORT = "";
+
+const CEMENT_TYPE_PRESETS: readonly CementPreset[] = [
+  { full: "CEM I 42.5 R", short: "I 42.5R" },
+  { full: "CEM II/A-L 42.5 R", short: "II/A-L 42.5R" },
+  { full: "CEM II/B-L 32.5 R", short: "II/B-L 32.5R" },
+  { full: "CEM III/A 42.5 N", short: "III/A 42.5N" },
+  { full: "CEM IV/A 32.5 R", short: "IV/A 32.5R" },
+] as const;
+
 function badgeClass(status: EuromeccStatus) {
   return `eur-badge eur-badge-${status}`;
 }
@@ -256,6 +297,10 @@ function formatDue(dateStr: string | null) {
   return `scaduta da ${delta} giorni`;
 }
 
+function formatCementTypeFullLabel(value: string) {
+  return value.trim() || "NON IMPOSTATO";
+}
+
 function formatAgo(dateStr: string | null) {
   if (!dateStr) return "-";
   const delta = daysAgo(dateStr);
@@ -263,6 +308,52 @@ function formatAgo(dateStr: string | null) {
   if (delta < 0) return `tra ${Math.abs(delta)} giorni`;
   if (delta === 0) return "oggi";
   return `${delta} giorni fa`;
+}
+
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function toPendingEditState(item: EuromeccPendingTask): UpdateEuromeccPendingTaskInput {
+  return {
+    id: item.id,
+    areaKey: item.areaKey,
+    subKey: item.subKey,
+    title: item.title,
+    priority: item.priority,
+    dueDate: item.dueDate,
+    note: item.note,
+  };
+}
+
+function toDoneEditState(item: EuromeccDoneTask): DoneEditState {
+  return {
+    id: item.id,
+    areaKey: item.areaKey,
+    subKey: item.subKey,
+    title: item.title,
+    doneDate: item.doneDate,
+    by: item.by,
+    note: item.note,
+    nextDate: item.nextDate ?? "",
+    closedPending: item.closedPending,
+  };
+}
+
+function toIssueEditState(item: EuromeccIssue): IssueEditState {
+  return {
+    id: item.id,
+    areaKey: item.areaKey,
+    subKey: item.subKey,
+    title: item.title,
+    check: item.check,
+    type: item.type,
+    state: item.state,
+    reportedAt: item.reportedAt,
+    reportedBy: item.reportedBy,
+    note: item.note,
+    closedDate: item.closedDate ?? "",
+  };
 }
 
 function buildReportText(snapshot: EuromeccSnapshot, range: EuromeccRange) {
@@ -478,6 +569,8 @@ function MapSvg(props: {
     const active = props.currentArea === layout.key;
     const centerX = layout.x + layout.width / 2;
     const bottomY = layout.y + layout.height;
+    const cementTypeShort = props.snapshot.cementTypeShortByArea[layout.key] || "NON IMPOSTATO";
+    const cementEmpty = !props.snapshot.cementTypeShortByArea[layout.key];
 
     return (
       <g
@@ -512,6 +605,14 @@ function MapSvg(props: {
         <text x={centerX} y={layout.y + 108} textAnchor="middle" className="eur-map-silo-code">
           {area.code}
         </text>
+        <text
+          x={centerX}
+          y={layout.y + 148}
+          textAnchor="middle"
+          className={`eur-map-silo-cement ${cementEmpty ? "eur-map-silo-cement--empty" : ""}`}
+        >
+          {cementTypeShort}
+        </text>
         <circle cx={layout.x + layout.width - 16} cy={layout.y + 16} r="11" fill={STATUS_COLORS[status]} />
       </g>
     );
@@ -541,6 +642,9 @@ function MapSvg(props: {
           const active = props.currentArea === layout.key;
           const centerX = layout.x + layout.width / 2;
           const bottomY = layout.y + layout.height;
+          const cementTypeShort =
+            props.snapshot.cementTypeShortByArea[layout.key] || "NON IMPOSTATO";
+          const cementEmpty = !props.snapshot.cementTypeShortByArea[layout.key];
           return (
             <g
               key={layout.key}
@@ -572,6 +676,14 @@ function MapSvg(props: {
               </text>
               <text x={centerX} y={layout.y + 84} textAnchor="middle" className="eur-map-silo-code">
                 {area.code}
+              </text>
+              <text
+                x={centerX}
+                y={layout.y + 112}
+                textAnchor="middle"
+                className={`eur-map-silo-cement ${cementEmpty ? "eur-map-silo-cement--empty" : ""}`}
+              >
+                {cementTypeShort}
               </text>
               <circle
                 cx={layout.x + layout.width - 16}
@@ -804,10 +916,20 @@ export default function NextEuromeccPage() {
     firstComponentKey(EUROMECC_AREA_KEYS[0] ?? "silo1"),
   );
   const [detailOpen, setDetailOpen] = useState(false);
+  const [dataManagerOpen, setDataManagerOpen] = useState(false);
+  const [dataManagerTab, setDataManagerTab] = useState<DataManagerTabKey>("issues");
+  const [dataManagerSearch, setDataManagerSearch] = useState("");
+  const [dataManagerArea, setDataManagerArea] = useState<string>("all");
   const [reportRange, setReportRange] = useState<EuromeccRange>("90");
   const [pendingForm, setPendingForm] = useState(EMPTY_PENDING_FORM);
   const [doneForm, setDoneForm] = useState(EMPTY_DONE_FORM);
   const [issueForm, setIssueForm] = useState(EMPTY_ISSUE_FORM);
+  const [editingPending, setEditingPending] = useState<UpdateEuromeccPendingTaskInput | null>(null);
+  const [editingDone, setEditingDone] = useState<DoneEditState | null>(null);
+  const [editingIssue, setEditingIssue] = useState<IssueEditState | null>(null);
+  const [cementModalOpen, setCementModalOpen] = useState(false);
+  const [cementTypeDraft, setCementTypeDraft] = useState(EMPTY_CEMENT_TYPE);
+  const [cementTypeShortDraft, setCementTypeShortDraft] = useState(EMPTY_CEMENT_TYPE_SHORT);
   const [saving, setSaving] = useState(false);
 
   const reloadSnapshot = async () => {
@@ -842,6 +964,28 @@ export default function NextEuromeccPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [detailOpen]);
+
+  useEffect(() => {
+    if (!cementModalOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCementModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [cementModalOpen]);
+
+  useEffect(() => {
+    if (!dataManagerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDataManagerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [dataManagerOpen]);
 
   const currentAreaData = EUROMECC_AREAS[currentArea] ?? EUROMECC_AREAS[EUROMECC_AREA_KEYS[0]];
 
@@ -905,6 +1049,8 @@ export default function NextEuromeccPage() {
   const areaOverviewMeta = snapshot
     ? areaMeta(currentAreaData.key, snapshot)
     : { lastDone: null, nextDue: null };
+  const currentAreaCementType = snapshot?.cementTypesByArea[currentAreaData.key] ?? "";
+  const currentAreaCementTypeShort = snapshot?.cementTypeShortByArea[currentAreaData.key] ?? "";
 
   const detailComponentStatus = snapshot
     ? getSubStatus(
@@ -1105,6 +1251,69 @@ export default function NextEuromeccPage() {
     [reportDone.length, reportIssues.length, reportPending.length, reportRange, reportUrgencies],
   );
 
+  const managerSearch = useMemo(() => normalizeSearchValue(dataManagerSearch), [dataManagerSearch]);
+  const managerAreaOptions = useMemo(
+    () => [
+      { value: "all", label: "Tutte le aree" },
+      ...EUROMECC_AREA_KEYS.map((areaKey) => ({
+        value: areaKey,
+        label: EUROMECC_AREAS[areaKey]?.title ?? areaKey,
+      })),
+    ],
+    [],
+  );
+
+  const filteredManagerPending = useMemo(
+    () =>
+      pending.filter((item) => {
+        if (dataManagerArea !== "all" && item.areaKey !== dataManagerArea) return false;
+        if (!managerSearch) return true;
+        const haystack = normalizeSearchValue(
+          [item.areaLabel, item.subLabel, item.title, item.note, item.priority, item.dueDate].join(" "),
+        );
+        return haystack.includes(managerSearch);
+      }),
+    [dataManagerArea, managerSearch, pending],
+  );
+
+  const filteredManagerDone = useMemo(
+    () =>
+      done.filter((item) => {
+        if (dataManagerArea !== "all" && item.areaKey !== dataManagerArea) return false;
+        if (!managerSearch) return true;
+        const haystack = normalizeSearchValue(
+          [item.areaLabel, item.subLabel, item.title, item.note, item.by, item.doneDate, item.nextDate ?? ""].join(
+            " ",
+          ),
+        );
+        return haystack.includes(managerSearch);
+      }),
+    [dataManagerArea, done, managerSearch],
+  );
+
+  const filteredManagerIssues = useMemo(
+    () =>
+      issues.filter((item) => {
+        if (dataManagerArea !== "all" && item.areaKey !== dataManagerArea) return false;
+        if (!managerSearch) return true;
+        const haystack = normalizeSearchValue(
+          [
+            item.areaLabel,
+            item.subLabel,
+            item.title,
+            item.check,
+            item.note,
+            item.reportedBy,
+            item.reportedAt,
+            item.type,
+            item.state,
+          ].join(" "),
+        );
+        return haystack.includes(managerSearch);
+      }),
+    [dataManagerArea, issues, managerSearch],
+  );
+
   const goToTab = (tab: TabKey, areaKey = currentAreaData.key, subKey?: string | null) => {
     const fallbackSub = subKey ?? firstComponentKey(areaKey);
     setCurrentArea(areaKey);
@@ -1269,6 +1478,232 @@ export default function NextEuromeccPage() {
     }
   };
 
+  const handleOpenCementModal = () => {
+    if (currentAreaData.type !== "silo") return;
+    setCementTypeDraft(currentAreaCementType);
+    setCementTypeShortDraft(
+      currentAreaCementTypeShort || deriveEuromeccCementTypeShortLabel(currentAreaCementType),
+    );
+    setCementModalOpen(true);
+  };
+
+  const handleSelectCementPreset = (preset: CementPreset) => {
+    setCementTypeDraft(preset.full);
+    setCementTypeShortDraft(preset.short);
+  };
+
+  const handleSaveCementType = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (currentAreaData.type !== "silo") return;
+
+    setSaving(true);
+    setNotice("");
+    setError(null);
+    try {
+      await saveEuromeccAreaCementType({
+        areaKey: currentAreaData.key,
+        cementType: cementTypeDraft,
+        cementTypeShort: cementTypeShortDraft,
+      });
+      await reloadSnapshot();
+      setCementModalOpen(false);
+      setNotice(
+        cementTypeDraft.trim()
+          ? "Tipo cemento salvato correttamente."
+          : "Tipo cemento rimosso correttamente.",
+      );
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Impossibile salvare il tipo cemento.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleOpenDataManager = () => {
+    setDataManagerSearch("");
+    setDataManagerArea("all");
+    setEditingPending(null);
+    setEditingDone(null);
+    setEditingIssue(null);
+    setDataManagerOpen(true);
+  };
+
+  const handleCloseDataManager = () => {
+    if (saving) return;
+    setEditingPending(null);
+    setEditingDone(null);
+    setEditingIssue(null);
+    setDataManagerOpen(false);
+  };
+
+  const handleStartPendingEdit = (item: EuromeccPendingTask) => {
+    setEditingDone(null);
+    setEditingIssue(null);
+    setEditingPending(toPendingEditState(item));
+    setDataManagerTab("pending");
+  };
+
+  const handleStartDoneEdit = (item: EuromeccDoneTask) => {
+    setEditingPending(null);
+    setEditingIssue(null);
+    setEditingDone(toDoneEditState(item));
+    setDataManagerTab("done");
+  };
+
+  const handleStartIssueEdit = (item: EuromeccIssue) => {
+    setEditingPending(null);
+    setEditingDone(null);
+    setEditingIssue(toIssueEditState(item));
+    setDataManagerTab("issues");
+  };
+
+  const handleSavePendingEdit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingPending) return;
+
+    setSaving(true);
+    setNotice("");
+    setError(null);
+    try {
+      await updateEuromeccPendingTask(editingPending);
+      await reloadSnapshot();
+      setEditingPending(null);
+      setNotice("Manutenzione da fare aggiornata.");
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Impossibile aggiornare la manutenzione da fare.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeletePendingFromManager = async (id: string) => {
+    if (!window.confirm("Vuoi eliminare definitivamente questa manutenzione da fare?")) {
+      return;
+    }
+
+    setSaving(true);
+    setNotice("");
+    setError(null);
+    try {
+      await deleteEuromeccPendingTask(id);
+      await reloadSnapshot();
+      setEditingPending((previous) => (previous?.id === id ? null : previous));
+      setNotice("Manutenzione da fare eliminata.");
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Impossibile eliminare la manutenzione da fare.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveDoneEdit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingDone) return;
+
+    setSaving(true);
+    setNotice("");
+    setError(null);
+    try {
+      await updateEuromeccDoneTask({
+        ...editingDone,
+        nextDate: editingDone.nextDate.trim() || null,
+      });
+      await reloadSnapshot();
+      setEditingDone(null);
+      setNotice("Manutenzione fatta aggiornata.");
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Impossibile aggiornare la manutenzione fatta.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteDone = async (id: string) => {
+    if (!window.confirm("Vuoi eliminare definitivamente questa manutenzione fatta?")) {
+      return;
+    }
+
+    setSaving(true);
+    setNotice("");
+    setError(null);
+    try {
+      await deleteEuromeccDoneTask(id);
+      await reloadSnapshot();
+      setEditingDone((previous) => (previous?.id === id ? null : previous));
+      setNotice("Manutenzione fatta eliminata.");
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Impossibile eliminare la manutenzione fatta.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveIssueEdit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingIssue) return;
+
+    setSaving(true);
+    setNotice("");
+    setError(null);
+    try {
+      await updateEuromeccIssue({
+        ...editingIssue,
+        closedDate: editingIssue.state === "chiusa" ? editingIssue.closedDate || null : null,
+      });
+      await reloadSnapshot();
+      setEditingIssue(null);
+      setNotice("Segnalazione aggiornata.");
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : "Impossibile aggiornare la segnalazione.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteIssue = async (id: string) => {
+    if (!window.confirm("Vuoi eliminare definitivamente questa segnalazione?")) {
+      return;
+    }
+
+    setSaving(true);
+    setNotice("");
+    setError(null);
+    try {
+      await deleteEuromeccIssue(id);
+      await reloadSnapshot();
+      setEditingIssue((previous) => (previous?.id === id ? null : previous));
+      setNotice("Segnalazione eliminata.");
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? deleteError.message : "Impossibile eliminare la segnalazione.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="eur-page">
       <header className="eur-head">
@@ -1281,6 +1716,14 @@ export default function NextEuromeccPage() {
           </p>
         </div>
         <div className="eur-head-actions">
+          <button
+            type="button"
+            className="eur-head-secret"
+            onClick={handleOpenDataManager}
+            disabled={loading || saving}
+          >
+            Impostazioni
+          </button>
           <button type="button" onClick={() => void reloadSnapshot()} disabled={loading || saving}>
             Aggiorna
           </button>
@@ -1351,6 +1794,22 @@ export default function NextEuromeccPage() {
                     </article>
                   </div>
                   <p className="eur-area-description">{currentAreaData.description}</p>
+                  {currentAreaData.type === "silo" ? (
+                    <div className="eur-cement-card">
+                      <span>Tipo cemento</span>
+                      <strong>{formatCementTypeFullLabel(currentAreaCementType)}</strong>
+                      {currentAreaCementType ? (
+                        <small>Sigla mappa: {currentAreaCementTypeShort}</small>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={handleOpenCementModal}
+                        disabled={saving}
+                      >
+                        {currentAreaCementType ? "MODIFICA CEMENTO" : "IMPOSTA CEMENTO"}
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="eur-legend">
                     {statusLegendItems().map((item) => (
                       <span key={item.label}>
@@ -1847,6 +2306,15 @@ export default function NextEuromeccPage() {
                 <span>Prossima manutenzione</span>
                 <strong>{formatDateUI(areaOverviewMeta.nextDue)}</strong>
               </article>
+              {currentAreaData.type === "silo" ? (
+                <article className="eur-modal-meta-card eur-modal-meta-card--cement">
+                  <span>Tipo cemento</span>
+                  <strong>{formatCementTypeFullLabel(currentAreaCementType)}</strong>
+                  {currentAreaCementType ? (
+                    <small>Sigla mappa: {currentAreaCementTypeShort}</small>
+                  ) : null}
+                </article>
+              ) : null}
             </div>
 
             <div
@@ -1962,6 +2430,744 @@ export default function NextEuromeccPage() {
                 </div>
               </section>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {dataManagerOpen && snapshot ? (
+        <div className="eur-modal-overlay" onClick={handleCloseDataManager} role="presentation">
+          <div
+            className="eur-modal eur-modal--manager"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Gestione dati Euromecc"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="eur-modal-header">
+              <div>
+                <span className="eur-eyebrow">Impostazioni</span>
+                <h2>Gestione dati Euromecc</h2>
+                <p>Pannello discreto interno per correggere o cancellare record gia inseriti.</p>
+              </div>
+              <div className="eur-modal-actions">
+                <button type="button" onClick={handleCloseDataManager} disabled={saving}>
+                  Chiudi
+                </button>
+              </div>
+            </div>
+
+            <div className="eur-manager-toolbar">
+              <div className="eur-tabs" aria-label="Sezioni gestione dati Euromecc">
+                {DATA_MANAGER_TABS.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={dataManagerTab === item.key ? "active" : ""}
+                    onClick={() => setDataManagerTab(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="eur-manager-filters">
+                <label>
+                  Cerca
+                  <input
+                    type="search"
+                    value={dataManagerSearch}
+                    onChange={(event) => setDataManagerSearch(event.target.value)}
+                    placeholder="Titolo, area, nota..."
+                  />
+                </label>
+                <label>
+                  Area
+                  <select
+                    value={dataManagerArea}
+                    onChange={(event) => setDataManagerArea(event.target.value)}
+                  >
+                    {managerAreaOptions.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {dataManagerTab === "issues" ? (
+              <section className="eur-manager-section">
+                <div className="eur-section-head">
+                  <div>
+                    <h3>Segnalazioni</h3>
+                    <p>Modifica o elimina i record presenti in `euromecc_issues`.</p>
+                  </div>
+                </div>
+                {filteredManagerIssues.length === 0 ? (
+                  <p className="eur-empty">Nessuna segnalazione trovata con i filtri correnti.</p>
+                ) : (
+                  <div className="eur-manager-list">
+                    {filteredManagerIssues.map((item) => {
+                      const isEditing = editingIssue?.id === item.id;
+                      const editArea = isEditing ? editingIssue.areaKey : item.areaKey;
+                      const editComponents = EUROMECC_AREAS[editArea]?.components ?? [];
+                      return (
+                        <article key={item.id} className="eur-manager-card">
+                          <div className="eur-manager-card-head">
+                            <div>
+                              <strong>{item.title}</strong>
+                              <div className="eur-task-meta">
+                                <span>{item.areaLabel}</span>
+                                <span>{item.subLabel}</span>
+                                <span>{formatDateUI(item.reportedAt)}</span>
+                                <span>{item.reportedBy}</span>
+                              </div>
+                            </div>
+                            <div className="eur-task-actions">
+                              <span className={miniIssueClass(item.type)}>
+                                {item.state === "chiusa" ? "Chiusa" : ISSUE_TYPE_LABELS[item.type]}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleStartIssueEdit(item)}
+                                disabled={saving}
+                              >
+                                Modifica
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteIssue(item.id)}
+                                disabled={saving}
+                              >
+                                Elimina
+                              </button>
+                            </div>
+                          </div>
+                          <div className="eur-task-meta">
+                            <span>Check: {item.check}</span>
+                            <span>Stato: {item.state === "chiusa" ? "Chiusa" : "Aperta"}</span>
+                            {item.note ? <span>{item.note}</span> : null}
+                          </div>
+                          {isEditing && editingIssue ? (
+                            <form className="eur-form eur-manager-form" onSubmit={handleSaveIssueEdit}>
+                              <label>
+                                Area
+                                <select
+                                  value={editingIssue.areaKey}
+                                  onChange={(event) => {
+                                    const areaKey = event.target.value;
+                                    setEditingIssue((previous) =>
+                                      previous
+                                        ? {
+                                            ...previous,
+                                            areaKey,
+                                            subKey: firstComponentKey(areaKey) ?? "",
+                                          }
+                                        : previous,
+                                    );
+                                  }}
+                                >
+                                  {EUROMECC_AREA_KEYS.map((areaKey) => (
+                                    <option key={areaKey} value={areaKey}>
+                                      {EUROMECC_AREAS[areaKey]?.title ?? areaKey}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Componente
+                                <select
+                                  value={editingIssue.subKey}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous ? { ...previous, subKey: event.target.value } : previous,
+                                    )
+                                  }
+                                >
+                                  {editComponents.map((component) => (
+                                    <option key={component.key} value={component.key}>
+                                      {component.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Tipo
+                                <select
+                                  value={editingIssue.type}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous
+                                        ? {
+                                            ...previous,
+                                            type: event.target.value as EuromeccIssueType,
+                                          }
+                                        : previous,
+                                    )
+                                  }
+                                >
+                                  <option value="criticita">Criticita</option>
+                                  <option value="anomalia">Anomalia</option>
+                                  <option value="osservazione">Osservazione</option>
+                                </select>
+                              </label>
+                              <label>
+                                Stato
+                                <select
+                                  value={editingIssue.state}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous
+                                        ? {
+                                            ...previous,
+                                            state: event.target.value as "aperta" | "chiusa",
+                                            closedDate:
+                                              event.target.value === "chiusa"
+                                                ? previous.closedDate || formatDateInput(new Date())
+                                                : "",
+                                          }
+                                        : previous,
+                                    )
+                                  }
+                                >
+                                  <option value="aperta">Aperta</option>
+                                  <option value="chiusa">Chiusa</option>
+                                </select>
+                              </label>
+                              <label>
+                                Titolo
+                                <input
+                                  type="text"
+                                  value={editingIssue.title}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous ? { ...previous, title: event.target.value } : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label>
+                                Check / azione
+                                <input
+                                  type="text"
+                                  value={editingIssue.check}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous ? { ...previous, check: event.target.value } : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label>
+                                Data segnalazione
+                                <input
+                                  type="date"
+                                  value={editingIssue.reportedAt}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous
+                                        ? { ...previous, reportedAt: event.target.value }
+                                        : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label>
+                                Segnalato da
+                                <input
+                                  type="text"
+                                  value={editingIssue.reportedBy}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous
+                                        ? { ...previous, reportedBy: event.target.value }
+                                        : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              {editingIssue.state === "chiusa" ? (
+                                <label>
+                                  Data chiusura
+                                  <input
+                                    type="date"
+                                    value={editingIssue.closedDate}
+                                    onChange={(event) =>
+                                      setEditingIssue((previous) =>
+                                        previous
+                                          ? { ...previous, closedDate: event.target.value }
+                                          : previous,
+                                      )
+                                    }
+                                  />
+                                </label>
+                              ) : null}
+                              <label className="eur-manager-form-full">
+                                Nota
+                                <textarea
+                                  value={editingIssue.note}
+                                  onChange={(event) =>
+                                    setEditingIssue((previous) =>
+                                      previous ? { ...previous, note: event.target.value } : previous,
+                                    )
+                                  }
+                                  rows={3}
+                                />
+                              </label>
+                              <div className="eur-modal-actions eur-modal-actions--end">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingIssue(null)}
+                                  disabled={saving}
+                                >
+                                  Annulla
+                                </button>
+                                <button type="submit" disabled={saving}>
+                                  Salva modifica
+                                </button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : null}
+            {dataManagerTab === "pending" ? (
+              <section className="eur-manager-section">
+                <div className="eur-section-head">
+                  <div>
+                    <h3>Manutenzioni da fare</h3>
+                    <p>Modifica o elimina i record presenti in `euromecc_pending`.</p>
+                  </div>
+                </div>
+                {filteredManagerPending.length === 0 ? (
+                  <p className="eur-empty">Nessuna manutenzione da fare trovata con i filtri correnti.</p>
+                ) : (
+                  <div className="eur-manager-list">
+                    {filteredManagerPending.map((item) => {
+                      const isEditing = editingPending?.id === item.id;
+                      const editArea = isEditing ? editingPending.areaKey : item.areaKey;
+                      const editComponents = EUROMECC_AREAS[editArea]?.components ?? [];
+                      return (
+                        <article key={item.id} className="eur-manager-card">
+                          <div className="eur-manager-card-head">
+                            <div>
+                              <strong>{item.title}</strong>
+                              <div className="eur-task-meta">
+                                <span>{item.areaLabel}</span>
+                                <span>{item.subLabel}</span>
+                                <span>{formatDateUI(item.dueDate)}</span>
+                                <span>{formatDue(item.dueDate)}</span>
+                              </div>
+                            </div>
+                            <div className="eur-task-actions">
+                              <span className={miniPriorityClass(item.priority)}>
+                                {PRIORITY_LABELS[item.priority]}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleStartPendingEdit(item)}
+                                disabled={saving}
+                              >
+                                Modifica
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeletePendingFromManager(item.id)}
+                                disabled={saving}
+                              >
+                                Elimina
+                              </button>
+                            </div>
+                          </div>
+                          <div className="eur-task-meta">
+                            {item.note ? <span>{item.note}</span> : <span>Nessuna nota</span>}
+                          </div>
+                          {isEditing && editingPending ? (
+                            <form className="eur-form eur-manager-form" onSubmit={handleSavePendingEdit}>
+                              <label>
+                                Area
+                                <select
+                                  value={editingPending.areaKey}
+                                  onChange={(event) => {
+                                    const areaKey = event.target.value;
+                                    setEditingPending((previous) =>
+                                      previous
+                                        ? {
+                                            ...previous,
+                                            areaKey,
+                                            subKey: firstComponentKey(areaKey) ?? "",
+                                          }
+                                        : previous,
+                                    );
+                                  }}
+                                >
+                                  {EUROMECC_AREA_KEYS.map((areaKey) => (
+                                    <option key={areaKey} value={areaKey}>
+                                      {EUROMECC_AREAS[areaKey]?.title ?? areaKey}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Componente
+                                <select
+                                  value={editingPending.subKey}
+                                  onChange={(event) =>
+                                    setEditingPending((previous) =>
+                                      previous ? { ...previous, subKey: event.target.value } : previous,
+                                    )
+                                  }
+                                >
+                                  {editComponents.map((component) => (
+                                    <option key={component.key} value={component.key}>
+                                      {component.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Priorita
+                                <select
+                                  value={editingPending.priority}
+                                  onChange={(event) =>
+                                    setEditingPending((previous) =>
+                                      previous
+                                        ? {
+                                            ...previous,
+                                            priority: event.target.value as EuromeccPriority,
+                                          }
+                                        : previous,
+                                    )
+                                  }
+                                >
+                                  <option value="alta">Alta</option>
+                                  <option value="media">Media</option>
+                                  <option value="bassa">Bassa</option>
+                                </select>
+                              </label>
+                              <label>
+                                Scadenza
+                                <input
+                                  type="date"
+                                  value={editingPending.dueDate}
+                                  onChange={(event) =>
+                                    setEditingPending((previous) =>
+                                      previous ? { ...previous, dueDate: event.target.value } : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label className="eur-manager-form-full">
+                                Titolo
+                                <input
+                                  type="text"
+                                  value={editingPending.title}
+                                  onChange={(event) =>
+                                    setEditingPending((previous) =>
+                                      previous ? { ...previous, title: event.target.value } : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label className="eur-manager-form-full">
+                                Nota
+                                <textarea
+                                  value={editingPending.note}
+                                  onChange={(event) =>
+                                    setEditingPending((previous) =>
+                                      previous ? { ...previous, note: event.target.value } : previous,
+                                    )
+                                  }
+                                  rows={3}
+                                />
+                              </label>
+                              <div className="eur-modal-actions eur-modal-actions--end">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingPending(null)}
+                                  disabled={saving}
+                                >
+                                  Annulla
+                                </button>
+                                <button type="submit" disabled={saving}>
+                                  Salva modifica
+                                </button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : null}
+            {dataManagerTab === "done" ? (
+              <section className="eur-manager-section">
+                <div className="eur-section-head">
+                  <div>
+                    <h3>Manutenzioni fatte</h3>
+                    <p>Modifica o elimina i record presenti in `euromecc_done`.</p>
+                  </div>
+                </div>
+                {filteredManagerDone.length === 0 ? (
+                  <p className="eur-empty">Nessuna manutenzione fatta trovata con i filtri correnti.</p>
+                ) : (
+                  <div className="eur-manager-list">
+                    {filteredManagerDone.map((item) => {
+                      const isEditing = editingDone?.id === item.id;
+                      const editArea = isEditing ? editingDone.areaKey : item.areaKey;
+                      const editComponents = EUROMECC_AREAS[editArea]?.components ?? [];
+                      return (
+                        <article key={item.id} className="eur-manager-card">
+                          <div className="eur-manager-card-head">
+                            <div>
+                              <strong>{item.title}</strong>
+                              <div className="eur-task-meta">
+                                <span>{item.areaLabel}</span>
+                                <span>{item.subLabel}</span>
+                                <span>{formatDateUI(item.doneDate)}</span>
+                                <span>{item.by}</span>
+                              </div>
+                            </div>
+                            <div className="eur-task-actions">
+                              <span className={badgeClass("done")}>Fatto</span>
+                              <button
+                                type="button"
+                                onClick={() => handleStartDoneEdit(item)}
+                                disabled={saving}
+                              >
+                                Modifica
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteDone(item.id)}
+                                disabled={saving}
+                              >
+                                Elimina
+                              </button>
+                            </div>
+                          </div>
+                          <div className="eur-task-meta">
+                            {item.nextDate ? <span>Prossima: {formatDateUI(item.nextDate)}</span> : null}
+                            <span>{item.note || "Nessuna nota"}</span>
+                          </div>
+                          {isEditing && editingDone ? (
+                            <form className="eur-form eur-manager-form" onSubmit={handleSaveDoneEdit}>
+                              <label>
+                                Area
+                                <select
+                                  value={editingDone.areaKey}
+                                  onChange={(event) => {
+                                    const areaKey = event.target.value;
+                                    setEditingDone((previous) =>
+                                      previous
+                                        ? {
+                                            ...previous,
+                                            areaKey,
+                                            subKey: firstComponentKey(areaKey) ?? "",
+                                          }
+                                        : previous,
+                                    );
+                                  }}
+                                >
+                                  {EUROMECC_AREA_KEYS.map((areaKey) => (
+                                    <option key={areaKey} value={areaKey}>
+                                      {EUROMECC_AREAS[areaKey]?.title ?? areaKey}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Componente
+                                <select
+                                  value={editingDone.subKey}
+                                  onChange={(event) =>
+                                    setEditingDone((previous) =>
+                                      previous ? { ...previous, subKey: event.target.value } : previous,
+                                    )
+                                  }
+                                >
+                                  {editComponents.map((component) => (
+                                    <option key={component.key} value={component.key}>
+                                      {component.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Data intervento
+                                <input
+                                  type="date"
+                                  value={editingDone.doneDate}
+                                  onChange={(event) =>
+                                    setEditingDone((previous) =>
+                                      previous ? { ...previous, doneDate: event.target.value } : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label>
+                                Fatta da
+                                <input
+                                  type="text"
+                                  value={editingDone.by}
+                                  onChange={(event) =>
+                                    setEditingDone((previous) =>
+                                      previous ? { ...previous, by: event.target.value } : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label className="eur-manager-form-full">
+                                Titolo
+                                <input
+                                  type="text"
+                                  value={editingDone.title}
+                                  onChange={(event) =>
+                                    setEditingDone((previous) =>
+                                      previous ? { ...previous, title: event.target.value } : previous,
+                                    )
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label>
+                                Prossima scadenza
+                                <input
+                                  type="date"
+                                  value={editingDone.nextDate}
+                                  onChange={(event) =>
+                                    setEditingDone((previous) =>
+                                      previous ? { ...previous, nextDate: event.target.value } : previous,
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label className="eur-checkbox">
+                                <input
+                                  type="checkbox"
+                                  checked={editingDone.closedPending}
+                                  onChange={(event) =>
+                                    setEditingDone((previous) =>
+                                      previous
+                                        ? { ...previous, closedPending: event.target.checked }
+                                        : previous,
+                                    )
+                                  }
+                                />
+                                <span>Chiude manutenzioni aperte collegate</span>
+                              </label>
+                              <label className="eur-manager-form-full">
+                                Nota
+                                <textarea
+                                  value={editingDone.note}
+                                  onChange={(event) =>
+                                    setEditingDone((previous) =>
+                                      previous ? { ...previous, note: event.target.value } : previous,
+                                    )
+                                  }
+                                  rows={3}
+                                />
+                              </label>
+                              <div className="eur-modal-actions eur-modal-actions--end">
+                                <button type="button" onClick={() => setEditingDone(null)} disabled={saving}>
+                                  Annulla
+                                </button>
+                                <button type="submit" disabled={saving}>
+                                  Salva modifica
+                                </button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {cementModalOpen && snapshot && currentAreaData.type === "silo" ? (
+        <div
+          className="eur-modal-overlay"
+          onClick={() => setCementModalOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="eur-modal eur-modal--small"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Tipo cemento ${currentAreaData.title}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="eur-modal-header">
+              <div>
+                <span className="eur-eyebrow">Silo</span>
+                <h2>{currentAreaData.title}</h2>
+                <p>Imposta o modifica il tipo cemento visibile nella mappa Home.</p>
+              </div>
+            </div>
+            <form className="eur-form" onSubmit={handleSaveCementType}>
+              <div className="eur-form-group">
+                <span className="eur-form-label">Preset rapidi</span>
+                <div className="eur-preset-list">
+                  {CEMENT_TYPE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.full}
+                      type="button"
+                      className={
+                        cementTypeDraft === preset.full ? "eur-preset-chip active" : "eur-preset-chip"
+                      }
+                      onClick={() => handleSelectCementPreset(preset)}
+                    >
+                      {preset.full}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label>
+                Nome completo
+                <input
+                  type="text"
+                  value={cementTypeDraft}
+                  onChange={(event) => setCementTypeDraft(event.target.value)}
+                  placeholder="Es. CEM II/A-L 42.5 R"
+                />
+              </label>
+              <label>
+                Sigla breve
+                <input
+                  type="text"
+                  value={cementTypeShortDraft}
+                  onChange={(event) => setCementTypeShortDraft(event.target.value)}
+                  placeholder="Es. II/A-L 42.5R"
+                />
+              </label>
+              <div className="eur-modal-actions eur-modal-actions--end">
+                <button type="button" onClick={() => setCementModalOpen(false)} disabled={saving}>
+                  Annulla
+                </button>
+                <button type="submit" disabled={saving}>
+                  Salva
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

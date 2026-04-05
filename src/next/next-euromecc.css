@@ -42,6 +42,10 @@
   gap: 0.75rem;
 }
 
+.eur-head-secret {
+  opacity: 0.82;
+}
+
 .eur-head-actions button,
 .eur-quick-actions button,
 .eur-report-actions button,
@@ -241,6 +245,36 @@
   color: #41556d;
 }
 
+.eur-cement-card {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #d7e0ec;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.eur-cement-card span {
+  font-size: 0.82rem;
+  color: #617489;
+}
+
+.eur-cement-card strong {
+  font-size: 1rem;
+}
+
+.eur-cement-card small,
+.eur-modal-meta-card--cement small {
+  color: #617489;
+  font-size: 0.8rem;
+}
+
+.eur-cement-card button {
+  justify-self: start;
+  margin-top: 0.3rem;
+}
+
 .eur-legend {
   display: flex;
   flex-wrap: wrap;
@@ -377,6 +411,15 @@
   font-weight: 700;
 }
 
+.eur-map-silo-cement {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.eur-map-silo-cement--empty {
+  fill: #7a8ea4;
+}
+
 .eur-hotspot-label {
   font-size: 14px;
   font-weight: 700;
@@ -401,9 +444,84 @@
   gap: 0.75rem;
 }
 
+.eur-manager-toolbar,
+.eur-manager-filters,
+.eur-manager-list,
+.eur-manager-section {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.eur-manager-toolbar {
+  margin: 1rem 0 1.1rem;
+}
+
+.eur-manager-filters {
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.6fr);
+}
+
+.eur-manager-filters label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: #17314d;
+}
+
+.eur-manager-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid #d7e0ec;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.eur-manager-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.eur-manager-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #d7e0ec;
+}
+
+.eur-manager-form-full {
+  grid-column: 1 / -1;
+}
+
 .eur-list-block + .eur-list-block,
 .eur-form-group + .eur-form-group {
   margin-top: 1rem;
+}
+
+.eur-form-label {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #17314d;
+}
+
+.eur-preset-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.eur-preset-chip {
+  padding: 0.5rem 0.85rem !important;
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
+.eur-preset-chip.active {
+  background: #0f6fff;
+  border-color: #0f6fff;
+  color: #ffffff;
 }
 
 .eur-selector-item,
@@ -605,6 +723,15 @@
   padding: 1.5rem;
 }
 
+.eur-modal--small {
+  width: min(32rem, 94vw);
+  max-height: none;
+}
+
+.eur-modal--manager {
+  width: min(78rem, 96vw);
+}
+
 .eur-modal-header,
 .eur-modal-actions {
   display: flex;
@@ -612,6 +739,10 @@
   align-items: flex-start;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.eur-modal-actions--end {
+  justify-content: flex-end;
 }
 
 .eur-modal-meta,
@@ -690,6 +821,12 @@
 
   .eur-map-wrap--home {
     min-height: auto;
+  }
+
+  .eur-manager-filters,
+  .eur-manager-card-head,
+  .eur-manager-form {
+    grid-template-columns: 1fr;
   }
 
   .eur-map-wrap--home .eur-map {
