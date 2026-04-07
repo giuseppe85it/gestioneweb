@@ -42,7 +42,7 @@
 | Shell NEXT | Route sotto `/next/*`, shell separata, role preset frontend, redirect tecnici. | in sviluppo |
 | NEXT Home + Centro di Controllo | Controparti clone read-only di Home e Centro di Controllo. | in sviluppo |
 | NEXT Mezzi + Dossier | Controparti clone di `Mezzi`, `DossierLista`, `DossierMezzo`, `DossierGomme`, `DossierRifornimenti`, `AnalisiEconomica`. | in sviluppo |
-| NEXT Operativita globale | Controparti clone di `Gestione Operativa`, `Inventario`, `MaterialiConsegnati`, `AttrezzatureCantieri`, `Manutenzioni`, `Lavori`. | in sviluppo |
+| NEXT Operativita globale | Controparti NEXT di `Gestione Operativa`, `Inventario`, `MaterialiConsegnati`, `AttrezzatureCantieri`, con `Lavori` gia scrivente via deroga chirurgica e `Manutenzioni` ora scrivente con vista interna `Mappa storico`. | in sviluppo |
 | NEXT Procurement | Modulo unico clone su `/next/materiali-da-ordinare` con tab ordini/arrivi/dettaglio/prezzi/listino. | in sviluppo |
 | NEXT Euromecc | Modulo nativo NEXT su `/next/euromecc` con mappa impianto, manutenzioni, problemi, riepilogo, fullscreen area e scrittura reale solo su collection dedicate, inclusa meta area per `tipo cemento` dei sili con nome completo e short label. | in sviluppo |
 | NEXT Area Capo + Anagrafiche | Controparti clone di `Capo`, `Colleghi`, `Fornitori`. | in sviluppo |
@@ -54,9 +54,9 @@
 | Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
 
 ## 3. STATO ATTUALE
-- Ultimo task completato: fix visivo del close button nel modale `Controllo originale` di `Lavori` NEXT; il bottone usa ora una chiusura stabile `×` e chiude correttamente il modale, senza toccare logica dati o match.
+- Ultimo task completato: ristrutturata la UI di `/next/manutenzioni` come famiglia di superfici distinte, con header comune compatto, tab `Storico` rimosso e `Dashboard`, `Nuova / Modifica` e `Quadro manutenzioni PDF` resi full-width senza colonne laterali fisse.
 - Stato app legacy: attiva e fonte di verita operativa.
-- Stato NEXT: clone read-only esistente ma non promosso a perimetro autonomo chiuso.
+- Stato NEXT: perimetro ancora non chiuso come nuova madre, ma non piu interamente read-only; oggi esistono deroghe chirurgiche reali su `Lavori` e `Manutenzioni`.
 - Stato build root: `npm run build` = OK.
 - Stato lint root: `npm run lint` = KO con 584 problemi totali (568 errori, 16 warning).
 - Aree con piu errori lint verificati: `src/autistiInbox/*`, `src/autisti/*`, `src/pages/*`, `src/utils/*`, `api/pdf-ai-enhance.ts`, `pdfEngine.ts`.
@@ -79,7 +79,7 @@
 ## 4. DECISIONI ARCHITETTURALI
 1. La madre resta l'app operativa a `/`; `src/App.tsx` continua a montare tutte le route legacy.
 2. Il clone NEXT vive sotto `/next/*` per coesistere con la madre senza sostituirla.
-3. Il clone NEXT e read-only; le scritture sono bloccate da `src/utils/cloneWriteBarrier.ts` e da state/overlay locali.
+3. Il clone NEXT resta per default read-only; le scritture sono bloccate da `src/utils/cloneWriteBarrier.ts` salvo deroghe chirurgiche esplicite e motivate.
 4. Il clone legge i dati tramite reader dedicati in `src/next/domain/*` e non usa i writer business come canale canonico.
 5. L'esperienza autista resta separata dall'admin shell sia in legacy sia in NEXT.
 6. L'IA interna del clone e isolata in due perimetri: UI `src/next/internal-ai/*` e backend `backend/internal-ai/*`.
@@ -98,12 +98,19 @@
 19. La topologia statica di `Euromecc` in `src/next/euromeccAreas.ts` parte ora neutra (`base: ok`); i warning gialli non devono comparire senza dati reali.
 20. `Euromecc` include un pannello discreto `Gestione dati Euromecc` aperto da `Impostazioni` nell'header del modulo; il pannello permette edit/delete reale su `euromecc_issues`, `euromecc_pending`, `euromecc_done`, ma non equivale a sicurezza per-ruolo.
 21. Il modulo `Lavori` nel clone NEXT non e piu read-only: usa una dashboard UI unificata sopra il motore reale `@lavori`, ma la deroga al blocco clone-wide e chirurgica e limitata al solo `storageSync.setItemSync("@lavori")` sui pathname Lavori/dettaglio; stato corretto del modulo: `PARZIALE` finche non passa audit separato.
-22. Nel perimetro `Lavori` NEXT la UI mostra ora anche `Segnalato da` e `Autista solito` nelle liste/dettaglio/PDF, l'export PDF resta sul canale condiviso `src/utils/pdfEngine.ts` con layout piu leggibile e la Home `/next` integra un riquadro `Lavori in attesa` nello stesso blocco alert/scadenze, senza aprire nuove scritture fuori dal modulo.
-23. `src/next/NextDettaglioLavoroPage.tsx` arricchisce ora il dettaglio con `Problema segnalato` e con il modale read-only della segnalazione autista originale: prima prova `source.type === "segnalazione"` + `source.id/originId`, poi fallback solo su match univoco targa + autore + descrizione; se il match non e sicuro non apre nulla.
-24. Il fix successivo sul dettaglio `Lavori` non usa piu solo la vista normalizzata delle segnalazioni: legge anche il payload reale di `@segnalazioni_autisti_tmp` e sfrutta il backlink `linkedLavoroId/linkedLavoroIds`, cosi il blocco `Problema segnalato` mostra davvero il testo reale (`descrizione`, poi `note`, `messaggio`, `dettaglio`, `testo`) quando esiste.
-25. Nel dettaglio `Lavori` NEXT il testo della segnalazione origine non deve piu appoggiarsi a `lavoro.dettagli` o `lavoro.note`: il percorso corretto e match forte su `source.id/originId`, poi backlink `linkedLavoroId/linkedLavoroIds`, con messaggio esplicito `Nessuna descrizione presente nella segnalazione originale` se il record trovato non contiene testo.
-26. Nel dettaglio `Lavori` NEXT esiste ora anche il ramo `source.type = "controllo"`: il resolver legge `@controlli_mezzo_autisti`, usa come collegamento forte `source.id/originId`, poi solo il backlink reale `linkedLavoroId/linkedLavoroIds`, e mostra il testo origine del controllo con priorita `note`, poi `dettaglio`, poi `messaggio`, piu i KO reali da `check/koItems`; nessun fallback fragile su targa/autore/testo e autorizzato per aprire controlli.
-27. Nel modale `Controllo originale` di `Lavori` il close button non deve usare caratteri hardcoded corrotti: il fix corrente usa `&times;` nel JSX con `aria-label` esplicito, cosi il rendering resta stabile e il click continua a chiudere il modale senza toccare la logica.
+22. Il modulo `Manutenzioni` nel clone NEXT non e piu read-only: `/next/manutenzioni` scrive ora in modo compatibile su `@manutenzioni`, `@inventario` e `@materialiconsegnati`, riusa la convergenza gomme gia verificata e apre solo metadati visuali separati su `@mezzi_foto_viste`, `@mezzi_hotspot_mapping` e Storage `mezzi_foto/...`; stato corretto del modulo: `PARZIALE` finche non passa audit separato.
+23. La deroga clone-wide per `Manutenzioni` e limitata al pathname `/next/manutenzioni` e alle sole operazioni `storageSync.setItemSync` sulle 5 chiavi verificate (`@manutenzioni`, `@inventario`, `@materialiconsegnati`, `@mezzi_foto_viste`, `@mezzi_hotspot_mapping`) piu `storage.uploadBytes` su `mezzi_foto/...`.
+24. La vista interna `Mappa storico` di `Manutenzioni` usa ora una shell specialistica full-width: header tecnico compatto, griglia ~60/40, foto/placeholder dominante, hotspot piu leggibili e pannello zona stabile; il cambio e solo UI/layout e non modifica domain business, route, PDF o `cloneWriteBarrier.ts`.
+25. L'inferenza zona della `Mappa storico` di `Manutenzioni` non usa piu match generici non pesati per gomme/assi: i termini `gomma/gomme/pneumatico/pneumatici/ruota/ruote/asse/assale` passano prima da un ramo prioritario per `fronte/sinistra/destra/retro`, mentre `fronte-fanali` non usa piu `anteriore` come keyword autonoma; se la direzione non e affidabile, la mappa restituisce `Zona non deducibile`.
+26. In `/next/manutenzioni` i tab non-mappa usano ora una shell tecnica coerente con la `Mappa storico`: dashboard mezzo/compressore, storico premium, form piu gerarchico, ricerca mezzo rapida con preview e nuovo tab locale `Quadro manutenzioni PDF` con doppio filtro `Soggetto` / `Periodo`; nessun domain business, writer o barrier e stato modificato in questo riallineamento UI.
+27. Nel perimetro `Lavori` NEXT la UI mostra ora anche `Segnalato da` e `Autista solito` nelle liste/dettaglio/PDF, l'export PDF resta sul canale condiviso `src/utils/pdfEngine.ts` con layout piu leggibile e la Home `/next` integra un riquadro `Lavori in attesa` nello stesso blocco alert/scadenze, senza aprire nuove scritture fuori dal modulo.
+28. `src/next/NextDettaglioLavoroPage.tsx` arricchisce ora il dettaglio con `Problema segnalato` e con il modale read-only della segnalazione autista originale: prima prova `source.type === "segnalazione"` + `source.id/originId`, poi fallback solo su match univoco targa + autore + descrizione; se il match non e sicuro non apre nulla.
+29. Il fix successivo sul dettaglio `Lavori` non usa piu solo la vista normalizzata delle segnalazioni: legge anche il payload reale di `@segnalazioni_autisti_tmp` e sfrutta il backlink `linkedLavoroId/linkedLavoroIds`, cosi il blocco `Problema segnalato` mostra davvero il testo reale (`descrizione`, poi `note`, `messaggio`, `dettaglio`, `testo`) quando esiste.
+30. Nel dettaglio `Lavori` NEXT il testo della segnalazione origine non deve piu appoggiarsi a `lavoro.dettagli` o `lavoro.note`: il percorso corretto e match forte su `source.id/originId`, poi backlink `linkedLavoroId/linkedLavoroIds`, con messaggio esplicito `Nessuna descrizione presente nella segnalazione originale` se il record trovato non contiene testo.
+31. Nel dettaglio `Lavori` NEXT esiste ora anche il ramo `source.type = "controllo"`: il resolver legge `@controlli_mezzo_autisti`, usa come collegamento forte `source.id/originId`, poi solo il backlink reale `linkedLavoroId/linkedLavoroIds`, e mostra il testo origine del controllo con priorita `note`, poi `dettaglio`, poi `messaggio`, piu i KO reali da `check/koItems`; nessun fallback fragile su targa/autore/testo e autorizzato per aprire controlli.
+32. Nel modale `Controllo originale` di `Lavori` il close button non deve usare caratteri hardcoded corrotti: il fix corrente usa `&times;` nel JSX con `aria-label` esplicito, cosi il rendering resta stabile e il click continua a chiudere il modale senza toccare la logica.
+33. Nel tab `Quadro manutenzioni PDF` di `/next/manutenzioni` la struttura principale non e piu un insieme di card riepilogative: dopo `Step 1` (`Mezzo` / `Compressore`) e `Step 2` (`Ultimo mese`, mesi disponibili, `Tutto`) il runtime mostra un elenco operativo di risultati con foto, targa, modello/compressore, autista solito, `Km ultimo rifornimento`, data manutenzione, tipo/manutenzione e azioni `PDF mezzo` / `PDF compressore` + `Apri dettaglio`; riepilogo rapido e cronologia restano secondari sotto l'elenco.
+34. In `/next/manutenzioni` i tab non-mappa non condividono piu la stessa impaginazione con side column fissa: l'header comune raccoglie titolo, selezione mezzo, ricerca rapida e tab, il tab `Storico` e rimosso, `Dashboard` e semplificata full-width, `Nuova / Modifica` e una pagina operativa full-width e `Quadro manutenzioni PDF` resta la schermata elenco principale; `Mappa storico` mantiene la propria shell tecnica specialistica.
 
 ## 5. CONVENZIONI
 ### Dati e chiavi
@@ -112,6 +119,7 @@
 - `@mezzi_aziendali` ha merge speciale in `setItemSync()`; le altre key vengono sovrascritte in blocco.
 - Collection dedicate verificate: `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, `@impostazioni_app/gemini`, `@analisi_economica_mezzi`, `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili`.
 - Collection dedicate modulo nativo NEXT `Euromecc`: `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta`.
+- Collection visuali NEXT `Manutenzioni`: `@mezzi_foto_viste`, `@mezzi_hotspot_mapping`.
 - Local storage autisti verificato: `@autista_attivo_local`, `@mezzo_attivo_autista_local`.
 
 ### Date e formati
@@ -140,6 +148,7 @@
 - `inventario/<itemId>/foto.jpg`
 - `autisti/segnalazioni/<recordId>/<timestamp>_<n>.<ext>`
 - `autisti/richieste-attrezzature/<recordId>/<timestamp>.<ext>`
+- `mezzi_foto/<targa>/<vista>_<timestamp>.<ext>`
 - `mezzi_aziendali/<mezzoId>/libretto.jpg`
 - `documenti_pdf/<...>`
 - `documenti_pdf/cisterna/<YYYY>/<MM>/<...>`
@@ -148,19 +157,20 @@
 - `preventivi/<id>.pdf`
 
 ## 6. PROSSIMI TASK
-0. Fare audit separato del modulo `Lavori` dopo il redesign unificato e la deroga chirurgica su `cloneWriteBarrier.ts`; oggi non va promosso a `CHIUSO` senza prova extra.
-1. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
-2. Estendere oltre `Euromecc` la versione verificabile delle policy Firestore effettive e riallinearle al codice.
-3. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
-4. Chiudere il modello sicurezza per-ruolo reale oltre l'attuale bootstrap con auth anonima globale.
-5. Fare audit V1 del modulo `Euromecc` prima di promuoverlo oltre `PARZIALE`.
-6. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
-7. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.
-8. Continuare l'hardening del clone NEXT sui moduli ancora `ACTIVE_PARTIAL`, soprattutto procurement, area capo, cisterna, autisti admin e IA legacy clone.
-9. Chiudere la matrice ruoli/permessi reale oltre ai preset frontend `role`.
-10. Consolidare i canali server-side IA/PDF; oggi il repo ha backend multipli concorrenti.
-11. Aprire il live-read del backend IA separato solo dopo credenziali server-side dedicate e boundary whitelisted verificati.
-12. Ridurre il peso del bundle client e la duplicazione `jspdf` se si apre un task performance.
+0. Fare audit separato del modulo `Manutenzioni` dopo la riapertura in scrittura e la nuova vista `Mappa storico`; oggi non va promosso a `CHIUSO` senza prova extra.
+1. Fare audit separato del modulo `Lavori` dopo il redesign unificato e la deroga chirurgica su `cloneWriteBarrier.ts`; oggi non va promosso a `CHIUSO` senza prova extra.
+2. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
+3. Estendere oltre `Euromecc` la versione verificabile delle policy Firestore effettive e riallinearle al codice.
+4. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
+5. Chiudere il modello sicurezza per-ruolo reale oltre l'attuale bootstrap con auth anonima globale.
+6. Fare audit V1 del modulo `Euromecc` prima di promuoverlo oltre `PARZIALE`.
+7. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
+8. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.
+9. Continuare l'hardening del clone NEXT sui moduli ancora `ACTIVE_PARTIAL`, soprattutto procurement, area capo, cisterna, autisti admin e IA legacy clone.
+10. Chiudere la matrice ruoli/permessi reale oltre ai preset frontend `role`.
+11. Consolidare i canali server-side IA/PDF; oggi il repo ha backend multipli concorrenti.
+12. Aprire il live-read del backend IA separato solo dopo credenziali server-side dedicate e boundary whitelisted verificati.
+13. Ridurre il peso del bundle client e la duplicazione `jspdf` se si apre un task performance.
 
 ## 7. FILE CHIAVE
 ### Routing e bootstrap

@@ -1,5 +1,179 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-07 - refactor UI `layout family` del modulo `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, i tab non sono piu trattati come pagine con la stessa impaginazione laterale ripetuta:
+  - `src/next/NextManutenzioniPage.tsx` usa ora un header compatto condiviso con titolo `MANUTENZIONI`, selezione mezzo, ricerca rapida e navigazione tab, poi rende `Dashboard`, `Nuova / Modifica` e `Quadro manutenzioni PDF` come superfici full-width indipendenti della stessa famiglia;
+  - il tab `Storico` e stato rimosso dalla navigazione e la sua funzione di consultazione e assorbita dal `Quadro manutenzioni PDF`;
+  - `src/next/next-mappa-storico.css` riallinea la shell `.mx-*` per supportare header comune, superfici full-width e dashboard semplificata, senza toccare il tono specialistico della `Mappa storico`.
+- Riallineamenti chiusi nel perimetro consentito:
+  - `Dashboard` semplificata con ultimi interventi mezzo/compressore, segnalazioni aperte, `Km ultimo rifornimento`, accessi rapidi e timeline breve;
+  - `Nuova / Modifica` resa pagina operativa full-width, senza card laterali fisse, mantenendo campi base, tagliando, materiali, blocco 4 foto, note e azioni finali;
+  - `Quadro manutenzioni PDF` confermato come schermata principale elenco-first: prima filtro soggetto/periodo, poi risultati esportabili;
+  - `Mappa storico` lasciata specialistica e separata.
+- Boundary preservato:
+  - nessuna modifica a `src/next/domain/nextManutenzioniDomain.ts`;
+  - nessuna modifica a `src/next/domain/nextMappaStoricoDomain.ts`;
+  - nessuna modifica a `src/utils/cloneWriteBarrier.ts`;
+  - nessuna modifica a writer business, route, PDF engine o madre legacy.
+- Verifica runtime reale eseguita su `http://127.0.0.1:4173/next/manutenzioni`:
+  - header comune compatto presente con ricerca rapida e contesto mezzo;
+  - tab visibili: `Dashboard`, `Nuova / Modifica`, `Quadro manutenzioni PDF`, `Mappa storico`;
+  - tab `Storico` assente;
+  - `Dashboard` full-width senza `.mx-side-column`, con `4` KPI e blocchi principali;
+  - `Nuova / Modifica` full-width senza `.mx-side-column`, con `4` card foto nel corpo del form;
+  - `Quadro manutenzioni PDF` full-width senza `.mx-side-column`, con `Step 1`, `Step 2`, `10` righe elenco e vecchie `.mx-pdf-result-card` assenti.
+- Verifica tecnica:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+- Limite esplicito:
+  - il task riallinea solo struttura UI/layout; nessuna modifica a business o stato audit del modulo.
+
+## 0. Aggiornamento operativo 2026-04-07 - riallineamento UI del tab `Quadro manutenzioni PDF` come elenco filtrabile
+- Sul runtime ufficiale `/next/manutenzioni`, il tab `Quadro manutenzioni PDF` non usa piu i cardoni riepilogativi come struttura principale:
+  - `src/next/NextManutenzioniPage.tsx` mantiene i 2 step filtro (`Soggetto`, `Periodo`) ma porta sotto un elenco operativo di risultati esportabili, con righe dedicate a foto, targa, mezzo/modello o compressore, autista solito, `Km ultimo rifornimento`, data manutenzione, tipo/manutenzione e azioni `PDF mezzo` / `PDF compressore` + `Apri dettaglio`;
+  - `src/next/next-mappa-storico.css` riallinea il tab PDF a una grammatica elenco-first piu operativa, lasciando riepilogo rapido e cronologia in un blocco secondario.
+- Correzione chiusa nel perimetro consentito:
+  - nessuna modifica a `src/next/domain/nextManutenzioniDomain.ts`;
+  - nessuna modifica a `src/next/domain/nextMappaStoricoDomain.ts`;
+  - nessuna modifica a `src/utils/cloneWriteBarrier.ts`;
+  - nessuna modifica a writer business, route, PDF engine o madre legacy.
+- Verifica runtime reale eseguita su `http://127.0.0.1:4173/next/manutenzioni`:
+  - `Step 1` e `Step 2` presenti;
+  - elenco risultati presente sotto i filtri con `10` righe reali verificate;
+  - vecchia struttura principale a card rimossa (`.mx-pdf-result-card` assenti nel DOM del tab attivo);
+  - azioni `PDF mezzo` / `PDF compressore` e `Apri dettaglio` presenti sulle righe elenco;
+  - riepilogo rapido e cronologia restano secondari sotto l'elenco.
+- Verifica tecnica:
+  - `npx eslint src/next/NextManutenzioniPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+- Limite esplicito:
+  - il task riallinea solo il tab `Quadro manutenzioni PDF`; nessuna modifica a business o stato audit del modulo.
+
+## 0. Aggiornamento operativo 2026-04-07 - riallineamento UI dei tab `Dashboard`, `Storico`, `Nuova / Modifica` e `Quadro manutenzioni PDF` di `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, i tab diversi da `Mappa storico` non usano piu la resa beige/generica ereditata dal layout legacy:
+  - `src/next/NextManutenzioniPage.tsx` riallinea `Dashboard`, `Storico`, `Nuova / Modifica` e introduce la vista interna `Quadro manutenzioni PDF` come tab tecnico locale, senza toccare domain business, writer o route;
+  - `src/next/next-mappa-storico.css` ospita ora anche lo styling scoped della shell premium dei tab non-mappa (`.mx-*`), mantenendo invariato il design system globale fuori da `/next/manutenzioni`.
+- Riallineamenti chiusi nel perimetro consentito:
+  - `Dashboard` ora e mezzo-centrica e compressore-centrica, con KPI tecnici, blocchi aree e azioni rapide;
+  - `Storico` usa card cronologiche premium, con badge visivi distinti per `Mezzo`, `Compressore`, `Tagliando`, `Derivato`;
+  - `Nuova / Modifica` separa campi base, blocco `Tagliando completo`, materiali, descrizione/note e blocco visuale delle 4 viste foto collegate alla `Mappa storico`;
+  - `Quadro manutenzioni PDF` espone davvero i 2 step filtro `Soggetto` (`Mezzo` / `Compressore`) e `Periodo` (`Ultimo mese`, mesi disponibili, `Tutto`), con lista risultati impaginata sotto e cronologia completa;
+  - nel modulo compare una `Ricerca mezzo rapida` con preview reale di `targa`, `marca/modello` e `autista solito`.
+- Boundary preservato:
+  - nessuna modifica a `src/next/domain/nextManutenzioniDomain.ts`;
+  - nessuna modifica a `src/next/domain/nextMappaStoricoDomain.ts`;
+  - nessuna modifica a `src/utils/cloneWriteBarrier.ts`;
+  - nessuna modifica a writer business, upload/storage logic, route, PDF engine o madre legacy.
+- Verifica runtime reale eseguita su `http://127.0.0.1:4173/next/manutenzioni`:
+  - `Dashboard tecnico manutenzioni` visibile con `5` KPI, `4` blocchi area e timeline tecnica;
+  - `Ricerca mezzo rapida` verificata con preview reale, es. query `TI1` -> risultato `TI178456 ... Autista solito: ORLANDO BUTTI`;
+  - `Storico` verificato con card cronologiche e badge visuali;
+  - `Nuova / Modifica` verificato con blocco `Tagliando completo`, sezione `Componenti inclusi / materiali` e `8` card foto complessive tra main + sidebar;
+  - `Quadro manutenzioni PDF` verificato con `Step 1`, `Step 2`, `14` card risultati e cronologia sotto dopo selezione `Tutto`.
+- Verifica tecnica:
+  - `npx eslint src/next/NextManutenzioniPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+- Limite esplicito:
+  - il task riallinea solo UI/layout/UX dei tab non-mappa; nessuna modifica a business o stato audit del modulo.
+
+## 0. Aggiornamento operativo 2026-04-07 - fix dell'inferenza zona nella `Mappa storico` di `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, la vista interna `Mappa storico` non assegna piu in modo errato interventi gomme/assi anteriori alla zona `Fanali anteriori`.
+- Correzione applicata solo nel perimetro consentito:
+  - `src/next/domain/nextMappaStoricoDomain.ts` sostituisce il vecchio match piatto `includes()` con una risoluzione a priorita:
+    - prima ramo specialistico per `gomma/gomme/pneumatico/pneumatici/ruota/ruote/asse/assale`;
+    - poi fallback generale con scoring delle keyword specifiche;
+    - se il componente e riconoscibile ma la direzione non e affidabile, restituisce nessuna zona automatica;
+  - `src/next/mezziHotspotAreas.ts` ripulisce le keyword troppo generiche:
+    - `fronte-fanali` non usa piu `anteriore` come keyword autonoma;
+    - le aree assi/pneumatici usano keyword piu specifiche per fronte/sinistra/destra/retro.
+- Causa reale verificata:
+  - il matcher precedente assegnava le zone filtrando tutte le aree con una qualunque keyword inclusa nel testo;
+  - `fronte-fanali` conteneva la keyword troppo generica `anteriore` ed era valutata prima di `fronte-assale`;
+  - un record reale come `CAMBIO GOMME ... Asse: Anteriore` finiva quindi anche su `Fanali anteriori`.
+- Verifica runtime reale eseguita:
+  - prima della patch:
+    - `TI298409` -> `Zone: Fanali anteriori, Assale anteriore, Assi e pneumatici sinistri, Assi e pneumatici destri, Assi posteriori`
+    - `TI324623` -> stesso errore su `Fanali anteriori`
+  - dopo la patch:
+    - `TI298409` -> `Zone: Assale anteriore`
+    - `TI324623` -> `Zone: Assale anteriore`
+    - `TI313387` con `asse: 1° asse` senza direzione affidabile -> `Zona non deducibile`
+- Verifica tecnica:
+  - `npx eslint src/next/domain/nextMappaStoricoDomain.ts src/next/mezziHotspotAreas.ts` -> `OK`
+  - `npm run build` -> bundle costruito con successo (`vite build` chiuso con `✓ built`), restano solo warning noti su chunk size / `jspdf`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+- Limite esplicito:
+  - il task corregge solo l'inferenza zona della mappa; nessuna modifica a writer business, route, barrier clone o UI generale.
+
+## 0. Aggiornamento operativo 2026-04-07 - riallineamento UI della vista `Mappa storico` in `Manutenzioni` NEXT
+- Sul runtime ufficiale `/next/manutenzioni`, quando la vista attiva e `Mappa storico`, la UI non usa piu il layout generico precedente:
+  - `src/next/NextManutenzioniPage.tsx` compatta header modulo, tabs e selettore mezzo per lasciare la scena alla vista tecnica;
+  - `src/next/NextMappaStoricoPage.tsx` riorganizza la vista come shell specialistica con header tecnico compatto, griglia principale a 2 colonne e pannello zona stabile;
+  - `src/next/next-mappa-storico.css` sostituisce il look generico con una resa piu tecnica, piu scura e piu focalizzata, mantenendo il CSS scoped `.ms-*`.
+- Obiettivi visivi chiusi nel perimetro consentito:
+  - sparita la falsa colonna vuota a sinistra causata dal layout host del modulo;
+  - foto/placeholder della vista attiva ora dominante e di dimensione importante;
+  - colonna destra resa come pannello tecnico stabile per ricerca, filtri, dettaglio zona e storico cronologico;
+  - testi descrittivi ridotti e note dati rese discrete.
+- Boundary preservato:
+  - nessuna modifica a domain business, writer, route, PDF, clone barrier o logica hotspot/ricerca/filtri;
+  - nessuna modifica alla madre legacy.
+- Verifica finale eseguita:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato davvero su `http://127.0.0.1:4173/next/manutenzioni` con screenshot e misure DOM:
+    - shell `Mappa storico` a piena larghezza;
+    - griglia interna ~`60/40` (`698px / 448px`);
+    - superficie foto/placeholder dominante (`664px` di larghezza);
+    - nessun paragrafo descrittivo legacy residuo nel dettaglio zona.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+- Limite esplicito:
+  - il task riallinea solo la UI/layout della vista `Mappa storico`; non cambia lo stato audit del modulo e non apre nuove logiche business.
+
+## 0. Aggiornamento operativo 2026-04-07 - `Manutenzioni` NEXT reso scrivente con vista interna `Mappa storico`
+- La route ufficiale `/next/manutenzioni` non e piu un clone read-only:
+  - `src/next/NextManutenzioniPage.tsx` e ora il runtime NEXT reale del modulo, con dashboard, storico, form di creazione/modifica, eliminazione e vista interna `Mappa storico`;
+  - il writer business passa da `src/next/domain/nextManutenzioniDomain.ts`, preservando la shape legacy reale su `@manutenzioni` (`id`, `targa`, `tipo`, `fornitore`, `km`, `ore`, `sottotipo`, `descrizione`, `eseguito`, `data`, `materiali`);
+  - la vista `Mappa storico` vive dentro la stessa route, senza nuova route dedicata e senza toccare `src/App.tsx`.
+- Compatibilita business preservata nel perimetro verificato:
+  - scrittura compatibile su `@manutenzioni`;
+  - effetti legacy replicati su `@inventario` e `@materialiconsegnati` con la stessa prudenza del modulo madre;
+  - convergenza gomme riusata via `nextManutenzioniGommeDomain.ts`, senza rompere le voci derivate da eventi autisti;
+  - `Km ultimo rifornimento` letto solo via `nextRifornimentiDomain.ts`, mai da sort raw di `@rifornimenti`.
+- Nuova vista interna `Mappa storico`:
+  - nuove letture/scritture visuali isolate in `src/next/domain/nextMappaStoricoDomain.ts`;
+  - metadati visuali separati su `@mezzi_foto_viste` e `@mezzi_hotspot_mapping`;
+  - upload foto in Firebase Storage su `mezzi_foto/{targa}/{vista}_{timestamp}.{ext}`;
+  - 4 viste (`fronte`, `sinistra`, `destra`, `retro`), ricerca storico, filtri/modali, dettaglio zona e hotspot manuali.
+- Boundary clone aggiornato in modo chirurgico:
+  - `src/utils/cloneWriteBarrier.ts` consente su `/next/manutenzioni` solo `storageSync.setItemSync` per `@manutenzioni`, `@inventario`, `@materialiconsegnati`, `@mezzi_foto_viste`, `@mezzi_hotspot_mapping`;
+  - consentito solo `storage.uploadBytes` su path `mezzi_foto/...`;
+  - nessun widening globale del clone e nessuna apertura su altre route/moduli.
+- Verifica finale eseguita:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/mezziHotspotAreas.ts src/next/NextMappaStoricoPage.tsx src/utils/cloneWriteBarrier.ts` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale reale su `http://127.0.0.1:4173/next/manutenzioni`:
+    - route aperta senza errori;
+    - modulo non piu read-only;
+    - creazione, modifica ed eliminazione verificate davvero sul dataset reale con record di test poi rimosso;
+    - convergenza gomme verificata davvero su mezzo reale `TI178456` (`gommeItems > 0`);
+    - `Mappa storico` visibile come vista interna;
+    - upload foto vista, hotspot, dettaglio zona, ricerca e filtri verificati davvero;
+    - label `Km ultimo rifornimento` verificata davvero.
+- Stato aggiornato del modulo:
+  - `Manutenzioni` -> `PARZIALE`
+- Limite esplicito:
+  - la patch execution non auto-promuove il modulo a `CHIUSO` senza audit separato;
+  - il test runtime foto ha ripristinato i metadati visuali, ma un eventuale file binario di prova su Storage puo restare orfano perche questa patch non apre un flusso delete foto.
+
 ## 0. Aggiornamento operativo 2026-04-07 - fix del pulsante chiusura nel modale `Controllo originale` di `Lavori`
 - Sul runtime ufficiale del modulo `Lavori` NEXT il modale `Controllo originale` non mostra piu il carattere sporco `Ã—` in alto a destra.
 - Correzione applicata solo nel perimetro consentito:

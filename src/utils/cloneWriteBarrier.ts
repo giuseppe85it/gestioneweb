@@ -5,6 +5,15 @@ const LAVORI_ALLOWED_WRITE_PATHS = [
   "/next/lavori-eseguiti",
   "/next/dettagliolavori",
 ] as const;
+const MANUTENZIONI_ALLOWED_WRITE_PATHS = ["/next/manutenzioni"] as const;
+const MANUTENZIONI_ALLOWED_STORAGE_KEYS = new Set([
+  "@manutenzioni",
+  "@inventario",
+  "@materialiconsegnati",
+  "@mezzi_foto_viste",
+  "@mezzi_hotspot_mapping",
+]);
+const MANUTENZIONI_ALLOWED_STORAGE_PATH_PREFIXES = ["mezzi_foto/"] as const;
 const SAFE_FETCH_METHODS = new Set(["GET", "HEAD"]);
 const MUTATING_FETCH_URL_PATTERNS = [
   "cloudfunctions.net/analisi_economica_mezzo",
@@ -69,6 +78,10 @@ function isAllowedLavoriCloneWritePath(pathname: string): boolean {
   );
 }
 
+function isAllowedManutenzioniCloneWritePath(pathname: string): boolean {
+  return MANUTENZIONI_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
+}
+
 function readMetaKey(meta: unknown): string {
   if (typeof meta !== "object" || meta === null || !("key" in meta)) {
     return "";
@@ -78,13 +91,37 @@ function readMetaKey(meta: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readMetaPath(meta: unknown): string {
+  if (typeof meta !== "object" || meta === null || !("path" in meta)) {
+    return "";
+  }
+
+  const value = (meta as { path?: unknown }).path;
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
   const pathname = getCurrentPathname();
-  if (!isAllowedLavoriCloneWritePath(pathname)) {
+  if (isAllowedLavoriCloneWritePath(pathname)) {
+    return kind === "storageSync.setItemSync" && readMetaKey(meta) === "@lavori";
+  }
+
+  if (!isAllowedManutenzioniCloneWritePath(pathname)) {
     return false;
   }
 
-  return kind === "storageSync.setItemSync" && readMetaKey(meta) === "@lavori";
+  if (kind === "storageSync.setItemSync") {
+    return MANUTENZIONI_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+  }
+
+  if (kind === "storage.uploadBytes") {
+    const path = readMetaPath(meta);
+    return MANUTENZIONI_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
+      path.startsWith(prefix),
+    );
+  }
+
+  return false;
 }
 
 export function isCloneRuntime(): boolean {

@@ -1,11 +1,14 @@
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
+import { getItemSync, setItemSync } from "../../utils/storageSync";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import { formatDateUI, toNextDateValue } from "../nextDateFormat";
 
 const STORAGE_COLLECTION = "storage";
 const MANUTENZIONI_KEY = "@manutenzioni";
 const MEZZI_KEY = "@mezzi_aziendali";
+const INVENTARIO_KEY = "@inventario";
+const MATERIALI_CONSEGNATI_KEY = "@materialiconsegnati";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type RawRecord = Record<string, unknown>;
@@ -121,6 +124,22 @@ export type NextManutenzioniWorkspaceSnapshot = {
 type TipoVoce = "mezzo" | "compressore";
 type SottoTipo = "motrice" | "trattore";
 
+export type NextManutenzioneBusinessSavePayload = {
+  editingSourceId?: string | null;
+  targa: string;
+  tipo: TipoVoce;
+  fornitore?: string | null;
+  km?: number | null;
+  ore?: number | null;
+  sottotipo?: SottoTipo | null;
+  descrizione: string;
+  eseguito?: string | null;
+  data: string;
+  materiali?: NextManutenzioniLegacyMaterialRecord[];
+};
+
+type NextLegacyInventarioRecord = Record<string, unknown>;
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -152,6 +171,14 @@ function unwrapStorageArray(rawDoc: Record<string, unknown> | null): unknown[] {
   if (rawDoc?.value && typeof rawDoc.value === "object") {
     const nested = rawDoc.value as Record<string, unknown>;
     if (Array.isArray(nested.items)) return nested.items;
+  }
+  return [];
+}
+
+function unwrapStoredValueArray(rawValue: unknown): unknown[] {
+  if (Array.isArray(rawValue)) return rawValue;
+  if (rawValue && typeof rawValue === "object") {
+    return unwrapStorageArray(rawValue as Record<string, unknown>);
   }
   return [];
 }
@@ -495,4 +522,231 @@ export async function readNextManutenzioniWorkspaceSnapshot(): Promise<
       "Inventario, movimenti materiali, PDF e salvataggi restano fuori dal domain e vanno mantenuti read-only nel runtime ufficiale.",
     ],
   };
+}
+
+function buildGeneratedId(): string {
+  return Date.now().toString();
+}
+
+function sanitizeMaterialeForWrite(
+  item: NextManutenzioniLegacyMaterialRecord,
+  index: number,
+): NextManutenzioniLegacyMaterialRecord | null {
+  const label = normalizeOptionalText(item.label);
+  if (!label) return null;
+
+  return {
+    id: normalizeOptionalText(item.id) ?? `materiale:${index}`,
+    label,
+    quantita: normalizeNumber(item.quantita) ?? 0,
+    unita: normalizeOptionalText(item.unita) ?? "pz",
+    fromInventario: Boolean(item.fromInventario),
+    ...(normalizeOptionalText(item.refId) ? { refId: normalizeOptionalText(item.refId) ?? undefined } : {}),
+  };
+}
+
+function sanitizeMaterialiForWrite(
+  items: NextManutenzioniLegacyMaterialRecord[] | undefined,
+): NextManutenzioniLegacyMaterialRecord[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => sanitizeMaterialeForWrite(item, index))
+    .filter((item): item is NextManutenzioniLegacyMaterialRecord => Boolean(item));
+}
+
+function sanitizeBusinessRecord(
+  payload: NextManutenzioneBusinessSavePayload,
+): NextManutenzioniLegacyDatasetRecord {
+  const targa = normalizeNextMezzoTarga(payload.targa) || normalizeText(payload.targa).toUpperCase();
+  return {
+    id: buildGeneratedId(),
+    targa,
+    tipo: payload.tipo,
+    fornitore: normalizeOptionalText(payload.fornitore) ?? undefined,
+    km: payload.tipo === "mezzo" ? normalizeNumber(payload.km) : null,
+    ore: payload.tipo === "compressore" ? normalizeNumber(payload.ore) : null,
+    sottotipo: payload.tipo === "compressore" ? payload.sottotipo ?? null : null,
+    descrizione: normalizeOptionalText(payload.descrizione) ?? "Manutenzione",
+    eseguito: normalizeOptionalText(payload.eseguito),
+    data: normalizeOptionalText(payload.data) ?? "",
+    materiali: sanitizeMaterialiForWrite(payload.materiali),
+  };
+}
+
+async function readStoredArrayByKey(key: string): Promise<unknown[]> {
+  const raw = await getItemSync(key);
+  return unwrapStoredValueArray(raw);
+}
+
+function matchLegacyRecordById(
+  raw: unknown,
+  index: number,
+  recordId: string,
+): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  return buildHistoryId(raw as RawRecord, index, normalizeText((raw as RawRecord).targa)) === recordId;
+}
+
+function findLegacyRecordIndex(
+  items: unknown[],
+  recordId: string,
+): number {
+  return items.findIndex((entry, index) => matchLegacyRecordById(entry, index, recordId));
+}
+
+function sanitizeInventarioArray(items: unknown[]): NextLegacyInventarioRecord[] {
+  return items.filter((item): item is NextLegacyInventarioRecord => Boolean(item) && typeof item === "object");
+}
+
+async function persistLegacyMaterialEffects(args: {
+  targa: string;
+  data: string;
+  materiali: NextManutenzioniLegacyMaterialRecord[];
+}): Promise<void> {
+  const [inventarioRaw, movRaw, consegneRaw] = await Promise.all([
+    getItemSync(INVENTARIO_KEY),
+    getItemSync(MATERIALI_CONSEGNATI_KEY),
+    getItemSync(MATERIALI_CONSEGNATI_KEY),
+  ]);
+
+  const inventarioAggiornato = sanitizeInventarioArray(unwrapStoredValueArray(inventarioRaw)).map((item) => ({ ...item }));
+  const nuoveMovimentazioni = unwrapStoredValueArray(movRaw).map((item) =>
+    item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : item,
+  );
+  const nuoveConsegne = unwrapStoredValueArray(consegneRaw).map((item) =>
+    item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : item,
+  );
+
+  for (const materiale of args.materiali) {
+    if (!materiale.fromInventario || !materiale.refId) continue;
+
+    const index = inventarioAggiornato.findIndex((item) => String(item.id ?? "").trim() === materiale.refId);
+    if (index === -1) continue;
+
+    const corrente = inventarioAggiornato[index];
+    const quantitaAttuale = normalizeNumber(corrente.quantitaTotale ?? corrente.quantita) ?? 0;
+    const nuovaQuantita = Math.max(0, quantitaAttuale - materiale.quantita);
+    inventarioAggiornato[index] = {
+      ...corrente,
+      quantitaTotale: nuovaQuantita,
+      quantita: nuovaQuantita,
+    };
+
+    nuoveMovimentazioni.push({
+      id: `${Date.now()}_${materiale.id}`,
+      tipo: "OUT",
+      data: args.data,
+      materialeId: materiale.refId,
+      materialeLabel: materiale.label,
+      quantita: materiale.quantita,
+      unita: materiale.unita,
+      origine: "MANUTENZIONE",
+      targa: args.targa,
+    });
+
+    nuoveConsegne.push({
+      id: `${Date.now()}_CONS_${materiale.id}`,
+      descrizione: materiale.label,
+      quantita: materiale.quantita,
+      unita: materiale.unita,
+      fornitore: normalizeOptionalText(corrente.fornitore) ?? "",
+      destinatario: {
+        type: "MEZZO",
+        refId: args.targa,
+        label: args.targa,
+      },
+      motivo: "UTILIZZO MANUTENZIONE",
+      data: args.data,
+    });
+  }
+
+  await setItemSync(INVENTARIO_KEY, inventarioAggiornato);
+  await setItemSync(MATERIALI_CONSEGNATI_KEY, nuoveMovimentazioni);
+  await setItemSync(MATERIALI_CONSEGNATI_KEY, nuoveConsegne);
+}
+
+export async function saveNextManutenzioneBusinessRecord(
+  payload: NextManutenzioneBusinessSavePayload,
+): Promise<NextManutenzioniLegacyDatasetRecord> {
+  const nextRecord = sanitizeBusinessRecord(payload);
+  const storicoRaw = await readStoredArrayByKey(MANUTENZIONI_KEY);
+  const editingSourceId = normalizeOptionalText(payload.editingSourceId);
+  const nextStorico = storicoRaw.filter((entry, index) => {
+    if (!editingSourceId) return true;
+    return !matchLegacyRecordById(entry, index, editingSourceId);
+  });
+
+  nextStorico.unshift(nextRecord);
+  await setItemSync(MANUTENZIONI_KEY, nextStorico);
+
+  if (!editingSourceId) {
+    await persistLegacyMaterialEffects({
+      targa: nextRecord.targa,
+      data: nextRecord.data,
+      materiali: nextRecord.materiali ?? [],
+    });
+  }
+
+  return nextRecord;
+}
+
+export async function deleteNextManutenzioneBusinessRecord(recordId: string): Promise<boolean> {
+  const normalizedRecordId = normalizeOptionalText(recordId);
+  if (!normalizedRecordId) return false;
+
+  const storicoRaw = await readStoredArrayByKey(MANUTENZIONI_KEY);
+  const recordIndex = findLegacyRecordIndex(storicoRaw, normalizedRecordId);
+  if (recordIndex === -1) return false;
+
+  const recordRaw = storicoRaw[recordIndex];
+  if (!recordRaw || typeof recordRaw !== "object") return false;
+
+  const record = toLegacyDatasetRecord(recordRaw as RawRecord, recordIndex);
+  if (!record) return false;
+
+  const inventarioRaw = await getItemSync(INVENTARIO_KEY);
+  const inventarioAggiornato = sanitizeInventarioArray(unwrapStoredValueArray(inventarioRaw)).map((item) => ({ ...item }));
+
+  for (const materiale of record.materiali ?? []) {
+    if (!materiale.fromInventario || !materiale.refId) continue;
+    const index = inventarioAggiornato.findIndex((item) => String(item.id ?? "").trim() === materiale.refId);
+    if (index === -1) continue;
+
+    const corrente = inventarioAggiornato[index];
+    const quantitaAttuale = normalizeNumber(corrente.quantitaTotale ?? corrente.quantita) ?? 0;
+    const nuovaQuantita = quantitaAttuale + (normalizeNumber(materiale.quantita) ?? 0);
+    inventarioAggiornato[index] = {
+      ...corrente,
+      quantitaTotale: nuovaQuantita,
+      quantita: nuovaQuantita,
+    };
+  }
+
+  const consegneRaw = await getItemSync(MATERIALI_CONSEGNATI_KEY);
+  let consegneAggiornate = unwrapStoredValueArray(consegneRaw);
+
+  for (const materiale of record.materiali ?? []) {
+    consegneAggiornate = consegneAggiornate.filter((entry) => {
+      if (!entry || typeof entry !== "object") return true;
+      const raw = entry as RawRecord;
+      const destinatario =
+        raw.destinatario && typeof raw.destinatario === "object"
+          ? (raw.destinatario as RawRecord)
+          : null;
+
+      return !(
+        normalizeOptionalText(raw.motivo) === "UTILIZZO MANUTENZIONE" &&
+        normalizeOptionalText(destinatario?.refId) === record.targa &&
+        normalizeOptionalText(raw.descrizione) === materiale.label &&
+        normalizeNumber(raw.quantita) === materiale.quantita &&
+        normalizeOptionalText(raw.unita) === materiale.unita
+      );
+    });
+  }
+
+  const nextStorico = storicoRaw.filter((_, index) => index !== recordIndex);
+  await setItemSync(INVENTARIO_KEY, inventarioAggiornato);
+  await setItemSync(MATERIALI_CONSEGNATI_KEY, consegneAggiornate);
+  await setItemSync(MANUTENZIONI_KEY, nextStorico);
+  return true;
 }
