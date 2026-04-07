@@ -1,0 +1,20 @@
+
+> gestione-web@0.0.0 dev
+> vite --host 127.0.0.1 --port 4184
+
+
+  [32m[1mVITE[22m v7.2.2[39m  [2mready in [0m[1m400[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m4184[22m/[39m
+[2m08:42:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m08:43:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:10:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:10:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:11:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:11:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:12:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:13:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:13:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:13:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:14:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m
+[2m09:39:06[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/next/NextDettaglioLavoroPage.tsx[22m

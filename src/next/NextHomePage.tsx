@@ -55,6 +55,12 @@ type HomeAlertBanner = {
   text: string;
 };
 
+type HomeLavoriAlert = {
+  totalLabel: string;
+  urgentLabel: string;
+  items: TaskRow[];
+};
+
 type HomeStatsState = {
   lavoriAperti: number | null;
   lavoriUrgenti: number | null;
@@ -132,6 +138,30 @@ function buildHomeAlertBanner(snapshot: D10Snapshot | null): HomeAlertBanner | n
   return {
     tone: "success",
     text: "Tutto ok: nessun alert prioritario",
+  };
+}
+
+function buildHomeLavoriAlert(
+  snapshot: NextLavoriListaSnapshot | null,
+  stats: HomeStatsState,
+): HomeLavoriAlert {
+  const totalLabel =
+    stats.lavoriAperti == null
+      ? "Lavori in caricamento"
+      : stats.lavoriAperti === 0
+        ? "Nessun lavoro aperto"
+        : `${stats.lavoriAperti} ${stats.lavoriAperti === 1 ? "lavoro aperto" : "lavori aperti"}`;
+  const urgentLabel =
+    stats.lavoriUrgenti == null
+      ? "urgenze in caricamento"
+      : stats.lavoriUrgenti === 0
+        ? "nessuna priorità alta"
+        : `${stats.lavoriUrgenti} ${stats.lavoriUrgenti === 1 ? "alta priorità" : "alte priorità"}`;
+
+  return {
+    totalLabel,
+    urgentLabel,
+    items: buildLavoriWidgetRows(snapshot).slice(0, 3),
   };
 }
 
@@ -424,6 +454,10 @@ export default function NextHomePage() {
     () => buildInventarioWidgetRows(inventarioSnapshot),
     [inventarioSnapshot],
   );
+  const lavoriAlert = useMemo(
+    () => buildHomeLavoriAlert(lavoriSnapshot, homeStats),
+    [homeStats, lavoriSnapshot],
+  );
 
   const startFleetEdit = (row: FleetRow) => {
     setFleetEdit({
@@ -577,19 +611,60 @@ export default function NextHomePage() {
       </header>
 
       {alertBanner ? (
-        <button
-          type="button"
-          className={`next-home__alert-banner next-home__alert-banner--${alertBanner.tone} next-shell__scadenze-banner-trigger`}
-          aria-label="Apri scadenze revisioni urgenti"
-          aria-live="polite"
-          onClick={() => openScadenzeModal("urgenti")}
-        >
-          <span
-            className={`next-home__alert-dot next-home__alert-dot--${alertBanner.tone}`}
-            aria-hidden="true"
-          />
-          <span>{alertBanner.text}</span>
-        </button>
+        <section className="next-home__alerts-grid" aria-label="Scadenze e lavori in attesa">
+          <button
+            type="button"
+            className={`next-home__alert-card next-home__alert-card--${alertBanner.tone} next-shell__scadenze-banner-trigger`}
+            aria-label="Apri scadenze revisioni urgenti"
+            aria-live="polite"
+            onClick={() => openScadenzeModal("urgenti")}
+          >
+            <div className="next-home__alert-card-head">
+              <div className="next-home__alert-card-title-wrap">
+                <span
+                  className={`next-home__alert-dot next-home__alert-dot--${alertBanner.tone}`}
+                  aria-hidden="true"
+                />
+                <span className="next-home__alert-card-title">Scadenze</span>
+              </div>
+              <span className="next-home__alert-card-link">Apri →</span>
+            </div>
+            <div className="next-home__alert-card-copy">{alertBanner.text}</div>
+          </button>
+
+          <NavLink
+            to="/next/lavori-in-attesa"
+            className="next-home__alert-card next-home__alert-card--info"
+            aria-label="Apri lavori in attesa"
+          >
+            <div className="next-home__alert-card-head">
+              <div className="next-home__alert-card-title-wrap">
+                <span className="next-home__alert-dot next-home__alert-dot--info" aria-hidden="true" />
+                <span className="next-home__alert-card-title">Lavori in attesa</span>
+              </div>
+              <span className="next-home__alert-card-link">Apri →</span>
+            </div>
+            <div className="next-home__alert-card-metrics">
+              <strong>{lavoriAlert.totalLabel}</strong>
+              <span>{lavoriAlert.urgentLabel}</span>
+            </div>
+            <div className="next-home__alert-list">
+              {lavoriAlert.items.length ? (
+                lavoriAlert.items.map((row) => (
+                  <div key={`${row.title}:${row.detail}`} className="next-home__alert-list-row">
+                    <div className="next-home__alert-list-text">
+                      <span className="next-home__alert-list-title">{row.title}</span>
+                      <span className="next-home__alert-list-detail">{row.detail}</span>
+                    </div>
+                    <span className={`next-home__badge next-home__badge--${row.tone}`}>{row.badge}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="next-home__alert-list-empty">Nessun lavoro in attesa rilevato</div>
+              )}
+            </div>
+          </NavLink>
+        </section>
       ) : null}
 
       <section className="next-home__ai-card" aria-label="Pannello IA interna">

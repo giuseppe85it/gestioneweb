@@ -1,4 +1,10 @@
 const CLONE_PREFIX = "/next";
+const LAVORI_ALLOWED_WRITE_PATHS = [
+  "/next/lavori-da-eseguire",
+  "/next/lavori-in-attesa",
+  "/next/lavori-eseguiti",
+  "/next/dettagliolavori",
+] as const;
 const SAFE_FETCH_METHODS = new Set(["GET", "HEAD"]);
 const MUTATING_FETCH_URL_PATTERNS = [
   "cloudfunctions.net/analisi_economica_mezzo",
@@ -56,6 +62,31 @@ function getCurrentPathname(): string {
   return normalizePathname(window.location.pathname);
 }
 
+function isAllowedLavoriCloneWritePath(pathname: string): boolean {
+  return (
+    LAVORI_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry) ||
+    pathname.startsWith("/next/dettagliolavori/")
+  );
+}
+
+function readMetaKey(meta: unknown): string {
+  if (typeof meta !== "object" || meta === null || !("key" in meta)) {
+    return "";
+  }
+
+  const value = (meta as { key?: unknown }).key;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
+  const pathname = getCurrentPathname();
+  if (!isAllowedLavoriCloneWritePath(pathname)) {
+    return false;
+  }
+
+  return kind === "storageSync.setItemSync" && readMetaKey(meta) === "@lavori";
+}
+
 export function isCloneRuntime(): boolean {
   const pathname = getCurrentPathname();
   return pathname === CLONE_PREFIX || pathname.startsWith(`${CLONE_PREFIX}/`);
@@ -63,6 +94,7 @@ export function isCloneRuntime(): boolean {
 
 export function assertCloneWriteAllowed(kind: string, meta?: unknown) {
   if (!isCloneRuntime()) return;
+  if (isAllowedCloneWriteException(kind, meta)) return;
 
   const error = new CloneWriteBlockedError(kind, meta);
   logBlockedWrite(error);

@@ -1,5 +1,73 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-07 - fix del pulsante chiusura nel modale `Controllo originale` di `Lavori`
+- Sul runtime ufficiale del modulo `Lavori` NEXT il modale `Controllo originale` non mostra piu il carattere sporco `Ã—` in alto a destra.
+- Correzione applicata solo nel perimetro consentito:
+  - `src/next/NextDettaglioLavoroPage.tsx` sostituisce la stringa corrotta hardcoded del close button del solo modale controllo con `&times;` e aggiunge `aria-label` esplicito;
+  - nessuna modifica a matching `segnalazione` / `controllo`, logica dati, route o letture dei dataset origine;
+  - nessuna modifica CSS necessaria.
+- Causa reale verificata:
+  - il modale `Controllo originale` renderizzava una sequenza corrotta nel JSX (`Ã—` / `Ãƒâ€”`) invece di una chiusura stabile;
+  - il problema era locale al bottone del modale controllo, non alla logica del modulo.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src\\next\\NextDettaglioLavoroPage.tsx` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/dettagliolavori/daade4a2-c681-46d0-99d4-1906d151116d?from=lavori-in-attesa`:
+    - click `Apri controllo` -> il close button mostra `×`;
+    - click sul close button -> il modale si chiude correttamente.
+- Stato aggiornato del modulo:
+  - `Lavori` -> `PARZIALE`
+- Limite esplicito:
+  - il prompt chiude solo il difetto visivo del close button del modale controllo e non amplia il perimetro del modulo.
+
+## 0. Aggiornamento operativo 2026-04-07 - dettaglio `Lavori` NEXT esteso ai lavori nati da `controllo mezzo KO`
+- Sul runtime ufficiale del modulo `Lavori` NEXT il dettaglio non copre piu solo le origini `source.type = "segnalazione"`:
+  - `src/next/NextDettaglioLavoroPage.tsx` distingue ora in modo esplicito `segnalazione` vs `controllo`;
+  - il blocco UI e stato generalizzato in `Problema / esito origine`;
+  - per i controlli KO legge davvero `@controlli_mezzo_autisti` e mostra il testo reale del record origine.
+- Matching reale verificato e ristretto:
+  - per `segnalazione` il comportamento gia corretto resta invariato;
+  - per `controllo` priorita a `source.id/originId` del lavoro;
+  - fallback solo sul backlink reale `linkedLavoroId` / `linkedLavoroIds` del record controllo;
+  - nessun fallback fragile su targa, autore o testo per aprire controlli.
+- Dato reale mostrato per i controlli:
+  - priorita ai campi `note`, poi `dettaglio`, poi `messaggio`;
+  - se presenti check KO nel payload `check/koItems`, il dettaglio aggiunge `Check KO: ...`;
+  - se il controllo origine esiste ma non contiene testo utile, il dettaglio mostra `Nessuna nota presente nel controllo originale`.
+- Apertura origine corretta:
+  - `Apri segnalazione` continua ad aprire la segnalazione originale in modale read-only;
+  - `Apri controllo` apre ora il controllo originale in modale read-only, senza route nuove, con autore, data/ora, target, mezzo coinvolto, esito KO/OK, check KO e nota reale.
+- Verifica finale eseguita:
+  - caso reale route diretta `segnalazione`: lavoro `7c6af494-9b02-4bf2-ac67-c994b39436c0` -> testo `Freni da controllare` + modale `Apri segnalazione` corretto;
+  - caso reale route diretta `controllo`: lavoro `daade4a2-c681-46d0-99d4-1906d151116d` -> testo `1 asse rimorchio gomme lisce` + `Check KO: GOMME` + modale `Apri controllo` corretto;
+  - caso reale multi-link controllo via backlink `linkedLavoroIds`: lavori `82df827a-b18b-43fa-b4ee-abf8e3b36389` e `f8288347-2b06-4976-9e86-8ea152da1bd2` -> stesso controllo originale corretto;
+  - dettaglio in modale verificato davvero da `/next/lavori-in-attesa` per entrambi i casi;
+  - `npm run build` -> `OK`;
+  - `npm run lint` -> `KO` per debito storico globale gia presente fuori perimetro; il file toccato passa comunque con `node_modules\\.bin\\eslint.cmd src\\next\\NextDettaglioLavoroPage.tsx`.
+- Stato aggiornato del modulo:
+  - `Lavori` -> `PARZIALE`
+- Limite esplicito:
+  - il modulo non e dichiarabile `CHIUSO`; la patch copre solo il delta reale del dettaglio origine `controllo` senza toccare madre, route o altri moduli.
+
+## 0. Aggiornamento operativo 2026-04-06 - rifinitura UI/PDF/Home del modulo `Lavori` NEXT
+- Sul runtime ufficiale del modulo `Lavori` NEXT sono stati corretti difetti reali di leggibilita, senza spegnere la logica reale gia riaperta nel perimetro Lavori.
+- Correzione applicata solo nel perimetro consentito:
+  - `src/next/NextLavoriDaEseguirePage.tsx` mostra ora `Segnalato da` e `Autista solito` nelle tabelle reali `In attesa` / `Eseguiti`, migliora l'export PDF sul canale esistente e applica colori reali di priorita sia nel form `Aggiungi` sia sulle righe tabella;
+  - `src/next/NextDettaglioLavoroPage.tsx` espone `Segnalato da` e `Autista solito` anche nel riepilogo dettaglio e nel PDF reale del dettaglio, restando coerente con la route viva `/next/dettagliolavori/:lavoroId`;
+  - `src/next/NextHomePage.tsx` integra nel blocco alert/scadenze della dashboard anche un riquadro `Lavori in attesa` con contatori reali e anteprima dei lavori piu rilevanti, linkando al modulo Lavori senza introdurre nuove scritture.
+- Boundary preservato:
+  - nessuna modifica a madre legacy, route, shell, barriere clone, `src/main.tsx`, Firebase/rules o domain cross-modulo;
+  - nessuna modifica alla logica reale di salvataggio/modifica/esecuzione/eliminazione del modulo Lavori;
+  - nessuna nuova superficie read-only o notice clone-safe sul modulo.
+- Verifica finale eseguita:
+  - `node_modules\\.bin\\eslint.cmd src\\next\\NextLavoriDaEseguirePage.tsx src\\next\\NextDettaglioLavoroPage.tsx src\\next\\NextHomePage.tsx` -> `OK`;
+  - `npm run build` -> `OK`;
+  - runtime locale verificato su `/next/lavori-in-attesa`, `/next/lavori-eseguiti`, `/next/lavori-da-eseguire?tab=aggiungi`, `/next/dettagliolavori/:lavoroId` e `/next` Home con dataset reale.
+- Stato aggiornato del modulo:
+  - `Lavori` -> `PARZIALE`
+- Limite esplicito:
+  - il modulo non va promosso a `CHIUSO` con questa patch; resta necessario un audit separato post-rifinitura per confermare parity finale del perimetro Lavori aperto in scrittura.
+
 ## 0. Aggiornamento operativo 2026-04-05 - pulizia dei base status statici della mappa `Euromecc`
 - Sul runtime ufficiale `/next/euromecc`, con collection `Euromecc` vuote, la mappa non mostra piu warning gialli ereditati dalla sola topologia statica.
 - Correzione applicata solo nel perimetro consentito:
@@ -3914,3 +3982,85 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 - Stato aggiornato del perimetro:
   - `Shell globale NEXT` -> `PARZIALE`
   - `Dashboard / Home` -> `PARZIALE`
+ 
+## 5.135 Aggiornamento 2026-04-06 - `Lavori` NEXT passa a UI unificata con logica reale e deroga chirurgica su `@lavori`
+- Il runtime ufficiale del modulo `Lavori` nel subtree `/next` usa ora una dashboard UI unificata:
+  - `src/next/NextLavoriDaEseguirePage.tsx` diventa il contenitore con tab `In attesa`, `Eseguiti`, `Aggiungi`, stat card, filtri, tabelle moderne e dettaglio in modale;
+  - `src/next/NextLavoriInAttesaPage.tsx` e `src/next/NextLavoriEseguitiPage.tsx` convergono sulla stessa dashboard, forzando solo la tab iniziale coerente con la route;
+  - `src/next/NextDettaglioLavoroPage.tsx` espone il dettaglio reale condiviso, riusato sia come route diretta sia come contenuto del modale nella dashboard.
+- La logica reale dei moduli Lavori e stata preservata senza toccare `src/pages/**` o `src/next/domain/*`:
+  - lettura reale da `@lavori` e `@mezzi_aziendali` tramite `getItemSync(...)`;
+  - aggiunta gruppo lavori reale con `setItemSync("@lavori", ...)`;
+  - modifica, eliminazione e `Segna come eseguito` reali nel dettaglio, sempre su `@lavori`;
+  - export PDF di liste e dettaglio mantenuto nel perimetro del modulo.
+- La barriera clone-wide non e stata aperta globalmente:
+  - `src/utils/cloneWriteBarrier.ts` consente ora solo `storageSync.setItemSync("@lavori")`;
+  - l'eccezione vale solo sui pathname `/next/lavori-da-eseguire`, `/next/lavori-in-attesa`, `/next/lavori-eseguiti`, `/next/dettagliolavori` e `/next/dettagliolavori/:lavoroId`;
+  - tutto il resto del clone continua a restare bloccato dalla barriera no-write.
+- Verifica runtime locale completata:
+  - aggiunta reale di un lavoro temporaneo in `Aggiungi`;
+  - modifica reale, esecuzione reale e poi eliminazione reale del record via dettaglio;
+  - route diretta `/next/dettagliolavori/:lavoroId` verificata;
+  - tentativo di write su `@lavori` da `/next/autisti-inbox` rimasto bloccato.
+- Stato aggiornato del modulo:
+  - `Lavori` -> `PARZIALE`
+- Limite esplicito:
+  - il modulo non viene dichiarato `CHIUSO` in questo prompt perche manca ancora audit separato post-redesign sulla parity completa e sulla tenuta del perimetro.
+
+## 5.136 Aggiornamento 2026-04-06 - `Lavori` NEXT mostra il problema reale e apre la segnalazione autista originale dal dettaglio
+- Nel dettaglio lavoro NEXT e stata aggiunta la sezione `Problema segnalato`:
+  - usa il testo reale della segnalazione autista quando il match e sicuro;
+  - in fallback mostra `dettagli` o il payload gia presente nel lavoro, senza inventare dati;
+  - se non esiste testo utile mostra `—`.
+- L'apertura della segnalazione originale resta interna al modulo `Lavori`:
+  - `Segnalato da` espone il bottone discreto `Apri segnalazione`;
+  - il bottone apre un modale read-only secondario, senza nuove route e senza uscire dal flusso lavori;
+  - il modale mostra autore, data/ora, mezzo, stato, tipo problema, foto allegate e descrizione reale.
+- Il matching verso la segnalazione originale e stato mantenuto stretto e spiegabile:
+  - priorita a `source.type === "segnalazione"` + `source.id/originId` presenti nel lavoro reale;
+  - fallback solo su match univoco per targa + autore + testo reale della segnalazione;
+  - nessuna apertura se il match non e sicuro.
+- Verifica runtime locale completata:
+  - caso positivo su lavoro da segnalazione con apertura del modale read-only e testo reale coerente;
+  - route diretta `/next/dettagliolavori/:lavoroId` verificata;
+  - caso senza match sicuro lasciato senza apertura di segnalazione errata.
+- Stato modulo:
+  - `Lavori` -> `PARZIALE`
+
+## 5.137 Aggiornamento 2026-04-06 - fix reale del testo segnalazione autista nel dettaglio `Lavori`
+- Corretto il recupero del testo reale nel blocco `Problema segnalato` del dettaglio lavoro NEXT.
+- Il fix ora legge il payload reale di `@segnalazioni_autisti_tmp` invece di fermarsi alla sola vista normalizzata:
+  - priorita a `source.id/originId` del lavoro;
+  - seconda priorita al backlink reale `linkedLavoroId` / `linkedLavoroIds` presente nella segnalazione autista;
+  - fallback stretto su targa + autore + tipo problema + testo reale della segnalazione.
+- Campo reale verificato sul caso runtime:
+  - il testo problema e stato letto da `descrizione` della segnalazione originale `5cdfe350-804f-45c8-879b-433574b0700d`;
+  - i campi `note`, `messaggio`, `dettaglio` e `testo` sono stati controllati ma nel caso verificato risultano vuoti o assenti.
+- Il dettaglio non mostra piu `—` quando il testo esiste davvero:
+  - in modal da `/next/lavori-in-attesa`;
+  - in route diretta `/next/dettagliolavori/:lavoroId`.
+- Se la segnalazione originale esiste ma non ha alcuna nota/testo utile, il blocco mostra ora:
+  - `Nessuna nota presente nella segnalazione originale`
+- Stato modulo:
+  - `Lavori` -> `PARZIALE`
+
+## 5.138 Aggiornamento 2026-04-07 - irrigidimento del link forte segnalazione -> dettaglio `Lavori`
+- Il dettaglio lavoro NEXT resta sul flusso dati reale verificato dall'audit:
+  - match forte primario su `source.type === "segnalazione"` + `source.id/originId`;
+  - match forte secondario sul backlink reale `linkedLavoroId/linkedLavoroIds` del record segnalazione;
+  - fallback solo se univoco e spiegabile.
+- Il blocco `Problema segnalato` non usa piu `lavoro.dettagli` o `lavoro.note` come scorciatoia per sostituire la segnalazione originale.
+- Gerarchia testo reale confermata e mantenuta nel dettaglio e nel modale read-only:
+  - `descrizione`
+  - `note`
+  - `messaggio`
+  - `dettaglio`
+  - `testo`
+- Se la segnalazione originale esiste ma non contiene testo in quei campi, il dettaglio mostra ora:
+  - `Nessuna descrizione presente nella segnalazione originale`
+- Verifica runtime locale ripetuta e positiva:
+  - caso reale da dashboard/modale -> `Freni da controllare`
+  - stesso caso su route diretta `/next/dettagliolavori/:lavoroId` -> `Freni da controllare`
+  - caso non nato da segnalazione -> nessun `Apri segnalazione` e nessuna apertura errata
+- Stato modulo:
+  - `Lavori` -> `PARZIALE`

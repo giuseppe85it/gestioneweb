@@ -54,7 +54,7 @@
 | Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
 
 ## 3. STATO ATTUALE
-- Ultimo task completato: pannello nascosto `Gestione dati Euromecc` con edit/delete reale di segnalazioni, manutenzioni da fare e manutenzioni fatte.
+- Ultimo task completato: fix visivo del close button nel modale `Controllo originale` di `Lavori` NEXT; il bottone usa ora una chiusura stabile `×` e chiude correttamente il modale, senza toccare logica dati o match.
 - Stato app legacy: attiva e fonte di verita operativa.
 - Stato NEXT: clone read-only esistente ma non promosso a perimetro autonomo chiuso.
 - Stato build root: `npm run build` = OK.
@@ -97,6 +97,13 @@
 18. Il boundary Firestore del modulo `Euromecc` e versionato in `firestore.rules`: le collection `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta` hanno `match` espliciti con `request.auth != null` e validazione shape; il fallback del resto Firestore resta sul modello auth attuale e non esiste ancora una chiusura per-ruolo verificabile nel repo.
 19. La topologia statica di `Euromecc` in `src/next/euromeccAreas.ts` parte ora neutra (`base: ok`); i warning gialli non devono comparire senza dati reali.
 20. `Euromecc` include un pannello discreto `Gestione dati Euromecc` aperto da `Impostazioni` nell'header del modulo; il pannello permette edit/delete reale su `euromecc_issues`, `euromecc_pending`, `euromecc_done`, ma non equivale a sicurezza per-ruolo.
+21. Il modulo `Lavori` nel clone NEXT non e piu read-only: usa una dashboard UI unificata sopra il motore reale `@lavori`, ma la deroga al blocco clone-wide e chirurgica e limitata al solo `storageSync.setItemSync("@lavori")` sui pathname Lavori/dettaglio; stato corretto del modulo: `PARZIALE` finche non passa audit separato.
+22. Nel perimetro `Lavori` NEXT la UI mostra ora anche `Segnalato da` e `Autista solito` nelle liste/dettaglio/PDF, l'export PDF resta sul canale condiviso `src/utils/pdfEngine.ts` con layout piu leggibile e la Home `/next` integra un riquadro `Lavori in attesa` nello stesso blocco alert/scadenze, senza aprire nuove scritture fuori dal modulo.
+23. `src/next/NextDettaglioLavoroPage.tsx` arricchisce ora il dettaglio con `Problema segnalato` e con il modale read-only della segnalazione autista originale: prima prova `source.type === "segnalazione"` + `source.id/originId`, poi fallback solo su match univoco targa + autore + descrizione; se il match non e sicuro non apre nulla.
+24. Il fix successivo sul dettaglio `Lavori` non usa piu solo la vista normalizzata delle segnalazioni: legge anche il payload reale di `@segnalazioni_autisti_tmp` e sfrutta il backlink `linkedLavoroId/linkedLavoroIds`, cosi il blocco `Problema segnalato` mostra davvero il testo reale (`descrizione`, poi `note`, `messaggio`, `dettaglio`, `testo`) quando esiste.
+25. Nel dettaglio `Lavori` NEXT il testo della segnalazione origine non deve piu appoggiarsi a `lavoro.dettagli` o `lavoro.note`: il percorso corretto e match forte su `source.id/originId`, poi backlink `linkedLavoroId/linkedLavoroIds`, con messaggio esplicito `Nessuna descrizione presente nella segnalazione originale` se il record trovato non contiene testo.
+26. Nel dettaglio `Lavori` NEXT esiste ora anche il ramo `source.type = "controllo"`: il resolver legge `@controlli_mezzo_autisti`, usa come collegamento forte `source.id/originId`, poi solo il backlink reale `linkedLavoroId/linkedLavoroIds`, e mostra il testo origine del controllo con priorita `note`, poi `dettaglio`, poi `messaggio`, piu i KO reali da `check/koItems`; nessun fallback fragile su targa/autore/testo e autorizzato per aprire controlli.
+27. Nel modale `Controllo originale` di `Lavori` il close button non deve usare caratteri hardcoded corrotti: il fix corrente usa `&times;` nel JSX con `aria-label` esplicito, cosi il rendering resta stabile e il click continua a chiudere il modale senza toccare la logica.
 
 ## 5. CONVENZIONI
 ### Dati e chiavi
@@ -141,6 +148,7 @@
 - `preventivi/<id>.pdf`
 
 ## 6. PROSSIMI TASK
+0. Fare audit separato del modulo `Lavori` dopo il redesign unificato e la deroga chirurgica su `cloneWriteBarrier.ts`; oggi non va promosso a `CHIUSO` senza prova extra.
 1. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
 2. Estendere oltre `Euromecc` la versione verificabile delle policy Firestore effettive e riallinearle al codice.
 3. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
@@ -196,6 +204,11 @@
 - `src/next/NextProcurementConvergedSection.tsx`
 - `src/next/domain/nextProcurementDomain.ts`
 - `src/next/domain/nextInventarioDomain.ts`
+- `src/next/NextLavoriDaEseguirePage.tsx`
+- `src/next/NextLavoriInAttesaPage.tsx`
+- `src/next/NextLavoriEseguitiPage.tsx`
+- `src/next/NextDettaglioLavoroPage.tsx`
+- `src/next/next-lavori.css`
 
 ### NEXT Euromecc
 - `src/next/NextEuromeccPage.tsx`
