@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import {
   deleteNextMappaStoricoHotspot,
   readNextMappaStoricoSnapshot,
@@ -17,6 +17,23 @@ import "./next-mappa-storico.css";
 
 type NextMappaStoricoPageProps = {
   targa: string;
+  embedded?: boolean;
+  photoManager?: boolean;
+  mezzoInfo?: {
+    targa: string;
+    mezzoLabel: string;
+    autistaNome: string | null;
+    categoria: string | null;
+    kmAttuali: number | null;
+    ultimaManutenzione: string | null;
+    ultimoInterventoMezzo: string | null;
+    ultimoInterventoCompressore: string | null;
+    ultimeManutenzioniMezzo: Array<{ id: string; data: string; title: string }>;
+    ultimeManutenzioniCompressore: Array<{ id: string; data: string; title: string }>;
+  };
+  onOpenPdf?: () => void;
+  onOpenDossier?: () => void;
+  onEditLatest?: () => void;
 };
 
 type ModalKind = "ultimi" | "frequenti" | "perzona" | null;
@@ -41,7 +58,15 @@ function formatVistaLabel(vista: NextMappaStoricoVista): string {
   return vista.charAt(0).toUpperCase() + vista.slice(1);
 }
 
-export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProps) {
+export default function NextMappaStoricoPage({
+  targa,
+  embedded = false,
+  photoManager = false,
+  mezzoInfo,
+  onOpenPdf,
+  onOpenDossier,
+  onEditLatest,
+}: NextMappaStoricoPageProps) {
   const normalizedTarga = targa.trim().toUpperCase().replace(/\s+/g, "");
   const [snapshot, setSnapshot] = useState<NextMappaStoricoSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +77,7 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
   const [pendingPos, setPendingPos] = useState<{ x: number; y: number } | null>(null);
   const [zonaPerPending, setZonaPerPending] = useState("");
   const [modalAperto, setModalAperto] = useState<ModalKind>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -76,7 +101,7 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
         console.error("Errore caricamento mappa storico:", loadError);
         if (cancelled) return;
         setSnapshot(null);
-        setError("Impossibile caricare la vista Mappa storico del mezzo selezionato.");
+        setError("Impossibile caricare il dettaglio tecnico del mezzo selezionato.");
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -148,23 +173,27 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
     if (successMessage) setMessage(successMessage);
   }
 
-  async function handlePhotoUpload(file: File | null) {
+  async function handlePhotoUploadForVista(vista: NextMappaStoricoVista, file: File | null) {
     if (!file || !normalizedTarga) return;
     try {
       setSaving(true);
       setMessage(null);
       await uploadNextMappaStoricoPhoto({
         targa: normalizedTarga,
-        vista: vistaAttiva,
+        vista,
         file,
       });
-      await reloadSnapshot(`Foto ${vistaAttiva} aggiornata.`);
+      await reloadSnapshot(`Foto ${vista} aggiornata.`);
     } catch (uploadError) {
       console.error("Errore upload foto vista:", uploadError);
       setMessage("Upload foto non riuscito. Verifica connessione e permessi.");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handlePhotoUpload(file: File | null) {
+    await handlePhotoUploadForVista(vistaAttiva, file);
   }
 
   async function handleSaveHotspot() {
@@ -229,15 +258,15 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
   }
 
   if (!normalizedTarga) {
-    return <div className="ms-empty">Seleziona un mezzo per aprire la mappa storico.</div>;
+    return <div className="ms-empty">Seleziona un mezzo per aprire il dettaglio tecnico.</div>;
   }
 
   if (loading) {
-    return <div className="ms-empty">Caricamento mappa storico in corso...</div>;
+    return <div className="ms-empty">Caricamento dettaglio tecnico in corso...</div>;
   }
 
   if (error || !snapshot || !vistaSnapshot) {
-    return <div className="ms-empty">{error || "Mappa storico non disponibile."}</div>;
+    return <div className="ms-empty">{error || "Dettaglio tecnico non disponibile."}</div>;
   }
 
   const hotspotsVisibili = modalitaSetup ? vistaSnapshot.hotspots : vistaSnapshot.hotspotsConStorico;
@@ -246,79 +275,331 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
   const titoliZona = zonaDettaglio
     ? Array.from(new Set(zonaDettaglio.interventi.map((item) => item.title))).slice(0, 4)
     : [];
+  const mezzoCardInfo = {
+    targa: mezzoInfo?.targa || snapshot.targa,
+    mezzoLabel: mezzoInfo?.mezzoLabel || snapshot.mezzoLabel,
+    autistaNome: mezzoInfo?.autistaNome ?? null,
+    categoria: mezzoInfo?.categoria || snapshot.categoriaLabel,
+    kmAttuali:
+      mezzoInfo?.kmAttuali != null
+        ? String(mezzoInfo.kmAttuali)
+        : snapshot.kmUltimoRifornimentoLabel || null,
+    ultimaManutenzione: mezzoInfo?.ultimaManutenzione || snapshot.ultimaManutenzioneLabel || null,
+    ultimoInterventoMezzo: mezzoInfo?.ultimoInterventoMezzo || null,
+    ultimoInterventoCompressore: mezzoInfo?.ultimoInterventoCompressore || null,
+    ultimeManutenzioniMezzo: mezzoInfo?.ultimeManutenzioniMezzo ?? [],
+    ultimeManutenzioniCompressore: mezzoInfo?.ultimeManutenzioniCompressore ?? [],
+  };
+  const interventiInVista = zoneConStoricoNellaVista.reduce((sum, area) => sum + area.interventi.length, 0);
 
-  return (
-    <div className="ms-shell">
-      <div className="ms-topbar">
-        <div className="ms-topbar-main">
-          <span className="ms-eyebrow">Vista tecnica mezzo</span>
-          <div className="ms-mezzo-targa">{snapshot.mezzoLabel}</div>
-          <div className="ms-mezzo-meta">
-            <span>{snapshot.categoriaLabel}</span>
-            <span>{snapshot.tipoMezzoLabel}</span>
-            {snapshot.showKmUltimoRifornimento ? (
-              <span>
-                Km ultimo rifornimento: {snapshot.kmUltimoRifornimentoLabel || "DA VERIFICARE"}
-              </span>
-            ) : null}
-            <span>Ultima manutenzione: {snapshot.ultimaManutenzioneLabel || "Nessuna"}</span>
-            <span>Interventi totali: {snapshot.totaleInterventi}</span>
-          </div>
-        </div>
+  if (photoManager) {
+    return (
+      <div className="man2-photo-manager">
+        {message ? <div className="man2-feedback man2-feedback--notice">{message}</div> : null}
+        <div className="man2-photo-grid man2-photo-grid--manager">
+          {VISTE.map((vista) => {
+            const vistaData = snapshot.viste[vista];
+            const vistaNome = formatVistaLabel(vista);
+            const hasFoto = Boolean(vistaData.foto);
 
-        <div className="ms-topbar-side">
-          <button
-            type="button"
-            className={`ms-filtro-btn ms-setup-toggle${modalitaSetup ? " is-active" : ""}`}
-            onClick={() => setModalitaSetup((current) => !current)}
-          >
-            {modalitaSetup ? "Chiudi setup" : "Gestisci hotspot"}
-          </button>
-          <div className="ms-topbar-stats">
-            <div className="ms-stat-chip">
-              <span>Vista attiva</span>
-              <strong>{vistaLabel}</strong>
-            </div>
-            <div className="ms-stat-chip">
-              <span>Zone attive</span>
-              <strong>{zoneConStoricoNellaVista.length}</strong>
-            </div>
-            <div className="ms-stat-chip">
-              <span>Hotspot visibili</span>
-              <strong>{hotspotsVisibili.length}</strong>
-            </div>
-          </div>
+            return (
+              <article key={vista} className="man2-photo-card man2-photo-card--manager">
+                <div className="man2-photo-card__head">
+                  <span>{vistaNome}</span>
+                  <strong>Vista {vistaNome.toLowerCase()}</strong>
+                  <small>{hasFoto ? "Preview reale collegata al dettaglio" : "Placeholder finche la foto manca"}</small>
+                </div>
+
+                {hasFoto ? (
+                  <img
+                    src={vistaData.foto?.downloadUrl}
+                    alt={`Vista ${vistaNome} ${snapshot.targa}`}
+                    className="man2-photo-card__preview"
+                  />
+                ) : (
+                  <div className="man2-photo-card__placeholder">
+                    <span>{vistaNome}</span>
+                    <strong>Nessuna foto caricata</strong>
+                  </div>
+                )}
+
+                <label className="man2-photo-card__upload">
+                  <span>{hasFoto ? "Sostituisci foto" : "Carica foto"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={saving}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      void handlePhotoUploadForVista(vista, file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </article>
+            );
+          })}
         </div>
       </div>
+    );
+  }
 
+  if (embedded) {
+    return (
+      <div className="man2-detail-shell">
+        {message ? <div className="man2-feedback man2-feedback--notice">{message}</div> : null}
+
+        <div className="man2-detail-layout">
+          <section className="man2-detail-card man2-detail-card--main">
+            <div className="man2-detail-toolbar">
+              <div className="man2-detail-pills">
+                <span className="man2-detail-pill">Vista {vistaLabel}</span>
+                <span className="man2-detail-pill">Hotspot {hotspotsVisibili.length}</span>
+                <span className="man2-detail-pill">Zone con storico {zoneConStoricoNellaVista.length}</span>
+              </div>
+              <button
+                type="button"
+                className="man2-btn man2-btn--secondary"
+                onClick={() => setModalitaSetup((current) => !current)}
+              >
+                {modalitaSetup ? "Chiudi setup" : "Gestisci hotspot"}
+              </button>
+            </div>
+
+            <div className="man2-viste-tabs">
+              {VISTE.map((vista) => (
+                <button
+                  key={vista}
+                  type="button"
+                  className={`man2-vista-btn${vistaAttiva === vista ? " active" : ""}`}
+                  onClick={() => {
+                    setVistaAttiva(vista);
+                    setPendingPos(null);
+                  }}
+                >
+                  {formatVistaLabel(vista)}
+                </button>
+              ))}
+            </div>
+
+            {vistaSnapshot.foto ? (
+              <div className="man2-detail-surface">
+                <div className={`ms-surface${modalitaSetup ? " ms-add-cursor" : ""}`} onClick={handleSurfaceClick}>
+                  <div className="ms-surface-header">
+                    <span className="ms-surface-tag">Vista {vistaLabel}</span>
+                    <span className="ms-surface-tag">{vistaSnapshot.foto ? "Foto tecnica presente" : "Placeholder tecnico"}</span>
+                  </div>
+
+                  <img
+                    src={vistaSnapshot.foto.downloadUrl}
+                    alt={`Vista ${vistaAttiva} ${snapshot.targa}`}
+                    className="ms-photo"
+                  />
+
+                  {hotspotsVisibili.map((hotspot) => (
+                    <button
+                      key={hotspot.id}
+                      type="button"
+                      className={`ms-hotspot${zonaSelezionata === hotspot.areaId ? " is-selected" : ""}`}
+                      style={{ left: `${hotspot.x}%`, top: `${hotspot.y}%` }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setZonaSelezionata(hotspot.areaId);
+                      }}
+                    >
+                      <span className="ms-hotspot-dot" />
+                      <span className="ms-hotspot-label">{getZonaLabel(hotspot.areaId)}</span>
+                    </button>
+                  ))}
+
+                  {modalitaSetup && pendingPos ? (
+                    <div className="ms-hotspot is-pending" style={{ left: `${pendingPos.x}%`, top: `${pendingPos.y}%` }}>
+                      <span className="ms-hotspot-dot" />
+                      <span className="ms-hotspot-label">Nuovo hotspot</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="man2-foto-placeholder">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 7h4l2-2h4l2 2h4v10H4V7Z" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
+                <span>Nessuna foto caricata per questa vista</span>
+              </div>
+            )}
+
+            {modalitaSetup ? (
+              <div className="man2-detail-setup">
+                <div className="man2-section-title">Gestione hotspot</div>
+                <div className="man2-detail-setup__row">
+                  <label className="ms-field">
+                    <span>Carica foto vista {vistaAttiva}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => void handlePhotoUpload(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <label className="ms-field">
+                    <span>Zona hotspot</span>
+                    <select value={zonaPerPending} onChange={(event) => setZonaPerPending(event.target.value)}>
+                      {areeSetupDisponibili.map((area) => (
+                        <option key={area.id} value={area.id}>
+                          {area.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="man2-btn"
+                    disabled={!pendingPos || saving}
+                    onClick={() => void handleSaveHotspot()}
+                  >
+                    Salva hotspot
+                  </button>
+                </div>
+                {vistaSnapshot.hotspots.length > 0 ? (
+                  <div className="man2-detail-setup__list">
+                    {vistaSnapshot.hotspots.map((hotspot) => (
+                      <div key={hotspot.id} className="man2-detail-setup__item">
+                        <div>
+                          <strong>{getZonaLabel(hotspot.areaId)}</strong>
+                          <span>
+                            Posizione {hotspot.x.toFixed(1)}% - {hotspot.y.toFixed(1)}%
+                          </span>
+                        </div>
+                        <button type="button" className="man2-btn man2-btn--secondary" onClick={() => void handleDeleteHotspot(hotspot)}>
+                          Elimina
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="man2-detail-kpis">
+              <div className="man2-detail-kpi">
+                <span>Hotspot visibili</span>
+                <strong>{hotspotsVisibili.length}</strong>
+              </div>
+              <div className="man2-detail-kpi">
+                <span>Zone con storico</span>
+                <strong>{zoneConStoricoNellaVista.length}</strong>
+              </div>
+              <div className="man2-detail-kpi">
+                <span>Interventi in vista</span>
+                <strong>{interventiInVista}</strong>
+              </div>
+              <div className="man2-detail-kpi">
+                <span>Storico totale</span>
+                <strong>{snapshot.interventi.length}</strong>
+              </div>
+            </div>
+          </section>
+
+          <aside className="man2-detail-card man2-detail-card--side">
+            <div className="man2-detail-sidehead">
+              <div className="man2-panel-kicker">Dettaglio mezzo</div>
+              <h3>{mezzoCardInfo.targa}</h3>
+              <p>{mezzoCardInfo.mezzoLabel}</p>
+            </div>
+
+            <div className="man2-detail-info-list">
+              <div className="man2-detail-info">
+                <span>Autista solito</span>
+                <strong>{mezzoCardInfo.autistaNome || "DA VERIFICARE"}</strong>
+              </div>
+              <div className="man2-detail-info">
+                <span>Categoria</span>
+                <strong>{mezzoCardInfo.categoria || "DA VERIFICARE"}</strong>
+              </div>
+              <div className="man2-detail-info">
+                <span>Km attuali</span>
+                <strong>{mezzoCardInfo.kmAttuali || "DA VERIFICARE"}</strong>
+              </div>
+              <div className="man2-detail-info">
+                <span>Ultima manutenzione</span>
+                <strong>{mezzoCardInfo.ultimaManutenzione || "Nessuna"}</strong>
+              </div>
+              <div className="man2-detail-info">
+                <span>Ultimo intervento mezzo</span>
+                <strong>{mezzoCardInfo.ultimoInterventoMezzo || "Nessuno"}</strong>
+              </div>
+              <div className="man2-detail-info">
+                <span>Ultimo intervento compressore</span>
+                <strong>{mezzoCardInfo.ultimoInterventoCompressore || "Nessuno"}</strong>
+              </div>
+            </div>
+
+            <div className="man2-detail-history-block">
+              <div className="man2-section-title">Ultime manutenzioni mezzo</div>
+              {mezzoCardInfo.ultimeManutenzioniMezzo.length > 0 ? (
+                <div className="man2-detail-history-list">
+                  {mezzoCardInfo.ultimeManutenzioniMezzo.map((item) => (
+                    <div key={item.id} className="man2-detail-history-item">
+                      <strong>{item.title}</strong>
+                      <span>{item.data}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="ms-empty">Nessuna manutenzione mezzo disponibile.</div>
+              )}
+            </div>
+
+            <div className="man2-detail-history-block">
+              <div className="man2-section-title">Ultime manutenzioni compressore</div>
+              {mezzoCardInfo.ultimeManutenzioniCompressore.length > 0 ? (
+                <div className="man2-detail-history-list">
+                  {mezzoCardInfo.ultimeManutenzioniCompressore.map((item) => (
+                    <div key={item.id} className="man2-detail-history-item">
+                      <strong>{item.title}</strong>
+                      <span>{item.data}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="ms-empty">Nessuna manutenzione compressore disponibile.</div>
+              )}
+            </div>
+
+            <div className="man2-detail-actions">
+              <button type="button" className="man2-btn" onClick={() => onOpenDossier?.()}>
+                Apri dossier mezzo
+              </button>
+              <button type="button" className="man2-btn" onClick={() => onOpenPdf?.()}>
+                Apri quadro PDF
+              </button>
+              <button type="button" className="man2-btn man2-btn--secondary" onClick={() => onEditLatest?.()}>
+                Modifica ultima manutenzione
+              </button>
+            </div>
+          </aside>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="ms-shell">
       {message ? <div className="ms-info">{message}</div> : null}
 
       <div className="ms-layout">
-        <div className="ms-column">
-          <div className="ms-card ms-card-soft ms-vehicle-card">
-            <div className="ms-card-kicker">Scheda mezzo</div>
-            <div className="ms-vehicle-grid">
-              <div className="ms-vehicle-item">
-                <span className="ms-vehicle-label">Targa</span>
-                <strong>{snapshot.targa}</strong>
-              </div>
-              <div className="ms-vehicle-item">
-                <span className="ms-vehicle-label">Categoria</span>
-                <strong>{snapshot.categoriaLabel}</strong>
-              </div>
-              <div className="ms-vehicle-item">
-                <span className="ms-vehicle-label">Vista tecnica</span>
-                <strong>{vistaLabel}</strong>
-              </div>
-              <div className="ms-vehicle-item">
-                <span className="ms-vehicle-label">Storico vista</span>
-                <strong>{zoneConStoricoNellaVista.length} zone</strong>
-              </div>
-            </div>
-          </div>
-
+        <div className="ms-card ms-card-panel ms-column ms-column--main">
           <div className="ms-card ms-card-soft ms-views-card">
-            <div className="ms-card-kicker">Viste mezzo</div>
+            <div className="ms-detail-toolbar">
+              <div className="ms-card-kicker">Viste mezzo</div>
+              <button
+                type="button"
+                className={`ms-filtro-btn ms-setup-toggle${modalitaSetup ? " is-active" : ""}`}
+                onClick={() => setModalitaSetup((current) => !current)}
+              >
+                {modalitaSetup ? "Chiudi setup" : "Gestisci hotspot"}
+              </button>
+            </div>
             <div className="ms-viste-tabs">
               {VISTE.map((vista) => (
                 <button
@@ -393,7 +674,8 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
               <div className="ms-legend">
                 <span>Hotspot visibili: {hotspotsVisibili.length}</span>
                 <span>Zone con storico: {zoneConStoricoNellaVista.length}</span>
-                <span>Interventi in vista: {zoneConStoricoNellaVista.reduce((sum, area) => sum + area.interventi.length, 0)}</span>
+                <span>Interventi in vista: {interventiInVista}</span>
+                <span>Vista attiva: {vistaLabel}</span>
               </div>
             </div>
           </div>
@@ -462,15 +744,84 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
           ) : null}
         </div>
 
-        <div className="ms-column">
+        <aside className="ms-card ms-card-soft ms-column ms-column--side">
+          <div className="ms-detail-summary">
+            <div className="ms-card-kicker">Riepilogo mezzo</div>
+            <div className="ms-vehicle-grid ms-vehicle-grid--detail">
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Targa</span>
+                <strong>{mezzoCardInfo.targa}</strong>
+              </div>
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Mezzo / modello</span>
+                <strong>{mezzoCardInfo.mezzoLabel}</strong>
+              </div>
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Autista solito</span>
+                <strong>{mezzoCardInfo.autistaNome || "DA VERIFICARE"}</strong>
+              </div>
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Categoria</span>
+                <strong>{mezzoCardInfo.categoria || "DA VERIFICARE"}</strong>
+              </div>
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Km attuali</span>
+                <strong>{mezzoCardInfo.kmAttuali || "DA VERIFICARE"}</strong>
+              </div>
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Ultima manutenzione</span>
+                <strong>{mezzoCardInfo.ultimaManutenzione || "Nessuna"}</strong>
+              </div>
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Ultimo intervento mezzo</span>
+                <strong>{mezzoCardInfo.ultimoInterventoMezzo || "Nessuno"}</strong>
+              </div>
+              <div className="ms-vehicle-item">
+                <span className="ms-vehicle-label">Ultimo intervento compressore</span>
+                <strong>{mezzoCardInfo.ultimoInterventoCompressore || "Nessuno"}</strong>
+              </div>
+            </div>
+
+            <div className="ms-detail-quick-actions">
+              <button type="button" className="ms-filtro-btn" onClick={() => onOpenDossier?.()}>
+                Apri dossier mezzo
+              </button>
+              <button type="button" className="ms-filtro-btn" onClick={() => onOpenPdf?.()}>
+                Apri quadro PDF
+              </button>
+            </div>
+
+            <div className="ms-card-kicker">Ultime manutenzioni mezzo</div>
+            {mezzoCardInfo.ultimeManutenzioniMezzo.length > 0 ? (
+              <div className="ms-mini-history">
+                {mezzoCardInfo.ultimeManutenzioniMezzo.map((item) => (
+                  <div key={item.id} className="ms-mini-history-item">
+                    <strong>{item.title}</strong>
+                    <span>{item.data}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="ms-empty">Nessuna manutenzione mezzo disponibile.</div>
+            )}
+
+            <div className="ms-card-kicker">Ultime manutenzioni compressore</div>
+            {mezzoCardInfo.ultimeManutenzioniCompressore.length > 0 ? (
+              <div className="ms-mini-history">
+                {mezzoCardInfo.ultimeManutenzioniCompressore.map((item) => (
+                  <div key={item.id} className="ms-mini-history-item">
+                    <strong>{item.title}</strong>
+                    <span>{item.data}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="ms-empty">Nessuna manutenzione compressore disponibile.</div>
+            )}
+          </div>
+
           <div className="ms-card ms-card-panel">
             <div className="ms-filtri">
-              <input
-                className="ms-search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Cerca per intervento, nota o zona..."
-              />
               <button type="button" className="ms-filtro-btn" onClick={() => setModalAperto("ultimi")}>
                 Ultimi interventi
               </button>
@@ -598,7 +949,7 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
               </div>
             </div>
           ) : null}
-        </div>
+        </aside>
       </div>
 
       {modalAperto ? (
@@ -689,3 +1040,5 @@ export default function NextMappaStoricoPage({ targa }: NextMappaStoricoPageProp
     </div>
   );
 }
+
+

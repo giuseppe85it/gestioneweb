@@ -45,6 +45,9 @@ function makeSilo(label: string, base: EuromeccBaseStatus): EuromeccAreaStatic {
       { key: "coclea", name: "Coclea linea", code: buildSiloCode(label, "COC"), base },
       { key: "motore", name: "Motore linea", code: buildSiloCode(label, "MOT"), base },
       { key: "ingrasso", name: "Ingrassaggi", code: buildSiloCode(label, "ING"), base },
+      { key: "ugelli", name: "Ugelli fluidificazione", code: buildSiloCode(label, "UGF"), base },
+      { key: "calzaGomma", name: "Calza gomma", code: buildSiloCode(label, "CLZG"), base },
+      { key: "riduttore", name: "Riduttore coclea", code: buildSiloCode(label, "RID"), base },
     ] as const,
   };
 }
@@ -120,6 +123,11 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
       { key: "proboscide", name: "Proboscide", code: "CAR-CAM-01-PRO", base: "ok", family: "carico" },
       { key: "filtro", name: "Filtro", code: "CAR-CAM-01-FIL", base: "ok", family: "carico" },
       { key: "sensori", name: "Sensori", code: "CAR-CAM-01-SEN", base: "ok", family: "carico" },
+      { key: "scaricatoreCondensa", name: "Scaricatore condensa", code: "CAR-CAM-01-SCOND", base: "ok", family: "carico" },
+      { key: "valvolaFarfalla", name: "Valvola farfalla", code: "CAR-CAM-01-VFF", base: "ok", family: "carico" },
+      { key: "calzacoclea", name: "Calza coclea", code: "CAR-CAM-01-CLZ", base: "ok", family: "carico" },
+      { key: "torex", name: "Torex / vibratore", code: "CAR-CAM-01-TRX", base: "ok", family: "carico" },
+      { key: "gruppoFR", name: "Gruppo FR", code: "CAR-CAM-01-GFR", base: "ok", family: "carico" },
     ] as const,
   ),
   carico2: makeGenericArea(
@@ -132,6 +140,11 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
       { key: "proboscide", name: "Proboscide", code: "CAR-CAM-02-PRO", base: "ok", family: "carico" },
       { key: "filtro", name: "Filtro", code: "CAR-CAM-02-FIL", base: "ok", family: "carico" },
       { key: "sensori", name: "Sensori", code: "CAR-CAM-02-SEN", base: "ok", family: "carico" },
+      { key: "scaricatoreCondensa", name: "Scaricatore condensa", code: "CAR-CAM-02-SCOND", base: "ok", family: "carico" },
+      { key: "valvolaFarfalla", name: "Valvola farfalla", code: "CAR-CAM-02-VFF", base: "ok", family: "carico" },
+      { key: "calzacoclea", name: "Calza coclea", code: "CAR-CAM-02-CLZ", base: "ok", family: "carico" },
+      { key: "torex", name: "Torex / vibratore", code: "CAR-CAM-02-TRX", base: "ok", family: "carico" },
+      { key: "gruppoFR", name: "Gruppo FR", code: "CAR-CAM-02-GFR", base: "ok", family: "carico" },
     ] as const,
   ),
   caricoRail: makeGenericArea(
@@ -144,6 +157,9 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
       { key: "proboscide", name: "Proboscide", code: "CAR-RAIL-01-PRO", base: "ok", family: "carico" },
       { key: "filtro", name: "Filtro", code: "CAR-RAIL-01-FIL", base: "ok", family: "carico" },
       { key: "pesatura", name: "Pesatura", code: "CAR-RAIL-01-PES", base: "ok", family: "carico" },
+      { key: "scaricatoreTelesc", name: "Scaricatore telescopico", code: "CAR-RAIL-01-STLSC", base: "ok", family: "carico" },
+      { key: "cartucce", name: "Cartucce scaricatore", code: "CAR-RAIL-01-CART", base: "ok", family: "carico" },
+      { key: "gruppoFR", name: "Gruppo FR", code: "CAR-RAIL-01-GFR", base: "ok", family: "carico" },
     ] as const,
   ),
   filtriCarico: makeGenericArea(
@@ -156,7 +172,7 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
   ),
   compressore: makeGenericArea(
     "compressore",
-    "Compressore / blower",
+    "Compressore N.1",
     "CMP-01",
     "Servizi impianto",
     "ok",
@@ -164,8 +180,33 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
       { key: "blower", name: "Blower", code: "CMP-01-BLO", base: "ok", family: "servizi" },
       { key: "filtroAria", name: "Filtro aria", code: "CMP-01-FIL", base: "ok", family: "servizi" },
       { key: "lubrificazione", name: "Lubrificazione", code: "CMP-01-LUB", base: "ok", family: "servizi" },
+      { key: "filtroOlio", name: "Filtro olio", code: "CMP-01-FOLIO", base: "ok", family: "servizi" },
+      { key: "filtroScambiatore", name: "Filtro scambiatore", code: "CMP-01-FSCAM", base: "ok", family: "servizi" },
+      { key: "essiccatore", name: "Essiccatore", code: "CMP-01-ESS", base: "ok", family: "servizi" },
+      { key: "cinghie", name: "Cinghie", code: "CMP-01-CNG", base: "ok", family: "servizi" },
+      { key: "byPass", name: "By-pass tubazione", code: "CMP-01-BYP", base: "ok", family: "servizi" },
     ] as const,
   ),
+  compressore2: {
+    ...makeGenericArea(
+      "compressore2",
+      "Compressore N.2",
+      "CMP-02",
+      "Servizi impianto",
+      "ok",
+      [
+        { key: "blower", name: "Blower", code: "CMP-02-BLO", base: "ok", family: "servizi" },
+        { key: "filtroAria", name: "Filtro aria", code: "CMP-02-FIL", base: "ok", family: "servizi" },
+        { key: "lubrificazione", name: "Lubrificazione", code: "CMP-02-LUB", base: "ok", family: "servizi" },
+        { key: "filtroOlio", name: "Filtro olio", code: "CMP-02-FOLIO", base: "ok", family: "servizi" },
+        { key: "filtroScambiatore", name: "Filtro scambiatore", code: "CMP-02-FSCAM", base: "ok", family: "servizi" },
+        { key: "essiccatore", name: "Essiccatore", code: "CMP-02-ESS", base: "ok", family: "servizi" },
+        { key: "cinghie", name: "Cinghie", code: "CMP-02-CNG", base: "ok", family: "servizi" },
+        { key: "byPass", name: "By-pass tubazione", code: "CMP-02-BYP", base: "ok", family: "servizi" },
+      ] as const,
+    ),
+    shortLabel: "CMP 2",
+  },
   fluidificanti: makeGenericArea(
     "fluidificanti",
     "Fluidificanti",
@@ -196,6 +237,79 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
       { key: "celle", name: "Celle di carico", code: "BUF-RAIL-01-CEL", base: "ok", family: "buffer" },
     ] as const,
   ),
+  gruppiFR: {
+    ...makeGenericArea(
+      "gruppiFR",
+      "Gruppi FR / Quadri pneumatici",
+      "GFR-01",
+      "Servizi impianto",
+      "ok",
+      [
+        { key: "quadroBasso", name: "Quadro pneumatico basso", code: "GFR-01-QB", base: "ok", family: "servizi" },
+        { key: "quadroAlto", name: "Quadro pneumatico alto", code: "GFR-01-QA", base: "ok", family: "servizi" },
+        { key: "gruppoFR", name: "Gruppo FR generico", code: "GFR-01-GFR", base: "ok", family: "servizi" },
+      ] as const,
+    ),
+    shortLabel: "GFR",
+  },
+  accumulatoriAria: {
+    ...makeGenericArea(
+      "accumulatoriAria",
+      "Accumulatori aria / Filtri ciclone",
+      "ACC-01",
+      "Servizi impianto",
+      "ok",
+      [
+        { key: "accumulatore", name: "Accumulatore aria", code: "ACC-01-ACC", base: "ok", family: "servizi" },
+        { key: "filtroCiclone", name: "Filtro ciclone", code: "ACC-01-FCL", base: "ok", family: "servizi" },
+        { key: "scaricatoreCondensa", name: "Scaricatore condensa automatico", code: "ACC-01-SCOND", base: "ok", family: "servizi" },
+      ] as const,
+    ),
+    shortLabel: "ACC",
+  },
+  essiccatoriLinea: {
+    ...makeGenericArea(
+      "essiccatoriLinea",
+      "Essiccatori linea",
+      "ESS-01",
+      "Servizi impianto",
+      "ok",
+      [
+        { key: "essiccatore1", name: "Essiccatore 1", code: "ESS-01-E1", base: "ok", family: "servizi" },
+        { key: "essiccatore2", name: "Essiccatore 2", code: "ESS-01-E2", base: "ok", family: "servizi" },
+        { key: "scaricatoreCondensa", name: "Scaricatore condensa", code: "ESS-01-SCOND", base: "ok", family: "servizi" },
+      ] as const,
+    ),
+    shortLabel: "ESS",
+  },
+  quadriElettrici: {
+    ...makeGenericArea(
+      "quadriElettrici",
+      "Quadri elettrici",
+      "QEL-01",
+      "Automazione",
+      "ok",
+      [
+        { key: "quadroGenerale", name: "Quadro generale", code: "QEL-01-QG", base: "ok", family: "automazione" },
+        { key: "spie", name: "Spie segnalazione", code: "QEL-01-SPI", base: "ok", family: "automazione" },
+      ] as const,
+    ),
+    shortLabel: "QEL",
+  },
+  valvoleTettiSilo: {
+    ...makeGenericArea(
+      "valvoleTettiSilo",
+      "Valvole tetti silos",
+      "VTS-01",
+      "Copertura sili",
+      "ok",
+      [
+        { key: "valvolaScambio", name: "Valvola di scambio", code: "VTS-01-VS", base: "ok", family: "servizi" },
+        { key: "lineaComune", name: "Linea carico comune", code: "VTS-01-LC", base: "ok", family: "servizi" },
+      ] as const,
+    ),
+    shortLabel: "VTS",
+  },
 };
 
 export const EUROMECC_AREA_KEYS = Object.keys(EUROMECC_AREAS);

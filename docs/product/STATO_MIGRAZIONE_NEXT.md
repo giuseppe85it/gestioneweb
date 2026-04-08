@@ -1,5 +1,177 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-08 - fix definitivo della riga `Data / KM-Ore / Fornitore` in `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni` e stata corretta solo la resa strutturale della riga campi `Data / KM-Ore / Fornitore` nella tab `Nuova / Modifica`.
+- `src/next/next-mappa-storico.css` usa ora una griglia desktop piu pulita e proporzionata:
+  - `Data` su colonna corta fissa;
+  - `KM/Ore` su colonna medio-corta stabile;
+  - `Fornitore` su colonna lunga flessibile;
+  - niente 3 colonne uguali e niente campo centrale visivamente strozzato.
+- Nessuna modifica a JSX, domain, writer, route, `pdfEngine`, Firestore o logica dati.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - foto rimosse da `Nuova / Modifica` in `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, la tab `Nuova / Modifica` non espone piu la gestione foto del mezzo:
+  - rimossi sezione `4 foto collegate al dettaglio`, placeholder `Fronte / Sinistra / Destra / Retro`, pulsanti upload e preview dalla schermata form;
+  - al loro posto resta solo una nota sintetica che rimanda alla tab `Dettaglio`.
+- La gestione foto resta disponibile solo nel tab `Dettaglio`, che continua a usare `NextMappaStoricoPage` come sede corretta per viste foto e hotspot.
+- `src/next/NextManutenzioniPage.tsx` accorcia il form e aggiorna la copy iniziale del pannello operativo; `src/next/next-mappa-storico.css` aggiunge solo lo stile minimo della nota e compatta il blocco finale.
+- Nessuna modifica a `src/next/domain/nextManutenzioniDomain.ts`, `src/next/domain/nextMappaStoricoDomain.ts`, `src/utils/cloneWriteBarrier.ts`, route, writer business o `pdfEngine`.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - micro-fix UI mirato su `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni` e stato applicato un fix mirato a 4 problemi reali emersi nel browser, senza cambiare routing, business o struttura principale del modulo.
+- `src/next/next-mappa-storico.css` corregge il bilanciamento tema:
+  - il contenuto operativo dei tab appare ora come superficie chiara continua e dominante;
+  - il nero resta confinato soprattutto a shell esterna, tab principali, outline e accenti;
+  - i pannelli interni di `Nuova / Modifica`, `Dettaglio` e `Quadro manutenzioni PDF` risultano meno percepiti come isole sparse nel nero.
+- `src/next/NextManutenzioniPage.tsx` corregge la tab `Nuova / Modifica`:
+  - la riga `Data / KM-Ore / Fornitore` usa ora una griglia stabile con colonna corta, media e lunga, senza sovrapposizioni;
+  - la card `Componenti inclusi / materiali` mantiene solo materiali/componenti pertinenti;
+  - l'autosuggest materiali mostra la descrizione materiale come voce principale e il fornitore come informazione secondaria prefissata.
+- Nessuna modifica a `src/next/domain/nextManutenzioniDomain.ts`, `src/next/domain/nextMappaStoricoDomain.ts`, `src/utils/cloneWriteBarrier.ts`, route, writer business o `pdfEngine`.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - fix tema chiaro delle superfici operative di `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni` non e stata cambiata la struttura del modulo: e stato corretto solo il bilanciamento chiaro/scuro delle superfici operative interne, per avvicinarlo meglio al riferimento approvato.
+- `src/next/next-mappa-storico.css` mantiene shell esterna, tab principali e bottoni outline su base scura, ma porta a tema chiaro:
+  - contenitori principali dei tab;
+  - pannelli form di `Nuova / Modifica`;
+  - card e blocchi informativi del `Dettaglio`;
+  - step filtro e righe risultato di `Quadro manutenzioni PDF`;
+  - input, textarea, placeholder foto e card materiali come parti coerenti della stessa superficie operativa.
+- `src/next/NextManutenzioniPage.tsx` non cambia struttura, tab, flussi, routing o contenuti funzionali.
+- Nessuna modifica a `src/next/domain/nextManutenzioniDomain.ts`, `src/next/domain/nextMappaStoricoDomain.ts`, `src/utils/cloneWriteBarrier.ts`, route, writer business o `pdfEngine`.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - affinamento UI/CSS del runtime reale di `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni` non e stato rifatto il modulo: e stato rifinito lo stato reale esistente per avvicinarlo meglio al mock approvato senza toccare business, routing o flussi.
+- `src/next/NextManutenzioniPage.tsx` mantiene struttura, tab e logica esistenti, ma alleggerisce la dashboard:
+  - copy piu corta sotto il titolo `Dashboard`;
+  - rimossi i titoli sezione ridondanti sopra KPI e pulsanti azione;
+  - nessun cambio a form, filtri, tab o wiring locale.
+- `src/next/next-mappa-storico.css` riallinea la pelle del modulo:
+  - header piu compatto e meno pesante;
+  - select/search piu rifiniti;
+  - strip riepilogo mezzo piu ordinata e precisa;
+  - tab meno glossy e piu compatte;
+  - KPI, pulsanti azione e lista `Ultimi interventi` piu compatti;
+  - pannelli `Nuova / Modifica`, `Dettaglio` e `Quadro manutenzioni PDF` alleggeriti senza redesign funzionale.
+- Nessuna modifica a `src/next/domain/nextManutenzioniDomain.ts`, `src/next/domain/nextMappaStoricoDomain.ts`, `src/utils/cloneWriteBarrier.ts`, route, writer business o `pdfEngine`.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - dashboard reset UI di `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, la `Dashboard` e stata alleggerita davvero e non si presenta piu come pagina a pannelli pesanti:
+  - l'header comune resta l'unico blocco condiviso e contiene solo titolo `MANUTENZIONI`, selezione mezzo, ricerca rapida, metadati sintetici e tab;
+  - sotto l'header non compaiono piu macro-card di contesto o shell duplicate.
+- `src/next/NextManutenzioniPage.tsx` riallinea i 4 tab finali senza toccare business o domain:
+  - tab finali presenti: `Dashboard`, `Nuova / Modifica`, `Dettaglio`, `Quadro manutenzioni PDF`;
+  - `Storico` resta assente;
+  - `Dashboard` e ridotta a risultati rapidi, accessi veloci e contesto attivo molto compatto;
+  - `Nuova / Modifica` resta full-width e mantiene `Tagliando completo` visibile solo quando il tipo intervento selezionato e `Tagliando`;
+  - `Quadro manutenzioni PDF` resta filtro sopra + elenco full-width sotto.
+- `src/next/NextMappaStoricoPage.tsx` mantiene il `Dettaglio` come tab principale tecnico:
+  - il contenuto parte subito con 2 card root vere;
+  - nessun blocco hero o topbar inutile sopra al contenuto reale.
+- `src/next/next-mappa-storico.css` compatta ulteriormente la Dashboard e rimuove l'effetto di macro-pannello di contesto, mantenendo il perimetro scoped `.mx-*` / `.ms-*`.
+- Nessuna modifica a writer, domain business, clone barrier, PDF engine, storage logic o route legacy.
+- Verifica runtime reale eseguita su `http://127.0.0.1:4173/next/manutenzioni`:
+  - header comune compatto presente;
+  - `Dashboard` verificata come ingresso rapido, senza pannello grande di contesto mezzo;
+  - `Nuova / Modifica` full-width verificata;
+  - `Tagliando completo` nascosto di default e visibile solo dopo selezione `Tagliando`;
+  - `Dettaglio` verificato con `2` card root vere immediate;
+  - `Quadro manutenzioni PDF` verificato con `Step 1`, `Step 2`, elenco full-width e `Apri dettaglio` funzionante verso `Dettaglio`;
+  - `Storico` assente.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - hard layout fix UI di `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, la struttura shared con colonna laterale persistente e contesto duplicato e stata eliminata davvero:
+  - l'header comune resta l'unico punto condiviso del modulo e contiene solo titolo `MANUTENZIONI`, selezione mezzo, ricerca rapida `targa / modello / autista`, metadati sintetici e tab;
+  - non compaiono piu preview risultati o card contesto duplicate dentro l'header comune;
+  - `Dashboard`, `Nuova / Modifica` e `Quadro manutenzioni PDF` usano tutta la larghezza disponibile senza shell left-column.
+- `src/next/NextManutenzioniPage.tsx` riallinea i 4 tab finali senza toccare business o domain:
+  - tab finali: `Dashboard`, `Nuova / Modifica`, `Dettaglio`, `Quadro manutenzioni PDF`;
+  - `Storico` resta assente;
+  - `Dashboard` e ridotta a ingresso rapido con risultati, navigazione veloce e contesto minimo;
+  - `Nuova / Modifica` resta full-width e mantiene `Tagliando completo` visibile solo quando il tipo intervento selezionato e `Tagliando`;
+  - `Quadro manutenzioni PDF` resta filtro sopra + elenco full-width sotto, senza blocchi secondari da dashboard.
+- `src/next/NextMappaStoricoPage.tsx` riallinea davvero il tab `Dettaglio`:
+  - nessun blocco bianco/hero inutile prima del contenuto reale;
+  - il dettaglio parte subito con 2 card root vere in `.ms-layout`;
+  - la card sinistra resta dominante per viste foto, hotspot, zone e indicatori coerenti con la vista attiva;
+  - la card destra resta compatta per riepilogo mezzo, ultime manutenzioni e azioni rapide.
+- `src/next/next-mappa-storico.css` elimina il comportamento shared-left-column e compatta l'header comune, mantenendo il perimetro scoped `.mx-*` / `.ms-*`.
+- Nessuna modifica a writer, domain business, clone barrier, PDF engine, storage logic o route legacy.
+- Verifica runtime reale eseguita su `http://127.0.0.1:4173/next/manutenzioni`:
+  - header comune compatto presente con `1` input ricerca, `0` blocchi `.mx-header-search-results`, `0` blocchi `.mx-header-context`, `4` tab visibili;
+  - `Dashboard` verificata senza `.mx-side-column`, senza `.mx-kpi-grid--dashboard`, senza `.mx-timeline-block`, come ingresso rapido puro;
+  - `Nuova / Modifica` verificata senza `.mx-side-column`, con `Tagliando completo` nascosto di default e visibile solo dopo selezione `Tagliando`;
+  - `Dettaglio` verificato con `2` card root vere (`.ms-column--main` + `.ms-column--side`), `0` `.ms-topbar` e `0` hero bianchi sopra il contenuto;
+  - `Quadro manutenzioni PDF` verificato con `Step 1`, `Step 2`, `10` righe elenco, `0` `.mx-pdf-secondary` e `Apri dettaglio` funzionante verso il tab `Dettaglio`;
+  - `Storico` assente.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-07 - riallineamento finale family UI di `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, il modulo usa ora solo 4 tab coerenti con il mockup master finale:
+  - `Dashboard`
+  - `Nuova / Modifica`
+  - `Dettaglio`
+  - `Quadro manutenzioni PDF`
+- `src/next/NextManutenzioniPage.tsx` riallinea la shell UI del modulo senza toccare business o domain:
+  - il vecchio tab `Storico` non compare piu;
+  - l'header comune resta compatto e mantiene titolo `MANUTENZIONI`, selezione mezzo, ricerca rapida `targa / modello / autista` e tab navigazione;
+  - `Dashboard` resta una superficie full-width usata soprattutto per ricerca rapida, risultati immediati e accessi veloci;
+  - `Nuova / Modifica` mantiene il form full-width e rende il blocco `Tagliando completo` visibile solo quando il tipo intervento selezionato e `Tagliando`;
+  - `Quadro manutenzioni PDF` resta elenco-first, con `Apri dettaglio` che porta direttamente al tab `Dettaglio`.
+- `src/next/NextMappaStoricoPage.tsx` viene riallineato come vero tab `Dettaglio` del modulo:
+  - la vecchia topbar interna non domina piu la scena;
+  - il contenuto si presenta come 2 card vere:
+    - card principale foto / hotspot / zone / viste;
+    - card secondaria riepilogo mezzo, azioni rapide, ultime manutenzioni e cronologia collegata.
+- `src/next/next-mappa-storico.css` mantiene il perimetro scoped `.ms-*` / `.mx-*` e porta il dettaglio su un layout piu netto a due superfici, senza modificare il design system globale.
+- Nessuna modifica a writer, domain business, barrier clone, PDF engine, route o storage logic.
+- Verifica runtime reale eseguita su `http://127.0.0.1:4173/next/manutenzioni`:
+  - tab visibili: `Dashboard`, `Nuova / Modifica`, `Dettaglio`, `Quadro manutenzioni PDF`;
+  - `Storico` assente;
+  - ricerca rapida verificata con query `TI`, preview risultati presente (`6` risultati nel controllo locale) con targa, mezzo/modello e autista solito;
+  - `Tagliando completo` invisibile di default e visibile solo dopo selezione `Tipo intervento = Tagliando`;
+  - `Dettaglio` verificato con `2` card root vere in `.ms-layout`, azioni `Apri dossier mezzo` e `Apri quadro PDF` presenti;
+  - `Quadro manutenzioni PDF` verificato con `Step 1`, `Step 2`, `10` righe elenco e `Apri dettaglio` funzionante verso il tab `Dettaglio`.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
 ## 0. Aggiornamento operativo 2026-04-07 - refactor UI `layout family` del modulo `Manutenzioni`
 - Sul runtime ufficiale `/next/manutenzioni`, i tab non sono piu trattati come pagine con la stessa impaginazione laterale ripetuta:
   - `src/next/NextManutenzioniPage.tsx` usa ora un header compatto condiviso con titolo `MANUTENZIONI`, selezione mezzo, ricerca rapida e navigazione tab, poi rende `Dashboard`, `Nuova / Modifica` e `Quadro manutenzioni PDF` come superfici full-width indipendenti della stessa famiglia;
@@ -4200,6 +4372,62 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
   - caso senza match sicuro lasciato senza apertura di segnalazione errata.
 - Stato modulo:
   - `Lavori` -> `PARZIALE`
+
+## 5.139 Aggiornamento 2026-04-08 - micro-fix spacing riga metriche `Manutenzioni`
+- Corretto solo il layout della riga `Data / KM-Ore / Fornitore` nella tab NEXT `Nuova / Modifica`.
+- La griglia non usa piu proporzioni quasi uguali:
+  - `Data` corto;
+  - `KM/Ore` medio-corto;
+  - `Fornitore` lungo e flessibile.
+- Aumentato anche il respiro della card `Mezzo attivo` sopra `Campi base` per evitare effetto di blocchi incollati.
+- Nessuna modifica a logica dati, salvataggio, foto, dettaglio o PDF.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 5.140 Aggiornamento 2026-04-08 - riga metriche `Manutenzioni` resa a 3 mini-card
+- La riga `Data / KM-Ore / Fornitore` e stata rifatta in JSX e CSS come tre mini-card separate vere, non come semplici campi affiancati.
+- Ogni mini-card contiene label + input con bordo e spazio propri.
+- `Fornitore` resta la card larga e flessibile; `Data` e `KM/Ore` restano corte.
+- La card `Mezzo attivo` ha ora uno stacco verticale piu evidente dal pannello `Campi base`.
+- Nessuna modifica a logica dati, salvataggio, PDF, foto o `Dettaglio`.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 5.141 Aggiornamento 2026-04-08 - riga metriche `Manutenzioni` ricompattata
+- Rimossa la soluzione a tre mini-card alte introdotta nel tentativo precedente.
+- La riga `Data / KM-Ore / Fornitore` usa ora una sola griglia compatta con tre field-group separati, senza contenitori alti dedicati.
+- Proporzioni runtime:
+  - `Data`: 180px
+  - `KM/Ore`: 180px
+  - `Fornitore`: spazio restante
+- `Mezzo attivo` mantiene uno stacco verticale piu netto sopra `Campi base`.
+- Nessuna modifica a logica dati, salvataggio, PDF, foto o dettaglio.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 5.142 Aggiornamento 2026-04-08 - sostituzione definitiva blocco metriche `Manutenzioni`
+- Il blocco `Data / KM-Ore / Fornitore` e stato riallineato alla struttura finale richiesta, senza mini-card e senza wrapper alti.
+- JSX finale:
+  - `man2-metric-row`
+  - `man2-metric-group--date`
+  - `man2-metric-group--metric`
+  - `man2-metric-group--supplier`
+- CSS finale:
+  - `grid-template-columns: 180px 180px minmax(360px, 1fr)`
+  - `gap: 16px`
+  - `margin-top: 10px`
+- Nessuna modifica a logica dati, salvataggio, routing, PDF, foto o dettaglio.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 5.143 Aggiornamento 2026-04-08 - base visiva input metriche riallineata
+- I campi `Data / KM-Ore / Fornitore` riusano ora la stessa base `man2-field` dei campi `Tipo` e `Sottotipo`.
+- Layout e proporzioni della riga restano invariati:
+  - `180px 180px minmax(360px, 1fr)`
+  - `gap: 16px`
+- Il fix tocca solo font, altezza percepita, bordo, radius, padding e placeholder.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
 
 ## 5.137 Aggiornamento 2026-04-06 - fix reale del testo segnalazione autista nel dettaglio `Lavori`
 - Corretto il recupero del testo reale nel blocco `Problema segnalato` del dettaglio lavoro NEXT.

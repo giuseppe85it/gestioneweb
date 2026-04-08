@@ -31,6 +31,264 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-08 203
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Fix definitivo della griglia `Data / KM-Ore / Fornitore` in `Manutenzioni`
+- OBIETTIVO: Rendere stabile, pulita e professionale la riga metrica del form `Nuova / Modifica`, dando piu respiro al campo centrale e piu priorita a `Fornitore`.
+- FILE TOCCATI:
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_135055_ui_next-manutenzioni-metric-row-fix.md`
+  - `docs/continuity-reports/20260408_135055_continuity_ui_next-manutenzioni-metric-row-fix.md`
+- COSA E STATO CAMBIATO:
+  - la riga `Data / KM-Ore / Fornitore` usa ora colonne esplicite `corta / medio-corta / flessibile`;
+  - il campo `KM/Ore` non risulta piu schiacciato;
+  - il campo `Fornitore` riceve la maggior parte dello spazio disponibile;
+  - il comportamento intermedio resta coerente senza ricadere su 3 colonne uguali.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: riga form piu pulita e professionale;
+  - Lettura: invariata;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - verificare che in `Nuova / Modifica`:
+    - `Data` resti corta;
+    - `KM/Ore` sia leggibile e non strozzato;
+    - `Fornitore` parta piu a destra e occupi lo spazio principale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a business, writer, domain, route o PDF engine;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-08 202
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Rimozione completa della UI foto da `Nuova / Modifica` in `Manutenzioni`
+- OBIETTIVO: Lasciare la gestione foto solo nella tab `Dettaglio`, accorciando e rifocalizzando la tab `Nuova / Modifica` sui soli dati di manutenzione.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_134210_ui_next-manutenzioni-form-no-photos.md`
+  - `docs/continuity-reports/20260408_134210_continuity_ui_next-manutenzioni-form-no-photos.md`
+- COSA E STATO CAMBIATO:
+  - rimossa dalla tab `Nuova / Modifica` tutta la UI foto: titolo sezione, placeholder, upload e preview;
+  - aggiunta una nota minima che rimanda la gestione foto al tab `Dettaglio`;
+  - compattato il tratto finale del form fino al blocco `Salva manutenzione`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la tab `Nuova / Modifica` e piu corta e focalizzata sui dati manutenzione;
+  - Lettura: invariata;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - verificare:
+    - in `Nuova / Modifica` assenza di placeholder/upload/preview foto;
+    - presenza della sola nota `Le foto si gestiscono nella tab Dettaglio`;
+    - `Dettaglio` ancora unico punto con gestione foto e hotspot.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a business, writer, domain, route o PDF engine;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-08 201
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Micro-fix UI mirato sui 4 problemi reali di `Manutenzioni`
+- OBIETTIVO: Ridurre il dominio del nero, correggere la riga `Data / KM-Ore / Fornitore`, separare correttamente materiali e foto e rendere il materiale la voce principale dell'autosuggest.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_133015_ui_next-manutenzioni-targeted-fixes.md`
+  - `docs/continuity-reports/20260408_133015_continuity_ui_next-manutenzioni-targeted-fixes.md`
+- COSA E STATO CAMBIATO:
+  - il contenuto operativo dei tab e stato reso piu continuo e dominante su base chiara;
+  - la riga `Data / KM-Ore / Fornitore` del form usa ora una griglia piu stabile e proporzionata;
+  - la sezione foto e stata separata visivamente dalla card `Componenti inclusi / materiali`;
+  - l'autosuggest inventario presenta il materiale come label principale e il fornitore come meta secondaria.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il modulo risulta piu leggibile e meno dominato dal nero, con form materiali piu coerente;
+  - Lettura: invariata;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - verificare:
+    - tab con contenuto chiaro piu continuo;
+    - `Nuova / Modifica` senza collisioni su `Data / KM-Ore / Fornitore`;
+    - `Componenti inclusi / materiali` senza foto camion;
+    - autosuggest con materiale in primo piano e fornitore secondario.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a business, writer, domain, route o PDF engine;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-08 200
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Fix tema chiaro delle superfici operative di `Manutenzioni`
+- OBIETTIVO: Correggere il bilanciamento visivo del runtime reale `/next/manutenzioni`, mantenendo shell esterna scura ma portando a base chiara i contenitori di lavoro interni.
+- FILE TOCCATI:
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_125240_ui_next-manutenzioni-light-surfaces-fix.md`
+  - `docs/continuity-reports/20260408_125240_continuity_ui_next-manutenzioni-light-surfaces-fix.md`
+- COSA E STATO CAMBIATO:
+  - pannelli principali di `Nuova / Modifica`, `Dettaglio` e `Quadro manutenzioni PDF` portati a tema chiaro;
+  - testi, label e valori sulle superfici operative resi scuri e ad alto contrasto;
+  - input, textarea, placeholder foto e card materiali riallineati a una stessa grammatica di pannello chiaro;
+  - shell esterna, tab principali e bottoni secondari mantenuti scuri come accento.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: migliore separazione tra shell scura e superfici operative chiare;
+  - Lettura: invariata;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - verificare:
+    - shell esterna e tab ancora scuri;
+    - `Nuova / Modifica` con pannello form chiaramente piu chiaro;
+    - `Dettaglio` con card operative su base chiara;
+    - `Quadro manutenzioni PDF` con filtri e risultati su base chiara;
+    - testi e label leggibili senza grigi slavati.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a business, writer, domain, route o PDF engine;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-08 199
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Affinamento UI/CSS del runtime reale di `Manutenzioni`
+- OBIETTIVO: Riallineare graficamente `/next/manutenzioni` al mock approvato partendo dallo stato reale attuale del modulo, senza rifarlo da zero e senza toccare logica o flussi.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_123424_ui_next-manutenzioni-visual-refine.md`
+  - `docs/continuity-reports/20260408_123424_continuity_ui_next-manutenzioni-visual-refine.md`
+- COSA E STATO CAMBIATO:
+  - header piu compatto e tipografia piu tecnica;
+  - strip riepilogo mezzo piu ordinata;
+  - tab meno glossy e piu compatte;
+  - dashboard alleggerita e resa piu compatta su KPI, pulsanti e lista ultimi interventi;
+  - pannelli `Nuova / Modifica`, `Dettaglio` e `Quadro manutenzioni PDF` resi meno pesanti senza cambiare struttura o logica.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: affinata e piu coerente col riferimento approvato;
+  - Lettura: invariata;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - verificare:
+    - header piu compatto con `OPERATIVITÀ` e `Manutenzioni`;
+    - select/search coerenti;
+    - strip riepilogo a 5 blocchi ordinata;
+    - tab `Dashboard / Nuova / Modifica / Dettaglio / Quadro manutenzioni PDF` piu compatte;
+    - dashboard con KPI, pulsanti e `Ultimi interventi` piu compatti;
+    - form/dettaglio/quadro PDF visivamente uniformati.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a business, writer, domain, route o PDF engine;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-08 198
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Dashboard reset UI di `Manutenzioni`
+- OBIETTIVO: Alleggerire davvero `/next/manutenzioni` rimuovendo l'ultimo macro-pannello di contesto dalla `Dashboard` e confermando i 4 tab finali come superfici distinte della stessa famiglia.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-08_0808_ui_next-manutenzioni-dashboard-reset.md`
+  - `docs/continuity-reports/2026-04-08_0808_continuity_ui_next-manutenzioni-dashboard-reset.md`
+- COSA E STATO CAMBIATO:
+  - `Dashboard` ridotta a risultati rapidi, navigazione veloce e contesto attivo compatto;
+  - eliminato il vecchio pannello grande di contesto mezzo;
+  - confermati `Dettaglio` a 2 card vere e `Quadro manutenzioni PDF` come filtro + elenco full-width.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: modulo piu leggero e meno impostato come pagina a pannelli pesanti;
+  - Lettura: invariata;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4173`
+  - aprire `http://127.0.0.1:4173/next/manutenzioni`
+  - verificare:
+    - header comune compatto presente;
+    - `Dashboard` senza macro-pannello di contesto e senza side column;
+    - `Nuova / Modifica` full-width;
+    - `Tagliando completo` solo condizionale;
+    - `Dettaglio` con 2 card root vere;
+    - `Quadro manutenzioni PDF` con `Step 1`, `Step 2`, elenco full-width e `Apri dettaglio` verso `Dettaglio`;
+    - `Storico` assente.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a business, writer, domain business, clone barrier o PDF engine;
+  - stato modulo invariato: `PARZIALE`.
+
+### Voce 2026-04-08 197
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Hard layout fix UI di `Manutenzioni`
+- OBIETTIVO: Eliminare definitivamente la struttura shared con colonna laterale persistente e contesto duplicato in `/next/manutenzioni`, mantenendo solo l'header comune e 4 tab finali con layout distinti.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-08_0745_ui_next-manutenzioni-hard-layout-fix.md`
+  - `docs/continuity-reports/2026-04-08_0745_continuity_ui_next-manutenzioni-hard-layout-fix.md`
+- COSA E STATO CAMBIATO:
+  - header comune ridotto a titolo, selezione mezzo, ricerca rapida e tab, senza preview risultati o contesto card duplicati;
+  - `Dashboard` semplificata a sola superficie di ingresso rapido con risultati, azioni e contesto minimo;
+  - `Nuova / Modifica` confermata full-width con `Tagliando completo` solo condizionale;
+  - `Dettaglio` ripulito da topbar interna, riepiloghi duplicati e ricerca duplicata, con 2 card root vere e nessun hero bianco sopra il contenuto reale;
+  - `Quadro manutenzioni PDF` lasciato come filtro + elenco full-width, rimuovendo i blocchi secondari da dashboard.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il modulo non usa piu la shared-left-column e ogni tab ha una gerarchia propria;
+  - Lettura: invariata, nessun cambio a reader o domain business;
+  - Blocco scritture: invariato, nessuna modifica a `cloneWriteBarrier.ts`, writer o PDF engine.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - avviare `npm run preview -- --host 127.0.0.1 --port 4173`
+  - aprire `http://127.0.0.1:4173/next/manutenzioni`
+  - verificare:
+    - header comune compatto con `1` input ricerca e nessun `.mx-header-search-results` o `.mx-header-context`;
+    - tab visibili `Dashboard`, `Nuova / Modifica`, `Dettaglio`, `Quadro manutenzioni PDF`;
+    - `Storico` assente;
+    - `Dashboard` senza side column e usata come ingresso rapido;
+    - `Nuova / Modifica` senza side column e con `Tagliando completo` nascosto di default;
+    - `Dettaglio` con 2 card root vere e senza `.ms-topbar`;
+    - `Quadro manutenzioni PDF` con `Step 1`, `Step 2`, elenco full-width e `Apri dettaglio` verso `Dettaglio`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - nessuna modifica a business, writer, domain, clone barrier, PDF engine o storage logic;
+  - stato modulo invariato: `PARZIALE`.
+
 ### Voce 2026-04-07 196
 - DATA: 2026-04-07
 - TITOLO MODIFICA: Refactor UI `layout family` del modulo `Manutenzioni`
@@ -8872,6 +9130,149 @@ Serve a:
   - cliccare `Apri segnalazione` e verificare che il modale mostri la stessa descrizione reale
   - aprire `/next/dettagliolavori/7c6af494-9b02-4bf2-ac67-c994b39436c0?from=lavori-in-attesa` e verificare la stessa resa su route diretta.
 - SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- ### Voce 2026-04-08 140
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Riallineamento visivo input `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT
+- OBIETTIVO: Uniformare i tre campi separati della tab `Nuova / Modifica` allo stesso stile visivo gia usato da `Tipo` e `Sottotipo`, senza toccare layout o proporzioni.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_145300_ui_next-manutenzioni-metric-input-style-align.md`
+  - `docs/continuity-reports/20260408_145300_continuity_ui_next-manutenzioni-metric-input-style-align.md`
+- COSA E STATO CAMBIATO:
+  - i tre wrapper separati ora riusano anche la classe base `man2-field`;
+  - i campi ereditano lo stesso pattern visivo degli altri controlli del form;
+  - aggiunto allineamento placeholder sul perimetro metriche.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i tre campi hanno ora la stessa resa di `Tipo` e `Sottotipo`;
+  - Lettura: nessuna variazione;
+  - Scritture: nessuna variazione.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Nuova / Modifica` e confrontare visivamente `Data / KM-Ore / Fornitore` con `Tipo` e `Sottotipo`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- ### Voce 2026-04-08 139
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Sostituzione definitiva blocco `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT
+- OBIETTIVO: Rimpiazzare il blocco metriche della tab `Nuova / Modifica` con una struttura compatta e rigida a tre field-group separati.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_144200_ui_next-manutenzioni-metric-row-final.md`
+  - `docs/continuity-reports/20260408_144200_continuity_ui_next-manutenzioni-metric-row-final.md`
+- COSA E STATO CAMBIATO:
+  - rimossi classi e wrapper del tentativo precedente;
+  - mantenuti gli stessi binding e handler dei campi;
+  - applicata la struttura finale `man2-metric-row` + tre `man2-metric-group`;
+  - applicate le colonne desktop `180px 180px minmax(360px, 1fr)` con `gap: 16px`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: blocco piu rigido, compatto e spiegabile;
+  - Lettura: nessuna variazione;
+  - Scritture: nessuna variazione.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Nuova / Modifica` e verificare i tre gruppi `Data`, `KM/Ore`, `Fornitore` con gap reale e nessun wrapper beige alto
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- ### Voce 2026-04-08 138
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Riga `Data / KM-Ore / Fornitore` ricompattata in `Manutenzioni` NEXT
+- OBIETTIVO: Rimuovere la soluzione a tre box alti e riportare la riga metriche della tab `Nuova / Modifica` a tre field-group compatti e separati.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_143100_ui_next-manutenzioni-metric-row-compact.md`
+  - `docs/continuity-reports/20260408_143100_continuity_ui_next-manutenzioni-metric-row-compact.md`
+- COSA E STATO CAMBIATO:
+  - rimossi i wrapper-card alti dei tre campi;
+  - introdotta una griglia compatta `man2-metric-row`;
+  - `Data` e `KM/Ore` fissati corti, `Fornitore` lasciato flessibile;
+  - ridotta l'altezza della riga e mantenuto lo stacco di `Mezzo attivo`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: riga piu compatta e professionale;
+  - Lettura: nessuna variazione;
+  - Scritture: nessuna variazione.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Nuova / Modifica` e verificare una sola riga compatta con tre gruppi separati per `Data`, `KM/Ore`, `Fornitore`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- ### Voce 2026-04-08 137
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Riga `Data / KM-Ore / Fornitore` resa a mini-card in `Manutenzioni` NEXT
+- OBIETTIVO: Eliminare definitivamente l'effetto di campi attaccati nella tab `Nuova / Modifica`, trasformando la riga metriche in tre mini-card separate vere e aumentando lo stacco di `Mezzo attivo`.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_142200_ui_next-manutenzioni-metric-cards.md`
+  - `docs/continuity-reports/20260408_142200_continuity_ui_next-manutenzioni-metric-cards.md`
+- COSA E STATO CAMBIATO:
+  - sostituito il blocco JSX della riga metriche con `man2-metric-cards` e tre `man2-metric-card`;
+  - introdotti bordo, fondo e gap propri per ciascuna card;
+  - input interni alleggeriti e subordinati al contenitore;
+  - `Mezzo attivo` rialzato e distanziato piu nettamente dal pannello sottostante.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: separazione visiva netta dei tre campi;
+  - Lettura: nessuna variazione;
+  - Scritture: nessuna variazione.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Nuova / Modifica` e verificare tre mini-card separate per `Data`, `KM/Ore`, `Fornitore`, piu stacco su `Mezzo attivo`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+
+### Voce 2026-04-07 2228
+- DATA: 2026-04-07
+- TITOLO MODIFICA: Riallineamento finale family UI del modulo `Manutenzioni`
+- OBIETTIVO: Portare `/next/manutenzioni` al mockup master finale lato UI, mantenendo invariati business, writer, domain e barrier clone.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/2026-04-07_2228_ui_next-manutenzioni-final-family-alignment.md`
+  - `docs/continuity-reports/2026-04-07_2228_continuity_ui_next-manutenzioni-final-family-alignment.md`
+- COSA E STATO CAMBIATO:
+  - mantenuti solo i tab `Dashboard`, `Nuova / Modifica`, `Dettaglio`, `Quadro manutenzioni PDF`;
+  - il vecchio `Storico` non compare piu nella navigazione del modulo;
+  - `Dashboard` resta una superficie full-width centrata su ricerca rapida, risultati immediati e accessi veloci;
+  - `Nuova / Modifica` mantiene il form operativo full-width e mostra il blocco `Tagliando completo` solo quando il tipo intervento selezionato e `Tagliando`;
+  - `Dettaglio` usa ora una struttura a due card root reali: foto/hotspot/zone a sinistra, riepilogo mezzo + ultime manutenzioni + azioni rapide a destra;
+  - `Quadro manutenzioni PDF` resta filtro + elenco e il pulsante `Apri dettaglio` porta direttamente al tab `Dettaglio`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: family alignment finale coerente con il mockup master, senza shell laterali ripetute dove non servono;
+  - Lettura: invariata, nessun cambio a reader o domain business;
+  - Scritture: invariate, nessuna nuova deroga o widening del clone.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `http://127.0.0.1:4173/next/manutenzioni`
+  - verificare i soli tab `Dashboard`, `Nuova / Modifica`, `Dettaglio`, `Quadro manutenzioni PDF`
+  - verificare `Storico` assente
+  - nella `Dashboard`, digitare `TI` nella ricerca rapida e verificare preview con targa, mezzo/modello e autista
+  - in `Nuova / Modifica`, verificare che `Tagliando completo` sia nascosto di default e visibile solo dopo selezione `Tagliando`
+  - in `Dettaglio`, verificare 2 card root vere e le azioni `Apri dossier mezzo` / `Apri quadro PDF`
+  - nel `Quadro manutenzioni PDF`, verificare `Step 1`, `Step 2`, elenco righe e `Apri dettaglio` verso il tab `Dettaglio`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
 
 ### Voce 2026-04-07 135
 - DATA: 2026-04-07
@@ -8906,3 +9307,29 @@ Serve a:
   - il modulo `Lavori` resta `PARZIALE` finche non passa audit separato.
 - NOTE:
   - causa reale del bug: il dettaglio precedente non sfruttava il backlink `linkedLavoroId/linkedLavoroIds` del payload segnalazione e poteva chiudere su `—` quando il match non passava dalla sola vista normalizzata.
+- ### Voce 2026-04-08 136
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Micro-fix riga `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT
+- OBIETTIVO: Rendere la riga metriche della tab `Nuova / Modifica` chiaramente separata e piu professionale, aumentando anche lo stacco della card `Mezzo attivo`.
+- FILE TOCCATI:
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_141100_ui_next-manutenzioni-row-spacing-separation.md`
+  - `docs/continuity-reports/20260408_141100_continuity_ui_next-manutenzioni-row-spacing-separation.md`
+- COSA E STATO CAMBIATO:
+  - aumentato il gap reale tra `Data`, `KM/Ore` e `Fornitore`;
+  - ridotte le prime due colonne per evitare campi tirati o quasi incollati;
+  - lasciato `Fornitore` come colonna lunga e flessibile;
+  - aumentato il margine inferiore della card `Mezzo attivo`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: riga piu pulita, con bordi e campi chiaramente separati;
+  - Lettura: nessuna variazione;
+  - Scritture: nessuna variazione.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Nuova / Modifica` e verificare che la riga `Data / KM/Ore / Fornitore` mostri tre campi separati e che `Mezzo attivo` abbia piu aria sopra `Campi base`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`

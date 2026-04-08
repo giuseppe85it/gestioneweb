@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import NextMappaStoricoPage from "./NextMappaStoricoPage";
@@ -8,7 +8,6 @@ import {
   type NextInventarioReadOnlyItem,
 } from "./domain/nextInventarioDomain";
 import {
-  deleteNextManutenzioneBusinessRecord,
   readNextManutenzioniWorkspaceSnapshot,
   saveNextManutenzioneBusinessRecord,
   type NextManutenzioniLegacyDatasetRecord,
@@ -29,8 +28,7 @@ type TipoVoce = "mezzo" | "compressore";
 type SottoTipo = "motrice" | "trattore";
 type ViewTab = "dashboard" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
-type StoricoVisualKind = "mezzo" | "compressore" | "tagliando" | "derivato";
-type MappaPhotoView = "fronte" | "sinistra" | "destra" | "retro";
+type InterventoUiSubtype = "tagliando" | "tagliando completo" | "gomme" | "riparazione" | "altro";
 
 type MaterialeManutenzione = NextManutenzioniLegacyMaterialRecord;
 
@@ -72,13 +70,6 @@ const TAGLIANDO_COMPONENTI = [
   "filtri",
   "cinghie",
   "lubrificazione",
-];
-
-const MAPPA_FOTO_VIEWS: Array<{ key: MappaPhotoView; label: string }> = [
-  { key: "fronte", label: "Fronte" },
-  { key: "sinistra", label: "Sinistra" },
-  { key: "destra", label: "Destra" },
-  { key: "retro", label: "Retro" },
 ];
 
 function todayLabel() {
@@ -135,43 +126,51 @@ function formatMonthFilterLabel(filter: PdfPeriodFilter) {
   return MESE_LABEL.format(new Date(year, monthIndex, 1));
 }
 
-function classifyStoricoRecord(item: NextManutenzioniLegacyDatasetRecord): StoricoVisualKind {
-  const descrizione = item.descrizione.toUpperCase();
-  if (descrizione.includes("TAGLIANDO")) return "tagliando";
-  if (
-    descrizione.includes("SEGNALAZ")
-    || descrizione.includes("CONTROLLO KO")
-    || descrizione.includes("CAMBIO GOMME")
-  ) {
-    return "derivato";
+function toDateInputValue(value: string | null | undefined) {
+  const parsed = parseLegacyDate(value);
+  if (!parsed) {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${now.getFullYear()}-${month}-${day}`;
   }
-  return item.tipo === "compressore" ? "compressore" : "mezzo";
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${parsed.getFullYear()}-${month}-${day}`;
 }
 
-function getVisualKindLabel(kind: StoricoVisualKind) {
-  switch (kind) {
-    case "compressore":
-      return "Compressore";
-    case "tagliando":
-      return "Tagliando";
-    case "derivato":
-      return "Derivato";
-    default:
-      return "Mezzo";
-  }
+function fromDateInputValue(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return `${day} ${month} ${year}`;
+}
+
+function formatDateShort(value: string | null | undefined) {
+  const parsed = parseLegacyDate(value);
+  if (!parsed) return value || "Nessuna";
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}`;
+}
+
+function formatNumberIt(value: number | null | undefined) {
+  if (value == null) return "DA VERIFICARE";
+  return new Intl.NumberFormat("it-IT").format(value);
 }
 
 function buildDescrizioneSnippet(value: string, limit = 140) {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= limit) return normalized;
-  return `${normalized.slice(0, limit - 1)}…`;
+  return `${normalized.slice(0, limit - 3)}...`;
 }
 
-function buildTagliandoHint(item: NextManutenzioniLegacyDatasetRecord) {
-  if (!item.descrizione.toUpperCase().includes("TAGLIANDO")) return null;
-  const materiali = item.materiali?.map((entry) => entry.label).filter(Boolean) ?? [];
-  const componenti = [...new Set([...TAGLIANDO_COMPONENTI, ...materiali])].slice(0, 4);
-  return componenti.length > 0 ? componenti.join(" · ") : "Componenti multipli inclusi";
+function deriveUiSubtype(descrizioneValue: string): InterventoUiSubtype {
+  const normalized = descrizioneValue.toUpperCase();
+  if (normalized.includes("CAMBIO GOMME")) return "gomme";
+  if (normalized.includes("TAGLIANDO")) return "tagliando completo";
+  if (normalized.includes("RIPARAZ")) return "riparazione";
+  return "altro";
 }
 
 function mapMezzoPreview(
@@ -193,9 +192,10 @@ function mapMezzoPreview(
 }
 
 function mapInventoryItem(item: NextInventarioReadOnlyItem): MaterialeInventario {
+  const label = normalizeFreeText(item.descrizione || "");
   return {
     id: item.id,
-    label: item.descrizione,
+    label: label || "MATERIALE SENZA DESCRIZIONE",
     quantitaTotale: item.quantita ?? 0,
     unita: item.unita ?? "pz",
     fornitoreLabel: item.fornitore ?? null,
@@ -209,9 +209,7 @@ function buildMisuraLabel(item: NextManutenzioniLegacyDatasetRecord) {
   return item.ore != null ? `${item.ore} ORE` : "-";
 }
 
-function toMaterialiTemp(
-  items: NextManutenzioniLegacyDatasetRecord["materiali"],
-): MaterialeManutenzione[] {
+function toMaterialiTemp(items: NextManutenzioniLegacyDatasetRecord["materiali"]): MaterialeManutenzione[] {
   if (!items?.length) return [];
   return items.map((item, index) => ({
     id: item.id || `materiale:${index}`,
@@ -311,6 +309,7 @@ export default function NextManutenzioniPage() {
 
   const [targa, setTarga] = useState("");
   const [tipo, setTipo] = useState<TipoVoce>("mezzo");
+  const [uiSubtype, setUiSubtype] = useState<InterventoUiSubtype>("altro");
   const [fornitore, setFornitore] = useState("");
   const [km, setKm] = useState("");
   const [ore, setOre] = useState("");
@@ -344,10 +343,6 @@ export default function NextManutenzioniPage() {
         const initialTarga = pageData.mezzi[0]?.targa ?? "";
         setSelectedTarga((current) => current || initialTarga);
         setTarga((current) => current || initialTarga);
-        if (!cancelled && initialTarga) {
-          const preview = pageData.mezzoPreview.find((item) => item.targa === initialTarga);
-          setRicercaMezzo(preview ? `${preview.targa} · ${preview.marcaModello ?? preview.label}` : initialTarga);
-        }
       } catch (loadError) {
         console.error("Errore caricamento Manutenzioni NEXT:", loadError);
         if (cancelled) return;
@@ -380,6 +375,10 @@ export default function NextManutenzioniPage() {
   }
 
   const activeTarga = normalizeText(selectedTarga || targa);
+  const mezzoPreviewByTarga = useMemo(
+    () => new Map(mezzoPreview.map((mezzo) => [mezzo.targa, mezzo] as const)),
+    [mezzoPreview],
+  );
   const mezzoSelezionato = useMemo(
     () => mezzi.find((mezzo) => mezzo.targa === activeTarga) ?? null,
     [activeTarga, mezzi],
@@ -410,44 +409,17 @@ export default function NextManutenzioniPage() {
       )
       .slice(0, 5);
   }, [materialeSearch, materialiInventario]);
-  const totalMaterialiMezzo = useMemo(
-    () =>
-      storicoMezzo.reduce(
-        (sum, item) =>
-          sum + (item.materiali?.reduce((inner, materiale) => inner + materiale.quantita, 0) ?? 0),
-        0,
-      ),
-    [storicoMezzo],
-  );
   const lavoriApertiMezzo = lavoriInAttesaByTarga[activeTarga] ?? 0;
   const kmUltimoRifornimento = kmUltimoByTarga[activeTarga] ?? null;
-  const gommeCount = useMemo(
-    () =>
-      storicoMezzo.filter((item) => item.descrizione.toUpperCase().includes("CAMBIO GOMME")).length,
-    [storicoMezzo],
-  );
   const latestRecord = storicoMezzoOrdinato[0] ?? null;
-  const isMappaView = view === "mappa";
-  const ricercaMezzoRisultati = useMemo(() => {
-    const query = normalizeFreeText(ricercaMezzo).toUpperCase();
-    if (!query) return [];
-    return mezzoPreview
-      .filter((item) =>
-        [
-          item.targa,
-          item.label,
-          item.marcaModello ?? "",
-          item.autistaNome ?? "",
-        ]
-          .join(" ")
-          .toUpperCase()
-          .includes(query),
-      )
-      .slice(0, 6);
-  }, [mezzoPreview, ricercaMezzo]);
-  const compressoreCount = useMemo(
-    () => storicoMezzo.filter((item) => item.tipo === "compressore").length,
-    [storicoMezzo],
+  const ultimiInterventi = useMemo(() => storicoMezzoOrdinato.slice(0, 5), [storicoMezzoOrdinato]);
+  const ultimeManutenzioniMezzo = useMemo(
+    () => storicoMezzoOrdinato.filter((item) => item.tipo === "mezzo").slice(0, 4),
+    [storicoMezzoOrdinato],
+  );
+  const ultimeManutenzioniCompressore = useMemo(
+    () => storicoMezzoOrdinato.filter((item) => item.tipo === "compressore").slice(0, 4),
+    [storicoMezzoOrdinato],
   );
   const monthOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -485,37 +457,61 @@ export default function NextManutenzioniPage() {
       grouped.set(key, current);
     });
 
-    return [...grouped.entries()].map(([targaKey, items]) => {
-      const latest = items[0];
-      const mezzo = mezzoPreview.find((entry) => entry.targa === targaKey) ?? null;
-      const materialiTotali = items.reduce(
-        (sum, record) =>
-          sum + (record.materiali?.reduce((inner, materiale) => inner + materiale.quantita, 0) ?? 0),
-        0,
-      );
-      return {
-        targa: targaKey,
-        latest,
-        mezzo,
-        total: items.length,
-        materialiTotali,
-        kmUltimo: kmUltimoByTarga[targaKey] ?? null,
-      };
+    return [...grouped.entries()].map(([targaKey, items]) => ({
+      targa: targaKey,
+      latest: items[0],
+      mezzo: mezzoPreview.find((entry) => entry.targa === targaKey) ?? null,
+      total: items.length,
+    }));
+  }, [mezzoPreview, pdfFilteredItems]);
+  const ricercaRapida = normalizeFreeText(ricercaMezzo).toUpperCase();
+  const mezziSelezionabili = useMemo(() => {
+    if (!ricercaRapida) return mezzi;
+    return mezzi.filter((mezzo) => {
+      const preview = mezzoPreviewByTarga.get(normalizeText(mezzo.targa));
+      const haystack = [
+        mezzo.label,
+        mezzo.targa,
+        mezzo.categoria,
+        preview?.marcaModello,
+        preview?.autistaNome,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toUpperCase();
+
+      return haystack.includes(ricercaRapida);
     });
-  }, [kmUltimoByTarga, mezzoPreview, pdfFilteredItems]);
+  }, [mezzi, mezzoPreviewByTarga, ricercaRapida]);
+  const pdfVisibleResults = useMemo(() => {
+    if (!ricercaRapida) return pdfGroupedResults;
+    return pdfGroupedResults.filter((result) => {
+      const haystack = [
+        result.targa,
+        result.mezzo?.marcaModello,
+        result.mezzo?.label,
+        result.mezzo?.autistaNome,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toUpperCase();
+
+      return haystack.includes(ricercaRapida);
+    });
+  }, [pdfGroupedResults, ricercaRapida]);
+  const contextPlaceholder = !activeTarga && !mezzoPreviewSelezionato;
 
   function handleSelectContextTarga(value: string) {
     const normalized = normalizeText(value);
     setSelectedTarga(normalized);
     setTarga(normalized);
-    const preview = mezzoPreview.find((item) => item.targa === normalized);
-    setRicercaMezzo(preview ? `${preview.targa} · ${preview.marcaModello ?? preview.label}` : normalized);
     setNotice(null);
   }
 
   function resetForm(nextTarga?: string) {
     const currentTarga = nextTarga ?? activeTarga;
     setTipo("mezzo");
+    setUiSubtype("altro");
     setFornitore("");
     setKm("");
     setOre("");
@@ -569,12 +565,20 @@ export default function NextManutenzioniPage() {
     setKm(item.km != null ? String(item.km) : "");
     setOre(item.ore != null ? String(item.ore) : "");
     setSottotipo(item.sottotipo ?? "motrice");
+    setUiSubtype(deriveUiSubtype(item.descrizione));
     setDescrizione(item.descrizione);
     setEseguito(item.eseguito ?? "");
     setData(item.data);
     setMaterialiTemp(toMaterialiTemp(item.materiali));
     setView("form");
     setNotice("Modifica caricata dal dataset reale.");
+  }
+
+  function handleUiSubtypeChange(nextSubtype: InterventoUiSubtype) {
+    setUiSubtype(nextSubtype);
+    if (nextSubtype === "tagliando completo" && !descrizione.trim()) {
+      setDescrizione("TAGLIANDO - ");
+    }
   }
 
   async function handleSave() {
@@ -631,34 +635,7 @@ export default function NextManutenzioniPage() {
     }
   }
 
-  async function handleDelete(item: NextManutenzioniLegacyDatasetRecord) {
-    const confirmed = window.confirm("Sei sicuro di voler eliminare questa manutenzione?");
-    if (!confirmed) return;
-
-    try {
-      setSaving(true);
-      setError(null);
-      setNotice(null);
-      const deleted = await deleteNextManutenzioneBusinessRecord(item.id);
-      if (!deleted) {
-        setError("Eliminazione non riuscita: record non trovato nel dataset reale.");
-        return;
-      }
-      await refreshData();
-      if (editingId === item.id) resetForm(item.targa);
-      setNotice("Manutenzione eliminata e dataset riallineato.");
-    } catch (deleteError) {
-      console.error("Errore eliminazione manutenzione:", deleteError);
-      setError("Eliminazione manutenzione non riuscita.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function exportPdfForItems(
-    items: NextManutenzioniLegacyDatasetRecord[],
-    title: string,
-  ) {
+  async function exportPdfForItems(items: NextManutenzioniLegacyDatasetRecord[], title: string) {
     if (!items.length) {
       window.alert("Non ci sono manutenzioni da esportare.");
       return;
@@ -700,220 +677,253 @@ export default function NextManutenzioniPage() {
     setNotice("Dettaglio gomme integrato nella descrizione come nel legacy.");
   }
 
-  function renderHeaderTools() {
+  function renderContextBar() {
+    const contextBlocks = [
+      { label: "Targa", value: mezzoPreviewSelezionato?.targa || activeTarga || "-" },
+      {
+        label: "Modello",
+        value: mezzoPreviewSelezionato?.marcaModello ?? mezzoPreviewSelezionato?.label ?? "-",
+      },
+      {
+        label: "Autista solito",
+        value: mezzoPreviewSelezionato?.autistaNome || "DA VERIFICARE",
+      },
+      {
+        label: "KM attuali",
+        value: activeTarga ? formatNumberIt(kmUltimoRifornimento) : "-",
+      },
+      {
+        label: "Ultima manutenzione",
+        value: activeTarga ? latestRecord?.data || "Nessuna" : "-",
+      },
+    ];
+
+    if (contextPlaceholder) {
+      return (
+        <div className="man2-context-bar">
+          {contextBlocks.map((item, index) => (
+            <Fragment key={item.label}>
+              <div className="man2-ctx-item">
+                <span className="man2-ctx-label">{item.label}</span>
+                <span className="man2-ctx-value">{item.value}</span>
+              </div>
+              {index < contextBlocks.length - 1 ? <div className="man2-ctx-divider" /> : null}
+            </Fragment>
+          ))}
+        </div>
+      );
+    }
+
     return (
-      <div className="mx-header-tools">
-        <label className="man-label-block mx-header-search">
-          <span className="man-label-text">Ricerca rapida targa / modello / autista</span>
-          <input
-            className="man-input mx-search-input"
-            value={ricercaMezzo}
-            onChange={(event) => setRicercaMezzo(event.target.value)}
-            placeholder="Es. TI178456, Renault, Cesare"
-          />
-        </label>
-
-        {ricercaMezzoRisultati.length > 0 ? (
-          <div className="mx-header-search-results">
-            {ricercaMezzoRisultati.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="mx-search-preview-item"
-                onClick={() => handleSelectContextTarga(item.targa)}
-              >
-                <span className="mx-search-preview-top">
-                  <strong>{item.targa}</strong>
-                  <span>{item.categoria || "DA VERIFICARE"}</span>
-                </span>
-                <span className="mx-search-preview-main">{item.marcaModello ?? item.label}</span>
-                <span className="mx-search-preview-meta">Autista solito: {item.autistaNome || "DA VERIFICARE"}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {mezzoPreviewSelezionato ? (
-          <div className="mx-header-context">
-            <div className="mx-side-hero">
-              <div className="mx-side-kicker">Mezzo selezionato</div>
-              <div className="mx-side-title">{mezzoPreviewSelezionato.targa}</div>
-              <div className="mx-side-subtitle">
-                {mezzoPreviewSelezionato.marcaModello ?? mezzoPreviewSelezionato.label}
-              </div>
+      <div className="man2-context-bar">
+        {contextBlocks.map((item, index) => (
+          <Fragment key={item.label}>
+            <div className="man2-ctx-item">
+              <span className="man2-ctx-label">{item.label}</span>
+              <span className="man2-ctx-value">{item.value}</span>
             </div>
-
-            <div className="mx-side-grid">
-              <div className="mx-side-stat">
-                <span>Categoria</span>
-                <strong>{mezzoPreviewSelezionato.categoria || "DA VERIFICARE"}</strong>
-              </div>
-              <div className="mx-side-stat">
-                <span>Autista solito</span>
-                <strong>{mezzoPreviewSelezionato.autistaNome || "DA VERIFICARE"}</strong>
-              </div>
-              <div className="mx-side-stat">
-                <span>Km ultimo rifornimento</span>
-                <strong>{kmUltimoRifornimento != null ? `${kmUltimoRifornimento}` : "DA VERIFICARE"}</strong>
-              </div>
-              <div className="mx-side-stat">
-                <span>Ultima manutenzione</span>
-                <strong>{latestRecord?.data || "Nessuna"}</strong>
-              </div>
-            </div>
-
-            <div className="mx-action-row">
-              <button
-                type="button"
-                className="man-header-btn"
-                onClick={() => navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa))}
-              >
-                Apri dossier mezzo
-              </button>
-              <button
-                type="button"
-                className="man-header-btn man-header-btn-outline"
-                onClick={() => setView("mappa")}
-              >
-                Vai a Mappa storico
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="man-empty mx-empty-panel mx-header-empty">
-            Seleziona un mezzo o usa la ricerca rapida per vedere il contesto tecnico.
-          </div>
-        )}
+            {index < contextBlocks.length - 1 ? <div className="man2-ctx-divider" /> : null}
+          </Fragment>
+        ))}
       </div>
     );
   }
 
-  function renderForm() {
+  function renderDashboard() {
+    const interventiMezzo = storicoMezzo.filter((item) => item.tipo === "mezzo").length;
+    const interventiCompressore = storicoMezzo.filter((item) => item.tipo === "compressore").length;
+
     return (
-      <div className="man-card man-card-form mx-panel mx-panel--main mx-surface-card mx-surface-card--form">
-        <div className="man-card-header">
+      <section className="man2-screen">
+        <div className="man2-screen-head man2-screen-head--dashboard">
           <div>
-            <h2 className="man-title-small">{editingId ? "Modifica manutenzione" : "Nuova manutenzione"}</h2>
-            <p className="man-subtitle">
-              Form tecnico con blocchi separati per base, tagliando, materiali e viste mappa
+            <h2 className="man2-screen-title">Dashboard</h2>
+            <p className="man2-screen-copy">
+              Vista tecnica rapida del mezzo selezionato, con accesso diretto alle azioni principali del modulo.
             </p>
           </div>
-          <span className="mx-form-badge">{editingId ? "Modalità modifica" : "Nuova registrazione"}</span>
         </div>
 
-        <div className="man-card-body mx-stack mx-stack-lg">
-          <div className="mx-form-grid">
-            <section className="mx-form-section">
-              <div className="mx-block-title">Campi base</div>
+        <div className="man2-dash-kpis">
+          <article className="man2-kpi">
+            <div className="man2-kpi__label">Interventi mezzo</div>
+            <div className="man2-kpi__value">{interventiMezzo}</div>
+            <div className="man2-kpi__sub">su {activeTarga || "nessuna targa"}</div>
+          </article>
+          <article className="man2-kpi">
+            <div className="man2-kpi__label">Interventi compressore</div>
+            <div className="man2-kpi__value">{interventiCompressore}</div>
+            <div className="man2-kpi__sub">su {activeTarga || "nessuna targa"}</div>
+          </article>
+          <article className="man2-kpi">
+            <div className="man2-kpi__label">Ultimo intervento</div>
+            <div className="man2-kpi__value">{latestRecord ? formatDateShort(latestRecord.data) : "Nessuno"}</div>
+            <div className="man2-kpi__sub">
+              {latestRecord ? buildDescrizioneSnippet(latestRecord.descrizione, 38) : "nessun dato"}
+            </div>
+          </article>
+          <article className="man2-kpi">
+            <div className="man2-kpi__label">Segnalazioni aperte</div>
+            <div className="man2-kpi__value">{lavoriApertiMezzo}</div>
+            <div className="man2-kpi__sub">{lavoriApertiMezzo === 0 ? "nessuna" : "in attesa"}</div>
+          </article>
+        </div>
 
-              <label className="man-label-block">
-                <span className="man-label-text">Targa / Codice</span>
-                <div className="man-row">
-                  <select
-                    className="man-input man-select-mezzo"
-                    value={targa}
-                    onChange={(event) => handleSelectContextTarga(event.target.value)}
-                  >
-                    <option value="">- Seleziona mezzo dall'elenco -</option>
-                    {mezzi.map((mezzo) => (
-                      <option key={mezzo.id} value={mezzo.targa}>
-                        {mezzo.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="man-input man-input-targa"
-                    value={targa}
-                    onChange={(event) => {
-                      const value = event.target.value.toUpperCase();
-                      setTarga(value);
-                      setSelectedTarga(value);
-                    }}
-                    placeholder="Es. TI315407"
-                  />
+        <div className="man2-nav-veloce">
+          <button type="button" className="man2-nav-btn man2-nav-btn--primary" onClick={() => setView("form")}>
+            + Nuova manutenzione
+          </button>
+          <button type="button" className="man2-nav-btn" onClick={() => setView("mappa")} disabled={!activeTarga}>
+            Dettaglio mezzo
+          </button>
+          <button type="button" className="man2-nav-btn" onClick={() => setView("pdf")}>
+            Quadro PDF
+          </button>
+          <button
+            type="button"
+            className="man2-nav-btn"
+            onClick={() => mezzoPreviewSelezionato && navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa))}
+            disabled={!mezzoPreviewSelezionato}
+          >
+            Dossier mezzo
+          </button>
+        </div>
+
+        <div className="man2-section-title">Ultimi interventi</div>
+        <div className="man2-last-list">
+          {ultimiInterventi.length > 0 ? (
+            ultimiInterventi.slice(0, 3).map((item) => (
+              <article key={item.id} className="man2-last-item">
+                <div className="man2-last-item__row1">
+                  <div>
+                    <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 88)}</span>
+                    <div className="man2-last-item__meta">
+                      {item.data} - {buildMisuraLabel(item)} - {item.sottotipo || "intervento programmato"}
+                    </div>
+                  </div>
+                  <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
                 </div>
-              </label>
+              </article>
+            ))
+          ) : (
+            <div className="man-empty">Nessun intervento disponibile per il mezzo selezionato.</div>
+          )}
+        </div>
+      </section>
+    );
+  }
+  function renderForm() {
+    const misuraValue = tipo === "mezzo" ? km : ore;
 
-              <div className="man-row">
-                <label className="man-label-inline">
-                  <span className="man-label-text">Tipo</span>
-                  <select
-                    className="man-input"
-                    value={tipo}
-                    onChange={(event) => setTipo(event.target.value as TipoVoce)}
-                  >
-                    <option value="mezzo">Mezzo</option>
-                    <option value="compressore">Compressore</option>
-                  </select>
-                </label>
+    return (
+      <section className="man2-screen">
+        <div className="man2-form-shell">
+          <div className="man2-screen-head man2-screen-head--form">
+            <div>
+              <div className="man2-panel-kicker">{editingId ? "Modifica" : "Nuova manutenzione"}</div>
+              <h2 className="man2-screen-title">{editingId ? "Modifica manutenzione" : "Nuova manutenzione"}</h2>
+              <p className="man2-screen-copy">
+                Pannello operativo completo per compilare campi base, note e materiali della manutenzione.
+              </p>
+            </div>
+            <div className="man2-screen-context">
+              <span className="man2-screen-context__label">Mezzo attivo</span>
+              <strong>{mezzoPreviewSelezionato?.targa || activeTarga || "Nessuno"}</strong>
+              <span>{mezzoPreviewSelezionato?.marcaModello || "Seleziona un mezzo dalla testata superiore"}</span>
+            </div>
+          </div>
 
-                {tipo === "mezzo" ? (
-                  <label className="man-label-inline">
-                    <span className="man-label-text">Km attuali</span>
-                    <input
-                      className="man-input"
-                      value={km}
-                      onChange={(event) => setKm(event.target.value)}
-                      placeholder="Es. 325000"
-                      inputMode="numeric"
-                    />
-                  </label>
-                ) : (
-                  <label className="man-label-inline">
-                    <span className="man-label-text">Ore</span>
-                    <input
-                      className="man-input"
-                      value={ore}
-                      onChange={(event) => setOre(event.target.value)}
-                      placeholder="Es. 1200"
-                      inputMode="numeric"
-                    />
-                  </label>
-                )}
-
-                <label className="man-label-inline">
-                  <span className="man-label-text">Data intervento</span>
-                  <input
-                    className="man-input"
-                    value={data}
-                    onChange={(event) => setData(event.target.value)}
-                    placeholder="gg mm aaaa"
-                  />
-                </label>
+          <section className="man2-form-block">
+            <div className="man2-section-title">Campi base</div>
+            <div className="man2-field-row">
+              <div className="man2-field">
+                <label className="man2-field__label">Tipo</label>
+                <select value={tipo} onChange={(event) => setTipo(event.target.value as TipoVoce)}>
+                  <option value="mezzo">Mezzo</option>
+                  <option value="compressore">Compressore</option>
+                </select>
               </div>
+              <div className="man2-field">
+                <label className="man2-field__label">Sottotipo</label>
+                <select
+                  value={uiSubtype}
+                  onChange={(event) => handleUiSubtypeChange(event.target.value as InterventoUiSubtype)}
+                >
+                  <option value="tagliando">Tagliando</option>
+                  <option value="tagliando completo">Tagliando completo</option>
+                  <option value="gomme">Gomme</option>
+                  <option value="riparazione">Riparazione</option>
+                  <option value="altro">Altro</option>
+                </select>
+              </div>
+            </div>
 
-              {tipo === "compressore" ? (
-                <label className="man-label-block">
-                  <span className="man-label-text">Sottotipo compressore</span>
-                  <select
-                    className="man-input"
-                    value={sottotipo}
-                    onChange={(event) => setSottotipo(event.target.value as SottoTipo)}
-                  >
-                    <option value="motrice">Motrice</option>
-                    <option value="trattore">Trattore</option>
-                  </select>
-                </label>
-              ) : null}
-            </section>
+            <div className="man2-metric-row">
+              <div className="man2-field man2-metric-group man2-metric-group--date">
+                <label className="man2-field__label">Data</label>
+                <input
+                  type="date"
+                  value={toDateInputValue(data)}
+                  onChange={(event) => setData(fromDateInputValue(event.target.value))}
+                />
+              </div>
+              <div className="man2-field man2-metric-group man2-metric-group--metric">
+                <label className="man2-field__label">{tipo === "mezzo" ? "KM" : "ORE"}</label>
+                <input
+                  type="number"
+                  value={misuraValue}
+                  onChange={(event) => {
+                    if (tipo === "mezzo") {
+                      setKm(event.target.value);
+                      return;
+                    }
+                    setOre(event.target.value);
+                  }}
+                  inputMode="numeric"
+                />
+              </div>
+              <div className="man2-field man2-metric-group man2-metric-group--supplier">
+                <label className="man2-field__label">Fornitore</label>
+                <input
+                  value={fornitore}
+                  onChange={(event) => setFornitore(event.target.value.toUpperCase())}
+                  placeholder="Es. Officina Rossi"
+                />
+              </div>
+            </div>
+          </section>
 
-            <section className="mx-form-section">
-              <div className="mx-block-title">Tagliando completo</div>
-              <div className="mx-tagliando-box">
-                <p>
-                  Il tagliando viene trattato come intervento composto: descrizione, materiali, componenti inclusi e
-                  viste mappa devono restare coerenti.
+          <section className="man2-form-block">
+            <div className="man2-section-title">Descrizione / note</div>
+            <div className="man2-field">
+              <label className="man2-field__label">Dettaglio intervento</label>
+              <textarea
+                rows={4}
+                value={descrizione}
+                onChange={(event) => setDescrizione(event.target.value)}
+                placeholder="Es. Sostituzione pastiglie freno anteriori"
+              />
+            </div>
+          </section>
+
+          {uiSubtype === "tagliando completo" ? (
+            <section className="man2-form-block man2-form-block--accent">
+              <div className="man2-section-title">Tagliando completo</div>
+              <div className="man2-tagliando-box">
+                <p className="man2-tagliando-copy">
+                  Il tagliando completo resta un blocco condizionale e mantiene la logica esistente su descrizione,
+                  materiali, componenti inclusi e gestione gomme.
                 </p>
-                <div className="mx-chip-row">
+                <div className="man2-chip-row">
                   {TAGLIANDO_COMPONENTI.map((item) => (
-                    <span key={item} className="mx-history-chip">
+                    <span key={item} className="man2-chip">
                       {item}
                     </span>
                   ))}
                 </div>
                 <button
                   type="button"
-                  className="man-header-btn man-header-btn-outline"
+                  className="man2-btn"
                   onClick={() => setModalGommeOpen(true)}
                   disabled={!activeTarga || !mezzoSelezionato}
                 >
@@ -921,577 +931,254 @@ export default function NextManutenzioniPage() {
                 </button>
               </div>
             </section>
-          </div>
+          ) : null}
 
-          <section className="mx-form-section">
-            <div className="mx-block-title">Descrizione / note</div>
+          <section className="man2-form-block man2-form-block--materials">
+            <div className="man2-section-title">Componenti inclusi / materiali</div>
+            <div className="man2-material-shell">
+              <div className="man-row man-row-materiale">
+                <div className="man-materiale-left" style={{ flex: 1 }}>
+                  <label className="man-label-block">
+                    <span className="man-label-text">Cerca in inventario / inserisci materiale</span>
+                    <input
+                      className="man-input"
+                      value={materialeSearch}
+                      onChange={(event) => setMaterialeSearch(event.target.value)}
+                      placeholder="Es. PASTIGLIE FRENO, OLIO MOTORE..."
+                    />
+                  </label>
 
-            <label className="man-label-block">
-              <span className="man-label-text">Descrizione intervento</span>
-              <textarea
-                className="man-input man-textarea"
-                value={descrizione}
-                onChange={(event) => setDescrizione(event.target.value)}
-                placeholder="Es. Sostituzione pastiglie freno anteriori"
-              />
-            </label>
-
-            <div className="man-row">
-              <label className="man-label-inline">
-                <span className="man-label-text">Fornitore / officina</span>
-                <input
-                  className="man-input"
-                  value={fornitore}
-                  onChange={(event) => setFornitore(event.target.value.toUpperCase())}
-                  placeholder="Es. OFFICINA INTERNA"
-                />
-              </label>
-
-              <label className="man-label-inline">
-                <span className="man-label-text">Eseguito da</span>
-                <input
-                  className="man-input"
-                  value={eseguito}
-                  onChange={(event) => setEseguito(event.target.value.toUpperCase())}
-                  placeholder="Es. AGUSTONI CESARE"
-                />
-              </label>
-            </div>
-          </section>
-
-          <section className="mx-form-section">
-            <div className="mx-block-title">Componenti inclusi / materiali</div>
-
-            <div className="man-row man-row-materiale">
-              <div className="man-materiale-left" style={{ flex: 1 }}>
-                <label className="man-label-block">
-                  <span className="man-label-text">Cerca in inventario / inserisci materiale</span>
-                  <input
-                    className="man-input"
-                    value={materialeSearch}
-                    onChange={(event) => setMaterialeSearch(event.target.value)}
-                    placeholder="Es. PASTIGLIE FRENO, OLIO MOTORE..."
-                  />
-                </label>
-
-                {materialeSearch && materialiSuggeriti.length > 0 ? (
-                  <div className="man-autosuggest">
-                    {materialiSuggeriti.map((item) => (
-                      <div
-                        key={item.id}
-                        className="man-autosuggest-item"
-                        onClick={() => {
-                          if (!quantitaTemp || Number(quantitaTemp) <= 0) {
-                            window.alert("Inserisci prima la quantita.");
-                            return;
-                          }
-                          handleAddMateriale(item.label, Number(quantitaTemp), item.unita || "pz", true, item.id);
-                        }}
-                      >
-                        <div className="man-autosuggest-main">
-                          <span className="man-autosuggest-label">{item.label}</span>
-                          {item.fornitoreLabel ? (
-                            <span className="man-autosuggest-supplier">{item.fornitoreLabel}</span>
-                          ) : null}
-                        </div>
-                        <div className="man-autosuggest-extra">
-                          Disponibili: {item.quantitaTotale} {item.unita}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="man-materiale-right mx-materiale-side">
-                <label className="man-label-inline">
-                  <span className="man-label-text">Quantità</span>
-                  <input
-                    className="man-input man-input-small"
-                    value={quantitaTemp}
-                    onChange={(event) => setQuantitaTemp(event.target.value)}
-                    placeholder="Es. 2"
-                    inputMode="numeric"
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="man-header-btn"
-                  onClick={() => {
-                    if (!materialeSearch.trim()) {
-                      window.alert("Inserisci il nome del materiale o selezionalo dall'inventario.");
-                      return;
-                    }
-                    if (!quantitaTemp || Number(quantitaTemp) <= 0) {
-                      window.alert("Inserisci una quantita valida.");
-                      return;
-                    }
-                    handleAddMateriale(materialeSearch.toUpperCase(), Number(quantitaTemp), "pz", false);
-                  }}
-                >
-                  Aggiungi materiale
-                </button>
-              </div>
-            </div>
-
-            {materialiTemp.length > 0 ? (
-              <div className="mx-material-list">
-                {materialiTemp.map((item) => (
-                  <div key={item.id} className="mx-material-row">
-                    <span>
-                      <strong>{item.label}</strong> - {item.quantita} {item.unita}
-                      {item.fromInventario ? " (da inventario)" : ""}
-                    </span>
-                    <button
-                      type="button"
-                      className="man-delete-btn"
-                      onClick={() => handleRemoveMateriale(item.id)}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="man-empty mx-empty-panel">Nessun materiale associato alla manutenzione corrente.</div>
-            )}
-          </section>
-
-          <section className="mx-form-section">
-            <div className="mx-block-title">4 foto mappa storico</div>
-            <div className="mx-photo-grid">
-              {MAPPA_FOTO_VIEWS.map((item) => (
-                <button key={item.key} type="button" className="mx-photo-card" onClick={() => setView("mappa")}>
-                  <span>{item.label}</span>
-                  <strong>Vista {item.label.toLowerCase()}</strong>
-                  <small>Caricabile dalla Mappa storico</small>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <div className="man-actions" style={{ marginTop: 12 }}>
-            <button type="button" className="man-primary-btn" onClick={() => void handleSave()} disabled={saving}>
-              {editingId ? "Salva modifica" : "Salva manutenzione"}
-            </button>
-            {editingId ? (
-              <button
-                type="button"
-                className="man-delete-btn"
-                onClick={() => {
-                  const currentItem = storico.find((item) => item.id === editingId);
-                  if (currentItem) void handleDelete(currentItem);
-                }}
-                disabled={saving}
-              >
-                Elimina manutenzione
-              </button>
-            ) : null}
-            <button type="button" className="man-secondary-btn" onClick={() => resetForm()}>
-              Pulisci campi
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function renderDashboard() {
-    const latestMezzoRecord = storicoMezzoOrdinato.find((item) => item.tipo === "mezzo") ?? null;
-    const latestCompressoreRecord = storicoMezzoOrdinato.find((item) => item.tipo === "compressore") ?? null;
-    const latestTagliandoHint = latestMezzoRecord ? buildTagliandoHint(latestMezzoRecord) : null;
-
-    return (
-      <div className="man-card man-card-form mx-panel mx-panel--main mx-surface-card mx-surface-card--dashboard">
-        <div className="man-card-header">
-          <div>
-            <h2 className="man-title-small">Dashboard tecnico manutenzioni</h2>
-            <p className="man-subtitle">
-              Quadro sintetico e operativo del mezzo selezionato, senza pannelli laterali ripetuti.
-            </p>
-          </div>
-        </div>
-
-        <div className="man-card-body mx-stack mx-stack-lg">
-          <div className="mx-kpi-grid mx-kpi-grid--dashboard">
-            <div className="mx-kpi-card">
-              <span>Ultimo intervento mezzo</span>
-              <strong>{latestMezzoRecord?.data || "Nessuno"}</strong>
-            </div>
-            <div className="mx-kpi-card">
-              <span>Ultimo intervento compressore</span>
-              <strong>{latestCompressoreRecord?.data || "Nessuno"}</strong>
-            </div>
-            <div className="mx-kpi-card">
-              <span>Segnalazioni aperte</span>
-              <strong>{lavoriApertiMezzo}</strong>
-            </div>
-            <div className="mx-kpi-card">
-              <span>Km ultimo rifornimento</span>
-              <strong>{kmUltimoRifornimento != null ? kmUltimoRifornimento : "DA VERIFICARE"}</strong>
-            </div>
-          </div>
-
-          <div className="mx-dashboard-grid">
-            <section className="mx-panel mx-dashboard-block">
-              <div className="mx-block-title">Accessi rapidi</div>
-              <div className="mx-quick-actions">
-                <button type="button" className="man-header-btn" onClick={() => setView("form")}>
-                  Nuova manutenzione
-                </button>
-                <button type="button" className="man-header-btn man-header-btn-outline" onClick={() => setView("pdf")}>
-                  Quadro manutenzioni PDF
-                </button>
-                <button type="button" className="man-header-btn man-header-btn-outline" onClick={() => setView("mappa")}>
-                  Apri Mappa storico
-                </button>
-                <button
-                  type="button"
-                  className="man-header-btn man-header-btn-outline"
-                  onClick={() => mezzoPreviewSelezionato && navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa))}
-                  disabled={!mezzoPreviewSelezionato}
-                >
-                  Apri dossier mezzo
-                </button>
-              </div>
-            </section>
-
-            <section className="mx-panel mx-dashboard-block">
-              <div className="mx-block-title">Focus tecnico</div>
-              <div className="mx-area-grid">
-                <div className="mx-area-card">
-                  <span>Interventi mezzo</span>
-                  <strong>{storicoMezzo.filter((item) => item.tipo === "mezzo").length}</strong>
-                  <p>{latestMezzoRecord ? buildDescrizioneSnippet(latestMezzoRecord.descrizione, 88) : "Nessun intervento mezzo"}</p>
-                  {latestTagliandoHint ? <p>Tagliando: {latestTagliandoHint}</p> : null}
-                </div>
-                <div className="mx-area-card">
-                  <span>Interventi compressore</span>
-                  <strong>{compressoreCount}</strong>
-                  <p>
-                    {latestCompressoreRecord
-                      ? buildDescrizioneSnippet(latestCompressoreRecord.descrizione, 88)
-                      : "Nessun intervento compressore"}
-                  </p>
-                </div>
-                <div className="mx-area-card">
-                  <span>Pneumatici / assali</span>
-                  <strong>{gommeCount}</strong>
-                  <p>Interventi mappabili nella vista tecnica del mezzo.</p>
-                </div>
-                <div className="mx-area-card">
-                  <span>Materiali tracciati</span>
-                  <strong>{totalMaterialiMezzo}</strong>
-                  <p>Componenti e materiali già registrati sul mezzo selezionato.</p>
-                </div>
-              </div>
-            </section>
-          </div>
-
-          <div className="mx-timeline-block">
-            <div className="mx-block-title">Ultimi interventi del mezzo</div>
-            {storicoMezzoOrdinato.length === 0 ? (
-              <div className="man-empty mx-empty-panel">Nessuna manutenzione presente per il mezzo selezionato.</div>
-            ) : (
-              <div className="mx-timeline-list">
-                {storicoMezzoOrdinato.slice(0, 5).map((item) => {
-                  const visualKind = classifyStoricoRecord(item);
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="mx-timeline-item"
-                      onClick={() => handleEdit(item)}
-                    >
-                      <div className="mx-timeline-head">
-                        <span className={`mx-kind-pill mx-kind-pill--${visualKind}`}>
-                          {getVisualKindLabel(visualKind)}
-                        </span>
-                        <span className="mx-timeline-date">{item.data}</span>
-                      </div>
-                      <strong>{buildDescrizioneSnippet(item.descrizione, 120)}</strong>
-                      <span>{item.eseguito || item.fornitore || buildMisuraLabel(item)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function renderPdfPanel() {
-    const summaryCards = [
-      {
-        label: "Mezzo",
-        value: String(storico.filter((item) => item.tipo === "mezzo").length),
-      },
-      {
-        label: "Compressore",
-        value: String(storico.filter((item) => item.tipo === "compressore").length),
-      },
-      {
-        label: "Segnalazioni / derivati",
-        value: String(storico.filter((item) => classifyStoricoRecord(item) === "derivato").length),
-      },
-      {
-        label: "Costi / materiali",
-        value: `${storico.reduce((sum, item) => sum + (item.materiali?.length ?? 0), 0)} materiali`,
-      },
-    ];
-
-    return (
-      <div className="man-card man-card-form mx-panel mx-panel--main mx-surface-card mx-surface-card--pdf">
-        <div className="man-card-header">
-          <div>
-            <h2 className="man-title-small">Quadro manutenzioni PDF</h2>
-            <p className="man-subtitle">
-              Prima filtra soggetto e periodo, poi esporta dall'elenco operativo dei risultati.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="man-header-btn"
-            onClick={() =>
-              void exportPdfForItems(
-                pdfFilteredItems,
-                `Quadro manutenzioni ${formatMonthFilterLabel(pdfPeriodFilter)}`,
-              )
-            }
-          >
-            PDF quadro generale
-          </button>
-        </div>
-
-        <div className="man-card-body mx-stack mx-stack-lg">
-          <div className="mx-pdf-steps">
-            <div className="mx-step-card">
-              <span>Step 1</span>
-              <strong>Soggetto</strong>
-              <div className="mx-step-actions">
-                <button
-                  type="button"
-                  className={`man-header-btn${pdfSubjectType === "mezzo" ? "" : " man-header-btn-outline"}`}
-                  onClick={() => setPdfSubjectType("mezzo")}
-                >
-                  Mezzo
-                </button>
-                <button
-                  type="button"
-                  className={`man-header-btn${pdfSubjectType === "compressore" ? "" : " man-header-btn-outline"}`}
-                  onClick={() => setPdfSubjectType("compressore")}
-                >
-                  Compressore
-                </button>
-              </div>
-            </div>
-
-            <div className="mx-step-card">
-              <span>Step 2</span>
-              <strong>Periodo</strong>
-              <div className="mx-step-actions mx-step-actions--wrap">
-                <button
-                  type="button"
-                  className={`man-header-btn${pdfPeriodFilter === "ultimo-mese" ? "" : " man-header-btn-outline"}`}
-                  onClick={() => setPdfPeriodFilter("ultimo-mese")}
-                >
-                  Ultimo mese
-                </button>
-                {monthOptions.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className={`man-header-btn${pdfPeriodFilter === option ? "" : " man-header-btn-outline"}`}
-                    onClick={() => setPdfPeriodFilter(option)}
-                  >
-                    {formatMonthFilterLabel(option)}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className={`man-header-btn${pdfPeriodFilter === "tutto" ? "" : " man-header-btn-outline"}`}
-                  onClick={() => setPdfPeriodFilter("tutto")}
-                >
-                  Tutto
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <section className="mx-pdf-results-shell">
-            <div className="mx-pdf-results-header">
-              <div>
-                <div className="mx-block-title">Elenco risultati</div>
-                <strong className="mx-pdf-results-title">
-                  Risultati esportabili per {pdfSubjectType === "mezzo" ? "mezzo" : "compressore"}
-                </strong>
-              </div>
-              <div className="mx-chip-row">
-                <span className="mx-history-chip">{formatMonthFilterLabel(pdfPeriodFilter)}</span>
-                <span className="mx-history-chip">
-                  {pdfGroupedResults.length} {pdfGroupedResults.length === 1 ? "soggetto" : "soggetti"}
-                </span>
-              </div>
-            </div>
-
-            {pdfGroupedResults.length === 0 ? (
-              <div className="man-empty mx-empty-panel">Nessun risultato disponibile con i filtri attuali.</div>
-            ) : (
-              <div className="mx-pdf-list">
-                {pdfGroupedResults.map((result) => (
-                  <div key={`${pdfSubjectType}:${result.targa}`} className="mx-pdf-list-row">
-                    <div className="mx-pdf-list-visual">
-                      <div className="mx-pdf-list-photo-frame">
-                        {result.mezzo?.fotoUrl ? (
-                          <img src={result.mezzo.fotoUrl} alt={result.targa} className="mx-pdf-list-photo" />
-                        ) : (
-                          <div className="mx-pdf-list-photo mx-pdf-list-photo--placeholder">
-                            <span>{result.targa}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mx-pdf-list-main">
-                      <div className="mx-pdf-list-head">
-                        <div className="mx-pdf-list-title-wrap">
-                          <strong className="mx-pdf-list-title">{result.targa}</strong>
-                          <span className="mx-pdf-list-subtitle">
-                            {result.mezzo?.marcaModello ?? (pdfSubjectType === "mezzo" ? "Mezzo" : "Compressore")}
-                          </span>
-                        </div>
-                        <span className="mx-history-chip">
-                          {pdfSubjectType === "mezzo" ? "Soggetto: mezzo" : "Soggetto: compressore"}
-                        </span>
-                      </div>
-
-                      <div className="mx-pdf-list-meta">
-                        <div className="mx-pdf-list-meta-item">
-                          <span>Autista solito</span>
-                          <strong>{result.mezzo?.autistaNome || "DA VERIFICARE"}</strong>
-                        </div>
-                        <div className="mx-pdf-list-meta-item">
-                          <span>Km ultimo rifornimento</span>
-                          <strong>{result.kmUltimo != null ? result.kmUltimo : "DA VERIFICARE"}</strong>
-                        </div>
-                        <div className="mx-pdf-list-meta-item">
-                          <span>Data manutenzione</span>
-                          <strong>{result.latest.data}</strong>
-                        </div>
-                        <div className="mx-pdf-list-meta-item">
-                          <span>Tipo / manutenzione</span>
-                          <strong>{buildDescrizioneSnippet(result.latest.descrizione, 92)}</strong>
-                        </div>
-                      </div>
-
-                      <div className="mx-pdf-list-footer">
-                        <div className="mx-chip-row">
-                          <span className="mx-history-chip">
-                            {result.total} {result.total === 1 ? "intervento" : "interventi"}
-                          </span>
-                          <span className="mx-history-chip">
-                            {result.materialiTotali} {result.materialiTotali === 1 ? "materiale" : "materiali"}
-                          </span>
-                        </div>
-
-                        <div className="mx-pdf-list-actions">
-                          <button
-                            type="button"
-                            className="man-header-btn"
-                            onClick={() =>
-                              void exportPdfForItems(
-                                pdfFilteredItems.filter((item) => item.targa === result.targa),
-                                `PDF ${pdfSubjectType} - ${result.targa}`,
-                              )
+                  {materialeSearch && materialiSuggeriti.length > 0 ? (
+                    <div className="man-autosuggest">
+                      {materialiSuggeriti.map((item) => (
+                        <div
+                          key={item.id}
+                          className="man-autosuggest-item"
+                          onClick={() => {
+                            if (!quantitaTemp || Number(quantitaTemp) <= 0) {
+                              window.alert("Inserisci prima la quantita.");
+                              return;
                             }
-                          >
-                            {pdfSubjectType === "mezzo" ? "PDF mezzo" : "PDF compressore"}
-                          </button>
-                          <button
-                            type="button"
-                            className="man-header-btn man-header-btn-outline"
-                            onClick={() => handleEdit(result.latest)}
-                          >
-                            Apri dettaglio
-                          </button>
+                            handleAddMateriale(item.label, Number(quantitaTemp), item.unita || "pz", true, item.id);
+                          }}
+                        >
+                          <div className="man-autosuggest-main man2-material-suggest-main">
+                            <span className="man-autosuggest-label man2-material-suggest-label">{item.label}</span>
+                            {item.fornitoreLabel ? (
+                              <span className="man-autosuggest-supplier man2-material-suggest-supplier">
+                                Fornitore: {item.fornitoreLabel}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="man-autosuggest-extra">
+                            Disponibili: {item.quantitaTotale} {item.unita}
+                          </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+                  ) : null}
+                </div>
 
-          <section className="mx-pdf-secondary">
-            <div className="mx-pdf-secondary-panel">
-              <div className="mx-list-header">
-                <div>
-                  <div className="mx-block-title">Riepilogo rapido</div>
-                  <div className="mx-list-title">Indicatori del filtro attivo</div>
+                <div className="man-materiale-right man2-material-side">
+                  <label className="man-label-inline">
+                    <span className="man-label-text">Quantita</span>
+                    <input
+                      className="man-input man-input-small"
+                      value={quantitaTemp}
+                      onChange={(event) => setQuantitaTemp(event.target.value)}
+                      placeholder="Es. 2"
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="man2-btn"
+                    onClick={() => {
+                      if (!materialeSearch.trim()) {
+                        window.alert("Inserisci il nome del materiale o selezionalo dall'inventario.");
+                        return;
+                      }
+                      if (!quantitaTemp || Number(quantitaTemp) <= 0) {
+                        window.alert("Inserisci una quantita valida.");
+                        return;
+                      }
+                      handleAddMateriale(materialeSearch.toUpperCase(), Number(quantitaTemp), "pz", false);
+                    }}
+                  >
+                    Aggiungi materiale
+                  </button>
                 </div>
               </div>
-              <div className="mx-kpi-grid">
-                {summaryCards.map((card) => (
-                  <div key={card.label} className="mx-kpi-card">
-                    <span>{card.label}</span>
-                    <strong>{card.value}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            <div className="mx-pdf-secondary-panel mx-timeline-block">
-              <div className="mx-list-header">
-                <div>
-                  <div className="mx-block-title">Cronologia di supporto</div>
-                  <div className="mx-list-title">Ultimi eventi del filtro selezionato</div>
+              {materialiTemp.length > 0 ? (
+                <div className="man2-material-list">
+                  {materialiTemp.map((item) => (
+                    <div key={item.id} className="man2-material-row">
+                      <span>
+                        <strong>{item.label}</strong> - {item.quantita} {item.unita}
+                        {item.fromInventario ? " (da inventario)" : ""}
+                      </span>
+                      <button type="button" className="man-delete-btn" onClick={() => handleRemoveMateriale(item.id)}>
+                        Rimuovi
+                      </button>
+                    </div>
+                  ))}
                 </div>
-                <span className="mx-history-chip">
-                  {pdfFilteredItems.length} {pdfFilteredItems.length === 1 ? "riga" : "righe"}
-                </span>
-              </div>
-              {pdfFilteredItems.length === 0 ? (
-                <div className="man-empty mx-empty-panel">La cronologia filtrata e vuota.</div>
               ) : (
-                <div className="mx-history-list">
-                  {pdfFilteredItems.map((item) => {
-                    const visualKind = classifyStoricoRecord(item);
-                    return (
-                      <div key={item.id} className="mx-history-card">
-                        <div className="mx-history-top">
-                          <div className="mx-history-left">
-                            <span className={`mx-kind-pill mx-kind-pill--${visualKind}`}>
-                              {getVisualKindLabel(visualKind)}
-                            </span>
-                            <strong>{item.targa}</strong>
-                          </div>
-                          <span className="mx-history-date">{item.data}</span>
-                        </div>
-                        <div className="mx-history-body">
-                          <div className="mx-history-title">{buildDescrizioneSnippet(item.descrizione, 160)}</div>
-                          <div className="mx-history-meta">
-                            <span>{buildMisuraLabel(item)}</span>
-                            <span>{item.eseguito || item.fornitore || "Dato non disponibile"}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <div className="man-empty">Nessun materiale associato alla manutenzione corrente.</div>
               )}
             </div>
           </section>
+
+          <div className="man2-form-note">
+            Le foto si gestiscono nella tab Dettaglio.
+          </div>
+
+          <div className="man2-form-actions">
+            <button type="button" className="man2-btn-full" onClick={() => void handleSave()} disabled={saving}>
+              Salva manutenzione
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
     );
   }
+  function renderPdfPanel() {
+    return (
+      <section className="man2-screen">
+        <div className="man2-pdf-shell">
+          <div className="man2-pdf-head">
+            <div>
+              <div className="man2-panel-kicker">Quadro manutenzioni PDF</div>
+              <h2 className="man2-screen-title">Quadro manutenzioni PDF</h2>
+              <p className="man2-screen-copy">
+                Seleziona il soggetto, scegli il periodo e genera un quadro generale o un PDF puntuale per il mezzo.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="man2-btn"
+              onClick={() =>
+                void exportPdfForItems(
+                  pdfFilteredItems,
+                  `Quadro manutenzioni ${formatMonthFilterLabel(pdfPeriodFilter)}`,
+                )
+              }
+            >
+              PDF quadro generale
+            </button>
+          </div>
 
+          <div className="man2-pdf-steps">
+            <div className="man2-pdf-step">
+              <span className="man2-pdf-step__index">Step 1</span>
+              <div className="man2-form-title">Soggetto</div>
+              <div className="man2-field">
+                <label className="man2-field__label">Filtro soggetto</label>
+                <select value={pdfSubjectType} onChange={(event) => setPdfSubjectType(event.target.value as TipoVoce)}>
+                  <option value="mezzo">Mezzo</option>
+                  <option value="compressore">Compressore</option>
+                </select>
+              </div>
+            </div>
+            <div className="man2-pdf-step">
+              <span className="man2-pdf-step__index">Step 2</span>
+              <div className="man2-form-title">Periodo</div>
+              <div className="man2-field">
+                <label className="man2-field__label">Filtro periodo</label>
+                <select
+                  value={pdfPeriodFilter}
+                  onChange={(event) => setPdfPeriodFilter(event.target.value as PdfPeriodFilter)}
+                >
+                  <option value="tutto">Tutto</option>
+                  <option value="ultimo-mese">Ultimo mese</option>
+                  {monthOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {formatMonthFilterLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="man2-section-title">Risultati esportabili</div>
+        <div className="man2-pdf-results">
+          {pdfVisibleResults.length > 0 ? (
+            pdfVisibleResults.map((result) => (
+              <article key={`${pdfSubjectType}:${result.targa}`} className="man2-pdf-row">
+                <div className="man2-pdf-row__media">
+                  {result.mezzo?.fotoUrl ? (
+                    <img src={result.mezzo.fotoUrl} alt={`Mezzo ${result.targa}`} className="man2-pdf-thumb" />
+                  ) : (
+                    <div className="man2-pdf-thumb man2-pdf-thumb--placeholder">{result.targa}</div>
+                  )}
+                </div>
+                <div className="man2-pdf-row__content">
+                  <div className="man2-pdf-row__meta">
+                    <div>
+                      <span className="man2-pdf-row__label">Targa</span>
+                      <strong>{result.targa}</strong>
+                    </div>
+                    <div>
+                      <span className="man2-pdf-row__label">Mezzo / modello</span>
+                      <strong>{result.mezzo?.marcaModello ?? result.mezzo?.label ?? "DA VERIFICARE"}</strong>
+                    </div>
+                    <div>
+                      <span className="man2-pdf-row__label">Autista</span>
+                      <strong>{result.mezzo?.autistaNome || "DA VERIFICARE"}</strong>
+                    </div>
+                    <div>
+                      <span className="man2-pdf-row__label">Km</span>
+                      <strong>{formatNumberIt(kmUltimoByTarga[result.targa] ?? null)}</strong>
+                    </div>
+                    <div>
+                      <span className="man2-pdf-row__label">Data</span>
+                      <strong>{result.latest.data}</strong>
+                    </div>
+                    <div>
+                      <span className="man2-pdf-row__label">Tipo</span>
+                      <strong>{result.latest.tipo}</strong>
+                    </div>
+                  </div>
+                  <div className="man2-pdf-row__actions">
+                    <button
+                      type="button"
+                      className="man2-btn"
+                      onClick={() =>
+                        void exportPdfForItems(
+                          pdfFilteredItems.filter((item) => item.targa === result.targa),
+                          `PDF ${pdfSubjectType} - ${result.targa}`,
+                        )
+                      }
+                    >
+                      PDF
+                    </button>
+                    <button
+                      type="button"
+                      className="man2-btn man2-btn--secondary"
+                      onClick={() => {
+                        handleSelectContextTarga(result.targa);
+                        setView("mappa");
+                      }}
+                    >
+                      Apri dettaglio
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="man-empty">Nessun risultato disponibile con i filtri attuali.</div>
+          )}
+        </div>
+      </section>
+    );
+  }
   function renderActiveSurface() {
     if (loading) {
-      return <div className="man-empty mx-empty-panel">Caricamento manutenzioni in corso...</div>;
+      return <div className="man-empty">Caricamento manutenzioni in corso...</div>;
     }
     if (view === "dashboard") return renderDashboard();
     if (view === "form") return renderForm();
@@ -1500,124 +1187,92 @@ export default function NextManutenzioniPage() {
   }
 
   return (
-    <div
-      className={`man-page mx-page${isMappaView ? " mx-page--mappa" : ""}`}
-      style={
-        isMappaView
-          ? {
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-start",
-              alignItems: "stretch",
-            }
-          : undefined
-      }
-    >
-      <div
-        className="man-card"
-        style={{
-          marginBottom: isMappaView ? 12 : 16,
-          background: isMappaView ? "#f7f9fc" : undefined,
-          gridColumn: "1 / -1",
-        }}
-      >
-        <div
-          className="man-card-header mx-module-header"
-          style={{
-            alignItems: isMappaView ? "center" : undefined,
-            gap: isMappaView ? 12 : undefined,
-            paddingBottom: isMappaView ? 4 : undefined,
-          }}
-        >
-          <div className="mx-header-grid">
-            <div className="man-logo-title">
-              <img src="/logo.png" alt="logo" className="man-logo" onClick={() => navigate("/next")} />
-              <div>
-                <h1 className="man-title">MANUTENZIONI</h1>
-                <p className="man-subtitle">
-                  {isMappaView
-                    ? "Vista tecnica focalizzata sullo storico visuale del mezzo"
-                    : "Famiglia di schermate operative con dashboard, form, mappa storico e quadro PDF"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mx-header-controls">
-              <div className="mx-header-select" style={{ minWidth: isMappaView ? 280 : 260 }}>
-                <label className="man-label-block">
-                  <span className="man-label-text">Seleziona mezzo</span>
-                  <select
-                    className="man-input man-select-mezzo"
-                    value={activeTarga}
-                    onChange={(event) => handleSelectContextTarga(event.target.value)}
-                  >
-                    <option value="">- Seleziona mezzo -</option>
-                    {mezzi.map((mezzo) => (
-                      <option key={mezzo.id} value={mezzo.targa}>
-                        {mezzo.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {!isMappaView ? renderHeaderTools() : null}
-            </div>
-          </div>
+    <div className="man2-page">
+      <div className="man2-head">
+        <div className="man2-head__left">
+          <span className="man2-eyebrow">OPERATIVITÀ</span>
+          <h1>Manutenzioni</h1>
         </div>
-
-        <div className="mx-module-tabs" style={{ marginTop: isMappaView ? 10 : 14 }}>
-          {[
-            { key: "dashboard", label: "Dashboard" },
-            { key: "form", label: "Nuova / Modifica" },
-            { key: "pdf", label: "Quadro manutenzioni PDF" },
-            { key: "mappa", label: "Mappa storico" },
-          ].map((tab) => {
-            const active = view === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                className={`man-header-btn${active ? "" : " man-header-btn-outline"}`}
-                onClick={() => setView(tab.key as ViewTab)}
-                disabled={tab.key === "mappa" ? !activeTarga : false}
-                style={
-                  isMappaView
-                    ? {
-                        padding: "8px 12px",
-                        fontSize: "0.8rem",
-                        boxShadow: active ? "0 10px 20px rgba(22, 49, 77, 0.14)" : "none",
-                      }
-                    : undefined
-                }
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+        <div className="man2-head__right">
+          <select
+            className="man2-select-mezzo"
+            value={activeTarga}
+            onChange={(event) => handleSelectContextTarga(event.target.value)}
+          >
+            <option value="">- Seleziona mezzo -</option>
+            {(mezziSelezionabili.length > 0 ? mezziSelezionabili : mezzi).map((mezzo) => (
+              <option key={mezzo.id} value={mezzo.targa}>
+                {mezzo.label}
+              </option>
+            ))}
+          </select>
+          <input
+            className="man2-search"
+            value={ricercaMezzo}
+            onChange={(event) => setRicercaMezzo(event.target.value)}
+            placeholder="Cerca targa / modello / autista"
+          />
         </div>
-
-        {notice ? (
-          <div className="man-empty" style={{ marginTop: 12, background: "#eef6ef", borderStyle: "solid" }}>
-            {notice}
-          </div>
-        ) : null}
-
-        {error ? (
-          <div className="man-empty" style={{ marginTop: 12 }}>
-            {error}
-          </div>
-        ) : null}
       </div>
 
+      {renderContextBar()}
+
+      <nav className="man2-tabs">
+        {[
+          { key: "dashboard", label: "Dashboard" },
+          { key: "form", label: "Nuova / Modifica" },
+          { key: "mappa", label: "Dettaglio" },
+          { key: "pdf", label: "Quadro manutenzioni PDF" },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={`man2-tab${view === tab.key ? " active" : ""}`}
+            onClick={() => setView(tab.key as ViewTab)}
+            disabled={tab.key === "mappa" ? !activeTarga : false}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {notice ? <div className="man2-feedback man2-feedback--notice">{notice}</div> : null}
+      {error ? <div className="man2-feedback man2-feedback--error">{error}</div> : null}
+
       {view === "mappa" ? (
-        <div style={{ gridColumn: "1 / -1", width: "100%", minWidth: 0 }}>
-          <NextMappaStoricoPage targa={activeTarga} />
-        </div>
+        <NextMappaStoricoPage
+          targa={activeTarga}
+          embedded={true}
+          mezzoInfo={{
+            targa: mezzoPreviewSelezionato?.targa || activeTarga,
+            mezzoLabel: mezzoPreviewSelezionato?.marcaModello ?? mezzoPreviewSelezionato?.label ?? "DA VERIFICARE",
+            autistaNome: mezzoPreviewSelezionato?.autistaNome ?? null,
+            categoria: mezzoPreviewSelezionato?.categoria ?? null,
+            kmAttuali: kmUltimoRifornimento,
+            ultimaManutenzione: latestRecord?.data ?? null,
+            ultimoInterventoMezzo: ultimeManutenzioniMezzo[0]?.descrizione ?? null,
+            ultimoInterventoCompressore: ultimeManutenzioniCompressore[0]?.descrizione ?? null,
+            ultimeManutenzioniMezzo: ultimeManutenzioniMezzo.map((item) => ({
+              id: item.id,
+              data: item.data,
+              title: buildDescrizioneSnippet(item.descrizione, 78),
+            })),
+            ultimeManutenzioniCompressore: ultimeManutenzioniCompressore.map((item) => ({
+              id: item.id,
+              data: item.data,
+              title: buildDescrizioneSnippet(item.descrizione, 78),
+            })),
+          }}
+          onOpenPdf={() => setView("pdf")}
+          onOpenDossier={() => {
+            if (mezzoPreviewSelezionato) navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa));
+          }}
+          onEditLatest={() => {
+            if (latestRecord) handleEdit(latestRecord);
+          }}
+        />
       ) : (
-        <div className={`mx-surface-shell mx-surface-shell--${view}`}>
-          {renderActiveSurface()}
-        </div>
+        renderActiveSurface()
       )}
 
       {modalGommeOpen && mezzoSelezionato ? (
@@ -1634,3 +1289,5 @@ export default function NextManutenzioniPage() {
     </div>
   );
 }
+
+

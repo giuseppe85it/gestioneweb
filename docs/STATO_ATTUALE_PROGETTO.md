@@ -14,6 +14,7 @@
 - **Audit UI/Grafica repo (2026-03-07)**: eseguito in sola lettura; confermate basi forti da riusare per la NEXT (`Dossier`, `CentroControllo`, `Acquisti`, `AutistiInbox/Admin`, `Capo*`) e moduli legacy/transitori da superare o unificare (`Mezzi`, CRUD generici, `MaterialiDaOrdinare` standalone); criticita prevalente architetturale/documentale, non un bug operativo immediato.
 - **Blueprint grafico NEXT (2026-03-07)**: creati blueprint visivo, design system, wireframe logici e mappa pattern da riusare in `docs/ui-blueprint/`; la fase successiva sara trasformare questo impianto documentale in shell UI reale della nuova app, lasciando invariata la legacy.
 - **Registro ufficiale migrazione NEXT (2026-03-07)**: creato `docs/product/STATO_MIGRAZIONE_NEXT.md`; da ora ogni task futuro che tocca la nuova app deve aggiornarlo per tracciare shell, read-only, scrittura, parti legacy e blocchi, senza perdere contesto tra chat o sessioni.
+- **Redesign UI Manutenzioni NEXT (2026-04-08)**: `/next/manutenzioni` e allineato alla famiglia visuale approvata del modulo con affinamento mirato del runtime reale: header piu compatto e meno teatrale, barra alta e strip riepilogo piu precise, tab meno glossy, dashboard piu compatta e superfici operative principali su base chiara continua per form, dettaglio e quadro PDF, mantenendo invece shell esterna, tab e accenti sul tono scuro; gli ultimi micro-fix hanno inoltre corretto in modo piu netto la riga `Data / KM-Ore / Fornitore` del form con proporzioni desktop stabili, reso il materiale la voce principale dell'autosuggest e rimosso completamente la gestione foto dalla tab `Nuova / Modifica`, lasciandola solo nel tab `Dettaglio`, senza toccare writer, domain, upload hotspot, `pdfEngine` o shape Firestore.
 - **Mappa maestra flussi gestionale (2026-03-07)**: creati `docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md`, `docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.mmd` e `docs/flow-master/FLUSSI_OPERATIVI_CRITICI.md`; il progetto dispone ora di una vista unificata del funzionamento reale del gestionale prima della shell NEXT.
 - **Decisione IA Gestionale per la NEXT (2026-03-07)**: fissata a livello architetturale/documentale; la shell target considera ora 5 macro-aree (`Centro di Controllo`, `Mezzi / Dossier`, `Operativita Globale`, `IA Gestionale`, `Strumenti Trasversali`) e chiarisce che la IA ha doppia natura: area visibile + motore trasversale, senza autorizzare implementazioni automatiche rischiose sulla legacy.
 - **Perimetro reale IA v1 per la NEXT (2026-03-07)**: chiarito a livello architetturale/documentale; la prima versione sensata resta `read-only`, limitata inizialmente a `Dossier Mezzo` e `Centro di Controllo`, con obbligo di spiegabilita della risposta (`fonte dati`, `modulo sorgente`, `periodo`, marcatura `DA VERIFICARE` se l'affidabilita non e piena) e separazione netta dalla futura capability di audit tecnico su repo/docs/dati.
@@ -177,3 +178,44 @@ Eseguire un audit separato della chiusura esecutiva prompt 42 prima di promuover
 
 ## 8. Stato documento
 - **STATO: CURRENT**
+
+## 9. Aggiornamento 2026-04-08 - micro-fix UI riga metriche `Manutenzioni` NEXT
+- Nella tab `Nuova / Modifica` del modulo `/next/manutenzioni` e stata corretta solo la resa della riga `Data / KM-Ore / Fornitore`.
+- La griglia usa ora tre colonne piu leggibili e separate, con `Fornitore` prioritario nello spazio disponibile.
+- La card `Mezzo attivo` ha piu stacco verticale dal blocco `Campi base`, senza toccare logica, routing o dati.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 10. Aggiornamento 2026-04-08 - riga metriche `Manutenzioni` resa a mini-card
+- La riga `Data / KM-Ore / Fornitore` della tab `Nuova / Modifica` non usa piu tre soli input affiancati.
+- I tre campi sono ora montati come mini-card separate vere con bordo e gap autonomi:
+  - `Data`
+  - `KM/Ore`
+  - `Fornitore`
+- La card `Mezzo attivo` e stata rialzata in modo piu percepibile e ha piu aria sopra `Campi base`.
+- Nessuna modifica a logica dati, salvataggio, PDF, foto o dettaglio.
+
+## 11. Aggiornamento 2026-04-08 - riga metriche `Manutenzioni` ricompattata
+- La soluzione a tre mini-card alte e stata rimossa dalla tab `Nuova / Modifica`.
+- La riga `Data / KM-Ore / Fornitore` usa ora tre field-group compatti e separati:
+  - `Data` corto
+  - `KM/Ore` corto
+  - `Fornitore` lungo e flessibile
+- Ridotta l'altezza complessiva della riga eliminando wrapper beige alti e padding verticali superflui.
+- `Mezzo attivo` resta rialzato e con piu stacco da `Campi base`.
+- Nessuna modifica a logica dati, routing, PDF, foto o dettaglio.
+
+## 12. Aggiornamento 2026-04-08 - sostituzione definitiva blocco metriche `Manutenzioni`
+- Il blocco `Data / KM-Ore / Fornitore` della tab `Nuova / Modifica` e stato sostituito in modo definitivo.
+- Struttura runtime finale:
+  - wrapper `man2-metric-row`
+  - `man2-metric-group man2-metric-group--date`
+  - `man2-metric-group man2-metric-group--metric`
+  - `man2-metric-group man2-metric-group--supplier`
+- Colonne desktop fissate a `180px 180px minmax(360px, 1fr)` con `gap: 16px`.
+- Nessuna modifica a logica dati, salvataggio, PDF, foto o dettaglio.
+
+## 13. Aggiornamento 2026-04-08 - stile input metriche riallineato
+- I tre campi `Data / KM-Ore / Fornitore` nella tab `Nuova / Modifica` riusano ora la stessa base visiva dei campi corretti del form, in particolare `Tipo` e `Sottotipo`.
+- Nessuna modifica a layout, colonne, gap o struttura della riga.
+- Riallineati font, bordo, radius, padding e placeholder al pattern gia usato nel modulo.

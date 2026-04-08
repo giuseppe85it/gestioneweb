@@ -1,0 +1,100 @@
+/* -- Pagina -------------------------------------- */
+.man2-page { padding: 1rem; }
+
+/* -- Header -------------------------------------- */
+.man2-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+.man2-head__left { display: flex; flex-direction: column; gap: 3px; }
+.man2-head__right { display: flex; gap: 6px; align-items: center; padding-top: 4px; }
+.man2-eyebrow { font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+.man2-head h1 { font-size: 20px; font-weight: 500; color: var(--color-text-primary); }
+.man2-select-mezzo { padding: 6px 10px; font-size: 13px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); min-width: 220px; }
+.man2-search { padding: 6px 10px; font-size: 13px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); width: 180px; }
+
+/* -- Context bar --------------------------------- */
+.man2-context-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; background: var(--color-background-secondary); border-radius: var(--border-radius-md); margin-bottom: 1.25rem; }
+.man2-ctx-item { display: flex; flex-direction: column; gap: 1px; }
+.man2-ctx-label { font-size: 10px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .05em; }
+.man2-ctx-value { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.man2-ctx-divider { width: 1px; height: 28px; background: var(--color-border-tertiary); flex-shrink: 0; }
+
+/* -- Tab nav ------------------------------------- */
+.man2-tabs { display: flex; border-bottom: 1px solid var(--color-border-tertiary); margin-bottom: 1.25rem; }
+.man2-tab { padding: 7px 16px; font-size: 13px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--color-text-secondary); cursor: pointer; margin-bottom: -1px; }
+.man2-tab.active { color: #166534; border-bottom-color: #166534; font-weight: 500; }
+
+/* -- KPI ----------------------------------------- */
+.man2-dash-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1rem; }
+.man2-kpi { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+.man2-kpi__label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 2px; }
+.man2-kpi__value { font-size: 18px; font-weight: 500; color: var(--color-text-primary); }
+.man2-kpi__sub { font-size: 11px; color: var(--color-text-secondary); }
+
+/* -- Navigazione veloce -------------------------- */
+.man2-nav-veloce { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+.man2-nav-btn { padding: 6px 14px; font-size: 12px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); cursor: pointer; }
+.man2-nav-btn--primary { background: #166534; border-color: #166534; color: #fff; }
+
+/* -- Section title ------------------------------- */
+.man2-section-title { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+
+/* -- Lista interventi (dashboard + dettaglio + pdf) */
+.man2-last-list,
+.man2-storico-list { display: flex; flex-direction: column; gap: 6px; }
+.man2-last-item,
+.man2-storico-item { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 10px 12px; }
+.man2-last-item__row1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.man2-last-item__title { flex: 1; font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.man2-last-item__meta { font-size: 11px; color: var(--color-text-secondary); }
+.man2-storico-item { display: flex; align-items: center; gap: 10px; }
+.man2-storico-item__date { font-size: 12px; color: var(--color-text-secondary); min-width: 70px; flex-shrink: 0; }
+.man2-storico-item__body { flex: 1; }
+.man2-storico-item__title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.man2-storico-item__meta { font-size: 11px; color: var(--color-text-secondary); margin-top: 1px; }
+
+/* -- Badge --------------------------------------- */
+.man2-badge { font-size: 11px; padding: 2px 7px; border-radius: 100px; font-weight: 500; flex-shrink: 0; }
+.man2-badge--mezzo { background: #dbeafe; color: #1e40af; }
+.man2-badge--compressore { background: #ede9fe; color: #5b21b6; }
+
+/* -- Form ---------------------------------------- */
+.man2-form-panel { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 14px; margin-bottom: 1rem; }
+.man2-form-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); padding-bottom: 8px; border-bottom: 0.5px solid var(--color-border-tertiary); margin-bottom: 12px; }
+.man2-field { margin-bottom: 10px; }
+.man2-field__label { font-size: 11px; color: var(--color-text-secondary); display: block; margin-bottom: 3px; }
+.man2-field input,
+.man2-field select,
+.man2-field textarea { width: 100%; padding: 6px 8px; font-size: 13px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); }
+.man2-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.man2-field-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.man2-btn-full { width: 100%; padding: 8px; font-size: 13px; background: #166534; border: none; color: #fff; border-radius: var(--border-radius-md); cursor: pointer; margin-top: 4px; }
+
+/* -- Bottoni generici ---------------------------- */
+.man2-btn { padding: 5px 12px; font-size: 12px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); cursor: pointer; }
+.man2-btn--primary { background: #166534; border-color: #166534; color: #fff; }
+
+/* -- Dettaglio - banner riepilogo mezzo ---------- */
+.man2-det-head { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 12px 14px; margin-bottom: 1rem; }
+.man2-det-head__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.man2-det-field { display: flex; flex-direction: column; gap: 2px; }
+.man2-det-field__label { font-size: 10px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .05em; }
+.man2-det-field__value { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.man2-det-head__actions { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 0.5px solid var(--color-border-tertiary); }
+
+/* -- Dettaglio - viste mezzo --------------------- */
+.man2-viste-tabs { display: flex; gap: 4px; margin-bottom: 1rem; }
+.man2-vista-btn { padding: 5px 12px; font-size: 12px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); cursor: pointer; }
+.man2-vista-btn.active { background: #166534; border-color: #166534; color: #fff; }
+
+/* -- Dettaglio - foto placeholder --------------- */
+.man2-foto-placeholder { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--color-text-tertiary); font-size: 13px; gap: 8px; margin-bottom: 1rem; }
+
+/* -- Responsive - su schermi stretti ------------ */
+@media (max-width: 600px) {
+  .man2-dash-kpis { grid-template-columns: repeat(2, 1fr); }
+  .man2-det-head__grid { grid-template-columns: repeat(2, 1fr); }
+  .man2-field-row3 { grid-template-columns: 1fr 1fr; }
+  .man2-head { flex-direction: column; gap: 10px; }
+  .man2-head__right { flex-wrap: wrap; }
+  .man2-select-mezzo { min-width: unset; width: 100%; }
+  .man2-search { width: 100%; }
+}

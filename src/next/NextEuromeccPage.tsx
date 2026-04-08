@@ -65,6 +65,10 @@ type SiloHotspot = {
   y: number;
   width: number;
   height: number;
+  dotX?: number;
+  dotY?: number;
+  labelX?: number;
+  labelY?: number;
 };
 
 type KpiItem = {
@@ -190,6 +194,33 @@ const SILO_HOTSPOTS: readonly SiloHotspot[] = [
   { key: "coclea", label: "Coclea", x: 268, y: 474, width: 200, height: 48 },
   { key: "motore", label: "Motore", x: 84, y: 472, width: 144, height: 54 },
   { key: "ingrasso", label: "Ingrassaggi", x: 492, y: 472, width: 144, height: 54 },
+] as const;
+
+const CARICO_HOTSPOTS: readonly SiloHotspot[] = [
+  { key: "filtro",              label: "Filtro silo",
+    x: 331, y: 258, width: 160, height: 52,
+    dotX: 331, dotY: 284, labelX: 510, labelY: 230 },
+  { key: "valvolaFarfalla",     label: "Valvola farfalla",
+    x: 320, y: 408, width: 160, height: 52,
+    dotX: 320, dotY: 415, labelX: 510, labelY: 300 },
+  { key: "proboscide",          label: "Proboscide",
+    x: 339, y: 450, width: 160, height: 52,
+    dotX: 320, dotY: 460, labelX: 510, labelY: 360 },
+  { key: "torex",               label: "Torex / vibratore",
+    x: 339, y: 510, width: 160, height: 52,
+    dotX: 320, dotY: 520, labelX: 510, labelY: 420 },
+  { key: "sensori",             label: "Sensori",
+    x: 339, y: 540, width: 160, height: 52,
+    dotX: 320, dotY: 555, labelX: 510, labelY: 480 },
+  { key: "calzacoclea",         label: "Calza gomma",
+    x: 320, y: 590, width: 160, height: 52,
+    dotX: 320, dotY: 592, labelX: 510, labelY: 540 },
+  { key: "scaricatoreCondensa", label: "Scaricatore condensa",
+    x: 170, y: 442, width: 130, height: 52,
+    dotX: 170, dotY: 442, labelX: 30,  labelY: 310 },
+  { key: "gruppoFR",            label: "Gruppo FR",
+    x: 170, y: 462, width: 130, height: 52,
+    dotX: 170, dotY: 467, labelX: 30,  labelY: 370 },
 ] as const;
 
 const EMPTY_PENDING_FORM = {
@@ -860,6 +891,207 @@ function SiloDiagram(props: {
               {STATUS_LABELS[status]}
             </text>
             <circle cx={spot.x + spot.width - 18} cy={spot.y + 18} r="10" fill={STATUS_COLORS[status]} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function CaricoDiagram(props: {
+  area: EuromeccAreaStatic;
+  snapshot: EuromeccSnapshot;
+  currentSub: string | null;
+  onSelectSub: (key: string) => void;
+}) {
+  return (
+    <svg width="100%" viewBox="0 0 680 700" className="eur-silo-diagram" aria-label={`Schema ${props.area.title}`}>
+      {/* COLLETTORE SUPERIORE */}
+      <rect x="30" y="98" width="400" height="18" rx="4" fill="#B0B8C4" stroke="#7A8290" strokeWidth="1.2" />
+      <rect x="30" y="112" width="400" height="5" rx="0" fill="#7A8290" opacity="0.3" />
+
+      {/* SILO SFONDO */}
+      <rect x="30" y="60" width="110" height="380" rx="8" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.5" />
+      <ellipse cx="85" cy="60" rx="55" ry="18" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="118" y="60" width="22" height="380" rx="0" fill="#A8ADB4" opacity="0.4" />
+
+      {/* COCLEA INCLINATA */}
+      <line x1="143" y1="116" x2="318" y2="290" stroke="#7A8290" strokeWidth="20" strokeLinecap="round" opacity="0.2" />
+      <line x1="140" y1="113" x2="315" y2="287" stroke="#B0B8C4" strokeWidth="16" strokeLinecap="round" />
+      <line x1="138" y1="109" x2="313" y2="283" stroke="#D8DDE4" strokeWidth="6" strokeLinecap="round" opacity="0.7" />
+      <line x1="140" y1="113" x2="315" y2="287" stroke="#6A7280" strokeWidth="2" strokeDasharray="8 5" strokeLinecap="round" opacity="0.5" />
+      <ellipse cx="162" cy="136" rx="12" ry="5" transform="rotate(-45 162 136)" fill="none" stroke="#7A8290" strokeWidth="1.5" opacity="0.7" />
+      <ellipse cx="240" cy="210" rx="12" ry="5" transform="rotate(-45 240 210)" fill="none" stroke="#7A8290" strokeWidth="1.5" opacity="0.7" />
+
+      {/* CORPO FILTRO */}
+      <rect x="294" y="265" width="88" height="160" rx="8" fill="#7A8290" opacity="0.2" />
+      <rect x="287" y="258" width="88" height="160" rx="8" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="287" y="258" width="20" height="160" rx="8" fill="#D8DDE4" opacity="0.6" />
+      <rect x="278" y="245" width="106" height="20" rx="5" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="283" y="236" width="96" height="14" rx="4" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.2" />
+      <line x1="287" y1="310" x2="375" y2="310" stroke="#8A9099" strokeWidth="1" strokeDasharray="5 3" opacity="0.6" />
+      <circle cx="291" cy="275" r="3" fill="#8A9099" opacity="0.7" />
+      <circle cx="291" cy="395" r="3" fill="#8A9099" opacity="0.7" />
+      <circle cx="371" cy="275" r="3" fill="#8A9099" opacity="0.7" />
+      <circle cx="371" cy="395" r="3" fill="#8A9099" opacity="0.7" />
+      <path d="M375 265 Q410 290 405 340" fill="none" stroke="#C03020" strokeWidth="2.5" strokeLinecap="round" opacity="0.8" />
+
+      {/* PIATTAFORMA */}
+      <rect x="190" y="385" width="250" height="16" rx="2" fill="#A0A8B2" stroke="#7A8290" strokeWidth="1.5" />
+      <line x1="194" y1="385" x2="194" y2="355" stroke="#8A9099" strokeWidth="2.5" />
+      <line x1="440" y1="385" x2="440" y2="355" stroke="#8A9099" strokeWidth="2.5" />
+      <line x1="194" y1="355" x2="440" y2="355" stroke="#8A9099" strokeWidth="2" />
+      <line x1="194" y1="370" x2="440" y2="370" stroke="#8A9099" strokeWidth="1" opacity="0.5" />
+      <line x1="240" y1="385" x2="240" y2="355" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="290" y1="385" x2="290" y2="355" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="340" y1="385" x2="340" y2="355" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="390" y1="385" x2="390" y2="355" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+
+      {/* STRUTTURA PORTANTE */}
+      <rect x="196" y="401" width="12" height="185" rx="2" fill="#9A9FA8" stroke="#7A8290" strokeWidth="1" />
+      <rect x="432" y="401" width="12" height="185" rx="2" fill="#9A9FA8" stroke="#7A8290" strokeWidth="1" />
+      <rect x="196" y="440" width="248" height="8" rx="1" fill="#8A9099" opacity="0.5" />
+      <rect x="196" y="490" width="248" height="8" rx="1" fill="#8A9099" opacity="0.5" />
+      <rect x="196" y="540" width="248" height="8" rx="1" fill="#8A9099" opacity="0.5" />
+      <line x1="208" y1="401" x2="432" y2="448" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="444" y1="401" x2="208" y2="448" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="208" y1="448" x2="432" y2="498" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="444" y1="448" x2="208" y2="498" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="208" y1="498" x2="432" y2="548" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="444" y1="498" x2="208" y2="548" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+
+      {/* BRACCIO TELESCOPICO */}
+      <rect x="301" y="418" width="38" height="90" rx="5" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="301" y="418" width="10" height="90" rx="5" fill="#D0D5DC" opacity="0.5" />
+      <rect x="308" y="492" width="24" height="60" rx="4" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="313" y="536" width="14" height="50" rx="3" fill="#D0D5DC" stroke="#8A9099" strokeWidth="1.2" />
+
+      {/* CALZA GOMMA */}
+      <ellipse cx="320" cy="590" rx="14" ry="6" fill="#404850" stroke="#303840" strokeWidth="1.5" opacity="0.8" />
+      <rect x="307" y="584" width="26" height="14" rx="3" fill="#404850" stroke="#303840" strokeWidth="1.2" opacity="0.7" />
+      <ellipse cx="320" cy="598" rx="12" ry="5" fill="#303840" opacity="0.6" />
+
+      {/* QUADRO FR */}
+      <rect x="148" y="415" width="44" height="55" rx="5" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="148" y="415" width="44" height="14" rx="5" fill="#A0A8B2" />
+      <circle cx="154" cy="446" r="2.5" fill="#8A9099" opacity="0.6" />
+      <circle cx="186" cy="446" r="2.5" fill="#8A9099" opacity="0.6" />
+      <circle cx="154" cy="458" r="2.5" fill="#8A9099" opacity="0.6" />
+      <circle cx="186" cy="458" r="2.5" fill="#8A9099" opacity="0.6" />
+
+      {/* VALVOLA FARFALLA */}
+      <circle cx="320" cy="415" r="11" fill="#B8BEC6" stroke="#7A8290" strokeWidth="1.8" />
+      <line x1="311" y1="407" x2="329" y2="423" stroke="#7A8290" strokeWidth="2" />
+      <circle cx="320" cy="415" r="3" fill="#7A8290" />
+
+      {/* SUOLO */}
+      <rect x="0" y="600" width="500" height="100" fill="#B8B4A8" opacity="0.4" />
+      <line x1="0" y1="600" x2="500" y2="600" stroke="#A0998A" strokeWidth="2.5" />
+
+      {CARICO_HOTSPOTS.map((spot) => {
+        const status = getSubStatus(
+          props.area.key,
+          spot.key,
+          props.area.components.find((item) => item.key === spot.key)?.base ?? props.area.base,
+          props.snapshot,
+        );
+        const active = props.currentSub === spot.key;
+        const hasLeader = spot.labelX !== undefined && spot.labelY !== undefined;
+        const cx = spot.dotX ?? (spot.x + spot.width / 2);
+        const cy = spot.dotY ?? (spot.y + spot.height / 2);
+
+        if (hasLeader) {
+          const lx = spot.labelX as number;
+          const ly = spot.labelY as number;
+          return (
+            <g
+              key={spot.key}
+              className={`eur-hotspot ${active ? "active" : ""}`}
+              onClick={() => props.onSelectSub(spot.key)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  props.onSelectSub(spot.key);
+                }
+              }}
+              style={{ cursor: "pointer" }}
+            >
+              <line
+                x1={cx} y1={cy}
+                x2={lx} y2={ly}
+                stroke={STATUS_COLORS[status]}
+                strokeWidth="1"
+                strokeDasharray="4 3"
+                opacity="0.7"
+              />
+              <circle
+                cx={cx} cy={cy} r="7"
+                fill={STATUS_COLORS[status]}
+                stroke={active ? "#0f6fff" : "white"}
+                strokeWidth={active ? "3" : "1.5"}
+              />
+              <circle cx={cx} cy={cy} r="18" fill="transparent" />
+              <text
+                x={lx} y={ly - 6}
+                className="eur-hotspot-label"
+                fontSize="12"
+                fill="var(--color-text-primary)"
+                fontWeight={active ? "600" : "400"}
+              >
+                {spot.label}
+              </text>
+              <text
+                x={lx} y={ly + 8}
+                className="eur-hotspot-status"
+                fontSize="11"
+                fill={STATUS_COLORS[status]}
+              >
+                {STATUS_LABELS[status]}
+              </text>
+            </g>
+          );
+        }
+
+        // fallback box — sicurezza locale del componente, SiloDiagram non coinvolto
+        const labelLines = spot.label.includes(" ")
+          ? [spot.label.substring(0, spot.label.indexOf(" ")), spot.label.substring(spot.label.indexOf(" ") + 1)]
+          : [spot.label];
+        const statusY = spot.y + (labelLines.length > 1 ? 51 : 45);
+        return (
+          <g
+            key={spot.key}
+            className={`eur-hotspot ${active ? "active" : ""}`}
+            onClick={() => props.onSelectSub(spot.key)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                props.onSelectSub(spot.key);
+              }
+            }}
+          >
+            <rect
+              className="eur-hot-fill"
+              x={spot.x} y={spot.y} width={spot.width} height={spot.height} rx="18"
+              fill={active ? "rgba(15,111,255,.08)" : "rgba(255,255,255,.72)"}
+              stroke={STATUS_COLORS[status]}
+              strokeWidth={active ? "4" : "2.5"}
+            />
+            <text x={spot.x + 16} y={spot.y + 25} className="eur-hotspot-label">
+              {labelLines.map((line, i) => (
+                <tspan key={`${spot.key}-${line}`} x={spot.x + 16} dy={i === 0 ? 0 : 15}>{line}</tspan>
+              ))}
+            </text>
+            <text x={spot.x + 16} y={statusY} className="eur-hotspot-status">
+              {STATUS_LABELS[status]}
+            </text>
+            <circle
+              cx={spot.x + spot.width - 18} cy={spot.y + 18} r="10"
+              fill={STATUS_COLORS[status]}
+            />
           </g>
         );
       })}
@@ -2329,12 +2561,21 @@ export default function NextEuromeccPage() {
                     <p>
                       {currentAreaData.type === "silo"
                         ? "Clicca un hotspot del silo per vedere il dettaglio del componente."
-                        : "Area tecnica generica con componenti selezionabili."}
+                        : currentAreaData.key === "carico1" || currentAreaData.key === "carico2"
+                          ? "Clicca un hotspot del punto di carico per vedere il dettaglio del componente."
+                          : "Area tecnica generica con componenti selezionabili."}
                     </p>
                   </div>
                 </div>
                 {currentAreaData.type === "silo" ? (
                   <SiloDiagram
+                    area={currentAreaData}
+                    snapshot={snapshot}
+                    currentSub={detailSubKey}
+                    onSelectSub={setCurrentDetailSub}
+                  />
+                ) : currentAreaData.key === "carico1" || currentAreaData.key === "carico2" ? (
+                  <CaricoDiagram
                     area={currentAreaData}
                     snapshot={snapshot}
                     currentSub={detailSubKey}

@@ -54,7 +54,7 @@
 | Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
 
 ## 3. STATO ATTUALE
-- Ultimo task completato: ristrutturata la UI di `/next/manutenzioni` come famiglia di superfici distinte, con header comune compatto, tab `Storico` rimosso e `Dashboard`, `Nuova / Modifica` e `Quadro manutenzioni PDF` resi full-width senza colonne laterali fisse.
+- Ultimo task completato: fix mirato della riga `Data / KM-Ore / Fornitore` su `/next/manutenzioni`; il form usa ora una griglia desktop piu pulita con `Data` corta, `KM/Ore` medio-corto e `Fornitore` flessibile, senza toccare logica dati, routing, writer/domain o altre aree del modulo.
 - Stato app legacy: attiva e fonte di verita operativa.
 - Stato NEXT: perimetro ancora non chiuso come nuova madre, ma non piu interamente read-only; oggi esistono deroghe chirurgiche reali su `Lavori` e `Manutenzioni`.
 - Stato build root: `npm run build` = OK.
@@ -100,9 +100,9 @@
 21. Il modulo `Lavori` nel clone NEXT non e piu read-only: usa una dashboard UI unificata sopra il motore reale `@lavori`, ma la deroga al blocco clone-wide e chirurgica e limitata al solo `storageSync.setItemSync("@lavori")` sui pathname Lavori/dettaglio; stato corretto del modulo: `PARZIALE` finche non passa audit separato.
 22. Il modulo `Manutenzioni` nel clone NEXT non e piu read-only: `/next/manutenzioni` scrive ora in modo compatibile su `@manutenzioni`, `@inventario` e `@materialiconsegnati`, riusa la convergenza gomme gia verificata e apre solo metadati visuali separati su `@mezzi_foto_viste`, `@mezzi_hotspot_mapping` e Storage `mezzi_foto/...`; stato corretto del modulo: `PARZIALE` finche non passa audit separato.
 23. La deroga clone-wide per `Manutenzioni` e limitata al pathname `/next/manutenzioni` e alle sole operazioni `storageSync.setItemSync` sulle 5 chiavi verificate (`@manutenzioni`, `@inventario`, `@materialiconsegnati`, `@mezzi_foto_viste`, `@mezzi_hotspot_mapping`) piu `storage.uploadBytes` su `mezzi_foto/...`.
-24. La vista interna `Mappa storico` di `Manutenzioni` usa ora una shell specialistica full-width: header tecnico compatto, griglia ~60/40, foto/placeholder dominante, hotspot piu leggibili e pannello zona stabile; il cambio e solo UI/layout e non modifica domain business, route, PDF o `cloneWriteBarrier.ts`.
+24. `NextMappaStoricoPage` supporta ora due rami dedicati a `/next/manutenzioni`: un ramo `embedded` allineato al mockup con layout a 2 card, card sinistra per vista/hotspot/KPI e card destra per riepilogo mezzo, ultime manutenzioni e azioni rapide, piu un ramo `photoManager` che espone nel form i 4 upload reali `Fronte / Sinistra / Destra / Retro` con preview/placeholder coerenti; upload foto, hotspot e calcoli business restano invariati.
 25. L'inferenza zona della `Mappa storico` di `Manutenzioni` non usa piu match generici non pesati per gomme/assi: i termini `gomma/gomme/pneumatico/pneumatici/ruota/ruote/asse/assale` passano prima da un ramo prioritario per `fronte/sinistra/destra/retro`, mentre `fronte-fanali` non usa piu `anteriore` come keyword autonoma; se la direzione non e affidabile, la mappa restituisce `Zona non deducibile`.
-26. In `/next/manutenzioni` i tab non-mappa usano ora una shell tecnica coerente con la `Mappa storico`: dashboard mezzo/compressore, storico premium, form piu gerarchico, ricerca mezzo rapida con preview e nuovo tab locale `Quadro manutenzioni PDF` con doppio filtro `Soggetto` / `Periodo`; nessun domain business, writer o barrier e stato modificato in questo riallineamento UI.
+26. In `/next/manutenzioni` la UI resta allineata al riferimento approvato ma con perimetro piu corretto: shell esterna e tab scuri, fascia dati chiara a 5 blocchi, dashboard con 4 KPI + 4 pulsanti + `Ultimi interventi`, form grande per `Nuova / Modifica`, dettaglio a 2 card e tab finale `Quadro manutenzioni PDF` su superfici operative chiare; la riga `Data / KM-Ore / Fornitore` usa ora proporzioni desktop stabili `corta / medio-corta / flessibile`, l'autosuggest inventario mette la descrizione materiale davanti al fornitore e la gestione foto non compare piu nel form ma solo in `Dettaglio`.
 27. Nel perimetro `Lavori` NEXT la UI mostra ora anche `Segnalato da` e `Autista solito` nelle liste/dettaglio/PDF, l'export PDF resta sul canale condiviso `src/utils/pdfEngine.ts` con layout piu leggibile e la Home `/next` integra un riquadro `Lavori in attesa` nello stesso blocco alert/scadenze, senza aprire nuove scritture fuori dal modulo.
 28. `src/next/NextDettaglioLavoroPage.tsx` arricchisce ora il dettaglio con `Problema segnalato` e con il modale read-only della segnalazione autista originale: prima prova `source.type === "segnalazione"` + `source.id/originId`, poi fallback solo su match univoco targa + autore + descrizione; se il match non e sicuro non apre nulla.
 29. Il fix successivo sul dettaglio `Lavori` non usa piu solo la vista normalizzata delle segnalazioni: legge anche il payload reale di `@segnalazioni_autisti_tmp` e sfrutta il backlink `linkedLavoroId/linkedLavoroIds`, cosi il blocco `Problema segnalato` mostra davvero il testo reale (`descrizione`, poi `note`, `messaggio`, `dettaglio`, `testo`) quando esiste.
@@ -110,7 +110,7 @@
 31. Nel dettaglio `Lavori` NEXT esiste ora anche il ramo `source.type = "controllo"`: il resolver legge `@controlli_mezzo_autisti`, usa come collegamento forte `source.id/originId`, poi solo il backlink reale `linkedLavoroId/linkedLavoroIds`, e mostra il testo origine del controllo con priorita `note`, poi `dettaglio`, poi `messaggio`, piu i KO reali da `check/koItems`; nessun fallback fragile su targa/autore/testo e autorizzato per aprire controlli.
 32. Nel modale `Controllo originale` di `Lavori` il close button non deve usare caratteri hardcoded corrotti: il fix corrente usa `&times;` nel JSX con `aria-label` esplicito, cosi il rendering resta stabile e il click continua a chiudere il modale senza toccare la logica.
 33. Nel tab `Quadro manutenzioni PDF` di `/next/manutenzioni` la struttura principale non e piu un insieme di card riepilogative: dopo `Step 1` (`Mezzo` / `Compressore`) e `Step 2` (`Ultimo mese`, mesi disponibili, `Tutto`) il runtime mostra un elenco operativo di risultati con foto, targa, modello/compressore, autista solito, `Km ultimo rifornimento`, data manutenzione, tipo/manutenzione e azioni `PDF mezzo` / `PDF compressore` + `Apri dettaglio`; riepilogo rapido e cronologia restano secondari sotto l'elenco.
-34. In `/next/manutenzioni` i tab non-mappa non condividono piu la stessa impaginazione con side column fissa: l'header comune raccoglie titolo, selezione mezzo, ricerca rapida e tab, il tab `Storico` e rimosso, `Dashboard` e semplificata full-width, `Nuova / Modifica` e una pagina operativa full-width e `Quadro manutenzioni PDF` resta la schermata elenco principale; `Mappa storico` mantiene la propria shell tecnica specialistica.
+34. In `/next/manutenzioni` non esistono piu shell legacy o blocchi principali derivati dal canvas sbagliato: header, fascia dati e tab governano tutta la pagina; la `Dashboard` non usa piu card laterali o wrapper extra oltre a 4 KPI, 4 pulsanti e lista finale, mentre il dettaglio embedded mantiene il 2-card specialistico e il quadro PDF resta su step + righe operative.
 
 ## 5. CONVENZIONI
 ### Dati e chiavi
@@ -263,3 +263,34 @@
 - `docs/data/MAPPA_COMPLETA_DATI.md`
 - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
 - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+
+### Aggiornamento rapido 2026-04-08
+- `Manutenzioni` NEXT resta `PARZIALE`.
+- Ultimo micro-fix solo UI/CSS sulla tab `Nuova / Modifica`:
+  - riga `Data / KM-Ore / Fornitore` resa piu separata e proporzionata;
+  - card `Mezzo attivo` con piu stacco verticale dal blocco `Campi base`.
+- Nessuna modifica a logica dati, routing, PDF, foto o dominio.
+
+### Aggiornamento rapido 2026-04-08 bis
+- La riga `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT e ora composta da 3 mini-card separate vere nel JSX, non piu da tre soli input affiancati.
+- `Mezzo attivo` ha uno stacco verticale piu evidente sopra `Campi base`.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 ter
+- Il tentativo a 3 mini-card alte per `Data / KM-Ore / Fornitore` e stato rimosso.
+- La riga usa ora 3 field-group compatti e separati, con `Fornitore` flessibile e altezza ridotta.
+- `Mezzo attivo` resta rialzato e separato da `Campi base`.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 quater
+- Il blocco `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT e ora fissato nella struttura finale:
+  - `man2-metric-row`
+  - tre `man2-metric-group` semplici
+  - colonne `180px / 180px / minmax(360px, 1fr)`
+- Nessuna mini-card e nessun wrapper alto per singolo campo.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 quinquies
+- I campi `Data / KM-Ore / Fornitore` riusano ora la stessa base visiva dei controlli corretti del form (`Tipo`, `Sottotipo`).
+- Layout e proporzioni della riga restano invariati.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
