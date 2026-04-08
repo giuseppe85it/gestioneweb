@@ -818,13 +818,12 @@ export default function NextManutenzioniPage() {
     return (
       <section className="man2-screen">
         <div className="man2-form-shell">
-          <div className="man2-screen-head man2-screen-head--form">
-            <div>
-              <div className="man2-panel-kicker">{editingId ? "Modifica" : "Nuova manutenzione"}</div>
-              <h2 className="man2-screen-title">{editingId ? "Modifica manutenzione" : "Nuova manutenzione"}</h2>
-              <p className="man2-screen-copy">
-                Pannello operativo completo per compilare campi base, note e materiali della manutenzione.
-              </p>
+            <div className="man2-screen-head man2-screen-head--form">
+              <div>
+                <h2 className="man2-screen-title">{editingId ? "Modifica manutenzione" : "Nuova manutenzione"}</h2>
+                <p className="man2-screen-copy">
+                  Pannello operativo completo per compilare campi base, note e materiali della manutenzione.
+                </p>
             </div>
             <div className="man2-screen-context">
               <span className="man2-screen-context__label">Mezzo attivo</span>

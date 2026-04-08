@@ -9130,6 +9130,58 @@ Serve a:
   - cliccare `Apri segnalazione` e verificare che il modale mostri la stessa descrizione reale
   - aprire `/next/dettagliolavori/7c6af494-9b02-4bf2-ac67-c994b39436c0?from=lavori-in-attesa` e verificare la stessa resa su route diretta.
 - SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- ### Voce 2026-04-08 142
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Riga `Data / KM-Ore / Fornitore` a larghezze fisse in `Manutenzioni` NEXT
+- OBIETTIVO: Bloccare la riga metriche della tab `Nuova / Modifica` a larghezze reali e compatte, evitando che `Fornitore` si allunghi sullo spazio residuo.
+- FILE TOCCATI:
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_154100_ui_next-manutenzioni-metric-width-lock.md`
+  - `docs/continuity-reports/20260408_154100_continuity_ui_next-manutenzioni-metric-width-lock.md`
+- COSA E STATO CAMBIATO:
+  - `Data` fissata a `190px`;
+  - `KM/Ore` fissato a `140px`;
+  - `Fornitore` fissato a `260px`;
+  - riga resa `fit-content` con `justify-content: start` e `gap: 16px`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: blocco piu compatto e controllato;
+  - Lettura: nessuna variazione;
+  - Scritture: nessuna variazione.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Nuova / Modifica` e verificare `190px / 140px / 260px` con `gap: 16px` e `Fornitore` non elastico
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- ### Voce 2026-04-08 141
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Micro-fix testata e riga `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT
+- OBIETTIVO: Ridurre il rumore visivo della testata, togliere la label sbiadita sopra `Nuova manutenzione` e riequilibrare leggermente la riga metriche del form.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_151000_ui_next-manutenzioni-header-metric-microfix.md`
+  - `docs/continuity-reports/20260408_151000_continuity_ui_next-manutenzioni-header-metric-microfix.md`
+- COSA E STATO CAMBIATO:
+  - rimosso il kicker sopra il titolo `Nuova manutenzione`;
+  - aumentato il padding sinistro del modulo per contenere meglio l'impatto visivo del menu flottante;
+  - micro-ribilanciata la griglia `Data / KM-Ore / Fornitore` a favore del campo centrale.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: testata piu pulita e riga metriche piu equilibrata;
+  - Lettura: nessuna variazione;
+  - Scritture: nessuna variazione.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Nuova / Modifica` e verificare assenza della label sopra il titolo, piu aria in testata e riga campi piu bilanciata
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
 - ### Voce 2026-04-08 140
 - DATA: 2026-04-08
 - TITOLO MODIFICA: Riallineamento visivo input `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT

@@ -219,3 +219,18 @@ Eseguire un audit separato della chiusura esecutiva prompt 42 prima di promuover
 - I tre campi `Data / KM-Ore / Fornitore` nella tab `Nuova / Modifica` riusano ora la stessa base visiva dei campi corretti del form, in particolare `Tipo` e `Sottotipo`.
 - Nessuna modifica a layout, colonne, gap o struttura della riga.
 - Riallineati font, bordo, radius, padding e placeholder al pattern gia usato nel modulo.
+
+## 14. Aggiornamento 2026-04-08 - micro-fix header e riga metriche `Manutenzioni`
+- Ridotto il rumore visivo della testata spostando leggermente il contenuto utile del modulo verso destra, cosi l'icona menu flottante incide meno sulla fascia alta.
+- Rimossa la label piccola sopra il titolo `Nuova manutenzione`.
+- Micro-ribilanciata la riga `Data / KM-Ore / Fornitore` dando un po' piu respiro al campo centrale e ritardando l'inizio visivo del `Fornitore`.
+- Nessuna modifica a logica dati, routing, PDF, foto o dettaglio.
+
+## 15. Aggiornamento 2026-04-08 - larghezze fisse riga metriche `Manutenzioni`
+- La riga `Data / KM-Ore / Fornitore` dentro `Campi base` usa ora larghezze desktop fisse e compatte:
+  - `Data`: `190px`
+  - `KM/Ore`: `140px`
+  - `Fornitore`: `260px`
+- Il blocco non usa piu `1fr` sul fornitore e non si allunga a riempire tutto il contenitore.
+- Gap confermato uniforme a `16px`.
+- Nessuna modifica a logica dati, routing, PDF, foto o dettaglio.

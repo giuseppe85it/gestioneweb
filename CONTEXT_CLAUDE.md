@@ -294,3 +294,15 @@
 - I campi `Data / KM-Ore / Fornitore` riusano ora la stessa base visiva dei controlli corretti del form (`Tipo`, `Sottotipo`).
 - Layout e proporzioni della riga restano invariati.
 - Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 sexies
+- Micro-fix UI su `Manutenzioni` NEXT:
+  - rimossa la label sbiadita sopra `Nuova manutenzione`;
+  - testata con piu aria a sinistra per ridurre l'impatto del menu flottante;
+  - riga `Data / KM-Ore / Fornitore` leggermente ribilanciata a favore del campo centrale.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 septies
+- La riga `Data / KM-Ore / Fornitore` di `Manutenzioni` NEXT usa ora larghezze fisse desktop `190px / 140px / 260px`.
+- `Fornitore` non usa piu `1fr` su desktop.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.

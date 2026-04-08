@@ -1483,7 +1483,7 @@
 
 .man2-page {
   min-height: 100%;
-  padding: 18px 0 28px;
+  padding: 18px 0 28px 28px;
   color: #f4efe6;
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   background:
@@ -1928,9 +1928,12 @@
 
 .man2-metric-row {
   display: grid;
-  grid-template-columns: 180px 180px minmax(360px, 1fr);
+  grid-template-columns: 190px 140px 260px;
   gap: 16px;
+  justify-content: start;
   align-items: end;
+  width: fit-content;
+  max-width: 100%;
   margin-top: 10px;
 }
 
@@ -1939,15 +1942,15 @@
 }
 
 .man2-metric-group--date {
-  width: 180px;
+  width: 190px;
 }
 
 .man2-metric-group--metric {
-  width: 180px;
+  width: 140px;
 }
 
 .man2-metric-group--supplier {
-  min-width: 0;
+  width: 260px;
 }
 
 .man2-metric-group input,
@@ -2541,28 +2544,19 @@
 
 @media (max-width: 1100px) {
   .man2-metric-row {
-    grid-template-columns: 172px 172px minmax(260px, 1fr);
-  }
-}
-
-@media (max-width: 860px) {
-  .man2-page {
-    padding-bottom: 28px;
-  }
-
-  .man2-metric-row {
     grid-template-columns: 1fr;
   }
 
   .man2-metric-group--date,
-  .man2-metric-group--metric {
+  .man2-metric-group--metric,
+  .man2-metric-group--supplier {
     width: 100%;
   }
 }
 
 @media (max-width: 760px) {
   .man2-page {
-    padding-bottom: 28px;
+    padding: 18px 0 28px 10px;
   }
 
   .man2-context-bar {

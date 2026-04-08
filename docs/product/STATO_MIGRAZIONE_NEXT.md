@@ -4429,6 +4429,26 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 - Stato modulo:
   - `Manutenzioni` -> `PARZIALE`
 
+## 5.144 Aggiornamento 2026-04-08 - micro-fix header e metrica form `Manutenzioni`
+- Rimossa dal rendering la label piccola sopra `Nuova manutenzione`.
+- Il contenuto del modulo ha piu aria sul bordo sinistro per ridurre l'impatto visivo dell'icona menu tonda sulla testata.
+- La riga `Data / KM-Ore / Fornitore` e stata micro-ribilanciata:
+  - `Data`: 176px
+  - `KM/Ore`: 192px
+  - `Fornitore`: `minmax(360px, 1fr)`
+- Nessuna modifica a logica dati, routing, PDF, foto o dettaglio.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 5.145 Aggiornamento 2026-04-08 - riga metriche `Manutenzioni` a larghezze fisse
+- La riga `Data / KM-Ore / Fornitore` e stata riallineata a una struttura desktop compatta a larghezze bloccate:
+  - `190px / 140px / 260px`
+- Il `Fornitore` non usa piu `1fr` su desktop.
+- Gap confermato uguale a `16px` e allineamento a sinistra del gruppo.
+- Nessuna modifica a logica dati, routing, PDF, foto o dettaglio.
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
 ## 5.137 Aggiornamento 2026-04-06 - fix reale del testo segnalazione autista nel dettaglio `Lavori`
 - Corretto il recupero del testo reale nel blocco `Problema segnalato` del dettaglio lavoro NEXT.
 - Il fix ora legge il payload reale di `@segnalazioni_autisti_tmp` invece di fermarsi alla sola vista normalizzata:
