@@ -24,6 +24,10 @@ import {
 } from "./nextLavoriDomain";
 import type { NextScheduledMaintenance } from "./nextManutenzioniDomain";
 import {
+  buildNextGommeStateByAsse,
+  buildNextGommeStraordinarieEvents,
+  type NextGommePerAsseStatus,
+  type NextGommeStraordinarioEvent,
   type NextManutenzioneLegacyViewItem,
   type NextMezzoManutenzioniGommeSnapshot,
   mapNextManutenzioniItemsToLegacyView,
@@ -166,6 +170,8 @@ export type NextDossierMezzoLegacyViewState = {
   rifornimenti: NextDossierRifornimentoLegacyItem[];
   documentiCosti: NextDossierFatturaPreventivoLegacyItem[];
   manutenzioni: NextDossierManutenzioneLegacyItem[];
+  gommePerAsse: NextGommePerAsseStatus[];
+  gommeStraordinarie: NextGommeStraordinarioEvent[];
   scheduledMaintenance: NextScheduledMaintenance | null;
 };
 
@@ -888,6 +894,30 @@ export function buildNextDossierMezzoLegacyView(
       badgeAutista: entry.badgeAutista,
     })) ?? [];
 
+  const kmAttuali =
+    (snapshot.refuels.snapshot?.items ?? [])
+      .map((entry) => ({
+        km: typeof entry.km === "number" && Number.isFinite(entry.km) ? entry.km : null,
+        timestamp: entry.timestamp ?? 0,
+      }))
+      .filter((entry): entry is { km: number; timestamp: number } => entry.km !== null)
+      .sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0))[0]?.km ?? null;
+
+  const gommePerAsse = snapshot.maintenance.snapshot
+    ? buildNextGommeStateByAsse({
+        categoria: snapshot.mezzo.categoria,
+        maintenanceItems: snapshot.maintenance.snapshot.maintenanceItems,
+        kmAttuali,
+      })
+    : [];
+
+  const gommeStraordinarie = snapshot.maintenance.snapshot
+    ? buildNextGommeStraordinarieEvents({
+        categoria: snapshot.mezzo.categoria,
+        maintenanceItems: snapshot.maintenance.snapshot.maintenanceItems,
+      })
+    : [];
+
   return {
     mezzo: snapshot.mezzo,
     lavoriDaEseguire: lavori.lavoriDaEseguire,
@@ -907,6 +937,8 @@ export function buildNextDossierMezzoLegacyView(
           snapshot.maintenance.snapshot.maintenanceItems
         )
       : [],
+    gommePerAsse,
+    gommeStraordinarie,
     scheduledMaintenance:
       snapshot.maintenance.snapshot?.scheduledMaintenance ?? null,
   };

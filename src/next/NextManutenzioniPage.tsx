@@ -1,6 +1,5 @@
 ﻿import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { generateSmartPDF } from "../utils/pdfEngine";
 import NextMappaStoricoPage from "./NextMappaStoricoPage";
 import {
   readNextInventarioSnapshot,
@@ -9,12 +8,15 @@ import {
 import {
   readNextManutenzioniWorkspaceSnapshot,
   saveNextManutenzioneBusinessRecord,
+  type NextManutenzioneGommeInterventoTipo,
   type NextManutenzioneGommePerAsseRecord,
+  type NextManutenzioneGommeStraordinarioRecord,
   type NextManutenzioniLegacyDatasetRecord,
   type NextManutenzioniLegacyMaterialRecord,
   type NextManutenzioniMezzoOption,
 } from "./domain/nextManutenzioniDomain";
 import {
+  buildNextGommeStraordinarieEvents,
   buildNextGommeStateByAsse,
   getNextAssiOptionsForCategoria,
   isNextCategoriaMotorizzata,
@@ -35,7 +37,13 @@ type TipoVoce = "mezzo" | "compressore" | "attrezzature";
 type SottoTipo = "motrice" | "trattore";
 type ViewTab = "dashboard" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
-type InterventoUiSubtype = "tagliando" | "tagliando completo" | "gomme" | "riparazione" | "altro";
+type InterventoUiSubtype =
+  | "tagliando"
+  | "tagliando completo"
+  | "gomme"
+  | "gomme-straordinario"
+  | "riparazione"
+  | "altro";
 
 type MaterialeManutenzione = NextManutenzioniLegacyMaterialRecord;
 type AsseCoinvoltoId = NextManutenzioneAsseCoinvoltoId;
@@ -56,6 +64,15 @@ type MezzoPreview = {
   marcaModello: string | null;
   autistaNome: string | null;
   fotoUrl: string | null;
+};
+
+type PdfMetricInfo = {
+  primaryLabel: string;
+  primaryValue: string;
+  secondaryLabel?: string;
+  secondaryValue?: string;
+  deltaLabel?: string;
+  deltaValue?: string;
 };
 
 type PageLoadData = {
@@ -173,8 +190,78 @@ function buildDescrizioneSnippet(value: string, limit = 140) {
   return `${normalized.slice(0, limit - 3)}...`;
 }
 
-function deriveUiSubtype(descrizioneValue: string): InterventoUiSubtype {
-  const normalized = descrizioneValue.toUpperCase();
+function buildPdfFileName(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${normalized || "quadro-manutenzioni"}.pdf`;
+}
+
+function formatPdfGenerationDate() {
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date());
+}
+
+async function loadPdfImageData(url: string): Promise<{ dataUrl: string; format: "JPEG" | "PNG" } | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) return null;
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error("Errore lettura immagine PDF."));
+      reader.readAsDataURL(blob);
+    });
+
+    return {
+      dataUrl,
+      format: blob.type.includes("png") ? "PNG" : "JPEG",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isGommeStraordinarieKeyword(value: string) {
+  const normalized = value.toUpperCase();
+  return (
+    normalized.includes("FORAT") ||
+    normalized.includes("DANN") ||
+    normalized.includes("URGENT") ||
+    normalized.includes("STRAORD") ||
+    normalized.includes("SINGOL")
+  );
+}
+
+function deriveUiSubtype(item: {
+  descrizione: string;
+  gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo;
+  gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
+  assiCoinvolti?: string[];
+}): InterventoUiSubtype {
+  if (item.gommeInterventoTipo === "straordinario") return "gomme-straordinario";
+  if (
+    item.gommeInterventoTipo === "ordinario" ||
+    (item.gommePerAsse?.length ?? 0) > 0 ||
+    (item.assiCoinvolti?.length ?? 0) > 0
+  ) {
+    return "gomme";
+  }
+
+  const normalized = item.descrizione.toUpperCase();
+  if ((normalized.includes("GOMME") || normalized.includes("PNEUM")) && isGommeStraordinarieKeyword(normalized)) {
+    return "gomme-straordinario";
+  }
   if (normalized.includes("CAMBIO GOMME")) return "gomme";
   if (normalized.includes("TAGLIANDO")) return "tagliando completo";
   if (normalized.includes("RIPARAZ")) return "riparazione";
@@ -214,7 +301,98 @@ function buildMisuraLabel(item: NextManutenzioniLegacyDatasetRecord) {
   if (item.tipo === "mezzo") {
     return item.km != null ? `${item.km} KM` : "-";
   }
-  return item.ore != null ? `${item.ore} ORE` : "-";
+  if (item.tipo === "compressore") {
+    return item.ore != null ? `${item.ore} ORE` : "-";
+  }
+  if (item.ore != null) {
+    return `${item.ore} ORE`;
+  }
+  if (item.km != null) {
+    return `${item.km} KM`;
+  }
+  return "-";
+}
+
+function formatMetricValue(value: number | null | undefined, suffix: "KM" | "ORE") {
+  if (value == null) return "DA VERIFICARE";
+  return `${formatNumberIt(value)} ${suffix}`;
+}
+
+function buildPdfMetricInfo(args: {
+  subjectType: TipoVoce;
+  latestItem: NextManutenzioniLegacyDatasetRecord;
+  currentKm: number | null;
+  currentOre: number | null;
+}): PdfMetricInfo | null {
+  if (args.subjectType === "mezzo") {
+    const currentKm = args.currentKm;
+    const interventoKm = args.latestItem.km ?? null;
+    const deltaKm =
+      currentKm !== null && interventoKm !== null && currentKm >= interventoKm
+        ? currentKm - interventoKm
+        : null;
+
+    return {
+      primaryLabel: "Km attuali",
+      primaryValue: formatMetricValue(currentKm, "KM"),
+      secondaryLabel: "Km intervento",
+      secondaryValue: formatMetricValue(interventoKm, "KM"),
+      ...(deltaKm !== null
+        ? {
+            deltaLabel: "Δ km",
+            deltaValue: formatMetricValue(deltaKm, "KM"),
+          }
+        : {}),
+    };
+  }
+
+  if (args.subjectType === "compressore") {
+    const currentOre = args.currentOre;
+    const interventoOre = args.latestItem.ore ?? null;
+    const deltaOre =
+      currentOre !== null && interventoOre !== null && currentOre >= interventoOre
+        ? currentOre - interventoOre
+        : null;
+
+    return {
+      primaryLabel: "Ore attuali",
+      primaryValue: formatMetricValue(currentOre, "ORE"),
+      secondaryLabel: "Ore intervento",
+      secondaryValue: formatMetricValue(interventoOre, "ORE"),
+      ...(deltaOre !== null
+        ? {
+            deltaLabel: "Δ ore",
+            deltaValue: formatMetricValue(deltaOre, "ORE"),
+          }
+        : {}),
+    };
+  }
+
+  if (args.latestItem.ore != null) {
+    return {
+      primaryLabel: "Ore record",
+      primaryValue: formatMetricValue(args.latestItem.ore, "ORE"),
+    };
+  }
+
+  if (args.latestItem.km != null) {
+    return {
+      primaryLabel: "Km record",
+      primaryValue: formatMetricValue(args.latestItem.km, "KM"),
+    };
+  }
+
+  return null;
+}
+
+function resolvePdfMetricColumnLabel(items: NextManutenzioniLegacyDatasetRecord[]) {
+  const types = Array.from(new Set(items.map((item) => item.tipo)));
+  if (types.length === 1) {
+    if (types[0] === "mezzo") return "Km";
+    if (types[0] === "compressore") return "Ore";
+    return "Misura";
+  }
+  return "Km/Ore";
 }
 
 function parseNullableNumberInput(value: string): number | null {
@@ -222,6 +400,18 @@ function parseNullableNumberInput(value: string): number | null {
   if (!normalized) return null;
   const parsed = Number(normalized.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isUiSubtypeGommeOrdinario(value: InterventoUiSubtype) {
+  return value === "gomme";
+}
+
+function isUiSubtypeGommeStraordinario(value: InterventoUiSubtype) {
+  return value === "gomme-straordinario";
+}
+
+function isUiSubtypeGomme(value: InterventoUiSubtype) {
+  return isUiSubtypeGommeOrdinario(value) || isUiSubtypeGommeStraordinario(value);
 }
 
 function buildGommePerAssePayload(args: {
@@ -238,6 +428,83 @@ function buildGommePerAssePayload(args: {
     dataCambio,
     kmCambio,
   }));
+}
+
+function buildGommeStraordinarioPayload(args: {
+  asseId: AsseCoinvoltoId | "";
+  quantita: string;
+  motivo: string;
+}): NextManutenzioneGommeStraordinarioRecord | null {
+  const asseId = args.asseId || null;
+  const quantita = parseNullableNumberInput(args.quantita);
+  const motivo = normalizeFreeText(args.motivo) || null;
+
+  if (!asseId && quantita === null && !motivo) {
+    return null;
+  }
+
+  return {
+    asseId,
+    quantita,
+    motivo,
+  };
+}
+
+function formatGommeInterventoPdfLabel(item: NextManutenzioniLegacyDatasetRecord) {
+  if (item.gommeInterventoTipo === "straordinario") return "Gomme straordinarie";
+  if (
+    item.gommeInterventoTipo === "ordinario" ||
+    (item.gommePerAsse?.length ?? 0) > 0 ||
+    (item.assiCoinvolti?.length ?? 0) > 0
+  ) {
+    return "Gomme ordinarie per asse";
+  }
+  return item.sottotipo || "-";
+}
+
+function buildPdfDescrizione(item: NextManutenzioniLegacyDatasetRecord) {
+  if (item.gommeInterventoTipo === "straordinario") {
+    const motivo = item.gommeStraordinario?.motivo || "Evento gomme straordinario";
+    return `[STRAORDINARIO] ${motivo} - ${item.descrizione}`;
+  }
+  if (
+    item.gommeInterventoTipo === "ordinario" ||
+    (item.gommePerAsse?.length ?? 0) > 0 ||
+    (item.assiCoinvolti?.length ?? 0) > 0
+  ) {
+    return `[ORDINARIO] ${item.descrizione}`;
+  }
+  return item.descrizione;
+}
+
+function mapLegacyRecordToGommeReadModel(item: NextManutenzioniLegacyDatasetRecord) {
+  return {
+    id: item.id,
+    mezzoTarga: item.targa,
+    targa: item.targa,
+    data: item.data ?? null,
+    dataLabel: item.data ?? null,
+    timestamp: getLegacyDateTimestamp(item.data),
+    descrizione: item.descrizione ?? null,
+    tipo: item.tipo ?? null,
+    km: item.km ?? null,
+    ore: item.ore ?? null,
+    fornitore: item.fornitore ?? null,
+    materialiCount: item.materiali?.length ?? 0,
+    assiCoinvolti: normalizeNextAssiCoinvolti(item.assiCoinvolti),
+    gommePerAsse: item.gommePerAsse ?? [],
+    gommeInterventoTipo: item.gommeInterventoTipo ?? null,
+    gommeStraordinario: item.gommeStraordinario ?? null,
+    isCambioGommeDerived:
+      (item.gommePerAsse?.length ?? 0) > 0 ||
+      item.descrizione.toUpperCase().includes("GOMME") ||
+      item.descrizione.toUpperCase().includes("PNEUM"),
+    sourceDataset: "@manutenzioni",
+    sourceRecordId: item.id,
+    sourceOrigin: "manuale",
+    quality: "source_direct" as const,
+    flags: [],
+  };
 }
 
 function toMaterialiTemp(items: NextManutenzioniLegacyDatasetRecord["materiali"]): MaterialeManutenzione[] {
@@ -321,6 +588,7 @@ export default function NextManutenzioniPage() {
   const [selectedTarga, setSelectedTarga] = useState("");
   const [selectedDetailRecordId, setSelectedDetailRecordId] = useState<string | null>(null);
   const [ricercaMezzo, setRicercaMezzo] = useState("");
+  const [pdfQuickSearch, setPdfQuickSearch] = useState("");
   const [pdfSubjectType, setPdfSubjectType] = useState<TipoVoce>("mezzo");
   const [pdfPeriodFilter, setPdfPeriodFilter] = useState<PdfPeriodFilter>("ultimo-mese");
 
@@ -337,6 +605,9 @@ export default function NextManutenzioniPage() {
   const [materialeSearch, setMaterialeSearch] = useState("");
   const [materialiTemp, setMaterialiTemp] = useState<MaterialeManutenzione[]>([]);
   const [assiCoinvolti, setAssiCoinvolti] = useState<AsseCoinvoltoId[]>([]);
+  const [gommeStraordinarioMotivo, setGommeStraordinarioMotivo] = useState("");
+  const [gommeStraordinarioAsseId, setGommeStraordinarioAsseId] = useState<AsseCoinvoltoId | "">("");
+  const [gommeStraordinarioQuantita, setGommeStraordinarioQuantita] = useState("");
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -464,17 +735,15 @@ export default function NextManutenzioniPage() {
   const latestGommeKmCambio = useMemo(() => {
     const record = storicoMezzoOrdinato.find(
       (item) =>
-        (item.gommePerAsse?.length ?? 0) > 0 ||
-        (item.assiCoinvolti?.length ?? 0) > 0 ||
-        item.descrizione.toUpperCase().includes("GOMME") ||
-        item.descrizione.toUpperCase().includes("PNEUM"),
+        item.gommeInterventoTipo !== "straordinario" &&
+        ((item.gommePerAsse?.length ?? 0) > 0 || (item.assiCoinvolti?.length ?? 0) > 0),
     );
     if (!record) return null;
     return record.gommePerAsse?.[0]?.kmCambio ?? record.km ?? null;
   }, [storicoMezzoOrdinato]);
   const gommePerAsseDraft = useMemo(
     () =>
-      uiSubtype === "gomme"
+      isUiSubtypeGommeOrdinario(uiSubtype)
         ? buildGommePerAssePayload({
             assiCoinvolti,
             data,
@@ -483,6 +752,17 @@ export default function NextManutenzioniPage() {
           })
         : [],
     [assiCoinvolti, categoriaMotorizzata, data, km, uiSubtype],
+  );
+  const gommeStraordinarioDraft = useMemo(
+    () =>
+      isUiSubtypeGommeStraordinario(uiSubtype)
+        ? buildGommeStraordinarioPayload({
+            asseId: gommeStraordinarioAsseId,
+            quantita: gommeStraordinarioQuantita,
+            motivo: gommeStraordinarioMotivo,
+          })
+        : null,
+    [gommeStraordinarioAsseId, gommeStraordinarioMotivo, gommeStraordinarioQuantita, uiSubtype],
   );
   const monthOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -511,6 +791,26 @@ export default function NextManutenzioniPage() {
       })
       .sort((left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data));
   }, [pdfPeriodFilter, pdfSubjectType, storico]);
+  const latestMetricByTargaAndTipo = useMemo(() => {
+    const sortedItems = [...storico].sort(
+      (left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data),
+    );
+    const byKey = new Map<string, { km: number | null; ore: number | null }>();
+
+    sortedItems.forEach((item) => {
+      const key = `${item.tipo}:${normalizeText(item.targa)}`;
+      const current = byKey.get(key) ?? { km: null, ore: null };
+      if (current.km === null && item.km != null) {
+        current.km = item.km;
+      }
+      if (current.ore === null && item.ore != null) {
+        current.ore = item.ore;
+      }
+      byKey.set(key, current);
+    });
+
+    return byKey;
+  }, [storico]);
   const pdfGroupedResults = useMemo(() => {
     const grouped = new Map<string, NextManutenzioniLegacyDatasetRecord[]>();
     pdfFilteredItems.forEach((item) => {
@@ -520,43 +820,39 @@ export default function NextManutenzioniPage() {
       grouped.set(key, current);
     });
 
-    return [...grouped.entries()].map(([targaKey, items]) => ({
-      targa: targaKey,
-      latest: items[0],
-      mezzo: mezzoPreview.find((entry) => entry.targa === targaKey) ?? null,
-      total: items.length,
-      gommePerAsse: buildNextGommeStateByAsse({
-        categoria: mezzoPreview.find((entry) => entry.targa === targaKey)?.categoria ?? null,
-        maintenanceItems: items.map((item) => ({
-          id: item.id,
-          mezzoTarga: item.targa,
-          targa: item.targa,
-          data: item.data ?? null,
-          dataLabel: item.data ?? null,
-          timestamp: getLegacyDateTimestamp(item.data),
-          descrizione: item.descrizione ?? null,
-          tipo: item.tipo ?? null,
-          km: item.km ?? null,
-          ore: item.ore ?? null,
-          fornitore: item.fornitore ?? null,
-          materialiCount: item.materiali?.length ?? 0,
-          assiCoinvolti: normalizeNextAssiCoinvolti(item.assiCoinvolti),
-          gommePerAsse: item.gommePerAsse ?? [],
-          isCambioGommeDerived:
-            (item.gommePerAsse?.length ?? 0) > 0 ||
-            item.descrizione.toUpperCase().includes("GOMME") ||
-            item.descrizione.toUpperCase().includes("PNEUM"),
-          sourceDataset: "@manutenzioni",
-          sourceRecordId: item.id,
-          sourceOrigin: "manuale",
-          quality: "source_direct",
-          flags: [],
-        })),
-        kmAttuali: kmUltimoByTarga[targaKey] ?? null,
-      }),
-    }));
-  }, [kmUltimoByTarga, mezzoPreview, pdfFilteredItems]);
+    return [...grouped.entries()].map(([targaKey, items]) => {
+      const maintenanceItems = items.map(mapLegacyRecordToGommeReadModel);
+      const categoria = mezzoPreview.find((entry) => entry.targa === targaKey)?.categoria ?? null;
+      const currentMetrics = latestMetricByTargaAndTipo.get(`${pdfSubjectType}:${targaKey}`) ?? {
+        km: null,
+        ore: null,
+      };
+
+      return {
+        targa: targaKey,
+        latest: items[0],
+        mezzo: mezzoPreview.find((entry) => entry.targa === targaKey) ?? null,
+        total: items.length,
+        metricInfo: buildPdfMetricInfo({
+          subjectType: pdfSubjectType,
+          latestItem: items[0],
+          currentKm: currentMetrics.km ?? kmUltimoByTarga[targaKey] ?? null,
+          currentOre: currentMetrics.ore,
+        }),
+        gommePerAsse: buildNextGommeStateByAsse({
+          categoria,
+          maintenanceItems,
+          kmAttuali: kmUltimoByTarga[targaKey] ?? null,
+        }),
+        gommeStraordinarie: buildNextGommeStraordinarieEvents({
+          categoria,
+          maintenanceItems,
+        }),
+      };
+    });
+  }, [kmUltimoByTarga, latestMetricByTargaAndTipo, mezzoPreview, pdfFilteredItems, pdfSubjectType]);
   const ricercaRapida = normalizeFreeText(ricercaMezzo).toUpperCase();
+  const pdfRicercaRapida = normalizeFreeText(pdfQuickSearch).toUpperCase();
   const mezziSelezionabili = useMemo(() => {
     if (!ricercaRapida) return mezzi;
     return mezzi.filter((mezzo) => {
@@ -576,9 +872,9 @@ export default function NextManutenzioniPage() {
     });
   }, [mezzi, mezzoPreviewByTarga, ricercaRapida]);
   const pdfVisibleResults = useMemo(() => {
-    if (!ricercaRapida) return pdfGroupedResults;
+    if (!ricercaRapida && !pdfRicercaRapida) return pdfGroupedResults;
     return pdfGroupedResults.filter((result) => {
-      const haystack = [
+      const pageHaystack = [
         result.targa,
         result.mezzo?.marcaModello,
         result.mezzo?.label,
@@ -587,10 +883,19 @@ export default function NextManutenzioniPage() {
         .filter(Boolean)
         .join(" ")
         .toUpperCase();
-
-      return haystack.includes(ricercaRapida);
+      const pdfHaystack = [result.targa, result.mezzo?.autistaNome]
+        .filter(Boolean)
+        .join(" ")
+        .toUpperCase();
+      const matchesPageSearch = !ricercaRapida || pageHaystack.includes(ricercaRapida);
+      const matchesPdfSearch = !pdfRicercaRapida || pdfHaystack.includes(pdfRicercaRapida);
+      return matchesPageSearch && matchesPdfSearch;
     });
-  }, [pdfGroupedResults, ricercaRapida]);
+  }, [pdfGroupedResults, pdfRicercaRapida, ricercaRapida]);
+  const pdfVisibleItems = useMemo(() => {
+    const visibleTarghe = new Set(pdfVisibleResults.map((result) => normalizeText(result.targa)));
+    return pdfFilteredItems.filter((item) => visibleTarghe.has(normalizeText(item.targa)));
+  }, [pdfFilteredItems, pdfVisibleResults]);
   const contextPlaceholder = !activeTarga && !mezzoPreviewSelezionato;
 
   useEffect(() => {
@@ -638,6 +943,9 @@ export default function NextManutenzioniPage() {
     setMaterialeSearch("");
     setMaterialiTemp([]);
     setAssiCoinvolti([]);
+    setGommeStraordinarioMotivo("");
+    setGommeStraordinarioAsseId("");
+    setGommeStraordinarioQuantita("");
     setQuantitaTemp("");
     setEditingId(null);
     setTarga(currentTarga);
@@ -683,17 +991,22 @@ export default function NextManutenzioniPage() {
     setKm(item.km != null ? String(item.km) : "");
     setOre(item.ore != null ? String(item.ore) : "");
     setSottotipo(item.sottotipo ?? "motrice");
-    setUiSubtype((item.gommePerAsse?.length ?? 0) > 0 ? "gomme" : deriveUiSubtype(item.descrizione));
+    setUiSubtype(deriveUiSubtype(item));
     setDescrizione(item.descrizione);
     setEseguito(item.eseguito ?? "");
     setData(item.data);
     setMaterialiTemp(toMaterialiTemp(item.materiali));
     setAssiCoinvolti(
       normalizeNextAssiCoinvolti(
-        item.gommePerAsse?.length
+        item.gommeInterventoTipo !== "straordinario" && item.gommePerAsse?.length
           ? item.gommePerAsse.map((entry) => entry.asseId)
           : item.assiCoinvolti,
       ),
+    );
+    setGommeStraordinarioMotivo(item.gommeStraordinario?.motivo ?? "");
+    setGommeStraordinarioAsseId(item.gommeStraordinario?.asseId ?? "");
+    setGommeStraordinarioQuantita(
+      item.gommeStraordinario?.quantita != null ? String(item.gommeStraordinario.quantita) : "",
     );
     setView("form");
     setNotice("Modifica caricata dal dataset reale.");
@@ -703,6 +1016,14 @@ export default function NextManutenzioniPage() {
     setUiSubtype(nextSubtype);
     if (nextSubtype === "tagliando completo" && !descrizione.trim()) {
       setDescrizione("TAGLIANDO - ");
+    }
+    if (!isUiSubtypeGommeOrdinario(nextSubtype)) {
+      setAssiCoinvolti([]);
+    }
+    if (!isUiSubtypeGommeStraordinario(nextSubtype)) {
+      setGommeStraordinarioMotivo("");
+      setGommeStraordinarioAsseId("");
+      setGommeStraordinarioQuantita("");
     }
   }
 
@@ -734,6 +1055,16 @@ export default function NextManutenzioniPage() {
       if (!confirmed) return;
     }
 
+    if (isUiSubtypeGommeOrdinario(uiSubtype) && assiCoinvolti.length === 0) {
+      window.alert("Per il cambio gomme ordinario devi selezionare almeno un asse.");
+      return;
+    }
+
+    if (isUiSubtypeGommeStraordinario(uiSubtype) && !normalizeFreeText(gommeStraordinarioMotivo)) {
+      window.alert("Per l'evento gomme straordinario seleziona un motivo esplicito.");
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -750,8 +1081,14 @@ export default function NextManutenzioniPage() {
         eseguito: normalizeFreeText(eseguito) || null,
         data: normalizedData,
         materiali: materialiTemp,
-        assiCoinvolti: uiSubtype === "gomme" ? assiCoinvolti : [],
-        gommePerAsse: uiSubtype === "gomme" ? gommePerAsseDraft : [],
+        assiCoinvolti: isUiSubtypeGommeOrdinario(uiSubtype) ? assiCoinvolti : [],
+        gommePerAsse: isUiSubtypeGommeOrdinario(uiSubtype) ? gommePerAsseDraft : [],
+        gommeInterventoTipo: isUiSubtypeGomme(uiSubtype)
+          ? isUiSubtypeGommeStraordinario(uiSubtype)
+            ? "straordinario"
+            : "ordinario"
+          : null,
+        gommeStraordinario: isUiSubtypeGommeStraordinario(uiSubtype) ? gommeStraordinarioDraft : null,
       });
       await refreshData();
       setSelectedTarga(savedRecord.targa);
@@ -777,33 +1114,135 @@ export default function NextManutenzioniPage() {
       return;
     }
 
-    await generateSmartPDF({
-      kind: "table",
-      title,
-      orientation: "landscape",
-      fontSize: 8,
-      tableWidth: "auto",
-      columns: [
+    const { default: JsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+
+    const doc = new JsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = 297;
+    const pageHeight = 210;
+    const margin = 14;
+    const misuraColumnLabel = resolvePdfMetricColumnLabel(items);
+    let y = margin;
+
+    const checkPage = (neededHeight: number) => {
+      if (y + neededHeight > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+    };
+
+    const uniqueTarghe = Array.from(new Set(items.map((item) => normalizeText(item.targa)).filter(Boolean)));
+    const singleTarga = uniqueTarghe.length === 1 ? uniqueTarghe[0] : null;
+    const mezzoPdf = singleTarga ? mezzoPreviewByTarga.get(singleTarga) ?? null : null;
+    const photoData =
+      singleTarga && mezzoPdf?.fotoUrl
+        ? await loadPdfImageData(mezzoPdf.fotoUrl)
+        : null;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(17);
+    doc.text(title, margin, y);
+    y += 7;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Generato il ${formatPdfGenerationDate()}`, margin, y);
+    y += 7;
+
+    if (singleTarga) {
+      checkPage(42);
+      const headerTop = y;
+      const photoWidth = 58;
+      const photoHeight = 36;
+      const photoX = pageWidth - margin - photoWidth;
+      const textWidth = pageWidth - margin * 2 - photoWidth - 10;
+      const headerLines = [
+        `Targa: ${singleTarga}`,
+        `Mezzo: ${mezzoPdf?.marcaModello ?? mezzoPdf?.label ?? "DA VERIFICARE"}`,
+        `Autista: ${mezzoPdf?.autistaNome || "DA VERIFICARE"}`,
+        `Record esportati: ${items.length}`,
+      ];
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("Mezzo selezionato", margin, headerTop);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      headerLines.forEach((line, index) => {
+        doc.text(line, margin, headerTop + 7 + index * 5, { maxWidth: textWidth });
+      });
+
+      if (photoData) {
+        doc.addImage(photoData.dataUrl, photoData.format, photoX, headerTop, photoWidth, photoHeight, undefined, "FAST");
+      } else {
+        doc.setDrawColor(200, 190, 176);
+        doc.setFillColor(250, 246, 240);
+        doc.roundedRect(photoX, headerTop, photoWidth, photoHeight, 3, 3, "FD");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.text("Foto reale non disponibile", photoX + photoWidth / 2, headerTop + photoHeight / 2, {
+          align: "center",
+        });
+      }
+
+      y += 42;
+    }
+
+    checkPage(20);
+    autoTable(doc as Parameters<typeof autoTable>[0], {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [[
         "Targa",
         "Tipo",
-        "Km/Ore",
+        misuraColumnLabel,
         "Sottotipo",
         "Descrizione",
         "Fornitore",
         "Eseguito da",
         "Data",
-      ],
-      rows: items.map((item) => [
+      ]],
+      body: items.map((item) => [
         item.targa,
         item.tipo === "mezzo" ? "MEZZO" : item.tipo === "compressore" ? "COMPRESSORE" : "ATTREZZATURE",
         buildMisuraLabel(item),
-        item.sottotipo || "-",
-        item.descrizione,
+        formatGommeInterventoPdfLabel(item),
+        buildPdfDescrizione(item),
         item.fornitore || "-",
         item.eseguito || "-",
         item.data,
       ]),
+      styles: {
+        fontSize: 8,
+        cellPadding: 2.4,
+        lineColor: [222, 214, 203],
+        lineWidth: 0.1,
+        overflow: "linebreak",
+      },
+      headStyles: {
+        fillColor: [52, 50, 46],
+        textColor: [245, 240, 230],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: {
+        fillColor: [249, 245, 238],
+      },
+      bodyStyles: {
+        textColor: [37, 35, 32],
+      },
+      columnStyles: {
+        0: { cellWidth: 24 },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 24 },
+        3: { cellWidth: 32 },
+        4: { cellWidth: 92 },
+        5: { cellWidth: 32 },
+        6: { cellWidth: 30 },
+        7: { cellWidth: 18 },
+      },
     });
+
+    doc.save(buildPdfFileName(title));
   }
 
   function renderContextBar() {
@@ -867,9 +1306,6 @@ export default function NextManutenzioniPage() {
         <div className="man2-screen-head man2-screen-head--dashboard">
           <div>
             <h2 className="man2-screen-title">Dashboard</h2>
-            <p className="man2-screen-copy">
-              Vista tecnica rapida del mezzo selezionato, con accesso diretto alle azioni principali del modulo.
-            </p>
           </div>
         </div>
 
@@ -953,11 +1389,8 @@ export default function NextManutenzioniPage() {
       <section className="man2-screen">
         <div className="man2-form-shell">
             <div className="man2-screen-head man2-screen-head--form">
-              <div>
-                <h2 className="man2-screen-title">{editingId ? "Modifica manutenzione" : "Nuova manutenzione"}</h2>
-                <p className="man2-screen-copy">
-                  Pannello operativo completo per compilare campi base, note e materiali della manutenzione.
-                </p>
+            <div>
+              <h2 className="man2-screen-title">{editingId ? "Modifica manutenzione" : "Nuova manutenzione"}</h2>
             </div>
             <div className="man2-screen-context">
               <span className="man2-screen-context__label">Mezzo attivo</span>
@@ -982,10 +1415,13 @@ export default function NextManutenzioniPage() {
                 <select
                   value={uiSubtype}
                   onChange={(event) => handleUiSubtypeChange(event.target.value as InterventoUiSubtype)}
+                  title="Scegli il ramo operativo della manutenzione. Le gomme ordinarie aggiornano lo stato per asse, le straordinarie restano eventi separati."
+                  aria-label="Sottotipo manutenzione"
                 >
                   <option value="tagliando">Tagliando</option>
                   <option value="tagliando completo">Tagliando completo</option>
-                  <option value="gomme">Gomme</option>
+                  <option value="gomme">Gomme ordinarie per asse</option>
+                  <option value="gomme-straordinario">Gomme straordinarie</option>
                   <option value="riparazione">Riparazione</option>
                   <option value="altro">Altro</option>
                 </select>
@@ -1004,8 +1440,10 @@ export default function NextManutenzioniPage() {
               <div className="man2-field man2-metric-group man2-metric-group--metric">
                 <label className="man2-field__label">
                   {tipo === "mezzo"
-                    ? uiSubtype === "gomme" && !categoriaMotorizzata
+                    ? isUiSubtypeGommeOrdinario(uiSubtype) && !categoriaMotorizzata
                       ? "KM (facoltativo)"
+                      : isUiSubtypeGommeStraordinario(uiSubtype)
+                        ? "KM mezzo (facoltativo)"
                       : "KM"
                     : "ORE"}
                 </label>
@@ -1032,14 +1470,16 @@ export default function NextManutenzioniPage() {
               </div>
             </div>
 
-            {uiSubtype === "gomme" ? (
+            {isUiSubtypeGommeOrdinario(uiSubtype) ? (
               <div className="man2-assi-section">
-                <div className="man2-section-title">Cambio gomme per asse</div>
+                <div
+                  className="man2-section-title"
+                  title="Aggiorna lo stato gomme ordinario del mezzo asse per asse."
+                >
+                  Cambio gomme ordinario per asse
+                </div>
                 {assiDisponibili.length > 0 ? (
                   <>
-                    <p className="man2-form-copy">
-                      Seleziona gli assi realmente coinvolti. Il salvataggio registrera un evento distinto per ogni asse.
-                    </p>
                     <div className="man2-assi-chip-row">
                       {assiDisponibili.map((asse) => {
                         const isActive = assiCoinvolti.includes(asse.id);
@@ -1049,6 +1489,8 @@ export default function NextManutenzioniPage() {
                             type="button"
                             className={`man2-assi-chip${isActive ? " is-active" : ""}`}
                             onClick={() => toggleAsseCoinvolto(asse.id)}
+                            title={`Seleziona ${asse.label} per il cambio gomme ordinario.`}
+                            aria-label={`Asse ${asse.label}, ${asse.wheelsCount} gomme`}
                           >
                             <span>{asse.label}</span>
                             <small>{asse.wheelsCount} gomme</small>
@@ -1102,6 +1544,66 @@ export default function NextManutenzioniPage() {
                 )}
               </div>
             ) : null}
+
+            {isUiSubtypeGommeStraordinario(uiSubtype) ? (
+              <div className="man2-assi-section man2-assi-section--straordinario">
+                <div
+                  className="man2-section-title"
+                  title="Registra un evento gomme puntuale senza aggiornare lo stato ordinario per asse."
+                >
+                  Evento gomme straordinario
+                </div>
+                <div className="man2-field-row3 man2-field-row3--gomme-straordinarie">
+                  <div className="man2-field">
+                    <label className="man2-field__label">Motivo straordinario</label>
+                    <select
+                      value={gommeStraordinarioMotivo}
+                      onChange={(event) => setGommeStraordinarioMotivo(event.target.value)}
+                      title="Spiega il motivo dell'intervento straordinario."
+                      aria-label="Motivo intervento gomme straordinario"
+                    >
+                      <option value="">- Seleziona motivo -</option>
+                      <option value="gomma singola">Gomma singola</option>
+                      <option value="sostituzione urgente">Sostituzione urgente</option>
+                      <option value="foratura / danno">Foratura / danno</option>
+                      <option value="intervento non pianificato">Intervento non pianificato</option>
+                      <option value="altro">Altro</option>
+                    </select>
+                  </div>
+                  <div className="man2-field">
+                    <label className="man2-field__label">Asse coinvolto (facoltativo)</label>
+                    <select
+                      value={gommeStraordinarioAsseId}
+                      onChange={(event) =>
+                        setGommeStraordinarioAsseId(event.target.value as AsseCoinvoltoId | "")
+                      }
+                      title="Indica l'asse solo se l'intervento straordinario riguarda una zona precisa."
+                      aria-label="Asse coinvolto evento gomme straordinario"
+                    >
+                      <option value="">Non specificato</option>
+                      {assiDisponibili.map((asse) => (
+                        <option key={asse.id} value={asse.id}>
+                          {asse.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="man2-field">
+                    <label className="man2-field__label">Numero gomme coinvolte (facoltativo)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={gommeStraordinarioQuantita}
+                      onChange={(event) => setGommeStraordinarioQuantita(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="Es. 1"
+                      title="Numero di gomme coinvolte nell'evento straordinario."
+                      aria-label="Numero gomme coinvolte"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <section className="man2-form-block">
@@ -1121,10 +1623,6 @@ export default function NextManutenzioniPage() {
             <section className="man2-form-block man2-form-block--accent">
               <div className="man2-section-title">Tagliando completo</div>
               <div className="man2-tagliando-box">
-                <p className="man2-tagliando-copy">
-                  Il tagliando completo resta un blocco condizionale e mantiene la logica esistente su descrizione,
-                  materiali e componenti inclusi.
-                </p>
                 <div className="man2-chip-row">
                   {TAGLIANDO_COMPONENTI.map((item) => (
                     <span key={item} className="man2-chip">
@@ -1233,10 +1731,6 @@ export default function NextManutenzioniPage() {
             </div>
           </section>
 
-          <div className="man2-form-note">
-            Le foto si gestiscono nella tab Dettaglio.
-          </div>
-
           <div className="man2-form-actions">
             <button type="button" className="man2-btn-full" onClick={() => void handleSave()} disabled={saving}>
               Salva manutenzione
@@ -1254,16 +1748,15 @@ export default function NextManutenzioniPage() {
             <div>
               <div className="man2-panel-kicker">Quadro manutenzioni PDF</div>
               <h2 className="man2-screen-title">Quadro manutenzioni PDF</h2>
-              <p className="man2-screen-copy">
-                Seleziona il soggetto, scegli il periodo e genera un quadro generale o un PDF puntuale per il mezzo.
-              </p>
             </div>
             <button
               type="button"
               className="man2-btn"
+              title="Esporta il quadro corrente. Se il filtro riguarda una sola targa, il PDF usa la foto reale del mezzo."
+              aria-label="Esporta il quadro manutenzioni"
               onClick={() =>
                 void exportPdfForItems(
-                  pdfFilteredItems,
+                  pdfVisibleItems,
                   `Quadro manutenzioni ${formatMonthFilterLabel(pdfPeriodFilter)}`,
                 )
               }
@@ -1278,7 +1771,12 @@ export default function NextManutenzioniPage() {
               <div className="man2-form-title">Soggetto</div>
               <div className="man2-field">
                 <label className="man2-field__label">Filtro soggetto</label>
-                <select value={pdfSubjectType} onChange={(event) => setPdfSubjectType(event.target.value as TipoVoce)}>
+                <select
+                  value={pdfSubjectType}
+                  onChange={(event) => setPdfSubjectType(event.target.value as TipoVoce)}
+                  title="Scegli se leggere il quadro per mezzo, compressore o attrezzature."
+                  aria-label="Filtro soggetto quadro manutenzioni"
+                >
                   <option value="mezzo">Mezzo</option>
                   <option value="compressore">Compressore</option>
                   <option value="attrezzature">Attrezzature</option>
@@ -1293,6 +1791,8 @@ export default function NextManutenzioniPage() {
                 <select
                   value={pdfPeriodFilter}
                   onChange={(event) => setPdfPeriodFilter(event.target.value as PdfPeriodFilter)}
+                  title="Limita il quadro al periodo desiderato."
+                  aria-label="Filtro periodo quadro manutenzioni"
                 >
                   <option value="tutto">Tutto</option>
                   <option value="ultimo-mese">Ultimo mese</option>
@@ -1302,6 +1802,21 @@ export default function NextManutenzioniPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+            <div className="man2-pdf-step">
+              <span className="man2-pdf-step__index">Step 3</span>
+              <div className="man2-form-title">Ricerca rapida</div>
+              <div className="man2-field">
+                <label className="man2-field__label">Filtra per targa o autista</label>
+                <input
+                  type="text"
+                  value={pdfQuickSearch}
+                  onChange={(event) => setPdfQuickSearch(event.target.value)}
+                  placeholder="Es. AB123CD o Mario Rossi"
+                  title="Filtra i risultati visibili per targa o autista."
+                  aria-label="Ricerca rapida quadro manutenzioni"
+                />
               </div>
             </div>
           </div>
@@ -1333,10 +1848,24 @@ export default function NextManutenzioniPage() {
                       <span className="man2-pdf-row__label">Autista</span>
                       <strong>{result.mezzo?.autistaNome || "DA VERIFICARE"}</strong>
                     </div>
-                    <div>
-                      <span className="man2-pdf-row__label">Km</span>
-                      <strong>{formatNumberIt(kmUltimoByTarga[result.targa] ?? null)}</strong>
-                    </div>
+                    {result.metricInfo ? (
+                      <div>
+                        <span className="man2-pdf-row__label">{result.metricInfo.primaryLabel}</span>
+                        <strong>{result.metricInfo.primaryValue}</strong>
+                      </div>
+                    ) : null}
+                    {result.metricInfo?.secondaryLabel ? (
+                      <div>
+                        <span className="man2-pdf-row__label">{result.metricInfo.secondaryLabel}</span>
+                        <strong>{result.metricInfo.secondaryValue}</strong>
+                      </div>
+                    ) : null}
+                    {result.metricInfo?.deltaLabel ? (
+                      <div>
+                        <span className="man2-pdf-row__label">{result.metricInfo.deltaLabel}</span>
+                        <strong>{result.metricInfo.deltaValue}</strong>
+                      </div>
+                    ) : null}
                     <div>
                       <span className="man2-pdf-row__label">Data</span>
                       <strong>{result.latest.data}</strong>
@@ -1350,6 +1879,8 @@ export default function NextManutenzioniPage() {
                     <button
                       type="button"
                       className="man2-btn"
+                      title="Esporta il PDF della targa selezionata con la foto reale del mezzo, se disponibile."
+                      aria-label={`Esporta PDF ${result.targa}`}
                       onClick={() =>
                         void exportPdfForItems(
                           pdfFilteredItems.filter((item) => item.targa === result.targa),
@@ -1367,32 +1898,59 @@ export default function NextManutenzioniPage() {
                       Apri dettaglio
                     </button>
                   </div>
-                  {pdfSubjectType === "mezzo" && result.gommePerAsse.length > 0 ? (
+                  {pdfSubjectType === "mezzo" && (result.gommePerAsse.length > 0 || result.gommeStraordinarie.length > 0) ? (
                     <div className="man2-gomme-pdf-state">
-                      <div className="man2-gomme-pdf-state__title">Stato gomme per asse</div>
-                      <div className="man2-gomme-pdf-state__grid">
-                        {result.gommePerAsse.map((entry) => (
-                          <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
-                            <strong>{entry.asseLabel}</strong>
-                            <span>Data cambio: {entry.dataCambio || "DA VERIFICARE"}</span>
-                            {entry.isMotorizzato ? (
-                              <>
-                                <span>
-                                  Km cambio: {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA VERIFICARE"}
-                                </span>
-                                <span>
-                                  Km attuali: {entry.kmAttuali !== null ? formatNumberIt(entry.kmAttuali) : "DA VERIFICARE"}
-                                </span>
-                                {entry.kmPercorsi !== null ? (
-                                  <span>Km percorsi dal cambio: {formatNumberIt(entry.kmPercorsi)}</span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span>Per questa categoria fa fede soprattutto la data cambio.</span>
-                            )}
+                      {result.gommePerAsse.length > 0 ? (
+                        <div className="man2-gomme-pdf-block">
+                          <div className="man2-gomme-pdf-state__title">Stato gomme ordinario per asse</div>
+                          <div className="man2-gomme-pdf-state__grid">
+                            {result.gommePerAsse.map((entry) => (
+                              <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
+                                <strong>{entry.asseLabel}</strong>
+                                <span>Data cambio: {entry.dataCambio || "DA VERIFICARE"}</span>
+                                {entry.isMotorizzato ? (
+                                  <>
+                                    <span>
+                                      Km cambio: {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA VERIFICARE"}
+                                    </span>
+                                    <span>
+                                      Km attuali: {entry.kmAttuali !== null ? formatNumberIt(entry.kmAttuali) : "DA VERIFICARE"}
+                                    </span>
+                                    {entry.kmPercorsi !== null ? (
+                                      <span>Km percorsi dal cambio: {formatNumberIt(entry.kmPercorsi)}</span>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <span>Per questa categoria fa fede soprattutto la data cambio.</span>
+                                )}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ) : null}
+
+                      {result.gommeStraordinarie.length > 0 ? (
+                        <div className="man2-gomme-pdf-block man2-gomme-pdf-block--straordinario">
+                          <div className="man2-gomme-pdf-state__title">Eventi gomme straordinari</div>
+                          <div className="man2-gomme-pdf-events">
+                            {result.gommeStraordinarie.map((entry) => (
+                              <div
+                                key={`${result.targa}:${entry.sourceMaintenanceId}`}
+                                className="man2-gomme-pdf-event"
+                              >
+                                <strong>{entry.motivo || "Evento gomme straordinario"}</strong>
+                                <span>Data: {entry.dataLabel || "DA VERIFICARE"}</span>
+                                <span>Asse: {entry.asseLabel || "Non specificato"}</span>
+                                <span>
+                                  Gomme coinvolte: {entry.quantita !== null ? formatNumberIt(entry.quantita) : "DA VERIFICARE"}
+                                </span>
+                                {entry.fornitore ? <span>Fornitore: {entry.fornitore}</span> : null}
+                                {entry.descrizione ? <span>Nota: {buildDescrizioneSnippet(entry.descrizione, 120)}</span> : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -1440,6 +1998,8 @@ export default function NextManutenzioniPage() {
             value={ricercaMezzo}
             onChange={(event) => setRicercaMezzo(event.target.value)}
             placeholder="Cerca targa / modello / autista"
+            title="Ricerca rapida generale per targa, modello o autista."
+            aria-label="Ricerca rapida mezzi"
           />
         </div>
       </div>
@@ -1459,6 +2019,13 @@ export default function NextManutenzioniPage() {
             className={`man2-tab${view === tab.key ? " active" : ""}`}
             onClick={() => setView(tab.key as ViewTab)}
             disabled={tab.key === "mappa" ? !activeTarga : false}
+            title={
+              tab.key === "mappa"
+                ? "Apri il dettaglio visivo del mezzo selezionato."
+                : tab.key === "pdf"
+                  ? "Apri il quadro manutenzioni con ricerca ed export PDF."
+                  : undefined
+            }
           >
             {tab.label}
           </button>

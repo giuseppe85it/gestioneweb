@@ -141,6 +141,14 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
         return false;
       }
     }
+    if (kind === "storage.uploadBytes") {
+      const storagePath = readMetaPath(meta);
+      return storagePath.startsWith("euromecc/relazioni/");
+    }
+    if (kind === "storageSync.setItemSync") {
+      const key = readMetaKey(meta);
+      return key === "@ordini";
+    }
   }
 
   if (!isAllowedManutenzioniCloneWritePath(pathname)) {

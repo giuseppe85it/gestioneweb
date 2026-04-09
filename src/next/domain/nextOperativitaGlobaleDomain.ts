@@ -42,6 +42,10 @@ export type NextOperativitaMaintenanceItem = {
   timestamp: number | null;
   fornitore: string | null;
   materialiCount: number;
+  assiCoinvolti: string[];
+  gommePerAsseCount: number;
+  gommeInterventoTipo: "ordinario" | "straordinario" | null;
+  gommeStraordinarioMotivo: string | null;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof MANUTENZIONI_KEY;
   quality: "certo" | "parziale" | "da_verificare";
@@ -89,6 +93,104 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function sanitizeAssiCoinvolti(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => normalizeOptionalText(entry))
+        .filter((entry): entry is string => Boolean(entry)),
+    ),
+  );
+}
+
+function sanitizeGommePerAsse(value: unknown): Array<{ asseId: string | null }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is RawRecord => Boolean(entry) && typeof entry === "object")
+    .map((entry) => ({
+      asseId: normalizeOptionalText(entry.asseId),
+    }))
+    .filter((entry) => Boolean(entry.asseId));
+}
+
+function formatAsseLabel(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "anteriore") return "Anteriore";
+  if (normalized === "posteriore") return "Posteriore";
+  if (normalized === "asse1") return "1 asse";
+  if (normalized === "asse2") return "2 asse";
+  if (normalized === "asse3") return "3 asse";
+  return value;
+}
+
+function resolveStructuredTyreDescription(raw: RawRecord): {
+  descrizione: string | null;
+  assiCoinvolti: string[];
+  gommePerAsseCount: number;
+  gommeInterventoTipo: "ordinario" | "straordinario" | null;
+  gommeStraordinarioMotivo: string | null;
+} {
+  const gommeInterventoTipo =
+    raw.gommeInterventoTipo === "ordinario" || raw.gommeInterventoTipo === "straordinario"
+      ? raw.gommeInterventoTipo
+      : null;
+  const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
+  const gommePerAsse = sanitizeGommePerAsse(raw.gommePerAsse);
+  const gommeStraordinario =
+    raw.gommeStraordinario && typeof raw.gommeStraordinario === "object"
+      ? (raw.gommeStraordinario as RawRecord)
+      : null;
+  const gommeStraordinarioMotivo = normalizeOptionalText(gommeStraordinario?.motivo);
+
+  if (gommeInterventoTipo === "straordinario") {
+    const asseLabel = formatAsseLabel(normalizeOptionalText(gommeStraordinario?.asseId));
+    return {
+      descrizione:
+        gommeStraordinarioMotivo
+          ? `CAMBIO GOMME STRAORDINARIO - ${gommeStraordinarioMotivo}`
+          : asseLabel
+          ? `CAMBIO GOMME STRAORDINARIO - ${asseLabel}`
+          : "CAMBIO GOMME STRAORDINARIO",
+      assiCoinvolti,
+      gommePerAsseCount: gommePerAsse.length,
+      gommeInterventoTipo,
+      gommeStraordinarioMotivo,
+    };
+  }
+
+  const asseLabels = Array.from(
+    new Set(
+      (gommePerAsse.length > 0 ? gommePerAsse.map((entry) => entry.asseId) : assiCoinvolti)
+        .map((entry) => formatAsseLabel(entry))
+        .filter((entry): entry is string => Boolean(entry)),
+    ),
+  );
+
+  if (gommeInterventoTipo === "ordinario" || asseLabels.length > 0) {
+    return {
+      descrizione:
+        asseLabels.length > 0
+          ? `CAMBIO GOMME ORDINARIO - ${asseLabels.join(", ")}`
+          : "CAMBIO GOMME ORDINARIO",
+      assiCoinvolti,
+      gommePerAsseCount: gommePerAsse.length,
+      gommeInterventoTipo: "ordinario",
+      gommeStraordinarioMotivo,
+    };
+  }
+
+  return {
+    descrizione: normalizeOptionalText(raw.descrizione),
+    assiCoinvolti,
+    gommePerAsseCount: gommePerAsse.length,
+    gommeInterventoTipo,
+    gommeStraordinarioMotivo,
+  };
 }
 
 function unwrapStorageArray(
@@ -157,7 +259,8 @@ function buildMaintenanceId(raw: RawRecord, index: number): string {
 
 function toMaintenanceItem(raw: RawRecord, index: number): NextOperativitaMaintenanceItem | null {
   const targa = normalizeNextMezzoTarga(raw.targa);
-  const descrizione = normalizeOptionalText(raw.descrizione);
+  const tyreInfo = resolveStructuredTyreDescription(raw);
+  const descrizione = tyreInfo.descrizione;
   const timestamp =
     [raw.timestamp, raw.data, raw.createdAt, raw.updatedAt]
       .map((entry) => toTimestamp(entry))
@@ -174,6 +277,8 @@ function toMaintenanceItem(raw: RawRecord, index: number): NextOperativitaMainte
   if (!descrizione) flags.push("descrizione_assente");
   if (!data) flags.push("data_assente");
   if (materialiCount > 0) flags.push("con_materiali");
+  if (tyreInfo.gommeInterventoTipo === "ordinario") flags.push("gomme_strutturate_ordinarie");
+  if (tyreInfo.gommeInterventoTipo === "straordinario") flags.push("gomme_strutturate_straordinarie");
 
   return {
     id: buildMaintenanceId(raw, index),
@@ -183,6 +288,10 @@ function toMaintenanceItem(raw: RawRecord, index: number): NextOperativitaMainte
     timestamp,
     fornitore,
     materialiCount,
+    assiCoinvolti: tyreInfo.assiCoinvolti,
+    gommePerAsseCount: tyreInfo.gommePerAsseCount,
+    gommeInterventoTipo: tyreInfo.gommeInterventoTipo,
+    gommeStraordinarioMotivo: tyreInfo.gommeStraordinarioMotivo,
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: MANUTENZIONI_KEY,
     quality:

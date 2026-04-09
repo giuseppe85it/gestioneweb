@@ -64,6 +64,8 @@ export type NextMaintenanceHistoryItem = {
   materialiCount: number;
   assiCoinvolti: string[];
   gommePerAsse: NextManutenzioneGommePerAsseRecord[];
+  gommeInterventoTipo: NextManutenzioneGommeInterventoTipo | null;
+  gommeStraordinario: NextManutenzioneGommeStraordinarioRecord | null;
   isCambioGommeDerived: boolean;
   sourceDataset: typeof MANUTENZIONI_KEY;
   sourceOrigin: NextMaintenanceSourceOrigin;
@@ -110,6 +112,8 @@ export type NextManutenzioniLegacyDatasetRecord = {
   materiali?: NextManutenzioniLegacyMaterialRecord[];
   assiCoinvolti?: string[];
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
+  gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo;
+  gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord;
 };
 
 export type NextManutenzioniMezzoOption = {
@@ -135,6 +139,14 @@ export type NextManutenzioneGommePerAsseRecord = {
   kmCambio: number | null;
 };
 
+export type NextManutenzioneGommeInterventoTipo = "ordinario" | "straordinario";
+
+export type NextManutenzioneGommeStraordinarioRecord = {
+  asseId: AsseCoinvoltoId | null;
+  quantita: number | null;
+  motivo: string | null;
+};
+
 const VALID_ASSI_COINVOLTI = new Set<AsseCoinvoltoId>([
   "anteriore",
   "posteriore",
@@ -157,6 +169,8 @@ export type NextManutenzioneBusinessSavePayload = {
   materiali?: NextManutenzioniLegacyMaterialRecord[];
   assiCoinvolti?: string[];
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
+  gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo | null;
+  gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord | null;
 };
 
 type NextLegacyInventarioRecord = Record<string, unknown>;
@@ -220,6 +234,50 @@ function sanitizeGommePerAsse(
       };
     })
     .filter((entry): entry is NextManutenzioneGommePerAsseRecord => Boolean(entry));
+}
+
+function sanitizeGommeInterventoTipo(
+  value: unknown,
+): NextManutenzioneGommeInterventoTipo | null {
+  const normalized = normalizeLowerText(value);
+  if (normalized === "ordinario") return "ordinario";
+  if (normalized === "straordinario") return "straordinario";
+  return null;
+}
+
+function sanitizeGommeStraordinario(
+  value: unknown,
+): NextManutenzioneGommeStraordinarioRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as RawRecord;
+  const asseId = sanitizeAssiCoinvolti([raw.asseId])[0] ?? null;
+  const quantita = normalizeNumber(raw.quantita);
+  const motivo = normalizeOptionalText(raw.motivo);
+
+  if (!asseId && quantita === null && !motivo) {
+    return null;
+  }
+
+  return {
+    asseId,
+    quantita,
+    motivo,
+  };
+}
+
+function resolveGommeInterventoTipo(args: {
+  explicitTipo: unknown;
+  descrizione: string | null;
+  assiCoinvolti: AsseCoinvoltoId[];
+  gommePerAsse: NextManutenzioneGommePerAsseRecord[];
+  gommeStraordinario: NextManutenzioneGommeStraordinarioRecord | null;
+}): NextManutenzioneGommeInterventoTipo | null {
+  const explicitTipo = sanitizeGommeInterventoTipo(args.explicitTipo);
+  if (explicitTipo) return explicitTipo;
+  if (args.gommeStraordinario) return "straordinario";
+  if (args.gommePerAsse.length > 0 || args.assiCoinvolti.length > 0) return "ordinario";
+  if (isCambioGommeDerived(args.descrizione)) return "straordinario";
+  return null;
 }
 
 function unwrapStorageArray(rawDoc: Record<string, unknown> | null): unknown[] {
@@ -371,11 +429,18 @@ function toLegacyDatasetRecord(
     formatLegacyDateLabel(raw.timestamp ?? raw.createdAt ?? raw.updatedAt);
   const kmCambio = normalizeNumber(raw.km);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, data, kmCambio);
-  const isGomme = gommePerAsseSanitized.length > 0 || isCambioGommeDerived(descrizione);
+  const gommeStraordinario = sanitizeGommeStraordinario(raw.gommeStraordinario);
+  const gommeInterventoTipo = resolveGommeInterventoTipo({
+    explicitTipo: raw.gommeInterventoTipo,
+    descrizione,
+    assiCoinvolti,
+    gommePerAsse: gommePerAsseSanitized,
+    gommeStraordinario,
+  });
   const gommePerAsse =
-    gommePerAsseSanitized.length > 0
+    gommeInterventoTipo === "ordinario" && gommePerAsseSanitized.length > 0
       ? gommePerAsseSanitized
-      : isGomme && assiCoinvolti.length > 0
+      : gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0
         ? assiCoinvolti.map((asseId) => ({
             asseId,
             dataCambio: data,
@@ -399,7 +464,9 @@ function toLegacyDatasetRecord(
       normalizeOptionalText(raw.eseguito) ??
       undefined,
     materiali,
-    ...(assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
+    ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
+    ...(gommeStraordinario ? { gommeStraordinario } : {}),
+    ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
     ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
   };
 }
@@ -444,10 +511,18 @@ function toHistoryItem(
   const km = normalizeNumber(raw.km);
   const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
   const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, dataRaw, km);
+  const gommeStraordinario = sanitizeGommeStraordinario(raw.gommeStraordinario);
+  const gommeInterventoTipo = resolveGommeInterventoTipo({
+    explicitTipo: raw.gommeInterventoTipo,
+    descrizione,
+    assiCoinvolti,
+    gommePerAsse: gommePerAsseSanitized,
+    gommeStraordinario,
+  });
   const gommePerAsse =
-    gommePerAsseSanitized.length > 0
+    gommeInterventoTipo === "ordinario" && gommePerAsseSanitized.length > 0
       ? gommePerAsseSanitized
-      : isGomme && assiCoinvolti.length > 0
+      : gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0
         ? assiCoinvolti.map((asseId) => ({
             asseId,
             dataCambio: dataRaw,
@@ -470,8 +545,10 @@ function toHistoryItem(
       normalizeOptionalText(raw.fornitoreLabel) ??
       normalizeOptionalText(raw.eseguito),
     materialiCount: materiali.length,
-    assiCoinvolti,
+    assiCoinvolti: gommeInterventoTipo === "ordinario" ? assiCoinvolti : [],
     gommePerAsse,
+    gommeInterventoTipo,
+    gommeStraordinario,
     isCambioGommeDerived: isGomme,
     sourceDataset: MANUTENZIONI_KEY,
     sourceOrigin: isGomme ? "autisti_gomme_derivato" : descrizione ? "manuale" : "unknown",
@@ -654,13 +731,18 @@ function sanitizeBusinessRecord(
   const km = payload.tipo === "mezzo" ? normalizeNumber(payload.km) : null;
   const data = normalizeOptionalText(payload.data) ?? "";
   const gommePerAsseSanitized = sanitizeGommePerAsse(payload.gommePerAsse, data, km);
-  const isGommePayload =
-    gommePerAsseSanitized.length > 0 ||
-    isCambioGommeDerived(normalizeOptionalText(payload.descrizione));
+  const gommeStraordinario = sanitizeGommeStraordinario(payload.gommeStraordinario);
+  const gommeInterventoTipo = resolveGommeInterventoTipo({
+    explicitTipo: payload.gommeInterventoTipo,
+    descrizione: normalizeOptionalText(payload.descrizione),
+    assiCoinvolti,
+    gommePerAsse: gommePerAsseSanitized,
+    gommeStraordinario,
+  });
   const gommePerAsse =
-    gommePerAsseSanitized.length > 0
+    gommeInterventoTipo === "ordinario" && gommePerAsseSanitized.length > 0
       ? gommePerAsseSanitized
-      : isGommePayload && assiCoinvolti.length > 0
+      : gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0
         ? assiCoinvolti.map((asseId) => ({
             asseId,
             dataCambio: data,
@@ -679,7 +761,9 @@ function sanitizeBusinessRecord(
     eseguito: normalizeOptionalText(payload.eseguito),
     data,
     materiali: sanitizeMaterialiForWrite(payload.materiali),
-    ...(assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
+    ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
+    ...(gommeStraordinario && gommeInterventoTipo === "straordinario" ? { gommeStraordinario } : {}),
+    ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
     ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
   };
 }
@@ -714,17 +798,13 @@ async function persistLegacyMaterialEffects(args: {
   data: string;
   materiali: NextManutenzioniLegacyMaterialRecord[];
 }): Promise<void> {
-  const [inventarioRaw, movRaw, consegneRaw] = await Promise.all([
+  const [inventarioRaw, materialiConsegnatiRaw] = await Promise.all([
     getItemSync(INVENTARIO_KEY),
-    getItemSync(MATERIALI_CONSEGNATI_KEY),
     getItemSync(MATERIALI_CONSEGNATI_KEY),
   ]);
 
   const inventarioAggiornato = sanitizeInventarioArray(unwrapStoredValueArray(inventarioRaw)).map((item) => ({ ...item }));
-  const nuoveMovimentazioni = unwrapStoredValueArray(movRaw).map((item) =>
-    item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : item,
-  );
-  const nuoveConsegne = unwrapStoredValueArray(consegneRaw).map((item) =>
+  const materialiConsegnatiAggiornati = unwrapStoredValueArray(materialiConsegnatiRaw).map((item) =>
     item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : item,
   );
 
@@ -743,37 +823,35 @@ async function persistLegacyMaterialEffects(args: {
       quantita: nuovaQuantita,
     };
 
-    nuoveMovimentazioni.push({
-      id: `${Date.now()}_${materiale.id}`,
+    const entryTimestamp = Date.now();
+    materialiConsegnatiAggiornati.push({
+      id: `${entryTimestamp}_${materiale.id}`,
       tipo: "OUT",
+      direzione: "OUT",
       data: args.data,
       materialeId: materiale.refId,
+      inventarioRefId: materiale.refId,
       materialeLabel: materiale.label,
+      materiale: materiale.label,
+      descrizione: materiale.label,
       quantita: materiale.quantita,
       unita: materiale.unita,
       origine: "MANUTENZIONE",
       targa: args.targa,
-    });
-
-    nuoveConsegne.push({
-      id: `${Date.now()}_CONS_${materiale.id}`,
-      descrizione: materiale.label,
-      quantita: materiale.quantita,
-      unita: materiale.unita,
+      mezzoTarga: args.targa,
       fornitore: normalizeOptionalText(corrente.fornitore) ?? "",
+      fornitoreLabel: normalizeOptionalText(corrente.fornitore) ?? "",
       destinatario: {
         type: "MEZZO",
         refId: args.targa,
         label: args.targa,
       },
       motivo: "UTILIZZO MANUTENZIONE",
-      data: args.data,
     });
   }
 
   await setItemSync(INVENTARIO_KEY, inventarioAggiornato);
-  await setItemSync(MATERIALI_CONSEGNATI_KEY, nuoveMovimentazioni);
-  await setItemSync(MATERIALI_CONSEGNATI_KEY, nuoveConsegne);
+  await setItemSync(MATERIALI_CONSEGNATI_KEY, materialiConsegnatiAggiornati);
 }
 
 export async function saveNextManutenzioneBusinessRecord(

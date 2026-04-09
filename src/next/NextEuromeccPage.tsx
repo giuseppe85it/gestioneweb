@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
-import { db } from "../firebase";
+import { addDoc, collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../firebase";
+import { assertCloneWriteAllowed } from "../utils/cloneWriteBarrier";
+import type { Ordine } from "../types/ordini";
 import { v4 as uuidv4 } from "uuid";
 import {
   EUROMECC_AREAS,
   EUROMECC_AREA_KEYS,
   type EuromeccAreaStatic,
+  type EuromeccAreaType,
 } from "./euromeccAreas";
 import {
   addEuromeccDoneTask,
@@ -114,6 +118,11 @@ type EuromeccRelazioneDoc = {
   doneCount: number;
   pendingCount: number;
   extraComponentsCount: number;
+  fileUrl?: string | null;
+  fileStoragePath?: string | null;
+  fileSize?: number | null;
+  ordineId?: string | null;
+  ordineMateriali?: number | null;
 };
 
 type RelazioneItemMatched = {
@@ -171,6 +180,21 @@ type RelazioneAiPayload = {
   pending: RelazioneItemPending[];
 };
 
+type RicambiAiItem = {
+  descrizione: string;
+  quantita: number;
+  unita: string;
+  codiceArticolo: string;
+  note: string;
+  selected: boolean;
+};
+
+type RicambiAiPayload = {
+  dataDocumento: string;
+  azienda: string;
+  items: RicambiAiItem[];
+};
+
 type RelazioniTabState = {
   phase: "idle" | "uploading" | "analyzing" | "review" | "saving" | "done";
   file: File | null;
@@ -180,6 +204,20 @@ type RelazioniTabState = {
   noteGenerali: string;
   bozzaId: string | null;
   error: string | null;
+  documentoTipo: "relazione" | "ricambi";
+  ricambiPayload: RicambiAiPayload | null;
+};
+
+type RiepilogoCardData = {
+  areaKey: string;
+  areaLabel: string;
+  areaCode: string;
+  areaType: EuromeccAreaType;
+  status: EuromeccStatus;
+  pendingItems: EuromeccPendingTask[];
+  doneItems: EuromeccDoneTask[];
+  openIssues: EuromeccIssue[];
+  hasUrgency: boolean;
 };
 
 const STATUS_COLORS: Record<EuromeccStatus, string> = {
@@ -274,8 +312,10 @@ const MAP_GENERIC: readonly MapNodeLayout[] = [
   { key: "caricoRail", x: 958, y: 528, width: 268, height: 62 },
   { key: "compressore", x: 118, y: 726, width: 250, height: 62 },
   { key: "fluidificanti", x: 442, y: 726, width: 306, height: 62 },
-  { key: "plc", x: 958, y: 676, width: 250, height: 56 },
-  { key: "buffer", x: 958, y: 746, width: 250, height: 56 },
+  { key: "plc",              x: 958,  y: 676, width: 250, height: 56 },
+  { key: "buffer",           x: 958,  y: 746, width: 250, height: 56 },
+  { key: "compressore2",     x: 384,  y: 726, width: 250, height: 62 },
+  { key: "scaricoFornitore", x: 1246, y: 138, width: 180, height: 62 },
 ] as const;
 
 const SILO_HOTSPOTS: readonly SiloHotspot[] = [
@@ -314,6 +354,40 @@ const CARICO_HOTSPOTS: readonly SiloHotspot[] = [
   { key: "gruppoFR",            label: "Gruppo FR",
     x: 170, y: 462, width: 130, height: 52,
     dotX: 170, dotY: 467, labelX: 30,  labelY: 370 },
+] as const;
+
+// Subkey validi in compressore/compressore2: blower, filtroAria, lubrificazione,
+// filtroOlio, filtroScambiatore, essiccatore, cinghie, byPass.
+// accumulatore e scaricatoreCondensa esclusi — non presenti nelle aree.
+const SALA_COMPRESSORI_HOTSPOTS: readonly SiloHotspot[] = [
+  { key: "blower",            label: "Blower / vite",       x: 288, y: 340, width: 160, height: 52, dotX: 370, dotY: 420, labelX: 560, labelY: 360 },
+  { key: "filtroAria",        label: "Filtro aria",         x: 288, y: 340, width: 160, height: 52, dotX: 350, dotY: 460, labelX: 560, labelY: 390 },
+  { key: "lubrificazione",    label: "Lubrificazione",      x: 288, y: 340, width: 160, height: 52, dotX: 310, dotY: 480, labelX: 560, labelY: 420 },
+  { key: "filtroOlio",        label: "Filtro olio",         x: 288, y: 340, width: 160, height: 52, dotX: 330, dotY: 500, labelX: 560, labelY: 450 },
+  { key: "filtroScambiatore", label: "Filtro scambiatore",  x: 288, y: 340, width: 160, height: 52, dotX: 360, dotY: 510, labelX: 560, labelY: 480 },
+  { key: "essiccatore",       label: "Essiccatore",         x: 296, y: 248, width: 148, height: 88, dotX: 370, dotY: 290, labelX: 560, labelY: 160 },
+  { key: "cinghie",           label: "Cinghie",             x: 288, y: 340, width: 160, height: 52, dotX: 430, dotY: 370, labelX: 100, labelY: 340 },
+  { key: "byPass",            label: "By-pass",             x: 288, y: 340, width: 160, height: 52, dotX: 420, dotY: 400, labelX: 100, labelY: 380 },
+  { key: "accumulatore",      label: "Accumulatore aria",   x:  38, y:  78, width: 110, height: 420, dotX:  93, dotY: 220, labelX: 100, labelY: 200 },
+  { key: "scaricatoreCondensa", label: "Scaricatore condensa", x: 38, y: 78, width: 110, height: 420, dotX: 93, dotY: 490, labelX: 100, labelY: 460 },
+] as const;
+
+const SCARICO_FORNITORE_HOTSPOTS: readonly SiloHotspot[] = [
+  { key: "attalccioFornitore",  label: "Attacco fornitore",  x: 266, y: 540, width: 130, height: 52, dotX: 283, dotY: 545, labelX: 430, labelY: 450 },
+  { key: "tubazioniScarico",    label: "Tubazioni scarico",  x: 200, y: 116, width: 130, height: 52, dotX: 208, dotY: 280, labelX: 430, labelY: 200 },
+  { key: "filtroScarico",       label: "Filtro scarico",     x: 248, y: 200, width: 130, height: 52, dotX: 283, dotY: 245, labelX: 430, labelY: 280 },
+  { key: "quadroPneumScarico",  label: "Quadro pneumatico",  x: 340, y: 300, width: 130, height: 52, dotX: 370, dotY: 340, labelX: 430, labelY: 340 },
+  { key: "valvoleScarico",      label: "Valvole scarico",    x: 340, y: 300, width: 130, height: 52, dotX: 356, dotY: 350, labelX: 430, labelY: 390 },
+  { key: "cocelaScaricoFor",    label: "Coclea scarico",     x: 150, y: 465, width: 130, height: 52, dotX: 240, dotY: 473, labelX: 430, labelY: 490 },
+] as const;
+
+const CARICO_TRENO_HOTSPOTS: readonly SiloHotspot[] = [
+  { key: "filtro",              label: "Filtro anti-polvere", x: 272, y: 82,  width: 160, height: 52, dotX: 300, dotY: 100, labelX: 80,  labelY: 62  },
+  { key: "proboscide",          label: "Proboscide",          x: 282, y: 340, width: 160, height: 52, dotX: 300, dotY: 490, labelX: 80,  labelY: 490 },
+  { key: "scaricatoreTelesc",   label: "Scaricatore telesc.", x: 282, y: 340, width: 160, height: 52, dotX: 300, dotY: 520, labelX: 80,  labelY: 530 },
+  { key: "cartucce",            label: "Cartucce",            x: 282, y: 340, width: 160, height: 52, dotX: 300, dotY: 550, labelX: 80,  labelY: 570 },
+  { key: "gruppoFR",            label: "Gruppo FR",           x: 282, y: 340, width: 160, height: 52, dotX: 300, dotY: 420, labelX: 510, labelY: 420 },
+  { key: "scaricatoreCondensa", label: "Scaricatore condensa",x: 282, y: 340, width: 160, height: 52, dotX: 300, dotY: 395, labelX: 510, labelY: 360 },
 ] as const;
 
 const EMPTY_PENDING_FORM = {
@@ -478,66 +552,6 @@ function toIssueEditState(item: EuromeccIssue): IssueEditState {
     note: item.note,
     closedDate: item.closedDate ?? "",
   };
-}
-
-function buildReportText(snapshot: EuromeccSnapshot, range: EuromeccRange) {
-  const pending = snapshot.pending.filter((item) => withinRange(item.dueDate, range));
-  const issues = snapshot.issues.filter(
-    (item) => item.state !== "chiusa" && withinRange(item.reportedAt, range),
-  );
-  const done = snapshot.done.filter((item) => withinRange(item.doneDate, range));
-  const urgencies = [
-    ...pending
-      .filter((item) => item.priority === "alta")
-      .map((item) => ({
-        kind: "MANUTENZIONE",
-        area: item.areaLabel,
-        sub: item.subLabel,
-        title: item.title,
-      })),
-    ...issues
-      .filter((item) => item.type !== "osservazione")
-      .map((item) => ({
-        kind: "PROBLEMA",
-        area: item.areaLabel,
-        sub: item.subLabel,
-        title: item.title,
-      })),
-  ];
-
-  return [
-    "RIEPILOGO IMPIANTO EUROMECC",
-    `Periodo: ${RANGE_OPTIONS.find((item) => item.value === range)?.label ?? "Tutto"}`,
-    "",
-    "1. PROBLEMI SEGNALATI APERTI",
-    ...(issues.length
-      ? issues.map(
-          (item) =>
-            `- ${item.areaLabel} / ${item.subLabel}: ${item.title} | da controllare: ${item.check} | tipo: ${ISSUE_TYPE_LABELS[item.type]}`,
-        )
-      : ["- Nessun problema aperto nel periodo selezionato"]),
-    "",
-    "2. MANUTENZIONI DA ESEGUIRE",
-    ...(pending.length
-      ? pending.map(
-          (item) =>
-            `- ${item.areaLabel} / ${item.subLabel}: ${item.title} | scadenza: ${formatDateUI(item.dueDate)} | priorita: ${PRIORITY_LABELS[item.priority]}`,
-        )
-      : ["- Nessuna manutenzione da eseguire nel periodo selezionato"]),
-    "",
-    "3. MANUTENZIONI FATTE",
-    ...(done.length
-      ? done.map(
-          (item) =>
-            `- ${item.areaLabel} / ${item.subLabel}: ${item.title} | fatta il ${formatDateUI(item.doneDate)} da ${item.by}`,
-        )
-      : ["- Nessuna manutenzione registrata nel periodo selezionato"]),
-    "",
-    "4. URGENZE DI LAVORO",
-    ...(urgencies.length
-      ? urgencies.map((item) => `- ${item.kind}: ${item.area} / ${item.sub} | ${item.title}`)
-      : ["- Nessuna urgenza nel periodo selezionato"]),
-  ].join("\n");
 }
 
 function KpiGrid({ items }: { items: KpiItem[] }) {
@@ -859,7 +873,7 @@ function MapSvg(props: {
           textAnchor="middle"
           className="eur-map-generic-title"
         >
-          {area.title}
+          {area.title.length > 20 ? area.shortLabel : area.title}
         </text>
         <text
           x={centerX}
@@ -1192,6 +1206,490 @@ function CaricoDiagram(props: {
   );
 }
 
+function SalaCompressoriDiagram(props: {
+  area: EuromeccAreaStatic;
+  snapshot: EuromeccSnapshot;
+  currentSub: string | null;
+  onSelectSub: (key: string) => void;
+}) {
+  return (
+    <svg width="100%" viewBox="0 0 760 640" className="eur-silo-diagram" aria-label={`Schema ${props.area.title}`}>
+      {/* CONTAINER */}
+      <rect x="20" y="20" width="720" height="580" rx="4" fill="#D8D4CC" stroke="#A0998A" strokeWidth="2" />
+      <rect x="20" y="20" width="720" height="40" rx="4" fill="#C8C4BC" stroke="#A0998A" strokeWidth="1.5" />
+      {/* FINESTRA */}
+      <rect x="580" y="90" width="130" height="95" rx="4" fill="#C0C4CC" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="586" y="96" width="118" height="83" rx="2" fill="#B0B8C4" />
+      <line x1="586" y1="112" x2="704" y2="112" stroke="#8A9099" strokeWidth="1.5" />
+      <line x1="586" y1="126" x2="704" y2="126" stroke="#8A9099" strokeWidth="1.5" />
+      <line x1="586" y1="140" x2="704" y2="140" stroke="#8A9099" strokeWidth="1.5" />
+      <line x1="586" y1="154" x2="704" y2="154" stroke="#8A9099" strokeWidth="1.5" />
+      <line x1="586" y1="168" x2="704" y2="168" stroke="#8A9099" strokeWidth="1.5" />
+      {/* PAVIMENTO */}
+      <rect x="20" y="550" width="720" height="50" rx="2" fill="#9A9890" stroke="#7A7868" strokeWidth="1.5" />
+      {/* ACCUMULATORE N.1 */}
+      <rect x="38" y="78" width="110" height="420" rx="50" fill="#4A90D8" stroke="#2A6098" strokeWidth="2.5" />
+      <rect x="38" y="78" width="26" height="420" rx="50" fill="#6AB0F0" opacity="0.5" />
+      <ellipse cx="93" cy="78" rx="55" ry="20" fill="#5AA0E8" stroke="#2A6098" strokeWidth="2" />
+      <ellipse cx="93" cy="498" rx="55" ry="20" fill="#3A7AC8" stroke="#2A6098" strokeWidth="2" />
+      <circle cx="93" cy="220" r="15" fill="#E8EFF6" stroke="#2A6098" strokeWidth="2" />
+      <rect x="76" y="488" width="34" height="14" rx="3" fill="#C03020" stroke="#902010" strokeWidth="1.5" />
+      {/* ACCUMULATORE N.2 */}
+      <rect x="158" y="88" width="100" height="400" rx="46" fill="#4A90D8" stroke="#2A6098" strokeWidth="2.5" />
+      <rect x="158" y="88" width="22" height="400" rx="46" fill="#6AB0F0" opacity="0.45" />
+      <ellipse cx="208" cy="88" rx="50" ry="18" fill="#5AA0E8" stroke="#2A6098" strokeWidth="2" />
+      <ellipse cx="208" cy="488" rx="50" ry="18" fill="#3A7AC8" stroke="#2A6098" strokeWidth="2" />
+      <circle cx="208" cy="230" r="14" fill="#E8EFF6" stroke="#2A6098" strokeWidth="2" />
+      <rect x="191" y="480" width="34" height="14" rx="3" fill="#C03020" stroke="#902010" strokeWidth="1.5" />
+      {/* COMPRESSORE N.1 */}
+      <rect x="288" y="340" width="165" height="210" rx="8" fill="#3A7AC8" stroke="#2A5898" strokeWidth="2.5" />
+      <rect x="298" y="350" width="145" height="160" rx="4" fill="#2A6098" stroke="#1A4878" strokeWidth="1.5" />
+      <rect x="310" y="362" width="80" height="40" rx="3" fill="#1A3040" stroke="#0A2030" strokeWidth="1" />
+      <circle cx="414" cy="382" r="12" fill="#C03020" stroke="#902010" strokeWidth="2" />
+      <rect x="310" y="438" width="80" height="14" rx="2" fill="#1A4878" />
+      <rect x="310" y="458" width="120" height="40" rx="3" fill="#1A3848" stroke="#0A2030" strokeWidth="1" />
+      {/* ESSICCATORE N.1 */}
+      <rect x="296" y="248" width="148" height="88" rx="6" fill="#8A9099" stroke="#6A7080" strokeWidth="2" />
+      <rect x="306" y="258" width="80" height="58" rx="3" fill="#6A7080" stroke="#5A6070" strokeWidth="1" />
+      {/* COMPRESSORE N.2 */}
+      <rect x="490" y="300" width="175" height="250" rx="8" fill="#3A7AC8" stroke="#2A5898" strokeWidth="2.5" />
+      <rect x="500" y="312" width="155" height="185" rx="4" fill="#2A6098" stroke="#1A4878" strokeWidth="1.5" />
+      <rect x="512" y="324" width="90" height="50" rx="3" fill="#1A3040" stroke="#0A2030" strokeWidth="1" />
+      <circle cx="630" cy="342" r="14" fill="#C03020" stroke="#902010" strokeWidth="2" />
+      <rect x="512" y="440" width="90" height="14" rx="2" fill="#1A4878" />
+      <rect x="512" y="460" width="130" height="30" rx="3" fill="#1A3848" stroke="#0A2030" strokeWidth="1" />
+      {/* ESSICCATORE N.2 */}
+      <rect x="498" y="196" width="158" height="100" rx="6" fill="#3A7AC8" stroke="#2A5898" strokeWidth="2" />
+      <rect x="508" y="206" width="70" height="54" rx="3" fill="#1A3040" stroke="#0A2030" strokeWidth="1" />
+      <rect x="584" y="206" width="60" height="22" rx="3" fill="#1A4878" />
+      <rect x="584" y="234" width="60" height="52" rx="3" fill="#2A5888" stroke="#1A3868" strokeWidth="1" />
+
+      {SALA_COMPRESSORI_HOTSPOTS.map((spot) => {
+        const status = getSubStatus(
+          props.area.key,
+          spot.key,
+          props.area.components.find((item) => item.key === spot.key)?.base ?? props.area.base,
+          props.snapshot,
+        );
+        const active = props.currentSub === spot.key;
+        const hasLeader = spot.labelX !== undefined && spot.labelY !== undefined;
+        const cx = spot.dotX ?? (spot.x + spot.width / 2);
+        const cy = spot.dotY ?? (spot.y + spot.height / 2);
+
+        if (hasLeader) {
+          const lx = spot.labelX as number;
+          const ly = spot.labelY as number;
+          return (
+            <g
+              key={spot.key}
+              className={`eur-hotspot ${active ? "active" : ""}`}
+              onClick={() => props.onSelectSub(spot.key)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  props.onSelectSub(spot.key);
+                }
+              }}
+              style={{ cursor: "pointer" }}
+            >
+              <line
+                x1={cx} y1={cy} x2={lx} y2={ly}
+                stroke={STATUS_COLORS[status]} strokeWidth="1" strokeDasharray="4 3" opacity="0.7"
+              />
+              <circle
+                cx={cx} cy={cy} r="7"
+                fill={STATUS_COLORS[status]}
+                stroke={active ? "#0f6fff" : "white"}
+                strokeWidth={active ? "3" : "1.5"}
+              />
+              <circle cx={cx} cy={cy} r="18" fill="transparent" />
+              <text
+                x={lx} y={ly - 6}
+                className="eur-hotspot-label"
+                fontSize="12"
+                fill="var(--color-text-primary)"
+                fontWeight={active ? "600" : "400"}
+              >
+                {spot.label}
+              </text>
+              <text x={lx} y={ly + 8} className="eur-hotspot-status" fontSize="11" fill={STATUS_COLORS[status]}>
+                {STATUS_LABELS[status]}
+              </text>
+            </g>
+          );
+        }
+
+        const labelLines = spot.label.includes(" ")
+          ? [spot.label.substring(0, spot.label.indexOf(" ")), spot.label.substring(spot.label.indexOf(" ") + 1)]
+          : [spot.label];
+        const statusY = spot.y + (labelLines.length > 1 ? 51 : 45);
+        return (
+          <g
+            key={spot.key}
+            className={`eur-hotspot ${active ? "active" : ""}`}
+            onClick={() => props.onSelectSub(spot.key)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                props.onSelectSub(spot.key);
+              }
+            }}
+          >
+            <rect
+              className="eur-hot-fill"
+              x={spot.x} y={spot.y} width={spot.width} height={spot.height} rx="18"
+              fill={active ? "rgba(15,111,255,.08)" : "rgba(255,255,255,.72)"}
+              stroke={STATUS_COLORS[status]}
+              strokeWidth={active ? "4" : "2.5"}
+            />
+            <text x={spot.x + 16} y={spot.y + 25} className="eur-hotspot-label">
+              {labelLines.map((line, i) => (
+                <tspan key={`${spot.key}-${line}`} x={spot.x + 16} dy={i === 0 ? 0 : 15}>{line}</tspan>
+              ))}
+            </text>
+            <text x={spot.x + 16} y={statusY} className="eur-hotspot-status">
+              {STATUS_LABELS[status]}
+            </text>
+            <circle cx={spot.x + spot.width - 18} cy={spot.y + 18} r="10" fill={STATUS_COLORS[status]} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function ScaricoFornitoreDiagram(props: {
+  area: EuromeccAreaStatic;
+  snapshot: EuromeccSnapshot;
+  currentSub: string | null;
+  onSelectSub: (key: string) => void;
+}) {
+  return (
+    <svg width="100%" viewBox="0 0 680 700" className="eur-silo-diagram" aria-label={`Schema ${props.area.title}`}>
+      {/* COLLETTORE SUPERIORE */}
+      <rect x="30" y="98" width="400" height="18" rx="4" fill="#B0B8C4" stroke="#7A8290" strokeWidth="1.2" />
+      <rect x="30" y="112" width="400" height="5" fill="#7A8290" opacity="0.3" />
+      {/* SILO (sfondo) */}
+      <rect x="30" y="60" width="110" height="380" rx="8" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.5" />
+      <ellipse cx="85" cy="60" rx="55" ry="18" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.5" />
+      {/* CORPO SILO con anelli rinforzo */}
+      <rect x="148" y="88" width="200" height="7" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      <rect x="148" y="145" width="200" height="7" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      <rect x="148" y="200" width="200" height="7" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      <rect x="148" y="255" width="200" height="7" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      <rect x="148" y="310" width="200" height="7" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      {/* TUBAZIONI VERTICALI SCARICO */}
+      <rect x="200" y="116" width="16" height="350" rx="3" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="200" y="116" width="5" height="350" fill="#D0D5DC" opacity="0.55" />
+      <rect x="220" y="116" width="14" height="330" rx="3" fill="#B0B8C4" stroke="#8A9099" strokeWidth="1.2" />
+      {/* flange tubi */}
+      <rect x="197" y="180" width="40" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      <rect x="197" y="280" width="40" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      <rect x="197" y="380" width="40" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      {/* ATTACCO FORNITORE (flessibile) */}
+      <path d="M216 420 Q216 460 240 480 Q270 500 280 540" fill="none" stroke="#8A9099" strokeWidth="14" strokeLinecap="round" />
+      <path d="M216 420 Q216 460 240 480 Q270 500 280 540" fill="none" stroke="#D0D5DC" strokeWidth="5" strokeLinecap="round" opacity="0.5" />
+      {/* raccordo attacco */}
+      <ellipse cx="283" cy="545" rx="18" ry="8" fill="#7A8290" stroke="#5A6270" strokeWidth="2" />
+      <rect x="266" y="540" width="34" height="18" rx="4" fill="#8A9099" stroke="#5A6270" strokeWidth="2" />
+      {/* QUADRO PNEUMATICO */}
+      <rect x="340" y="300" width="60" height="80" rx="5" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="340" y="300" width="60" height="18" rx="5" fill="#9A9FA8" />
+      <circle cx="356" cy="332" r="5" fill="#8A9099" opacity="0.7" />
+      <circle cx="372" cy="332" r="5" fill="#8A9099" opacity="0.7" />
+      <circle cx="388" cy="332" r="5" fill="#8A9099" opacity="0.7" />
+      <circle cx="356" cy="350" r="5" fill="#8A9099" opacity="0.7" />
+      <circle cx="372" cy="350" r="5" fill="#8A9099" opacity="0.7" />
+      <circle cx="388" cy="350" r="5" fill="#8A9099" opacity="0.7" />
+      {/* FILTRO SCARICO */}
+      <rect x="248" y="200" width="70" height="90" rx="6" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="248" y="200" width="70" height="18" rx="6" fill="#B0B8C4" />
+      <line x1="248" y1="250" x2="318" y2="250" stroke="#8A9099" strokeWidth="1" strokeDasharray="4 3" opacity="0.5" />
+      {/* COCLEA SCARICO */}
+      <rect x="150" y="465" width="180" height="16" rx="5" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="168" y="461" width="8" height="24" rx="1" fill="#9A9FA8" stroke="#7A8290" strokeWidth="1" />
+      <rect x="220" y="461" width="8" height="24" rx="1" fill="#9A9FA8" stroke="#7A8290" strokeWidth="1" />
+      {/* SUOLO */}
+      <rect x="0" y="490" width="500" height="80" fill="#B8B4A8" opacity="0.35" />
+      <line x1="0" y1="490" x2="500" y2="490" stroke="#A0998A" strokeWidth="2.5" />
+
+      {SCARICO_FORNITORE_HOTSPOTS.map((spot) => {
+        const status = getSubStatus(
+          props.area.key,
+          spot.key,
+          props.area.components.find((item) => item.key === spot.key)?.base ?? props.area.base,
+          props.snapshot,
+        );
+        const active = props.currentSub === spot.key;
+        const hasLeader = spot.labelX !== undefined && spot.labelY !== undefined;
+        const cx = spot.dotX ?? (spot.x + spot.width / 2);
+        const cy = spot.dotY ?? (spot.y + spot.height / 2);
+
+        if (hasLeader) {
+          const lx = spot.labelX as number;
+          const ly = spot.labelY as number;
+          return (
+            <g
+              key={spot.key}
+              className={`eur-hotspot ${active ? "active" : ""}`}
+              onClick={() => props.onSelectSub(spot.key)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  props.onSelectSub(spot.key);
+                }
+              }}
+              style={{ cursor: "pointer" }}
+            >
+              <line
+                x1={cx} y1={cy} x2={lx} y2={ly}
+                stroke={STATUS_COLORS[status]} strokeWidth="1" strokeDasharray="4 3" opacity="0.7"
+              />
+              <circle
+                cx={cx} cy={cy} r="7"
+                fill={STATUS_COLORS[status]}
+                stroke={active ? "#0f6fff" : "white"}
+                strokeWidth={active ? "3" : "1.5"}
+              />
+              <circle cx={cx} cy={cy} r="18" fill="transparent" />
+              <text
+                x={lx} y={ly - 6}
+                className="eur-hotspot-label"
+                fontSize="12"
+                fill="var(--color-text-primary)"
+                fontWeight={active ? "600" : "400"}
+              >
+                {spot.label}
+              </text>
+              <text x={lx} y={ly + 8} className="eur-hotspot-status" fontSize="11" fill={STATUS_COLORS[status]}>
+                {STATUS_LABELS[status]}
+              </text>
+            </g>
+          );
+        }
+
+        const labelLines = spot.label.includes(" ")
+          ? [spot.label.substring(0, spot.label.indexOf(" ")), spot.label.substring(spot.label.indexOf(" ") + 1)]
+          : [spot.label];
+        const statusY = spot.y + (labelLines.length > 1 ? 51 : 45);
+        return (
+          <g
+            key={spot.key}
+            className={`eur-hotspot ${active ? "active" : ""}`}
+            onClick={() => props.onSelectSub(spot.key)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                props.onSelectSub(spot.key);
+              }
+            }}
+          >
+            <rect
+              className="eur-hot-fill"
+              x={spot.x} y={spot.y} width={spot.width} height={spot.height} rx="18"
+              fill={active ? "rgba(15,111,255,.08)" : "rgba(255,255,255,.72)"}
+              stroke={STATUS_COLORS[status]}
+              strokeWidth={active ? "4" : "2.5"}
+            />
+            <text x={spot.x + 16} y={spot.y + 25} className="eur-hotspot-label">
+              {labelLines.map((line, i) => (
+                <tspan key={`${spot.key}-${line}`} x={spot.x + 16} dy={i === 0 ? 0 : 15}>{line}</tspan>
+              ))}
+            </text>
+            <text x={spot.x + 16} y={statusY} className="eur-hotspot-status">
+              {STATUS_LABELS[status]}
+            </text>
+            <circle cx={spot.x + spot.width - 18} cy={spot.y + 18} r="10" fill={STATUS_COLORS[status]} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function CaricoTrenoDiagram(props: {
+  area: EuromeccAreaStatic;
+  snapshot: EuromeccSnapshot;
+  currentSub: string | null;
+  onSelectSub: (key: string) => void;
+}) {
+  return (
+    <svg width="100%" viewBox="0 0 680 820" className="eur-silo-diagram" aria-label={`Schema ${props.area.title}`}>
+      <rect x="0" y="0" width="680" height="820" fill="#E8EFF6" opacity="0.25" />
+      {/* BINARIO */}
+      <rect x="60" y="748" width="560" height="12" rx="2" fill="#7A7268" stroke="#5A5248" strokeWidth="1" />
+      <rect x="80" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="130" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="180" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="230" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="280" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="330" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="380" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="430" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="480" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="530" y="745" width="18" height="28" rx="1" fill="#5A5248" opacity="0.7" />
+      <rect x="60" y="748" width="560" height="5" rx="1" fill="#9A9288" />
+      <rect x="60" y="762" width="560" height="5" rx="1" fill="#9A9288" />
+      {/* VAGONE */}
+      <rect x="110" y="666" width="380" height="82" rx="6" fill="#C8CDD4" stroke="#8A9099" strokeWidth="2" />
+      <rect x="110" y="666" width="380" height="18" rx="6" fill="#B0B8C4" />
+      <rect x="110" y="666" width="22" height="82" rx="6" fill="#D8DDE4" opacity="0.5" />
+      <ellipse cx="300" cy="668" rx="38" ry="10" fill="#A0A8B2" stroke="#7A8290" strokeWidth="2" />
+      <ellipse cx="300" cy="668" rx="28" ry="7" fill="#8A9099" />
+      {/* RUOTE */}
+      <circle cx="160" cy="752" r="18" fill="#6A6860" stroke="#4A4840" strokeWidth="2" />
+      <circle cx="160" cy="752" r="10" fill="#8A8880" />
+      <circle cx="160" cy="752" r="4" fill="#4A4840" />
+      <circle cx="260" cy="752" r="18" fill="#6A6860" stroke="#4A4840" strokeWidth="2" />
+      <circle cx="260" cy="752" r="10" fill="#8A8880" />
+      <circle cx="260" cy="752" r="4" fill="#4A4840" />
+      <circle cx="340" cy="752" r="18" fill="#6A6860" stroke="#4A4840" strokeWidth="2" />
+      <circle cx="340" cy="752" r="10" fill="#8A8880" />
+      <circle cx="340" cy="752" r="4" fill="#4A4840" />
+      <circle cx="440" cy="752" r="18" fill="#6A6860" stroke="#4A4840" strokeWidth="2" />
+      <circle cx="440" cy="752" r="10" fill="#8A8880" />
+      <circle cx="440" cy="752" r="4" fill="#4A4840" />
+      {/* TAMPONAMENTI */}
+      <rect x="96" y="695" width="16" height="24" rx="3" fill="#8A9099" stroke="#7A8290" strokeWidth="1.2" />
+      <rect x="488" y="695" width="16" height="24" rx="3" fill="#8A9099" stroke="#7A8290" strokeWidth="1.2" />
+      {/* STRUTTURA PORTANTE */}
+      <rect x="210" y="200" width="14" height="466" rx="2" fill="#9A9FA8" stroke="#7A8290" strokeWidth="1.2" />
+      <rect x="376" y="200" width="14" height="466" rx="2" fill="#9A9FA8" stroke="#7A8290" strokeWidth="1.2" />
+      <rect x="210" y="240" width="180" height="8" rx="1" fill="#8A9099" opacity="0.6" />
+      <rect x="210" y="320" width="180" height="8" rx="1" fill="#8A9099" opacity="0.6" />
+      <rect x="210" y="420" width="180" height="8" rx="1" fill="#8A9099" opacity="0.6" />
+      <rect x="210" y="520" width="180" height="8" rx="1" fill="#8A9099" opacity="0.6" />
+      <rect x="210" y="610" width="180" height="8" rx="1" fill="#8A9099" opacity="0.6" />
+      <line x1="224" y1="200" x2="390" y2="248" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="390" y1="200" x2="224" y2="248" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="224" y1="248" x2="390" y2="328" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="390" y1="248" x2="224" y2="328" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="224" y1="328" x2="390" y2="428" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="390" y1="328" x2="224" y2="428" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="224" y1="428" x2="390" y2="528" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="390" y1="428" x2="224" y2="528" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="224" y1="528" x2="390" y2="618" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      <line x1="390" y1="528" x2="224" y2="618" stroke="#8A9099" strokeWidth="2" opacity="0.4" />
+      {/* SILO */}
+      <ellipse cx="300" cy="148" rx="72" ry="18" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="228" y="148" width="144" height="140" fill="#D0D5DC" stroke="#8A9099" strokeWidth="2" />
+      <rect x="228" y="148" width="24" height="140" fill="#E0E5EC" opacity="0.5" />
+      <rect x="348" y="148" width="24" height="140" fill="#A8ADB4" opacity="0.4" />
+      <rect x="228" y="190" width="144" height="5" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      <rect x="228" y="235" width="144" height="5" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      <rect x="228" y="280" width="144" height="5" rx="1" fill="#B0B8C4" stroke="#8A9099" strokeWidth="0.5" />
+      <polygon points="228,288 372,288 340,340 260,340" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="228" y="284" width="144" height="7" rx="1" fill="#9A9FA8" stroke="#8A9099" strokeWidth="1" />
+      {/* FILTRO */}
+      <rect x="272" y="82" width="56" height="72" rx="8" fill="#C8CDD4" stroke="#8A9099" strokeWidth="2" />
+      <rect x="272" y="82" width="14" height="72" rx="8" fill="#D8DDE4" opacity="0.6" />
+      <rect x="266" y="70" width="68" height="16" rx="4" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="272" y="58" width="56" height="16" rx="4" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.2" />
+      <polygon points="272,154 328,154 316,170 284,170" fill="#B0B8C4" stroke="#8A9099" strokeWidth="1.5" />
+      {/* PROBOSCIDE */}
+      <rect x="294" y="30" width="12" height="30" rx="3" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.5" />
+      <ellipse cx="300" cy="30" rx="14" ry="5" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.2" />
+      <path d="M300 30 Q300 14 320 12 Q360 8 400 10" fill="none" stroke="#B8BEC6" strokeWidth="10" strokeLinecap="round" />
+      <path d="M300 30 Q300 14 320 12 Q360 8 400 10" fill="none" stroke="#D0D5DC" strokeWidth="4" strokeLinecap="round" opacity="0.6" />
+      {/* TUBAZIONI */}
+      <rect x="420" y="50" width="16" height="620" rx="3" fill="#B8BEC6" stroke="#8A9099" strokeWidth="1.5" />
+      <rect x="420" y="50" width="5" height="620" fill="#D0D5DC" opacity="0.55" />
+      <rect x="440" y="50" width="12" height="600" rx="3" fill="#B0B8C4" stroke="#8A9099" strokeWidth="1.2" />
+      <rect x="417" y="130" width="38" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      <rect x="417" y="230" width="38" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      <rect x="417" y="330" width="38" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      <rect x="417" y="430" width="38" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      <rect x="417" y="530" width="38" height="5" rx="1" fill="#8A9099" opacity="0.65" />
+      <line x1="470" y1="80" x2="470" y2="640" stroke="#8A9099" strokeWidth="2" opacity="0.55" />
+      <line x1="460" y1="80" x2="460" y2="640" stroke="#8A9099" strokeWidth="2" opacity="0.55" />
+      <line x1="460" y1="110" x2="470" y2="110" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="150" x2="470" y2="150" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="190" x2="470" y2="190" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="230" x2="470" y2="230" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="270" x2="470" y2="270" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="310" x2="470" y2="310" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="360" x2="470" y2="360" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="400" x2="470" y2="400" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="440" x2="470" y2="440" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="480" x2="470" y2="480" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="520" x2="470" y2="520" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="560" x2="470" y2="560" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      <line x1="460" y1="600" x2="470" y2="600" stroke="#8A9099" strokeWidth="1.5" opacity="0.6" />
+      {/* BRACCIO TELESCOPICO */}
+      <rect x="282" y="340" width="36" height="100" rx="5" fill="#B8BEC6" stroke="#8A9099" strokeWidth="2" />
+      <rect x="282" y="340" width="10" height="100" fill="#D0D5DC" opacity="0.5" />
+      <rect x="289" y="424" width="22" height="80" rx="4" fill="#C8CDD4" stroke="#8A9099" strokeWidth="1.8" />
+      <rect x="294" y="488" width="12" height="90" rx="3" fill="#D0D5DC" stroke="#8A9099" strokeWidth="1.5" />
+      {/* CALZA GOMMA */}
+      <ellipse cx="300" cy="580" rx="12" ry="5" fill="#404850" stroke="#303840" strokeWidth="1.5" opacity="0.85" />
+      <rect x="289" y="576" width="22" height="12" rx="3" fill="#404850" stroke="#303840" strokeWidth="1.2" opacity="0.75" />
+      <ellipse cx="300" cy="588" rx="10" ry="5" fill="#303840" opacity="0.7" />
+      {/* VALVOLA */}
+      <rect x="290" y="330" width="20" height="14" rx="2" fill="#9A9FA8" stroke="#7A8290" strokeWidth="1.2" />
+      {/* QUADRO COMANDO */}
+      <rect x="500" y="440" width="80" height="110" rx="6" fill="#C8CDD4" stroke="#8A9099" strokeWidth="2" />
+      <rect x="500" y="440" width="80" height="22" rx="6" fill="#8A9099" />
+      <rect x="510" y="470" width="60" height="30" rx="3" fill="#2A3840" stroke="#1A2830" strokeWidth="1" />
+      <circle cx="520" cy="516" r="6" fill="#C03020" stroke="#902010" strokeWidth="1.2" />
+      <circle cx="540" cy="516" r="6" fill="#208040" stroke="#106030" strokeWidth="1.2" />
+      <circle cx="560" cy="516" r="6" fill="#D09020" stroke="#A06010" strokeWidth="1.2" />
+      <rect x="510" y="528" width="60" height="12" rx="3" fill="#A0A8B2" stroke="#8A9099" strokeWidth="1" />
+      <path d="M500 500 Q480 500 470 480" fill="none" stroke="#6A7280" strokeWidth="2.5" strokeLinecap="round" />
+      {/* SUOLO */}
+      <rect x="0" y="775" width="680" height="45" fill="#B8B4A8" opacity="0.38" />
+      <line x1="0" y1="775" x2="680" y2="775" stroke="#A0998A" strokeWidth="2.5" />
+
+      {CARICO_TRENO_HOTSPOTS.map((spot) => {
+        const status = getSubStatus(
+          props.area.key,
+          spot.key,
+          props.area.components.find((item) => item.key === spot.key)?.base ?? props.area.base,
+          props.snapshot,
+        );
+        const active = props.currentSub === spot.key;
+        const cx = spot.dotX ?? (spot.x + spot.width / 2);
+        const cy = spot.dotY ?? (spot.y + spot.height / 2);
+        const lx = spot.labelX as number;
+        const ly = spot.labelY as number;
+        return (
+          <g
+            key={spot.key}
+            className={`eur-hotspot ${active ? "active" : ""}`}
+            onClick={() => props.onSelectSub(spot.key)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                props.onSelectSub(spot.key);
+              }
+            }}
+            style={{ cursor: "pointer" }}
+          >
+            <line x1={cx} y1={cy} x2={lx} y2={ly} stroke={STATUS_COLORS[status]} strokeWidth="1" strokeDasharray="4 3" opacity="0.7" />
+            <circle cx={cx} cy={cy} r="7" fill={STATUS_COLORS[status]} stroke={active ? "#0f6fff" : "white"} strokeWidth={active ? "3" : "1.5"} />
+            <circle cx={cx} cy={cy} r="18" fill="transparent" />
+            <text x={lx} y={ly - 6} className="eur-hotspot-label" fontSize="12" fill="var(--color-text-primary)" fontWeight={active ? "600" : "400"}>
+              {spot.label}
+            </text>
+            <text x={lx} y={ly + 8} className="eur-hotspot-status" fontSize="11" fill={STATUS_COLORS[status]}>
+              {STATUS_LABELS[status]}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function statusLegendItems() {
   return [
     { label: "Manutenzione da fare", color: STATUS_COLORS.maint },
@@ -1290,6 +1788,7 @@ const ANALYZING_MESSAGES = [
 function RelazioniUpload(props: {
   state: RelazioniTabState;
   onFileSelect: (file: File) => void;
+  onDocumentoTipoChange: (tipo: "relazione" | "ricambi") => void;
   onAnalyze: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1304,6 +1803,28 @@ function RelazioniUpload(props: {
 
   return (
     <div className="eur-relazioni-upload">
+      <div className="eur-relazioni-tipo-selector">
+        <label>
+          <input
+            type="radio"
+            name="documentoTipo"
+            value="relazione"
+            checked={props.state.documentoTipo === "relazione"}
+            onChange={() => props.onDocumentoTipoChange("relazione")}
+          />
+          {" "}Relazione di manutenzione
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="documentoTipo"
+            value="ricambi"
+            checked={props.state.documentoTipo === "ricambi"}
+            onChange={() => props.onDocumentoTipoChange("ricambi")}
+          />
+          {" "}Lista ricambi
+        </label>
+      </div>
       <div
         className={`eur-relazioni-dropzone${dragOver ? " drag-over" : ""}`}
         onDragOver={(e) => {
@@ -1903,16 +2424,48 @@ function RelazioniReview(props: {
 
 function RelazioneStoricoItem(props: { relazione: EuromeccRelazioneDoc }) {
   const r = props.relazione;
+  const isRelazione = r.doneCount > 0 || r.pendingCount > 0;
+  const isRicambi = !!r.ordineId;
+  const hasFileImported = !!(r.fileStoragePath || r.fileName);
   return (
     <article className="eur-relazioni-storico-item">
       <div className="eur-relazioni-storico-item-main">
         <span className="eur-relazioni-storico-date">{r.dataIntervento}</span>
         <span className="eur-relazioni-storico-tecnici">{r.tecnici.join(", ")}</span>
         <span className="eur-relazioni-storico-counts">
-          {r.doneCount} lavori registrati &middot; {r.pendingCount} interventi futuri
+          {r.doneCount} lavori &middot; {r.pendingCount} interventi futuri
         </span>
-        {r.statoImportazione === "bozza" ? (
+        {isRelazione ? (
+          <span className="eur-mini-badge eur-mini-badge--info">Relazione</span>
+        ) : isRicambi ? (
+          <span className="eur-mini-badge eur-mini-badge--ok">Lista ricambi</span>
+        ) : (
           <span className="eur-mini-badge eur-mini-badge--media">Bozza</span>
+        )}
+        {r.ordineId ? (
+          <span className="eur-mini-badge eur-mini-badge--ok">
+            Ordine creato &middot; {r.ordineMateriali} materiali
+          </span>
+        ) : null}
+      </div>
+      <div className="eur-relazioni-storico-item-actions">
+        {r.fileUrl ? (
+          <a
+            href={r.fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="eur-btn eur-btn--ghost eur-btn--sm"
+          >
+            Apri documento
+          </a>
+        ) : hasFileImported ? (
+          <button
+            className="eur-btn eur-btn--ghost eur-btn--sm"
+            disabled
+            title="Documento non disponibile"
+          >
+            Apri documento
+          </button>
         ) : null}
       </div>
     </article>
@@ -1921,19 +2474,129 @@ function RelazioneStoricoItem(props: { relazione: EuromeccRelazioneDoc }) {
 
 function RelazioniStorico(props: { relazioni: EuromeccRelazioneDoc[] }) {
   if (props.relazioni.length === 0) return null;
+  const relazioni = props.relazioni.filter((r) => r.doneCount > 0 || r.pendingCount > 0);
+  const ricambi = props.relazioni.filter((r) => !!r.ordineId);
   return (
-    <section className="eur-relazioni-storico">
+    <>
+      {relazioni.length > 0 && (
+        <section className="eur-relazioni-storico">
+          <div className="eur-section-head">
+            <div>
+              <h3>Relazioni di manutenzione</h3>
+            </div>
+          </div>
+          <div className="eur-relazioni-storico-list">
+            {relazioni.map((r) => (
+              <RelazioneStoricoItem key={r.id} relazione={r} />
+            ))}
+          </div>
+        </section>
+      )}
+      {ricambi.length > 0 && (
+        <section className="eur-relazioni-storico">
+          <div className="eur-section-head">
+            <div>
+              <h3>Liste ricambi</h3>
+            </div>
+          </div>
+          <div className="eur-relazioni-storico-list">
+            {ricambi.map((r) => (
+              <RelazioneStoricoItem key={r.id} relazione={r} />
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function RicambiReviewUI(props: {
+  payload: RicambiAiPayload;
+  fornitore: string;
+  dataOrdine: string;
+  saving: boolean;
+  onToggleItem: (i: number) => void;
+  onUpdateItem: (i: number, patch: Partial<RicambiAiItem>) => void;
+  onFornitorChange: (v: string) => void;
+  onDataOrdineChange: (v: string) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onCreaOrdine: () => void;
+}) {
+  const { payload } = props;
+  return (
+    <div className="eur-ricambi-review">
       <div className="eur-section-head">
         <div>
-          <h3>Relazioni importate</h3>
+          <h3>Lista ricambi — {formatDateUI(payload.dataDocumento)}</h3>
+          <p>Azienda: {payload.azienda} &middot; Fornitore ordine: {props.fornitore}</p>
         </div>
       </div>
-      <div className="eur-relazioni-storico-list">
-        {props.relazioni.map((r) => (
-          <RelazioneStoricoItem key={r.id} relazione={r} />
+      <div className="eur-ricambi-items">
+        {payload.items.map((item, i) => (
+          <div
+            key={i}
+            className={`eur-ricambi-item${item.selected ? "" : " eur-ricambi-item--deselected"}`}
+          >
+            <input
+              type="checkbox"
+              checked={item.selected}
+              onChange={() => props.onToggleItem(i)}
+            />
+            <input
+              type="text"
+              value={item.descrizione}
+              className="eur-ricambi-desc"
+              onChange={(e) => props.onUpdateItem(i, { descrizione: e.target.value })}
+            />
+            <input
+              type="number"
+              value={item.quantita}
+              className="eur-ricambi-qty"
+              min={1}
+              onChange={(e) => props.onUpdateItem(i, { quantita: Number(e.target.value) })}
+            />
+            <span className="eur-ricambi-unit">{item.unita}</span>
+          </div>
         ))}
       </div>
-    </section>
+      <div className="eur-ricambi-bulk-actions">
+        <button type="button" className="eur-btn-ghost-sm" onClick={props.onDeselectAll}>
+          Deseleziona tutto
+        </button>
+        <button type="button" className="eur-btn-ghost-sm" onClick={props.onSelectAll}>
+          Seleziona tutto
+        </button>
+      </div>
+      <div className="eur-ricambi-order-fields">
+        <label>
+          Fornitore
+          <input
+            type="text"
+            value={props.fornitore}
+            onChange={(e) => props.onFornitorChange(e.target.value)}
+          />
+        </label>
+        <label>
+          Data ordine
+          <input
+            type="date"
+            value={props.dataOrdine}
+            onChange={(e) => props.onDataOrdineChange(e.target.value)}
+          />
+        </label>
+      </div>
+      <div className="eur-ricambi-actions">
+        <button
+          type="button"
+          className="eur-btn-primary"
+          disabled={props.saving || payload.items.filter((i) => i.selected).length === 0}
+          onClick={props.onCreaOrdine}
+        >
+          {props.saving ? "Salvataggio..." : "Crea ordine in Materiali da ordinare"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1947,9 +2610,13 @@ function RelazioniTab() {
     noteGenerali: "",
     bozzaId: null,
     error: null,
+    documentoTipo: "relazione",
+    ricambiPayload: null,
   });
   const [saving, setSaving] = useState(false);
   const [storico, setStorico] = useState<EuromeccRelazioneDoc[]>([]);
+  const [ricambiFornitore, setRicambiFornitore] = useState("Euromecc");
+  const [ricambiDataOrdine, setRicambiDataOrdine] = useState("");
 
   useEffect(() => {
     getDocs(collection(db, "euromecc_relazioni"))
@@ -1974,6 +2641,90 @@ function RelazioniTab() {
   async function handleAnalyze() {
     if (!state.file || !state.fileType) return;
     setState((prev) => ({ ...prev, phase: "analyzing", error: null }));
+
+    if (state.documentoTipo === "ricambi") {
+      try {
+        const prompt = `Sei un assistente tecnico specializzato in impianti industriali.
+Analizza il seguente elenco materiali/ricambi e restituisci SOLO un oggetto JSON,
+senza testo aggiuntivo, senza markdown, senza backtick.
+
+STRUTTURA JSON RICHIESTA:
+{
+  "dataDocumento": "yyyy-MM-dd",
+  "azienda": "nome azienda destinataria",
+  "items": [
+    {
+      "descrizione": "descrizione materiale",
+      "quantita": numero,
+      "unita": "pz|m|kg|lt|altro",
+      "codiceArticolo": "codice se presente altrimenti stringa vuota",
+      "note": "note aggiuntive se presenti altrimenti stringa vuota"
+    }
+  ]
+}
+
+REGOLE:
+- Estrai TUTTI i materiali elencati, uno per uno
+- Se la quantità non è specificata usa 1
+- Se l'unità non è specificata usa "pz"
+- dataDocumento deve essere la data del documento
+- azienda deve essere il nome dell'azienda destinataria (non Euromecc)
+- Non inventare materiali non presenti nel documento`;
+
+        let apiPayload: { inputText?: string; imageBase64?: string };
+        if (state.fileType === "image") {
+          const b64 = await fileToBase64(state.file);
+          apiPayload = { inputText: prompt, imageBase64: b64 };
+        } else {
+          const pdfBase64 = await fileToBase64(state.file);
+          apiPayload = { inputText: prompt, imageBase64: pdfBase64 };
+        }
+
+        const rawResult = await callPdfAiEnhance(apiPayload);
+        const cleaned = rawResult
+          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+          .replace(/```json/g, "")
+          .replace(/```/g, "")
+          .trim();
+
+        const parsed = JSON.parse(cleaned) as {
+          dataDocumento: string;
+          azienda: string;
+          items: Array<{
+            descrizione: string;
+            quantita: number;
+            unita: string;
+            codiceArticolo: string;
+            note: string;
+          }>;
+        };
+
+        const ricambiPayload: RicambiAiPayload = {
+          dataDocumento: parsed.dataDocumento ?? new Date().toISOString().slice(0, 10),
+          azienda: parsed.azienda ?? "",
+          items: (parsed.items ?? []).map((item) => ({
+            descrizione: item.descrizione ?? "",
+            quantita: item.quantita ?? 1,
+            unita: item.unita ?? "pz",
+            codiceArticolo: item.codiceArticolo ?? "",
+            note: item.note ?? "",
+            selected: true,
+          })),
+        };
+
+        const docDate = ricambiPayload.dataDocumento;
+        setRicambiDataOrdine(docDate);
+        setState((prev) => ({ ...prev, phase: "review", ricambiPayload }));
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          phase: "idle",
+          error: err instanceof Error ? err.message : "Errore durante l'analisi",
+        }));
+      }
+      return;
+    }
+
     try {
       const today = new Date().toISOString().slice(0, 10);
       const dictText = await buildComponentDict();
@@ -2201,6 +2952,87 @@ REGOLE:
     }
   }
 
+  async function handleCreaOrdineRicambiAndSave() {
+    if (!state.ricambiPayload || !state.file || !state.fileType) return;
+    setSaving(true);
+    try {
+      assertCloneWriteAllowed("storageSync.setItemSync", { key: "@ordini" });
+      const ordiniRef = doc(collection(db, "storage"), "@ordini");
+      const snap = await getDoc(ordiniRef);
+      const existing: Ordine[] = snap.exists()
+        ? ((snap.data()?.value as Ordine[]) ?? [])
+        : [];
+
+      const selectedItems = state.ricambiPayload.items.filter((i) => i.selected);
+      const ordineId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      const effectiveDataOrdine =
+        ricambiDataOrdine || new Date().toISOString().slice(0, 10);
+
+      const nuovoOrdine = {
+        id: ordineId,
+        idFornitore: "euromecc",
+        nomeFornitore: ricambiFornitore,
+        dataOrdine: effectiveDataOrdine,
+        materiali: selectedItems.map((item) => ({
+          id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+          descrizione: item.codiceArticolo
+            ? `${item.descrizione} [${item.codiceArticolo}]`
+            : item.descrizione,
+          quantita: item.quantita,
+          unita: item.unita,
+          arrivato: false,
+        })),
+        arrivato: false,
+      };
+
+      await setDoc(ordiniRef, { value: [...existing, nuovoOrdine] }, { merge: true });
+
+      await addDoc(collection(db, "euromecc_relazioni"), {
+        fileName: state.file.name,
+        fileType: state.fileType,
+        dataIntervento: effectiveDataOrdine,
+        tecnici: [],
+        note: `Lista ricambi — ${state.ricambiPayload.azienda}`,
+        statoImportazione: "confermata",
+        doneCount: 0,
+        pendingCount: 0,
+        extraComponentsCount: 0,
+        fileUrl: null,
+        fileStoragePath: null,
+        fileSize: null,
+        ordineId,
+        ordineMateriali: selectedItems.length,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setState({
+        phase: "idle",
+        file: null,
+        filePreviewUrl: null,
+        fileType: null,
+        payload: null,
+        noteGenerali: "",
+        bozzaId: null,
+        error: null,
+        documentoTipo: "relazione",
+        ricambiPayload: null,
+      });
+      setRicambiFornitore("Euromecc");
+      setRicambiDataOrdine("");
+
+      const storicoSnap = await getDocs(collection(db, "euromecc_relazioni"));
+      const docs = storicoSnap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<EuromeccRelazioneDoc, "id">),
+      }));
+      docs.sort((a, b) => b.dataIntervento.localeCompare(a.dataIntervento));
+      setStorico(docs);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleConferma() {
     if (!state.payload || !state.file || !state.fileType) return;
     setSaving(true);
@@ -2283,6 +3115,26 @@ REGOLE:
         pendingCount++;
       }
 
+      // Feature A: Upload documento originale su Storage
+      let fileUrl: string | null = null;
+      let fileStoragePath: string | null = null;
+      let fileSize: number | null = null;
+
+      if (state.file) {
+        try {
+          const uploadRelazioneId = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+          const storagePath = `euromecc/relazioni/${uploadRelazioneId}/${Date.now()}_${state.file.name}`;
+          assertCloneWriteAllowed("storage.uploadBytes", { path: storagePath });
+          const storageRef = ref(storage, storagePath);
+          await uploadBytes(storageRef, state.file);
+          fileUrl = await getDownloadURL(storageRef);
+          fileStoragePath = storagePath;
+          fileSize = state.file.size;
+        } catch {
+          // upload fallisce silenziosamente — la relazione viene salvata comunque
+        }
+      }
+
       await addDoc(collection(db, "euromecc_relazioni"), {
         fileName: state.file.name,
         fileType: state.fileType,
@@ -2293,6 +3145,9 @@ REGOLE:
         doneCount,
         pendingCount,
         extraComponentsCount,
+        fileUrl,
+        fileStoragePath,
+        fileSize,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -2306,6 +3161,8 @@ REGOLE:
         noteGenerali: "",
         bozzaId: null,
         error: null,
+        documentoTipo: "relazione",
+        ricambiPayload: null,
       });
 
       const snap = await getDocs(collection(db, "euromecc_relazioni"));
@@ -2336,6 +3193,9 @@ REGOLE:
           <RelazioniUpload
             state={state}
             onFileSelect={handleFileSelect}
+            onDocumentoTipoChange={(tipo) =>
+              setState((prev) => ({ ...prev, documentoTipo: tipo }))
+            }
             onAnalyze={() => void handleAnalyze()}
           />
           <RelazioniStorico relazioni={storico} />
@@ -2343,37 +3203,722 @@ REGOLE:
       ) : state.phase === "analyzing" ? (
         <RelazioniAnalyzing />
       ) : state.phase === "review" || state.phase === "saving" ? (
-        <RelazioniReview
-          state={state}
-          saving={saving}
-          onToggleMatched={handleToggleMatched}
-          onUpdateMatched={handleUpdateMatched}
-          onUpdatePartial={handleUpdatePartial}
-          onUpdatePending={handleUpdatePending}
-          onNoteChange={(v) => setState((prev) => ({ ...prev, noteGenerali: v }))}
-          onSaveBozza={() => void handleSaveBozza()}
-          onConferma={() => void handleConferma()}
-        />
+        state.documentoTipo === "ricambi" && state.ricambiPayload ? (
+          <RicambiReviewUI
+            payload={state.ricambiPayload}
+            fornitore={ricambiFornitore}
+            dataOrdine={ricambiDataOrdine}
+            saving={saving}
+            onToggleItem={(i) =>
+              setState((prev) => {
+                if (!prev.ricambiPayload) return prev;
+                const items = prev.ricambiPayload.items.map((it, idx) =>
+                  idx === i ? { ...it, selected: !it.selected } : it,
+                );
+                return { ...prev, ricambiPayload: { ...prev.ricambiPayload, items } };
+              })
+            }
+            onUpdateItem={(i, patch) =>
+              setState((prev) => {
+                if (!prev.ricambiPayload) return prev;
+                const items = prev.ricambiPayload.items.map((it, idx) =>
+                  idx === i ? { ...it, ...patch } : it,
+                );
+                return { ...prev, ricambiPayload: { ...prev.ricambiPayload, items } };
+              })
+            }
+            onFornitorChange={setRicambiFornitore}
+            onDataOrdineChange={setRicambiDataOrdine}
+            onSelectAll={() =>
+              setState((prev) => {
+                if (!prev.ricambiPayload) return prev;
+                const items = prev.ricambiPayload.items.map((it) => ({
+                  ...it,
+                  selected: true,
+                }));
+                return { ...prev, ricambiPayload: { ...prev.ricambiPayload, items } };
+              })
+            }
+            onDeselectAll={() =>
+              setState((prev) => {
+                if (!prev.ricambiPayload) return prev;
+                const items = prev.ricambiPayload.items.map((it) => ({
+                  ...it,
+                  selected: false,
+                }));
+                return { ...prev, ricambiPayload: { ...prev.ricambiPayload, items } };
+              })
+            }
+            onCreaOrdine={() => void handleCreaOrdineRicambiAndSave()}
+          />
+        ) : (
+          <RelazioniReview
+            state={state}
+            saving={saving}
+            onToggleMatched={handleToggleMatched}
+            onUpdateMatched={handleUpdateMatched}
+            onUpdatePartial={handleUpdatePartial}
+            onUpdatePending={handleUpdatePending}
+            onNoteChange={(v) => setState((prev) => ({ ...prev, noteGenerali: v }))}
+            onSaveBozza={() => void handleSaveBozza()}
+            onConferma={() => void handleConferma()}
+          />
+        )
       ) : null}
     </div>
   );
 }
 
-async function copyText(value: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
+// --- RIEPILOGO TAB ---
+
+async function svgToImageData(svgElement: SVGElement): Promise<string | null> {
+  try {
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svgElement);
+    const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    return await new Promise<string>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || 1480;
+        canvas.height = img.naturalHeight || 860;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("no ctx")); return; }
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("img load failed")); };
+      img.src = url;
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function generatePdfRiepilogo(
+  snapshot: EuromeccSnapshot,
+  range: EuromeccRange,
+  cards: RiepilogoCardData[],
+): Promise<void> {
+  const { default: JsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
+
+  const doc = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageW = 210;
+  const pageH = 297;
+  const margin = 15;
+  let y = margin;
+
+  const checkPage = (needed: number) => {
+    if (y + needed > pageH - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  };
+
+  // Pagina 1 — intestazione
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text("EUROMECC — RIEPILOGO IMPIANTO", margin, y);
+  y += 8;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const rangeLabel = RANGE_OPTIONS.find((r) => r.value === range)?.label ?? "Tutto";
+  doc.text(
+    `Periodo: ${rangeLabel} | Generato il: ${formatDateUI(new Date().toISOString().slice(0, 10))}`,
+    margin,
+    y,
+  );
+  y += 10;
+
+  // KPI row
+  const kpiValues = [
+    { label: "Da fare", value: String(cards.reduce((s, c) => s + c.pendingItems.length, 0)) },
+    { label: "Problemi", value: String(cards.reduce((s, c) => s + c.openIssues.length, 0)) },
+    { label: "Fatte", value: String(cards.reduce((s, c) => s + c.doneItems.length, 0)) },
+    { label: "Urgenze", value: String(cards.filter((c) => c.hasUrgency).length) },
+  ];
+  const kpiW = (pageW - margin * 2) / 4;
+  kpiValues.forEach((kpi, i) => {
+    const x = margin + i * kpiW;
+    doc.setFillColor(245, 245, 245);
+    doc.rect(x, y, kpiW - 2, 16, "F");
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(kpi.value, x + kpiW / 2 - 1, y + 9, { align: "center" });
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(kpi.label, x + kpiW / 2 - 1, y + 14, { align: "center" });
+  });
+  y += 22;
+
+  // Mappa SVG come immagine
+  const mapEl = document.querySelector(".eur-map") as SVGElement | null;
+  if (mapEl) {
+    try {
+      const imgData = await svgToImageData(mapEl);
+      if (imgData) {
+        const imgW = pageW - margin * 2;
+        const imgH = imgW * (860 / 1480);
+        checkPage(imgH + 5);
+        doc.addImage(imgData, "JPEG", margin, y, imgW, imgH);
+        y += imgH + 8;
+      }
+    } catch {
+      y += 2;
+    }
   }
 
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "absolute";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
+  // Legenda colori
+  checkPage(10);
+  const legendItems = statusLegendItems();
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  let lx = margin;
+  for (const item of legendItems) {
+    const rgb = item.color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+    if (rgb) {
+      doc.setFillColor(parseInt(rgb[1], 16), parseInt(rgb[2], 16), parseInt(rgb[3], 16));
+      doc.circle(lx + 2, y + 2, 2, "F");
+    }
+    doc.text(item.label, lx + 5, y + 3.5);
+    lx += 32;
+    if (lx > pageW - margin - 20) {
+      lx = margin;
+      y += 7;
+    }
+  }
+  y += 8;
+
+  // Pagine dettaglio per area
+  for (const card of cards) {
+    doc.addPage();
+    y = margin;
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${card.areaLabel} — ${card.areaCode}`, margin, y);
+    y += 7;
+
+    // SVG schema tecnico area
+    const svgEl = document.querySelector(
+      `[data-area-key="${card.areaKey}"] .eur-silo-diagram`,
+    ) as SVGElement | null;
+    if (svgEl) {
+      try {
+        const imgData = await svgToImageData(svgEl);
+        if (imgData) {
+          const imgW = 80;
+          const imgH = imgW * (700 / 680);
+          checkPage(imgH + 5);
+          doc.addImage(imgData, "JPEG", margin, y, imgW, imgH);
+          y += imgH + 5;
+        }
+      } catch {
+        y += 2;
+      }
+    }
+
+    if (card.pendingItems.length > 0) {
+      checkPage(20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Da fare", margin, y);
+      y += 4;
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [["Componente", "Lavoro", "Priorità", "Scadenza"]],
+        body: card.pendingItems.map((p) => [
+          p.subLabel,
+          p.title,
+          PRIORITY_LABELS[p.priority],
+          p.dueDate ? formatDateUI(p.dueDate) : "—",
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [59, 130, 246] },
+      });
+      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+    }
+
+    if (card.doneItems.length > 0) {
+      checkPage(20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Fatte nel periodo", margin, y);
+      y += 4;
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [["Componente", "Lavoro", "Data", "Tecnico"]],
+        body: card.doneItems.map((d) => [d.subLabel, d.title, formatDateUI(d.doneDate), d.by]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [34, 197, 94] },
+      });
+      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+    }
+
+    if (card.openIssues.length > 0) {
+      checkPage(20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Problemi aperti", margin, y);
+      y += 4;
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [["Componente", "Descrizione", "Tipo", "Dal"]],
+        body: card.openIssues.map((iss) => [
+          iss.subLabel,
+          iss.title,
+          ISSUE_TYPE_LABELS[iss.type],
+          formatDateUI(iss.reportedAt),
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [239, 68, 68] },
+      });
+      y = (doc as { lastAutoTable: { finalY: number } } & typeof doc).lastAutoTable.finalY + 6;
+    }
+  }
+
+  // Ultima pagina — urgenze riepilogo
+  const urgentCards = cards.filter((c) => c.hasUrgency);
+  if (urgentCards.length > 0) {
+    doc.addPage();
+    y = margin;
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("URGENZE RIEPILOGO", margin, y);
+    y += 8;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    for (const card of urgentCards) {
+      const urgentPending = card.pendingItems.filter((p) => p.priority === "alta");
+      const urgentIssues = card.openIssues.filter((i) => i.type !== "osservazione");
+      for (const p of urgentPending) {
+        checkPage(6);
+        doc.text(`[MANUTENZIONE] ${card.areaLabel} / ${p.subLabel}: ${p.title}`, margin, y);
+        y += 5;
+      }
+      for (const iss of urgentIssues) {
+        checkPage(6);
+        doc.text(`[PROBLEMA] ${card.areaLabel} / ${iss.subLabel}: ${iss.title}`, margin, y);
+        y += 5;
+      }
+    }
+    y += 5;
+    doc.setFontSize(8);
+    doc.text(
+      `Firma: _______________________ Data: ${formatDateUI(new Date().toISOString().slice(0, 10))}`,
+      margin,
+      y,
+    );
+  }
+
+  void snapshot; // snapshot passato per eventuali estensioni future
+  const fileName = `euromecc-riepilogo-${new Date().toISOString().slice(0, 10)}.pdf`;
+  doc.save(fileName);
+}
+
+function buildRiepilogoCards(
+  snapshot: EuromeccSnapshot,
+  reportPending: EuromeccPendingTask[],
+  reportDone: EuromeccDoneTask[],
+  reportIssues: EuromeccIssue[],
+): RiepilogoCardData[] {
+  return EUROMECC_AREA_KEYS.map((areaKey) => {
+    const area = EUROMECC_AREAS[areaKey];
+    const pendingItems = reportPending.filter((item) => item.areaKey === areaKey);
+    const doneItems = reportDone.filter((item) => item.areaKey === areaKey);
+    const openIssues = reportIssues.filter((item) => item.areaKey === areaKey);
+    const hasUrgency =
+      pendingItems.some((item) => item.priority === "alta") ||
+      openIssues.some((item) => item.type !== "osservazione");
+    const status = getAreaStatus(areaKey, [...area.components], snapshot);
+    return {
+      areaKey,
+      areaLabel: area.title,
+      areaCode: area.code,
+      areaType: area.type,
+      status,
+      pendingItems,
+      doneItems,
+      openIssues,
+      hasUrgency,
+    };
+  }).filter(
+    (card) =>
+      card.pendingItems.length > 0 || card.doneItems.length > 0 || card.openIssues.length > 0,
+  );
+}
+
+function RiepilogoMappaImpianto(props: {
+  snapshot: EuromeccSnapshot;
+  reportPending: EuromeccPendingTask[];
+  reportDone: EuromeccDoneTask[];
+  reportIssues: EuromeccIssue[];
+}) {
+  const [selectedAreaKey, setSelectedAreaKey] = useState<string | null>(null);
+  const legend = statusLegendItems();
+
+  const selectedArea = selectedAreaKey ? EUROMECC_AREAS[selectedAreaKey] ?? null : null;
+  const areaPending = selectedAreaKey ? props.reportPending.filter((p) => p.areaKey === selectedAreaKey) : [];
+  const areaDone = selectedAreaKey ? props.reportDone.filter((d) => d.areaKey === selectedAreaKey) : [];
+  const areaIssues = selectedAreaKey ? props.reportIssues.filter((i) => i.areaKey === selectedAreaKey) : [];
+
+  return (
+    <div className="eur-riepilogo-mappa-wrapper">
+      <div className="eur-riepilogo-mappa">
+        <MapSvg snapshot={props.snapshot} currentArea={selectedAreaKey ?? ""} onSelectArea={setSelectedAreaKey} />
+        <div className="eur-riepilogo-legenda">
+          {legend.map((item) => (
+            <span key={item.label} className="eur-riepilogo-legenda-item">
+              <span className="eur-riepilogo-legenda-dot" style={{ background: item.color }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      {selectedArea ? (
+        <div className="eur-riepilogo-mappa-detail">
+          <div className="eur-riepilogo-mappa-detail-header">
+            <span className="eur-th">{selectedArea.title}</span>
+            <span className="eur-ts">{selectedArea.code}</span>
+            <button onClick={() => setSelectedAreaKey(null)} className="eur-btn-close">×</button>
+          </div>
+          {areaPending.length > 0 && (
+            <div className="eur-riepilogo-mappa-section">
+              <p className="eur-ts eur-label-amber">Da fare ({areaPending.length})</p>
+              {areaPending.map((p) => (
+                <div key={p.id} className="eur-riepilogo-mappa-item">
+                  <span className="eur-ts">{p.subLabel} — {p.title}</span>
+                  <span className="eur-ts">{PRIORITY_LABELS[p.priority]}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {areaDone.length > 0 && (
+            <div className="eur-riepilogo-mappa-section">
+              <p className="eur-ts eur-label-green">Fatte recenti</p>
+              {areaDone.slice(0, 5).map((d) => (
+                <div key={d.id} className="eur-riepilogo-mappa-item">
+                  <span className="eur-ts">{d.subLabel} — {d.title}</span>
+                  <span className="eur-ts">{formatDateUI(d.doneDate)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {areaIssues.length > 0 && (
+            <div className="eur-riepilogo-mappa-section">
+              <p className="eur-ts eur-label-red">Problemi aperti</p>
+              {areaIssues.map((i) => (
+                <div key={i.id} className="eur-riepilogo-mappa-item">
+                  <span className="eur-ts">{i.subLabel} — {i.title}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {areaPending.length === 0 && areaDone.length === 0 && areaIssues.length === 0 && (
+            <p className="eur-ts">Nessuna attività registrata per questa area nel periodo selezionato.</p>
+          )}
+        </div>
+      ) : (
+        <p className="eur-ts eur-riepilogo-mappa-hint">Clicca un nodo per vedere il dettaglio dell'area.</p>
+      )}
+    </div>
+  );
+}
+
+function RiepilogoCaricoDiagram({
+  card,
+  snapshot,
+}: {
+  card: RiepilogoCardData;
+  snapshot: EuromeccSnapshot;
+}) {
+  const area = EUROMECC_AREAS[card.areaKey];
+  if (!area) return null;
+
+  const activeSubKeys = new Set([
+    ...card.pendingItems.map((p) => p.subKey),
+    ...card.openIssues.map((i) => i.subKey),
+  ]);
+
+  return (
+    <div className={`eur-riepilogo-card ${card.hasUrgency ? "eur-riepilogo-card--urgency" : ""}`}>
+      <div className="eur-riepilogo-card-header">
+        <div>
+          <strong>{card.areaLabel}</strong>
+          <span className="eur-riepilogo-card-code">{card.areaCode}</span>
+        </div>
+        <span className={badgeClass(card.status)}>{STATUS_LABELS[card.status]}</span>
+      </div>
+      <div className="eur-riepilogo-carico-layout" data-area-key={card.areaKey}>
+        <div className="eur-riepilogo-carico-svg">
+          <div style={{ position: "relative" }}>
+            <CaricoDiagram
+              area={area}
+              snapshot={snapshot}
+              currentSub={null}
+              onSelectSub={() => undefined}
+            />
+            <svg
+              viewBox="0 0 680 700"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                pointerEvents: "none",
+              }}
+              aria-hidden="true"
+            >
+              {CARICO_HOTSPOTS.filter((spot) => activeSubKeys.has(spot.key)).map((spot) => {
+                const hasPending = card.pendingItems.some((p) => p.subKey === spot.key);
+                const color = hasPending ? STATUS_COLORS.maint : STATUS_COLORS.issue;
+                const dotX = spot.dotX ?? spot.x + spot.width / 2;
+                const dotY = spot.dotY ?? spot.y + spot.height / 2;
+                const endX = 640;
+                const endY = dotY;
+                return (
+                  <g key={spot.key}>
+                    <line
+                      x1={dotX}
+                      y1={dotY}
+                      x2={endX}
+                      y2={endY}
+                      stroke={color}
+                      strokeWidth="2.5"
+                      strokeDasharray="6 3"
+                    />
+                    <polygon
+                      points={`${endX},${endY} ${endX - 8},${endY - 4} ${endX - 8},${endY + 4}`}
+                      fill={color}
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+        <div className="eur-riepilogo-carico-list">
+          {card.pendingItems.length > 0 && (
+            <div className="eur-riepilogo-section">
+              <h4>Da fare</h4>
+              <ul>
+                {card.pendingItems.map((item) => (
+                  <li key={item.id}>
+                    <span className="eur-riepilogo-pill eur-riepilogo-pill--priority">
+                      {PRIORITY_LABELS[item.priority]}
+                    </span>
+                    {item.subLabel}: {item.title}
+                    {item.dueDate ? (
+                      <span className="eur-riepilogo-due"> — scad. {formatDateUI(item.dueDate)}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {card.doneItems.length > 0 && (
+            <div className="eur-riepilogo-section">
+              <h4>Fatte</h4>
+              <ul>
+                {card.doneItems.map((item) => (
+                  <li key={item.id}>
+                    {item.subLabel}: {item.title}
+                    <span className="eur-riepilogo-due"> — {formatDateUI(item.doneDate)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {card.openIssues.length > 0 && (
+            <div className="eur-riepilogo-section">
+              <h4>Problemi aperti</h4>
+              <ul>
+                {card.openIssues.map((item) => (
+                  <li key={item.id}>
+                    <span className="eur-riepilogo-pill eur-riepilogo-pill--issue">
+                      {ISSUE_TYPE_LABELS[item.type]}
+                    </span>
+                    {item.subLabel}: {item.title}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RiepilogoAreaCard({ card }: { card: RiepilogoCardData }) {
+  return (
+    <div className={`eur-riepilogo-card ${card.hasUrgency ? "eur-riepilogo-card--urgency" : ""}`}>
+      <div className="eur-riepilogo-card-header">
+        <div>
+          <strong>{card.areaLabel}</strong>
+          <span className="eur-riepilogo-card-code">{card.areaCode}</span>
+        </div>
+        <span className={badgeClass(card.status)}>{STATUS_LABELS[card.status]}</span>
+      </div>
+      {card.pendingItems.length > 0 && (
+        <div className="eur-riepilogo-section">
+          <h4>Da fare</h4>
+          <ul>
+            {card.pendingItems.map((item) => (
+              <li key={item.id}>
+                <span className="eur-riepilogo-pill eur-riepilogo-pill--priority">
+                  {PRIORITY_LABELS[item.priority]}
+                </span>
+                {item.subLabel}: {item.title}
+                {item.dueDate ? (
+                  <span className="eur-riepilogo-due"> — scad. {formatDateUI(item.dueDate)}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {card.doneItems.length > 0 && (
+        <div className="eur-riepilogo-section">
+          <h4>Fatte nel periodo</h4>
+          <ul>
+            {card.doneItems.map((item) => (
+              <li key={item.id}>
+                {item.subLabel}: {item.title}
+                <span className="eur-riepilogo-due">
+                  {" "}
+                  — {formatDateUI(item.doneDate)} — {item.by}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {card.openIssues.length > 0 && (
+        <div className="eur-riepilogo-section">
+          <h4>Problemi aperti</h4>
+          <ul>
+            {card.openIssues.map((item) => (
+              <li key={item.id}>
+                <span className="eur-riepilogo-pill eur-riepilogo-pill--issue">
+                  {ISSUE_TYPE_LABELS[item.type]}
+                </span>
+                {item.subLabel}: {item.title}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RiepilogoTab(props: {
+  snapshot: EuromeccSnapshot;
+  reportRange: EuromeccRange;
+  setReportRange: (r: EuromeccRange) => void;
+  reportKpis: KpiItem[];
+  reportPending: EuromeccPendingTask[];
+  reportDone: EuromeccDoneTask[];
+  reportIssues: EuromeccIssue[];
+}) {
+  const [exporting, setExporting] = useState(false);
+
+  const cards = useMemo(
+    () =>
+      buildRiepilogoCards(
+        props.snapshot,
+        props.reportPending,
+        props.reportDone,
+        props.reportIssues,
+      ),
+    [props.snapshot, props.reportPending, props.reportDone, props.reportIssues],
+  );
+
+  const sortedCards = useMemo(() => {
+    const withUrgency = cards.filter((c) => c.hasUrgency);
+    const withPending = cards.filter((c) => !c.hasUrgency && c.pendingItems.length > 0);
+    const doneOnly = cards.filter(
+      (c) => !c.hasUrgency && c.pendingItems.length === 0 && c.doneItems.length > 0,
+    );
+    return [...withUrgency, ...withPending, ...doneOnly];
+  }, [cards]);
+
+  const handleExportPdf = async () => {
+    setExporting(true);
+    try {
+      await generatePdfRiepilogo(props.snapshot, props.reportRange, sortedCards);
+    } catch (err) {
+      console.error("Errore export PDF riepilogo:", err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="eur-riepilogo-export-bar">
+        <div className="eur-range-switch">
+          {RANGE_OPTIONS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className={props.reportRange === item.value ? "active" : ""}
+              onClick={() => props.setReportRange(item.value)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="eur-riepilogo-export-btn"
+          onClick={() => void handleExportPdf()}
+          disabled={exporting}
+        >
+          {exporting ? "Generazione..." : "Esporta PDF"}
+        </button>
+      </div>
+      <KpiGrid items={props.reportKpis} />
+      <section className="eur-segment eur-riepilogo-mappa-section">
+        <div className="eur-section-head">
+          <div>
+            <h2>Stato impianto</h2>
+            <p>Mappa semaforo in sola lettura — stato corrente di ogni area.</p>
+          </div>
+        </div>
+        <RiepilogoMappaImpianto
+          snapshot={props.snapshot}
+          reportPending={props.reportPending}
+          reportDone={props.reportDone}
+          reportIssues={props.reportIssues}
+        />
+      </section>
+      {sortedCards.length === 0 ? (
+        <div className="eur-empty">Nessuna attivita nel periodo selezionato.</div>
+      ) : (
+        <div className="eur-riepilogo-cards">
+          {sortedCards.map((card) =>
+            card.areaKey === "carico1" ||
+            card.areaKey === "carico2" ||
+            card.areaKey === "caricoRail" ? (
+              <RiepilogoCaricoDiagram key={card.areaKey} card={card} snapshot={props.snapshot} />
+            ) : (
+              <RiepilogoAreaCard key={card.areaKey} card={card} />
+            ),
+          )}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function NextEuromeccPage() {
@@ -2614,11 +4159,6 @@ export default function NextEuromeccPage() {
       reportPending.filter((item) => item.priority === "alta").length +
       reportIssues.filter((item) => item.type !== "osservazione").length,
     [reportIssues, reportPending],
-  );
-
-  const reportText = useMemo(
-    () => (snapshot ? buildReportText(snapshot, reportRange) : ""),
-    [reportRange, snapshot],
   );
 
   const homeKpis = useMemo<KpiItem[]>(
@@ -2946,14 +4486,7 @@ export default function NextEuromeccPage() {
     }
   };
 
-  const handleCopyReport = async () => {
-    try {
-      await copyText(reportText);
-      setNotice("Riepilogo copiato negli appunti.");
-    } catch {
-      setError("Impossibile copiare il riepilogo negli appunti.");
-    }
-  };
+
 
   const handleOpenCementModal = () => {
     if (currentAreaData.type !== "silo") return;
@@ -3682,51 +5215,15 @@ export default function NextEuromeccPage() {
             </>
           ) : null}
           {activeTab === "report" ? (
-            <>
-              <KpiGrid items={reportKpis} />
-              <div className="eur-report-grid">
-                <section className="eur-segment">
-                  <div className="eur-section-head">
-                    <div>
-                      <h2>Filtro periodo</h2>
-                      <p>Genera un riepilogo sintetico pronto da condividere.</p>
-                    </div>
-                  </div>
-                  <div className="eur-range-switch">
-                    {RANGE_OPTIONS.map((item) => (
-                      <button
-                        key={item.value}
-                        type="button"
-                        className={reportRange === item.value ? "active" : ""}
-                        onClick={() => setReportRange(item.value)}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="eur-report-actions">
-                    <button type="button" onClick={() => setNotice("Riepilogo aggiornato.")}>
-                      Aggiorna riepilogo
-                    </button>
-                    <button type="button" onClick={() => void handleCopyReport()}>
-                      Copia testo
-                    </button>
-                    <button type="button" onClick={() => window.print()}>
-                      Stampa / PDF
-                    </button>
-                  </div>
-                </section>
-                <section className="eur-segment">
-                  <div className="eur-section-head">
-                    <div>
-                      <h2>Riepilogo testuale</h2>
-                      <p>Testo generato automaticamente dal dominio Euromecc.</p>
-                    </div>
-                  </div>
-                  <textarea className="eur-report-box" readOnly value={reportText} rows={22} />
-                </section>
-              </div>
-            </>
+            <RiepilogoTab
+              snapshot={snapshot}
+              reportRange={reportRange}
+              setReportRange={setReportRange}
+              reportKpis={reportKpis}
+              reportPending={reportPending}
+              reportDone={reportDone}
+              reportIssues={reportIssues}
+            />
           ) : null}
 
           {activeTab === "relazioni" ? <RelazioniTab /> : null}
@@ -3823,6 +5320,27 @@ export default function NextEuromeccPage() {
                   />
                 ) : currentAreaData.key === "carico1" || currentAreaData.key === "carico2" ? (
                   <CaricoDiagram
+                    area={currentAreaData}
+                    snapshot={snapshot}
+                    currentSub={detailSubKey}
+                    onSelectSub={setCurrentDetailSub}
+                  />
+                ) : currentAreaData.key === "compressore" || currentAreaData.key === "compressore2" ? (
+                  <SalaCompressoriDiagram
+                    area={currentAreaData}
+                    snapshot={snapshot}
+                    currentSub={detailSubKey}
+                    onSelectSub={setCurrentDetailSub}
+                  />
+                ) : currentAreaData.key === "scaricoFornitore" ? (
+                  <ScaricoFornitoreDiagram
+                    area={currentAreaData}
+                    snapshot={snapshot}
+                    currentSub={detailSubKey}
+                    onSelectSub={setCurrentDetailSub}
+                  />
+                ) : currentAreaData.key === "caricoRail" ? (
+                  <CaricoTrenoDiagram
                     area={currentAreaData}
                     snapshot={snapshot}
                     currentSub={detailSubKey}

@@ -100,6 +100,35 @@ function formatKmOre(item: NextDossierManutenzioneLegacyItem) {
   return parts.join(" | ") || "-";
 }
 
+function formatGommePerAsseMeta(item: NextDossierMezzoLegacyViewState["gommePerAsse"][number]) {
+  const parts: string[] = [];
+  parts.push(item.dataCambio ? `Cambio ${item.dataCambio}` : "Data cambio n/d");
+  if (item.isMotorizzato) {
+    parts.push(
+      typeof item.kmCambio === "number" && Number.isFinite(item.kmCambio)
+        ? `${item.kmCambio} km`
+        : "km cambio n/d",
+    );
+    if (typeof item.kmPercorsi === "number" && Number.isFinite(item.kmPercorsi)) {
+      parts.push(`Percorsi ${item.kmPercorsi} km`);
+    }
+  }
+  return parts.join(" | ");
+}
+
+function formatGommeStraordinarieMeta(
+  item: NextDossierMezzoLegacyViewState["gommeStraordinarie"][number],
+) {
+  const parts: string[] = [];
+  parts.push(item.dataLabel || "-");
+  if (item.asseLabel) parts.push(item.asseLabel);
+  if (typeof item.quantita === "number" && Number.isFinite(item.quantita)) {
+    parts.push(`${item.quantita} gomma${item.quantita === 1 ? "" : "e"}`);
+  }
+  if (item.fornitore) parts.push(item.fornitore);
+  return parts.join(" | ");
+}
+
 export default function NextDossierMezzoPage() {
   const { targa } = useParams<{ targa: string }>();
   const navigate = useNavigate();
@@ -320,6 +349,10 @@ export default function NextDossierMezzoPage() {
         </div></section>
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
+
+        <section className="dossier-card"><div className="dossier-card-header"><h2>Stato gomme per asse</h2></div><div className="dossier-card-body">{legacy.gommePerAsse.length === 0 ? <p className="dossier-empty">Nessun cambio gomme ordinario strutturato disponibile.</p> : <ul className="dossier-list">{legacy.gommePerAsse.map((item) => <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span></div></li>)}</ul>}</div></section>
+
+        <section className="dossier-card"><div className="dossier-card-header"><h2>Eventi gomme straordinari</h2></div><div className="dossier-card-body">{legacy.gommeStraordinarie.length === 0 ? <p className="dossier-empty">Nessun evento gomme straordinario registrato.</p> : <ul className="dossier-list">{legacy.gommeStraordinarie.slice(0, 5).map((item) => <li key={item.sourceMaintenanceId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.motivo || "Evento gomme straordinario"}</strong></div><div className="dossier-list-meta"><span>{formatGommeStraordinarieMeta(item)}</span></div></li>)}</ul>}</div></section>
 
         <section className="dossier-card dossier-card-full"><div className="dossier-card-header"><h2>Materiali e movimenti inventario</h2></div><div className="dossier-card-body">{legacy.movimentiMateriali.length === 0 ? <p className="dossier-empty">Nessun movimento materiali registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data</th><th>Descrizione</th><th>Q.ta</th><th>Destinatario</th><th>Fornitore</th><th>Motivo</th><th>Costo</th></tr></thead><tbody>{legacy.movimentiMateriali.map((item) => <tr key={item.id}><td>{item.data || "-"}</td><td>{item.descrizione || item.materialeLabel || "-"}</td><td>{item.quantita ?? "-"} {item.unita ?? ""}</td><td>{item.destinatario?.label || "-"}</td><td>{item.fornitore || item.fornitoreLabel || "-"}</td><td>{item.motivo || "-"}</td><td>{item.costoTotale !== null && item.costoTotale !== undefined ? renderAmount(item.costoTotale, item.costoCurrency ?? "UNKNOWN") : "-"}</td></tr>)}</tbody></table></div>}</div></section>
 

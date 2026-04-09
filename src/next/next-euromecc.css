@@ -1226,3 +1226,449 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   RIEPILOGO TAB
+   ============================================================ */
+
+.eur-riepilogo-export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.1rem;
+  background: #ffffff;
+  border: 1px solid #d7e0ec;
+  border-radius: 16px;
+  margin-bottom: 0.25rem;
+}
+
+.eur-riepilogo-export-btn {
+  padding: 0.55rem 1.25rem;
+  background: #0f6fff;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.eur-riepilogo-export-btn:hover:not(:disabled) {
+  background: #0b5ce0;
+}
+
+.eur-riepilogo-export-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.eur-riepilogo-mappa-section {
+  margin-top: 0.25rem;
+}
+
+.eur-riepilogo-mappa {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.eur-riepilogo-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  padding: 0.6rem 0.25rem 0.25rem;
+}
+
+.eur-riepilogo-legenda-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.eur-riepilogo-legenda-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.eur-riepilogo-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.eur-riepilogo-card {
+  background: #ffffff;
+  border: 1px solid #d7e0ec;
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.eur-riepilogo-card--urgency {
+  border-color: #ef4444;
+  border-width: 2px;
+}
+
+.eur-riepilogo-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.eur-riepilogo-card-header strong {
+  font-size: 0.95rem;
+  color: #17314d;
+  display: block;
+}
+
+.eur-riepilogo-card-code {
+  font-size: 0.75rem;
+  color: #64748b;
+  display: block;
+  margin-top: 0.1rem;
+}
+
+.eur-riepilogo-section {
+  border-top: 1px solid #eef2f8;
+  padding-top: 0.5rem;
+}
+
+.eur-riepilogo-section h4 {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.35rem;
+}
+
+.eur-riepilogo-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.eur-riepilogo-section li {
+  font-size: 0.83rem;
+  color: #334155;
+  line-height: 1.4;
+}
+
+.eur-riepilogo-pill {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+
+.eur-riepilogo-pill--priority {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.eur-riepilogo-pill--issue {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.eur-riepilogo-due {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+/* Layout speciale punti di carico */
+.eur-riepilogo-carico-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.eur-riepilogo-carico-svg {
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.eur-riepilogo-carico-svg svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.eur-riepilogo-carico-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+  .eur-riepilogo-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .eur-riepilogo-carico-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .eur-riepilogo-export-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* ============================================================
+   DOCUMENTI ORIGINALI + LISTA RICAMBI (PROMPT33)
+   ============================================================ */
+
+.eur-mini-badge--ok {
+  background: rgba(34, 197, 94, 0.14);
+  color: #166534;
+}
+
+.eur-mini-badge--info {
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+}
+
+.eur-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.eur-btn--ghost {
+  background: transparent;
+  border-color: var(--color-border, #d1d5db);
+  color: var(--color-text, #111827);
+}
+
+.eur-btn--ghost:hover {
+  background: var(--color-surface-hover, #f3f4f6);
+}
+
+.eur-btn--sm {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.eur-relazioni-storico-item-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.eur-relazioni-tipo-selector {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.eur-relazioni-tipo-selector label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.eur-ricambi-review {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1rem 0;
+}
+
+.eur-ricambi-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.eur-ricambi-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.25rem;
+  border-bottom: 1px solid var(--color-border, #f0f0f0);
+}
+
+.eur-ricambi-item:last-child {
+  border-bottom: none;
+}
+
+.eur-ricambi-item--deselected {
+  opacity: 0.45;
+}
+
+.eur-ricambi-desc {
+  flex: 1;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 5px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.88rem;
+}
+
+.eur-ricambi-qty {
+  width: 5rem;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 5px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.88rem;
+  text-align: right;
+}
+
+.eur-ricambi-unit {
+  min-width: 2rem;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.eur-ricambi-bulk-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.eur-btn-ghost-sm {
+  background: transparent;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 5px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--color-text, #374151);
+}
+
+.eur-btn-ghost-sm:hover {
+  background: var(--color-surface-hover, #f3f4f6);
+}
+
+.eur-ricambi-order-fields {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.eur-ricambi-order-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.eur-ricambi-order-fields input {
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 5px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  min-width: 180px;
+}
+
+.eur-ricambi-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* === RIEPILOGO MAPPA DETTAGLIO === */
+.eur-riepilogo-mappa-wrapper {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.eur-riepilogo-mappa {
+  flex: 1;
+  min-width: 0;
+}
+
+.eur-riepilogo-mappa-detail {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--color-background-secondary, #f8f9fb);
+  border-radius: var(--border-radius-lg, 12px);
+  padding: 16px;
+  border: 1px solid var(--color-border-tertiary, #e5e7eb);
+}
+
+.eur-riepilogo-mappa-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.eur-riepilogo-mappa-section {
+  margin-bottom: 12px;
+}
+
+.eur-riepilogo-mappa-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-border-tertiary, #e5e7eb);
+  gap: 8px;
+}
+
+.eur-riepilogo-mappa-hint {
+  color: var(--color-text-tertiary, #9ca3af);
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.eur-btn-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--color-text-secondary, #6b7280);
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.eur-label-amber {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.eur-label-green {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.eur-label-red {
+  color: #b91c1c;
+  font-weight: 600;
+}

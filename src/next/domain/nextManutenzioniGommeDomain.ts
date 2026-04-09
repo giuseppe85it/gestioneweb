@@ -5,7 +5,9 @@ import {
   NEXT_MANUTENZIONI_DOMAIN,
   readNextMezzoManutenzioniSnapshot,
   type NextMaintenanceHistoryItem,
+  type NextManutenzioneGommeInterventoTipo,
   type NextManutenzioneGommePerAsseRecord,
+  type NextManutenzioneGommeStraordinarioRecord,
   type NextManutenzioneQuality,
   type NextScheduledMaintenance,
 } from "./nextManutenzioniDomain";
@@ -129,6 +131,8 @@ export type NextManutenzioneReadOnlyItem = {
   materialiCount: number;
   assiCoinvolti: NextManutenzioneAsseCoinvoltoId[];
   gommePerAsse: NextManutenzioneGommePerAsseRecord[];
+  gommeInterventoTipo: NextManutenzioneGommeInterventoTipo | null;
+  gommeStraordinario: NextManutenzioneGommeStraordinarioRecord | null;
   isCambioGommeDerived: boolean;
   sourceDataset: string;
   sourceRecordId: string;
@@ -201,6 +205,17 @@ export type NextGommePerAsseStatus = {
   kmPercorsi: number | null;
   isMotorizzato: boolean;
   sourceMaintenanceId: string;
+};
+
+export type NextGommeStraordinarioEvent = {
+  sourceMaintenanceId: string;
+  dataLabel: string | null;
+  motivo: string | null;
+  asseId: NextManutenzioneAsseCoinvoltoId | null;
+  asseLabel: string | null;
+  quantita: number | null;
+  descrizione: string | null;
+  fornitore: string | null;
 };
 
 export type NextMezzoManutenzioniGommeSnapshot = {
@@ -754,13 +769,28 @@ function resolveAsseIdFromLabel(
   return null;
 }
 
+function getFallbackAsseLabel(
+  asseId: NextManutenzioneAsseCoinvoltoId | null | undefined,
+): string | null {
+  if (!asseId) return null;
+  if (asseId === "anteriore") return "Anteriore";
+  if (asseId === "posteriore") return "Posteriore";
+  if (asseId === "asse1") return "1 asse";
+  if (asseId === "asse2") return "2 asse";
+  if (asseId === "asse3") return "3 asse";
+  return asseId;
+}
+
 function isTyreMaintenanceItem(item: {
   descrizione: string | null;
+  gommeInterventoTipo: NextManutenzioneGommeInterventoTipo | null;
   isCambioGommeDerived: boolean;
   assiCoinvolti: NextManutenzioneAsseCoinvoltoId[];
   gommePerAsse: NextManutenzioneGommePerAsseRecord[];
 }): boolean {
+  if (item.gommeInterventoTipo === "straordinario") return false;
   if (item.gommePerAsse.length > 0) return true;
+  if (item.gommeInterventoTipo === "ordinario" && item.assiCoinvolti.length > 0) return true;
   if (item.isCambioGommeDerived && item.assiCoinvolti.length > 0) return true;
   const normalized = normalizeText(item.descrizione).toUpperCase();
   return (normalized.includes("GOMME") || normalized.includes("PNEUM")) && item.assiCoinvolti.length > 0;
@@ -800,6 +830,81 @@ function deriveGommePerAsseFromMaintenance(
     dataCambio: item.dataLabel ?? item.data ?? null,
     kmCambio: item.km,
   }));
+}
+
+function buildStraordinarioEventLabel(
+  item: NextManutenzioneReadOnlyItem,
+): string | null {
+  const motivo = normalizeMeaningfulText(item.gommeStraordinario?.motivo);
+  if (motivo) return motivo;
+
+  const normalized = normalizeMeaningfulText(item.descrizione);
+  if (!normalized) return null;
+  return normalized.toUpperCase().includes("GOMME") ? "Evento gomme straordinario" : normalized;
+}
+
+function buildOrdinarioEventLabel(
+  entry: NextManutenzioneGommePerAsseRecord,
+): string {
+  const asseLabel = getFallbackAsseLabel(entry.asseId);
+  return asseLabel ? `CAMBIO GOMME ORDINARIO - ${asseLabel}` : "CAMBIO GOMME ORDINARIO";
+}
+
+function buildStructuredMaintenanceDescription(
+  item: NextManutenzioneReadOnlyItem,
+): string | null {
+  if (item.gommeInterventoTipo === "straordinario") {
+    return buildStraordinarioEventLabel(item);
+  }
+
+  const entries = deriveGommePerAsseFromMaintenance(item);
+  if (entries.length === 0) {
+    return normalizeMeaningfulText(item.descrizione);
+  }
+
+  const asseLabels = Array.from(
+    new Set(
+      entries
+        .map((entry) => getFallbackAsseLabel(entry.asseId))
+        .filter((entry): entry is string => Boolean(entry)),
+    ),
+  );
+
+  if (asseLabels.length === 0) {
+    return "CAMBIO GOMME ORDINARIO";
+  }
+
+  return `CAMBIO GOMME ORDINARIO - ${asseLabels.join(", ")}`;
+}
+
+export function buildNextGommeStraordinarieEvents(args: {
+  categoria?: string | null;
+  maintenanceItems: NextManutenzioneReadOnlyItem[];
+}): NextGommeStraordinarioEvent[] {
+  const assiMap = new Map(
+    getNextAssiOptionsForCategoria(args.categoria).map((asse) => [asse.id, asse.label] as const),
+  );
+
+  return [...args.maintenanceItems]
+    .filter((item) => item.gommeInterventoTipo === "straordinario")
+    .sort((left, right) => {
+      const rightTs = right.timestamp ?? parseDateFlexible(right.data)?.getTime() ?? 0;
+      const leftTs = left.timestamp ?? parseDateFlexible(left.data)?.getTime() ?? 0;
+      return rightTs - leftTs;
+    })
+    .map((item) => {
+      const asseId = item.gommeStraordinario?.asseId ?? null;
+      return {
+        sourceMaintenanceId: item.id,
+        dataLabel: item.dataLabel ?? item.data ?? null,
+        motivo: buildStraordinarioEventLabel(item),
+        asseId,
+        asseLabel: asseId ? assiMap.get(asseId) ?? asseId : null,
+        quantita: item.gommeStraordinario?.quantita ?? null,
+        descrizione: item.descrizione,
+        fornitore: item.fornitore,
+      };
+    });
 }
 
 function sortGommeItems(items: NextGommeReadOnlyItem[]): NextGommeReadOnlyItem[] {
@@ -877,6 +982,8 @@ function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneRe
     materialiCount: item.materialiCount,
     assiCoinvolti: normalizeNextAssiCoinvolti(item.assiCoinvolti),
     gommePerAsse: item.gommePerAsse,
+    gommeInterventoTipo: item.gommeInterventoTipo,
+    gommeStraordinario: item.gommeStraordinario,
     isCambioGommeDerived: item.isCambioGommeDerived,
     sourceDataset: item.sourceDataset,
     sourceRecordId: item.id,
@@ -887,6 +994,98 @@ function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneRe
 }
 
 function toGommeItems(item: NextManutenzioneReadOnlyItem): NextGommeReadOnlyItem[] {
+  if (item.gommeInterventoTipo === "straordinario") {
+    const motivo = normalizeMeaningfulText(item.gommeStraordinario?.motivo);
+    const asseLabel = getFallbackAsseLabel(item.gommeStraordinario?.asseId);
+    const flags: string[] = [];
+    if (!motivo) flags.push("motivo_straordinario_non_disponibile");
+    if (!item.fornitore) flags.push("fornitore_non_disponibile");
+    flags.push("costo_non_disponibile");
+
+    return [
+      {
+        id: `${item.id}:gomme-straordinarie`,
+        mezzoTarga: item.mezzoTarga,
+        targa: item.targa,
+        data: item.data,
+        dataLabel: item.dataLabel,
+        timestamp: item.timestamp,
+        descrizione: item.descrizione,
+        evento: motivo ? `CAMBIO GOMME STRAORDINARIO - ${motivo}` : "CAMBIO GOMME STRAORDINARIO",
+        isCambioGommeDerived: true,
+        modalita: "straordinario",
+        posizione: asseLabel,
+        asseLabel,
+        quantita: item.gommeStraordinario?.quantita ?? null,
+        pezzi: item.gommeStraordinario?.quantita ?? null,
+        marca: null,
+        km: item.km,
+        costo: null,
+        fornitore: item.fornitore,
+        sourceDataset: item.sourceDataset,
+        sourceRecordId: `${item.id}:gomme-straordinarie`,
+        sourceMaintenanceId: item.id,
+        sourceOrigin: "manutenzione_derivata",
+        vehicleMatchReliability: "forte",
+        vehicleMatchField: "manutenzione.targa",
+        badgeAutista: null,
+        autistaNome: null,
+        statoEvento: null,
+        interventoTipo: motivo,
+        rotazioneText: null,
+        quality: "derived_acceptable",
+        flags: dedupeFlags(flags),
+      },
+    ];
+  }
+
+  const structuredEntries = deriveGommePerAsseFromMaintenance(item);
+  if (structuredEntries.length > 0) {
+    return sortGommeItems(
+      structuredEntries.map((entry, index) => {
+        const asseLabel = getFallbackAsseLabel(entry.asseId);
+        const flags: string[] = ["evento_gomme_strutturato_per_asse", "costo_non_disponibile"];
+        if (!item.fornitore) flags.push("fornitore_non_disponibile");
+        if (!asseLabel) flags.push("asse_non_disponibile");
+        if ((entry.kmCambio ?? item.km) === null) flags.push("km_non_disponibile");
+
+        return {
+          id: `${item.id}:gomme-strutturate:${index}`,
+          mezzoTarga: item.mezzoTarga,
+          targa: item.targa,
+          data: item.data,
+          dataLabel: entry.dataCambio ?? item.dataLabel,
+          timestamp: item.timestamp,
+          descrizione: item.descrizione,
+          evento: buildOrdinarioEventLabel(entry),
+          isCambioGommeDerived: true,
+          modalita: "ordinario",
+          posizione: asseLabel,
+          asseLabel,
+          quantita: null,
+          pezzi: null,
+          marca: null,
+          km: entry.kmCambio ?? item.km,
+          costo: null,
+          fornitore: item.fornitore,
+          sourceDataset: item.sourceDataset,
+          sourceRecordId: `${item.id}:gomme-strutturate:${index}`,
+          sourceMaintenanceId: item.id,
+          sourceOrigin: "manutenzione_derivata",
+          vehicleMatchReliability: "forte",
+          vehicleMatchField: "manutenzione.targa",
+          badgeAutista: null,
+          autistaNome: null,
+          statoEvento: null,
+          interventoTipo: "Ordinario per asse",
+          rotazioneText: null,
+          quality: "source_direct",
+          flags: dedupeFlags(flags),
+        };
+      }),
+    );
+  }
+
   const blocks = splitCambioGommeBlocks(item.descrizione);
   if (blocks.length === 0) return [];
 
@@ -1236,7 +1435,7 @@ export function mapNextManutenzioniItemsToLegacyView(
     timestamp: item.timestamp,
     km: item.km ?? undefined,
     ore: item.ore ?? undefined,
-    descrizione: item.descrizione ?? undefined,
+    descrizione: buildStructuredMaintenanceDescription(item) ?? undefined,
   }));
 }
 

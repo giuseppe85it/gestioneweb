@@ -310,6 +310,24 @@ export const EUROMECC_AREAS: Record<string, EuromeccAreaStatic> = {
     ),
     shortLabel: "VTS",
   },
+  scaricoFornitore: {
+    ...makeGenericArea(
+      "scaricoFornitore",
+      "Postazione scarico fornitore",
+      "SCF-01",
+      "Area arrivo materiali",
+      "ok",
+      [
+        { key: "attalccioFornitore", name: "Attacco fornitore",  code: "SCF-01-ATT", base: "ok" as const, family: "servizi" },
+        { key: "tubazioniScarico",   name: "Tubazioni scarico",  code: "SCF-01-TUB", base: "ok" as const, family: "servizi" },
+        { key: "quadroPneumScarico", name: "Quadro pneumatico",  code: "SCF-01-QPN", base: "ok" as const, family: "servizi" },
+        { key: "valvoleScarico",     name: "Valvole scarico",    code: "SCF-01-VLV", base: "ok" as const, family: "servizi" },
+        { key: "filtroScarico",      name: "Filtro scarico",     code: "SCF-01-FIL", base: "ok" as const, family: "servizi" },
+        { key: "cocelaScaricoFor",   name: "Coclea scarico",     code: "SCF-01-COC", base: "ok" as const, family: "servizi" },
+      ] as const,
+    ),
+    shortLabel: "SCF",
+  },
 };
 
 export const EUROMECC_AREA_KEYS = Object.keys(EUROMECC_AREAS);
