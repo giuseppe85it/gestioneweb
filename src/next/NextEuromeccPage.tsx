@@ -311,7 +311,7 @@ const MAP_GENERIC: readonly MapNodeLayout[] = [
   { key: "carico2", x: 630, y: 528, width: 212, height: 62 },
   { key: "caricoRail", x: 958, y: 528, width: 268, height: 62 },
   { key: "compressore", x: 118, y: 726, width: 250, height: 62 },
-  { key: "fluidificanti", x: 442, y: 726, width: 306, height: 62 },
+  { key: "fluidificanti", x: 650, y: 726, width: 306, height: 62 },
   { key: "plc",              x: 958,  y: 676, width: 250, height: 56 },
   { key: "buffer",           x: 958,  y: 746, width: 250, height: 56 },
   { key: "compressore2",     x: 384,  y: 726, width: 250, height: 62 },
@@ -360,11 +360,11 @@ const CARICO_HOTSPOTS: readonly SiloHotspot[] = [
 // filtroOlio, filtroScambiatore, essiccatore, cinghie, byPass.
 // accumulatore e scaricatoreCondensa esclusi — non presenti nelle aree.
 const SALA_COMPRESSORI_HOTSPOTS: readonly SiloHotspot[] = [
-  { key: "blower",            label: "Blower / vite",       x: 288, y: 340, width: 160, height: 52, dotX: 370, dotY: 420, labelX: 560, labelY: 360 },
-  { key: "filtroAria",        label: "Filtro aria",         x: 288, y: 340, width: 160, height: 52, dotX: 350, dotY: 460, labelX: 560, labelY: 390 },
-  { key: "lubrificazione",    label: "Lubrificazione",      x: 288, y: 340, width: 160, height: 52, dotX: 310, dotY: 480, labelX: 560, labelY: 420 },
-  { key: "filtroOlio",        label: "Filtro olio",         x: 288, y: 340, width: 160, height: 52, dotX: 330, dotY: 500, labelX: 560, labelY: 450 },
-  { key: "filtroScambiatore", label: "Filtro scambiatore",  x: 288, y: 340, width: 160, height: 52, dotX: 360, dotY: 510, labelX: 560, labelY: 480 },
+  { key: "blower",            label: "Blower / vite",       x: 288, y: 340, width: 160, height: 52, dotX: 370, dotY: 420, labelX: 620, labelY: 360 },
+  { key: "filtroAria",        label: "Filtro aria",         x: 288, y: 340, width: 160, height: 52, dotX: 350, dotY: 460, labelX: 620, labelY: 390 },
+  { key: "lubrificazione",    label: "Lubrificazione",      x: 288, y: 340, width: 160, height: 52, dotX: 310, dotY: 480, labelX: 620, labelY: 420 },
+  { key: "filtroOlio",        label: "Filtro olio",         x: 288, y: 340, width: 160, height: 52, dotX: 330, dotY: 500, labelX: 620, labelY: 450 },
+  { key: "filtroScambiatore", label: "Filtro scambiatore",  x: 288, y: 340, width: 160, height: 52, dotX: 360, dotY: 510, labelX: 620, labelY: 480 },
   { key: "essiccatore",       label: "Essiccatore",         x: 296, y: 248, width: 148, height: 88, dotX: 370, dotY: 290, labelX: 560, labelY: 160 },
   { key: "cinghie",           label: "Cinghie",             x: 288, y: 340, width: 160, height: 52, dotX: 430, dotY: 370, labelX: 100, labelY: 340 },
   { key: "byPass",            label: "By-pass",             x: 288, y: 340, width: 160, height: 52, dotX: 420, dotY: 400, labelX: 100, labelY: 380 },
@@ -5332,15 +5332,15 @@ export default function NextEuromeccPage() {
                     currentSub={detailSubKey}
                     onSelectSub={setCurrentDetailSub}
                   />
-                ) : currentAreaData.key === "scaricoFornitore" ? (
-                  <ScaricoFornitoreDiagram
+                ) : currentAreaData.key === "caricoRail" ? (
+                  <CaricoTrenoDiagram
                     area={currentAreaData}
                     snapshot={snapshot}
                     currentSub={detailSubKey}
                     onSelectSub={setCurrentDetailSub}
                   />
-                ) : currentAreaData.key === "caricoRail" ? (
-                  <CaricoTrenoDiagram
+                ) : currentAreaData.key === "scaricoFornitore" ? (
+                  <ScaricoFornitoreDiagram
                     area={currentAreaData}
                     snapshot={snapshot}
                     currentSub={detailSubKey}
