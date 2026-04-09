@@ -216,6 +216,22 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && isValidAreaMetaData(areaKey, request.resource.data);
     }
 
+    match /euromecc_extra_components/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.areaKey is string
+        && request.resource.data.subKey is string
+        && request.resource.data.name is string
+        && request.resource.data.code is string;
+      allow delete: if isSignedIn();
+    }
+
+    match /euromecc_relazioni/{docId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
     match /{document=**} {
       allow read, write: if isSignedIn();
     }

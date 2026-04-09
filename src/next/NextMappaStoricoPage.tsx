@@ -2,14 +2,25 @@
 import {
   deleteNextMappaStoricoHotspot,
   readNextMappaStoricoSnapshot,
+  readNextMappaStoricoTechnicalTargetOverrides,
   saveNextMappaStoricoHotspot,
+  saveNextMappaStoricoTechnicalTargetOverride,
   uploadNextMappaStoricoPhoto,
   type NextMappaStoricoHotspotRecord,
   type NextMappaStoricoIntervento,
   type NextMappaStoricoSnapshot,
+  type NextMappaStoricoTechnicalTargetOverrideRecord,
+  type TechnicalMarkerShape,
 } from "./domain/nextMappaStoricoDomain";
 import {
+  normalizeNextAssiCoinvolti,
+  resolveNextManutenzioneTechnicalCategoryKey,
+  resolveNextManutenzioneTechnicalView,
+} from "./domain/nextManutenzioniGommeDomain";
+import TruckGommeSvg from "../components/TruckGommeSvg";
+import {
   getNextMezzoHotspotAreaById,
+  getNextMezzoHotspotTargetKindById,
   getNextMezzoHotspotAreasByVista,
   type NextMappaStoricoVista,
 } from "./mezziHotspotAreas";
@@ -19,12 +30,21 @@ type NextMappaStoricoPageProps = {
   targa: string;
   embedded?: boolean;
   photoManager?: boolean;
+  selectedMaintenance?: {
+    id: string;
+    data: string | null;
+    descrizione: string | null;
+    assiCoinvolti: string[];
+    km: number | null;
+    tipo: string | null;
+  } | null;
   mezzoInfo?: {
     targa: string;
     mezzoLabel: string;
     autistaNome: string | null;
     categoria: string | null;
     kmAttuali: number | null;
+    latestGommeKmCambio: number | null;
     ultimaManutenzione: string | null;
     ultimoInterventoMezzo: string | null;
     ultimoInterventoCompressore: string | null;
@@ -34,9 +54,18 @@ type NextMappaStoricoPageProps = {
   onOpenPdf?: () => void;
   onOpenDossier?: () => void;
   onEditLatest?: () => void;
+  onSelectMaintenance?: (recordId: string) => void;
 };
 
 type ModalKind = "ultimi" | "frequenti" | "perzona" | null;
+type TechnicalMarker = {
+  id: string;
+  label: string;
+  targetKind: "assi" | "fanali_specchi" | "attrezzature";
+  markerShape: TechnicalMarkerShape;
+  x: number;
+  y: number;
+};
 
 const VISTE: NextMappaStoricoVista[] = ["fronte", "sinistra", "destra", "retro"];
 
@@ -58,14 +87,55 @@ function formatVistaLabel(vista: NextMappaStoricoVista): string {
   return vista.charAt(0).toUpperCase() + vista.slice(1);
 }
 
+function formatNumberIt(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "DA VERIFICARE";
+  return new Intl.NumberFormat("it-IT").format(value);
+}
+
+function isTyreMaintenanceRecord(record: NextMappaStoricoPageProps["selectedMaintenance"]): boolean {
+  if (!record) return false;
+  if ((record.assiCoinvolti?.length ?? 0) > 0) return true;
+  const normalizedTipo = (record.tipo ?? "").trim().toLowerCase();
+  if (normalizedTipo === "gomme") return true;
+  const normalizedDescrizione = (record.descrizione ?? "").trim().toUpperCase();
+  return normalizedDescrizione.includes("GOMME") || normalizedDescrizione.includes("PNEUM");
+}
+
+function getHotspotClassName(areaId: string): string {
+  const targetKind = getNextMezzoHotspotTargetKindById(areaId);
+  if (targetKind === "fanali_specchi") return "ms-hotspot ms-hotspot--fanali";
+  if (targetKind === "attrezzature") return "ms-hotspot ms-hotspot--attrezzature";
+  return "ms-hotspot ms-hotspot--assi";
+}
+
+function getTechnicalTargetMarkerClass(
+  areaId: string,
+  isActive: boolean,
+  markerShape?: TechnicalMarkerShape,
+): string {
+  const shapeClass = markerShape
+    ? `man2-technical-marker--${markerShape}`
+    : (() => {
+        const targetKind = getNextMezzoHotspotTargetKindById(areaId);
+        return targetKind === "fanali_specchi"
+          ? "man2-technical-marker--fanali"
+          : targetKind === "attrezzature"
+            ? "man2-technical-marker--attrezzature"
+            : "man2-technical-marker--assi";
+      })();
+  return `man2-technical-marker ${shapeClass}${isActive ? " is-active" : ""}`;
+}
+
 export default function NextMappaStoricoPage({
   targa,
   embedded = false,
   photoManager = false,
+  selectedMaintenance = null,
   mezzoInfo,
   onOpenPdf,
   onOpenDossier,
   onEditLatest,
+  onSelectMaintenance,
 }: NextMappaStoricoPageProps) {
   const normalizedTarga = targa.trim().toUpperCase().replace(/\s+/g, "");
   const [snapshot, setSnapshot] = useState<NextMappaStoricoSnapshot | null>(null);
@@ -80,6 +150,18 @@ export default function NextMappaStoricoPage({
   const [searchQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [technicalPreviewAxisId, setTechnicalPreviewAxisId] = useState<string | null>(null);
+  const [selectedMarkerShape, setSelectedMarkerShape] = useState<TechnicalMarkerShape>("pallino");
+  const [selectedTechnicalTargetId, setSelectedTechnicalTargetId] = useState<string | null>(null);
+  const [technicalTargetOverrides, setTechnicalTargetOverrides] = useState<
+    NextMappaStoricoTechnicalTargetOverrideRecord[]
+  >([]);
+  const [draggingTechnicalTargetId, setDraggingTechnicalTargetId] = useState<string | null>(null);
+  const [draggingTechnicalTargetPos, setDraggingTechnicalTargetPos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [draftTechnicalTargetPos, setDraftTechnicalTargetPos] = useState<{ x: number; y: number } | null>(null);
+  const [technicalCanvasElement, setTechnicalCanvasElement] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!normalizedTarga) {
@@ -132,6 +214,142 @@ export default function NextMappaStoricoPage({
 
   const vistaSnapshot = snapshot?.viste[vistaAttiva] ?? null;
   const vistaLabel = formatVistaLabel(vistaAttiva);
+  const highlightedAssiNormalized = useMemo(
+    () => normalizeNextAssiCoinvolti(selectedMaintenance?.assiCoinvolti ?? []),
+    [selectedMaintenance],
+  );
+  const categoriaTecnica = mezzoInfo?.categoria ?? snapshot?.categoriaLabel ?? null;
+  const categoriaTecnicaKey = useMemo(
+    () => resolveNextManutenzioneTechnicalCategoryKey(categoriaTecnica),
+    [categoriaTecnica],
+  );
+  const technicalView = useMemo(() => {
+    if (!embedded) return null;
+    if (vistaAttiva !== "sinistra" && vistaAttiva !== "destra") return null;
+    return resolveNextManutenzioneTechnicalView(categoriaTecnica, vistaAttiva);
+  }, [categoriaTecnica, embedded, vistaAttiva]);
+  const highlightedWheelIds = useMemo(() => {
+    if (!technicalView) return [];
+    const highlightedSet = new Set(highlightedAssiNormalized);
+    return technicalView.wheels
+      .filter((wheel) => highlightedSet.has(wheel.axisId))
+      .map((wheel) => wheel.id);
+  }, [highlightedAssiNormalized, technicalView]);
+  const technicalPreviewWheelIds = useMemo(() => {
+    if (!technicalView || !technicalPreviewAxisId) return [];
+    return technicalView.wheels
+      .filter((wheel) => wheel.axisId === technicalPreviewAxisId)
+      .map((wheel) => wheel.id);
+  }, [technicalPreviewAxisId, technicalView]);
+  const technicalTargetPalette = useMemo(() => {
+    if (!technicalView) return [];
+    return getNextMezzoHotspotAreasByVista(vistaAttiva);
+  }, [technicalView, vistaAttiva]);
+  const technicalTargetOverridesById = useMemo(
+    () => new Map(technicalTargetOverrides.map((item) => [item.targetId, item] as const)),
+    [technicalTargetOverrides],
+  );
+  const technicalMarkers = useMemo<TechnicalMarker[]>(() => {
+    if (!technicalView) return [];
+    return technicalTargetPalette
+      .map((area) => {
+        const saved = technicalTargetOverridesById.get(area.id);
+        const dragging =
+          draggingTechnicalTargetId === area.id && draggingTechnicalTargetPos ? draggingTechnicalTargetPos : null;
+        const draft =
+          selectedTechnicalTargetId === area.id && draftTechnicalTargetPos ? draftTechnicalTargetPos : null;
+        const source = dragging ?? draft ?? (saved ? { x: saved.x, y: saved.y } : null);
+        if (!source) return null;
+        // se è un draft del target correntemente selezionato, usa la shape scelta dall'utente
+        const isDraft = Boolean(draft) && selectedTechnicalTargetId === area.id;
+        const isDragging = Boolean(dragging) && draggingTechnicalTargetId === area.id;
+        const shapeForDraft = (isDraft || isDragging) ? selectedMarkerShape : (saved?.markerShape ?? "pallino");
+        return {
+          id: area.id,
+          label: area.label,
+          targetKind: area.targetKind,
+          markerShape: shapeForDraft,
+          x: source.x,
+          y: source.y,
+        };
+      })
+      .filter((item): item is TechnicalMarker => item !== null);
+  }, [
+    draftTechnicalTargetPos,
+    draggingTechnicalTargetId,
+    draggingTechnicalTargetPos,
+    selectedMarkerShape,
+    selectedTechnicalTargetId,
+    technicalTargetOverridesById,
+    technicalTargetPalette,
+    technicalView,
+  ]);
+  const selectedMaintenanceIsTyre = useMemo(
+    () => isTyreMaintenanceRecord(selectedMaintenance),
+    [selectedMaintenance],
+  );
+  const kmPercorsiDalCambio = useMemo(() => {
+    const kmAttuali = mezzoInfo?.kmAttuali ?? null;
+    if (kmAttuali == null) return null;
+    // Se il record selezionato è gomme, usa il suo km
+    if (selectedMaintenanceIsTyre) {
+      const kmCambio = selectedMaintenance?.km ?? null;
+      if (kmCambio == null) return null;
+      const delta = kmAttuali - kmCambio;
+      return delta >= 0 ? delta : null;
+    }
+    // Fallback: usa il km del cambio gomme più recente passato dal parent
+    const kmCambioLatest = mezzoInfo?.latestGommeKmCambio ?? null;
+    if (kmCambioLatest == null) return null;
+    const delta = kmAttuali - kmCambioLatest;
+    return delta >= 0 ? delta : null;
+  }, [mezzoInfo?.kmAttuali, mezzoInfo?.latestGommeKmCambio, selectedMaintenance, selectedMaintenanceIsTyre]);
+
+  useEffect(() => {
+    if (technicalView && modalitaSetup) {
+      setPendingPos(null);
+    }
+    if (!technicalView) {
+      setTechnicalPreviewAxisId(null);
+      setSelectedTechnicalTargetId(null);
+      setTechnicalTargetOverrides([]);
+      setDraggingTechnicalTargetId(null);
+      setDraggingTechnicalTargetPos(null);
+      setDraftTechnicalTargetPos(null);
+    }
+  }, [modalitaSetup, technicalView]);
+
+  useEffect(() => {
+    setTechnicalPreviewAxisId(null);
+    setSelectedTechnicalTargetId(null);
+    setDraftTechnicalTargetPos(null);
+  }, [vistaAttiva, normalizedTarga, selectedMaintenance?.id]);
+
+  useEffect(() => {
+    if (!technicalView || !categoriaTecnicaKey) {
+      setTechnicalTargetOverrides([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadTechnicalOverrides = async () => {
+      try {
+        const nextOverrides = await readNextMappaStoricoTechnicalTargetOverrides(categoriaTecnicaKey, vistaAttiva);
+        if (cancelled) return;
+        setTechnicalTargetOverrides(nextOverrides);
+      } catch (loadError) {
+        console.error("Errore caricamento override tecnici:", loadError);
+        if (!cancelled) {
+          setTechnicalTargetOverrides([]);
+        }
+      }
+    };
+
+    void loadTechnicalOverrides();
+    return () => {
+      cancelled = true;
+    };
+  }, [categoriaTecnicaKey, technicalView, vistaAttiva]);
 
   const tutteLeZone = useMemo(
     () =>
@@ -233,6 +451,78 @@ export default function NextMappaStoricoPage({
     }
   }
 
+  function getRelativeTechnicalPoint(clientX: number, clientY: number): { x: number; y: number } | null {
+    if (!technicalCanvasElement) return null;
+    const rect = technicalCanvasElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+    return {
+      x: Math.max(0, Math.min(100, Number(x.toFixed(2)))),
+      y: Math.max(0, Math.min(100, Number(y.toFixed(2)))),
+    };
+  }
+
+  async function handleSaveTechnicalTargetPosition(
+    targetId: string,
+    x: number,
+    y: number,
+    markerShape: TechnicalMarkerShape,
+  ) {
+    if (!technicalView || !categoriaTecnicaKey) return;
+    try {
+      setSaving(true);
+      setMessage(null);
+      const savedOverride = await saveNextMappaStoricoTechnicalTargetOverride({
+        categoriaKey: categoriaTecnicaKey,
+        vista: vistaAttiva,
+        targetId,
+        markerShape,
+        x,
+        y,
+      });
+      setTechnicalTargetOverrides((current) => {
+        const filtered = current.filter((item) => item.targetId !== targetId);
+        return [savedOverride, ...filtered];
+      });
+      setDraftTechnicalTargetPos(null);
+      setMessage(`Posizione salvata per ${getZonaLabel(targetId)}.`);
+    } catch (saveError) {
+      console.error("Errore salvataggio calibrazione tecnica:", saveError);
+      setMessage("Salvataggio calibrazione non riuscito.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleTechnicalCanvasClick(event: React.MouseEvent<HTMLDivElement>) {
+    if (!modalitaSetup || !selectedTechnicalTargetId || draggingTechnicalTargetId) return;
+    const nextPoint = getRelativeTechnicalPoint(event.clientX, event.clientY);
+    if (!nextPoint) return;
+    setDraftTechnicalTargetPos(nextPoint);
+  }
+
+  function handleTechnicalCanvasPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!modalitaSetup || !draggingTechnicalTargetId) return;
+    const nextPoint = getRelativeTechnicalPoint(event.clientX, event.clientY);
+    if (!nextPoint) return;
+    setDraggingTechnicalTargetPos(nextPoint);
+  }
+
+  function handleTechnicalCanvasPointerUp() {
+    if (!modalitaSetup || !draggingTechnicalTargetId || !draggingTechnicalTargetPos) {
+      setDraggingTechnicalTargetId(null);
+      setDraggingTechnicalTargetPos(null);
+      return;
+    }
+    const targetId = draggingTechnicalTargetId;
+    const nextPoint = draggingTechnicalTargetPos;
+    setSelectedTechnicalTargetId(targetId);
+    setDraftTechnicalTargetPos(nextPoint);
+    setDraggingTechnicalTargetId(null);
+    setDraggingTechnicalTargetPos(null);
+  }
+
   function handleSurfaceClick(event: React.MouseEvent<HTMLDivElement>) {
     if (!modalitaSetup) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -291,6 +581,15 @@ export default function NextMappaStoricoPage({
     ultimeManutenzioniCompressore: mezzoInfo?.ultimeManutenzioniCompressore ?? [],
   };
   const interventiInVista = zoneConStoricoNellaVista.reduce((sum, area) => sum + area.interventi.length, 0);
+  const isTechnicalVista = Boolean(technicalView);
+  const technicalAssiCount = highlightedAssiNormalized.length;
+  const calibraTooltip = isTechnicalVista
+    ? modalitaSetup
+      ? "Disattiva la selezione manuale delle parti da evidenziare"
+      : "Attiva la selezione manuale delle parti da evidenziare"
+    : modalitaSetup
+      ? "Chiudi la gestione manuale degli hotspot"
+      : "Attiva la gestione manuale degli hotspot";
 
   if (photoManager) {
     return (
@@ -354,15 +653,27 @@ export default function NextMappaStoricoPage({
             <div className="man2-detail-toolbar">
               <div className="man2-detail-pills">
                 <span className="man2-detail-pill">Vista {vistaLabel}</span>
-                <span className="man2-detail-pill">Hotspot {hotspotsVisibili.length}</span>
-                <span className="man2-detail-pill">Zone con storico {zoneConStoricoNellaVista.length}</span>
+                <span className="man2-detail-pill">
+                  {isTechnicalVista ? `Assi evidenziati ${technicalAssiCount}` : `Hotspot ${hotspotsVisibili.length}`}
+                </span>
+                <span className="man2-detail-pill">
+                  {isTechnicalVista ? "Tavola tecnica da public/gomme" : `Zone con storico ${zoneConStoricoNellaVista.length}`}
+                </span>
               </div>
-              <button
-                type="button"
-                className="man2-btn man2-btn--secondary"
-                onClick={() => setModalitaSetup((current) => !current)}
-              >
-                {modalitaSetup ? "Chiudi setup" : "Gestisci hotspot"}
+                <button
+                  type="button"
+                  className={`man2-btn ${isTechnicalVista ? "man2-btn--viewer" : "man2-btn--secondary"}`}
+                  onClick={() => setModalitaSetup((current) => !current)}
+                  title={calibraTooltip}
+                  aria-label={calibraTooltip}
+                >
+                  {isTechnicalVista
+                    ? modalitaSetup
+                    ? "Chiudi calibra"
+                    : "Calibra"
+                  : modalitaSetup
+                    ? "Chiudi setup"
+                    : "Gestisci hotspot"}
               </button>
             </div>
 
@@ -382,7 +693,200 @@ export default function NextMappaStoricoPage({
               ))}
             </div>
 
-            {vistaSnapshot.foto ? (
+            {technicalView ? (
+              <div className="man2-detail-surface man2-detail-surface--technical">
+                <div className="man2-technical-head">
+                  <span className="man2-detail-pill">Categoria {mezzoCardInfo.categoria || "DA VERIFICARE"}</span>
+                  <span className="man2-detail-pill">
+                    {selectedMaintenance?.data
+                      ? `Assi dalla manutenzione ${selectedMaintenance.data}`
+                      : "Nessuna manutenzione selezionata"}
+                  </span>
+                  {modalitaSetup ? <span className="man2-detail-pill">Modalita calibra attiva</span> : null}
+                </div>
+                <div className={`man2-technical-board${modalitaSetup ? " is-calibra" : ""}`}>
+                  <div
+                    ref={setTechnicalCanvasElement}
+                    className="man2-technical-canvas"
+                    onClick={handleTechnicalCanvasClick}
+                    onPointerMove={handleTechnicalCanvasPointerMove}
+                    onPointerUp={handleTechnicalCanvasPointerUp}
+                    onPointerLeave={handleTechnicalCanvasPointerUp}
+                  >
+                    <TruckGommeSvg
+                      isRimorchio={technicalView.isRimorchio}
+                      backgroundImage={technicalView.backgroundImage}
+                      wheels={technicalView.wheels}
+                      selectedWheelIds={modalitaSetup ? technicalPreviewWheelIds : highlightedWheelIds}
+                      selectedAxisId={null}
+                      modalita="straordinario"
+                      onToggleWheel={(wheelId) => {
+                        if (!modalitaSetup || !technicalView) return;
+                        const axisId = technicalView.wheels.find((wheel) => wheel.id === wheelId)?.axisId ?? null;
+                        if (!axisId) return;
+                        setTechnicalPreviewAxisId((current) => (current === axisId ? null : axisId));
+                      }}
+                    />
+                    {modalitaSetup
+                      ? technicalMarkers.map((marker) => (
+                          <button
+                            key={marker.id}
+                            type="button"
+                            className={getTechnicalTargetMarkerClass(
+                              marker.id,
+                              selectedTechnicalTargetId === marker.id || draggingTechnicalTargetId === marker.id,
+                              marker.markerShape,
+                            )}
+                            style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+                            onPointerDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setSelectedTechnicalTargetId(marker.id);
+                              setDraggingTechnicalTargetId(marker.id);
+                              setDraggingTechnicalTargetPos({ x: marker.x, y: marker.y });
+                            }}
+                            title={`Sposta ${marker.label}`}
+                            aria-label={`Sposta ${marker.label}`}
+                          >
+                            <span className="man2-technical-marker__dot" aria-hidden="true" />
+                            <span className="man2-technical-marker__label">{marker.label}</span>
+                          </button>
+                        ))
+                      : technicalTargetPalette
+                          .map((area) => {
+                            const saved = technicalTargetOverridesById.get(area.id);
+                            if (!saved) return null;
+                            return (
+                              <span
+                                key={area.id}
+                                className={`${getTechnicalTargetMarkerClass(area.id, false, saved.markerShape)} man2-technical-marker--readonly`}
+                                style={{ left: `${saved.x}%`, top: `${saved.y}%` }}
+                                aria-label={area.label}
+                              >
+                                <span className="man2-technical-marker__dot" aria-hidden="true" />
+                                <span className="man2-technical-marker__label">{area.label}</span>
+                              </span>
+                            );
+                          })
+                          .filter(Boolean)}
+                  </div>
+                </div>
+                <div className="man2-technical-legend">
+                  {technicalView.assi.map((asse) => {
+                    const isActive = modalitaSetup
+                      ? technicalPreviewAxisId === asse.id
+                      : highlightedAssiNormalized.includes(asse.id);
+                    return (
+                      <button
+                        key={asse.id}
+                        type="button"
+                        className={`man2-technical-axis${isActive ? " is-active" : ""}`}
+                        disabled={!modalitaSetup}
+                        onClick={() => {
+                          if (!modalitaSetup) return;
+                          setTechnicalPreviewAxisId((current) => (current === asse.id ? null : asse.id));
+                        }}
+                      >
+                        {asse.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {modalitaSetup ? (
+                  <div className="man2-technical-calibra">
+                    <div className="man2-technical-calibra__row">
+                      <strong>Forma marker</strong>
+                      <div className="man2-shape-selector">
+                        {(["pallino", "cerchio", "rombo"] as TechnicalMarkerShape[]).map((shape) => (
+                          <button
+                            key={shape}
+                            type="button"
+                            className={`man2-shape-btn man2-shape-btn--${shape}`}
+                            aria-pressed={selectedMarkerShape === shape}
+                            onClick={() => setSelectedMarkerShape(shape)}
+                          >
+                            <span className="man2-shape-btn__icon" aria-hidden="true" />
+                            <span>{shape.charAt(0).toUpperCase() + shape.slice(1)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="man2-technical-calibra__row">
+                      <strong>Preview asse</strong>
+                      <div className="man2-technical-legend">
+                        {technicalView.assi.map((asse) => {
+                          const isActive = technicalPreviewAxisId === asse.id;
+                          return (
+                            <button
+                              key={`preview-${asse.id}`}
+                              type="button"
+                              className={`man2-technical-axis${isActive ? " is-active" : ""}`}
+                              onClick={() =>
+                                setTechnicalPreviewAxisId((current) => (current === asse.id ? null : asse.id))
+                              }
+                            >
+                              {asse.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="man2-technical-calibra__row">
+                      <strong>Target calibrabili</strong>
+                      <div className="man2-technical-targets">
+                        {technicalTargetPalette.map((area) => {
+                          const isActive = selectedTechnicalTargetId === area.id;
+                          return (
+                            <button
+                              key={area.id}
+                              type="button"
+                              className={`man2-technical-target man2-technical-target--${area.targetKind.replace("_", "-")}`}
+                              onClick={() => {
+                                setSelectedTechnicalTargetId(area.id);
+                                const saved = technicalTargetOverridesById.get(area.id);
+                                if (saved) {
+                                  setDraftTechnicalTargetPos({ x: saved.x, y: saved.y });
+                                  setSelectedMarkerShape(saved.markerShape);
+                                } else {
+                                  setDraftTechnicalTargetPos(null);
+                                }
+                              }}
+                              aria-pressed={isActive}
+                            >
+                              <span className="man2-technical-target__shape" aria-hidden="true" />
+                              <span>{area.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="man2-technical-calibra__hint">
+                        {selectedTechnicalTargetId
+                          ? `Target selezionato: ${getZonaLabel(selectedTechnicalTargetId)}. Clicca sul disegno per posizionarlo o trascina un marker gia salvato.`
+                          : "Seleziona una forma, poi un target, poi clicca sul disegno per salvarne la posizione."}
+                      </div>
+                      <div className="man2-technical-calibra__actions">
+                        <button
+                          type="button"
+                          className="man2-btn"
+                          disabled={!selectedTechnicalTargetId || !draftTechnicalTargetPos || saving}
+                          onClick={() => {
+                            if (!selectedTechnicalTargetId || !draftTechnicalTargetPos) return;
+                            void handleSaveTechnicalTargetPosition(
+                              selectedTechnicalTargetId,
+                              draftTechnicalTargetPos.x,
+                              draftTechnicalTargetPos.y,
+                              selectedMarkerShape,
+                            );
+                          }}
+                        >
+                          Salva
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : vistaSnapshot.foto ? (
               <div className="man2-detail-surface">
                 <div className={`ms-surface${modalitaSetup ? " ms-add-cursor" : ""}`} onClick={handleSurfaceClick}>
                   <div className="ms-surface-header">
@@ -400,7 +904,7 @@ export default function NextMappaStoricoPage({
                     <button
                       key={hotspot.id}
                       type="button"
-                      className={`ms-hotspot${zonaSelezionata === hotspot.areaId ? " is-selected" : ""}`}
+                      className={`${getHotspotClassName(hotspot.areaId)}${zonaSelezionata === hotspot.areaId ? " is-selected" : ""}`}
                       style={{ left: `${hotspot.x}%`, top: `${hotspot.y}%` }}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -430,7 +934,7 @@ export default function NextMappaStoricoPage({
               </div>
             )}
 
-            {modalitaSetup ? (
+            {modalitaSetup && !technicalView ? (
               <div className="man2-detail-setup">
                 <div className="man2-section-title">Gestione hotspot</div>
                 <div className="man2-detail-setup__row">
@@ -482,22 +986,45 @@ export default function NextMappaStoricoPage({
             ) : null}
 
             <div className="man2-detail-kpis">
-              <div className="man2-detail-kpi">
-                <span>Hotspot visibili</span>
-                <strong>{hotspotsVisibili.length}</strong>
-              </div>
-              <div className="man2-detail-kpi">
-                <span>Zone con storico</span>
-                <strong>{zoneConStoricoNellaVista.length}</strong>
-              </div>
-              <div className="man2-detail-kpi">
-                <span>Interventi in vista</span>
-                <strong>{interventiInVista}</strong>
-              </div>
-              <div className="man2-detail-kpi">
-                <span>Storico totale</span>
-                <strong>{snapshot.interventi.length}</strong>
-              </div>
+              {isTechnicalVista ? (
+                <>
+                  <div className="man2-detail-kpi">
+                    <span>Assi disponibili</span>
+                    <strong>{technicalView?.assi.length ?? 0}</strong>
+                  </div>
+                  <div className="man2-detail-kpi">
+                    <span>Assi evidenziati</span>
+                    <strong>{technicalAssiCount}</strong>
+                  </div>
+                  <div className="man2-detail-kpi">
+                    <span>Vista tecnica</span>
+                    <strong>{vistaLabel}</strong>
+                  </div>
+                  <div className="man2-detail-kpi">
+                    <span>Storico totale</span>
+                    <strong>{snapshot.interventi.length}</strong>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="man2-detail-kpi">
+                    <span>Hotspot visibili</span>
+                    <strong>{hotspotsVisibili.length}</strong>
+                  </div>
+                  <div className="man2-detail-kpi">
+                    <span>Zone con storico</span>
+                    <strong>{zoneConStoricoNellaVista.length}</strong>
+                  </div>
+                  <div className="man2-detail-kpi">
+                    <span>Interventi in vista</span>
+                    <strong>{interventiInVista}</strong>
+                  </div>
+                  <div className="man2-detail-kpi">
+                    <span>Storico totale</span>
+                    <strong>{snapshot.interventi.length}</strong>
+                  </div>
+                </>
+              )}
             </div>
           </section>
 
@@ -521,6 +1048,12 @@ export default function NextMappaStoricoPage({
                 <span>Km attuali</span>
                 <strong>{mezzoCardInfo.kmAttuali || "DA VERIFICARE"}</strong>
               </div>
+              {kmPercorsiDalCambio != null ? (
+                <div className="man2-detail-info">
+                  <span>Km dal cambio gomme</span>
+                  <strong>{formatNumberIt(kmPercorsiDalCambio)}</strong>
+                </div>
+              ) : null}
               <div className="man2-detail-info">
                 <span>Ultima manutenzione</span>
                 <strong>{mezzoCardInfo.ultimaManutenzione || "Nessuna"}</strong>
@@ -540,10 +1073,15 @@ export default function NextMappaStoricoPage({
               {mezzoCardInfo.ultimeManutenzioniMezzo.length > 0 ? (
                 <div className="man2-detail-history-list">
                   {mezzoCardInfo.ultimeManutenzioniMezzo.map((item) => (
-                    <div key={item.id} className="man2-detail-history-item">
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`man2-detail-history-item${selectedMaintenance?.id === item.id ? " is-active" : ""}`}
+                      onClick={() => onSelectMaintenance?.(item.id)}
+                    >
                       <strong>{item.title}</strong>
                       <span>{item.data}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -556,10 +1094,15 @@ export default function NextMappaStoricoPage({
               {mezzoCardInfo.ultimeManutenzioniCompressore.length > 0 ? (
                 <div className="man2-detail-history-list">
                   {mezzoCardInfo.ultimeManutenzioniCompressore.map((item) => (
-                    <div key={item.id} className="man2-detail-history-item">
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`man2-detail-history-item${selectedMaintenance?.id === item.id ? " is-active" : ""}`}
+                      onClick={() => onSelectMaintenance?.(item.id)}
+                    >
                       <strong>{item.title}</strong>
                       <span>{item.data}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -575,7 +1118,7 @@ export default function NextMappaStoricoPage({
                 Apri quadro PDF
               </button>
               <button type="button" className="man2-btn man2-btn--secondary" onClick={() => onEditLatest?.()}>
-                Modifica ultima manutenzione
+                Modifica manutenzione aperta
               </button>
             </div>
           </aside>
@@ -648,7 +1191,7 @@ export default function NextMappaStoricoPage({
                   <button
                     key={hotspot.id}
                     type="button"
-                    className={`ms-hotspot${zonaSelezionata === hotspot.areaId ? " is-selected" : ""}`}
+                    className={`${getHotspotClassName(hotspot.areaId)}${zonaSelezionata === hotspot.areaId ? " is-selected" : ""}`}
                     style={{ left: `${hotspot.x}%`, top: `${hotspot.y}%` }}
                     onClick={(event) => {
                       event.stopPropagation();

@@ -31,6 +31,301 @@ Serve a:
 
 ## 4. Registro storico
 
+### Voce 2026-04-08 PROMPT26
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Stato gomme per asse nel clone `Manutenzioni` + filtro `Attrezzature` nel quadro
+- OBIETTIVO: Superare il modello troppo generico del cambio gomme nel modulo NEXT `Manutenzioni`, introducendo una struttura clone-side per asse e una lettura finale per asse nel `Quadro manutenzioni PDF`, senza toccare viewer tecnico, madre o backend.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/domain/nextManutenzioniDomain.ts`
+  - `src/next/domain/nextManutenzioniGommeDomain.ts`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_233944_next_manutenzioni_gomme_per_asse.md`
+  - `docs/continuity-reports/20260408_233944_continuity_next_manutenzioni_gomme_per_asse.md`
+- COSA E STATO CAMBIATO:
+  - esteso in modo retrocompatibile il record manutenzione clone-side con `gommePerAsse?: { asseId; dataCambio; kmCambio }[]`;
+  - mantenuto `assiCoinvolti` come campo compatibile, ma il salvataggio gomme ora registra eventi per asse;
+  - `Nuova / Modifica` mostra gli assi solo nel flusso `gomme` e costruisce il payload per asse usando gli id canonici gia reali;
+  - il `Quadro manutenzioni PDF` aggiunge il filtro `Attrezzature` e mostra lo stato finale gomme per asse, con focus su km per i mezzi motorizzati e focus sulla data per rimorchi/semirimorchi.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il cambio gomme non e piu presentato come dato unico generico ma come stato per asse leggibile;
+  - Lettura: riusa il reader canonico rifornimenti gia attivo nel modulo per i km attuali;
+  - Blocco scritture: invariato a livello clone-wide; la deroga chirurgica di `Manutenzioni` continua a valere solo nel perimetro gia autorizzato.
+- COME VERIFICARE:
+  - aprire `/next/manutenzioni`, tab `Nuova / Modifica`, selezionare `Tipo = Mezzo` e `Sottotipo = Gomme`;
+  - verificare che gli assi selezionati generino il riepilogo `Cambio gomme per asse`;
+  - salvare una manutenzione gomme e aprire `Quadro manutenzioni PDF`;
+  - verificare il filtro `Attrezzature` e, per `Mezzo`, la presenza dello stato finale gomme per asse con campi coerenti alla categoria.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - nessuna modifica a `NextMappaStoricoPage.tsx`, `nextMappaStoricoDomain.ts`, `mezziHotspotAreas.ts` o al runtime legacy;
+  - `npm run build` = `OK`.
+
+### Voce 2026-04-08 PROMPT24
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Calibra normal-mode display — saved targets visibili in modalita normale
+- OBIETTIVO: In modalita normale (non-calibra) il viewer tecnico `Sinistra/Destra` di `/next/manutenzioni` non mostrava i marker tecnici salvati. Il flusso `Calibra` (selezione target, click, drag, Salva, reload) era gia completo, ma dopo aver salvato un target e chiuso la modalita calibra i marker non erano piu visibili. Aggiunto render read-only dei soli target salvati in modalita normale.
+- FILE TOCCATI:
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `CONTEXT_CLAUDE.md`
+- COSA E STATO CAMBIATO:
+  - `NextMappaStoricoPage.tsx`: nel ramo tecnico (viste Sinistra/Destra), il rendering dei marker ora distingue calibra/normale. In normale mostra span read-only (`man2-technical-marker--readonly`) per i soli target con override salvato. In calibra mostra i marker button interattivi (draft + drag) come prima.
+  - `next-mappa-storico.css`: aggiunta classe `.man2-technical-marker--readonly` che disabilita interazione (`pointer-events: none`) e riduce leggermente opacita.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - Puro change display: nessuna nuova scrittura, nessuna modifica ai domain o ai writer.
+  - In modalita normale, i target tecnici salvati ora restano visibili come riferimento dopo aver chiuso Calibra.
+  - In modalita calibra, comportamento invariato: target interattivi, drag, draft, Salva.
+- COME VERIFICARE:
+  - Aprire `/next/manutenzioni`, selezionare un mezzo, andare in `Dettaglio`, vista Sinistra o Destra.
+  - Attivare `Calibra`, selezionare un target, cliccare sul disegno, premere `Salva`.
+  - Chiudere `Calibra`: il marker salvato deve restare visibile in modalita normale.
+  - Ricaricare la pagina e tornare in Sinistra/Destra: il marker deve riapparire (override riletto da storage).
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: `npm run build` = OK. Problema B (Km dal cambio gomme) e Problema C (deduplicazione) erano gia implementati nei run precedenti e restano invariati.
+
+### Voce 2026-04-08 209
+- DATA: 2026-04-08
+- TITOLO MODIFICA: `Calibra` con flusso esplicito create/place/drag/save + deduplica runtime in `Manutenzioni`
+- OBIETTIVO: Correggere due gap rimasti visibili nel browser del clone NEXT `Manutenzioni`: il doppione tra box e lista dello storico mezzo, e una modalita `Calibra` ancora non pienamente conforme al flusso richiesto dall'utente.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/domain/nextMappaStoricoDomain.ts`
+  - `src/next/domain/nextManutenzioniGommeDomain.ts`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_223600_next_manutenzioni_calibra_create_drag_save.md`
+  - `docs/continuity-reports/20260408_223600_continuity_next_manutenzioni_calibra_create_drag_save.md`
+- COSA E STATO CAMBIATO:
+  - Deduplicata la lista `Ultime manutenzioni mezzo` rispetto al box `Ultimo intervento mezzo`.
+  - Reso `Calibra` un flusso esplicito con:
+    - selezione target;
+    - posizionamento sul click;
+    - drag marker salvato;
+    - bottone `Salva`;
+    - rilettura override persistiti.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - Il `Dettaglio` non mostra piu il doppione nello storico mezzo.
+  - Il viewer tecnico usa ora override clone-side reali, senza toccare Firestore business o la madre legacy.
+- COME VERIFICARE:
+  - Aprire `/next/manutenzioni` -> `Dettaglio` e verificare che il primo record del box non ricompaia nella lista sotto.
+  - Entrare in `Calibra`, scegliere un target, cliccare sul disegno, trascinare se necessario, premere `Salva` e verificare la persistenza alla riapertura della stessa vista.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Gli override tecnici restano clone-side e non sono ancora un contratto business globale.
+
+### Voce 2026-04-08 208
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Deduplica storico mezzo + calibrazione tecnica reale in `Manutenzioni`
+- OBIETTIVO: Eliminare il doppione visivo tra `Ultimo intervento mezzo` e `Ultime manutenzioni mezzo`, e trasformare `Calibra` in una vera modalita di spostamento/salvataggio marker nel viewer tecnico NEXT.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/domain/nextMappaStoricoDomain.ts`
+  - `src/next/domain/nextManutenzioniGommeDomain.ts`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_221500_next_manutenzioni_calibra_reale.md`
+  - `docs/continuity-reports/20260408_221500_continuity_next_manutenzioni_calibra_reale.md`
+- COSA E STATO CAMBIATO:
+  - Deduplicata la lista `Ultime manutenzioni mezzo` rispetto al record gia mostrato nel box `Ultimo intervento mezzo`.
+  - Introdotti override tecnici clone-side per `categoria + vista + target`.
+  - Il viewer tecnico in `Calibra` ora salva davvero la posizione dei marker e la rilegge nelle sessioni successive.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - Migliora la leggibilita del pannello destro e chiude il falso doppione.
+  - `Calibra` smette di essere una preview e diventa uno strumento reale di calibrazione locale, senza aprire scritture business o toccare la madre.
+- COME VERIFICARE:
+  - Aprire `/next/manutenzioni`, tab `Dettaglio`, e controllare che il record nel box `Ultimo intervento mezzo` non compaia piu come primo elemento nella lista sotto.
+  - Entrare in `Calibra`, selezionare un target, cliccare sul disegno per posizionarlo oppure trascinare un marker gia presente, poi riaprire la stessa vista e verificare che la posizione salvata venga riletta.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Gli override tecnici sono clone-side e non alterano Firestore o la madre legacy.
+
+### Voce 2026-04-08 207
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Delta km gomme + tooltip accessibile `Calibra` in `Manutenzioni`
+- OBIETTIVO: Mostrare nel `Dettaglio` di `/next/manutenzioni` quanti km sono stati percorsi dall'ultimo cambio gomme usando il km attuale da ultimo rifornimento valido, e rendere `Calibra` autoesplicativo senza aggiungere testo fisso al layout.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_214800_next_manutenzioni_delta_km_calibra_tooltip.md`
+  - `docs/continuity-reports/20260408_214800_continuity_next_manutenzioni_delta_km_calibra_tooltip.md`
+- COSA E STATO CAMBIATO:
+  - Il parent `NextManutenzioniPage` passa ora al viewer il `km` e il `tipo` del record manutenzione aperto.
+  - Il viewer `NextMappaStoricoPage` calcola e mostra `Km dal cambio gomme` solo se il record aperto e una manutenzione gomme coerente, il km del cambio e presente, il km attuale da ultimo rifornimento e presente e il delta non e negativo.
+  - La copy fissa di supporto a `Calibra` e stata rimossa dal layout; il bottone usa ora tooltip breve e `aria-label` accessibile.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - Migliora la leggibilita del dettaglio gomme senza introdurre nuove scritture business.
+  - Riusa il reader canonico rifornimenti gia presente nel modulo; nessun impatto su writer, Firestore o backend.
+- COME VERIFICARE:
+  - Aprire `/next/manutenzioni`, selezionare un mezzo con rifornimenti e una manutenzione gomme con km valido, poi aprire il tab `Dettaglio`.
+  - Verificare che compaia `Km dal cambio gomme` solo con dati coerenti e che il valore sia `km ultimo rifornimento - km cambio`.
+  - Passare il mouse o il focus tastiera sul bottone `Calibra` e verificare il tooltip, senza testi guida permanenti nel layout.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - Il modulo resta `PARZIALE`; il fix chiude solo il miglioramento mirato richiesto sul runtime NEXT.
+
+### Voce 2026-04-08 206
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Visibilita runtime `Attrezzature` + `Calibra` in `Manutenzioni`
+- OBIETTIVO: Correggere il runtime reale di `/next/manutenzioni` per esporre davvero la terza opzione tipo intervento e rendere realmente leggibile il comando `Calibra` nel viewer tecnico del dettaglio.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/domain/nextManutenzioniDomain.ts`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_212125_next_manutenzioni_attrezzature_calibra_runtime.md`
+  - `docs/continuity-reports/20260408_212125_continuity_next_manutenzioni_attrezzature_calibra_runtime.md`
+- COSA E STATO CAMBIATO:
+  - il form `Nuova / Modifica` espone ora davvero `Attrezzature` come terza opzione accanto a `Mezzo` e `Compressore`;
+  - il domain clone-side accetta in modo retrocompatibile il tipo `attrezzature` in lettura/scrittura locale del modulo;
+  - il viewer embedded del `Dettaglio` usa ora una variante bottone esplicita e visibile per `Calibra`, invece della vecchia variante secondaria trasparente.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: i controlli attesi nel browser sono finalmente presenti e leggibili;
+  - Lettura: invariata salvo supporto retrocompatibile del nuovo valore tipo;
+  - Blocco scritture: invariato a livello clone-wide; resta la sola deroga chirurgica gia esistente del modulo `Manutenzioni`.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts src/next/mezziHotspotAreas.ts`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - verificare in `Nuova / Modifica` le 3 opzioni `Mezzo`, `Compressore`, `Attrezzature`;
+  - verificare in `Dettaglio` la presenza visibile del comando `Calibra` nel toolbar tecnico.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - nessuna modifica a madre, PDF, Euromecc o moduli fuori whitelist.
+
+### Voce 2026-04-08 205
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Binding esplicito record manutenzione -> viewer tecnico in `Manutenzioni`
+- OBIETTIVO: Fare in modo che il tab `Dettaglio` usi sempre il record manutenzione aperto nella UI parent, senza fallback impliciti a "ultima manutenzione con assi".
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_210918_next_manutenzioni_binding_record_viewer.md`
+  - `docs/continuity-reports/20260408_210918_continuity_next_manutenzioni_binding_record_viewer.md`
+- COSA E STATO CAMBIATO:
+  - `NextManutenzioniPage` mantiene ora un `selectedDetailRecordId` esplicito;
+  - il viewer `Dettaglio` riceve il record selezionato come prop strutturata, non piu solo `highlightedAssi` derivato da fallback;
+  - dashboard, quadro PDF e liste storico del dettaglio possono cambiare in modo esplicito il record aperto;
+  - il viewer tecnico resta pulito se il record selezionato non ha `assiCoinvolti`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il dettaglio mostra ora con chiarezza il record aperto e permette di cambiarlo senza ambiguita;
+  - Lettura: nessun dataset nuovo, solo binding locale piu corretto tra parent e child;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - da `Dashboard` aprire il dettaglio di due interventi diversi e verificare highlight diversi o viewer pulito;
+  - dal `Quadro manutenzioni PDF` aprire il dettaglio e verificare che il record aperto sia quello della riga selezionata;
+  - nella card destra del `Dettaglio`, cambiare manutenzione e verificare aggiornamento del viewer tecnico.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il build globale del repo resta bloccato da errori preesistenti in `NextEuromeccPage.tsx`, fuori whitelist.
+
+### Voce 2026-04-08 205
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Viewer tecnico `Dettaglio` pulito + modalita `Calibra` in `Manutenzioni`
+- OBIETTIVO: Eliminare i marker neutri permanenti dal viewer tecnico di `Dettaglio`, mostrare solo target reali in vista normale e distinguere visivamente assi, fanali/specchi e attrezzature.
+- FILE TOCCATI:
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/mezziHotspotAreas.ts`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_200253_next_manutenzioni_viewer_calibra.md`
+  - `docs/continuity-reports/20260408_200253_continuity_next_manutenzioni_viewer_calibra.md`
+- COSA E STATO CAMBIATO:
+  - il viewer tecnico `Sinistra/Destra` usa ora in vista normale solo l'immagine tecnica e gli assi davvero evidenziati dal record aperto;
+  - la modalita `Calibra` espone preview asse e palette target solo quando richiesta dall'utente;
+  - `mezziHotspotAreas` dichiara ora `targetKind` reale per distinguere `assi`, `fanali_specchi` e `attrezzature`;
+  - gli hotspot sulle viste foto e la palette tecnica usano marker diversi per categoria target.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il dettaglio tecnico risulta piu leggibile e meno ambiguo;
+  - Lettura: nessun nuovo dataset, solo uso piu pulito dei target e degli assi gia presenti;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextMappaStoricoPage.tsx src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts src/next/mezziHotspotAreas.ts`
+  - `npm run build`
+  - aprire `/next/manutenzioni` -> tab `Dettaglio`
+  - verificare che su `Sinistra/Destra`:
+    - senza `assiCoinvolti` non compaiano cerchi neutri permanenti;
+    - con assi salvati compaiano solo gli highlight reali;
+    - `Calibra` mostri preview asse e grammatica target separata;
+    - assi, fanali/specchi e attrezzature usino marker diversi.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - `Fronte/Retro` restano sul fallback attuale foto/hotspot;
+  - nessuna riapertura del modale legacy.
+
+### Voce 2026-04-08 204
+- DATA: 2026-04-08
+- TITOLO MODIFICA: Flusso assi strutturato + viewer tecnico `public/gomme` in `Manutenzioni`
+- OBIETTIVO: Introdurre nel modulo NEXT `Manutenzioni` una selezione assi inline nuova, salvare il dato in modo strutturato nella manutenzione e mostrare in `Dettaglio` la tavola tecnica `Sinistra/Destra` con assi evidenziati, senza riaprire il modale gomme legacy.
+- FILE TOCCATI:
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+  - `src/next/domain/nextManutenzioniDomain.ts`
+  - `src/next/domain/nextManutenzioniGommeDomain.ts`
+  - `src/next/next-mappa-storico.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260408_174718_next_manutenzioni_assi_tecnici.md`
+  - `docs/continuity-reports/20260408_174718_next_manutenzioni_assi_tecnici.md`
+- COSA E STATO CAMBIATO:
+  - il record manutenzione supporta ora il campo opzionale `assiCoinvolti?: string[]` con id asse canonici gia usati nel repo;
+  - `Nuova / Modifica` espone chip inline per selezionare gli assi coinvolti in base alla categoria del mezzo selezionato, senza modal legacy;
+  - `Dettaglio`, nelle sole viste `Sinistra/Destra`, usa una mappa deterministica categoria -> tavola tecnica reale `public/gomme/*` e illumina gli assi salvati;
+  - `Fronte/Retro` mantengono il comportamento attuale foto/hotspot.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il flusso gomme/assi diventa inline e coerente col modulo, senza riaprire componenti legacy;
+  - Lettura: il `Dettaglio` mostra ora un ramo tecnico nuovo, ma solo dove esistono asset reali;
+  - Blocco scritture: invariato a livello clone-wide, salvo la deroga chirurgica gia esistente del modulo `Manutenzioni`.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts`
+  - `npm run build`
+  - aprire `/next/manutenzioni`
+  - verificare:
+    - selezione assi inline in `Nuova / Modifica`;
+    - salvataggio della manutenzione con `assiCoinvolti`;
+    - `Dettaglio` su `Sinistra/Destra` con tavola tecnica da `public/gomme`;
+    - `Fronte/Retro` invariati su fallback attuale.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - madre e modale legacy restano intoccati;
+  - nessuna selezione gomma singola, nessun cambio a PDF, Firestore rules o backend;
+  - stato modulo invariato: `PARZIALE`.
+
 ### Voce 2026-04-08 203
 - DATA: 2026-04-08
 - TITOLO MODIFICA: Fix definitivo della griglia `Data / KM-Ore / Fornitore` in `Manutenzioni`

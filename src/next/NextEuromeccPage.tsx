@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
+import { v4 as uuidv4 } from "uuid";
 import {
   EUROMECC_AREAS,
   EUROMECC_AREA_KEYS,
@@ -37,7 +40,7 @@ import {
 import { formatDateInput, formatDateUI } from "./nextDateFormat";
 import "./next-euromecc.css";
 
-type TabKey = "home" | "maintenance" | "issues" | "report";
+type TabKey = "home" | "maintenance" | "issues" | "report" | "relazioni";
 type DataManagerTabKey = "issues" | "pending" | "done";
 
 type MapNodeLayout = {
@@ -90,6 +93,95 @@ type IssueEditState = Omit<UpdateEuromeccIssueInput, "closedDate"> & {
   closedDate: string;
 };
 
+type EuromeccExtraComponent = {
+  areaKey: string;
+  subKey: string;
+  name: string;
+  code: string;
+  addedFrom: string;
+  addedAt: string;
+  addedBy: string;
+};
+
+type EuromeccRelazioneDoc = {
+  id: string;
+  fileName: string;
+  fileType: "pdf" | "image";
+  dataIntervento: string;
+  tecnici: string[];
+  note: string;
+  statoImportazione: "bozza" | "confermata" | "parziale";
+  doneCount: number;
+  pendingCount: number;
+  extraComponentsCount: number;
+};
+
+type RelazioneItemMatched = {
+  kind: "matched";
+  areaKey: string;
+  subKey: string;
+  areaLabel: string;
+  subLabel: string;
+  title: string;
+  tipoIntervento: string;
+  doneDate: string;
+  by: string;
+  note: string;
+  nextDate: string | null;
+  selected: boolean;
+};
+
+type RelazioneItemPartial = {
+  kind: "partial";
+  rawText: string;
+  suggestedAreaKey: string | null;
+  suggestedSubKey: string | null;
+  editAreaKey: string;
+  editSubKey: string;
+  editName: string;
+  editCode: string;
+  editTitle: string;
+  editTipoIntervento: string;
+  editDoneDate: string;
+  editBy: string;
+  editNote: string;
+  ignored: boolean;
+};
+
+type RelazioneItemPending = {
+  kind: "pending";
+  rawText: string;
+  suggestedAreaKey: string | null;
+  suggestedSubKey: string | null;
+  editAreaKey: string;
+  editSubKey: string;
+  editTitle: string;
+  editPriority: "alta" | "media" | "bassa";
+  editDueDate: string | null;
+  editNote: string;
+  selected: boolean;
+  ignored: boolean;
+};
+
+type RelazioneAiPayload = {
+  dataIntervento: string;
+  tecnici: string[];
+  matched: RelazioneItemMatched[];
+  partial: RelazioneItemPartial[];
+  pending: RelazioneItemPending[];
+};
+
+type RelazioniTabState = {
+  phase: "idle" | "uploading" | "analyzing" | "review" | "saving" | "done";
+  file: File | null;
+  filePreviewUrl: string | null;
+  fileType: "pdf" | "image" | null;
+  payload: RelazioneAiPayload | null;
+  noteGenerali: string;
+  bozzaId: string | null;
+  error: string | null;
+};
+
 const STATUS_COLORS: Record<EuromeccStatus, string> = {
   ok: "#22c55e",
   check: "#facc15",
@@ -132,6 +224,7 @@ const TAB_ITEMS: Array<{ key: TabKey; label: string }> = [
   { key: "maintenance", label: "Manutenzione" },
   { key: "issues", label: "Problemi" },
   { key: "report", label: "Riepilogo" },
+  { key: "relazioni", label: "Relazioni" },
 ];
 
 const DATA_MANAGER_TABS: Array<{ key: DataManagerTabKey; label: string }> = [
@@ -1112,6 +1205,1158 @@ function statusLegendItems() {
 
 function componentBase(area: EuromeccAreaStatic, subKey: string) {
   return area.components.find((item) => item.key === subKey)?.base ?? area.base;
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(new Error("FileReader error"));
+    reader.readAsDataURL(file);
+  });
+}
+
+
+async function buildComponentDict(): Promise<string> {
+  const staticDict = Object.values(EUROMECC_AREAS).map((area) => ({
+    areaKey: area.key,
+    areaLabel: area.title,
+    components: area.components.map((c) => ({ subKey: c.key, subLabel: c.name })),
+  }));
+
+  const extraSnap = await getDocs(collection(db, "euromecc_extra_components"));
+  const extraByArea: Record<string, { subKey: string; subLabel: string }[]> = {};
+  extraSnap.docs.forEach((docSnap) => {
+    const d = docSnap.data() as EuromeccExtraComponent;
+    if (!extraByArea[d.areaKey]) extraByArea[d.areaKey] = [];
+    extraByArea[d.areaKey].push({ subKey: d.subKey, subLabel: d.name });
+  });
+
+  const dict = staticDict.map((area) => ({
+    ...area,
+    components: [...area.components, ...(extraByArea[area.areaKey] ?? [])],
+  }));
+
+  return dict
+    .map(
+      (a) =>
+        `${a.areaKey} (${a.areaLabel}): ${a.components.map((c) => `${c.subKey}=${c.subLabel}`).join(", ")}`,
+    )
+    .join("\n");
+}
+
+async function callPdfAiEnhance(
+  payload: { inputText?: string; imageBase64?: string }
+): Promise<string> {
+  const isLocal =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+
+  const url = isLocal
+    ? "http://127.0.0.1:4310/internal-ai-backend/euromecc/pdf-analyze"
+    : "/api/pdf-ai-enhance";
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Errore API: ${res.status}`);
+  }
+
+  const json = await res.json();
+
+  if (isLocal) {
+    if (!json.ok) throw new Error(json.message ?? "Errore analisi");
+    return json.data?.result ?? "";
+  } else {
+    if (!json.ok) throw new Error(json.error ?? "Errore analisi");
+    return json.result ?? "";
+  }
+}
+
+const ANALYZING_MESSAGES = [
+  "Lettura documento...",
+  "Estrazione lavori eseguiti...",
+  "Classificazione per componente...",
+  "Identificazione interventi futuri...",
+] as const;
+
+function RelazioniUpload(props: {
+  state: RelazioniTabState;
+  onFileSelect: (file: File) => void;
+  onAnalyze: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragOver(false);
+    const file = event.dataTransfer.files[0];
+    if (file) props.onFileSelect(file);
+  }
+
+  return (
+    <div className="eur-relazioni-upload">
+      <div
+        className={`eur-relazioni-dropzone${dragOver ? " drag-over" : ""}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,image/jpeg,image/png"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) props.onFileSelect(f);
+          }}
+        />
+        {props.state.file ? (
+          <div className="eur-relazioni-file-preview">
+            {props.state.fileType === "image" && props.state.filePreviewUrl ? (
+              <img src={props.state.filePreviewUrl} alt="Anteprima" />
+            ) : (
+              <span className="eur-relazioni-file-icon">&#128196;</span>
+            )}
+            <span className="eur-relazioni-file-name">{props.state.file.name}</span>
+          </div>
+        ) : (
+          <div className="eur-relazioni-dropzone-empty">
+            <span>Trascina qui un PDF o un&apos;immagine</span>
+            <span>oppure clicca per selezionare</span>
+            <small>PDF, JPG, PNG</small>
+          </div>
+        )}
+      </div>
+      {props.state.error ? <p className="eur-error">{props.state.error}</p> : null}
+      <div className="eur-relazioni-upload-actions">
+        <button
+          type="button"
+          disabled={!props.state.file}
+          onClick={props.onAnalyze}
+          className="eur-btn-primary"
+        >
+          Analizza
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RelazioniAnalyzing() {
+  const [msgIndex, setMsgIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMsgIndex((prev) => (prev + 1) % ANALYZING_MESSAGES.length);
+    }, 1800);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="eur-relazioni-analyzing">
+      <div className="eur-relazioni-spinner" />
+      <p>{ANALYZING_MESSAGES[msgIndex]}</p>
+    </div>
+  );
+}
+
+function RelazioniPdfViewer(props: { file: File }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(props.file);
+    setObjectUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [props.file]);
+
+  if (!objectUrl) return null;
+
+  return (
+    <iframe
+      src={objectUrl}
+      title="PDF originale"
+      style={{ display: "block", width: "100%", minHeight: "80vh", border: "none" }}
+    />
+  );
+}
+
+function RelazioniDocPreview(props: { state: RelazioniTabState }) {
+  if (props.state.fileType === "image" && props.state.filePreviewUrl) {
+    return (
+      <div className="eur-relazioni-col-left">
+        <img
+          src={props.state.filePreviewUrl}
+          alt="Documento originale"
+          style={{ width: "100%", objectFit: "contain" }}
+        />
+      </div>
+    );
+  }
+  if (props.state.fileType === "pdf" && props.state.file) {
+    return (
+      <div className="eur-relazioni-col-left">
+        <RelazioniPdfViewer file={props.state.file} />
+      </div>
+    );
+  }
+  return (
+    <div className="eur-relazioni-col-left">
+      <p>Nessun documento disponibile.</p>
+    </div>
+  );
+}
+
+function RelazioniSectionMatched(props: {
+  items: RelazioneItemMatched[];
+  onToggle: (index: number) => void;
+  onUpdate: (index: number, patch: Partial<RelazioneItemMatched>) => void;
+}) {
+  const [editing, setEditing] = useState<number | null>(null);
+
+  if (props.items.length === 0) return null;
+
+  const byArea: Record<string, { index: number; item: RelazioneItemMatched }[]> = {};
+  props.items.forEach((item, index) => {
+    if (!byArea[item.areaKey]) byArea[item.areaKey] = [];
+    byArea[item.areaKey].push({ index, item });
+  });
+
+  return (
+    <div className="eur-relazioni-section">
+      <h4 className="eur-relazioni-section-title">
+        &#9989; Lavori registrabili ({props.items.filter((i) => i.selected).length}/
+        {props.items.length})
+      </h4>
+      {Object.entries(byArea).map(([areaKey, entries]) => (
+        <div key={areaKey} className="eur-relazioni-area-group">
+          <span className="eur-eyebrow">{entries[0]?.item.areaLabel ?? areaKey}</span>
+          {entries.map(({ index, item }) => (
+            <div
+              key={index}
+              className={`eur-relazioni-item eur-relazioni-item--matched${item.selected ? "" : " eur-relazioni-item--ignored"}`}
+            >
+              <div className="eur-relazioni-item-head">
+                <label className="eur-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={item.selected}
+                    onChange={() => props.onToggle(index)}
+                  />
+                  <span>
+                    {item.subLabel} — {item.tipoIntervento}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  className="eur-relazioni-edit-btn"
+                  onClick={() => setEditing(editing === index ? null : index)}
+                >
+                  &#9998;
+                </button>
+              </div>
+              <div className="eur-relazioni-item-meta">
+                <span>{item.doneDate}</span>
+                <span>{item.by}</span>
+                {item.note ? <span>{item.note}</span> : null}
+              </div>
+              {editing === index ? (
+                <div className="eur-relazioni-item-form">
+                  <label>
+                    Area
+                    <select
+                      value={item.areaKey}
+                      onChange={(e) =>
+                        props.onUpdate(index, {
+                          areaKey: e.target.value,
+                          areaLabel: EUROMECC_AREAS[e.target.value]?.title ?? e.target.value,
+                        })
+                      }
+                    >
+                      {EUROMECC_AREA_KEYS.map((k) => (
+                        <option key={k} value={k}>
+                          {EUROMECC_AREAS[k]?.title ?? k}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Componente
+                    <select
+                      value={item.subKey}
+                      onChange={(e) =>
+                        props.onUpdate(index, {
+                          subKey: e.target.value,
+                          subLabel:
+                            EUROMECC_AREAS[item.areaKey]?.components.find(
+                              (c) => c.key === e.target.value,
+                            )?.name ?? e.target.value,
+                        })
+                      }
+                    >
+                      {(EUROMECC_AREAS[item.areaKey]?.components ?? []).map((c) => (
+                        <option key={c.key} value={c.key}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Tipo intervento
+                    <input
+                      type="text"
+                      value={item.tipoIntervento}
+                      onChange={(e) => props.onUpdate(index, { tipoIntervento: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Note
+                    <input
+                      type="text"
+                      value={item.note}
+                      onChange={(e) => props.onUpdate(index, { note: e.target.value })}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RelazioniSectionPartial(props: {
+  items: RelazioneItemPartial[];
+  onUpdate: (index: number, patch: Partial<RelazioneItemPartial>) => void;
+}) {
+  if (props.items.length === 0) return null;
+
+  return (
+    <div className="eur-relazioni-section">
+      <h4 className="eur-relazioni-section-title">
+        &#9888;&#65039; Non riconosciuti ({props.items.filter((i) => !i.ignored).length}/
+        {props.items.length})
+      </h4>
+      {props.items.map((item, index) => (
+        <div
+          key={index}
+          className={`eur-relazioni-item eur-relazioni-item--partial${item.ignored ? " eur-relazioni-item--ignored" : ""}`}
+        >
+          <p className="eur-relazioni-raw-text">{item.rawText}</p>
+          {!item.ignored ? (
+            <div className="eur-relazioni-item-form">
+              <label>
+                Area
+                <select
+                  value={item.editAreaKey}
+                  onChange={(e) =>
+                    props.onUpdate(index, { editAreaKey: e.target.value, editSubKey: "" })
+                  }
+                >
+                  {EUROMECC_AREA_KEYS.map((k) => (
+                    <option key={k} value={k}>
+                      {EUROMECC_AREAS[k]?.title ?? k}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Componente
+                <select
+                  value={item.editSubKey}
+                  onChange={(e) => props.onUpdate(index, { editSubKey: e.target.value })}
+                >
+                  <option value="">-- seleziona --</option>
+                  {(EUROMECC_AREAS[item.editAreaKey]?.components ?? []).map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.name}
+                    </option>
+                  ))}
+                  <option value="NEW">&#43; Aggiungi nuovo componente</option>
+                </select>
+              </label>
+              {item.editSubKey === "NEW" ? (
+                <>
+                  <label>
+                    Nome componente
+                    <input
+                      type="text"
+                      value={item.editName}
+                      placeholder="es. Valvola bypass"
+                      onChange={(e) => props.onUpdate(index, { editName: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Codice tecnico
+                    <input
+                      type="text"
+                      value={item.editCode}
+                      placeholder="es. VLV-BP-01"
+                      onChange={(e) => props.onUpdate(index, { editCode: e.target.value })}
+                    />
+                  </label>
+                </>
+              ) : null}
+              <label>
+                Tipo intervento
+                <input
+                  type="text"
+                  value={item.editTipoIntervento}
+                  onChange={(e) => props.onUpdate(index, { editTipoIntervento: e.target.value })}
+                />
+              </label>
+              <label>
+                Data intervento
+                <input
+                  type="date"
+                  value={item.editDoneDate}
+                  onChange={(e) => props.onUpdate(index, { editDoneDate: e.target.value })}
+                />
+              </label>
+              <label>
+                Tecnico
+                <input
+                  type="text"
+                  value={item.editBy}
+                  onChange={(e) => props.onUpdate(index, { editBy: e.target.value })}
+                />
+              </label>
+              <label>
+                Note
+                <input
+                  type="text"
+                  value={item.editNote}
+                  onChange={(e) => props.onUpdate(index, { editNote: e.target.value })}
+                />
+              </label>
+            </div>
+          ) : null}
+          <div className="eur-relazioni-item-actions">
+            {item.ignored ? (
+              <button type="button" onClick={() => props.onUpdate(index, { ignored: false })}>
+                Ripristina
+              </button>
+            ) : (
+              <button type="button" onClick={() => props.onUpdate(index, { ignored: true })}>
+                Ignora
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RelazioniSectionPending(props: {
+  items: RelazioneItemPending[];
+  onUpdate: (index: number, patch: Partial<RelazioneItemPending>) => void;
+}) {
+  if (props.items.length === 0) return null;
+
+  return (
+    <div className="eur-relazioni-section">
+      <h4 className="eur-relazioni-section-title">
+        &#128203; Prossimi interventi consigliati (
+        {props.items.filter((i) => i.selected && !i.ignored).length}/{props.items.length})
+      </h4>
+      {props.items.map((item, index) => (
+        <div
+          key={index}
+          className={`eur-relazioni-item eur-relazioni-item--pending${item.ignored ? " eur-relazioni-item--ignored" : ""}`}
+        >
+          <p className="eur-relazioni-raw-text">{item.rawText}</p>
+          {!item.ignored ? (
+            <div className="eur-relazioni-item-form">
+              <label>
+                Area
+                <select
+                  value={item.editAreaKey}
+                  onChange={(e) =>
+                    props.onUpdate(index, { editAreaKey: e.target.value, editSubKey: "" })
+                  }
+                >
+                  {EUROMECC_AREA_KEYS.map((k) => (
+                    <option key={k} value={k}>
+                      {EUROMECC_AREAS[k]?.title ?? k}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Componente
+                <select
+                  value={item.editSubKey}
+                  onChange={(e) => props.onUpdate(index, { editSubKey: e.target.value })}
+                >
+                  <option value="">-- seleziona --</option>
+                  {(EUROMECC_AREAS[item.editAreaKey]?.components ?? []).map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Descrizione
+                <input
+                  type="text"
+                  value={item.editTitle}
+                  onChange={(e) => props.onUpdate(index, { editTitle: e.target.value })}
+                />
+              </label>
+              <label>
+                Priorità
+                <select
+                  value={item.editPriority}
+                  onChange={(e) =>
+                    props.onUpdate(index, {
+                      editPriority: e.target.value as "alta" | "media" | "bassa",
+                    })
+                  }
+                >
+                  <option value="alta">Alta</option>
+                  <option value="media">Media</option>
+                  <option value="bassa">Bassa</option>
+                </select>
+              </label>
+              <label>
+                Data scadenza
+                <input
+                  type="date"
+                  value={item.editDueDate ?? ""}
+                  onChange={(e) =>
+                    props.onUpdate(index, { editDueDate: e.target.value || null })
+                  }
+                />
+              </label>
+              <label>
+                Note
+                <input
+                  type="text"
+                  value={item.editNote}
+                  onChange={(e) => props.onUpdate(index, { editNote: e.target.value })}
+                />
+              </label>
+            </div>
+          ) : null}
+          <div className="eur-relazioni-item-actions">
+            <label className="eur-checkbox">
+              <input
+                type="checkbox"
+                checked={item.selected}
+                onChange={() => props.onUpdate(index, { selected: !item.selected })}
+              />
+              <span>Includi</span>
+            </label>
+            {item.ignored ? (
+              <button type="button" onClick={() => props.onUpdate(index, { ignored: false })}>
+                Ripristina
+              </button>
+            ) : (
+              <button type="button" onClick={() => props.onUpdate(index, { ignored: true })}>
+                Ignora
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RelazioniActionBar(props: {
+  noteGenerali: string;
+  saving: boolean;
+  onNoteChange: (v: string) => void;
+  onSaveBozza: () => void;
+  onConferma: () => void;
+}) {
+  return (
+    <div className="eur-relazioni-action-bar">
+      <label>
+        Note generali relazione
+        <textarea
+          value={props.noteGenerali}
+          onChange={(e) => props.onNoteChange(e.target.value)}
+          rows={3}
+          placeholder="Note libere sull'importazione..."
+        />
+      </label>
+      <div className="eur-relazioni-action-bar-buttons">
+        <button type="button" onClick={props.onSaveBozza} disabled={props.saving}>
+          Salva bozza
+        </button>
+        <button
+          type="button"
+          className="eur-btn-primary"
+          onClick={props.onConferma}
+          disabled={props.saving}
+        >
+          {props.saving ? "Registrazione..." : "&#10003; Conferma tutto e registra"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RelazioniExtracted(props: {
+  payload: RelazioneAiPayload;
+  saving: boolean;
+  noteGenerali: string;
+  onToggleMatched: (i: number) => void;
+  onUpdateMatched: (i: number, patch: Partial<RelazioneItemMatched>) => void;
+  onUpdatePartial: (i: number, patch: Partial<RelazioneItemPartial>) => void;
+  onUpdatePending: (i: number, patch: Partial<RelazioneItemPending>) => void;
+  onNoteChange: (v: string) => void;
+  onSaveBozza: () => void;
+  onConferma: () => void;
+}) {
+  return (
+    <div className="eur-relazioni-col-right">
+      <div className="eur-relazioni-meta">
+        <span>
+          Data intervento:{" "}
+          <strong>{props.payload.dataIntervento || "—"}</strong>
+        </span>
+        <span>
+          Tecnici: <strong>{props.payload.tecnici.join(", ") || "—"}</strong>
+        </span>
+      </div>
+      <RelazioniSectionMatched
+        items={props.payload.matched}
+        onToggle={props.onToggleMatched}
+        onUpdate={props.onUpdateMatched}
+      />
+      <RelazioniSectionPartial
+        items={props.payload.partial}
+        onUpdate={props.onUpdatePartial}
+      />
+      <RelazioniSectionPending
+        items={props.payload.pending}
+        onUpdate={props.onUpdatePending}
+      />
+      <RelazioniActionBar
+        noteGenerali={props.noteGenerali}
+        saving={props.saving}
+        onNoteChange={props.onNoteChange}
+        onSaveBozza={props.onSaveBozza}
+        onConferma={props.onConferma}
+      />
+    </div>
+  );
+}
+
+function RelazioniReview(props: {
+  state: RelazioniTabState;
+  saving: boolean;
+  onToggleMatched: (i: number) => void;
+  onUpdateMatched: (i: number, patch: Partial<RelazioneItemMatched>) => void;
+  onUpdatePartial: (i: number, patch: Partial<RelazioneItemPartial>) => void;
+  onUpdatePending: (i: number, patch: Partial<RelazioneItemPending>) => void;
+  onNoteChange: (v: string) => void;
+  onSaveBozza: () => void;
+  onConferma: () => void;
+}) {
+  if (!props.state.payload) return null;
+
+  return (
+    <div className="eur-relazioni-review">
+      <RelazioniDocPreview state={props.state} />
+      <RelazioniExtracted
+        payload={props.state.payload}
+        saving={props.saving}
+        noteGenerali={props.state.noteGenerali}
+        onToggleMatched={props.onToggleMatched}
+        onUpdateMatched={props.onUpdateMatched}
+        onUpdatePartial={props.onUpdatePartial}
+        onUpdatePending={props.onUpdatePending}
+        onNoteChange={props.onNoteChange}
+        onSaveBozza={props.onSaveBozza}
+        onConferma={props.onConferma}
+      />
+    </div>
+  );
+}
+
+function RelazioneStoricoItem(props: { relazione: EuromeccRelazioneDoc }) {
+  const r = props.relazione;
+  return (
+    <article className="eur-relazioni-storico-item">
+      <div className="eur-relazioni-storico-item-main">
+        <span className="eur-relazioni-storico-date">{r.dataIntervento}</span>
+        <span className="eur-relazioni-storico-tecnici">{r.tecnici.join(", ")}</span>
+        <span className="eur-relazioni-storico-counts">
+          {r.doneCount} lavori registrati &middot; {r.pendingCount} interventi futuri
+        </span>
+        {r.statoImportazione === "bozza" ? (
+          <span className="eur-mini-badge eur-mini-badge--media">Bozza</span>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function RelazioniStorico(props: { relazioni: EuromeccRelazioneDoc[] }) {
+  if (props.relazioni.length === 0) return null;
+  return (
+    <section className="eur-relazioni-storico">
+      <div className="eur-section-head">
+        <div>
+          <h3>Relazioni importate</h3>
+        </div>
+      </div>
+      <div className="eur-relazioni-storico-list">
+        {props.relazioni.map((r) => (
+          <RelazioneStoricoItem key={r.id} relazione={r} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RelazioniTab() {
+  const [state, setState] = useState<RelazioniTabState>({
+    phase: "idle",
+    file: null,
+    filePreviewUrl: null,
+    fileType: null,
+    payload: null,
+    noteGenerali: "",
+    bozzaId: null,
+    error: null,
+  });
+  const [saving, setSaving] = useState(false);
+  const [storico, setStorico] = useState<EuromeccRelazioneDoc[]>([]);
+
+  useEffect(() => {
+    getDocs(collection(db, "euromecc_relazioni"))
+      .then((snap) => {
+        const docs = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<EuromeccRelazioneDoc, "id">),
+        }));
+        docs.sort((a, b) => b.dataIntervento.localeCompare(a.dataIntervento));
+        setStorico(docs);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  function handleFileSelect(file: File) {
+    const isImage = file.type.startsWith("image/");
+    const fileType: "pdf" | "image" = isImage ? "image" : "pdf";
+    const filePreviewUrl = isImage ? URL.createObjectURL(file) : null;
+    setState((prev) => ({ ...prev, file, fileType, filePreviewUrl, error: null }));
+  }
+
+  async function handleAnalyze() {
+    if (!state.file || !state.fileType) return;
+    setState((prev) => ({ ...prev, phase: "analyzing", error: null }));
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const dictText = await buildComponentDict();
+
+      const prompt = `Sei un assistente tecnico specializzato in impianti industriali di stoccaggio cemento.
+Analizza la seguente relazione di manutenzione e restituisci SOLO un oggetto JSON,
+senza testo aggiuntivo, senza markdown, senza backtick.
+
+DIZIONARIO COMPONENTI DISPONIBILI:
+${dictText}
+
+STRUTTURA JSON RICHIESTA:
+{
+  "dataIntervento": "yyyy-MM-dd",
+  "tecnici": ["Nome Cognome"],
+  "matched": [
+    {
+      "areaKey": "...",
+      "subKey": "...",
+      "title": "descrizione lavoro",
+      "tipoIntervento": "Sostituzione|Verifica|Installazione|Pulizia|Controllo|Altro",
+      "doneDate": "yyyy-MM-dd",
+      "by": "Nome Cognome",
+      "note": "",
+      "nextDate": null
+    }
+  ],
+  "partial": [
+    {
+      "rawText": "testo originale non mappato",
+      "suggestedAreaKey": "areaKey o null",
+      "suggestedSubKey": "subKey o null"
+    }
+  ],
+  "pending": [
+    {
+      "rawText": "testo intervento consigliato",
+      "suggestedAreaKey": "areaKey o null",
+      "suggestedSubKey": "subKey o null",
+      "suggestedPriority": "alta|media|bassa"
+    }
+  ]
+}
+
+REGOLE:
+- Usa SOLO le areaKey e subKey presenti nel dizionario componenti
+- Se un componente non è nel dizionario, mettilo in "partial" non in "matched"
+- La sezione "prossimi interventi consigliati" della relazione va in "pending"
+- doneDate deve essere la data dell'intervento indicata nel documento
+- by deve essere il nome del tecnico che ha eseguito quel lavoro specifico
+- Se i tecnici sono più di uno e non è specificato chi ha fatto cosa, usa il primo tecnico per tutti i lavori
+- Non inventare componenti non presenti nel dizionario`;
+
+      let apiPayload: { inputText?: string; imageBase64?: string };
+
+      if (state.fileType === "image") {
+        const b64 = await fileToBase64(state.file);
+        apiPayload = { inputText: prompt, imageBase64: b64 };
+      } else {
+        const pdfBase64 = await fileToBase64(state.file);
+        apiPayload = { inputText: prompt, imageBase64: pdfBase64 };
+      }
+
+      const rawResult = await callPdfAiEnhance(apiPayload);
+
+      const cleaned = rawResult
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
+      const parsed = JSON.parse(cleaned) as {
+        dataIntervento: string;
+        tecnici: string[];
+        matched: Array<{
+          areaKey: string;
+          subKey: string;
+          title: string;
+          tipoIntervento: string;
+          doneDate: string;
+          by: string;
+          note: string;
+          nextDate: string | null;
+        }>;
+        partial: Array<{
+          rawText: string;
+          suggestedAreaKey: string | null;
+          suggestedSubKey: string | null;
+        }>;
+        pending: Array<{
+          rawText: string;
+          suggestedAreaKey: string | null;
+          suggestedSubKey: string | null;
+          suggestedPriority?: string;
+        }>;
+      };
+
+      const matchedItems: RelazioneItemMatched[] = (parsed.matched ?? []).map((m) => ({
+        kind: "matched",
+        areaKey: m.areaKey,
+        subKey: m.subKey,
+        areaLabel: EUROMECC_AREAS[m.areaKey]?.title ?? m.areaKey,
+        subLabel:
+          EUROMECC_AREAS[m.areaKey]?.components.find((c) => c.key === m.subKey)?.name ??
+          m.subKey,
+        title: m.title,
+        tipoIntervento: m.tipoIntervento,
+        doneDate: m.doneDate,
+        by: m.by,
+        note: m.note ?? "",
+        nextDate: m.nextDate ?? null,
+        selected: true,
+      }));
+
+      const partialItems: RelazioneItemPartial[] = (parsed.partial ?? []).map((p) => ({
+        kind: "partial",
+        rawText: p.rawText,
+        suggestedAreaKey: p.suggestedAreaKey,
+        suggestedSubKey: p.suggestedSubKey,
+        editAreaKey: p.suggestedAreaKey ?? (EUROMECC_AREA_KEYS[0] ?? ""),
+        editSubKey: p.suggestedSubKey ?? "",
+        editName: "",
+        editCode: "",
+        editTitle: p.rawText,
+        editTipoIntervento: "",
+        editDoneDate: today,
+        editBy: parsed.tecnici[0] ?? "",
+        editNote: "",
+        ignored: false,
+      }));
+
+      const pendingItems: RelazioneItemPending[] = (parsed.pending ?? []).map((p) => ({
+        kind: "pending",
+        rawText: p.rawText,
+        suggestedAreaKey: p.suggestedAreaKey,
+        suggestedSubKey: p.suggestedSubKey,
+        editAreaKey: p.suggestedAreaKey ?? (EUROMECC_AREA_KEYS[0] ?? ""),
+        editSubKey: p.suggestedSubKey ?? "",
+        editTitle: p.rawText,
+        editPriority: (["alta", "media", "bassa"].includes(p.suggestedPriority ?? "")
+          ? p.suggestedPriority
+          : "media") as "alta" | "media" | "bassa",
+        editDueDate: null,
+        editNote: "",
+        selected: true,
+        ignored: false,
+      }));
+
+      const payload: RelazioneAiPayload = {
+        dataIntervento: parsed.dataIntervento ?? today,
+        tecnici: parsed.tecnici ?? [],
+        matched: matchedItems,
+        partial: partialItems,
+        pending: pendingItems,
+      };
+
+      setState((prev) => ({ ...prev, phase: "review", payload }));
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        phase: "idle",
+        error: err instanceof Error ? err.message : "Errore durante l'analisi",
+      }));
+    }
+  }
+
+  function handleToggleMatched(i: number) {
+    setState((prev) => {
+      if (!prev.payload) return prev;
+      const matched = prev.payload.matched.map((item, idx) =>
+        idx === i ? { ...item, selected: !item.selected } : item,
+      );
+      return { ...prev, payload: { ...prev.payload, matched } };
+    });
+  }
+
+  function handleUpdateMatched(i: number, patch: Partial<RelazioneItemMatched>) {
+    setState((prev) => {
+      if (!prev.payload) return prev;
+      const matched = prev.payload.matched.map((item, idx) =>
+        idx === i ? { ...item, ...patch } : item,
+      );
+      return { ...prev, payload: { ...prev.payload, matched } };
+    });
+  }
+
+  function handleUpdatePartial(i: number, patch: Partial<RelazioneItemPartial>) {
+    setState((prev) => {
+      if (!prev.payload) return prev;
+      const partial = prev.payload.partial.map((item, idx) =>
+        idx === i ? { ...item, ...patch } : item,
+      );
+      return { ...prev, payload: { ...prev.payload, partial } };
+    });
+  }
+
+  function handleUpdatePending(i: number, patch: Partial<RelazioneItemPending>) {
+    setState((prev) => {
+      if (!prev.payload) return prev;
+      const pending = prev.payload.pending.map((item, idx) =>
+        idx === i ? { ...item, ...patch } : item,
+      );
+      return { ...prev, payload: { ...prev.payload, pending } };
+    });
+  }
+
+  async function handleSaveBozza() {
+    if (!state.payload || !state.file || !state.fileType) return;
+    setSaving(true);
+    try {
+      await addDoc(collection(db, "euromecc_relazioni"), {
+        fileName: state.file.name,
+        fileType: state.fileType,
+        dataIntervento: state.payload.dataIntervento,
+        tecnici: state.payload.tecnici,
+        note: state.noteGenerali,
+        statoImportazione: "bozza",
+        doneCount: 0,
+        pendingCount: 0,
+        extraComponentsCount: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleConferma() {
+    if (!state.payload || !state.file || !state.fileType) return;
+    setSaving(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const relazioneId = state.bozzaId ?? uuidv4();
+      let doneCount = 0;
+      let pendingCount = 0;
+      let extraComponentsCount = 0;
+
+      for (const item of state.payload.matched.filter((m) => m.selected)) {
+        await addEuromeccDoneTask(
+          {
+            areaKey: item.areaKey,
+            subKey: item.subKey,
+            title: item.title,
+            doneDate: item.doneDate,
+            by: item.by,
+            note: item.note,
+            nextDate: item.nextDate,
+            closedPending: false,
+          },
+          false,
+        );
+        doneCount++;
+      }
+
+      for (const item of state.payload.partial.filter(
+        (p) => !p.ignored && p.editSubKey !== "" && p.editAreaKey !== "",
+      )) {
+        let subKey = item.editSubKey;
+        if (item.editSubKey === "NEW") {
+          const slug = item.editName
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9-]/g, "");
+          subKey = `${item.editAreaKey}-${slug}`;
+          await addDoc(collection(db, "euromecc_extra_components"), {
+            areaKey: item.editAreaKey,
+            subKey,
+            name: item.editName,
+            code: item.editCode,
+            addedFrom: relazioneId,
+            addedAt: today,
+            addedBy: item.editBy,
+            createdAt: serverTimestamp(),
+          });
+          extraComponentsCount++;
+        }
+        await addEuromeccDoneTask(
+          {
+            areaKey: item.editAreaKey,
+            subKey,
+            title: item.editTitle,
+            doneDate: item.editDoneDate,
+            by: item.editBy,
+            note: item.editNote,
+            nextDate: null,
+            closedPending: false,
+          },
+          false,
+        );
+        doneCount++;
+      }
+
+      for (const item of state.payload.pending.filter(
+        (p) => p.selected && !p.ignored && p.editSubKey !== "" && p.editAreaKey !== "",
+      )) {
+        const dueDate = item.editDueDate ??
+          new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+            .toISOString().slice(0, 10);
+        await addEuromeccPendingTask({
+          areaKey: item.editAreaKey,
+          subKey: item.editSubKey,
+          title: item.editTitle,
+          priority: item.editPriority,
+          dueDate,
+          note: item.editNote,
+        });
+        pendingCount++;
+      }
+
+      await addDoc(collection(db, "euromecc_relazioni"), {
+        fileName: state.file.name,
+        fileType: state.fileType,
+        dataIntervento: state.payload.dataIntervento,
+        tecnici: state.payload.tecnici,
+        note: state.noteGenerali,
+        statoImportazione: "confermata",
+        doneCount,
+        pendingCount,
+        extraComponentsCount,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setState({
+        phase: "idle",
+        file: null,
+        filePreviewUrl: null,
+        fileType: null,
+        payload: null,
+        noteGenerali: "",
+        bozzaId: null,
+        error: null,
+      });
+
+      const snap = await getDocs(collection(db, "euromecc_relazioni"));
+      const docs = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<EuromeccRelazioneDoc, "id">),
+      }));
+      docs.sort((a, b) => b.dataIntervento.localeCompare(a.dataIntervento));
+      setStorico(docs);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="eur-segment eur-relazioni-root">
+      {state.phase === "idle" || state.phase === "done" ? (
+        <>
+          <div className="eur-section-head">
+            <div>
+              <h2>Relazioni di manutenzione</h2>
+              <p>
+                Importa una relazione PDF o immagine per registrare automaticamente i lavori
+                eseguiti.
+              </p>
+            </div>
+          </div>
+          <RelazioniUpload
+            state={state}
+            onFileSelect={handleFileSelect}
+            onAnalyze={() => void handleAnalyze()}
+          />
+          <RelazioniStorico relazioni={storico} />
+        </>
+      ) : state.phase === "analyzing" ? (
+        <RelazioniAnalyzing />
+      ) : state.phase === "review" || state.phase === "saving" ? (
+        <RelazioniReview
+          state={state}
+          saving={saving}
+          onToggleMatched={handleToggleMatched}
+          onUpdateMatched={handleUpdateMatched}
+          onUpdatePartial={handleUpdatePartial}
+          onUpdatePending={handleUpdatePending}
+          onNoteChange={(v) => setState((prev) => ({ ...prev, noteGenerali: v }))}
+          onSaveBozza={() => void handleSaveBozza()}
+          onConferma={() => void handleConferma()}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 async function copyText(value: string) {
@@ -2483,6 +3728,8 @@ export default function NextEuromeccPage() {
               </div>
             </>
           ) : null}
+
+          {activeTab === "relazioni" ? <RelazioniTab /> : null}
         </>
       ) : null}
 

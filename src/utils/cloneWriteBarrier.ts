@@ -25,6 +25,8 @@ const MUTATING_FETCH_URL_PATTERNS = [
   "estrazione-libretto-",
 ] as const;
 const SAME_ORIGIN_MUTATING_API_PREFIXES = ["/api/"] as const;
+const EUROMECC_ALLOWED_WRITE_PATHS = ["/next/euromecc"] as const;
+const EUROMECC_ALLOWED_FETCH_API_PATHS = new Set(["/api/pdf-ai-enhance"]);
 
 declare global {
   interface Window {
@@ -100,10 +102,45 @@ function readMetaPath(meta: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readMetaUrl(meta: unknown): string {
+  if (typeof meta !== "object" || meta === null || !("url" in meta)) {
+    return "";
+  }
+
+  const value = (meta as { url?: unknown }).url;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isAllowedEuromeccCloneWritePath(pathname: string): boolean {
+  return EUROMECC_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
+}
+
 function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
   const pathname = getCurrentPathname();
   if (isAllowedLavoriCloneWritePath(pathname)) {
     return kind === "storageSync.setItemSync" && readMetaKey(meta) === "@lavori";
+  }
+
+  if (isAllowedEuromeccCloneWritePath(pathname)) {
+    if (kind === "fetch.runtime") {
+      try {
+        const parsed = new URL(readMetaUrl(meta), window.location.origin);
+        if (EUROMECC_ALLOWED_FETCH_API_PATHS.has(parsed.pathname)) {
+          return true;
+        }
+        if (
+          parsed.hostname === "127.0.0.1" &&
+          parsed.pathname === "/internal-ai-backend/euromecc/pdf-analyze"
+        ) {
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    }
   }
 
   if (!isAllowedManutenzioniCloneWritePath(pathname)) {

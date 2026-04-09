@@ -2,7 +2,6 @@
 import { useNavigate } from "react-router-dom";
 import { generateSmartPDF } from "../utils/pdfEngine";
 import NextMappaStoricoPage from "./NextMappaStoricoPage";
-import NextModalGomme, { type CambioGommeData } from "./autisti/NextModalGomme";
 import {
   readNextInventarioSnapshot,
   type NextInventarioReadOnlyItem,
@@ -10,10 +9,18 @@ import {
 import {
   readNextManutenzioniWorkspaceSnapshot,
   saveNextManutenzioneBusinessRecord,
+  type NextManutenzioneGommePerAsseRecord,
   type NextManutenzioniLegacyDatasetRecord,
   type NextManutenzioniLegacyMaterialRecord,
   type NextManutenzioniMezzoOption,
 } from "./domain/nextManutenzioniDomain";
+import {
+  buildNextGommeStateByAsse,
+  getNextAssiOptionsForCategoria,
+  isNextCategoriaMotorizzata,
+  normalizeNextAssiCoinvolti,
+  type NextManutenzioneAsseCoinvoltoId,
+} from "./domain/nextManutenzioniGommeDomain";
 import { readNextLavoriInAttesaSnapshot } from "./domain/nextLavoriDomain";
 import { readNextRifornimentiReadOnlySnapshot } from "./domain/nextRifornimentiDomain";
 import {
@@ -24,13 +31,14 @@ import { buildNextDossierPath } from "./nextStructuralPaths";
 import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
 
-type TipoVoce = "mezzo" | "compressore";
+type TipoVoce = "mezzo" | "compressore" | "attrezzature";
 type SottoTipo = "motrice" | "trattore";
 type ViewTab = "dashboard" | "form" | "pdf" | "mappa";
 type PdfPeriodFilter = "ultimo-mese" | "tutto" | `mese:${string}`;
 type InterventoUiSubtype = "tagliando" | "tagliando completo" | "gomme" | "riparazione" | "altro";
 
 type MaterialeManutenzione = NextManutenzioniLegacyMaterialRecord;
+type AsseCoinvoltoId = NextManutenzioneAsseCoinvoltoId;
 
 type MaterialeInventario = {
   id: string;
@@ -209,6 +217,29 @@ function buildMisuraLabel(item: NextManutenzioniLegacyDatasetRecord) {
   return item.ore != null ? `${item.ore} ORE` : "-";
 }
 
+function parseNullableNumberInput(value: string): number | null {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildGommePerAssePayload(args: {
+  assiCoinvolti: AsseCoinvoltoId[];
+  data: string;
+  km: string;
+  isMotorizzato: boolean;
+}): NextManutenzioneGommePerAsseRecord[] {
+  const dataCambio = normalizeFreeText(args.data) || null;
+  const kmCambio = args.isMotorizzato ? parseNullableNumberInput(args.km) : null;
+
+  return args.assiCoinvolti.map((asseId) => ({
+    asseId,
+    dataCambio,
+    kmCambio,
+  }));
+}
+
 function toMaterialiTemp(items: NextManutenzioniLegacyDatasetRecord["materiali"]): MaterialeManutenzione[] {
   if (!items?.length) return [];
   return items.map((item, index) => ({
@@ -219,21 +250,6 @@ function toMaterialiTemp(items: NextManutenzioniLegacyDatasetRecord["materiali"]
     fromInventario: item.fromInventario,
     refId: item.refId,
   }));
-}
-
-function integraDescrizioneConGomme(data: CambioGommeData, previous: string): string {
-  const blocco = [
-    `CAMBIO GOMME - ${data.modalita === "ordinario" ? "ordinario" : "straordinario"}`,
-    data.categoria ? `Categoria mezzo: ${data.categoria}` : "",
-    data.asseLabel ? `Asse: ${data.asseLabel}` : "",
-    `Gomme cambiate: ${data.numeroGomme}`,
-    data.marca ? `Marca: ${data.marca}` : "",
-    data.km ? `Km mezzo: ${data.km}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  return previous.trim() ? `${previous.trim()}\n\n${blocco}` : blocco;
 }
 
 async function readPageData(): Promise<PageLoadData> {
@@ -303,6 +319,7 @@ export default function NextManutenzioniPage() {
   const [lavoriInAttesaByTarga, setLavoriInAttesaByTarga] = useState<Record<string, number>>({});
 
   const [selectedTarga, setSelectedTarga] = useState("");
+  const [selectedDetailRecordId, setSelectedDetailRecordId] = useState<string | null>(null);
   const [ricercaMezzo, setRicercaMezzo] = useState("");
   const [pdfSubjectType, setPdfSubjectType] = useState<TipoVoce>("mezzo");
   const [pdfPeriodFilter, setPdfPeriodFilter] = useState<PdfPeriodFilter>("ultimo-mese");
@@ -319,9 +336,9 @@ export default function NextManutenzioniPage() {
   const [data, setData] = useState(todayLabel());
   const [materialeSearch, setMaterialeSearch] = useState("");
   const [materialiTemp, setMaterialiTemp] = useState<MaterialeManutenzione[]>([]);
+  const [assiCoinvolti, setAssiCoinvolti] = useState<AsseCoinvoltoId[]>([]);
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [modalGommeOpen, setModalGommeOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -387,6 +404,15 @@ export default function NextManutenzioniPage() {
     () => mezzoPreview.find((mezzo) => mezzo.targa === activeTarga) ?? null,
     [activeTarga, mezzoPreview],
   );
+  const categoriaTecnica = mezzoPreviewSelezionato?.categoria ?? mezzoSelezionato?.categoria ?? null;
+  const assiDisponibili = useMemo(
+    () => getNextAssiOptionsForCategoria(categoriaTecnica),
+    [categoriaTecnica],
+  );
+  const categoriaMotorizzata = useMemo(
+    () => isNextCategoriaMotorizzata(categoriaTecnica),
+    [categoriaTecnica],
+  );
   const storicoMezzo = useMemo(
     () => storico.filter((item) => item.targa === activeTarga),
     [activeTarga, storico],
@@ -412,14 +438,51 @@ export default function NextManutenzioniPage() {
   const lavoriApertiMezzo = lavoriInAttesaByTarga[activeTarga] ?? 0;
   const kmUltimoRifornimento = kmUltimoByTarga[activeTarga] ?? null;
   const latestRecord = storicoMezzoOrdinato[0] ?? null;
+  const selectedDetailRecord = useMemo(
+    () => storicoMezzoOrdinato.find((item) => item.id === selectedDetailRecordId) ?? null,
+    [selectedDetailRecordId, storicoMezzoOrdinato],
+  );
   const ultimiInterventi = useMemo(() => storicoMezzoOrdinato.slice(0, 5), [storicoMezzoOrdinato]);
   const ultimeManutenzioniMezzo = useMemo(
     () => storicoMezzoOrdinato.filter((item) => item.tipo === "mezzo").slice(0, 4),
     [storicoMezzoOrdinato],
   );
+  const ultimeManutenzioniMezzoSenzaUltimo = useMemo(() => {
+    const ultimoRecord = ultimeManutenzioniMezzo[0] ?? null;
+    if (!ultimoRecord) return [];
+    return ultimeManutenzioniMezzo.filter((item) => item.id !== ultimoRecord.id);
+  }, [ultimeManutenzioniMezzo]);
   const ultimeManutenzioniCompressore = useMemo(
     () => storicoMezzoOrdinato.filter((item) => item.tipo === "compressore").slice(0, 4),
     [storicoMezzoOrdinato],
+  );
+  const ultimeManutenzioniCompressoreSenzaUltimo = useMemo(() => {
+    const ultimoRecord = ultimeManutenzioniCompressore[0] ?? null;
+    if (!ultimoRecord) return [];
+    return ultimeManutenzioniCompressore.filter((item) => item.id !== ultimoRecord.id);
+  }, [ultimeManutenzioniCompressore]);
+  const latestGommeKmCambio = useMemo(() => {
+    const record = storicoMezzoOrdinato.find(
+      (item) =>
+        (item.gommePerAsse?.length ?? 0) > 0 ||
+        (item.assiCoinvolti?.length ?? 0) > 0 ||
+        item.descrizione.toUpperCase().includes("GOMME") ||
+        item.descrizione.toUpperCase().includes("PNEUM"),
+    );
+    if (!record) return null;
+    return record.gommePerAsse?.[0]?.kmCambio ?? record.km ?? null;
+  }, [storicoMezzoOrdinato]);
+  const gommePerAsseDraft = useMemo(
+    () =>
+      uiSubtype === "gomme"
+        ? buildGommePerAssePayload({
+            assiCoinvolti,
+            data,
+            km,
+            isMotorizzato: categoriaMotorizzata,
+          })
+        : [],
+    [assiCoinvolti, categoriaMotorizzata, data, km, uiSubtype],
   );
   const monthOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -462,8 +525,37 @@ export default function NextManutenzioniPage() {
       latest: items[0],
       mezzo: mezzoPreview.find((entry) => entry.targa === targaKey) ?? null,
       total: items.length,
+      gommePerAsse: buildNextGommeStateByAsse({
+        categoria: mezzoPreview.find((entry) => entry.targa === targaKey)?.categoria ?? null,
+        maintenanceItems: items.map((item) => ({
+          id: item.id,
+          mezzoTarga: item.targa,
+          targa: item.targa,
+          data: item.data ?? null,
+          dataLabel: item.data ?? null,
+          timestamp: getLegacyDateTimestamp(item.data),
+          descrizione: item.descrizione ?? null,
+          tipo: item.tipo ?? null,
+          km: item.km ?? null,
+          ore: item.ore ?? null,
+          fornitore: item.fornitore ?? null,
+          materialiCount: item.materiali?.length ?? 0,
+          assiCoinvolti: normalizeNextAssiCoinvolti(item.assiCoinvolti),
+          gommePerAsse: item.gommePerAsse ?? [],
+          isCambioGommeDerived:
+            (item.gommePerAsse?.length ?? 0) > 0 ||
+            item.descrizione.toUpperCase().includes("GOMME") ||
+            item.descrizione.toUpperCase().includes("PNEUM"),
+          sourceDataset: "@manutenzioni",
+          sourceRecordId: item.id,
+          sourceOrigin: "manuale",
+          quality: "source_direct",
+          flags: [],
+        })),
+        kmAttuali: kmUltimoByTarga[targaKey] ?? null,
+      }),
     }));
-  }, [mezzoPreview, pdfFilteredItems]);
+  }, [kmUltimoByTarga, mezzoPreview, pdfFilteredItems]);
   const ricercaRapida = normalizeFreeText(ricercaMezzo).toUpperCase();
   const mezziSelezionabili = useMemo(() => {
     if (!ricercaRapida) return mezzi;
@@ -501,11 +593,35 @@ export default function NextManutenzioniPage() {
   }, [pdfGroupedResults, ricercaRapida]);
   const contextPlaceholder = !activeTarga && !mezzoPreviewSelezionato;
 
+  useEffect(() => {
+    const validAssi = new Set(assiDisponibili.map((asse) => asse.id));
+    setAssiCoinvolti((current) => {
+      const next = current.filter((asseId) => validAssi.has(asseId));
+      return next.length === current.length ? current : next;
+    });
+  }, [assiDisponibili]);
+
+  useEffect(() => {
+    if (!selectedDetailRecordId) return;
+    if (!storicoMezzoOrdinato.some((item) => item.id === selectedDetailRecordId)) {
+      setSelectedDetailRecordId(null);
+    }
+  }, [selectedDetailRecordId, storicoMezzoOrdinato]);
+
   function handleSelectContextTarga(value: string) {
     const normalized = normalizeText(value);
     setSelectedTarga(normalized);
     setTarga(normalized);
     setNotice(null);
+  }
+
+  function openDetailForRecord(item: NextManutenzioniLegacyDatasetRecord) {
+    const normalized = normalizeText(item.targa);
+    setSelectedTarga(normalized);
+    setTarga(normalized);
+    setSelectedDetailRecordId(item.id);
+    setNotice(null);
+    setView("mappa");
   }
 
   function resetForm(nextTarga?: string) {
@@ -521,6 +637,7 @@ export default function NextManutenzioniPage() {
     setData(todayLabel());
     setMaterialeSearch("");
     setMaterialiTemp([]);
+    setAssiCoinvolti([]);
     setQuantitaTemp("");
     setEditingId(null);
     setTarga(currentTarga);
@@ -559,17 +676,25 @@ export default function NextManutenzioniPage() {
   function handleEdit(item: NextManutenzioniLegacyDatasetRecord) {
     setEditingId(item.id);
     setSelectedTarga(item.targa);
+    setSelectedDetailRecordId(item.id);
     setTarga(item.targa);
     setTipo(item.tipo);
     setFornitore(item.fornitore ?? "");
     setKm(item.km != null ? String(item.km) : "");
     setOre(item.ore != null ? String(item.ore) : "");
     setSottotipo(item.sottotipo ?? "motrice");
-    setUiSubtype(deriveUiSubtype(item.descrizione));
+    setUiSubtype((item.gommePerAsse?.length ?? 0) > 0 ? "gomme" : deriveUiSubtype(item.descrizione));
     setDescrizione(item.descrizione);
     setEseguito(item.eseguito ?? "");
     setData(item.data);
     setMaterialiTemp(toMaterialiTemp(item.materiali));
+    setAssiCoinvolti(
+      normalizeNextAssiCoinvolti(
+        item.gommePerAsse?.length
+          ? item.gommePerAsse.map((entry) => entry.asseId)
+          : item.assiCoinvolti,
+      ),
+    );
     setView("form");
     setNotice("Modifica caricata dal dataset reale.");
   }
@@ -579,6 +704,14 @@ export default function NextManutenzioniPage() {
     if (nextSubtype === "tagliando completo" && !descrizione.trim()) {
       setDescrizione("TAGLIANDO - ");
     }
+  }
+
+  function toggleAsseCoinvolto(asseId: AsseCoinvoltoId) {
+    setAssiCoinvolti((current) =>
+      current.includes(asseId)
+        ? current.filter((entry) => entry !== asseId)
+        : [...current, asseId],
+    );
   }
 
   async function handleSave() {
@@ -591,12 +724,12 @@ export default function NextManutenzioniPage() {
       return;
     }
 
-    if (tipo === "mezzo" && !km) {
+    if (tipo === "mezzo" && categoriaMotorizzata && !km) {
       const confirmed = window.confirm("Non hai inserito i KM. Vuoi continuare lo stesso?");
       if (!confirmed) return;
     }
 
-    if (tipo === "compressore" && !ore) {
+    if (tipo !== "mezzo" && !ore) {
       const confirmed = window.confirm("Non hai inserito le ORE. Vuoi continuare lo stesso?");
       if (!confirmed) return;
     }
@@ -617,9 +750,12 @@ export default function NextManutenzioniPage() {
         eseguito: normalizeFreeText(eseguito) || null,
         data: normalizedData,
         materiali: materialiTemp,
+        assiCoinvolti: uiSubtype === "gomme" ? assiCoinvolti : [],
+        gommePerAsse: uiSubtype === "gomme" ? gommePerAsseDraft : [],
       });
       await refreshData();
       setSelectedTarga(savedRecord.targa);
+      setSelectedDetailRecordId(savedRecord.id);
       resetForm(savedRecord.targa);
       setView("dashboard");
       setNotice(
@@ -659,7 +795,7 @@ export default function NextManutenzioniPage() {
       ],
       rows: items.map((item) => [
         item.targa,
-        item.tipo === "mezzo" ? "MEZZO" : "COMPRESSORE",
+        item.tipo === "mezzo" ? "MEZZO" : item.tipo === "compressore" ? "COMPRESSORE" : "ATTREZZATURE",
         buildMisuraLabel(item),
         item.sottotipo || "-",
         item.descrizione,
@@ -668,13 +804,6 @@ export default function NextManutenzioniPage() {
         item.data,
       ]),
     });
-  }
-
-  function handleGommeConfirm(dataGomme: CambioGommeData) {
-    setDescrizione((current) => integraDescrizioneConGomme(dataGomme, current));
-    if (dataGomme.km?.trim()) setKm(dataGomme.km.trim());
-    setModalGommeOpen(false);
-    setNotice("Dettaglio gomme integrato nella descrizione come nel legacy.");
   }
 
   function renderContextBar() {
@@ -793,7 +922,12 @@ export default function NextManutenzioniPage() {
         <div className="man2-last-list">
           {ultimiInterventi.length > 0 ? (
             ultimiInterventi.slice(0, 3).map((item) => (
-              <article key={item.id} className="man2-last-item">
+              <button
+                key={item.id}
+                type="button"
+                className={`man2-last-item man2-last-item--button${selectedDetailRecordId === item.id ? " is-active" : ""}`}
+                onClick={() => openDetailForRecord(item)}
+              >
                 <div className="man2-last-item__row1">
                   <div>
                     <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 88)}</span>
@@ -803,7 +937,7 @@ export default function NextManutenzioniPage() {
                   </div>
                   <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
                 </div>
-              </article>
+              </button>
             ))
           ) : (
             <div className="man-empty">Nessun intervento disponibile per il mezzo selezionato.</div>
@@ -840,6 +974,7 @@ export default function NextManutenzioniPage() {
                 <select value={tipo} onChange={(event) => setTipo(event.target.value as TipoVoce)}>
                   <option value="mezzo">Mezzo</option>
                   <option value="compressore">Compressore</option>
+                  <option value="attrezzature">Attrezzature</option>
                 </select>
               </div>
               <div className="man2-field">
@@ -867,7 +1002,13 @@ export default function NextManutenzioniPage() {
                 />
               </div>
               <div className="man2-field man2-metric-group man2-metric-group--metric">
-                <label className="man2-field__label">{tipo === "mezzo" ? "KM" : "ORE"}</label>
+                <label className="man2-field__label">
+                  {tipo === "mezzo"
+                    ? uiSubtype === "gomme" && !categoriaMotorizzata
+                      ? "KM (facoltativo)"
+                      : "KM"
+                    : "ORE"}
+                </label>
                 <input
                   type="number"
                   value={misuraValue}
@@ -890,6 +1031,77 @@ export default function NextManutenzioniPage() {
                 />
               </div>
             </div>
+
+            {uiSubtype === "gomme" ? (
+              <div className="man2-assi-section">
+                <div className="man2-section-title">Cambio gomme per asse</div>
+                {assiDisponibili.length > 0 ? (
+                  <>
+                    <p className="man2-form-copy">
+                      Seleziona gli assi realmente coinvolti. Il salvataggio registrera un evento distinto per ogni asse.
+                    </p>
+                    <div className="man2-assi-chip-row">
+                      {assiDisponibili.map((asse) => {
+                        const isActive = assiCoinvolti.includes(asse.id);
+                        return (
+                          <button
+                            key={asse.id}
+                            type="button"
+                            className={`man2-assi-chip${isActive ? " is-active" : ""}`}
+                            onClick={() => toggleAsseCoinvolto(asse.id)}
+                          >
+                            <span>{asse.label}</span>
+                            <small>{asse.wheelsCount} gomme</small>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {gommePerAsseDraft.length > 0 ? (
+                      <div className="man2-gomme-asse-list">
+                        {gommePerAsseDraft.map((entry) => (
+                          <article key={entry.asseId} className="man2-gomme-asse-card">
+                            <div className="man2-gomme-asse-card__head">
+                              <strong>
+                                {assiDisponibili.find((asse) => asse.id === entry.asseId)?.label ?? entry.asseId}
+                              </strong>
+                              <span>{categoriaMotorizzata ? "mezzo motorizzato" : "rimorchio / semirimorchio"}</span>
+                            </div>
+                            <div className="man2-gomme-asse-card__meta">
+                              <div>
+                                <span>Data cambio</span>
+                                <strong>{entry.dataCambio || "DA INSERIRE"}</strong>
+                              </div>
+                              {categoriaMotorizzata ? (
+                                <div>
+                                  <span>Km cambio</span>
+                                  <strong>
+                                    {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA INSERIRE"}
+                                  </strong>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span>Nota</span>
+                                  <strong>Per questa categoria fa fede soprattutto la data cambio.</strong>
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="man2-assi-empty">
+                        Seleziona almeno un asse per costruire lo stato gomme dell&apos;intervento.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="man2-assi-empty">
+                    Nessuna tavola tecnica disponibile per la categoria del mezzo selezionato.
+                  </div>
+                )}
+              </div>
+            ) : null}
           </section>
 
           <section className="man2-form-block">
@@ -911,7 +1123,7 @@ export default function NextManutenzioniPage() {
               <div className="man2-tagliando-box">
                 <p className="man2-tagliando-copy">
                   Il tagliando completo resta un blocco condizionale e mantiene la logica esistente su descrizione,
-                  materiali, componenti inclusi e gestione gomme.
+                  materiali e componenti inclusi.
                 </p>
                 <div className="man2-chip-row">
                   {TAGLIANDO_COMPONENTI.map((item) => (
@@ -920,14 +1132,6 @@ export default function NextManutenzioniPage() {
                     </span>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className="man2-btn"
-                  onClick={() => setModalGommeOpen(true)}
-                  disabled={!activeTarga || !mezzoSelezionato}
-                >
-                  Gestione gomme
-                </button>
               </div>
             </section>
           ) : null}
@@ -1077,6 +1281,7 @@ export default function NextManutenzioniPage() {
                 <select value={pdfSubjectType} onChange={(event) => setPdfSubjectType(event.target.value as TipoVoce)}>
                   <option value="mezzo">Mezzo</option>
                   <option value="compressore">Compressore</option>
+                  <option value="attrezzature">Attrezzature</option>
                 </select>
               </div>
             </div>
@@ -1157,14 +1362,39 @@ export default function NextManutenzioniPage() {
                     <button
                       type="button"
                       className="man2-btn man2-btn--secondary"
-                      onClick={() => {
-                        handleSelectContextTarga(result.targa);
-                        setView("mappa");
-                      }}
+                      onClick={() => openDetailForRecord(result.latest)}
                     >
                       Apri dettaglio
                     </button>
                   </div>
+                  {pdfSubjectType === "mezzo" && result.gommePerAsse.length > 0 ? (
+                    <div className="man2-gomme-pdf-state">
+                      <div className="man2-gomme-pdf-state__title">Stato gomme per asse</div>
+                      <div className="man2-gomme-pdf-state__grid">
+                        {result.gommePerAsse.map((entry) => (
+                          <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
+                            <strong>{entry.asseLabel}</strong>
+                            <span>Data cambio: {entry.dataCambio || "DA VERIFICARE"}</span>
+                            {entry.isMotorizzato ? (
+                              <>
+                                <span>
+                                  Km cambio: {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA VERIFICARE"}
+                                </span>
+                                <span>
+                                  Km attuali: {entry.kmAttuali !== null ? formatNumberIt(entry.kmAttuali) : "DA VERIFICARE"}
+                                </span>
+                                {entry.kmPercorsi !== null ? (
+                                  <span>Km percorsi dal cambio: {formatNumberIt(entry.kmPercorsi)}</span>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span>Per questa categoria fa fede soprattutto la data cambio.</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </article>
             ))
@@ -1242,21 +1472,34 @@ export default function NextManutenzioniPage() {
         <NextMappaStoricoPage
           targa={activeTarga}
           embedded={true}
+          selectedMaintenance={
+            selectedDetailRecord
+              ? {
+                  id: selectedDetailRecord.id,
+                  data: selectedDetailRecord.data ?? null,
+                  descrizione: selectedDetailRecord.descrizione ?? null,
+                  assiCoinvolti: selectedDetailRecord.assiCoinvolti ?? [],
+                  km: selectedDetailRecord.km ?? null,
+                  tipo: selectedDetailRecord.tipo ?? null,
+                }
+              : null
+          }
           mezzoInfo={{
             targa: mezzoPreviewSelezionato?.targa || activeTarga,
             mezzoLabel: mezzoPreviewSelezionato?.marcaModello ?? mezzoPreviewSelezionato?.label ?? "DA VERIFICARE",
             autistaNome: mezzoPreviewSelezionato?.autistaNome ?? null,
             categoria: mezzoPreviewSelezionato?.categoria ?? null,
             kmAttuali: kmUltimoRifornimento,
+            latestGommeKmCambio,
             ultimaManutenzione: latestRecord?.data ?? null,
             ultimoInterventoMezzo: ultimeManutenzioniMezzo[0]?.descrizione ?? null,
             ultimoInterventoCompressore: ultimeManutenzioniCompressore[0]?.descrizione ?? null,
-            ultimeManutenzioniMezzo: ultimeManutenzioniMezzo.map((item) => ({
+            ultimeManutenzioniMezzo: ultimeManutenzioniMezzoSenzaUltimo.map((item) => ({
               id: item.id,
               data: item.data,
               title: buildDescrizioneSnippet(item.descrizione, 78),
             })),
-            ultimeManutenzioniCompressore: ultimeManutenzioniCompressore.map((item) => ({
+            ultimeManutenzioniCompressore: ultimeManutenzioniCompressoreSenzaUltimo.map((item) => ({
               id: item.id,
               data: item.data,
               title: buildDescrizioneSnippet(item.descrizione, 78),
@@ -1266,25 +1509,18 @@ export default function NextManutenzioniPage() {
           onOpenDossier={() => {
             if (mezzoPreviewSelezionato) navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa));
           }}
+          onSelectMaintenance={(recordId) => setSelectedDetailRecordId(recordId)}
           onEditLatest={() => {
+            if (selectedDetailRecord) {
+              handleEdit(selectedDetailRecord);
+              return;
+            }
             if (latestRecord) handleEdit(latestRecord);
           }}
         />
       ) : (
         renderActiveSurface()
       )}
-
-      {modalGommeOpen && mezzoSelezionato ? (
-        <NextModalGomme
-          open={modalGommeOpen}
-          targa={mezzoSelezionato.targa}
-          categoria={mezzoSelezionato.categoria ?? undefined}
-          kmIniziale={km}
-          enableCalibration={false}
-          onClose={() => setModalGommeOpen(false)}
-          onConfirm={handleGommeConfirm}
-        />
-      ) : null}
     </div>
   );
 }

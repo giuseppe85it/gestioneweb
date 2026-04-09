@@ -62,6 +62,8 @@ export type NextMaintenanceHistoryItem = {
   eseguitoLabel: string | null;
   fornitoreLabel: string | null;
   materialiCount: number;
+  assiCoinvolti: string[];
+  gommePerAsse: NextManutenzioneGommePerAsseRecord[];
   isCambioGommeDerived: boolean;
   sourceDataset: typeof MANUTENZIONI_KEY;
   sourceOrigin: NextMaintenanceSourceOrigin;
@@ -106,6 +108,8 @@ export type NextManutenzioniLegacyDatasetRecord = {
   tipo: TipoVoce;
   fornitore?: string;
   materiali?: NextManutenzioniLegacyMaterialRecord[];
+  assiCoinvolti?: string[];
+  gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
 };
 
 export type NextManutenzioniMezzoOption = {
@@ -121,8 +125,23 @@ export type NextManutenzioniWorkspaceSnapshot = {
   limitations: string[];
 };
 
-type TipoVoce = "mezzo" | "compressore";
+type TipoVoce = "mezzo" | "compressore" | "attrezzature";
 type SottoTipo = "motrice" | "trattore";
+type AsseCoinvoltoId = "anteriore" | "posteriore" | "asse1" | "asse2" | "asse3";
+
+export type NextManutenzioneGommePerAsseRecord = {
+  asseId: AsseCoinvoltoId;
+  dataCambio: string | null;
+  kmCambio: number | null;
+};
+
+const VALID_ASSI_COINVOLTI = new Set<AsseCoinvoltoId>([
+  "anteriore",
+  "posteriore",
+  "asse1",
+  "asse2",
+  "asse3",
+]);
 
 export type NextManutenzioneBusinessSavePayload = {
   editingSourceId?: string | null;
@@ -136,6 +155,8 @@ export type NextManutenzioneBusinessSavePayload = {
   eseguito?: string | null;
   data: string;
   materiali?: NextManutenzioniLegacyMaterialRecord[];
+  assiCoinvolti?: string[];
+  gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
 };
 
 type NextLegacyInventarioRecord = Record<string, unknown>;
@@ -162,6 +183,43 @@ function normalizeNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function sanitizeAssiCoinvolti(value: unknown): AsseCoinvoltoId[] {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => normalizeText(entry).toLowerCase())
+        .filter((entry): entry is AsseCoinvoltoId =>
+          VALID_ASSI_COINVOLTI.has(entry as AsseCoinvoltoId),
+        ),
+    ),
+  );
+}
+
+function sanitizeGommePerAsse(
+  value: unknown,
+  fallbackDataCambio: string | null,
+  fallbackKmCambio: number | null,
+): NextManutenzioneGommePerAsseRecord[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map<NextManutenzioneGommePerAsseRecord | null>((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const raw = entry as RawRecord;
+      const asseId = sanitizeAssiCoinvolti([raw.asseId])[0] ?? null;
+      if (!asseId) return null;
+
+      return {
+        asseId,
+        dataCambio: normalizeOptionalText(raw.dataCambio) ?? fallbackDataCambio,
+        kmCambio: normalizeNumber(raw.kmCambio) ?? fallbackKmCambio,
+      };
+    })
+    .filter((entry): entry is NextManutenzioneGommePerAsseRecord => Boolean(entry));
 }
 
 function unwrapStorageArray(rawDoc: Record<string, unknown> | null): unknown[] {
@@ -234,7 +292,7 @@ function evaluateScheduledStatus(
 
 function isCambioGommeDerived(descrizione: string | null): boolean {
   const normalized = (descrizione ?? "").toUpperCase();
-  return normalized.includes("CAMBIO GOMME");
+  return normalized.includes("CAMBIO GOMME") || normalized.includes("GOMME") || normalized.includes("PNEUM");
 }
 
 function buildHistoryId(raw: RawRecord, index: number, mezzoTarga: string): string {
@@ -247,6 +305,9 @@ function normalizeLegacyTipo(raw: RawRecord): TipoVoce {
   const tipo = normalizeLowerText(raw.tipo);
   if (tipo === "compressore") {
     return "compressore";
+  }
+  if (tipo === "attrezzature") {
+    return "attrezzature";
   }
 
   if (normalizeNumber(raw.ore) !== null && normalizeNumber(raw.km) === null) {
@@ -298,7 +359,7 @@ function toLegacyDatasetRecord(
   index: number,
 ): NextManutenzioniLegacyDatasetRecord | null {
   const targa = normalizeNextMezzoTarga(raw.targa) || normalizeText(raw.targa).toUpperCase();
-
+  const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
   const tipo = normalizeLegacyTipo(raw);
   const materiali = sanitizeLegacyMateriali(raw.materiali);
   const descrizione =
@@ -308,11 +369,24 @@ function toLegacyDatasetRecord(
   const data =
     normalizeOptionalText(raw.data) ??
     formatLegacyDateLabel(raw.timestamp ?? raw.createdAt ?? raw.updatedAt);
+  const kmCambio = normalizeNumber(raw.km);
+  const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, data, kmCambio);
+  const isGomme = gommePerAsseSanitized.length > 0 || isCambioGommeDerived(descrizione);
+  const gommePerAsse =
+    gommePerAsseSanitized.length > 0
+      ? gommePerAsseSanitized
+      : isGomme && assiCoinvolti.length > 0
+        ? assiCoinvolti.map((asseId) => ({
+            asseId,
+            dataCambio: data,
+            kmCambio,
+          }))
+        : [];
 
   return {
     id: buildHistoryId(raw, index, targa),
     targa,
-    km: normalizeNumber(raw.km),
+    km: kmCambio,
     ore: normalizeNumber(raw.ore),
     sottotipo: tipo === "compressore" ? normalizeLegacySottotipo(raw.sottotipo) : null,
     descrizione,
@@ -325,6 +399,8 @@ function toLegacyDatasetRecord(
       normalizeOptionalText(raw.eseguito) ??
       undefined,
     materiali,
+    ...(assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
+    ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
   };
 }
 
@@ -364,15 +440,29 @@ function toHistoryItem(
   const descrizione = normalizeOptionalText(raw.descrizione);
   const isGomme = isCambioGommeDerived(descrizione);
   const materiali = Array.isArray(raw.materiali) ? raw.materiali : [];
+  const dataRaw = normalizeOptionalText(raw.data);
+  const km = normalizeNumber(raw.km);
+  const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
+  const gommePerAsseSanitized = sanitizeGommePerAsse(raw.gommePerAsse, dataRaw, km);
+  const gommePerAsse =
+    gommePerAsseSanitized.length > 0
+      ? gommePerAsseSanitized
+      : isGomme && assiCoinvolti.length > 0
+        ? assiCoinvolti.map((asseId) => ({
+            asseId,
+            dataCambio: dataRaw,
+            kmCambio: km,
+          }))
+        : [];
 
   return {
     id: buildHistoryId(raw, index, mezzoTarga),
     mezzoTarga,
-    dataRaw: normalizeOptionalText(raw.data),
+    dataRaw,
     timestamp: parseDateFlexible(raw.data)?.getTime() ?? null,
     descrizione,
     tipo: normalizeOptionalText(raw.tipo),
-    km: normalizeNumber(raw.km),
+    km,
     ore: normalizeNumber(raw.ore),
     eseguitoLabel: normalizeOptionalText(raw.eseguito),
     fornitoreLabel:
@@ -380,6 +470,8 @@ function toHistoryItem(
       normalizeOptionalText(raw.fornitoreLabel) ??
       normalizeOptionalText(raw.eseguito),
     materialiCount: materiali.length,
+    assiCoinvolti,
+    gommePerAsse,
     isCambioGommeDerived: isGomme,
     sourceDataset: MANUTENZIONI_KEY,
     sourceOrigin: isGomme ? "autisti_gomme_derivato" : descrizione ? "manuale" : "unknown",
@@ -558,18 +650,37 @@ function sanitizeBusinessRecord(
   payload: NextManutenzioneBusinessSavePayload,
 ): NextManutenzioniLegacyDatasetRecord {
   const targa = normalizeNextMezzoTarga(payload.targa) || normalizeText(payload.targa).toUpperCase();
+  const assiCoinvolti = sanitizeAssiCoinvolti(payload.assiCoinvolti);
+  const km = payload.tipo === "mezzo" ? normalizeNumber(payload.km) : null;
+  const data = normalizeOptionalText(payload.data) ?? "";
+  const gommePerAsseSanitized = sanitizeGommePerAsse(payload.gommePerAsse, data, km);
+  const isGommePayload =
+    gommePerAsseSanitized.length > 0 ||
+    isCambioGommeDerived(normalizeOptionalText(payload.descrizione));
+  const gommePerAsse =
+    gommePerAsseSanitized.length > 0
+      ? gommePerAsseSanitized
+      : isGommePayload && assiCoinvolti.length > 0
+        ? assiCoinvolti.map((asseId) => ({
+            asseId,
+            dataCambio: data,
+            kmCambio: km,
+          }))
+        : [];
   return {
     id: buildGeneratedId(),
     targa,
     tipo: payload.tipo,
     fornitore: normalizeOptionalText(payload.fornitore) ?? undefined,
-    km: payload.tipo === "mezzo" ? normalizeNumber(payload.km) : null,
-    ore: payload.tipo === "compressore" ? normalizeNumber(payload.ore) : null,
+    km,
+    ore: payload.tipo === "compressore" || payload.tipo === "attrezzature" ? normalizeNumber(payload.ore) : null,
     sottotipo: payload.tipo === "compressore" ? payload.sottotipo ?? null : null,
     descrizione: normalizeOptionalText(payload.descrizione) ?? "Manutenzione",
     eseguito: normalizeOptionalText(payload.eseguito),
-    data: normalizeOptionalText(payload.data) ?? "",
+    data,
     materiali: sanitizeMaterialiForWrite(payload.materiali),
+    ...(assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
+    ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
   };
 }
 

@@ -1,5 +1,169 @@
 # STATO MIGRAZIONE NEXT
 
+## 0. Aggiornamento operativo 2026-04-08 PROMPT26 - stato gomme per asse in `Manutenzioni`
+- `PROMPT26` completato sul runtime `/next/manutenzioni` con focus esclusivo sulla gestione gomme per asse.
+- `src/next/domain/nextManutenzioniDomain.ts` estende in modo retrocompatibile il record clone-side di manutenzione con `gommePerAsse?: { asseId; dataCambio; kmCambio }[]`, mantenendo `assiCoinvolti` e senza rompere i record legacy privi del nuovo campo.
+- `src/next/domain/nextManutenzioniGommeDomain.ts` costruisce ora lo stato finale gomme per asse usando gli assi canonici reali (`anteriore`, `posteriore`, `asse1`, `asse2`, `asse3`) e il reader canonico km attuali gia in uso nel modulo.
+- `src/next/NextManutenzioniPage.tsx` aggiorna `Nuova / Modifica`:
+  - gli assi vengono mostrati solo nel flusso `gomme`;
+  - il salvataggio registra un evento per asse con `dataCambio` e `kmCambio` se applicabile;
+  - per categorie non motorizzate il km resta facoltativo e non dominante.
+- Il `Quadro manutenzioni PDF` espone ora anche il filtro `Attrezzature` e mostra per i risultati `Mezzo` lo stato gomme per asse:
+  - motorizzati -> `data cambio`, `km cambio`, `km attuali`, `km percorsi`;
+  - rimorchi / semirimorchi -> `data cambio` come dato principale.
+- Nessuna modifica a `NextMappaStoricoPage.tsx`, `nextMappaStoricoDomain.ts`, `mezziHotspotAreas.ts`, madre, viewer tecnico o backend.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts src/next/domain/nextRifornimentiDomain.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 PROMPT24 - Display marker salvati in modalita normale + PROMPT24 audit 4 problemi
+- Audit PROMPT24 completato sul runtime `/next/manutenzioni`:
+  - Problema A (`Calibra`): il flusso create/place/drag/save/reload era gia funzionale nei run precedenti; il gap residuo era che i marker salvati NON erano visibili in modalita normale (non-calibra). Risolto: in modalita normale il viewer tecnico mostra ora span read-only per i target con override persistito, senza interattivita.
+  - Problema B (`Km dal cambio gomme`): gia implementato nei run precedenti; `kmPercorsiDalCambio` calcolato e mostrato nel pannello laterale del `Dettaglio` quando il record aperto e di tipo gomme e i dati km sono validi.
+  - Problema C (`Deduplica`): gia implementato nei run precedenti; `ultimeManutenzioniMezzoSenzaUltimo` filtra per `id` il record gia mostrato in `Ultimo intervento mezzo`.
+  - Problema D (`Clean UX`): gia implementato; modalita normale pulita, calibra con board e palette distinta.
+- `src/next/NextMappaStoricoPage.tsx`: il canvas tecnico ora mostra span `man2-technical-marker--readonly` per i soli target salvati in vista normale; in calibra mostra i marker button interattivi come prima.
+- `src/next/next-mappa-storico.css`: aggiunta `.man2-technical-marker--readonly` (pointer-events: none, opacity ridotta).
+- Verifiche tecniche:
+  - `npm run build` -> OK
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - `Calibra` create/place/drag/save + deduplica runtime in `Manutenzioni`
+- Audit sul codice reale del runtime `/next/manutenzioni` completato:
+  - il doppione ancora visibile nasceva dal parent `NextManutenzioniPage`, che costruiva `Ultimo intervento mezzo` e `Ultime manutenzioni mezzo` dalla stessa testa lista;
+  - `Calibra` era gia avanzato ma non rispettava ancora il flusso esplicito richiesto `create/place/drag/save`.
+- `src/next/NextManutenzioniPage.tsx` passa ora al `Dettaglio` una lista `ultimeManutenzioniMezzo` gia deduplicata rispetto al record mostrato nel box `Ultimo intervento mezzo`.
+- `src/next/NextMappaStoricoPage.tsx` implementa ora il flusso completo:
+  - click `Calibra`;
+  - selezione target dalla palette;
+  - click sul disegno per creare/posizionare il marker;
+  - drag di un marker gia salvato per riposizionarlo;
+  - bottone `Salva` esplicito;
+  - rilettura successiva della posizione salvata.
+- `src/next/domain/nextMappaStoricoDomain.ts` persiste gli override tecnici clone-side su dataset visuale separato per:
+  - `categoriaKey`
+  - `vista`
+  - `targetId`
+  - `x`
+  - `y`
+- `src/next/next-mappa-storico.css` aggiunge lo styling dei marker tecnici trascinabili e delle azioni di calibrazione, senza toccare la madre.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts src/next/mezziHotspotAreas.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - deduplica storico + `Calibra` reale in `Manutenzioni`
+- Audit locale sul runtime di `/next/manutenzioni` completato:
+  - il box `Ultimo intervento mezzo` e la lista `Ultime manutenzioni mezzo` mostravano lo stesso record;
+  - `Calibra` permetteva solo preview/selezione, non vero spostamento marker con persistenza.
+- `src/next/NextManutenzioniPage.tsx` deduplica ora la lista `Ultime manutenzioni mezzo`, escludendo il record gia esposto in `Ultimo intervento mezzo`.
+- `src/next/domain/nextMappaStoricoDomain.ts` introduce override tecnici clone-side persistiti su chiave locale separata per:
+  - `categoriaKey`
+  - `vista`
+  - `targetId`
+  - `x`
+  - `y`
+- `src/next/NextMappaStoricoPage.tsx` usa ora questi override nel viewer tecnico:
+  - in `Calibra` l'utente seleziona un target dalla palette;
+  - clicca sul disegno per posizionarlo o trascina un marker gia salvato per spostarlo;
+  - al rilascio il viewer salva la nuova posizione e la rilegge dal layer clone-side.
+- Il perimetro resta confinato alla NEXT: nessuna patch a madre, Firestore/rules/backend o PDF.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts src/next/mezziHotspotAreas.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - delta km gomme + tooltip `Calibra` in `Manutenzioni`
+- Audit locale completato sul runtime reale di `/next/manutenzioni`: il km attuale del mezzo nel tab `Dettaglio` deriva gia dal reader canonico rifornimenti `readNextRifornimentiReadOnlySnapshot()` tramite `readPageData()` in `src/next/NextManutenzioniPage.tsx`; non e stato introdotto nessun reader nuovo.
+- `src/next/NextManutenzioniPage.tsx` passa ora al viewer tecnico anche `km` e `tipo` del record manutenzione aperto.
+- `src/next/NextMappaStoricoPage.tsx` mostra il delta `Km dal cambio gomme` solo quando tutte queste condizioni sono vere:
+  - il record aperto e coerente con una manutenzione gomme (`assiCoinvolti` presenti oppure descrizione/tipo compatibili);
+  - il record contiene `km` valido del cambio;
+  - il mezzo ha `kmAttuali` valido da ultimo rifornimento;
+  - il delta non e negativo.
+- Se uno dei dati manca o il delta non e affidabile, il viewer resta pulito e non mostra numeri inventati.
+- Il bottone `Calibra` non aggiunge piu testo guida fisso nel layout: ora espone un help breve via `title` + `aria-label`, valido sia su hover sia su focus tastiera.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - visibilita runtime `Attrezzature` + `Calibra` in `Manutenzioni`
+- Audit runtime locale eseguito sul codice reale di `/next/manutenzioni`:
+  - `Attrezzature` non era presente nel JSX runtime del form `Nuova / Modifica`;
+  - `Calibra` esisteva nel viewer embedded del `Dettaglio`, ma il bottone risultava quasi invisibile perche montato con variante secondaria trasparente su superficie chiara.
+- `src/next/NextManutenzioniPage.tsx` espone ora davvero 3 opzioni tipo intervento:
+  - `Mezzo`
+  - `Compressore`
+  - `Attrezzature`
+- `src/next/domain/nextManutenzioniDomain.ts` estende in modo retrocompatibile il tipo manutenzione per supportare `attrezzature` anche in salvataggio/lettura clone-side.
+- `src/next/NextMappaStoricoPage.tsx` e `src/next/next-mappa-storico.css` rendono il comando `Calibra` leggibile e visibile nel toolbar tecnico del tab `Dettaglio`, senza rifare il viewer.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts src/next/mezziHotspotAreas.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - binding esplicito record -> viewer tecnico in `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, il tab `Dettaglio` non usa piu fallback impliciti alla prima/ultima manutenzione con `assiCoinvolti`.
+- `src/next/NextManutenzioniPage.tsx` mantiene ora un `selectedDetailRecordId` esplicito e passa a `NextMappaStoricoPage` il record manutenzione realmente aperto dalla UI parent.
+- Le superfici che aprono il dettaglio da un record reale impostano ora quel record in modo esplicito:
+  - `Ultimi interventi` in `Dashboard`;
+  - `Apri dettaglio` nel `Quadro manutenzioni PDF`;
+  - selezione voci storico direttamente nella card destra del `Dettaglio`.
+- `src/next/NextMappaStoricoPage.tsx` usa il record selezionato come unica sorgente per:
+  - `assiCoinvolti`;
+  - label del viewer tecnico;
+  - azione `Modifica manutenzione aperta`.
+- Se il record aperto non ha `assiCoinvolti`, la tavola tecnica resta pulita; `Calibra` continua a lavorare sul record aperto.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts` -> `OK`
+  - `npm run build` -> `KO` per errori preesistenti fuori whitelist in `src/next/NextEuromeccPage.tsx`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - viewer tecnico `Dettaglio` pulito + modalita `Calibra` in `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni`, il ramo tecnico `Sinistra/Destra` del tab `Dettaglio` non mostra piu marker neutri permanenti: in vista normale restano solo immagine tecnica e highlight reali della manutenzione aperta.
+- `src/next/NextMappaStoricoPage.tsx` introduce una modalita `Calibra` dedicata al viewer tecnico:
+  - in vista normale il renderer e pulito;
+  - in `Calibra` compaiono preview asse cliccabile e grammatica target per verificare il mapping, senza sporcare il runtime operativo.
+- `src/next/mezziHotspotAreas.ts` tipizza ora i target hotspot con `targetKind` e permette di distinguere davvero:
+  - `assi` -> glow/circoli;
+  - `fanali_specchi` -> capsule/pill;
+  - `attrezzature` -> marker tecnici non circolari.
+- `src/next/next-mappa-storico.css` nasconde gli overlay neutri del renderer tecnico fuori da `Calibra`, differenzia i marker delle viste foto e riallinea il comportamento visuale del dettaglio al dato realmente salvato.
+- Nessuna modifica a Firestore/backend/rules, writer business, PDF o moduli legacy.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextMappaStoricoPage.tsx src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts src/next/mezziHotspotAreas.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-08 - flusso assi strutturato in `Manutenzioni`
+- Sul runtime ufficiale `/next/manutenzioni` il modulo NEXT supporta ora un flusso gomme/assi nuovo e inline, senza riaprire il modale legacy:
+  - in `Nuova / Modifica` l'utente seleziona gli assi coinvolti tramite chip inline;
+  - il record manutenzione salva in modo retrocompatibile il nuovo campo opzionale `assiCoinvolti?: string[]`;
+  - nel tab `Dettaglio`, per le sole viste `Sinistra` e `Destra`, il viewer carica la tavola tecnica reale da `public/gomme` in base alla categoria del mezzo e illumina automaticamente gli assi salvati;
+  - `Fronte` e `Retro` mantengono il fallback attuale foto/hotspot.
+- `src/next/domain/nextManutenzioniDomain.ts` estende in modo compatibile il record manutenzione e il payload di salvataggio con `assiCoinvolti`, senza inferenze dal testo descrizione e senza rompere i record legacy privi del campo.
+- `src/next/domain/nextManutenzioniGommeDomain.ts` ospita ora helper NEXT-only per:
+  - normalizzare gli id asse canonici (`anteriore`, `posteriore`, `asse1`, `asse2`, `asse3`);
+  - risolvere assi disponibili per categoria;
+  - mappare in modo deterministico categoria -> tavola tecnica reale `DX/SX` usando i file davvero presenti in `public/gomme`, compresa l'anomalia reale `motrice2assiSx.png`.
+- `src/next/NextManutenzioniPage.tsx` rimuove il ponte verso `NextModalGomme` e sostituisce il vecchio bottone con selezione assi inline coerente col form attuale.
+- `src/next/NextMappaStoricoPage.tsx` aggiunge un ramo embedded tecnico per `Sinistra/Destra`: usa `TruckGommeSvg` solo come renderer SVG, ma senza montare il runtime del vecchio modale; gli hotspot restano disponibili solo sulle viste foto/fallback.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMappaStoricoDomain.ts src/next/domain/nextManutenzioniGommeDomain.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Manutenzioni` -> `PARZIALE`
+
 ## 0. Aggiornamento operativo 2026-04-08 - fix definitivo della riga `Data / KM-Ore / Fornitore` in `Manutenzioni`
 - Sul runtime ufficiale `/next/manutenzioni` e stata corretta solo la resa strutturale della riga campi `Data / KM-Ore / Fornitore` nella tab `Nuova / Modifica`.
 - `src/next/next-mappa-storico.css` usa ora una griglia desktop piu pulita e proporzionata:

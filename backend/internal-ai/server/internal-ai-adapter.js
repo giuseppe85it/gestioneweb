@@ -2177,6 +2177,105 @@ app.post("/internal-ai-backend/approvals/prepare", async (req, res) => {
   });
 });
 
+app.post("/internal-ai-backend/euromecc/pdf-analyze", async (req, res) => {
+  const inputText = typeof req.body?.inputText === "string" ? req.body.inputText : undefined;
+  const imageBase64 = typeof req.body?.imageBase64 === "string" ? req.body.imageBase64 : undefined;
+
+  if (!inputText && !imageBase64) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "euromecc.pdf-analyze",
+      status: "validation_error",
+      message: "Devi passare almeno inputText o imageBase64.",
+      data: {},
+    });
+    return;
+  }
+
+  if (!isProviderConfigured()) {
+    sendEnvelope(res, {
+      httpStatus: 503,
+      ok: false,
+      endpointId: "euromecc.pdf-analyze",
+      status: "provider_not_configured",
+      message:
+        "Provider non configurato. Impostare OPENAI_API_KEY lato server per attivare l'analisi documenti Euromecc.",
+      data: { providerConfigured: false, providerTarget: getProviderTarget() },
+    });
+    return;
+  }
+
+  try {
+    const providerClient = getProviderClient();
+    const providerTarget = getProviderTarget();
+
+    const userContent = [];
+    if (inputText) {
+      userContent.push({ type: "input_text", text: inputText });
+    }
+    if (imageBase64) {
+      // Rileva se è PDF o immagine dal magic bytes base64
+      const isPdf = imageBase64.startsWith("JVBERi"); // %PDF in base64
+      if (isPdf) {
+        userContent.push({
+          type: "input_file",
+          filename: "relazione.pdf",
+          file_data: `data:application/pdf;base64,${imageBase64}`,
+        });
+      } else {
+        const imageUrl = imageBase64.startsWith("data:")
+          ? imageBase64
+          : `data:image/jpeg;base64,${imageBase64}`;
+        userContent.push({ type: "input_image", image_url: imageUrl });
+      }
+    }
+
+    console.log("[euromecc-pdf] inputText length:", inputText?.length ?? 0);
+    console.log("[euromecc-pdf] imageBase64 length:", imageBase64?.length ?? 0);
+    console.log("[euromecc-pdf] imageBase64 prefix:", imageBase64?.substring(0, 20) ?? "none");
+    console.log("[euromecc-pdf] userContent types:", userContent.map(c => c.type));
+
+    const response = await providerClient.responses.create({
+      model: providerTarget.model,
+      input: [
+        {
+          role: "user",
+          content: userContent,
+        },
+      ],
+    });
+
+    const raw = typeof response.output_text === "string" ? response.output_text.trim() : "";
+    console.log("[euromecc-pdf] raw response (first 300):", raw.substring(0, 300));
+    const result = raw;
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "euromecc.pdf-analyze",
+      status: "ok",
+      message: "Analisi documento Euromecc completata dal provider lato server.",
+      data: { result, providerTarget },
+    });
+  } catch (error) {
+    sendEnvelope(res, {
+      httpStatus: 502,
+      ok: false,
+      endpointId: "euromecc.pdf-analyze",
+      status: "upstream_error",
+      message:
+        error instanceof Error
+          ? `Errore provider: ${error.message}`
+          : "Errore non previsto durante l'analisi Euromecc.",
+      data: {
+        providerConfigured: isProviderConfigured(),
+        providerTarget: getProviderTarget(),
+      },
+    });
+  }
+});
+
 export function startInternalAiAdapterServer(options = {}) {
   const listenHost = options.listenHost || options.host || host;
   const listenPort = Number(options.listenPort || options.port || port);

@@ -14,6 +14,7 @@ import {
 
 const FOTO_VISTE_KEY = "@mezzi_foto_viste";
 const HOTSPOT_MAPPING_KEY = "@mezzi_hotspot_mapping";
+const TECHNICAL_TARGET_OVERRIDES_KEY = "@mezzi_tecnico_target_overrides";
 
 type RawRecord = Record<string, unknown>;
 
@@ -36,6 +37,19 @@ export type NextMappaStoricoHotspotRecord = {
   x: number;
   y: number;
   createdAt: number;
+};
+
+export type TechnicalMarkerShape = "pallino" | "cerchio" | "rombo";
+
+export type NextMappaStoricoTechnicalTargetOverrideRecord = {
+  id: string;
+  categoriaKey: string;
+  vista: NextMappaStoricoVista;
+  targetId: string;
+  markerShape: TechnicalMarkerShape;
+  x: number;
+  y: number;
+  updatedAt: number;
 };
 
 export type NextMappaStoricoIntervento = {
@@ -93,6 +107,15 @@ type NextMappaStoricoHotspotSaveInput = {
   targa: string;
   vista: NextMappaStoricoVista;
   areaId: string;
+  x: number;
+  y: number;
+};
+
+type NextMappaStoricoTechnicalTargetOverrideSaveInput = {
+  categoriaKey: string;
+  vista: NextMappaStoricoVista;
+  targetId: string;
+  markerShape: TechnicalMarkerShape;
   x: number;
   y: number;
 };
@@ -181,6 +204,44 @@ function sanitizeHotspotRecord(raw: RawRecord): NextMappaStoricoHotspotRecord | 
     x,
     y,
     createdAt: normalizeNumber(raw.createdAt) ?? Date.now(),
+  };
+}
+
+function buildTechnicalTargetOverrideId(
+  categoriaKey: string,
+  vista: NextMappaStoricoVista,
+  targetId: string,
+): string {
+  return `technical-target:${categoriaKey}:${vista}:${targetId}`;
+}
+
+const VALID_MARKER_SHAPES = new Set<TechnicalMarkerShape>(["pallino", "cerchio", "rombo"]);
+
+function sanitizeMarkerShape(value: unknown): TechnicalMarkerShape {
+  return typeof value === "string" && VALID_MARKER_SHAPES.has(value as TechnicalMarkerShape)
+    ? (value as TechnicalMarkerShape)
+    : "pallino";
+}
+
+function sanitizeTechnicalTargetOverrideRecord(
+  raw: RawRecord,
+): NextMappaStoricoTechnicalTargetOverrideRecord | null {
+  const categoriaKey = normalizeOptionalText(raw.categoriaKey)?.toLowerCase() ?? null;
+  const vista = normalizeOptionalText(raw.vista) as NextMappaStoricoVista | null;
+  const targetId = normalizeOptionalText(raw.targetId);
+  const x = normalizeNumber(raw.x);
+  const y = normalizeNumber(raw.y);
+  if (!categoriaKey || !vista || !targetId || x === null || y === null) return null;
+
+  return {
+    id: normalizeOptionalText(raw.id) ?? buildTechnicalTargetOverrideId(categoriaKey, vista, targetId),
+    categoriaKey,
+    vista,
+    targetId,
+    markerShape: sanitizeMarkerShape(raw.markerShape),
+    x,
+    y,
+    updatedAt: normalizeNumber(raw.updatedAt) ?? Date.now(),
   };
 }
 
@@ -512,6 +573,56 @@ export async function deleteNextMappaStoricoHotspot(hotspotId: string): Promise<
     .filter((item) => item.id !== normalizedId);
 
   await setItemSync(HOTSPOT_MAPPING_KEY, nextRecords);
+}
+
+export async function readNextMappaStoricoTechnicalTargetOverrides(
+  categoriaKey: string,
+  vista: NextMappaStoricoVista,
+): Promise<NextMappaStoricoTechnicalTargetOverrideRecord[]> {
+  const normalizedCategoryKey = normalizeOptionalText(categoriaKey)?.toLowerCase();
+  if (!normalizedCategoryKey) return [];
+
+  return (await readVisualRecords<RawRecord>(TECHNICAL_TARGET_OVERRIDES_KEY))
+    .map(sanitizeTechnicalTargetOverrideRecord)
+    .filter((item): item is NextMappaStoricoTechnicalTargetOverrideRecord => Boolean(item))
+    .filter((item) => item.categoriaKey === normalizedCategoryKey && item.vista === vista)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+export async function saveNextMappaStoricoTechnicalTargetOverride(
+  input: NextMappaStoricoTechnicalTargetOverrideSaveInput,
+): Promise<NextMappaStoricoTechnicalTargetOverrideRecord> {
+  const categoriaKey = normalizeOptionalText(input.categoriaKey)?.toLowerCase();
+  const targetId = normalizeOptionalText(input.targetId);
+  if (!categoriaKey || !targetId) {
+    throw new Error("Override tecnico non valido.");
+  }
+
+  const current = (await readVisualRecords<RawRecord>(TECHNICAL_TARGET_OVERRIDES_KEY))
+    .map(sanitizeTechnicalTargetOverrideRecord)
+    .filter((item): item is NextMappaStoricoTechnicalTargetOverrideRecord => Boolean(item))
+    .filter(
+      (item) =>
+        !(
+          item.categoriaKey === categoriaKey &&
+          item.vista === input.vista &&
+          item.targetId === targetId
+        ),
+    );
+
+  const nextRecord: NextMappaStoricoTechnicalTargetOverrideRecord = {
+    id: buildTechnicalTargetOverrideId(categoriaKey, input.vista, targetId),
+    categoriaKey,
+    vista: input.vista,
+    targetId,
+    markerShape: input.markerShape,
+    x: Math.max(0, Math.min(100, input.x)),
+    y: Math.max(0, Math.min(100, input.y)),
+    updatedAt: Date.now(),
+  };
+
+  await setItemSync(TECHNICAL_TARGET_OVERRIDES_KEY, [nextRecord, ...current]);
+  return nextRecord;
 }
 
 export async function readNextMappaStoricoSnapshot(

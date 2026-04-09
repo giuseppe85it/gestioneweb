@@ -6,6 +6,7 @@ export type NextMezzoHotspotArea = {
   label: string;
   description: string;
   keywords: string[];
+  targetKind: "assi" | "fanali_specchi" | "attrezzature";
 };
 
 const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
@@ -15,6 +16,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Cabina frontale",
     description: "Parabrezza, cabina e parte frontale superiore.",
     keywords: ["cabina", "parabrezza", "frontale", "specchio", "tergicristallo"],
+    targetKind: "fanali_specchi",
   },
   {
     id: "fronte-fanali",
@@ -33,6 +35,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
       "indicatore anteriore",
       "indicatori anteriori",
     ],
+    targetKind: "fanali_specchi",
   },
   {
     id: "fronte-paraurti",
@@ -40,6 +43,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Paraurti e griglia",
     description: "Paraurti, griglia, calandra e supporti frontali.",
     keywords: ["paraurti", "griglia", "calandra", "frontale", "urto"],
+    targetKind: "attrezzature",
   },
   {
     id: "fronte-assale",
@@ -61,6 +65,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
       "ruota anteriore",
       "freni anteriori",
     ],
+    targetKind: "assi",
   },
   {
     id: "sinistra-cabina",
@@ -68,6 +73,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Cabina lato sinistro",
     description: "Porta, cabina e fiancata sinistra.",
     keywords: ["sinistra", "porta", "cabina", "fiancata", "specchio"],
+    targetKind: "fanali_specchi",
   },
   {
     id: "sinistra-serbatoi",
@@ -75,6 +81,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Serbatoi e pedana",
     description: "Serbatoi, pedana e componenti laterali bassi sinistri.",
     keywords: ["serbatoio", "pedana", "scala", "gasolio", "adblue", "sinistra"],
+    targetKind: "attrezzature",
   },
   {
     id: "sinistra-assi",
@@ -98,6 +105,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
       "freni sinistri",
       "lato sinistro",
     ],
+    targetKind: "assi",
   },
   {
     id: "sinistra-telaio",
@@ -105,6 +113,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Telaio lato sinistro",
     description: "Telaio, supporti e impianti laterali sinistri.",
     keywords: ["telaio", "supporto", "impianto", "aria", "sospensione", "sinistra"],
+    targetKind: "attrezzature",
   },
   {
     id: "destra-cabina",
@@ -112,6 +121,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Cabina lato destro",
     description: "Porta, cabina e fiancata destra.",
     keywords: ["destra", "porta", "cabina", "fiancata", "specchio"],
+    targetKind: "fanali_specchi",
   },
   {
     id: "destra-impianti",
@@ -119,6 +129,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Impianti lato destro",
     description: "Impianti, serbatoi e componenti laterali bassi destri.",
     keywords: ["impianto", "aria", "serbatoio", "adblue", "destra", "pedana"],
+    targetKind: "attrezzature",
   },
   {
     id: "destra-assi",
@@ -142,6 +153,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
       "freni destri",
       "lato destro",
     ],
+    targetKind: "assi",
   },
   {
     id: "destra-telaio",
@@ -149,6 +161,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Telaio lato destro",
     description: "Telaio e supporti strutturali lato destro.",
     keywords: ["telaio", "supporto", "struttura", "sospensione", "destra"],
+    targetKind: "attrezzature",
   },
   {
     id: "retro-fanali",
@@ -156,6 +169,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Fanali posteriori",
     description: "Fanali, luci, indicatori e gruppo ottico posteriore.",
     keywords: ["fanale", "faro", "luce", "posteriore", "retro"],
+    targetKind: "fanali_specchi",
   },
   {
     id: "retro-portellone",
@@ -163,6 +177,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Portellone e scarico",
     description: "Portellone, sponda, ganci e scarico posteriore.",
     keywords: ["portellone", "sponda", "gancio", "scarico", "retro", "posteriore"],
+    targetKind: "attrezzature",
   },
   {
     id: "retro-assi",
@@ -185,6 +200,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
       "rimorchio posteriore",
       "freni posteriori",
     ],
+    targetKind: "assi",
   },
   {
     id: "retro-telaio",
@@ -192,6 +208,7 @@ const HOTSPOT_AREAS: NextMezzoHotspotArea[] = [
     label: "Telaio posteriore",
     description: "Telaio, supporti, longheroni e parte strutturale posteriore.",
     keywords: ["telaio", "supporto", "longherone", "retro", "posteriore"],
+    targetKind: "attrezzature",
   },
 ];
 
@@ -207,4 +224,10 @@ export function getNextMezzoHotspotAreasByVista(
 
 export function getNextMezzoHotspotAreaById(id: string): NextMezzoHotspotArea | null {
   return HOTSPOT_AREAS.find((area) => area.id === id) ?? null;
+}
+
+export function getNextMezzoHotspotTargetKindById(
+  id: string,
+): NextMezzoHotspotArea["targetKind"] | null {
+  return getNextMezzoHotspotAreaById(id)?.targetKind ?? null;
 }

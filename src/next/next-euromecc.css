@@ -867,3 +867,362 @@
     min-width: 920px;
   }
 }
+
+/* ── Relazioni ───────────────────────────────────────────────── */
+
+.eur-relazioni-root {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.eur-relazioni-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.eur-relazioni-dropzone {
+  border: 2px dashed var(--color-border, #d1d5db);
+  border-radius: 10px;
+  padding: 32px 24px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eur-relazioni-dropzone:hover,
+.eur-relazioni-dropzone.drag-over {
+  border-color: var(--color-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.eur-relazioni-dropzone-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.eur-relazioni-dropzone-empty span:first-child {
+  font-size: 15px;
+}
+
+.eur-relazioni-dropzone-empty small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.eur-relazioni-file-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.eur-relazioni-file-preview img {
+  max-height: 120px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.eur-relazioni-file-icon {
+  font-size: 40px;
+}
+
+.eur-relazioni-file-name {
+  font-size: 13px;
+  color: var(--color-text-secondary, #6b7280);
+  word-break: break-all;
+}
+
+.eur-relazioni-upload-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.eur-btn-primary {
+  background: var(--color-primary, #3b82f6);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.eur-btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.eur-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.eur-relazioni-analyzing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 64px 24px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.eur-relazioni-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-border, #d1d5db);
+  border-top-color: var(--color-primary, #3b82f6);
+  border-radius: 50%;
+  animation: eur-spin 0.8s linear infinite;
+}
+
+@keyframes eur-spin {
+  to { transform: rotate(360deg); }
+}
+
+.eur-relazioni-review {
+  display: grid;
+  grid-template-columns: 40fr 60fr;
+  gap: 20px;
+  align-items: start;
+  min-height: 600px;
+}
+
+.eur-relazioni-col-left {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  min-height: 80vh;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.eur-relazioni-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.eur-relazioni-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  background: var(--color-surface-alt, #f9fafb);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.eur-relazioni-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.eur-relazioni-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.eur-relazioni-area-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.eur-relazioni-item {
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eur-relazioni-item--matched {
+  border-left: 3px solid #22c55e;
+}
+
+.eur-relazioni-item--partial {
+  border-left: 3px solid #facc15;
+}
+
+.eur-relazioni-item--pending {
+  border-left: 3px solid #3b82f6;
+}
+
+.eur-relazioni-item--ignored {
+  opacity: 0.45;
+}
+
+.eur-relazioni-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.eur-relazioni-item-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.eur-relazioni-item-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.eur-relazioni-item-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.eur-relazioni-item-form input,
+.eur-relazioni-item-form select {
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 4px;
+  background: var(--color-bg, #fff);
+  color: var(--color-text-primary, #111827);
+}
+
+.eur-relazioni-item-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.eur-relazioni-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.eur-relazioni-edit-btn:hover {
+  background: var(--color-surface-alt, #f3f4f6);
+}
+
+.eur-relazioni-raw-text {
+  font-size: 13px;
+  color: var(--color-text-secondary, #6b7280);
+  font-style: italic;
+  margin: 0;
+}
+
+.eur-relazioni-action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--color-surface-alt, #f9fafb);
+}
+
+.eur-relazioni-action-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.eur-relazioni-action-bar textarea {
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 4px;
+  resize: vertical;
+  background: var(--color-bg, #fff);
+  color: var(--color-text-primary, #111827);
+}
+
+.eur-relazioni-action-bar-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.eur-relazioni-storico {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eur-relazioni-storico-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eur-relazioni-storico-item {
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+
+.eur-relazioni-storico-item-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.eur-relazioni-storico-date {
+  font-weight: 600;
+  min-width: 90px;
+}
+
+.eur-relazioni-storico-tecnici {
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.eur-relazioni-storico-counts {
+  font-size: 13px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+@media (max-width: 768px) {
+  .eur-relazioni-review {
+    grid-template-columns: 1fr;
+  }
+
+  .eur-relazioni-col-left {
+    position: static;
+    max-height: 300px;
+  }
+
+  .eur-relazioni-item-form {
+    grid-template-columns: 1fr;
+  }
+}

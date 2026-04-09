@@ -402,6 +402,27 @@
   text-overflow: ellipsis;
 }
 
+.ms-hotspot--assi .ms-hotspot-dot {
+  border-radius: 50%;
+}
+
+.ms-hotspot--fanali .ms-hotspot-dot {
+  width: 18px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffe3a8, #ffb84d);
+  box-shadow: 0 0 0 4px rgba(255, 190, 92, 0.18);
+}
+
+.ms-hotspot--attrezzature .ms-hotspot-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #9fe0ff, #4fb4d8);
+  box-shadow: 0 0 0 4px rgba(79, 180, 216, 0.16);
+  transform: rotate(45deg);
+}
+
 .ms-legend {
   display: flex;
   flex-wrap: wrap;
@@ -1828,7 +1849,15 @@
 }
 
 .man2-btn--secondary {
-  background: transparent;
+  border-color: rgba(188, 176, 159, 0.72);
+  background: rgba(255, 251, 245, 0.88);
+  color: #171717;
+}
+
+.man2-btn--viewer {
+  border-color: rgba(245, 240, 230, 0.14);
+  background: rgba(11, 11, 11, 0.92);
+  color: #f5f0e6;
 }
 
 .man2-last-list,
@@ -1842,6 +1871,18 @@
 .man2-last-item {
   padding: 16px 20px;
   border-radius: 20px;
+}
+
+.man2-last-item--button {
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.man2-last-item--button.is-active {
+  border-color: rgba(66, 114, 214, 0.34);
+  box-shadow: 0 14px 28px rgba(66, 114, 214, 0.12);
 }
 
 .man2-last-item__row1 {
@@ -1886,6 +1927,11 @@
   color: #5530c4;
 }
 
+.man2-badge--attrezzature {
+  background: rgba(255, 218, 163, 0.48);
+  color: #9a5b0d;
+}
+
 .man2-form-shell,
 .man2-pdf-shell {
   padding: 20px;
@@ -1909,6 +1955,13 @@
   font-size: 1rem;
   font-weight: 800;
   color: #171717;
+}
+
+.man2-form-copy {
+  margin: 0 0 12px;
+  color: #5f564b;
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
 
 .man2-field-row,
@@ -2006,6 +2059,129 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.man2-assi-section {
+  margin-top: 16px;
+}
+
+.man2-assi-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.man2-assi-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 118px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(187, 175, 157, 0.62);
+  background: rgba(255, 252, 247, 0.94);
+  color: #1b1b1b;
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.man2-assi-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(110, 134, 166, 0.42);
+}
+
+.man2-assi-chip.is-active {
+  border-color: rgba(54, 108, 224, 0.42);
+  background: linear-gradient(180deg, rgba(223, 233, 255, 0.96), rgba(207, 224, 255, 0.92));
+  box-shadow: 0 12px 24px rgba(68, 107, 185, 0.12);
+  color: #18376b;
+}
+
+.man2-assi-chip small {
+  color: #73695b;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.man2-assi-empty {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px dashed rgba(190, 179, 163, 0.72);
+  color: #655d52;
+  background: rgba(255, 252, 246, 0.6);
+}
+
+.man2-gomme-asse-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.man2-gomme-asse-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(189, 176, 158, 0.72);
+  background: rgba(255, 251, 245, 0.88);
+}
+
+.man2-gomme-asse-card__head,
+.man2-gomme-pdf-axis strong,
+.man2-gomme-pdf-axis span {
+  display: block;
+}
+
+.man2-gomme-asse-card__head strong,
+.man2-gomme-pdf-axis strong {
+  color: #161616;
+}
+
+.man2-gomme-asse-card__head span,
+.man2-gomme-pdf-axis span {
+  margin-top: 4px;
+  color: #655d52;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.man2-gomme-asse-card__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.man2-gomme-asse-card__meta > div,
+.man2-gomme-pdf-axis {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(195, 184, 169, 0.64);
+  background: rgba(252, 247, 239, 0.92);
+}
+
+.man2-gomme-asse-card__meta span {
+  display: block;
+  color: #756c61;
+  font-size: 0.73rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.man2-gomme-asse-card__meta strong {
+  display: block;
+  margin-top: 6px;
+  color: #161616;
+  font-size: 0.94rem;
+  line-height: 1.45;
 }
 
 .man2-chip,
@@ -2359,6 +2535,27 @@
   min-height: 52px;
 }
 
+.man2-gomme-pdf-state {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.man2-gomme-pdf-state__title {
+  color: #171717;
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.man2-gomme-pdf-state__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
 .man2-detail-shell {
   display: flex;
   flex-direction: column;
@@ -2385,6 +2582,399 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.man2-detail-surface--technical {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.man2-technical-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.man2-technical-board {
+  position: relative;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(190, 179, 163, 0.72);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(245, 239, 230, 0.96));
+}
+
+.man2-technical-canvas {
+  position: relative;
+}
+
+.man2-technical-board.is-calibra {
+  border-color: rgba(74, 124, 255, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(74, 124, 255, 0.12);
+}
+
+.man2-technical-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.man2-technical-axis {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(189, 178, 161, 0.72);
+  background: rgba(255, 252, 247, 0.92);
+  color: #554d41;
+  font-size: 0.82rem;
+  font-weight: 700;
+  appearance: none;
+  cursor: default;
+}
+
+.man2-technical-axis.is-active {
+  border-color: rgba(54, 108, 224, 0.4);
+  background: rgba(220, 233, 255, 0.96);
+  color: #17406f;
+}
+
+.man2-technical-board.is-calibra + .man2-technical-legend .man2-technical-axis,
+.man2-technical-calibra .man2-technical-axis {
+  cursor: pointer;
+}
+
+.man2-technical-axis:disabled {
+  opacity: 1;
+}
+
+.man2-technical-calibra {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px dashed rgba(165, 149, 122, 0.72);
+  background: rgba(246, 240, 231, 0.78);
+}
+
+.man2-technical-calibra__copy {
+  margin: 0;
+  color: #5f5548;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.man2-technical-calibra__row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.man2-technical-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.man2-technical-target {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border-radius: 16px;
+  border: 1px solid rgba(188, 177, 159, 0.72);
+  background: rgba(255, 252, 247, 0.92);
+  color: #554d41;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.man2-technical-target[aria-pressed="true"] {
+  border-color: rgba(45, 108, 223, 0.38);
+  box-shadow: 0 0 0 2px rgba(45, 108, 223, 0.14);
+}
+
+.man2-technical-target__shape {
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.man2-technical-target--assi .man2-technical-target__shape {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #6a94ff, #2d6cdf);
+  box-shadow: 0 0 0 4px rgba(45, 108, 223, 0.16);
+}
+
+.man2-technical-target--fanali-specchi .man2-technical-target__shape {
+  width: 18px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(218, 156, 59, 0.7);
+  background: rgba(255, 234, 196, 0.9);
+}
+
+.man2-technical-target--attrezzature .man2-technical-target__shape {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1.5px solid rgba(73, 140, 168, 0.64);
+  background: rgba(202, 239, 248, 0.92);
+  transform: rotate(45deg);
+}
+
+.man2-technical-calibra__hint {
+  color: #5f5548;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.man2-technical-calibra__actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.man2-technical-marker {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transform: translate(-50%, -50%);
+  padding: 6px 10px;
+  border: 1px solid rgba(189, 178, 161, 0.86);
+  background: rgba(255, 252, 247, 0.96);
+  color: #1d1d1d;
+  cursor: grab;
+  z-index: 3;
+}
+
+.man2-technical-marker.is-active {
+  box-shadow: 0 0 0 2px rgba(45, 108, 223, 0.16);
+}
+
+.man2-technical-marker__dot {
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.man2-technical-marker__label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.man2-technical-marker--assi {
+  border-radius: 999px;
+}
+
+.man2-technical-marker--assi .man2-technical-marker__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #6a94ff, #2d6cdf);
+  box-shadow: 0 0 0 4px rgba(45, 108, 223, 0.16);
+}
+
+.man2-technical-marker--fanali {
+  border-radius: 999px;
+}
+
+.man2-technical-marker--fanali .man2-technical-marker__dot {
+  width: 18px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(218, 156, 59, 0.7);
+  background: rgba(255, 234, 196, 0.9);
+}
+
+.man2-technical-marker--attrezzature {
+  border-radius: 14px;
+}
+
+.man2-technical-marker--attrezzature .man2-technical-marker__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1.5px solid rgba(73, 140, 168, 0.64);
+  background: rgba(202, 239, 248, 0.92);
+  transform: rotate(45deg);
+}
+
+.man2-technical-marker--readonly {
+  cursor: default;
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+/* ── Shape palette: pallino ────────────────────────────────────── */
+.man2-technical-marker--pallino {
+  border-radius: 999px;
+}
+.man2-technical-marker--pallino .man2-technical-marker__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #6a94ff, #2d6cdf);
+  box-shadow: 0 0 0 4px rgba(45, 108, 223, 0.18);
+}
+
+/* ── Shape palette: cerchio ────────────────────────────────────── */
+.man2-technical-marker--cerchio {
+  border-radius: 999px;
+}
+.man2-technical-marker--cerchio .man2-technical-marker__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2.5px solid #2d6cdf;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 3px rgba(45, 108, 223, 0.14);
+}
+
+/* ── Shape palette: rombo ─────────────────────────────────────── */
+.man2-technical-marker--rombo {
+  border-radius: 6px;
+}
+.man2-technical-marker--rombo .man2-technical-marker__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1.5px solid rgba(73, 140, 168, 0.72);
+  background: rgba(202, 239, 248, 0.92);
+  transform: rotate(45deg);
+}
+
+/* ── Shape selector buttons in calibra panel ──────────────────── */
+.man2-shape-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.man2-shape-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1.5px solid rgba(189, 178, 161, 0.72);
+  border-radius: 6px;
+  background: rgba(255, 252, 247, 0.95);
+  color: #3d3530;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.man2-shape-btn[aria-pressed="true"] {
+  border-color: #2d6cdf;
+  background: rgba(45, 108, 223, 0.07);
+  color: #1a3e8a;
+  font-weight: 700;
+}
+
+.man2-shape-btn__icon {
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+/* pallino icon in shape btn */
+.man2-shape-btn--pallino .man2-shape-btn__icon {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #6a94ff, #2d6cdf);
+}
+
+/* cerchio icon in shape btn */
+.man2-shape-btn--cerchio .man2-shape-btn__icon {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid #2d6cdf;
+  background: transparent;
+}
+
+/* rombo icon in shape btn */
+.man2-shape-btn--rombo .man2-shape-btn__icon {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1.5px solid rgba(73, 140, 168, 0.72);
+  background: rgba(202, 239, 248, 0.92);
+  transform: rotate(45deg);
+}
+
+/* ── target palette shapes for new shape classes ─────────────── */
+.man2-technical-target--pallino .man2-technical-target__shape {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #6a94ff, #2d6cdf);
+  box-shadow: 0 0 0 4px rgba(45, 108, 223, 0.16);
+}
+
+.man2-technical-target--cerchio .man2-technical-target__shape {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid #2d6cdf;
+  background: transparent;
+}
+
+.man2-technical-target--rombo .man2-technical-target__shape {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1.5px solid rgba(73, 140, 168, 0.64);
+  background: rgba(202, 239, 248, 0.92);
+  transform: rotate(45deg);
+}
+
+.mg-truck-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.man2-technical-board .mg-wheel-ring {
+  opacity: 0;
+}
+
+.mg-wheel-ring {
+  fill: none;
+  stroke: #7f786e;
+  stroke-width: 2;
+  opacity: 0.9;
+  transition: 0.15s ease-out;
+}
+
+.mg-wheel-ring--active {
+  stroke: #2d6cdf;
+  stroke-width: 3.5;
+  opacity: 1;
+  filter: drop-shadow(0 0 7px rgba(45, 108, 223, 0.36));
+}
+
+.man2-technical-board .mg-wheel-ring--active {
+  opacity: 1;
+}
+
+.mg-wheel-hit {
+  pointer-events: none;
+}
+
+.man2-technical-board.is-calibra .mg-wheel-ring {
+  opacity: 0.72;
+}
+
+.man2-technical-board.is-calibra .mg-wheel-hit {
+  pointer-events: all;
+  cursor: pointer;
 }
 
 .man2-detail-surface .ms-surface,
@@ -2489,6 +3079,19 @@
   color: #625a50;
 }
 
+.man2-detail-history-item {
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.man2-detail-history-item.is-active {
+  border-color: rgba(66, 114, 214, 0.34);
+  background: rgba(229, 238, 255, 0.84);
+  box-shadow: 0 12px 24px rgba(66, 114, 214, 0.12);
+}
+
 .man2-detail-setup__item {
   display: flex;
   justify-content: space-between;
@@ -2573,6 +3176,7 @@
   .man2-field-row3,
   .man2-pdf-steps,
   .man2-pdf-row__meta,
+  .man2-gomme-asse-card__meta,
   .man2-dash-kpis,
   .man2-nav-veloce,
   .man2-detail-kpis,

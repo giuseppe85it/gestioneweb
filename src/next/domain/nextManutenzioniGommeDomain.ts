@@ -1,9 +1,11 @@
 import { doc, getDoc } from "firebase/firestore";
+import { wheelGeom, type WheelPoint } from "../../components/wheels";
 import { db } from "../../firebase";
 import {
   NEXT_MANUTENZIONI_DOMAIN,
   readNextMezzoManutenzioniSnapshot,
   type NextMaintenanceHistoryItem,
+  type NextManutenzioneGommePerAsseRecord,
   type NextManutenzioneQuality,
   type NextScheduledMaintenance,
 } from "./nextManutenzioniDomain";
@@ -41,6 +43,36 @@ export type NextGommeVehicleMatchField =
   | "contesto.targaRimorchio";
 
 type NextGommeExternalDataset = typeof GOMME_TMP_KEY | typeof GOMME_EVENTI_KEY;
+type NextWheelGeomKey = keyof typeof wheelGeom;
+type NextTechnicalVista = "sinistra" | "destra";
+
+export type NextManutenzioneAsseCoinvoltoId =
+  | "anteriore"
+  | "posteriore"
+  | "asse1"
+  | "asse2"
+  | "asse3";
+
+export type NextManutenzioneAsseOption = {
+  id: NextManutenzioneAsseCoinvoltoId;
+  label: string;
+  wheelsCount: number;
+};
+
+export type NextManutenzioneTechnicalWheel = {
+  id: string;
+  axisId: NextManutenzioneAsseCoinvoltoId;
+  x: number;
+  y: number;
+};
+
+export type NextManutenzioneTechnicalView = {
+  geomKey: NextWheelGeomKey;
+  backgroundImage: string;
+  isRimorchio: boolean;
+  assi: NextManutenzioneAsseOption[];
+  wheels: NextManutenzioneTechnicalWheel[];
+};
 
 type ParsedCambioGommeBlock = {
   evento: string;
@@ -95,6 +127,8 @@ export type NextManutenzioneReadOnlyItem = {
   ore: number | null;
   fornitore: string | null;
   materialiCount: number;
+  assiCoinvolti: NextManutenzioneAsseCoinvoltoId[];
+  gommePerAsse: NextManutenzioneGommePerAsseRecord[];
   isCambioGommeDerived: boolean;
   sourceDataset: string;
   sourceRecordId: string;
@@ -158,6 +192,17 @@ export type NextManutenzioneLegacyViewItem = {
   descrizione?: string;
 };
 
+export type NextGommePerAsseStatus = {
+  asseId: NextManutenzioneAsseCoinvoltoId;
+  asseLabel: string;
+  dataCambio: string | null;
+  kmCambio: number | null;
+  kmAttuali: number | null;
+  kmPercorsi: number | null;
+  isMotorizzato: boolean;
+  sourceMaintenanceId: string;
+};
+
 export type NextMezzoManutenzioniGommeSnapshot = {
   domainCode: typeof NEXT_MANUTENZIONI_GOMME_DOMAIN.code;
   domainName: typeof NEXT_MANUTENZIONI_GOMME_DOMAIN.name;
@@ -217,6 +262,261 @@ function normalizeNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+export function normalizeNextAssiCoinvolti(value: unknown): NextManutenzioneAsseCoinvoltoId[] {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => normalizeText(entry).toLowerCase())
+        .filter(
+          (entry): entry is NextManutenzioneAsseCoinvoltoId =>
+            entry === "anteriore" ||
+            entry === "posteriore" ||
+            entry === "asse1" ||
+            entry === "asse2" ||
+            entry === "asse3",
+        ),
+    ),
+  );
+}
+
+function buildTechnicalConfig(categoria?: string | null): {
+  tipoLabel: string;
+  assi: NextManutenzioneAsseOption[];
+  isRimorchio: boolean;
+} {
+  const cat = (categoria || "").toLowerCase();
+
+  if (cat.includes("trattore")) {
+    return {
+      tipoLabel: "Trattore",
+      assi: [
+        { id: "anteriore", label: "Anteriore", wheelsCount: 2 },
+        { id: "posteriore", label: "Posteriore", wheelsCount: 4 },
+      ],
+      isRimorchio: false,
+    };
+  }
+
+  if (cat.includes("motrice 4")) {
+    return {
+      tipoLabel: "Motrice 4 assi",
+      assi: [
+        { id: "anteriore", label: "Anteriore", wheelsCount: 2 },
+        { id: "asse1", label: "1 asse", wheelsCount: 2 },
+        { id: "asse2", label: "2 asse", wheelsCount: 4 },
+        { id: "asse3", label: "3 asse", wheelsCount: 4 },
+      ],
+      isRimorchio: false,
+    };
+  }
+
+  if (cat.includes("motrice 3")) {
+    return {
+      tipoLabel: "Motrice 3 assi",
+      assi: [
+        { id: "anteriore", label: "Anteriore", wheelsCount: 2 },
+        { id: "asse1", label: "1 asse", wheelsCount: 4 },
+        { id: "asse2", label: "2 asse", wheelsCount: 2 },
+      ],
+      isRimorchio: false,
+    };
+  }
+
+  if (cat.includes("motrice 2")) {
+    return {
+      tipoLabel: "Motrice 2 assi",
+      assi: [
+        { id: "anteriore", label: "Anteriore", wheelsCount: 2 },
+        { id: "asse1", label: "1 asse", wheelsCount: 4 },
+      ],
+      isRimorchio: false,
+    };
+  }
+
+  if (cat.includes("biga")) {
+    return {
+      tipoLabel: "Rimorchio 2 assi",
+      assi: [
+        { id: "asse1", label: "1 asse", wheelsCount: 4 },
+        { id: "asse2", label: "2 asse", wheelsCount: 4 },
+      ],
+      isRimorchio: true,
+    };
+  }
+
+  if (
+    cat.includes("rimorchio") ||
+    cat.includes("porta silo container") ||
+    cat.includes("pianale") ||
+    cat.includes("centina") ||
+    cat.includes("vasca")
+  ) {
+    return {
+      tipoLabel: "Rimorchio 3 assi",
+      assi: [
+        { id: "asse1", label: "1 asse", wheelsCount: 4 },
+        { id: "asse2", label: "2 asse", wheelsCount: 4 },
+        { id: "asse3", label: "3 asse", wheelsCount: 4 },
+      ],
+      isRimorchio: true,
+    };
+  }
+
+  return {
+    tipoLabel: categoria || "Mezzo",
+    assi: [],
+    isRimorchio: false,
+  };
+}
+
+function resolveTechnicalGeomKey(categoria?: string | null): NextWheelGeomKey | null {
+  const cat = (categoria || "").toLowerCase();
+  if (!cat) return null;
+  if (cat.includes("motrice 4")) return "motrice4assi";
+  if (cat.includes("motrice 3")) return "motrice3assi";
+  if (cat.includes("motrice 2")) return "motrice2assi";
+  if (cat.includes("biga")) return "biga";
+  if (cat.includes("pianale")) return "pianale";
+  if (cat.includes("vasca")) return "vasca";
+  if (cat.includes("centina")) return "centina";
+  if (cat.includes("porta silo container")) return "semirimorchioSterzante";
+  if (cat.includes("semirimorchio") && cat.includes("sterz")) return "semirimorchioSterzante";
+  if (cat.includes("semirimorchio")) return "semirimorchioFissi";
+  if (cat.includes("trattore")) return "trattore";
+  return null;
+}
+
+export function resolveNextManutenzioneTechnicalCategoryKey(
+  categoria?: string | null,
+): string | null {
+  return resolveTechnicalGeomKey(categoria);
+}
+
+function buildTechnicalWheels(
+  assi: NextManutenzioneAsseOption[],
+  points: WheelPoint[],
+  key: string,
+): NextManutenzioneTechnicalWheel[] {
+  if (!assi.length || !points.length) return [];
+
+  const totalPoints = points.length;
+  let perSideCounts = assi.map((asse) => Math.max(1, Math.round(asse.wheelsCount / 2)));
+  const expected = perSideCounts.reduce((sum, count) => sum + count, 0);
+
+  if (expected !== totalPoints) {
+    const base = Math.floor(totalPoints / assi.length);
+    const rest = totalPoints % assi.length;
+    perSideCounts = assi.map((_, index) => base + (index < rest ? 1 : 0));
+  }
+
+  const wheels: NextManutenzioneTechnicalWheel[] = [];
+  let cursor = 0;
+
+  assi.forEach((asse, axisIndex) => {
+    const count = perSideCounts[axisIndex];
+    for (let index = 0; index < count && cursor < totalPoints; index += 1, cursor += 1) {
+      const point = points[cursor];
+      wheels.push({
+        id: `${key}-${asse.id}-${cursor}`,
+        axisId: asse.id,
+        x: point.cx,
+        y: point.cy,
+      });
+    }
+  });
+
+  return wheels;
+}
+
+export function getNextAssiOptionsForCategoria(
+  categoria?: string | null,
+): NextManutenzioneAsseOption[] {
+  return buildTechnicalConfig(categoria).assi;
+}
+
+export function isNextCategoriaMotorizzata(
+  categoria?: string | null,
+): boolean {
+  const config = buildTechnicalConfig(categoria);
+  return config.assi.length > 0 && !config.isRimorchio;
+}
+
+export function resolveNextManutenzioneTechnicalView(
+  categoria: string | null | undefined,
+  vista: NextTechnicalVista,
+): NextManutenzioneTechnicalView | null {
+  const geomKey = resolveTechnicalGeomKey(categoria);
+  if (!geomKey) return null;
+
+  const config = buildTechnicalConfig(categoria);
+  if (config.assi.length === 0) return null;
+
+  const geomEntry = wheelGeom[geomKey];
+  const points = vista === "destra" ? geomEntry.dx : geomEntry.sx;
+  const backgroundImage = `/gomme/${vista === "destra" ? geomEntry.imageDX : geomEntry.imageSX}`;
+
+  return {
+    geomKey,
+    backgroundImage,
+    isRimorchio: config.isRimorchio,
+    assi: config.assi,
+    wheels: buildTechnicalWheels(config.assi, points, `${geomKey}-${vista}`),
+  };
+}
+
+export function buildNextGommeStateByAsse(args: {
+  categoria?: string | null;
+  maintenanceItems: NextManutenzioneReadOnlyItem[];
+  kmAttuali?: number | null;
+}): NextGommePerAsseStatus[] {
+  const assi = getNextAssiOptionsForCategoria(args.categoria);
+  if (!assi.length) return [];
+
+  const assiById = new Map(assi.map((entry) => [entry.id, entry] as const));
+  const isMotorizzato = isNextCategoriaMotorizzata(args.categoria);
+  const sortedItems = [...args.maintenanceItems].sort((left, right) => {
+    const rightTs = right.timestamp ?? parseDateFlexible(right.data)?.getTime() ?? 0;
+    const leftTs = left.timestamp ?? parseDateFlexible(left.data)?.getTime() ?? 0;
+    return rightTs - leftTs;
+  });
+  const byAsse = new Map<NextManutenzioneAsseCoinvoltoId, NextGommePerAsseStatus>();
+
+  for (const item of sortedItems) {
+    const entries = deriveGommePerAsseFromMaintenance(item);
+    if (!entries.length) continue;
+
+    for (const entry of entries) {
+      if (byAsse.has(entry.asseId)) continue;
+      const asse = assiById.get(entry.asseId);
+      if (!asse) continue;
+
+      const kmCambio = isMotorizzato ? entry.kmCambio : null;
+      const kmAttuali = isMotorizzato ? args.kmAttuali ?? null : null;
+      const kmPercorsi =
+        kmCambio !== null && kmAttuali !== null && kmAttuali >= kmCambio
+          ? kmAttuali - kmCambio
+          : null;
+
+      byAsse.set(entry.asseId, {
+        asseId: entry.asseId,
+        asseLabel: asse.label,
+        dataCambio: entry.dataCambio,
+        kmCambio,
+        kmAttuali,
+        kmPercorsi,
+        isMotorizzato,
+        sourceMaintenanceId: item.id,
+      });
+    }
+  }
+
+  return assi
+    .map((asse) => byAsse.get(asse.id))
+    .filter((entry): entry is NextGommePerAsseStatus => Boolean(entry));
 }
 
 function parseDateFlexible(value: unknown): Date | null {
@@ -434,6 +734,74 @@ function dedupeFlags(flags: string[]): string[] {
   return Array.from(new Set(flags.filter(Boolean)));
 }
 
+function resolveAsseIdFromLabel(
+  value: string | null | undefined,
+): NextManutenzioneAsseCoinvoltoId | null {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized.includes("anter")) return "anteriore";
+  if (normalized.includes("poster")) return "posteriore";
+  if (normalized === "asse1" || normalized === "asse 1" || normalized === "1asse" || normalized === "1 asse") {
+    return "asse1";
+  }
+  if (normalized === "asse2" || normalized === "asse 2" || normalized === "2asse" || normalized === "2 asse") {
+    return "asse2";
+  }
+  if (normalized === "asse3" || normalized === "asse 3" || normalized === "3asse" || normalized === "3 asse") {
+    return "asse3";
+  }
+  return null;
+}
+
+function isTyreMaintenanceItem(item: {
+  descrizione: string | null;
+  isCambioGommeDerived: boolean;
+  assiCoinvolti: NextManutenzioneAsseCoinvoltoId[];
+  gommePerAsse: NextManutenzioneGommePerAsseRecord[];
+}): boolean {
+  if (item.gommePerAsse.length > 0) return true;
+  if (item.isCambioGommeDerived && item.assiCoinvolti.length > 0) return true;
+  const normalized = normalizeText(item.descrizione).toUpperCase();
+  return (normalized.includes("GOMME") || normalized.includes("PNEUM")) && item.assiCoinvolti.length > 0;
+}
+
+function deriveGommePerAsseFromMaintenance(
+  item: NextManutenzioneReadOnlyItem,
+): NextManutenzioneGommePerAsseRecord[] {
+  if (item.gommePerAsse.length > 0) {
+    return item.gommePerAsse;
+  }
+
+  const fromBlocks = splitCambioGommeBlocks(item.descrizione)
+    .map((block) => parseCambioGommeBlock(block))
+    .filter((entry): entry is ParsedCambioGommeBlock => Boolean(entry))
+    .map<NextManutenzioneGommePerAsseRecord | null>((entry) => {
+      const asseId = resolveAsseIdFromLabel(entry.asseLabel);
+      if (!asseId) return null;
+      return {
+        asseId,
+        dataCambio: item.dataLabel ?? item.data ?? null,
+        kmCambio: entry.km ?? item.km,
+      };
+    })
+    .filter((entry): entry is NextManutenzioneGommePerAsseRecord => Boolean(entry));
+
+  if (fromBlocks.length > 0) {
+    return fromBlocks;
+  }
+
+  if (!isTyreMaintenanceItem(item)) {
+    return [];
+  }
+
+  return item.assiCoinvolti.map((asseId) => ({
+    asseId,
+    dataCambio: item.dataLabel ?? item.data ?? null,
+    kmCambio: item.km,
+  }));
+}
+
 function sortGommeItems(items: NextGommeReadOnlyItem[]): NextGommeReadOnlyItem[] {
   return [...items].sort((left, right) => {
     const rightTs = right.timestamp ?? -1;
@@ -507,6 +875,8 @@ function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneRe
     ore: item.ore,
     fornitore: item.fornitoreLabel,
     materialiCount: item.materialiCount,
+    assiCoinvolti: normalizeNextAssiCoinvolti(item.assiCoinvolti),
+    gommePerAsse: item.gommePerAsse,
     isCambioGommeDerived: item.isCambioGommeDerived,
     sourceDataset: item.sourceDataset,
     sourceRecordId: item.id,
