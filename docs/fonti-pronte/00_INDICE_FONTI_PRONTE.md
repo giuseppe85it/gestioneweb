@@ -71,7 +71,19 @@ Contiene copie mirror di documenti sorgente chiave e alcuni report selezionati.
 - Continuity report della patch strutturale `Magazzino NEXT`.
 - Utile per riaprire rapidamente il contesto del modulo senza rifare l'audit completo.
 
-16. `01_OVERVIEW_PROGETTO_NEXT.md`
+16. `AUDIT_FINALE_MAGAZZINO_NEXT_DOMINIO_2026-04-10.md`
+- Audit finale strutturale del dominio `Magazzino NEXT`.
+- Utile per capire cosa risulta davvero `CHIUSO`, cosa resta `PARZIALE` e quali gap bloccano ancora la chiusura del dominio.
+
+17. `20260410_123000_audit_finale_magazzino_next_dominio.md`
+- Change report dell'audit finale `Magazzino NEXT`.
+- Utile per ricostruire in breve perimetro, documenti toccati e verdetto finale senza rileggere tutto l'audit.
+
+18. `20260410_123000_continuity_audit_finale_magazzino_next_dominio.md`
+- Continuity report dell'audit finale `Magazzino NEXT`.
+- Utile per riprendere il prossimo task tecnico senza riaprire l'intera investigazione.
+
+19. `01_OVERVIEW_PROGETTO_NEXT.md`
 - Sintesi breve della struttura NEXT e dei file chiave del repo.
 - Utile come briefing iniziale veloce.
 

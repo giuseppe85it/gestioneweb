@@ -9,6 +9,36 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0. Aggiornamento operativo 2026-04-10 AUDIT FINALE - dominio `Magazzino` NEXT
+- audit-only completato senza patch runtime;
+- verificati sul codice reale:
+  - `/next/magazzino` come ingresso pubblico canonico del dominio;
+  - `/next/inventario` e `/next/materiali-consegnati` come redirect compatibili, non runtime doppi;
+  - `@inventario`, `@materialiconsegnati`, `@cisterne_adblue`, `@documenti_magazzino` e dataset collegati del dominio;
+  - writer esterni reali `Acquisti`, `DettaglioOrdine`, `Manutenzioni`, `IADocumenti`;
+  - lettori reali `DossierMezzo`, `Mezzo360`, analisi/costi legacy e reader NEXT collegati.
+- verdetti finali per blocco:
+  - `Route e wiring Magazzino NEXT` -> `CHIUSO`
+  - `Inventario` -> `PARZIALE`
+  - `Materiali consegnati` -> `PARZIALE`
+  - `Cisterne AdBlue` -> `CHIUSO`
+  - `Documenti e costi` -> `PARZIALE`
+  - `Compatibilita con Dossier / lettori` -> `PARZIALE`
+  - `Compatibilita con writer esterni` -> `PARZIALE`
+  - `Parity logica con la madre` -> `PARZIALE`
+  - `Dominio Magazzino NEXT` -> `PARZIALE`
+- gap reali confermati:
+  - parity PDF legacy del dominio ancora assente in `NextMagazzinoPage.tsx`;
+  - dominio stock ancora multi-writer e non transazionale;
+  - rischio concreto di doppio decremento in `Acquisti.tsx` e `DettaglioOrdine.tsx`;
+  - import inventario IA legacy ancora basato su matching descrittivo;
+  - costi materiali ancora solo supporto derivato read-only, non dato canonico.
+- nessun file `src/*` modificato in questo task;
+- audit dedicato:
+  - `docs/audit/AUDIT_FINALE_MAGAZZINO_NEXT_DOMINIO_2026-04-10.md`
+- stato modulo:
+  - `Magazzino NEXT` -> `PARZIALE`
+
 ## 0. Aggiornamento operativo 2026-04-09 PATCH STRUTTURALE - dominio allargato `Magazzino` NEXT
 - execution strutturale completata nel solo perimetro autorizzato del modulo `Magazzino`.
 - `src/next/NextMagazzinoPage.tsx` ora:
@@ -37,8 +67,8 @@
   - `Magazzino NEXT` -> `PARZIALE`
   - chiusura finale demandata ad audit separato
 
-## 0. Aggiornamento operativo 2026-04-09 AUDIT - `Magazzino` legacy vs NEXT
-- audit-only completato senza patch runtime;
+## 0. Aggiornamento operativo 2026-04-09 PRE-AUDIT - `Magazzino` legacy vs NEXT
+- audit-only completato senza patch runtime; sezione storica pre-patch, superata dalla mega patch `22:28` e dall'audit finale `2026-04-10`;
 - verificati sul codice reale:
   - `@inventario` come dataset storage-style multi-writer;
   - `@materialiconsegnati` come dataset storage-style multi-writer;
@@ -50,18 +80,18 @@
   - `DettaglioOrdine`
   - `Manutenzioni`
   - `IADocumenti`
-- il nuovo `src/next/NextMagazzinoPage.tsx` copre il core storage del dominio:
+- nel momento del pre-audit il nuovo `src/next/NextMagazzinoPage.tsx` copriva il core storage del dominio:
   - CRUD `@inventario`
   - consegne su `@materialiconsegnati`
   - rollback compensativo della seconda scrittura
   - `@cisterne_adblue`
-- il nuovo modulo NON copre ancora:
+- nel momento del pre-audit il nuovo modulo NON copriva ancora:
   - `@documenti_magazzino`
   - costi/fatture/preventivi materiali
   - integrazione applicativa con `IADocumenti`
   - integrazione applicativa con `Acquisti` / `DettaglioOrdine`
   - parity dei PDF legacy magazzino
-- verdetto audit:
+- verdetto del pre-audit:
   - `Inventario logica madre` -> `COPERTO`
   - `Materiali consegnati logica madre` -> `COPERTO`
   - `Cross-modulo magazzino` -> `PARZIALE`

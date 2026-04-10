@@ -37,6 +37,34 @@ La regola corrente da leggere insieme a questo registro e:
 
 ## 4. Registro storico
 
+### Voce 2026-04-10 AUDIT FINALE MAGAZZINO
+- DATA: 2026-04-10
+- TITOLO MODIFICA: Audit finale strutturale del dominio `Magazzino NEXT`
+- OBIETTIVO: Verificare in modo finale il dominio reale collegato a `/next/magazzino`, includendo route, dataset, writer esterni, lettori dossier/costi, documenti materiali, parity con la madre e rischi multi-writer, senza toccare il runtime.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_FINALE_MAGAZZINO_NEXT_DOMINIO_2026-04-10.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `docs/change-reports/20260410_123000_audit_finale_magazzino_next_dominio.md`
+  - `docs/continuity-reports/20260410_123000_continuity_audit_finale_magazzino_next_dominio.md`
+- COSA E STATO CAMBIATO:
+  - creato l'audit finale sul dominio `Magazzino NEXT` post-patch;
+  - verificato che `Route e wiring` e `Cisterne AdBlue` risultano `CHIUSO`, mentre `Inventario`, `Materiali consegnati`, `Documenti e costi`, compatibilita con `Dossier / lettori`, compatibilita con writer esterni, parity logica con la madre e dominio complessivo restano `PARZIALE`;
+  - documentato che `PDF / legacy contracts` del dominio restano `APERTO`;
+  - fissati come gap reali: parity PDF assente, dominio stock ancora multi-writer, rischio concreto di doppio decremento in `Acquisti.tsx` / `DettaglioOrdine.tsx`, import inventario IA legacy ancora descrittivo.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun impatto, task solo audit/documentazione;
+  - Lettura: stato finale del dominio `Magazzino NEXT` ora documentato in modo verificato e utile per il prossimo step tecnico;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - leggere `docs/audit/AUDIT_FINALE_MAGAZZINO_NEXT_DOMINIO_2026-04-10.md`;
+  - verificare che nessun file `src/*` sia stato modificato;
+  - verificare nei documenti di stato che `Magazzino NEXT` resti `PARZIALE`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: audit-only; nessun build/test rilanciato perche il runtime era gia stato verificato nel task precedente.
+
 ### Voce 2026-04-09 PATCH STRUTTURALE MAGAZZINO
 - DATA: 2026-04-09
 - TITOLO MODIFICA: Completamento strutturale del dominio allargato `Magazzino` NEXT
