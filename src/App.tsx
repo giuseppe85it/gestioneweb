@@ -39,8 +39,7 @@ import NextLavoriEseguitiPage from "./next/NextLavoriEseguitiPage";
 import NextLavoriDaEseguirePage from "./next/NextLavoriDaEseguirePage";
 import NextDettaglioLavoroPage from "./next/NextDettaglioLavoroPage";
 import NextGestioneOperativaPage from "./next/NextGestioneOperativaPage";
-import NextInventarioPage from "./next/NextInventarioPage";
-import NextMaterialiConsegnatiPage from "./next/NextMaterialiConsegnatiPage";
+import NextMagazzinoPage from "./next/NextMagazzinoPage";
 import NextAttrezzatureCantieriPage from "./next/NextAttrezzatureCantieriPage";
 import NextManutenzioniPage from "./next/NextManutenzioniPage";
 import NextAcquistiPage from "./next/NextAcquistiPage";
@@ -68,6 +67,7 @@ import NextCapoCostiMezzoPage from "./next/NextCapoCostiMezzoPage";
 import NextColleghiPage from "./next/NextColleghiPage";
 import NextFornitoriPage from "./next/NextFornitoriPage";
 import NextEuromeccPage from "./next/NextEuromeccPage";
+import { buildNextMagazzinoPath } from "./next/nextStructuralPaths";
 
 /* ==================== APP PRINCIPALE ==================== */
 import Home from "./pages/Home";
@@ -220,10 +220,18 @@ function App() {
           }
         />
         <Route
+          path="magazzino"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextMagazzinoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
           path="inventario"
           element={
             <NextRoleGuard areaId="operativita-globale">
-              <NextInventarioPage />
+              <Navigate replace to={buildNextMagazzinoPath("inventario")} />
             </NextRoleGuard>
           }
         />
@@ -231,7 +239,7 @@ function App() {
           path="materiali-consegnati"
           element={
             <NextRoleGuard areaId="operativita-globale">
-              <NextMaterialiConsegnatiPage />
+              <Navigate replace to={buildNextMagazzinoPath("materiali-consegnati")} />
             </NextRoleGuard>
           }
         />

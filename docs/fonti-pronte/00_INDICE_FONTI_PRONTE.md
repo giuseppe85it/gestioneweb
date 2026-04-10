@@ -55,7 +55,23 @@ Contiene copie mirror di documenti sorgente chiave e alcuni report selezionati.
 - Continuity report del fix cross-modulo `Manutenzioni`.
 - Utile per handoff rapido tra chat.
 
-12. `01_OVERVIEW_PROGETTO_NEXT.md`
+12. `20260409_201156_magazzino_next_prompt18s.md`
+- Change report del nuovo modulo `Magazzino NEXT`.
+- Utile per capire route `/next/magazzino`, barrier, dataset reali usati e perimetro della pagina unica.
+
+13. `20260409_201156_continuity_magazzino_next_prompt18s.md`
+- Continuity report del modulo `Magazzino NEXT`.
+- Utile per handoff rapido sul nuovo runtime magazzino e sui rischi residui.
+
+14. `20260409_222842_magazzino_next_dominio_allargato_execution.md`
+- Change report della patch strutturale sul dominio allargato `Magazzino NEXT`.
+- Utile per capire quarta vista `Documenti e costi`, preservazione shape multi-writer e compatibilita cross-modulo.
+
+15. `20260409_222842_continuity_magazzino_next_dominio_allargato_execution.md`
+- Continuity report della patch strutturale `Magazzino NEXT`.
+- Utile per riaprire rapidamente il contesto del modulo senza rifare l'audit completo.
+
+16. `01_OVERVIEW_PROGETTO_NEXT.md`
 - Sintesi breve della struttura NEXT e dei file chiave del repo.
 - Utile come briefing iniziale veloce.
 

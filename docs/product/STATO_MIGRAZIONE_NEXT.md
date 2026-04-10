@@ -1,5 +1,131 @@
 # STATO MIGRAZIONE NEXT
 
+## Regola architetturale corrente
+- La madre legacy resta intoccabile.
+- `src/next/*` e il nuovo perimetro applicativo del gestionale.
+- La NEXT non e piu da considerare globalmente `read-only`.
+- Le scritture reali si aprono modulo per modulo, solo quando il modulo viene esplicitamente promosso.
+- L'apertura non e globale: va limitata ai dataset e alle operazioni necessari al modulo in lavorazione.
+- `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
+- Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
+
+## 0. Aggiornamento operativo 2026-04-09 PATCH STRUTTURALE - dominio allargato `Magazzino` NEXT
+- execution strutturale completata nel solo perimetro autorizzato del modulo `Magazzino`.
+- `src/next/NextMagazzinoPage.tsx` ora:
+  - preserva shape e wrapper reali di `@inventario`, `@materialiconsegnati`, `@cisterne_adblue` senza riscrivere i dataset in forma impoverita;
+  - tollera unita esterne come `m` oltre alle UDM gia usate dal modulo;
+  - registra nuove consegne con `inventarioRefId`, `materialeLabel`, `direzione`, `tipo`, `origine` e `targa/mezzoTarga` quando il destinatario e un mezzo;
+  - ripristina lo stock in delete prima via `inventarioRefId` e poi via fallback `descrizione + unita + fornitore`;
+  - aggiunge una quarta vista `Documenti e costi` read-only.
+- la vista `Documenti e costi` legge in sola lettura:
+  - archivio `@documenti_magazzino` via `readNextIADocumentiArchiveSnapshot({ includeCloneDocuments: false })`;
+  - supporto costi/documenti via `readNextDocumentiCostiFleetSnapshot({ includeCloneDocuments: false })`;
+  - ordini, arrivi, preventivi e listino via `readNextProcurementSnapshot({ includeCloneOverlays: false })`;
+  - collegamenti dossier/segnali via `readNextMagazzinoRealeSnapshot()`.
+- `src/next/domain/nextMaterialiMovimentiDomain.ts` inferisce meglio `MEZZO` / `MAGAZZINO` nei movimenti materiali e raggruppa i destinatari mezzo per targa canonica.
+- `src/next/nextStructuralPaths.ts` accetta ora anche `?tab=documenti-costi` e i redirect legacy di `Operativita` verso `inventario/materiali` puntano direttamente al modulo canonico `/next/magazzino?tab=...`.
+- nessun writer nuovo e stato aperto su `@documenti_magazzino`, `@preventivi`, `@listino_prezzi` o `@costiMezzo`.
+- follow-up documentale `2026-04-10` completato:
+  - creati `docs/change-reports/20260409_222842_magazzino_next_dominio_allargato_execution.md` e `docs/continuity-reports/20260409_222842_continuity_magazzino_next_dominio_allargato_execution.md`;
+  - riallineato `CONTEXT_CLAUDE.md`;
+  - sincronizzati i mirror obbligatori in `docs/fonti-pronte/`.
+- verifiche tecniche:
+  - `npx eslint src/next/NextMagazzinoPage.tsx src/next/nextStructuralPaths.ts src/next/domain/nextMaterialiMovimentiDomain.ts` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime verificato su `/next/magazzino`, `/next/inventario`, `/next/materiali-consegnati` e sulla nuova vista `Documenti e costi`
+- stato modulo:
+  - `Magazzino NEXT` -> `PARZIALE`
+  - chiusura finale demandata ad audit separato
+
+## 0. Aggiornamento operativo 2026-04-09 AUDIT - `Magazzino` legacy vs NEXT
+- audit-only completato senza patch runtime;
+- verificati sul codice reale:
+  - `@inventario` come dataset storage-style multi-writer;
+  - `@materialiconsegnati` come dataset storage-style multi-writer;
+  - `@documenti_magazzino` come collection documentale/costi, non come ledger stock;
+- writer legacy reali confermati:
+  - `Inventario`
+  - `MaterialiConsegnati`
+  - `Acquisti`
+  - `DettaglioOrdine`
+  - `Manutenzioni`
+  - `IADocumenti`
+- il nuovo `src/next/NextMagazzinoPage.tsx` copre il core storage del dominio:
+  - CRUD `@inventario`
+  - consegne su `@materialiconsegnati`
+  - rollback compensativo della seconda scrittura
+  - `@cisterne_adblue`
+- il nuovo modulo NON copre ancora:
+  - `@documenti_magazzino`
+  - costi/fatture/preventivi materiali
+  - integrazione applicativa con `IADocumenti`
+  - integrazione applicativa con `Acquisti` / `DettaglioOrdine`
+  - parity dei PDF legacy magazzino
+- verdetto audit:
+  - `Inventario logica madre` -> `COPERTO`
+  - `Materiali consegnati logica madre` -> `COPERTO`
+  - `Cross-modulo magazzino` -> `PARZIALE`
+  - `Nuovo Magazzino NEXT` -> `PARZIALE`
+  - `Compatibilita con Dossier / IA / costi / documenti` -> `PARZIALE`
+- stato modulo:
+  - `Magazzino NEXT` -> `PARZIALE`
+- audit dedicato:
+  - `docs/audit/AUDIT_MAGAZZINO_NEXT_VS_MADRE_LOGICA_DOMINIO_2026-04-09.md`
+
+## 0. Aggiornamento operativo 2026-04-09 PROMPT-DOC-RULE - riallineamento regola globale NEXT
+- aggiornati i documenti ufficiali per superare la vecchia formula storica `clone NEXT read-only salvo eccezioni`;
+- la regola corrente e ora esplicitata cosi:
+  - `src/next/*` = nuovo perimetro applicativo;
+  - madre intoccabile;
+  - scritture reali consentite solo modulo per modulo;
+  - apertura controllata e non globale;
+- `cloneWriteBarrier.ts` come controllo esplicito;
+- nessun runtime toccato in questo task; aggiornamento solo documentale.
+
+## 0. Aggiornamento operativo 2026-04-09 PROMPT38 - `Magazzino` come ingresso unico pubblico
+- `PROMPT38` completato sul solo wiring NEXT del dominio magazzino.
+- `src/next/NextMagazzinoPage.tsx` ora legge il parametro query `tab` e apre in modo effettivo:
+  - `inventario`
+  - `materiali-consegnati`
+  - `cisterne-adblue`
+- `src/next/nextData.ts` espone nella sidebar un solo ingresso pubblico principale `Magazzino` che punta a `/next/magazzino`; le voci pubbliche separate `Inventario` e `Materiali consegnati` non restano piu ingressi visibili principali.
+- `src/next/NextHomePage.tsx` aggiorna il widget `Magazzino` e punta ora a `/next/magazzino`.
+- `src/App.tsx` mantiene attivi i vecchi path ma solo come redirect di compatibilita:
+  - `/next/inventario` -> `/next/magazzino?tab=inventario`
+  - `/next/materiali-consegnati` -> `/next/magazzino?tab=materiali-consegnati`
+- Nessuna business logic del modulo `Magazzino` e stata modificata.
+- Nessun writer, dataset o barrier e stato allargato.
+- Nessun file `NextInventarioPage.tsx` o `NextMaterialiConsegnatiPage.tsx` e stato cancellato.
+- Verifiche tecniche:
+  - `npx eslint src/next/NextMagazzinoPage.tsx src/next/nextData.ts src/next/NextHomePage.tsx src/App.tsx src/next/nextStructuralPaths.ts` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime verificato su `/next`, `/next/magazzino`, `/next/inventario`, `/next/materiali-consegnati`
+- Stato modulo:
+  - `Magazzino NEXT` -> `PARZIALE`
+
+## 0. Aggiornamento operativo 2026-04-09 PROMPT18S - nuovo modulo `/next/magazzino`
+- `PROMPT18S` completato sul perimetro autorizzato `Magazzino` NEXT.
+- Creati `src/next/NextMagazzinoPage.tsx` e `src/next/next-magazzino.css`; aggiunta la route `/next/magazzino` in `src/App.tsx`.
+- Il modulo usa una pagina unica con switcher interno e tre sezioni:
+  - `Inventario`
+  - `Materiali consegnati`
+  - `Cisterne AdBlue`
+- Persistenza reale usata:
+  - `@inventario` via `getItemSync` / `setItemSync`
+  - `@materialiconsegnati` via `getItemSync` / `setItemSync`
+  - `@cisterne_adblue` via `getItemSync` / `setItemSync` come dataset storage-style dedicato
+  - upload immagini inventario via `storageWriteOps.uploadBytes` su `inventario/*`
+- `src/utils/cloneWriteBarrier.ts` ora consente per il solo pathname `/next/magazzino` le scritture strettamente necessarie su `@inventario`, `@materialiconsegnati`, `@cisterne_adblue` e gli upload `inventario/*`.
+- La sezione `Materiali consegnati` include i fix richiesti dalla spec:
+  - blocco se stock insufficiente
+  - rollback se fallisce la seconda scrittura
+  - warning prima del ripristino di un articolo orfano
+- Verifiche tecniche:
+  - `npx eslint src/next/NextMagazzinoPage.tsx src/App.tsx src/utils/cloneWriteBarrier.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `Magazzino NEXT` -> `PARZIALE`
+
 ## 0. Aggiornamento operativo 2026-04-09 PROMPT37B - raccolta stabile `docs/fonti-pronte/`
 - `PROMPT37B` completato in sola documentazione; nessun file runtime toccato.
 - Creata `docs/fonti-pronte/` come cartella unica e stabile per le fonti piu usate nelle nuove chat.

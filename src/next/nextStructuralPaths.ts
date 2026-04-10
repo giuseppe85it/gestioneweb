@@ -2,6 +2,7 @@ export const NEXT_HOME_PATH = "/next";
 export const NEXT_CENTRO_CONTROLLO_PATH = "/next/centro-controllo";
 export const NEXT_GESTIONE_OPERATIVA_PATH = "/next/gestione-operativa";
 export const NEXT_OPERATIVITA_LEGACY_PATH = "/next/operativita-globale";
+export const NEXT_MAGAZZINO_PATH = "/next/magazzino";
 export const NEXT_INVENTARIO_PATH = "/next/inventario";
 export const NEXT_MATERIALI_CONSEGNATI_PATH = "/next/materiali-consegnati";
 export const NEXT_ATTREZZATURE_CANTIERI_PATH = "/next/attrezzature-cantieri";
@@ -40,6 +41,17 @@ export const NEXT_AUTISTI_INBOX_PATH = "/next/autisti-inbox";
 export const NEXT_AUTISTI_ADMIN_PATH = "/next/autisti-admin";
 export const NEXT_AUTISTI_APP_PATH = "/next/autisti";
 
+export type NextMagazzinoTab =
+  | "inventario"
+  | "materiali-consegnati"
+  | "cisterne-adblue"
+  | "documenti-costi";
+
+export function buildNextMagazzinoPath(tab?: NextMagazzinoTab) {
+  if (!tab) return NEXT_MAGAZZINO_PATH;
+  return `${NEXT_MAGAZZINO_PATH}?tab=${encodeURIComponent(tab)}`;
+}
+
 export function buildNextDossierPath(targa: string) {
   return `${NEXT_DOSSIER_PREFIX}/${encodeURIComponent(targa)}`;
 }
@@ -77,8 +89,8 @@ export function resolveNextOperativitaLegacyPath(
   const orderId = params.get("orderId");
   const backTab = params.get("from");
 
-  if (section === "inventario") return NEXT_INVENTARIO_PATH;
-  if (section === "materiali") return NEXT_MATERIALI_CONSEGNATI_PATH;
+  if (section === "inventario") return buildNextMagazzinoPath("inventario");
+  if (section === "materiali") return buildNextMagazzinoPath("materiali-consegnati");
   if (section === "attrezzature") return NEXT_ATTREZZATURE_CANTIERI_PATH;
   if (section === "manutenzioni") return NEXT_MANUTENZIONI_PATH;
 

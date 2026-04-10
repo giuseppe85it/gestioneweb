@@ -7,8 +7,10 @@
 
 ## 2. Confini non negoziabili
 - Madre intoccabile.
-- `src/next/*` e l'unico perimetro sicuro di evoluzione applicativa.
-- Nessuna scrittura business reale nel clone senza richiesta esplicita e coerente.
+- `src/next/*` e il perimetro della nuova applicazione ed e l'unico spazio sicuro di evoluzione applicativa.
+- La NEXT non e piu da considerare globalmente `read-only`.
+- Le scritture business reali nella NEXT si aprono solo modulo per modulo, con richiesta esplicita e coerente, dataset/operazioni dichiarati e documentazione allineata.
+- `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture della NEXT.
 - IA interna isolata sotto `/next/ia/interna*`.
 - Nessun riuso runtime dei moduli IA legacy nel nuovo sottosistema IA interna.
 - Tutti i testi visibili nel gestionale devono restare in italiano.

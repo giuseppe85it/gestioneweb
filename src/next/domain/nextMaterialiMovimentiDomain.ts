@@ -532,6 +532,37 @@ function parseDestinatario(value: unknown): NextNormalizedDestinatario {
   };
 }
 
+function inferDestinatarioTypeFromContent(args: {
+  destinatario: NextNormalizedDestinatario;
+  explicitTarga: string | null;
+}): NextMaterialeMovimentoDestinatarioType {
+  if (args.destinatario.type) {
+    return args.destinatario.type;
+  }
+
+  const label = normalizeText(args.destinatario.label).toUpperCase();
+  const refId = normalizeText(args.destinatario.refId).toUpperCase();
+  if (label === "MAGAZZINO" || refId === "MAGAZZINO") {
+    return "MAGAZZINO";
+  }
+
+  const labelTarga = normalizeMatchTarga(args.destinatario.label);
+  const refTarga = normalizeMatchTarga(args.destinatario.refId);
+  if (
+    args.explicitTarga ||
+    looksLikeVehicleTarga(labelTarga) ||
+    looksLikeVehicleTarga(refTarga)
+  ) {
+    return "MEZZO";
+  }
+
+  if (args.destinatario.label || args.destinatario.refId) {
+    return "COLLEGA";
+  }
+
+  return null;
+}
+
 function deriveFieldQuality(item: {
   explicitTarga: string | null;
   destinatario: NextNormalizedDestinatario;
@@ -608,7 +639,9 @@ function toNextMaterialeMovimentoReadOnlyItem(
   raw: RawRecord,
   index: number
 ): NextMaterialeMovimentoReadOnlyItem {
-  const destinatario = parseDestinatario(raw.destinatario ?? raw.target ?? raw.destinatarioLabel);
+  const parsedDestinatario = parseDestinatario(
+    raw.destinatario ?? raw.target ?? raw.destinatarioLabel
+  );
   const descrizione = normalizeOptionalText(raw.descrizione);
   const materiale =
     normalizeOptionalText(raw.materialeLabel) ??
@@ -630,6 +663,20 @@ function toNextMaterialeMovimentoReadOnlyItem(
       ? normalizeMatchTarga(raw.targa)
       : null;
   const mezzoTarga = explicitTarga || null;
+  const destinatarioType = inferDestinatarioTypeFromContent({
+    destinatario: parsedDestinatario,
+    explicitTarga: mezzoTarga,
+  });
+  const destinatario: NextNormalizedDestinatario = {
+    ...parsedDestinatario,
+    label:
+      parsedDestinatario.label ??
+      (destinatarioType === "MAGAZZINO" ? "MAGAZZINO" : mezzoTarga),
+    refId:
+      parsedDestinatario.refId ??
+      (destinatarioType === "MAGAZZINO" ? "MAGAZZINO" : mezzoTarga),
+    type: destinatarioType,
+  };
   const flags: string[] = [];
 
   if (destinatario.rawShape === "string") flags.push("destinatario_string_legacy");
@@ -1169,16 +1216,32 @@ export function buildNextMaterialiConsegnatiDestinatariView(
   const groups = new Map<string, NextMaterialiConsegnatiDestinatarioView>();
 
   snapshot.items.forEach((item) => {
+    const explicitTarga = item.mezzoTarga ? normalizeMatchTarga(item.mezzoTarga) : null;
+    const labelTarga = looksLikeVehicleTarga(normalizeMatchTarga(item.destinatario.label))
+      ? normalizeMatchTarga(item.destinatario.label)
+      : null;
+    const refTarga = looksLikeVehicleTarga(normalizeMatchTarga(item.destinatario.refId))
+      ? normalizeMatchTarga(item.destinatario.refId)
+      : null;
+    const canonicalVehicleTarga = explicitTarga ?? labelTarga ?? refTarga;
     const groupId =
-      item.destinatario.refId ??
-      item.destinatario.label ??
-      item.target ??
-      `movimento:${item.id}`;
+      item.tipoDestinatario === "MEZZO" && canonicalVehicleTarga
+        ? `mezzo:${canonicalVehicleTarga}`
+        : item.tipoDestinatario === "MAGAZZINO"
+          ? "magazzino"
+          : item.destinatario.refId ??
+            item.destinatario.label ??
+            item.target ??
+            `movimento:${item.id}`;
     const groupLabel =
-      item.destinatario.label ??
-      item.target ??
-      item.destinatario.refId ??
-      "Destinatario non definito";
+      item.tipoDestinatario === "MEZZO" && canonicalVehicleTarga
+        ? canonicalVehicleTarga
+        : item.tipoDestinatario === "MAGAZZINO"
+          ? "MAGAZZINO"
+          : item.destinatario.label ??
+            item.target ??
+            item.destinatario.refId ??
+            "Destinatario non definito";
 
     const current =
       groups.get(groupId) ??

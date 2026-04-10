@@ -9,7 +9,7 @@ import {
   NEXT_EUROMECC_PATH,
   NEXT_HOME_PATH,
   NEXT_INTERNAL_AI_PATH,
-  NEXT_INVENTARIO_PATH,
+  NEXT_MAGAZZINO_PATH,
   NEXT_IA_APIKEY_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
@@ -17,7 +17,6 @@ import {
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_LAVORI_DA_ESEGUIRE_PATH,
   NEXT_MANUTENZIONI_PATH,
-  NEXT_MATERIALI_CONSEGNATI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
   NEXT_MEZZI_PATH,
 } from "./nextStructuralPaths";
@@ -175,12 +174,7 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
         label: "Materiali da ordinare",
         path: NEXT_MATERIALI_DA_ORDINARE_PATH,
       },
-      { id: "inventario", label: "Inventario", path: NEXT_INVENTARIO_PATH },
-      {
-        id: "materiali-consegnati",
-        label: "Mat. consegnati",
-        path: NEXT_MATERIALI_CONSEGNATI_PATH,
-      },
+      { id: "magazzino", label: "Magazzino", path: NEXT_MAGAZZINO_PATH },
       {
         id: "attrezzature",
         label: "Attrezzature cantieri",
@@ -349,7 +343,7 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     path: "/next/gestione-operativa",
     label: "Operativita Globale",
     status: "ACTIVE_PARTIAL",
-    note: "Famiglia clone read-only riallineata a route autonome per `Gestione Operativa`, `Inventario`, `Materiali Consegnati`, `Attrezzature Cantieri`, `Manutenzioni`, `Acquisti`, `Materiali Da Ordinare`, `Ordini`, `Dettaglio Ordine`, liste lavori, `Autisti Inbox` e `Autisti Admin` reader-first.",
+    note: "Famiglia NEXT riallineata a route autonome per `Gestione Operativa`, `Magazzino`, `Attrezzature Cantieri`, `Manutenzioni`, `Acquisti`, `Materiali Da Ordinare`, `Ordini`, `Dettaglio Ordine`, liste lavori, `Autisti Inbox` e `Autisti Admin`; `/next/inventario` e `/next/materiali-consegnati` restano solo redirect di compatibilita verso `/next/magazzino`.",
   },
   {
     id: "euromecc",
@@ -576,6 +570,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     id: "operativita-globale",
     routePath: "/next/gestione-operativa",
     relatedPaths: [
+      "/next/magazzino",
       "/next/inventario",
       "/next/materiali-consegnati",
       "/next/attrezzature-cantieri",
@@ -604,7 +599,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     eyebrow: "Workflow e code",
     title: "Operativita Globale",
     description:
-      "Famiglia clone read-only riallineata alla madre con pagine autonome per inventario, materiali, attrezzature, manutenzioni, procurement, backlog lavori, `Autisti Inbox` e `Autisti Admin` reader-first.",
+      "Famiglia NEXT riallineata alla madre con ingresso unificato `Magazzino`, pagine autonome per attrezzature, manutenzioni, procurement, backlog lavori, `Autisti Inbox` e `Autisti Admin`, e redirect di compatibilita sui vecchi path inventario/materiali.",
     phase: "Importato read-only",
     primaryGrammar: "Workflow operativo",
     searchPlaceholder: "Fornitore, ordine, materiale",
@@ -614,7 +609,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         label: "Sezioni attive",
         value: "8+",
-        meta: "Inventario, materiali, attrezzature, manutenzioni, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin` reader-first sono navigabili in sola lettura.",
+        meta: "`Magazzino` unifica inventario, materiali consegnati e cisterne AdBlue; attrezzature, manutenzioni, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin` restano navigabili come superfici dedicate.",
         tone: "accent",
       },
       {

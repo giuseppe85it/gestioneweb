@@ -5,6 +5,13 @@ const LAVORI_ALLOWED_WRITE_PATHS = [
   "/next/lavori-eseguiti",
   "/next/dettagliolavori",
 ] as const;
+const MAGAZZINO_ALLOWED_WRITE_PATHS = ["/next/magazzino"] as const;
+const MAGAZZINO_ALLOWED_STORAGE_KEYS = new Set([
+  "@inventario",
+  "@materialiconsegnati",
+  "@cisterne_adblue",
+]);
+const MAGAZZINO_ALLOWED_STORAGE_PATH_PREFIXES = ["inventario/"] as const;
 const MANUTENZIONI_ALLOWED_WRITE_PATHS = ["/next/manutenzioni"] as const;
 const MANUTENZIONI_ALLOWED_STORAGE_KEYS = new Set([
   "@manutenzioni",
@@ -84,6 +91,10 @@ function isAllowedManutenzioniCloneWritePath(pathname: string): boolean {
   return MANUTENZIONI_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
 }
 
+function isAllowedMagazzinoCloneWritePath(pathname: string): boolean {
+  return MAGAZZINO_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
+}
+
 function readMetaKey(meta: unknown): string {
   if (typeof meta !== "object" || meta === null || !("key" in meta)) {
     return "";
@@ -148,6 +159,19 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     if (kind === "storageSync.setItemSync") {
       const key = readMetaKey(meta);
       return key === "@ordini";
+    }
+  }
+
+  if (isAllowedMagazzinoCloneWritePath(pathname)) {
+    if (kind === "storageSync.setItemSync") {
+      return MAGAZZINO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    }
+
+    if (kind === "storage.uploadBytes") {
+      const path = readMetaPath(meta);
+      return MAGAZZINO_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
     }
   }
 

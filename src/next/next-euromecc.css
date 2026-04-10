@@ -766,12 +766,19 @@
 }
 
 .eur-silo-diagram {
-  width: 100%;
-  height: auto;
+  width: 100% !important;
+  height: auto !important;
+  display: block;
 }
 
 .eur-modal-body--silo .eur-silo-diagram {
   min-height: 34rem;
+}
+
+.eur-modal-body--silo,
+.eur-modal-body {
+  overflow-y: auto !important;
+  max-height: none !important;
 }
 
 .eur-problem-groups {

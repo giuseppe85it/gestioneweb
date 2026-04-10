@@ -1,7 +1,7 @@
 # REGISTRO MODIFICHE CLONE
 
 ## 1. Scopo
-Questo file e il registro ufficiale, permanente e centrale di tutte le modifiche fatte al clone `read-only` della madre in `src/next/*`.
+Questo file e il registro ufficiale, permanente e centrale di tutte le modifiche fatte al perimetro NEXT/clone in `src/next/*`.
 
 Serve a:
 - mantenere una traccia unica e leggibile delle patch clone;
@@ -9,12 +9,18 @@ Serve a:
 - chiarire cosa e stato cambiato nel clone, con quale impatto e come verificarlo;
 - distinguere le modifiche clone-specifiche da quelle eventualmente candidabili alla madre.
 
+La regola corrente da leggere insieme a questo registro e:
+- la madre resta intoccabile;
+- `src/next/*` e il nuovo perimetro applicativo;
+- la NEXT non e globalmente `read-only`;
+- le scritture reali si aprono solo modulo per modulo, con barrier e documentazione allineati.
+
 ## 2. Regola operativa ufficiale
 - Ogni patch futura che modifica il clone deve aggiungere una nuova voce in questo registro.
 - Per "modifica del clone" si intende almeno una di queste condizioni:
   - modifica a `src/next/*`;
   - modifica documentale che cambia stato, regole, perimetro o tracciabilita del clone;
-  - introduzione o rimozione di blocchi `read-only`, guard-rail, badge o route del clone.
+  - introduzione o rimozione di blocchi `read-only`, guard-rail, abilitazioni scrittura, badge o route del clone.
 - Nessuna patch sul clone e considerata completa se non aggiorna anche questo registro.
 - Le nuove voci vanno aggiunte in testa alla sezione storica, dalla piu recente alla meno recente.
 
@@ -30,6 +36,168 @@ Serve a:
 - NOTE:
 
 ## 4. Registro storico
+
+### Voce 2026-04-09 PATCH STRUTTURALE MAGAZZINO
+- DATA: 2026-04-09
+- TITOLO MODIFICA: Completamento strutturale del dominio allargato `Magazzino` NEXT
+- OBIETTIVO: Estendere `src/next/NextMagazzinoPage.tsx` da core operativo locale a centro operativo coerente del dominio magazzino della NEXT, mantenendo la madre intoccabile, senza riaprire moduli NEXT vecchi come runtime principali e senza introdurre writer nuovi su documenti/costi/procurement.
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/next-magazzino.css`
+  - `src/next/nextStructuralPaths.ts`
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260409_222842_magazzino_next_dominio_allargato_execution.md`
+  - `docs/continuity-reports/20260409_222842_continuity_magazzino_next_dominio_allargato_execution.md`
+- COSA E STATO CAMBIATO:
+  - `NextMagazzinoPage.tsx` preserva ora le shape reali di `@inventario`, `@materialiconsegnati` e `@cisterne_adblue`, mantenendo wrapper `array/items/value` e campi extra dei writer esterni invece di riscrivere record semplificati;
+  - le nuove consegne scritte dal modulo portano anche `inventarioRefId`, `materialeLabel`, `direzione`, `tipo`, `origine` e `targa/mezzoTarga` quando il destinatario e un mezzo;
+  - il delete/ripristino delle consegne usa prima `inventarioRefId` e poi fallback `descrizione + unita + fornitore`;
+  - la UI aggiunge una quarta sezione `Documenti e costi` read-only con archivio `@documenti_magazzino`, supporto costi/documenti, preview procurement e link a dossier / analisi / dettaglio ordine;
+  - `nextMaterialiMovimentiDomain.ts` inferisce meglio i destinatari `MEZZO` / `MAGAZZINO` e raggruppa i destinatari mezzo per targa canonica;
+  - `nextStructuralPaths.ts` gestisce `?tab=documenti-costi` e risolve i redirect legacy `inventario/materiali` direttamente verso `/next/magazzino?tab=...`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Magazzino NEXT` espone ora 4 viste (`Inventario`, `Materiali consegnati`, `Cisterne AdBlue`, `Documenti e costi`) e aggiunge CTA `Apri dossier`, `Apri IA documenti`, `Apri acquisti`, `Dettaglio`;
+  - Lettura: dossier, operativita e reader materiali ricevono payload piu ricchi e grouping mezzo meno fragile; documenti/costi/procurement entrano nel modulo solo in sola lettura;
+  - Blocco scritture: invariato come perimetro; nessun widening su `@documenti_magazzino`, `@preventivi`, `@listino_prezzi`, `@costiMezzo`.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx src/next/nextStructuralPaths.ts src/next/domain/nextMaterialiMovimentiDomain.ts`;
+  - eseguire `npm run build`;
+  - aprire `/next/magazzino` e verificare redirect finale a `/next/magazzino?tab=inventario`;
+  - aprire `/next/inventario` e `/next/materiali-consegnati` e verificare i redirect canonici verso `?tab=...`;
+  - aprire `/next/magazzino?tab=documenti-costi` e verificare presenza di documenti materiali, ordini/arrivi, prezzi/listino e link dossier.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: task execution, non audit finale. Stato modulo dopo la patch: `PARZIALE`. I report `20260409_222842_*` sono ora presenti nel repo e la documentazione mirrorata e stata riallineata nel follow-up documentale del `2026-04-10`.
+
+### Voce 2026-04-09 AUDIT MAGAZZINO
+- DATA: 2026-04-09
+- TITOLO MODIFICA: Audit strutturale profondo `Magazzino` legacy vs NEXT
+- OBIETTIVO: Ricostruire la logica reale di `Inventario` e `MaterialiConsegnati` nella madre, mappare dataset/writer/lettori/cross-modulo e confrontare questi fatti con `src/next/NextMagazzinoPage.tsx`, senza toccare il runtime.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_MAGAZZINO_NEXT_VS_MADRE_LOGICA_DOMINIO_2026-04-09.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260409_221500_audit_magazzino_next_vs_madre_logica_dominio.md`
+  - `docs/continuity-reports/20260409_221500_continuity_audit_magazzino_next_vs_madre_logica_dominio.md`
+- COSA E STATO CAMBIATO:
+  - creato un audit dedicato sul dominio `Magazzino`;
+  - verificato che `@inventario` e `@materialiconsegnati` sono dataset storage-style multi-writer e non transazionali;
+  - verificato che `@documenti_magazzino` resta un archivio documentale/costi e non il ledger canonico di stock;
+  - documentato che `NextMagazzinoPage.tsx` copre il core operativo del dominio ma non ancora i legami documentali/costi/procurement/IA della madre.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun impatto, task solo audit/documentazione;
+  - Lettura: stato e limiti del modulo `Magazzino NEXT` ora documentati in modo verificato;
+  - Blocco scritture: invariato.
+- COME VERIFICARE:
+  - leggere l'audit dedicato in `docs/audit/AUDIT_MAGAZZINO_NEXT_VS_MADRE_LOGICA_DOMINIO_2026-04-09.md`;
+  - verificare che nessun file `src/*` sia stato modificato;
+  - verificare nei documenti di stato che `Magazzino NEXT` resti `PARZIALE`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: audit-only; nessun build e nessun test eseguiti.
+
+### Voce 2026-04-09 PROMPT38
+- DATA: 2026-04-09
+- TITOLO MODIFICA: `Magazzino` come ingresso unico pubblico della NEXT con redirect di compatibilita
+- OBIETTIVO: Promuovere `/next/magazzino` come unico entrypoint pubblico principale del dominio `Magazzino` nella NEXT, lasciando `/next/inventario` e `/next/materiali-consegnati` solo come redirect temporanei di compatibilita senza toccare logica interna, writer o barrier.
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/nextData.ts`
+  - `src/next/NextHomePage.tsx`
+  - `src/App.tsx`
+  - `src/next/nextStructuralPaths.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260409_210431_magazzino_next_ingresso_unico_redirect_compat.md`
+  - `docs/continuity-reports/20260409_210431_continuity_magazzino_next_ingresso_unico_redirect_compat.md`
+- COSA E STATO CAMBIATO:
+  - aggiunta in `nextStructuralPaths.ts` la costante canonica `/next/magazzino` con helper per la query `tab`;
+  - la sidebar NEXT mostra ora un solo ingresso pubblico principale `Magazzino`;
+  - il widget `Magazzino` della Home NEXT punta ora a `/next/magazzino`;
+  - `NextMagazzinoPage` legge la query string `?tab=` e apre la sezione corretta;
+  - i path `/next/inventario` e `/next/materiali-consegnati` non montano piu i vecchi moduli come entrypoint ufficiali, ma fanno redirect `replace` verso il modulo unificato;
+  - nessun file legacy o pagina separata e stato cancellato.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il dominio `Magazzino` ha ora un solo ingresso pubblico principale coerente in sidebar e Home;
+  - Lettura: invariata, il modulo unificato resta quello gia creato in `NextMagazzinoPage.tsx`;
+  - Blocco scritture: invariato; nessuna modifica a writer o `cloneWriteBarrier.ts`.
+- COME VERIFICARE:
+  - aprire `/next/magazzino` e verificare che il modulo apra la tab `Inventario`;
+  - aprire `/next/inventario` e verificare redirect finale a `/next/magazzino?tab=inventario`;
+  - aprire `/next/materiali-consegnati` e verificare redirect finale a `/next/magazzino?tab=materiali-consegnati`;
+  - verificare che in sidebar compaia il solo ingresso `Magazzino` e non piu i due ingressi pubblici separati;
+  - eseguire lint mirato e build.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: task di wiring e integrazione navigazione; nessuna business logic del modulo `Magazzino` e stata rifatta.
+
+### Voce 2026-04-09 PROMPT-DOC-RULE
+- DATA: 2026-04-09
+- TITOLO MODIFICA: Riallineamento della regola architetturale globale NEXT
+- OBIETTIVO: Sostituire nei documenti ufficiali la vecchia regola globale `clone NEXT read-only` con la regola architetturale corrente: madre intoccabile, `src/next/*` come nuovo perimetro applicativo e scritture reali aperte solo modulo per modulo.
+- FILE TOCCATI:
+  - `AGENTS.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260409_201710_allineamento_regola_next_non_read_only_globale.md`
+  - `docs/continuity-reports/20260409_201710_continuity_allineamento_regola_next_non_read_only_globale.md`
+- COSA E STATO CAMBIATO:
+  - corretta la documentazione guida che faceva ancora intendere la NEXT come clone globalmente `read-only`;
+  - resa esplicita la regola corrente: scrittura reale consentita solo modulo per modulo, con `cloneWriteBarrier.ts` come controllo e senza widening globale;
+  - mantenuti i fatti storici dei task precedenti, ma separati dalla regola architetturale attuale.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun impatto, task solo documentale;
+  - Lettura: documentazione ufficiale ora coerente con il repo reale e con i moduli NEXT gia promossi in scrittura;
+  - Blocco scritture: invariato nel runtime; cambia solo la regola documentale globale.
+- COME VERIFICARE:
+  - leggere `AGENTS.md`, `docs/STATO_ATTUALE_PROGETTO.md`, `docs/product/STATO_MIGRAZIONE_NEXT.md` e `CONTEXT_CLAUDE.md`;
+  - verificare che la madre resti intoccabile, che `src/next/*` sia descritto come perimetro applicativo e che la scrittura sia dichiarata modulo per modulo;
+  - verificare che nessun file in `src/*` sia stato modificato in questo task.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: aggiornamento documentale ufficiale; nessuna promozione automatica dei moduli a `CHIUSO`.
+
+### Voce 2026-04-09 PROMPT18S
+- DATA: 2026-04-09
+- TITOLO MODIFICA: Nuovo modulo `Magazzino` NEXT con route dedicata e dataset storage-style `@cisterne_adblue`
+- OBIETTIVO: Implementare il modulo NEXT `Magazzino` come pagina unica nativa con `Inventario`, `Materiali consegnati` e `Cisterne AdBlue`, senza toccare la madre legacy e usando persistenza reale coerente con il clone-safe runtime.
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/next-magazzino.css`
+  - `src/App.tsx`
+  - `src/utils/cloneWriteBarrier.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260409_201156_magazzino_next_prompt18s.md`
+  - `docs/continuity-reports/20260409_201156_continuity_magazzino_next_prompt18s.md`
+- COSA E STATO CAMBIATO:
+  - aggiunta la nuova route `/next/magazzino` nella shell NEXT;
+  - creata una UI nativa con switcher interno per `Inventario`, `Materiali consegnati` e `Cisterne AdBlue`;
+  - usati i dataset storage-style reali `@inventario`, `@materialiconsegnati` e `@cisterne_adblue` con `getItemSync/setItemSync`;
+  - introdotta la gestione foto inventario con upload clone-safe su `inventario/*`;
+  - applicati i fix richiesti dalla spec su materiali consegnati: blocco stock insufficiente, rollback seconda scrittura, warning per ripristino item orfano;
+  - esteso `cloneWriteBarrier.ts` al solo pathname `/next/magazzino` per le scritture strettamente necessarie.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nuova pagina NEXT unica per il dominio magazzino, senza modificare `src/pages/Inventario.tsx` o `src/pages/MaterialiConsegnati.tsx`;
+  - Lettura: la pagina legge i dataset reali storage-style e le anagrafiche base (`@mezzi_aziendali`, `@colleghi`, `@fornitori`);
+  - Blocco scritture: il barrier resta chiuso per il clone salvo deroga chirurgica al solo `/next/magazzino` su chiavi e path esplicitamente autorizzati.
+- COME VERIFICARE:
+  - aprire `/next/magazzino` e verificare il cambio modulo tra `Inventario`, `Materiali consegnati`, `Cisterne AdBlue`;
+  - aggiungere/modificare un articolo inventario, registrare una consegna e un cambio cisterna;
+  - verificare che `@cisterne_adblue` venga letto/scritto come dataset storage-style e non come collection Firestore dedicata;
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx src/App.tsx src/utils/cloneWriteBarrier.ts`;
+  - eseguire `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: il modulo e operativo nel perimetro NEXT ma resta `PARZIALE`; la parity completa con le pagine legacy `Inventario` / `MaterialiConsegnati` non e dimostrata da questo task.
 
 ### Voce 2026-04-09 PROMPT37B
 - DATA: 2026-04-09

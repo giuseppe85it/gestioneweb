@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate, NavLink, useLocation, useNavigate } from "react-router-dom";
 import "./next-home.css";
 import { getNextRoleFromSearch } from "./nextAccess";
-import { NEXT_AUTISTI_APP_PATH } from "./nextStructuralPaths";
+import {
+  NEXT_AUTISTI_APP_PATH,
+  NEXT_MAGAZZINO_PATH,
+} from "./nextStructuralPaths";
 import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
 import {
   readNextCentroControlloSnapshot,
@@ -754,7 +757,7 @@ export default function NextHomePage() {
         <article className="next-home__widget">
           <div className="next-home__widget-head">
             <h2>Magazzino</h2>
-            <NavLink to="/next/inventario" className="next-home__widget-link">
+            <NavLink to={NEXT_MAGAZZINO_PATH} className="next-home__widget-link">
               Vai -&gt;
             </NavLink>
           </div>
