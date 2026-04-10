@@ -3,12 +3,12 @@ import {
   NEXT_AUTISTI_INBOX_PATH,
   NEXT_CISTERNA_IA_PATH,
   NEXT_INTERNAL_AI_REQUESTS_PATH,
-  NEXT_INVENTARIO_PATH,
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_IA_LIBRETTO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_MATERIALI_CONSEGNATI_PATH,
   NEXT_MEZZI_PATH,
+  buildNextMagazzinoPath,
 } from "../nextStructuralPaths";
 import type { InternalAiChatAttachment } from "./internalAiTypes";
 import {
@@ -192,7 +192,7 @@ function decorateRouteTarget(
     });
   }
 
-  if (payload.moduloTarget === "next.operativita") {
+  if (payload.moduloTarget === "next.magazzino") {
     return appendRouteQuery(payload.routeTarget, {
       queryMateriale: payload.prefillCanonico.queryMateriale ?? payload.prefillCanonico.materiale,
       targa:
@@ -288,6 +288,41 @@ function extractSupplierConstraint(prompt: string): string | null {
   return match?.[1] ? normalizeText(match[1]) : null;
 }
 
+function buildWarehouseDocumentHaystack(args: {
+  prompt: string;
+  attachment: InternalAiChatAttachment;
+}): string {
+  return normalizeText(
+    [args.prompt, args.attachment.fileName, args.attachment.textExcerpt].join(" "),
+  )
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+}
+
+function detectWarehouseInvoiceDocument(args: {
+  prompt: string;
+  attachment: InternalAiChatAttachment;
+}): {
+  warehouseInvoice: boolean;
+  adBlueInvoice: boolean;
+} {
+  const haystack = buildWarehouseDocumentHaystack(args);
+  const hasWarehouseSignal =
+    /\b(material\w*|articol\w*|qta|quantita|magazzin\w*|adblue|mariba|ricamb\w*|ferrament\w*|vernic\w*|bullon\w*|consumabil\w*)\b/.test(
+      haystack,
+    );
+  const hasInvoiceSignal =
+    /\b(fattur\w*|ddt|bolla\w*|imponibil\w*|iva|total\w*|fornitor\w*|arriv\w*)\b/.test(
+      haystack,
+    );
+  return (
+    {
+      warehouseInvoice: hasWarehouseSignal && hasInvoiceSignal,
+      adBlueInvoice: hasWarehouseSignal && hasInvoiceSignal && /\badblue\b/.test(haystack),
+    }
+  );
+}
+
 function buildBaseDocumentData(args: {
   prompt: string;
   attachment: InternalAiChatAttachment;
@@ -334,7 +369,7 @@ function buildDocumentHandoffPayload(args: {
     pickEntityMatch(args.entityResolution.matches, ["fornitore"]),
   );
   const materialRef = toEntityRef(
-    pickEntityMatch(args.entityResolution.matches, ["materiale", "targa"]),
+    pickEntityMatch(args.entityResolution.matches, ["materiale"]),
   );
   const driverRef = toEntityRef(
     pickEntityMatch(args.entityResolution.matches, ["autista", "badge"]),
@@ -342,6 +377,14 @@ function buildDocumentHandoffPayload(args: {
   const cisternaRef = toEntityRef(
     pickEntityMatch(args.entityResolution.matches, ["cisterna", "targa"]),
   );
+  const safeTargaValue =
+    targaRef && /\b[a-z]{2}\d{3}[a-z]{2}\b/i.test(targaRef.normalizedValue)
+      ? targaRef.normalizedValue
+      : null;
+  const safeMaterialLabel =
+    materialRef && !/^(targa|mezzo|dossier|fornitore|ordine)$/i.test(materialRef.label)
+      ? materialRef.label
+      : null;
 
   switch (args.route.classification) {
     case "libretto_mezzo": {
@@ -429,30 +472,58 @@ function buildDocumentHandoffPayload(args: {
       });
     }
     case "tabella_materiali": {
+      const warehouseInvoiceDetection = detectWarehouseInvoiceDocument({
+        prompt: args.prompt,
+        attachment: args.attachment,
+      });
+      const warehouseInvoice = warehouseInvoiceDetection.warehouseInvoice;
+      const adBlueInvoice = warehouseInvoiceDetection.adBlueInvoice;
+      const routeTarget = warehouseInvoice
+        ? buildNextMagazzinoPath("documenti-costi")
+        : buildNextMagazzinoPath("inventario");
+      const inferredMaterialLabel = adBlueInvoice ? "AdBlue" : null;
+      const campiDaVerificare = args.route.status === "da_verificare" ? ["classificazione_documento"] : [];
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-materiali`),
-        moduloTarget: "next.operativita",
-        routeTarget: NEXT_INVENTARIO_PATH,
+        moduloTarget: "next.magazzino",
+        routeTarget,
         tipoEntita: materialRef?.entityKind ?? "nessuna",
         entityRef: materialRef,
         documentType: "tabella_materiali",
         datiEstrattiNormalizzati: base.normalizedData,
         prefillCanonico: cleanRecord({
-          flusso: "inventario_materiali",
-          queryMateriale: materialRef?.label ?? null,
-          materiale: materialRef?.label ?? null,
-          targa: targaRef?.normalizedValue ?? null,
+          flusso: warehouseInvoice ? "fatture_magazzino" : "inventario_materiali",
+          queryMateriale: safeMaterialLabel ?? inferredMaterialLabel,
+          materiale: safeMaterialLabel ?? inferredMaterialLabel,
+          fornitore: supplierRef?.label ?? base.supplierConstraint ?? null,
+          targa: safeTargaValue,
           documentoNome: args.attachment.fileName,
-          vistaTarget: "inventario",
+          prompt: args.prompt,
+          vistaTarget: warehouseInvoice ? "documenti-costi" : "inventario",
+          warehouseInvoiceHint: warehouseInvoice ? "1" : null,
+          warehouseInvoiceMode: adBlueInvoice
+            ? "carica_stock_adblue"
+            : warehouseInvoice
+              ? "riconcilia_o_verifica"
+              : null,
         }),
-        confidence: materialRef ? "media" : "prudente",
-        statoRichiesta: "pronto_prefill",
+        confidence:
+          warehouseInvoice && (materialRef || supplierRef || base.supplierConstraint)
+            ? "alta"
+            : args.route.status === "da_verificare"
+              ? "prudente"
+            : materialRef
+              ? "media"
+              : "prudente",
+        statoRichiesta: args.route.status === "da_verificare" ? "da_verificare" : "pronto_prefill",
         motivoInstradamento:
-          "La tabella materiali viene instradata al workbench inventario/materiali con prefill uniforme del clone.",
+          warehouseInvoice
+            ? "La fattura materiali viene instradata alla vista documenti e costi di Magazzino per la decisione controllata tra riconciliazione senza carico e carico stock AdBlue."
+            : "La tabella materiali viene instradata al modulo Magazzino canonico con prefill uniforme del clone.",
         capabilityRiutilizzata: null,
         azioneRichiesta: "apri_modulo_con_prefill",
         campiMancanti: [],
-        campiDaVerificare: [],
+        campiDaVerificare,
         adapterCoinvolti: ["adapter.d05"],
       });
     }
@@ -600,10 +671,15 @@ function buildRequestHandoffPayload(args: {
       : null;
 
   const useMaterialsRoute =
-    primaryAction.moduleId === "next.operativita" &&
+    (primaryAction.moduleId === "next.operativita" ||
+      primaryAction.moduleId === "next.magazzino") &&
     /\b(moviment|consegnat)\b/i.test(args.prompt);
 
-  const routeTarget = useMaterialsRoute ? NEXT_MATERIALI_CONSEGNATI_PATH : primaryAction.path;
+  const routeTarget = useMaterialsRoute
+    ? primaryAction.moduleId === "next.magazzino"
+      ? buildNextMagazzinoPath("materiali-consegnati")
+      : NEXT_MATERIALI_CONSEGNATI_PATH
+    : primaryAction.path;
 
   const moduleTarget = primaryAction.moduleId;
   const campiDaVerificare =

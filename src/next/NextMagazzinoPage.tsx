@@ -1,12 +1,12 @@
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getDownloadURL, ref } from "firebase/storage";
 import { storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { uploadBytes } from "../utils/storageWriteOps";
 import {
-  NEXT_ACQUISTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
+  NEXT_MATERIALI_DA_ORDINARE_PATH,
   buildNextAnalisiEconomicaPath,
   buildNextDettaglioOrdinePath,
   buildNextDossierPath,
@@ -28,6 +28,22 @@ import {
   readNextProcurementSnapshot,
   type NextProcurementSnapshot,
 } from "./domain/nextProcurementDomain";
+import {
+  NEXT_MAGAZZINO_STOCK_ALLOWED_UNITS,
+  areNextMagazzinoUnitsCompatible,
+  buildNextMagazzinoStockKey,
+  buildNextMagazzinoStockLoadKey,
+  hasNextMagazzinoStockLoadKey,
+  isNextMagazzinoStockUnitSupported,
+  looksLikeNextMagazzinoAdBlueMaterial,
+  mergeNextMagazzinoStockLoadKeys,
+  normalizeNextMagazzinoMaterialIdentity,
+  normalizeNextMagazzinoStockRefId,
+  normalizeNextMagazzinoStockUnit,
+  normalizeNextMagazzinoStockUnitLoose,
+  type NextMagazzinoStockUnit,
+} from "./domain/nextMagazzinoStockContract";
+import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import "./next-magazzino.css";
 
 type ModuloAttivo = "inv" | "mc" | "adblue" | "docs";
@@ -46,6 +62,8 @@ type InventarioItem = {
   descrizione: string;
   quantita: number;
   unita: UnitaMagazzino;
+  stockKey: string | null;
+  stockLoadKeys: string[];
   fornitore: string | null;
   fotoUrl: string | null;
   fotoStoragePath: string | null;
@@ -69,6 +87,7 @@ type MaterialeConsegnato = {
   data: string;
   fornitore: string | null;
   inventarioRefId: string | null;
+  stockKey: string | null;
   direzione: MovimentoDirection | null;
   tipo: string | null;
   origine: string | null;
@@ -92,8 +111,82 @@ type CollegaBasic = {
 type CambioAdBlue = {
   id: string;
   data: string;
+  quantitaLitri: number | null;
+  inventarioRefId: string | null;
+  stockKey: string | null;
   numeroCisterna?: string;
   note?: string;
+};
+
+type DocumentoStockDecision =
+  | "riconcilia_senza_carico"
+  | "carica_stock_adblue"
+  | "da_verificare"
+  | "fuori_perimetro";
+
+type DocumentoStockRowCandidate = {
+  id: string;
+  sourceDocId: string;
+  rowIndex: number;
+  documentLabel: string;
+  tipoDocumento: string | null;
+  numeroDocumento: string | null;
+  nomeFile: string | null;
+  fileUrl: string | null;
+  daVerificareDocumento: boolean;
+  descrizione: string;
+  fornitore: string | null;
+  quantita: number | null;
+  data: string | null;
+  unita: string | null;
+  unitaSource: "inventario" | "procurement" | "manuale" | "missing";
+  stockKey: string | null;
+  inventoryMatchId: string | null;
+  procurementCoverageOrderId: string | null;
+  procurementCoverageReason: string | null;
+  sourceLoadKey: string;
+  duplicateBySource: boolean;
+  isInvoiceDocument: boolean;
+  isAdBlueCandidate: boolean;
+  hasUnitConflict: boolean;
+  canReconcileWithoutLoad: boolean;
+  decision: DocumentoStockDecision;
+  decisionReason: string | null;
+  blockedReason: string | null;
+  canLoad: boolean;
+};
+
+type ProcurementStockRow = {
+  id: string;
+  orderId: string;
+  orderReference: string;
+  materialId: string;
+  descrizione: string;
+  supplierName: string | null;
+  quantita: number | null;
+  unita: string | null;
+  arrivalDateLabel: string | null;
+};
+
+type ProcurementStockRowCandidate = {
+  id: string;
+  orderId: string;
+  orderReference: string;
+  materialId: string;
+  descrizione: string;
+  fornitore: string | null;
+  quantita: number | null;
+  data: string | null;
+  unita: string | null;
+  unitaSource: "procurement" | "inventario" | "missing";
+  stockKey: string | null;
+  inventoryMatchId: string | null;
+  sourceLoadKey: string;
+  duplicateBySource: boolean;
+  documentCoverageDocId: string | null;
+  documentCoverageReason: string | null;
+  blockedReason: string | null;
+  canLoad: boolean;
 };
 
 type WarningDeleteState = {
@@ -128,9 +221,10 @@ const MEZZI_KEY = "@mezzi_aziendali";
 const COLLEGHI_KEY = "@colleghi";
 const FORNITORI_KEY = "@fornitori";
 const CISTERNE_ADBLUE_KEY = "@cisterne_adblue";
-const UNITA_OPTIONS = ["pz", "lt", "kg", "mt", "m"] as const;
+const UNITA_OPTIONS = [...NEXT_MAGAZZINO_STOCK_ALLOWED_UNITS] as const;
 const LITRI_PER_CISTERNA = 1000;
 const N_CAMBI_MEDIA = 6;
+const PROCUREMENT_DEDUP_WINDOW_DAYS = 14;
 
 function mapTabToModulo(tab: string | null): ModuloAttivo {
   switch (tab) {
@@ -157,6 +251,24 @@ function mapModuloToTab(modulo: ModuloAttivo): NextMagazzinoTab {
     case "inv":
     default:
       return "inventario";
+  }
+}
+
+function mapHandoffViewToTab(view: string | null): NextMagazzinoTab | null {
+  switch ((view ?? "").trim().toLowerCase()) {
+    case "materiali":
+    case "materiali-consegnati":
+      return "materiali-consegnati";
+    case "adblue":
+    case "cisterne-adblue":
+      return "cisterne-adblue";
+    case "documenti":
+    case "documenti-costi":
+      return "documenti-costi";
+    case "inventario":
+      return "inventario";
+    default:
+      return null;
   }
 }
 
@@ -361,6 +473,40 @@ function formatDocumentAmount(
   return normalizeText(value) || "-";
 }
 
+function absDateDiffDays(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): number | null {
+  const leftDate = parseStoredDate(left);
+  const rightDate = parseStoredDate(right);
+  if (!leftDate || !rightDate) return null;
+  return Math.abs(
+    Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000),
+  );
+}
+
+function buildConsegnaStockKey(item: {
+  descrizione: string;
+  fornitore: string | null;
+  unita: string;
+  stockKey?: string | null;
+}): string | null {
+  return buildNextMagazzinoStockKey({
+    stockKey: item.stockKey,
+    descrizione: item.descrizione,
+    fornitore: item.fornitore,
+    unita: item.unita,
+  });
+}
+
+function hasSupportedUnit(value: unknown): value is NextMagazzinoStockUnit {
+  return isNextMagazzinoStockUnitSupported(value);
+}
+
+function ensureSupportedUnit(value: unknown): NextMagazzinoStockUnit | null {
+  return normalizeNextMagazzinoStockUnit(value);
+}
+
 function getStockStatus(item: InventarioItem): StockStatus {
   if (item.quantita <= 0) return "esaurito";
   if (
@@ -418,7 +564,11 @@ function normalizeInventarioItem(raw: unknown, index: number): InventarioItem | 
     normalizeNumber(record.quantitaTotale) ?? normalizeNumber(record.quantita);
   if (!descrizione || quantita === null) return null;
 
-  const unita = normalizeOptionalText(record.unita) ?? "pz";
+  const fornitore =
+    normalizeOptionalText(record.fornitore) ??
+    normalizeOptionalText(record.fornitoreLabel) ??
+    normalizeOptionalText(record.nomeFornitore);
+  const unita = normalizeNextMagazzinoStockUnitLoose(record.unita) || "pz";
   const sogliaMinima = normalizeNumber(record.sogliaMinima);
 
   return {
@@ -426,10 +576,18 @@ function normalizeInventarioItem(raw: unknown, index: number): InventarioItem | 
     descrizione,
     quantita,
     unita,
-    fornitore:
-      normalizeOptionalText(record.fornitore) ??
-      normalizeOptionalText(record.fornitoreLabel) ??
-      normalizeOptionalText(record.nomeFornitore),
+    stockKey:
+      buildNextMagazzinoStockKey({
+        stockKey: record.stockKey,
+        descrizione,
+        fornitore,
+        unita,
+      }) ?? null,
+    stockLoadKeys: mergeNextMagazzinoStockLoadKeys(
+      record.stockLoadKeys ?? record.stockSourceKeys,
+      null,
+    ),
+    fornitore,
     fotoUrl: normalizeOptionalText(record.fotoUrl),
     fotoStoragePath: normalizeOptionalText(record.fotoStoragePath),
     sogliaMinima: sogliaMinima ?? undefined,
@@ -481,7 +639,7 @@ function normalizeConsegnaItem(raw: unknown, index: number): MaterialeConsegnato
       normalizeOptionalText(record.materiale) ??
       descrizione,
     quantita,
-    unita: normalizeOptionalText(record.unita) ?? "pz",
+    unita: normalizeNextMagazzinoStockUnitLoose(record.unita) || "pz",
     destinatario: {
       type,
       refId: type === "MAGAZZINO" ? "MAGAZZINO" : refId,
@@ -493,8 +651,17 @@ function normalizeConsegnaItem(raw: unknown, index: number): MaterialeConsegnato
       normalizeOptionalText(record.fornitore) ??
       normalizeOptionalText(record.fornitoreLabel),
     inventarioRefId:
-      normalizeOptionalText(record.inventarioRefId) ??
-      normalizeOptionalText(record.materialeId),
+      normalizeNextMagazzinoStockRefId(record.inventarioRefId) ??
+      normalizeNextMagazzinoStockRefId(record.materialeId),
+    stockKey:
+      buildNextMagazzinoStockKey({
+        stockKey: record.stockKey,
+        descrizione,
+        fornitore:
+          normalizeOptionalText(record.fornitore) ??
+          normalizeOptionalText(record.fornitoreLabel),
+        unita: normalizeNextMagazzinoStockUnitLoose(record.unita) || "pz",
+      }) ?? null,
     direzione: normalizeDirection(record.direzione),
     tipo: normalizeOptionalText(record.tipo),
     origine: normalizeOptionalText(record.origine),
@@ -532,10 +699,25 @@ function normalizeCambioAdBlue(raw: unknown, index: number): CambioAdBlue | null
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
   const data = normalizeOptionalText(record.data);
+  const quantitaLitri =
+    normalizeNumber(record.quantitaLitri) ??
+    normalizeNumber(record.quantita) ??
+    normalizeNumber(record.litri);
   if (!data) return null;
   return {
     id: normalizeOptionalText(record.id) ?? `adblue_${index}`,
     data,
+    quantitaLitri,
+    inventarioRefId:
+      normalizeNextMagazzinoStockRefId(record.inventarioRefId) ??
+      normalizeNextMagazzinoStockRefId(record.materialeId),
+    stockKey:
+      buildNextMagazzinoStockKey({
+        stockKey: record.stockKey,
+        descrizione: record.materialeLabel ?? record.descrizione ?? "AdBlue",
+        fornitore: record.fornitore,
+        unita: "lt",
+      }) ?? null,
     numeroCisterna: normalizeOptionalText(record.numeroCisterna) ?? undefined,
     note: normalizeOptionalText(record.note) ?? undefined,
   };
@@ -608,8 +790,71 @@ function buildGroupedTotalLabel(items: MaterialeConsegnato[]): string {
   return parts.join(" · ");
 }
 
-function sameNormalizedText(left: string | null | undefined, right: string | null | undefined) {
-  return normalizeText(left).toUpperCase() === normalizeText(right).toUpperCase();
+function sameMaterialIdentity(
+  left: {
+    descrizione?: string | null | undefined;
+    fornitore?: string | null | undefined;
+    supplierName?: string | null | undefined;
+  },
+  right: {
+    descrizione?: string | null | undefined;
+    fornitore?: string | null | undefined;
+    supplierName?: string | null | undefined;
+  },
+) {
+  return (
+    normalizeNextMagazzinoMaterialIdentity(left.descrizione) ===
+      normalizeNextMagazzinoMaterialIdentity(right.descrizione) &&
+    (normalizeNextMagazzinoMaterialIdentity(left.fornitore ?? left.supplierName) ||
+      "NOFORNITORE") ===
+      (normalizeNextMagazzinoMaterialIdentity(right.fornitore ?? right.supplierName) ||
+        "NOFORNITORE")
+  );
+}
+
+function looksLikeDocumentoMagazzinoFattura(value: unknown): boolean {
+  return normalizeNextMagazzinoMaterialIdentity(value).includes("FATTURA");
+}
+
+function buildDocumentoStockLabel(args: {
+  tipoDocumento: string | null;
+  numeroDocumento: string | null;
+  nomeFile: string | null;
+  sourceDocId: string;
+}): string {
+  return (
+    [args.tipoDocumento, args.numeroDocumento, args.nomeFile]
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean)
+      .join(" · ") || args.sourceDocId
+  );
+}
+
+function matchesDocumentoHint(value: unknown, hint: unknown): boolean {
+  const left = normalizeNextMagazzinoMaterialIdentity(value);
+  const right = normalizeNextMagazzinoMaterialIdentity(hint);
+  return Boolean(left && right && (left.includes(right) || right.includes(left)));
+}
+
+function sortInventarioItems(items: InventarioItem[]): InventarioItem[] {
+  return [...items].sort((left, right) =>
+    left.descrizione.localeCompare(right.descrizione, "it", {
+      sensitivity: "base",
+    }),
+  );
+}
+
+function resolveUniqueSupportedUnit(
+  values: Array<string | null | undefined>,
+): NextMagazzinoStockUnit | null {
+  const unique = Array.from(
+    new Set(
+      values
+        .map((value) => normalizeNextMagazzinoStockUnit(value))
+        .filter((value): value is NextMagazzinoStockUnit => Boolean(value)),
+    ),
+  );
+  return unique.length === 1 ? unique[0] : null;
 }
 
 function resolveConsegnaVehicleTarga(
@@ -648,11 +893,17 @@ function resolveConsegnaInventarioIndex(
     }
   }
 
+  if (consegna.stockKey) {
+    const byStockKey = inventario.findIndex((item) => item.stockKey === consegna.stockKey);
+    if (byStockKey >= 0) {
+      return byStockKey;
+    }
+  }
+
   return inventario.findIndex(
     (item) =>
-      item.unita === consegna.unita &&
-      sameNormalizedText(item.descrizione, consegna.descrizione) &&
-      (!consegna.fornitore || sameNormalizedText(item.fornitore, consegna.fornitore)),
+      areNextMagazzinoUnitsCompatible(item.unita, consegna.unita) &&
+      sameMaterialIdentity(item, consegna),
   );
 }
 
@@ -666,7 +917,9 @@ function buildInventarioRecord(
     descrizione: item.descrizione,
     quantita: item.quantita,
     quantitaTotale: item.quantita,
-    unita: item.unita,
+    unita: normalizeNextMagazzinoStockUnit(item.unita) ?? item.unita,
+    stockKey: item.stockKey ?? null,
+    stockLoadKeys: item.stockLoadKeys,
     fotoUrl: item.fotoUrl ?? null,
     fotoStoragePath: item.fotoStoragePath ?? null,
     fornitore: item.fornitore ?? null,
@@ -694,7 +947,7 @@ function buildConsegnaRecord(
     materiale: item.materialeLabel ?? item.descrizione,
     materialeLabel: item.materialeLabel ?? item.descrizione,
     quantita: item.quantita,
-    unita: item.unita,
+    unita: normalizeNextMagazzinoStockUnit(item.unita) ?? item.unita,
     destinatario: {
       type: item.destinatario.type,
       refId: item.destinatario.refId,
@@ -706,6 +959,7 @@ function buildConsegnaRecord(
     fornitore: item.fornitore ?? null,
     fornitoreLabel: item.fornitore ?? null,
     inventarioRefId: item.inventarioRefId ?? null,
+    stockKey: item.stockKey ?? null,
     direzione: item.direzione ?? "OUT",
     tipo: item.tipo ?? "OUT",
     origine: item.origine ?? "MAGAZZINO_NEXT",
@@ -730,9 +984,45 @@ function buildCambioAdBlueRecord(
     ...(baseRecord ?? {}),
     id: item.id,
     data: item.data,
+    quantitaLitri: item.quantitaLitri ?? null,
+    quantita: item.quantitaLitri ?? null,
+    litri: item.quantitaLitri ?? null,
+    inventarioRefId: item.inventarioRefId ?? null,
+    stockKey: item.stockKey ?? null,
+    materialeLabel: "AdBlue",
+    descrizione: "AdBlue",
+    unita: "lt",
     numeroCisterna: item.numeroCisterna ?? null,
     note: item.note ?? null,
   };
+}
+
+function findInventarioIndexByDescriptor(
+  inventario: InventarioItem[],
+  descriptor: {
+    inventarioRefId?: string | null;
+    stockKey?: string | null;
+    descrizione?: string | null;
+    fornitore?: string | null;
+    unita?: string | null;
+  },
+): number {
+  if (descriptor.inventarioRefId) {
+    const byId = inventario.findIndex((item) => item.id === descriptor.inventarioRefId);
+    if (byId >= 0) return byId;
+  }
+
+  if (descriptor.stockKey) {
+    const byStockKey = inventario.findIndex((item) => item.stockKey === descriptor.stockKey);
+    if (byStockKey >= 0) return byStockKey;
+  }
+
+  return inventario.findIndex(
+    (item) =>
+      Boolean(descriptor.unita) &&
+      areNextMagazzinoUnitsCompatible(item.unita, descriptor.unita) &&
+      sameMaterialIdentity(item, descriptor),
+  );
 }
 
 function buildProcurementStateLabel(state: string): string {
@@ -772,12 +1062,14 @@ function mediaDurataGiorni(cambi: CambioAdBlue[]): number {
 function litriConsumatiStima(ultimoCambio: CambioAdBlue | null, mediaGiorni: number): number {
   if (!ultimoCambio || mediaGiorni <= 0) return 0;
   const giorniPassati = durataGiorni(ultimoCambio.data, storedToday());
-  const consumoGiornaliero = LITRI_PER_CISTERNA / mediaGiorni;
-  return Math.min(Math.round(consumoGiornaliero * giorniPassati), LITRI_PER_CISTERNA);
+  const capacita = ultimoCambio.quantitaLitri ?? LITRI_PER_CISTERNA;
+  const consumoGiornaliero = capacita / mediaGiorni;
+  return Math.min(Math.round(consumoGiornaliero * giorniPassati), capacita);
 }
 
-function percentualeConsumata(litriConsumati: number): number {
-  return Math.round((litriConsumati / LITRI_PER_CISTERNA) * 100);
+function percentualeConsumata(litriConsumati: number, capacita: number): number {
+  if (capacita <= 0) return 0;
+  return Math.round((litriConsumati / capacita) * 100);
 }
 
 function coloreProgress(perc: number): "verde" | "giallo" | "rosso" {
@@ -797,6 +1089,10 @@ function stimaDataFine(ultimoCambio: CambioAdBlue | null, mediaGiorni: number): 
 export default function NextMagazzinoPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const iaHandoff = useInternalAiUniversalHandoffConsumer({
+    moduleId: "next.magazzino",
+  });
+  const iaHandoffLifecycleRef = useRef<string | null>(null);
   const requestedTab = useMemo(
     () => new URLSearchParams(location.search).get("tab"),
     [location.search],
@@ -844,8 +1140,15 @@ export default function NextMagazzinoPage() {
   const [cambiRawMap, setCambiRawMap] = useState<Record<string, RawDatasetRecord>>({});
   const [cambiShape, setCambiShape] = useState<StoredArrayShape>("array");
   const [dataCambio, setDataCambio] = useState(todayInput());
+  const [quantitaCambioLitri, setQuantitaCambioLitri] = useState("");
+  const [adBlueInventarioRefId, setAdBlueInventarioRefId] = useState("");
   const [numeroCisterna, setNumeroCisterna] = useState("");
   const [noteAdblue, setNoteAdblue] = useState("");
+  const [documentoManualUnits, setDocumentoManualUnits] = useState<
+    Record<string, NextMagazzinoStockUnit | "">
+  >({});
+  const [documentoImportingId, setDocumentoImportingId] = useState<string | null>(null);
+  const [procurementImportingId, setProcurementImportingId] = useState<string | null>(null);
 
   const [documentiCostiSnapshot, setDocumentiCostiSnapshot] =
     useState<NextDocumentiCostiFleetSnapshot | null>(null);
@@ -963,6 +1266,54 @@ export default function NextMagazzinoPage() {
   }, [modulo, navigate, requestedTab]);
 
   useEffect(() => {
+    if (iaHandoff.state.status !== "ready") {
+      return;
+    }
+
+    const handoffId = iaHandoff.state.payload.handoffId;
+    const targetTab = mapHandoffViewToTab(iaHandoff.state.prefill.vistaTarget);
+    const materialQuery =
+      iaHandoff.state.prefill.queryMateriale ?? iaHandoff.state.prefill.materiale;
+    const targetPath =
+      targetTab && requestedTab !== targetTab
+        ? `${buildNextMagazzinoPath(targetTab)}&iaHandoff=${encodeURIComponent(handoffId)}`
+        : null;
+
+    if (targetPath) {
+      navigate(targetPath, { replace: true });
+      return;
+    }
+
+    if (iaHandoffLifecycleRef.current === handoffId) {
+      return;
+    }
+
+    if (materialQuery) {
+      setSearchInv(materialQuery);
+      setSearchMc(materialQuery);
+    } else if (iaHandoff.state.prefill.targa) {
+      setSearchMc(iaHandoff.state.prefill.targa);
+    }
+
+    setNotice(
+      iaHandoff.state.prefill.documentoNome
+        ? `Prefill IA interno applicato: ${iaHandoff.state.prefill.documentoNome}.`
+        : "Prefill IA interno applicato sul dominio Magazzino.",
+    );
+    iaHandoff.acknowledge(
+      "prefill_applicato",
+      "Magazzino NEXT ha letto il payload standard IA e ha applicato il prefill del dominio stock.",
+    );
+    iaHandoff.acknowledge(
+      iaHandoff.state.requiresVerification ? "da_verificare" : "completato",
+      iaHandoff.state.requiresVerification
+        ? "Magazzino NEXT aperto con prefill IA ma con campi ancora da verificare."
+        : "Magazzino NEXT aperto nel dominio corretto con prefill IA gia applicato.",
+    );
+    iaHandoffLifecycleRef.current = handoffId;
+  }, [iaHandoff, navigate, requestedTab]);
+
+  useEffect(() => {
     if (!materialeSelezionato) return;
     const refreshed = items.find((item) => item.id === materialeSelezionato.id) ?? null;
     setMaterialeSelezionato(refreshed);
@@ -970,6 +1321,22 @@ export default function NextMagazzinoPage() {
       setMaterialeInput("");
     }
   }, [items, materialeSelezionato]);
+
+  useEffect(() => {
+    const adBlueItems = items.filter((item) =>
+      looksLikeNextMagazzinoAdBlueMaterial(item.descrizione),
+    );
+    if (adBlueItems.length === 1) {
+      setAdBlueInventarioRefId(adBlueItems[0].id);
+      return;
+    }
+    if (
+      adBlueInventarioRefId &&
+      !adBlueItems.some((item) => item.id === adBlueInventarioRefId)
+    ) {
+      setAdBlueInventarioRefId("");
+    }
+  }, [adBlueInventarioRefId, items]);
 
   function resetFeedback() {
     setNotice(null);
@@ -1008,6 +1375,8 @@ export default function NextMagazzinoPage() {
 
   function resetAdBlueForm() {
     setDataCambio(todayInput());
+    setQuantitaCambioLitri("");
+    setAdBlueInventarioRefId("");
     setNumeroCisterna("");
     setNoteAdblue("");
   }
@@ -1053,40 +1422,84 @@ export default function NextMagazzinoPage() {
     const descrizione = normalizeText(newDescrizione);
     const quantitaValue = normalizeNumber(newQuantita);
     const sogliaValue = normalizeNumber(newSogliaMinima);
+    const unita = ensureSupportedUnit(newUnita);
     if (!descrizione || quantitaValue === null || quantitaValue < 0) {
       setError("Compila descrizione e quantita valide.");
+      return;
+    }
+    if (!unita) {
+      setError("Usa una unita supportata: pz, lt, kg o mt.");
       return;
     }
 
     setSaving(true);
     try {
-      const id = generateId();
+      const fornitore = normalizeOptionalText(newFornitore);
+      const stockKey =
+        buildNextMagazzinoStockKey({
+          descrizione,
+          fornitore,
+          unita,
+        }) ?? null;
+      const existingIndex =
+        stockKey !== null
+          ? items.findIndex((item) => item.stockKey === stockKey)
+          : -1;
+      const targetId = existingIndex >= 0 ? items[existingIndex].id : generateId();
       let fotoUrl: string | null = null;
       let fotoStoragePath: string | null = null;
       if (newFotoFile) {
-        const uploaded = await uploadInventarioPhoto(newFotoFile, id);
+        const uploaded = await uploadInventarioPhoto(newFotoFile, targetId);
         fotoUrl = uploaded.fotoUrl;
         fotoStoragePath = uploaded.fotoStoragePath;
       }
 
-      const nextItem: InventarioItem = {
-        id,
-        descrizione,
-        quantita: quantitaValue,
-        unita: newUnita,
-        fornitore: normalizeOptionalText(newFornitore),
-        fotoUrl,
-        fotoStoragePath,
-        sogliaMinima: sogliaValue ?? undefined,
-      };
+      const nextItems =
+        existingIndex >= 0
+          ? items.map((item, index) => {
+              if (index !== existingIndex) return item;
+              return {
+                ...item,
+                descrizione,
+                quantita: item.quantita + quantitaValue,
+                unita,
+                stockKey,
+                fornitore: fornitore ?? item.fornitore,
+                fotoUrl: fotoUrl ?? item.fotoUrl,
+                fotoStoragePath: fotoStoragePath ?? item.fotoStoragePath,
+                sogliaMinima:
+                  newSogliaMinima.trim().length > 0
+                    ? sogliaValue ?? undefined
+                    : item.sogliaMinima,
+              } satisfies InventarioItem;
+            })
+          : [
+              ...items,
+              {
+                id: targetId,
+                descrizione,
+                quantita: quantitaValue,
+                unita,
+                stockKey,
+                stockLoadKeys: [],
+                fornitore,
+                fotoUrl,
+                fotoStoragePath,
+                sogliaMinima: sogliaValue ?? undefined,
+              } satisfies InventarioItem,
+            ];
 
-      const nextItems = [...items, nextItem].sort((left, right) =>
+      const sortedItems = nextItems.sort((left, right) =>
         left.descrizione.localeCompare(right.descrizione, "it", { sensitivity: "base" }),
       );
 
-      await persistInventario(nextItems);
-      setItems(nextItems);
-      setNotice("Articolo aggiunto al magazzino.");
+      await persistInventario(sortedItems);
+      setItems(sortedItems);
+      setNotice(
+        existingIndex >= 0
+          ? "Carico aggiunto alla voce inventario esistente."
+          : "Articolo aggiunto al magazzino.",
+      );
       resetInventarioForm();
       setInventarioTab("magazzino");
     } catch (saveError) {
@@ -1101,8 +1514,13 @@ export default function NextMagazzinoPage() {
     if (!editingItem) return;
     resetFeedback();
     const descrizione = normalizeText(editingItem.descrizione);
+    const unita = ensureSupportedUnit(editingItem.unita);
     if (!descrizione || editingItem.quantita < 0) {
       setError("Compila dati validi per l'articolo.");
+      return;
+    }
+    if (!unita) {
+      setError("Usa una unita supportata: pz, lt, kg o mt.");
       return;
     }
 
@@ -1116,13 +1534,32 @@ export default function NextMagazzinoPage() {
         fotoStoragePath = uploaded.fotoStoragePath;
       }
 
+      const fornitore = normalizeOptionalText(editingItem.fornitore);
+      const stockKey =
+        buildNextMagazzinoStockKey({
+          descrizione,
+          fornitore,
+          unita,
+        }) ?? null;
+      const collision = items.find(
+        (item) => item.id !== editingItem.id && item.stockKey && item.stockKey === stockKey,
+      );
+      if (collision) {
+        setError(
+          `Esiste gia una voce inventario con la stessa chiave stock: "${collision.descrizione}".`,
+        );
+        return;
+      }
+
       const nextItems = items
         .map((item) =>
           item.id === editingItem.id
             ? {
                 ...editingItem,
                 descrizione,
-                fornitore: normalizeOptionalText(editingItem.fornitore),
+                unita,
+                stockKey,
+                fornitore,
                 fotoUrl,
                 fotoStoragePath,
               }
@@ -1151,6 +1588,12 @@ export default function NextMagazzinoPage() {
     resetFeedback();
     const target = items.find((item) => item.id === itemId);
     if (!target) return;
+    if (!hasSupportedUnit(target.unita)) {
+      setError(
+        `L'articolo "${target.descrizione}" ha unita non supportata. Correggi la voce prima di aggiornare la giacenza.`,
+      );
+      return;
+    }
     const nextQuantity = Math.max(0, target.quantita + delta);
     const nextItems = items.map((item) =>
       item.id === itemId ? { ...item, quantita: nextQuantity } : item,
@@ -1174,6 +1617,13 @@ export default function NextMagazzinoPage() {
     const parsed = normalizeNumber(rawValue);
     if (parsed === null || parsed < 0) {
       setError("Inserisci una quantita valida.");
+      return;
+    }
+    const target = items.find((item) => item.id === itemId);
+    if (target && !hasSupportedUnit(target.unita)) {
+      setError(
+        `L'articolo "${target.descrizione}" ha unita non supportata. Correggi la voce prima di aggiornare la giacenza.`,
+      );
       return;
     }
     const nextItems = items.map((item) =>
@@ -1243,8 +1693,21 @@ export default function NextMagazzinoPage() {
       const nuoveConsegne = consegne.filter((item) => item.id !== consegna.id);
       const inventarioAggiornato = [...items];
       const idx = resolveConsegnaInventarioIndex(inventarioAggiornato, consegna);
+      const unitaConsegna = ensureSupportedUnit(consegna.unita);
+      if (!unitaConsegna) {
+        setError(
+          `Ripristino bloccato: la consegna "${consegna.descrizione}" usa unita non supportata.`,
+        );
+        return;
+      }
 
       if (idx >= 0) {
+        if (!areNextMagazzinoUnitsCompatible(inventarioAggiornato[idx].unita, consegna.unita)) {
+          setError(
+            `Ripristino bloccato: unita non coerente tra consegna (${consegna.unita}) e inventario (${inventarioAggiornato[idx].unita}).`,
+          );
+          return;
+        }
         inventarioAggiornato[idx] = {
           ...inventarioAggiornato[idx],
           quantita: inventarioAggiornato[idx].quantita + consegna.quantita,
@@ -1254,7 +1717,15 @@ export default function NextMagazzinoPage() {
           id: consegna.inventarioRefId ?? generateId(),
           descrizione: consegna.descrizione,
           quantita: consegna.quantita,
-          unita: consegna.unita,
+          unita: unitaConsegna,
+          stockKey:
+            buildConsegnaStockKey({
+              descrizione: consegna.descrizione,
+              fornitore: consegna.fornitore,
+              unita: unitaConsegna,
+              stockKey: consegna.stockKey,
+            }) ?? null,
+          stockLoadKeys: [],
           fornitore: consegna.fornitore ?? null,
           fotoUrl: null,
           fotoStoragePath: null,
@@ -1330,6 +1801,12 @@ export default function NextMagazzinoPage() {
       );
       return;
     }
+    if (!hasSupportedUnit(itemMagazzino.unita)) {
+      setError(
+        `Scarico bloccato: l'articolo "${itemMagazzino.descrizione}" usa unita non supportata.`,
+      );
+      return;
+    }
 
     setSaving(true);
     try {
@@ -1355,6 +1832,7 @@ export default function NextMagazzinoPage() {
         data: inputDateToStored(dataConsegna),
         fornitore: materialeSelezionato.fornitore ?? null,
         inventarioRefId: materialeSelezionato.id,
+        stockKey: materialeSelezionato.stockKey,
         direzione: "OUT",
         tipo: "OUT",
         origine: "MAGAZZINO_NEXT",
@@ -1368,8 +1846,7 @@ export default function NextMagazzinoPage() {
           item.id === materialeSelezionato.id
             ? { ...item, quantita: item.quantita - quantitaValue }
             : item,
-        )
-        .filter((item) => item.quantita > 0);
+        );
 
       await persistConsegne(nuovaListaConsegne);
       try {
@@ -1398,12 +1875,60 @@ export default function NextMagazzinoPage() {
       setError("Seleziona la data del cambio cisterna.");
       return;
     }
+    const quantitaLitri = normalizeNumber(quantitaCambioLitri);
+    if (quantitaLitri === null || quantitaLitri <= 0) {
+      setError("Inserisci i litri reali scaricati dalla cisterna.");
+      return;
+    }
+
+    const adBlueCandidates = items.filter((item) =>
+      looksLikeNextMagazzinoAdBlueMaterial(item.descrizione),
+    );
+    const resolvedInventarioRefId =
+      normalizeNextMagazzinoStockRefId(adBlueInventarioRefId) ??
+      (adBlueCandidates.length === 1 ? adBlueCandidates[0].id : null);
+    if (!resolvedInventarioRefId) {
+      setError("Seleziona l'articolo AdBlue di inventario da scaricare.");
+      return;
+    }
+
+    const inventarioIndex = findInventarioIndexByDescriptor(items, {
+      inventarioRefId: resolvedInventarioRefId,
+      descrizione: "AdBlue",
+      unita: "lt",
+    });
+    const inventarioItem = inventarioIndex >= 0 ? items[inventarioIndex] : null;
+    if (!inventarioItem) {
+      setError("Articolo AdBlue non trovato in inventario.");
+      return;
+    }
+    if (!areNextMagazzinoUnitsCompatible(inventarioItem.unita, "lt")) {
+      setError(
+        `Scarico AdBlue bloccato: l'articolo di inventario usa unita ${inventarioItem.unita}.`,
+      );
+      return;
+    }
+    if (inventarioItem.quantita < quantitaLitri) {
+      setError(
+        `Giacenza AdBlue insufficiente (${formatQuantita(inventarioItem.quantita, inventarioItem.unita)} disponibili).`,
+      );
+      return;
+    }
 
     setSaving(true);
     try {
       const nuovoCambio: CambioAdBlue = {
         id: generateId(),
         data: inputDateToStored(dataCambio),
+        quantitaLitri,
+        inventarioRefId: inventarioItem.id,
+        stockKey:
+          inventarioItem.stockKey ??
+          buildNextMagazzinoStockKey({
+            descrizione: inventarioItem.descrizione,
+            fornitore: inventarioItem.fornitore,
+            unita: "lt",
+          }),
         numeroCisterna: normalizeOptionalText(numeroCisterna) ?? undefined,
         note: normalizeOptionalText(noteAdblue) ?? undefined,
       };
@@ -1412,9 +1937,21 @@ export default function NextMagazzinoPage() {
           (parseStoredDate(left.data)?.getTime() ?? 0) -
           (parseStoredDate(right.data)?.getTime() ?? 0),
       );
+      const inventarioAggiornato = items.map((item) =>
+        item.id === inventarioItem.id
+          ? { ...item, quantita: Math.max(0, item.quantita - quantitaLitri) }
+          : item,
+      );
       await persistCambi(nuovaLista);
+      try {
+        await persistInventario(inventarioAggiornato);
+      } catch (inventoryError) {
+        await persistCambi(cambi);
+        throw inventoryError;
+      }
       setCambi(nuovaLista);
-      setNotice("Cambio cisterna registrato.");
+      setItems(inventarioAggiornato);
+      setNotice("Cambio cisterna registrato e inventario AdBlue aggiornato.");
       resetAdBlueForm();
       setAdBlueTab("stato");
     } catch (saveError) {
@@ -1425,17 +1962,685 @@ export default function NextMagazzinoPage() {
     }
   }
 
+  function handleDocumentoUnitChange(
+    candidateId: string,
+    value: string,
+  ) {
+    const normalized = normalizeNextMagazzinoStockUnit(value);
+    setDocumentoManualUnits((current) => ({
+      ...current,
+      [candidateId]: normalized ?? "",
+    }));
+  }
+
+  async function handleRiconciliaDocumentoSenzaCarico(candidateId: string) {
+    resetFeedback();
+    const candidate = documentoStockCandidates.find((entry) => entry.id === candidateId);
+    if (!candidate) {
+      setError("Riga documento non piu disponibile.");
+      return;
+    }
+    if (!candidate.canReconcileWithoutLoad || !candidate.unita) {
+      setError(candidate.blockedReason ?? "Riconciliazione documento non disponibile.");
+      return;
+    }
+
+    setSaving(true);
+    setDocumentoImportingId(candidateId);
+    try {
+      const targetIndex = findInventarioIndexByDescriptor(items, {
+        inventarioRefId: candidate.inventoryMatchId,
+        stockKey: candidate.stockKey,
+        descrizione: candidate.descrizione,
+        fornitore: candidate.fornitore,
+        unita: candidate.unita,
+      });
+      if (targetIndex < 0) {
+        throw new Error("Inventario target non trovato per la riconciliazione.");
+      }
+
+      const nextItems = items.map((item, index) => {
+        if (index !== targetIndex) return item;
+        return {
+          ...item,
+          unita: candidate.unita ?? item.unita,
+          stockKey: candidate.stockKey ?? item.stockKey,
+          fornitore: candidate.fornitore ?? item.fornitore,
+          stockLoadKeys: mergeNextMagazzinoStockLoadKeys(
+            item.stockLoadKeys,
+            candidate.sourceLoadKey,
+          ),
+        } satisfies InventarioItem;
+      });
+      const sortedItems = sortInventarioItems(nextItems);
+      await persistInventario(sortedItems);
+      setItems(sortedItems);
+      setNotice(
+        "Fattura riconciliata sulla voce inventario gia caricata: nessun aumento stock eseguito.",
+      );
+    } catch (reconcileError) {
+      console.error("Errore riconciliazione documento senza carico:", reconcileError);
+      setError("Errore durante la riconciliazione della fattura senza carico stock.");
+    } finally {
+      setSaving(false);
+      setDocumentoImportingId(null);
+    }
+  }
+
+  async function handleCaricaDocumentoInInventario(candidateId: string) {
+    resetFeedback();
+    const candidate = documentoStockCandidates.find((entry) => entry.id === candidateId);
+    if (!candidate) {
+      setError("Riga documento non piu disponibile.");
+      return;
+    }
+    if (!candidate.canLoad || !candidate.unita || candidate.quantita === null) {
+      setError(candidate.blockedReason ?? "Carico documento non disponibile.");
+      return;
+    }
+
+    setSaving(true);
+    setDocumentoImportingId(candidateId);
+    try {
+      const targetIndex = findInventarioIndexByDescriptor(items, {
+        inventarioRefId: candidate.inventoryMatchId,
+        stockKey: candidate.stockKey,
+        descrizione: candidate.descrizione,
+        fornitore: candidate.fornitore,
+        unita: candidate.unita,
+      });
+      const nextItems =
+        targetIndex >= 0
+          ? items.map((item, index) => {
+              if (index !== targetIndex) return item;
+              return {
+                ...item,
+                quantita: item.quantita + candidate.quantita!,
+                unita: candidate.unita!,
+                stockKey: candidate.stockKey ?? item.stockKey,
+                fornitore: candidate.fornitore ?? item.fornitore,
+                stockLoadKeys: mergeNextMagazzinoStockLoadKeys(
+                  item.stockLoadKeys,
+                  candidate.sourceLoadKey,
+                ),
+              } satisfies InventarioItem;
+            })
+          : [
+              ...items,
+              {
+                id: generateId(),
+                descrizione: candidate.descrizione,
+                quantita: candidate.quantita,
+                unita: candidate.unita,
+                stockKey: candidate.stockKey,
+                stockLoadKeys: mergeNextMagazzinoStockLoadKeys([], candidate.sourceLoadKey),
+                fornitore: candidate.fornitore ?? null,
+                fotoUrl: null,
+                fotoStoragePath: null,
+              } satisfies InventarioItem,
+            ];
+      const sortedItems = sortInventarioItems(nextItems);
+      await persistInventario(sortedItems);
+      setItems(sortedItems);
+      setNotice(
+        targetIndex >= 0
+          ? "Fattura AdBlue consolidata sulla voce inventario esistente."
+          : "Fattura AdBlue caricata in inventario.",
+      );
+    } catch (loadError) {
+      console.error("Errore carico documento in inventario:", loadError);
+      setError("Errore durante il carico stock della fattura AdBlue.");
+    } finally {
+      setSaving(false);
+      setDocumentoImportingId(null);
+    }
+  }
+
+  async function handleCaricaArrivoInInventario(candidateId: string) {
+    resetFeedback();
+    const candidate = procurementStockCandidates.find((entry) => entry.id === candidateId);
+    if (!candidate) {
+      setError("Arrivo procurement non piu disponibile.");
+      return;
+    }
+    if (!candidate.canLoad || !candidate.unita || candidate.quantita === null) {
+      setError(candidate.blockedReason ?? "Carico arrivo non disponibile.");
+      return;
+    }
+
+    setSaving(true);
+    setProcurementImportingId(candidateId);
+    try {
+      const targetIndex = findInventarioIndexByDescriptor(items, {
+        inventarioRefId: candidate.inventoryMatchId,
+        stockKey: candidate.stockKey,
+        descrizione: candidate.descrizione,
+        fornitore: candidate.fornitore,
+        unita: candidate.unita,
+      });
+      const nextItems =
+        targetIndex >= 0
+          ? items.map((item, index) => {
+              if (index !== targetIndex) return item;
+              return {
+                ...item,
+                quantita: item.quantita + candidate.quantita!,
+                unita: candidate.unita!,
+                stockKey: candidate.stockKey ?? item.stockKey,
+                fornitore: candidate.fornitore ?? item.fornitore,
+                stockLoadKeys: mergeNextMagazzinoStockLoadKeys(
+                  item.stockLoadKeys,
+                  candidate.sourceLoadKey,
+                ),
+              } satisfies InventarioItem;
+            })
+          : [
+              ...items,
+              {
+                id: generateId(),
+                descrizione: candidate.descrizione,
+                quantita: candidate.quantita,
+                unita: candidate.unita,
+                stockKey: candidate.stockKey,
+                stockLoadKeys: mergeNextMagazzinoStockLoadKeys([], candidate.sourceLoadKey),
+                fornitore: candidate.fornitore ?? null,
+                fotoUrl: null,
+                fotoStoragePath: null,
+              } satisfies InventarioItem,
+            ];
+      const sortedItems = sortInventarioItems(nextItems);
+      await persistInventario(sortedItems);
+      setItems(sortedItems);
+      setNotice(
+        targetIndex >= 0
+          ? `Arrivo ${candidate.orderReference} consolidato sulla voce inventario esistente.`
+          : `Arrivo ${candidate.orderReference} caricato in inventario.`,
+      );
+    } catch (loadError) {
+      console.error("Errore carico arrivo procurement in inventario:", loadError);
+      setError("Errore durante il carico dell'arrivo procurement in inventario.");
+    } finally {
+      setSaving(false);
+      setProcurementImportingId(null);
+    }
+  }
+
   const unitaOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          [...UNITA_OPTIONS, ...items.map((item) => item.unita), editingItem?.unita].filter(
+          [...UNITA_OPTIONS, editingItem?.unita].filter(
             (entry): entry is string => Boolean(normalizeText(entry)),
           ),
         ),
       ),
-    [editingItem?.unita, items],
+    [editingItem?.unita],
   );
+
+  const adBlueInventoryItems = useMemo(
+    () => items.filter((item) => looksLikeNextMagazzinoAdBlueMaterial(item.descrizione)),
+    [items],
+  );
+
+  const procurementArrivedRows = useMemo<ProcurementStockRow[]>(
+    () =>
+      (procurementSnapshot?.orders ?? []).flatMap((order) =>
+        order.materials
+          .filter((material) => material.arrived)
+          .map((material) => ({
+            id: `${order.id}:${material.id}`,
+            orderId: order.id,
+            orderReference: order.orderReference,
+            materialId: material.id,
+            supplierName: normalizeOptionalText(order.supplierName),
+            descrizione: material.descrizione,
+            quantita: material.quantita,
+            unita: normalizeOptionalText(normalizeNextMagazzinoStockUnitLoose(material.unita)),
+            arrivalDateLabel: material.arrivalDateLabel,
+          })),
+      ),
+    [procurementSnapshot],
+  );
+
+  const documentoStockCandidates = useMemo(() => {
+    const supportDocs = documentiCostiSnapshot?.materialCostSupport.documents ?? [];
+    return supportDocs.flatMap((documento) =>
+      documento.voci
+        .map((row, rowIndex) => {
+          const descrizione = normalizeText(row.descrizione);
+          if (!descrizione) return null;
+
+          const candidateId = `${documento.sourceDocId}:${rowIndex}`;
+          const manualUnit = documentoManualUnits[candidateId] || "";
+          const manualResolvedUnit = manualUnit
+            ? normalizeNextMagazzinoStockUnit(manualUnit)
+            : null;
+          const inventoryMatches = items.filter((item) =>
+            sameMaterialIdentity(item, {
+              descrizione,
+              fornitore: documento.fornitore,
+            }),
+          );
+          const procurementMatches = procurementArrivedRows.filter((entry) =>
+            sameMaterialIdentity(entry, {
+              descrizione,
+              fornitore: documento.fornitore,
+            }),
+          );
+
+          const inventorySupportedUnits = Array.from(
+            new Set(
+              inventoryMatches
+                .map((item) => normalizeNextMagazzinoStockUnit(item.unita))
+                .filter((unit): unit is NextMagazzinoStockUnit => Boolean(unit)),
+            ),
+          );
+          const procurementSupportedUnits = Array.from(
+            new Set(
+              procurementMatches
+                .map((entry) => normalizeNextMagazzinoStockUnit(entry.unita))
+                .filter((unit): unit is NextMagazzinoStockUnit => Boolean(unit)),
+            ),
+          );
+          const inventoryUnit =
+            inventorySupportedUnits.length === 1 ? inventorySupportedUnits[0] : null;
+          const procurementUnit =
+            procurementSupportedUnits.length === 1 ? procurementSupportedUnits[0] : null;
+          const resolvedUnit =
+            inventoryUnit ??
+            procurementUnit ??
+            manualResolvedUnit;
+          const unitaSource: DocumentoStockRowCandidate["unitaSource"] = inventoryUnit
+            ? "inventario"
+            : procurementUnit
+              ? "procurement"
+              : manualResolvedUnit
+                ? "manuale"
+                : "missing";
+          const hasUnitConflict =
+            Boolean(resolvedUnit) &&
+            (inventorySupportedUnits.some((unit) => unit !== resolvedUnit) ||
+              procurementSupportedUnits.some((unit) => unit !== resolvedUnit));
+          const stockKey =
+            resolvedUnit
+              ? buildNextMagazzinoStockKey({
+                  descrizione,
+                  fornitore: documento.fornitore,
+                  unita: resolvedUnit,
+                })
+              : null;
+          const inventoryIndex =
+            stockKey || resolvedUnit
+              ? findInventarioIndexByDescriptor(items, {
+                  stockKey,
+                  descrizione,
+                  fornitore: documento.fornitore,
+                  unita: resolvedUnit,
+                })
+              : -1;
+          const inventoryMatchId = inventoryIndex >= 0 ? items[inventoryIndex].id : null;
+          const sourceLoadKey = buildNextMagazzinoStockLoadKey({
+            sourceType: "DOCUMENTO_MAGAZZINO",
+            sourceDocId: documento.sourceDocId,
+            rowIndex,
+            descrizione,
+            fornitore: documento.fornitore,
+            unita: resolvedUnit ?? manualUnit,
+            quantita: row.quantita,
+            data: documento.data,
+          });
+          const duplicateBySource = items.some((item) =>
+            hasNextMagazzinoStockLoadKey(item.stockLoadKeys, sourceLoadKey),
+          );
+          const documentLabel = buildDocumentoStockLabel({
+            tipoDocumento: documento.tipoDocumento,
+            numeroDocumento: documento.numeroDocumento,
+            nomeFile: documento.nomeFile,
+            sourceDocId: documento.sourceDocId,
+          });
+          const isInvoiceDocument = looksLikeDocumentoMagazzinoFattura(
+            documento.tipoDocumento ?? documentLabel,
+          );
+          const isAdBlueCandidate =
+            looksLikeNextMagazzinoAdBlueMaterial(descrizione) ||
+            looksLikeNextMagazzinoAdBlueMaterial(documento.fornitore) ||
+            looksLikeNextMagazzinoAdBlueMaterial(documentLabel) ||
+            inventoryMatches.some((item) =>
+              looksLikeNextMagazzinoAdBlueMaterial(item.descrizione),
+            );
+          const procurementCoverage = procurementMatches.find((entry) => {
+            if (!resolvedUnit || !areNextMagazzinoUnitsCompatible(entry.unita, resolvedUnit)) {
+              return false;
+            }
+            if (
+              typeof row.quantita !== "number" ||
+              !Number.isFinite(row.quantita) ||
+              typeof entry.quantita !== "number" ||
+              !Number.isFinite(entry.quantita)
+            ) {
+              return false;
+            }
+            if (Math.abs(entry.quantita - row.quantita) > 0.001) {
+              return false;
+            }
+            const dateDiff = absDateDiffDays(documento.data, entry.arrivalDateLabel);
+            return dateDiff !== null && dateDiff <= PROCUREMENT_DEDUP_WINDOW_DAYS;
+          });
+
+          let blockedReason: string | null = null;
+          let canLoad = false;
+          let canReconcileWithoutLoad = false;
+          let decision: DocumentoStockRowCandidate["decision"] = "da_verificare";
+          let decisionReason: string | null = null;
+
+          if (documento.daVerificare) {
+            blockedReason =
+              "Documento marcato `DA VERIFICARE`: nessuna azione automatica consentita.";
+            decisionReason = blockedReason;
+          } else if (row.quantita === null || row.quantita <= 0) {
+            blockedReason = "Quantita documento non leggibile.";
+            decisionReason = blockedReason;
+          } else if (!isInvoiceDocument) {
+            blockedReason =
+              "La deroga scrivente e limitata alle fatture di magazzino.";
+            decision = "fuori_perimetro";
+            decisionReason = blockedReason;
+          } else if (!resolvedUnit) {
+            blockedReason = "Seleziona una unita coerente per il carico.";
+            decisionReason = blockedReason;
+          } else if (hasUnitConflict) {
+            blockedReason =
+              "Unita incoerente con materiale o arrivo gia presenti: blocco automatico.";
+            decisionReason = blockedReason;
+          } else if (duplicateBySource) {
+            blockedReason =
+              "Questa riga documento risulta gia consolidata su inventario: niente doppio carico.";
+            decisionReason = blockedReason;
+          } else if (procurementCoverage && inventoryMatchId) {
+            canReconcileWithoutLoad = true;
+            decision = "riconcilia_senza_carico";
+            decisionReason =
+              "Arrivo procurement compatibile e materiale gia presente: collega la fattura senza aumentare lo stock.";
+          } else if (procurementCoverage) {
+            blockedReason =
+              "Arrivo procurement compatibile rilevato ma manca una voce inventario coerente da riconciliare: `DA VERIFICARE`.";
+            decisionReason = blockedReason;
+          } else if (!isAdBlueCandidate) {
+            blockedReason =
+              "Scrittura da fattura aperta solo per AdBlue non ancora caricato o per riconciliazioni senza carico.";
+            decision = "fuori_perimetro";
+            decisionReason = blockedReason;
+          } else if (resolvedUnit !== "lt") {
+            blockedReason =
+              "AdBlue rilevato con unita non coerente: atteso `lt`, aggiornamento bloccato.";
+            decisionReason = blockedReason;
+          } else {
+            canLoad = true;
+            decision = "carica_stock_adblue";
+            decisionReason = inventoryMatchId
+              ? "Fattura AdBlue pronta: aumenta la giacenza della voce inventario esistente."
+              : "Fattura AdBlue pronta: crea o aggiorna il materiale AdBlue in inventario e aumenta la giacenza.";
+          }
+
+          return {
+            id: candidateId,
+            sourceDocId: documento.sourceDocId,
+            rowIndex,
+            documentLabel,
+            tipoDocumento: documento.tipoDocumento,
+            numeroDocumento: documento.numeroDocumento,
+            nomeFile: documento.nomeFile,
+            fileUrl: documento.fileUrl,
+            daVerificareDocumento: documento.daVerificare,
+            descrizione,
+            fornitore: documento.fornitore,
+            quantita: row.quantita,
+            data: documento.data,
+            unita: resolvedUnit,
+            unitaSource,
+            stockKey: stockKey ?? null,
+            inventoryMatchId,
+            procurementCoverageOrderId: procurementCoverage?.orderId ?? null,
+            procurementCoverageReason: procurementCoverage
+              ? `Ordine ${procurementCoverage.orderId} · arrivo ${procurementCoverage.arrivalDateLabel || "-"}`
+              : null,
+            sourceLoadKey,
+            duplicateBySource,
+            isInvoiceDocument,
+            isAdBlueCandidate,
+            hasUnitConflict,
+            canReconcileWithoutLoad,
+            decision,
+            decisionReason,
+            blockedReason,
+            canLoad,
+          } satisfies DocumentoStockRowCandidate;
+        })
+        .filter((entry) => Boolean(entry)) as DocumentoStockRowCandidate[],
+    );
+  }, [
+    documentiCostiSnapshot?.materialCostSupport.documents,
+    documentoManualUnits,
+    items,
+    procurementArrivedRows,
+  ]);
+
+  const iaWarehouseDocumentAction = useMemo(() => {
+    if (modulo !== "docs" || iaHandoff.state.status !== "ready") {
+      return null;
+    }
+
+    const payload = iaHandoff.state.payload;
+    const isWarehouseInvoiceFlow =
+      normalizeText(payload.prefillCanonico.warehouseInvoiceHint) === "1" ||
+      normalizeText(payload.prefillCanonico.flusso) === "fatture_magazzino";
+    if (!isWarehouseInvoiceFlow) {
+      return null;
+    }
+
+    const documentHint =
+      normalizeText(payload.prefillCanonico.documentoNome) ||
+      normalizeText(payload.datiEstrattiNormalizzati.fileName);
+    const supplierHint = normalizeText(payload.prefillCanonico.fornitore);
+    const materialHint =
+      normalizeText(payload.prefillCanonico.materiale) ||
+      normalizeText(payload.prefillCanonico.queryMateriale);
+    const modeHint = normalizeText(payload.prefillCanonico.warehouseInvoiceMode);
+
+    const scoredCandidates = documentoStockCandidates
+      .map((candidate) => {
+        let score = 0;
+        if (
+          documentHint &&
+          [
+            candidate.nomeFile,
+            candidate.numeroDocumento,
+            candidate.sourceDocId,
+            candidate.documentLabel,
+          ].some((value) => matchesDocumentoHint(value, documentHint))
+        ) {
+          score += 6;
+        }
+        if (supplierHint && matchesDocumentoHint(candidate.fornitore, supplierHint)) {
+          score += 3;
+        }
+        if (
+          materialHint &&
+          [
+            candidate.descrizione,
+            candidate.documentLabel,
+            candidate.nomeFile,
+          ].some((value) => matchesDocumentoHint(value, materialHint))
+        ) {
+          score += 3;
+        }
+        if (modeHint === "carica_stock_adblue" && candidate.decision === "carica_stock_adblue") {
+          score += 2;
+        }
+        if (
+          modeHint === "riconcilia_o_verifica" &&
+          candidate.decision === "riconcilia_senza_carico"
+        ) {
+          score += 1;
+        }
+        return { candidate, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score);
+
+    if (scoredCandidates.length === 0) {
+      return {
+        status: "da_verificare" as const,
+        candidate: null,
+        message:
+          "Nessuna riga fattura di magazzino ha un match abbastanza forte con il prefill IA.",
+      };
+    }
+
+    const bestScore = scoredCandidates[0]?.score ?? 0;
+    const bestCandidates = scoredCandidates.filter((entry) => entry.score === bestScore);
+    if (bestCandidates.length !== 1) {
+      return {
+        status: "da_verificare" as const,
+        candidate: null,
+        message:
+          "Il prefill IA aggancia piu righe fattura compatibili: serve verifica manuale prima di scrivere.",
+      };
+    }
+
+    const selected = bestCandidates[0].candidate;
+    if (selected.canReconcileWithoutLoad || selected.canLoad) {
+      return {
+        status: "pronto" as const,
+        candidate: selected,
+        message:
+          selected.decisionReason ??
+          "La fattura selezionata puo essere gestita nel perimetro controllato Magazzino.",
+      };
+    }
+
+    return {
+      status: "da_verificare" as const,
+      candidate: selected,
+      message:
+        selected.blockedReason ??
+        selected.decisionReason ??
+        "Il match della fattura non e abbastanza forte per una scrittura automatica.",
+    };
+  }, [documentoStockCandidates, iaHandoff.state, modulo]);
+
+  const procurementStockCandidates = useMemo<ProcurementStockRowCandidate[]>(() => {
+    return procurementArrivedRows
+      .map((entry) => {
+        const inventoryMatches = items.filter((item) =>
+          sameMaterialIdentity(item, {
+            descrizione: entry.descrizione,
+            fornitore: entry.supplierName,
+          }),
+        );
+        const inventoryUnit = resolveUniqueSupportedUnit(
+          inventoryMatches.map((item) => item.unita),
+        );
+        const procurementUnit = normalizeNextMagazzinoStockUnit(entry.unita);
+        const resolvedUnit = procurementUnit ?? inventoryUnit;
+        const unitaSource: ProcurementStockRowCandidate["unitaSource"] = procurementUnit
+          ? "procurement"
+          : inventoryUnit
+            ? "inventario"
+            : "missing";
+        const stockKey = resolvedUnit
+          ? buildNextMagazzinoStockKey({
+              descrizione: entry.descrizione,
+              fornitore: entry.supplierName,
+              unita: resolvedUnit,
+            })
+          : null;
+        const inventoryIndex =
+          stockKey || resolvedUnit
+            ? findInventarioIndexByDescriptor(items, {
+                stockKey,
+                descrizione: entry.descrizione,
+                fornitore: entry.supplierName,
+                unita: resolvedUnit,
+              })
+            : -1;
+        const inventoryMatchId = inventoryIndex >= 0 ? items[inventoryIndex].id : null;
+        const sourceLoadKey = buildNextMagazzinoStockLoadKey({
+          sourceType: "PROCUREMENT_ARRIVO",
+          sourceDocId: entry.id,
+          descrizione: entry.descrizione,
+          fornitore: entry.supplierName,
+          unita: resolvedUnit ?? entry.unita,
+          quantita: entry.quantita,
+          data: entry.arrivalDateLabel,
+        });
+        const duplicateBySource = items.some((item) =>
+          hasNextMagazzinoStockLoadKey(item.stockLoadKeys, sourceLoadKey),
+        );
+        const documentCoverage = documentoStockCandidates.find((candidate) => {
+          if (!candidate.duplicateBySource || !candidate.unita || !resolvedUnit) {
+            return false;
+          }
+          if (
+            !areNextMagazzinoUnitsCompatible(candidate.unita, resolvedUnit) ||
+            !sameMaterialIdentity(candidate, {
+              descrizione: entry.descrizione,
+              fornitore: entry.supplierName,
+            })
+          ) {
+            return false;
+          }
+          if (candidate.quantita === null || entry.quantita === null) {
+            return false;
+          }
+          if (Math.abs(candidate.quantita - entry.quantita) > 0.001) {
+            return false;
+          }
+          const dateDiff = absDateDiffDays(candidate.data, entry.arrivalDateLabel);
+          return dateDiff !== null && dateDiff <= PROCUREMENT_DEDUP_WINDOW_DAYS;
+        });
+
+        let blockedReason: string | null = null;
+        if (entry.quantita === null || entry.quantita <= 0) {
+          blockedReason = "Quantita arrivo non leggibile.";
+        } else if (!resolvedUnit) {
+          blockedReason = "Unita arrivo non supportata o non riconciliabile con inventario.";
+        } else if (documentCoverage) {
+          blockedReason =
+            "Arrivo gia coperto da un documento materiali consolidato: niente doppio carico automatico.";
+        } else if (duplicateBySource) {
+          blockedReason = "Questo arrivo procurement risulta gia consolidato in inventario.";
+        }
+
+        return {
+          id: entry.id,
+          orderId: entry.orderId,
+          orderReference: entry.orderReference,
+          materialId: entry.materialId,
+          descrizione: entry.descrizione,
+          fornitore: entry.supplierName,
+          quantita: entry.quantita,
+          data: entry.arrivalDateLabel,
+          unita: resolvedUnit,
+          unitaSource,
+          stockKey: stockKey ?? null,
+          inventoryMatchId,
+          sourceLoadKey,
+          duplicateBySource,
+          documentCoverageDocId: documentCoverage?.sourceDocId ?? null,
+          documentCoverageReason: documentCoverage
+            ? `Documento ${documentCoverage.sourceDocId} · ${formatStoredDateForUi(documentCoverage.data)}`
+            : null,
+          blockedReason,
+          canLoad: blockedReason === null,
+        } satisfies ProcurementStockRowCandidate;
+      })
+      .sort((left, right) => {
+        const rightTime = parseStoredDate(right.data)?.getTime() ?? 0;
+        const leftTime = parseStoredDate(left.data)?.getTime() ?? 0;
+        return rightTime - leftTime;
+      });
+  }, [documentoStockCandidates, items, procurementArrivedRows]);
 
   const inventarioFiltrato = items
     .filter((item) => {
@@ -1574,6 +2779,9 @@ export default function NextMagazzinoPage() {
   const documentiMagazzinoItems = (iaDocumentiSnapshot?.items ?? [])
     .filter((item) => item.sourceKey === "@documenti_magazzino")
     .slice(0, 6);
+  const documentoReadyCount = documentoStockCandidates.filter(
+    (item) => item.canLoad || item.canReconcileWithoutLoad,
+  ).length;
   const materialiCostItems = (documentiCostiSnapshot?.items ?? [])
     .filter(
       (item) =>
@@ -1593,14 +2801,15 @@ export default function NextMagazzinoPage() {
 
   const mediaGiorni = mediaDurataGiorni(cambi);
   const ultimoCambio = cambi.length ? cambi[cambi.length - 1] : null;
+  const capienzaUltimaCisterna = ultimoCambio?.quantitaLitri ?? LITRI_PER_CISTERNA;
   const litriConsumati = litriConsumatiStima(ultimoCambio, mediaGiorni);
-  const litriResidui = Math.max(LITRI_PER_CISTERNA - litriConsumati, 0);
-  const percentuale = percentualeConsumata(litriConsumati);
+  const litriResidui = Math.max(capienzaUltimaCisterna - litriConsumati, 0);
+  const percentuale = percentualeConsumata(litriConsumati, capienzaUltimaCisterna);
   const progressColor = coloreProgress(percentuale);
   const giorniPassatiUltimoCambio = ultimoCambio
     ? durataGiorni(ultimoCambio.data, storedToday())
     : 0;
-  const consumoMedio = mediaGiorni > 0 ? Math.round(LITRI_PER_CISTERNA / mediaGiorni) : 0;
+  const consumoMedio = mediaGiorni > 0 ? Math.round(capienzaUltimaCisterna / mediaGiorni) : 0;
   const inventarioTotale = items.length;
   const inventarioSottoSoglia = items.filter(
     (item) => getStockStatus(item) === "basso",
@@ -1797,6 +3006,7 @@ export default function NextMagazzinoPage() {
                           <div className="mag-item__row2">
                             <div className="mag-item__meta">
                               {item.fornitore || "Fornitore non indicato"} · {item.unita}
+                              {!hasSupportedUnit(item.unita) ? " · unita da verificare" : ""}
                               {typeof item.sogliaMinima === "number"
                                 ? ` · soglia ${formatNumber(item.sogliaMinima)}`
                                 : ""}
@@ -1806,7 +3016,7 @@ export default function NextMagazzinoPage() {
                                 type="button"
                                 className="mag-qty__btn"
                                 onClick={() => void handleDeltaQuantita(item.id, -1)}
-                                disabled={saving}
+                                disabled={saving || !hasSupportedUnit(item.unita)}
                               >
                                 −
                               </button>
@@ -1816,12 +3026,13 @@ export default function NextMagazzinoPage() {
                                 onChange={(event) =>
                                   void handleDirectQuantita(item.id, event.target.value)
                                 }
+                                disabled={!hasSupportedUnit(item.unita)}
                               />
                               <button
                                 type="button"
                                 className="mag-qty__btn"
                                 onClick={() => void handleDeltaQuantita(item.id, 1)}
-                                disabled={saving}
+                                disabled={saving || !hasSupportedUnit(item.unita)}
                               >
                                 +
                               </button>
@@ -1916,6 +3127,7 @@ export default function NextMagazzinoPage() {
                         </option>
                       ))}
                     </select>
+                    <div className="mag-field__hint">Unita ammesse: pz, lt, kg, mt.</div>
                   </div>
                 </div>
                 <div className="mag-field">
@@ -2331,6 +3543,9 @@ export default function NextMagazzinoPage() {
                         <span>~{litriResidui} lt rimasti</span>
                       </div>
                       <div className="mag-cis-card__footer">
+                        Carico registrato: {ultimoCambio.quantitaLitri ?? LITRI_PER_CISTERNA} lt
+                      </div>
+                      <div className="mag-cis-card__footer">
                         Stima fine: {stimaDataFine(ultimoCambio, mediaGiorni)}{" "}
                         {mediaGiorni > 0
                           ? `(tra ${Math.max(mediaGiorni - giorniPassatiUltimoCambio, 0)} giorni)`
@@ -2346,11 +3561,13 @@ export default function NextMagazzinoPage() {
                   <div className="mag-cis-card__title">Come funziona il calcolo</div>
                   <div className="mag-calc-copy">
                     La stima usa una media mobile sugli ultimi {N_CAMBI_MEDIA} intervalli
-                    disponibili. Ogni cisterna e considerata da 1000 litri e il consumo
-                    giornaliero viene ricavato dividendo 1000 per la durata media.
+                    disponibili. La cisterna attiva usa i litri registrati nel cambio e il
+                    consumo giornaliero viene ricavato dividendo quella quantita per la
+                    durata media.
                   </div>
                   <div className="mag-calc-stats">
                     <div>Ultimo cambio: {formatStoredDateForUi(ultimoCambio?.data)}</div>
+                    <div>Litri ultimo cambio: {ultimoCambio?.quantitaLitri ?? "â€”"}</div>
                     <div>Durata media prevista: {mediaGiorni || "—"} giorni</div>
                     <div>Giorni trascorsi: {ultimoCambio ? giorniPassatiUltimoCambio : "—"}</div>
                     <div>Consumo medio: {consumoMedio || "—"} lt/gg</div>
@@ -2380,7 +3597,9 @@ export default function NextMagazzinoPage() {
                     const nextEntry = ascIndex >= 0 ? sortedAsc[ascIndex + 1] : null;
                     const durata = nextEntry ? durataGiorni(cambio.data, nextEntry.data) : null;
                     const consumo =
-                      durata && durata > 0 ? Math.round(LITRI_PER_CISTERNA / durata) : null;
+                      durata && durata > 0
+                        ? Math.round((cambio.quantitaLitri ?? LITRI_PER_CISTERNA) / durata)
+                        : null;
 
                     return (
                       <div key={cambio.id} className="mag-log-row">
@@ -2388,7 +3607,8 @@ export default function NextMagazzinoPage() {
                           {formatStoredDateForUi(cambio.data)}
                         </span>
                         <span className="mag-log-row__cisterna">
-                          {cambio.numeroCisterna || "Cisterna"}
+                          {cambio.numeroCisterna || "Cisterna"} ·{" "}
+                          {cambio.quantitaLitri ?? LITRI_PER_CISTERNA} lt
                           {cambio.note ? (
                             <span className="mag-log-row__note">{cambio.note}</span>
                           ) : null}
@@ -2427,6 +3647,40 @@ export default function NextMagazzinoPage() {
                       onChange={(event) => setNumeroCisterna(event.target.value)}
                     />
                     <div className="mag-field__hint">Solo per tracciabilita.</div>
+                  </div>
+                </div>
+                <div className="mag-field-row">
+                  <div className="mag-field">
+                    <label className="mag-field__label">Litri scaricati</label>
+                    <input
+                      className="mag-field__input"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={quantitaCambioLitri}
+                      onChange={(event) => setQuantitaCambioLitri(event.target.value)}
+                    />
+                    <div className="mag-field__hint">
+                      Il cambio cisterna scarica questi litri da `@inventario`.
+                    </div>
+                  </div>
+                  <div className="mag-field">
+                    <label className="mag-field__label">Articolo AdBlue inventario</label>
+                    <select
+                      className="mag-field__input"
+                      value={adBlueInventarioRefId}
+                      onChange={(event) => setAdBlueInventarioRefId(event.target.value)}
+                    >
+                      <option value="">Seleziona articolo</option>
+                      {adBlueInventoryItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.descrizione} · {formatQuantita(item.quantita, item.unita)}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mag-field__hint">
+                      Se l'articolo AdBlue non esiste ancora, caricalo prima in inventario con unita `lt`.
+                    </div>
                   </div>
                 </div>
                 <div className="mag-field">
@@ -2502,10 +3756,297 @@ export default function NextMagazzinoPage() {
                   <button
                     type="button"
                     className="mag-btn mag-btn--sm"
-                    onClick={() => navigate(NEXT_ACQUISTI_PATH)}
+                    onClick={() => navigate(NEXT_MATERIALI_DA_ORDINARE_PATH)}
                   >
-                    Apri acquisti
+                    Apri procurement
                   </button>
+                </div>
+                <div className="mag-domain-sublist">
+                  <div className="mag-domain-subtitle">Carichi stock da arrivi procurement</div>
+                  <div className="mag-domain-note">
+                    Ordini e arrivi restano superfici di supporto/read-only nel procurement
+                    NEXT. Il writer stock canonico degli arrivi e qui: ogni riga arrivata puo
+                    essere consolidata in inventario solo dentro `Magazzino`, con deduplica
+                    prudente contro documenti gia caricati e contro le sorgenti gia consolidate.
+                  </div>
+                  <div className="mag-domain-metrics">
+                    <span className="mag-domain-chip">
+                      Righe arrivate: {procurementStockCandidates.length}
+                    </span>
+                    <span className="mag-domain-chip">
+                      Pronte: {procurementStockCandidates.filter((item) => item.canLoad).length}
+                    </span>
+                    <span className="mag-domain-chip">
+                      Bloccate:{" "}
+                      {procurementStockCandidates.filter((item) => !item.canLoad).length}
+                    </span>
+                  </div>
+                  {procurementStockCandidates.length === 0 ? (
+                    <div className="mag-empty mag-empty--compact">
+                      Nessun arrivo procurement pronto per il contratto stock.
+                    </div>
+                  ) : (
+                    <div className="mag-domain-list">
+                      {procurementStockCandidates.slice(0, 8).map((candidate) => (
+                        <div key={candidate.id} className="mag-domain-row">
+                          <div className="mag-domain-row__main">
+                            <div className="mag-domain-row__title">
+                              {candidate.descrizione}
+                              {" · "}
+                              {candidate.orderReference}
+                            </div>
+                            <div className="mag-domain-row__meta">
+                              {candidate.fornitore || "Fornitore non indicato"} ·{" "}
+                              {candidate.quantita !== null
+                                ? formatNumber(candidate.quantita)
+                                : "-"}{" "}
+                              {candidate.unita || "unita da definire"} ·{" "}
+                              {formatStoredDateForUi(candidate.data)}
+                            </div>
+                            <div className="mag-domain-note">
+                              {candidate.documentCoverageReason
+                                ? candidate.documentCoverageReason
+                                : candidate.inventoryMatchId
+                                  ? "Consolida sulla voce inventario esistente."
+                                  : "Crea una nuova voce inventario."}
+                              {" · "}
+                              {candidate.canLoad
+                                ? `Unita ${candidate.unita} (${candidate.unitaSource}).`
+                                : candidate.blockedReason || "Da verificare."}
+                            </div>
+                          </div>
+                          <div className="mag-domain-linkbar">
+                            <span className="mag-domain-chip">
+                              Unita {candidate.unita || "-"} · {candidate.unitaSource}
+                            </span>
+                            <button
+                              type="button"
+                              className="mag-btn mag-btn--sm"
+                              onClick={() => void handleCaricaArrivoInInventario(candidate.id)}
+                              disabled={
+                                saving ||
+                                procurementImportingId === candidate.id ||
+                                !candidate.canLoad
+                              }
+                            >
+                              {procurementImportingId === candidate.id
+                                ? "Carico..."
+                                : candidate.inventoryMatchId
+                                  ? "Consolida stock"
+                                  : "Carica in inventario"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="mag-domain-sublist">
+                  <div className="mag-domain-subtitle">
+                    Azione controllata IA su fattura magazzino
+                  </div>
+                  <div className="mag-domain-note">
+                    La IA interna puo proporre solo due azioni scriventi nel dominio
+                    documentale: riconciliare una fattura gia coperta da arrivo/materiale
+                    esistente, oppure caricare stock AdBlue non ancora consolidato.
+                    Tutto il resto resta bloccato o `DA VERIFICARE`.
+                  </div>
+                  {iaWarehouseDocumentAction === null ? (
+                    <div className="mag-empty mag-empty--compact">
+                      Nessun handoff IA fattura attivo su questa vista.
+                    </div>
+                  ) : iaWarehouseDocumentAction.candidate ? (
+                    <div className="mag-domain-list">
+                      <div className="mag-domain-row">
+                        <div className="mag-domain-row__main">
+                          <div className="mag-domain-row__title">
+                            {iaWarehouseDocumentAction.candidate.descrizione}
+                          </div>
+                          <div className="mag-domain-row__meta">
+                            {iaWarehouseDocumentAction.candidate.documentLabel} ·{" "}
+                            {iaWarehouseDocumentAction.candidate.fornitore ||
+                              "Fornitore non indicato"}{" "}
+                            ·{" "}
+                            {iaWarehouseDocumentAction.candidate.quantita !== null
+                              ? formatNumber(iaWarehouseDocumentAction.candidate.quantita)
+                              : "-"}{" "}
+                            {iaWarehouseDocumentAction.candidate.unita || "unita da definire"}
+                          </div>
+                          <div className="mag-domain-note">
+                            {iaWarehouseDocumentAction.message}
+                          </div>
+                        </div>
+                        <div className="mag-domain-linkbar">
+                          <span className="mag-domain-chip">
+                            Decisione IA:{" "}
+                            {iaWarehouseDocumentAction.candidate.decision ===
+                            "riconcilia_senza_carico"
+                              ? "riconcilia senza carico"
+                              : iaWarehouseDocumentAction.candidate.decision ===
+                                  "carica_stock_adblue"
+                                ? "carica stock AdBlue"
+                                : "da verificare"}
+                          </span>
+                          {iaWarehouseDocumentAction.candidate.canReconcileWithoutLoad ? (
+                            <button
+                              type="button"
+                              className="mag-btn mag-btn--sm"
+                              onClick={() =>
+                                void handleRiconciliaDocumentoSenzaCarico(
+                                  iaWarehouseDocumentAction.candidate.id,
+                                )
+                              }
+                              disabled={
+                                saving ||
+                                documentoImportingId ===
+                                  iaWarehouseDocumentAction.candidate.id
+                              }
+                            >
+                              {documentoImportingId ===
+                              iaWarehouseDocumentAction.candidate.id
+                                ? "Riconcilio..."
+                                : "Riconcilia senza carico"}
+                            </button>
+                          ) : iaWarehouseDocumentAction.candidate.canLoad ? (
+                            <button
+                              type="button"
+                              className="mag-btn mag-btn--sm"
+                              onClick={() =>
+                                void handleCaricaDocumentoInInventario(
+                                  iaWarehouseDocumentAction.candidate.id,
+                                )
+                              }
+                              disabled={
+                                saving ||
+                                documentoImportingId ===
+                                  iaWarehouseDocumentAction.candidate.id
+                              }
+                            >
+                              {documentoImportingId ===
+                              iaWarehouseDocumentAction.candidate.id
+                                ? "Carico..."
+                                : "Carica stock AdBlue"}
+                            </button>
+                          ) : (
+                            <span className="mag-domain-chip">DA VERIFICARE</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mag-empty mag-empty--compact">
+                      {iaWarehouseDocumentAction.message}
+                    </div>
+                  )}
+                </div>
+                <div className="mag-domain-sublist">
+                  <div className="mag-domain-subtitle">Carichi stock da documenti</div>
+                  <div className="mag-domain-note">
+                    Le righe `@documenti_magazzino.voci` non aprono piu un writer generico.
+                    Nel perimetro controllato possono solo:
+                    riconciliare senza carico una fattura gia coperta da arrivo/materiale
+                    esistente, oppure caricare stock AdBlue con UDM `lt`, match forte e
+                    anti-doppio-carico.
+                  </div>
+                  <div className="mag-domain-metrics">
+                    <span className="mag-domain-chip">
+                      Righe supporto: {documentoStockCandidates.length}
+                    </span>
+                    <span className="mag-domain-chip">
+                      Pronte: {documentoReadyCount}
+                    </span>
+                    <span className="mag-domain-chip">
+                      Bloccate: {documentoStockCandidates.length - documentoReadyCount}
+                    </span>
+                  </div>
+                  {documentoStockCandidates.length === 0 ? (
+                    <div className="mag-empty mag-empty--compact">
+                      Nessuna riga documento pronta per il contratto stock.
+                    </div>
+                  ) : (
+                    <div className="mag-domain-list">
+                      {documentoStockCandidates.slice(0, 8).map((candidate) => (
+                        <div key={candidate.id} className="mag-domain-row">
+                          <div className="mag-domain-row__main">
+                            <div className="mag-domain-row__title">{candidate.descrizione}</div>
+                            <div className="mag-domain-row__meta">
+                              {candidate.fornitore || "Fornitore non indicato"} ·{" "}
+                              {candidate.quantita !== null ? formatNumber(candidate.quantita) : "-"}{" "}
+                              {candidate.unita || "unità da definire"} ·{" "}
+                              {formatStoredDateForUi(candidate.data)}
+                            </div>
+                            <div className="mag-domain-note">
+                              {candidate.procurementCoverageReason
+                                ? candidate.procurementCoverageReason
+                                : candidate.inventoryMatchId
+                                  ? "Voce inventario esistente rilevata."
+                                  : "Nessuna voce inventario compatibile gia presente."}
+                              {" · "}
+                              {candidate.canReconcileWithoutLoad
+                                ? "Caso MARIBA: riconcilia senza aumentare lo stock."
+                                : candidate.canLoad
+                                  ? "Caso AdBlue: aumenta la giacenza inventario."
+                                  : candidate.blockedReason || "Da verificare."}
+                            </div>
+                          </div>
+                          <div className="mag-domain-linkbar">
+                            {candidate.unitaSource === "missing" ? (
+                              <select
+                                className="mag-field__input mag-field__input--inline"
+                                value={documentoManualUnits[candidate.id] ?? ""}
+                                onChange={(event) =>
+                                  handleDocumentoUnitChange(candidate.id, event.target.value)
+                                }
+                                disabled={saving}
+                              >
+                                <option value="">Unità</option>
+                                {NEXT_MAGAZZINO_STOCK_ALLOWED_UNITS.map((unit) => (
+                                  <option key={unit} value={unit}>
+                                    {unit}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="mag-domain-chip">
+                                Unita {candidate.unita || "-"} · {candidate.unitaSource}
+                              </span>
+                            )}
+                            {candidate.canReconcileWithoutLoad ? (
+                              <button
+                                type="button"
+                                className="mag-btn mag-btn--sm"
+                                onClick={() =>
+                                  void handleRiconciliaDocumentoSenzaCarico(candidate.id)
+                                }
+                                disabled={
+                                  saving || documentoImportingId === candidate.id
+                                }
+                              >
+                                {documentoImportingId === candidate.id
+                                  ? "Riconcilio..."
+                                  : "Riconcilia senza carico"}
+                              </button>
+                            ) : candidate.canLoad ? (
+                              <button
+                                type="button"
+                                className="mag-btn mag-btn--sm"
+                                onClick={() => void handleCaricaDocumentoInInventario(candidate.id)}
+                                disabled={
+                                  saving || documentoImportingId === candidate.id
+                                }
+                              >
+                                {documentoImportingId === candidate.id
+                                  ? "Carico..."
+                                  : "Carica stock AdBlue"}
+                              </button>
+                            ) : (
+                              <span className="mag-domain-chip">DA VERIFICARE</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {documentiMagazzinoItems.length === 0 ? (
                   <div className="mag-empty mag-empty--compact">
@@ -2626,9 +4167,9 @@ export default function NextMagazzinoPage() {
               <section className="mag-form-panel">
                 <div className="mag-form-title">Ordini e arrivi collegati</div>
                 <div className="mag-domain-copy">
-                  Sezione read-only sul procurement reale: ordini, arrivi, preventivi e
-                  dettaglio ordine restano writer esterni, ma qui diventano leggibili dal
-                  centro operativo Magazzino.
+                  Sezione di supporto sul procurement reale: ordini, arrivi, preventivi e
+                  dettaglio ordine restano leggibili in sola lettura, mentre il carico stock
+                  degli arrivi si consolida qui dal centro operativo `Magazzino`.
                 </div>
                 <div className="mag-domain-metrics">
                   <span className="mag-domain-chip">

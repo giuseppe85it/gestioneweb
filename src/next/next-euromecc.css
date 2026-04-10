@@ -761,7 +761,7 @@
 }
 
 .eur-modal-body--silo {
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.4fr);
   align-items: start;
 }
 

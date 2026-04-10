@@ -7,6 +7,7 @@ import {
 import { readNextMezzoOperativitaTecnicaSnapshot } from "../nextOperativitaTecnicaDomain";
 import {
   buildNextMezzoMaterialiMovimentiSnapshot,
+  readNextMagazzinoAdBlueSnapshot,
   readNextMagazzinoRealeSnapshot,
   readNextMaterialiMovimentiSnapshot,
 } from "../domain/nextMaterialiMovimentiDomain";
@@ -23,6 +24,7 @@ import { readNextColleghiSnapshot } from "../domain/nextColleghiDomain";
 import {
   readNextDocumentiCostiFleetSnapshot,
   readNextDocumentiCostiProcurementSupportSnapshot,
+  readNextIADocumentiArchiveSnapshot,
   readNextMezzoDocumentiCostiPeriodView,
   readNextProcurementReadOnlySnapshot,
 } from "../domain/nextDocumentiCostiDomain";
@@ -35,6 +37,13 @@ import {
 } from "../domain/nextLavoriDomain";
 import { readNextMezzoManutenzioniGommeSnapshot } from "../domain/nextManutenzioniGommeDomain";
 import { readNextOperativitaGlobaleSnapshot } from "../domain/nextOperativitaGlobaleDomain";
+import {
+  buildNextMagazzinoStockKey,
+  looksLikeNextMagazzinoAdBlueMaterial,
+  normalizeNextMagazzinoMaterialIdentity,
+  normalizeNextMagazzinoStockUnit,
+  normalizeNextMagazzinoSupplierIdentity,
+} from "../domain/nextMagazzinoStockContract";
 import { readNextProcurementSnapshot } from "../domain/nextProcurementDomain";
 import { readNextMezzoRifornimentiSnapshot } from "../domain/nextRifornimentiDomain";
 import { formatDateUI } from "../nextDateFormat";
@@ -494,8 +503,8 @@ const SCOPE_PATTERNS: ReadonlyArray<{ scope: InternalAiUnifiedScopeId; patterns:
   { scope: "manutenzioni", patterns: ["manutenzioni", "manutenzione"] },
   { scope: "gomme", patterns: ["gomme", "gomma"] },
   { scope: "rifornimenti", patterns: ["rifornimenti", "rifornimento", "consumi", "carburante", "gasolio", "diesel", "km/l", "km per lt", "km per litro", "l/100km", "litri per 100 km"] },
-  { scope: "materiali", patterns: ["materiali", "movimenti materiali", "consegne materiale", "attrezzature", "attrezzatura"] },
-  { scope: "inventario", patterns: ["inventario", "magazzino", "stock", "scorte"] },
+  { scope: "materiali", patterns: ["materiali", "movimenti materiali", "consegne materiale", "attrezzature", "attrezzatura", "adblue"] },
+  { scope: "inventario", patterns: ["inventario", "magazzino", "stock", "scorte", "adblue"] },
   { scope: "ordini", patterns: ["ordini", "ordine", "arrivi", "acquisti", "procurement"] },
   { scope: "preventivi", patterns: ["preventivi", "preventivo", "approvazioni", "approvazione", "capo costi", "preview"] },
   { scope: "fornitori", patterns: ["fornitori", "fornitore", "listino", "prezzi"] },
@@ -532,8 +541,8 @@ const SCOPE_SOURCE_MAP: Record<InternalAiUnifiedScopeId, string[]> = {
   manutenzioni: ["storage/@manutenzioni"],
   gomme: ["storage/@cambi_gomme_autisti_tmp", "storage/@gomme_eventi", "storage/@manutenzioni"],
   rifornimenti: ["storage/@rifornimenti", "storage/@rifornimenti_autisti_tmp"],
-  materiali: ["storage/@materialiconsegnati", "storage/@attrezzature_cantieri", "storage-path/materials"],
-  inventario: ["storage/@inventario", "storage-path/inventario"],
+  materiali: ["storage/@materialiconsegnati", "storage/@attrezzature_cantieri", "storage/@cisterne_adblue", "storage-path/materials"],
+  inventario: ["storage/@inventario", "storage/@cisterne_adblue", "storage-path/inventario"],
   ordini: ["storage/@ordini"],
   preventivi: ["storage/@preventivi", "storage/@preventivi_approvazioni", "storage-path/preventivi/ia"],
   fornitori: ["storage/@fornitori", "storage/@listino_prezzi"],
@@ -558,6 +567,7 @@ const UNIFIED_SOURCE_DESCRIPTORS: readonly UnifiedSourceDescriptor[] = [
   { sourceId: "storage/@rifornimenti_autisti_tmp", sourceLabel: "Rifornimenti da campo", domainCode: "D04", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@rifornimenti_autisti_tmp" },
   { sourceId: "storage/@materialiconsegnati", sourceLabel: "Movimenti materiali", domainCode: "D05", kind: "next_reader", readerLabel: "readNextMaterialiMovimentiSnapshot" },
   { sourceId: "storage/@inventario", sourceLabel: "Inventario", domainCode: "D05", kind: "next_reader", readerLabel: "readNextInventarioSnapshot" },
+  { sourceId: "storage/@cisterne_adblue", sourceLabel: "Eventi AdBlue", domainCode: "D05", kind: "next_reader", readerLabel: "readNextMagazzinoAdBlueSnapshot" },
   { sourceId: "storage/@attrezzature_cantieri", sourceLabel: "Attrezzature cantieri", domainCode: "D05", kind: "next_reader", readerLabel: "readNextAttrezzatureCantieriSnapshot" },
   { sourceId: "storage/@ordini", sourceLabel: "Ordini", domainCode: "D06", kind: "next_reader", readerLabel: "readNextProcurementSnapshot" },
   { sourceId: "storage/@preventivi", sourceLabel: "Preventivi", domainCode: "D06", kind: "raw_storage_doc", readerLabel: "Adapter raw read-only prudente", storageKey: "@preventivi", preferredArrayKeys: ["preventivi", "items", "value"] },
@@ -1203,6 +1213,7 @@ function inferPrimaryIntent(args: {
     args.explicitScopes.includes("inventario") ||
     args.normalizedPrompt.includes("magazzino") ||
     args.normalizedPrompt.includes("inventario") ||
+    args.normalizedPrompt.includes("adblue") ||
     args.normalizedPrompt.includes("material") ||
     args.normalizedPrompt.includes("attrezzatur") ||
     args.normalizedPrompt.includes("stock") ||
@@ -2080,6 +2091,43 @@ function buildInventarioSourceSnapshot(
   };
 }
 
+function buildAdBlueSourceSnapshot(
+  descriptor: UnifiedSourceDescriptor,
+  snapshot: Awaited<ReturnType<typeof readNextMagazzinoAdBlueSnapshot>>,
+): UnifiedSourceSnapshot {
+  return {
+    sourceId: descriptor.sourceId,
+    sourceLabel: descriptor.sourceLabel,
+    domainCode: descriptor.domainCode,
+    kind: descriptor.kind,
+    status: mapQualityToStatus(snapshot.limitations),
+    records: limitRecords(
+      snapshot.items.map((item) =>
+        buildBaseRecord({
+          sourceId: descriptor.sourceId,
+          sourceLabel: descriptor.sourceLabel,
+          id: item.id,
+          entityLabel: item.numeroCisterna ? `Cisterna ${item.numeroCisterna}` : "Cambio cisterna AdBlue",
+          summary: [
+            item.quantitaLitri !== null ? `${formatDecimal(item.quantitaLitri)} lt` : null,
+            item.data,
+            item.note,
+          ]
+            .filter(Boolean)
+            .join(" | "),
+          ts: item.timestamp,
+          reliability: reliabilityFromQuality(item.quality),
+          refIds: [item.id, item.inventarioRefId],
+          labels: [item.numeroCisterna, item.note, "AdBlue"],
+          flags: item.flags,
+        }),
+      ),
+    ),
+    notes: snapshot.limitations,
+    readerLabel: descriptor.readerLabel,
+  };
+}
+
 function buildAttrezzatureSourceSnapshot(
   descriptor: UnifiedSourceDescriptor,
   snapshot: Awaited<ReturnType<typeof readNextAttrezzatureCantieriSnapshot>>,
@@ -2454,6 +2502,7 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
       operativitaGlobaleResult,
       materialiResult,
       inventarioResult,
+      adBlueResult,
       attrezzatureResult,
       procurementResult,
       fornitoriResult,
@@ -2469,6 +2518,7 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
       readNextOperativitaGlobaleSnapshot(),
       readNextMaterialiMovimentiSnapshot(),
       readNextInventarioSnapshot(),
+      readNextMagazzinoAdBlueSnapshot(),
       readNextAttrezzatureCantieriSnapshot(),
       readNextProcurementSnapshot(),
       readNextFornitoriSnapshot(),
@@ -2500,6 +2550,9 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
             break;
           case "storage/@inventario":
             if (inventarioResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildInventarioSourceSnapshot(descriptor, inventarioResult.value));
+            break;
+          case "storage/@cisterne_adblue":
+            if (adBlueResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildAdBlueSourceSnapshot(descriptor, adBlueResult.value));
             break;
           case "storage/@attrezzature_cantieri":
             if (attrezzatureResult.status === "fulfilled") sourceMap.set(descriptor.sourceId, buildAttrezzatureSourceSnapshot(descriptor, attrezzatureResult.value));
@@ -4368,14 +4421,533 @@ function composeVehicleMaterialsAssistantText(args: {
     (bullets.length > 0
       ? "Verificare prima i movimenti materiali piu recenti e confermare se esistono collegamenti forti con il mezzo."
       : "Usare D05 in sola lettura: se serve una conferma piena sul mezzo, controllare i movimenti con aggancio targa forte.");
+  const stockBullets = bullets
+    .filter((entry) => /magazzino critico|stock|inventari/i.test(entry))
+    .slice(0, 4);
+  const movementBullets = bullets
+    .filter((entry) => /movimenti materiali|match forti|match prudenziali|attrezzature/i.test(entry))
+    .slice(0, 5);
+  const criticalBullets = dedupeStrings([
+    ...notes,
+    sanitizeBusinessText(action),
+  ]).slice(0, 5);
 
   return [
     `Materiali e magazzino ${args.targa}`,
     `Sintesi breve: ${summary}`,
-    formatBulletBlock("Dati principali", bullets.slice(0, 4)),
-    formatBulletBlock("Limiti", notes),
-    formatBulletBlock("Azione consigliata", [sanitizeBusinessText(action)]),
+    formatBulletBlock(
+      "Stock",
+      stockBullets.length > 0
+        ? stockBullets
+        : ["DA VERIFICARE: il blocco materiali del mezzo non espone un articolo inventario critico con match forte nel periodo richiesto."],
+    ),
+    formatBulletBlock(
+      "Movimenti",
+      movementBullets.length > 0
+        ? movementBullets
+        : ["Nessun movimento materiali con aggancio forte alla targa nel periodo richiesto."],
+    ),
+    formatBulletBlock(
+      "Documenti / Fatture",
+      ["DA VERIFICARE: questa risposta mezzo-centrica non incrocia automaticamente documenti o fatture del dominio Magazzino."],
+    ),
+    formatBulletBlock(
+      "Preventivi",
+      ["DA VERIFICARE: i preventivi procurement non entrano in questa risposta materiali se non richiesti in modo esplicito."],
+    ),
+    formatBulletBlock(
+      "Costi di supporto",
+      ["DA VERIFICARE: il costo materiali non viene ricostruito qui se la richiesta resta focalizzata solo sui movimenti della targa."],
+    ),
+    formatBulletBlock("Criticita / DA VERIFICARE", criticalBullets),
   ].join("\n\n");
+}
+
+function normalizeWarehouseMaterialFilter(spec: UnifiedQuerySpec): string | null {
+  const explicit = normalizeNextMagazzinoMaterialIdentity(spec.entityHints.materiale);
+  if (explicit) {
+    return explicit;
+  }
+
+  if (spec.normalizedPrompt.includes("adblue")) {
+    return normalizeNextMagazzinoMaterialIdentity("AdBlue");
+  }
+
+  return null;
+}
+
+function normalizeWarehouseSupplierFilter(spec: UnifiedQuerySpec): string | null {
+  return normalizeNextMagazzinoSupplierIdentity(spec.entityHints.fornitore);
+}
+
+function normalizeWarehouseCandidateToken(value: unknown): string | null {
+  const normalized = normalizeNextMagazzinoMaterialIdentity(value);
+  return normalized || null;
+}
+
+function matchesWarehouseToken(filterToken: string | null, candidateToken: string | null): boolean {
+  if (!filterToken) {
+    return true;
+  }
+  if (!candidateToken) {
+    return false;
+  }
+  return candidateToken.includes(filterToken) || filterToken.includes(candidateToken);
+}
+
+function matchesWarehouseMaterialFilter(
+  filterToken: string | null,
+  ...values: Array<unknown>
+): boolean {
+  if (!filterToken) {
+    return true;
+  }
+
+  return values.some((value) =>
+    matchesWarehouseToken(filterToken, normalizeWarehouseCandidateToken(value)),
+  );
+}
+
+function matchesWarehouseSupplierFilter(
+  filterToken: string | null,
+  ...values: Array<unknown>
+): boolean {
+  if (!filterToken) {
+    return true;
+  }
+
+  return values.some((value) =>
+    matchesWarehouseToken(filterToken, normalizeNextMagazzinoSupplierIdentity(value)),
+  );
+}
+
+function matchesWarehouseTargaFilter(
+  filterTarga: string | null,
+  ...values: Array<unknown>
+): boolean {
+  if (!filterTarga) {
+    return true;
+  }
+
+  return values.some((value) => normalizeNextMezzoTarga(value) === filterTarga);
+}
+
+function shouldUseWarehouseCrossReadModel(spec: UnifiedQuerySpec): boolean {
+  if (spec.normalizedTarga) {
+    return false;
+  }
+
+  const hasWarehouseSignal =
+    spec.scopes.includes("materiali") ||
+    spec.scopes.includes("inventario") ||
+    spec.normalizedPrompt.includes("magazzin") ||
+    spec.normalizedPrompt.includes("inventari") ||
+    spec.normalizedPrompt.includes("stock") ||
+    spec.normalizedPrompt.includes("scort") ||
+    spec.normalizedPrompt.includes("material") ||
+    spec.normalizedPrompt.includes("consegn") ||
+    spec.normalizedPrompt.includes("adblue");
+  const hasCrossSourceSignal =
+    spec.normalizedPrompt.includes("document") ||
+    spec.normalizedPrompt.includes("fattur") ||
+    spec.normalizedPrompt.includes("preventiv") ||
+    spec.normalizedPrompt.includes("fornitor") ||
+    spec.normalizedPrompt.includes("ordin") ||
+    spec.normalizedPrompt.includes("arriv") ||
+    spec.normalizedPrompt.includes("listino") ||
+    spec.normalizedPrompt.includes("cost") ||
+    spec.normalizedPrompt.includes("incongruen") ||
+    spec.normalizedPrompt.includes("incroci") ||
+    spec.normalizedPrompt.includes("riepilog");
+
+  return hasWarehouseSignal && hasCrossSourceSignal;
+}
+
+async function buildWarehouseStructuredQueryResult(args: {
+  spec: UnifiedQuerySpec;
+  periodContext: InternalAiReportPeriodContext;
+}): Promise<{
+  assistantText: string;
+  reliabilityLabel: string;
+  status: InternalAiChatExecutionStatus;
+  extraLabels: string[];
+}> {
+  const materialFilter = normalizeWarehouseMaterialFilter(args.spec);
+  const supplierFilter = normalizeWarehouseSupplierFilter(args.spec);
+  const targaFilter = args.spec.entityHints.targa
+    ? normalizeNextMezzoTarga(args.spec.entityHints.targa)
+    : null;
+  const adBlueFocus =
+    args.spec.normalizedPrompt.includes("adblue") ||
+    looksLikeNextMagazzinoAdBlueMaterial(args.spec.entityHints.materiale ?? materialFilter ?? "");
+
+  const [magazzino, documentiFleet, iaArchive, procurement] = await Promise.all([
+    readNextMagazzinoRealeSnapshot(),
+    readNextDocumentiCostiFleetSnapshot(),
+    readNextIADocumentiArchiveSnapshot({ includeCloneDocuments: false }),
+    readNextProcurementSnapshot(),
+  ]);
+  const legacyWarehouseOverview = composeWarehouseAssistantText({
+    prompt: args.spec.visiblePrompt,
+    snapshot: magazzino,
+    periodContext: args.periodContext,
+  });
+  const legacyWarehouseSummary =
+    legacyWarehouseOverview
+      .split("\n\n")
+      .find((entry) => entry.startsWith("Sintesi breve:"))
+      ?.replace(/^Sintesi breve:\s*/, "")
+      .trim() ?? null;
+
+  const inventoryItems = magazzino.inventory.items.map((item) => ({
+    ...item,
+    stockKey:
+      buildNextMagazzinoStockKey({
+        descrizione: item.descrizione,
+        fornitore: item.fornitore,
+        unita: item.unita,
+      }) ?? null,
+  }));
+
+  const inventoryMatches = inventoryItems.filter((item) => {
+    const adBlueCandidate =
+      looksLikeNextMagazzinoAdBlueMaterial(item.descrizione) ||
+      looksLikeNextMagazzinoAdBlueMaterial(item.stockKey ?? "");
+    return (
+      matchesWarehouseMaterialFilter(materialFilter, item.descrizione, item.stockKey) &&
+      matchesWarehouseSupplierFilter(supplierFilter, item.fornitore) &&
+      (!adBlueFocus || adBlueCandidate)
+    );
+  });
+  const inventoryMatchIds = new Set(inventoryMatches.map((item) => item.id));
+  const inventoryMatchStockKeys = new Set(
+    inventoryMatches
+      .map((item) => item.stockKey)
+      .filter((item): item is string => Boolean(item)),
+  );
+
+  const movementMatches = magazzino.materials.items.filter((item) => {
+    const linkedToInventory =
+      (item.inventarioRefId && inventoryMatchIds.has(item.inventarioRefId)) ||
+      (item.stockKey && inventoryMatchStockKeys.has(item.stockKey));
+    return (
+      isTsInPeriod(item.timestamp, args.periodContext) &&
+      matchesWarehouseTargaFilter(
+        targaFilter,
+        item.targa,
+        item.mezzoTarga,
+        item.destinatario.label,
+        item.destinatario.refId,
+      ) &&
+      (linkedToInventory ||
+        matchesWarehouseMaterialFilter(
+          materialFilter,
+          item.materiale,
+          item.descrizione,
+          item.stockKey,
+        )) &&
+      matchesWarehouseSupplierFilter(supplierFilter, item.fornitore)
+    );
+  });
+
+  const adBlueEvents = magazzino.adBlue.items.filter(
+    (item) =>
+      isTsInPeriod(item.timestamp, args.periodContext) &&
+      (!adBlueFocus ||
+        inventoryMatchIds.has(item.inventarioRefId ?? "") ||
+        matchesWarehouseMaterialFilter(materialFilter, item.stockKey, "AdBlue")),
+  );
+
+  const materialSupportRows = documentiFleet.materialCostSupport.documents.flatMap((document) =>
+    document.voci
+      .filter((row) => {
+        const hasMaterialMatch = matchesWarehouseMaterialFilter(
+          materialFilter,
+          row.descrizione,
+        );
+        const hasSupplierMatch = matchesWarehouseSupplierFilter(
+          supplierFilter,
+          document.fornitore,
+        );
+        const adBlueRow =
+          looksLikeNextMagazzinoAdBlueMaterial(row.descrizione ?? "") ||
+          looksLikeNextMagazzinoAdBlueMaterial(document.fornitore ?? "");
+        return hasMaterialMatch && hasSupplierMatch && (!adBlueFocus || adBlueRow);
+      })
+      .map((row) => ({ document, row })),
+  );
+
+  const fleetDocuments = documentiFleet.items.filter(
+    (item) =>
+      item.sourceCollection === "@documenti_magazzino" &&
+      matchesWarehouseSupplierFilter(supplierFilter, item.supplier) &&
+      (!materialFilter ||
+        matchesWarehouseMaterialFilter(
+          materialFilter,
+          item.title,
+          item.descrizione,
+        ) ||
+        materialSupportRows.some((entry) => entry.document.sourceDocId === item.sourceDocId)),
+  );
+
+  const archiveDocuments = iaArchive.items.filter(
+    (item) =>
+      item.sourceKey === "@documenti_magazzino" &&
+      matchesWarehouseSupplierFilter(supplierFilter, item.fornitore) &&
+      (!materialFilter ||
+        matchesWarehouseMaterialFilter(
+          materialFilter,
+          item.testo,
+          item.numeroDocumento,
+        )),
+  );
+
+  const procurementOrders = procurement.orders.filter(
+    (item) =>
+      matchesWarehouseSupplierFilter(supplierFilter, item.supplierName) &&
+      (!materialFilter ||
+        item.materials.some((row) =>
+          matchesWarehouseMaterialFilter(materialFilter, row.descrizione),
+        ) ||
+        item.materialPreview.some((entry) =>
+          matchesWarehouseMaterialFilter(materialFilter, entry),
+        )),
+  );
+
+  const procurementPreventivi = procurement.preventivi.filter(
+    (item) =>
+      matchesWarehouseSupplierFilter(supplierFilter, item.supplierName) &&
+      (!materialFilter ||
+        item.rows.some((row) =>
+          matchesWarehouseMaterialFilter(materialFilter, row.descrizione),
+        ) ||
+        item.materialsPreview.some((entry) =>
+          matchesWarehouseMaterialFilter(materialFilter, entry),
+        )),
+  );
+
+  const procurementListino = procurement.listino.filter(
+    (item) =>
+      matchesWarehouseSupplierFilter(supplierFilter, item.supplierName) &&
+      (!materialFilter ||
+        matchesWarehouseMaterialFilter(
+          materialFilter,
+          item.articoloCanonico,
+          item.codiceArticolo,
+          item.note,
+        )),
+  );
+
+  const stockBullets = [
+    inventoryMatches.length > 0
+      ? `Articoli inventario con match: ${formatCount(inventoryMatches.length)}.`
+      : null,
+    ...inventoryMatches.slice(0, 4).map((item) => {
+      const quantitaLabel =
+        item.quantita !== null
+          ? `${formatDecimal(item.quantita)} ${normalizeNextMagazzinoStockUnit(item.unita) ?? item.unita ?? ""}`.trim()
+          : "quantita DA VERIFICARE";
+      return `${sanitizeBusinessText(item.descrizione)} | ${quantitaLabel}${item.fornitore ? ` | fornitore ${sanitizeBusinessText(item.fornitore)}` : ""}`;
+    }),
+    adBlueFocus && magazzino.adBlue.counts.total > 0
+      ? `AdBlue inventario: ${inventoryMatches.length > 0 ? `${formatCount(inventoryMatches.length)} articoli collegati` : "nessun articolo inventario con match forte"} | eventi cisterna ${formatCount(adBlueEvents.length)}.`
+      : null,
+    !materialFilter && !supplierFilter && !targaFilter
+      ? `Inventario globale: ${formatCount(magazzino.counts.inventoryItems)} articoli | critici ${formatCount(magazzino.counts.inventoryCritical)}.`
+      : null,
+    !materialFilter && !supplierFilter && !targaFilter && legacyWarehouseSummary
+      ? legacyWarehouseSummary
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const movementBullets = [
+    movementMatches.length > 0
+      ? `Movimenti materiali leggibili nel periodo ${args.periodContext.label}: ${formatCount(movementMatches.length)}.`
+      : null,
+    ...movementMatches.slice(0, 5).map((item) => {
+      const quantitaLabel =
+        item.quantita !== null
+          ? `${formatDecimal(item.quantita)} ${item.unita ?? ""}`.trim()
+          : "quantita DA VERIFICARE";
+      const target = item.destinatario.label ?? item.mezzoTarga ?? item.targa ?? "destinatario DA VERIFICARE";
+      return `${item.data ?? "data DA VERIFICARE"} | ${sanitizeBusinessText(item.materiale ?? item.descrizione ?? item.id)} | ${quantitaLabel} | verso ${sanitizeBusinessText(target)}`;
+    }),
+    adBlueEvents.length > 0
+      ? `Eventi AdBlue nel periodo: ${formatCount(adBlueEvents.length)} | litri registrati ${formatDecimal(adBlueEvents.reduce((total, item) => total + (item.quantitaLitri ?? 0), 0))} lt.`
+      : null,
+    adBlueFocus && inventoryMatches.length > 0 && adBlueEvents.length === 0
+      ? "Nessun cambio cisterna AdBlue leggibile nel periodo richiesto."
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const documentBullets = [
+    materialSupportRows.length > 0
+      ? `Righe ` + "`@documenti_magazzino`" + ` con match materiale/fornitore: ${formatCount(materialSupportRows.length)}.`
+      : null,
+    ...materialSupportRows.slice(0, 4).map(({ document, row }) => {
+      const prezzoLabel =
+        row.prezzoUnitario !== null
+          ? formatCurrencyByCode(row.prezzoUnitario, "EUR")
+          : row.importo !== null
+            ? formatCurrencyByCode(row.importo, "EUR")
+            : "importo DA VERIFICARE";
+      return `${document.data ?? "data DA VERIFICARE"} | ${sanitizeBusinessText(row.descrizione ?? "voce documento")} | ${prezzoLabel}${document.fornitore ? ` | ${sanitizeBusinessText(document.fornitore)}` : ""}`;
+    }),
+    ...fleetDocuments.slice(0, 3).map(
+      (item) =>
+        `${item.dateLabel ?? "data DA VERIFICARE"} | ${sanitizeBusinessText(item.title)}${item.amount !== null && (item.currency === "EUR" || item.currency === "CHF") ? ` | ${formatCurrencyByCode(item.amount, item.currency)}` : ""}`,
+    ),
+    ...archiveDocuments.slice(0, 2).map(
+      (item) =>
+        `${item.dataDocumento ?? "data DA VERIFICARE"} | ${sanitizeBusinessText(item.tipoDocumento)}${item.numeroDocumento ? ` ${sanitizeBusinessText(item.numeroDocumento)}` : ""}${item.fornitore ? ` | ${sanitizeBusinessText(item.fornitore)}` : ""}${item.daVerificare ? " | DA VERIFICARE" : ""}`,
+    ),
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const preventiviBullets = [
+    procurementOrders.length > 0
+      ? `Ordini procurement collegabili: ${formatCount(procurementOrders.length)}.`
+      : null,
+    ...procurementOrders.slice(0, 3).map(
+      (item) =>
+        `${sanitizeBusinessText(item.orderReference || item.id)} | ${sanitizeBusinessText(item.supplierName)} | stato ${item.state}${item.latestArrivalLabel ? ` | ultimo arrivo ${item.latestArrivalLabel}` : ""}`,
+    ),
+    procurementPreventivi.length > 0
+      ? `Preventivi collegabili: ${formatCount(procurementPreventivi.length)}.`
+      : null,
+    ...procurementPreventivi.slice(0, 3).map(
+      (item) =>
+        `${sanitizeBusinessText(item.numeroPreventivo || item.id)} | ${sanitizeBusinessText(item.supplierName)} | approvazione ${item.approvalStatus}${item.totalAmount !== null ? ` | ${formatCurrencyByCode(item.totalAmount, item.currency === "CHF" ? "CHF" : "EUR")}` : ""}`,
+    ),
+    procurementListino.length > 0
+      ? `Voci listino di supporto: ${formatCount(procurementListino.length)}.`
+      : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const costSupportBullets = [
+    ...materialSupportRows
+      .filter((entry) => entry.row.prezzoUnitario !== null || entry.row.importo !== null)
+      .slice(0, 3)
+      .map(({ document, row }) => {
+        const amount =
+          row.prezzoUnitario !== null
+            ? formatCurrencyByCode(row.prezzoUnitario, "EUR")
+            : row.importo !== null
+              ? formatCurrencyByCode(row.importo, "EUR")
+              : "importo DA VERIFICARE";
+        return `${sanitizeBusinessText(row.descrizione ?? "voce documento")} | supporto documento ${amount}${document.fornitore ? ` | ${sanitizeBusinessText(document.fornitore)}` : ""}`;
+      }),
+    ...procurementListino
+      .filter((item) => item.prezzoAttuale !== null)
+      .slice(0, 3)
+      .map(
+        (item) =>
+          `${sanitizeBusinessText(item.articoloCanonico)} | listino ${formatCurrencyByCode(item.prezzoAttuale ?? 0, item.valuta === "CHF" ? "CHF" : "EUR")}${item.supplierName ? ` | ${sanitizeBusinessText(item.supplierName)}` : ""}`,
+      ),
+  ];
+
+  const criticalBullets = dedupeStrings([
+    materialFilter &&
+    inventoryMatches.length === 0 &&
+    (movementMatches.length > 0 ||
+      materialSupportRows.length > 0 ||
+      procurementOrders.length > 0 ||
+      procurementPreventivi.length > 0)
+      ? "Sono presenti movimenti, documenti o procurement di supporto, ma nessun articolo inventario con match forte sul materiale richiesto."
+      : null,
+    targaFilter &&
+    movementMatches.some((item) =>
+      item.flags.some((flag) =>
+        ["link_mezzo_da_destinatario", "destinatario_refid_non_targa"].includes(flag),
+      ),
+    )
+      ? "Una parte dei movimenti verso mezzo usa ancora un aggancio prudente via destinatario e va trattata `DA VERIFICARE`."
+      : null,
+    adBlueFocus &&
+    magazzino.adBlue.counts.total > 0 &&
+    magazzino.adBlue.counts.withReliableQuantity < magazzino.adBlue.counts.total
+      ? "Lo storico AdBlue contiene eventi senza litri affidabili: i totali restano parziali."
+      : null,
+    !materialFilter && !supplierFilter && magazzino.counts.inventoryCritical > 0
+      ? `${formatCount(magazzino.counts.inventoryCritical)} articoli inventario risultano critici nel dominio stock.`
+      : null,
+    ...magazzino.limitations.slice(0, 2),
+    ...documentiFleet.limitations.slice(0, 1),
+    ...procurement.limitations.slice(0, 1),
+  ]).slice(0, 6);
+
+  const focusLabels = [
+    materialFilter ? `materiale ${sanitizeBusinessText(args.spec.entityHints.materiale ?? "selezionato")}` : null,
+    supplierFilter ? `fornitore ${sanitizeBusinessText(args.spec.entityHints.fornitore ?? "selezionato")}` : null,
+    targaFilter ? `targa ${targaFilter}` : null,
+    adBlueFocus ? "AdBlue" : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const realDataCount =
+    stockBullets.length +
+    movementBullets.length +
+    documentBullets.length +
+    preventiviBullets.length +
+    costSupportBullets.length;
+  const status: InternalAiChatExecutionStatus = realDataCount > 0 ? "completed" : "partial";
+  const reliabilityLabel =
+    realDataCount > 0 && (inventoryMatches.length > 0 || materialSupportRows.length > 0 || adBlueEvents.length > 0)
+      ? "Parziale"
+      : "Da verificare";
+  const summary = focusLabels.length > 0
+    ? `Riepilogo Magazzino su ${focusLabels.join(" / ")}: stock ${formatCount(inventoryMatches.length)}, movimenti ${formatCount(movementMatches.length)}, documenti ${formatCount(documentBullets.length)}, preventivi ${formatCount(procurementPreventivi.length)}.`
+    : `Riepilogo Magazzino globale: inventario ${formatCount(magazzino.counts.inventoryItems)}, movimenti ${formatCount(magazzino.counts.materialMovements)}, eventi AdBlue ${formatCount(magazzino.adBlue.counts.total)}, documenti magazzino ${formatCount(documentiFleet.sourceCounts.documentiMagazzino)}.`;
+
+  return {
+    assistantText: [
+      "Magazzino reale",
+      `Sintesi breve: ${summary}`,
+      formatBulletBlock(
+        "Stock",
+        stockBullets.length > 0
+          ? stockBullets
+          : ["Nessun articolo inventario con match forte sui filtri richiesti."],
+      ),
+      formatBulletBlock(
+        "Movimenti",
+        movementBullets.length > 0
+          ? movementBullets
+          : ["Nessun movimento materiali leggibile sui filtri richiesti nel periodo selezionato."],
+      ),
+      formatBulletBlock(
+        "Documenti / Fatture",
+        documentBullets.length > 0
+          ? documentBullets
+          : ["Nessun documento o fattura di magazzino con match forte sui filtri richiesti."],
+      ),
+      formatBulletBlock(
+        "Preventivi",
+        preventiviBullets.length > 0
+          ? preventiviBullets
+          : ["Nessun preventivo o supporto procurement con match forte sui filtri richiesti."],
+      ),
+      formatBulletBlock(
+        "Costi di supporto",
+        costSupportBullets.length > 0
+          ? costSupportBullets
+          : ["Nessun prezzo o importo di supporto leggibile sui filtri richiesti."],
+      ),
+      formatBulletBlock(
+        "Criticita / DA VERIFICARE",
+        criticalBullets.length > 0
+          ? criticalBullets
+          : ["Nessuna criticita aggiuntiva oltre ai limiti del perimetro IA Magazzino: la sola deroga scrivente resta sulle fatture magazzino con anti-doppio-carico."],
+      ),
+    ].join("\n\n"),
+    reliabilityLabel,
+    status,
+    extraLabels: dedupeStrings([
+      focusLabels.length > 0 ? `Filtro Magazzino: ${focusLabels.join(" | ")}` : "Filtro Magazzino: panoramica globale",
+      `Dataset letti: @inventario, @materialiconsegnati, @cisterne_adblue, @documenti_magazzino, @ordini, @preventivi, @preventivi_approvazioni, @listino_prezzi`,
+      args.spec.periodExplicitRequested
+        ? `Periodo richiesto: ${args.periodContext.label}`
+        : `Periodo di default: ${args.periodContext.label}`,
+    ]),
+  };
 }
 
 function composeWarehouseAssistantText(args: {
@@ -4405,7 +4977,7 @@ function composeWarehouseAssistantText(args: {
     args.snapshot.limitations.slice(0, 6).map((entry) => sanitizeBusinessText(entry)),
   ).slice(0, 5);
   const summary = focusIsReadOnly
-    ? "L'area magazzino del clone NEXT e operativa solo in lettura: i dati sono leggibili e utili per la IA, ma nessuna scrittura stock o consegna e attiva."
+    ? "L'area magazzino del clone NEXT resta read-only per la IA su stock, consegne, ordini, preventivi e manutenzioni; l'unica deroga attiva riguarda le fatture magazzino con riconciliazione senza carico o carico stock AdBlue protetto da anti-doppio-carico."
     : focusIsVehicleLinks
       ? `Ho trovato ${formatCount(args.snapshot.vehicleLinks.length)} collegamenti materiali verso mezzi, di cui ${formatCount(args.snapshot.counts.vehicleLinksStrong)} forti e ${formatCount(args.snapshot.counts.vehicleLinksPlausible)} prudenziali, nel perimetro ${args.periodContext.label}.`
       : `${formatCount(args.snapshot.attentionSignals.length)} segnali D05 richiedono attenzione; oggi leggo ${formatCount(args.snapshot.counts.inventoryItems)} articoli inventario, ${formatCount(args.snapshot.counts.materialMovements)} movimenti materiali e ${formatCount(args.snapshot.counts.attrezzatureMovements)} movimenti attrezzature nel perimetro ${args.periodContext.label}.`;
@@ -4414,7 +4986,7 @@ function composeWarehouseAssistantText(args: {
         `Stato area: ${args.snapshot.operationalStatus.label}`,
         args.snapshot.operationalStatus.summary,
         `Stock critico leggibile: ${formatCount(args.snapshot.counts.inventoryCritical)}`,
-        `Scritture abilitate: no`,
+        "Scritture abilitate via IA: solo fatture magazzino, con riconciliazione senza carico o carico stock AdBlue.",
       ]
     : focusIsVehicleLinks
       ? materialLinkSignals.map(
@@ -6615,6 +7187,7 @@ async function runWarehouseUnifiedQuery(
 ): Promise<InternalAiUnifiedExecutionResult> {
   const plan = buildUnifiedQueryPlan(spec);
   const periodContext = resolveInternalAiReportPeriodContext(spec.periodInput);
+  const crossReadMode = spec.primaryIntent !== "warehouse_attention";
 
   if (spec.periodExplicitRequested && (!spec.periodResolved || !periodContext.isValid)) {
     return {
@@ -6632,35 +7205,22 @@ async function runWarehouseUnifiedQuery(
     };
   }
 
-  const magazzino = await readNextMagazzinoRealeSnapshot();
-  const reliabilityLabel =
-    magazzino.attentionSignals.length > 0 ||
-    magazzino.counts.vehicleLinksStrong > 0 ||
-    magazzino.counts.inventoryCritical > 0
-      ? "Parziale"
-      : "Da verificare";
+  const structured = await buildWarehouseStructuredQueryResult({
+    spec,
+    periodContext,
+  });
 
   return {
     intent: "richiesta_generica",
-    status:
-      magazzino.attentionSignals.length > 0 || magazzino.vehicleLinks.length > 0
-        ? "completed"
-        : "partial",
-    assistantText: composeWarehouseAssistantText({
-      prompt: spec.visiblePrompt,
-      snapshot: magazzino,
-      periodContext,
-    }),
+    status: structured.status,
+    assistantText: structured.assistantText,
     references: buildUnifiedReferences({
-      reliabilityLabel,
-      domainLabel: plan.domainLabel,
-      outputLabel: plan.outputLabel,
-      extraLabels: [
-        `Stato area D05: ${magazzino.operationalStatus.label}`,
-        spec.periodExplicitRequested
-          ? `Periodo richiesto: ${periodContext.label}. Su D05 globale l'inventario resta fotografia attuale e i movimenti usano il filtro solo quando la data e leggibile.`
-          : "D05 globale usa inventario corrente e movimenti/attrezzature read-only con limiti dichiarati.",
-      ],
+      reliabilityLabel: structured.reliabilityLabel,
+      domainLabel: crossReadMode
+        ? "D05 Magazzino reale, inventario, documenti di magazzino e supporti procurement"
+        : plan.domainLabel,
+      outputLabel: crossReadMode ? "analisi strutturata magazzino" : plan.outputLabel,
+      extraLabels: structured.extraLabels,
     }),
     report: null,
   };
@@ -6784,7 +7344,10 @@ export async function runInternalAiUnifiedIntelligenceQuery(prompt: string, fall
   if (spec.primaryIntent === "drivers_readonly") {
     return runDriversUnifiedQuery(spec);
   }
-  if (spec.primaryIntent === "warehouse_attention") {
+  if (
+    spec.primaryIntent === "warehouse_attention" ||
+    shouldUseWarehouseCrossReadModel(spec)
+  ) {
     return runWarehouseUnifiedQuery(spec);
   }
   if (spec.primaryIntent === "procurement_readonly") {

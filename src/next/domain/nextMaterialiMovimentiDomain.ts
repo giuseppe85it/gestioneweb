@@ -10,6 +10,10 @@ import {
   type NextAttrezzatureCantieriSnapshot,
 } from "./nextAttrezzatureCantieriDomain";
 import {
+  buildNextMagazzinoStockKey,
+  normalizeNextMagazzinoStockUnitLoose,
+} from "./nextMagazzinoStockContract";
+import {
   readNextInventarioSnapshot,
   type NextInventarioSnapshot,
 } from "./nextInventarioDomain";
@@ -20,6 +24,7 @@ import type {
 
 const STORAGE_COLLECTION = "storage";
 const MATERIALI_MOVIMENTI_DATASET_KEY = "@materialiconsegnati";
+const CISTERNE_ADBLUE_DATASET_KEY = "@cisterne_adblue";
 
 type RawRecord = Record<string, unknown>;
 
@@ -114,6 +119,7 @@ export type NextMaterialeMovimentoReadOnlyItem = {
   targa: string | null;
   mezzoTarga: string | null;
   inventarioRefId: string | null;
+  stockKey: string | null;
   destinatario: NextNormalizedDestinatario;
   target: string | null;
   tipoDestinatario: NextMaterialeMovimentoDestinatarioType;
@@ -239,6 +245,7 @@ export type NextMaterialiMovimentiLegacyDossierItem = {
   targa?: string;
   mezzoTarga?: string;
   inventarioRefId?: string;
+  stockKey?: string;
   destinatario?: {
     type?: string;
     refId?: string;
@@ -300,6 +307,36 @@ export type NextMagazzinoAttentionSignal = {
   reliability: "alta" | "media";
 };
 
+export type NextMagazzinoAdBlueReadOnlyEvent = {
+  id: string;
+  data: string | null;
+  timestamp: number | null;
+  quantitaLitri: number | null;
+  inventarioRefId: string | null;
+  stockKey: string | null;
+  numeroCisterna: string | null;
+  note: string | null;
+  quality: NextMaterialeMovimentoRecordQuality;
+  flags: string[];
+};
+
+export type NextMagazzinoAdBlueSnapshot = {
+  domainCode: "D05-ADBLUE";
+  domainName: "AdBlue magazzino clone-safe";
+  logicalDatasets: readonly [typeof CISTERNE_ADBLUE_DATASET_KEY];
+  activeReadOnlyDataset: typeof CISTERNE_ADBLUE_DATASET_KEY;
+  datasetShape: NextLegacyDatasetShape;
+  items: NextMagazzinoAdBlueReadOnlyEvent[];
+  counts: {
+    total: number;
+    withReliableDate: number;
+    withReliableQuantity: number;
+    withInventoryLink: number;
+    totalLitriRegistrati: number;
+  };
+  limitations: string[];
+};
+
 export type NextMagazzinoRealeSnapshot = {
   domainCode: "D05";
   domainName: "Magazzino reale del clone NEXT";
@@ -307,6 +344,7 @@ export type NextMagazzinoRealeSnapshot = {
   inventory: NextInventarioSnapshot;
   materials: NextMaterialiMovimentiSnapshot;
   attrezzature: NextAttrezzatureCantieriSnapshot;
+  adBlue: NextMagazzinoAdBlueSnapshot;
   vehicleLinks: NextMagazzinoVehicleLinkSummary[];
   attentionSignals: NextMagazzinoAttentionSignal[];
   counts: {
@@ -317,6 +355,8 @@ export type NextMagazzinoRealeSnapshot = {
     vehicleLinksPlausible: number;
     attrezzatureMovements: number;
     attrezzatureTrackingGap: number;
+    adBlueEvents: number;
+    adBlueLitriRegistrati: number;
     attentionSignals: number;
   };
   operationalStatus: {
@@ -713,13 +753,20 @@ function toNextMaterialeMovimentoReadOnlyItem(
     targa: mezzoTarga,
     mezzoTarga,
     inventarioRefId: normalizeOptionalText(raw.inventarioRefId),
+    stockKey:
+      buildNextMagazzinoStockKey({
+        stockKey: raw.stockKey,
+        descrizione,
+        fornitore,
+        unita: raw.unita,
+      }) ?? null,
     destinatario,
     target: destinatario.label,
     tipoDestinatario: destinatario.type,
     materiale,
     descrizione,
     quantita,
-    unita: normalizeOptionalText(raw.unita),
+    unita: normalizeNextMagazzinoStockUnitLoose(raw.unita) || normalizeOptionalText(raw.unita),
     data,
     timestamp,
     fornitore,
@@ -750,6 +797,70 @@ function sortItems<T extends { id: string; timestamp: number | null }>(items: T[
     if (byTimestamp !== 0) return byTimestamp;
     return right.id.localeCompare(left.id, "it", { sensitivity: "base" });
   });
+}
+
+function normalizeAdBlueEvent(
+  raw: unknown,
+  index: number,
+): NextMagazzinoAdBlueReadOnlyEvent | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const record = raw as RawRecord;
+  const timestamp =
+    [
+      toTimestamp(record.data),
+      toTimestamp(record.dataCambio),
+      toTimestamp(record.createdAt),
+      toTimestamp(record.updatedAt),
+    ].find((entry): entry is number => entry !== null) ?? null;
+  const data =
+    normalizeOptionalText(record.data) ??
+    normalizeOptionalText(record.dataCambio) ??
+    formatLegacyDateLabel(timestamp);
+  const quantitaLitri =
+    normalizeNumber(record.quantitaLitri) ??
+    normalizeNumber(record.quantita) ??
+    normalizeNumber(record.litri);
+  const descrizione =
+    normalizeOptionalText(record.descrizione) ??
+    normalizeOptionalText(record.materialeLabel) ??
+    "AdBlue";
+  const inventarioRefId = normalizeOptionalText(record.inventarioRefId);
+  const stockKey =
+    buildNextMagazzinoStockKey({
+      stockKey: record.stockKey,
+      descrizione,
+      fornitore: record.fornitore,
+      unita: "lt",
+    }) ?? null;
+  const flags: string[] = [];
+
+  if (!data) flags.push("data_assente");
+  if (quantitaLitri === null) flags.push("quantita_litri_non_valida");
+  if (!inventarioRefId) flags.push("inventario_ref_assente");
+  if (!stockKey) flags.push("stock_key_assente");
+
+  return {
+    id: normalizeOptionalText(record.id) ?? `adblue:${index}`,
+    data,
+    timestamp,
+    quantitaLitri,
+    inventarioRefId,
+    stockKey,
+    numeroCisterna:
+      normalizeOptionalText(record.numeroCisterna) ??
+      normalizeOptionalText(record.cisterna),
+    note: normalizeOptionalText(record.note),
+    quality:
+      data && quantitaLitri !== null
+        ? "certo"
+        : data || quantitaLitri !== null
+          ? "parziale"
+          : "da_verificare",
+    flags,
+  };
 }
 
 function buildGlobalLimitations(args: {
@@ -1174,6 +1285,7 @@ export function buildNextMaterialiMovimentiLegacyDossierView(
     targa: item.targa ?? undefined,
     mezzoTarga: item.mezzoTarga ?? undefined,
     inventarioRefId: item.inventarioRefId ?? undefined,
+    stockKey: item.stockKey ?? undefined,
     destinatario:
       item.destinatario.label || item.destinatario.refId || item.destinatario.type
         ? {
@@ -1440,12 +1552,14 @@ function buildMagazzinoLimitations(args: {
   inventory: NextInventarioSnapshot;
   materials: NextMaterialiMovimentiSnapshot;
   attrezzature: NextAttrezzatureCantieriSnapshot;
+  adBlue: NextMagazzinoAdBlueSnapshot;
   vehicleLinks: NextMagazzinoVehicleLinkSummary[];
 }): string[] {
   const nestedLimitations = [
     ...args.inventory.limitations.slice(0, 2),
     ...args.materials.limitations.slice(0, 2),
     ...args.attrezzature.limitations.slice(0, 2),
+    ...args.adBlue.limitations.slice(0, 2),
   ].filter(
     (entry) =>
       !/scorta minima canonica/i.test(entry) && !/reader clone e solo read-only/i.test(entry),
@@ -1458,15 +1572,67 @@ function buildMagazzinoLimitations(args: {
     args.vehicleLinks.some((entry) => entry.reliability === "plausibile")
       ? "Una parte dei materiali verso mezzo resta collegata in modo prudente tramite destinatario, non con un legame targa pienamente canonico."
       : null,
+    args.adBlue.counts.total > 0 && args.adBlue.counts.withReliableQuantity < args.adBlue.counts.total
+      ? "Una parte degli eventi `@cisterne_adblue` non espone litri affidabili: i totali AdBlue restano parziali e vanno marcati `DA VERIFICARE`."
+      : null,
     ...nestedLimitations,
   ]);
 }
 
+export async function readNextMagazzinoAdBlueSnapshot(): Promise<NextMagazzinoAdBlueSnapshot> {
+  const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, CISTERNE_ADBLUE_DATASET_KEY));
+  const rawDoc = snapshot.exists() ? ((snapshot.data() as Record<string, unknown>) ?? null) : null;
+  const { datasetShape, items: rawItems } = unwrapStorageArray(rawDoc);
+  const items = sortItems(
+    rawItems
+      .map((entry, index) => normalizeAdBlueEvent(entry, index))
+      .filter((entry): entry is NextMagazzinoAdBlueReadOnlyEvent => Boolean(entry)),
+  );
+  const totalLitriRegistrati = items.reduce(
+    (total, item) => total + (item.quantitaLitri ?? 0),
+    0,
+  );
+
+  return {
+    domainCode: "D05-ADBLUE",
+    domainName: "AdBlue magazzino clone-safe",
+    logicalDatasets: [CISTERNE_ADBLUE_DATASET_KEY],
+    activeReadOnlyDataset: CISTERNE_ADBLUE_DATASET_KEY,
+    datasetShape,
+    items,
+    counts: {
+      total: items.length,
+      withReliableDate: items.filter((item) => Boolean(item.data)).length,
+      withReliableQuantity: items.filter((item) => item.quantitaLitri !== null).length,
+      withInventoryLink: items.filter(
+        (item) => Boolean(item.inventarioRefId) || Boolean(item.stockKey),
+      ).length,
+      totalLitriRegistrati,
+    },
+    limitations: dedupeStrings([
+      datasetShape === "unsupported"
+        ? "Il dataset `@cisterne_adblue` non espone una shape supportata fuori dai formati `array/value/items`."
+        : null,
+      items.length === 0
+        ? "Il dataset `@cisterne_adblue` non restituisce oggi eventi leggibili nel clone NEXT."
+        : null,
+      items.some((item) => item.flags.includes("quantita_litri_non_valida"))
+        ? "Una parte degli eventi AdBlue non espone litri leggibili e resta `DA VERIFICARE`."
+        : null,
+      items.some((item) => item.flags.includes("inventario_ref_assente"))
+        ? "Una parte dello storico AdBlue non espone il legame esplicito con l'articolo inventario."
+        : null,
+      "Gli eventi AdBlue rappresentano cambi cisterna letti in sola lettura: per la IA valgono come supporto a consumi e scarichi inventario, non come writer business.",
+    ]),
+  };
+}
+
 export async function readNextMagazzinoRealeSnapshot(): Promise<NextMagazzinoRealeSnapshot> {
-  const [inventory, materials, attrezzature] = await Promise.all([
+  const [inventory, materials, attrezzature, adBlue] = await Promise.all([
     readNextInventarioSnapshot(),
     readNextMaterialiMovimentiSnapshot(),
     readNextAttrezzatureCantieriSnapshot(),
+    readNextMagazzinoAdBlueSnapshot(),
   ]);
   const vehicleLinks = buildVehicleLinksView(materials);
   const attentionSignals = buildMagazzinoAttentionSignals({
@@ -1483,6 +1649,7 @@ export async function readNextMagazzinoRealeSnapshot(): Promise<NextMagazzinoRea
     inventory,
     materials,
     attrezzature,
+    adBlue,
     vehicleLinks,
     attentionSignals,
     counts: {
@@ -1493,6 +1660,8 @@ export async function readNextMagazzinoRealeSnapshot(): Promise<NextMagazzinoRea
       vehicleLinksPlausible: vehicleLinks.filter((entry) => entry.reliability === "plausibile").length,
       attrezzatureMovements: attrezzature.counts.totalMovements,
       attrezzatureTrackingGap: attrezzature.counts.withTrackingGap,
+      adBlueEvents: adBlue.counts.total,
+      adBlueLitriRegistrati: adBlue.counts.totalLitriRegistrati,
       attentionSignals: attentionSignals.length,
     },
     operationalStatus: {
@@ -1506,6 +1675,7 @@ export async function readNextMagazzinoRealeSnapshot(): Promise<NextMagazzinoRea
       inventory,
       materials,
       attrezzature,
+      adBlue,
       vehicleLinks,
     }),
   };

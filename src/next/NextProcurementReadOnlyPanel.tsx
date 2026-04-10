@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { generateSmartPDFBlob } from "../utils/pdfEngine";
 import {
@@ -18,6 +19,7 @@ import {
   type NextProcurementOrderItem,
   type NextProcurementSnapshot,
 } from "./domain/nextProcurementDomain";
+import { buildNextMagazzinoPath } from "./nextStructuralPaths";
 import "../pages/Acquisti.css";
 import "./next-shell.css";
 
@@ -1162,6 +1164,7 @@ export default function NextProcurementReadOnlyPanel({
   searchQuery = "",
   embedded = false,
 }: NextProcurementReadOnlyPanelProps) {
+  const navigate = useNavigate();
   const activeOrder = findNextProcurementOrder(snapshot, orderId);
   const requestedDetailMissing = Boolean(orderId) && !activeOrder;
 
@@ -1235,6 +1238,7 @@ export default function NextProcurementReadOnlyPanel({
       ) : activeTab === "ordini" ? (
         <OrderListTable
           title="Ordini in attesa"
+          subtitle="Vista di supporto read-only. Per caricare o scaricare davvero lo stock usa `/next/magazzino`."
           items={visibleOrders}
           fromTab="ordini"
           onOpenOrder={onOpenOrder}
@@ -1242,6 +1246,7 @@ export default function NextProcurementReadOnlyPanel({
       ) : activeTab === "arrivi" ? (
         <OrderListTable
           title="Ordini arrivati"
+          subtitle="Vista di supporto read-only. Gli arrivi si consolidano in stock da `/next/magazzino?tab=documenti-costi`."
           items={visibleOrders}
           fromTab="arrivi"
           onOpenOrder={onOpenOrder}
@@ -1294,15 +1299,22 @@ export default function NextProcurementReadOnlyPanel({
               <p className="acq-eyebrow">Gestione Acquisti</p>
               <h1 className="acq-title">Acquisti</h1>
               <p className="acq-subtitle">
-                Modulo clone in sola lettura: ordini, arrivi e dettaglio ordine
-                restano navigabili; preventivi sono solo preview prudenziale,
-                listino solo contesto e le azioni operative non sono importate
-                davvero.
+                Modulo NEXT di supporto: ordini, arrivi e dettaglio ordine
+                restano navigabili in sola lettura; preventivi sono preview
+                prudenziale, listino solo contesto e il writer stock canonico
+                del dominio resta `/next/magazzino`.
               </p>
             </div>
           </div>
           <div className="acq-header-actions" style={HEADER_ACTIONS_STYLE}>
-            <span className="next-clone-readonly-badge">SOLA LETTURA</span>
+            <button
+              type="button"
+              className="acq-cta acq-cta--primary"
+              onClick={() => navigate(buildNextMagazzinoPath("documenti-costi"))}
+            >
+              Apri Magazzino stock
+            </button>
+            <span className="next-clone-readonly-badge">SUPPORTO READ-ONLY</span>
           </div>
         </header>
 

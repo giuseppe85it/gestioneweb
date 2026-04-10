@@ -83,19 +83,69 @@ Contiene copie mirror di documenti sorgente chiave e alcuni report selezionati.
 - Continuity report dell'audit finale `Magazzino NEXT`.
 - Utile per riprendere il prossimo task tecnico senza riaprire l'intera investigazione.
 
-19. `01_OVERVIEW_PROGETTO_NEXT.md`
+19. `20260410_164500_magazzino_next_contratto_stock_condiviso_execution.md`
+- Change report della patch sul contratto stock condiviso `Magazzino NEXT`.
+- Utile per capire UDM canoniche, matching materiale, deduplica documenti/arrivi e writer AdBlue/manutenzioni allineati.
+
+20. `20260410_164500_continuity_magazzino_next_contratto_stock_condiviso_execution.md`
+- Continuity report della patch stock `Magazzino NEXT`.
+- Utile per riaprire rapidamente il contesto del contratto condiviso senza rifare l'analisi completa del dominio.
+
+21. `20260410_125234_magazzino_next_autonomia_stock_execution.md`
+- Change report della patch di autonomia stock `Magazzino NEXT`.
+- Utile per capire come gli arrivi procurement vengono consolidati in `Magazzino` e come il procurement resta supporto/read-only.
+
+22. `20260410_125234_continuity_magazzino_next_autonomia_stock_execution.md`
+- Continuity report della patch di autonomia stock `Magazzino NEXT`.
+- Utile per riaprire rapidamente il contesto della centralizzazione stock lato NEXT senza rifare l'analisi completa.
+
+23. `20260410_190500_ia_interna_magazzino_readonly_execution.md`
+- Change report dell'integrazione read-only tra IA interna NEXT e dominio `Magazzino`.
+- Utile per capire capability D05 strutturata, dataset letti, handoff verso `/next/magazzino` e rischio residuo sul planner universale.
+
+24. `20260410_190500_continuity_ia_interna_magazzino_readonly_execution.md`
+- Continuity report dell'integrazione IA interna `Magazzino`.
+- Utile per riaprire rapidamente il contesto della capability read-only Magazzino senza rifare l'analisi del task.
+
+25. `01_OVERVIEW_PROGETTO_NEXT.md`
 - Sintesi breve della struttura NEXT e dei file chiave del repo.
 - Utile come briefing iniziale veloce.
+
+26. `20260410_160342_ia_interna_magazzino_fatture_write_exception_execution.md`
+- Change report della deroga scrivente controllata IA interna per le sole fatture `Magazzino`.
+- Utile per capire perimetro, casi ammessi (`MARIBA` e `AdBlue`), anti-doppio-carico e file runtime/documentali toccati.
+
+27. `20260410_160342_continuity_ia_interna_magazzino_fatture_write_exception_execution.md`
+- Continuity report della deroga scrivente fatture `Magazzino`.
+- Utile per riaprire rapidamente il contesto della patch senza rifare l'analisi completa.
+
+28. `CHECKLIST_IA_INTERNA.md`
+- Checklist operativa unica del sottosistema IA interna.
+- Utile per capire cosa e davvero `FATTO`, cosa resta `IN CORSO` e quali task IA non sono completi senza aggiornamento checklist.
+
+29. `STATO_AVANZAMENTO_IA_INTERNA.md`
+- Quadro esteso di contesto, fasi, rischi e fatti verificati del sottosistema IA interna.
+- Utile per riaprire una chat IA senza ricostruire tutta la storia tecnica del modulo.
+
+30. `20260410_181242_ia_interna_magazzino_document_driven_execution.md`
+- Change report della UX document-driven `Magazzino` nella chat IA interna.
+- Utile per capire come l'allegato guida ora classificazione, proposta azione e handoff senza prompt rigidi.
+
+31. `20260410_181242_continuity_ia_interna_magazzino_document_driven_execution.md`
+- Continuity report della UX document-driven `Magazzino`.
+- Utile per riprendere rapidamente il tema senza rileggere tutti i file runtime.
 
 ## Ordine rapido consigliato per una nuova chat
 1. `AGENTS.md`
 2. `STATO_ATTUALE_PROGETTO.md`
 3. `STATO_MIGRAZIONE_NEXT.md`
 4. `CONTEXT_CLAUDE.md`
-5. `REGISTRO_PUNTI_DA_VERIFICARE.md`
-6. `PROTOCOLLO_SICUREZZA_MODIFICHE.md`
-7. `PROCEDURA_MADRE_TO_CLONE.md`
-8. Audit o report specifici del modulo da toccare
+5. `CHECKLIST_IA_INTERNA.md` se il task tocca la IA interna
+6. `STATO_AVANZAMENTO_IA_INTERNA.md` se il task tocca la IA interna
+7. `REGISTRO_PUNTI_DA_VERIFICARE.md`
+8. `PROTOCOLLO_SICUREZZA_MODIFICHE.md`
+9. `PROCEDURA_MADRE_TO_CLONE.md`
+10. Audit o report specifici del modulo da toccare
 
 ## Nota pratica
 Se devi passare fonti essenziali in una nuova chat, inizia da questa cartella invece di cercare i documenti in tutto il repo.

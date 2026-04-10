@@ -1,3 +1,4 @@
+import { buildNextMagazzinoPath } from "../nextStructuralPaths";
 import type { InternalAiChatAttachment } from "./internalAiTypes";
 import type {
   InternalAiUniversalActionIntent,
@@ -9,8 +10,33 @@ import type {
 function normalizeText(value: string | null | undefined): string {
   return String(value ?? "")
     .toLowerCase()
+    .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function detectWarehouseInvoiceAttachment(haystack: string): {
+  warehouseInvoice: boolean;
+  strongSignal: boolean;
+  adBlueSignal: boolean;
+  hasInventorySignal: boolean;
+} {
+  const hasInventorySignal =
+    /\b(material\w*|articol\w*|qta|quantita|magazzin\w*|adblue|mariba|ricamb\w*|ferrament\w*|vernic\w*|bullon\w*|consumabil\w*)\b/.test(
+      haystack,
+    );
+  const hasInvoiceSignal =
+    /\b(fattur\w*|ddt|bolla\w*|imponibil\w*|iva|total\w*|fornitor\w*|arriv\w*)\b/.test(
+      haystack,
+    );
+  const adBlueSignal = /\badblue\b/.test(haystack);
+
+  return {
+    warehouseInvoice: hasInventorySignal && hasInvoiceSignal,
+    strongSignal: hasInventorySignal && hasInvoiceSignal,
+    adBlueSignal,
+    hasInventorySignal,
+  };
 }
 
 function buildActionIntentFromRoute(route: InternalAiUniversalDocumentRoute): InternalAiUniversalActionIntent {
@@ -106,21 +132,45 @@ function classifyAttachment(
     };
   }
 
-  if (/\bmaterial|articol|qta|quantita|magazzin\b/.test(haystack) || attachment.kind === "spreadsheet") {
+  const warehouseInvoiceDetection = detectWarehouseInvoiceAttachment(haystack);
+  if (
+    warehouseInvoiceDetection.hasInventorySignal ||
+    warehouseInvoiceDetection.warehouseInvoice ||
+    attachment.kind === "spreadsheet"
+  ) {
+    const warehouseInvoice = warehouseInvoiceDetection.warehouseInvoice;
+    const adBlueInvoice = warehouseInvoiceDetection.adBlueSignal && warehouseInvoice;
+    const plainInventoryDocument = !warehouseInvoice;
     return {
       classification: "tabella_materiali",
-      confidence: "media",
-      rationale: [
-        "Il file sembra una tabella materiali/inventario.",
-        "Il clone oggi lo colloca meglio nell'area operativa/magazzino.",
-      ],
-      targetModuleId: "next.operativita",
-      suggestedModuleLabel: "Operativita globale",
-      targetHookId: "inventario.main",
-      targetPath: "/next/inventario",
+      confidence:
+        plainInventoryDocument || adBlueInvoice || warehouseInvoiceDetection.strongSignal
+          ? "media"
+          : "prudente",
+      rationale: warehouseInvoice
+        ? [
+            adBlueInvoice
+              ? "Il file sembra una fattura AdBlue del dominio Magazzino."
+              : "Il file sembra una fattura/documento materiali del dominio Magazzino.",
+            "Il clone lo instrada alla vista documenti e costi di Magazzino per la decisione controllata su riconciliazione o carico stock.",
+          ]
+        : [
+            "Il file sembra una tabella materiali/inventario.",
+            "Il clone oggi lo colloca meglio nel modulo Magazzino canonico.",
+          ],
+      targetModuleId: "next.magazzino",
+      suggestedModuleLabel: "Magazzino",
+      targetHookId: warehouseInvoice ? "magazzino.docs" : "inventario.main",
+      targetPath: warehouseInvoice
+        ? buildNextMagazzinoPath("documenti-costi")
+        : buildNextMagazzinoPath("inventario"),
       targetCapabilityId: null,
-      ambiguity: "media",
-      status: "pronto_prefill",
+      ambiguity: plainInventoryDocument && attachment.kind === "spreadsheet" ? "bassa" : "media",
+      status: warehouseInvoice
+        ? warehouseInvoiceDetection.strongSignal
+          ? "pronto_prefill"
+          : "da_verificare"
+        : "pronto_prefill",
     };
   }
 

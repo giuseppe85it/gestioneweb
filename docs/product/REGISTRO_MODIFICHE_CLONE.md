@@ -37,6 +37,196 @@ La regola corrente da leggere insieme a questo registro e:
 
 ## 4. Registro storico
 
+### Voce 2026-04-10 IA INTERNA MAGAZZINO DOCUMENT-DRIVEN UX
+- DATA: 2026-04-10
+- TITOLO MODIFICA: Passaggio della IA interna `Magazzino` da flusso prompt-driven a flusso document-driven
+- OBIETTIVO: Permettere alla chat `/next/ia/interna` di classificare automaticamente i documenti `Magazzino`, proporre l'azione giusta in UI e aprire il modulo target corretto anche con solo allegato o con testo minimale, senza aprire nuovi writer fuori dai due casi gia approvati sulle fatture.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260410_181242_ia_interna_magazzino_document_driven_execution.md`
+  - `docs/continuity-reports/20260410_181242_continuity_ia_interna_magazzino_document_driven_execution.md`
+- COSA E STATO CAMBIATO:
+  - `NextInternalAiPage.tsx` non costringe piu l'utente a scrivere un prompt tecnico: con un allegato genera un prompt base prudente, consente submit attachment-only, lancia in background l'orchestrazione documentale e mostra una card automatica con tipo rilevato, azione proposta, motivazione, confidenza, eventuale singola domanda di sblocco e CTA verso il modulo target;
+  - `internalAiUniversalDocumentRouter.ts` riconosce meglio fatture materiali `Magazzino`, fatture `AdBlue` e documenti ambigui usando i segnali documentali disponibili nel clone, compresi nomi file realistici con `_` e `-`;
+  - `internalAiUniversalHandoff.ts` instrada i casi forti al modulo canonico `Magazzino`, applica payload prudente sui casi ambigui e riduce i riferimenti sporchi su `targa/materiale` nel passaggio documentale;
+  - il percorso utente finale diventa: allegato -> classificazione automatica -> proposta azione -> CTA semplice -> conferma nel modulo target -> esecuzione solo se rientra nei due casi gia autorizzati (`riconcilia_senza_carico`, `carica_stock_adblue`);
+  - nessun writer business nuovo viene aperto: il task rifinisce la UX e l'orchestrazione documentale sopra i guard-rail gia attivi.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `/next/ia/interna` mostra ora una proposal card documentale automatica e un composer utilizzabile anche senza prompt rigidi;
+  - Lettura: il routing documentale usa segnali disponibili nell'allegato e nel contesto `Magazzino`, ma resta prudente e chiede conferma nel modulo target;
+  - Blocco scritture: invariato nel perimetro; restano ammessi solo `riconcilia_senza_carico` e `carica_stock_adblue`, mentre i casi ambigui finiscono in `DA VERIFICARE`.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiUniversalDocumentRouter.ts src/next/internal-ai/internalAiUniversalHandoff.ts`;
+  - eseguire `npm run build`;
+  - avviare una preview locale e aprire `/next/ia/interna`;
+  - allegare un file con nome tipo `fattura_mariba_534909.pdf` e verificare la proposta `Riconcilia documento` verso `Magazzino`;
+  - allegare un file con nome tipo `fattura_adblue_aprile.pdf` e verificare la proposta `Carica stock AdBlue`;
+  - allegare un file ambiguo e verificare la proposta `DA VERIFICARE` con una sola domanda di sblocco;
+  - non eseguire submit mutanti sui dataset reali durante la verifica runtime.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: task UX/orchestrazione sopra una deroga scrivente gia esistente; resta necessario un audit separato su PDF/immagini reali con segnali documentali deboli.
+
+### Voce 2026-04-10 IA INTERNA MAGAZZINO FATTURE WRITE EXCEPTION
+- DATA: 2026-04-10
+- TITOLO MODIFICA: Deroga scrivente controllata della IA interna NEXT per le sole fatture `Magazzino`
+- OBIETTIVO: Abilitare nel clone NEXT una sola eccezione scrivente lato IA sul dominio `Magazzino`, confinata alle fatture di magazzino: riconciliazione senza carico per materiale gia arrivato e gia consolidato, oppure carico stock AdBlue non ancora registrato, con anti-doppio-carico obbligatorio.
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260410_160342_ia_interna_magazzino_fatture_write_exception_execution.md`
+  - `docs/continuity-reports/20260410_160342_continuity_ia_interna_magazzino_fatture_write_exception_execution.md`
+- COSA E STATO CAMBIATO:
+  - `nextDocumentiCostiDomain.ts` espone ora sui support docs di `@documenti_magazzino` anche metadata forti (`tipoDocumento`, `numeroDocumento`, `nomeFile`, `fileUrl`, `daVerificare`) per distinguere una fattura da un allegato generico e bloccare i casi non dimostrati;
+  - `NextMagazzinoPage.tsx` non tratta piu `@documenti_magazzino.voci` come writer generico: ogni riga documento viene classificata come `riconcilia_senza_carico`, `carica_stock_adblue`, `DA VERIFICARE` o `fuori_perimetro`, con blocco su mismatch UDM, documento `daVerificare`, non-fattura e sorgente gia consolidata;
+  - il caso `MARIBA` usa ora solo `Riconcilia senza carico`: se esiste arrivo procurement compatibile e il materiale e gia in inventario, la pagina collega il documento alla voce stock via `stockLoadKeys` senza aumentare la quantita;
+  - il caso `AdBlue` usa ora solo `Carica stock AdBlue`: se la fattura e AdBlue, l'unita e `lt`, il match e forte e non esiste doppio carico, la pagina crea o aggiorna l'articolo di inventario e aumenta la giacenza;
+  - `internalAiUniversalDocumentRouter.ts`, `internalAiUniversalRequestResolver.ts` e `internalAiUniversalHandoff.ts` instradano ora le fatture materiali verso `next.magazzino` / `documenti-costi`, con priorita documentale anche sui prompt `fattura AdBlue`;
+  - `internalAiUniversalContracts.ts` e `internalAiUnifiedIntelligenceEngine.ts` dichiarano la deroga come eccezione stretta del dominio D05, non come riapertura generale dei writer Magazzino.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la vista `Documenti e costi` mostra il nuovo pannello `Azione controllata IA su fattura magazzino` e CTA esplicite solo per `Riconcilia senza carico` o `Carica stock AdBlue`;
+  - Lettura: la decisione usa metadata documento, matching materiale/fornitore, copertura procurement, UDM canoniche e `stockLoadKeys`, senza riaprire runtime legacy o writer fuori whitelist;
+  - Blocco scritture: confermato su consegne, manutenzioni, ordini, preventivi e documenti fuori dai due casi; se il match non e forte oppure la sorgente e gia consolidata, l'esito resta `DA VERIFICARE` o blocco esplicito.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx src/next/domain/nextDocumentiCostiDomain.ts src/next/internal-ai/internalAiUniversalRequestResolver.ts src/next/internal-ai/internalAiUniversalDocumentRouter.ts src/next/internal-ai/internalAiUniversalHandoff.ts src/next/internal-ai/internalAiUniversalContracts.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`;
+  - eseguire `npm run build`;
+  - avviare una preview locale e aprire `/next/magazzino?tab=documenti-costi`;
+  - verificare che la card `Azione controllata IA su fattura magazzino` sia renderizzata e che il pannello `Carichi stock da documenti` non proponga piu carichi generici da documento;
+  - verificare sul codice che il caso `MARIBA` usi `stockLoadKeys` senza aumento stock e che il caso `AdBlue` richieda `lt`, match forte e assenza di doppio carico;
+  - non eseguire submit mutanti sui dataset reali durante la verifica runtime.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: deroga chirurgica, non refactor generale. Serve audit separato per promuovere a fatto verificato l'assenza di aperture laterali fuori dai due casi documentali.
+
+### Voce 2026-04-10 IA INTERNA MAGAZZINO READ-ONLY
+- DATA: 2026-04-10
+- TITOLO MODIFICA: Integrazione del dominio `Magazzino` nella IA interna NEXT in sola lettura
+- OBIETTIVO: Permettere alla console `/next/ia/interna` di leggere, incrociare e spiegare il dominio `Magazzino` usando i reader NEXT reali (`@inventario`, `@materialiconsegnati`, `@cisterne_adblue`, `@documenti_magazzino`, costi materiali derivati e procurement di supporto), senza toccare la madre e senza esporre writer business.
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `src/next/internal-ai/internalAiUniversalContracts.ts`
+  - `src/next/internal-ai/internalAiUniversalRequestResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260410_190500_ia_interna_magazzino_readonly_execution.md`
+  - `docs/continuity-reports/20260410_190500_continuity_ia_interna_magazzino_readonly_execution.md`
+- COSA E STATO CAMBIATO:
+  - `nextMaterialiMovimentiDomain.ts` espone ora anche gli eventi `@cisterne_adblue` nel composito `readNextMagazzinoRealeSnapshot()`, cosi D05 puo leggere stock, movimenti e AdBlue sullo stesso asse read-only;
+  - `internalAiUnifiedIntelligenceEngine.ts` costruisce un cross-read Magazzino che incrocia inventario, movimenti materiali, AdBlue, documenti/fatture, costi di supporto e procurement, restituendo blocchi strutturati `Stock`, `Movimenti`, `Documenti / Fatture`, `Preventivi`, `Costi di supporto`, `Criticita / DA VERIFICARE`;
+  - `internalAiUniversalContracts.ts`, `internalAiUniversalRequestResolver.ts` e `internalAiUniversalHandoff.ts` agganciano D05 al modulo canonico `next.magazzino` e alle sue viste dedicate, invece di lasciare il dominio Magazzino appeso ai vecchi path inventario/materiali o a `next.operativita`;
+  - `NextMagazzinoPage.tsx` consuma `iaHandoff` e applica prefill su tab/materiale/targa/documento, restando nel modulo canonico `/next/magazzino`;
+  - nessun file backend e stato toccato: il bridge server-side IA resta invariato e il dominio Magazzino viene servito dal motore unificato locale gia presente.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: minima; `/next/ia/interna` puo ora rispondere in modo strutturato su Magazzino e `/next/magazzino` riceve prefill/handoff coerenti;
+  - Lettura: l'IA legge dataset reali e layer NEXT gia esistenti senza inventare match forti tra documenti, materiali e procurement quando il legame non e dimostrabile;
+  - Blocco scritture: invariato; nessun writer stock, procurement o documentale viene esposto alla IA.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx src/next/domain/nextMaterialiMovimentiDomain.ts src/next/internal-ai/internalAiUniversalContracts.ts src/next/internal-ai/internalAiUniversalRequestResolver.ts src/next/internal-ai/internalAiUniversalHandoff.ts src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`;
+  - eseguire `npm run build`;
+  - avviare una preview locale e aprire `/next/ia/interna`;
+  - inviare la richiesta `quanta giacenza ho del materiale AdBlue e quali documenti o preventivi risultano collegati` e verificare che la risposta usi i blocchi `Stock`, `Movimenti`, `Documenti / Fatture`, `Preventivi`, `Costi di supporto`, `Criticita / DA VERIFICARE`;
+  - verificare che i riferimenti del `Piano universale clone/NEXT` includano D05, i dataset reali del Magazzino e che il modulo target canonico sia `Magazzino` quando il prompt e chiaramente D05;
+  - non eseguire submit o mutazioni business nei form runtime collegati ai dataset reali.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: task execution del sottosistema IA interna, non audit finale. La capability `Magazzino` resta `PARZIALE` finche non viene rivalidato il planner/handoff universale sui prompt misti materiale/documenti/preventivi.
+
+### Voce 2026-04-10 AUTONOMIA NEXT STOCK MAGAZZINO
+- DATA: 2026-04-10
+- TITOLO MODIFICA: Autonomia NEXT del dominio stock `Magazzino`
+- OBIETTIVO: Rendere `/next/magazzino` il punto operativo canonico del dominio stock nel perimetro NEXT, assorbendo il carico stock degli arrivi procurement dentro `Magazzino` e chiarendo che procurement/documenti restano supporto o preview, non writer canonici del magazzino.
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/NextProcurementReadOnlyPanel.tsx`
+  - `src/next/domain/nextProcurementDomain.ts`
+  - `src/next/nextData.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260410_125234_magazzino_next_autonomia_stock_execution.md`
+  - `docs/continuity-reports/20260410_125234_continuity_magazzino_next_autonomia_stock_execution.md`
+- COSA E STATO CAMBIATO:
+  - `NextMagazzinoPage.tsx` assorbe ora anche il carico stock degli arrivi procurement nella vista `Documenti e costi`, con candidati dedicati, consolidamento su inventario esistente o creazione nuova voce, `stockLoadKeys` e deduplica prudente contro documenti gia caricati;
+  - il pulsante di supporto nella vista documentale punta al procurement canonico `/next/materiali-da-ordinare` e la sezione `Ordini e arrivi collegati` spiega che il writer stock degli arrivi e `Magazzino`;
+  - `nextProcurementDomain.ts` dichiara in modo esplicito che ordini/arrivi restano supporto read-only e che il consolidamento stock degli arrivi passa da `/next/magazzino?tab=documenti-costi`;
+  - `NextProcurementReadOnlyPanel.tsx` riallinea il copy delle viste `Ordini` / `Arrivi` al fatto che il procurement NEXT e supporto e che il dominio stock canonico resta `Magazzino`;
+  - `nextData.ts` promuove anche nella shell il dominio stock come punto centrale: `Magazzino` prima di `Materiali da ordinare`, `Operativita Globale` descritta come `Operativo parziale` e non piu come `Importato read-only`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il runtime non rifatto, ma la vista `Documenti e costi` espone ora anche `Carichi stock da arrivi procurement` e il procurement NEXT espone microcopy coerente sul ruolo di supporto;
+  - Lettura: procurement/documenti restano leggibili come supporto; il contratto stock lato NEXT viene invece centralizzato in `Magazzino`;
+  - Blocco scritture: invariato come perimetro; nessun widening del barrier e nessun writer nuovo su costi/documenti/procurement.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx src/next/NextProcurementReadOnlyPanel.tsx src/next/domain/nextProcurementDomain.ts src/next/nextData.ts src/next/domain/nextMagazzinoStockContract.ts src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMaterialiMovimentiDomain.ts`;
+  - eseguire `npm run build`;
+  - aprire `/next/magazzino?tab=documenti-costi` e verificare il pannello `Carichi stock da arrivi procurement`;
+  - aprire `/next/materiali-da-ordinare?tab=arrivi` e verificare il richiamo operativo a `/next/magazzino?tab=documenti-costi`;
+  - aprire `/next/inventario` e `/next/materiali-consegnati` e verificare i redirect verso `/next/magazzino?tab=...`;
+  - non eseguire submit browser mutanti in ambienti collegati ai dataset reali senza sandbox dedicata.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: task execution, non audit. L'autonomia stock lato NEXT viene centralizzata, ma il dominio complessivo `Magazzino NEXT` resta `PARZIALE` finche un audit separato non rivalida writer legacy, parity PDF e rischi multi-writer extra-perimetro.
+
+### Voce 2026-04-10 PATCH CONTRATTO STOCK MAGAZZINO
+- DATA: 2026-04-10
+- TITOLO MODIFICA: Contratto stock condiviso per `Magazzino NEXT`
+- OBIETTIVO: Rendere coerente e controllato il comportamento di `@inventario` nel perimetro NEXT, allineando `Magazzino`, `Manutenzioni`, `Materiali consegnati`, `Documenti e costi` e `Cisterne AdBlue` sullo stesso contratto logico di stock senza toccare la madre.
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/next-magazzino.css`
+  - `src/next/domain/nextMagazzinoStockContract.ts`
+  - `src/next/domain/nextManutenzioniDomain.ts`
+  - `src/next/domain/nextMaterialiMovimentiDomain.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260410_164500_magazzino_next_contratto_stock_condiviso_execution.md`
+  - `docs/continuity-reports/20260410_164500_continuity_magazzino_next_contratto_stock_condiviso_execution.md`
+- COSA E STATO CAMBIATO:
+  - creato `nextMagazzinoStockContract.ts` come helper condiviso per UDM canoniche (`pz`, `lt`, `kg`, `mt`), chiave materiale pragmatica, `stockKey`, `stockLoadKeys`, compatibilita unita e riconoscimento AdBlue;
+  - `NextMagazzinoPage.tsx` consolida i carichi manuali sul materiale esistente quando la chiave stock coincide, blocca aggiornamenti automatici con unita incoerente, preserva gli item a quantita zero e scrive `stockKey` anche su consegne e cambi AdBlue;
+  - il tab `Documenti e costi` espone ora `Carichi stock da documenti` con deduplica prudente contro arrivi procurement e contro chiavi sorgente gia consolidate, senza aprire writer nuovi sui dataset documentali;
+  - il cambio cisterna AdBlue registra `quantitaLitri` e scala davvero `@inventario`, con rollback se fallisce la seconda scrittura;
+  - `nextManutenzioniDomain.ts` allinea writer e delete manutenzioni al nuovo contratto, con mismatch unita esplicito, stock insufficiente esplicito e rollback reale;
+  - `nextMaterialiMovimentiDomain.ts` espone `stockKey` e canonicalizza le unita legacy per mantenere compatibilita retroattiva con i lettori.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: minima; il modulo espone messaggi piu espliciti su unita consentite, selezione inventario AdBlue e carichi controllati da documenti;
+  - Lettura: i lettori NEXT dei movimenti materiali ricevono `stockKey` e unita canonicalizzate; il matching magazzino/mezzo diventa piu stabile;
+  - Blocco scritture: invariato come perimetro; il task rende piu sicure le scritture gia autorizzate senza widening del barrier.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx src/next/domain/nextManutenzioniDomain.ts src/next/domain/nextMaterialiMovimentiDomain.ts src/next/domain/nextMagazzinoStockContract.ts`;
+  - eseguire `npm run build`;
+  - aprire `/next/magazzino` e verificare che il form inventario esponga solo `pz`, `lt`, `kg`, `mt`;
+  - aprire `/next/magazzino?tab=cisterne-adblue` e verificare i campi `Litri scaricati` e `Articolo AdBlue inventario`;
+  - aprire `/next/magazzino?tab=documenti-costi` e verificare il pannello `Carichi stock da documenti`, le righe bloccate per unita non risolta e le CTA `Consolida stock` / `Carica in inventario`;
+  - non eseguire submit browser mutanti in ambienti collegati ai dataset reali senza sandbox dedicata.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: task execution, non audit finale. Il dominio complessivo `Magazzino NEXT` resta `PARZIALE` finche un audit separato non rivalida i writer legacy fuori whitelist.
+
 ### Voce 2026-04-10 AUDIT FINALE MAGAZZINO
 - DATA: 2026-04-10
 - TITOLO MODIFICA: Audit finale strutturale del dominio `Magazzino NEXT`

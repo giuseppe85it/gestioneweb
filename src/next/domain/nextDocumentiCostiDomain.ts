@@ -92,8 +92,13 @@ export type NextDocumentiMagazzinoSupportDocument = {
   id: string;
   sourceCollection: "@documenti_magazzino";
   sourceDocId: string;
+  tipoDocumento: string | null;
+  numeroDocumento: string | null;
+  nomeFile: string | null;
   fornitore: string | null;
   data: string | null;
+  fileUrl: string | null;
+  daVerificare: boolean;
   voci: NextDocumentiMagazzinoSupportRow[];
 };
 
@@ -863,8 +868,16 @@ function mapMaterialSupportDocument(
     id: `@documenti_magazzino:${sourceDocId}`,
     sourceCollection: "@documenti_magazzino",
     sourceDocId,
+    tipoDocumento:
+      normalizeTipoDocumento(raw.tipoDocumento ?? raw.tipo) || null,
+    numeroDocumento: normalizeOptionalText(raw.numeroDocumento),
+    nomeFile: normalizeOptionalText(raw.nomeFile),
     fornitore: normalizeOptionalText(raw.fornitore),
     data: dateFields.dateLabel,
+    fileUrl: normalizeOptionalText(raw.fileUrl),
+    daVerificare:
+      raw.daVerificare === true ||
+      Boolean(normalizeOptionalText(raw.motivoVerifica)),
     voci,
   };
 }

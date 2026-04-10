@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   NEXT_INTERNAL_AI_ARTIFACTS_PATH,
@@ -88,7 +88,9 @@ import {
   readInternalAiUnifiedRegistrySummary,
   type InternalAiUnifiedRegistrySummary,
 } from "./internal-ai/internalAiUnifiedIntelligenceEngine";
+import { orchestrateInternalAiUniversalRequest } from "./internal-ai/internalAiUniversalOrchestrator";
 import { selectInternalAiOutputMode } from "./internal-ai/internalAiOutputSelector";
+import { syncInternalAiUniversalRequestsRepository } from "./internal-ai/internalAiUniversalRequestsRepository";
 import {
   findInternalAiExactVehicleMatch,
   matchInternalAiVehicleLookupCandidates,
@@ -148,6 +150,10 @@ import type {
   InternalAiVehicleReportPreview,
   NextInternalAiSectionId,
 } from "./internal-ai/internalAiTypes";
+import type {
+  InternalAiUniversalDocumentRoute,
+  InternalAiUniversalOrchestrationResult,
+} from "./internal-ai/internalAiUniversalTypes";
 import { formatDateTimeUI } from "./nextDateFormat";
 import "./next-shell.css";
 import "./internal-ai/internal-ai.css";
@@ -213,6 +219,23 @@ type ReportRequestState =
     }
   | {
       status: "ready";
+      message: string;
+    };
+
+type ChatDocumentProposalState =
+  | {
+      status: "idle" | "loading";
+      result: InternalAiUniversalOrchestrationResult | null;
+      message: string | null;
+    }
+  | {
+      status: "ready";
+      result: InternalAiUniversalOrchestrationResult;
+      message: string | null;
+    }
+  | {
+      status: "error";
+      result: null;
       message: string;
     };
 
@@ -929,22 +952,24 @@ const SERVER_REPORT_SUMMARY_ROLLBACK_LABELS: Record<
 };
 
 function statusToneClass(status: string) {
+  const normalizedStatus = status.toLowerCase();
   if (
-    status.includes("warning") ||
-    status.includes("awaiting") ||
-    status.includes("revision") ||
-    status.includes("preview") ||
-    status.includes("parziale") ||
-    status.includes("partial")
+    normalizedStatus.includes("warning") ||
+    normalizedStatus.includes("awaiting") ||
+    normalizedStatus.includes("revision") ||
+    normalizedStatus.includes("preview") ||
+    normalizedStatus.includes("parziale") ||
+    normalizedStatus.includes("partial") ||
+    normalizedStatus.includes("verificare")
   ) {
     return "internal-ai-pill is-warning";
   }
 
   if (
-    status.includes("reject") ||
-    status.includes("discard") ||
-    status.includes("errore") ||
-    status.includes("not_ready")
+    normalizedStatus.includes("reject") ||
+    normalizedStatus.includes("discard") ||
+    normalizedStatus.includes("errore") ||
+    normalizedStatus.includes("not_ready")
   ) {
     return "internal-ai-pill is-danger";
   }
@@ -2132,6 +2157,187 @@ function buildContractLabelMap(contractCatalog: ReturnType<typeof readInternalAi
   return new Map<string, string>(contractCatalog.map((entry) => [entry.id, entry.title]));
 }
 
+function normalizeDocumentProposalValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry ?? "")).join(" ").trim().toLowerCase();
+  }
+
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function buildAttachmentDrivenBasePrompt(args: {
+  prompt: string;
+  attachments: InternalAiChatAttachment[];
+  resolvedChatTarga: string | null;
+  unifiedConsoleScopes: UnifiedConsoleScopeFilter[];
+}): string {
+  const trimmedPrompt = args.prompt.trim();
+  if (trimmedPrompt) {
+    return trimmedPrompt;
+  }
+
+  if (args.attachments.length > 0) {
+    return args.attachments.length === 1
+      ? "Controlla questo documento allegato"
+      : "Controlla questi documenti allegati";
+  }
+
+  if (args.resolvedChatTarga) {
+    return `Fammi il quadro completo della targa ${args.resolvedChatTarga}`;
+  }
+
+  if (args.unifiedConsoleScopes.includes("attenzione_oggi")) {
+    return "Dimmi cosa richiede attenzione oggi";
+  }
+
+  return "Fammi il quadro completo";
+}
+
+function buildDocumentRouteClassificationLabel(route: InternalAiUniversalDocumentRoute): string {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const mode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
+  const viewTarget = normalizeDocumentProposalValue(prefill.vistaTarget);
+
+  if (route.classification === "tabella_materiali") {
+    if (mode === "carica_stock_adblue") {
+      return "Fattura AdBlue di Magazzino";
+    }
+
+    if (viewTarget === "documenti-costi") {
+      return "Fattura materiali di Magazzino";
+    }
+
+    return "Tabella materiali / inventario";
+  }
+
+  if (route.classification === "preventivo_fornitore") {
+    return "Preventivo fornitore";
+  }
+
+  if (route.classification === "documento_cisterna") {
+    return "Documento cisterna";
+  }
+
+  if (route.classification === "documento_mezzo") {
+    return "Documento mezzo";
+  }
+
+  if (route.classification === "documento_ambiguo") {
+    return "Documento ambiguo";
+  }
+
+  if (route.classification === "immagine_generica") {
+    return "Immagine generica";
+  }
+
+  return "Testo operativo";
+}
+
+function buildDocumentRouteActionLabel(route: InternalAiUniversalDocumentRoute): string {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const mode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
+  const viewTarget = normalizeDocumentProposalValue(prefill.vistaTarget);
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return "DA VERIFICARE";
+  }
+
+  if (route.classification === "tabella_materiali") {
+    if (mode === "carica_stock_adblue") {
+      return "Carica stock AdBlue";
+    }
+
+    if (viewTarget === "documenti-costi") {
+      return "Riconcilia documento";
+    }
+
+    return "Apri inventario Magazzino";
+  }
+
+  if (route.classification === "preventivo_fornitore") {
+    return "Apri Procurement";
+  }
+
+  if (route.classification === "documento_cisterna") {
+    return "Apri Cisterna";
+  }
+
+  if (route.classification === "documento_mezzo") {
+    return "Apri Documenti IA";
+  }
+
+  return "Continua in chat";
+}
+
+function buildDocumentRouteSafetyLabel(route: InternalAiUniversalDocumentRoute): string {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const mode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
+  const viewTarget = normalizeDocumentProposalValue(prefill.vistaTarget);
+
+  if (route.classification === "tabella_materiali" && mode === "carica_stock_adblue") {
+    return "Il carico stock resta bloccato finche non confermi nel modulo Magazzino.";
+  }
+
+  if (route.classification === "tabella_materiali" && viewTarget === "documenti-costi") {
+    return "Il modulo Magazzino verifica anti-doppio-carico, UDM e copertura del documento prima di qualunque scrittura.";
+  }
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return "Il clone non propone scritture automatiche finche il caso non diventa chiaro.";
+  }
+
+  return "La proposta resta prudente e richiede sempre conferma utente nel modulo target.";
+}
+
+function buildDocumentRouteFollowupQuestion(route: InternalAiUniversalDocumentRoute): string | null {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const mode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
+
+  if (route.status !== "da_verificare" && route.classification !== "documento_ambiguo") {
+    return null;
+  }
+
+  if (route.classification === "tabella_materiali" && mode === "carica_stock_adblue") {
+    return "Confermi che la fattura riguarda AdBlue in litri e che il carico non e gia stato registrato?";
+  }
+
+  if (route.classification === "tabella_materiali") {
+    return "Confermi che il documento riguarda una fattura materiali di Magazzino e non un allegato generico?";
+  }
+
+  return "Il documento riguarda davvero Magazzino oppure un altro dominio del gestionale?";
+}
+
+function buildDocumentRouteOpenLabel(route: InternalAiUniversalDocumentRoute): string {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const viewTarget = normalizeDocumentProposalValue(prefill.vistaTarget);
+
+  if (route.classification === "tabella_materiali" && viewTarget === "documenti-costi") {
+    return route.status === "da_verificare"
+      ? "Apri verifica guidata in Magazzino"
+      : "Apri proposta in Magazzino";
+  }
+
+  if (route.classification === "documento_ambiguo" || route.status === "inbox_documentale") {
+    return "Apri DA VERIFICARE";
+  }
+
+  return `Apri ${route.suggestedModuleLabel}`;
+}
+
+function buildDocumentRouteConfidenceLabel(route: InternalAiUniversalDocumentRoute): string {
+  switch (route.confidence) {
+    case "alta":
+      return "Alta";
+    case "media":
+      return "Media";
+    case "prudente":
+      return "Prudente";
+    default:
+      return "Da verificare";
+  }
+}
+
 function NextInternalAiPage({
   sectionId = "overview",
   initialChatInput,
@@ -2284,6 +2490,11 @@ function NextInternalAiPage({
   const [chatBridgeState, setChatBridgeState] = useState<ReportBridgeState>({
     transport: "non_attivo",
     transportMessage: null,
+  });
+  const [chatDocumentProposalState, setChatDocumentProposalState] = useState<ChatDocumentProposalState>({
+    status: "idle",
+    result: null,
+    message: null,
   });
   const [repoUnderstandingState, setRepoUnderstandingState] = useState<RepoUnderstandingState>({
     status: "idle",
@@ -4151,70 +4362,73 @@ function NextInternalAiPage({
     chatAttachmentInputRef.current?.click();
   };
 
-  const handleChatAttachmentSelection = async (files: FileList | File[] | null) => {
-    const fileItems = Array.from(files ?? []).slice(0, 6);
-    if (
-      !fileItems.length ||
-      chatStatus === "running" ||
-      chatAttachmentRepositoryState.status === "loading"
-    ) {
-      return;
-    }
-
-    const nextAttachments = [...chatAttachments];
-    let nextTransport: ChatAttachmentRepositoryState["transport"] = "server_http_retrieval";
-    let nextMessage = "Allegati IA-only aggiornati nella conversazione.";
-    let sawServerUpload = false;
-
-    setChatAttachmentRepositoryState((current) => ({
-      ...current,
-      status: "loading",
-      message: "Caricamento allegati IA-only in corso...",
-      transport: "server_http_retrieval",
-      transportMessage: "Upload verso backend IA separato o fallback locale.",
-    }));
-
-    for (const file of fileItems) {
-      if (file.size > 4 * 1024 * 1024) {
-        nextTransport = "frontend_fallback";
-        nextMessage = `File escluso per dimensione: ${file.name}. Il limite IA-only e 4 MB.`;
-        continue;
+  const handleChatAttachmentSelection = useCallback(
+    async (files: FileList | File[] | null) => {
+      const fileItems = Array.from(files ?? []).slice(0, 6);
+      if (
+        !fileItems.length ||
+        chatStatus === "running" ||
+        chatAttachmentRepositoryState.status === "loading"
+      ) {
+        return;
       }
 
-      const result = await uploadInternalAiServerChatAttachment(file);
-      if (result.status === "ready") {
-        sawServerUpload = true;
-        const preservedLocalAttachments = nextAttachments.filter(
-          (entry) =>
-            entry.storageMode === "local_browser_only" &&
-            !result.repositoryState.some((serverAttachment) => serverAttachment.id === entry.id),
-        );
-        nextAttachments.splice(
-          0,
-          nextAttachments.length,
-          ...[...result.repositoryState, ...preservedLocalAttachments].slice(0, 12),
-        );
-      } else if (result.attachment) {
-        const attachment = result.attachment;
-        const merged = [attachment, ...nextAttachments.filter((entry) => entry.id !== attachment.id)];
-        nextAttachments.splice(0, nextAttachments.length, ...merged.slice(0, 12));
+      const nextAttachments = [...chatAttachments];
+      let nextTransport: ChatAttachmentRepositoryState["transport"] = "server_http_retrieval";
+      let nextMessage = "Allegati IA-only aggiornati nella conversazione.";
+      let sawServerUpload = false;
+
+      setChatAttachmentRepositoryState((current) => ({
+        ...current,
+        status: "loading",
+        message: "Caricamento allegati IA-only in corso...",
+        transport: "server_http_retrieval",
+        transportMessage: "Upload verso backend IA separato o fallback locale.",
+      }));
+
+      for (const file of fileItems) {
+        if (file.size > 4 * 1024 * 1024) {
+          nextTransport = "frontend_fallback";
+          nextMessage = `File escluso per dimensione: ${file.name}. Il limite IA-only e 4 MB.`;
+          continue;
+        }
+
+        const result = await uploadInternalAiServerChatAttachment(file);
+        if (result.status === "ready") {
+          sawServerUpload = true;
+          const preservedLocalAttachments = nextAttachments.filter(
+            (entry) =>
+              entry.storageMode === "local_browser_only" &&
+              !result.repositoryState.some((serverAttachment) => serverAttachment.id === entry.id),
+          );
+          nextAttachments.splice(
+            0,
+            nextAttachments.length,
+            ...[...result.repositoryState, ...preservedLocalAttachments].slice(0, 12),
+          );
+        } else if (result.attachment) {
+          const attachment = result.attachment;
+          const merged = [attachment, ...nextAttachments.filter((entry) => entry.id !== attachment.id)];
+          nextAttachments.splice(0, nextAttachments.length, ...merged.slice(0, 12));
+        }
+
+        nextTransport =
+          result.status === "ready" ? "server_http_retrieval" : "frontend_fallback";
+        nextMessage = result.message;
       }
 
-      nextTransport =
-        result.status === "ready" ? "server_http_retrieval" : "frontend_fallback";
-      nextMessage = result.message;
-    }
+      setChatAttachments([...nextAttachments]);
 
-    setChatAttachments([...nextAttachments]);
-
-    setChatAttachmentRepositoryState({
-      status: nextAttachments.length ? "ready" : "error",
-      message: nextMessage,
-      items: [...nextAttachments],
-      transport: nextTransport || (sawServerUpload ? "server_http_retrieval" : "frontend_fallback"),
-      transportMessage: nextMessage,
-    });
-  };
+      setChatAttachmentRepositoryState({
+        status: nextAttachments.length ? "ready" : "error",
+        message: nextMessage,
+        items: [...nextAttachments],
+        transport: nextTransport || (sawServerUpload ? "server_http_retrieval" : "frontend_fallback"),
+        transportMessage: nextMessage,
+      });
+    },
+    [chatAttachmentRepositoryState.status, chatAttachments, chatStatus],
+  );
 
   const initialLauncherAttachmentsProcessedRef = useRef(false);
   const [initialChatAttachmentsReady, setInitialChatAttachmentsReady] = useState(
@@ -4238,7 +4452,7 @@ function NextInternalAiPage({
     void handleChatAttachmentSelection(initialChatAttachments).finally(() => {
       setInitialChatAttachmentsReady(true);
     });
-  }, [chatAttachmentRepositoryState.status, initialChatAttachments]);
+  }, [chatAttachmentRepositoryState.status, handleChatAttachmentSelection, initialChatAttachments]);
 
   const handleOpenChatAttachment = (attachment: InternalAiChatAttachment) => {
     const url = buildInternalAiChatAttachmentAssetUrl(attachment);
@@ -4381,17 +4595,23 @@ function NextInternalAiPage({
       unifiedConsoleScopes.includes(entry.id),
     ).map((entry) => entry.label);
 
-    const basePrompt =
-      trimmedPrompt ||
-      (resolvedChatTarga
-        ? `Fammi il quadro completo della targa ${resolvedChatTarga}`
-        : unifiedConsoleScopes.includes("attenzione_oggi")
-          ? "Dimmi cosa richiede attenzione oggi"
-          : "Fammi il quadro completo");
+    const basePrompt = buildAttachmentDrivenBasePrompt({
+      prompt: trimmedPrompt,
+      attachments: chatAttachments,
+      resolvedChatTarga,
+      unifiedConsoleScopes,
+    });
+    const shouldAnnotateScopes = !(
+      chatAttachments.length > 0 &&
+      unifiedConsoleScopes.length === 1 &&
+      unifiedConsoleScopes[0] === "quadro"
+    );
 
     const contextParts = [
       resolvedChatTarga ? `targa ${resolvedChatTarga}` : null,
-      selectedScopeLabels.length ? `ambiti ${selectedScopeLabels.join(", ")}` : null,
+      shouldAnnotateScopes && selectedScopeLabels.length
+        ? `ambiti ${selectedScopeLabels.join(", ")}`
+        : null,
       unifiedConsoleOutput !== "thread"
         ? `output ${UNIFIED_OUTPUT_LABELS[unifiedConsoleOutput].toLowerCase()}`
         : null,
@@ -4407,6 +4627,7 @@ function NextInternalAiPage({
         "[CONSOLE IA UNIFICATA]\n" +
         `Targa: ${resolvedChatTarga || "-"}\n` +
         `Ambiti: ${selectedScopeLabels.join(", ") || "-"}\n` +
+        `Allegati: ${chatAttachments.map((attachment) => attachment.fileName).slice(0, 4).join(", ") || "-"}\n` +
         `Output: ${unifiedConsoleOutput}\n` +
         "[/CONSOLE IA UNIFICATA]",
     };
@@ -4414,9 +4635,228 @@ function NextInternalAiPage({
 
   const canSubmitUnifiedConsole =
     Boolean(chatInput.trim()) ||
+    chatAttachments.length > 0 ||
     Boolean(resolvedChatTarga) ||
     unifiedConsoleOutput !== "thread" ||
     unifiedConsoleScopes.some((scope) => scope !== "quadro");
+
+  const liveUnifiedConsoleRequest = buildUnifiedConsoleRequest(chatInput);
+
+  useEffect(() => {
+    if (chatAttachments.length === 0) {
+      setChatDocumentProposalState({
+        status: "idle",
+        result: null,
+        message: null,
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      setChatDocumentProposalState((current) => ({
+        status: "loading",
+        result: current.result,
+        message: "Classificazione automatica del documento in corso.",
+      }));
+
+      void orchestrateInternalAiUniversalRequest({
+        prompt: liveUnifiedConsoleRequest.visiblePrompt,
+        attachments: chatAttachments,
+        preferredTarga: resolvedChatTarga || null,
+      })
+        .then((result) => {
+          if (cancelled) {
+            return;
+          }
+
+          syncInternalAiUniversalRequestsRepository({
+            handoffs: result.handoffPayloads,
+            inboxItems: result.documentInboxItems,
+          });
+
+          setChatDocumentProposalState({
+            status: "ready",
+            result,
+            message:
+              result.documentRoutes.length > 0
+                ? "Documento classificato automaticamente e handoff preparato."
+                : "Documento acquisito, ma senza una classificazione forte.",
+          });
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
+
+          setChatDocumentProposalState({
+            status: "error",
+            result: null,
+            message:
+              error instanceof Error
+                ? `Impossibile classificare l'allegato: ${error.message}`
+                : "Impossibile classificare l'allegato con il router documentale.",
+          });
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    chatAttachments,
+    chatInput,
+    liveUnifiedConsoleRequest.visiblePrompt,
+    resolvedChatTarga,
+    unifiedConsoleOutput,
+    unifiedConsoleScopes,
+  ]);
+
+  const chatComposerHint =
+    chatAttachments.length > 0
+      ? "Con un allegato il testo e opzionale: la IA classifica il documento e propone il flusso corretto."
+      : "`Invio` manda la richiesta. `Shift + Invio` va a capo.";
+  const chatSubmitButtonLabel =
+    chatStatus === "running"
+      ? "Elaborazione..."
+      : chatAttachments.length > 0 && !chatInput.trim()
+        ? "Analizza allegato"
+        : "Invia richiesta";
+  const chatInputPlaceholderWithDocument =
+    "Puoi scrivere una nota semplice come gestisci questa fattura, oppure lasciare vuoto: l'analisi parte dall'allegato.";
+
+  const renderAutomaticDocumentProposalPanel = () => {
+    if (chatAttachments.length === 0) {
+      return null;
+    }
+
+    if (chatDocumentProposalState.status === "loading") {
+      return (
+        <article
+          className="internal-ai-card"
+          style={{
+            display: "grid",
+            gap: 10,
+            marginTop: 12,
+            padding: 14,
+          }}
+        >
+          <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
+          <h3 style={{ margin: 0 }}>Analisi allegato in corso</h3>
+          <p className="internal-ai-card__meta">
+            {chatDocumentProposalState.message ??
+              "Sto classificando il documento e preparando l'handoff prudente del clone."}
+          </p>
+        </article>
+      );
+    }
+
+    if (chatDocumentProposalState.status === "error") {
+      return (
+        <article
+          className="internal-ai-card"
+          style={{
+            display: "grid",
+            gap: 10,
+            marginTop: 12,
+            padding: 14,
+          }}
+        >
+          <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
+          <h3 style={{ margin: 0 }}>DA VERIFICARE</h3>
+          <p className="internal-ai-card__meta">{chatDocumentProposalState.message}</p>
+        </article>
+      );
+    }
+
+    const routes = chatDocumentProposalState.result?.documentRoutes ?? [];
+
+    if (routes.length === 0) {
+      return (
+        <article
+          className="internal-ai-card"
+          style={{
+            display: "grid",
+            gap: 10,
+            marginTop: 12,
+            padding: 14,
+          }}
+        >
+          <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
+          <h3 style={{ margin: 0 }}>DA VERIFICARE</h3>
+          <p className="internal-ai-card__meta">
+            Il documento non ha ancora un flusso documentale forte. Resta prudente finche non emerge
+            un target chiaro.
+          </p>
+        </article>
+      );
+    }
+
+    return (
+      <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+        {routes.slice(0, 3).map((route) => {
+          const openPath = route.handoffPayload?.routeTarget ?? route.targetPath;
+          const followupQuestion = buildDocumentRouteFollowupQuestion(route);
+
+          return (
+            <article
+              key={`auto-proposal:${route.attachmentId}:${route.classification}`}
+              className="internal-ai-card"
+              style={{
+                display: "grid",
+                gap: 10,
+                padding: 14,
+              }}
+            >
+              <div className="internal-ai-chat__message-header">
+                <div>
+                  <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
+                  <h3 style={{ margin: 0 }}>{route.fileName}</h3>
+                </div>
+                <div className="internal-ai-pill-row">
+                  <span className={statusToneClass(buildDocumentRouteActionLabel(route))}>
+                    {buildDocumentRouteActionLabel(route)}
+                  </span>
+                  <span className="internal-ai-pill is-neutral">
+                    Confidenza {buildDocumentRouteConfidenceLabel(route)}
+                  </span>
+                </div>
+              </div>
+
+              <p className="internal-ai-card__meta">
+                Tipo rilevato: {buildDocumentRouteClassificationLabel(route)}
+              </p>
+              <p className="internal-ai-card__meta">
+                {(route.rationale[0] ?? route.handoffPayload?.motivoInstradamento) ||
+                  "Instradamento documentale prudente del clone."}
+              </p>
+              <p className="internal-ai-card__meta">{buildDocumentRouteSafetyLabel(route)}</p>
+              {followupQuestion ? (
+                <p className="internal-ai-card__meta">Domanda per sbloccare: {followupQuestion}</p>
+              ) : null}
+              <div className="internal-ai-search__actions">
+                <button
+                  type="button"
+                  className={
+                    route.status === "da_verificare" || route.classification === "documento_ambiguo"
+                      ? "internal-ai-search__button internal-ai-search__button--secondary"
+                      : "internal-ai-search__button"
+                  }
+                  onClick={() => navigate(openPath)}
+                >
+                  {buildDocumentRouteOpenLabel(route)}
+                </button>
+                <span className="internal-ai-muted">
+                  L'esecuzione business resta bloccata finche non confermi nel modulo target.
+                </span>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
+  };
 
   const handleChatSubmit = async (promptOverride?: string) => {
     const request = buildUnifiedConsoleRequest(promptOverride ?? chatInput);
@@ -5454,7 +5894,11 @@ function NextInternalAiPage({
                   <textarea
                     value={chatInput}
                     onChange={(event) => setChatInput(event.target.value)}
-                    placeholder="Esempio: mostrami le criticita del mezzo, spiegami cosa richiede attenzione oggi o analizza gli allegati."
+                    placeholder={
+                      chatAttachments.length > 0
+                        ? chatInputPlaceholderWithDocument
+                        : "Esempio: mostrami le criticita del mezzo, spiegami cosa richiede attenzione oggi o analizza gli allegati."
+                    }
                     className="internal-ai-search__input internal-ai-chat__composer-input"
                     rows={3}
                     onKeyDown={(event) => {
@@ -5467,9 +5911,7 @@ function NextInternalAiPage({
                 </label>
 
                 <div className="internal-ai-chat__composer-actions">
-                  <p className="internal-ai-card__meta">
-                    `Invio` manda la richiesta. `Shift + Invio` va a capo.
-                  </p>
+                  <p className="internal-ai-card__meta">{chatComposerHint}</p>
                   <div className="internal-ai-search__actions">
                     <button
                       type="button"
@@ -5491,7 +5933,7 @@ function NextInternalAiPage({
                       }
                       onClick={() => void handleChatSubmit()}
                     >
-                      {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
+                      {chatSubmitButtonLabel}
                     </button>
                   </div>
                 </div>
@@ -5532,6 +5974,8 @@ function NextInternalAiPage({
                     ))}
                   </div>
                 ) : null}
+
+                {renderAutomaticDocumentProposalPanel()}
 
                 <input
                   ref={chatAttachmentInputRef}
@@ -5800,7 +6244,11 @@ function NextInternalAiPage({
                     <textarea
                       value={chatInput}
                       onChange={(event) => setChatInput(event.target.value)}
-                      placeholder="Esempio: dimmi lo stato del mezzo, mostrami le criticita, prepara un report o spiegami cosa richiede attenzione oggi."
+                      placeholder={
+                        chatAttachments.length > 0
+                          ? chatInputPlaceholderWithDocument
+                          : "Esempio: dimmi lo stato del mezzo, mostrami le criticita, prepara un report o spiegami cosa richiede attenzione oggi."
+                      }
                       className="internal-ai-search__input internal-ai-chat__composer-input"
                       rows={4}
                       onKeyDown={(event) => {
@@ -5813,9 +6261,7 @@ function NextInternalAiPage({
                   </label>
 
                   <div className="internal-ai-chat__composer-actions">
-                    <p className="internal-ai-card__meta">
-                      `Invio` manda la richiesta. `Shift + Invio` va a capo.
-                    </p>
+                    <p className="internal-ai-card__meta">{chatComposerHint}</p>
                     <div className="internal-ai-search__actions">
                       <button
                         type="button"
@@ -5849,7 +6295,7 @@ function NextInternalAiPage({
                         }
                         onClick={() => void handleChatSubmit()}
                       >
-                        {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
+                        {chatSubmitButtonLabel}
                       </button>
                     </div>
                   </div>
@@ -5890,6 +6336,8 @@ function NextInternalAiPage({
                       ))}
                     </div>
                   ) : null}
+
+                  {renderAutomaticDocumentProposalPanel()}
 
                   <input
                     ref={chatAttachmentInputRef}
@@ -6287,7 +6735,11 @@ function NextInternalAiPage({
                 <textarea
                   value={chatInput}
                   onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Chiedimi un quadro completo, criticita + segnalazioni + manutenzioni, scadenze, oppure usa i filtri sopra per targa, ambiti e output."
+                  placeholder={
+                    chatAttachments.length > 0
+                      ? chatInputPlaceholderWithDocument
+                      : "Chiedimi un quadro completo, criticita + segnalazioni + manutenzioni, scadenze, oppure usa i filtri sopra per targa, ambiti e output."
+                  }
                   className="internal-ai-search__input internal-ai-chat__composer-input"
                   rows={4}
                   onKeyDown={(event) => {
@@ -6299,9 +6751,7 @@ function NextInternalAiPage({
                 />
               </label>
               <div className="internal-ai-chat__composer-actions">
-                <p className="internal-ai-card__meta">
-                  `Invio` manda la richiesta. `Shift + Invio` va a capo.
-                </p>
+                <p className="internal-ai-card__meta">{chatComposerHint}</p>
                 <div className="internal-ai-search__actions">
                   <button
                     type="button"
@@ -6321,7 +6771,7 @@ function NextInternalAiPage({
                     }
                     onClick={() => void handleChatSubmit()}
                   >
-                    {chatStatus === "running" ? "Elaborazione..." : "Invia richiesta"}
+                    {chatSubmitButtonLabel}
                   </button>
                 </div>
               </div>
@@ -6363,6 +6813,7 @@ function NextInternalAiPage({
                   ))}
                 </div>
               ) : null}
+              {renderAutomaticDocumentProposalPanel()}
               <input
                 ref={chatAttachmentInputRef}
                 type="file"

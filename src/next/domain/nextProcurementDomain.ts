@@ -1000,7 +1000,7 @@ export async function readNextProcurementSnapshot(
       ordineMateriali: {
         enabled: false,
         reason:
-          "La bozza ordine materiali della madre resta fuori perimetro nel clone: la tab resta visibile, ma conferme, allegati, PDF e salvataggi sono bloccati in sola lettura.",
+          "La bozza ordine materiali della madre resta fuori perimetro nel clone: la tab resta visibile, ma conferme, allegati, PDF e salvataggi sono bloccati in sola lettura; nel perimetro NEXT il writer stock canonico vive in `/next/magazzino`.",
       },
       ordini: { enabled: true, reason: null },
       arrivi: { enabled: true, reason: null },
@@ -1017,13 +1017,14 @@ export async function readNextProcurementSnapshot(
       dettaglioOrdine: {
         enabled: true,
         reason:
-          "Il dettaglio ordine resta consultabile in sola lettura: stato arrivo, righe, note, foto e PDF mantengono la UI della madre ma restano bloccati sotto.",
+          "Il dettaglio ordine resta consultabile in sola lettura: stato arrivo, righe, note, foto e PDF mantengono la UI della madre ma restano bloccati sotto; il consolidamento stock degli arrivi passa da `/next/magazzino`.",
       },
     },
     limitations: [
       includeCloneOverlays
         ? "Il layer D06 puo ancora ammettere overlay locali opzionali quando richiesto in modo esplicito da runtime legacy del clone."
         : "Questa lettura ufficiale del procurement usa solo i dati reali della madre, senza overlay clone-only su ordini o righe.",
+      "Nel perimetro NEXT ordini e arrivi procurement restano supporto read-only: il carico stock canonico degli arrivi si consolida da `/next/magazzino?tab=documenti-costi` usando il contratto `nextMagazzinoStockContract.ts`.",
       "Le viste `Ordini` e `Arrivi` replicano la semantica della madre su `Acquisti`: gli ordini parziali compaiono in entrambe perche hanno sia righe pendenti sia righe arrivate.",
       "Nel clone ufficiale il dettaglio ordine resta navigabile, ma edit, toggle arrivo, aggiunta righe, foto e PDF sono bloccati in modo esplicito.",
       dataset.datasetShape === "unsupported"

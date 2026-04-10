@@ -3,6 +3,13 @@ import { db } from "../../firebase";
 import { getItemSync, setItemSync } from "../../utils/storageSync";
 import { normalizeNextMezzoTarga } from "../nextAnagraficheFlottaDomain";
 import { formatDateUI, toNextDateValue } from "../nextDateFormat";
+import {
+  areNextMagazzinoUnitsCompatible,
+  buildNextMagazzinoStockKey,
+  normalizeNextMagazzinoStockRefId,
+  normalizeNextMagazzinoStockUnit,
+  normalizeNextMagazzinoStockUnitLoose,
+} from "./nextMagazzinoStockContract";
 
 const STORAGE_COLLECTION = "storage";
 const MANUTENZIONI_KEY = "@manutenzioni";
@@ -404,7 +411,7 @@ function sanitizeLegacyMateriali(value: unknown): NextManutenzioniLegacyMaterial
         id: normalizeOptionalText(raw.id) ?? `materiale:${index}`,
         label,
         quantita: normalizeNumber(raw.quantita) ?? 0,
-        unita: normalizeOptionalText(raw.unita) ?? "pz",
+        unita: normalizeNextMagazzinoStockUnitLoose(raw.unita) || "pz",
         fromInventario: Boolean(raw.fromInventario),
         ...(refId ? { refId } : {}),
       };
@@ -708,9 +715,11 @@ function sanitizeMaterialeForWrite(
     id: normalizeOptionalText(item.id) ?? `materiale:${index}`,
     label,
     quantita: normalizeNumber(item.quantita) ?? 0,
-    unita: normalizeOptionalText(item.unita) ?? "pz",
+    unita: normalizeNextMagazzinoStockUnitLoose(item.unita) || "pz",
     fromInventario: Boolean(item.fromInventario),
-    ...(normalizeOptionalText(item.refId) ? { refId: normalizeOptionalText(item.refId) ?? undefined } : {}),
+    ...(normalizeNextMagazzinoStockRefId(item.refId)
+      ? { refId: normalizeNextMagazzinoStockRefId(item.refId) ?? undefined }
+      : {}),
   };
 }
 
@@ -793,6 +802,15 @@ function sanitizeInventarioArray(items: unknown[]): NextLegacyInventarioRecord[]
   return items.filter((item): item is NextLegacyInventarioRecord => Boolean(item) && typeof item === "object");
 }
 
+function resolveLegacyInventarioIndex(
+  inventario: NextLegacyInventarioRecord[],
+  materiale: NextManutenzioniLegacyMaterialRecord,
+): number {
+  const refId = normalizeNextMagazzinoStockRefId(materiale.refId);
+  if (!refId) return -1;
+  return inventario.findIndex((item) => String(item.id ?? "").trim() === refId);
+}
+
 async function persistLegacyMaterialEffects(args: {
   targa: string;
   data: string;
@@ -811,16 +829,37 @@ async function persistLegacyMaterialEffects(args: {
   for (const materiale of args.materiali) {
     if (!materiale.fromInventario || !materiale.refId) continue;
 
-    const index = inventarioAggiornato.findIndex((item) => String(item.id ?? "").trim() === materiale.refId);
-    if (index === -1) continue;
+    const index = resolveLegacyInventarioIndex(inventarioAggiornato, materiale);
+    if (index === -1) {
+      throw new Error(`Inventario non risolto per materiale manutenzione: ${materiale.label}`);
+    }
 
     const corrente = inventarioAggiornato[index];
+    if (!areNextMagazzinoUnitsCompatible(corrente.unita, materiale.unita)) {
+      throw new Error(
+        `Unita incoerente su materiale manutenzione: ${materiale.label} (${String(
+          corrente.unita ?? "",
+        )} vs ${materiale.unita})`,
+      );
+    }
     const quantitaAttuale = normalizeNumber(corrente.quantitaTotale ?? corrente.quantita) ?? 0;
-    const nuovaQuantita = Math.max(0, quantitaAttuale - materiale.quantita);
+    if (quantitaAttuale < materiale.quantita) {
+      throw new Error(`Stock insufficiente per materiale manutenzione: ${materiale.label}`);
+    }
+    const nuovaQuantita = quantitaAttuale - materiale.quantita;
     inventarioAggiornato[index] = {
       ...corrente,
       quantitaTotale: nuovaQuantita,
       quantita: nuovaQuantita,
+      unita: normalizeNextMagazzinoStockUnit(corrente.unita) ?? corrente.unita,
+      stockKey:
+        buildNextMagazzinoStockKey({
+          stockKey: corrente.stockKey,
+          descrizione: corrente.descrizione ?? corrente.label ?? corrente.nome,
+          fornitore:
+            corrente.fornitore ?? corrente.fornitoreLabel ?? corrente.nomeFornitore,
+          unita: corrente.unita,
+        }) ?? corrente.stockKey ?? null,
     };
 
     const entryTimestamp = Date.now();
@@ -835,12 +874,21 @@ async function persistLegacyMaterialEffects(args: {
       materiale: materiale.label,
       descrizione: materiale.label,
       quantita: materiale.quantita,
-      unita: materiale.unita,
+      unita: normalizeNextMagazzinoStockUnit(materiale.unita) ?? materiale.unita,
       origine: "MANUTENZIONE",
       targa: args.targa,
       mezzoTarga: args.targa,
       fornitore: normalizeOptionalText(corrente.fornitore) ?? "",
       fornitoreLabel: normalizeOptionalText(corrente.fornitore) ?? "",
+      stockKey:
+        buildNextMagazzinoStockKey({
+          stockKey: corrente.stockKey,
+          descrizione:
+            corrente.descrizione ?? corrente.label ?? corrente.nome ?? materiale.label,
+          fornitore:
+            corrente.fornitore ?? corrente.fornitoreLabel ?? corrente.nomeFornitore,
+          unita: corrente.unita ?? materiale.unita,
+        }) ?? null,
       destinatario: {
         type: "MEZZO",
         refId: args.targa,
@@ -869,11 +917,16 @@ export async function saveNextManutenzioneBusinessRecord(
   await setItemSync(MANUTENZIONI_KEY, nextStorico);
 
   if (!editingSourceId) {
-    await persistLegacyMaterialEffects({
-      targa: nextRecord.targa,
-      data: nextRecord.data,
-      materiali: nextRecord.materiali ?? [],
-    });
+    try {
+      await persistLegacyMaterialEffects({
+        targa: nextRecord.targa,
+        data: nextRecord.data,
+        materiali: nextRecord.materiali ?? [],
+      });
+    } catch (error) {
+      await setItemSync(MANUTENZIONI_KEY, storicoRaw);
+      throw error;
+    }
   }
 
   return nextRecord;
@@ -898,16 +951,34 @@ export async function deleteNextManutenzioneBusinessRecord(recordId: string): Pr
 
   for (const materiale of record.materiali ?? []) {
     if (!materiale.fromInventario || !materiale.refId) continue;
-    const index = inventarioAggiornato.findIndex((item) => String(item.id ?? "").trim() === materiale.refId);
-    if (index === -1) continue;
+    const index = resolveLegacyInventarioIndex(inventarioAggiornato, materiale);
+    if (index === -1) {
+      throw new Error(`Ripristino inventario impossibile per materiale manutenzione: ${materiale.label}`);
+    }
 
     const corrente = inventarioAggiornato[index];
+    if (!areNextMagazzinoUnitsCompatible(corrente.unita, materiale.unita)) {
+      throw new Error(
+        `Ripristino bloccato per unita incoerente: ${materiale.label} (${String(
+          corrente.unita ?? "",
+        )} vs ${materiale.unita})`,
+      );
+    }
     const quantitaAttuale = normalizeNumber(corrente.quantitaTotale ?? corrente.quantita) ?? 0;
     const nuovaQuantita = quantitaAttuale + (normalizeNumber(materiale.quantita) ?? 0);
     inventarioAggiornato[index] = {
       ...corrente,
       quantitaTotale: nuovaQuantita,
       quantita: nuovaQuantita,
+      unita: normalizeNextMagazzinoStockUnit(corrente.unita) ?? corrente.unita,
+      stockKey:
+        buildNextMagazzinoStockKey({
+          stockKey: corrente.stockKey,
+          descrizione: corrente.descrizione ?? corrente.label ?? corrente.nome,
+          fornitore:
+            corrente.fornitore ?? corrente.fornitoreLabel ?? corrente.nomeFornitore,
+          unita: corrente.unita,
+        }) ?? corrente.stockKey ?? null,
     };
   }
 
@@ -934,8 +1005,15 @@ export async function deleteNextManutenzioneBusinessRecord(recordId: string): Pr
   }
 
   const nextStorico = storicoRaw.filter((_, index) => index !== recordIndex);
-  await setItemSync(INVENTARIO_KEY, inventarioAggiornato);
-  await setItemSync(MATERIALI_CONSEGNATI_KEY, consegneAggiornate);
-  await setItemSync(MANUTENZIONI_KEY, nextStorico);
+  try {
+    await setItemSync(INVENTARIO_KEY, inventarioAggiornato);
+    await setItemSync(MATERIALI_CONSEGNATI_KEY, consegneAggiornate);
+    await setItemSync(MANUTENZIONI_KEY, nextStorico);
+  } catch (error) {
+    await setItemSync(INVENTARIO_KEY, inventarioRaw);
+    await setItemSync(MATERIALI_CONSEGNATI_KEY, consegneRaw);
+    await setItemSync(MANUTENZIONI_KEY, storicoRaw);
+    throw error;
+  }
   return true;
 }

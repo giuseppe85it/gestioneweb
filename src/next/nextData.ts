@@ -169,12 +169,12 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "magazzino",
     title: "MAGAZZINO",
     items: [
+      { id: "magazzino", label: "Magazzino", path: NEXT_MAGAZZINO_PATH },
       {
         id: "materiali-da-ordinare",
         label: "Materiali da ordinare",
         path: NEXT_MATERIALI_DA_ORDINARE_PATH,
       },
-      { id: "magazzino", label: "Magazzino", path: NEXT_MAGAZZINO_PATH },
       {
         id: "attrezzature",
         label: "Attrezzature cantieri",
@@ -343,7 +343,7 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     path: "/next/gestione-operativa",
     label: "Operativita Globale",
     status: "ACTIVE_PARTIAL",
-    note: "Famiglia NEXT riallineata a route autonome per `Gestione Operativa`, `Magazzino`, `Attrezzature Cantieri`, `Manutenzioni`, `Acquisti`, `Materiali Da Ordinare`, `Ordini`, `Dettaglio Ordine`, liste lavori, `Autisti Inbox` e `Autisti Admin`; `/next/inventario` e `/next/materiali-consegnati` restano solo redirect di compatibilita verso `/next/magazzino`.",
+    note: "Famiglia NEXT riallineata a route autonome per `Gestione Operativa`, `Magazzino`, `Attrezzature Cantieri`, `Manutenzioni`, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin`; `/next/magazzino` governa il contratto stock lato NEXT, mentre `/next/inventario` e `/next/materiali-consegnati` restano solo redirect di compatibilita.",
   },
   {
     id: "euromecc",
@@ -599,8 +599,8 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
     eyebrow: "Workflow e code",
     title: "Operativita Globale",
     description:
-      "Famiglia NEXT riallineata alla madre con ingresso unificato `Magazzino`, pagine autonome per attrezzature, manutenzioni, procurement, backlog lavori, `Autisti Inbox` e `Autisti Admin`, e redirect di compatibilita sui vecchi path inventario/materiali.",
-    phase: "Importato read-only",
+      "Famiglia NEXT riallineata alla madre con ingresso unificato `Magazzino`, pagine autonome per attrezzature, manutenzioni, procurement, backlog lavori, `Autisti Inbox` e `Autisti Admin`; il contratto stock lato NEXT e governato da `/next/magazzino`, mentre procurement e documenti restano superfici di supporto o preview.",
+    phase: "Operativo parziale",
     primaryGrammar: "Workflow operativo",
     searchPlaceholder: "Fornitore, ordine, materiale",
     shellFocus: "Code operative, workbench procurement e ponte al dossier",
@@ -609,13 +609,13 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         label: "Sezioni attive",
         value: "8+",
-        meta: "`Magazzino` unifica inventario, materiali consegnati e cisterne AdBlue; attrezzature, manutenzioni, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin` restano navigabili come superfici dedicate.",
+        meta: "`Magazzino` unifica inventario, materiali consegnati, cisterne AdBlue e supporti documentali/costi; attrezzature, manutenzioni, procurement, liste lavori, `Autisti Inbox` e `Autisti Admin` restano navigabili come superfici dedicate.",
         tone: "accent",
       },
       {
-        label: "Procurement clone-safe",
-        value: "Ordini / Arrivi / Dettaglio",
-        meta: "Le viste leggibili sono aperte; i tab writer-heavy restano bloccati.",
+        label: "Stock canonico NEXT",
+        value: "/next/magazzino",
+        meta: "Carichi/scarichi stock nel perimetro NEXT passano dal contratto `Magazzino`; procurement e documenti restano supporto o preview.",
         tone: "success",
       },
       {
@@ -629,18 +629,18 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Copertura reale",
         description:
-          "La famiglia non e piu compressa in una sola route: il clone legge snapshot reali e rende navigabili le principali pagine globali della madre come route autonome.",
+          "La famiglia non e piu compressa in una sola route: il clone legge snapshot reali, rende navigabili le principali pagine globali della madre come route autonome e usa `/next/magazzino` come punto operativo canonico del dominio stock.",
       },
       {
-        title: "Tab ancora bloccati",
+        title: "Supporti e preview",
         description:
-          "Ordine materiali, Prezzi & Preventivi e Listino Prezzi restano visibili ma bloccati finche non esiste una copertura read-only separata dai writer.",
+          "Ordini, arrivi, preventivi e listino procurement restano leggibili come supporto; il consolidamento stock degli arrivi e i carichi documentali passano invece da `Magazzino`.",
         tone: "accent",
       },
       {
         title: "Differenza dal madre",
         description:
-          "La struttura di pagine e ora allineata; restano fuori solo i writer veri e alcuni tab procurement ancora neutralizzati.",
+          "La struttura di pagine e allineata, ma la NEXT non riapre i writer legacy procurement: li assorbe nel contratto stock di `Magazzino` o li mantiene come supporto/read-only.",
         tone: "accent",
       },
     ],

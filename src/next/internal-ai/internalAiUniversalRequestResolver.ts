@@ -41,6 +41,29 @@ function buildActionIntentByHookId(
   };
 }
 
+function resolveWarehouseHookId(prompt: string): string {
+  const normalizedPrompt = prompt.toLowerCase();
+  const hasDocumentSignal =
+    /\b(document|fattur|preventiv|cost|fornitor|listino|ordin|arriv)\b/.test(
+      normalizedPrompt,
+    );
+  const hasAdBlueSignal = /\b(adblue|cistern)\b/.test(normalizedPrompt);
+
+  if (hasDocumentSignal) {
+    return "magazzino.docs";
+  }
+
+  if (hasAdBlueSignal) {
+    return "magazzino.adblue";
+  }
+
+  if (/\b(moviment|consegnat|uscit)\b/.test(normalizedPrompt)) {
+    return "materiali.main";
+  }
+
+  return "inventario.main";
+}
+
 function pushUnique(values: string[], nextValues: string[]) {
   nextValues.forEach((value) => {
     if (!values.includes(value)) {
@@ -163,16 +186,16 @@ function applyDocumentRouteSignals(args: {
       case "tabella_materiali":
         focusLabel = "Inventario / materiali / magazzino";
         pushUnique(args.selectedAdapterIds, ["adapter.d05"]);
-        pushUnique(args.selectedModuleIds, ["next.operativita"]);
+        pushUnique(args.selectedModuleIds, ["next.magazzino"]);
         pushReason(
           args.reasoning,
-          "Il router documentale ha riconosciuto una tabella materiali: il flusso corretto e inventario/materiali.",
+          "Il router documentale ha riconosciuto una tabella materiali: il flusso corretto e il modulo Magazzino canonico.",
         );
         primaryActionIntent = setPrimaryAction(
           primaryActionIntent,
           buildActionIntentByHookId(
-            /\b(moviment|consegnat)\b/.test(prompt) ? "materiali.main" : "inventario.main",
-            "Il documento materiali viene agganciato al workbench operativo corretto del clone.",
+            resolveWarehouseHookId(prompt),
+            "Il documento materiali viene agganciato al modulo Magazzino canonico del clone.",
             args.entityResolution,
             null,
           ),
@@ -406,16 +429,15 @@ export function resolveInternalAiUniversalRequest(args: {
 
   if (/\b(material|inventari|magazzin|attrezzatur)\b/.test(prompt)) {
     pushUnique(selectedAdapterIds, ["adapter.d05"]);
-    pushUnique(selectedModuleIds, ["next.operativita"]);
+    pushUnique(selectedModuleIds, ["next.magazzino"]);
     pushReason(reasoning, "Il prompt tocca stock, materiali o attrezzature.");
     primaryActionIntent =
-      primaryActionIntent ??
       buildActionIntentByHookId(
-        /\b(moviment|consegnat)\b/.test(prompt) ? "materiali.main" : "inventario.main",
-        "Il modulo operativo corretto e inventario/materiali del clone.",
+        resolveWarehouseHookId(prompt),
+        "Il modulo operativo corretto e il Magazzino canonico del clone.",
         args.entityResolution,
         null,
-      );
+      ) ?? primaryActionIntent;
   }
 
   if (
