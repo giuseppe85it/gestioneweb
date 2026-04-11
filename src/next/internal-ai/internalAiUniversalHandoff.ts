@@ -12,6 +12,12 @@ import {
 } from "../nextStructuralPaths";
 import type { InternalAiChatAttachment } from "./internalAiTypes";
 import {
+  buildInternalAiAttachmentDocumentSignalText,
+  buildInternalAiDocumentRowsJson,
+  getInternalAiAttachmentDocumentRows,
+  getInternalAiAttachmentPrimaryDocumentRow,
+} from "./internalAiDocumentAnalysis";
+import {
   INTERNAL_AI_UNIVERSAL_MODULES,
   INTERNAL_AI_UNIVERSAL_UI_HOOKS,
 } from "./internalAiUniversalContracts";
@@ -32,6 +38,30 @@ function normalizeText(value: string | null | undefined): string {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
+function isGenericEntityLabel(value: string | null | undefined): boolean {
+  const normalized = normalizeText(value).toLowerCase();
+  return (
+    normalized.length === 0 ||
+    [
+      "fornitore",
+      "materiale",
+      "documento",
+      "ordine",
+      "targa",
+      "mezzo",
+      "dossier",
+    ].includes(normalized)
+  );
+}
+
+function formatEntityCandidateLabel(match: InternalAiUniversalEntityMatch): string | null {
+  const label = match.matchedLabel ?? match.normalizedValue;
+  if (isGenericEntityLabel(label)) {
+    return null;
+  }
+  return `${match.entityKind}:${label}`;
+}
+
 function normalizeKey(value: string): string {
   return normalizeText(value)
     .toLowerCase()
@@ -41,6 +71,10 @@ function normalizeKey(value: string): string {
 
 function buildHandoffId(seed: string): string {
   return `handoff-${normalizeKey(seed) || "universal"}`;
+}
+
+function formatScalarNumber(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function appendHandoffQuery(path: string, handoffId: string): string {
@@ -293,7 +327,12 @@ function buildWarehouseDocumentHaystack(args: {
   attachment: InternalAiChatAttachment;
 }): string {
   return normalizeText(
-    [args.prompt, args.attachment.fileName, args.attachment.textExcerpt].join(" "),
+    [
+      args.prompt,
+      args.attachment.fileName,
+      args.attachment.textExcerpt,
+      buildInternalAiAttachmentDocumentSignalText(args.attachment),
+    ].join(" "),
   )
     .toLowerCase()
     .replace(/[_-]+/g, " ");
@@ -307,11 +346,16 @@ function detectWarehouseInvoiceDocument(args: {
   adBlueInvoice: boolean;
 } {
   const haystack = buildWarehouseDocumentHaystack(args);
+  const documentType = normalizeText(args.attachment.documentAnalysis?.tipoDocumento).toLowerCase();
+  const extractedRows = getInternalAiAttachmentDocumentRows(args.attachment);
   const hasWarehouseSignal =
+    extractedRows.length > 0 ||
     /\b(material\w*|articol\w*|qta|quantita|magazzin\w*|adblue|mariba|ricamb\w*|ferrament\w*|vernic\w*|bullon\w*|consumabil\w*)\b/.test(
       haystack,
     );
   const hasInvoiceSignal =
+    documentType === "fattura" ||
+    documentType === "ddt" ||
     /\b(fattur\w*|ddt|bolla\w*|imponibil\w*|iva|total\w*|fornitor\w*|arriv\w*)\b/.test(
       haystack,
     );
@@ -332,7 +376,20 @@ function buildBaseDocumentData(args: {
   const supplierConstraint = extractSupplierConstraint(args.prompt);
   const entityLabels = args.entityResolution.matches
     .slice(0, 5)
-    .map((entry) => `${entry.entityKind}:${entry.matchedLabel ?? entry.normalizedValue}`);
+    .map((entry) => formatEntityCandidateLabel(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  const analysis = args.attachment.documentAnalysis;
+  const rows = getInternalAiAttachmentDocumentRows(args.attachment);
+  const primaryRow = getInternalAiAttachmentPrimaryDocumentRow(args.attachment);
+  const rowDescriptions = rows
+    .map((row) => row.descrizione)
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 8);
+  const articleCodes = rows
+    .map((row) => row.codiceArticolo)
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 8);
+  const notes = analysis?.noteImportanti?.slice(0, 6) ?? [];
 
   return {
     supplierConstraint,
@@ -341,9 +398,37 @@ function buildBaseDocumentData(args: {
       fileName: args.attachment.fileName,
       attachmentKind: args.attachment.kind,
       promptConstraintFornitore: supplierConstraint,
-      textExcerpt: args.attachment.textExcerpt ? normalizeText(args.attachment.textExcerpt).slice(0, 240) : null,
+      textExcerpt:
+        analysis?.testoEstrattoBreve
+          ? normalizeText(analysis.testoEstrattoBreve).slice(0, 240)
+          : args.attachment.textExcerpt
+            ? normalizeText(args.attachment.textExcerpt).slice(0, 240)
+            : null,
       entityCandidates: entityLabels,
       documentClassification: args.route.classification,
+      tipoDocumento: analysis?.tipoDocumento ?? null,
+      fornitore: analysis?.fornitore ?? null,
+      numeroDocumento: analysis?.numeroDocumento ?? null,
+      dataDocumento: analysis?.dataDocumento ?? null,
+      destinatario: analysis?.destinatario ?? null,
+      valuta: analysis?.valuta ?? null,
+      imponibile: formatScalarNumber(analysis?.imponibile),
+      ivaImporto: formatScalarNumber(analysis?.ivaImporto),
+      ivaPercentuale: analysis?.ivaPercentuale ?? null,
+      totaleDocumento: formatScalarNumber(analysis?.totaleDocumento),
+      noteImportanti: notes,
+      righeMaterialiCount: rows.length || null,
+      righeMaterialiJson: buildInternalAiDocumentRowsJson(rows),
+      materialiEstratti: rowDescriptions,
+      codiciArticolo: articleCodes,
+      materiale: primaryRow?.descrizione ?? null,
+      descrizione: primaryRow?.descrizione ?? null,
+      quantita: formatScalarNumber(primaryRow?.quantita),
+      unita: primaryRow?.unita ?? null,
+      prezzoUnitario: formatScalarNumber(primaryRow?.prezzoUnitario),
+      totaleRiga: formatScalarNumber(primaryRow?.totaleRiga),
+      extractionStatus: analysis?.stato ?? null,
+      extractionSource: analysis?.tipoSorgente ?? null,
     }),
   };
 }
@@ -362,6 +447,9 @@ function buildDocumentHandoffPayload(args: {
   route: InternalAiUniversalDocumentRoute;
 }): InternalAiUniversalHandoffPayload {
   const base = buildBaseDocumentData(args);
+  const analysis = args.attachment.documentAnalysis;
+  const extractedRows = getInternalAiAttachmentDocumentRows(args.attachment);
+  const primaryRow = getInternalAiAttachmentPrimaryDocumentRow(args.attachment);
   const targaRef = toEntityRef(
     pickEntityMatch(args.entityResolution.matches, ["targa", "mezzo", "dossier"]),
   );
@@ -381,16 +469,24 @@ function buildDocumentHandoffPayload(args: {
     targaRef && /\b[a-z]{2}\d{3}[a-z]{2}\b/i.test(targaRef.normalizedValue)
       ? targaRef.normalizedValue
       : null;
+  const safeSupplierLabel =
+    supplierRef && !/^(fornitore|documento|materiale)$/i.test(supplierRef.label)
+      ? supplierRef.label
+      : null;
   const safeMaterialLabel =
-    materialRef && !/^(targa|mezzo|dossier|fornitore|ordine)$/i.test(materialRef.label)
+    materialRef &&
+    !/^(targa|mezzo|dossier|fornitore|ordine|materiale|documento)$/i.test(materialRef.label)
       ? materialRef.label
       : null;
+  const extractedSupplier = analysis?.fornitore ?? null;
+  const extractedMaterialLabel = primaryRow?.descrizione ?? extractedRows[0]?.descrizione ?? null;
 
   switch (args.route.classification) {
     case "libretto_mezzo": {
       const campiMancanti = targaRef ? [] : ["targa"];
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-libretto`),
+        attachmentId: args.attachment.id,
         moduloTarget: "next.ia_hub",
         routeTarget: NEXT_IA_LIBRETTO_PATH,
         tipoEntita: targaRef?.entityKind ?? "nessuna",
@@ -419,6 +515,7 @@ function buildDocumentHandoffPayload(args: {
       const campiMancanti = supplierRef ? [] : ["fornitore"];
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-procurement`),
+        attachmentId: args.attachment.id,
         moduloTarget: "next.procurement",
         routeTarget: args.route.targetPath,
         tipoEntita: entityRef?.entityKind ?? "nessuna",
@@ -427,14 +524,18 @@ function buildDocumentHandoffPayload(args: {
         datiEstrattiNormalizzati: base.normalizedData,
         prefillCanonico: cleanRecord({
           flusso: "procurement_preventivi",
-          fornitore: supplierRef?.label ?? base.supplierConstraint ?? null,
+          fornitore: safeSupplierLabel ?? extractedSupplier ?? base.supplierConstraint ?? null,
+          materiale: safeMaterialLabel ?? extractedMaterialLabel,
           targa: targaRef?.normalizedValue ?? null,
           documentoNome: args.attachment.fileName,
           vistaTarget: "acquisti",
           tabTarget: "ordini",
         }),
-        confidence: supplierRef || base.supplierConstraint ? "alta" : "media",
-        statoRichiesta: supplierRef || base.supplierConstraint ? "pronto_prefill" : "da_verificare",
+        confidence: safeSupplierLabel || extractedSupplier || base.supplierConstraint ? "alta" : "media",
+        statoRichiesta:
+          safeSupplierLabel || extractedSupplier || base.supplierConstraint || extractedRows.length > 0
+            ? "pronto_prefill"
+            : "da_verificare",
         motivoInstradamento:
           "Il file e classificato come preventivo fornitore e va agganciato al procurement con vincolo forte sul fornitore quando disponibile.",
         capabilityRiutilizzata: "clone.preventivi-preview",
@@ -448,6 +549,7 @@ function buildDocumentHandoffPayload(args: {
       const campiMancanti = cisternaRef ? [] : ["targa_o_riferimento_cisterna"];
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-cisterna`),
+        attachmentId: args.attachment.id,
         moduloTarget: "next.cisterna",
         routeTarget: NEXT_CISTERNA_IA_PATH,
         tipoEntita: cisternaRef?.entityKind ?? "nessuna",
@@ -482,9 +584,13 @@ function buildDocumentHandoffPayload(args: {
         ? buildNextMagazzinoPath("documenti-costi")
         : buildNextMagazzinoPath("inventario");
       const inferredMaterialLabel = adBlueInvoice ? "AdBlue" : null;
-      const campiDaVerificare = args.route.status === "da_verificare" ? ["classificazione_documento"] : [];
+      const campiDaVerificare = [
+        ...(args.route.status === "da_verificare" ? ["classificazione_documento"] : []),
+        ...(extractedRows.length === 0 ? ["righe"] : []),
+      ];
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-materiali`),
+        attachmentId: args.attachment.id,
         moduloTarget: "next.magazzino",
         routeTarget,
         tipoEntita: materialRef?.entityKind ?? "nessuna",
@@ -493,9 +599,13 @@ function buildDocumentHandoffPayload(args: {
         datiEstrattiNormalizzati: base.normalizedData,
         prefillCanonico: cleanRecord({
           flusso: warehouseInvoice ? "fatture_magazzino" : "inventario_materiali",
-          queryMateriale: safeMaterialLabel ?? inferredMaterialLabel,
-          materiale: safeMaterialLabel ?? inferredMaterialLabel,
-          fornitore: supplierRef?.label ?? base.supplierConstraint ?? null,
+          queryMateriale: safeMaterialLabel ?? extractedMaterialLabel ?? inferredMaterialLabel,
+          materiale: safeMaterialLabel ?? extractedMaterialLabel ?? inferredMaterialLabel,
+          fornitore: safeSupplierLabel ?? extractedSupplier ?? base.supplierConstraint ?? null,
+          quantita: formatScalarNumber(primaryRow?.quantita),
+          unita: primaryRow?.unita ?? null,
+          prezzoUnitario: formatScalarNumber(primaryRow?.prezzoUnitario),
+          totaleRiga: formatScalarNumber(primaryRow?.totaleRiga),
           targa: safeTargaValue,
           documentoNome: args.attachment.fileName,
           prompt: args.prompt,
@@ -508,14 +618,18 @@ function buildDocumentHandoffPayload(args: {
               : null,
         }),
         confidence:
-          warehouseInvoice && (materialRef || supplierRef || base.supplierConstraint)
+          warehouseInvoice &&
+          (materialRef || safeSupplierLabel || extractedSupplier || base.supplierConstraint || extractedRows.length > 0)
             ? "alta"
             : args.route.status === "da_verificare"
               ? "prudente"
-            : materialRef
+            : materialRef || extractedRows.length > 0
               ? "media"
               : "prudente",
-        statoRichiesta: args.route.status === "da_verificare" ? "da_verificare" : "pronto_prefill",
+        statoRichiesta:
+          args.route.status === "da_verificare" || extractedRows.length === 0
+            ? "da_verificare"
+            : "pronto_prefill",
         motivoInstradamento:
           warehouseInvoice
             ? "La fattura materiali viene instradata alla vista documenti e costi di Magazzino per la decisione controllata tra riconciliazione senza carico e carico stock AdBlue."
@@ -531,6 +645,7 @@ function buildDocumentHandoffPayload(args: {
       const campiDaVerificare = targaRef ? [] : ["targa"];
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-documenti`),
+        attachmentId: args.attachment.id,
         moduloTarget: "next.ia_hub",
         routeTarget: NEXT_IA_DOCUMENTI_PATH,
         tipoEntita: targaRef?.entityKind ?? "nessuna",
@@ -557,6 +672,7 @@ function buildDocumentHandoffPayload(args: {
     case "testo_operativo": {
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-testo-operativo`),
+        attachmentId: args.attachment.id,
         moduloTarget: "next.ia_interna",
         routeTarget: args.route.targetPath,
         tipoEntita: driverRef?.entityKind ?? targaRef?.entityKind ?? "nessuna",
@@ -583,6 +699,7 @@ function buildDocumentHandoffPayload(args: {
     default: {
       return finalizeHandoffPayload({
         handoffId: buildHandoffId(`${args.attachment.id}-inbox`),
+        attachmentId: args.attachment.id,
         moduloTarget: "next.ia_interna",
         routeTarget: NEXT_INTERNAL_AI_REQUESTS_PATH,
         tipoEntita: "nessuna",
@@ -617,6 +734,7 @@ function buildSecondaryLibrettiExportHandoff(
 
   return finalizeHandoffPayload({
     handoffId: `${payload.handoffId}-export`,
+    attachmentId: payload.attachmentId,
     moduloTarget: "next.libretti_export",
     routeTarget: NEXT_LIBRETTI_EXPORT_PATH,
     tipoEntita: payload.entityRef.entityKind,
@@ -705,6 +823,7 @@ function buildRequestHandoffPayload(args: {
     handoffId: buildHandoffId(
       `${moduleTarget}-${preferredEntity?.normalizedValue ?? normalizeText(args.prompt).slice(0, 40)}`,
     ),
+    attachmentId: null,
     moduloTarget: moduleTarget,
     routeTarget,
     tipoEntita: preferredEntity?.entityKind ?? "nessuna",
@@ -836,7 +955,8 @@ export function buildInternalAiUniversalHandoffs(args: {
         suggestedPath: payload.routeTarget,
         entityCandidateLabels: args.entityResolution.matches
           .slice(0, 4)
-          .map((entry) => `${entry.entityKind}: ${entry.matchedLabel ?? entry.normalizedValue}`),
+          .map((entry) => formatEntityCandidateLabel(entry))
+          .filter((entry): entry is string => Boolean(entry)),
         status: payload.statoRichiesta,
         azioniPossibili: actionIntents.filter(
           (actionIntent) =>

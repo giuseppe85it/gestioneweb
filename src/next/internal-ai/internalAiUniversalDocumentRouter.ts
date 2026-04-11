@@ -1,5 +1,9 @@
 import { buildNextMagazzinoPath } from "../nextStructuralPaths";
 import type { InternalAiChatAttachment } from "./internalAiTypes";
+import {
+  buildInternalAiAttachmentDocumentSignalText,
+  getInternalAiAttachmentDocumentRows,
+} from "./internalAiDocumentAnalysis";
 import type {
   InternalAiUniversalActionIntent,
   InternalAiUniversalDocumentClassification,
@@ -15,27 +19,38 @@ function normalizeText(value: string | null | undefined): string {
     .trim();
 }
 
-function detectWarehouseInvoiceAttachment(haystack: string): {
+function detectWarehouseInvoiceAttachment(args: {
+  haystack: string;
+  extractedDocumentType: string;
+  hasExtractedRows: boolean;
+}): {
   warehouseInvoice: boolean;
   strongSignal: boolean;
   adBlueSignal: boolean;
   hasInventorySignal: boolean;
+  hasInvoiceSignal: boolean;
 } {
+  const { haystack, extractedDocumentType, hasExtractedRows } = args;
   const hasInventorySignal =
+    hasExtractedRows ||
     /\b(material\w*|articol\w*|qta|quantita|magazzin\w*|adblue|mariba|ricamb\w*|ferrament\w*|vernic\w*|bullon\w*|consumabil\w*)\b/.test(
       haystack,
     );
   const hasInvoiceSignal =
-    /\b(fattur\w*|ddt|bolla\w*|imponibil\w*|iva|total\w*|fornitor\w*|arriv\w*)\b/.test(
+    extractedDocumentType === "fattura" ||
+    extractedDocumentType === "ddt" ||
+    /\b(fattur\w*|ddt|documento di trasporto|bolla\w*|imponibil\w*|iva|aliquot\w*|causal\w* trasport\w*)\b/.test(
       haystack,
     );
   const adBlueSignal = /\badblue\b/.test(haystack);
+  const warehouseInvoice = hasInventorySignal && hasInvoiceSignal;
 
   return {
-    warehouseInvoice: hasInventorySignal && hasInvoiceSignal,
-    strongSignal: hasInventorySignal && hasInvoiceSignal,
+    warehouseInvoice,
+    strongSignal: warehouseInvoice && (hasExtractedRows || extractedDocumentType === "fattura" || extractedDocumentType === "ddt"),
     adBlueSignal,
     hasInventorySignal,
+    hasInvoiceSignal,
   };
 }
 
@@ -72,8 +87,24 @@ function classifyAttachment(
   const normalizedPrompt = normalizeText(prompt);
   const fileName = normalizeText(attachment.fileName);
   const excerpt = normalizeText(attachment.textExcerpt);
-  const haystack = [fileName, excerpt, normalizedPrompt].join(" ");
-  const mentionsSupplier = /\bfornitore\b/.test(normalizedPrompt);
+  const documentSignals = normalizeText(buildInternalAiAttachmentDocumentSignalText(attachment));
+  const extractedDocumentType = normalizeText(attachment.documentAnalysis?.tipoDocumento);
+  const extractedPreventivo = extractedDocumentType === "preventivo";
+  const extractedRows = getInternalAiAttachmentDocumentRows(attachment);
+  const hasExtractedRows = extractedRows.length > 0;
+  const haystack = [fileName, excerpt, documentSignals, normalizedPrompt].join(" ");
+  const mentionsSupplier =
+    /\bfornitore\b/.test(normalizedPrompt) || Boolean(attachment.documentAnalysis?.fornitore);
+  const warehouseInvoiceDetection = detectWarehouseInvoiceAttachment({
+    haystack,
+    extractedDocumentType,
+    hasExtractedRows,
+  });
+  const shouldRouteToWarehouse =
+    attachment.kind === "spreadsheet" ||
+    (!extractedPreventivo &&
+      (warehouseInvoiceDetection.warehouseInvoice ||
+        (hasExtractedRows && warehouseInvoiceDetection.hasInventorySignal)));
   const hasVehicleContext =
     /\b(mezzo|targa|dossier|revisione|autocarro)\b/.test(haystack) ||
     /\b[a-z]{2}\d{3}[a-z]{2}\b/i.test(haystack);
@@ -96,12 +127,70 @@ function classifyAttachment(
     };
   }
 
-  if (/\bpreventiv|quotaz|offerta\b/.test(haystack) || (mentionsSupplier && attachment.kind !== "image")) {
+  if (
+    shouldRouteToWarehouse
+  ) {
+    const warehouseInvoice = warehouseInvoiceDetection.warehouseInvoice;
+    const adBlueInvoice = warehouseInvoiceDetection.adBlueSignal && warehouseInvoice;
+    const plainInventoryDocument = !warehouseInvoice;
+    return {
+      classification: "tabella_materiali",
+      confidence:
+        hasExtractedRows
+          ? "alta"
+          : plainInventoryDocument || adBlueInvoice || warehouseInvoiceDetection.strongSignal
+            ? "media"
+            : "prudente",
+      rationale: warehouseInvoice
+        ? [
+            adBlueInvoice
+              ? "Il file sembra una fattura AdBlue del dominio Magazzino."
+              : "Il file sembra una fattura/documento materiali del dominio Magazzino.",
+            "Il clone lo instrada alla vista documenti e costi di Magazzino per la decisione controllata su riconciliazione o carico stock.",
+          ]
+        : [
+            hasExtractedRows
+              ? "L'estrazione documentale ha trovato righe materiali o quantitativi di inventario."
+              : "Il file sembra una tabella materiali/inventario.",
+            "Il clone oggi lo colloca meglio nel modulo Magazzino canonico.",
+          ],
+      targetModuleId: "next.magazzino",
+      suggestedModuleLabel: "Magazzino",
+      targetHookId: warehouseInvoice ? "magazzino.docs" : "inventario.main",
+      targetPath: warehouseInvoice
+        ? buildNextMagazzinoPath("documenti-costi")
+        : buildNextMagazzinoPath("inventario"),
+      targetCapabilityId: null,
+      ambiguity: plainInventoryDocument && attachment.kind === "spreadsheet" ? "bassa" : "media",
+      status: warehouseInvoice
+        ? warehouseInvoiceDetection.strongSignal || hasExtractedRows
+          ? "pronto_prefill"
+          : "da_verificare"
+        : "pronto_prefill",
+    };
+  }
+
+  if (
+    extractedPreventivo ||
+    /\bpreventiv|quotaz|offerta\b/.test(haystack) ||
+    (mentionsSupplier &&
+      attachment.kind !== "image" &&
+      extractedDocumentType !== "fattura" &&
+      extractedDocumentType !== "ddt" &&
+      !warehouseInvoiceDetection.hasInvoiceSignal)
+  ) {
     return {
       classification: "preventivo_fornitore",
-      confidence: mentionsSupplier ? "alta" : "media",
+      confidence:
+        extractedDocumentType === "preventivo" && (mentionsSupplier || hasExtractedRows)
+          ? "alta"
+          : mentionsSupplier || hasExtractedRows
+            ? "media"
+            : "prudente",
       rationale: [
-        "Il file ha segnali di preventivo/offerta o il testo impone il vincolo `fornitore`.",
+        extractedDocumentType === "preventivo"
+          ? "L'estrazione documentale riconosce il file come preventivo."
+          : "Il file ha segnali di preventivo/offerta o il testo impone il vincolo `fornitore`.",
         "Il flusso corretto del clone e procurement/acquisti.",
       ],
       targetModuleId: "next.procurement",
@@ -109,8 +198,11 @@ function classifyAttachment(
       targetHookId: "procurement.main",
       targetPath: "/next/acquisti",
       targetCapabilityId: "clone.preventivi-preview",
-      ambiguity: mentionsSupplier ? "bassa" : "media",
-      status: mentionsSupplier ? "pronto_prefill" : "da_verificare",
+      ambiguity: extractedDocumentType === "preventivo" || mentionsSupplier ? "bassa" : "media",
+      status:
+        extractedDocumentType === "preventivo" || hasExtractedRows || mentionsSupplier
+          ? "pronto_prefill"
+          : "da_verificare",
     };
   }
 
@@ -132,51 +224,12 @@ function classifyAttachment(
     };
   }
 
-  const warehouseInvoiceDetection = detectWarehouseInvoiceAttachment(haystack);
-  if (
-    warehouseInvoiceDetection.hasInventorySignal ||
-    warehouseInvoiceDetection.warehouseInvoice ||
-    attachment.kind === "spreadsheet"
-  ) {
-    const warehouseInvoice = warehouseInvoiceDetection.warehouseInvoice;
-    const adBlueInvoice = warehouseInvoiceDetection.adBlueSignal && warehouseInvoice;
-    const plainInventoryDocument = !warehouseInvoice;
-    return {
-      classification: "tabella_materiali",
-      confidence:
-        plainInventoryDocument || adBlueInvoice || warehouseInvoiceDetection.strongSignal
-          ? "media"
-          : "prudente",
-      rationale: warehouseInvoice
-        ? [
-            adBlueInvoice
-              ? "Il file sembra una fattura AdBlue del dominio Magazzino."
-              : "Il file sembra una fattura/documento materiali del dominio Magazzino.",
-            "Il clone lo instrada alla vista documenti e costi di Magazzino per la decisione controllata su riconciliazione o carico stock.",
-          ]
-        : [
-            "Il file sembra una tabella materiali/inventario.",
-            "Il clone oggi lo colloca meglio nel modulo Magazzino canonico.",
-          ],
-      targetModuleId: "next.magazzino",
-      suggestedModuleLabel: "Magazzino",
-      targetHookId: warehouseInvoice ? "magazzino.docs" : "inventario.main",
-      targetPath: warehouseInvoice
-        ? buildNextMagazzinoPath("documenti-costi")
-        : buildNextMagazzinoPath("inventario"),
-      targetCapabilityId: null,
-      ambiguity: plainInventoryDocument && attachment.kind === "spreadsheet" ? "bassa" : "media",
-      status: warehouseInvoice
-        ? warehouseInvoiceDetection.strongSignal
-          ? "pronto_prefill"
-          : "da_verificare"
-        : "pronto_prefill",
-    };
-  }
-
   if (
     hasVehicleContext &&
-    (/\bfattur|ddt|document|allegat|pdf\b/.test(haystack) || attachment.kind === "pdf")
+    (/\bfattur|ddt|document|allegat|pdf\b/.test(haystack) ||
+      attachment.kind === "pdf" ||
+      extractedDocumentType === "fattura" ||
+      extractedDocumentType === "ddt")
   ) {
     return {
       classification: "documento_mezzo",

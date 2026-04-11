@@ -34,6 +34,8 @@ const MUTATING_FETCH_URL_PATTERNS = [
 const SAME_ORIGIN_MUTATING_API_PREFIXES = ["/api/"] as const;
 const EUROMECC_ALLOWED_WRITE_PATHS = ["/next/euromecc"] as const;
 const EUROMECC_ALLOWED_FETCH_API_PATHS = new Set(["/api/pdf-ai-enhance"]);
+const INTERNAL_AI_MAGAZZINO_INLINE_SCOPE = "internal_ai_magazzino_inline_magazzino";
+const cloneWriteScopedAllowances = new Map<string, number>();
 
 declare global {
   interface Window {
@@ -128,8 +130,37 @@ function isAllowedEuromeccCloneWritePath(pathname: string): boolean {
   );
 }
 
+function hasCloneWriteScopedAllowance(scope: string): boolean {
+  return (cloneWriteScopedAllowances.get(scope) ?? 0) > 0;
+}
+
+export async function runWithCloneWriteScopedAllowance<T>(
+  scope: typeof INTERNAL_AI_MAGAZZINO_INLINE_SCOPE,
+  action: () => Promise<T> | T,
+): Promise<T> {
+  cloneWriteScopedAllowances.set(scope, (cloneWriteScopedAllowances.get(scope) ?? 0) + 1);
+  try {
+    return await action();
+  } finally {
+    const nextCount = (cloneWriteScopedAllowances.get(scope) ?? 1) - 1;
+    if (nextCount > 0) {
+      cloneWriteScopedAllowances.set(scope, nextCount);
+    } else {
+      cloneWriteScopedAllowances.delete(scope);
+    }
+  }
+}
+
 function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
   const pathname = getCurrentPathname();
+  if (
+    hasCloneWriteScopedAllowance(INTERNAL_AI_MAGAZZINO_INLINE_SCOPE) &&
+    kind === "storageSync.setItemSync" &&
+    readMetaKey(meta) === "@inventario"
+  ) {
+    return true;
+  }
+
   if (isAllowedLavoriCloneWritePath(pathname)) {
     return kind === "storageSync.setItemSync" && readMetaKey(meta) === "@lavori";
   }

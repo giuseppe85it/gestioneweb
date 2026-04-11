@@ -58,7 +58,35 @@ function inferPreviewMode(kind) {
   return "download_only";
 }
 
-function buildAttachmentNote(kind) {
+function buildAttachmentNote(kind, documentAnalysis) {
+  if (
+    documentAnalysis &&
+    typeof documentAnalysis === "object" &&
+    Array.isArray(documentAnalysis.righe) &&
+    documentAnalysis.righe.length > 0
+  ) {
+    const headerSummary = [
+      documentAnalysis.tipoDocumento ? `tipo ${documentAnalysis.tipoDocumento}` : null,
+      documentAnalysis.fornitore ? `fornitore ${documentAnalysis.fornitore}` : null,
+      documentAnalysis.numeroDocumento ? `documento ${documentAnalysis.numeroDocumento}` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    return (
+      `Documento IA-only analizzato nel backend separato: ${documentAnalysis.righe.length} righe ` +
+      `strutturate disponibili per la review${headerSummary ? ` (${headerSummary})` : ""}.`
+    );
+  }
+
+  if (
+    documentAnalysis &&
+    typeof documentAnalysis === "object" &&
+    documentAnalysis.stato === "partial"
+  ) {
+    return "Documento IA-only analizzato in modo parziale nel backend separato: review disponibile con campi da verificare.";
+  }
+
   if (kind === "image") {
     return "Immagine IA-only allegata al thread. Posso usarla come contesto dichiarato, ma non ho ancora analisi visiva profonda collegata.";
   }
@@ -103,11 +131,12 @@ export function materializeInternalAiChatAttachmentRecord(args) {
     previewMode: inferPreviewMode(kind),
     persisted: true,
     uploadedAt: args.uploadedAt,
-    note: buildAttachmentNote(kind),
+    note: buildAttachmentNote(kind, args.documentAnalysis ?? null),
     textExcerpt:
       typeof args.textExcerpt === "string" && args.textExcerpt.trim()
         ? args.textExcerpt.trim().slice(0, 1600)
         : null,
+    documentAnalysis: args.documentAnalysis ?? null,
     serverAssetPath: buildInternalAiChatAttachmentAssetPath(args.id),
     localObjectUrl: null,
   };

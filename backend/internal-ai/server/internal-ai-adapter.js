@@ -32,6 +32,7 @@ import {
   materializeInternalAiChatAttachmentRecord,
   writeInternalAiChatAttachmentFile,
 } from "./internal-ai-chat-attachments.js";
+import { extractInternalAiDocumentAnalysis } from "./internal-ai-document-extraction.js";
 import {
   buildRepoOperationalAnswer,
   buildRepoUnderstandingMeta,
@@ -137,6 +138,10 @@ function sanitizeChatAttachments(attachments) {
         typeof entry.textExcerpt === "string" && entry.textExcerpt.trim()
           ? entry.textExcerpt.trim().slice(0, 1600)
           : null,
+      documentAnalysis:
+        entry.documentAnalysis && typeof entry.documentAnalysis === "object"
+          ? entry.documentAnalysis
+          : null,
     }));
 }
 
@@ -144,7 +149,15 @@ function normalizeAttachmentsRepositoryState(repositoryState) {
   return {
     version: 1,
     items: Array.isArray(repositoryState?.items)
-      ? repositoryState.items.filter((entry) => entry && typeof entry === "object")
+      ? repositoryState.items
+          .filter((entry) => entry && typeof entry === "object")
+          .map((entry) => ({
+            ...entry,
+            documentAnalysis:
+              entry.documentAnalysis && typeof entry.documentAnalysis === "object"
+                ? entry.documentAnalysis
+                : null,
+          }))
       : [],
   };
 }
@@ -1159,6 +1172,20 @@ app.post("/internal-ai-backend/attachments/repository", async (req, res) => {
       }
     }
 
+    const providerClient = getProviderClient();
+    const providerTarget = providerClient ? getProviderTarget() : null;
+    const documentAnalysis = await extractInternalAiDocumentAnalysis({
+      fileName,
+      mimeType,
+      contentBase64,
+      textExcerpt,
+      providerClient,
+      providerTarget,
+    });
+    if (documentAnalysis?.testoEstrattoBreve && !textExcerpt) {
+      textExcerpt = documentAnalysis.testoEstrattoBreve.slice(0, 1600);
+    }
+
     const uploadedAt = new Date().toISOString();
     const attachment = materializeInternalAiChatAttachmentRecord({
       id: attachmentId,
@@ -1167,6 +1194,7 @@ app.post("/internal-ai-backend/attachments/repository", async (req, res) => {
       sizeBytes,
       uploadedAt,
       textExcerpt,
+      documentAnalysis,
     });
 
     await writeInternalAiChatAttachmentFile({
@@ -1188,7 +1216,7 @@ app.post("/internal-ai-backend/attachments/repository", async (req, res) => {
         operation,
         actorId: req.body?.actorId,
         requestId: req.body?.requestId,
-        note: `Upload allegato IA-only ${attachment.fileName}.`,
+        note: `Upload allegato IA-only ${attachment.fileName} con parsing documentale ${documentAnalysis?.stato ?? "non_disponibile"}.`,
         entityCount: nextState.items.length,
       }),
     );
@@ -1198,7 +1226,12 @@ app.post("/internal-ai-backend/attachments/repository", async (req, res) => {
       ok: true,
       endpointId: "attachments.repository",
       status: "ok",
-      message: "Allegato IA-only caricato nel contenitore server-side isolato.",
+      message:
+        documentAnalysis?.stato === "ready"
+          ? "Allegato IA-only caricato con estrazione documentale pronta per la review full screen."
+          : documentAnalysis?.stato === "partial"
+            ? "Allegato IA-only caricato con estrazione documentale parziale: review disponibile con campi da verificare."
+            : "Allegato IA-only caricato nel contenitore server-side isolato.",
       data: {
         operation,
         persistenceMode: "server_file_isolated",
@@ -1207,7 +1240,7 @@ app.post("/internal-ai-backend/attachments/repository", async (req, res) => {
         traceEntryId: traceEntry.id,
         notes: [
           "L'allegato resta nel runtime IA separato.",
-          "Sono ammessi solo metadata e contesto dichiarato, nessuna scrittura business.",
+          "Sono ammessi solo parsing documentale, metadata e contesto dichiarato, nessuna scrittura business.",
         ],
       },
     });

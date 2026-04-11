@@ -144,6 +144,7 @@ type DocumentoStockRowCandidate = {
   inventoryMatchId: string | null;
   procurementCoverageOrderId: string | null;
   procurementCoverageReason: string | null;
+  procurementCoverageAlreadyLoaded: boolean;
   sourceLoadKey: string;
   duplicateBySource: boolean;
   isInvoiceDocument: boolean;
@@ -2326,6 +2327,22 @@ export default function NextMagazzinoPage() {
             const dateDiff = absDateDiffDays(documento.data, entry.arrivalDateLabel);
             return dateDiff !== null && dateDiff <= PROCUREMENT_DEDUP_WINDOW_DAYS;
           });
+          const procurementCoverageLoadKey = procurementCoverage
+            ? buildNextMagazzinoStockLoadKey({
+                sourceType: "PROCUREMENT_ARRIVO",
+                sourceDocId: procurementCoverage.id,
+                descrizione: procurementCoverage.descrizione,
+                fornitore: procurementCoverage.supplierName,
+                unita: resolvedUnit ?? procurementCoverage.unita,
+                quantita: procurementCoverage.quantita,
+                data: procurementCoverage.arrivalDateLabel,
+              })
+            : null;
+          const procurementCoverageAlreadyLoaded =
+            procurementCoverageLoadKey !== null &&
+            items.some((item) =>
+              hasNextMagazzinoStockLoadKey(item.stockLoadKeys, procurementCoverageLoadKey),
+            );
 
           let blockedReason: string | null = null;
           let canLoad = false;
@@ -2356,11 +2373,15 @@ export default function NextMagazzinoPage() {
             blockedReason =
               "Questa riga documento risulta gia consolidata su inventario: niente doppio carico.";
             decisionReason = blockedReason;
-          } else if (procurementCoverage && inventoryMatchId) {
+          } else if (procurementCoverage && inventoryMatchId && procurementCoverageAlreadyLoaded) {
             canReconcileWithoutLoad = true;
             decision = "riconcilia_senza_carico";
             decisionReason =
               "Arrivo procurement compatibile e materiale gia presente: collega la fattura senza aumentare lo stock.";
+          } else if (procurementCoverage && inventoryMatchId) {
+            blockedReason =
+              "Arrivo procurement compatibile e materiale inventario trovati, ma la sorgente procurement non risulta ancora consolidata a stock: non usare la sola riconciliazione documento.";
+            decisionReason = blockedReason;
           } else if (procurementCoverage) {
             blockedReason =
               "Arrivo procurement compatibile rilevato ma manca una voce inventario coerente da riconciliare: `DA VERIFICARE`.";
@@ -2404,6 +2425,7 @@ export default function NextMagazzinoPage() {
             procurementCoverageReason: procurementCoverage
               ? `Ordine ${procurementCoverage.orderId} · arrivo ${procurementCoverage.arrivalDateLabel || "-"}`
               : null,
+            procurementCoverageAlreadyLoaded,
             sourceLoadKey,
             duplicateBySource,
             isInvoiceDocument,
@@ -2578,7 +2600,9 @@ export default function NextMagazzinoPage() {
           hasNextMagazzinoStockLoadKey(item.stockLoadKeys, sourceLoadKey),
         );
         const documentCoverage = documentoStockCandidates.find((candidate) => {
-          if (!candidate.duplicateBySource || !candidate.unita || !resolvedUnit) {
+          const blocksProcurementLoad =
+            candidate.canReconcileWithoutLoad || candidate.duplicateBySource;
+          if (!blocksProcurementLoad || !candidate.unita || !resolvedUnit) {
             return false;
           }
           if (
@@ -2607,7 +2631,9 @@ export default function NextMagazzinoPage() {
           blockedReason = "Unita arrivo non supportata o non riconciliabile con inventario.";
         } else if (documentCoverage) {
           blockedReason =
-            "Arrivo gia coperto da un documento materiali consolidato: niente doppio carico automatico.";
+            documentCoverage.canReconcileWithoutLoad
+              ? "Arrivo gia coperto da una fattura pronta in sola riconciliazione: collega documento e costo senza nuovo carico stock."
+              : "Arrivo gia coperto da un documento materiali consolidato: niente doppio carico automatico.";
         } else if (duplicateBySource) {
           blockedReason = "Questo arrivo procurement risulta gia consolidato in inventario.";
         }

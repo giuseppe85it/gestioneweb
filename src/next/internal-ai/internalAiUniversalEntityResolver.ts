@@ -9,6 +9,7 @@ import {
   matchInternalAiVehicleLookupCandidates,
   readInternalAiVehicleLookupCatalog,
 } from "./internalAiVehicleLookup";
+import { buildInternalAiAttachmentDocumentSignalText } from "./internalAiDocumentAnalysis";
 import { INTERNAL_AI_UNIVERSAL_ENTITY_MODEL } from "./internalAiUniversalContracts";
 import type {
   InternalAiUniversalEntityMatch,
@@ -70,7 +71,7 @@ function buildResolutionContext(input: InternalAiUniversalOrchestrationInput): s
   const attachmentSignals = input.attachments.flatMap((attachment) => [
     attachment.fileName,
     attachment.kind,
-    attachment.textExcerpt ?? "",
+    buildInternalAiAttachmentDocumentSignalText(attachment),
   ]);
 
   return normalizeText([input.prompt, ...attachmentSignals].join(" "));

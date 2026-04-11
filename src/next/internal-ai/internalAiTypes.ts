@@ -642,6 +642,63 @@ export type InternalAiChatAttachmentPreviewMode =
   | "text"
   | "download_only";
 
+export type InternalAiDocumentAnalysisSourceKind =
+  | "pdf_text"
+  | "pdf_scan"
+  | "image_document"
+  | "text_document"
+  | "other";
+
+export type InternalAiDocumentAnalysisStatus =
+  | "ready"
+  | "partial"
+  | "not_supported"
+  | "error";
+
+export type InternalAiDocumentAnalysisWarningSeverity = "info" | "warn" | "error";
+
+export type InternalAiDocumentAnalysisWarning = {
+  code: string;
+  severity: InternalAiDocumentAnalysisWarningSeverity;
+  message: string;
+};
+
+export type InternalAiDocumentAnalysisRow = {
+  id: string;
+  descrizione: string | null;
+  quantita: number | null;
+  unita: string | null;
+  prezzoUnitario: number | null;
+  totaleRiga: number | null;
+  codiceArticolo: string | null;
+  valuta: string | null;
+  confidence: number | null;
+  warnings: string[];
+};
+
+export type InternalAiDocumentAnalysis = {
+  version: 1;
+  stato: InternalAiDocumentAnalysisStatus;
+  tipoSorgente: InternalAiDocumentAnalysisSourceKind;
+  modalitaEstrazione: string;
+  providerUsato: boolean;
+  tipoDocumento: string | null;
+  fornitore: string | null;
+  numeroDocumento: string | null;
+  dataDocumento: string | null;
+  destinatario: string | null;
+  valuta: string | null;
+  imponibile: number | null;
+  ivaImporto: number | null;
+  ivaPercentuale: string | null;
+  totaleDocumento: number | null;
+  noteImportanti: string[];
+  righe: InternalAiDocumentAnalysisRow[];
+  warnings: InternalAiDocumentAnalysisWarning[];
+  campiMancanti: string[];
+  testoEstrattoBreve: string | null;
+};
+
 export type InternalAiChatMemoryFreshness = "fresh" | "partial" | "stale" | "missing";
 
 export type InternalAiChatMemoryHints = {
@@ -666,6 +723,7 @@ export type InternalAiChatAttachment = {
   uploadedAt: string;
   note: string;
   textExcerpt: string | null;
+  documentAnalysis: InternalAiDocumentAnalysis | null;
   serverAssetPath: string | null;
   localObjectUrl?: string | null;
 };

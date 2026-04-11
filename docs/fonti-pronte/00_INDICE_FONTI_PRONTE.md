@@ -151,6 +151,38 @@ Contiene copie mirror di documenti sorgente chiave e alcuni report selezionati.
 - Continuity report del rifacimento dossier UI documento IA interna.
 - Utile per riaprire rapidamente il tema della resa visiva del documento analizzato.
 
+36. `20260411_083921_ia_interna_magazzino_inline_confirm_execute_execution.md`
+- Change report della patch che porta conferma, esecuzione ed esito inline `Magazzino` nel modale IA interna.
+- Utile per capire scoped allowance del barrier, helper inline controllato e limiti reali del dataset verificato.
+
+37. `20260411_083921_continuity_ia_interna_magazzino_inline_confirm_execute_execution.md`
+- Continuity report della patch inline `Magazzino` nella IA interna.
+- Utile per riaprire rapidamente il tema del flusso conferma -> esecuzione -> esito senza rifare l'analisi completa.
+
+38. `20260411_170658_ia_interna_magazzino_fullscreen_document_review_execution.md`
+- Change report della patch che sostituisce la review documentale dispersiva con una schermata full screen operativa nella IA interna `Magazzino`.
+- Utile per capire layout, decision cards, fallback modulo e nuova centralita visiva del documento.
+
+39. `20260411_170658_continuity_ia_interna_magazzino_fullscreen_document_review_execution.md`
+- Continuity report della review documento full screen `Magazzino`.
+- Utile per riaprire rapidamente il task sapendo cosa e stato verificato a runtime e quali rischi residui restano aperti.
+
+40. `20260411_202032_ia_interna_magazzino_document_extraction_pipeline_execution.md`
+- Change report della patch che introduce la pipeline documentale reale per PDF e immagini nella IA interna `Magazzino`.
+- Utile per capire backend IA separato, payload `documentAnalysis`, routing corretto tra materiali / AdBlue / preventivo / ambiguo e nuovi campi righe.
+
+41. `20260411_202032_continuity_ia_interna_magazzino_document_extraction_pipeline_execution.md`
+- Continuity report della pipeline documentale reale `Magazzino`.
+- Utile per riaprire rapidamente il task con i file chiave, le verifiche runtime gia eseguite e i rischi residui su OCR/PDF sporchi.
+
+42. `20260411_214553_magazzino_ia_fix_riconciliazione_stock_review_destra_execution.md`
+- Change report del fix che corregge la riconciliazione stock senza doppio incremento e rende piu utile la review destra della IA interna `Magazzino`.
+- Utile per capire il nuovo gating `riconcilia_senza_carico`, la gerarchia `Documento -> Righe estratte -> Match -> Decisione -> Azione proposta -> Dettagli tecnici` e i limiti residui sul dataset live.
+
+43. `20260411_214553_continuity_magazzino_ia_fix_riconciliazione_stock_review_destra_execution.md`
+- Continuity report del fix `Magazzino` + IA interna su riconciliazione stock e review destra.
+- Utile per riaprire rapidamente il task sapendo quali file runtime sono stati toccati, quali verifiche sono gia state eseguite e perche la prova end-to-end live resta `DA VERIFICARE`.
+
 ## Ordine rapido consigliato per una nuova chat
 1. `AGENTS.md`
 2. `STATO_ATTUALE_PROGETTO.md`

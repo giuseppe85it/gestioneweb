@@ -82,8 +82,17 @@ import {
   removeInternalAiServerChatAttachment,
   uploadInternalAiServerChatAttachment,
 } from "./internal-ai/internalAiChatAttachmentsClient";
+import { parseInternalAiDocumentRowsJson } from "./internal-ai/internalAiDocumentAnalysis";
 import InternalAiUniversalRequestsPanel from "./internal-ai/InternalAiUniversalRequestsPanel";
 import InternalAiUniversalWorkbench from "./internal-ai/InternalAiUniversalWorkbench";
+import {
+  executeInternalAiMagazzinoInlineAction,
+  loadInternalAiMagazzinoInlineContext,
+  resolveInternalAiMagazzinoInlineRoute,
+  type InternalAiMagazzinoInlineContext,
+  type InternalAiMagazzinoInlineOutcome,
+  type InternalAiMagazzinoInlineResolution,
+} from "./internal-ai/internalAiMagazzinoControlledActions";
 import {
   readInternalAiUnifiedRegistrySummary,
   type InternalAiUnifiedRegistrySummary,
@@ -240,6 +249,14 @@ type ChatDocumentProposalState =
       message: string;
     };
 
+type ChatMagazzinoInlineRouteState = {
+  status: "loading" | "ready" | "error";
+  resolution: InternalAiMagazzinoInlineResolution | null;
+  message: string | null;
+  executionStatus: "idle" | "executing" | "success" | "error";
+  outcome: InternalAiMagazzinoInlineOutcome | null;
+};
+
 type LookupCatalogState =
   | {
       status: "loading";
@@ -266,6 +283,18 @@ type ReportPreviewModalState = {
   isOpen: boolean;
   report: InternalAiReportPreview | null;
   artifactId: string | null;
+};
+
+type DocumentReviewActionKey =
+  | "collega_materiale_esistente"
+  | "aggiungi_costo_documento"
+  | "crea_nuovo_articolo"
+  | "carica_stock"
+  | "da_verificare";
+
+type DocumentReviewModalState = {
+  isOpen: boolean;
+  routeKey: string | null;
 };
 
 type ReportPdfPreviewState =
@@ -2166,6 +2195,38 @@ function normalizeDocumentProposalValue(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function sanitizeDocumentProposalLabel(value: string | null | undefined): string | null {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  const normalized = normalizeDocumentProposalValue(rawValue);
+  const normalizedLabel = normalized.includes(":")
+    ? normalized.split(":").slice(1).join(":").trim()
+    : normalized;
+
+  if (
+    [
+      "fornitore",
+      "materiale",
+      "documento",
+      "ordine",
+      "targa",
+      "mezzo",
+      "dossier",
+    ].includes(normalizedLabel)
+  ) {
+    return null;
+  }
+
+  return rawValue;
+}
+
+function isLikelyDocumentProposalTarga(value: string): boolean {
+  return /\b[a-z]{2}\d{3}[a-z]{2}\b/i.test(value.trim());
+}
+
 function buildAttachmentDrivenBasePrompt(args: {
   prompt: string;
   attachments: InternalAiChatAttachment[];
@@ -2276,11 +2337,11 @@ function buildDocumentRouteSafetyLabel(route: InternalAiUniversalDocumentRoute):
   const viewTarget = normalizeDocumentProposalValue(prefill.vistaTarget);
 
   if (route.classification === "tabella_materiali" && mode === "carica_stock_adblue") {
-    return "Il carico stock resta bloccato finche non confermi nel modulo Magazzino.";
+    return "Il carico stock resta confinato al modale IA e solo al caso AdBlue gia autorizzato.";
   }
 
   if (route.classification === "tabella_materiali" && viewTarget === "documenti-costi") {
-    return "Il modulo Magazzino verifica anti-doppio-carico, UDM e copertura del documento prima di qualunque scrittura.";
+    return "La riconciliazione inline usa guardrail su anti-doppio-carico, UDM e copertura documento prima di qualunque scrittura.";
   }
 
   if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
@@ -2314,9 +2375,7 @@ function buildDocumentRouteOpenLabel(route: InternalAiUniversalDocumentRoute): s
   const viewTarget = normalizeDocumentProposalValue(prefill.vistaTarget);
 
   if (route.classification === "tabella_materiali" && viewTarget === "documenti-costi") {
-    return route.status === "da_verificare"
-      ? "Apri verifica guidata in Magazzino"
-      : "Apri proposta in Magazzino";
+    return "Apri in Magazzino";
   }
 
   if (route.classification === "documento_ambiguo" || route.status === "inbox_documentale") {
@@ -2324,6 +2383,19 @@ function buildDocumentRouteOpenLabel(route: InternalAiUniversalDocumentRoute): s
   }
 
   return `Apri ${route.suggestedModuleLabel}`;
+}
+
+function buildDocumentProposalRouteKey(route: InternalAiUniversalDocumentRoute): string {
+  return `${route.attachmentId}:${route.classification}:${route.targetPath}`;
+}
+
+function isWarehouseInvoiceDocumentRoute(route: InternalAiUniversalDocumentRoute): boolean {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  return (
+    route.classification === "tabella_materiali" &&
+    (normalizeDocumentProposalValue(prefill.warehouseInvoiceHint) === "1" ||
+      normalizeDocumentProposalValue(prefill.flusso) === "fatture_magazzino")
+  );
 }
 
 function buildDocumentRouteConfidenceLabel(route: InternalAiUniversalDocumentRoute): string {
@@ -2349,15 +2421,94 @@ type DocumentProposalFact = {
 
 type DocumentProposalDetectedItem = {
   description: string;
+  articleCode?: string;
   quantity: string;
   unit: string;
+  valueLabel?: string;
+  unitPriceLabel?: string;
+  lineTotalLabel?: string;
   supplier: string;
   match: string;
   inventory: string;
   tone?: DocumentProposalFactTone;
 };
 
+type DocumentReviewActionOption = {
+  key: DocumentReviewActionKey;
+  label: string;
+  description: string;
+  disabledReason: string | null;
+};
+
+type DocumentReviewMaterialRow = {
+  description: string;
+  articleCode: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  lineTotal: string;
+  tone?: DocumentProposalFactTone;
+};
+
+type DocumentReviewStatusHighlight = {
+  title: string;
+  message: string;
+  tone: DocumentProposalFactTone;
+};
+
+type DocumentReviewExecutionPlan =
+  | {
+      kind: "inline_execute";
+      ctaLabel: string;
+      helperText: string;
+    }
+  | {
+      kind: "open_module";
+      ctaLabel: string;
+      helperText: string;
+    }
+  | {
+      kind: "blocked";
+      ctaLabel: null;
+      helperText: string;
+    };
+
+const DOCUMENT_REVIEW_ACTION_ORDER: DocumentReviewActionKey[] = [
+  "collega_materiale_esistente",
+  "aggiungi_costo_documento",
+  "crea_nuovo_articolo",
+  "carica_stock",
+  "da_verificare",
+];
+
+const DOCUMENT_REVIEW_ACTION_META: Record<
+  DocumentReviewActionKey,
+  Pick<DocumentReviewActionOption, "label" | "description">
+> = {
+  collega_materiale_esistente: {
+    label: "Collega a materiale esistente",
+    description: "Usa un articolo gia presente in inventario come riferimento operativo.",
+  },
+  aggiungi_costo_documento: {
+    label: "Aggiungi costo/documento a materiale esistente",
+    description: "Collega il documento al materiale gia esistente senza aprire scritture extra.",
+  },
+  crea_nuovo_articolo: {
+    label: "Crea nuovo articolo",
+    description: "Prepara l'inserimento di un articolo nuovo quando il match non esiste.",
+  },
+  carica_stock: {
+    label: "Carica stock",
+    description: "Registra un incremento di giacenza solo se il perimetro lo consente davvero.",
+  },
+  da_verificare: {
+    label: "DA VERIFICARE",
+    description: "Blocca l'esecuzione automatica e lascia il caso in review manuale.",
+  },
+};
+
 const DOCUMENT_PROPOSAL_FIELD_LABELS: Record<string, string> = {
+  tipoDocumento: "Tipo documento",
   fornitore: "Fornitore",
   supplier: "Fornitore",
   dataDocumento: "Data documento",
@@ -2366,16 +2517,27 @@ const DOCUMENT_PROPOSAL_FIELD_LABELS: Record<string, string> = {
   numeroDocumento: "Numero documento",
   numeroFattura: "Numero documento",
   documentoNumero: "Numero documento",
+  destinatario: "Destinatario",
   materiale: "Materiale",
+  materialiEstratti: "Materiali estratti",
+  codiciArticolo: "Codici articolo",
   queryMateriale: "Materiale",
   descrizione: "Descrizione",
   quantita: "Quantita",
   unita: "Unita",
   unitaMisura: "Unita",
   udm: "Unita",
+  prezzoUnitario: "Prezzo unitario",
+  totaleRiga: "Totale riga",
   totale: "Totale",
   totaleDocumento: "Totale",
   importoTotale: "Totale",
+  imponibile: "Imponibile",
+  ivaImporto: "IVA importo",
+  ivaPercentuale: "IVA %",
+  valuta: "Valuta",
+  righeMaterialiCount: "Righe materiali",
+  noteImportanti: "Note importanti",
   costo: "Costo",
   costoSupporto: "Costo di supporto",
   flusso: "Flusso",
@@ -2401,11 +2563,154 @@ function formatDocumentProposalValue(
   }
 
   if (typeof value === "number") {
-    return Number.isFinite(value) ? String(value) : null;
+    return Number.isFinite(value)
+      ? new Intl.NumberFormat("it-IT", {
+          maximumFractionDigits: 2,
+        }).format(value)
+      : null;
   }
 
   const normalized = String(value ?? "").trim();
   return normalized || null;
+}
+
+function formatDocumentProposalCurrency(
+  value: number | null | undefined,
+  currency: string | null | undefined,
+): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  const formatted = new Intl.NumberFormat("it-IT", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  const currencyLabel = String(currency ?? "").trim().toUpperCase();
+  return currencyLabel ? `${formatted} ${currencyLabel}` : formatted;
+}
+
+function buildDocumentProposalRowValueLabel(row: {
+  prezzoUnitario: number | null;
+  totaleRiga: number | null;
+  valuta: string | null;
+}): string {
+  const unitPrice = formatDocumentProposalCurrency(row.prezzoUnitario, row.valuta);
+  const lineTotal = formatDocumentProposalCurrency(row.totaleRiga, row.valuta);
+
+  if (unitPrice && lineTotal) {
+    return `Prezzo ${unitPrice} | Totale ${lineTotal}`;
+  }
+
+  if (unitPrice) {
+    return `Prezzo ${unitPrice}`;
+  }
+
+  if (lineTotal) {
+    return `Totale ${lineTotal}`;
+  }
+
+  return "Non rilevato";
+}
+
+function readDocumentProposalRows(
+  route: InternalAiUniversalDocumentRoute,
+): Array<{
+  id: string;
+  descrizione: string | null;
+  quantita: number | null;
+  unita: string | null;
+  prezzoUnitario: number | null;
+  totaleRiga: number | null;
+  codiceArticolo: string | null;
+  valuta: string | null;
+  confidence: number | null;
+  warnings: string[];
+}> {
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const serialized =
+    typeof normalizedData.righeMaterialiJson === "string" ? normalizedData.righeMaterialiJson : null;
+  return parseInternalAiDocumentRowsJson(serialized);
+}
+
+function formatDocumentProposalNumber(value: number | null | undefined, unit?: string | null): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "Non rilevato";
+  }
+  const formatted = new Intl.NumberFormat("it-IT", {
+    maximumFractionDigits: 2,
+  }).format(value);
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function buildMagazzinoInlineOutcomeFacts(
+  outcome: InternalAiMagazzinoInlineOutcome,
+): DocumentProposalFact[] {
+  if (outcome.action === "riconcilia_senza_carico") {
+    return [
+      {
+        label: "Documento collegato",
+        value: outcome.documentLabel,
+        tone: "positive",
+      },
+      {
+        label: "Aumento stock",
+        value: "Nessuno",
+        tone: "positive",
+      },
+      {
+        label: "Materiale coinvolto",
+        value: outcome.materialLabel,
+        tone: "positive",
+      },
+      {
+        label: "Costo / prezzo trovato",
+        value:
+          typeof outcome.prezzoUnitario === "number"
+            ? formatDocumentProposalNumber(outcome.prezzoUnitario, "EUR")
+            : typeof outcome.importoDocumento === "number"
+              ? formatDocumentProposalNumber(outcome.importoDocumento, "EUR")
+              : "Non rilevato",
+        tone:
+          typeof outcome.prezzoUnitario === "number" || typeof outcome.importoDocumento === "number"
+            ? "default"
+            : "warning",
+      },
+      {
+        label: "Stato finale",
+        value: outcome.finalState,
+        tone: "positive",
+      },
+    ];
+  }
+
+  return [
+    {
+      label: "Materiale AdBlue aggiornato",
+      value: outcome.inventoryLabel ?? outcome.materialLabel,
+      tone: "positive",
+    },
+    {
+      label: "Quantita caricata",
+      value: formatDocumentProposalNumber(outcome.quantita, outcome.unita),
+      tone: "positive",
+    },
+    {
+      label: "Documento collegato",
+      value: outcome.documentLabel,
+      tone: "positive",
+    },
+    {
+      label: "Giacenza dopo carico",
+      value: formatDocumentProposalNumber(outcome.inventoryQuantityAfter, outcome.unita),
+      tone: typeof outcome.inventoryQuantityAfter === "number" ? "default" : "warning",
+    },
+    {
+      label: "Stato finale",
+      value: outcome.finalState,
+      tone: "positive",
+    },
+  ];
 }
 
 function pickDocumentProposalValue(
@@ -2495,11 +2800,11 @@ function buildDocumentProposalActionBoundary(route: InternalAiUniversalDocumentR
   }
 
   if (route.classification === "tabella_materiali" && mode === "carica_stock_adblue") {
-    return "Non tocco consegne, manutenzioni, ordini o preventivi: preparo solo il caso AdBlue nel flusso consentito.";
+    return "Non tocco consegne, manutenzioni, ordini, preventivi o listino: nel modale IA resta consentito solo il carico stock AdBlue.";
   }
 
   if (route.classification === "tabella_materiali" && viewTarget === "documenti-costi") {
-    return "Non aumento lo stock in automatico: il modulo Magazzino deve confermare l'eventuale riconciliazione senza doppio carico.";
+    return "Non aumento lo stock fuori dai casi ammessi: il modale IA puo solo riconciliare senza carico o bloccare il caso in `DA VERIFICARE`.";
   }
 
   return "Non eseguo azioni business senza conferma esplicita nel modulo target.";
@@ -2522,6 +2827,7 @@ function buildDocumentProposalSummaryFacts(route: InternalAiUniversalDocumentRou
   const prefill = route.handoffPayload?.prefillCanonico ?? {};
   const allData = { ...normalizedData, ...prefill };
 
+  const documentType = pickDocumentProposalValue(allData, ["tipoDocumento"]);
   const supplier = pickDocumentProposalValue(allData, ["fornitore", "supplier"]);
   const documentDate = pickDocumentProposalValue(allData, [
     "dataDocumento",
@@ -2533,10 +2839,14 @@ function buildDocumentProposalSummaryFacts(route: InternalAiUniversalDocumentRou
     "numeroFattura",
     "documentoNumero",
   ]);
+  const entityLabel = sanitizeDocumentProposalLabel(route.handoffPayload?.entityRef?.label);
+  const entityCandidateLabel = route.entityCandidateLabels
+    .map((entry) => sanitizeDocumentProposalLabel(entry))
+    .find((entry): entry is string => Boolean(entry));
   const mainMaterial =
     pickDocumentProposalValue(allData, ["materiale", "queryMateriale", "descrizione"]) ??
-    route.handoffPayload?.entityRef?.label ??
-    route.entityCandidateLabels[0] ??
+    entityLabel ??
+    entityCandidateLabel ??
     null;
   const quantity = pickDocumentProposalValue(allData, ["quantita"]);
   const unit = pickDocumentProposalValue(allData, ["unita", "unitaMisura", "udm"]);
@@ -2549,6 +2859,11 @@ function buildDocumentProposalSummaryFacts(route: InternalAiUniversalDocumentRou
   ]);
 
   return [
+    {
+      label: "Tipo documento",
+      value: documentType ?? "Non rilevato",
+      tone: mapDocumentProposalFactTone(Boolean(documentType), "positive"),
+    },
     {
       label: "Fornitore",
       value: supplier ?? "Non rilevato",
@@ -2587,6 +2902,48 @@ function buildDocumentProposalSummaryFacts(route: InternalAiUniversalDocumentRou
   ];
 }
 
+function buildDocumentReviewDocumentFacts(route: InternalAiUniversalDocumentRoute): DocumentProposalFact[] {
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const allData = { ...normalizedData, ...prefill };
+  const supplier = pickDocumentProposalValue(allData, ["fornitore", "supplier"]);
+  const documentNumber = pickDocumentProposalValue(allData, [
+    "numeroDocumento",
+    "numeroFattura",
+    "documentoNumero",
+  ]);
+  const documentDate = pickDocumentProposalValue(allData, [
+    "dataDocumento",
+    "dataFattura",
+    "documentoData",
+  ]);
+  const documentType = pickDocumentProposalValue(allData, ["tipoDocumento"]);
+  const documentTypeValue = documentType ?? buildDocumentRouteClassificationLabel(route);
+
+  return [
+    {
+      label: "Fornitore",
+      value: supplier ?? "Non rilevato",
+      tone: mapDocumentProposalFactTone(Boolean(supplier)),
+    },
+    {
+      label: "Numero documento",
+      value: documentNumber ?? "Non rilevato",
+      tone: mapDocumentProposalFactTone(Boolean(documentNumber)),
+    },
+    {
+      label: "Data documento",
+      value: documentDate ?? "Non rilevata",
+      tone: mapDocumentProposalFactTone(Boolean(documentDate)),
+    },
+    {
+      label: "Tipo documento",
+      value: documentTypeValue,
+      tone: documentType ? "positive" : "default",
+    },
+  ];
+}
+
 function buildDocumentProposalExtractedFacts(route: InternalAiUniversalDocumentRoute): DocumentProposalFact[] {
   const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
   const prefill = route.handoffPayload?.prefillCanonico ?? {};
@@ -2595,6 +2952,9 @@ function buildDocumentProposalExtractedFacts(route: InternalAiUniversalDocumentR
     "prompt",
     "warehouseInvoiceHint",
     "warehouseInvoiceMode",
+    "righeMaterialiJson",
+    "extractionStatus",
+    "extractionSource",
   ]);
   const seenLabels = new Set<string>();
   const facts: DocumentProposalFact[] = [];
@@ -2605,6 +2965,9 @@ function buildDocumentProposalExtractedFacts(route: InternalAiUniversalDocumentR
     }
     const value = formatDocumentProposalValue(rawValue);
     if (!value) {
+      return;
+    }
+    if (key === "targa" && !isLikelyDocumentProposalTarga(value)) {
       return;
     }
     const label = formatDocumentProposalFieldLabel(key);
@@ -2644,9 +3007,8 @@ function buildDocumentProposalExtractedFacts(route: InternalAiUniversalDocumentR
     });
   }
 
-  return facts.slice(0, 10);
+  return facts.slice(0, 12);
 }
-
 function buildDocumentProposalDetectedItems(
   route: InternalAiUniversalDocumentRoute,
 ): DocumentProposalDetectedItem[] {
@@ -2691,17 +3053,709 @@ function buildDocumentProposalDetectedItems(
   }));
 }
 
+void buildDocumentProposalDetectedItems;
+
+function buildDocumentProposalDetectedItemsStructured(
+  route: InternalAiUniversalDocumentRoute,
+): DocumentProposalDetectedItem[] {
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const combinedData = { ...normalizedData, ...prefill };
+  const supplier = pickDocumentProposalValue(combinedData, ["fornitore", "supplier"]) ?? "-";
+  const entityLabel = sanitizeDocumentProposalLabel(route.handoffPayload?.entityRef?.label) ?? "-";
+  const extractedRows = readDocumentProposalRows(route);
+
+  if (extractedRows.length > 0) {
+    return extractedRows.slice(0, 8).map((row, index) => {
+      const unitPriceLabel =
+        formatDocumentProposalCurrency(row.prezzoUnitario, row.valuta) ?? "Non rilevato";
+      const lineTotalLabel =
+        formatDocumentProposalCurrency(row.totaleRiga, row.valuta) ?? "Non rilevato";
+      return {
+        description: row.descrizione ?? row.codiceArticolo ?? "Riga documento",
+        articleCode: row.codiceArticolo ?? "Non rilevato",
+        quantity:
+          typeof row.quantita === "number"
+            ? formatDocumentProposalNumber(row.quantita, null)
+            : "Non rilevata",
+        unit: row.unita ?? "Non rilevata",
+        valueLabel: buildDocumentProposalRowValueLabel(row),
+        unitPriceLabel,
+        lineTotalLabel,
+        supplier,
+        match:
+          route.status === "da_verificare"
+            ? "DA VERIFICARE"
+            : entityLabel !== "-" && index === 0
+              ? "Match con inventario trovato"
+              : "Riga documentale estratta",
+        inventory: entityLabel !== "-" && index === 0 ? entityLabel : "Non collegato",
+        tone:
+          route.status === "da_verificare"
+            ? "warning"
+            : entityLabel !== "-" && index === 0
+              ? "positive"
+              : "default",
+      };
+    });
+  }
+
+  const quantity = pickDocumentProposalValue(combinedData, ["quantita"]) ?? "-";
+  const unit = pickDocumentProposalValue(combinedData, ["unita", "unitaMisura", "udm"]) ?? "-";
+  const descriptions = [
+    pickDocumentProposalValue(combinedData, ["materiale", "queryMateriale", "descrizione"]),
+    ...route.entityCandidateLabels,
+  ]
+    .map((entry) => sanitizeDocumentProposalLabel(String(entry ?? "").trim()))
+    .filter((entry): entry is string => Boolean(entry))
+    .filter((entry, index, collection) => collection.indexOf(entry) === index)
+    .slice(0, 4);
+
+  if (descriptions.length === 0) {
+    return [];
+  }
+
+  return descriptions.map((description, index) => ({
+    description,
+    articleCode: "Non rilevato",
+    quantity: index === 0 ? quantity : "-",
+    unit: index === 0 ? unit : "-",
+    valueLabel: "Non rilevato",
+    unitPriceLabel: "Non rilevato",
+    lineTotalLabel: "Non rilevato",
+    supplier: index === 0 ? supplier : "-",
+    match:
+      route.status === "da_verificare"
+        ? "DA VERIFICARE"
+        : entityLabel !== "-" && index === 0
+          ? "Match con inventario trovato"
+          : "Riferimento documentale",
+    inventory: entityLabel !== "-" && index === 0 ? entityLabel : "-",
+    tone:
+      route.status === "da_verificare"
+        ? "warning"
+        : entityLabel !== "-" && index === 0
+          ? "positive"
+          : "default",
+  }));
+}
+
+function orderDocumentReviewSelection(
+  selection: DocumentReviewActionKey[],
+): DocumentReviewActionKey[] {
+  const unique = new Set(selection);
+  return DOCUMENT_REVIEW_ACTION_ORDER.filter((actionKey) => unique.has(actionKey));
+}
+
+function toggleDocumentReviewSelection(
+  currentSelection: DocumentReviewActionKey[],
+  actionKey: DocumentReviewActionKey,
+): DocumentReviewActionKey[] {
+  const selection = new Set(orderDocumentReviewSelection(currentSelection));
+
+  if (actionKey === "da_verificare") {
+    return selection.has("da_verificare") ? [] : ["da_verificare"];
+  }
+
+  if (selection.has(actionKey)) {
+    selection.delete(actionKey);
+  } else {
+    selection.add(actionKey);
+  }
+
+  selection.delete("da_verificare");
+
+  if (selection.has("crea_nuovo_articolo")) {
+    selection.delete("collega_materiale_esistente");
+    selection.delete("aggiungi_costo_documento");
+  }
+
+  if (selection.has("collega_materiale_esistente")) {
+    selection.delete("crea_nuovo_articolo");
+  }
+
+  if (selection.has("aggiungi_costo_documento")) {
+    selection.add("collega_materiale_esistente");
+    selection.delete("crea_nuovo_articolo");
+  }
+
+  return orderDocumentReviewSelection(Array.from(selection));
+}
+
+function buildDocumentReviewSuggestedActionFromCandidate(
+  resolution: InternalAiMagazzinoInlineResolution | null | undefined,
+): string {
+  const candidate = resolution?.candidate ?? null;
+  if (!candidate) {
+    return "DA VERIFICARE";
+  }
+
+  if (candidate.decision === "riconcilia_senza_carico") {
+    return "Collega a materiale esistente + Aggiungi costo/documento";
+  }
+
+  if (candidate.decision === "carica_stock_adblue") {
+    return candidate.inventoryMatchId
+      ? "Collega a materiale esistente + Carica stock"
+      : "Crea nuovo articolo + Carica stock";
+  }
+
+  if (!candidate.inventoryMatchId) {
+    return "Crea nuovo articolo";
+  }
+
+  return "DA VERIFICARE";
+}
+
+function buildDocumentReviewDefaultSelection(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+}): DocumentReviewActionKey[] {
+  const { route, inlineWarehouseState } = args;
+  const candidate = inlineWarehouseState?.resolution?.candidate ?? null;
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return ["da_verificare"];
+  }
+
+  if (candidate?.decision === "riconcilia_senza_carico") {
+    return ["collega_materiale_esistente", "aggiungi_costo_documento"];
+  }
+
+  if (candidate?.decision === "carica_stock_adblue") {
+    return candidate.inventoryMatchId
+      ? ["collega_materiale_esistente", "carica_stock"]
+      : ["crea_nuovo_articolo", "carica_stock"];
+  }
+
+  if (candidate && !candidate.inventoryMatchId) {
+    return ["crea_nuovo_articolo"];
+  }
+
+  if (route.classification === "preventivo_fornitore") {
+    return ["da_verificare"];
+  }
+
+  if (isWarehouseInvoiceDocumentRoute(route)) {
+    return ["da_verificare"];
+  }
+
+  return ["da_verificare"];
+}
+
+function buildDocumentReviewActionOptions(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+}): DocumentReviewActionOption[] {
+  const { route, inlineWarehouseState } = args;
+  const candidate = inlineWarehouseState?.resolution?.candidate ?? null;
+
+  return DOCUMENT_REVIEW_ACTION_ORDER.map((actionKey) => {
+    let disabledReason: string | null = null;
+
+    if (
+      actionKey === "aggiungi_costo_documento" &&
+      route.classification === "preventivo_fornitore"
+    ) {
+      disabledReason = "Il preventivo non viene trattato come costo consuntivo in questo flusso.";
+    } else if (
+      actionKey === "carica_stock" &&
+      route.classification === "preventivo_fornitore"
+    ) {
+      disabledReason = "Il preventivo non puo aumentare lo stock.";
+    } else if (
+      actionKey === "carica_stock" &&
+      candidate &&
+      !candidate.canLoad &&
+      candidate.decision !== "carica_stock_adblue"
+    ) {
+      disabledReason = candidate.blockedReason ?? "Carico stock non consentito su questo documento.";
+    }
+
+    return {
+      key: actionKey,
+      label: DOCUMENT_REVIEW_ACTION_META[actionKey].label,
+      description: DOCUMENT_REVIEW_ACTION_META[actionKey].description,
+      disabledReason,
+    };
+  });
+}
+
+function buildDocumentReviewMaterialRows(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+}): DocumentReviewMaterialRow[] {
+  const { route, inlineWarehouseState } = args;
+  const candidate = inlineWarehouseState?.resolution?.candidate ?? null;
+  const baseItems = buildDocumentProposalDetectedItemsStructured(route);
+
+  if (candidate) {
+    const baseCandidateItem =
+      baseItems.find(
+        (item) => item.description.toLowerCase().trim() === candidate.descrizione.toLowerCase().trim(),
+      ) ??
+      baseItems[0] ??
+      null;
+    const quantity = formatDocumentProposalNumber(candidate.quantita, candidate.unita);
+    const candidateRow: DocumentReviewMaterialRow = {
+      description: candidate.descrizione,
+      articleCode: baseCandidateItem?.articleCode ?? "Non rilevato",
+      quantity,
+      unit: candidate.unita ?? "Non rilevata",
+      unitPrice:
+        baseCandidateItem?.unitPriceLabel ??
+        (baseCandidateItem?.valueLabel?.startsWith("Prezzo ")
+          ? baseCandidateItem.valueLabel.split("|")[0]?.replace(/^Prezzo\s+/u, "").trim() ||
+            "Non rilevato"
+          : "Non rilevato"),
+      lineTotal: baseCandidateItem?.lineTotalLabel ?? "Non rilevato",
+      tone:
+        candidate.decision === "riconcilia_senza_carico" ||
+        candidate.decision === "carica_stock_adblue"
+          ? "positive"
+          : "warning",
+    };
+
+    const remainingRows = baseItems
+      .filter((item) => item.description !== candidate.descrizione)
+      .map((item) => ({
+        description: item.description,
+        articleCode: item.articleCode ?? "Non rilevato",
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPriceLabel ?? "Non rilevato",
+        lineTotal: item.lineTotalLabel ?? "Non rilevato",
+        tone: item.tone,
+      }));
+
+    return [candidateRow, ...remainingRows].slice(0, 6);
+  }
+
+  return baseItems.map((item) => ({
+    description: item.description,
+    articleCode: item.articleCode ?? "Non rilevato",
+    quantity: item.quantity,
+    unit: item.unit,
+    unitPrice: item.unitPriceLabel ?? "Non rilevato",
+    lineTotal: item.lineTotalLabel ?? "Non rilevato",
+    tone: item.tone,
+  }));
+}
+
+function buildDocumentReviewInventoryFacts(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+}): DocumentProposalFact[] {
+  const { route, inlineWarehouseState } = args;
+  const candidate = inlineWarehouseState?.resolution?.candidate ?? null;
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const extractedMaterial =
+    pickDocumentProposalValue(normalizedData, ["materiale", "queryMateriale", "descrizione"]) ??
+    route.entityCandidateLabels
+      .map((entry) => sanitizeDocumentProposalLabel(entry))
+      .find((entry): entry is string => Boolean(entry)) ??
+    null;
+  const materialLabel =
+    sanitizeDocumentProposalLabel(route.handoffPayload?.entityRef?.label) ??
+    candidate?.descrizione ??
+    extractedMaterial ??
+    "Nessun match forte";
+
+  let stockStatus = "Non a stock / non collegato";
+  let stockTone: DocumentProposalFactTone = "warning";
+  let matchOutcome = "Serve verifica manuale sul materiale.";
+  let matchTone: DocumentProposalFactTone = "warning";
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    matchOutcome = "DA VERIFICARE prima di qualunque scrittura o collegamento stock.";
+  } else if (candidate?.decision === "riconcilia_senza_carico") {
+    stockStatus = "Gia a stock";
+    stockTone = "positive";
+    matchOutcome = candidate.procurementCoverageAlreadyLoaded
+      ? "Match forte con arrivo procurement gia consolidato: il documento si riconcilia senza nuovo carico."
+      : "Match forte su materiale gia presente: il documento si collega senza aumentare la giacenza.";
+    matchTone = "positive";
+  } else if (candidate?.decision === "carica_stock_adblue") {
+    stockStatus = candidate.inventoryMatchId ? "Gia a stock" : "Non ancora a stock";
+    stockTone = candidate.inventoryMatchId ? "positive" : "default";
+    matchOutcome = candidate.inventoryMatchId
+      ? "Match forte su inventario AdBlue: la quantita aumenta solo con scelta utente `Carica stock`."
+      : "Classificazione AdBlue coerente: la voce puo essere creata e caricata solo con scelta utente esplicita.";
+    matchTone = "positive";
+  } else if (candidate?.inventoryMatchId) {
+    stockStatus = "Gia a stock";
+    stockTone = "default";
+    matchOutcome = candidate.blockedReason ?? "Materiale trovato, ma il presidio richiede ancora verifica.";
+  } else if (candidate?.blockedReason) {
+    matchOutcome = candidate.blockedReason;
+  } else if (sanitizeDocumentProposalLabel(route.handoffPayload?.entityRef?.label)) {
+    stockStatus = "Match documentale presente";
+    stockTone = "default";
+    matchOutcome = "Esiste un riferimento utile, ma la riconciliazione stock non e ancora abbastanza forte.";
+    matchTone = "default";
+  }
+
+  return [
+    {
+      label: "Materiale trovato",
+      value: materialLabel,
+      tone: materialLabel === "Nessun match forte" ? "warning" : "positive",
+    },
+    {
+      label: "Stato stock",
+      value: stockStatus,
+      tone: stockTone,
+    },
+    {
+      label: "Esito match",
+      value: matchOutcome,
+      tone: matchTone,
+    },
+  ];
+}
+
+function buildDocumentReviewTechnicalFacts(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+}): DocumentProposalFact[] {
+  const { route, inlineWarehouseState } = args;
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const combinedData = { ...normalizedData, ...prefill };
+  const candidate = inlineWarehouseState?.resolution?.candidate ?? null;
+  const extractionSource = pickDocumentProposalValue(combinedData, ["extractionSource"]);
+  const extractionStatus = pickDocumentProposalValue(combinedData, ["extractionStatus"]);
+  const warehouseMode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
+  const facts: DocumentProposalFact[] = [
+    {
+      label: "Presidio",
+      value: buildDocumentRouteSafetyLabel(route),
+      tone: route.status === "da_verificare" ? "warning" : "default",
+    },
+    {
+      label: "Confidenza",
+      value: buildDocumentRouteConfidenceLabel(route),
+      tone:
+        route.confidence === "alta"
+          ? "positive"
+          : route.confidence === "prudente"
+            ? "warning"
+            : "default",
+    },
+    {
+      label: "Estrazione",
+      value:
+        [extractionSource, extractionStatus].filter(Boolean).join(" · ") || "Non dichiarata nel payload",
+      tone: extractionSource || extractionStatus ? "default" : "warning",
+    },
+  ];
+
+  if (warehouseMode) {
+    facts.push({
+      label: "Modalita fattura",
+      value: warehouseMode,
+      tone: "default",
+    });
+  }
+
+  if (candidate) {
+    facts.push(
+      {
+        label: "Decisione inline",
+        value:
+          candidate.decision === "riconcilia_senza_carico"
+            ? "Riconcilia senza carico"
+            : candidate.decision === "carica_stock_adblue"
+              ? "Carica stock AdBlue"
+              : candidate.decision === "fuori_perimetro"
+                ? "Fuori perimetro"
+                : "Da verificare",
+        tone:
+          candidate.decision === "riconcilia_senza_carico" ||
+          candidate.decision === "carica_stock_adblue"
+            ? "positive"
+            : "warning",
+      },
+      {
+        label: "stockKey",
+        value: candidate.stockKey ?? "Non generato",
+        tone: candidate.stockKey ? "default" : "warning",
+      },
+      {
+        label: "sourceLoadKey documento",
+        value: candidate.sourceLoadKey || "Non generato",
+        tone: candidate.sourceLoadKey ? "default" : "warning",
+      },
+      {
+        label: "Copertura procurement",
+        value: candidate.procurementCoverageReason ?? "Nessun arrivo compatibile",
+        tone: candidate.procurementCoverageReason ? "default" : "warning",
+      },
+      {
+        label: "Arrivo gia consolidato",
+        value: candidate.procurementCoverageOrderId
+          ? candidate.procurementCoverageAlreadyLoaded
+            ? "Si"
+            : "No"
+          : "N/D",
+        tone: candidate.procurementCoverageOrderId
+          ? candidate.procurementCoverageAlreadyLoaded
+            ? "positive"
+            : "warning"
+          : "default",
+      },
+      {
+        label: "UDM risolta",
+        value: `${candidate.unita ?? "Non rilevata"} · fonte ${candidate.unitaSource}`,
+        tone: candidate.unita ? "default" : "warning",
+      },
+    );
+  }
+
+  if (route.handoffPayload?.campiDaVerificare.length) {
+    facts.push({
+      label: "Campi da verificare",
+      value: route.handoffPayload.campiDaVerificare
+        .map((entry) => formatDocumentProposalFieldLabel(entry))
+        .join(", "),
+      tone: "warning",
+    });
+  }
+
+  if (route.handoffPayload?.campiMancanti.length) {
+    facts.push({
+      label: "Campi mancanti",
+      value: route.handoffPayload.campiMancanti
+        .map((entry) => formatDocumentProposalFieldLabel(entry))
+        .join(", "),
+      tone: "warning",
+    });
+  }
+
+  return facts.slice(0, 12);
+}
+
+function buildDocumentReviewStatusHighlight(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+}): DocumentReviewStatusHighlight {
+  const { route, inlineWarehouseState } = args;
+  const candidate = inlineWarehouseState?.resolution?.candidate ?? null;
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return {
+      title: "DA VERIFICARE",
+      message:
+        buildDocumentRouteFollowupQuestion(route) ??
+        "Il documento resta bloccato finche campi, match e presidio non risultano abbastanza chiari.",
+      tone: "warning",
+    };
+  }
+
+  if (candidate?.decision === "riconcilia_senza_carico") {
+    return {
+      title: "Riconciliazione senza carico",
+      message:
+        "Documento e costo si collegano al materiale gia presente. La quantita non aumenta.",
+      tone: "positive",
+    };
+  }
+
+  if (candidate?.decision === "carica_stock_adblue") {
+    return {
+      title: "Carico stock ammesso",
+      message: candidate.inventoryMatchId
+        ? "Il materiale AdBlue e gia presente: la quantita aumenta solo con scelta utente `Carica stock`."
+        : "Il materiale non e ancora a stock: la quantita aumenta solo se scegli esplicitamente `Carica stock`.",
+      tone: "positive",
+    };
+  }
+
+  if (candidate?.blockedReason) {
+    return {
+      title: "Controllo manuale richiesto",
+      message: candidate.blockedReason,
+      tone: "warning",
+    };
+  }
+
+  return {
+    title: buildDocumentProposalStatusLabel(route),
+    message: buildDocumentProposalActionBoundary(route),
+    tone: "default",
+  };
+}
+
+function buildDocumentReviewUserDecisionSummary(selection: DocumentReviewActionKey[]): string {
+  const ordered = orderDocumentReviewSelection(selection);
+  if (!ordered.length) {
+    return "Nessuna decisione selezionata";
+  }
+
+  return ordered.map((actionKey) => DOCUMENT_REVIEW_ACTION_META[actionKey].label).join(" + ");
+}
+
+function buildDocumentReviewProposalText(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+}): string {
+  const { route, inlineWarehouseState } = args;
+  const outcome = inlineWarehouseState?.outcome;
+  if (outcome) {
+    return outcome.message;
+  }
+
+  const candidate = inlineWarehouseState?.resolution?.candidate ?? null;
+  if (candidate?.decision === "riconcilia_senza_carico") {
+    return "Default IA: collega il documento al materiale esistente e aggiungi il costo senza aumentare di nuovo lo stock.";
+  }
+
+  if (candidate?.decision === "carica_stock_adblue") {
+    return candidate.inventoryMatchId
+      ? "Default IA: usa il materiale AdBlue gia presente e carica lo stock nel perimetro consentito."
+      : "Default IA: crea o aggiorna il materiale AdBlue e poi carica lo stock nel perimetro consentito.";
+  }
+
+  if (candidate && !candidate.inventoryMatchId) {
+    return "Default IA: crea nuovo articolo, ma senza esecuzione automatica finche il caso non rientra nel perimetro consentito.";
+  }
+
+  if (route.classification === "preventivo_fornitore") {
+    return "Default IA: review gestionale del preventivo e passaggio prudente al modulo target senza esecuzione inline.";
+  }
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return "Default IA: lascia il documento in `DA VERIFICARE` e non eseguire alcuna scrittura.";
+  }
+
+  return "La IA propone il flusso piu vicino al documento, ma la decisione finale resta sempre all'utente.";
+}
+
+function buildDocumentReviewExecutionPlan(args: {
+  route: InternalAiUniversalDocumentRoute;
+  inlineWarehouseState: ChatMagazzinoInlineRouteState | null;
+  selection: DocumentReviewActionKey[];
+}): DocumentReviewExecutionPlan {
+  const { route, inlineWarehouseState } = args;
+  const selection = orderDocumentReviewSelection(args.selection);
+
+  if (!selection.length) {
+    return {
+      kind: "blocked",
+      ctaLabel: null,
+      helperText: "Seleziona almeno una decisione operativa prima di procedere.",
+    };
+  }
+
+  if (selection.includes("da_verificare")) {
+    return {
+      kind: "blocked",
+      ctaLabel: null,
+      helperText: "Caso marcato `DA VERIFICARE`: nessuna esecuzione automatica viene avviata.",
+    };
+  }
+
+  if (!isWarehouseInvoiceDocumentRoute(route)) {
+    return {
+      kind: "open_module",
+      ctaLabel: buildDocumentRouteOpenLabel(route),
+      helperText:
+        "La scelta utente e stata registrata nella review, ma l'esecuzione resta demandata al modulo target.",
+    };
+  }
+
+  if (inlineWarehouseState?.executionStatus === "executing") {
+    return {
+      kind: "blocked",
+      ctaLabel: null,
+      helperText: "Esecuzione inline gia in corso nel modale IA.",
+    };
+  }
+
+  if (inlineWarehouseState?.outcome) {
+    return {
+      kind: "blocked",
+      ctaLabel: null,
+      helperText: "Azione gia eseguita in questa review. Puoi usare il fallback per controllo manuale.",
+    };
+  }
+
+  const resolution = inlineWarehouseState?.resolution;
+  const candidate = resolution?.candidate ?? null;
+  const wantsLink =
+    selection.includes("collega_materiale_esistente") ||
+    selection.includes("aggiungi_costo_documento");
+  const wantsCost = selection.includes("aggiungi_costo_documento");
+  const wantsCreate = selection.includes("crea_nuovo_articolo");
+  const wantsLoad = selection.includes("carica_stock");
+
+  if (resolution?.status === "pronto" && candidate?.decision === "riconcilia_senza_carico") {
+    if (wantsLink && wantsCost && !wantsCreate && !wantsLoad) {
+      return {
+        kind: "inline_execute",
+        ctaLabel: "Esegui riconciliazione nel modale IA",
+        helperText: resolution.message,
+      };
+    }
+
+    return {
+      kind: "open_module",
+      ctaLabel: buildDocumentRouteOpenLabel(route),
+      helperText:
+        "La scelta utente esce dal perimetro inline consentito per questa riconciliazione. Uso il fallback Magazzino.",
+    };
+  }
+
+  if (resolution?.status === "pronto" && candidate?.decision === "carica_stock_adblue") {
+    if (wantsLoad && !wantsCost) {
+      return {
+        kind: "inline_execute",
+        ctaLabel: "Esegui carico AdBlue nel modale IA",
+        helperText: resolution.message,
+      };
+    }
+
+    return {
+      kind: "open_module",
+      ctaLabel: buildDocumentRouteOpenLabel(route),
+      helperText:
+        "Il carico AdBlue inline richiede una scelta coerente con `Carica stock`. Uso il fallback Magazzino.",
+    };
+  }
+
+  return {
+    kind: "open_module",
+    ctaLabel: buildDocumentRouteOpenLabel(route),
+    helperText:
+      inlineWarehouseState?.message ??
+      "La scelta utente richiede verifica o gestione manuale nel modulo Magazzino.",
+  };
+}
+
 function buildDocumentProposalMatchFacts(route: InternalAiUniversalDocumentRoute): DocumentProposalFact[] {
   const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
   const mode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
   const entityRef = route.handoffPayload?.entityRef;
+  const entityLabel = sanitizeDocumentProposalLabel(entityRef?.label);
+  const extractedMaterial =
+    pickDocumentProposalValue(normalizedData, ["materiale", "queryMateriale", "descrizione"]) ?? null;
   const facts: DocumentProposalFact[] = [];
+  const extractedRowsCount = pickDocumentProposalValue(normalizedData, ["righeMaterialiCount"]);
 
   facts.push({
     label: "Materiale / entita trovata",
-    value: entityRef?.label ?? "Nessun match forte",
-    tone: entityRef ? "positive" : "warning",
+    value: entityLabel ?? extractedMaterial ?? "Nessun match forte",
+    tone: entityLabel ? "positive" : extractedMaterial ? "default" : "warning",
   });
+
+  if (extractedRowsCount) {
+    facts.push({
+      label: "Righe estratte",
+      value: extractedRowsCount,
+      tone: "default",
+    });
+  }
 
   if (route.classification === "tabella_materiali" && mode === "carica_stock_adblue") {
     facts.push({
@@ -2709,7 +3763,7 @@ function buildDocumentProposalMatchFacts(route: InternalAiUniversalDocumentRoute
       value:
         route.status === "da_verificare"
           ? "DA VERIFICARE prima del carico AdBlue"
-          : "Carico inventario AdBlue solo dopo conferma",
+          : "Conferma inline disponibile per il carico inventario AdBlue",
       tone: route.status === "da_verificare" ? "warning" : "positive",
     });
   } else if (route.classification === "tabella_materiali") {
@@ -2718,7 +3772,7 @@ function buildDocumentProposalMatchFacts(route: InternalAiUniversalDocumentRoute
       value:
         route.status === "da_verificare"
           ? "DA VERIFICARE prima di qualunque riconciliazione"
-          : "Solo riconciliazione documento, nessun nuovo carico stock",
+          : "Conferma inline disponibile: solo riconciliazione documento, nessun nuovo carico stock",
       tone: route.status === "da_verificare" ? "warning" : "positive",
     });
   }
@@ -2822,6 +3876,16 @@ function NextInternalAiPage({
     report: null,
     artifactId: null,
   });
+  const [documentReviewModalState, setDocumentReviewModalState] = useState<DocumentReviewModalState>(
+    {
+      isOpen: false,
+      routeKey: null,
+    },
+  );
+  const [documentReviewSelectionState, setDocumentReviewSelectionState] = useState<
+    Record<string, DocumentReviewActionKey[]>
+  >({});
+  const [documentReviewImageZoom, setDocumentReviewImageZoom] = useState(1);
   const [reportPdfPreviewState, setReportPdfPreviewState] = useState<ReportPdfPreviewState>({
     status: "idle",
     url: null,
@@ -2837,6 +3901,8 @@ function NextInternalAiPage({
   const chatDocumentProposalPanelRef = useRef<HTMLDivElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const chatAttachmentsRef = useRef<InternalAiChatAttachment[]>([]);
+  const chatMagazzinoInlineContextRef = useRef<InternalAiMagazzinoInlineContext | null>(null);
+  const documentReviewAutoOpenSignatureRef = useRef<string | null>(null);
   const reportPdfPreviewUrlRef = useRef<string | null>(null);
   const [artifactSearchQuery, setArtifactSearchQuery] = useState(
     () => tracking.sessionState.lastArchiveQuery ?? "",
@@ -2891,6 +3957,9 @@ function NextInternalAiPage({
     result: null,
     message: null,
   });
+  const [chatMagazzinoInlineRouteState, setChatMagazzinoInlineRouteState] = useState<
+    Record<string, ChatMagazzinoInlineRouteState>
+  >({});
   const [repoUnderstandingState, setRepoUnderstandingState] = useState<RepoUnderstandingState>({
     status: "idle",
     message: null,
@@ -3748,6 +4817,20 @@ function NextInternalAiPage({
     setReportDocumentActionMessage(null);
   }
 
+  const openDocumentReviewModal = useCallback((routeKey: string) => {
+    setDocumentReviewModalState({
+      isOpen: true,
+      routeKey,
+    });
+  }, []);
+
+  const closeDocumentReviewModal = useCallback(() => {
+    setDocumentReviewModalState((current) => ({
+      ...current,
+      isOpen: false,
+    }));
+  }, []);
+
   useEffect(() => {
     trackInternalAiScreenVisit(sectionId, location.pathname);
   }, [location.pathname, sectionId]);
@@ -3793,6 +4876,33 @@ function NextInternalAiPage({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [reportPreviewModalState.isOpen]);
+
+  useEffect(() => {
+    if (!documentReviewModalState.isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDocumentReviewModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeDocumentReviewModal, documentReviewModalState.isOpen]);
+
+  useEffect(() => {
+    if (!documentReviewModalState.isOpen || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [documentReviewModalState.isOpen]);
 
   useEffect(() => {
     if (!reportDocumentActionMessage) {
@@ -5131,6 +6241,406 @@ function NextInternalAiPage({
     unifiedConsoleScopes,
   ]);
 
+  const documentReviewRoutes = useMemo(
+    () => chatDocumentProposalState.result?.documentRoutes ?? [],
+    [chatDocumentProposalState.result],
+  );
+
+  const warehouseInvoiceDocumentRoutes = useMemo(
+    () =>
+      documentReviewRoutes.filter((route) => isWarehouseInvoiceDocumentRoute(route)),
+    [documentReviewRoutes],
+  );
+
+  const documentReviewRouteSignature = useMemo(
+    () => documentReviewRoutes.map((route) => buildDocumentProposalRouteKey(route)).join("|"),
+    [documentReviewRoutes],
+  );
+
+  useEffect(() => {
+    if (chatAttachments.length === 0) {
+      documentReviewAutoOpenSignatureRef.current = null;
+      setDocumentReviewModalState({
+        isOpen: false,
+        routeKey: null,
+      });
+      setDocumentReviewSelectionState({});
+      return;
+    }
+
+    if (
+      chatDocumentProposalState.status !== "ready" ||
+      documentReviewRoutes.length === 0 ||
+      !documentReviewRouteSignature
+    ) {
+      return;
+    }
+
+    if (documentReviewAutoOpenSignatureRef.current === documentReviewRouteSignature) {
+      return;
+    }
+
+    documentReviewAutoOpenSignatureRef.current = documentReviewRouteSignature;
+    setDocumentReviewModalState({
+      isOpen: true,
+      routeKey: buildDocumentProposalRouteKey(documentReviewRoutes[0]),
+    });
+  }, [
+    chatAttachments.length,
+    chatDocumentProposalState.status,
+    documentReviewRouteSignature,
+    documentReviewRoutes,
+  ]);
+
+  useEffect(() => {
+    if (!documentReviewRoutes.length) {
+      return;
+    }
+
+    const currentRouteKey = documentReviewModalState.routeKey;
+    const hasCurrentRoute =
+      currentRouteKey &&
+      documentReviewRoutes.some((route) => buildDocumentProposalRouteKey(route) === currentRouteKey);
+
+    if (!hasCurrentRoute) {
+      setDocumentReviewModalState((current) => ({
+        ...current,
+        routeKey: buildDocumentProposalRouteKey(documentReviewRoutes[0]),
+      }));
+    }
+  }, [documentReviewModalState.routeKey, documentReviewRoutes]);
+
+  useEffect(() => {
+    setDocumentReviewImageZoom(1);
+  }, [documentReviewModalState.routeKey, documentReviewModalState.isOpen]);
+
+  useEffect(() => {
+    if (
+      chatAttachments.length === 0 ||
+      chatDocumentProposalState.status !== "ready" ||
+      warehouseInvoiceDocumentRoutes.length === 0
+    ) {
+      chatMagazzinoInlineContextRef.current = null;
+      setChatMagazzinoInlineRouteState({});
+      return;
+    }
+
+    let cancelled = false;
+    const routeKeys = warehouseInvoiceDocumentRoutes.map(buildDocumentProposalRouteKey);
+
+    setChatMagazzinoInlineRouteState((current) =>
+      routeKeys.reduce<Record<string, ChatMagazzinoInlineRouteState>>((acc, key) => {
+        const previous = current[key];
+        acc[key] =
+          previous?.executionStatus === "success" && previous.outcome
+            ? previous
+            : {
+                status: "loading",
+                resolution: previous?.resolution ?? null,
+                message:
+                  "Sto verificando match documento, UDM e anti-doppio-carico per l'esecuzione inline.",
+                executionStatus: previous?.executionStatus === "error" ? "error" : "idle",
+                outcome: null,
+              };
+        return acc;
+      }, {}),
+    );
+
+    void loadInternalAiMagazzinoInlineContext()
+      .then((context) => {
+        if (cancelled) {
+          return;
+        }
+
+        chatMagazzinoInlineContextRef.current = context;
+        setChatMagazzinoInlineRouteState((current) =>
+          warehouseInvoiceDocumentRoutes.reduce<Record<string, ChatMagazzinoInlineRouteState>>(
+            (acc, route) => {
+              const routeKey = buildDocumentProposalRouteKey(route);
+              const previous = current[routeKey];
+              if (previous?.executionStatus === "success" && previous.outcome) {
+                acc[routeKey] = previous;
+                return acc;
+              }
+
+              const resolution =
+                resolveInternalAiMagazzinoInlineRoute({
+                  context,
+                  handoffPayload: route.handoffPayload,
+                }) ??
+                ({
+                  status: "da_verificare",
+                  candidate: null,
+                  message: "Flusso inline non disponibile per questo documento.",
+                } satisfies InternalAiMagazzinoInlineResolution);
+
+              acc[routeKey] = {
+                status: "ready",
+                resolution,
+                message: resolution.message,
+                executionStatus: previous?.executionStatus === "error" ? "error" : "idle",
+                outcome: null,
+              };
+              return acc;
+            },
+            {},
+          ),
+        );
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Verifica inline Magazzino non disponibile.";
+        setChatMagazzinoInlineRouteState(
+          routeKeys.reduce<Record<string, ChatMagazzinoInlineRouteState>>((acc, key) => {
+            acc[key] = {
+              status: "error",
+              resolution: null,
+              message,
+              executionStatus: "error",
+              outcome: null,
+            };
+            return acc;
+          }, {}),
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatAttachments.length, chatDocumentProposalState, warehouseInvoiceDocumentRoutes]);
+
+  const handleMagazzinoInlineConfirm = useCallback(
+    async (route: InternalAiUniversalDocumentRoute) => {
+      const routeKey = buildDocumentProposalRouteKey(route);
+      const currentState = chatMagazzinoInlineRouteState[routeKey];
+      if (!currentState?.resolution || currentState.resolution.status !== "pronto") {
+        return;
+      }
+
+      const resolution = currentState.resolution;
+      setChatMagazzinoInlineRouteState((current) => ({
+        ...current,
+        [routeKey]: {
+          ...(current[routeKey] ?? currentState),
+          executionStatus: "executing",
+          message: resolution.message,
+          outcome: null,
+        },
+      }));
+
+      try {
+        const baseContext =
+          chatMagazzinoInlineContextRef.current ?? (await loadInternalAiMagazzinoInlineContext());
+        chatMagazzinoInlineContextRef.current = baseContext;
+
+        const result = await executeInternalAiMagazzinoInlineAction({
+          context: baseContext,
+          candidate: resolution.candidate,
+        });
+
+        chatMagazzinoInlineContextRef.current = result.context;
+        setChatMagazzinoInlineRouteState((current) =>
+          warehouseInvoiceDocumentRoutes.reduce<Record<string, ChatMagazzinoInlineRouteState>>(
+            (acc, currentRoute) => {
+              const currentKey = buildDocumentProposalRouteKey(currentRoute);
+              const refreshedResolution =
+                resolveInternalAiMagazzinoInlineRoute({
+                  context: result.context,
+                  handoffPayload: currentRoute.handoffPayload,
+                }) ??
+                ({
+                  status: "da_verificare",
+                  candidate: null,
+                  message: "Flusso inline non disponibile per questo documento.",
+                } satisfies InternalAiMagazzinoInlineResolution);
+
+              acc[currentKey] = {
+                status: "ready",
+                resolution: refreshedResolution,
+                message:
+                  currentKey === routeKey ? result.outcome.message : refreshedResolution.message,
+                executionStatus: currentKey === routeKey ? "success" : "idle",
+                outcome: currentKey === routeKey ? result.outcome : null,
+              };
+              return acc;
+            },
+            { ...current },
+          ),
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Esecuzione inline Magazzino non riuscita.";
+        setChatMagazzinoInlineRouteState((current) => ({
+          ...current,
+          [routeKey]: {
+            ...(current[routeKey] ?? currentState),
+            executionStatus: "error",
+            message,
+            outcome: null,
+          },
+        }));
+      }
+    },
+    [chatMagazzinoInlineRouteState, warehouseInvoiceDocumentRoutes],
+  );
+
+  const handleDocumentReviewActionToggle = useCallback(
+    (
+      route: InternalAiUniversalDocumentRoute,
+      inlineWarehouseState: ChatMagazzinoInlineRouteState | null,
+      actionKey: DocumentReviewActionKey,
+    ) => {
+      const routeKey = buildDocumentProposalRouteKey(route);
+      setDocumentReviewSelectionState((current) => {
+        const currentSelection =
+          current[routeKey] ??
+          buildDocumentReviewDefaultSelection({
+            route,
+            inlineWarehouseState,
+          });
+        return {
+          ...current,
+          [routeKey]: toggleDocumentReviewSelection(currentSelection, actionKey),
+        };
+      });
+    },
+    [],
+  );
+
+  const handleDocumentReviewPrimaryAction = useCallback(
+    async (route: InternalAiUniversalDocumentRoute, plan: DocumentReviewExecutionPlan) => {
+      if (plan.kind === "inline_execute") {
+        await handleMagazzinoInlineConfirm(route);
+        return;
+      }
+
+      if (plan.kind === "open_module") {
+        closeDocumentReviewModal();
+        navigate(route.handoffPayload?.routeTarget ?? route.targetPath);
+      }
+    },
+    [closeDocumentReviewModal, handleMagazzinoInlineConfirm, navigate],
+  );
+
+  const activeDocumentReviewRoute =
+    documentReviewRoutes.find(
+      (route) => buildDocumentProposalRouteKey(route) === documentReviewModalState.routeKey,
+    ) ?? null;
+  const activeDocumentReviewAttachment =
+    activeDocumentReviewRoute
+      ? chatAttachments.find((attachment) => attachment.id === activeDocumentReviewRoute.attachmentId) ??
+        null
+      : null;
+  const activeDocumentReviewRouteKey = activeDocumentReviewRoute
+    ? buildDocumentProposalRouteKey(activeDocumentReviewRoute)
+    : null;
+  const activeDocumentReviewInlineState =
+    activeDocumentReviewRoute &&
+    activeDocumentReviewRouteKey &&
+    isWarehouseInvoiceDocumentRoute(activeDocumentReviewRoute)
+      ? chatMagazzinoInlineRouteState[activeDocumentReviewRouteKey] ?? null
+      : null;
+  const activeDocumentReviewSelection =
+    activeDocumentReviewRoute && activeDocumentReviewRouteKey
+      ? documentReviewSelectionState[activeDocumentReviewRouteKey] ??
+        buildDocumentReviewDefaultSelection({
+          route: activeDocumentReviewRoute,
+          inlineWarehouseState: activeDocumentReviewInlineState,
+        })
+      : [];
+  const activeDocumentReviewDefaultSelection = activeDocumentReviewRoute
+    ? buildDocumentReviewDefaultSelection({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+      })
+    : [];
+  const activeDocumentReviewPreviewUrl =
+    activeDocumentReviewAttachment
+      ? buildInternalAiChatAttachmentAssetUrl(activeDocumentReviewAttachment)
+      : activeDocumentReviewInlineState?.resolution?.candidate?.fileUrl ?? null;
+  const activeDocumentReviewDocumentFacts = activeDocumentReviewRoute
+    ? buildDocumentReviewDocumentFacts(activeDocumentReviewRoute)
+    : [];
+  const activeDocumentReviewMaterialRows = activeDocumentReviewRoute
+    ? buildDocumentReviewMaterialRows({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+      })
+    : [];
+  const activeDocumentReviewInventoryFacts = activeDocumentReviewRoute
+    ? buildDocumentReviewInventoryFacts({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+      })
+    : [];
+  const activeDocumentReviewTechnicalFacts = activeDocumentReviewRoute
+    ? buildDocumentReviewTechnicalFacts({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+      })
+    : [];
+  const activeDocumentReviewStatusHighlight = activeDocumentReviewRoute
+    ? buildDocumentReviewStatusHighlight({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+      })
+    : null;
+  const activeDocumentReviewActionOptions = activeDocumentReviewRoute
+    ? buildDocumentReviewActionOptions({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+      })
+    : [];
+  const activeDocumentReviewPlan = activeDocumentReviewRoute
+    ? buildDocumentReviewExecutionPlan({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+        selection: activeDocumentReviewSelection,
+      })
+    : null;
+  const activeDocumentReviewProposalText = activeDocumentReviewRoute
+    ? buildDocumentReviewProposalText({
+        route: activeDocumentReviewRoute,
+        inlineWarehouseState: activeDocumentReviewInlineState,
+      })
+    : null;
+  const activeDocumentReviewSuggestedAction = buildDocumentReviewSuggestedActionFromCandidate(
+    activeDocumentReviewInlineState?.resolution,
+  );
+  const activeDocumentReviewBoundaryText = activeDocumentReviewRoute
+    ? buildDocumentProposalActionBoundary(activeDocumentReviewRoute)
+    : null;
+  const activeDocumentReviewOutcomeFacts = activeDocumentReviewInlineState?.outcome
+    ? buildMagazzinoInlineOutcomeFacts(activeDocumentReviewInlineState.outcome)
+    : [];
+  const activeDocumentReviewFollowupQuestion = activeDocumentReviewRoute
+    ? buildDocumentRouteFollowupQuestion(activeDocumentReviewRoute)
+    : null;
+  const activeDocumentReviewRouteEvidence = activeDocumentReviewRoute
+    ? activeDocumentReviewRoute.rationale.join(" ").trim()
+    : "";
+  const activeDocumentReviewEvidenceText =
+    activeDocumentReviewAttachment?.textExcerpt?.trim() ||
+    activeDocumentReviewRouteEvidence ||
+    activeDocumentReviewRoute?.handoffPayload?.motivoInstradamento ||
+    "";
+  const activeDocumentReviewEvidenceSupport = [
+    activeDocumentReviewAttachment?.note?.trim() || null,
+    activeDocumentReviewAttachment
+      ? `Caricato ${formatDateLabel(activeDocumentReviewAttachment.uploadedAt)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
   const chatComposerHint =
     chatAttachments.length > 0
       ? "Con un allegato il testo e opzionale: la IA classifica il documento e propone il flusso corretto."
@@ -5221,10 +6731,10 @@ function NextInternalAiPage({
           const followupQuestion = buildDocumentRouteFollowupQuestion(route);
           const actionLabel = buildDocumentRouteActionLabel(route);
           const classificationLabel = buildDocumentRouteClassificationLabel(route);
-          const statusLabel = buildDocumentProposalStatusLabel(route);
+          const baseStatusLabel = buildDocumentProposalStatusLabel(route);
           const summaryFacts = buildDocumentProposalSummaryFacts(route);
           const extractedFacts = buildDocumentProposalExtractedFacts(route);
-          const detectedItems = buildDocumentProposalDetectedItems(route);
+          const detectedItems = buildDocumentProposalDetectedItemsStructured(route);
           const matchFacts = buildDocumentProposalMatchFacts(route);
           const evidenceText =
             attachment?.textExcerpt?.trim() ||
@@ -5237,6 +6747,33 @@ function NextInternalAiPage({
           ]
             .filter(Boolean)
             .join(" | ");
+          const routeKey = buildDocumentProposalRouteKey(route);
+          const inlineWarehouseEnabled = isWarehouseInvoiceDocumentRoute(route);
+          const inlineWarehouseState = inlineWarehouseEnabled
+            ? chatMagazzinoInlineRouteState[routeKey] ?? null
+            : null;
+          const reviewSelection =
+            documentReviewSelectionState[routeKey] ??
+            buildDocumentReviewDefaultSelection({
+              route,
+              inlineWarehouseState,
+            });
+          const reviewDecisionLabel = buildDocumentReviewUserDecisionSummary(reviewSelection);
+          const inlineConfirmLabel =
+            inlineWarehouseState?.resolution?.status === "pronto"
+              ? inlineWarehouseState.resolution.candidate.decision === "riconcilia_senza_carico"
+                ? "Conferma riconciliazione"
+                : "Conferma carico AdBlue"
+              : null;
+          const inlineOutcomeFacts = inlineWarehouseState?.outcome
+            ? buildMagazzinoInlineOutcomeFacts(inlineWarehouseState.outcome)
+            : [];
+          const statusLabel =
+            inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "success"
+              ? "Eseguita inline"
+              : inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "executing"
+                ? "Esecuzione in corso"
+                : baseStatusLabel;
 
           return (
             <article
@@ -5456,7 +6993,11 @@ function NextInternalAiPage({
                       <div className="internal-ai-chat__document-dossier-section-head">
                         <h4>Azione finale</h4>
                         <span className="internal-ai-muted">
-                          La scrittura resta sempre subordinata alla conferma utente
+                          {inlineWarehouseEnabled
+                            ? inlineWarehouseState?.executionStatus === "success"
+                              ? "Esito disponibile nella review documento full screen"
+                              : "La decisione finale si prende nella review documento full screen"
+                            : "La decisione resta sempre all'utente nella review documento"}
                         </span>
                       </div>
                       <div className="internal-ai-chat__document-dossier-final-content">
@@ -5467,26 +7008,117 @@ function NextInternalAiPage({
                           <span className={buildDocumentProposalPillClass(route, "status")}>
                             {statusLabel}
                           </span>
+                          {inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "success" ? (
+                            <span className="internal-ai-pill is-positive">Eseguita inline</span>
+                          ) : null}
+                          {inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "executing" ? (
+                            <span className="internal-ai-pill is-neutral">Esecuzione in corso</span>
+                          ) : null}
                         </div>
                         <p className="internal-ai-card__meta">
-                          {route.status === "da_verificare"
-                            ? "Il caso resta prudente: puoi aprire la verifica guidata senza avviare scritture automatiche."
-                            : "Aprendo il modulo target trovi il prefill del documento e decidi tu se confermare il passaggio successivo."}
+                          {inlineWarehouseEnabled
+                            ? inlineWarehouseState?.executionStatus === "success" &&
+                              inlineWarehouseState.outcome
+                              ? inlineWarehouseState.outcome.message
+                              : "Apri la review documento full screen per vedere il file grande, verificare i campi e scegliere l'azione operativa."
+                            : route.status === "da_verificare"
+                              ? "Il caso resta prudente: apri la review documento e poi decidi se fermarti su `DA VERIFICARE`."
+                              : "La review documento full screen ti mostra il file e i campi estratti prima di qualsiasi scelta."}
                         </p>
+                        {!inlineWarehouseState?.outcome ? (
+                          <div className="internal-ai-chat__document-dossier-inline-state is-neutral">
+                            <strong>Scelta utente proposta</strong>
+                            <p className="internal-ai-card__meta">{reviewDecisionLabel}</p>
+                          </div>
+                        ) : null}
+                        {inlineWarehouseEnabled ? (
+                          inlineWarehouseState?.status === "loading" ? (
+                            <div className="internal-ai-chat__document-dossier-inline-state is-neutral">
+                              <strong>Verifica inline in corso</strong>
+                              <p className="internal-ai-card__meta">
+                                Sto controllando match documento, UDM e anti-doppio-carico prima di
+                                proporti la conferma inline.
+                              </p>
+                            </div>
+                          ) : inlineWarehouseState?.status === "error" ? (
+                            <div className="internal-ai-chat__document-dossier-inline-state is-warning">
+                              <strong>Verifica inline non disponibile</strong>
+                              <p className="internal-ai-card__meta">
+                                {inlineWarehouseState.message ??
+                                  "Il controllo inline non e disponibile in questo momento."}
+                              </p>
+                            </div>
+                          ) : inlineWarehouseState?.executionStatus === "error" ? (
+                            <div className="internal-ai-chat__document-dossier-inline-state is-warning">
+                              <strong>Esecuzione inline non completata</strong>
+                              <p className="internal-ai-card__meta">
+                                {inlineWarehouseState.message ??
+                                  "Il tentativo inline non e andato a buon fine."}
+                              </p>
+                            </div>
+                          ) : inlineWarehouseState?.outcome ? (
+                            <div className="internal-ai-chat__document-dossier-inline-result">
+                              <div className="internal-ai-chat__document-dossier-inline-result-grid">
+                                {inlineOutcomeFacts.map((fact) => (
+                                  <article
+                                    key={`${routeKey}:inline-outcome:${fact.label}`}
+                                    className={`internal-ai-chat__document-dossier-data-card is-${fact.tone ?? "default"}`}
+                                  >
+                                    <span className="internal-ai-chat__document-proposal-label">
+                                      {fact.label}
+                                    </span>
+                                    <strong>{fact.value}</strong>
+                                  </article>
+                                ))}
+                              </div>
+                            </div>
+                          ) : inlineWarehouseState?.resolution?.status === "da_verificare" ? (
+                            <div className="internal-ai-chat__document-dossier-inline-state is-warning">
+                              <strong>DA VERIFICARE</strong>
+                              <p className="internal-ai-card__meta">
+                                {inlineWarehouseState.resolution.message}
+                              </p>
+                            </div>
+                          ) : inlineWarehouseState?.resolution?.status === "pronto" ? (
+                            <div className="internal-ai-chat__document-dossier-inline-state is-positive">
+                              <strong>Presidio inline disponibile</strong>
+                              <p className="internal-ai-card__meta">
+                                {inlineConfirmLabel}: {inlineWarehouseState.resolution.message}
+                              </p>
+                            </div>
+                          ) : null
+                        ) : null}
                         <div className="internal-ai-search__actions internal-ai-chat__document-proposal-actions">
+                          <button
+                            type="button"
+                            className="internal-ai-search__button"
+                            onClick={() => openDocumentReviewModal(routeKey)}
+                          >
+                            {inlineWarehouseState?.outcome
+                              ? "Riapri review documento"
+                              : "Apri review documento"}
+                          </button>
                           <button
                             type="button"
                             className={
                               route.status === "da_verificare" || route.classification === "documento_ambiguo"
                                 ? "internal-ai-search__button internal-ai-search__button--secondary"
-                                : "internal-ai-search__button"
+                                : inlineWarehouseEnabled
+                                  ? "internal-ai-search__button internal-ai-search__button--secondary"
+                                  : "internal-ai-search__button"
                             }
                             onClick={() => navigate(openPath)}
                           >
                             {buildDocumentRouteOpenLabel(route)}
                           </button>
                           <span className="internal-ai-muted">
-                            Nessuna azione business parte da qui senza conferma esplicita nel modulo di arrivo.
+                            {inlineWarehouseEnabled
+                              ? inlineWarehouseState?.outcome
+                                ? "La review full screen ha gia chiuso il caso: Apri in Magazzino solo per approfondimenti."
+                                : inlineWarehouseState?.resolution?.status === "da_verificare"
+                                  ? "La review resta prudente: nessuna scrittura inline senza match forte."
+                                  : "La review full screen puo eseguire solo `riconcilia_senza_carico` o `carica_stock_adblue`; Magazzino resta fallback."
+                              : "Nessuna azione parte da qui senza una decisione utente esplicita nella review documento."}
                           </span>
                         </div>
                       </div>
@@ -10552,6 +12184,465 @@ function NextInternalAiPage({
               ))}
             </div>
           </article>
+        </div>
+      ) : null}
+
+      {documentReviewModalState.isOpen && activeDocumentReviewRoute ? (
+        <div
+          className="internal-ai-review-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Review documento operativa"
+        >
+          <button
+            type="button"
+            className="internal-ai-review-modal__backdrop"
+            aria-label="Chiudi review documento"
+            onClick={closeDocumentReviewModal}
+          />
+          <div className="internal-ai-review-modal__sheet">
+            <header className="internal-ai-review-modal__toolbar">
+              <div className="internal-ai-review-modal__toolbar-main">
+                <p className="internal-ai-card__eyebrow">Review documento operativa</p>
+                <h2>{buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)}</h2>
+                <p className="internal-ai-card__meta">{activeDocumentReviewRoute.fileName}</p>
+                <div className="internal-ai-pill-row">
+                  <span
+                    className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "status")}
+                  >
+                    {activeDocumentReviewInlineState?.executionStatus === "success"
+                      ? "Eseguita inline"
+                      : buildDocumentProposalStatusLabel(activeDocumentReviewRoute)}
+                  </span>
+                  <span
+                    className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "action")}
+                  >
+                    {buildDocumentRouteActionLabel(activeDocumentReviewRoute)}
+                  </span>
+                  <span
+                    className={buildDocumentProposalPillClass(
+                      activeDocumentReviewRoute,
+                      "confidence",
+                    )}
+                  >
+                    Confidenza {buildDocumentRouteConfidenceLabel(activeDocumentReviewRoute)}
+                  </span>
+                </div>
+              </div>
+              <div className="internal-ai-button-row">
+                {activeDocumentReviewAttachment ? (
+                  <button
+                    type="button"
+                    className="internal-ai-search__button internal-ai-search__button--secondary"
+                    onClick={() => handleOpenChatAttachment(activeDocumentReviewAttachment)}
+                  >
+                    Apri originale
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="internal-ai-search__button internal-ai-search__button--secondary"
+                  onClick={() => {
+                    closeDocumentReviewModal();
+                    navigate(
+                      activeDocumentReviewRoute.handoffPayload?.routeTarget ??
+                        activeDocumentReviewRoute.targetPath,
+                    );
+                  }}
+                >
+                  {buildDocumentRouteOpenLabel(activeDocumentReviewRoute)}
+                </button>
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  onClick={closeDocumentReviewModal}
+                >
+                  Chiudi
+                </button>
+              </div>
+            </header>
+
+            {documentReviewRoutes.length > 1 ? (
+              <div className="internal-ai-review-modal__route-tabs">
+                {documentReviewRoutes.slice(0, 3).map((route) => {
+                  const routeKey = buildDocumentProposalRouteKey(route);
+                  const isActive = routeKey === activeDocumentReviewRouteKey;
+                  return (
+                    <button
+                      key={`review-route:${routeKey}`}
+                      type="button"
+                      className={`internal-ai-review-modal__route-tab ${isActive ? "is-active" : ""}`}
+                      onClick={() => openDocumentReviewModal(routeKey)}
+                    >
+                      <strong>{buildDocumentRouteClassificationLabel(route)}</strong>
+                      <span>{route.fileName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <div className="internal-ai-review-modal__content">
+              <section className="internal-ai-review-modal__preview-pane">
+                <div className="internal-ai-review-modal__preview-toolbar">
+                  <div className="internal-ai-pill-row">
+                    <span className="internal-ai-pill is-neutral">
+                      {activeDocumentReviewAttachment
+                        ? buildInternalAiChatAttachmentPreviewLabel(activeDocumentReviewAttachment)
+                        : "Documento"}
+                    </span>
+                    <span className="internal-ai-pill is-neutral">
+                      Preview grande e leggibile
+                    </span>
+                  </div>
+                  {activeDocumentReviewAttachment?.previewMode === "image" ? (
+                    <div className="internal-ai-button-row">
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        disabled={documentReviewImageZoom <= 1}
+                        onClick={() =>
+                          setDocumentReviewImageZoom((current) => Math.max(1, current - 0.25))
+                        }
+                      >
+                        Riduci zoom
+                      </button>
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        onClick={() => setDocumentReviewImageZoom((current) => Math.min(2.5, current + 0.25))}
+                      >
+                        Aumenta zoom
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="internal-ai-review-modal__preview-surface">
+                  {activeDocumentReviewPreviewUrl ? (
+                    activeDocumentReviewAttachment?.previewMode === "image" ? (
+                      <div className="internal-ai-review-modal__image-scroller">
+                        <img
+                          src={activeDocumentReviewPreviewUrl}
+                          alt={activeDocumentReviewRoute.fileName}
+                          className="internal-ai-review-modal__image"
+                          style={{ width: `${documentReviewImageZoom * 100}%` }}
+                        />
+                      </div>
+                    ) : activeDocumentReviewAttachment?.previewMode === "text" ? (
+                      <pre className="internal-ai-review-modal__text-preview">
+                        {activeDocumentReviewAttachment.textExcerpt ??
+                          "Nessun estratto testo disponibile per questo allegato."}
+                      </pre>
+                    ) : (
+                      <iframe
+                        title={activeDocumentReviewRoute.fileName}
+                        src={activeDocumentReviewPreviewUrl}
+                        className="internal-ai-review-modal__preview-frame"
+                      />
+                    )
+                  ) : (
+                    <div className="next-clone-placeholder internal-ai-empty">
+                      <p>
+                        Preview documento non disponibile inline. Usa il comando `Apri originale`
+                        per leggere il file completo.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <aside className="internal-ai-review-modal__review-pane">
+                <section className="internal-ai-review-modal__section internal-ai-review-modal__section--hero">
+                  <div className="internal-ai-review-modal__section-head">
+                    <h3>Documento</h3>
+                    <span className="internal-ai-muted">Intestazione operativa e stato del caso</span>
+                  </div>
+                  <div className="internal-ai-pill-row">
+                    <span className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "status")}>
+                      {activeDocumentReviewStatusHighlight?.title ??
+                        buildDocumentProposalStatusLabel(activeDocumentReviewRoute)}
+                    </span>
+                    <span className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "confidence")}>
+                      Confidenza {buildDocumentRouteConfidenceLabel(activeDocumentReviewRoute)}
+                    </span>
+                  </div>
+                  {activeDocumentReviewStatusHighlight ? (
+                    <div
+                      className={`internal-ai-review-modal__status-banner is-${
+                        activeDocumentReviewStatusHighlight.tone ?? "default"
+                      }`}
+                    >
+                      <strong>{activeDocumentReviewStatusHighlight.title}</strong>
+                      <p>{activeDocumentReviewStatusHighlight.message}</p>
+                    </div>
+                  ) : null}
+                  <div className="internal-ai-review-modal__facts-grid internal-ai-review-modal__facts-grid--summary">
+                    {activeDocumentReviewDocumentFacts.map((fact) => (
+                      <article
+                        key={`review-document:${fact.label}`}
+                        className={`internal-ai-review-modal__fact-card is-${fact.tone ?? "default"}`}
+                      >
+                        <span className="internal-ai-chat__document-proposal-label">{fact.label}</span>
+                        <strong>{fact.value}</strong>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="internal-ai-review-modal__section internal-ai-review-modal__section--priority">
+                  <div className="internal-ai-review-modal__section-head">
+                    <h3>Righe estratte</h3>
+                    <span className="internal-ai-muted">
+                      Il blocco centrale della review: descrizione, quantita e valori riga
+                    </span>
+                  </div>
+                  {activeDocumentReviewMaterialRows.length ? (
+                    <div className="internal-ai-review-modal__rows-table">
+                      <div className="internal-ai-review-modal__rows-head">
+                        <span>Descrizione</span>
+                        <span>Codice articolo</span>
+                        <span>Quantita</span>
+                        <span>Unita</span>
+                        <span>Prezzo unitario</span>
+                        <span>Totale riga</span>
+                      </div>
+                      {activeDocumentReviewMaterialRows.map((row, index) => (
+                        <article
+                          key={`review-row:${row.description}:${index}`}
+                          className={`internal-ai-review-modal__rows-item is-${row.tone ?? "default"}`}
+                        >
+                          <div className="internal-ai-review-modal__rows-cell" data-label="Descrizione">
+                            <strong>{row.description}</strong>
+                          </div>
+                          <div className="internal-ai-review-modal__rows-cell" data-label="Codice articolo">
+                            <span>{row.articleCode}</span>
+                          </div>
+                          <div className="internal-ai-review-modal__rows-cell" data-label="Quantita">
+                            <span>{row.quantity}</span>
+                          </div>
+                          <div className="internal-ai-review-modal__rows-cell" data-label="Unita">
+                            <span>{row.unit}</span>
+                          </div>
+                          <div className="internal-ai-review-modal__rows-cell" data-label="Prezzo unitario">
+                            <span>{row.unitPrice}</span>
+                          </div>
+                          <div className="internal-ai-review-modal__rows-cell" data-label="Totale riga">
+                            <span>{row.lineTotal}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="internal-ai-chat__document-dossier-empty">
+                      Nessuna riga materiale strutturata disponibile nel documento corrente.
+                    </div>
+                  )}
+                </section>
+
+                <section className="internal-ai-review-modal__section">
+                  <div className="internal-ai-review-modal__section-head">
+                    <h3>Match inventario</h3>
+                    <span className="internal-ai-muted">Materiale trovato, stato stock ed esito del match</span>
+                  </div>
+                  <div className="internal-ai-review-modal__facts-grid">
+                    {activeDocumentReviewInventoryFacts.map((fact) => (
+                      <article
+                        key={`review-inventory:${fact.label}`}
+                        className={`internal-ai-review-modal__fact-card is-${fact.tone ?? "default"}`}
+                      >
+                        <span className="internal-ai-chat__document-proposal-label">{fact.label}</span>
+                        <strong>{fact.value}</strong>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="internal-ai-review-modal__section">
+                  <div className="internal-ai-review-modal__section-head">
+                    <h3>Decisione utente</h3>
+                    <span className="internal-ai-muted">
+                      Seleziona in chiaro cosa vuoi fare con questo documento
+                    </span>
+                  </div>
+                  <p className="internal-ai-card__meta">
+                    Scelta attuale: {buildDocumentReviewUserDecisionSummary(activeDocumentReviewSelection)}
+                  </p>
+                  <div className="internal-ai-review-modal__decision-grid">
+                    {activeDocumentReviewActionOptions.map((option) => {
+                      const selected = activeDocumentReviewSelection.includes(option.key);
+                      const suggested = activeDocumentReviewDefaultSelection.includes(option.key);
+                      const isDisabled = Boolean(option.disabledReason);
+                      return (
+                        <button
+                          key={`review-action:${option.key}`}
+                          type="button"
+                          className={`internal-ai-review-modal__decision-card ${
+                            selected ? "is-selected" : ""
+                          } ${suggested ? "is-suggested" : ""}`}
+                          disabled={isDisabled}
+                          onClick={() =>
+                            handleDocumentReviewActionToggle(
+                              activeDocumentReviewRoute,
+                              activeDocumentReviewInlineState,
+                              option.key,
+                            )
+                          }
+                        >
+                          <div className="internal-ai-pill-row">
+                            {selected ? (
+                              <span className="internal-ai-pill is-positive">Scelta utente</span>
+                            ) : null}
+                            {suggested ? (
+                              <span className="internal-ai-pill is-neutral">Suggerita dalla IA</span>
+                            ) : null}
+                          </div>
+                          <strong>{option.label}</strong>
+                          <p>{option.description}</p>
+                          {option.disabledReason ? (
+                            <span className="internal-ai-review-modal__decision-note">
+                              {option.disabledReason}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="internal-ai-review-modal__section">
+                  <div className="internal-ai-review-modal__section-head">
+                    <h3>Azione proposta IA</h3>
+                    <span className="internal-ai-muted">
+                      Proposta sintetica, perimetro operativo ed eventuale esecuzione inline
+                    </span>
+                  </div>
+                  <article className="internal-ai-review-modal__proposal-card">
+                    <div className="internal-ai-review-modal__proposal-list">
+                      <div className="internal-ai-review-modal__proposal-item">
+                        <span className="internal-ai-chat__document-proposal-label">
+                          Proposta sintetica
+                        </span>
+                        <strong>{activeDocumentReviewSuggestedAction}</strong>
+                      </div>
+                      <div className="internal-ai-review-modal__proposal-item">
+                        <span className="internal-ai-chat__document-proposal-label">
+                          Motivazione utile
+                        </span>
+                        <strong>
+                          {activeDocumentReviewProposalText ??
+                            "La IA non ha ancora prodotto una proposta operativa chiara."}
+                        </strong>
+                      </div>
+                      <div className="internal-ai-review-modal__proposal-item">
+                        <span className="internal-ai-chat__document-proposal-label">
+                          Cosa fara / non fara
+                        </span>
+                        <strong>
+                          {activeDocumentReviewBoundaryText ??
+                            "Nessun perimetro operativo dichiarato nel documento corrente."}
+                        </strong>
+                      </div>
+                    </div>
+                    {activeDocumentReviewFollowupQuestion ? (
+                      <div className="internal-ai-chat__document-dossier-alert">
+                        <strong>Domanda breve prima di procedere</strong>
+                        <p className="internal-ai-card__meta">{activeDocumentReviewFollowupQuestion}</p>
+                      </div>
+                    ) : null}
+                  </article>
+
+                  {activeDocumentReviewInlineState?.outcome ? (
+                    <div className="internal-ai-review-modal__facts-grid">
+                      {activeDocumentReviewOutcomeFacts.map((fact) => (
+                        <article
+                          key={`review-outcome:${fact.label}`}
+                          className={`internal-ai-review-modal__fact-card is-${fact.tone ?? "default"}`}
+                        >
+                          <span className="internal-ai-chat__document-proposal-label">{fact.label}</span>
+                          <strong>{fact.value}</strong>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="internal-ai-review-modal__execution-box">
+                    <p className="internal-ai-card__meta">
+                      {activeDocumentReviewInlineState?.outcome
+                        ? activeDocumentReviewInlineState.outcome.message
+                        : activeDocumentReviewPlan?.helperText ??
+                          "La review documento non ha ancora un piano eseguibile."}
+                    </p>
+                    <div className="internal-ai-search__actions">
+                      {activeDocumentReviewPlan?.ctaLabel ? (
+                        <button
+                          type="button"
+                          className="internal-ai-search__button"
+                          onClick={() =>
+                            void handleDocumentReviewPrimaryAction(
+                              activeDocumentReviewRoute,
+                              activeDocumentReviewPlan!,
+                            )
+                          }
+                        >
+                          {activeDocumentReviewPlan!.ctaLabel}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        onClick={() =>
+                          navigate(
+                            activeDocumentReviewRoute.handoffPayload?.routeTarget ??
+                              activeDocumentReviewRoute.targetPath,
+                          )
+                        }
+                      >
+                        {buildDocumentRouteOpenLabel(activeDocumentReviewRoute)}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="internal-ai-review-modal__section">
+                  <div className="internal-ai-review-modal__section-head">
+                    <h3>Dettagli tecnici</h3>
+                    <span className="internal-ai-muted">
+                      Box secondario chiuso di default con presidio, chiavi e evidenza testuale
+                    </span>
+                  </div>
+                  <details className="internal-ai-review-modal__details">
+                    <summary>Apri dettagli tecnici e testo di supporto</summary>
+                    <div className="internal-ai-review-modal__details-content">
+                      <div className="internal-ai-review-modal__facts-grid">
+                        {activeDocumentReviewTechnicalFacts.map((fact) => (
+                          <article
+                            key={`review-technical:${fact.label}`}
+                            className={`internal-ai-review-modal__fact-card is-${fact.tone ?? "default"}`}
+                          >
+                            <span className="internal-ai-chat__document-proposal-label">
+                              {fact.label}
+                            </span>
+                            <strong>{fact.value}</strong>
+                          </article>
+                        ))}
+                      </div>
+                      <div className="internal-ai-review-modal__technical-evidence">
+                        <strong>Evidenza documento</strong>
+                        <pre>
+                          {activeDocumentReviewEvidenceText ||
+                            "Nessun estratto testuale disponibile nel thread corrente."}
+                        </pre>
+                        {activeDocumentReviewEvidenceSupport ? (
+                          <p className="internal-ai-card__meta">{activeDocumentReviewEvidenceSupport}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </details>
+                </section>
+              </aside>
+            </div>
+          </div>
         </div>
       ) : null}
 

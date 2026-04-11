@@ -48,6 +48,7 @@ function mapDocumentRoutesWithHandoffs(
     const handoffPayload =
       actionHandoffs.find(
         (entry) =>
+          entry.attachmentId === route.attachmentId &&
           entry.documentType === route.classification &&
           entry.moduloTarget === route.targetModuleId,
       ) ??

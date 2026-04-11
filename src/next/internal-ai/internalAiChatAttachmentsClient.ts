@@ -198,13 +198,22 @@ function createLocalAttachmentRecord(args: {
     uploadedAt,
     note: buildLocalAttachmentNote(kind),
     textExcerpt: args.textExcerpt,
+    documentAnalysis: null,
     serverAssetPath: null,
     localObjectUrl: args.objectUrl,
   };
 }
 
 function normalizeRepositoryState(state: InternalAiServerAttachmentsRepositoryState): InternalAiChatAttachment[] {
-  return Array.isArray(state.items) ? state.items : [];
+  return Array.isArray(state.items)
+    ? state.items.map((entry) => ({
+        ...entry,
+        documentAnalysis:
+          entry.documentAnalysis && typeof entry.documentAnalysis === "object"
+            ? entry.documentAnalysis
+            : null,
+      }))
+    : [];
 }
 
 export function buildInternalAiChatAttachmentAssetUrl(

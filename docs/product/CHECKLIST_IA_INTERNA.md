@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-04-10  
+Ultimo aggiornamento: 2026-04-11  
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -2231,3 +2231,135 @@ Stato macrofase: `NON FATTO`
   - la robustezza su PDF/immagini reali resta da validare quando nome file o excerpt non bastano;
   - nessun backend OCR/live-read nuovo viene aperto in questo step;
   - la conferma utente nel modulo target resta obbligatoria prima di qualsiasi scrittura.
+
+### M.52 Conferma + esecuzione inline `Magazzino` nel modale/chat IA
+- Stato: `FATTO`
+- Note: il `2026-04-11` il flusso standard documento `Magazzino` non richiede piu il passaggio obbligatorio nel modulo target quando il match e forte sui due soli casi ammessi `riconcilia_senza_carico` e `carica_stock_adblue`; la scheda dossier nel modale/chat mantiene la resa gestionale, mostra la conferma inline, esegue inline e restituisce l'esito finale nello stesso pannello, lasciando `Apri in Magazzino` come fallback prudente.
+- Cosa e stato chiuso:
+  - `src/next/internal-ai/internalAiMagazzinoControlledActions.ts` ricostruisce il contesto `Magazzino` read-only, risolve il caso inline e riusa in modo controllato le stesse decisioni ammesse del dominio;
+  - `src/next/NextInternalAiPage.tsx` abilita `Conferma riconciliazione` o `Conferma carico AdBlue` solo sui match forti e mostra l'esito inline direttamente nella scheda dossier;
+  - `src/utils/cloneWriteBarrier.ts` introduce una scoped allowance temporanea solo per `storageSync.setItemSync` su `@inventario` mentre l'azione inline e in esecuzione;
+  - i casi ambigui o fuori perimetro restano `DA VERIFICARE`, senza scrittura e con fallback `Apri in Magazzino`.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiMagazzinoControlledActions.ts`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/utils/cloneWriteBarrier.ts`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260411_083921_ia_interna_magazzino_inline_confirm_execute_execution.md`
+  - `docs/continuity-reports/20260411_083921_continuity_ia_interna_magazzino_inline_confirm_execute_execution.md`
+- Verifiche eseguite:
+  - `npx eslint src/utils/cloneWriteBarrier.ts src/next/internal-ai/internalAiMagazzinoControlledActions.ts src/next/NextInternalAiPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime locale verificato su `/next/ia/interna` con `fattura_mariba_534909.pdf`, `fattura_adblue_aprile.pdf`, `documento_ambiguo.pdf`
+  - fallback `Apri in Magazzino` verificato come funzionante verso il tab `documenti-costi`
+- Dipendenze o blocchi:
+  - il dataset live verificato nel task espone `Righe supporto: 3`, `Pronte: 0`, `Bloccate: 3`, quindi la prova end-to-end su un caso reale pronto resta `DA VERIFICARE`;
+  - nessun writer nuovo viene aperto oltre ai due casi gia approvati;
+  - la scoped allowance su `@inventario` richiede ancora audit separato insieme al matching reale `MARIBA` / `AdBlue`.
+
+### M.53 Review documento full screen `Magazzino`
+- Stato: `FATTO`
+- Note: il `2026-04-11` la UX documentale della chat `/next/ia/interna` viene spostata su una review documento full screen: a sinistra il file resta grande e leggibile, a destra la review gestionale espone dati estratti, righe materiali, match inventario, proposta IA, decisione utente, esecuzione ed evidenza documento. La card sopra la chat resta come riepilogo e punto di riapertura, non piu come superficie decisionale primaria.
+- Cosa e stato chiuso:
+  - `src/next/NextInternalAiPage.tsx` apre automaticamente la review full screen per i route documento rilevanti e sposta dentro il modale la scelta utente su `Collega`, `Aggiungi costo/documento`, `Crea nuovo articolo`, `Carica stock`, `DA VERIFICARE`;
+  - `src/next/internal-ai/internal-ai.css` introduce un layout full viewport a 2 colonne con preview documento dominante, tabs documento, decision cards e pannello review scrollabile;
+  - il fallback modulo resta esplicito e distinto (`Apri in Magazzino` oppure `Apri Procurement / ordini / fornitori`) mentre l'esecuzione inline resta subordinata alla scelta utente e confinata ai due casi gia approvati.
+- File/documenti collegati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260411_170658_ia_interna_magazzino_fullscreen_document_review_execution.md`
+  - `docs/continuity-reports/20260411_170658_continuity_ia_interna_magazzino_fullscreen_document_review_execution.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime locale verificato su `/next/ia/interna` con `fattura mariba.jpeg`, `fattura_adblue_aprile.pdf`, `preventivo_materiale_test.pdf`, `documento_ambiguo_test.pdf`
+  - verificata apertura full screen, preview leggibile a sinistra, review gestionale a destra, decision cards e fallback modulo distinto
+- Dipendenze o blocchi:
+  - la resa su allegati reali multiriga o con OCR debole resta `DA VERIFICARE`;
+  - nessuna persistenza nuova della decisione utente viene aperta in questo step;
+  - nessuna esecuzione automatica parte se il match non e forte o se il caso resta `DA VERIFICARE`.
+
+### M.54 Pipeline documentale reale `Magazzino` per PDF e immagini
+- Stato: `FATTO`
+- Note: il `2026-04-11` la review full screen `Magazzino` smette di dipendere solo da classificazione o metadata deboli: il backend IA separato estrae ora header documento e righe materiali strutturate da `pdf_text`, `pdf_scan` e `image_document`, propagando il payload fino al router e alla UI NEXT.
+- Cosa e stato chiuso:
+  - `backend/internal-ai/server/internal-ai-document-extraction.js` introduce la pipeline documentale vera con parsing locale PDF, fallback prudenziali e uso provider solo server-side;
+  - `backend/internal-ai/server/internal-ai-adapter.js` e `internal-ai-chat-attachments.js` salvano il nuovo payload `documentAnalysis` sugli allegati IA;
+  - `src/next/internal-ai/internalAiDocumentAnalysis.ts` centralizza lettura, serializzazione e signal text dei dati estratti;
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts` corregge il routing reale di `fattura materiali`, `AdBlue`, `preventivo` e `documento ambiguo`;
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts` e `src/next/NextInternalAiPage.tsx` usano header e righe veri nella review full screen e filtrano label generici/spuri.
+- File/documenti collegati:
+  - `backend/internal-ai/server/internal-ai-document-extraction.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-chat-attachments.js`
+  - `src/next/internal-ai/internalAiTypes.ts`
+  - `src/next/internal-ai/internalAiDocumentAnalysis.ts`
+  - `src/next/internal-ai/internalAiChatAttachmentsClient.ts`
+  - `src/next/internal-ai/internalAiUniversalEntityResolver.ts`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalTypes.ts`
+  - `src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260411_202032_ia_interna_magazzino_document_extraction_pipeline_execution.md`
+  - `docs/continuity-reports/20260411_202032_continuity_ia_interna_magazzino_document_extraction_pipeline_execution.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/internal-ai/internalAiTypes.ts src/next/internal-ai/internalAiDocumentAnalysis.ts src/next/internal-ai/internalAiChatAttachmentsClient.ts src/next/internal-ai/internalAiUniversalEntityResolver.ts src/next/internal-ai/internalAiUniversalDocumentRouter.ts src/next/internal-ai/internalAiUniversalTypes.ts src/next/internal-ai/internalAiUniversalOrchestrator.ts src/next/internal-ai/internalAiUniversalHandoff.ts src/next/NextInternalAiPage.tsx backend/internal-ai/server/internal-ai-document-extraction.js backend/internal-ai/server/internal-ai-chat-attachments.js backend/internal-ai/server/internal-ai-adapter.js` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime locale verificato su `/next/ia/interna` con `tmp-runtime-materiali.png`, `tmp-runtime-adblue.pdf`, `tmp-runtime-preventivo.pdf`, `tmp-runtime-ambiguo.pdf`
+  - review full screen verificata come `full viewport` e contenuti attesi trovati in tutti e quattro i casi
+- Dipendenze o blocchi:
+  - warning `pdfjs-dist` sui font standard in ambiente Windows ancora presente, ma non bloccante per l'estrazione verificata nel task;
+  - OCR debole, PDF pesanti e documenti reali multi-page restano `DA VERIFICARE`;
+  - nessun writer business nuovo viene aperto in questo step.
+
+### M.55 Fix riconciliazione stock + review destra operativa `Magazzino`
+- Stato: `FATTO`
+- Note: il `2026-04-11` un follow-up mirato corregge il bug business del ramo `Consolida stock` e riallinea la colonna destra della review full screen, senza rifare il motore IA e senza allargare il perimetro writer.
+- Cosa e stato chiuso:
+  - `src/next/NextMagazzinoPage.tsx` consente `riconcilia_senza_carico` solo quando l'arrivo procurement compatibile risulta gia consolidato a stock, impedendo che casi tipo `MARIBA` aumentino quantita per una semplice riconciliazione documento/costo;
+  - `src/next/internal-ai/internalAiMagazzinoControlledActions.ts` riallinea lo stesso gating anche nel flusso inline della IA interna, cosi `Riconcilia documento` e `Aggiungi costo/documento` non si comportano come carico stock;
+  - `src/next/NextInternalAiPage.tsx` e `src/next/internal-ai/internal-ai.css` riorganizzano la colonna destra in ordine operativo `Documento` -> `Righe estratte` -> `Match inventario` -> `Decisione` -> `Azione proposta IA` -> `Dettagli tecnici`, con dettagli tecnici chiusi di default e `DA VERIFICARE` piu visibile.
+- File/documenti collegati:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `src/next/internal-ai/internalAiMagazzinoControlledActions.ts`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260411_214553_magazzino_ia_fix_riconciliazione_stock_review_destra_execution.md`
+  - `docs/continuity-reports/20260411_214553_continuity_magazzino_ia_fix_riconciliazione_stock_review_destra_execution.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextMagazzinoPage.tsx src/next/internal-ai/internalAiMagazzinoControlledActions.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internal-ai.css` -> `OK` sul runtime; warning noto solo sul CSS ignorato dalla config ESLint del repo
+  - `npm run build` -> `OK`
+  - runtime verificato su `/next/ia/interna` con `fattura_mariba_534909.pdf`, `fattura_adblue_aprile.pdf`, `documento_ambiguo.pdf`
+  - struttura destra confermata e leggibilita delle righe estratte verificata
+- Dipendenze o blocchi:
+  - il dataset live di `/next/magazzino?tab=documenti-costi` espone ancora `Pronte: 0`, `Bloccate: 3`, quindi la prova browser end-to-end sul ramo `riconciliazione senza carico` resta `DA VERIFICARE`;
+  - nessun writer nuovo viene aperto e nessuna barrier viene modificata in questo step.

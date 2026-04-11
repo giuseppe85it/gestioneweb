@@ -227,6 +227,7 @@ export type InternalAiUniversalHandoffConsumptionEntry = {
 
 export type InternalAiUniversalHandoffPayload = {
   handoffId: string;
+  attachmentId: string | null;
   moduloTarget: string;
   routeTarget: string;
   tipoEntita: InternalAiUniversalEntityKind | "nessuna";
