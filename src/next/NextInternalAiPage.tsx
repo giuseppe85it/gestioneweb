@@ -152,6 +152,7 @@ import type {
 } from "./internal-ai/internalAiTypes";
 import type {
   InternalAiUniversalDocumentRoute,
+  InternalAiUniversalNormalizedValue,
   InternalAiUniversalOrchestrationResult,
 } from "./internal-ai/internalAiUniversalTypes";
 import { formatDateTimeUI } from "./nextDateFormat";
@@ -2338,6 +2339,399 @@ function buildDocumentRouteConfidenceLabel(route: InternalAiUniversalDocumentRou
   }
 }
 
+type DocumentProposalFactTone = "default" | "positive" | "warning";
+
+type DocumentProposalFact = {
+  label: string;
+  value: string;
+  tone?: DocumentProposalFactTone;
+};
+
+type DocumentProposalDetectedItem = {
+  description: string;
+  quantity: string;
+  unit: string;
+  supplier: string;
+  match: string;
+  inventory: string;
+  tone?: DocumentProposalFactTone;
+};
+
+const DOCUMENT_PROPOSAL_FIELD_LABELS: Record<string, string> = {
+  fornitore: "Fornitore",
+  supplier: "Fornitore",
+  dataDocumento: "Data documento",
+  dataFattura: "Data documento",
+  documentoData: "Data documento",
+  numeroDocumento: "Numero documento",
+  numeroFattura: "Numero documento",
+  documentoNumero: "Numero documento",
+  materiale: "Materiale",
+  queryMateriale: "Materiale",
+  descrizione: "Descrizione",
+  quantita: "Quantita",
+  unita: "Unita",
+  unitaMisura: "Unita",
+  udm: "Unita",
+  totale: "Totale",
+  totaleDocumento: "Totale",
+  importoTotale: "Totale",
+  costo: "Costo",
+  costoSupporto: "Costo di supporto",
+  flusso: "Flusso",
+  vistaTarget: "Vista target",
+  warehouseInvoiceMode: "Modalita fattura",
+  targa: "Targa",
+  cisterna: "Cisterna",
+  documentoNome: "Documento",
+};
+
+function formatDocumentProposalValue(
+  value: InternalAiUniversalNormalizedValue | undefined,
+): string | null {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((entry) => String(entry ?? "").trim())
+      .filter(Boolean);
+    return normalized.length ? normalized.join(", ") : null;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Si" : "No";
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+
+  const normalized = String(value ?? "").trim();
+  return normalized || null;
+}
+
+function pickDocumentProposalValue(
+  record: Record<string, InternalAiUniversalNormalizedValue>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = formatDocumentProposalValue(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function mapDocumentProposalFactTone(hasValue: boolean, preferred?: DocumentProposalFactTone) {
+  if (!hasValue) {
+    return "warning";
+  }
+  return preferred ?? "default";
+}
+
+function buildDocumentProposalStatusLabel(route: InternalAiUniversalDocumentRoute): string {
+  const actionLabel = buildDocumentRouteActionLabel(route);
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return "DA VERIFICARE";
+  }
+
+  if (actionLabel === "Carica stock AdBlue") {
+    return "Pronto con conferma";
+  }
+
+  if (actionLabel === "Riconcilia documento") {
+    return "Riconciliazione proposta";
+  }
+
+  return "Instradamento pronto";
+}
+
+function buildDocumentProposalPillClass(
+  route: InternalAiUniversalDocumentRoute,
+  kind: "status" | "action" | "confidence",
+): string {
+  if (kind === "confidence") {
+    return route.confidence === "alta"
+      ? "internal-ai-pill is-positive"
+      : route.confidence === "media"
+        ? "internal-ai-pill is-neutral"
+        : "internal-ai-pill is-warning";
+  }
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return "internal-ai-pill is-warning";
+  }
+
+  if (
+    kind === "action" &&
+    buildDocumentRouteActionLabel(route) === "Carica stock AdBlue"
+  ) {
+    return "internal-ai-pill is-positive";
+  }
+
+  return "internal-ai-pill is-neutral";
+}
+
+function buildDocumentProposalActionReason(route: InternalAiUniversalDocumentRoute): string {
+  const rationale = route.rationale[0] ?? route.handoffPayload?.motivoInstradamento;
+  if (rationale) {
+    return rationale;
+  }
+
+  if (route.classification === "tabella_materiali") {
+    return "Il documento viene trattato come scheda documentale di Magazzino con handoff prudente.";
+  }
+
+  return "Il documento viene instradato nel clone senza aperture automatiche fuori perimetro.";
+}
+
+function buildDocumentProposalActionBoundary(route: InternalAiUniversalDocumentRoute): string {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const mode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
+  const viewTarget = normalizeDocumentProposalValue(prefill.vistaTarget);
+
+  if (route.status === "da_verificare" || route.classification === "documento_ambiguo") {
+    return "Non avvio scritture automatiche e resto in attesa di verifica umana.";
+  }
+
+  if (route.classification === "tabella_materiali" && mode === "carica_stock_adblue") {
+    return "Non tocco consegne, manutenzioni, ordini o preventivi: preparo solo il caso AdBlue nel flusso consentito.";
+  }
+
+  if (route.classification === "tabella_materiali" && viewTarget === "documenti-costi") {
+    return "Non aumento lo stock in automatico: il modulo Magazzino deve confermare l'eventuale riconciliazione senza doppio carico.";
+  }
+
+  return "Non eseguo azioni business senza conferma esplicita nel modulo target.";
+}
+
+function formatDocumentProposalFieldLabel(key: string): string {
+  return (
+    DOCUMENT_PROPOSAL_FIELD_LABELS[key] ??
+    key
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^\w/, (match) => match.toUpperCase())
+  );
+}
+
+function buildDocumentProposalSummaryFacts(route: InternalAiUniversalDocumentRoute): DocumentProposalFact[] {
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const allData = { ...normalizedData, ...prefill };
+
+  const supplier = pickDocumentProposalValue(allData, ["fornitore", "supplier"]);
+  const documentDate = pickDocumentProposalValue(allData, [
+    "dataDocumento",
+    "dataFattura",
+    "documentoData",
+  ]);
+  const documentNumber = pickDocumentProposalValue(allData, [
+    "numeroDocumento",
+    "numeroFattura",
+    "documentoNumero",
+  ]);
+  const mainMaterial =
+    pickDocumentProposalValue(allData, ["materiale", "queryMateriale", "descrizione"]) ??
+    route.handoffPayload?.entityRef?.label ??
+    route.entityCandidateLabels[0] ??
+    null;
+  const quantity = pickDocumentProposalValue(allData, ["quantita"]);
+  const unit = pickDocumentProposalValue(allData, ["unita", "unitaMisura", "udm"]);
+  const total = pickDocumentProposalValue(allData, [
+    "totale",
+    "totaleDocumento",
+    "importoTotale",
+    "costo",
+    "costoSupporto",
+  ]);
+
+  return [
+    {
+      label: "Fornitore",
+      value: supplier ?? "Non rilevato",
+      tone: mapDocumentProposalFactTone(Boolean(supplier)),
+    },
+    {
+      label: "Data documento",
+      value: documentDate ?? "Non rilevata",
+      tone: mapDocumentProposalFactTone(Boolean(documentDate)),
+    },
+    {
+      label: "Numero documento",
+      value: documentNumber ?? "Non rilevato",
+      tone: mapDocumentProposalFactTone(Boolean(documentNumber)),
+    },
+    {
+      label: "Materiale principale",
+      value: mainMaterial ?? "Non rilevato",
+      tone: mapDocumentProposalFactTone(Boolean(mainMaterial), "positive"),
+    },
+    {
+      label: "Quantita",
+      value: quantity ?? "Non rilevata",
+      tone: mapDocumentProposalFactTone(Boolean(quantity)),
+    },
+    {
+      label: "Unita",
+      value: unit ?? "Non rilevata",
+      tone: mapDocumentProposalFactTone(Boolean(unit)),
+    },
+    {
+      label: "Totale / costo",
+      value: total ?? "Non rilevato",
+      tone: mapDocumentProposalFactTone(Boolean(total)),
+    },
+  ];
+}
+
+function buildDocumentProposalExtractedFacts(route: InternalAiUniversalDocumentRoute): DocumentProposalFact[] {
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const ignoredKeys = new Set([
+    "documentoNome",
+    "prompt",
+    "warehouseInvoiceHint",
+    "warehouseInvoiceMode",
+  ]);
+  const seenLabels = new Set<string>();
+  const facts: DocumentProposalFact[] = [];
+
+  [...Object.entries(prefill), ...Object.entries(normalizedData)].forEach(([key, rawValue]) => {
+    if (ignoredKeys.has(key)) {
+      return;
+    }
+    const value = formatDocumentProposalValue(rawValue);
+    if (!value) {
+      return;
+    }
+    const label = formatDocumentProposalFieldLabel(key);
+    if (seenLabels.has(label)) {
+      return;
+    }
+    seenLabels.add(label);
+    facts.push({
+      label,
+      value,
+      tone:
+        key === "flusso" || key === "vistaTarget"
+          ? "positive"
+          : route.handoffPayload?.campiDaVerificare.includes(key)
+            ? "warning"
+            : "default",
+    });
+  });
+
+  if (route.handoffPayload?.campiDaVerificare.length) {
+    facts.push({
+      label: "Campi da verificare",
+      value: route.handoffPayload.campiDaVerificare
+        .map((entry) => formatDocumentProposalFieldLabel(entry))
+        .join(", "),
+      tone: "warning",
+    });
+  }
+
+  if (route.handoffPayload?.campiMancanti.length) {
+    facts.push({
+      label: "Campi mancanti",
+      value: route.handoffPayload.campiMancanti
+        .map((entry) => formatDocumentProposalFieldLabel(entry))
+        .join(", "),
+      tone: "warning",
+    });
+  }
+
+  return facts.slice(0, 10);
+}
+
+function buildDocumentProposalDetectedItems(
+  route: InternalAiUniversalDocumentRoute,
+): DocumentProposalDetectedItem[] {
+  const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const combinedData = { ...normalizedData, ...prefill };
+  const quantity = pickDocumentProposalValue(combinedData, ["quantita"]) ?? "—";
+  const unit = pickDocumentProposalValue(combinedData, ["unita", "unitaMisura", "udm"]) ?? "—";
+  const supplier = pickDocumentProposalValue(combinedData, ["fornitore", "supplier"]) ?? "—";
+  const entityLabel = route.handoffPayload?.entityRef?.label ?? "—";
+  const descriptions = [
+    pickDocumentProposalValue(combinedData, ["materiale", "queryMateriale", "descrizione"]),
+    ...route.entityCandidateLabels,
+  ]
+    .map((entry) => String(entry ?? "").trim())
+    .filter(Boolean)
+    .filter((entry, index, collection) => collection.indexOf(entry) === index)
+    .slice(0, 4);
+
+  if (descriptions.length === 0) {
+    return [];
+  }
+
+  return descriptions.map((description, index) => ({
+    description,
+    quantity: index === 0 ? quantity : "—",
+    unit: index === 0 ? unit : "—",
+    supplier: index === 0 ? supplier : "—",
+    match:
+      route.status === "da_verificare"
+        ? "DA VERIFICARE"
+        : entityLabel !== "—" && index === 0
+          ? "Match con inventario trovato"
+          : "Riferimento documentale",
+    inventory: entityLabel !== "—" && index === 0 ? entityLabel : "—",
+    tone:
+      route.status === "da_verificare"
+        ? "warning"
+        : entityLabel !== "—" && index === 0
+          ? "positive"
+          : "default",
+  }));
+}
+
+function buildDocumentProposalMatchFacts(route: InternalAiUniversalDocumentRoute): DocumentProposalFact[] {
+  const prefill = route.handoffPayload?.prefillCanonico ?? {};
+  const mode = normalizeDocumentProposalValue(prefill.warehouseInvoiceMode);
+  const entityRef = route.handoffPayload?.entityRef;
+  const facts: DocumentProposalFact[] = [];
+
+  facts.push({
+    label: "Materiale / entita trovata",
+    value: entityRef?.label ?? "Nessun match forte",
+    tone: entityRef ? "positive" : "warning",
+  });
+
+  if (route.classification === "tabella_materiali" && mode === "carica_stock_adblue") {
+    facts.push({
+      label: "Esito stock",
+      value:
+        route.status === "da_verificare"
+          ? "DA VERIFICARE prima del carico AdBlue"
+          : "Carico inventario AdBlue solo dopo conferma",
+      tone: route.status === "da_verificare" ? "warning" : "positive",
+    });
+  } else if (route.classification === "tabella_materiali") {
+    facts.push({
+      label: "Esito stock",
+      value:
+        route.status === "da_verificare"
+          ? "DA VERIFICARE prima di qualunque riconciliazione"
+          : "Solo riconciliazione documento, nessun nuovo carico stock",
+      tone: route.status === "da_verificare" ? "warning" : "positive",
+    });
+  }
+
+  facts.push({
+    label: "Presidio",
+    value: buildDocumentRouteSafetyLabel(route),
+    tone: route.status === "da_verificare" ? "warning" : "default",
+  });
+
+  return facts;
+}
+
 function NextInternalAiPage({
   sectionId = "overview",
   initialChatInput,
@@ -2440,6 +2834,7 @@ function NextInternalAiPage({
   );
   const [openedArtifactId, setOpenedArtifactId] = useState<string | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatDocumentProposalPanelRef = useRef<HTMLDivElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const chatAttachmentsRef = useRef<InternalAiChatAttachment[]>([]);
   const reportPdfPreviewUrlRef = useRef<string | null>(null);
@@ -3360,6 +3755,29 @@ function NextInternalAiPage({
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chatMessages, chatStatus]);
+
+  useEffect(() => {
+    if (
+      chatAttachments.length === 0 ||
+      (chatDocumentProposalState.status !== "loading" &&
+        chatDocumentProposalState.status !== "ready" &&
+        chatDocumentProposalState.status !== "error")
+    ) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!chatDocumentProposalPanelRef.current) {
+        return;
+      }
+
+      chatDocumentProposalPanelRef.current.scrollTop = 0;
+      chatDocumentProposalPanelRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, [chatAttachments.length, chatDocumentProposalState]);
 
   useEffect(() => {
     if (!reportPreviewModalState.isOpen) {
@@ -4726,47 +5144,50 @@ function NextInternalAiPage({
   const chatInputPlaceholderWithDocument =
     "Puoi scrivere una nota semplice come gestisci questa fattura, oppure lasciare vuoto: l'analisi parte dall'allegato.";
 
-  const renderAutomaticDocumentProposalPanel = () => {
+  const renderAutomaticDocumentProposalPanel = (surface: "page" | "home-modal" = "page") => {
     if (chatAttachments.length === 0) {
       return null;
     }
 
+    const shellClassName =
+      surface === "home-modal"
+        ? "internal-ai-chat__document-proposal-shell is-home-modal"
+        : "internal-ai-chat__document-proposal-shell";
+
     if (chatDocumentProposalState.status === "loading") {
       return (
-        <article
-          className="internal-ai-card"
-          style={{
-            display: "grid",
-            gap: 10,
-            marginTop: 12,
-            padding: 14,
-          }}
-        >
-          <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
-          <h3 style={{ margin: 0 }}>Analisi allegato in corso</h3>
-          <p className="internal-ai-card__meta">
-            {chatDocumentProposalState.message ??
-              "Sto classificando il documento e preparando l'handoff prudente del clone."}
-          </p>
-        </article>
+        <section ref={chatDocumentProposalPanelRef} className={shellClassName} aria-live="polite">
+          <article className="internal-ai-chat__document-proposal-card is-loading">
+            <div className="internal-ai-chat__document-proposal-topline">
+              <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
+              <span className="internal-ai-pill is-neutral">Analisi in corso</span>
+            </div>
+            <h3 className="internal-ai-chat__document-proposal-title">
+              Sto leggendo il documento allegato
+            </h3>
+            <p className="internal-ai-card__meta">
+              {chatDocumentProposalState.message ??
+                "Sto classificando il documento e preparando l'handoff prudente del clone."}
+            </p>
+          </article>
+        </section>
       );
     }
 
     if (chatDocumentProposalState.status === "error") {
       return (
-        <article
-          className="internal-ai-card"
-          style={{
-            display: "grid",
-            gap: 10,
-            marginTop: 12,
-            padding: 14,
-          }}
-        >
-          <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
-          <h3 style={{ margin: 0 }}>DA VERIFICARE</h3>
-          <p className="internal-ai-card__meta">{chatDocumentProposalState.message}</p>
-        </article>
+        <section ref={chatDocumentProposalPanelRef} className={shellClassName} aria-live="polite">
+          <article className="internal-ai-chat__document-proposal-card is-warning">
+            <div className="internal-ai-chat__document-proposal-topline">
+              <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
+              <span className="internal-ai-pill is-warning">DA VERIFICARE</span>
+            </div>
+            <h3 className="internal-ai-chat__document-proposal-title">
+              Classificazione non conclusiva
+            </h3>
+            <p className="internal-ai-card__meta">{chatDocumentProposalState.message}</p>
+          </article>
+        </section>
       );
     }
 
@@ -4774,87 +5195,309 @@ function NextInternalAiPage({
 
     if (routes.length === 0) {
       return (
-        <article
-          className="internal-ai-card"
-          style={{
-            display: "grid",
-            gap: 10,
-            marginTop: 12,
-            padding: 14,
-          }}
-        >
-          <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
-          <h3 style={{ margin: 0 }}>DA VERIFICARE</h3>
-          <p className="internal-ai-card__meta">
-            Il documento non ha ancora un flusso documentale forte. Resta prudente finche non emerge
-            un target chiaro.
-          </p>
-        </article>
+        <section ref={chatDocumentProposalPanelRef} className={shellClassName} aria-live="polite">
+          <article className="internal-ai-chat__document-proposal-card is-warning">
+            <div className="internal-ai-chat__document-proposal-topline">
+              <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
+              <span className="internal-ai-pill is-warning">DA VERIFICARE</span>
+            </div>
+            <h3 className="internal-ai-chat__document-proposal-title">
+              Nessun flusso forte disponibile
+            </h3>
+            <p className="internal-ai-card__meta">
+              Il documento non ha ancora un flusso documentale forte. Resta prudente finche non emerge
+              un target chiaro.
+            </p>
+          </article>
+        </section>
       );
     }
 
     return (
-      <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+      <section ref={chatDocumentProposalPanelRef} className={shellClassName} aria-live="polite">
         {routes.slice(0, 3).map((route) => {
+          const attachment = chatAttachments.find((entry) => entry.id === route.attachmentId) ?? null;
           const openPath = route.handoffPayload?.routeTarget ?? route.targetPath;
           const followupQuestion = buildDocumentRouteFollowupQuestion(route);
+          const actionLabel = buildDocumentRouteActionLabel(route);
+          const classificationLabel = buildDocumentRouteClassificationLabel(route);
+          const statusLabel = buildDocumentProposalStatusLabel(route);
+          const summaryFacts = buildDocumentProposalSummaryFacts(route);
+          const extractedFacts = buildDocumentProposalExtractedFacts(route);
+          const detectedItems = buildDocumentProposalDetectedItems(route);
+          const matchFacts = buildDocumentProposalMatchFacts(route);
+          const evidenceText =
+            attachment?.textExcerpt?.trim() ||
+            route.rationale.join(" ").trim() ||
+            route.handoffPayload?.motivoInstradamento ||
+            "";
+          const evidenceSupport = [
+            attachment?.note?.trim() || null,
+            attachment ? `Caricato ${formatDateLabel(attachment.uploadedAt)}` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
 
           return (
             <article
               key={`auto-proposal:${route.attachmentId}:${route.classification}`}
-              className="internal-ai-card"
-              style={{
-                display: "grid",
-                gap: 10,
-                padding: 14,
-              }}
+              className={`internal-ai-chat__document-proposal-card ${
+                route.status === "da_verificare" || route.classification === "documento_ambiguo"
+                  ? "is-warning"
+                  : "is-ready"
+              }`}
             >
-              <div className="internal-ai-chat__message-header">
-                <div>
-                  <p className="internal-ai-card__eyebrow">Proposta automatica documento</p>
-                  <h3 style={{ margin: 0 }}>{route.fileName}</h3>
-                </div>
-                <div className="internal-ai-pill-row">
-                  <span className={statusToneClass(buildDocumentRouteActionLabel(route))}>
-                    {buildDocumentRouteActionLabel(route)}
-                  </span>
-                  <span className="internal-ai-pill is-neutral">
-                    Confidenza {buildDocumentRouteConfidenceLabel(route)}
-                  </span>
-                </div>
-              </div>
+              <div className="internal-ai-chat__document-dossier">
+                <header className="internal-ai-chat__document-dossier-header">
+                  <div className="internal-ai-chat__document-dossier-header-main">
+                    <p className="internal-ai-card__eyebrow">Documento analizzato</p>
+                    <h3 className="internal-ai-chat__document-proposal-title">
+                      {classificationLabel}
+                    </h3>
+                    <p className="internal-ai-chat__document-dossier-file">{route.fileName}</p>
+                  </div>
+                  <div className="internal-ai-chat__document-dossier-header-side">
+                    <div className="internal-ai-pill-row">
+                      <span className={buildDocumentProposalPillClass(route, "status")}>
+                        {statusLabel}
+                      </span>
+                      <span className={buildDocumentProposalPillClass(route, "action")}>
+                        {actionLabel}
+                      </span>
+                      <span className={buildDocumentProposalPillClass(route, "confidence")}>
+                        Confidenza {buildDocumentRouteConfidenceLabel(route)}
+                      </span>
+                    </div>
+                    <div className="internal-ai-chat__document-dossier-meta-grid">
+                      <article className="internal-ai-chat__document-dossier-meta-card">
+                        <span className="internal-ai-chat__document-proposal-label">
+                          Tipo documento rilevato
+                        </span>
+                        <strong>{classificationLabel}</strong>
+                      </article>
+                      <article className="internal-ai-chat__document-dossier-meta-card">
+                        <span className="internal-ai-chat__document-proposal-label">
+                          Stato / esito
+                        </span>
+                        <strong>{statusLabel}</strong>
+                      </article>
+                    </div>
+                  </div>
+                </header>
 
-              <p className="internal-ai-card__meta">
-                Tipo rilevato: {buildDocumentRouteClassificationLabel(route)}
-              </p>
-              <p className="internal-ai-card__meta">
-                {(route.rationale[0] ?? route.handoffPayload?.motivoInstradamento) ||
-                  "Instradamento documentale prudente del clone."}
-              </p>
-              <p className="internal-ai-card__meta">{buildDocumentRouteSafetyLabel(route)}</p>
-              {followupQuestion ? (
-                <p className="internal-ai-card__meta">Domanda per sbloccare: {followupQuestion}</p>
-              ) : null}
-              <div className="internal-ai-search__actions">
-                <button
-                  type="button"
-                  className={
-                    route.status === "da_verificare" || route.classification === "documento_ambiguo"
-                      ? "internal-ai-search__button internal-ai-search__button--secondary"
-                      : "internal-ai-search__button"
-                  }
-                  onClick={() => navigate(openPath)}
-                >
-                  {buildDocumentRouteOpenLabel(route)}
-                </button>
-                <span className="internal-ai-muted">
-                  L'esecuzione business resta bloccata finche non confermi nel modulo target.
-                </span>
+                <section className="internal-ai-chat__document-dossier-section">
+                  <div className="internal-ai-chat__document-dossier-section-head">
+                    <h4>Riassunto rapido</h4>
+                    <span className="internal-ai-muted">Campi principali letti dal documento</span>
+                  </div>
+                  <div className="internal-ai-chat__document-dossier-summary-grid">
+                    {summaryFacts.map((fact) => (
+                      <article
+                        key={`${route.attachmentId}:${fact.label}`}
+                        className={`internal-ai-chat__document-dossier-fact-card is-${fact.tone ?? "default"}`}
+                      >
+                        <span className="internal-ai-chat__document-proposal-label">{fact.label}</span>
+                        <strong>{fact.value}</strong>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                <div className="internal-ai-chat__document-dossier-body">
+                  <div className="internal-ai-chat__document-dossier-main">
+                    <section className="internal-ai-chat__document-dossier-section">
+                      <div className="internal-ai-chat__document-dossier-section-head">
+                        <h4>Cosa ha capito la IA</h4>
+                        <span className="internal-ai-muted">
+                          Proposta guidata, senza cambiare il flusso documentale
+                        </span>
+                      </div>
+                      <div className="internal-ai-chat__document-dossier-interpretation-grid">
+                        <article className="internal-ai-chat__document-dossier-highlight">
+                          <span className="internal-ai-chat__document-proposal-label">
+                            Azione proposta
+                          </span>
+                          <strong>{actionLabel}</strong>
+                          <p className="internal-ai-card__meta">
+                            {buildDocumentProposalActionReason(route)}
+                          </p>
+                        </article>
+                        <article className="internal-ai-chat__document-dossier-highlight is-secondary">
+                          <span className="internal-ai-chat__document-proposal-label">
+                            Cosa non fara
+                          </span>
+                          <strong>{buildDocumentRouteSafetyLabel(route)}</strong>
+                          <p className="internal-ai-card__meta">
+                            {buildDocumentProposalActionBoundary(route)}
+                          </p>
+                        </article>
+                      </div>
+                      {followupQuestion ? (
+                        <div className="internal-ai-chat__document-dossier-alert">
+                          <span className="internal-ai-chat__document-proposal-label">
+                            Domanda per sbloccare
+                          </span>
+                          <strong>{followupQuestion}</strong>
+                        </div>
+                      ) : null}
+                    </section>
+
+                    <section className="internal-ai-chat__document-dossier-section">
+                      <div className="internal-ai-chat__document-dossier-section-head">
+                        <h4>Dati estratti</h4>
+                        <span className="internal-ai-muted">
+                          Valori strutturati disponibili per il modulo target
+                        </span>
+                      </div>
+                      <div className="internal-ai-chat__document-dossier-data-grid">
+                        {extractedFacts.length > 0 ? (
+                          extractedFacts.map((fact) => (
+                            <article
+                              key={`${route.attachmentId}:estratto:${fact.label}`}
+                              className={`internal-ai-chat__document-dossier-data-card is-${fact.tone ?? "default"}`}
+                            >
+                              <span className="internal-ai-chat__document-proposal-label">
+                                {fact.label}
+                              </span>
+                              <strong>{fact.value}</strong>
+                            </article>
+                          ))
+                        ) : (
+                          <article className="internal-ai-chat__document-dossier-data-card is-warning">
+                            <span className="internal-ai-chat__document-proposal-label">
+                              Dati strutturati
+                            </span>
+                            <strong>DA VERIFICARE</strong>
+                            <p className="internal-ai-card__meta">
+                              Il documento non espone ancora campi estratti abbastanza stabili.
+                            </p>
+                          </article>
+                        )}
+                      </div>
+                    </section>
+
+                    <section className="internal-ai-chat__document-dossier-section">
+                      <div className="internal-ai-chat__document-dossier-section-head">
+                        <h4>Righe / materiali trovati</h4>
+                        <span className="internal-ai-muted">
+                          Riferimenti leggibili utili per match e riconciliazione
+                        </span>
+                      </div>
+                      {detectedItems.length > 0 ? (
+                        <div className="internal-ai-chat__document-dossier-items-table">
+                          <div className="internal-ai-chat__document-dossier-items-head">
+                            <span>Descrizione</span>
+                            <span>Quantita</span>
+                            <span>Unita</span>
+                            <span>Fornitore</span>
+                            <span>Esito match</span>
+                            <span>Inventario trovato</span>
+                          </div>
+                          {detectedItems.map((item, index) => (
+                            <article
+                              key={`${route.attachmentId}:item:${item.description}:${index}`}
+                              className={`internal-ai-chat__document-dossier-items-row is-${item.tone ?? "default"}`}
+                            >
+                              <strong>{item.description}</strong>
+                              <span>{item.quantity}</span>
+                              <span>{item.unit}</span>
+                              <span>{item.supplier}</span>
+                              <span>{item.match}</span>
+                              <span>{item.inventory}</span>
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="internal-ai-chat__document-dossier-empty">
+                          Nessuna riga strutturata pronta: il clone mostra solo il riferimento documentale
+                          prudente.
+                        </div>
+                      )}
+                    </section>
+                  </div>
+
+                  <aside className="internal-ai-chat__document-dossier-side">
+                    <section className="internal-ai-chat__document-dossier-section">
+                      <div className="internal-ai-chat__document-dossier-section-head">
+                        <h4>Match e riconciliazione</h4>
+                        <span className="internal-ai-muted">
+                          Come il documento si collega al Magazzino
+                        </span>
+                      </div>
+                      <div className="internal-ai-chat__document-dossier-match-stack">
+                        {matchFacts.map((fact) => (
+                          <article
+                            key={`${route.attachmentId}:match:${fact.label}`}
+                            className={`internal-ai-chat__document-dossier-data-card is-${fact.tone ?? "default"}`}
+                          >
+                            <span className="internal-ai-chat__document-proposal-label">{fact.label}</span>
+                            <strong>{fact.value}</strong>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="internal-ai-chat__document-dossier-section">
+                      <div className="internal-ai-chat__document-dossier-section-head">
+                        <h4>Evidenza / testo letto</h4>
+                        <span className="internal-ai-muted">
+                          Supporto di lettura, non testo dominante
+                        </span>
+                      </div>
+                      <div className="internal-ai-chat__document-dossier-evidence">
+                        <pre>{evidenceText || "Nessun estratto testuale disponibile nel thread corrente."}</pre>
+                        {evidenceSupport ? (
+                          <p className="internal-ai-card__meta">{evidenceSupport}</p>
+                        ) : null}
+                      </div>
+                    </section>
+
+                    <section className="internal-ai-chat__document-dossier-final-box">
+                      <div className="internal-ai-chat__document-dossier-section-head">
+                        <h4>Azione finale</h4>
+                        <span className="internal-ai-muted">
+                          La scrittura resta sempre subordinata alla conferma utente
+                        </span>
+                      </div>
+                      <div className="internal-ai-chat__document-dossier-final-content">
+                        <div className="internal-ai-pill-row">
+                          <span className={buildDocumentProposalPillClass(route, "action")}>
+                            {actionLabel}
+                          </span>
+                          <span className={buildDocumentProposalPillClass(route, "status")}>
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <p className="internal-ai-card__meta">
+                          {route.status === "da_verificare"
+                            ? "Il caso resta prudente: puoi aprire la verifica guidata senza avviare scritture automatiche."
+                            : "Aprendo il modulo target trovi il prefill del documento e decidi tu se confermare il passaggio successivo."}
+                        </p>
+                        <div className="internal-ai-search__actions internal-ai-chat__document-proposal-actions">
+                          <button
+                            type="button"
+                            className={
+                              route.status === "da_verificare" || route.classification === "documento_ambiguo"
+                                ? "internal-ai-search__button internal-ai-search__button--secondary"
+                                : "internal-ai-search__button"
+                            }
+                            onClick={() => navigate(openPath)}
+                          >
+                            {buildDocumentRouteOpenLabel(route)}
+                          </button>
+                          <span className="internal-ai-muted">
+                            Nessuna azione business parte da qui senza conferma esplicita nel modulo di arrivo.
+                          </span>
+                        </div>
+                      </div>
+                    </section>
+                  </aside>
+                </div>
               </div>
             </article>
           );
         })}
-      </div>
+      </section>
     );
   };
 
@@ -5775,6 +6418,8 @@ function NextInternalAiPage({
             ) : null}
           </div>
 
+          {renderAutomaticDocumentProposalPanel("home-modal")}
+
           <div className="internal-ai-home-modal__conversation">
             <div className="internal-ai-chat__messages internal-ai-home-modal__messages">
               {chatMessages.length ? (
@@ -5975,8 +6620,6 @@ function NextInternalAiPage({
                   </div>
                 ) : null}
 
-                {renderAutomaticDocumentProposalPanel()}
-
                 <input
                   ref={chatAttachmentInputRef}
                   type="file"
@@ -5997,6 +6640,8 @@ function NextInternalAiPage({
           <article className="next-panel internal-ai-chat internal-ai-chat--primary">
             <div className="internal-ai-chat__shell">
               <div className="internal-ai-chat__main">
+                {renderAutomaticDocumentProposalPanel()}
+
                 <div className="internal-ai-chat__messages">
                   {chatMessages.length ? (
                     chatMessages.map((message) => (
@@ -6337,8 +6982,6 @@ function NextInternalAiPage({
                     </div>
                   ) : null}
 
-                  {renderAutomaticDocumentProposalPanel()}
-
                   <input
                     ref={chatAttachmentInputRef}
                     type="file"
@@ -6639,6 +7282,7 @@ function NextInternalAiPage({
               ) : null}
               <div ref={chatMessagesEndRef} />
             </div>
+            {renderAutomaticDocumentProposalPanel()}
             <div className="internal-ai-chat__composer">
               <div
                 style={{
@@ -6813,7 +7457,6 @@ function NextInternalAiPage({
                   ))}
                 </div>
               ) : null}
-              {renderAutomaticDocumentProposalPanel()}
               <input
                 ref={chatAttachmentInputRef}
                 type="file"

@@ -9,6 +9,49 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0. Aggiornamento operativo 2026-04-11 SCHEDA DOCUMENTO IA INTERNA MAGAZZINO
+- execution UI/UX completata nel solo perimetro autorizzato di `src/next/NextInternalAiPage.tsx` e `src/next/internal-ai/internal-ai.css`, senza toccare motore IA, router documentale, writer business o barrier;
+- la proposta documento della IA interna non e piu una card generica:
+  - il rendering sopra la chat usa ora una vera scheda gestionale con testata, riassunto rapido, interpretazione IA, dati estratti, righe/materiali, match, evidenza testuale e box finale azione;
+  - `DA VERIFICARE` e i presidi prudenziali restano visibili come badge e blocchi dedicati;
+  - il layout resta responsive con griglia 2 colonne su desktop e stack pulito su mobile;
+- il contenitore documento resta alto e leggibile:
+  - `min-height` reale;
+  - `max-height` con scroll interno;
+  - resa coerente anche nel modale rapido della Home e nella route piena `/next/ia/interna`;
+- nessuna logica document-driven cambia:
+  - le azioni automatiche restano `Riconcilia documento`, `Carica stock AdBlue`, `DA VERIFICARE`;
+  - nessuna nuova scrittura viene aperta;
+  - il writer business resta subordinato alla conferma nel modulo target;
+- verifiche tecniche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime verificato su `/next/ia/interna` con `fattura_mariba_534909.pdf`, `fattura_adblue_aprile.pdf`, `documento_ambiguo.pdf`: scheda presente con 7 sezioni leggibili e pannello non collassato
+
+## 0. Aggiornamento operativo 2026-04-10 UI MODALE IA INTERNA MAGAZZINO
+- execution UI completata nel solo perimetro autorizzato della superficie `/next/ia/interna`, senza toccare motore di classificazione, writer business o barrier;
+- `src/next/NextInternalAiPage.tsx` non rende piu la proposal card documento dentro il composer compresso:
+  - la proposta automatica viene montata in una fascia dedicata sopra i messaggi chat;
+  - il pannello scrolla in vista quando arriva una nuova classificazione;
+  - il contenuto mostra in modo leggibile `Documento letto`, `Tipo rilevato`, `Azione proposta`, `Motivazione`, `Presidio` e CTA;
+- `src/next/internal-ai/internal-ai.css` aggiunge:
+  - `min-height` reale del pannello proposta;
+  - `max-height` controllata con `overflow: auto`;
+  - card dedicate con gerarchia visiva piu forte;
+  - campi riassuntivi per evitare l'effetto "striscia" anche nel modale rapido della Home;
+- nessuna logica document-driven viene cambiata:
+  - i casi forti continuano a proporre le stesse azioni;
+  - i casi ambigui restano `DA VERIFICARE`;
+  - nessuna nuova scrittura viene aperta;
+- verifiche tecniche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internal-ai.css` -> `OK` sul TSX, warning noto sul CSS ignorato dalla config ESLint del repo
+  - `npm run build` -> `OK`
+  - runtime verificato sul modale IA aperto dalla Home con allegato `fattura_mariba_534909.pdf`
+  - verificata proposal shell visibile a circa `320px` di altezza con testo leggibile `Fattura materiali di Magazzino` -> `Riconcilia documento`
+- documentazione di supporto:
+  - `docs/change-reports/20260410_234600_ia_interna_modal_ui_fix_execution.md`
+  - `docs/continuity-reports/20260410_234600_continuity_ia_interna_modal_ui_fix_execution.md`
+
 ## 0. Aggiornamento operativo 2026-04-10 IA INTERNA MAGAZZINO DOCUMENT-DRIVEN UX
 - execution strutturale completata nel solo perimetro autorizzato del sottosistema IA interna NEXT, senza toccare la madre e senza aprire nuovi writer business;
 - `/next/ia/interna` non richiede piu prompt tecnici per i documenti di `Magazzino`:

@@ -135,6 +135,22 @@ Contiene copie mirror di documenti sorgente chiave e alcuni report selezionati.
 - Continuity report della UX document-driven `Magazzino`.
 - Utile per riprendere rapidamente il tema senza rileggere tutti i file runtime.
 
+32. `20260410_234600_ia_interna_modal_ui_fix_execution.md`
+- Change report del fix UI sul modale IA interna.
+- Utile per capire perche il pannello proposta documento non e piu schiacciato nel composer.
+
+33. `20260410_234600_continuity_ia_interna_modal_ui_fix_execution.md`
+- Continuity report del fix UI sul modale IA interna.
+- Utile per riaprire il tema della leggibilita del modale senza rifare il debug del layout.
+
+34. `20260411_003500_ia_interna_document_dossier_ui_execution.md`
+- Change report del rifacimento dossier della scheda documento IA interna.
+- Utile per capire la nuova impaginazione gestionale del risultato documento senza toccare motore o writer.
+
+35. `20260411_003500_continuity_ia_interna_document_dossier_ui_execution.md`
+- Continuity report del rifacimento dossier UI documento IA interna.
+- Utile per riaprire rapidamente il tema della resa visiva del documento analizzato.
+
 ## Ordine rapido consigliato per una nuova chat
 1. `AGENTS.md`
 2. `STATO_ATTUALE_PROGETTO.md`

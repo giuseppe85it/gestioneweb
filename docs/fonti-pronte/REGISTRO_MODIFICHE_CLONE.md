@@ -37,6 +37,66 @@ La regola corrente da leggere insieme a questo registro e:
 
 ## 4. Registro storico
 
+### Voce 2026-04-11 UI DOSSIER DOCUMENTO IA INTERNA MAGAZZINO
+- DATA: 2026-04-11
+- TITOLO MODIFICA: rifacimento impaginazione `scheda documento analizzato` nel modale/chat IA interna
+- OBIETTIVO: trasformare il risultato documento in una scheda gestionale leggibile e professionale, senza toccare classificazione, writer o barrier
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260411_003500_ia_interna_document_dossier_ui_execution.md`
+  - `docs/continuity-reports/20260411_003500_continuity_ia_interna_document_dossier_ui_execution.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+- COSA E STATO CAMBIATO:
+  - la proposal card documento sopra la chat e stata sostituita con una scheda dossier a sezioni;
+  - la UI mostra ora testata, badge, riassunto rapido, dati estratti, righe/materiali trovati, match e riconciliazione, evidenza testuale e box finale azione;
+  - il pannello resta alto e scrollabile, con layout a 2 colonne su desktop e stack mobile coerente;
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - migliora fortemente la leggibilita del documento analizzato;
+  - nessun cambiamento sui limiti di scrittura o sul motore document-driven;
+  - `DA VERIFICARE` resta esplicito e molto visibile;
+- COME VERIFICARE:
+  - aprire `/next/ia/interna`
+  - allegare una fattura materiali, una fattura AdBlue e un documento ambiguo
+  - verificare che la scheda mostri le 7 sezioni richieste e che il pannello non collassi
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx`
+  - eseguire `npm run build`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: task UI puro; nessuna modifica a motore IA, router, writer o barrier
+
+### Voce 2026-04-10 UI MODALE IA INTERNA MAGAZZINO
+- DATA: 2026-04-10
+- TITOLO MODIFICA: Fix di leggibilita del pannello classificazione/proposta nel modale IA interna
+- OBIETTIVO: Rendere chiaramente visibile il risultato della classificazione documento e dell'azione proposta sopra la chat del modale IA interna, senza toccare motore IA, writer Magazzino o logica del flusso document-driven.
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260410_234600_ia_interna_modal_ui_fix_execution.md`
+  - `docs/continuity-reports/20260410_234600_continuity_ia_interna_modal_ui_fix_execution.md`
+- COSA E STATO CAMBIATO:
+  - `NextInternalAiPage.tsx` monta ora la proposal card documento in una fascia dedicata sopra i messaggi della chat invece che dentro il composer compresso;
+  - la card scorre in vista quando arriva una nuova classificazione e mostra campi espliciti `Documento letto`, `Tipo rilevato`, `Azione proposta`, piu `Motivazione` e `Presidio`;
+  - `internal-ai.css` aggiunge min-height, max-height con scroll interno e una gerarchia visiva piu forte per evitare il collasso del pannello in una striscia quasi invisibile.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il modale rapido della Home rende finalmente leggibile la proposta documento senza costringere l'utente a intuire l'esito;
+  - Lettura: nessun cambiamento al motore di classificazione o al routing documentale;
+  - Blocco scritture: invariato, nessun writer toccato.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internal-ai.css`;
+  - eseguire `npm run build`;
+  - aprire la Home NEXT, aprire il modale IA e allegare una fattura di magazzino;
+  - verificare che il pannello sopra la chat mostri bene il file letto, il tipo rilevato, l'azione proposta e la motivazione senza collassare.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: fix solo UI; nessuna variazione a classificazione, writer business o barrier.
+
 ### Voce 2026-04-10 IA INTERNA MAGAZZINO DOCUMENT-DRIVEN UX
 - DATA: 2026-04-10
 - TITOLO MODIFICA: Passaggio della IA interna `Magazzino` da flusso prompt-driven a flusso document-driven
