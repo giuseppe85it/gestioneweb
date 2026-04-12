@@ -1,7 +1,8 @@
+/* eslint-disable react-refresh/only-export-components */
 // src/pages/IA/IADocumenti.tsx
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   doc,
@@ -22,10 +23,10 @@ import { getItemSync, setItemSync } from "../../utils/storageSync";
 // TIPI DI BASE DOCUMENTI IA
 // =======================================================
 
-type TipoDocumento = "PREVENTIVO" | "FATTURA" | "MAGAZZINO" | "GENERICO";
-type CategoriaArchivio = "MEZZO" | "MAGAZZINO" | "GENERICO";
+export type TipoDocumento = "PREVENTIVO" | "FATTURA" | "MAGAZZINO" | "GENERICO";
+export type CategoriaArchivio = "MEZZO" | "MAGAZZINO" | "GENERICO";
 
-interface VoceDocumento {
+export interface VoceDocumento {
   codice?: string;
   descrizione?: string;
   categoria?: string; // es. "MANODOPERA", "RICAMBIO", "TASSA"
@@ -35,7 +36,7 @@ interface VoceDocumento {
   importo?: string;
 }
 
-interface DocumentoAnalizzato {
+export interface DocumentoAnalizzato {
   tipoDocumento: TipoDocumento;
   categoriaArchivio: CategoriaArchivio;
 
@@ -76,13 +77,13 @@ interface DocumentoAnalizzato {
   testo?: string;
 }
 
-interface MezzoDoc {
+export interface MezzoDoc {
   targa?: string;
 }
 
-type Currency = "EUR" | "CHF" | "UNKNOWN";
+export type Currency = "EUR" | "CHF" | "UNKNOWN";
 
-type DocumentoLista = {
+export type DocumentoLista = {
   docId: string;
   sourceKey: string;
   tipoDocumento?: string;
@@ -116,6 +117,19 @@ interface InventarioItem {
 
 const INVENTARIO_KEY = "@inventario";
 
+export type IADocumentiSavedDocument = {
+  savedId: string;
+  targetCollection: string;
+  listItem: DocumentoLista;
+  payload: Record<string, unknown>;
+  needsManualVerification: boolean;
+  targaFinale: string;
+};
+
+type DocumentoAnalisiResponse = {
+  data?: Partial<DocumentoAnalizzato> & Record<string, unknown>;
+} & Record<string, unknown>;
+
 // stessa logica di generateId usata in Inventario.tsx
 const generateInventarioId = () =>
   `${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -128,7 +142,7 @@ const detectCurrencyFromText = (input: unknown): Currency => {
   return "UNKNOWN";
 };
 
-const resolveDocumentCurrency = (doc: DocumentoAnalizzato): Currency => {
+export const resolveDocumentCurrency = (doc: DocumentoAnalizzato): Currency => {
   const direct = detectCurrencyFromText(doc.valuta ?? doc.currency);
   if (direct !== "UNKNOWN") return direct;
   const source = [
@@ -145,7 +159,7 @@ const resolveDocumentCurrency = (doc: DocumentoAnalizzato): Currency => {
   return detectCurrencyFromText(source);
 };
 
-const resolveCurrencyForDisplay = (doc: DocumentoLista): Currency => {
+export const resolveCurrencyForDisplay = (doc: DocumentoLista): Currency => {
   const direct = detectCurrencyFromText(doc.valuta ?? doc.currency);
   if (direct !== "UNKNOWN") return direct;
   const source = [
@@ -166,8 +180,7 @@ const resolveCurrencyForDisplay = (doc: DocumentoLista): Currency => {
 // COMPONENTE PRINCIPALE IADocumenti
 // =======================================================
 
-const IADocumenti: React.FC = () => {
-  const navigate = useNavigate();
+export function useIADocumentiEngine() {
 
   // ---------------------------------------------------
   // STATE DI BASE
@@ -279,9 +292,11 @@ const IADocumenti: React.FC = () => {
           setDocumentiLista(items);
           setDocumentiLoading(false);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          setDocumentiError(err?.message || "Errore caricamento documenti.");
+          setDocumentiError(
+            err instanceof Error ? err.message : "Errore caricamento documenti.",
+          );
           setDocumentiLoading(false);
         }
       }
@@ -359,7 +374,7 @@ const IADocumenti: React.FC = () => {
   const analyzeDocumentoConIA = async (
     base64: string,
     mimeType: string
-  ): Promise<any> => {
+  ): Promise<DocumentoAnalisiResponse> => {
     try {
       setLoading(true);
 
@@ -401,7 +416,7 @@ const IADocumenti: React.FC = () => {
   const handleAnalyze = async () => {
     if (!selectedFile) {
       setErrorMessage("Carica un file prima.");
-      return;
+      return 0;
     }
 
     try {
@@ -426,10 +441,12 @@ const IADocumenti: React.FC = () => {
         setTargaEstrattaIA(String(analyzed?.data?.targa ?? ""));
         setTargaSelezionata("");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Errore analisi IA documenti:", err);
       setErrorMessage(
-        err?.message || "Errore durante l'analisi del documento con IA."
+        err instanceof Error
+          ? err.message
+          : "Errore durante l'analisi del documento con IA."
       );
     } finally {
       setLoading(false);
@@ -439,10 +456,12 @@ const IADocumenti: React.FC = () => {
   // ===================================================
   // SALVATAGGIO DOCUMENTO SU FIRESTORE
   // ===================================================
-  const handleSave = async () => {
+  const handleSave = async (
+    overrideCategoriaArchivio?: CategoriaArchivio,
+  ): Promise<IADocumentiSavedDocument | null> => {
     if (!results || !selectedFile) {
       setErrorMessage("Nessun risultato o file mancante.");
-      return;
+      return null;
     }
 
     const matched = exactMatch(targaEstrattaIA, mezzi);
@@ -462,12 +481,12 @@ const IADocumenti: React.FC = () => {
       if (targaFinale) {
         setTargaEstrattaIA(targaFinale);
       }
-      return;
+      return null;
     }
 
     if (needsManual && !targaSelezionata) {
       setErrorMessage("Seleziona una targa valida per salvare.");
-      return;
+      return null;
     }
 
     try {
@@ -486,8 +505,10 @@ const IADocumenti: React.FC = () => {
       const valuta = resolveDocumentCurrency(results);
 
       // 2. Prepara il payload per Firestore (lasciamo inalterata la struttura esistente)
+      const categoriaArchivioFinale = overrideCategoriaArchivio ?? results.categoriaArchivio;
       const payload = {
         ...results,
+        categoriaArchivio: categoriaArchivioFinale,
         valuta,
         targa: targaFinale,
         fileUrl,
@@ -506,9 +527,9 @@ const IADocumenti: React.FC = () => {
       // 3. Seleziona la collection di destinazione in base alla categoria archivio
       //    (logica già esistente, NON modificata)
       const targetCollection =
-        results.categoriaArchivio === "MEZZO"
+        categoriaArchivioFinale === "MEZZO"
           ? "@documenti_mezzi"
-          : results.categoriaArchivio === "MAGAZZINO"
+          : categoriaArchivioFinale === "MAGAZZINO"
           ? "@documenti_magazzino"
           : "@documenti_generici";
 
@@ -539,12 +560,38 @@ const IADocumenti: React.FC = () => {
       setDocumentSaved(true);
 
       alert("Documento salvato correttamente.");
-    } catch (err: any) {
+      return {
+        savedId: savedRef.id,
+        targetCollection,
+        listItem: {
+          docId: savedRef.id,
+          sourceKey: targetCollection,
+          tipoDocumento: results.tipoDocumento,
+          targa: targaFinale,
+          dataDocumento: results.dataDocumento,
+          totaleDocumento: results.totaleDocumento,
+          fornitore: results.fornitore,
+          fileUrl,
+          valuta,
+          testo: results.testo,
+          imponibile: results.imponibile,
+          ivaImporto: results.ivaImporto,
+          importoPagamento: results.importoPagamento,
+          numeroDocumento: results.numeroDocumento,
+        },
+        payload,
+        needsManualVerification: needsManual,
+        targaFinale,
+      };
+    } catch (err: unknown) {
       console.error("Errore salvataggio documento:", err);
       setErrorMessage(
-        err?.message || "Errore durante il salvataggio del documento."
+        err instanceof Error
+          ? err.message
+          : "Errore durante il salvataggio del documento."
       );
       setDocumentSaved(false);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -554,22 +601,22 @@ const IADocumenti: React.FC = () => {
   // FUNZIONE: IMPORTA MATERIALI IN INVENTARIO DA results.voci
   // Modalità Y: se descrizione esiste → somma quantità, altrimenti crea nuovo item
   // ===================================================
-  const importaInInventario = async () => {
+  const importaInInventario = async (): Promise<number> => {
     if (!results) {
       alert("Nessun risultato IA disponibile.");
-      return;
+      return 0;
     }
 
     if (results.categoriaArchivio !== "MAGAZZINO") {
       alert(
         "L'importazione in inventario è disponibile solo per documenti di MAGAZZINO."
       );
-      return;
+      return 0;
     }
 
     if (!results.voci || results.voci.length === 0) {
       alert("Nessuna voce di materiale trovata nel documento.");
-      return;
+      return 0;
     }
 
     try {
@@ -677,7 +724,7 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
         alert(
           "Nessuna voce valida è stata importata in inventario (quantità nulle o descrizioni vuote)."
         );
-        return;
+        return 0;
       }
 
       // 3. Salva inventario aggiornato con storageSync (stessa logica di Inventario.tsx)
@@ -686,12 +733,15 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
       alert(
         `Materiali importati in Inventario: ${materialiImportati}. Puoi verificarli nella schermata Inventario.`
       );
-    } catch (err: any) {
+      return materialiImportati;
+    } catch (err: unknown) {
       console.error("Errore importazione in inventario:", err);
       alert(
-        err?.message ||
-          "Errore durante l'importazione dei materiali in inventario."
+        err instanceof Error
+          ? err.message
+          : "Errore durante l'importazione dei materiali in inventario."
       );
+      return 0;
     } finally {
       setImportingInventario(false);
     }
@@ -731,10 +781,101 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
         )
       );
       setValutaModalDoc(null);
-    } catch (err: any) {
-      alert(err?.message || "Errore aggiornamento valuta.");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Errore aggiornamento valuta.");
     }
   };
+
+  const resetCurrentDocument = () => {
+    setSelectedFile(null);
+    setPreview(null);
+    setResults(null);
+    setErrorMessage(null);
+    setTargaEstrattaIA("");
+    setTargaSelezionata("");
+    setDocumentSaved(false);
+    setSectionsOpen({
+      documento: true,
+      mezzo: false,
+      voci: false,
+      pagamento: false,
+    });
+  };
+
+  return {
+    apiKeyExists,
+    selectedFile,
+    preview,
+    tipoArchivio,
+    setTipoArchivio,
+    loading,
+    results,
+    setResults,
+    errorMessage,
+    setErrorMessage,
+    mezzi,
+    targaEstrattaIA,
+    setTargaEstrattaIA,
+    targaSelezionata,
+    setTargaSelezionata,
+    sectionsOpen,
+    setSectionsOpen,
+    documentiLista,
+    documentiLoading,
+    documentiError,
+    valutaModalDoc,
+    setValutaModalDoc,
+    documentSaved,
+    importingInventario,
+    fmtTarga,
+    exactMatch,
+    handleFile,
+    handleAnalyze,
+    handleSave,
+    importaInInventario,
+    toggleSection,
+    handleOpenPdf,
+    formatImporto,
+    handleSetValuta,
+    resetCurrentDocument,
+  };
+}
+
+const IADocumenti: React.FC = () => {
+  const navigate = useNavigate();
+  const {
+    apiKeyExists,
+    selectedFile,
+    preview,
+    tipoArchivio,
+    setTipoArchivio,
+    loading,
+    results,
+    setResults,
+    errorMessage,
+    mezzi,
+    targaEstrattaIA,
+    targaSelezionata,
+    setTargaSelezionata,
+    sectionsOpen,
+    documentiLista,
+    documentiLoading,
+    documentiError,
+    valutaModalDoc,
+    setValutaModalDoc,
+    documentSaved,
+    importingInventario,
+    fmtTarga,
+    exactMatch,
+    handleFile,
+    handleAnalyze,
+    handleSave,
+    importaInInventario,
+    toggleSection,
+    handleOpenPdf,
+    formatImporto,
+    handleSetValuta,
+  } = useIADocumentiEngine();
 
   // ===================================================
   // RENDER: CASI SPECIALI (NESSUNA API KEY / CARICAMENTO INIT)
@@ -1251,7 +1392,9 @@ if (!quantitaRaw || Number.isNaN(quantitaNum) || quantitaNum <= 0) {
             <button
               type="button"
               className="ia-btn primary"
-              onClick={handleSave}
+              onClick={() => {
+                void handleSave();
+              }}
               disabled={
                 loading ||
                 (fmtTarga(targaEstrattaIA) !== "" &&

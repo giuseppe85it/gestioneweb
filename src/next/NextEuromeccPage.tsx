@@ -1788,7 +1788,8 @@ async function buildComponentDict(): Promise<string> {
     .join("\n");
 }
 
-async function callPdfAiEnhance(
+// eslint-disable-next-line react-refresh/only-export-components
+export async function callPdfAiEnhance(
   payload: { inputText?: string; imageBase64?: string }
 ): Promise<string> {
   const isLocal =

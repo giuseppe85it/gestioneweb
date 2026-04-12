@@ -955,3 +955,12 @@ export function buildNextAnalisiEconomicaLegacyView(
     analisiIA: snapshot.analisiEconomica.snapshot?.savedAnalysis ?? null,
   };
 }
+
+export function hasLinkedManutenzione(
+  manutenzioni: NextDossierManutenzioneLegacyItem[],
+  documentId: string
+): boolean {
+  return manutenzioni.some(
+    (m) => m.sourceDocumentId != null && m.sourceDocumentId === documentId
+  );
+}

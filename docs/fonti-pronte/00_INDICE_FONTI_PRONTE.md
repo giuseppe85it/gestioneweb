@@ -183,6 +183,22 @@ Contiene copie mirror di documenti sorgente chiave e alcuni report selezionati.
 - Continuity report del fix `Magazzino` + IA interna su riconciliazione stock e review destra.
 - Utile per riaprire rapidamente il task sapendo quali file runtime sono stati toccati, quali verifiche sono gia state eseguite e perche la prova end-to-end live resta `DA VERIFICARE`.
 
+44. `20260411_233850_audit_runtime_magazzino_ia_fix_e2e.md`
+- Change report dell'audit runtime reale sul fix `Magazzino` + IA interna.
+- Utile per capire perche il dataset live non offre ancora un candidato documentale `Pronto`, quali evidenze sono state raccolte su `/next/magazzino?tab=documenti-costi` e come la review IA si comporta nel live persistito corrente.
+
+45. `20260411_233850_continuity_audit_runtime_magazzino_ia_fix_e2e.md`
+- Continuity report dell'audit runtime reale sul fix `Magazzino` + IA interna.
+- Utile per riaprire rapidamente il tema sapendo che il fix non e stato smentito dal runtime, ma che la prova end-to-end resta sospesa per assenza di casi documentali live eseguibili.
+
+46. `20260411_dossier_fattura_to_manutenzione.md`
+- Change report del flusso "Fattura → Manutenzione" nel Dossier Mezzo NEXT.
+- Utile per capire `sourceDocumentId`, il modal IA, la deroga barrier Dossier e il bottone/badge anti-duplicazione.
+
+47. `20260411_continuity_dossier_fattura_to_manutenzione.md`
+- Continuity report del flusso "Fattura → Manutenzione" nel Dossier Mezzo NEXT.
+- Utile per riaprire rapidamente il tema sapendo cosa e stato verificato, cosa resta DA VERIFICARE e i punti di attenzione tecnici.
+
 ## Ordine rapido consigliato per una nuova chat
 1. `AGENTS.md`
 2. `STATO_ATTUALE_PROGETTO.md`

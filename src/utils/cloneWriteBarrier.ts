@@ -34,7 +34,16 @@ const MUTATING_FETCH_URL_PATTERNS = [
 const SAME_ORIGIN_MUTATING_API_PREFIXES = ["/api/"] as const;
 const EUROMECC_ALLOWED_WRITE_PATHS = ["/next/euromecc"] as const;
 const EUROMECC_ALLOWED_FETCH_API_PATHS = new Set(["/api/pdf-ai-enhance"]);
+const DOSSIER_ALLOWED_WRITE_PATH_PREFIXES = ["/next/dossiermezzi/", "/next/dossier/"] as const;
+const DOSSIER_ALLOWED_STORAGE_KEYS = new Set([
+  "@manutenzioni",
+  "@inventario",
+  "@materialiconsegnati",
+]);
 const INTERNAL_AI_MAGAZZINO_INLINE_SCOPE = "internal_ai_magazzino_inline_magazzino";
+const INTERNAL_AI_DOCUMENTI_PATH = "/next/ia/interna";
+const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
+  "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti";
 const cloneWriteScopedAllowances = new Map<string, number>();
 
 declare global {
@@ -124,9 +133,39 @@ function readMetaUrl(meta: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readMetaMethod(meta: unknown): string {
+  if (typeof meta !== "object" || meta === null || !("method" in meta)) {
+    return "";
+  }
+
+  const value = (meta as { method?: unknown }).method;
+  return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+function isAllowedInternalAiDocumentAnalyzeFetch(
+  pathname: string,
+  meta: unknown,
+): boolean {
+  if (pathname !== INTERNAL_AI_DOCUMENTI_PATH) return false;
+  if (readMetaMethod(meta) !== "POST") return false;
+
+  try {
+    const parsed = new URL(readMetaUrl(meta), window.location.origin);
+    return `${parsed.origin}${parsed.pathname}` === INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT;
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedEuromeccCloneWritePath(pathname: string): boolean {
   return EUROMECC_ALLOWED_WRITE_PATHS.some(
     (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
+}
+
+function isAllowedDossierCloneWritePath(pathname: string): boolean {
+  return DOSSIER_ALLOWED_WRITE_PATH_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
   );
 }
 
@@ -157,6 +196,13 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     hasCloneWriteScopedAllowance(INTERNAL_AI_MAGAZZINO_INLINE_SCOPE) &&
     kind === "storageSync.setItemSync" &&
     readMetaKey(meta) === "@inventario"
+  ) {
+    return true;
+  }
+
+  if (
+    kind === "fetch.runtime" &&
+    isAllowedInternalAiDocumentAnalyzeFetch(pathname, meta)
   ) {
     return true;
   }
@@ -204,6 +250,13 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
         path.startsWith(prefix),
       );
     }
+  }
+
+  if (isAllowedDossierCloneWritePath(pathname)) {
+    if (kind === "storageSync.setItemSync") {
+      return DOSSIER_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    }
+    return false;
   }
 
   if (!isAllowedManutenzioniCloneWritePath(pathname)) {

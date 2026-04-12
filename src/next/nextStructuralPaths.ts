@@ -52,8 +52,17 @@ export function buildNextMagazzinoPath(tab?: NextMagazzinoTab) {
   return `${NEXT_MAGAZZINO_PATH}?tab=${encodeURIComponent(tab)}`;
 }
 
+export function buildNextManutenzioniPath(targa?: string) {
+  if (!targa) return NEXT_MANUTENZIONI_PATH;
+  return `${NEXT_MANUTENZIONI_PATH}?targa=${encodeURIComponent(targa)}`;
+}
+
 export function buildNextDossierPath(targa: string) {
   return `${NEXT_DOSSIER_PREFIX}/${encodeURIComponent(targa)}`;
+}
+
+export function buildNextDossierPreventiviPath(targa: string) {
+  return `${buildNextDossierPath(targa)}#preventivi`;
 }
 
 export function buildNextDossierListaDetailPath(targa: string) {

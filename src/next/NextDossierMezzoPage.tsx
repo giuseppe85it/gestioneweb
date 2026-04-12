@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { formatDateTimeUI, formatDateUI } from "./nextDateFormat";
 import { generateDossierMezzoPDFBlob } from "../utils/pdfEngine";
@@ -15,11 +15,13 @@ import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 import {
   buildNextDossierMezzoLegacyView,
+  hasLinkedManutenzione,
   readNextDossierMezzoCompositeSnapshot,
   type NextDossierFatturaPreventivoLegacyItem,
   type NextDossierManutenzioneLegacyItem,
   type NextDossierMezzoLegacyViewState,
 } from "./domain/nextDossierMezzoDomain";
+import NextDossierFatturaToManutenzioneModal from "./NextDossierFatturaToManutenzioneModal";
 import {
   buildNextAnalisiEconomicaPath,
   buildNextDossierGommePath,
@@ -130,12 +132,15 @@ function formatGommeStraordinarieMeta(
 }
 
 export default function NextDossierMezzoPage() {
+  const location = useLocation();
   const { targa } = useParams<{ targa: string }>();
   const navigate = useNavigate();
+  const preventiviSectionRef = useRef<HTMLElement | null>(null);
   const [legacy, setLegacy] = useState<NextDossierMezzoLegacyViewState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto">(null);
+  const [fatturaModal, setFatturaModal] = useState<NextDossierFatturaPreventivoLegacyItem | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -143,6 +148,10 @@ export default function NextDossierMezzoPage() {
   const [pdfTitle, setPdfTitle] = useState("Anteprima PDF dossier mezzo");
   const [pdfHint, setPdfHint] = useState<string | null>(null);
   const [pdfContext, setPdfContext] = useState("Dossier mezzo");
+  const requestedSection = useMemo(
+    () => location.hash.replace(/^#/, "").trim().toLowerCase(),
+    [location.hash],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -179,6 +188,27 @@ export default function NextDossierMezzoPage() {
   }, [targa]);
 
   useEffect(() => () => revokePdfPreviewUrl(pdfUrl), [pdfUrl]);
+
+  useEffect(() => {
+    if (requestedSection !== "preventivi" || !legacy) {
+      return undefined;
+    }
+
+    let timeoutId = 0;
+    const scrollToPreventivi = () => {
+      preventiviSectionRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+      timeoutId = window.setTimeout(() => {
+        preventiviSectionRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+      }, 160);
+    };
+
+    const animationFrameId = window.requestAnimationFrame(scrollToPreventivi);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [legacy, requestedSection]);
 
   const mezzo = legacy?.mezzo ?? null;
   const docs = useMemo(() => legacy?.documentiCosti ?? [], [legacy]);
@@ -305,6 +335,11 @@ export default function NextDossierMezzoPage() {
               <span>{item.fornitoreLabel || "-"}</span>
               {item.fileUrl ? <button className="dossier-button" type="button" onClick={() => openDocumentPdf(item.fileUrl!, `Anteprima PDF ${kind}`, `${kind}-${item.id}.pdf`)}>Anteprima PDF</button> : null}
               {kind === "preventivo" ? <button className="dossier-button" type="button" onClick={blockPreventivoDelete}>Elimina</button> : null}
+              {kind === "fattura" && (
+                hasLinkedManutenzione(legacy.manutenzioni, item.id)
+                  ? <span className="dossier-badge badge-success" style={{ fontSize: 11 }}>✓ Manutenzione collegata</span>
+                  : <button className="dossier-button" type="button" onClick={() => setFatturaModal(item)}>Crea manutenzione</button>
+              )}
             </div>
           </li>
         ))}
@@ -358,9 +393,26 @@ export default function NextDossierMezzoPage() {
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Rifornimenti</h2></div><div className="dossier-card-body">{legacy.rifornimenti.length === 0 ? <p className="dossier-empty">Nessun rifornimento registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead><tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody></table></div>}</div></section>
 
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Preventivi</h2><div className="dossier-chip">Totale preventivi: <strong>CHF {preventiviTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {preventiviTotals.eur.toFixed(2)}</span>{preventiviTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({preventiviTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(preventivi, "preventivo")}</div></section>
+        <section ref={preventiviSectionRef} id="preventivi" className="dossier-card" tabIndex={-1}><div className="dossier-card-header"><h2>Preventivi</h2><div className="dossier-chip">Totale preventivi: <strong>CHF {preventiviTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {preventiviTotals.eur.toFixed(2)}</span>{preventiviTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({preventiviTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(preventivi, "preventivo")}</div></section>
         <section className="dossier-card"><div className="dossier-card-header"><h2>Fatture</h2><div className="dossier-chip">Totale fatture: <strong>CHF {fattureTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {fattureTotals.eur.toFixed(2)}</span>{fattureTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({fattureTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(fatture, "fattura")}</div></section>
       </div>
+
+      {fatturaModal && targa && (
+        <NextDossierFatturaToManutenzioneModal
+          fattura={fatturaModal}
+          targa={targa}
+          onClose={() => setFatturaModal(null)}
+          onSaved={() => {
+            setFatturaModal(null);
+            void (async () => {
+              try {
+                const nextSnapshot = await readNextDossierMezzoCompositeSnapshot(targa);
+                if (nextSnapshot) setLegacy(buildNextDossierMezzoLegacyView(nextSnapshot));
+              } catch { /* silent */ }
+            })();
+          }}
+        />
+      )}
 
       {(["attesa", "eseguiti", "manutenzioni"] as const).map((key) =>
         modal === key ? (

@@ -77,6 +77,7 @@ export type NextMaintenanceHistoryItem = {
   sourceDataset: typeof MANUTENZIONI_KEY;
   sourceOrigin: NextMaintenanceSourceOrigin;
   quality: NextManutenzioneQuality;
+  sourceDocumentId: string | null;
 };
 
 export type NextMezzoManutenzioniSnapshot = {
@@ -121,6 +122,7 @@ export type NextManutenzioniLegacyDatasetRecord = {
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
   gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo;
   gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord;
+  sourceDocumentId?: string | null;
 };
 
 export type NextManutenzioniMezzoOption = {
@@ -178,6 +180,7 @@ export type NextManutenzioneBusinessSavePayload = {
   gommePerAsse?: NextManutenzioneGommePerAsseRecord[];
   gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo | null;
   gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord | null;
+  sourceDocumentId?: string | null;
 };
 
 type NextLegacyInventarioRecord = Record<string, unknown>;
@@ -560,6 +563,7 @@ function toHistoryItem(
     sourceDataset: MANUTENZIONI_KEY,
     sourceOrigin: isGomme ? "autisti_gomme_derivato" : descrizione ? "manuale" : "unknown",
     quality: isGomme ? "derived_acceptable" : "source_direct",
+    sourceDocumentId: normalizeOptionalText(raw.sourceDocumentId),
   };
 }
 
@@ -774,6 +778,7 @@ function sanitizeBusinessRecord(
     ...(gommeStraordinario && gommeInterventoTipo === "straordinario" ? { gommeStraordinario } : {}),
     ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
     ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
+    ...(payload.sourceDocumentId != null ? { sourceDocumentId: payload.sourceDocumentId } : {}),
   };
 }
 

@@ -37,6 +37,256 @@ La regola corrente da leggere insieme a questo registro e:
 
 ## 4. Registro storico
 
+### Voce 2026-04-12 142
+- DATA: 2026-04-12
+- TITOLO MODIFICA: UI `IA Universal Dispatcher` applicata nel clone con esito parziale ma verificato
+- OBIETTIVO: riallineare card Home, pagina `/next/ia/interna` e storico `/next/ia/documenti` alla spec `docs/product/SPEC_IA_UNIVERSAL_DISPATCHER.md` senza toccare domain, orchestrator, writer o barrier
+- FILE TOCCATI:
+  - `src/next/components/HomeInternalAiLauncher.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260412_194036_ia_universal_dispatcher_ui_spec.md`
+  - `docs/continuity-reports/20260412_194036_continuity_ia_universal_dispatcher_ui_spec.md`
+- COSA E STATO CAMBIATO:
+  - riscritta la card Home come launcher unico con prompt, menu `+`, voci attive/in arrivo e link `Storico`
+  - riallineata `/next/ia/interna` alla shell dispatcher con header, composer, colonna funzioni, handoff banner compatto e review interna a due colonne
+  - disattivata nella superficie reale `/next/ia/interna` la reidratazione automatica degli allegati IA-only persistiti, che sporcava l'ingresso con banner/chip MARIBA
+  - riscritto `/next/ia/documenti` come storico read-only ufficiale usando solo il domain `readNextIADocumentiArchiveSnapshot()`
+  - mantenute le CTA esistenti `Apri originale`, `Riapri review`, `Vai a`
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: Home e dispatcher molto piu vicini alla spec; niente modali custom e niente handoff sporco di default
+  - Lettura: `/next/ia/documenti` usa solo i campi reali del domain read-only
+  - Blocco scritture: invariato; nessuna modifica a barrier, writer o backend
+- COME VERIFICARE:
+  - eseguire `npm run build`
+  - aprire `http://localhost:5173/next`
+  - verificare la card `Assistente IA`, l'apertura del menu `+` e il submit del prompt verso `/next/ia/interna`
+  - aprire `http://localhost:5173/next/ia/interna` e verificare ingresso pulito senza MARIBA/banners sporchi
+  - aprire `http://localhost:5173/next/ia/documenti` e verificare filtri, `Apri originale`, `Riapri review`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - patch dichiarata `PARZIALE` perche il domain read-only non espone ancora sezioni storiche dedicate `Libretti`, `Cisterna`, `Manutenzioni`
+  - nessun `Maximum update depth exceeded` osservato nel browser durante le verifiche del task; restano i `403` noti sui listing Storage
+
+### Voce 2026-04-12 141
+- DATA: 2026-04-12
+- TITOLO MODIFICA: Audit completo e leggibile dello stato reale della IA interna / documentale
+- OBIETTIVO: Fermare le patch a tentativi e fissare in un solo report cosa fa oggi davvero la IA interna/documentale, cosa legge, cosa scrive, quali route usa e quali problemi reali restano aperti, senza toccare il runtime.
+- FILE TOCCATI:
+  - `docs/audit/AUDIT_IA_INTERNA_STATO_REALE_2026-04-12.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260412_152529_audit_ia_interna_stato_reale.md`
+  - `docs/continuity-reports/20260412_152529_continuity_audit_ia_interna_stato_reale.md`
+- COSA E STATO CAMBIATO:
+  - nessun file runtime toccato;
+  - creato un report principale semplice ma completo sul comportamento reale della IA interna/documentale;
+  - chiarito che oggi la Home `/next` apre direttamente `/next/ia/interna`;
+  - chiarito che `/next/ia/interna` e la porta principale e `/next/ia/documenti` e soprattutto storico secondario;
+  - chiarito che il motore documentale reale dietro la UI nuova resta `useIADocumentiEngine()` in `src/pages/IA/IADocumenti.tsx`;
+  - censite le scritture reali presenti nel codice: `POST` a `estrazioneDocumenti`, upload Storage `documenti_pdf/...`, save Firestore, update `valuta`, import `@inventario`, tracking/artifact/richieste IA locali;
+  - raccolti gli errori runtime reali osservati: `403` Storage listing e `Maximum update depth exceeded`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna modifica runtime;
+  - Lettura: migliore comprensione del sistema reale, delle route e del ruolo di `Documenti IA`;
+  - Scritture: nessuna apertura o modifica dei boundary; il report si limita a fotografare quelle gia presenti nel codice.
+- COME VERIFICARE:
+  - leggere `docs/audit/AUDIT_IA_INTERNA_STATO_REALE_2026-04-12.md`
+  - aprire `/next` e cliccare `Apri IA interna`
+  - aprire `/next/ia/interna`, caricare un file e cliccare `Analizza`
+  - aprire `/next/ia/documenti` e verificare filtri, `Apri originale`, `Riapri review`, `Vai a`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO, questo task e solo audit documentale
+- NOTE:
+  - nessuna build o lint necessarie in questo task perche non ci sono modifiche runtime;
+  - il report diventa la base consigliata prima di qualsiasi altro redesign della UI IA interna.
+
+### Voce 2026-04-12 HOME NEXT - FIX LAUNCHER IA VERSO INGRESSO UNICO
+- DATA: 2026-04-12
+- TITOLO MODIFICA: sostituzione del launcher IA della Home con navigazione diretta alla route reale `/next/ia/interna`
+- OBIETTIVO: eliminare il modale Home incoerente `Conversazione rapida dalla Home`, impedire review sporche preaperte dal launcher Dashboard e riallineare la Home all'ingresso unico documentale gia approvato
+- FILE TOCCATI:
+  - `src/next/components/HomeInternalAiLauncher.tsx`
+  - `src/next/NextHomePage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260412_144023_home_ia_launcher_fix.md`
+  - `docs/continuity-reports/20260412_144023_continuity_home_ia_launcher_fix.md`
+- COSA E STATO CAMBIATO:
+  - il file reale del launcher Home non apre piu un modale e non monta piu `NextInternalAiPage` dentro la Dashboard;
+  - e stato rimosso il passaggio di stato locale `draftPrompt` / `draftAttachments` alla pagina IA interna, che era la sorgente strutturale della review/proposal sporca nel modale Home;
+  - il pannello `IA interna` della Home usa ora un solo CTA che naviga direttamente a `/next/ia/interna`;
+  - la copy della Home e stata riallineata all'ingresso unico documentale reale della piattaforma NEXT;
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: dalla Dashboard non compare piu il modale `Conversazione rapida dalla Home`; il click porta alla pagina reale `/next/ia/interna` con ingresso pulito;
+  - Lettura: nessuna modifica al motore documentale o ai reader; la Home smette solo di montare una superficie parallela incoerente;
+  - Blocco scritture: invariato; nessuna modifica a `cloneWriteBarrier.ts` e nessuna nuova deroga writer;
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/components/HomeInternalAiLauncher.tsx src/next/NextHomePage.tsx`
+  - eseguire `npm run build`
+  - aprire `http://localhost:5173/next`
+  - cliccare il launcher `Apri IA interna`
+  - verificare navigazione a `http://localhost:5173/next/ia/interna`
+  - verificare assenza del modale Home e assenza di review sporca / `fattura mariba.jpeg` aperta di default
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: la soluzione scelta elimina il doppio ingresso incoerente Home vs IA interna e preserva la route unica gia verificata nel clone.
+
+### Voce 2026-04-12 AUDIT IA INTERNA DOCUMENTALE - HOME SPORCA / ANALIZZA BLOCCATO
+- DATA: 2026-04-12
+- TITOLO MODIFICA: audit tecnico documentale della IA interna unificata su `home sporca` e `Analizza bloccato`
+- OBIETTIVO: diagnosticare con prove runtime e di codice perche `/next/ia/interna` venisse percepita come sporca e perche `Analizza` non completi il flusso nel clone, senza patch runtime
+- FILE TOCCATI:
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260412_133832_audit_ia_interna_stato_sporco_blocco_analizza.md`
+  - `docs/continuity-reports/20260412_133832_continuity_audit_ia_interna_stato_sporco_blocco_analizza.md`
+- COSA E STATO CAMBIATO:
+  - nessun file runtime toccato;
+  - documentata la prova che il worktree/runtime corrente non autoapre review sporche su `/next/ia/interna`: oggi la sola riapertura automatica dimostrata passa da `reviewDocumentId` / `reviewSourceKey` e non da `localStorage` o `sessionStorage` documentali;
+  - documentata la prova che `Analizza` arriva davvero al click handler ma viene fermato dal `cloneWriteBarrier` globale prima del `POST` verso `estrazioneDocumenti`;
+  - allineati i documenti di stato sul fatto che la home sporca e `NON RIPRODOTTA` nel worktree corrente, mentre `Analizza` resta `BLOCCATO` dal barrier finche non si decide un trasporto consentito;
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessun cambiamento runtime;
+  - Lettura: piu chiarezza sui veri ingressi di riapertura review (`reviewDocumentId` / `reviewSourceKey`);
+  - Blocco scritture: invariato; il barrier resta attivo e il `POST` legacy documentale continua a essere bloccato in clone;
+- COME VERIFICARE:
+  - aprire `http://localhost:5173/next/ia/interna` o la preview `4174` e verificare home pulita senza query e senza documento in review;
+  - verificare in console/storage che non esistono chiavi documentali locali con `reviewDocumentId`;
+  - aprire `/next/ia/documenti`, cliccare `Riapri review` e verificare che la review si riapra solo da quella azione esplicita;
+  - caricare un PDF in `/next/ia/interna`, cliccare `Analizza` e verificare warning `[CLONE_NO_WRITE] Tentativo bloccato nel clone: fetch.runtime`, stack su `cloneWriteBarrier.ts` e assenza del `POST` verso `estrazioneDocumenti` nella rete browser;
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: audit solo diagnostico; se si vuole riattivare `Analizza` nel clone serve una decisione esplicita sul trasporto consentito o un allineamento UI onesto che non invochi piu il `POST` legacy bloccato.
+
+### Voce 2026-04-12 IA INTERNA DOCUMENTALE - FIX ENTRY, LAYOUT E DESTINAZIONI
+- DATA: 2026-04-12
+- TITOLO MODIFICA: correzione chirurgica dell'ingresso documentale, della review desktop viewport-fit e delle destinazioni finali della IA interna documentale
+- OBIETTIVO: impedire che `/next/ia/interna` riapra review persistite di default, tenere la review desktop in una sola schermata e instradare `Vai a` sulle destinazioni business reali (`Inventario`, `Manutenzioni`, `Preventivi`, review documento)
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/pages/IA/IADocumenti.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/next/nextStructuralPaths.ts`
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260412_125333_ia_interna_documentale_fix_entry_layout_destinazioni.md`
+  - `docs/continuity-reports/20260412_125333_continuity_ia_interna_documentale_fix_entry_layout_destinazioni.md`
+- COSA E STATO CAMBIATO:
+  - `NextInternalAiPage.tsx` non autoapre piu review persistite all'ingresso e apre la review solo da file nuovo, `Riapri review` o query `reviewDocumentId`;
+  - la chiusura review ripulisce davvero lo stato del motore documentale e torna alla home pulita;
+  - la review desktop usa footer CTA fissi e scroll interni nelle card, con blocco del page-scroll desktop solo in review attiva;
+  - le destinazioni reali ora usano `buildNextMagazzinoPath("inventario")`, `buildNextManutenzioniPath(targa)` e `buildNextDossierPreventiviPath(targa)`;
+  - `NextManutenzioniPage.tsx` supporta la preselezione minima `?targa=...`;
+  - `NextDossierMezzoPage.tsx` supporta il deep-link `#preventivi` con scroll robusto alla sezione dedicata;
+  - `/next/ia/documenti` resta superficie secondaria/storico ma con filtri e CTA coerenti con il nuovo ingresso unico.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: ingresso unico documentale piu pulito, review desktop leggibile e CTA sempre visibili; nessun ritorno a una chat dominante;
+  - Lettura: invariato il motore reale `Documenti IA`, riusato senza duplicazioni;
+  - Blocco scritture: invariato; nessun writer nuovo aperto e nessun widening del `cloneWriteBarrier`.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/NextIADocumentiPage.tsx src/pages/IA/IADocumenti.tsx src/next/NextManutenzioniPage.tsx src/next/NextDossierMezzoPage.tsx src/next/nextStructuralPaths.ts`
+  - eseguire `npm run build`
+  - aprire `/next/ia/interna` e verificare home pulita senza review aperta
+  - da `/next/ia/documenti` cliccare `Riapri review` e verificare la review attiva su `/next/ia/interna`
+  - verificare in browser `Apri originale`, `Vai a Inventario`, `Vai a Manutenzioni`, `Vai al preventivo`
+  - verificare `Torna alla home documentale` e il rientro alla home pulita
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: il dataset corrente non espone ancora un record storico live `Da verificare` cliccabile; il ramo reale usa comunque la stessa riapertura review verificata con `Riapri review` via query `reviewDocumentId`.
+
+### Voce 2026-04-11 DOSSIER MEZZO — FLUSSO FATTURA → MANUTENZIONE
+- DATA: 2026-04-11
+- TITOLO MODIFICA: flusso "Fattura → Manutenzione" nel Dossier Mezzo con parsing IA e scrittura reale `@manutenzioni`
+- OBIETTIVO: permettere che, da ogni riga fattura nel Dossier Mezzo, l'utente possa creare una manutenzione reale pre-compilata via IA; il documento viene collegato tramite `sourceDocumentId`; se la manutenzione esiste già la riga mostra un badge "✓ Manutenzione collegata" al posto del bottone
+- FILE TOCCATI:
+  - `src/next/domain/nextManutenzioniDomain.ts` (aggiunto `sourceDocumentId` a 4 punti)
+  - `src/next/domain/nextManutenzioniGommeDomain.ts` (aggiunto `sourceDocumentId` opzionale nei tipi di view)
+  - `src/next/domain/nextDossierMezzoDomain.ts` (aggiunta `hasLinkedManutenzione`)
+  - `src/next/NextEuromeccPage.tsx` (esportata `callPdfAiEnhance`)
+  - `src/next/NextDossierFatturaToManutenzioneModal.tsx` (nuovo file — modal completo)
+  - `src/next/NextDossierMezzoPage.tsx` (bottone/badge + mount modal)
+  - `src/utils/cloneWriteBarrier.ts` (deroga Dossier per `@manutenzioni`, `@inventario`, `@materialiconsegnati`)
+  - documentazione correlata + mirror `docs/fonti-pronte/*`
+- COSA E STATO CAMBIATO:
+  - `NextManutenzioniDomain`: `sourceDocumentId` aggiunto a `NextManutenzioniLegacyDatasetRecord`, `NextManutenzioneBusinessSavePayload`, `NextMaintenanceHistoryItem`, `toHistoryItem()`, `sanitizeBusinessRecord()`
+  - `NextManutenzioniGommeDomain`: `sourceDocumentId?` aggiunto a `NextManutenzioneReadOnlyItem`, `NextManutenzioneLegacyViewItem`, propagato in `toMaintenanceItem()` e `mapNextManutenzioniItemsToLegacyView()`
+  - `nextDossierMezzoDomain`: nuova funzione `hasLinkedManutenzione(manutenzioni, documentId)`
+  - `NextEuromeccPage`: `callPdfAiEnhance` resa `export` con disable-comment lint
+  - nuovo `NextDossierFatturaToManutenzioneModal`: fetch PDF → base64 → `callPdfAiEnhance` → parse JSON → ReviewUI con campi editabili → `saveNextManutenzioneBusinessRecord({ sourceDocumentId: fattura.id })`; fallback su pre-fill da fattura se IA non disponibile o fallisce
+  - `NextDossierMezzoPage`: bottone "Crea manutenzione" per ogni riga fattura; badge "✓ Manutenzione collegata" se già collegata; reload dossier dopo salvataggio
+  - `cloneWriteBarrier`: nuove costanti `DOSSIER_ALLOWED_WRITE_PATH_PREFIXES` (`/next/dossiermezzi/`, `/next/dossier/`) e `DOSSIER_ALLOWED_STORAGE_KEYS` (`@manutenzioni`, `@inventario`, `@materialiconsegnati`); blocco `isAllowedDossierCloneWritePath` + eccezione in `isAllowedCloneWriteException`
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: ogni riga fattura nel Dossier Mezzo espone ora un bottone "Crea manutenzione" o un badge di collegamento
+  - Lettura: nessun impatto su read path esistenti
+  - Blocco scritture: la deroga è strettamente limitata ai percorsi `/next/dossiermezzi/*` e `/next/dossier/*`; i moduli Manutenzioni, Magazzino, Lavori, Euromecc non sono toccati
+- COME VERIFICARE:
+  - `npm run build` → OK
+  - aprire `/next/dossiermezzi/:targa` con un mezzo che ha fatture nel dossier
+  - verificare bottone "Crea manutenzione" visibile su righe fattura senza manutenzione collegata
+  - cliccare il bottone: il modal deve aprirsi e tentare l'analisi IA del PDF
+  - compilare/confermare i campi e salvare: la manutenzione deve apparire in `@manutenzioni` e il bottone deve diventare badge "✓ Manutenzione collegata"
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE: la verifica runtime end-to-end su dati live resta `DA VERIFICARE`; `persistLegacyMaterialEffects` scrive sempre `@inventario` e `@materialiconsegnati` anche con materiali vuoti, per questo entrambe le chiavi sono nella deroga Dossier; `fromInventario: false` su tutti i materiali IA per evitare deduzioni inventario
+
+### Voce 2026-04-11 AUDIT RUNTIME E2E FIX MAGAZZINO + IA INTERNA
+- DATA: 2026-04-11
+- TITOLO MODIFICA: audit runtime end-to-end del fix `Magazzino` + IA interna senza forzare scritture live
+- OBIETTIVO: chiudere la verifica runtime reale del fix su `Riconcilia documento` / `Aggiungi costo/documento` / `Carica stock`, dichiarando con evidenza se il dataset live consente o no una prova end-to-end scrivente
+- FILE TOCCATI:
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260411_233850_audit_runtime_magazzino_ia_fix_e2e.md`
+  - `docs/continuity-reports/20260411_233850_continuity_audit_runtime_magazzino_ia_fix_e2e.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+- COSA E STATO CAMBIATO:
+  - nessun file runtime e stato patchato in questo step;
+  - il repository documenta ora in modo esplicito che il dataset live del ramo documentale espone `Righe supporto: 3`, `Pronte: 0`, `Bloccate: 3`, quindi manca ancora un candidato documentale reale `Pronto`;
+  - l'audit distingue il pannello procurement, che ha righe pronte, dal ramo documentale richiesto dal task, che non espone casi eseguibili senza inventare dati;
+  - viene tracciato anche che nella review IA corrente `MARIBA` e `AdBlue` mantengono la gerarchia destra corretta ma non espongono `Conferma`, perche la decisione live resta `DA VERIFICARE`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: nessuna modifica runtime aggiuntiva;
+  - Lettura: stato reale del modulo e della IA interna piu chiaro e allineato ai fatti osservati;
+  - Blocco scritture: preservato al 100%; nessuna scrittura live forzata in assenza di un candidato `Pronto`.
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx src/next/internal-ai/internalAiMagazzinoControlledActions.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internal-ai.css`
+  - eseguire `npm run build`
+  - aprire `/next/magazzino?tab=documenti-costi` e verificare `Righe supporto: 3`, `Pronte: 0`, `Bloccate: 3`
+  - aprire `/next/ia/interna`, riaprire `fattura_mariba_534909.pdf`, `fattura_adblue_aprile.pdf`, `documento_ambiguo.pdf` e verificare gerarchia destra corretta, `Dettagli tecnici` collassati e assenza di bottoni `Conferma` nello stato live corrente
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE: audit chiuso senza patch runtime; la capability resta `PARZIALE` finche non esiste un documento live `Pronto` che permetta una prova end-to-end vera del fix
+
 ### Voce 2026-04-11 MAGAZZINO + IA INTERNA FIX RICONCILIAZIONE STOCK E REVIEW DESTRA
 - DATA: 2026-04-11
 - TITOLO MODIFICA: correzione del ramo `Consolida stock` senza doppio incremento e riallineamento operativo della review destra IA `Magazzino`
@@ -10282,6 +10532,88 @@ La regola corrente da leggere insieme a questo registro e:
   - cliccare `Apri segnalazione` e verificare che il modale mostri la stessa descrizione reale
   - aprire `/next/dettagliolavori/7c6af494-9b02-4bf2-ac67-c994b39436c0?from=lavori-in-attesa` e verificare la stessa resa su route diretta.
 - SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- ### Voce 2026-04-12 140
+- DATA: 2026-04-12
+- TITOLO MODIFICA: Fix mirato `Analizza` IA interna via deroga stretta del clone barrier
+- OBIETTIVO: sbloccare davvero `Analizza` su `/next/ia/interna` autorizzando solo il `POST` gia esistente verso `estrazioneDocumenti`, senza widening generico del barrier e senza toccare UI, writer business o altri moduli.
+- FILE TOCCATI:
+  - `src/utils/cloneWriteBarrier.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/fonti-pronte/STATO_ATTUALE_PROGETTO.md`
+  - `docs/fonti-pronte/CONTEXT_CLAUDE.md`
+  - `docs/fonti-pronte/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/fonti-pronte/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/fonti-pronte/CHECKLIST_IA_INTERNA.md`
+  - `docs/fonti-pronte/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260412_141306_ia_interna_fix_analizza_clone_barrier.md`
+  - `docs/continuity-reports/20260412_141306_continuity_ia_interna_fix_analizza_clone_barrier.md`
+- COSA E STATO CAMBIATO:
+  - `src/utils/cloneWriteBarrier.ts`: aggiunta una sola eccezione `fetch.runtime` per pathname `/next/ia/interna`, metodo `POST` ed endpoint esatto `https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti`.
+  - Nessuna wildcard nuova, nessuna apertura per altre route `/next/*`, nessuna deroga nuova su storage, Firestore o writer business.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata.
+  - Lettura/analisi: il motore documentale gia esistente puo tornare a invocare `estrazioneDocumenti` dal clone sulla sola route `/next/ia/interna`.
+  - Scritture: nessuna apertura generale; il barrier resta chiuso su tutti gli altri fetch mutanti non esplicitamente consentiti.
+- COME VERIFICARE:
+  - `npx eslint src/utils/cloneWriteBarrier.ts`
+  - `npm run build`
+  - aprire `/next/ia/interna`
+  - caricare `audit-fattura-mariba.pdf`
+  - cliccare `Analizza`
+  - verificare in browser che il `POST` verso `estrazioneDocumenti` parta davvero e risponda `200`
+  - verificare l'apertura della review documento con CTA `Apri originale`, `Vai a Inventario`, `Torna alla home documentale`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- NOTE:
+  - osservati ma non corretti in questo task errori console preesistenti sui listing Storage Firebase `403` e ricorrenze `Maximum update depth exceeded` durante la review;
+  - tali errori non bloccano piu `Analizza` e non dipendono dalla nuova deroga stretta sul barrier.
+- ### Voce 2026-04-12 139
+- DATA: 2026-04-12
+- TITOLO MODIFICA: IA interna documentale unificata con riuso chirurgico del motore `IADocumenti`
+- OBIETTIVO: trasformare `/next/ia/interna` nell'unico ingresso documentale della NEXT, riusando il motore reale gia presente in `src/pages/IA/IADocumenti.tsx` senza duplicare parser, upload, review, apertura originale o salvataggi.
+- FILE TOCCATI:
+  - `src/pages/IA/IADocumenti.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/fonti-pronte/STATO_ATTUALE_PROGETTO.md`
+  - `docs/fonti-pronte/CONTEXT_CLAUDE.md`
+  - `docs/fonti-pronte/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/fonti-pronte/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/fonti-pronte/CHECKLIST_IA_INTERNA.md`
+  - `docs/fonti-pronte/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260412_115351_ia_interna_documentale_unificata.md`
+  - `docs/continuity-reports/20260412_115351_continuity_ia_interna_documentale_unificata.md`
+- COSA E STATO CAMBIATO:
+  - `src/pages/IA/IADocumenti.tsx`: estratto il hook `useIADocumentiEngine()` e tipizzate le parti riusabili del motore reale; la pagina legacy continua a usare lo stesso motore, senza redesign o cambio business del flusso legacy.
+  - `src/next/NextInternalAiPage.tsx`: prima vista trasformata in shell documentale unificata con header sintetico, colonna `Ingresso unico`, tab `Inbox`, `Da verificare`, `Salvati`, `Chat IA`, review a 3 colonne e storico con `Apri originale`, `Riapri review`, `Vai a`.
+  - `src/next/NextIADocumentiPage.tsx`: declassata a superficie secondaria/storico del motore reale, con CTA esplicita verso `/next/ia/interna`.
+  - `src/next/internal-ai/internal-ai.css`: aggiunti gli stili della nuova gerarchia documentale e nascosti i pannelli tecnici/chat non attivi nella prima vista.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il workflow documentale non passa piu dalla chat come superficie principale; la chat resta solo come tab secondaria.
+  - Lettura: il clone riusa il motore reale di `IADocumenti` per archivio, review e apertura originale; nessun secondo motore documentale introdotto.
+  - Scritture: nessuna apertura nuova su rules/backend; i salvataggi restano quelli gia esistenti nel motore `IADocumenti`.
+- COME VERIFICARE:
+  - `npx eslint src/pages/IA/IADocumenti.tsx src/next/NextInternalAiPage.tsx src/next/NextIADocumentiPage.tsx`
+  - `npm run build`
+  - aprire `/next/ia/interna` e verificare la shell `Ingresso unico documenti` con tab `Inbox`, `Da verificare`, `Salvati`, `Chat IA`
+  - cliccare `Apri storico` e verificare filtri, `Riapri review`, `Vai a`
+  - da uno storico salvato verificare `Vai al dossier` e `Apri originale`
+  - aprire `/next/ia/documenti` e verificare che la pagina mostri storico/strumenti secondari e CTA `Apri IA interna`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+- NOTE:
+  - verificati davvero nel browser `Apri storico`, `Riapri review`, `Vai al dossier` su `/next/dossier/TI313387` e `Apri originale` in tab separata;
+  - restano `DA VERIFICARE` i nuovi upload live end-to-end su tutti i rami finali con file non ancora presenti nel dataset corrente.
 - ### Voce 2026-04-08 142
 - DATA: 2026-04-08
 - TITOLO MODIFICA: Riga `Data / KM-Ore / Fornitore` a larghezze fisse in `Manutenzioni` NEXT

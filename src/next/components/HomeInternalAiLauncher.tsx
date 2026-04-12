@@ -1,273 +1,223 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
-import NextInternalAiPage from "../NextInternalAiPage";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  NEXT_IA_DOCUMENTI_PATH,
+  NEXT_INTERNAL_AI_PATH,
+} from "../nextStructuralPaths";
+import "../internal-ai/internal-ai.css";
 
-const overlayStyle: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 1400,
-  background: "rgba(15, 23, 42, 0.72)",
-  backdropFilter: "blur(12px)",
-  padding: "clamp(16px, 3vw, 28px)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  overflow: "hidden",
-};
+type IATipoDocumento =
+  | "fattura"
+  | "libretto"
+  | "cisterna"
+  | "preventivo"
+  | "manutenzione";
 
-const sheetStyle: CSSProperties = {
-  width: "min(1040px, calc(100vw - 32px))",
-  height: "min(94dvh, 920px)",
-  maxHeight: "calc(100vh - 32px)",
-  borderRadius: 24,
-  background: "linear-gradient(180deg, #fffdf9 0%, #f7f3ec 100%)",
-  boxShadow: "0 36px 100px rgba(15, 23, 42, 0.4)",
-  overflow: "hidden",
-  display: "flex",
-  flexDirection: "column",
-  border: "1px solid rgba(255, 255, 255, 0.3)",
-};
+type IAMenuVoce =
+  | {
+      tipo: IATipoDocumento;
+      label: string;
+      descrizione: string;
+      colore: string;
+      attivo: true;
+    }
+  | {
+      tipo: string;
+      label: string;
+      descrizione: string;
+      attivo: false;
+    };
 
-const toolbarStyle: CSSProperties = {
-  position: "sticky",
-  top: 0,
-  zIndex: 1,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "16px 20px",
-  borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
-  background: "rgba(255, 252, 245, 0.96)",
-};
+const ACTIVE_MENU_ITEMS: IAMenuVoce[] = [
+  {
+    tipo: "fattura",
+    label: "Fattura / DDT",
+    descrizione: "Allega e analizza con IA",
+    colore: "#185fa5",
+    attivo: true,
+  },
+  {
+    tipo: "libretto",
+    label: "Libretto mezzo",
+    descrizione: "Estrai dati carta di circolazione",
+    colore: "#0f6e56",
+    attivo: true,
+  },
+  {
+    tipo: "cisterna",
+    label: "Cisterna Caravate",
+    descrizione: "Schede test e bollettini",
+    colore: "#854f0b",
+    attivo: true,
+  },
+  {
+    tipo: "preventivo",
+    label: "Preventivo fornitore",
+    descrizione: "Allega e archivia",
+    colore: "#993556",
+    attivo: true,
+  },
+  {
+    tipo: "manutenzione",
+    label: "Documento manutenzione",
+    descrizione: "Allega e collega al mezzo",
+    colore: "#3b6d11",
+    attivo: true,
+  },
+];
 
-const launcherRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-end",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const plusMenuStyle: CSSProperties = {
-  position: "absolute",
-  right: 0,
-  top: "calc(100% + 8px)",
-  minWidth: 220,
-  padding: 10,
-  borderRadius: 14,
-  background: "#ffffff",
-  boxShadow: "0 14px 42px rgba(15, 23, 42, 0.18)",
-  border: "1px solid rgba(148, 163, 184, 0.22)",
-  display: "grid",
-  gap: 8,
-  zIndex: 5,
-};
-
-const modalBodyStyle: CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  overflow: "hidden",
-  background: "transparent",
-};
+const INACTIVE_MENU_ITEMS: IAMenuVoce[] = [
+  {
+    tipo: "analisi-danni",
+    label: "Analisi Danni",
+    descrizione: "In arrivo",
+    attivo: false,
+  },
+  {
+    tipo: "diagnostica-ia",
+    label: "Diagnostica IA",
+    descrizione: "In arrivo",
+    attivo: false,
+  },
+];
 
 export default function HomeInternalAiLauncher() {
-  const [draftPrompt, setDraftPrompt] = useState("");
-  const [draftAttachments, setDraftAttachments] = useState<File[]>([]);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const menuContainerRef = useRef<HTMLDivElement | null>(null);
-  const modalDraftKey = useMemo(
-    () => `${draftPrompt.trim()}|${draftAttachments.map((file) => file.name).join("|")}`,
-    [draftAttachments, draftPrompt],
+  const navigate = useNavigate();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [prompt, setPrompt] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const allMenuItems = useMemo(
+    () => [...ACTIVE_MENU_ITEMS, ...INACTIVE_MENU_ITEMS],
+    [],
   );
 
   useEffect(() => {
-    const handleDocumentClick = (event: MouseEvent) => {
-      if (!menuContainerRef.current) {
-        return;
-      }
-
-      if (event.target instanceof Node && !menuContainerRef.current.contains(event.target)) {
-        setIsMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("click", handleDocumentClick);
-    return () => document.removeEventListener("click", handleDocumentClick);
-  }, []);
-
-  useEffect(() => {
-    if (!isModalOpen) {
-      document.body.style.overflow = "";
+    if (!menuOpen) {
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
     };
-  }, [isModalOpen]);
 
-  const openModal = () => {
-    setIsMenuOpen(false);
-    setIsModalOpen(true);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [menuOpen]);
+
+  const handlePromptSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const initialPrompt = prompt.trim();
+    if (!initialPrompt) {
+      return;
+    }
+
+    navigate(NEXT_INTERNAL_AI_PATH, {
+      state: { initialPrompt },
+    });
   };
 
-  const handleAttachmentSelection = (files: FileList | null) => {
-    const picked = Array.from(files ?? []).slice(0, 6);
-    if (!picked.length) {
-      return;
-    }
-
-    setDraftAttachments((current) => [...current, ...picked].slice(0, 6));
+  const handleUploadTrigger = (tipo: IATipoDocumento) => {
+    navigate(NEXT_INTERNAL_AI_PATH, {
+      state: { triggerUpload: tipo },
+    });
   };
 
   return (
-    <>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          openModal();
-        }}
-        style={{ display: "grid", gap: 12 }}
-      >
-        <div style={launcherRowStyle}>
-          <label className="internal-ai-search__field" style={{ flex: 1, minWidth: 0, margin: 0 }}>
-            <span>Scrivi una richiesta</span>
-            <input
-              value={draftPrompt}
-              onChange={(event) => setDraftPrompt(event.target.value)}
-              placeholder="Scrivi qui la tua richiesta e premi Invio per aprire la IA"
-              className="internal-ai-search__input internal-ai-chat__composer-input"
-            />
-          </label>
+    <div ref={rootRef} className="home-ia-launcher">
+      <div className="home-ia-launcher__header">
+        <div className="home-ia-launcher__title-wrap">
+          <span className="home-ia-launcher__status-dot" aria-hidden="true" />
+          <strong className="home-ia-launcher__title">Assistente IA</strong>
+        </div>
+        <span className="home-ia-launcher__status-pill">Attivo</span>
+      </div>
 
-          <div ref={menuContainerRef} style={{ position: "relative" }}>
+      <form className="home-ia-launcher__composer" onSubmit={handlePromptSubmit}>
+        <div className="home-ia-launcher__composer-row">
+          <div className="home-ia-launcher__menu-wrap">
             <button
               type="button"
-              className="internal-ai-search__button internal-ai-search__button--secondary"
-              onClick={() => setIsMenuOpen((current) => !current)}
-              aria-expanded={isMenuOpen}
-              aria-haspopup="menu"
+              className="home-ia-launcher__menu-toggle"
+              aria-expanded={menuOpen}
+              aria-label="Apri funzioni IA"
+              onClick={() => setMenuOpen((current) => !current)}
             >
               +
             </button>
-            {isMenuOpen ? (
-              <div role="menu" aria-label="Menu allegati" style={plusMenuStyle}>
-                <button
-                  type="button"
-                  className="internal-ai-search__button internal-ai-search__button--secondary"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Allega file
-                </button>
-                <button
-                  type="button"
-                  className="internal-ai-search__button internal-ai-search__button--secondary"
-                  onClick={openModal}
-                >
-                  Apri conversazione
-                </button>
+
+            {menuOpen ? (
+              <div className="home-ia-launcher__menu" role="menu" aria-label="Funzioni IA">
+                {allMenuItems.map((item) =>
+                  item.attivo ? (
+                    <button
+                      key={item.tipo}
+                      type="button"
+                      role="menuitem"
+                      className="home-ia-launcher__menu-item"
+                      onClick={() => handleUploadTrigger(item.tipo)}
+                    >
+                      <span
+                        className="home-ia-launcher__menu-dot"
+                        style={{ backgroundColor: item.colore }}
+                        aria-hidden="true"
+                      />
+                      <span className="home-ia-launcher__menu-copy">
+                        <strong>{item.label}</strong>
+                        <span>{item.descrizione}</span>
+                      </span>
+                    </button>
+                  ) : (
+                    <div
+                      key={item.tipo}
+                      className="home-ia-launcher__menu-item is-disabled"
+                      aria-disabled="true"
+                    >
+                      <span className="home-ia-launcher__menu-dot is-disabled" aria-hidden="true" />
+                      <span className="home-ia-launcher__menu-copy">
+                        <strong>{item.label}</strong>
+                        <span>{item.descrizione}</span>
+                      </span>
+                    </div>
+                  ),
+                )}
               </div>
             ) : null}
           </div>
-        </div>
 
-        <div className="internal-ai-search__actions" style={{ justifyContent: "flex-end" }}>
-          <button type="submit" className="internal-ai-search__button">
-            Apri IA
+          <input
+            type="text"
+            className="home-ia-launcher__input"
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Chiedi un report, una targa, un fornitore..."
+            aria-label="Scrivi una richiesta per la IA interna"
+          />
+
+          <button
+            type="submit"
+            className="home-ia-launcher__submit"
+            aria-label="Apri la IA interna con il prompt scritto"
+          >
+            →
           </button>
         </div>
-
-        {draftAttachments.length ? (
-          <div className="internal-ai-chat__attachments">
-            {draftAttachments.map((attachment, index) => (
-              <article
-                key={`${attachment.name}:${attachment.size}:${index}`}
-                className="internal-ai-chat__attachment-row"
-              >
-                <div className="internal-ai-chat__attachment-copy">
-                  <strong>{attachment.name}</strong>
-                  <p className="internal-ai-card__meta">
-                    {attachment.type || "file"} - {(attachment.size / 1024).toFixed(1)} KB
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="internal-ai-chat__reference"
-                  onClick={() =>
-                    setDraftAttachments((current) =>
-                      current.filter((candidate) => candidate !== attachment),
-                    )
-                  }
-                >
-                  Rimuovi
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : null}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="internal-ai-sr-only"
-          accept=".pdf,image/*,text/plain,text/markdown,.txt,.md,.doc,.docx,.odt,.xls,.xlsx,.csv,application/pdf"
-          onChange={(event) => {
-            handleAttachmentSelection(event.currentTarget.files);
-            event.currentTarget.value = "";
-            setIsMenuOpen(false);
-          }}
-        />
       </form>
 
-      {isModalOpen && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="IA interna"
-              style={overlayStyle}
-              onClick={(event) => {
-                if (event.target === event.currentTarget) {
-                  setIsModalOpen(false);
-                }
-              }}
-            >
-              <div style={sheetStyle}>
-                <div style={toolbarStyle}>
-                  <div>
-                    <p className="internal-ai-card__eyebrow" style={{ margin: 0 }}>
-                      IA interna
-                    </p>
-                    <strong>Conversazione rapida dalla Home</strong>
-                  </div>
-                  <button
-                    type="button"
-                    className="internal-ai-search__button internal-ai-search__button--secondary"
-                    onClick={() => setIsModalOpen(false)}
-                  >
-                    Chiudi
-                  </button>
-                </div>
-                <div style={modalBodyStyle}>
-                  <NextInternalAiPage
-                    key={modalDraftKey}
-                    sectionId="overview"
-                    surfaceVariant="home-modal"
-                    autoSubmitInitialChat={Boolean(draftPrompt.trim())}
-                    initialChatInput={draftPrompt}
-                    initialChatAttachments={draftAttachments}
-                  />
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
+      <div className="home-ia-launcher__footer">
+        <span className="home-ia-launcher__footer-copy">5 funzioni attive</span>
+        <button
+          type="button"
+          className="home-ia-launcher__history-link"
+          onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}
+        >
+          Storico →
+        </button>
+      </div>
+    </div>
   );
 }

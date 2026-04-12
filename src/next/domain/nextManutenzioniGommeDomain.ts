@@ -139,6 +139,7 @@ export type NextManutenzioneReadOnlyItem = {
   sourceOrigin: string;
   quality: NextManutenzioneQuality;
   flags: string[];
+  sourceDocumentId?: string | null;
 };
 
 export type NextGommeReadOnlyItem = {
@@ -194,6 +195,7 @@ export type NextManutenzioneLegacyViewItem = {
   km?: number;
   ore?: number;
   descrizione?: string;
+  sourceDocumentId?: string | null;
 };
 
 export type NextGommePerAsseStatus = {
@@ -990,6 +992,7 @@ function toMaintenanceItem(item: NextMaintenanceHistoryItem): NextManutenzioneRe
     sourceOrigin: item.sourceOrigin,
     quality: item.quality,
     flags: dedupeFlags(flags),
+    sourceDocumentId: item.sourceDocumentId ?? null,
   };
 }
 
@@ -1436,6 +1439,7 @@ export function mapNextManutenzioniItemsToLegacyView(
     km: item.km ?? undefined,
     ore: item.ore ?? undefined,
     descrizione: buildStructuredMaintenanceDescription(item) ?? undefined,
+    sourceDocumentId: item.sourceDocumentId ?? undefined,
   }));
 }
 

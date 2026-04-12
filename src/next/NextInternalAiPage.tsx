@@ -1,12 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  NEXT_CISTERNA_IA_PATH,
+  NEXT_HOME_PATH,
   NEXT_INTERNAL_AI_ARTIFACTS_PATH,
   NEXT_INTERNAL_AI_AUDIT_PATH,
   NEXT_INTERNAL_AI_PATH,
   NEXT_INTERNAL_AI_REQUESTS_PATH,
   NEXT_INTERNAL_AI_SESSIONS_PATH,
+  NEXT_IA_DOCUMENTI_PATH,
+  NEXT_IA_LIBRETTO_PATH,
+  buildNextDossierPreventiviPath,
+  buildNextMagazzinoPath,
+  buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
+import {
+  readNextIADocumentiArchiveSnapshot,
+  type NextIADocumentiArchiveItem,
+} from "./domain/nextDocumentiCostiDomain";
+import {
+  useIADocumentiEngine,
+  type CategoriaArchivio,
+  type DocumentoAnalizzato,
+  type TipoDocumento,
+} from "../pages/IA/IADocumenti";
 import {
   archiveInternalAiArtifact,
   readInternalAiScaffoldSnapshot,
@@ -176,6 +193,18 @@ type NextInternalAiPageProps = {
   autoSubmitInitialChat?: boolean;
 };
 
+type InternalAiLauncherTriggerUpload =
+  | "fattura"
+  | "libretto"
+  | "cisterna"
+  | "preventivo"
+  | "manutenzione";
+
+type InternalAiLauncherNavigationState = {
+  initialPrompt?: string;
+  triggerUpload?: InternalAiLauncherTriggerUpload;
+} | null;
+
 type UnifiedConsoleScopeFilter =
   | "autisti"
   | "quadro"
@@ -196,6 +225,397 @@ type UnifiedConsoleScopeFilter =
   | "attenzione_oggi";
 
 type UnifiedConsoleOutputPreference = "thread" | "modale" | "pdf" | "report";
+
+type InternalAiUnifiedDocumentTab = "inbox" | "verify" | "saved" | "chat";
+type InternalAiUnifiedExpectedDocumentType = "FATTURA" | "PREVENTIVO" | "MANUTENZIONE" | "GENERICO";
+type InternalAiUnifiedHistoryFilter =
+  | "tutti"
+  | "preventivi"
+  | "fatture"
+  | "manutenzioni"
+  | "magazzino"
+  | "da_verificare";
+type InternalAiUnifiedDestination =
+  | "magazzino_inventario"
+  | "mezzo_manutenzioni"
+  | "mezzo_preventivi"
+  | "archivio_generico"
+  | "review";
+
+type InternalAiUnifiedDestinationSummary = {
+  destination: InternalAiUnifiedDestination;
+  categoriaArchivio: CategoriaArchivio;
+  label: string;
+  reason: string;
+  routePath: string | null;
+  routeCta: string;
+  preferredTab: InternalAiUnifiedDocumentTab;
+};
+
+const INTERNAL_AI_UNIFIED_TAB_LABELS: Record<InternalAiUnifiedDocumentTab, string> = {
+  inbox: "Inbox",
+  verify: "Da verificare",
+  saved: "Salvati",
+  chat: "Chat IA",
+};
+
+const INTERNAL_AI_UNIFIED_HISTORY_FILTER_LABELS: Record<InternalAiUnifiedHistoryFilter, string> = {
+  tutti: "Tutti",
+  preventivi: "Preventivi",
+  fatture: "Fatture",
+  manutenzioni: "Manutenzioni",
+  magazzino: "Magazzino",
+  da_verificare: "Da verificare",
+};
+
+const INTERNAL_AI_FUNCTION_MODULES = [
+  {
+    id: "documenti",
+    title: "Documenti IA",
+    description: "Fatture, DDT, preventivi",
+    status: "In uso",
+    tone: "is-in-use",
+    accent: "#185fa5",
+  },
+  {
+    id: "libretto",
+    title: "Libretto mezzo",
+    description: "Carta di circolazione",
+    status: "Attivo",
+    tone: "is-active",
+    accent: "#0f6e56",
+  },
+  {
+    id: "cisterna",
+    title: "Cisterna Caravate",
+    description: "Schede test",
+    status: "Attivo",
+    tone: "is-active",
+    accent: "#854f0b",
+  },
+  {
+    id: "preventivi",
+    title: "Preventivi",
+    description: "Offerte fornitori",
+    status: "Attivo",
+    tone: "is-active",
+    accent: "#993556",
+  },
+  {
+    id: "magazzino",
+    title: "Magazzino",
+    description: "Materiali e tabelle",
+    status: "Attivo",
+    tone: "is-active",
+    accent: "#3b6d11",
+  },
+] as const;
+
+function mapExpectedDocumentTypeToArchivio(
+  expectedType: InternalAiUnifiedExpectedDocumentType,
+): CategoriaArchivio {
+  if (expectedType === "PREVENTIVO" || expectedType === "MANUTENZIONE") return "MEZZO";
+  return "GENERICO";
+}
+
+function mapLauncherUploadToExpectedDocumentType(
+  triggerUpload: Exclude<InternalAiLauncherTriggerUpload, "libretto" | "cisterna">,
+): InternalAiUnifiedExpectedDocumentType {
+  if (triggerUpload === "preventivo") {
+    return "PREVENTIVO";
+  }
+  if (triggerUpload === "manutenzione") {
+    return "MANUTENZIONE";
+  }
+  return "FATTURA";
+}
+
+function mapUnifiedDestinationToArchivio(
+  destination: InternalAiUnifiedDestination,
+): CategoriaArchivio {
+  if (destination === "magazzino_inventario") return "MAGAZZINO";
+  if (destination === "mezzo_manutenzioni" || destination === "mezzo_preventivi") return "MEZZO";
+  return "GENERICO";
+}
+
+function normalizeUnifiedTipoDocumento(tipo: string | null | undefined): TipoDocumento | "" {
+  const normalized = String(tipo ?? "")
+    .trim()
+    .toUpperCase();
+  if (normalized === "PREVENTIVO" || normalized === "FATTURA" || normalized === "MAGAZZINO") {
+    return normalized;
+  }
+  if (normalized === "GENERICO") return "GENERICO";
+  return "";
+}
+
+function buildUnifiedDocumentDestinationSummary(input: {
+  expectedType: InternalAiUnifiedExpectedDocumentType;
+  results: DocumentoAnalizzato | null;
+  targa: string;
+}): InternalAiUnifiedDestinationSummary {
+  const normalizedTipo = normalizeUnifiedTipoDocumento(input.results?.tipoDocumento);
+  const hasRows = Boolean(input.results?.voci?.length);
+  const hasTarga = Boolean(input.targa);
+
+  if (
+    input.expectedType === "PREVENTIVO" ||
+    normalizedTipo === "PREVENTIVO" ||
+    Boolean(input.results?.riferimentoPreventivoNumero)
+  ) {
+    if (hasTarga) {
+      return {
+        destination: "mezzo_preventivi",
+        categoriaArchivio: "MEZZO",
+        label: `Dossier ${input.targa} -> Preventivi`,
+        reason:
+          "Il documento e trattato come preventivo per targa: resta nel motore Documenti IA ma il punto di arrivo utente e il dossier del mezzo gia aperto sulla sezione Preventivi.",
+        routePath: buildNextDossierPreventiviPath(input.targa),
+        routeCta: "Vai al preventivo",
+        preferredTab: "inbox",
+      };
+    }
+    return {
+      destination: "review",
+      categoriaArchivio: "GENERICO",
+      label: "Review / Da verificare",
+      reason:
+        "Manca una targa affidabile: il documento resta in review finche non viene scelto il mezzo corretto.",
+      routePath: null,
+      routeCta: "Riapri review",
+      preferredTab: "verify",
+    };
+  }
+
+  if (
+    input.expectedType === "MANUTENZIONE" ||
+    (normalizedTipo === "FATTURA" && hasTarga) ||
+    (input.results?.categoriaArchivio === "MEZZO" && hasTarga)
+  ) {
+    if (hasTarga) {
+      return {
+        destination: "mezzo_manutenzioni",
+        categoriaArchivio: "MEZZO",
+        label: `Manutenzioni ${input.targa}`,
+        reason:
+          "La fattura resta nel motore Documenti IA ma il contesto utente corretto e il modulo Manutenzioni gia contestualizzato sulla targa giusta.",
+        routePath: buildNextManutenzioniPath(input.targa),
+        routeCta: "Vai a Manutenzioni",
+        preferredTab: "inbox",
+      };
+    }
+    return {
+      destination: "review",
+      categoriaArchivio: "GENERICO",
+      label: "Review / Da verificare",
+      reason:
+        "Il documento sembra manutentivo ma non espone ancora una targa affidabile. Serve una decisione manuale.",
+      routePath: null,
+      routeCta: "Riapri review",
+      preferredTab: "verify",
+    };
+  }
+
+  if (
+    input.results?.categoriaArchivio === "MAGAZZINO" ||
+    normalizedTipo === "MAGAZZINO" ||
+    (input.expectedType === "FATTURA" && !hasTarga && hasRows)
+  ) {
+    return {
+      destination: "magazzino_inventario",
+      categoriaArchivio: "MAGAZZINO",
+      label: "Magazzino -> Inventario",
+      reason:
+        "Le righe lette sono coerenti con materiali di magazzino: il documento resta archiviato ma il punto di consultazione e Inventario.",
+      routePath: buildNextMagazzinoPath("inventario"),
+      routeCta: "Vai a Inventario",
+      preferredTab: "inbox",
+    };
+  }
+
+  if (input.expectedType === "GENERICO" || normalizedTipo === "GENERICO") {
+    return {
+      destination: "archivio_generico",
+      categoriaArchivio: "GENERICO",
+      label: "Archivio generico / Documenti IA",
+      reason:
+        "Il documento non appartiene a un flusso targa o magazzino forte: viene mantenuto nel motore Documenti IA come archivio generico.",
+      routePath: NEXT_IA_DOCUMENTI_PATH,
+      routeCta: "Vai a Documenti IA",
+      preferredTab: "saved",
+    };
+  }
+
+  return {
+    destination: "review",
+    categoriaArchivio: "GENERICO",
+    label: "Review / Da verificare",
+    reason:
+      "Il documento non ha ancora un instradamento affidabile verso magazzino o targa. Serve una decisione utente prima del salvataggio.",
+    routePath: null,
+    routeCta: "Riapri review",
+    preferredTab: "verify",
+  };
+}
+
+function buildArchiveDocumentDestinationSummary(
+  item: NextIADocumentiArchiveItem,
+): InternalAiUnifiedDestinationSummary {
+  if (item.daVerificare) {
+    return {
+      destination: "review",
+      categoriaArchivio: "GENERICO",
+      label: "Review / Da verificare",
+      reason: "Il documento e marcato come da verificare nello storico reale del motore Documenti IA.",
+      routePath: null,
+      routeCta: "Riapri review",
+      preferredTab: "verify",
+    };
+  }
+
+  if (item.categoriaArchivio === "MAGAZZINO" || normalizeUnifiedTipoDocumento(item.tipoDocumento) === "MAGAZZINO") {
+    return {
+      destination: "magazzino_inventario",
+      categoriaArchivio: "MAGAZZINO",
+      label: "Magazzino -> Inventario",
+      reason: "Documento archiviato nel ramo magazzino del motore Documenti IA.",
+      routePath: buildNextMagazzinoPath("inventario"),
+      routeCta: "Vai a Inventario",
+      preferredTab: "saved",
+    };
+  }
+
+  if (item.targa && normalizeUnifiedTipoDocumento(item.tipoDocumento) === "PREVENTIVO") {
+    return {
+      destination: "mezzo_preventivi",
+      categoriaArchivio: "MEZZO",
+      label: `Dossier ${item.targa} -> Preventivi`,
+      reason:
+        "Preventivo associato a targa: il punto di consultazione utente e il dossier del mezzo gia aperto sulla sezione Preventivi.",
+      routePath: buildNextDossierPreventiviPath(item.targa),
+      routeCta: "Vai al preventivo",
+      preferredTab: "saved",
+    };
+  }
+
+  if (item.targa) {
+    return {
+      destination: "mezzo_manutenzioni",
+      categoriaArchivio: "MEZZO",
+      label: `Manutenzioni ${item.targa}`,
+      reason:
+        "Documento mezzo associato a targa: il punto di arrivo utente resta il modulo Manutenzioni contestualizzato sul mezzo corretto.",
+      routePath: buildNextManutenzioniPath(item.targa),
+      routeCta: "Vai a Manutenzioni",
+      preferredTab: "saved",
+    };
+  }
+
+  return {
+    destination: "archivio_generico",
+    categoriaArchivio: "GENERICO",
+    label: "Archivio generico / Documenti IA",
+    reason: "Documento generico conservato nello storico del motore Documenti IA.",
+    routePath: NEXT_IA_DOCUMENTI_PATH,
+    routeCta: "Vai a Documenti IA",
+    preferredTab: "saved",
+  };
+}
+
+function buildUnifiedDestinationSummaryFromChoice(args: {
+  destination: InternalAiUnifiedDestination;
+  targa: string;
+}): InternalAiUnifiedDestinationSummary {
+  if (args.destination === "magazzino_inventario") {
+    return {
+      destination: "magazzino_inventario",
+      categoriaArchivio: "MAGAZZINO",
+      label: "Magazzino -> Inventario",
+      reason: "Scelta utente: il documento viene mantenuto nel ramo magazzino del motore Documenti IA.",
+      routePath: buildNextMagazzinoPath("inventario"),
+      routeCta: "Vai a Inventario",
+      preferredTab: "saved",
+    };
+  }
+
+  if (args.destination === "mezzo_preventivi" && args.targa) {
+    return {
+      destination: "mezzo_preventivi",
+      categoriaArchivio: "MEZZO",
+      label: `Dossier ${args.targa} -> Preventivi`,
+      reason:
+        "Scelta utente: il documento resta associato al dossier della targa e apre direttamente la sezione Preventivi.",
+      routePath: buildNextDossierPreventiviPath(args.targa),
+      routeCta: "Vai al preventivo",
+      preferredTab: "saved",
+    };
+  }
+
+  if (args.destination === "mezzo_manutenzioni" && args.targa) {
+    return {
+      destination: "mezzo_manutenzioni",
+      categoriaArchivio: "MEZZO",
+      label: `Manutenzioni ${args.targa}`,
+      reason:
+        "Scelta utente: il documento resta associato al modulo Manutenzioni, aperto direttamente sulla targa corretta.",
+      routePath: buildNextManutenzioniPath(args.targa),
+      routeCta: "Vai a Manutenzioni",
+      preferredTab: "saved",
+    };
+  }
+
+  if (args.destination === "archivio_generico") {
+    return {
+      destination: "archivio_generico",
+      categoriaArchivio: "GENERICO",
+      label: "Archivio generico / Documenti IA",
+      reason: "Scelta utente: il documento resta nel motore Documenti IA come archivio generico.",
+      routePath: NEXT_IA_DOCUMENTI_PATH,
+      routeCta: "Vai a Documenti IA",
+      preferredTab: "saved",
+    };
+  }
+
+  return {
+    destination: "review",
+    categoriaArchivio: "GENERICO",
+    label: "Review / Da verificare",
+    reason: "Scelta utente: il documento resta in review prima del salvataggio.",
+    routePath: null,
+    routeCta: "Riapri review",
+    preferredTab: "verify",
+  };
+}
+
+function matchesUnifiedHistoryFilter(
+  item: NextIADocumentiArchiveItem,
+  filter: InternalAiUnifiedHistoryFilter,
+): boolean {
+  if (filter === "tutti") return true;
+  if (filter === "da_verificare") return item.daVerificare;
+  if (filter === "magazzino") {
+    return (
+      item.categoriaArchivio === "MAGAZZINO" ||
+      normalizeUnifiedTipoDocumento(item.tipoDocumento) === "MAGAZZINO"
+    );
+  }
+  if (filter === "preventivi") return normalizeUnifiedTipoDocumento(item.tipoDocumento) === "PREVENTIVO";
+  if (filter === "fatture") return normalizeUnifiedTipoDocumento(item.tipoDocumento) === "FATTURA";
+  if (filter === "manutenzioni") {
+    return Boolean(item.targa) && normalizeUnifiedTipoDocumento(item.tipoDocumento) === "FATTURA";
+  }
+  return true;
+}
+
+function buildUnifiedArchiveDocumentTitle(item: NextIADocumentiArchiveItem): string {
+  const baseLabel = item.tipoDocumento || "Documento";
+  const supplier = item.fornitore?.trim();
+  const number = item.numeroDocumento?.trim();
+  if (number && supplier) return `${baseLabel} ${number} - ${supplier}`;
+  if (number) return `${baseLabel} ${number}`;
+  if (supplier) return `${baseLabel} - ${supplier}`;
+  return `${baseLabel} ${item.sourceDocId}`;
+}
 
 type UnifiedRegistryState =
   | {
@@ -3795,6 +4215,7 @@ function NextInternalAiPage({
 }: NextInternalAiPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const documentEngine = useIADocumentiEngine();
   const [snapshotVersion, setSnapshotVersion] = useState(0);
   const snapshot = useMemo(() => {
     void snapshotVersion;
@@ -3825,7 +4246,7 @@ function NextInternalAiPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sectionId, surfaceVariant]);
   const [targaInput, setTargaInput] = useState("");
   const [driverInput, setDriverInput] = useState("");
   const [reportPeriodInput, setReportPeriodInput] = useState<InternalAiReportPeriodInput>(() =>
@@ -3900,9 +4321,11 @@ function NextInternalAiPage({
   const chatMessagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatDocumentProposalPanelRef = useRef<HTMLDivElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const documentUploadInputRef = useRef<HTMLInputElement | null>(null);
   const chatAttachmentsRef = useRef<InternalAiChatAttachment[]>([]);
   const chatMagazzinoInlineContextRef = useRef<InternalAiMagazzinoInlineContext | null>(null);
-  const documentReviewAutoOpenSignatureRef = useRef<string | null>(null);
+  const pendingUnifiedDocumentDefaultRef = useRef(false);
+  const handledLauncherStateRef = useRef<string>("");
   const reportPdfPreviewUrlRef = useRef<string | null>(null);
   const [artifactSearchQuery, setArtifactSearchQuery] = useState(
     () => tracking.sessionState.lastArchiveQuery ?? "",
@@ -3960,6 +4383,121 @@ function NextInternalAiPage({
   const [chatMagazzinoInlineRouteState, setChatMagazzinoInlineRouteState] = useState<
     Record<string, ChatMagazzinoInlineRouteState>
   >({});
+  const {
+    apiKeyExists: documentApiKeyExists,
+    selectedFile: documentSelectedFile,
+    preview: documentPreview,
+    tipoArchivio: documentArchivio,
+    setTipoArchivio: setDocumentArchivio,
+    loading: documentLoading,
+    results: documentResults,
+    setResults: setDocumentResults,
+    errorMessage: documentErrorMessage,
+    setErrorMessage: setDocumentErrorMessage,
+    mezzi: documentMezzi,
+    targaEstrattaIA: documentTargaEstratta,
+    targaSelezionata: documentTargaSelezionata,
+    setTargaSelezionata: setDocumentTargaSelezionata,
+    documentSaved: documentSaved,
+    importingInventario: documentImportingInventario,
+    handleFile: handleDocumentFileSelection,
+    handleAnalyze: handleDocumentAnalyze,
+    handleSave: handleDocumentSave,
+    importaInInventario: importDocumentIntoInventario,
+    handleOpenPdf: handleDocumentOpenPdf,
+    formatImporto: formatDocumentImporto,
+    resetCurrentDocument: resetCurrentDocumentReview,
+  } = documentEngine;
+  const [documentWorkspaceTab, setDocumentWorkspaceTab] =
+    useState<InternalAiUnifiedDocumentTab>("chat");
+  const [documentExpectedType, setDocumentExpectedType] =
+    useState<InternalAiUnifiedExpectedDocumentType>("FATTURA");
+  const [documentArchiveState, setDocumentArchiveState] = useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    items: NextIADocumentiArchiveItem[];
+    message: string | null;
+  }>({
+    status: "idle",
+    items: [],
+    message: null,
+  });
+  const [documentHistoryFilter, setDocumentHistoryFilter] =
+    useState<InternalAiUnifiedHistoryFilter>("tutti");
+  const [documentHistoryOpen, setDocumentHistoryOpen] = useState(false);
+  const [openedHistoryDocumentId, setOpenedHistoryDocumentId] = useState<string | null>(null);
+  const [documentUserDestination, setDocumentUserDestination] =
+    useState<InternalAiUnifiedDestination>("review");
+  const launcherNavigationState = location.state as InternalAiLauncherNavigationState;
+  const requestedHistoryReviewQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const reviewDocumentId = params.get("reviewDocumentId")?.trim() ?? "";
+    if (!reviewDocumentId) {
+      return null;
+    }
+    const reviewSourceKey = params.get("reviewSourceKey")?.trim() ?? null;
+    return {
+      reviewDocumentId,
+      reviewSourceKey,
+    };
+  }, [location.search]);
+
+  useEffect(() => {
+    const initialPrompt = launcherNavigationState?.initialPrompt?.trim() ?? "";
+    const triggerUpload = launcherNavigationState?.triggerUpload ?? "";
+    const signature = `${initialPrompt}::${triggerUpload}`;
+
+    if (!initialPrompt && !triggerUpload) {
+      handledLauncherStateRef.current = "";
+      return;
+    }
+
+    if (handledLauncherStateRef.current === signature) {
+      return;
+    }
+
+    handledLauncherStateRef.current = signature;
+
+    if (initialPrompt) {
+      setChatInput(initialPrompt);
+      setDocumentWorkspaceTab("chat");
+    }
+
+    if (triggerUpload === "libretto") {
+      navigate(NEXT_IA_LIBRETTO_PATH);
+      return;
+    }
+
+    if (triggerUpload === "cisterna") {
+      navigate(NEXT_CISTERNA_IA_PATH);
+      return;
+    }
+
+    if (triggerUpload === "fattura" || triggerUpload === "preventivo" || triggerUpload === "manutenzione") {
+      setDocumentExpectedType(mapLauncherUploadToExpectedDocumentType(triggerUpload));
+      setDocumentWorkspaceTab("chat");
+      window.setTimeout(() => {
+        documentUploadInputRef.current?.click();
+      }, 0);
+    }
+
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash,
+      },
+      {
+        replace: true,
+        state: null,
+      },
+    );
+  }, [
+    launcherNavigationState,
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
   const [repoUnderstandingState, setRepoUnderstandingState] = useState<RepoUnderstandingState>({
     status: "idle",
     message: null,
@@ -4047,7 +4585,7 @@ function NextInternalAiPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sectionId, surfaceVariant]);
 
   async function loadRepoUnderstandingSnapshot(refresh = false) {
     setRepoUnderstandingState({
@@ -4136,6 +4674,32 @@ function NextInternalAiPage({
   }, [repoUnderstandingState.status]);
 
   useEffect(() => {
+    if (sectionId === "overview" && surfaceVariant !== "home-modal") {
+      setChatAttachments((current) => {
+        current.forEach((attachment) => {
+          if (attachment.storageMode === "local_browser_only" && attachment.localObjectUrl) {
+            URL.revokeObjectURL(attachment.localObjectUrl);
+          }
+        });
+        return [];
+      });
+      setChatAttachmentRepositoryState((current) =>
+        current.status === "idle" &&
+        current.items.length === 0 &&
+        current.transport === "non_attivo" &&
+        current.transportMessage === null
+          ? current
+          : {
+              status: "idle",
+              message: null,
+              items: [],
+              transport: "non_attivo",
+              transportMessage: null,
+            },
+      );
+      return;
+    }
+
     let cancelled = false;
 
     void Promise.resolve().then(async () => {
@@ -4186,7 +4750,7 @@ function NextInternalAiPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sectionId, surfaceVariant]);
 
   useEffect(() => {
     chatAttachmentsRef.current = chatAttachments;
@@ -6252,44 +6816,56 @@ function NextInternalAiPage({
     [documentReviewRoutes],
   );
 
-  const documentReviewRouteSignature = useMemo(
-    () => documentReviewRoutes.map((route) => buildDocumentProposalRouteKey(route)).join("|"),
-    [documentReviewRoutes],
-  );
-
   useEffect(() => {
+    if (
+      sectionId === "overview" &&
+      surfaceVariant !== "home-modal" &&
+      documentWorkspaceTab !== "chat"
+    ) {
+      setDocumentReviewModalState((current) =>
+        current.isOpen === false && current.routeKey === null
+          ? current
+          : { isOpen: false, routeKey: null },
+      );
+      return;
+    }
+
     if (chatAttachments.length === 0) {
-      documentReviewAutoOpenSignatureRef.current = null;
-      setDocumentReviewModalState({
-        isOpen: false,
-        routeKey: null,
-      });
+      setDocumentReviewModalState((current) =>
+        current.isOpen === false && current.routeKey === null
+          ? current
+          : { isOpen: false, routeKey: null },
+      );
       setDocumentReviewSelectionState({});
       return;
     }
 
     if (
       chatDocumentProposalState.status !== "ready" ||
-      documentReviewRoutes.length === 0 ||
-      !documentReviewRouteSignature
+      documentReviewRoutes.length === 0
     ) {
       return;
     }
 
-    if (documentReviewAutoOpenSignatureRef.current === documentReviewRouteSignature) {
-      return;
-    }
-
-    documentReviewAutoOpenSignatureRef.current = documentReviewRouteSignature;
-    setDocumentReviewModalState({
-      isOpen: true,
-      routeKey: buildDocumentProposalRouteKey(documentReviewRoutes[0]),
+    setDocumentReviewModalState((current) => {
+      if (!current.isOpen) {
+        return current;
+      }
+      if (!current.routeKey) {
+        return {
+          isOpen: true,
+          routeKey: buildDocumentProposalRouteKey(documentReviewRoutes[0]),
+        };
+      }
+      return current;
     });
   }, [
     chatAttachments.length,
     chatDocumentProposalState.status,
-    documentReviewRouteSignature,
+    documentWorkspaceTab,
     documentReviewRoutes,
+    sectionId,
+    surfaceVariant,
   ]);
 
   useEffect(() => {
@@ -6723,412 +7299,71 @@ function NextInternalAiPage({
       );
     }
 
+    const route = routes[0];
+    const attachment = chatAttachments.find((entry) => entry.id === route.attachmentId) ?? null;
+    const routeKey = buildDocumentProposalRouteKey(route);
+    const summaryFacts = buildDocumentProposalSummaryFacts(route).slice(0, 3);
+    const extractedFacts = buildDocumentProposalExtractedFacts(route).slice(0, 1);
+    const matchFacts = buildDocumentProposalMatchFacts(route).slice(0, 1);
+    const factsLabel = summaryFacts
+      .map((fact) => `${fact.label}: ${fact.value}`)
+      .filter(Boolean)
+      .join(" · ");
+    const secondaryLabel = [...extractedFacts, ...matchFacts]
+      .map((fact) => `${fact.label}: ${fact.value}`)
+      .filter(Boolean)
+      .join(" · ");
+
     return (
       <section ref={chatDocumentProposalPanelRef} className={shellClassName} aria-live="polite">
-        {routes.slice(0, 3).map((route) => {
-          const attachment = chatAttachments.find((entry) => entry.id === route.attachmentId) ?? null;
-          const openPath = route.handoffPayload?.routeTarget ?? route.targetPath;
-          const followupQuestion = buildDocumentRouteFollowupQuestion(route);
-          const actionLabel = buildDocumentRouteActionLabel(route);
-          const classificationLabel = buildDocumentRouteClassificationLabel(route);
-          const baseStatusLabel = buildDocumentProposalStatusLabel(route);
-          const summaryFacts = buildDocumentProposalSummaryFacts(route);
-          const extractedFacts = buildDocumentProposalExtractedFacts(route);
-          const detectedItems = buildDocumentProposalDetectedItemsStructured(route);
-          const matchFacts = buildDocumentProposalMatchFacts(route);
-          const evidenceText =
-            attachment?.textExcerpt?.trim() ||
-            route.rationale.join(" ").trim() ||
-            route.handoffPayload?.motivoInstradamento ||
-            "";
-          const evidenceSupport = [
-            attachment?.note?.trim() || null,
-            attachment ? `Caricato ${formatDateLabel(attachment.uploadedAt)}` : null,
-          ]
-            .filter(Boolean)
-            .join(" | ");
-          const routeKey = buildDocumentProposalRouteKey(route);
-          const inlineWarehouseEnabled = isWarehouseInvoiceDocumentRoute(route);
-          const inlineWarehouseState = inlineWarehouseEnabled
-            ? chatMagazzinoInlineRouteState[routeKey] ?? null
-            : null;
-          const reviewSelection =
-            documentReviewSelectionState[routeKey] ??
-            buildDocumentReviewDefaultSelection({
-              route,
-              inlineWarehouseState,
-            });
-          const reviewDecisionLabel = buildDocumentReviewUserDecisionSummary(reviewSelection);
-          const inlineConfirmLabel =
-            inlineWarehouseState?.resolution?.status === "pronto"
-              ? inlineWarehouseState.resolution.candidate.decision === "riconcilia_senza_carico"
-                ? "Conferma riconciliazione"
-                : "Conferma carico AdBlue"
-              : null;
-          const inlineOutcomeFacts = inlineWarehouseState?.outcome
-            ? buildMagazzinoInlineOutcomeFacts(inlineWarehouseState.outcome)
-            : [];
-          const statusLabel =
-            inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "success"
-              ? "Eseguita inline"
-              : inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "executing"
-                ? "Esecuzione in corso"
-                : baseStatusLabel;
+        <article
+          className={`internal-ai-chat__dispatcher-banner ${
+            route.status === "da_verificare" || route.classification === "documento_ambiguo"
+              ? "is-warning"
+              : "is-ready"
+          }`}
+        >
+          <div className="internal-ai-chat__dispatcher-banner-top">
+            <div className="internal-ai-pill-row">
+              <span className={buildDocumentProposalPillClass(route, "action")}>
+                {buildDocumentRouteClassificationLabel(route)}
+              </span>
+              <span className={buildDocumentProposalPillClass(route, "confidence")}>
+                Confidenza {buildDocumentRouteConfidenceLabel(route)}
+              </span>
+            </div>
+            {routes.length > 1 ? (
+              <span className="internal-ai-pill is-neutral">+{routes.length - 1} allegati</span>
+            ) : null}
+          </div>
 
-          return (
-            <article
-              key={`auto-proposal:${route.attachmentId}:${route.classification}`}
-              className={`internal-ai-chat__document-proposal-card ${
-                route.status === "da_verificare" || route.classification === "documento_ambiguo"
-                  ? "is-warning"
-                  : "is-ready"
-              }`}
+          <strong className="internal-ai-chat__dispatcher-banner-file">{route.fileName}</strong>
+          <p className="internal-ai-card__meta">
+            {factsLabel || "Documento classificato e pronto per la review interna."}
+          </p>
+          <p className="internal-ai-card__meta">
+            {secondaryLabel || buildDocumentProposalActionReason(route)}
+          </p>
+
+          <div className="internal-ai-search__actions internal-ai-chat__dispatcher-banner-actions">
+            <button
+              type="button"
+              className="internal-ai-search__button"
+              onClick={() => openDocumentReviewModal(routeKey)}
             >
-              <div className="internal-ai-chat__document-dossier">
-                <header className="internal-ai-chat__document-dossier-header">
-                  <div className="internal-ai-chat__document-dossier-header-main">
-                    <p className="internal-ai-card__eyebrow">Documento analizzato</p>
-                    <h3 className="internal-ai-chat__document-proposal-title">
-                      {classificationLabel}
-                    </h3>
-                    <p className="internal-ai-chat__document-dossier-file">{route.fileName}</p>
-                  </div>
-                  <div className="internal-ai-chat__document-dossier-header-side">
-                    <div className="internal-ai-pill-row">
-                      <span className={buildDocumentProposalPillClass(route, "status")}>
-                        {statusLabel}
-                      </span>
-                      <span className={buildDocumentProposalPillClass(route, "action")}>
-                        {actionLabel}
-                      </span>
-                      <span className={buildDocumentProposalPillClass(route, "confidence")}>
-                        Confidenza {buildDocumentRouteConfidenceLabel(route)}
-                      </span>
-                    </div>
-                    <div className="internal-ai-chat__document-dossier-meta-grid">
-                      <article className="internal-ai-chat__document-dossier-meta-card">
-                        <span className="internal-ai-chat__document-proposal-label">
-                          Tipo documento rilevato
-                        </span>
-                        <strong>{classificationLabel}</strong>
-                      </article>
-                      <article className="internal-ai-chat__document-dossier-meta-card">
-                        <span className="internal-ai-chat__document-proposal-label">
-                          Stato / esito
-                        </span>
-                        <strong>{statusLabel}</strong>
-                      </article>
-                    </div>
-                  </div>
-                </header>
-
-                <section className="internal-ai-chat__document-dossier-section">
-                  <div className="internal-ai-chat__document-dossier-section-head">
-                    <h4>Riassunto rapido</h4>
-                    <span className="internal-ai-muted">Campi principali letti dal documento</span>
-                  </div>
-                  <div className="internal-ai-chat__document-dossier-summary-grid">
-                    {summaryFacts.map((fact) => (
-                      <article
-                        key={`${route.attachmentId}:${fact.label}`}
-                        className={`internal-ai-chat__document-dossier-fact-card is-${fact.tone ?? "default"}`}
-                      >
-                        <span className="internal-ai-chat__document-proposal-label">{fact.label}</span>
-                        <strong>{fact.value}</strong>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <div className="internal-ai-chat__document-dossier-body">
-                  <div className="internal-ai-chat__document-dossier-main">
-                    <section className="internal-ai-chat__document-dossier-section">
-                      <div className="internal-ai-chat__document-dossier-section-head">
-                        <h4>Cosa ha capito la IA</h4>
-                        <span className="internal-ai-muted">
-                          Proposta guidata, senza cambiare il flusso documentale
-                        </span>
-                      </div>
-                      <div className="internal-ai-chat__document-dossier-interpretation-grid">
-                        <article className="internal-ai-chat__document-dossier-highlight">
-                          <span className="internal-ai-chat__document-proposal-label">
-                            Azione proposta
-                          </span>
-                          <strong>{actionLabel}</strong>
-                          <p className="internal-ai-card__meta">
-                            {buildDocumentProposalActionReason(route)}
-                          </p>
-                        </article>
-                        <article className="internal-ai-chat__document-dossier-highlight is-secondary">
-                          <span className="internal-ai-chat__document-proposal-label">
-                            Cosa non fara
-                          </span>
-                          <strong>{buildDocumentRouteSafetyLabel(route)}</strong>
-                          <p className="internal-ai-card__meta">
-                            {buildDocumentProposalActionBoundary(route)}
-                          </p>
-                        </article>
-                      </div>
-                      {followupQuestion ? (
-                        <div className="internal-ai-chat__document-dossier-alert">
-                          <span className="internal-ai-chat__document-proposal-label">
-                            Domanda per sbloccare
-                          </span>
-                          <strong>{followupQuestion}</strong>
-                        </div>
-                      ) : null}
-                    </section>
-
-                    <section className="internal-ai-chat__document-dossier-section">
-                      <div className="internal-ai-chat__document-dossier-section-head">
-                        <h4>Dati estratti</h4>
-                        <span className="internal-ai-muted">
-                          Valori strutturati disponibili per il modulo target
-                        </span>
-                      </div>
-                      <div className="internal-ai-chat__document-dossier-data-grid">
-                        {extractedFacts.length > 0 ? (
-                          extractedFacts.map((fact) => (
-                            <article
-                              key={`${route.attachmentId}:estratto:${fact.label}`}
-                              className={`internal-ai-chat__document-dossier-data-card is-${fact.tone ?? "default"}`}
-                            >
-                              <span className="internal-ai-chat__document-proposal-label">
-                                {fact.label}
-                              </span>
-                              <strong>{fact.value}</strong>
-                            </article>
-                          ))
-                        ) : (
-                          <article className="internal-ai-chat__document-dossier-data-card is-warning">
-                            <span className="internal-ai-chat__document-proposal-label">
-                              Dati strutturati
-                            </span>
-                            <strong>DA VERIFICARE</strong>
-                            <p className="internal-ai-card__meta">
-                              Il documento non espone ancora campi estratti abbastanza stabili.
-                            </p>
-                          </article>
-                        )}
-                      </div>
-                    </section>
-
-                    <section className="internal-ai-chat__document-dossier-section">
-                      <div className="internal-ai-chat__document-dossier-section-head">
-                        <h4>Righe / materiali trovati</h4>
-                        <span className="internal-ai-muted">
-                          Riferimenti leggibili utili per match e riconciliazione
-                        </span>
-                      </div>
-                      {detectedItems.length > 0 ? (
-                        <div className="internal-ai-chat__document-dossier-items-table">
-                          <div className="internal-ai-chat__document-dossier-items-head">
-                            <span>Descrizione</span>
-                            <span>Quantita</span>
-                            <span>Unita</span>
-                            <span>Fornitore</span>
-                            <span>Esito match</span>
-                            <span>Inventario trovato</span>
-                          </div>
-                          {detectedItems.map((item, index) => (
-                            <article
-                              key={`${route.attachmentId}:item:${item.description}:${index}`}
-                              className={`internal-ai-chat__document-dossier-items-row is-${item.tone ?? "default"}`}
-                            >
-                              <strong>{item.description}</strong>
-                              <span>{item.quantity}</span>
-                              <span>{item.unit}</span>
-                              <span>{item.supplier}</span>
-                              <span>{item.match}</span>
-                              <span>{item.inventory}</span>
-                            </article>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="internal-ai-chat__document-dossier-empty">
-                          Nessuna riga strutturata pronta: il clone mostra solo il riferimento documentale
-                          prudente.
-                        </div>
-                      )}
-                    </section>
-                  </div>
-
-                  <aside className="internal-ai-chat__document-dossier-side">
-                    <section className="internal-ai-chat__document-dossier-section">
-                      <div className="internal-ai-chat__document-dossier-section-head">
-                        <h4>Match e riconciliazione</h4>
-                        <span className="internal-ai-muted">
-                          Come il documento si collega al Magazzino
-                        </span>
-                      </div>
-                      <div className="internal-ai-chat__document-dossier-match-stack">
-                        {matchFacts.map((fact) => (
-                          <article
-                            key={`${route.attachmentId}:match:${fact.label}`}
-                            className={`internal-ai-chat__document-dossier-data-card is-${fact.tone ?? "default"}`}
-                          >
-                            <span className="internal-ai-chat__document-proposal-label">{fact.label}</span>
-                            <strong>{fact.value}</strong>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-
-                    <section className="internal-ai-chat__document-dossier-section">
-                      <div className="internal-ai-chat__document-dossier-section-head">
-                        <h4>Evidenza / testo letto</h4>
-                        <span className="internal-ai-muted">
-                          Supporto di lettura, non testo dominante
-                        </span>
-                      </div>
-                      <div className="internal-ai-chat__document-dossier-evidence">
-                        <pre>{evidenceText || "Nessun estratto testuale disponibile nel thread corrente."}</pre>
-                        {evidenceSupport ? (
-                          <p className="internal-ai-card__meta">{evidenceSupport}</p>
-                        ) : null}
-                      </div>
-                    </section>
-
-                    <section className="internal-ai-chat__document-dossier-final-box">
-                      <div className="internal-ai-chat__document-dossier-section-head">
-                        <h4>Azione finale</h4>
-                        <span className="internal-ai-muted">
-                          {inlineWarehouseEnabled
-                            ? inlineWarehouseState?.executionStatus === "success"
-                              ? "Esito disponibile nella review documento full screen"
-                              : "La decisione finale si prende nella review documento full screen"
-                            : "La decisione resta sempre all'utente nella review documento"}
-                        </span>
-                      </div>
-                      <div className="internal-ai-chat__document-dossier-final-content">
-                        <div className="internal-ai-pill-row">
-                          <span className={buildDocumentProposalPillClass(route, "action")}>
-                            {actionLabel}
-                          </span>
-                          <span className={buildDocumentProposalPillClass(route, "status")}>
-                            {statusLabel}
-                          </span>
-                          {inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "success" ? (
-                            <span className="internal-ai-pill is-positive">Eseguita inline</span>
-                          ) : null}
-                          {inlineWarehouseEnabled && inlineWarehouseState?.executionStatus === "executing" ? (
-                            <span className="internal-ai-pill is-neutral">Esecuzione in corso</span>
-                          ) : null}
-                        </div>
-                        <p className="internal-ai-card__meta">
-                          {inlineWarehouseEnabled
-                            ? inlineWarehouseState?.executionStatus === "success" &&
-                              inlineWarehouseState.outcome
-                              ? inlineWarehouseState.outcome.message
-                              : "Apri la review documento full screen per vedere il file grande, verificare i campi e scegliere l'azione operativa."
-                            : route.status === "da_verificare"
-                              ? "Il caso resta prudente: apri la review documento e poi decidi se fermarti su `DA VERIFICARE`."
-                              : "La review documento full screen ti mostra il file e i campi estratti prima di qualsiasi scelta."}
-                        </p>
-                        {!inlineWarehouseState?.outcome ? (
-                          <div className="internal-ai-chat__document-dossier-inline-state is-neutral">
-                            <strong>Scelta utente proposta</strong>
-                            <p className="internal-ai-card__meta">{reviewDecisionLabel}</p>
-                          </div>
-                        ) : null}
-                        {inlineWarehouseEnabled ? (
-                          inlineWarehouseState?.status === "loading" ? (
-                            <div className="internal-ai-chat__document-dossier-inline-state is-neutral">
-                              <strong>Verifica inline in corso</strong>
-                              <p className="internal-ai-card__meta">
-                                Sto controllando match documento, UDM e anti-doppio-carico prima di
-                                proporti la conferma inline.
-                              </p>
-                            </div>
-                          ) : inlineWarehouseState?.status === "error" ? (
-                            <div className="internal-ai-chat__document-dossier-inline-state is-warning">
-                              <strong>Verifica inline non disponibile</strong>
-                              <p className="internal-ai-card__meta">
-                                {inlineWarehouseState.message ??
-                                  "Il controllo inline non e disponibile in questo momento."}
-                              </p>
-                            </div>
-                          ) : inlineWarehouseState?.executionStatus === "error" ? (
-                            <div className="internal-ai-chat__document-dossier-inline-state is-warning">
-                              <strong>Esecuzione inline non completata</strong>
-                              <p className="internal-ai-card__meta">
-                                {inlineWarehouseState.message ??
-                                  "Il tentativo inline non e andato a buon fine."}
-                              </p>
-                            </div>
-                          ) : inlineWarehouseState?.outcome ? (
-                            <div className="internal-ai-chat__document-dossier-inline-result">
-                              <div className="internal-ai-chat__document-dossier-inline-result-grid">
-                                {inlineOutcomeFacts.map((fact) => (
-                                  <article
-                                    key={`${routeKey}:inline-outcome:${fact.label}`}
-                                    className={`internal-ai-chat__document-dossier-data-card is-${fact.tone ?? "default"}`}
-                                  >
-                                    <span className="internal-ai-chat__document-proposal-label">
-                                      {fact.label}
-                                    </span>
-                                    <strong>{fact.value}</strong>
-                                  </article>
-                                ))}
-                              </div>
-                            </div>
-                          ) : inlineWarehouseState?.resolution?.status === "da_verificare" ? (
-                            <div className="internal-ai-chat__document-dossier-inline-state is-warning">
-                              <strong>DA VERIFICARE</strong>
-                              <p className="internal-ai-card__meta">
-                                {inlineWarehouseState.resolution.message}
-                              </p>
-                            </div>
-                          ) : inlineWarehouseState?.resolution?.status === "pronto" ? (
-                            <div className="internal-ai-chat__document-dossier-inline-state is-positive">
-                              <strong>Presidio inline disponibile</strong>
-                              <p className="internal-ai-card__meta">
-                                {inlineConfirmLabel}: {inlineWarehouseState.resolution.message}
-                              </p>
-                            </div>
-                          ) : null
-                        ) : null}
-                        <div className="internal-ai-search__actions internal-ai-chat__document-proposal-actions">
-                          <button
-                            type="button"
-                            className="internal-ai-search__button"
-                            onClick={() => openDocumentReviewModal(routeKey)}
-                          >
-                            {inlineWarehouseState?.outcome
-                              ? "Riapri review documento"
-                              : "Apri review documento"}
-                          </button>
-                          <button
-                            type="button"
-                            className={
-                              route.status === "da_verificare" || route.classification === "documento_ambiguo"
-                                ? "internal-ai-search__button internal-ai-search__button--secondary"
-                                : inlineWarehouseEnabled
-                                  ? "internal-ai-search__button internal-ai-search__button--secondary"
-                                  : "internal-ai-search__button"
-                            }
-                            onClick={() => navigate(openPath)}
-                          >
-                            {buildDocumentRouteOpenLabel(route)}
-                          </button>
-                          <span className="internal-ai-muted">
-                            {inlineWarehouseEnabled
-                              ? inlineWarehouseState?.outcome
-                                ? "La review full screen ha gia chiuso il caso: Apri in Magazzino solo per approfondimenti."
-                                : inlineWarehouseState?.resolution?.status === "da_verificare"
-                                  ? "La review resta prudente: nessuna scrittura inline senza match forte."
-                                  : "La review full screen puo eseguire solo `riconcilia_senza_carico` o `carica_stock_adblue`; Magazzino resta fallback."
-                              : "Nessuna azione parte da qui senza una decisione utente esplicita nella review documento."}
-                          </span>
-                        </div>
-                      </div>
-                    </section>
-                  </aside>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+              Apri review →
+            </button>
+            {attachment ? (
+              <button
+                type="button"
+                className="internal-ai-search__button internal-ai-search__button--secondary"
+                onClick={() => handleOpenChatAttachment(attachment)}
+              >
+                Apri originale
+              </button>
+            ) : null}
+          </div>
+        </article>
       </section>
     );
   };
@@ -7732,6 +7967,775 @@ function NextInternalAiPage({
     });
   };
 
+  const reloadUnifiedDocumentArchive = useCallback(async () => {
+    setDocumentArchiveState((current) => ({
+      status: "loading",
+      items: current.items,
+      message: null,
+    }));
+
+    try {
+      const snapshot = await readNextIADocumentiArchiveSnapshot({ includeCloneDocuments: false });
+      setDocumentArchiveState({
+        status: "ready",
+        items: snapshot.items,
+        message: snapshot.limitations[0] ?? null,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Errore non previsto durante il caricamento dello storico documentale.";
+      setDocumentArchiveState({
+        status: "error",
+        items: [],
+        message,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadUnifiedDocumentArchive();
+  }, [reloadUnifiedDocumentArchive]);
+
+  useEffect(() => {
+    const nextArchivio = mapExpectedDocumentTypeToArchivio(documentExpectedType);
+    if (!documentResults) {
+      setDocumentArchivio(nextArchivio);
+    }
+  }, [documentExpectedType, documentResults, setDocumentArchivio]);
+
+  const documentResolvedTarga = useMemo(
+    () =>
+      documentEngine.fmtTarga(
+        documentTargaSelezionata || documentResults?.targa || documentTargaEstratta || "",
+      ),
+    [documentEngine, documentResults?.targa, documentTargaEstratta, documentTargaSelezionata],
+  );
+
+  const documentMatchedMezzo = useMemo(
+    () => documentEngine.exactMatch(documentResolvedTarga, documentMezzi),
+    [documentEngine, documentMezzi, documentResolvedTarga],
+  );
+
+  const documentNeedsManualTarga = Boolean(documentResolvedTarga) && !documentMatchedMezzo;
+
+  const documentSuggestedDestination = useMemo(
+    () =>
+      buildUnifiedDocumentDestinationSummary({
+        expectedType: documentExpectedType,
+        results: documentResults,
+        targa: documentResolvedTarga,
+      }),
+    [documentExpectedType, documentResolvedTarga, documentResults],
+  );
+
+  useEffect(() => {
+    if (!documentResults || !pendingUnifiedDocumentDefaultRef.current) {
+      return;
+    }
+
+    pendingUnifiedDocumentDefaultRef.current = false;
+    setDocumentUserDestination(documentSuggestedDestination.destination);
+    setDocumentArchivio(documentSuggestedDestination.categoriaArchivio);
+    setDocumentWorkspaceTab(documentSuggestedDestination.preferredTab);
+    setOpenedHistoryDocumentId(null);
+  }, [documentResults, documentSuggestedDestination, setDocumentArchivio]);
+
+  const filteredUnifiedHistoryItems = useMemo(
+    () =>
+      documentArchiveState.items
+        .filter((item) => matchesUnifiedHistoryFilter(item, documentHistoryFilter))
+        .sort((left, right) => (right.sortTimestamp ?? 0) - (left.sortTimestamp ?? 0)),
+    [documentArchiveState.items, documentHistoryFilter],
+  );
+
+  const historyVerifyItems = useMemo(
+    () =>
+      documentArchiveState.items.filter(
+        (item) => matchesUnifiedHistoryFilter(item, "da_verificare") || item.valuta === "UNKNOWN",
+      ),
+    [documentArchiveState.items],
+  );
+
+  const historySavedItems = useMemo(
+    () => documentArchiveState.items.filter((item) => !item.daVerificare),
+    [documentArchiveState.items],
+  );
+
+  const openedHistoryDocument = useMemo(
+    () =>
+      openedHistoryDocumentId
+        ? documentArchiveState.items.find((item) => item.id === openedHistoryDocumentId) ?? null
+        : null,
+    [documentArchiveState.items, openedHistoryDocumentId],
+  );
+
+  const activeReviewDestination = useMemo(
+    () =>
+      documentResults
+        ? buildUnifiedDocumentDestinationSummary({
+            expectedType: documentExpectedType,
+            results: documentResults,
+            targa: documentResolvedTarga,
+          })
+        : openedHistoryDocument
+          ? buildArchiveDocumentDestinationSummary(openedHistoryDocument)
+          : null,
+    [documentExpectedType, documentResolvedTarga, documentResults, openedHistoryDocument],
+  );
+
+  const activeHistoryReviewDestination = openedHistoryDocument
+    ? buildArchiveDocumentDestinationSummary(openedHistoryDocument)
+    : null;
+
+  useEffect(() => {
+    if (documentArchiveState.status !== "ready" || !requestedHistoryReviewQuery) {
+      return;
+    }
+
+    const requestedItem = documentArchiveState.items.find((item) => {
+      const matchesId =
+        item.id === requestedHistoryReviewQuery.reviewDocumentId ||
+        item.sourceDocId === requestedHistoryReviewQuery.reviewDocumentId;
+      if (!matchesId) {
+        return false;
+      }
+      if (!requestedHistoryReviewQuery.reviewSourceKey) {
+        return true;
+      }
+      return item.sourceKey === requestedHistoryReviewQuery.reviewSourceKey;
+    });
+
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.delete("reviewDocumentId");
+    nextParams.delete("reviewSourceKey");
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextParams.toString() ? `?${nextParams.toString()}` : "",
+      },
+      { replace: true },
+    );
+
+    if (!requestedItem) {
+      return;
+    }
+
+    setOpenedHistoryDocumentId(requestedItem.id);
+    setDocumentWorkspaceTab(requestedItem.daVerificare ? "verify" : "saved");
+    setDocumentUserDestination(buildArchiveDocumentDestinationSummary(requestedItem).destination);
+    setDocumentHistoryOpen(false);
+  }, [
+    documentArchiveState.items,
+    documentArchiveState.status,
+    location.pathname,
+    location.search,
+    navigate,
+    requestedHistoryReviewQuery,
+  ]);
+
+  const closeUnifiedDocumentReview = useCallback(() => {
+    pendingUnifiedDocumentDefaultRef.current = false;
+    setOpenedHistoryDocumentId(null);
+    setDocumentHistoryOpen(false);
+    setDocumentWorkspaceTab("chat");
+    setDocumentUserDestination("review");
+    setDocumentErrorMessage(null);
+    resetCurrentDocumentReview();
+  }, [resetCurrentDocumentReview, setDocumentErrorMessage]);
+
+  const handleUnifiedDocumentFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    pendingUnifiedDocumentDefaultRef.current = false;
+    setOpenedHistoryDocumentId(null);
+    setDocumentWorkspaceTab("inbox");
+    setDocumentErrorMessage(null);
+    setDocumentUserDestination("review");
+    setDocumentArchivio(mapExpectedDocumentTypeToArchivio(documentExpectedType));
+    handleDocumentFileSelection(event);
+  };
+
+  const handleUnifiedDocumentAnalyze = async () => {
+    pendingUnifiedDocumentDefaultRef.current = true;
+    setOpenedHistoryDocumentId(null);
+    setDocumentArchivio(mapExpectedDocumentTypeToArchivio(documentExpectedType));
+    await handleDocumentAnalyze();
+  };
+
+  const handleUnifiedDocumentSave = async () => {
+    if (!documentResults) {
+      return;
+    }
+
+    const destinationArchivio = mapUnifiedDestinationToArchivio(documentUserDestination);
+    setDocumentArchivio(destinationArchivio);
+    setDocumentResults((current) =>
+      current
+        ? {
+            ...current,
+            categoriaArchivio: destinationArchivio,
+          }
+        : current,
+    );
+    const saved = await handleDocumentSave(destinationArchivio);
+    if (!saved) {
+      return;
+    }
+
+    await reloadUnifiedDocumentArchive();
+    setDocumentWorkspaceTab("saved");
+    setDocumentUserDestination(buildUnifiedDocumentDestinationSummary({
+      expectedType: documentExpectedType,
+      results: {
+        ...documentResults,
+        categoriaArchivio: destinationArchivio,
+      },
+      targa: saved.targaFinale,
+    }).destination);
+  };
+
+  const handleOpenUnifiedHistoryReview = (item: NextIADocumentiArchiveItem) => {
+    setOpenedHistoryDocumentId(item.id);
+    setDocumentWorkspaceTab(item.daVerificare ? "verify" : "saved");
+    setDocumentUserDestination(buildArchiveDocumentDestinationSummary(item).destination);
+    setDocumentHistoryOpen(false);
+  };
+
+  const handleGoToUnifiedDocumentDestination = (
+    path: string | null,
+    item?: NextIADocumentiArchiveItem,
+  ) => {
+    if (!path) {
+      if (item) {
+        handleOpenUnifiedHistoryReview(item);
+        return;
+      }
+      setDocumentWorkspaceTab("verify");
+      return;
+    }
+    navigate(path);
+  };
+
+  const selectedDocumentDestinationSummary = useMemo(
+    () =>
+      buildUnifiedDestinationSummaryFromChoice({
+        destination: documentUserDestination,
+        targa: documentResolvedTarga,
+      }),
+    [documentResolvedTarga, documentUserDestination],
+  );
+
+  const isHistoryReviewActive = Boolean(openedHistoryDocument);
+  const isUnifiedDocumentReviewActive = Boolean(documentResults || openedHistoryDocument);
+
+  const activeReviewDestinationSummary = isHistoryReviewActive
+    ? activeHistoryReviewDestination
+    : documentResults && activeReviewDestination
+      ? selectedDocumentDestinationSummary
+      : null;
+
+  const documentUiStatusText =
+    documentApiKeyExists === null
+      ? "Controllo motore in corso"
+      : documentApiKeyExists === false
+        ? "API Key Gemini mancante"
+        : documentLoading
+          ? "Analisi documento in corso"
+          : "Motore Documenti IA pronto";
+
+  const documentWorkspaceCounts = {
+    inbox: documentResults || documentSelectedFile ? 1 : 0,
+    verify:
+      historyVerifyItems.length +
+      (documentResults && selectedDocumentDestinationSummary.destination === "review" ? 1 : 0),
+    saved: historySavedItems.length,
+    chat: chatMessages.length,
+  } satisfies Record<InternalAiUnifiedDocumentTab, number>;
+
+  const currentDocumentReviewTitle = isHistoryReviewActive
+    ? openedHistoryDocument
+      ? buildUnifiedArchiveDocumentTitle(openedHistoryDocument)
+      : null
+    : documentResults
+      ? documentSelectedFile?.name ?? "Documento in analisi"
+      : null;
+
+  const currentDocumentReviewRows = isHistoryReviewActive
+    ? []
+    : documentResults?.voci?.filter((entry) =>
+      [entry.descrizione, entry.quantita, entry.prezzoUnitario, entry.importo].some(Boolean),
+    ) ?? [];
+
+  const currentDocumentReviewOriginalUrl = isHistoryReviewActive ? openedHistoryDocument?.fileUrl ?? null : null;
+  const currentDocumentReviewFornitore = isHistoryReviewActive
+    ? openedHistoryDocument?.fornitore || "-"
+    : documentResults?.fornitore || "-";
+  const currentDocumentReviewNumero = isHistoryReviewActive
+    ? openedHistoryDocument?.numeroDocumento || "-"
+    : documentResults?.numeroDocumento || "-";
+  const currentDocumentReviewData = isHistoryReviewActive
+    ? openedHistoryDocument?.dataDocumento || "-"
+    : documentResults?.dataDocumento || "-";
+  const currentDocumentReviewTotale = isHistoryReviewActive
+    ? openedHistoryDocument?.totaleDocumento
+    : documentResults?.totaleDocumento;
+  const currentDocumentReviewTarga = isHistoryReviewActive
+    ? openedHistoryDocument?.targa || "-"
+    : documentResolvedTarga || "-";
+  const currentDocumentReviewText = isHistoryReviewActive
+    ? openedHistoryDocument?.testo || ""
+    : documentResults?.testo || "";
+  const handleOpenCurrentDocumentOriginal = useCallback(() => {
+    if (currentDocumentReviewOriginalUrl) {
+      handleDocumentOpenPdf(currentDocumentReviewOriginalUrl);
+      return;
+    }
+
+    if (!documentSelectedFile) {
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(documentSelectedFile);
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }, [currentDocumentReviewOriginalUrl, documentSelectedFile, handleDocumentOpenPdf]);
+  const documentDestinationRequiresTarga =
+    documentUserDestination === "mezzo_manutenzioni" ||
+    documentUserDestination === "mezzo_preventivi";
+  const documentDestinationMissingTarga =
+    documentResults && documentDestinationRequiresTarga && !documentResolvedTarga;
+
+  const updateCurrentDocumentField = useCallback(
+    (field: keyof DocumentoAnalizzato, value: string) => {
+      setDocumentResults((current) =>
+        current
+          ? {
+              ...current,
+              [field]: value,
+            }
+          : current,
+      );
+    },
+    [setDocumentResults],
+  );
+
+  const renderUnifiedReviewColumns = () => {
+    if (!documentResults && !openedHistoryDocument) {
+      return (
+        <div className="internal-ai-unified-documents__empty-review">
+          <p className="internal-ai-unified-documents__empty-title">Nessun documento in review.</p>
+          <p className="internal-ai-card__meta">
+            Carica un documento dall&apos;ingresso unico oppure riapri una review dallo storico.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="internal-ai-unified-documents__review-shell">
+        <header className="internal-ai-unified-documents__review-toolbar">
+          <button
+            type="button"
+            className="internal-ai-search__button internal-ai-search__button--secondary"
+            onClick={closeUnifiedDocumentReview}
+          >
+            ← Torna alla chat
+          </button>
+          <strong className="internal-ai-unified-documents__review-title">
+            {currentDocumentReviewTitle}
+          </strong>
+          <div className="internal-ai-button-row">
+            <button
+              type="button"
+              className="internal-ai-search__button internal-ai-search__button--secondary"
+              disabled
+              title="La marcatura esplicita 'Da verificare' non e ancora esposta dal motore riusato in questa shell."
+            >
+              Da verificare
+            </button>
+            <button
+              type="button"
+              className="internal-ai-search__button"
+              disabled={
+                isHistoryReviewActive ||
+                documentLoading ||
+                documentUserDestination === "review" ||
+                Boolean(documentDestinationMissingTarga) ||
+                (documentNeedsManualTarga && !documentTargaSelezionata)
+              }
+              onClick={() => void handleUnifiedDocumentSave()}
+            >
+              Salva
+            </button>
+          </div>
+        </header>
+
+        <div className="internal-ai-unified-documents__review-split">
+          <article className="internal-ai-unified-documents__review-column">
+            <div className="internal-ai-unified-documents__review-head">
+              <span className="internal-ai-card__eyebrow">Anteprima documento</span>
+              <h3>File e campi principali</h3>
+            </div>
+
+            <div className="internal-ai-unified-documents__review-card">
+              <div className="internal-ai-unified-documents__review-card-body">
+                {!isHistoryReviewActive && documentResults && documentPreview ? (
+                  <img
+                    src={documentPreview}
+                    alt={currentDocumentReviewTitle ?? "Documento caricato"}
+                    className="internal-ai-unified-documents__review-preview"
+                  />
+                ) : (
+                  <div className="internal-ai-unified-documents__review-preview is-placeholder">
+                    {currentDocumentReviewOriginalUrl ? "PDF / originale disponibile" : "Anteprima non disponibile"}
+                  </div>
+                )}
+
+                <div className="internal-ai-unified-documents__review-form">
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Fornitore</span>
+                    <input
+                      type="text"
+                      value={currentDocumentReviewFornitore}
+                      onChange={(event) => updateCurrentDocumentField("fornitore", event.target.value)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Tipo doc</span>
+                    <input
+                      type="text"
+                      value={
+                        !isHistoryReviewActive && documentResults
+                          ? documentResults.tipoDocumento
+                          : openedHistoryDocument?.tipoDocumento ?? ""
+                      }
+                      onChange={(event) => updateCurrentDocumentField("tipoDocumento", event.target.value as TipoDocumento)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Numero doc</span>
+                    <input
+                      type="text"
+                      value={currentDocumentReviewNumero}
+                      onChange={(event) => updateCurrentDocumentField("numeroDocumento", event.target.value)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Data</span>
+                    <input
+                      type="text"
+                      value={currentDocumentReviewData}
+                      onChange={(event) => updateCurrentDocumentField("dataDocumento", event.target.value)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Targa</span>
+                    {documentNeedsManualTarga && !isHistoryReviewActive ? (
+                      <select
+                        value={documentTargaSelezionata}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setDocumentTargaSelezionata(value);
+                          updateCurrentDocumentField("targa", value);
+                        }}
+                      >
+                        <option value="">Seleziona targa...</option>
+                        {documentMezzi.map((mezzo, index) => (
+                          <option key={`${mezzo.targa ?? "mezzo"}:${index}`} value={mezzo.targa ?? ""}>
+                            {mezzo.targa ?? "-"}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={currentDocumentReviewTarga}
+                        onChange={(event) => updateCurrentDocumentField("targa", event.target.value)}
+                        disabled={isHistoryReviewActive}
+                        placeholder="Targa non rilevata"
+                      />
+                    )}
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Categoria</span>
+                    <input
+                      type="text"
+                      value={!isHistoryReviewActive && documentResults ? documentResults.categoriaArchivio : activeHistoryReviewDestination?.categoriaArchivio ?? "-"}
+                      onChange={(event) =>
+                        updateCurrentDocumentField(
+                          "categoriaArchivio",
+                          event.target.value as CategoriaArchivio,
+                        )
+                      }
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Imponibile</span>
+                    <input
+                      type="text"
+                      value={String(documentResults?.imponibile ?? openedHistoryDocument?.imponibile ?? "")}
+                      onChange={(event) => updateCurrentDocumentField("imponibile", event.target.value)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>IVA %</span>
+                    <input
+                      type="text"
+                      value={String(documentResults?.ivaPercentuale ?? "")}
+                      onChange={(event) => updateCurrentDocumentField("ivaPercentuale", event.target.value)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Totale</span>
+                    <input
+                      type="text"
+                      value={String(currentDocumentReviewTotale ?? "")}
+                      onChange={(event) => updateCurrentDocumentField("totaleDocumento", event.target.value)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                  <label className="internal-ai-unified-documents__review-field">
+                    <span>Valuta</span>
+                    <input
+                      type="text"
+                      value={String(documentResults?.valuta ?? openedHistoryDocument?.valuta ?? "")}
+                      onChange={(event) => updateCurrentDocumentField("valuta", event.target.value)}
+                      disabled={isHistoryReviewActive}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="internal-ai-unified-documents__review-card-footer">
+                {currentDocumentReviewOriginalUrl || documentSelectedFile ? (
+                  <button
+                    type="button"
+                    className="internal-ai-search__button internal-ai-search__button--secondary"
+                    onClick={handleOpenCurrentDocumentOriginal}
+                  >
+                    Apri originale
+                  </button>
+                ) : null}
+                <span className="internal-ai-card__meta">
+                  {!isHistoryReviewActive && documentResults
+                    ? "Campi editabili prima del salvataggio."
+                    : "Review riaperta dallo storico read-only del motore documentale."}
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <article className="internal-ai-unified-documents__review-column">
+            <div className="internal-ai-unified-documents__review-head">
+              <span className="internal-ai-card__eyebrow">Righe estratte</span>
+              <h3>Controllo finale e destinazione</h3>
+            </div>
+
+            <div className="internal-ai-unified-documents__review-card">
+              <div className="internal-ai-unified-documents__review-card-body">
+                <div className="internal-ai-unified-documents__destination-card">
+                  <span className="internal-ai-unified-documents__label">Consiglio IA</span>
+                  <strong>{activeReviewDestination?.label ?? "Review / Da verificare"}</strong>
+                  <p className="internal-ai-card__meta">
+                    {activeReviewDestination?.reason ??
+                      "La review corrente non ha ancora un instradamento documentale affidabile."}
+                  </p>
+                </div>
+
+                {!isHistoryReviewActive && documentResults ? (
+                  <>
+                    <label className="internal-ai-search__field">
+                      <span>Tua scelta</span>
+                      <select
+                        className="internal-ai-search__input"
+                        value={documentUserDestination}
+                        onChange={(event) =>
+                          setDocumentUserDestination(
+                            event.target.value as InternalAiUnifiedDestination,
+                          )
+                        }
+                      >
+                        <option value="review">Review / Da verificare</option>
+                        <option value="magazzino_inventario">Magazzino -&gt; Inventario</option>
+                        <option value="mezzo_manutenzioni">Dossier targa -&gt; Manutenzioni</option>
+                        <option value="mezzo_preventivi">Dossier targa -&gt; Preventivi</option>
+                        <option value="archivio_generico">Archivio generico / Documenti IA</option>
+                      </select>
+                    </label>
+
+                    <div className="internal-ai-unified-documents__destination-card is-secondary">
+                      <span className="internal-ai-unified-documents__label">Destinazione finale</span>
+                      <strong>{selectedDocumentDestinationSummary.label}</strong>
+                      <p className="internal-ai-card__meta">{selectedDocumentDestinationSummary.reason}</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="internal-ai-unified-documents__destination-card is-secondary">
+                    <span className="internal-ai-unified-documents__label">Destinazione finale</span>
+                    <strong>{activeHistoryReviewDestination?.label ?? "Review / Da verificare"}</strong>
+                    <p className="internal-ai-card__meta">
+                      {activeHistoryReviewDestination?.reason ??
+                        "Documento riaperto dal motore Documenti IA senza ulteriori azioni."}
+                    </p>
+                  </div>
+                )}
+
+                <div className="internal-ai-unified-documents__rows">
+                  <div className="internal-ai-unified-documents__rows-head">
+                    <strong>Righe estratte</strong>
+                    <span>{currentDocumentReviewRows.length} righe</span>
+                  </div>
+                  {currentDocumentReviewRows.length ? (
+                    currentDocumentReviewRows.map((row, index) => (
+                      <div
+                        key={`${row.descrizione ?? "riga"}:${index}`}
+                        className="internal-ai-unified-documents__row"
+                      >
+                        <strong>{row.descrizione || "Voce senza descrizione"}</strong>
+                        <span>Cod. {row.codice || "-"}</span>
+                        <span>Q.ta {row.quantita || "-"}</span>
+                        <span>Importo {row.importo || "-"}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="internal-ai-card__meta">
+                      Nessuna riga strutturata disponibile nell&apos;estrazione corrente.
+                    </p>
+                  )}
+                </div>
+
+                <div className="internal-ai-unified-documents__destination-card is-secondary">
+                  <span className="internal-ai-unified-documents__label">Totale documento</span>
+                  <strong>{formatDocumentImporto(currentDocumentReviewTotale ?? undefined)}</strong>
+                  <p className="internal-ai-card__meta">
+                    {currentDocumentReviewRows.length} righe disponibili per controllo e import.
+                  </p>
+                </div>
+
+                {documentErrorMessage ? (
+                  <div className="internal-ai-unified-documents__inline-error">{documentErrorMessage}</div>
+                ) : null}
+                {documentDestinationMissingTarga ? (
+                  <div className="internal-ai-unified-documents__inline-error">
+                    Se scegli una destinazione per targa devi prima confermare il mezzo corretto.
+                  </div>
+                ) : null}
+
+                {currentDocumentReviewText ? (
+                  <details className="internal-ai-unified-documents__details">
+                    <summary>Testo letto</summary>
+                    <p>{currentDocumentReviewText}</p>
+                  </details>
+                ) : null}
+              </div>
+
+              <div className="internal-ai-unified-documents__review-card-footer">
+                {documentSaved && documentArchivio === "MAGAZZINO" && currentDocumentReviewRows.length ? (
+                  <button
+                    type="button"
+                    className="internal-ai-search__button internal-ai-search__button--secondary"
+                    disabled={documentImportingInventario || documentLoading}
+                    onClick={() => void importDocumentIntoInventario()}
+                  >
+                    {documentImportingInventario
+                      ? "Importazione..."
+                      : "Importa Inventario"}
+                  </button>
+                ) : null}
+                {activeReviewDestinationSummary?.routePath ? (
+                  <button
+                    type="button"
+                    className="internal-ai-search__button internal-ai-search__button--secondary"
+                    onClick={() =>
+                      handleGoToUnifiedDocumentDestination(activeReviewDestinationSummary.routePath)
+                    }
+                  >
+                    {activeReviewDestinationSummary.routeCta}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    );
+  };
+
+  const renderUnifiedHistoryList = (items: NextIADocumentiArchiveItem[]) => {
+    if (documentArchiveState.status === "loading" && items.length === 0) {
+      return <p className="internal-ai-card__meta">Caricamento storico documenti...</p>;
+    }
+
+    if (!items.length) {
+      return (
+        <div className="internal-ai-unified-documents__empty-review">
+          <p className="internal-ai-unified-documents__empty-title">Nessun documento disponibile.</p>
+          <p className="internal-ai-card__meta">
+            Il runtime attuale non espone documenti per il filtro selezionato.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="internal-ai-unified-documents__history-list">
+        {items.map((item) => {
+          const destination = buildArchiveDocumentDestinationSummary(item);
+          return (
+            <article key={item.id} className="internal-ai-unified-documents__history-item">
+              <div className="internal-ai-unified-documents__history-copy">
+                <strong>{buildUnifiedArchiveDocumentTitle(item)}</strong>
+                <p className="internal-ai-card__meta">
+                  Tipo: {item.tipoDocumento || "-"} | Stato:{" "}
+                  {item.daVerificare ? "Da verificare" : "Salvato"} | Destinazione:{" "}
+                  {destination.label}
+                </p>
+                <p className="internal-ai-card__meta">
+                  Targa: {item.targa || "-"} | Data: {item.dataDocumento || "-"} | Totale:{" "}
+                  {formatDocumentImporto(item.totaleDocumento ?? undefined)}
+                </p>
+              </div>
+              <div className="internal-ai-button-row">
+                {item.fileUrl ? (
+                  <button
+                    type="button"
+                    className="internal-ai-search__button internal-ai-search__button--secondary"
+                    onClick={() => handleDocumentOpenPdf(item.fileUrl)}
+                  >
+                    Apri originale
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="internal-ai-search__button internal-ai-search__button--secondary"
+                  onClick={() => handleOpenUnifiedHistoryReview(item)}
+                >
+                  Riapri review
+                </button>
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  onClick={() => handleGoToUnifiedDocumentDestination(destination.routePath, item)}
+                >
+                  Vai a
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
+  };
+
   const persistArtifactForReport = (report: InternalAiReportPreview) => {
     const saved = saveInternalAiDraftArtifact({ report });
     trackInternalAiArtifactAction({
@@ -8269,7 +9273,407 @@ function NextInternalAiPage({
         </article>
       ) : (
         <>
-          <article className="next-panel internal-ai-chat internal-ai-chat--primary">
+          <article className="next-panel internal-ai-dispatcher">
+            <header className="internal-ai-dispatcher__header">
+              <div className="internal-ai-dispatcher__header-main">
+                <div className="internal-ai-dispatcher__title-wrap">
+                  <span className="home-ia-launcher__status-dot" aria-hidden="true" />
+                  <strong>Assistente IA</strong>
+                </div>
+                <span className="internal-ai-pill is-neutral">
+                  {chatBridgeState.transport === "server_http_provider" ||
+                  chatBridgeState.transport === "server_http_retrieval"
+                    ? "Backend attivo"
+                    : "Backend controllato"}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="internal-ai-search__button internal-ai-search__button--secondary"
+                onClick={() => navigate(NEXT_HOME_PATH)}
+              >
+                Chiudi
+              </button>
+            </header>
+
+            <div className="internal-ai-dispatcher__shell">
+              <section className="internal-ai-dispatcher__main">
+                {isUnifiedDocumentReviewActive ? (
+                  renderUnifiedReviewColumns()
+                ) : (
+                  <>
+                    <div className="internal-ai-dispatcher__document-entry">
+                      <label className="internal-ai-search__field">
+                        <span>Tipo atteso</span>
+                        <select
+                          className="internal-ai-search__input"
+                          value={documentExpectedType}
+                          onChange={(event) =>
+                            setDocumentExpectedType(
+                              event.target.value as InternalAiUnifiedExpectedDocumentType,
+                            )
+                          }
+                        >
+                          <option value="FATTURA">Fattura</option>
+                          <option value="PREVENTIVO">Preventivo</option>
+                          <option value="MANUTENZIONE">Manutenzione</option>
+                          <option value="GENERICO">Generico</option>
+                        </select>
+                      </label>
+
+                      <label className="internal-ai-unified-documents__upload internal-ai-dispatcher__upload">
+                        <span>Documento</span>
+                        <input
+                          ref={documentUploadInputRef}
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={handleUnifiedDocumentFileChange}
+                        />
+                        <strong>{documentSelectedFile?.name ?? "Seleziona PDF o immagine"}</strong>
+                      </label>
+
+                      <div className="internal-ai-dispatcher__document-actions">
+                        <button
+                          type="button"
+                          className="internal-ai-search__button"
+                          disabled={
+                            !documentSelectedFile ||
+                            documentLoading ||
+                            documentApiKeyExists === false
+                          }
+                          onClick={() => void handleUnifiedDocumentAnalyze()}
+                        >
+                          {documentLoading ? "Analisi in corso..." : "Analizza"}
+                        </button>
+                        <span className="internal-ai-card__meta">Motore in uso: Documenti IA</span>
+                      </div>
+                    </div>
+
+                    {renderAutomaticDocumentProposalPanel()}
+
+                    <div className="internal-ai-chat__messages internal-ai-dispatcher__messages">
+                      {chatMessages.length ? (
+                        chatMessages.map((message) => (
+                          <div
+                            key={message.id}
+                            className={`internal-ai-chat__message ${
+                              message.role === "utente" ? "is-user" : "is-assistant"
+                            }`}
+                          >
+                            <div className="internal-ai-chat__message-header">
+                              <strong>{message.role === "utente" ? "Tu" : "Assistente interno"}</strong>
+                              <div className="internal-ai-pill-row">
+                                <span className={statusToneClass(message.status)}>
+                                  {CHAT_STATUS_LABELS[message.status]}
+                                </span>
+                                <span className="internal-ai-pill is-neutral">
+                                  {formatDateLabel(message.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+                            {message.role === "assistente" && message.outputMode ? (
+                              <div className="internal-ai-chat__message-delivery">
+                                <span className={outputModeToneClass(message.outputMode)}>
+                                  {CHAT_OUTPUT_MODE_LABELS[message.outputMode]}
+                                </span>
+                              </div>
+                            ) : null}
+                            {message.role === "assistente" ? (
+                              renderChatMessageText(message.text)
+                            ) : (
+                              <p className="internal-ai-chat__message-text">{message.text}</p>
+                            )}
+                          </div>
+                        ))
+                      ) : hasActiveConversation ? null : (
+                        <div className="internal-ai-chat__empty" aria-live="polite">
+                          <p className="internal-ai-chat__empty-title">Nessuna conversazione in corso.</p>
+                          <p className="internal-ai-chat__empty-copy">
+                            Scrivi una richiesta o allega un file. La review si apre solo quando il
+                            flusso ha davvero qualcosa da verificare.
+                          </p>
+                        </div>
+                      )}
+                      {chatStatus === "running" ? (
+                        <div className="internal-ai-chat__message is-assistant">
+                          <div className="internal-ai-chat__message-header">
+                            <strong>Assistente interno</strong>
+                            <span className={statusToneClass("running")}>In elaborazione</span>
+                          </div>
+                          <p className="internal-ai-chat__message-text">
+                            Sto preparando una risposta controllata per il thread corrente.
+                          </p>
+                        </div>
+                      ) : null}
+                      <div ref={chatMessagesEndRef} />
+                    </div>
+                  </>
+                )}
+              </section>
+
+              <aside className="internal-ai-dispatcher__aside">
+                <div className="internal-ai-dispatcher__functions">
+                  <p className="internal-ai-card__eyebrow">Funzioni</p>
+                  {INTERNAL_AI_FUNCTION_MODULES.map((module) => (
+                    <article key={module.id} className="internal-ai-dispatcher__module">
+                      <div
+                        className="internal-ai-dispatcher__module-icon"
+                        style={{ backgroundColor: module.accent }}
+                        aria-hidden="true"
+                      >
+                        {module.title.charAt(0)}
+                      </div>
+                      <div className="internal-ai-dispatcher__module-copy">
+                        <strong>{module.title}</strong>
+                        <span>{module.description}</span>
+                      </div>
+                      <span className={`internal-ai-dispatcher__module-status ${module.tone}`}>
+                        {module.status}
+                      </span>
+                    </article>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  className="internal-ai-dispatcher__history-link"
+                  onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}
+                >
+                  Storico analisi →
+                </button>
+              </aside>
+            </div>
+
+            {!isUnifiedDocumentReviewActive ? (
+              <div className="internal-ai-dispatcher__composer">
+                <div className="internal-ai-dispatcher__composer-row">
+                  <button
+                    type="button"
+                    className="internal-ai-search__button internal-ai-search__button--secondary"
+                    disabled={
+                      chatStatus === "running" ||
+                      chatAttachmentRepositoryState.status === "loading"
+                    }
+                    onClick={handleChatAttachmentPicker}
+                  >
+                    +
+                  </button>
+                  <textarea
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    placeholder={
+                      chatAttachments.length > 0
+                        ? chatInputPlaceholderWithDocument
+                        : "Scrivi o allega..."
+                    }
+                    className="internal-ai-search__input internal-ai-chat__composer-input"
+                    rows={2}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleChatSubmit();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="internal-ai-search__button"
+                    disabled={
+                      chatStatus === "running" ||
+                      chatAttachmentRepositoryState.status === "loading" ||
+                      !canSubmitUnifiedConsole
+                    }
+                    onClick={() => void handleChatSubmit()}
+                  >
+                    →
+                  </button>
+                </div>
+                {chatAttachments.length ? (
+                  <div className="internal-ai-chat__attachments">
+                    {chatAttachments.map((attachment) => (
+                      <article key={attachment.id} className="internal-ai-chat__attachment-row">
+                        <div className="internal-ai-chat__attachment-copy">
+                          <strong>{attachment.fileName}</strong>
+                          <p className="internal-ai-card__meta">{attachment.note}</p>
+                        </div>
+                        <div className="internal-ai-pill-row">
+                          <button
+                            type="button"
+                            className="internal-ai-chat__reference"
+                            onClick={() => handleOpenChatAttachment(attachment)}
+                          >
+                            Apri
+                          </button>
+                          <button
+                            type="button"
+                            className="internal-ai-chat__reference"
+                            onClick={() => void handleRemoveChatAttachment(attachment)}
+                          >
+                            Rimuovi
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+                <input
+                  ref={chatAttachmentInputRef}
+                  type="file"
+                  multiple
+                  className="internal-ai-sr-only"
+                  accept=".pdf,image/*,text/plain,text/markdown,.txt,.md,.doc,.docx,.odt,.xls,.xlsx,.csv,application/pdf"
+                  onChange={(event) => {
+                    void handleChatAttachmentSelection(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </div>
+            ) : null}
+          </article>
+
+          {surfaceVariant === "home-modal" ? (
+          <>
+          <article
+            className={`next-panel internal-ai-unified-documents${
+              isUnifiedDocumentReviewActive ? " is-review-active" : ""
+            }`}
+            hidden
+          >
+            <header className="internal-ai-unified-documents__hero">
+              <div>
+                <p className="internal-ai-card__eyebrow">IA interna documentale unificata</p>
+                <h1>Ingresso unico documenti</h1>
+                <p className="internal-ai-card__meta">
+                  Caricamento, review e storico passano da qui. La chat resta disponibile come
+                  superficie secondaria.
+                </p>
+              </div>
+              <div className="internal-ai-unified-documents__hero-actions">
+                <span className="internal-ai-pill is-neutral">{documentUiStatusText}</span>
+                <button
+                  type="button"
+                  className="internal-ai-search__button internal-ai-search__button--secondary"
+                  onClick={() => setDocumentHistoryOpen(true)}
+                >
+                  Apri storico
+                </button>
+              </div>
+            </header>
+
+            <div className="internal-ai-unified-documents__layout">
+              <aside className="internal-ai-unified-documents__entry">
+                <div className="internal-ai-unified-documents__panel-head">
+                  <h2>Ingresso unico</h2>
+                  <span>Carica fatture, preventivi, documenti manutenzione, generici ed Euromecc.</span>
+                </div>
+                <label className="internal-ai-search__field">
+                  <span>Tipo atteso</span>
+                  <select
+                    className="internal-ai-search__input"
+                    value={documentExpectedType}
+                    onChange={(event) =>
+                      setDocumentExpectedType(
+                        event.target.value as InternalAiUnifiedExpectedDocumentType,
+                      )
+                    }
+                  >
+                    <option value="FATTURA">Fattura</option>
+                    <option value="PREVENTIVO">Preventivo</option>
+                    <option value="MANUTENZIONE">Manutenzione</option>
+                    <option value="GENERICO">Generico</option>
+                  </select>
+                </label>
+                <label className="internal-ai-unified-documents__upload">
+                  <span>Area upload file</span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={handleUnifiedDocumentFileChange}
+                  />
+                  <strong>{documentSelectedFile?.name ?? "Seleziona PDF o immagine"}</strong>
+                  <p className="internal-ai-card__meta">
+                    Euromecc rientra nel flusso generico, senza un secondo motore separato.
+                  </p>
+                </label>
+                <div className="internal-ai-unified-documents__engine-card">
+                  <span className="internal-ai-unified-documents__label">Motore usato</span>
+                  <strong>Documenti IA</strong>
+                  <p className="internal-ai-card__meta">
+                    Upload, analisi, review, apertura originale e salvataggio riusano la logica gia
+                    esistente.
+                  </p>
+                </div>
+                {documentErrorMessage ? (
+                  <div className="internal-ai-unified-documents__inline-error">
+                    {documentErrorMessage}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="internal-ai-search__button"
+                  disabled={!documentSelectedFile || documentLoading || documentApiKeyExists === false}
+                  onClick={() => void handleUnifiedDocumentAnalyze()}
+                >
+                  {documentLoading ? "Analisi in corso..." : "Analizza"}
+                </button>
+                {documentApiKeyExists === false ? (
+                  <p className="internal-ai-card__meta">
+                    Configura prima la chiave Gemini dalla pagina API Key della IA.
+                  </p>
+                ) : null}
+              </aside>
+
+              <div className="internal-ai-unified-documents__main">
+                <div className="internal-ai-unified-documents__tabs" role="tablist" aria-label="Workspace documentale">
+                  {(Object.keys(INTERNAL_AI_UNIFIED_TAB_LABELS) as InternalAiUnifiedDocumentTab[]).map(
+                    (tabId) => (
+                      <button
+                        key={tabId}
+                        type="button"
+                        role="tab"
+                        aria-selected={documentWorkspaceTab === tabId}
+                        className={`internal-ai-unified-documents__tab ${
+                          documentWorkspaceTab === tabId ? "is-active" : ""
+                        }`}
+                        onClick={() => setDocumentWorkspaceTab(tabId)}
+                      >
+                        <span>{INTERNAL_AI_UNIFIED_TAB_LABELS[tabId]}</span>
+                        <strong>{documentWorkspaceCounts[tabId]}</strong>
+                      </button>
+                    ),
+                  )}
+                </div>
+
+                <section
+                  className="internal-ai-unified-documents__tab-panel"
+                  hidden={documentWorkspaceTab !== "inbox"}
+                >
+                  {renderUnifiedReviewColumns()}
+                </section>
+
+                <section
+                  className="internal-ai-unified-documents__tab-panel"
+                  hidden={documentWorkspaceTab !== "verify"}
+                >
+                  {documentResults && selectedDocumentDestinationSummary.destination === "review"
+                    ? renderUnifiedReviewColumns()
+                    : renderUnifiedHistoryList(historyVerifyItems)}
+                </section>
+
+                <section
+                  className="internal-ai-unified-documents__tab-panel"
+                  hidden={documentWorkspaceTab !== "saved"}
+                >
+                  {openedHistoryDocument ? renderUnifiedReviewColumns() : renderUnifiedHistoryList(historySavedItems)}
+                </section>
+              </div>
+            </div>
+          </article>
+
+          <article
+            className="next-panel internal-ai-chat internal-ai-chat--primary"
+            hidden
+          >
             <div className="internal-ai-chat__shell">
               <div className="internal-ai-chat__main">
                 {renderAutomaticDocumentProposalPanel()}
@@ -8718,6 +10122,8 @@ function NextInternalAiPage({
               </aside>
             </div>
           </article>
+          </>
+          ) : null}
 
           <details className="next-panel internal-ai-secondary-panel internal-ai-overview-advanced">
             <summary>Ricerca guidata avanzata e strumenti tecnici</summary>
@@ -9123,13 +10529,15 @@ function NextInternalAiPage({
             </details>
           </article>
 
-          <InternalAiUniversalWorkbench
-            promptDraft={chatInput}
-            attachments={chatAttachments}
-            preferredTarga={resolvedChatTarga}
-          />
+          <div hidden={documentWorkspaceTab !== "chat"}>
+            <InternalAiUniversalWorkbench
+              promptDraft={chatInput}
+              attachments={chatAttachments}
+              preferredTarga={resolvedChatTarga}
+            />
+          </div>
 
-          <section className="internal-ai-grid">
+          <section className="internal-ai-grid" hidden={documentWorkspaceTab !== "chat"}>
             <article className="internal-ai-card">
               <p className="internal-ai-card__eyebrow">Sessioni</p>
               <h3>{snapshot.sessions.length}</h3>
@@ -9161,7 +10569,7 @@ function NextInternalAiPage({
             </article>
           </section>
 
-          <details className="next-panel internal-ai-secondary-panel">
+          <details className="next-panel internal-ai-secondary-panel" hidden={documentWorkspaceTab !== "chat"}>
             <summary>Memoria repo/UI e osservatore</summary>
             <div className="internal-ai-secondary-panel__body">
             <p className="next-panel__description">
@@ -12184,6 +13592,55 @@ function NextInternalAiPage({
               ))}
             </div>
           </article>
+        </div>
+      ) : null}
+
+      {documentHistoryOpen ? (
+        <div className="internal-ai-unified-documents__history-modal" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="internal-ai-unified-documents__history-backdrop"
+            aria-label="Chiudi storico documenti"
+            onClick={() => setDocumentHistoryOpen(false)}
+          />
+          <div className="internal-ai-unified-documents__history-sheet">
+            <div className="internal-ai-unified-documents__history-head">
+              <div>
+                <p className="internal-ai-card__eyebrow">Storico documenti</p>
+                <h2>Motore Documenti IA</h2>
+                <p className="internal-ai-card__meta">
+                  Filtri, originale, review e destinazione finale del flusso documentale unificato.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="internal-ai-search__button internal-ai-search__button--secondary"
+                onClick={() => setDocumentHistoryOpen(false)}
+              >
+                Chiudi
+              </button>
+            </div>
+            <div className="internal-ai-unified-documents__history-filters">
+              {(Object.keys(INTERNAL_AI_UNIFIED_HISTORY_FILTER_LABELS) as InternalAiUnifiedHistoryFilter[]).map(
+                (filterId) => (
+                  <button
+                    key={filterId}
+                    type="button"
+                    className={`internal-ai-unified-documents__history-filter ${
+                      documentHistoryFilter === filterId ? "is-active" : ""
+                    }`}
+                    onClick={() => setDocumentHistoryFilter(filterId)}
+                  >
+                    {INTERNAL_AI_UNIFIED_HISTORY_FILTER_LABELS[filterId]}
+                  </button>
+                ),
+              )}
+            </div>
+            {documentArchiveState.message ? (
+              <p className="internal-ai-card__meta">{documentArchiveState.message}</p>
+            ) : null}
+            {renderUnifiedHistoryList(filteredUnifiedHistoryItems)}
+          </div>
         </div>
       ) : null}
 

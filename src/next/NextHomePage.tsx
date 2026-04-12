@@ -680,8 +680,8 @@ export default function NextHomePage() {
         </div>
 
         <div className="next-home__ai-copy">
-          Apri la IA interna dal pannello Home per avviare una conversazione rapida, allegare file e
-          proseguire nel modal reale della piattaforma NEXT.
+          Apri l'ingresso unico della IA interna per caricare documenti, avviare l'analisi e usare
+          la chat come supporto secondario nella pagina reale della piattaforma NEXT.
         </div>
 
         <div className="next-home__ai-launcher">

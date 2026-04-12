@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-04-11  
+Ultimo aggiornamento: 2026-04-12
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -102,6 +102,18 @@ Stato macrofase: `IN CORSO`
 ## 5. Macrofase 2 - Use case attivi ma sicuri
 Stato macrofase: `IN CORSO`
 
+### J-bis. Dispatcher UI unico secondo spec 2026-04-12
+- Stato: `IN CORSO`
+- Note: la card Home e la pagina `/next/ia/interna` sono state riallineate alla spec `IA Universal Dispatcher` con launcher unico, prompt preload, menu `+`, shell dispatcher e review interna; `/next/ia/documenti` e stato riscritto come storico ufficiale read-only usando solo il domain reale. L'ingresso `/next/ia/interna` non reidrata piu automaticamente gli allegati IA-only persistiti, quindi non mostra piu banner o review sporche di default. Il task resta `PARZIALE` perche il domain read-only non espone ancora sezioni dedicate `Libretti`, `Cisterna`, `Manutenzioni`.
+- File/documenti collegati:
+  - `docs/product/SPEC_IA_UNIVERSAL_DISPATCHER.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260412_194036_ia_universal_dispatcher_ui_spec.md`
+  - `docs/continuity-reports/20260412_194036_continuity_ia_universal_dispatcher_ui_spec.md`
+- Dipendenze o blocchi:
+  - `src/next/domain/nextDocumentiCostiDomain.ts` resta read-only e non espone ancora tutte le sezioni richieste dalla spec per lo storico completo.
+
 ### J. Primo use case "report targa in preview"
 - Stato: `FATTO`
 - Note: la UI IA interna permette ricerca per targa, lettura in sola lettura dai layer NEXT e composizione di un report in anteprima con fonti e dati mancanti.
@@ -141,6 +153,97 @@ Stato macrofase: `IN CORSO`
 - Dipendenze o blocchi:
   - nessun provider o backend IA reale attivo;
   - messaggi mantenuti solo in memoria nella pagina corrente.
+
+### L.1.b Ingresso unico documentale `/next/ia/interna`
+- Stato: `FATTO`
+- Note: la prima vista di `/next/ia/interna` e stata riallineata al flusso documentale unificato con header sintetico, colonna `Ingresso unico`, motore dichiarato `Documenti IA`, tab `Inbox`, `Da verificare`, `Salvati`, `Chat IA`, review documento a 3 colonne e storico filtrabile; la chat resta accessibile ma non domina piu il workflow documentale.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260412_115351_ia_interna_documentale_unificata.md`
+  - `docs/continuity-reports/20260412_115351_continuity_ia_interna_documentale_unificata.md`
+- Dipendenze o blocchi: la UI clone e chiusa nel perimetro; la prova live su tutti i rami documentali resta separata.
+
+### L.1.c Riuso motore reale `IADocumenti`
+- Stato: `FATTO`
+- Note: `src/pages/IA/IADocumenti.tsx` espone ora il hook `useIADocumentiEngine()` e il clone lo riusa senza duplicare logica di upload, preview, analisi, storico, apertura originale, verifica valuta, salvataggi o import inventario; `/next/ia/documenti` resta superficie secondaria/storico dello stesso motore.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260412_115351_ia_interna_documentale_unificata.md`
+  - `docs/continuity-reports/20260412_115351_continuity_ia_interna_documentale_unificata.md`
+- Dipendenze o blocchi: nessuna duplicazione backend o parser ammessa fuori da questo riuso.
+
+### L.1.d Audit stato reale IA interna / documentale
+- Stato: `FATTO`
+- Note: audit completo e leggibile creato per fermare le patch a tentativi e fotografare il comportamento reale di Home, ingresso unico, analisi, review, storico, letture e scritture. Il report conferma che `/next/ia/interna` e oggi l'ingresso unico documentale, che `/next/ia/documenti` e soprattutto storico secondario, che il motore reale resta `useIADocumentiEngine()` e che nel runtime restano errori reali `403` Storage listing e `Maximum update depth exceeded`.
+- File/documenti collegati:
+  - `docs/audit/AUDIT_IA_INTERNA_STATO_REALE_2026-04-12.md`
+  - `docs/change-reports/20260412_152529_audit_ia_interna_stato_reale.md`
+  - `docs/continuity-reports/20260412_152529_continuity_audit_ia_interna_stato_reale.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+- Dipendenze o blocchi:
+  - nessuna patch runtime in questo task;
+  - prima di altra UI servono decisioni su ingresso unico, storico unico, review unica e ruolo definitivo di `Documenti IA`.
+
+### L.1.e Verifica runtime rami documentali finali
+- Stato: `IN CORSO`
+- Note: verificati davvero home pulita su `/next/ia/interna`, riapertura review, review desktop viewport-fit con scroll interni, `Apri originale`, `Vai a Inventario`, `Vai a Manutenzioni` e `Vai al preventivo`; il ramo `Da verificare` usa la stessa riapertura review via query `reviewDocumentId`, ma nel dataset corrente non esiste ancora una riga storica live di quel tipo cliccabile. Restano `DA VERIFICARE` i nuovi upload live end-to-end per tutti i rami finali sul dataset corrente.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260412_125333_ia_interna_documentale_fix_entry_layout_destinazioni.md`
+  - `docs/continuity-reports/20260412_125333_continuity_ia_interna_documentale_fix_entry_layout_destinazioni.md`
+- Dipendenze o blocchi: dipende dalla disponibilita di nuovi file live e da casi reali apribili senza alterare dati.
+
+### L.1.f Fix entry state, layout desktop e destinazioni finali
+- Stato: `FATTO`
+- Note: `/next/ia/interna` non autoapre piu review persistite, la review desktop resta in una schermata con CTA sempre visibili e i target business reali sono stati riallineati a `Inventario`, `Manutenzioni`, `Preventivi` e review documento senza inventare deep-link.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260412_125333_ia_interna_documentale_fix_entry_layout_destinazioni.md`
+  - `docs/continuity-reports/20260412_125333_continuity_ia_interna_documentale_fix_entry_layout_destinazioni.md`
+- Dipendenze o blocchi: nessun blocco tecnico residuo nel perimetro autorizzato; restano separati i test live su nuovi upload.
+
+### L.1.g Audit stato sporco home + blocco `Analizza` clone
+- Stato: `FATTO`
+- Note: audit solo diagnostico completato senza patch runtime. Nel worktree/runtime corrente `/next/ia/interna` non riproduce una review sporca di default: la sola riapertura automatica dimostrata passa dalla query `reviewDocumentId` / `reviewSourceKey` generata da `Riapri review`; non emergono storage locali documentali o reidratazioni implicite del motore `IADocumenti`. Il blocco di `Analizza` e invece reale e riproducibile: il click arriva fino al `fetch POST` legacy verso `estrazioneDocumenti`, ma il `cloneWriteBarrier` globale installato in `src/main.tsx` lo blocca come `fetch.runtime` prima che la rete parta.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260412_133832_audit_ia_interna_stato_sporco_blocco_analizza.md`
+  - `docs/continuity-reports/20260412_133832_continuity_audit_ia_interna_stato_sporco_blocco_analizza.md`
+- Dipendenze o blocchi: se si vuole analisi live nel clone serve una decisione esplicita sul trasporto consentito; senza quella decisione il comportamento clone-safe onesto e solo bloccare o disinnescare a UI il `POST` legacy.
+
+### L.1.h Fix mirato `Analizza` via clone barrier
+- Stato: `FATTO`
+- Note: `src/utils/cloneWriteBarrier.ts` consente ora solo l'eccezione `fetch.runtime` strettamente necessaria al motore documentale gia esistente: pathname `/next/ia/interna`, metodo `POST`, endpoint esatto `https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti`. Nessun widening generico del barrier e nessuna nuova apertura writer business. Browser verificato davvero su `http://localhost:5173/next/ia/interna` con `audit-fattura-mariba.pdf`: upload reale, click `Analizza`, `POST` partito davvero in network con `200`, review documento aperta correttamente. Nel medesimo runtime restano visibili errori console preesistenti su listing Storage Firebase `403` e ricorrenze `Maximum update depth exceeded`; non bloccano pero piu il flusso `Analizza`.
+- File/documenti collegati:
+  - `src/utils/cloneWriteBarrier.ts`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260412_141306_ia_interna_fix_analizza_clone_barrier.md`
+  - `docs/continuity-reports/20260412_141306_continuity_ia_interna_fix_analizza_clone_barrier.md`
+- Dipendenze o blocchi: `Analizza` non e piu bloccato dal barrier su `/next/ia/interna`; restano separati e `DA VERIFICARE` gli errori console non bloccanti osservati durante la review.
+
+### L.1.i Launcher Home riallineato all'ingresso unico reale
+- Stato: `FATTO`
+- Note: la Dashboard `/next` non apre piu il modale clone-only `Conversazione rapida dalla Home`. `HomeInternalAiLauncher` naviga direttamente a `/next/ia/interna`, evitando che `draftPrompt` e `draftAttachments` del launcher Home entrino in `NextInternalAiPage` come stato iniziale e riaprano proposal/review sporche. Il click dalla Home porta ora sempre alla pagina reale della IA interna, pulita e coerente con l'ingresso unico documentale.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260412_144023_home_ia_launcher_fix.md`
+  - `docs/continuity-reports/20260412_144023_continuity_home_ia_launcher_fix.md`
+- Dipendenze o blocchi: nessuno nel perimetro Home; eventuali futuri quick action Home verso la IA richiederanno una decisione UX separata, senza reintrodurre superfici parallele al flusso documentale.
 
 ### L.2 Ricerca guidata mezzi / autosuggest targhe reali
 - Stato: `FATTO`
@@ -2363,3 +2466,31 @@ Stato macrofase: `NON FATTO`
 - Dipendenze o blocchi:
   - il dataset live di `/next/magazzino?tab=documenti-costi` espone ancora `Pronte: 0`, `Bloccate: 3`, quindi la prova browser end-to-end sul ramo `riconciliazione senza carico` resta `DA VERIFICARE`;
   - nessun writer nuovo viene aperto e nessuna barrier viene modificata in questo step.
+
+### M.56 Audit runtime E2E del fix `Magazzino` + IA interna
+- Stato: `FATTO`
+- Note: il `2026-04-11` e stata chiusa una verifica runtime reale senza patch runtime aggiuntive, per capire se il dataset live consentisse davvero la prova end-to-end del fix appena applicato.
+- Cosa e stato chiuso:
+  - `/next/magazzino?tab=documenti-costi` e stato verificato nel runtime reale distinguendo il pannello procurement da quello documentale;
+  - il pannello procurement espone casi pronti (`Pronte: 9`, `Bloccate: 1`), ma il ramo documentale richiesto espone ancora `Righe supporto: 3`, `Pronte: 0`, `Bloccate: 3`;
+  - `/next/ia/interna` conferma la gerarchia destra richiesta su `fattura_mariba_534909.pdf`, `fattura_adblue_aprile.pdf`, `documento_ambiguo.pdf`, con `Dettagli tecnici` collassati e `Righe estratte` in evidenza;
+  - il live persistito corrente non espone pero bottoni `Conferma` su `MARIBA` e `AdBlue`: la decisione resta `DA VERIFICARE`, quindi nessuna scrittura business reale e stata eseguita.
+- File/documenti collegati:
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260411_233850_audit_runtime_magazzino_ia_fix_e2e.md`
+  - `docs/continuity-reports/20260411_233850_continuity_audit_runtime_magazzino_ia_fix_e2e.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/NextMagazzinoPage.tsx src/next/internal-ai/internalAiMagazzinoControlledActions.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internal-ai.css` -> `OK` sul runtime; warning noto solo sul CSS ignorato dalla config ESLint del repo
+  - `npm run build` -> `OK`
+  - runtime reale verificato su `/next/magazzino?tab=documenti-costi`
+  - runtime reale verificato su `/next/ia/interna` con `fattura_mariba_534909.pdf`, `fattura_adblue_aprile.pdf`, `documento_ambiguo.pdf`
+- Dipendenze o blocchi:
+  - finche il dataset live documentale non espone almeno un caso `Pronto`, la prova end-to-end su quantita prima/dopo resta non eseguibile senza forzature;
+  - la presenza di badge alti come `Riconciliazione proposta` o `Pronto con conferma` non basta da sola: nel live corrente conta il blocco decisionale effettivo, che resta `DA VERIFICARE`;
+  - la capability resta `PARZIALE` finche non esiste un documento live davvero eseguibile.

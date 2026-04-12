@@ -1,5 +1,5 @@
 ﻿import { Fragment, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import NextMappaStoricoPage from "./NextMappaStoricoPage";
 import {
   readNextInventarioSnapshot,
@@ -572,6 +572,7 @@ async function readPageData(): Promise<PageLoadData> {
 }
 
 export default function NextManutenzioniPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -610,6 +611,10 @@ export default function NextManutenzioniPage() {
   const [gommeStraordinarioQuantita, setGommeStraordinarioQuantita] = useState("");
   const [quantitaTemp, setQuantitaTemp] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const requestedTarga = useMemo(
+    () => normalizeText(new URLSearchParams(location.search).get("targa") ?? ""),
+    [location.search],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -897,6 +902,23 @@ export default function NextManutenzioniPage() {
     return pdfFilteredItems.filter((item) => visibleTarghe.has(normalizeText(item.targa)));
   }, [pdfFilteredItems, pdfVisibleResults]);
   const contextPlaceholder = !activeTarga && !mezzoPreviewSelezionato;
+
+  useEffect(() => {
+    if (!requestedTarga || mezzi.length === 0) {
+      return;
+    }
+
+    const matchedMezzo = mezzi.find((mezzo) => normalizeText(mezzo.targa) === requestedTarga);
+    if (!matchedMezzo) {
+      return;
+    }
+
+    setSelectedTarga((current) => (current === requestedTarga ? current : requestedTarga));
+    setTarga((current) => (current === requestedTarga ? current : requestedTarga));
+    setSelectedDetailRecordId(null);
+    setView("dashboard");
+    setNotice(null);
+  }, [mezzi, requestedTarga]);
 
   useEffect(() => {
     const validAssi = new Set(assiDisponibili.map((asse) => asse.id));

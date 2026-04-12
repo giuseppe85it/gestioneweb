@@ -1,14 +1,146 @@
 # STATO AVANZAMENTO IA INTERNA GESTIONALE
 
-Data audit: 2026-03-11  
-Ultimo aggiornamento scaffolding: 2026-04-11  
-Stato generale: SCAFFOLDING V1 ISOLATO AVVIATO  
-Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del sottosistema IA interno in forma non operativa, sicura e reversibile.
+Data audit: 2026-03-11
+Ultimo aggiornamento scaffolding: 2026-04-12
+Stato generale: USE CASE DOCUMENTALE UNIFICATO ATTIVO NEL CLONE, CAPABILITY PARZIALE
+Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema IA interno oggi attivo nel clone/NEXT, con ingresso unico documentale, riuso del motore reale `Documenti IA` e guard-rail ancora espliciti sui rami live non verificati end-to-end.
 
 ## 0. Regola operativa
 - La fonte operativa unica dello stato IA interno e `docs/product/CHECKLIST_IA_INTERNA.md`.
 - Questo documento resta il quadro esteso di contesto, rischi, fasi e fatti verificati.
 - Ogni futuro task relativo alla IA interna deve aggiornare obbligatoriamente la checklist unica; se non lo fa, il task e incompleto.
+
+## 0.0 Aggiornamento operativo 2026-04-12 - UI spec `IA Universal Dispatcher` applicata in modo parziale
+- esecuzione completata nel solo perimetro autorizzato `HomeInternalAiLauncher.tsx`, `NextInternalAiPage.tsx`, `NextIADocumentiPage.tsx`, `internal-ai.css`, senza toccare orchestrator, writer, barrier, domain o motori legacy;
+- Home `/next`:
+  - card `Assistente IA` riscritta come launcher unico con prompt, menu `+`, voci attive/in arrivo e link `Storico`;
+  - submit prompt verificato davvero -> `/next/ia/interna` con testo precaricato;
+  - menu `+` verificato davvero in apertura e sulla voce `Libretto mezzo` -> `/next/ia/libretto`;
+- `/next/ia/interna`:
+  - shell dispatcher nuova con header, composer, colonna destra funzioni, handoff banner piu compatto e review interna a due colonne sopra il motore documentale esistente;
+  - ingresso pulito confermato: la superficie reale non reidrata piu automaticamente gli allegati IA-only persistiti, quindi non compaiono piu banner/chip `fattura mariba.jpeg` di default;
+  - `Riapri review` da storico continua ad aprire la review corretta;
+- `/next/ia/documenti`:
+  - layout riscritto come storico ufficiale read-only basato solo sul domain `readNextIADocumentiArchiveSnapshot()`;
+  - filtri e sezioni oggi realmente possibili: `Tutti`, `Fatture`, `Preventivi`, `Da verificare`;
+  - `Apri originale` verificato davvero in nuova tab su file reale Storage;
+- verifiche tecniche:
+  - `npm run build` -> `OK`
+  - browser verificato davvero su `/next`, `/next/ia/interna`, `/next/ia/documenti`
+  - nessun `Maximum update depth exceeded` osservato in queste verifiche; restano i `403` noti dei listing Storage Firebase
+- stato onesto:
+  - Home launcher + dispatcher page -> `FATTO`
+  - storico ufficiale spec al 100% -> `NON FATTO`
+  - task complessivo -> `PARZIALE`, perche lo storico non puo mostrare `Libretti`, `Cisterna`, `Manutenzioni` finche il domain read-only non le espone davvero
+
+## 0.0 Aggiornamento operativo 2026-04-12 - audit stato reale IA interna / documentale
+- creato il report principale `docs/audit/AUDIT_IA_INTERNA_STATO_REALE_2026-04-12.md` per fissare in modo semplice e dimostrabile il comportamento reale del sistema oggi attivo;
+- verifiche browser eseguite davvero su `/next`, `/next/ia/interna`, `/next/ia/documenti`:
+  - la Home apre direttamente `/next/ia/interna`;
+  - l'ingresso documentale parte pulito;
+  - upload + `Analizza` funzionano davvero e aprono la review;
+  - `Apri originale`, `Riapri review`, filtri storico e almeno un ramo `Vai a` sono stati esercitati davvero;
+- quadro reale emerso:
+  - `/next/ia/interna` e la porta principale;
+  - `/next/ia/documenti` e soprattutto storico secondario del motore;
+  - il motore documentale reale resta `useIADocumentiEngine()` in `src/pages/IA/IADocumenti.tsx`;
+  - le scritture documentali reali esistono nel codice: analisi cloud function, upload Storage, save Firestore, update valuta, import inventario;
+  - le scritture IA non business usano `localStorage` namespaced e mirror opzionale su adapter isolato;
+- problemi reali ancora aperti:
+  - errori `403` sui listing Storage Firebase;
+  - ricorrenze `Maximum update depth exceeded`;
+- stato onesto:
+  - use case documentale base -> `ATTIVO`
+  - capability complessiva -> `PARZIALE`
+  - separazione piena da motore documentale shared -> `NON FATTO`
+
+## 0.0 Aggiornamento operativo 2026-04-12 - launcher Home riallineato all'ingresso unico
+- la Home `/next` non usa piu il modale clone-only `Conversazione rapida dalla Home`;
+- il file reale del launcher (`src/next/components/HomeInternalAiLauncher.tsx`) non monta piu `NextInternalAiPage` con `surfaceVariant="home-modal"` e non passa piu `draftPrompt` / `draftAttachments` come stato iniziale della pagina IA;
+- la causa strutturale della review sporca lato Home era proprio quel passaggio implicito di stato: con allegati in memoria il modale Home poteva aprire subito proposal/review documento gia popolate;
+- la soluzione applicata e piu pulita e coerente col disegno attuale: dalla Dashboard si naviga direttamente a `/next/ia/interna`, che resta l'unico ingresso documentale reale;
+- verifiche eseguite nel task:
+  - `npx eslint src/next/components/HomeInternalAiLauncher.tsx src/next/NextHomePage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime verificato davvero su `http://localhost:5173/next` con click sul launcher Home, arrivo su `http://localhost:5173/next/ia/interna`, assenza del modale Home e assenza di review sporca / MARIBA aperta di default;
+- stato onesto:
+  - launcher Home -> `FATTO`
+  - ingresso unico documentale `/next/ia/interna` -> confermato come unica entry coerente
+
+## 0.0 Aggiornamento operativo 2026-04-12 - fix mirato barrier su `Analizza`
+- patch minima completata nel solo perimetro autorizzato `src/utils/cloneWriteBarrier.ts`;
+- il barrier autorizza ora solo il caso stretto `fetch.runtime` con pathname `/next/ia/interna`, metodo `POST` ed endpoint esatto `https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti`;
+- nessuna modifica a `NextInternalAiPage`, `NextIADocumentiPage`, writer business, backend o rules;
+- runtime verificato davvero su `http://localhost:5173/next/ia/interna`:
+  - upload `audit-fattura-mariba.pdf`;
+  - click `Analizza`;
+  - `POST` verso `estrazioneDocumenti` partito davvero in network con `200`;
+  - review documento aperta correttamente con CTA `Apri originale`, `Vai a Inventario`, `Torna alla home documentale`;
+- verifiche tecniche:
+  - `npx eslint src/utils/cloneWriteBarrier.ts` -> `OK`
+  - `npm run build` -> `OK`
+- errori residui osservati ma non corretti in questo task:
+  - richieste di listing Storage Firebase `403` gia presenti nel runtime;
+  - ricorrenze `Maximum update depth exceeded` durante la review, non bloccanti sul flusso documentale;
+- stato onesto:
+  - `Analizza` su `/next/ia/interna` -> `SBLOCCATO`
+  - `home sporca` -> `NON RIPRODOTTA` nel worktree/runtime correnti
+
+## 0.0 Aggiornamento operativo 2026-04-12 - audit `home sporca` / `Analizza bloccato`
+- audit solo diagnostico completato senza patch runtime;
+- il worktree/runtime corrente non riproduce una review sporca di default su `/next/ia/interna`:
+  - browser verificato davvero su `http://localhost:5173/next/ia/interna` e sulla preview `4174`, sempre con home pulita e nessuna query;
+  - `NextInternalAiPage.tsx` oggi parte con `documentWorkspaceTab = "inbox"` e `openedHistoryDocumentId = null`;
+  - la sola riapertura automatica dimostrata passa da `reviewDocumentId` / `reviewSourceKey` letti da `location.search`, generati da `Riapri review` in `NextIADocumentiPage.tsx` e poi rimossi dalla URL;
+  - non emergono `localStorage` o `sessionStorage` documentali che riaprano la review; i soli storage locali letti nel browser sono `@next_internal_ai:universal_requests_v1`, `@next_internal_ai:tracking_memory_v1`, `@next_internal_ai:artifact_archive_v1`, nessuno dei quali contiene `reviewDocumentId`;
+- `Analizza` nel clone e invece bloccato in modo reale e dimostrabile:
+  - con file caricato il bottone si abilita davvero, quindi il problema non e sul `disabled`;
+  - `src/pages/IA/IADocumenti.tsx` chiama ancora il `POST` legacy verso `estrazioneDocumenti`;
+  - `src/main.tsx` installa sempre `installCloneFetchBarrier()`;
+  - `src/utils/cloneWriteBarrier.ts` intercetta il `POST` come `fetch.runtime` e lancia `CloneWriteBlockedError` prima che la rete parta;
+  - console e network browser confermano warning `[CLONE_NO_WRITE]`, stack reale sul barrier e assenza del `POST` verso `estrazioneDocumenti`;
+- stato onesto:
+  - `home sporca` nel worktree corrente -> `NON RIPRODOTTA`
+  - `Analizza` nel clone -> `BLOCCATO` dal barrier globale
+- follow-up minimo consigliato:
+  - nessuna patch urgente sulla home finche non emerge un chiamante che entri con query sporca;
+  - per `Analizza` serve una decisione esplicita: UI clone-safe onesta oppure apertura mirata del trasporto consentito con modifica deliberata del barrier / backend.
+
+## 0.0 Aggiornamento operativo 2026-04-12 - fix ingresso, layout desktop e destinazioni documentali
+- `/next/ia/interna` non riapre piu review persistite di default: l'ingresso torna sempre alla home documentale pulita con upload, tipo atteso, motore `Documenti IA`, `Analizza`, `Apri storico`.
+- la review desktop e ora viewport-fit nel perimetro della shell NEXT:
+  - header compatto sempre visibile;
+  - page-scroll desktop bloccato solo in review attiva;
+  - 3 colonne con scroll interni;
+  - CTA `Apri originale`, destinazione e `Torna alla home documentale` sempre visibili;
+- le destinazioni reali sono state riallineate al business finale senza inventare scorciatoie:
+  - fattura magazzino -> `/next/magazzino?tab=inventario`
+  - fattura manutenzione -> `/next/manutenzioni?targa=<targa>`
+  - preventivo per targa -> `/next/dossier/<targa>#preventivi`
+  - `Da verificare` -> review documento su `/next/ia/interna` via query `reviewDocumentId`
+- `NextManutenzioniPage.tsx` e `NextDossierMezzoPage.tsx` hanno ricevuto solo il minimo supporto route/query/hash necessario per il deep-link corretto, senza toccare la logica business dei moduli.
+- verifiche eseguite nel task:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/NextIADocumentiPage.tsx src/pages/IA/IADocumenti.tsx src/next/NextManutenzioniPage.tsx src/next/NextDossierMezzoPage.tsx src/next/nextStructuralPaths.ts` -> `OK`
+  - `npx eslint src/next/internal-ai/internal-ai.css` -> warning noto: file ignorato dalla config ESLint del repo
+  - `npm run build` -> `OK`
+  - runtime verificato su `/next/ia/interna`, `/next/ia/documenti`, `/next/magazzino?tab=inventario`, `/next/manutenzioni?targa=TI324623`, `/next/dossier/TI313387#preventivi`
+- stato onesto del ramo:
+  - entry state pulito + review viewport-fit + target finali -> `FATTO`
+  - nuovi upload live end-to-end e record storico live `Da verificare` -> `DA VERIFICARE`
+
+## 0.1 Aggiornamento operativo 2026-04-12 - ingresso unico documentale unificato
+- `/next/ia/interna` e ora l'ingresso unico documentale della NEXT: upload, tipo atteso, motore `Documenti IA`, tab `Inbox`, `Da verificare`, `Salvati`, `Chat IA`, review documento a 3 colonne e storico filtrabile.
+- la chat resta disponibile ma e secondaria rispetto al workflow documentale.
+- il motore reale non e stato riscritto: `src/pages/IA/IADocumenti.tsx` espone ora `useIADocumentiEngine()` e la NEXT lo riusa per upload, preview, analisi, apertura originale, storico, valuta, salvataggi e import inventario gia esistenti.
+- `/next/ia/documenti` non e stato rimosso ma declassato a superficie secondaria/storico del motore reale, con CTA verso `/next/ia/interna`.
+- verifiche eseguite nel task:
+  - `npx eslint src/pages/IA/IADocumenti.tsx src/next/NextInternalAiPage.tsx src/next/NextIADocumentiPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - runtime verificato su `/next/ia/interna` e `/next/ia/documenti`
+  - storico reale aperto, `Riapri review` funzionante, `Vai al dossier` funzionante su `/next/dossier/TI313387`, `Apri originale` funzionante in tab separata.
+- stato onesto del ramo:
+  - integrazione UI + motore reale: `FATTO`
+  - verifica end-to-end live di tutti i rami finali con nuovi file: `DA VERIFICARE`
 
 ## 1. Perimetro analizzato
 - Documentazione:
@@ -1616,6 +1748,25 @@ Scopo: fotografia tecnica dello stato attuale del repository e primo avvio del s
 - Limiti residui:
   - la patch e chiusa nel clone, ma la prova browser end-to-end su un candidato reale `Pronto` che dimostri `riconciliazione senza carico` senza aumento quantita resta `DA VERIFICARE`;
   - la capability IA `Magazzino` resta `PARZIALE`.
+
+## 12.53 Aggiornamento 2026-04-11 - Audit runtime E2E fix `Magazzino` + IA interna
+- Verifica runtime reale completata senza patch runtime aggiuntive e senza forzare scritture business sul dataset live.
+- Cosa cambia davvero nello stato verificato:
+  - `/next/magazzino?tab=documenti-costi` conferma che il pannello procurement ha casi pronti, ma il ramo documentale richiesto no: `Righe supporto: 3`, `Pronte: 0`, `Bloccate: 3`;
+  - i candidati documentali live correnti restano bloccati e quindi non consentono di misurare in browser quantita prima/dopo per `Riconcilia documento`, `Aggiungi costo/documento` o `Carica stock`;
+  - `/next/ia/interna` conferma la gerarchia destra richiesta e la leggibilita di `Righe estratte`, ma i dossier live correnti `fattura_mariba_534909.pdf` e `fattura_adblue_aprile.pdf` mantengono `Scelta attuale: DA VERIFICARE` e non espongono bottoni `Conferma`.
+- Boundary preservati:
+  - nessun writer business reale eseguito;
+  - nessun micro-fix runtime applicato in questo audit;
+  - nessun allargamento barrier o writer.
+- Verifiche eseguite:
+  - `npx eslint src/next/NextMagazzinoPage.tsx src/next/internal-ai/internalAiMagazzinoControlledActions.ts src/next/NextInternalAiPage.tsx src/next/internal-ai/internal-ai.css` -> OK sul runtime, con warning noto sul CSS ignorato dalla config ESLint del repo
+  - `npm run build` -> OK
+  - runtime verificato su `/next/magazzino?tab=documenti-costi`
+  - runtime verificato su `/next/ia/interna` con `fattura_mariba_534909.pdf`, `fattura_adblue_aprile.pdf`, `documento_ambiguo.pdf`
+- Limiti residui:
+  - il fix resta dimostrato nel codice ma non ancora provabile end-to-end sul ramo documentale live, perche manca un candidato `Pronto`;
+  - la capability `Magazzino` della IA interna resta `PARZIALE` finche non si presenta un caso live eseguibile con audit separato.
 
 ## 12. Cosa non va ancora fatto
 - Non implementare chat IA runtime collegata ai backend legacy.
