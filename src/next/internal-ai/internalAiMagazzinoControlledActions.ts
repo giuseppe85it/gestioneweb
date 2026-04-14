@@ -964,3 +964,79 @@ export async function executeInternalAiMagazzinoInlineAction(args: {
     outcome,
   };
 }
+
+export type ImportDocumentRowInput = {
+  descrizione?: string | null;
+  prezzoUnitario?: string | number | null;
+  quantita?: string | number | null;
+  unita?: string | null;
+  fornitore?: string | null;
+};
+
+export async function importDocumentRowsToInventario(
+  rows: ImportDocumentRowInput[],
+  fornitore?: string | null,
+): Promise<{ imported: number; updated: number; skipped: number }> {
+  const rowsToProcess = rows.filter(
+    (r) => r.descrizione && r.descrizione.trim().length > 0,
+  );
+  if (rowsToProcess.length === 0) {
+    return { imported: 0, updated: 0, skipped: 0 };
+  }
+
+  return runWithCloneWriteScopedAllowance(
+    INTERNAL_AI_MAGAZZINO_INLINE_SCOPE,
+    async () => {
+      const raw = await getItemSync(INVENTARIO_KEY);
+      const existing = unwrapStoredArray(raw) as RawDatasetRecord[];
+      const shape = detectStoredArrayShape(raw);
+
+      let imported = 0;
+      let updated = 0;
+      let skipped = 0;
+      const next = [...existing];
+
+      for (const row of rowsToProcess) {
+        const descNorm = row.descrizione!.trim().toLowerCase();
+        const prezzoNum = normalizeNumber(row.prezzoUnitario ?? null);
+        const quantitaNum = normalizeNumber(row.quantita ?? null);
+        const idx = next.findIndex(
+          (item) =>
+            typeof item.descrizione === "string" &&
+            item.descrizione.trim().toLowerCase() === descNorm,
+        );
+
+        if (idx >= 0) {
+          if (prezzoNum != null && prezzoNum > 0) {
+            next[idx] = { ...next[idx], prezzoUnitario: prezzoNum };
+            updated++;
+          } else {
+            skipped++;
+          }
+        } else {
+          const unitaNorm = normalizeNextMagazzinoStockUnit(row.unita ?? "pz") ?? "pz";
+          const newItem: RawDatasetRecord = {
+            id: generateId(),
+            descrizione: row.descrizione!.trim(),
+            quantita: quantitaNum ?? 0,
+            quantitaTotale: quantitaNum ?? 0,
+            unita: unitaNorm,
+            stockKey: null,
+            stockLoadKeys: [],
+            fornitore: fornitore ?? row.fornitore ?? null,
+            fornitoreLabel: fornitore ?? row.fornitore ?? null,
+            nomeFornitore: fornitore ?? row.fornitore ?? null,
+            fotoUrl: null,
+            fotoStoragePath: null,
+            prezzoUnitario: prezzoNum ?? null,
+          };
+          next.push(newItem);
+          imported++;
+        }
+      }
+
+      await setItemSync(INVENTARIO_KEY, wrapStoredArray(shape, next));
+      return { imported, updated, skipped };
+    },
+  );
+}

@@ -30,7 +30,7 @@ export type NextProcurementCloneTab =
   | "listino";
 
 export type NextProcurementListTab = "ordini" | "arrivi";
-export type NextProcurementOrderState = "in_attesa" | "parziale" | "arrivato";
+export type NextProcurementOrderState = "in_attesa" | "parziale" | "arrivato" | "vuoto";
 export type NextProcurementApprovalStatus = "pending" | "approved" | "rejected";
 
 export const NEXT_PROCUREMENT_DOMAIN = {
@@ -411,14 +411,14 @@ function deriveOrderState(args: {
   arrivedRows: number;
   ordineArrivato: boolean;
 }): NextProcurementOrderState {
-  const { totalRows, arrivedRows, ordineArrivato } = args;
+  const { totalRows, arrivedRows } = args;
   if (totalRows > 0) {
     if (arrivedRows === 0) return "in_attesa";
     if (arrivedRows < totalRows) return "parziale";
     return "arrivato";
   }
 
-  return ordineArrivato ? "arrivato" : "in_attesa";
+  return "vuoto";
 }
 
 function deriveQuality(flags: string[], fallbackToVerify?: boolean): NextReadQuality {

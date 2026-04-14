@@ -5,12 +5,11 @@ import { storage } from "../firebase";
 import { getItemSync, setItemSync } from "../utils/storageSync";
 import { uploadBytes } from "../utils/storageWriteOps";
 import {
-  NEXT_IA_DOCUMENTI_PATH,
-  NEXT_MATERIALI_DA_ORDINARE_PATH,
-  buildNextAnalisiEconomicaPath,
-  buildNextDettaglioOrdinePath,
   buildNextDossierPath,
   buildNextMagazzinoPath,
+  buildNextAnalisiEconomicaPath,
+  buildNextDettaglioOrdinePath,
+  NEXT_INTERNAL_AI_PATH,
   type NextMagazzinoTab,
 } from "./nextStructuralPaths";
 import {
@@ -18,6 +17,8 @@ import {
   readNextIADocumentiArchiveSnapshot,
   type NextDocumentiCostiFleetSnapshot,
   type NextDocumentiCostiReadOnlyItem,
+  type NextDocumentiMagazzinoSupportDocument,
+  type NextIADocumentiArchiveItem,
   type NextIADocumentiArchiveSnapshot,
 } from "./domain/nextDocumentiCostiDomain";
 import {
@@ -26,6 +27,7 @@ import {
 } from "./domain/nextMaterialiMovimentiDomain";
 import {
   readNextProcurementSnapshot,
+  type NextProcurementPreventivoItem,
   type NextProcurementSnapshot,
 } from "./domain/nextProcurementDomain";
 import {
@@ -44,6 +46,7 @@ import {
   type NextMagazzinoStockUnit,
 } from "./domain/nextMagazzinoStockContract";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
+import "./internal-ai/internal-ai.css";
 import "./next-magazzino.css";
 
 type ModuloAttivo = "inv" | "mc" | "adblue" | "docs";
@@ -56,6 +59,58 @@ type DestinatarioType = "MEZZO" | "COLLEGA" | "MAGAZZINO";
 type MovimentoDirection = "IN" | "OUT";
 type StoredArrayShape = "array" | "items" | "value" | "value.items";
 type RawDatasetRecord = Record<string, unknown>;
+type MagazzinoDocumentiFilter =
+  | "tutti"
+  | "fatture"
+  | "ddt"
+  | "preventivi"
+  | "da_verificare";
+
+type MagazzinoDocumentModalRow = {
+  id: string;
+  descrizione: string;
+  quantita: number | null;
+  prezzoUnitario: number | null;
+  totale: number | null;
+  unita: string | null;
+  note: string | null;
+};
+
+type MagazzinoDocumentUiItem = {
+  id: string;
+  sourceKey: string;
+  sourceDocId: string | null;
+  tipoDocumento: string;
+  categoria: "fattura" | "preventivo" | "ddt";
+  fornitore: string;
+  dataDocumento: string | null;
+  sortTimestamp: number | null;
+  totaleDocumento: string | number | null;
+  currency: string | null;
+  fileUrl: string | null;
+  targa: string | null;
+  numeroDocumento: string | null;
+  descrizione: string;
+  daVerificare: boolean;
+  righe: MagazzinoDocumentModalRow[];
+};
+
+type MagazzinoDocumentSupplierGroup = {
+  supplier: string;
+  items: MagazzinoDocumentUiItem[];
+  total: number;
+};
+
+const MAGAZZINO_DOC_FILTERS: Array<{
+  id: MagazzinoDocumentiFilter;
+  label: string;
+}> = [
+  { id: "tutti", label: "Tutti" },
+  { id: "fatture", label: "Fatture" },
+  { id: "ddt", label: "DDT" },
+  { id: "preventivi", label: "Preventivi" },
+  { id: "da_verificare", label: "Da verificare" },
+];
 
 type InventarioItem = {
   id: string;
@@ -1038,6 +1093,159 @@ function buildProcurementStateLabel(state: string): string {
   }
 }
 
+function truncateMagazzinoDocumentText(value: string, maxLength: number): string {
+  const normalized = normalizeText(value).replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function parseMagazzinoDocumentAmount(value: string | number | null | undefined): number | null {
+  return normalizeNumber(value);
+}
+
+function formatMagazzinoDocumentCompactAmount(value: number): string {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function buildMagazzinoDocumentDescription(
+  item: NextIADocumentiArchiveItem,
+  supportDocument: NextDocumentiMagazzinoSupportDocument | null,
+): string {
+  const fromRows = supportDocument?.voci
+    .map((row) => normalizeText(row.descrizione))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(", ");
+  if (fromRows) {
+    return truncateMagazzinoDocumentText(fromRows, 72);
+  }
+
+  const fromCategory = normalizeText(item.categoriaArchivio);
+  if (fromCategory) {
+    return truncateMagazzinoDocumentText(fromCategory, 72);
+  }
+
+  const fromText = normalizeText(item.testo);
+  if (fromText) {
+    return truncateMagazzinoDocumentText(fromText, 72);
+  }
+
+  return "Documento magazzino";
+}
+
+function buildMagazzinoPreventivoDescription(item: NextProcurementPreventivoItem): string {
+  const preview = item.materialsPreview.join(", ");
+  if (preview) {
+    return truncateMagazzinoDocumentText(preview, 72);
+  }
+  return "Preventivo procurement materiali";
+}
+
+function sortMagazzinoDocumentItems(items: MagazzinoDocumentUiItem[]): MagazzinoDocumentUiItem[] {
+  return [...items].sort((left, right) => {
+    const timestampDelta = (right.sortTimestamp ?? -1) - (left.sortTimestamp ?? -1);
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
+
+    const dateDelta = normalizeText(right.dataDocumento).localeCompare(
+      normalizeText(left.dataDocumento),
+      "it",
+      { sensitivity: "base" },
+    );
+    if (dateDelta !== 0) {
+      return dateDelta;
+    }
+
+    return normalizeText(left.numeroDocumento).localeCompare(
+      normalizeText(right.numeroDocumento),
+      "it",
+      { sensitivity: "base" },
+    );
+  });
+}
+
+function isMagazzinoPreventivo(item: MagazzinoDocumentUiItem): boolean {
+  return item.categoria === "preventivo";
+}
+
+function isMagazzinoDdt(item: MagazzinoDocumentUiItem): boolean {
+  if (item.categoria === "ddt") {
+    return true;
+  }
+
+  const tipoDocumento = normalizeText(item.tipoDocumento).toUpperCase();
+  const numeroDocumento = normalizeText(item.numeroDocumento).toUpperCase();
+  const descrizione = normalizeText(item.descrizione).toUpperCase();
+
+  return (
+    tipoDocumento === "DDT" ||
+    tipoDocumento.includes("BOLLA") ||
+    numeroDocumento.includes("DDT") ||
+    descrizione.includes("DDT")
+  );
+}
+
+function isMagazzinoFattura(item: MagazzinoDocumentUiItem): boolean {
+  return item.categoria === "fattura" && !isMagazzinoDdt(item);
+}
+
+function getMagazzinoBadgeClass(item: MagazzinoDocumentUiItem): string {
+  if (isMagazzinoPreventivo(item)) return "is-preventivo";
+  if (isMagazzinoDdt(item)) return "is-ddt";
+  return "is-fattura";
+}
+
+function getMagazzinoKindLabel(item: MagazzinoDocumentUiItem): string {
+  if (isMagazzinoPreventivo(item)) return "PREVENTIVO";
+  if (isMagazzinoDdt(item)) return "DDT";
+  if (isMagazzinoFattura(item)) return "FATTURA";
+  return normalizeText(item.tipoDocumento).toUpperCase() || "DOCUMENTO";
+}
+
+function buildMagazzinoAskAiPrompt(item: MagazzinoDocumentUiItem): string {
+  const parts = [
+    `Fammi un riepilogo del documento ${getMagazzinoKindLabel(item)}`,
+    normalizeText(item.dataDocumento)
+      ? `del ${normalizeText(item.dataDocumento)}`
+      : "con data non disponibile",
+    normalizeText(item.fornitore)
+      ? `di ${normalizeText(item.fornitore)}`
+      : "di fornitore non specificato",
+    normalizeText(item.numeroDocumento)
+      ? `numero ${normalizeText(item.numeroDocumento)}`
+      : "senza numero documento disponibile",
+  ];
+
+  if (normalizeText(item.targa)) {
+    parts.push(`per il mezzo ${normalizeText(item.targa)}`);
+  }
+
+  const parsedAmount = parseMagazzinoDocumentAmount(item.totaleDocumento);
+  if (parsedAmount !== null) {
+    parts.push(`per un importo di ${formatCurrencyAmount(parsedAmount, item.currency)}`);
+  }
+
+  return `${parts.join(" ")}.`;
+}
+
+function matchesMagazzinoDocumentSearch(item: MagazzinoDocumentUiItem, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  return (
+    normalizeText(item.fornitore).toLowerCase().includes(normalizedQuery) ||
+    normalizeText(item.targa).toLowerCase().includes(normalizedQuery) ||
+    normalizeText(item.totaleDocumento).toLowerCase().includes(normalizedQuery)
+  );
+}
+
 function durataGiorni(dataInizio: string, dataFine: string): number {
   const diff = dateDiffDays(parseStoredDate(dataInizio), parseStoredDate(dataFine));
   return diff ?? 0;
@@ -1159,6 +1367,12 @@ export default function NextMagazzinoPage() {
     useState<NextProcurementSnapshot | null>(null);
   const [magazzinoRealeSnapshot, setMagazzinoRealeSnapshot] =
     useState<NextMagazzinoRealeSnapshot | null>(null);
+  const [docFiltroAttivo, setDocFiltroAttivo] =
+    useState<MagazzinoDocumentiFilter>("tutti");
+  const [docSearchQuery, setDocSearchQuery] = useState("");
+  const [docSezioniAperte, setDocSezioniAperte] = useState<Set<string>>(new Set());
+  const [docModalItem, setDocModalItem] = useState<MagazzinoDocumentUiItem | null>(null);
+  const [docLocalDaVerificareIds, setDocLocalDaVerificareIds] = useState<Set<string>>(new Set());
 
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1265,6 +1479,21 @@ export default function NextMagazzinoPage() {
     if (requestedTab === expectedTab) return;
     navigate(buildNextMagazzinoPath(expectedTab), { replace: true });
   }, [modulo, navigate, requestedTab]);
+
+  useEffect(() => {
+    if (!docModalItem) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDocModalItem(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [docModalItem]);
 
   useEffect(() => {
     if (iaHandoff.state.status !== "ready") {
@@ -2802,20 +3031,143 @@ export default function NextMagazzinoPage() {
       }),
     );
 
-  const documentiMagazzinoItems = (iaDocumentiSnapshot?.items ?? [])
-    .filter((item) => item.sourceKey === "@documenti_magazzino")
-    .slice(0, 6);
+  const documentiMagazzinoItems = (iaDocumentiSnapshot?.items ?? []).filter(
+    (item) => item.sourceKey === "@documenti_magazzino",
+  );
   const documentoReadyCount = documentoStockCandidates.filter(
     (item) => item.canLoad || item.canReconcileWithoutLoad,
   ).length;
+  const procurementPreventivi = useMemo(
+    () => procurementSnapshot?.preventivi ?? [],
+    [procurementSnapshot],
+  );
+  const materialSupportDocumentIndex = useMemo(() => {
+    const next = new Map<string, NextDocumentiMagazzinoSupportDocument>();
+    for (const entry of documentiCostiSnapshot?.materialCostSupport.documents ?? []) {
+      next.set(entry.sourceDocId, entry);
+    }
+    return next;
+  }, [documentiCostiSnapshot]);
+  const documentiMagazzinoUiItems = useMemo<MagazzinoDocumentUiItem[]>(() => {
+    const archiveItems = documentiMagazzinoItems.map((item) => {
+      const supportDocument = materialSupportDocumentIndex.get(item.sourceDocId) ?? null;
+      return {
+        id: item.id,
+        sourceKey: item.sourceKey,
+        sourceDocId: item.sourceDocId,
+        tipoDocumento: item.tipoDocumento,
+        categoria: normalizeText(item.tipoDocumento).toUpperCase() === "PREVENTIVO" ? "preventivo" : "fattura",
+        fornitore: normalizeText(item.fornitore) || "Fornitore non specificato",
+        dataDocumento: item.dataDocumento,
+        sortTimestamp: item.sortTimestamp,
+        totaleDocumento: item.totaleDocumento,
+        currency: item.currency,
+        fileUrl: item.fileUrl,
+        targa: item.targa,
+        numeroDocumento: item.numeroDocumento,
+        descrizione: buildMagazzinoDocumentDescription(item, supportDocument),
+        daVerificare: item.daVerificare,
+        righe:
+          supportDocument?.voci.map((row, index) => ({
+            id: `${supportDocument.id}:row:${index}`,
+            descrizione: normalizeText(row.descrizione) || "Riga documento non valorizzata",
+            quantita: row.quantita,
+            prezzoUnitario: row.prezzoUnitario,
+            totale: row.importo,
+            unita: null,
+            note: null,
+          })) ?? [],
+      } satisfies MagazzinoDocumentUiItem;
+    });
+
+    const preventiviItems = procurementPreventivi.map((item) => ({
+      id: `preventivo:${item.id}`,
+      sourceKey: item.sourceKey,
+      sourceDocId: item.id,
+      tipoDocumento: "PREVENTIVO",
+      categoria: "preventivo" as const,
+      fornitore: normalizeText(item.supplierName) || "Fornitore non specificato",
+      dataDocumento: item.dataPreventivoLabel,
+      sortTimestamp: item.dataPreventivoTimestamp,
+      totaleDocumento: item.totalAmount,
+      currency: item.currency,
+      fileUrl: item.pdfUrl,
+      targa: null,
+      numeroDocumento: item.numeroPreventivo,
+      descrizione: buildMagazzinoPreventivoDescription(item),
+      daVerificare: false,
+      righe: [],
+    }));
+
+    return sortMagazzinoDocumentItems([...archiveItems, ...preventiviItems]);
+  }, [documentiMagazzinoItems, materialSupportDocumentIndex, procurementPreventivi]);
+  const docItemsFiltrati = useMemo(() => {
+    return documentiMagazzinoUiItems
+      .filter((item) => {
+        const isLocallyMarked = docLocalDaVerificareIds.has(item.id);
+        const isReviewItem = item.daVerificare || isLocallyMarked;
+
+        if (docFiltroAttivo === "fatture") return isMagazzinoFattura(item);
+        if (docFiltroAttivo === "ddt") return isMagazzinoDdt(item);
+        if (docFiltroAttivo === "preventivi") return isMagazzinoPreventivo(item);
+        if (docFiltroAttivo === "da_verificare") return isReviewItem;
+        return true;
+      })
+      .filter((item) => matchesMagazzinoDocumentSearch(item, docSearchQuery));
+  }, [documentiMagazzinoUiItems, docFiltroAttivo, docLocalDaVerificareIds, docSearchQuery]);
+  const docPerFornitore = useMemo<MagazzinoDocumentSupplierGroup[]>(() => {
+    const grouped = new Map<string, MagazzinoDocumentUiItem[]>();
+
+    for (const item of docItemsFiltrati) {
+      const supplier = normalizeText(item.fornitore) || "Fornitore non specificato";
+      const current = grouped.get(supplier) ?? [];
+      current.push(item);
+      grouped.set(supplier, current);
+    }
+
+    return Array.from(grouped.entries())
+      .map(([supplier, supplierItems]) => ({
+        supplier,
+        items: sortMagazzinoDocumentItems(supplierItems),
+        total: supplierItems.reduce(
+          (sum, item) => sum + (parseMagazzinoDocumentAmount(item.totaleDocumento) ?? 0),
+          0,
+        ),
+      }))
+      .sort((left, right) => {
+        if (right.total !== left.total) {
+          return right.total - left.total;
+        }
+
+        return left.supplier.localeCompare(right.supplier, "it", {
+          sensitivity: "base",
+        });
+      });
+  }, [docItemsFiltrati]);
+  const docTotaleGenerale = useMemo(
+    () =>
+      docItemsFiltrati.reduce(
+        (sum, item) => sum + (parseMagazzinoDocumentAmount(item.totaleDocumento) ?? 0),
+        0,
+      ),
+    [docItemsFiltrati],
+  );
+  const docDaVerificareCount = useMemo(
+    () =>
+      documentiMagazzinoUiItems.filter(
+        (item) => item.daVerificare || docLocalDaVerificareIds.has(item.id),
+      ).length,
+    [documentiMagazzinoUiItems, docLocalDaVerificareIds],
+  );
+  const showLegacyDocumentSupport = false;
   const materialiCostItems = (documentiCostiSnapshot?.items ?? [])
     .filter(
       (item) =>
-        item.sourceType === "documento_magazzino" || item.sourceType === "costo_mezzo",
+        item.sourceKey === "@documenti_magazzino" &&
+        item.sourceType === "documento_magazzino",
     )
     .slice(0, 6);
   const procurementOrders = (procurementSnapshot?.orders ?? []).slice(0, 6);
-  const procurementPreventivi = (procurementSnapshot?.preventivi ?? []).slice(0, 4);
   const procurementListino = (procurementSnapshot?.listino ?? []).slice(0, 6);
   const magazzinoVehicleLinks = (magazzinoRealeSnapshot?.vehicleLinks ?? []).slice(0, 6);
   const magazzinoSignals = (magazzinoRealeSnapshot?.attentionSignals ?? []).slice(0, 4);
@@ -2824,6 +3176,26 @@ export default function NextMagazzinoPage() {
     ...(procurementSnapshot?.limitations ?? []),
     ...(magazzinoRealeSnapshot?.limitations ?? []),
   ].slice(0, 6);
+
+  const docFornitoriKeys = useMemo(
+    () => docPerFornitore.map((g) => g.supplier).join(","),
+    [docPerFornitore],
+  );
+
+  useEffect(() => {
+    if (docPerFornitore.length === 0) {
+      return;
+    }
+
+    setDocSezioniAperte((prev) => {
+      const next = new Set(prev);
+      for (const group of docPerFornitore) {
+        next.add(group.supplier);
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docFornitoriKeys]);
 
   const mediaGiorni = mediaDurataGiorni(cambi);
   const ultimoCambio = cambi.length ? cambi[cambi.length - 1] : null;
@@ -3732,60 +4104,199 @@ export default function NextMagazzinoPage() {
 
         {!loading && modulo === "docs" ? (
           <>
-            <section className="mag-kpis">
-              <article className="mag-kpi">
-                <div className="mag-kpi__label">Documenti magazzino</div>
-                <div className="mag-kpi__value">
-                  {iaDocumentiSnapshot?.counts.documentiMagazzino ?? 0}
+            <section className="doc-costi-page">
+              <header className="doc-costi-header">
+                <h2 className="doc-costi-title">Documenti e costi</h2>
+                <span className="doc-costi-stat">
+                  <b>{docItemsFiltrati.length}</b> doc
+                </span>
+                <span className="doc-costi-stat">
+                  <b>{docPerFornitore.length}</b> fornitori
+                </span>
+                <span className="doc-costi-stat">
+                  <b>{formatMagazzinoDocumentCompactAmount(docTotaleGenerale)}</b>
+                </span>
+                <span className="doc-costi-stat">
+                  <b>{docDaVerificareCount}</b> da verificare
+                </span>
+                <span className="doc-costi-stat">
+                  <b>{magazzinoRealeSnapshot?.counts.vehicleLinksStrong ?? 0}</b> link forti
+                </span>
+              </header>
+
+              <div className="doc-costi-filters">
+                {MAGAZZINO_DOC_FILTERS.map((filter) => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    className={`doc-costi-filter ${docFiltroAttivo === filter.id ? "is-active" : ""}`}
+                    onClick={() => setDocFiltroAttivo(filter.id)}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+                <input
+                  type="search"
+                  className="doc-costi-search"
+                  placeholder="Cerca fornitore, targa, importo"
+                  value={docSearchQuery}
+                  onChange={(event) => setDocSearchQuery(event.target.value)}
+                />
+              </div>
+
+              {docPerFornitore.length === 0 ? (
+                <div className="doc-costi-empty">
+                  {docFiltroAttivo === "tutti" && !docSearchQuery
+                    ? "Nessun documento Magazzino leggibile nel perimetro reale."
+                    : "Nessun documento corrisponde ai filtri attivi."}
                 </div>
-                <div className="mag-kpi__sub">archivio IA reale</div>
-              </article>
-              <article className="mag-kpi">
-                <div className="mag-kpi__label">Righe costo materiali</div>
-                <div className="mag-kpi__value">
-                  {documentiCostiSnapshot?.materialCostSupport.rowCount ?? 0}
-                </div>
-                <div className="mag-kpi__sub">supporto prudente</div>
-              </article>
-              <article className="mag-kpi">
-                <div className="mag-kpi__label">Ordini aperti</div>
-                <div className="mag-kpi__value">
-                  {(procurementSnapshot?.counts.pendingOrders ?? 0) +
-                    (procurementSnapshot?.counts.partialOrders ?? 0)}
-                </div>
-                <div className="mag-kpi__sub">pending + parziali</div>
-              </article>
-              <article className="mag-kpi">
-                <div className="mag-kpi__label">Link dossier forti</div>
-                <div className="mag-kpi__value">
-                  {magazzinoRealeSnapshot?.counts.vehicleLinksStrong ?? 0}
-                </div>
-                <div className="mag-kpi__sub">movimenti verso mezzi</div>
-              </article>
+              ) : (
+                docPerFornitore.map((group) => {
+                  const isOpen = docSezioniAperte.has(group.supplier);
+                  return (
+                    <section key={group.supplier} className="doc-costi-fornitore">
+                      <button
+                        type="button"
+                        className="doc-costi-fornitore-header"
+                        onClick={() =>
+                          setDocSezioniAperte((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(group.supplier)) {
+                              next.delete(group.supplier);
+                            } else {
+                              next.add(group.supplier);
+                            }
+                            return next;
+                          })
+                        }
+                      >
+                        <span
+                          className={`doc-costi-fornitore-chevron ${isOpen ? "is-open" : ""}`}
+                          aria-hidden="true"
+                        >
+                          &gt;
+                        </span>
+                        <span className="doc-costi-fornitore-name">{group.supplier}</span>
+                        <span className="doc-costi-stat">
+                          <b>{group.items.length}</b> doc
+                        </span>
+                        <span className="doc-costi-fornitore-total">
+                          Totale {formatMagazzinoDocumentCompactAmount(group.total)}
+                        </span>
+                      </button>
+
+                      {isOpen ? (
+                        <>
+                          <table className="doc-costi-table">
+                            <thead>
+                              <tr>
+                                <th>Tipo</th>
+                                <th>Data</th>
+                                <th>Numero</th>
+                                <th>Targa</th>
+                                <th>Descr.</th>
+                                <th className="is-right">EUR</th>
+                                <th>Azioni</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.items.map((item) => {
+                                const isReviewItem =
+                                  item.daVerificare || docLocalDaVerificareIds.has(item.id);
+                                return (
+                                  <tr key={item.id} onClick={() => setDocModalItem(item)}>
+                                    <td>
+                                      <span
+                                        className={`doc-costi-badge ${getMagazzinoBadgeClass(item)}`}
+                                      >
+                                        {getMagazzinoKindLabel(item)}
+                                      </span>
+                                    </td>
+                                    <td>{formatStoredDateForUi(item.dataDocumento)}</td>
+                                    <td>{normalizeText(item.numeroDocumento) || "-"}</td>
+                                    <td>
+                                      {normalizeText(item.targa) ? (
+                                        <span className="doc-costi-targa">
+                                          {normalizeText(item.targa)}
+                                        </span>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </td>
+                                    <td>{item.descrizione}</td>
+                                    <td className="doc-costi-importo">
+                                      {formatDocumentAmount(item.totaleDocumento, item.currency)}
+                                      {normalizeText(item.currency) ? (
+                                        <span className="doc-costi-valuta">
+                                          {normalizeText(item.currency)}
+                                        </span>
+                                      ) : null}
+                                    </td>
+                                    <td>
+                                      <div className="doc-costi-actions">
+                                        <button
+                                          type="button"
+                                          className="doc-costi-btn"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            if (!item.fileUrl) return;
+                                            window.open(item.fileUrl, "_blank", "noopener,noreferrer");
+                                          }}
+                                          disabled={!item.fileUrl}
+                                        >
+                                          PDF
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="doc-costi-btn-ia"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            navigate(NEXT_INTERNAL_AI_PATH, {
+                                              state: { initialPrompt: buildMagazzinoAskAiPrompt(item) },
+                                            });
+                                          }}
+                                        >
+                                          Chiedi alla IA
+                                        </button>
+                                      </div>
+                                      {isReviewItem ? (
+                                        <span className="doc-costi-row-flag">Da verificare</span>
+                                      ) : null}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          <div className="doc-costi-section-total">
+                            <span className="doc-costi-stat">Totale {group.supplier}</span>
+                            <span className="doc-costi-fornitore-total">
+                              {formatMagazzinoDocumentCompactAmount(group.total)}
+                            </span>
+                          </div>
+                        </>
+                      ) : null}
+                    </section>
+                  );
+                })
+              )}
+
+              <footer className="doc-costi-footer">
+                <span className="doc-costi-stat">Totale generale tutti i fornitori</span>
+                <span className="doc-costi-fornitore-total">
+                  {formatMagazzinoDocumentCompactAmount(docTotaleGenerale)}
+                </span>
+              </footer>
             </section>
 
-            <div className="mag-domain-grid">
+            {showLegacyDocumentSupport ? (
+              <div className="mag-domain-grid">
               <section className="mag-form-panel">
-                <div className="mag-form-title">Documenti materiali importati</div>
+                <div className="mag-form-title">Supporto operativo Magazzino</div>
                 <div className="mag-domain-copy">
-                  Vista read-only dei documenti `@documenti_magazzino`: fatture, bolle e
-                  allegati restano consultabili qui senza aprire writer nuovi nel dominio.
-                </div>
-                <div className="mag-domain-actions">
-                  <button
-                    type="button"
-                    className="mag-btn mag-btn--sm"
-                    onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}
-                  >
-                    Apri IA documenti
-                  </button>
-                  <button
-                    type="button"
-                    className="mag-btn mag-btn--sm"
-                    onClick={() => navigate(NEXT_MATERIALI_DA_ORDINARE_PATH)}
-                  >
-                    Apri procurement
-                  </button>
+                  La vista principale sopra segue il linguaggio `Documenti e costi` solo sul
+                  perimetro Magazzino. Qui sotto restano i supporti operativi gia presenti
+                  collegati ai documenti materiali e agli arrivi procurement.
                 </div>
                 <div className="mag-domain-sublist">
                   <div className="mag-domain-subtitle">Carichi stock da arrivi procurement</div>
@@ -4114,9 +4625,9 @@ export default function NextMagazzinoPage() {
               <section className="mag-form-panel">
                 <div className="mag-form-title">Costi materiali e prezzi</div>
                 <div className="mag-domain-copy">
-                  I costi materiali qui sotto sono supporto documentale prudente: arrivano da
-                  `@documenti_magazzino.voci`, `@costiMezzo` e listino procurement, non da un
-                  ledger transazionale canonico.
+                  I costi materiali qui sotto restano nel perimetro `Magazzino`: arrivano dai
+                  documenti `@documenti_magazzino` e dal listino/procurement materiali, non da
+                  un ledger transazionale canonico.
                 </div>
                 <div className="mag-domain-metrics">
                   <span className="mag-domain-chip">
@@ -4346,6 +4857,164 @@ export default function NextMagazzinoPage() {
                   </div>
                 ) : null}
               </section>
+              </div>
+            ) : null}
+
+            <div
+              className={`doc-costi-modal-overlay ${docModalItem ? "is-open" : ""}`}
+              onClick={() => setDocModalItem(null)}
+              role="dialog"
+              aria-modal={docModalItem ? "true" : undefined}
+            >
+              {docModalItem ? (
+                <div className="doc-costi-modal" onClick={(event) => event.stopPropagation()}>
+                  <div className="doc-costi-modal-header">
+                    <div className="doc-costi-modal-title">
+                      [{getMagazzinoKindLabel(docModalItem)}] {docModalItem.fornitore} -{" "}
+                      {normalizeText(docModalItem.numeroDocumento) || "Numero non disponibile"}
+                    </div>
+                    <button
+                      type="button"
+                      className="doc-costi-modal-close"
+                      onClick={() => setDocModalItem(null)}
+                    >
+                      Chiudi
+                    </button>
+                  </div>
+                  <div className="doc-costi-modal-body">
+                    <div className="doc-costi-modal-fields">
+                      <div className="doc-costi-modal-field">
+                        <span className="doc-costi-modal-field-label">Fornitore</span>
+                        <span className="doc-costi-modal-field-val">{docModalItem.fornitore}</span>
+                      </div>
+                      <div className="doc-costi-modal-field">
+                        <span className="doc-costi-modal-field-label">Data</span>
+                        <span className="doc-costi-modal-field-val">
+                          {formatStoredDateForUi(docModalItem.dataDocumento)}
+                        </span>
+                      </div>
+                      <div className="doc-costi-modal-field">
+                        <span className="doc-costi-modal-field-label">Numero</span>
+                        <span className="doc-costi-modal-field-val">
+                          {normalizeText(docModalItem.numeroDocumento) || "-"}
+                        </span>
+                      </div>
+                      <div className="doc-costi-modal-field">
+                        <span className="doc-costi-modal-field-label">Targa</span>
+                        <span className="doc-costi-modal-field-val">
+                          {normalizeText(docModalItem.targa) || "-"}
+                        </span>
+                      </div>
+                      <div className="doc-costi-modal-field">
+                        <span className="doc-costi-modal-field-label">Importo</span>
+                        <span className="doc-costi-modal-field-val">
+                          {formatDocumentAmount(docModalItem.totaleDocumento, docModalItem.currency)}
+                        </span>
+                      </div>
+                      <div className="doc-costi-modal-field">
+                        <span className="doc-costi-modal-field-label">Valuta</span>
+                        <span className="doc-costi-modal-field-val">
+                          {normalizeText(docModalItem.currency) || "-"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {docModalItem.righe.length > 0 ? (
+                      <>
+                        <div className="doc-costi-modal-righe-title">Righe documento</div>
+                        <table className="doc-costi-table">
+                          <thead>
+                            <tr>
+                              <th>Descrizione</th>
+                              <th>Qta</th>
+                              <th>Pr.unit.</th>
+                              <th className="is-right">Totale</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {docModalItem.righe.map((row) => (
+                              <tr key={row.id}>
+                                <td>
+                                  {row.descrizione}
+                                  {normalizeText(row.unita) || normalizeText(row.note) ? (
+                                    <span className="doc-costi-modal-note">
+                                      {[normalizeText(row.unita), normalizeText(row.note)]
+                                        .filter(Boolean)
+                                        .join(" - ")}
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td>{row.quantita !== null ? formatNumber(row.quantita) : "-"}</td>
+                                <td>
+                                  {row.prezzoUnitario !== null
+                                    ? formatCurrencyAmount(row.prezzoUnitario, docModalItem.currency)
+                                    : "-"}
+                                </td>
+                                <td className="doc-costi-importo">
+                                  {row.totale !== null
+                                    ? formatCurrencyAmount(row.totale, docModalItem.currency)
+                                    : "-"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </>
+                    ) : (
+                      <>
+                        <div className="doc-costi-modal-righe-title">Righe documento</div>
+                        <p className="doc-costi-modal-empty">
+                          Nessuna riga documento disponibile nei dati reali di questo tab.
+                        </p>
+                      </>
+                    )}
+
+                    <div className="doc-costi-modal-actions">
+                      <button
+                        type="button"
+                        className="doc-costi-modal-btn-primary"
+                        onClick={() => {
+                          if (!docModalItem.fileUrl) return;
+                          window.open(docModalItem.fileUrl, "_blank", "noopener,noreferrer");
+                        }}
+                        disabled={!docModalItem.fileUrl}
+                      >
+                        Apri PDF originale
+                      </button>
+                      <button
+                        type="button"
+                        className="doc-costi-modal-btn-secondary"
+                        onClick={() =>
+                          setDocLocalDaVerificareIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(docModalItem.id)) {
+                              next.delete(docModalItem.id);
+                            } else {
+                              next.add(docModalItem.id);
+                            }
+                            return next;
+                          })
+                        }
+                      >
+                        {docModalItem.daVerificare || docLocalDaVerificareIds.has(docModalItem.id)
+                          ? "Rimuovi da verificare"
+                          : "Da verificare"}
+                      </button>
+                      <button
+                        type="button"
+                        className="doc-costi-modal-btn-ia"
+                        onClick={() =>
+                          navigate(NEXT_INTERNAL_AI_PATH, {
+                            state: { initialPrompt: buildMagazzinoAskAiPrompt(docModalItem) },
+                          })
+                        }
+                      >
+                        Chiedi alla IA →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </>
         ) : null}

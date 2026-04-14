@@ -3,191 +3,259 @@ import { useNavigate } from "react-router-dom";
 import "./internal-ai/internal-ai.css";
 import {
   NEXT_INTERNAL_AI_PATH,
-  buildNextDossierPreventiviPath,
-  buildNextMagazzinoPath,
-  buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
 import {
   readNextIADocumentiArchiveSnapshot,
   type NextIADocumentiArchiveItem,
 } from "./domain/nextDocumentiCostiDomain";
 
-type ArchiveHistoryFilter = "tutti" | "fatture" | "preventivi" | "da_verificare";
-type ArchiveHistorySectionId = "fatture" | "preventivi" | "documenti";
+type DocumentiCostiFilter =
+  | "tutti"
+  | "fatture"
+  | "ddt"
+  | "preventivi"
+  | "da_verificare";
 
-type ArchiveHistorySection = {
-  id: ArchiveHistorySectionId;
-  title: string;
+type SupplierGroup = {
+  supplier: string;
   items: NextIADocumentiArchiveItem[];
+  total: number;
 };
 
-type ArchiveDestination = {
-  label: string;
-  path: string;
-};
-
-const HISTORY_FILTERS: Array<{ id: ArchiveHistoryFilter; label: string }> = [
+const FILTERS: Array<{ id: DocumentiCostiFilter; label: string }> = [
   { id: "tutti", label: "Tutti" },
   { id: "fatture", label: "Fatture" },
+  { id: "ddt", label: "DDT" },
   { id: "preventivi", label: "Preventivi" },
   { id: "da_verificare", label: "Da verificare" },
 ];
 
-function normalizeArchiveType(value: string | null | undefined) {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase();
+function normalizeText(value: string | number | null | undefined) {
+  return String(value ?? "").trim();
 }
 
-function buildArchiveHistoryReviewPath(item: NextIADocumentiArchiveItem) {
+function normalizeType(item: NextIADocumentiArchiveItem) {
+  return normalizeText(item.tipoDocumento).toUpperCase();
+}
+
+function parseAmount(value: string | number | null | undefined) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  const raw = normalizeText(value);
+  if (!raw) {
+    return null;
+  }
+
+  let normalized = raw.toUpperCase();
+  normalized = normalized.replace(/EUR|CHF|EURO/g, "");
+  normalized = normalized.replace(/[\s'\u00A0]/g, "");
+
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (normalized.includes(",")) {
+    normalized = normalized.replace(",", ".");
+  }
+
+  normalized = normalized.replace(/[^0-9.-]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatMoney(
+  value: string | number | null | undefined,
+  currency: NextIADocumentiArchiveItem["currency"] = "EUR",
+) {
+  const parsed = parseAmount(value);
+  if (parsed === null) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: currency === "CHF" ? "CHF" : "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(parsed);
+}
+
+function formatMoneyCompact(value: number) {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatDate(item: NextIADocumentiArchiveItem) {
+  if (typeof item.sortTimestamp === "number" && Number.isFinite(item.sortTimestamp)) {
+    return new Intl.DateTimeFormat("it-IT").format(new Date(item.sortTimestamp));
+  }
+
+  return normalizeText(item.dataDocumento) || "-";
+}
+
+function truncateText(value: string, maxLength: number) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function buildDescription(item: NextIADocumentiArchiveItem) {
+  const fromCategory = normalizeText(item.categoriaArchivio);
+  if (fromCategory) {
+    return truncateText(fromCategory, 70);
+  }
+
+  const fromText = normalizeText(item.testo).replace(/\s+/g, " ");
+  if (fromText) {
+    return truncateText(fromText, 70);
+  }
+
+  return "Documento senza descrizione";
+}
+
+function isPreventivo(item: NextIADocumentiArchiveItem) {
+  return normalizeType(item) === "PREVENTIVO";
+}
+
+function isDdt(item: NextIADocumentiArchiveItem) {
+  const type = normalizeType(item);
+  const archiveCategory = normalizeText(item.categoriaArchivio).toUpperCase();
+  const numeroDocumento = normalizeText(item.numeroDocumento).toUpperCase();
+  const testo = normalizeText(item.testo).toUpperCase();
+
+  return (
+    type === "DDT" ||
+    archiveCategory.includes("DDT") ||
+    numeroDocumento.includes("DDT") ||
+    testo.includes("DDT")
+  );
+}
+
+function isFattura(item: NextIADocumentiArchiveItem) {
+  const type = normalizeType(item);
+  return type === "FATTURA" || (item.sourceKey === "@documenti_magazzino" && !isPreventivo(item));
+}
+
+function getItemKindLabel(item: NextIADocumentiArchiveItem) {
+  if (isPreventivo(item)) return "PREVENTIVO";
+  if (isDdt(item)) return "DDT";
+  if (isFattura(item)) return "FATTURA";
+  return normalizeType(item) || "DOCUMENTO";
+}
+
+function getItemBadgeClass(item: NextIADocumentiArchiveItem) {
+  if (isPreventivo(item)) return "is-preventivo";
+  if (isDdt(item)) return "is-ddt";
+  return "is-fattura";
+}
+
+function buildSupplierLabel(item: NextIADocumentiArchiveItem) {
+  return normalizeText(item.fornitore) || "Fornitore non specificato";
+}
+
+function buildReviewPath(item: NextIADocumentiArchiveItem) {
   const params = new URLSearchParams();
   params.set("reviewDocumentId", item.sourceDocId);
   params.set("reviewSourceKey", item.sourceKey);
   return `${NEXT_INTERNAL_AI_PATH}?${params.toString()}`;
 }
 
-function formatArchiveAmount(value: string | number | null | undefined) {
-  if (value == null || value === "") {
-    return "-";
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return new Intl.NumberFormat("it-IT", {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  }
-
-  return String(value).trim() || "-";
-}
-
-function buildArchiveRowTitle(item: NextIADocumentiArchiveItem) {
-  const type = normalizeArchiveType(item.tipoDocumento) || "DOCUMENTO";
-  const numero = String(item.numeroDocumento ?? "").trim();
-  const fornitore = String(item.fornitore ?? "").trim();
-  if (numero && fornitore) return `${type} ${numero}`;
-  if (numero) return `${type} ${numero}`;
-  if (fornitore) return `${type} - ${fornitore}`;
-  return type;
-}
-
-function buildArchiveTypeBadgeLabel(item: NextIADocumentiArchiveItem) {
-  const type = normalizeArchiveType(item.tipoDocumento);
-  if (type === "FATTURA" || type === "DDT") {
-    return type;
-  }
-  if (type === "PREVENTIVO") {
-    return "PREVENTIVO";
-  }
-  if (item.sourceKey === "@documenti_magazzino") {
-    return "MAGAZZINO";
-  }
-  return type || "DOCUMENTO";
-}
-
-function buildArchiveTypeTone(item: NextIADocumentiArchiveItem) {
-  const type = normalizeArchiveType(item.tipoDocumento);
-  if (type === "PREVENTIVO") return "is-preventivo";
-  if (item.sourceKey === "@documenti_magazzino") return "is-magazzino";
-  if (type === "FATTURA" || type === "DDT") return "is-fattura";
-  return "is-documento";
-}
-
-function buildArchiveDestination(item: NextIADocumentiArchiveItem): ArchiveDestination | null {
-  const type = normalizeArchiveType(item.tipoDocumento);
-  const targa = String(item.targa ?? "").trim();
-
-  if (item.daVerificare) {
-    return {
-      label: "Vai a review",
-      path: buildArchiveHistoryReviewPath(item),
-    };
-  }
-
-  if (item.sourceKey === "@documenti_magazzino" || type === "MAGAZZINO") {
-    return {
-      label: "Vai a Inventario",
-      path: buildNextMagazzinoPath("inventario"),
-    };
-  }
-
-  if (targa && type === "PREVENTIVO") {
-    return {
-      label: "Vai al preventivo",
-      path: buildNextDossierPreventiviPath(targa),
-    };
-  }
-
-  if (targa) {
-    return {
-      label: "Vai a Manutenzioni",
-      path: buildNextManutenzioniPath(targa),
-    };
-  }
-
-  return null;
-}
-
-function isInvoiceArchiveItem(item: NextIADocumentiArchiveItem) {
-  const type = normalizeArchiveType(item.tipoDocumento);
-  return (
-    type === "FATTURA" ||
-    type === "DDT" ||
-    item.sourceKey === "@documenti_magazzino"
-  );
-}
-
-function isPreventivoArchiveItem(item: NextIADocumentiArchiveItem) {
-  return normalizeArchiveType(item.tipoDocumento) === "PREVENTIVO";
-}
-
-function matchesArchiveFilter(item: NextIADocumentiArchiveItem, filter: ArchiveHistoryFilter) {
-  if (filter === "tutti") return true;
-  if (filter === "da_verificare") return item.daVerificare;
-  if (filter === "fatture") return isInvoiceArchiveItem(item);
-  if (filter === "preventivi") return isPreventivoArchiveItem(item);
-  return true;
-}
-
-function buildArchiveSections(
-  items: NextIADocumentiArchiveItem[],
-  filter: ArchiveHistoryFilter,
-): ArchiveHistorySection[] {
-  const visibleItems = items.filter((item) => matchesArchiveFilter(item, filter));
-  const fatture = visibleItems.filter((item) => isInvoiceArchiveItem(item));
-  const preventivi = visibleItems.filter((item) => isPreventivoArchiveItem(item));
-  const documenti = visibleItems.filter(
-    (item) => !isInvoiceArchiveItem(item) && !isPreventivoArchiveItem(item),
-  );
-
-  const sections: ArchiveHistorySection[] = [
-    { id: "fatture", title: "Fatture e DDT", items: fatture },
-    { id: "preventivi", title: "Preventivi", items: preventivi },
-    { id: "documenti", title: "Documenti archivio", items: documenti },
+function buildAskAiPrompt(item: NextIADocumentiArchiveItem) {
+  const parts = [
+    `Fammi un riepilogo del documento ${getItemKindLabel(item)}`,
+    normalizeText(item.dataDocumento) ? `del ${normalizeText(item.dataDocumento)}` : "con data non disponibile",
+    normalizeText(item.fornitore)
+      ? `di ${normalizeText(item.fornitore)}`
+      : "di fornitore non specificato",
+    normalizeText(item.numeroDocumento)
+      ? `numero ${normalizeText(item.numeroDocumento)}`
+      : "senza numero documento disponibile",
   ];
 
-  return sections.filter((section) => section.items.length > 0);
+  if (normalizeText(item.targa)) {
+    parts.push(`per il mezzo ${normalizeText(item.targa)}`);
+  }
+
+  const parsedAmount = parseAmount(item.totaleDocumento);
+  if (parsedAmount !== null) {
+    parts.push(
+      `per un importo di ${formatMoney(parsedAmount, item.currency ?? item.valuta ?? "EUR")}`,
+    );
+  }
+
+  return `${parts.join(" ")}.`;
+}
+
+function matchesSearch(item: NextIADocumentiArchiveItem, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    buildSupplierLabel(item).toLowerCase().includes(normalizedQuery) ||
+    normalizeText(item.targa).toLowerCase().includes(normalizedQuery) ||
+    normalizeText(item.totaleDocumento).toLowerCase().includes(normalizedQuery)
+  );
+}
+
+function sortItems(items: NextIADocumentiArchiveItem[]) {
+  return [...items].sort((left, right) => {
+    const timestampDelta = (right.sortTimestamp ?? -1) - (left.sortTimestamp ?? -1);
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
+
+    const dateDelta = normalizeText(right.dataDocumento).localeCompare(
+      normalizeText(left.dataDocumento),
+      "it",
+      { sensitivity: "base" },
+    );
+    if (dateDelta !== 0) {
+      return dateDelta;
+    }
+
+    return normalizeText(left.numeroDocumento).localeCompare(
+      normalizeText(right.numeroDocumento),
+      "it",
+      { sensitivity: "base" },
+    );
+  });
 }
 
 export default function NextIADocumentiPage() {
   const navigate = useNavigate();
-  const [historyFilter, setHistoryFilter] = useState<ArchiveHistoryFilter>("tutti");
-  const [archiveState, setArchiveState] = useState<{
-    status: "loading" | "ready" | "error";
-    items: NextIADocumentiArchiveItem[];
-    message: string | null;
-  }>({
-    status: "loading",
-    items: [],
-    message: null,
-  });
+  const [items, setItems] = useState<NextIADocumentiArchiveItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [filtroAttivo, setFiltroAttivo] = useState<DocumentiCostiFilter>("tutti");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sezioniAperte, setSezioniAperte] = useState<Set<string>>(new Set());
+  const [modalItem, setModalItem] = useState<NextIADocumentiArchiveItem | null>(null);
+  const [localDaVerificareIds, setLocalDaVerificareIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
 
     const loadArchive = async () => {
+      setLoading(true);
+      setErrorMessage(null);
+
       try {
         const snapshot = await readNextIADocumentiArchiveSnapshot({
           includeCloneDocuments: false,
@@ -195,23 +263,22 @@ export default function NextIADocumentiPage() {
         if (cancelled) {
           return;
         }
-        setArchiveState({
-          status: "ready",
-          items: snapshot.items,
-          message: snapshot.limitations[0] ?? null,
-        });
+
+        setItems(snapshot.items);
       } catch (error) {
         if (cancelled) {
           return;
         }
-        setArchiveState({
-          status: "error",
-          items: [],
-          message:
-            error instanceof Error
-              ? error.message
-              : "Errore durante il caricamento dello storico IA.",
-        });
+
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Errore durante il caricamento dei documenti.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
@@ -222,147 +289,408 @@ export default function NextIADocumentiPage() {
     };
   }, []);
 
-  const sections = useMemo(
-    () => buildArchiveSections(archiveState.items, historyFilter),
-    [archiveState.items, historyFilter],
+  useEffect(() => {
+    if (!modalItem) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setModalItem(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalItem]);
+
+  const itemsFiltrati = useMemo(() => {
+    return items
+      .filter((item) => {
+        const isLocallyMarked = localDaVerificareIds.has(item.id);
+        const isReviewItem = item.daVerificare || isLocallyMarked;
+
+        if (filtroAttivo === "fatture") return isFattura(item) && !isDdt(item);
+        if (filtroAttivo === "ddt") return isDdt(item);
+        if (filtroAttivo === "preventivi") return isPreventivo(item);
+        if (filtroAttivo === "da_verificare") return isReviewItem;
+        return true;
+      })
+      .filter((item) => matchesSearch(item, searchQuery));
+  }, [items, filtroAttivo, localDaVerificareIds, searchQuery]);
+
+  const perFornitore = useMemo<SupplierGroup[]>(() => {
+    const grouped = new Map<string, NextIADocumentiArchiveItem[]>();
+
+    for (const item of itemsFiltrati) {
+      const supplier = buildSupplierLabel(item);
+      const group = grouped.get(supplier) ?? [];
+      group.push(item);
+      grouped.set(supplier, group);
+    }
+
+    return Array.from(grouped.entries())
+      .map(([supplier, supplierItems]) => ({
+        supplier,
+        items: sortItems(supplierItems),
+        total: supplierItems.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
+      }))
+      .sort((left, right) => {
+        if (right.total !== left.total) {
+          return right.total - left.total;
+        }
+
+        return left.supplier.localeCompare(right.supplier, "it", {
+          sensitivity: "base",
+        });
+      });
+  }, [itemsFiltrati]);
+
+  useEffect(() => {
+    if (perFornitore.length === 0) {
+      return;
+    }
+
+    setSezioniAperte((prev) => {
+      const next = new Set(prev);
+      for (const group of perFornitore) {
+        next.add(group.supplier);
+      }
+      return next;
+    });
+  }, [perFornitore]);
+
+  const totaleGenerale = useMemo(
+    () => itemsFiltrati.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
+    [itemsFiltrati],
   );
 
+  const modalIsMarkedDaVerificare = modalItem
+    ? modalItem.daVerificare || localDaVerificareIds.has(modalItem.id)
+    : false;
+
+  const toggleFornitore = (supplier: string) => {
+    setSezioniAperte((prev) => {
+      const next = new Set(prev);
+      if (next.has(supplier)) {
+        next.delete(supplier);
+      } else {
+        next.add(supplier);
+      }
+      return next;
+    });
+  };
+
+  const handleOpenPdf = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    if (!item.fileUrl) {
+      return;
+    }
+    window.open(item.fileUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleAskAi = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    setModalItem(null);
+    navigate(NEXT_INTERNAL_AI_PATH, {
+      state: {
+        initialPrompt: buildAskAiPrompt(item),
+      },
+    });
+  };
+
+  const handleReopenReview = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    navigate(buildReviewPath(item));
+  };
+
+  const handleToggleLocalReview = () => {
+    if (!modalItem) {
+      return;
+    }
+
+    setLocalDaVerificareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(modalItem.id)) {
+        next.delete(modalItem.id);
+      } else {
+        next.add(modalItem.id);
+      }
+      return next;
+    });
+  };
+
   return (
-    <section className="next-page internal-ai-history-page">
-      <div className="internal-ai-history-page__shell">
-        <header className="internal-ai-history-page__header">
-          <div>
-            <p className="internal-ai-card__eyebrow">Storico ufficiale</p>
-            <h1>Storico analisi IA</h1>
-            <p className="internal-ai-card__meta">
-              Archivio read-only costruito sul domain reale dell&apos;archivio documentale. Le sezioni
-              visibili usano solo i campi oggi esposti dal read-model.
-            </p>
-          </div>
+    <section className="next-page doc-costi-page">
+      <header className="doc-costi-header">
+        <h1 className="doc-costi-title">Documenti e costi</h1>
+        <span className="doc-costi-stat">
+          <b>{itemsFiltrati.length}</b> doc
+        </span>
+        <span className="doc-costi-stat">
+          <b>{perFornitore.length}</b> fornitori
+        </span>
+        <span className="doc-costi-stat">
+          <b>{formatMoneyCompact(totaleGenerale)}</b>
+        </span>
+      </header>
+
+      <div className="doc-costi-filters">
+        {FILTERS.map((filter) => (
           <button
+            key={filter.id}
             type="button"
-            className="internal-ai-search__button"
-            onClick={() => navigate(NEXT_INTERNAL_AI_PATH)}
+            className={`doc-costi-filter ${filtroAttivo === filter.id ? "is-active" : ""}`}
+            onClick={() => setFiltroAttivo(filter.id)}
           >
-            Apri IA interna
+            {filter.label}
           </button>
-        </header>
-
-        <div className="internal-ai-history-page__filters" role="tablist" aria-label="Filtri storico IA">
-          {HISTORY_FILTERS.map((filter) => (
-            <button
-              key={filter.id}
-              type="button"
-              role="tab"
-              aria-selected={historyFilter === filter.id}
-              className={`internal-ai-history-page__filter ${
-                historyFilter === filter.id ? "is-active" : ""
-              }`}
-              onClick={() => setHistoryFilter(filter.id)}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="internal-ai-history-page__note">
-          <span className="internal-ai-pill is-neutral">Domain reale in uso</span>
-          <p className="internal-ai-card__meta">
-            Libretti, Cisterna e Manutenzioni dedicate non compaiono qui finche il domain dello storico
-            non le espone davvero come sezioni leggibili.
-          </p>
-        </div>
-
-        {archiveState.status === "loading" ? (
-          <div className="internal-ai-history-page__empty">Caricamento storico IA...</div>
-        ) : null}
-
-        {archiveState.status === "error" ? (
-          <div className="internal-ai-history-page__error">
-            {archiveState.message ?? "Errore caricamento storico IA."}
-          </div>
-        ) : null}
-
-        {archiveState.message && archiveState.status === "ready" ? (
-          <p className="internal-ai-card__meta">{archiveState.message}</p>
-        ) : null}
-
-        {archiveState.status === "ready" && sections.length === 0 ? (
-          <div className="internal-ai-history-page__empty">
-            Nessun documento disponibile per il filtro selezionato.
-          </div>
-        ) : null}
-
-        {sections.map((section) => (
-          <section key={section.id} className="internal-ai-history-page__section">
-            <div className="internal-ai-history-page__section-head">
-              <p>{section.title}</p>
-            </div>
-
-            <div className="internal-ai-history-page__table">
-              {section.items.map((item) => {
-                const destination = buildArchiveDestination(item);
-                return (
-                  <article key={item.id} className="internal-ai-history-page__row">
-                    <div className="internal-ai-history-page__row-main">
-                      <div className="internal-ai-history-page__type">
-                        <span
-                          className={`internal-ai-history-page__badge ${buildArchiveTypeTone(item)}`}
-                        >
-                          {buildArchiveTypeBadgeLabel(item)}
-                        </span>
-                        <div>
-                          <strong>{buildArchiveRowTitle(item)}</strong>
-                          <p className="internal-ai-card__meta">
-                            {item.fornitore || "Fornitore non disponibile"}
-                            {" · "}
-                            {item.targa || "Targa non disponibile"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="internal-ai-history-page__row-meta">
-                      <span>{item.dataDocumento || "-"}</span>
-                      <span>{formatArchiveAmount(item.totaleDocumento)}</span>
-                      <span className={item.daVerificare ? "is-warning" : "is-positive"}>
-                        {item.daVerificare ? "Da verificare" : "Salvato"}
-                      </span>
-                    </div>
-
-                    <div className="internal-ai-history-page__row-actions">
-                      {item.fileUrl ? (
-                        <button
-                          type="button"
-                          className="internal-ai-search__button internal-ai-search__button--secondary"
-                          onClick={() => window.open(item.fileUrl ?? "", "_blank", "noopener,noreferrer")}
-                        >
-                          Apri originale
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="internal-ai-search__button internal-ai-search__button--secondary"
-                        onClick={() => navigate(buildArchiveHistoryReviewPath(item))}
-                      >
-                        Riapri review
-                      </button>
-                      {destination ? (
-                        <button
-                          type="button"
-                          className="internal-ai-search__button"
-                          onClick={() => navigate(destination.path)}
-                        >
-                          Vai a
-                        </button>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
         ))}
+
+        <input
+          type="search"
+          className="doc-costi-search"
+          placeholder="Cerca fornitore, targa, importo"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+        />
+      </div>
+
+      {loading ? <div className="doc-costi-loading">Caricamento documenti...</div> : null}
+
+      {!loading && errorMessage ? <div className="doc-costi-empty">{errorMessage}</div> : null}
+
+      {!loading && !errorMessage && perFornitore.length === 0 ? (
+        <div className="doc-costi-empty">
+          {filtroAttivo === "tutti" && !searchQuery
+            ? "Nessun documento trovato"
+            : "Nessun documento corrisponde al filtro selezionato"}
+        </div>
+      ) : null}
+
+      {!loading &&
+        !errorMessage &&
+        perFornitore.map((group) => {
+          const isOpen = sezioniAperte.has(group.supplier);
+
+          return (
+            <section key={group.supplier} className="doc-costi-fornitore">
+              <button
+                type="button"
+                className="doc-costi-fornitore-header"
+                onClick={() => toggleFornitore(group.supplier)}
+              >
+                <span
+                  className={`doc-costi-fornitore-chevron ${isOpen ? "is-open" : ""}`}
+                  aria-hidden="true"
+                >
+                  &gt;
+                </span>
+                <span className="doc-costi-fornitore-name">{group.supplier}</span>
+                <span className="doc-costi-stat">
+                  <b>{group.items.length}</b> doc
+                </span>
+                <span className="doc-costi-fornitore-total">
+                  Totale {formatMoneyCompact(group.total)}
+                </span>
+              </button>
+
+              {isOpen ? (
+                <>
+                  <table className="doc-costi-table">
+                    <thead>
+                      <tr>
+                        <th>Tipo</th>
+                        <th>Data</th>
+                        <th>Numero</th>
+                        <th>Targa</th>
+                        <th>Descr.</th>
+                        <th className="is-right">EUR</th>
+                        <th>Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.items.map((item) => {
+                        const isMarkedDaVerificare =
+                          item.daVerificare || localDaVerificareIds.has(item.id);
+
+                        return (
+                          <tr key={item.id} onClick={() => setModalItem(item)}>
+                            <td>
+                              <span className={`doc-costi-badge ${getItemBadgeClass(item)}`}>
+                                {getItemKindLabel(item)}
+                              </span>
+                            </td>
+                            <td>{formatDate(item)}</td>
+                            <td>{normalizeText(item.numeroDocumento) || "-"}</td>
+                            <td>
+                              {normalizeText(item.targa) ? (
+                                <span className="doc-costi-targa">{normalizeText(item.targa)}</span>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td>{buildDescription(item)}</td>
+                            <td className="doc-costi-importo">
+                              {formatMoney(item.totaleDocumento, item.currency)}
+                              {normalizeText(item.currency) &&
+                              normalizeText(item.currency) !== "EUR" ? (
+                                <span className="doc-costi-valuta">{item.currency}</span>
+                              ) : null}
+                            </td>
+                            <td>
+                              <div className="doc-costi-actions">
+                                <button
+                                  type="button"
+                                  className="doc-costi-btn"
+                                  onClick={(event) => handleOpenPdf(event, item)}
+                                  disabled={!item.fileUrl}
+                                >
+                                  PDF
+                                </button>
+                                <button
+                                  type="button"
+                                  className="doc-costi-btn"
+                                  onClick={(event) => handleReopenReview(event, item)}
+                                >
+                                  Riapri review
+                                </button>
+                                <button
+                                  type="button"
+                                  className="doc-costi-btn-ia"
+                                  onClick={(event) => handleAskAi(event, item)}
+                                >
+                                  Chiedi alla IA
+                                </button>
+                              </div>
+                              {isMarkedDaVerificare ? (
+                                <span className="doc-costi-row-flag">Da verificare</span>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  <div className="doc-costi-section-total">
+                    <span className="doc-costi-stat">
+                      Totale {group.supplier}: <b>{formatMoneyCompact(group.total)}</b>
+                    </span>
+                  </div>
+                </>
+              ) : null}
+            </section>
+          );
+        })}
+
+      <footer className="doc-costi-footer">
+        <span className="doc-costi-stat">Totale generale tutti i fornitori</span>
+        <span className="doc-costi-fornitore-total">{formatMoneyCompact(totaleGenerale)}</span>
+      </footer>
+
+      <div
+        className={`doc-costi-modal-overlay ${modalItem ? "is-open" : ""}`}
+        onClick={() => setModalItem(null)}
+      >
+        {modalItem ? (
+          <div className="doc-costi-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="doc-costi-modal-header">
+              <div className="doc-costi-modal-title">
+                [{getItemKindLabel(modalItem)}] {buildSupplierLabel(modalItem)} -{" "}
+                {normalizeText(modalItem.numeroDocumento) || "Numero non disponibile"}
+              </div>
+              <button
+                type="button"
+                className="doc-costi-modal-close"
+                onClick={() => setModalItem(null)}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div className="doc-costi-modal-body">
+              <div className="doc-costi-modal-fields">
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Fornitore</span>
+                  <span className="doc-costi-modal-field-val">{buildSupplierLabel(modalItem)}</span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Data</span>
+                  <span className="doc-costi-modal-field-val">{formatDate(modalItem)}</span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Numero</span>
+                  <span className="doc-costi-modal-field-val">
+                    {normalizeText(modalItem.numeroDocumento) || "-"}
+                  </span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Targa</span>
+                  <span className="doc-costi-modal-field-val">
+                    {normalizeText(modalItem.targa) || "-"}
+                  </span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Importo</span>
+                  <span className="doc-costi-modal-field-val">
+                    {formatMoney(modalItem.totaleDocumento, modalItem.currency)}
+                  </span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Valuta</span>
+                  <span className="doc-costi-modal-field-val">
+                    {normalizeText(modalItem.currency) || "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="doc-costi-modal-actions">
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-primary"
+                  onClick={() => {
+                    if (!modalItem.fileUrl) {
+                      return;
+                    }
+                    window.open(modalItem.fileUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  disabled={!modalItem.fileUrl}
+                >
+                  Apri PDF originale
+                </button>
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-secondary"
+                  aria-pressed={modalIsMarkedDaVerificare}
+                  onClick={handleToggleLocalReview}
+                >
+                  Da verificare
+                </button>
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-secondary"
+                  onClick={() => navigate(buildReviewPath(modalItem))}
+                >
+                  Riapri review
+                </button>
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-ia"
+                  onClick={() =>
+                    navigate(NEXT_INTERNAL_AI_PATH, {
+                      state: {
+                        initialPrompt: buildAskAiPrompt(modalItem),
+                      },
+                    })
+                  }
+                >
+                  Chiedi IA -&gt;
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

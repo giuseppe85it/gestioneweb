@@ -37,6 +37,106 @@ La regola corrente da leggere insieme a questo registro e:
 
 ## 4. Registro storico
 
+### Voce 2026-04-13 172508
+- DATA: 2026-04-13
+- TITOLO MODIFICA: riallineamento UI del tab `Magazzino -> Documenti e costi` alla spec `Documenti e costi`
+- OBIETTIVO: applicare al tab `/next/magazzino?tab=documenti-costi` lo stesso principio visivo di `/next/ia/documenti`, mantenendo solo il perimetro dati Magazzino gia corretto
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260413_172508_magazzino_documenti_costi_ui_alignment.md`
+  - `docs/continuity-reports/20260413_172508_continuity_magazzino_documenti_costi_ui_alignment.md`
+- COSA E STATO CAMBIATO:
+  - costruita una lista UI unificata per il tab `documenti-costi` usando solo dati reali gia presenti: documenti archivio `@documenti_magazzino`, support document con `voci`, preventivi procurement materiali
+  - applicati header statistiche, filtri, ricerca, gruppi per fornitore, modale dettaglio, pulsanti `PDF` e `Chiedi alla IA`, totale per fornitore e totale generale
+  - disattivato il rendering dei pannelli legacy sotto la nuova lista documentale, cosi la pagina visibile resta focalizzata sui soli documenti/preventivi Magazzino
+  - mantenuto invariato il filtro di dominio Magazzino e non toccati reader, writer, barrier o route
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il tab `documenti-costi` adotta il linguaggio `Documenti e costi` anche in Magazzino, senza mostrare i pannelli legacy sotto la lista documentale
+  - Lettura: invariata; i reader restano gli stessi e il perimetro dati continua a escludere documenti non Magazzino
+  - Blocco scritture: invariato; nessuna nuova scrittura, nessun cambio a barrier o writer
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx`
+  - eseguire `npm run build`
+  - aprire `http://127.0.0.1:4174/next/magazzino?tab=documenti-costi`
+  - verificare nuova UI con gruppi fornitore, filtri, ricerca, modale dettaglio, `PDF`, `Chiedi alla IA` e assenza dei pannelli legacy visibili
+  - verificare che il tab mostri solo documenti/preventivi Magazzino
+  - aprire `http://127.0.0.1:4174/next/ia/documenti` e verificare che l'archivio globale resti invariato
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - stato onesto `PATCH PARZIALE`: i preventivi procurement del tab non espongono `voci` ma solo `rows`, quindi il modale mostra solo l'intestazione per quei record senza inventare righe
+  - errori console su backend IA locale `127.0.0.1:4310` e listing Storage Firebase `403` restano preesistenti
+
+### Voce 2026-04-13 164626
+- DATA: 2026-04-13
+- TITOLO MODIFICA: correzione perimetro dati del tab `Magazzino -> Documenti e costi`
+- OBIETTIVO: evitare che `/next/magazzino?tab=documenti-costi` si comporti come archivio globale IA e limitare la vista ai soli documenti/preventivi coerenti col dominio Magazzino
+- FILE TOCCATI:
+  - `src/next/NextMagazzinoPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260413_164626_magazzino_documenti_costi_scope_fix.md`
+  - `docs/continuity-reports/20260413_164626_continuity_magazzino_documenti_costi_scope_fix.md`
+- COSA E STATO CAMBIATO:
+  - verificato che il tab legge `readNextDocumentiCostiFleetSnapshot()`, `readNextIADocumentiArchiveSnapshot()` e `readNextProcurementSnapshot()`
+  - confermato che il discriminante forte per i documenti Magazzino e `sourceKey = "@documenti_magazzino"` insieme a `sourceType = "documento_magazzino"`
+  - ristretto `materialiCostItems` a quel solo perimetro, escludendo i record `costo_mezzo` che allargavano impropriamente la vista oltre Magazzino
+  - riallineata la copy della sezione per non presentare piu `@costiMezzo` come sorgente della vista visibile
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: il tab `documenti-costi` mostra solo documenti magazzino e supporti procurement materiali, non costi/documenti globali di flotta
+  - Lettura: invariata; nessun cambio ai domain reader e nessuna logica spostata fuori dai reader esistenti
+  - Blocco scritture: invariato; nessuna nuova scrittura, nessun cambio a barrier o writer
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextMagazzinoPage.tsx`
+  - eseguire `npm run build`
+  - aprire `http://127.0.0.1:4174/next/magazzino?tab=documenti-costi`
+  - verificare che la card `Costi materiali e prezzi` non mostri piu righe da `costo_mezzo`
+  - aprire `http://127.0.0.1:4174/next/ia/documenti` e verificare che l'archivio globale resti invariato
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - i preventivi procurement restano visibili perche appartengono al dominio materiali/acquisti e sono letti dal reader procurement dedicato
+  - errori console su backend IA locale `127.0.0.1:4310` e listing Storage Firebase `403` restano preesistenti
+
+### Voce 2026-04-13 151904
+- DATA: 2026-04-13
+- TITOLO MODIFICA: UI `Documenti e costi` per `/next/ia/documenti` sopra il domain archivio read-only
+- OBIETTIVO: applicare la spec `docs/product/SPEC_DOCUMENTI_COSTI_UI.md` senza toccare logica business, writer, barrier o domain read-only, mantenendo la navigazione esistente `Riapri review`
+- FILE TOCCATI:
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260413_151904_documenti_costi_ui.md`
+  - `docs/continuity-reports/20260413_151904_continuity_documenti_costi_ui.md`
+- COSA E STATO CAMBIATO:
+  - riscritto il layout di `NextIADocumentiPage.tsx` come pagina per fornitore con statistiche, filtri, ricerca, gruppi collassabili, tabella e modale dettaglio
+  - mantenuto come unica sorgente dati `readNextIADocumentiArchiveSnapshot()` e usati solo i campi reali di `NextIADocumentiArchiveItem`
+  - aggiunte in fondo a `internal-ai.css` le classi `.doc-costi-*`
+  - mantenuti `Apri PDF originale`, `Riapri review` e aggiunta la navigazione `Chiedi alla IA` con prompt precompilato verso `NEXT_INTERNAL_AI_PATH`
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `/next/ia/documenti` passa da storico card-based a vista `Documenti e costi` organizzata per fornitore
+  - Lettura: invariata e confinata al domain archivio read-only; nessuna logica spostata nel componente
+  - Blocco scritture: invariato; `Da verificare` vive solo in stato locale del componente
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextIADocumentiPage.tsx`
+  - eseguire `npm run build`
+  - aprire `http://127.0.0.1:4174/next/ia/documenti`
+  - verificare sezioni fornitore collassabili, filtro `Preventivi`, ricerca `TI324623`, click riga -> modale, `PDF` in nuova tab, `Chiedi alla IA` con redirect a `/next/ia/interna`
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - patch dichiarata `PARZIALE` perche `NextIADocumentiArchiveItem` non espone `voci`, quindi il modale mostra solo l'intestazione
+  - `Riapri review` resta visibile per evitare regressione del file precedente anche se non compare nella spec grafica minima
+
 ### Voce 2026-04-12 142
 - DATA: 2026-04-12
 - TITOLO MODIFICA: UI `IA Universal Dispatcher` applicata nel clone con esito parziale ma verificato

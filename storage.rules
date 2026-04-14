@@ -8,6 +8,15 @@ service firebase.storage {
     match /euromecc/relazioni/{relazioneId}/{fileName} {
       allow read, write: if request.auth != null;
     }
+    match /documenti_pdf/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+    match /mezzi_aziendali/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+    match /libretto/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }

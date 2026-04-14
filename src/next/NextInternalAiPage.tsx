@@ -104,6 +104,7 @@ import InternalAiUniversalRequestsPanel from "./internal-ai/InternalAiUniversalR
 import InternalAiUniversalWorkbench from "./internal-ai/InternalAiUniversalWorkbench";
 import {
   executeInternalAiMagazzinoInlineAction,
+  importDocumentRowsToInventario,
   loadInternalAiMagazzinoInlineContext,
   resolveInternalAiMagazzinoInlineRoute,
   type InternalAiMagazzinoInlineContext,
@@ -4387,7 +4388,6 @@ function NextInternalAiPage({
     apiKeyExists: documentApiKeyExists,
     selectedFile: documentSelectedFile,
     preview: documentPreview,
-    tipoArchivio: documentArchivio,
     setTipoArchivio: setDocumentArchivio,
     loading: documentLoading,
     results: documentResults,
@@ -4398,12 +4398,9 @@ function NextInternalAiPage({
     targaEstrattaIA: documentTargaEstratta,
     targaSelezionata: documentTargaSelezionata,
     setTargaSelezionata: setDocumentTargaSelezionata,
-    documentSaved: documentSaved,
-    importingInventario: documentImportingInventario,
     handleFile: handleDocumentFileSelection,
     handleAnalyze: handleDocumentAnalyze,
     handleSave: handleDocumentSave,
-    importaInInventario: importDocumentIntoInventario,
     handleOpenPdf: handleDocumentOpenPdf,
     formatImporto: formatDocumentImporto,
     resetCurrentDocument: resetCurrentDocumentReview,
@@ -8185,6 +8182,16 @@ function NextInternalAiPage({
     }
 
     await reloadUnifiedDocumentArchive();
+    if (destinationArchivio === "MAGAZZINO" && currentDocumentReviewRows.length > 0) {
+      try {
+        await importDocumentRowsToInventario(
+          currentDocumentReviewRows,
+          documentResults?.fornitore ?? null,
+        );
+      } catch {
+        // importazione righe non riuscita — il documento è già salvato
+      }
+    }
     setDocumentWorkspaceTab("saved");
     setDocumentUserDestination(buildUnifiedDocumentDestinationSummary({
       expectedType: documentExpectedType,
@@ -8362,37 +8369,71 @@ function NextInternalAiPage({
                 isHistoryReviewActive ||
                 documentLoading ||
                 documentUserDestination === "review" ||
-                Boolean(documentDestinationMissingTarga) ||
-                (documentNeedsManualTarga && !documentTargaSelezionata)
+                (documentUserDestination !== "magazzino_inventario" && Boolean(documentDestinationMissingTarga)) ||
+                (documentUserDestination !== "magazzino_inventario" && documentNeedsManualTarga && !documentTargaSelezionata)
               }
               onClick={() => void handleUnifiedDocumentSave()}
             >
-              Salva
+              {documentUserDestination === "magazzino_inventario" ? "Salva e importa" : "Salva"}
             </button>
           </div>
         </header>
 
         <div className="internal-ai-unified-documents__review-split">
-          <article className="internal-ai-unified-documents__review-column">
-            <div className="internal-ai-unified-documents__review-head">
-              <span className="internal-ai-card__eyebrow">Anteprima documento</span>
-              <h3>File e campi principali</h3>
+          <div className="internal-ai-unified-documents__review-col-left">
+            {!isHistoryReviewActive && documentResults && documentPreview ? (
+              <img
+                src={documentPreview}
+                alt={currentDocumentReviewTitle ?? "Documento caricato"}
+                className="internal-ai-unified-documents__review-preview"
+              />
+            ) : (
+              <div className="internal-ai-unified-documents__review-preview is-placeholder">
+                {currentDocumentReviewOriginalUrl ? "PDF / originale disponibile" : "Anteprima non disponibile"}
+              </div>
+            )}
+            {currentDocumentReviewOriginalUrl || documentSelectedFile ? (
+              <button
+                type="button"
+                className="internal-ai-search__button internal-ai-search__button--secondary"
+                onClick={handleOpenCurrentDocumentOriginal}
+              >
+                Apri originale
+              </button>
+            ) : null}
+          </div>
+
+          <div className="internal-ai-unified-documents__review-col-right">
+            <div className="internal-ai-unified-documents__dest-bar">
+              <span className="internal-ai-unified-documents__dest-bar-label">Importa in:</span>
+              {!isHistoryReviewActive && documentResults ? (
+                <select
+                  className="internal-ai-unified-documents__dest-bar-select"
+                  value={documentUserDestination}
+                  onChange={(event) =>
+                    setDocumentUserDestination(
+                      event.target.value as InternalAiUnifiedDestination,
+                    )
+                  }
+                >
+                  <option value="review">Review / Da verificare</option>
+                  <option value="magazzino_inventario">Magazzino -&gt; Inventario</option>
+                  <option value="mezzo_manutenzioni">Dossier targa -&gt; Manutenzioni</option>
+                  <option value="mezzo_preventivi">Dossier targa -&gt; Preventivi</option>
+                  <option value="archivio_generico">Archivio generico / Documenti IA</option>
+                </select>
+              ) : (
+                <strong className="internal-ai-unified-documents__dest-bar-label">
+                  {activeHistoryReviewDestination?.label ?? "Review / Da verificare"}
+                </strong>
+              )}
+              <span className="internal-ai-unified-documents__dest-bar-count">
+                {currentDocumentReviewRows.length} righe
+              </span>
             </div>
 
             <div className="internal-ai-unified-documents__review-card">
               <div className="internal-ai-unified-documents__review-card-body">
-                {!isHistoryReviewActive && documentResults && documentPreview ? (
-                  <img
-                    src={documentPreview}
-                    alt={currentDocumentReviewTitle ?? "Documento caricato"}
-                    className="internal-ai-unified-documents__review-preview"
-                  />
-                ) : (
-                  <div className="internal-ai-unified-documents__review-preview is-placeholder">
-                    {currentDocumentReviewOriginalUrl ? "PDF / originale disponibile" : "Anteprima non disponibile"}
-                  </div>
-                )}
-
                 <div className="internal-ai-unified-documents__review-form">
                   <label className="internal-ai-unified-documents__review-field">
                     <span>Fornitore</span>
@@ -8513,81 +8554,6 @@ function NextInternalAiPage({
                     />
                   </label>
                 </div>
-              </div>
-
-              <div className="internal-ai-unified-documents__review-card-footer">
-                {currentDocumentReviewOriginalUrl || documentSelectedFile ? (
-                  <button
-                    type="button"
-                    className="internal-ai-search__button internal-ai-search__button--secondary"
-                    onClick={handleOpenCurrentDocumentOriginal}
-                  >
-                    Apri originale
-                  </button>
-                ) : null}
-                <span className="internal-ai-card__meta">
-                  {!isHistoryReviewActive && documentResults
-                    ? "Campi editabili prima del salvataggio."
-                    : "Review riaperta dallo storico read-only del motore documentale."}
-                </span>
-              </div>
-            </div>
-          </article>
-
-          <article className="internal-ai-unified-documents__review-column">
-            <div className="internal-ai-unified-documents__review-head">
-              <span className="internal-ai-card__eyebrow">Righe estratte</span>
-              <h3>Controllo finale e destinazione</h3>
-            </div>
-
-            <div className="internal-ai-unified-documents__review-card">
-              <div className="internal-ai-unified-documents__review-card-body">
-                <div className="internal-ai-unified-documents__destination-card">
-                  <span className="internal-ai-unified-documents__label">Consiglio IA</span>
-                  <strong>{activeReviewDestination?.label ?? "Review / Da verificare"}</strong>
-                  <p className="internal-ai-card__meta">
-                    {activeReviewDestination?.reason ??
-                      "La review corrente non ha ancora un instradamento documentale affidabile."}
-                  </p>
-                </div>
-
-                {!isHistoryReviewActive && documentResults ? (
-                  <>
-                    <label className="internal-ai-search__field">
-                      <span>Tua scelta</span>
-                      <select
-                        className="internal-ai-search__input"
-                        value={documentUserDestination}
-                        onChange={(event) =>
-                          setDocumentUserDestination(
-                            event.target.value as InternalAiUnifiedDestination,
-                          )
-                        }
-                      >
-                        <option value="review">Review / Da verificare</option>
-                        <option value="magazzino_inventario">Magazzino -&gt; Inventario</option>
-                        <option value="mezzo_manutenzioni">Dossier targa -&gt; Manutenzioni</option>
-                        <option value="mezzo_preventivi">Dossier targa -&gt; Preventivi</option>
-                        <option value="archivio_generico">Archivio generico / Documenti IA</option>
-                      </select>
-                    </label>
-
-                    <div className="internal-ai-unified-documents__destination-card is-secondary">
-                      <span className="internal-ai-unified-documents__label">Destinazione finale</span>
-                      <strong>{selectedDocumentDestinationSummary.label}</strong>
-                      <p className="internal-ai-card__meta">{selectedDocumentDestinationSummary.reason}</p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="internal-ai-unified-documents__destination-card is-secondary">
-                    <span className="internal-ai-unified-documents__label">Destinazione finale</span>
-                    <strong>{activeHistoryReviewDestination?.label ?? "Review / Da verificare"}</strong>
-                    <p className="internal-ai-card__meta">
-                      {activeHistoryReviewDestination?.reason ??
-                        "Documento riaperto dal motore Documenti IA senza ulteriori azioni."}
-                    </p>
-                  </div>
-                )}
 
                 <div className="internal-ai-unified-documents__rows">
                   <div className="internal-ai-unified-documents__rows-head">
@@ -8595,30 +8561,34 @@ function NextInternalAiPage({
                     <span>{currentDocumentReviewRows.length} righe</span>
                   </div>
                   {currentDocumentReviewRows.length ? (
-                    currentDocumentReviewRows.map((row, index) => (
-                      <div
-                        key={`${row.descrizione ?? "riga"}:${index}`}
-                        className="internal-ai-unified-documents__row"
-                      >
-                        <strong>{row.descrizione || "Voce senza descrizione"}</strong>
-                        <span>Cod. {row.codice || "-"}</span>
-                        <span>Q.ta {row.quantita || "-"}</span>
-                        <span>Importo {row.importo || "-"}</span>
+                    <>
+                      <div className="internal-ai-unified-documents__rows-col-header">
+                        <span />
+                        <span>Descrizione</span>
+                        <span>Qtà</span>
+                        <span>Pr. unit.</span>
+                        <span>Totale</span>
+                        <span>Codice</span>
                       </div>
-                    ))
+                      {currentDocumentReviewRows.map((row, index) => (
+                        <div
+                          key={`${row.descrizione ?? "riga"}:${index}`}
+                          className="internal-ai-unified-documents__row"
+                        >
+                          <input type="checkbox" defaultChecked />
+                          <span className="row-desc">{row.descrizione || "Voce senza descrizione"}</span>
+                          <span className="row-qta">{row.quantita || "—"}</span>
+                          <span className="row-pru">{row.prezzoUnitario || "n.d."}</span>
+                          <span className="row-tot">{row.importo || "n.d."}</span>
+                          <span className="row-cod">{row.codice || "—"}</span>
+                        </div>
+                      ))}
+                    </>
                   ) : (
                     <p className="internal-ai-card__meta">
                       Nessuna riga strutturata disponibile nell&apos;estrazione corrente.
                     </p>
                   )}
-                </div>
-
-                <div className="internal-ai-unified-documents__destination-card is-secondary">
-                  <span className="internal-ai-unified-documents__label">Totale documento</span>
-                  <strong>{formatDocumentImporto(currentDocumentReviewTotale ?? undefined)}</strong>
-                  <p className="internal-ai-card__meta">
-                    {currentDocumentReviewRows.length} righe disponibili per controllo e import.
-                  </p>
                 </div>
 
                 {documentErrorMessage ? (
@@ -8639,18 +8609,6 @@ function NextInternalAiPage({
               </div>
 
               <div className="internal-ai-unified-documents__review-card-footer">
-                {documentSaved && documentArchivio === "MAGAZZINO" && currentDocumentReviewRows.length ? (
-                  <button
-                    type="button"
-                    className="internal-ai-search__button internal-ai-search__button--secondary"
-                    disabled={documentImportingInventario || documentLoading}
-                    onClick={() => void importDocumentIntoInventario()}
-                  >
-                    {documentImportingInventario
-                      ? "Importazione..."
-                      : "Importa Inventario"}
-                  </button>
-                ) : null}
                 {activeReviewDestinationSummary?.routePath ? (
                   <button
                     type="button"
@@ -8662,9 +8620,14 @@ function NextInternalAiPage({
                     {activeReviewDestinationSummary.routeCta}
                   </button>
                 ) : null}
+                <span className="internal-ai-card__meta">
+                  {!isHistoryReviewActive && documentResults
+                    ? "Campi editabili prima del salvataggio."
+                    : "Review riaperta dallo storico read-only del motore documentale."}
+                </span>
               </div>
             </div>
-          </article>
+          </div>
         </div>
       </div>
     );

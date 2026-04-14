@@ -9,6 +9,72 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-04-13 UI `Magazzino -> Documenti e costi` allineata a `SPEC_DOCUMENTI_COSTI_UI` - PATCH PARZIALE
+- execution completata nel solo perimetro autorizzato `src/next/NextMagazzinoPage.tsx`, con riuso delle classi `.doc-costi-*` in `src/next/internal-ai/internal-ai.css`, senza toccare `src/next/domain/nextDocumentiCostiDomain.ts`, `src/next/NextIADocumentiPage.tsx`, writer, barrier o backend;
+- dati reali usati dal tab:
+  - documenti archivio Magazzino: `NextIADocumentiArchiveItem[]` filtrati con `sourceKey = "@documenti_magazzino"`;
+  - supporto righe documento: `materialCostSupport.documents` -> `NextDocumentiMagazzinoSupportDocument.voci`;
+  - preventivi materiali: `NextProcurementPreventivoItem[]` dal procurement read-only gia usato dal tab;
+- UI applicata:
+  - header con statistiche, filtri `Tutti / Fatture / DDT / Preventivi / Da verificare`, ricerca locale, gruppi collassabili per fornitore, tabella righe, totale fornitore e totale generale;
+  - click riga -> modale dettaglio; `PDF` apre `fileUrl` in nuova tab senza aprire il modale; `Chiedi alla IA` naviga a `NEXT_INTERNAL_AI_PATH` con `state.initialPrompt`;
+  - i pannelli legacy sotto la lista documenti non vengono piu renderizzati, quindi il tab resta visivamente focalizzato solo sui documenti/preventivi del dominio Magazzino;
+- perimetro dati confermato:
+  - restano esclusi fatture manutenzione, preventivi per targa, documenti generici, libretti e cisterna;
+  - `/next/ia/documenti` resta l'archivio globale IA, senza modifiche in questo task;
+- verifiche eseguite:
+  - `npx eslint src/next/NextMagazzinoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - browser verificato davvero su `http://127.0.0.1:4174/next/magazzino?tab=documenti-costi` e `http://127.0.0.1:4174/next/ia/documenti`
+  - controlli verificati: nuova UI visibile in Magazzino, sezioni fornitore collassabili, filtro e ricerca funzionanti, click riga apre il modale, `PDF` apre una nuova tab senza aprire il modale, `Chiedi alla IA` porta a `/next/ia/interna` con prompt precaricato, `/next/ia/documenti` invariato come archivio globale;
+- stato onesto del ramo:
+  - riallineamento UI del tab `Magazzino -> Documenti e costi` -> `PATCH PARZIALE`
+  - nessun cambio a logica business, writer o barrier
+  - limite reale: i preventivi procurement del tab non espongono `voci` ma solo `rows`, quindi il modale mostra solo l'intestazione per quei record e non puo chiudere la spec al 100%
+  - errori console residui osservati: backend IA locale `127.0.0.1:4310` non avviato e listing Storage Firebase `403`, preesistenti e non introdotti da questa patch
+
+## 0.0 Aggiornamento operativo 2026-04-13 FIX PERIMETRO `Magazzino -> Documenti e costi`
+- execution completata nel solo perimetro autorizzato `src/next/NextMagazzinoPage.tsx`, senza toccare `src/next/domain/nextDocumentiCostiDomain.ts`, `src/next/NextIADocumentiPage.tsx`, writer, barrier o backend;
+- audit dati reale del tab:
+  - il tab continua a leggere `readNextDocumentiCostiFleetSnapshot({ includeCloneDocuments: false })`, `readNextIADocumentiArchiveSnapshot({ includeCloneDocuments: false })` e `readNextProcurementSnapshot({ includeCloneOverlays: false })`;
+  - il discriminante strutturale affidabile per i documenti Magazzino e `sourceKey = "@documenti_magazzino"` insieme a `sourceType = "documento_magazzino"`;
+- correzione applicata:
+  - `documentiMagazzinoItems` resta gia limitato a `@documenti_magazzino` nell'archivio IA read-only;
+  - `materialiCostItems` non include piu record `costo_mezzo` e mostra ora solo record con `sourceKey = "@documenti_magazzino"` e `sourceType = "documento_magazzino"`;
+  - la copy della sezione `Costi materiali e prezzi` e stata riallineata al nuovo perimetro reale, senza citare piu `@costiMezzo` come sorgente visibile del tab;
+  - ordini, arrivi, preventivi e listino procurement restano come supporto read-only del dominio materiali, coerenti con `Magazzino` e separati dall'archivio globale IA;
+- verifiche eseguite:
+  - `npx eslint src/next/NextMagazzinoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - browser verificato davvero su `http://127.0.0.1:4174/next/magazzino?tab=documenti-costi` e `http://127.0.0.1:4174/next/ia/documenti`
+  - controlli verificati: in Magazzino la card `Costi materiali e prezzi` non mostra piu righe da `costo_mezzo`; `/next/ia/documenti` resta l'archivio globale per fornitore senza regressioni visibili;
+- stato onesto del ramo:
+  - correzione perimetro tab `Magazzino -> Documenti e costi` -> `FATTO`
+  - nessun cambio a logica business globale, writer o barrier
+  - errori console residui osservati: backend IA locale `127.0.0.1:4310` non avviato e listing Storage Firebase `403`, preesistenti e non introdotti da questa patch
+
+## 0.0 Aggiornamento operativo 2026-04-13 UI SPEC `DOCUMENTI_COSTI_UI` - PATCH PARZIALE
+- execution completata nel solo perimetro autorizzato `src/next/NextIADocumentiPage.tsx` e `src/next/internal-ai/internal-ai.css`, senza toccare `src/next/domain/nextDocumentiCostiDomain.ts`, writer, barrier o backend;
+- `/next/ia/documenti`:
+  - layout sostituito con pagina `Documenti e costi` per fornitore, con header statistiche, filtri `Tutti / Fatture / DDT / Preventivi / Da verificare`, ricerca locale, sezioni collassabili, tabella righe, totale per fornitore e totale generale;
+  - click riga -> modale dettaglio locale con intestazione documento e azioni `Apri PDF originale`, `Da verificare`, `Riapri review`, `Chiedi IA ->`;
+  - `PDF` apre `fileUrl` in nuova tab senza aprire il modale;
+  - `Chiedi alla IA` naviga a `NEXT_INTERNAL_AI_PATH` con `state.initialPrompt`;
+  - `Da verificare` aggiorna solo stato locale del componente, senza scritture remote;
+- vincoli rispettati:
+  - il reader resta `readNextIADocumentiArchiveSnapshot({ includeCloneDocuments: false })`;
+  - nessuna modifica a domain read-only, writer Firestore/Storage, barrier o motore condiviso sotto;
+  - `Riapri review` resta disponibile per evitare regressione rispetto alla pagina precedente;
+- verifiche eseguite:
+  - `npx eslint src/next/NextIADocumentiPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - browser verificato davvero su `http://127.0.0.1:4174/next/ia/documenti`
+  - controlli verificati: sezioni fornitore collassabili, filtro `Preventivi`, ricerca per `TI324623`, apertura modale al click riga, `PDF` in nuova tab, `Chiedi alla IA` con prompt precaricato su `/next/ia/interna`
+- stato onesto del ramo:
+  - UI spec documenti/costi sopra il domain reale -> `PARZIALE`
+  - motivo del parziale: la shape reale di `NextIADocumentiArchiveItem` non espone `voci`, quindi il modale puo mostrare solo l'intestazione; inoltre la UI mantiene `Riapri review` per non regredire rispetto al file precedente
+  - errori runtime residui osservati nel browser: backend IA locale `127.0.0.1:4310` non avviato e listing Storage Firebase `403`, preesistenti e non introdotti da questa patch
+
 ## 0.0 Aggiornamento operativo 2026-04-12 UI SPEC `IA_UNIVERSAL_DISPATCHER` - PATCH PARZIALE
 - execution completata nel solo perimetro autorizzato `src/next/components/HomeInternalAiLauncher.tsx`, `src/next/NextInternalAiPage.tsx`, `src/next/NextIADocumentiPage.tsx`, `src/next/internal-ai/internal-ai.css`, senza toccare domain, orchestrator, writer, barrier o motori legacy;
 - Home:

@@ -464,6 +464,7 @@ export function useIADocumentiEngine() {
       return null;
     }
 
+    const categoriaArchivioFinale = overrideCategoriaArchivio ?? results.categoriaArchivio;
     const matched = exactMatch(targaEstrattaIA, mezzi);
     const needsManual =
       fmtTarga(targaEstrattaIA) !== "" && !matched;
@@ -474,7 +475,7 @@ export function useIADocumentiEngine() {
       (m) => fmtTarga(m.targa || "") === targaFinale
     );
 
-    if (!exists) {
+    if (!exists && categoriaArchivioFinale !== "MAGAZZINO") {
       setErrorMessage(
         "Targa non valida o non trovata nei mezzi. Seleziona manualmente il mezzo corretto."
       );
@@ -484,7 +485,7 @@ export function useIADocumentiEngine() {
       return null;
     }
 
-    if (needsManual && !targaSelezionata) {
+    if (needsManual && !targaSelezionata && categoriaArchivioFinale !== "MAGAZZINO") {
       setErrorMessage("Seleziona una targa valida per salvare.");
       return null;
     }
@@ -505,7 +506,6 @@ export function useIADocumentiEngine() {
       const valuta = resolveDocumentCurrency(results);
 
       // 2. Prepara il payload per Firestore (lasciamo inalterata la struttura esistente)
-      const categoriaArchivioFinale = overrideCategoriaArchivio ?? results.categoriaArchivio;
       const payload = {
         ...results,
         categoriaArchivio: categoriaArchivioFinale,
