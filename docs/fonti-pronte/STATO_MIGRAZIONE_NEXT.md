@@ -9,6 +9,31 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-04-14 IA interna documentale multi-file con riepilogo unico
+- execution completata nel solo perimetro autorizzato `src/next/NextInternalAiPage.tsx`, `src/next/internal-ai/internalAiDocumentAnalysis.ts`, `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`, `src/next/internal-ai/internalAiUniversalHandoff.ts`, `src/next/internal-ai/internalAiUniversalOrchestrator.ts`, senza toccare madre, parser legacy, extraction pipeline del file singolo o writer business;
+- UI:
+  - nel flusso allegati di `/next/ia/interna` compare il toggle in italiano `Tratta questi file come un unico documento`;
+  - il toggle si attiva di default solo quando gli allegati sono almeno 2 e si azzera automaticamente quando si torna a 0/1 allegato;
+  - la proposal automatica e la review mostrano un solo riepilogo finale unificato, mentre le preview dei singoli file restano consultabili come allegati separati;
+- orchestrazione:
+  - il flag logico viene passato all'orchestratore universale;
+  - router e handoff trattano il gruppo come un unico documento logico, ma senza cambiare upload, parsing o classificazione del singolo allegato quando il flag non e attivo;
+  - gli action intent duplicati sullo stesso target vengono collassati solo nel caso multi-file unificato;
+- aggregazione:
+  - `internalAiDocumentAnalysis.ts` unisce in modo prudente header, righe e testo breve delle analisi gia presenti sui singoli allegati;
+  - i campi coerenti vengono mantenuti, quelli conflittuali vengono azzerati e marcati come `da verificare`, senza inventare valori;
+  - nessun merge PDF fisico viene introdotto;
+- comportamento verificato:
+  - 1 file -> comportamento invariato;
+  - 2 o piu file -> un solo riepilogo logico finale con review unificata e tab allegato per la sola preview;
+- verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiChatAttachmentsClient.ts src/next/internal-ai/internalAiUniversalDocumentRouter.ts src/next/internal-ai/internalAiUniversalHandoff.ts src/next/internal-ai/internalAiUniversalOrchestrator.ts src/next/internal-ai/internalAiDocumentAnalysis.ts` -> `OK`
+  - `npm run build` -> `OK`
+- stato onesto del ramo:
+  - capability multi-file `stessa manutenzione -> riepilogo unico` -> `FATTO`
+  - nessun cambio a extraction per-file, upload, madre o writer
+  - rischio residuo: su gruppi multi-file eterogenei i campi header/totali in conflitto vengono mantenuti `DA VERIFICARE` invece di essere forzati
+
 ## 0.0 Aggiornamento operativo 2026-04-13 UI `Magazzino -> Documenti e costi` allineata a `SPEC_DOCUMENTI_COSTI_UI` - PATCH PARZIALE
 - execution completata nel solo perimetro autorizzato `src/next/NextMagazzinoPage.tsx`, con riuso delle classi `.doc-costi-*` in `src/next/internal-ai/internal-ai.css`, senza toccare `src/next/domain/nextDocumentiCostiDomain.ts`, `src/next/NextIADocumentiPage.tsx`, writer, barrier o backend;
 - dati reali usati dal tab:

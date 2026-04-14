@@ -1,6 +1,7 @@
 import { buildNextMagazzinoPath } from "../nextStructuralPaths";
 import type { InternalAiChatAttachment } from "./internalAiTypes";
 import {
+  buildInternalAiLogicalDocumentAggregate,
   buildInternalAiAttachmentDocumentSignalText,
   getInternalAiAttachmentDocumentRows,
 } from "./internalAiDocumentAnalysis";
@@ -66,6 +67,27 @@ function buildActionIntentFromRoute(route: InternalAiUniversalDocumentRoute): In
     reason: route.rationale[0] ?? "Instradamento documentale del clone.",
     payloadPreview: route.rationale,
     handoff: route.handoffPayload,
+  };
+}
+
+function buildLogicalDocumentClassificationAttachment(
+  attachments: InternalAiChatAttachment[],
+): InternalAiChatAttachment | null {
+  const aggregate = buildInternalAiLogicalDocumentAggregate(attachments);
+  const firstAttachment = attachments[0] ?? null;
+  if (!firstAttachment || !aggregate) {
+    return firstAttachment;
+  }
+
+  const fileNamePreview =
+    aggregate.fileNames.slice(0, 3).join(" + ").slice(0, 120) ||
+    firstAttachment.fileName;
+
+  return {
+    ...firstAttachment,
+    fileName: fileNamePreview,
+    textExcerpt: aggregate.textExcerpt,
+    documentAnalysis: aggregate.documentAnalysis,
   };
 }
 
@@ -304,18 +326,35 @@ function classifyAttachment(
 export function routeInternalAiUniversalDocuments(args: {
   attachments: InternalAiChatAttachment[];
   prompt: string;
+  treatAttachmentsAsSingleDocument?: boolean;
 }): {
   routes: InternalAiUniversalDocumentRoute[];
   actionIntents: InternalAiUniversalActionIntent[];
 } {
+  const treatAsSingleDocument =
+    Boolean(args.treatAttachmentsAsSingleDocument) && args.attachments.length > 1;
+  const groupedClassificationAttachment = treatAsSingleDocument
+    ? buildLogicalDocumentClassificationAttachment(args.attachments)
+    : null;
+  const groupedClassification = groupedClassificationAttachment
+    ? classifyAttachment(groupedClassificationAttachment, args.prompt)
+    : null;
+
   const routes = args.attachments.map((attachment) => {
-    const result = classifyAttachment(attachment, args.prompt);
+    const result = groupedClassification ?? classifyAttachment(attachment, args.prompt);
+    const rationale = treatAsSingleDocument
+      ? [
+          `Gli allegati (${args.attachments.length}) vengono trattati come un unico documento logico.`,
+          ...result.rationale,
+        ]
+      : result.rationale;
+
     return {
       attachmentId: attachment.id,
       fileName: attachment.fileName,
       classification: result.classification,
       confidence: result.confidence,
-      rationale: result.rationale,
+      rationale,
       targetModuleId: result.targetModuleId,
       suggestedModuleLabel: result.suggestedModuleLabel,
       targetHookId: result.targetHookId,

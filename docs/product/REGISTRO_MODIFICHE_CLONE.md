@@ -37,6 +37,44 @@ La regola corrente da leggere insieme a questo registro e:
 
 ## 4. Registro storico
 
+### Voce 2026-04-14 165421
+- DATA: 2026-04-14
+- TITOLO MODIFICA: IA interna NEXT multi-file con riepilogo unico logico
+- OBIETTIVO: permettere a `/next/ia/interna` di trattare 2 o piu allegati della stessa manutenzione come un solo documento logico, mantenendo invariata l'estrazione del file singolo
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/internalAiDocumentAnalysis.ts`
+  - `src/next/internal-ai/internalAiUniversalDocumentRouter.ts`
+  - `src/next/internal-ai/internalAiUniversalHandoff.ts`
+  - `src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260414_165421_ia_interna_multi_file_documento_logico_unico.md`
+  - `docs/continuity-reports/20260414_165421_continuity_ia_interna_multi_file_documento_logico_unico.md`
+- COSA E STATO CAMBIATO:
+  - aggiunto nella chat IA il toggle `Tratta questi file come un unico documento`, attivo di default solo con allegati multipli
+  - introdotto un layer di aggregazione prudente sopra le analisi gia fatte sui singoli allegati, con merge di header/righe quando coerenti e conflitti marcati `da verificare`
+  - passato il flag logico all'orchestratore universale, che ora instrada router/handoff come documento unico logico senza toccare upload o extraction per-file
+  - la proposal automatica e la review mostrano un solo riepilogo finale, mentre le preview dei singoli allegati restano separate
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: con 2 o piu allegati l'utente puo scegliere il trattamento come documento unico e vede un solo riepilogo finale unificato
+  - Lettura: l'estrazione resta invariata per ogni file; l'aggregazione vive sopra i dati gia estratti
+  - Blocco scritture: invariato; nessun writer nuovo, nessun merge PDF obbligatorio, nessun cambio alla madre
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiChatAttachmentsClient.ts src/next/internal-ai/internalAiUniversalDocumentRouter.ts src/next/internal-ai/internalAiUniversalHandoff.ts src/next/internal-ai/internalAiUniversalOrchestrator.ts src/next/internal-ai/internalAiDocumentAnalysis.ts`
+  - eseguire `npm run build`
+  - aprire `/next/ia/interna`
+  - allegare 1 file e verificare che il comportamento resti invariato
+  - allegare 2 file e verificare che il toggle sia visibile, attivo di default e che proposal/review mostrino un solo riepilogo finale
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - i conflitti tra i campi header/totali non vengono inventati: il riepilogo li mantiene vuoti o li marca `da verificare`
+  - nessun file backend IA separato e stato modificato in questo task
 ### Voce 2026-04-13 172508
 - DATA: 2026-04-13
 - TITOLO MODIFICA: riallineamento UI del tab `Magazzino -> Documenti e costi` alla spec `Documenti e costi`

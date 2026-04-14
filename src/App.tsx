@@ -40,6 +40,7 @@ import NextLavoriDaEseguirePage from "./next/NextLavoriDaEseguirePage";
 import NextDettaglioLavoroPage from "./next/NextDettaglioLavoroPage";
 import NextGestioneOperativaPage from "./next/NextGestioneOperativaPage";
 import NextMagazzinoPage from "./next/NextMagazzinoPage";
+import NextStrumentiUnisciDocumentiPage from "./next/NextStrumentiUnisciDocumentiPage";
 import NextAttrezzatureCantieriPage from "./next/NextAttrezzatureCantieriPage";
 import NextManutenzioniPage from "./next/NextManutenzioniPage";
 import NextAcquistiPage from "./next/NextAcquistiPage";
@@ -224,6 +225,14 @@ function App() {
           element={
             <NextRoleGuard areaId="operativita-globale">
               <NextMagazzinoPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="strumenti/unisci-documenti"
+          element={
+            <NextRoleGuard areaId="operativita-globale">
+              <NextStrumentiUnisciDocumentiPage />
             </NextRoleGuard>
           }
         />

@@ -19,6 +19,7 @@ import {
   NEXT_MANUTENZIONI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
   NEXT_MEZZI_PATH,
+  NEXT_STRUMENTI_UNISCI_DOCUMENTI_PATH,
 } from "./nextStructuralPaths";
 
 export type NextAreaId =
@@ -105,6 +106,7 @@ export type NextShellNavSectionId =
   | "flotta"
   | "operativita"
   | "magazzino"
+  | "strumenti"
   | "anagrafiche"
   | "cisterna"
   | "ia"
@@ -184,6 +186,17 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
         id: "euromecc",
         label: "Euromecc",
         path: NEXT_EUROMECC_PATH,
+      },
+    ],
+  },
+  {
+    id: "strumenti",
+    title: "STRUMENTI",
+    items: [
+      {
+        id: "unisci-documenti",
+        label: "Unisci documenti",
+        path: NEXT_STRUMENTI_UNISCI_DOCUMENTI_PATH,
       },
     ],
   },

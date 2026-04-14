@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-04-12
+Ultimo aggiornamento: 2026-04-14
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -244,6 +244,19 @@ Stato macrofase: `IN CORSO`
   - `docs/change-reports/20260412_144023_home_ia_launcher_fix.md`
   - `docs/continuity-reports/20260412_144023_continuity_home_ia_launcher_fix.md`
 - Dipendenze o blocchi: nessuno nel perimetro Home; eventuali futuri quick action Home verso la IA richiederanno una decisione UX separata, senza reintrodurre superfici parallele al flusso documentale.
+
+### L.1.j Documento logico unico multi-file
+- Stato: `FATTO`
+- Note: `/next/ia/interna` puo ora trattare 2 o piu allegati della stessa manutenzione come un solo documento logico, mantenendo invariata l'estrazione del singolo file. Il toggle `Tratta questi file come un unico documento` si attiva di default solo con allegati multipli; l'orchestratore riceve il flag, router e handoff costruiscono un riepilogo unico e `internalAiDocumentAnalysis.ts` aggrega in modo prudente header, righe e warning delle analisi gia presenti sui singoli allegati. I conflitti non vengono inventati: restano vuoti o `da verificare`.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260414_165421_ia_interna_multi_file_documento_logico_unico.md`
+  - `docs/continuity-reports/20260414_165421_continuity_ia_interna_multi_file_documento_logico_unico.md`
+- Dipendenze o blocchi:
+  - nessun blocco nel perimetro autorizzato;
+  - resta prudenziale il caso di gruppi multi-file eterogenei, dove alcuni campi aggregati possono restare `DA VERIFICARE`.
 
 ### L.2 Ricerca guidata mezzi / autosuggest targhe reali
 - Stato: `FATTO`

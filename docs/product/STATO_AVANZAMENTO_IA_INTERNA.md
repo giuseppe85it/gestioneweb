@@ -1,7 +1,7 @@
 # STATO AVANZAMENTO IA INTERNA GESTIONALE
 
 Data audit: 2026-03-11
-Ultimo aggiornamento scaffolding: 2026-04-12
+Ultimo aggiornamento scaffolding: 2026-04-14
 Stato generale: USE CASE DOCUMENTALE UNIFICATO ATTIVO NEL CLONE, CAPABILITY PARZIALE
 Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema IA interno oggi attivo nel clone/NEXT, con ingresso unico documentale, riuso del motore reale `Documenti IA` e guard-rail ancora espliciti sui rami live non verificati end-to-end.
 
@@ -9,6 +9,26 @@ Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema 
 - La fonte operativa unica dello stato IA interno e `docs/product/CHECKLIST_IA_INTERNA.md`.
 - Questo documento resta il quadro esteso di contesto, rischi, fasi e fatti verificati.
 - Ogni futuro task relativo alla IA interna deve aggiornare obbligatoriamente la checklist unica; se non lo fa, il task e incompleto.
+
+## 0.0 Aggiornamento operativo 2026-04-14 - riepilogo unico multi-file nella IA interna documentale
+- esecuzione completata nel solo perimetro autorizzato `NextInternalAiPage.tsx`, `internalAiDocumentAnalysis.ts`, `internalAiUniversalDocumentRouter.ts`, `internalAiUniversalHandoff.ts`, `internalAiUniversalOrchestrator.ts`, senza toccare parser legacy, extraction pipeline del singolo file o writer business;
+- `/next/ia/interna`:
+  - il composer allegati espone ora il toggle `Tratta questi file come un unico documento`, attivo di default solo con almeno 2 allegati;
+  - la proposal automatica e la review mostrano un solo riepilogo finale unificato, mentre le preview dei singoli allegati restano consultabili come tab separati;
+- orchestrazione:
+  - il flag logico viene passato all'orchestratore universale;
+  - router e handoff mantengono gli allegati separati a livello tecnico ma li trattano come unico documento logico ai fini del riepilogo finale;
+  - il caso singolo resta invariato;
+- aggregazione:
+  - `internalAiDocumentAnalysis.ts` unisce in modo prudente header, righe e warning gia estratti sui singoli file;
+  - i campi coerenti vengono mantenuti, quelli conflittuali restano vuoti o `DA VERIFICARE`;
+  - nessun merge PDF fisico obbligatorio viene introdotto;
+- verifiche tecniche:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiChatAttachmentsClient.ts src/next/internal-ai/internalAiUniversalDocumentRouter.ts src/next/internal-ai/internalAiUniversalHandoff.ts src/next/internal-ai/internalAiUniversalOrchestrator.ts src/next/internal-ai/internalAiDocumentAnalysis.ts` -> `OK`
+  - `npm run build` -> `OK`
+- stato onesto:
+  - capability `multi-file stessa manutenzione -> riepilogo unico` -> `FATTO`
+  - capability documentale complessiva -> ancora `PARZIALE`, perche la robustezza su gruppi multi-file eterogenei resta da rivalidare su dataset reali
 
 ## 0.0 Aggiornamento operativo 2026-04-12 - UI spec `IA Universal Dispatcher` applicata in modo parziale
 - esecuzione completata nel solo perimetro autorizzato `HomeInternalAiLauncher.tsx`, `NextInternalAiPage.tsx`, `NextIADocumentiPage.tsx`, `internal-ai.css`, senza toccare orchestrator, writer, barrier, domain o motori legacy;

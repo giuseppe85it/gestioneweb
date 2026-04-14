@@ -12,6 +12,7 @@ import {
 } from "../nextStructuralPaths";
 import type { InternalAiChatAttachment } from "./internalAiTypes";
 import {
+  buildInternalAiLogicalDocumentAggregate,
   buildInternalAiAttachmentDocumentSignalText,
   buildInternalAiDocumentRowsJson,
   getInternalAiAttachmentDocumentRows,
@@ -876,31 +877,89 @@ function dedupeHandoffs(
   });
 }
 
+function dedupeDefinedStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
+}
+
+function applyLogicalDocumentMetadataToPayload(args: {
+  payload: InternalAiUniversalHandoffPayload;
+  attachmentCount: number;
+  fileNames: string[];
+  conflictFields: string[];
+}): InternalAiUniversalHandoffPayload {
+  if (args.attachmentCount <= 1) {
+    return args.payload;
+  }
+
+  return finalizeHandoffPayload({
+    ...args.payload,
+    datiEstrattiNormalizzati: cleanRecord({
+      ...args.payload.datiEstrattiNormalizzati,
+      documentoLogicoUnico: "1",
+      allegatiDocumentoLogicoCount: String(args.attachmentCount),
+      allegatiDocumentoLogicoNomi: args.fileNames.slice(0, 6),
+      campiDocumentoLogicoDaVerificare: args.conflictFields,
+    }),
+    prefillCanonico: cleanRecord({
+      ...args.payload.prefillCanonico,
+      documentoLogicoUnico: "1",
+      allegatiDocumentoLogicoCount: String(args.attachmentCount),
+    }),
+    campiDaVerificare: dedupeDefinedStrings([
+      ...args.payload.campiDaVerificare,
+      ...args.conflictFields,
+    ]),
+  });
+}
+
 export function buildInternalAiUniversalHandoffs(args: {
   prompt: string;
   attachments: InternalAiChatAttachment[];
   entityResolution: InternalAiUniversalEntityResolution;
   requestResolution: InternalAiUniversalRequestResolution;
   documentRoutes: InternalAiUniversalDocumentRoute[];
+  treatAttachmentsAsSingleDocument?: boolean;
 }): {
   handoffPayloads: InternalAiUniversalHandoffPayload[];
   actionIntents: InternalAiUniversalActionIntent[];
   documentInboxItems: InternalAiUniversalDocumentInboxItem[];
 } {
   const attachmentMap = new Map(args.attachments.map((entry) => [entry.id, entry]));
+  const logicalDocumentAggregate =
+    Boolean(args.treatAttachmentsAsSingleDocument) && args.attachments.length > 1
+      ? buildInternalAiLogicalDocumentAggregate(args.attachments)
+      : null;
   const documentEntries = args.documentRoutes.flatMap((route) => {
     const attachment = attachmentMap.get(route.attachmentId);
     if (!attachment) {
       return [];
     }
 
-    const primaryPayload = buildDocumentHandoffPayload({
+    const sourceAttachment =
+      logicalDocumentAggregate?.documentAnalysis || logicalDocumentAggregate?.textExcerpt
+        ? {
+            ...attachment,
+            textExcerpt: logicalDocumentAggregate.textExcerpt ?? attachment.textExcerpt,
+            documentAnalysis:
+              logicalDocumentAggregate.documentAnalysis ?? attachment.documentAnalysis,
+          }
+        : attachment;
+
+    const primaryPayloadBase = buildDocumentHandoffPayload({
       prompt: args.prompt,
-      attachment,
+      attachment: sourceAttachment,
       entityResolution: args.entityResolution,
       requestResolution: args.requestResolution,
       route,
     });
+    const primaryPayload = logicalDocumentAggregate
+      ? applyLogicalDocumentMetadataToPayload({
+          payload: primaryPayloadBase,
+          attachmentCount: logicalDocumentAggregate.attachmentCount,
+          fileNames: logicalDocumentAggregate.fileNames,
+          conflictFields: logicalDocumentAggregate.conflictFields,
+        })
+      : primaryPayloadBase;
     const extraLibretti = buildSecondaryLibrettiExportHandoff(primaryPayload);
     return [
       {

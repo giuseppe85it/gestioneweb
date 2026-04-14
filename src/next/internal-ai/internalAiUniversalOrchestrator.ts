@@ -20,14 +20,19 @@ import type {
   InternalAiUniversalOrchestrationResult,
 } from "./internalAiUniversalTypes";
 
-function dedupeActionIntents(actionIntents: InternalAiUniversalActionIntent[]) {
+function dedupeActionIntents(
+  actionIntents: InternalAiUniversalActionIntent[],
+  options?: {
+    collapseByTarget?: boolean;
+  },
+) {
   const seen = new Set<string>();
   return actionIntents.filter((entry) => {
     const key = [
       entry.type,
       entry.path,
       entry.hookId ?? "no-hook",
-      entry.handoff?.handoffId ?? "no-handoff",
+      options?.collapseByTarget ? "shared-target" : entry.handoff?.handoffId ?? "no-handoff",
     ].join("|");
 
     if (seen.has(key)) {
@@ -77,11 +82,19 @@ function computeRelevantGaps() {
 export async function orchestrateInternalAiUniversalRequest(
   input: InternalAiUniversalOrchestrationInput,
 ): Promise<InternalAiUniversalOrchestrationResult> {
+  const treatAttachmentsAsSingleDocument = Boolean(
+    (
+      input as InternalAiUniversalOrchestrationInput & {
+        treatAttachmentsAsSingleDocument?: boolean;
+      }
+    ).treatAttachmentsAsSingleDocument,
+  );
   const registry = await readInternalAiUniversalRegistrySnapshot();
   const entityResolution = await resolveInternalAiUniversalEntities(input);
   const documentRouting = routeInternalAiUniversalDocuments({
     attachments: input.attachments,
     prompt: input.prompt,
+    treatAttachmentsAsSingleDocument,
   });
   const requestResolution = resolveInternalAiUniversalRequest({
     prompt: input.prompt,
@@ -95,6 +108,7 @@ export async function orchestrateInternalAiUniversalRequest(
     entityResolution,
     requestResolution,
     documentRoutes: documentRouting.routes,
+    treatAttachmentsAsSingleDocument,
   });
   const conformance = readInternalAiUniversalConformanceSummary();
   const documentRoutes = mapDocumentRoutesWithHandoffs(
@@ -106,7 +120,9 @@ export async function orchestrateInternalAiUniversalRequest(
   const actionIntents = dedupeActionIntents([
     ...handoffResult.actionIntents,
     ...(requestResolution.primaryActionIntent ? [requestResolution.primaryActionIntent] : []),
-  ]);
+  ], {
+    collapseByTarget: treatAttachmentsAsSingleDocument,
+  });
 
   const selectedAdapters = INTERNAL_AI_UNIVERSAL_ADAPTER_CONTRACTS.filter((adapter) =>
     requestResolution.selectedAdapterIds.includes(adapter.adapterId),

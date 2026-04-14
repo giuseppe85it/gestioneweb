@@ -3,6 +3,7 @@ export const NEXT_CENTRO_CONTROLLO_PATH = "/next/centro-controllo";
 export const NEXT_GESTIONE_OPERATIVA_PATH = "/next/gestione-operativa";
 export const NEXT_OPERATIVITA_LEGACY_PATH = "/next/operativita-globale";
 export const NEXT_MAGAZZINO_PATH = "/next/magazzino";
+export const NEXT_STRUMENTI_UNISCI_DOCUMENTI_PATH = "/next/strumenti/unisci-documenti";
 export const NEXT_INVENTARIO_PATH = "/next/inventario";
 export const NEXT_MATERIALI_CONSEGNATI_PATH = "/next/materiali-consegnati";
 export const NEXT_ATTREZZATURE_CANTIERI_PATH = "/next/attrezzature-cantieri";

@@ -14,6 +14,8 @@ import {
   buildNextMagazzinoPath,
   buildNextManutenzioniPath,
 } from "./nextStructuralPaths";
+import UnisciDocumentiTool from "./strumenti/UnisciDocumentiTool";
+import { consumePendingMergeFile } from "./strumenti/pendingMergeStore";
 import {
   readNextIADocumentiArchiveSnapshot,
   type NextIADocumentiArchiveItem,
@@ -180,6 +182,7 @@ import type {
 import type {
   InternalAiUniversalDocumentRoute,
   InternalAiUniversalNormalizedValue,
+  InternalAiUniversalOrchestrationInput,
   InternalAiUniversalOrchestrationResult,
 } from "./internal-ai/internalAiUniversalTypes";
 import { formatDateTimeUI } from "./nextDateFormat";
@@ -2810,6 +2813,31 @@ function buildDocumentProposalRouteKey(route: InternalAiUniversalDocumentRoute):
   return `${route.attachmentId}:${route.classification}:${route.targetPath}`;
 }
 
+function buildLogicalDocumentAttachmentCountLabel(count: number): string {
+  return count === 1 ? "1 allegato" : `${count} allegati`;
+}
+
+function buildLogicalDocumentAttachmentNamesLabel(
+  attachments: Array<{ fileName: string }>,
+  limit = 3,
+): string {
+  const visibleNames = attachments
+    .map((attachment) => attachment.fileName.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+
+  if (visibleNames.length === 0) {
+    return "Allegati collegati";
+  }
+
+  const remaining = attachments.length - visibleNames.length;
+  if (remaining > 0) {
+    return `${visibleNames.join(" · ")} +${remaining}`;
+  }
+
+  return visibleNames.join(" · ");
+}
+
 function isWarehouseInvoiceDocumentRoute(route: InternalAiUniversalDocumentRoute): boolean {
   const prefill = route.handoffPayload?.prefillCanonico ?? {};
   return (
@@ -4284,6 +4312,7 @@ function NextInternalAiPage({
   });
   const [chatMessages, setChatMessages] = useState<InternalAiChatMessage[]>([]);
   const [chatAttachments, setChatAttachments] = useState<InternalAiChatAttachment[]>([]);
+  const [treatAttachmentsAsSingleDocument, setTreatAttachmentsAsSingleDocument] = useState(false);
   const [chatAttachmentRepositoryState, setChatAttachmentRepositoryState] =
     useState<ChatAttachmentRepositoryState>({
       status: "idle",
@@ -4308,6 +4337,7 @@ function NextInternalAiPage({
     Record<string, DocumentReviewActionKey[]>
   >({});
   const [documentReviewImageZoom, setDocumentReviewImageZoom] = useState(1);
+  const [isMergeToolOpen, setIsMergeToolOpen] = useState(false);
   const [reportPdfPreviewState, setReportPdfPreviewState] = useState<ReportPdfPreviewState>({
     status: "idle",
     url: null,
@@ -4324,6 +4354,10 @@ function NextInternalAiPage({
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const documentUploadInputRef = useRef<HTMLInputElement | null>(null);
   const chatAttachmentsRef = useRef<InternalAiChatAttachment[]>([]);
+  const chatAttachmentGroupingPreferenceTouchedRef = useRef(false);
+  const handleChatAttachmentSelectionRef = useRef<
+    ((files: FileList | File[] | null) => Promise<void>) | null
+  >(null);
   const chatMagazzinoInlineContextRef = useRef<InternalAiMagazzinoInlineContext | null>(null);
   const pendingUnifiedDocumentDefaultRef = useRef(false);
   const handledLauncherStateRef = useRef<string>("");
@@ -4495,6 +4529,12 @@ function NextInternalAiPage({
     location.search,
     navigate,
   ]);
+  useEffect(() => {
+    const pending = consumePendingMergeFile();
+    if (pending) {
+      void handleChatAttachmentSelectionRef.current?.([pending]);
+    }
+  }, []);
   const [repoUnderstandingState, setRepoUnderstandingState] = useState<RepoUnderstandingState>({
     status: "idle",
     message: null,
@@ -4754,6 +4794,18 @@ function NextInternalAiPage({
   }, [chatAttachments]);
 
   useEffect(() => {
+    if (chatAttachments.length <= 1) {
+      chatAttachmentGroupingPreferenceTouchedRef.current = false;
+      setTreatAttachmentsAsSingleDocument(false);
+      return;
+    }
+
+    if (!chatAttachmentGroupingPreferenceTouchedRef.current) {
+      setTreatAttachmentsAsSingleDocument(true);
+    }
+  }, [chatAttachments.length]);
+
+  useEffect(() => {
     return () => {
       chatAttachmentsRef.current.forEach((attachment) => {
         if (attachment.storageMode === "local_browser_only" && attachment.localObjectUrl) {
@@ -4764,6 +4816,8 @@ function NextInternalAiPage({
   }, []);
 
   const activeReportSignature = getInternalAiReportSignature(activeReportState.report);
+  const logicalDocumentGroupingEnabled =
+    treatAttachmentsAsSingleDocument && chatAttachments.length > 1;
   const visibleReportSummaryMessage =
     reportSummaryWorkflowState.reportSignature === activeReportSignature
       ? reportSummaryWorkflowState.message
@@ -6518,6 +6572,7 @@ function NextInternalAiPage({
     },
     [chatAttachmentRepositoryState.status, chatAttachments, chatStatus],
   );
+  handleChatAttachmentSelectionRef.current = handleChatAttachmentSelection;
 
   const initialLauncherAttachmentsProcessedRef = useRef(false);
   const [initialChatAttachmentsReady, setInitialChatAttachmentsReady] = useState(
@@ -6749,11 +6804,16 @@ function NextInternalAiPage({
         message: "Classificazione automatica del documento in corso.",
       }));
 
-      void orchestrateInternalAiUniversalRequest({
-        prompt: liveUnifiedConsoleRequest.visiblePrompt,
-        attachments: chatAttachments,
-        preferredTarga: resolvedChatTarga || null,
-      })
+      void orchestrateInternalAiUniversalRequest(
+        {
+          prompt: liveUnifiedConsoleRequest.visiblePrompt,
+          attachments: chatAttachments,
+          preferredTarga: resolvedChatTarga || null,
+          treatAttachmentsAsSingleDocument: logicalDocumentGroupingEnabled,
+        } as InternalAiUniversalOrchestrationInput & {
+          treatAttachmentsAsSingleDocument?: boolean;
+        },
+      )
         .then((result) => {
           if (cancelled) {
             return;
@@ -6797,6 +6857,7 @@ function NextInternalAiPage({
     chatAttachments,
     chatInput,
     liveUnifiedConsoleRequest.visiblePrompt,
+    logicalDocumentGroupingEnabled,
     resolvedChatTarga,
     unifiedConsoleOutput,
     unifiedConsoleScopes,
@@ -7216,16 +7277,85 @@ function NextInternalAiPage({
 
   const chatComposerHint =
     chatAttachments.length > 0
-      ? "Con un allegato il testo e opzionale: la IA classifica il documento e propone il flusso corretto."
+      ? logicalDocumentGroupingEnabled
+        ? "Con piu allegati l'estrazione resta separata per file, ma la IA prepara un riepilogo finale unico."
+        : "Con un allegato il testo e opzionale: la IA classifica il documento e propone il flusso corretto."
       : "`Invio` manda la richiesta. `Shift + Invio` va a capo.";
   const chatSubmitButtonLabel =
     chatStatus === "running"
       ? "Elaborazione..."
       : chatAttachments.length > 0 && !chatInput.trim()
-        ? "Analizza allegato"
+        ? logicalDocumentGroupingEnabled
+          ? "Analizza documenti"
+          : "Analizza allegato"
         : "Invia richiesta";
   const chatInputPlaceholderWithDocument =
     "Puoi scrivere una nota semplice come gestisci questa fattura, oppure lasciare vuoto: l'analisi parte dall'allegato.";
+
+  const renderChatAttachmentsList = (options?: { showStorageDetails?: boolean }) => {
+    if (chatAttachments.length === 0) {
+      return null;
+    }
+
+    return (
+      <>
+        <div className="internal-ai-chat__attachments">
+          {chatAttachments.map((attachment) => (
+            <article key={attachment.id} className="internal-ai-chat__attachment-row">
+              <div className="internal-ai-chat__attachment-copy">
+                <strong>{attachment.fileName}</strong>
+                <p className="internal-ai-card__meta">{attachment.note}</p>
+                {options?.showStorageDetails !== false ? (
+                  <p className="internal-ai-card__meta">
+                    {buildInternalAiChatAttachmentPreviewLabel(attachment)} -{" "}
+                    {attachment.storageMode === "server_file_isolated"
+                      ? "server IA isolato"
+                      : "browser locale"}
+                    {" - "}
+                    {(attachment.sizeBytes / 1024).toFixed(1)} KB
+                  </p>
+                ) : null}
+              </div>
+              <div className="internal-ai-pill-row">
+                <button
+                  type="button"
+                  className="internal-ai-chat__reference"
+                  onClick={() => handleOpenChatAttachment(attachment)}
+                >
+                  Apri
+                </button>
+                <button
+                  type="button"
+                  className="internal-ai-chat__reference"
+                  onClick={() => void handleRemoveChatAttachment(attachment)}
+                >
+                  Rimuovi
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+        {chatAttachments.length > 1 ? (
+          <div className="internal-ai-card__meta">
+            <label>
+              <input
+                type="checkbox"
+                checked={treatAttachmentsAsSingleDocument}
+                onChange={(event) => {
+                  chatAttachmentGroupingPreferenceTouchedRef.current = true;
+                  setTreatAttachmentsAsSingleDocument(event.currentTarget.checked);
+                }}
+              />{" "}
+              Tratta questi file come un unico documento
+            </label>
+            <p className="internal-ai-card__meta">
+              L'estrazione resta separata per file, ma il riepilogo finale viene unificato.
+            </p>
+          </div>
+        ) : null}
+      </>
+    );
+  };
 
   const renderAutomaticDocumentProposalPanel = (surface: "page" | "home-modal" = "page") => {
     if (chatAttachments.length === 0) {
@@ -7246,7 +7376,9 @@ function NextInternalAiPage({
               <span className="internal-ai-pill is-neutral">Analisi in corso</span>
             </div>
             <h3 className="internal-ai-chat__document-proposal-title">
-              Sto leggendo il documento allegato
+              {logicalDocumentGroupingEnabled
+                ? "Sto leggendo il gruppo di documenti allegati"
+                : "Sto leggendo il documento allegato"}
             </h3>
             <p className="internal-ai-card__meta">
               {chatDocumentProposalState.message ??
@@ -7330,16 +7462,26 @@ function NextInternalAiPage({
               </span>
             </div>
             {routes.length > 1 ? (
-              <span className="internal-ai-pill is-neutral">+{routes.length - 1} allegati</span>
+              <span className="internal-ai-pill is-neutral">
+                {logicalDocumentGroupingEnabled
+                  ? buildLogicalDocumentAttachmentCountLabel(routes.length)
+                  : `+${routes.length - 1} allegati`}
+              </span>
             ) : null}
           </div>
 
-          <strong className="internal-ai-chat__dispatcher-banner-file">{route.fileName}</strong>
+          <strong className="internal-ai-chat__dispatcher-banner-file">
+            {logicalDocumentGroupingEnabled && routes.length > 1
+              ? buildLogicalDocumentAttachmentNamesLabel(chatAttachments)
+              : route.fileName}
+          </strong>
           <p className="internal-ai-card__meta">
             {factsLabel || "Documento classificato e pronto per la review interna."}
           </p>
           <p className="internal-ai-card__meta">
-            {secondaryLabel || buildDocumentProposalActionReason(route)}
+            {logicalDocumentGroupingEnabled && routes.length > 1
+              ? `Documento logico unico su ${buildLogicalDocumentAttachmentCountLabel(routes.length)}. ${secondaryLabel || buildDocumentProposalActionReason(route)}`
+              : secondaryLabel || buildDocumentProposalActionReason(route)}
           </p>
 
           <div className="internal-ai-search__actions internal-ai-chat__dispatcher-banner-actions">
@@ -7348,7 +7490,9 @@ function NextInternalAiPage({
               className="internal-ai-search__button"
               onClick={() => openDocumentReviewModal(routeKey)}
             >
-              Apri review →
+              {logicalDocumentGroupingEnabled && routes.length > 1
+                ? "Apri review unica →"
+                : "Apri review →"}
             </button>
             {attachment ? (
               <button
@@ -9182,42 +9326,7 @@ function NextInternalAiPage({
                   </div>
                 </div>
 
-                {chatAttachments.length ? (
-                  <div className="internal-ai-chat__attachments">
-                    {chatAttachments.map((attachment) => (
-                      <article key={attachment.id} className="internal-ai-chat__attachment-row">
-                        <div className="internal-ai-chat__attachment-copy">
-                          <strong>{attachment.fileName}</strong>
-                          <p className="internal-ai-card__meta">{attachment.note}</p>
-                          <p className="internal-ai-card__meta">
-                            {buildInternalAiChatAttachmentPreviewLabel(attachment)} -{" "}
-                            {attachment.storageMode === "server_file_isolated"
-                              ? "server IA isolato"
-                              : "browser locale"}
-                            {" - "}
-                            {(attachment.sizeBytes / 1024).toFixed(1)} KB
-                          </p>
-                        </div>
-                        <div className="internal-ai-pill-row">
-                          <button
-                            type="button"
-                            className="internal-ai-chat__reference"
-                            onClick={() => handleOpenChatAttachment(attachment)}
-                          >
-                            Apri
-                          </button>
-                          <button
-                            type="button"
-                            className="internal-ai-chat__reference"
-                            onClick={() => void handleRemoveChatAttachment(attachment)}
-                          >
-                            Rimuovi
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : null}
+                {renderChatAttachmentsList()}
 
                 <input
                   ref={chatAttachmentInputRef}
@@ -9451,34 +9560,7 @@ function NextInternalAiPage({
                     →
                   </button>
                 </div>
-                {chatAttachments.length ? (
-                  <div className="internal-ai-chat__attachments">
-                    {chatAttachments.map((attachment) => (
-                      <article key={attachment.id} className="internal-ai-chat__attachment-row">
-                        <div className="internal-ai-chat__attachment-copy">
-                          <strong>{attachment.fileName}</strong>
-                          <p className="internal-ai-card__meta">{attachment.note}</p>
-                        </div>
-                        <div className="internal-ai-pill-row">
-                          <button
-                            type="button"
-                            className="internal-ai-chat__reference"
-                            onClick={() => handleOpenChatAttachment(attachment)}
-                          >
-                            Apri
-                          </button>
-                          <button
-                            type="button"
-                            className="internal-ai-chat__reference"
-                            onClick={() => void handleRemoveChatAttachment(attachment)}
-                          >
-                            Rimuovi
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : null}
+                {renderChatAttachmentsList({ showStorageDetails: false })}
                 <input
                   ref={chatAttachmentInputRef}
                   type="file"
@@ -9918,6 +10000,14 @@ function NextInternalAiPage({
                       <button
                         type="button"
                         className="internal-ai-search__button internal-ai-search__button--secondary"
+                        disabled={chatStatus === "running" || chatAttachmentRepositoryState.status === "loading"}
+                        onClick={() => setIsMergeToolOpen(true)}
+                      >
+                        Unisci più file
+                      </button>
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
                         disabled={
                           vehicleRequestState.status === "loading" ||
                           lookupCatalog.status === "loading" ||
@@ -9944,42 +10034,7 @@ function NextInternalAiPage({
                     </div>
                   </div>
 
-                  {chatAttachments.length ? (
-                    <div className="internal-ai-chat__attachments">
-                      {chatAttachments.map((attachment) => (
-                        <article key={attachment.id} className="internal-ai-chat__attachment-row">
-                          <div className="internal-ai-chat__attachment-copy">
-                            <strong>{attachment.fileName}</strong>
-                            <p className="internal-ai-card__meta">{attachment.note}</p>
-                            <p className="internal-ai-card__meta">
-                              {buildInternalAiChatAttachmentPreviewLabel(attachment)} ·{" "}
-                              {attachment.storageMode === "server_file_isolated"
-                                ? "server IA isolato"
-                                : "browser locale"}
-                              {" · "}
-                              {(attachment.sizeBytes / 1024).toFixed(1)} KB
-                            </p>
-                          </div>
-                          <div className="internal-ai-pill-row">
-                            <button
-                              type="button"
-                              className="internal-ai-chat__reference"
-                              onClick={() => handleOpenChatAttachment(attachment)}
-                            >
-                              Apri
-                            </button>
-                            <button
-                              type="button"
-                              className="internal-ai-chat__reference"
-                              onClick={() => void handleRemoveChatAttachment(attachment)}
-                            >
-                              Rimuovi
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
+                  {renderChatAttachmentsList()}
 
                   <input
                     ref={chatAttachmentInputRef}
@@ -10420,44 +10475,7 @@ function NextInternalAiPage({
                   </button>
                 </div>
               </div>
-              {chatAttachments.length ? (
-                <div className="internal-ai-chat__attachments">
-                  {chatAttachments.map((attachment) => (
-                    <article key={attachment.id} className="internal-ai-chat__attachment-row">
-                      <div className="internal-ai-chat__attachment-copy">
-                        <strong>{attachment.fileName}</strong>
-                        <p className="internal-ai-card__meta">
-                          {attachment.note}
-                        </p>
-                        <p className="internal-ai-card__meta">
-                          {buildInternalAiChatAttachmentPreviewLabel(attachment)} ·{" "}
-                          {attachment.storageMode === "server_file_isolated"
-                            ? "server IA isolato"
-                            : "browser locale"}
-                          {" · "}
-                          {(attachment.sizeBytes / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                      <div className="internal-ai-pill-row">
-                        <button
-                          type="button"
-                          className="internal-ai-chat__reference"
-                          onClick={() => handleOpenChatAttachment(attachment)}
-                        >
-                          Apri
-                        </button>
-                        <button
-                          type="button"
-                          className="internal-ai-chat__reference"
-                          onClick={() => void handleRemoveChatAttachment(attachment)}
-                        >
-                          Rimuovi
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : null}
+              {renderChatAttachmentsList()}
               <input
                 ref={chatAttachmentInputRef}
                 type="file"
@@ -13624,8 +13642,16 @@ function NextInternalAiPage({
             <header className="internal-ai-review-modal__toolbar">
               <div className="internal-ai-review-modal__toolbar-main">
                 <p className="internal-ai-card__eyebrow">Review documento operativa</p>
-                <h2>{buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)}</h2>
-                <p className="internal-ai-card__meta">{activeDocumentReviewRoute.fileName}</p>
+                <h2>
+                  {logicalDocumentGroupingEnabled && documentReviewRoutes.length > 1
+                    ? "Documento logico unificato"
+                    : buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)}
+                </h2>
+                <p className="internal-ai-card__meta">
+                  {logicalDocumentGroupingEnabled && documentReviewRoutes.length > 1
+                    ? `${buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)} · ${buildLogicalDocumentAttachmentCountLabel(documentReviewRoutes.length)} · anteprima attuale: ${activeDocumentReviewRoute.fileName}`
+                    : activeDocumentReviewRoute.fileName}
+                </p>
                 <div className="internal-ai-pill-row">
                   <span
                     className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "status")}
@@ -13694,7 +13720,11 @@ function NextInternalAiPage({
                       className={`internal-ai-review-modal__route-tab ${isActive ? "is-active" : ""}`}
                       onClick={() => openDocumentReviewModal(routeKey)}
                     >
-                      <strong>{buildDocumentRouteClassificationLabel(route)}</strong>
+                      <strong>
+                        {logicalDocumentGroupingEnabled
+                          ? `Allegato ${documentReviewRoutes.indexOf(route) + 1}`
+                          : buildDocumentRouteClassificationLabel(route)}
+                      </strong>
                       <span>{route.fileName}</span>
                     </button>
                   );
@@ -14195,6 +14225,15 @@ function NextInternalAiPage({
             </div>
           </div>
         </div>
+      ) : null}
+      {isMergeToolOpen ? (
+        <UnisciDocumentiTool
+          onPdfReady={(file) => {
+            void handleChatAttachmentSelection([file]);
+            setIsMergeToolOpen(false);
+          }}
+          onClose={() => setIsMergeToolOpen(false)}
+        />
       ) : null}
     </section>
   );
