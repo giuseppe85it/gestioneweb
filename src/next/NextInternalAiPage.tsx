@@ -4313,6 +4313,9 @@ function NextInternalAiPage({
   const [chatMessages, setChatMessages] = useState<InternalAiChatMessage[]>([]);
   const [chatAttachments, setChatAttachments] = useState<InternalAiChatAttachment[]>([]);
   const [treatAttachmentsAsSingleDocument, setTreatAttachmentsAsSingleDocument] = useState(false);
+  const [chatDocumentProposalPromptOverride, setChatDocumentProposalPromptOverride] = useState<
+    string | null
+  >(null);
   const [chatAttachmentRepositoryState, setChatAttachmentRepositoryState] =
     useState<ChatAttachmentRepositoryState>({
       status: "idle",
@@ -4337,6 +4340,11 @@ function NextInternalAiPage({
     Record<string, DocumentReviewActionKey[]>
   >({});
   const [documentReviewImageZoom, setDocumentReviewImageZoom] = useState(1);
+  const [documentEntryPendingFiles, setDocumentEntryPendingFiles] = useState<File[]>([]);
+  const [documentEntryTreatFilesAsSingleDocument, setDocumentEntryTreatFilesAsSingleDocument] =
+    useState(false);
+  const [documentEntryUsesMultiFileFlow, setDocumentEntryUsesMultiFileFlow] = useState(false);
+  const [documentEntryMultiFileLoading, setDocumentEntryMultiFileLoading] = useState(false);
   const [isMergeToolOpen, setIsMergeToolOpen] = useState(false);
   const [reportPdfPreviewState, setReportPdfPreviewState] = useState<ReportPdfPreviewState>({
     status: "idle",
@@ -4355,8 +4363,9 @@ function NextInternalAiPage({
   const documentUploadInputRef = useRef<HTMLInputElement | null>(null);
   const chatAttachmentsRef = useRef<InternalAiChatAttachment[]>([]);
   const chatAttachmentGroupingPreferenceTouchedRef = useRef(false);
+  const documentEntryGroupingPreferenceTouchedRef = useRef(false);
   const handleChatAttachmentSelectionRef = useRef<
-    ((files: FileList | File[] | null) => Promise<void>) | null
+    ((files: FileList | File[] | null, options?: { replaceExisting?: boolean }) => Promise<InternalAiChatAttachment[]>) | null
   >(null);
   const chatMagazzinoInlineContextRef = useRef<InternalAiMagazzinoInlineContext | null>(null);
   const pendingUnifiedDocumentDefaultRef = useRef(false);
@@ -4804,6 +4813,18 @@ function NextInternalAiPage({
       setTreatAttachmentsAsSingleDocument(true);
     }
   }, [chatAttachments.length]);
+
+  useEffect(() => {
+    if (documentEntryPendingFiles.length <= 1) {
+      documentEntryGroupingPreferenceTouchedRef.current = false;
+      setDocumentEntryTreatFilesAsSingleDocument(false);
+      return;
+    }
+
+    if (!documentEntryGroupingPreferenceTouchedRef.current) {
+      setDocumentEntryTreatFilesAsSingleDocument(true);
+    }
+  }, [documentEntryPendingFiles.length]);
 
   useEffect(() => {
     return () => {
@@ -6497,6 +6518,43 @@ function NextInternalAiPage({
     }
   };
 
+  const clearChatDocumentAttachmentState = useCallback(
+    (options?: { clearAttachments?: boolean }) => {
+      setChatDocumentProposalState({
+        status: "idle",
+        result: null,
+        message: null,
+      });
+      setDocumentReviewModalState({
+        isOpen: false,
+        routeKey: null,
+      });
+      setDocumentReviewSelectionState({});
+      setDocumentEntryUsesMultiFileFlow(false);
+      setChatDocumentProposalPromptOverride(null);
+
+      if (!options?.clearAttachments) {
+        return;
+      }
+
+      chatAttachmentsRef.current.forEach((attachment) => {
+        if (attachment.storageMode === "local_browser_only" && attachment.localObjectUrl) {
+          URL.revokeObjectURL(attachment.localObjectUrl);
+        }
+      });
+
+      setChatAttachments([]);
+      setChatAttachmentRepositoryState({
+        status: "idle",
+        message: null,
+        items: [],
+        transport: "non_attivo",
+        transportMessage: null,
+      });
+    },
+    [],
+  );
+
   const handleChatAttachmentPicker = () => {
     if (chatStatus === "running" || chatAttachmentRepositoryState.status === "loading") {
       return;
@@ -6506,17 +6564,26 @@ function NextInternalAiPage({
   };
 
   const handleChatAttachmentSelection = useCallback(
-    async (files: FileList | File[] | null) => {
+    async (
+      files: FileList | File[] | null,
+      options?: {
+        replaceExisting?: boolean;
+      },
+    ) => {
       const fileItems = Array.from(files ?? []).slice(0, 6);
       if (
         !fileItems.length ||
         chatStatus === "running" ||
         chatAttachmentRepositoryState.status === "loading"
       ) {
-        return;
+        return [] as InternalAiChatAttachment[];
       }
 
-      const nextAttachments = [...chatAttachments];
+      if (!options?.replaceExisting) {
+        setChatDocumentProposalPromptOverride(null);
+      }
+
+      const nextAttachments = options?.replaceExisting ? [] : [...chatAttachments];
       let nextTransport: ChatAttachmentRepositoryState["transport"] = "server_http_retrieval";
       let nextMessage = "Allegati IA-only aggiornati nella conversazione.";
       let sawServerUpload = false;
@@ -6569,6 +6636,8 @@ function NextInternalAiPage({
         transport: nextTransport || (sawServerUpload ? "server_http_retrieval" : "frontend_fallback"),
         transportMessage: nextMessage,
       });
+
+      return [...nextAttachments];
     },
     [chatAttachmentRepositoryState.status, chatAttachments, chatStatus],
   );
@@ -6785,6 +6854,8 @@ function NextInternalAiPage({
     unifiedConsoleScopes.some((scope) => scope !== "quadro");
 
   const liveUnifiedConsoleRequest = buildUnifiedConsoleRequest(chatInput);
+  const liveDocumentProposalPrompt =
+    chatDocumentProposalPromptOverride ?? liveUnifiedConsoleRequest.visiblePrompt;
 
   useEffect(() => {
     if (chatAttachments.length === 0) {
@@ -6806,7 +6877,7 @@ function NextInternalAiPage({
 
       void orchestrateInternalAiUniversalRequest(
         {
-          prompt: liveUnifiedConsoleRequest.visiblePrompt,
+          prompt: liveDocumentProposalPrompt,
           attachments: chatAttachments,
           preferredTarga: resolvedChatTarga || null,
           treatAttachmentsAsSingleDocument: logicalDocumentGroupingEnabled,
@@ -6856,7 +6927,7 @@ function NextInternalAiPage({
   }, [
     chatAttachments,
     chatInput,
-    liveUnifiedConsoleRequest.visiblePrompt,
+    liveDocumentProposalPrompt,
     logicalDocumentGroupingEnabled,
     resolvedChatTarga,
     unifiedConsoleOutput,
@@ -7510,6 +7581,7 @@ function NextInternalAiPage({
   };
 
   const handleChatSubmit = async (promptOverride?: string) => {
+    setChatDocumentProposalPromptOverride(null);
     const request = buildUnifiedConsoleRequest(promptOverride ?? chatInput);
     const prompt = request.promptForEngine.trim();
     if (!prompt || chatStatus === "running") {
@@ -8289,19 +8361,71 @@ function NextInternalAiPage({
   const handleUnifiedDocumentFileChange = (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
+    const selectedFiles = Array.from(event.currentTarget.files ?? []).slice(0, 6);
     pendingUnifiedDocumentDefaultRef.current = false;
     setOpenedHistoryDocumentId(null);
     setDocumentWorkspaceTab("inbox");
     setDocumentErrorMessage(null);
     setDocumentUserDestination("review");
     setDocumentArchivio(mapExpectedDocumentTypeToArchivio(documentExpectedType));
+    setDocumentEntryMultiFileLoading(false);
+    setChatDocumentProposalPromptOverride(null);
+
+    if (selectedFiles.length > 1) {
+      documentEntryGroupingPreferenceTouchedRef.current = false;
+      setDocumentEntryPendingFiles(selectedFiles);
+      setDocumentEntryUsesMultiFileFlow(false);
+      clearChatDocumentAttachmentState({ clearAttachments: true });
+      resetCurrentDocumentReview();
+      event.currentTarget.value = "";
+      return;
+    }
+
+    setDocumentEntryPendingFiles([]);
+    setDocumentEntryTreatFilesAsSingleDocument(false);
+    clearChatDocumentAttachmentState({ clearAttachments: true });
     handleDocumentFileSelection(event);
   };
 
   const handleUnifiedDocumentAnalyze = async () => {
-    pendingUnifiedDocumentDefaultRef.current = true;
     setOpenedHistoryDocumentId(null);
     setDocumentArchivio(mapExpectedDocumentTypeToArchivio(documentExpectedType));
+
+    if (documentEntryPendingFiles.length > 1) {
+      pendingUnifiedDocumentDefaultRef.current = false;
+      setDocumentEntryMultiFileLoading(true);
+      setChatDocumentProposalPromptOverride("");
+      chatAttachmentGroupingPreferenceTouchedRef.current =
+        documentEntryGroupingPreferenceTouchedRef.current;
+      setTreatAttachmentsAsSingleDocument(documentEntryLogicalGroupingEnabled);
+      setChatDocumentProposalState({
+        status: "loading",
+        result: null,
+        message: "Classificazione automatica del documento in corso.",
+      });
+
+      try {
+        const uploadedAttachments = await handleChatAttachmentSelection(documentEntryPendingFiles, {
+          replaceExisting: true,
+        });
+        if (!uploadedAttachments.length) {
+          setChatDocumentProposalState({
+            status: "error",
+            result: null,
+            message: "Nessun allegato valido disponibile per l'analisi dalla card Documento.",
+          });
+          setDocumentEntryUsesMultiFileFlow(false);
+          return;
+        }
+        setDocumentEntryUsesMultiFileFlow(uploadedAttachments.length > 1);
+      } finally {
+        setDocumentEntryMultiFileLoading(false);
+      }
+      return;
+    }
+
+    pendingUnifiedDocumentDefaultRef.current = true;
+    setDocumentEntryUsesMultiFileFlow(false);
     await handleDocumentAnalyze();
   };
 
@@ -8387,17 +8511,40 @@ function NextInternalAiPage({
       ? selectedDocumentDestinationSummary
       : null;
 
+  const documentEntryVisibleMultiFileItems =
+    documentEntryPendingFiles.length > 1
+      ? documentEntryPendingFiles.map((file) => ({ fileName: file.name }))
+      : documentEntryUsesMultiFileFlow && chatAttachments.length > 1
+        ? chatAttachments
+        : [];
+  const documentEntryLogicalGroupingEnabled =
+    documentEntryTreatFilesAsSingleDocument && documentEntryVisibleMultiFileItems.length > 1;
+  const documentEntryHasPendingSelection =
+    Boolean(documentSelectedFile) || documentEntryVisibleMultiFileItems.length > 0;
+  const documentEntryFileSelectionLabel =
+    documentEntryVisibleMultiFileItems.length > 1
+      ? `${buildLogicalDocumentAttachmentCountLabel(documentEntryVisibleMultiFileItems.length)} selezionati`
+      : documentSelectedFile?.name ?? "Seleziona PDF o immagine";
+  const documentEntryFileSelectionNames =
+    documentEntryVisibleMultiFileItems.length > 1
+      ? buildLogicalDocumentAttachmentNamesLabel(documentEntryVisibleMultiFileItems)
+      : null;
+  const documentEntryAnalyzeLoading =
+    documentLoading ||
+    documentEntryMultiFileLoading ||
+    (documentEntryUsesMultiFileFlow && chatDocumentProposalState.status === "loading");
+
   const documentUiStatusText =
     documentApiKeyExists === null
       ? "Controllo motore in corso"
       : documentApiKeyExists === false
         ? "API Key Gemini mancante"
-        : documentLoading
+        : documentEntryAnalyzeLoading
           ? "Analisi documento in corso"
           : "Motore Documenti IA pronto";
 
   const documentWorkspaceCounts = {
-    inbox: documentResults || documentSelectedFile ? 1 : 0,
+    inbox: documentResults || documentEntryHasPendingSelection ? 1 : 0,
     verify:
       historyVerifyItems.length +
       (documentResults && selectedDocumentDestinationSummary.destination === "review" ? 1 : 0),
@@ -9095,16 +9242,20 @@ function NextInternalAiPage({
       {sectionId !== "overview" ? (
         <header className="internal-ai-hero">
           <div className="next-panel">
-            <p className="next-page__eyebrow">Assistente interno</p>
-            <h1>Console IA</h1>
+            <p className="next-page__eyebrow">IA Report</p>
+            <h1>Console report</h1>
             <p className="next-page__description">
-              Chat operativa al centro, report recenti per targa sulla destra, sola lettura.
+              Chat e report in sola lettura. Per caricare e archiviare documenti usa Archivista
+              documenti.
             </p>
             <p className="internal-ai-card__meta">
               Live-read business chiuso: la IA usa clone/read model, snapshot server-side curate e
               nessuna scrittura business.
             </p>
             <div className="internal-ai-nav" style={{ marginTop: 16 }}>
+              <Link to="/next/ia/archivista" className="internal-ai-nav__link">
+                Archivista documenti
+              </Link>
               {PRIMARY_SECTION_NAV.map((id) => (
                 <Link
                   key={id}
@@ -9281,7 +9432,10 @@ function NextInternalAiPage({
                   <span>Scrivi una richiesta</span>
                   <textarea
                     value={chatInput}
-                    onChange={(event) => setChatInput(event.target.value)}
+                    onChange={(event) => {
+                      setChatDocumentProposalPromptOverride(null);
+                      setChatInput(event.target.value);
+                    }}
                     placeholder={
                       chatAttachments.length > 0
                         ? chatInputPlaceholderWithDocument
@@ -9350,13 +9504,13 @@ function NextInternalAiPage({
               <div className="internal-ai-dispatcher__header-main">
                 <div className="internal-ai-dispatcher__title-wrap">
                   <span className="home-ia-launcher__status-dot" aria-hidden="true" />
-                  <strong>Assistente IA</strong>
+                  <strong>IA Report</strong>
                 </div>
                 <span className="internal-ai-pill is-neutral">
                   {chatBridgeState.transport === "server_http_provider" ||
                   chatBridgeState.transport === "server_http_retrieval"
-                    ? "Backend attivo"
-                    : "Backend controllato"}
+                    ? "Chat e report"
+                    : "Sola lettura"}
                 </span>
               </div>
               <button
@@ -9368,6 +9522,29 @@ function NextInternalAiPage({
               </button>
             </header>
 
+            <div className="internal-ai-report-split-callout">
+              <div>
+                <p className="internal-ai-card__eyebrow">Separazione attiva</p>
+                <h2>Questa pagina e la parte report</h2>
+                <p className="internal-ai-card__meta">
+                  Qui restano chat, consultazione e allegati rapidi gia esistenti. Il nuovo ingresso
+                  corretto per archiviare documenti e Archivista documenti.
+                </p>
+              </div>
+              <div className="internal-ai-report-split-callout__actions">
+                <Link to="/next/ia/archivista" className="internal-ai-nav__link">
+                  Apri Archivista documenti
+                </Link>
+                <button
+                  type="button"
+                  className="internal-ai-search__button internal-ai-search__button--secondary"
+                  onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}
+                >
+                  Storico documenti
+                </button>
+              </div>
+            </div>
+
             <div className="internal-ai-dispatcher__shell">
               <section className="internal-ai-dispatcher__main">
                 {isUnifiedDocumentReviewActive ? (
@@ -9375,8 +9552,15 @@ function NextInternalAiPage({
                 ) : (
                   <>
                     <div className="internal-ai-dispatcher__document-entry">
+                      <div className="internal-ai-dispatcher__entry-note">
+                        <p className="internal-ai-card__eyebrow">Supporto allegati temporaneo</p>
+                        <p className="internal-ai-card__meta">
+                          Questo blocco resta disponibile per non rompere i flussi tecnici gia
+                          presenti, ma non rappresenta piu l&apos;Archivista finale.
+                        </p>
+                      </div>
                       <label className="internal-ai-search__field">
-                        <span>Tipo atteso</span>
+                        <span>Tipo allegato</span>
                         <select
                           className="internal-ai-search__input"
                           value={documentExpectedType}
@@ -9394,30 +9578,57 @@ function NextInternalAiPage({
                       </label>
 
                       <label className="internal-ai-unified-documents__upload internal-ai-dispatcher__upload">
-                        <span>Documento</span>
+                        <span>Allegato rapido</span>
                         <input
                           ref={documentUploadInputRef}
                           type="file"
+                          multiple
                           accept="image/*,application/pdf"
                           onChange={handleUnifiedDocumentFileChange}
                         />
-                        <strong>{documentSelectedFile?.name ?? "Seleziona PDF o immagine"}</strong>
+                        <strong>{documentEntryFileSelectionLabel}</strong>
+                        {documentEntryFileSelectionNames ? (
+                          <p className="internal-ai-card__meta">{documentEntryFileSelectionNames}</p>
+                        ) : null}
                       </label>
 
                       <div className="internal-ai-dispatcher__document-actions">
+                        {documentEntryVisibleMultiFileItems.length > 1 ? (
+                          <div className="internal-ai-card__meta">
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={documentEntryTreatFilesAsSingleDocument}
+                                onChange={(event) => {
+                                  documentEntryGroupingPreferenceTouchedRef.current = true;
+                                  setDocumentEntryTreatFilesAsSingleDocument(
+                                    event.currentTarget.checked,
+                                  );
+                                }}
+                              />{" "}
+                              Tratta questi file come un unico documento
+                            </label>
+                            <p className="internal-ai-card__meta">
+                              L'estrazione resta separata per file, ma il riepilogo finale viene
+                              unificato.
+                            </p>
+                          </div>
+                        ) : null}
                         <button
                           type="button"
                           className="internal-ai-search__button"
                           disabled={
-                            !documentSelectedFile ||
-                            documentLoading ||
+                            !documentEntryHasPendingSelection ||
+                            documentEntryAnalyzeLoading ||
                             documentApiKeyExists === false
                           }
                           onClick={() => void handleUnifiedDocumentAnalyze()}
                         >
-                          {documentLoading ? "Analisi in corso..." : "Analizza"}
+                          {documentEntryAnalyzeLoading ? "Analisi in corso..." : "Analizza nel report"}
                         </button>
-                        <span className="internal-ai-card__meta">Motore in uso: Documenti IA</span>
+                        <span className="internal-ai-card__meta">
+                          Supporto allegati attuale: Documenti IA
+                        </span>
                       </div>
                     </div>
 
@@ -9509,9 +9720,17 @@ function NextInternalAiPage({
                 <button
                   type="button"
                   className="internal-ai-dispatcher__history-link"
+                  onClick={() => navigate("/next/ia/archivista")}
+                >
+                  Archivista documenti -&gt;
+                </button>
+
+                <button
+                  type="button"
+                  className="internal-ai-dispatcher__history-link"
                   onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}
                 >
-                  Storico analisi →
+                  Storico documenti -&gt;
                 </button>
               </aside>
             </div>
@@ -9532,7 +9751,10 @@ function NextInternalAiPage({
                   </button>
                   <textarea
                     value={chatInput}
-                    onChange={(event) => setChatInput(event.target.value)}
+                    onChange={(event) => {
+                      setChatDocumentProposalPromptOverride(null);
+                      setChatInput(event.target.value);
+                    }}
                     placeholder={
                       chatAttachments.length > 0
                         ? chatInputPlaceholderWithDocument
@@ -9632,10 +9854,14 @@ function NextInternalAiPage({
                   <span>Area upload file</span>
                   <input
                     type="file"
+                    multiple
                     accept="image/*,application/pdf"
                     onChange={handleUnifiedDocumentFileChange}
                   />
-                  <strong>{documentSelectedFile?.name ?? "Seleziona PDF o immagine"}</strong>
+                  <strong>{documentEntryFileSelectionLabel}</strong>
+                  {documentEntryFileSelectionNames ? (
+                    <p className="internal-ai-card__meta">{documentEntryFileSelectionNames}</p>
+                  ) : null}
                   <p className="internal-ai-card__meta">
                     Euromecc rientra nel flusso generico, senza un secondo motore separato.
                   </p>
@@ -9653,13 +9879,35 @@ function NextInternalAiPage({
                     {documentErrorMessage}
                   </div>
                 ) : null}
+                {documentEntryVisibleMultiFileItems.length > 1 ? (
+                  <div className="internal-ai-card__meta">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={documentEntryTreatFilesAsSingleDocument}
+                        onChange={(event) => {
+                          documentEntryGroupingPreferenceTouchedRef.current = true;
+                          setDocumentEntryTreatFilesAsSingleDocument(event.currentTarget.checked);
+                        }}
+                      />{" "}
+                      Tratta questi file come un unico documento
+                    </label>
+                    <p className="internal-ai-card__meta">
+                      L'estrazione resta separata per file, ma il riepilogo finale viene unificato.
+                    </p>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   className="internal-ai-search__button"
-                  disabled={!documentSelectedFile || documentLoading || documentApiKeyExists === false}
+                  disabled={
+                    !documentEntryHasPendingSelection ||
+                    documentEntryAnalyzeLoading ||
+                    documentApiKeyExists === false
+                  }
                   onClick={() => void handleUnifiedDocumentAnalyze()}
                 >
-                  {documentLoading ? "Analisi in corso..." : "Analizza"}
+                  {documentEntryAnalyzeLoading ? "Analisi in corso..." : "Analizza"}
                 </button>
                 {documentApiKeyExists === false ? (
                   <p className="internal-ai-card__meta">
@@ -9969,7 +10217,10 @@ function NextInternalAiPage({
                     <span>Scrivi una richiesta</span>
                     <textarea
                       value={chatInput}
-                      onChange={(event) => setChatInput(event.target.value)}
+                      onChange={(event) => {
+                        setChatDocumentProposalPromptOverride(null);
+                        setChatInput(event.target.value);
+                      }}
                       placeholder={
                         chatAttachments.length > 0
                           ? chatInputPlaceholderWithDocument
@@ -10434,7 +10685,10 @@ function NextInternalAiPage({
                 <span>Scrivi una richiesta</span>
                 <textarea
                   value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
+                  onChange={(event) => {
+                    setChatDocumentProposalPromptOverride(null);
+                    setChatInput(event.target.value);
+                  }}
                   placeholder={
                     chatAttachments.length > 0
                       ? chatInputPlaceholderWithDocument

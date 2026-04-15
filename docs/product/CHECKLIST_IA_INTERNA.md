@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-04-14
+Ultimo aggiornamento: 2026-04-15
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -101,6 +101,52 @@ Stato macrofase: `IN CORSO`
 
 ## 5. Macrofase 2 - Use case attivi ma sicuri
 Stato macrofase: `IN CORSO`
+
+### J-ter. Separazione prodotto `IA Report` / `Archivista documenti`
+- Stato: `FATTO`
+- Note: il runtime NEXT espone ora due ingressi distinti. La Home apre `IA Report` per prompt e report in sola lettura, mentre `Archivista documenti` ha una nuova pagina guidata non chat su `/next/ia/archivista` con scelta `Tipo`, scelta `Contesto`, area upload e combinazioni fuori V1 non disponibili. `/next/ia/interna` resta compatibile ma viene riposizionata come area report/chat e non piu come archivista universale. Nessun writer nuovo, nessuna modifica backend e nessuna apertura barrier in questo task.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260415_144354_ia_v1_separazione_ingressi_report_archivista.md`
+  - `docs/continuity-reports/20260415_144354_continuity_ia_v1_separazione_ingressi_report_archivista.md`
+- Dipendenze o blocchi:
+  - la nuova superficie Archivista e corretta come forma prodotto, ma non chiude ancora analisi guidata profonda, review finale e salvataggi business della V1.
+
+### J-quater. Archivista V1 step 1 `Fattura / DDT + Magazzino`
+- Stato: `FATTO`
+- Note: dentro `/next/ia/archivista` il solo ramo `Fattura / DDT + Magazzino` e ora attivo davvero. La pagina usa il nuovo bridge `ArchivistaMagazzinoBridge.tsx`, richiama il servizio reale `estrazioneDocumenti` e mostra una review non chat con stato analisi, dati principali, righe trovate e avvisi. Gli altri rami V1 restano visibili ma `In arrivo`. Nessun writer business nuovo, nessun save automatico e nessun handoff nuovo.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260415_151953_ia_v1_archivista_magazzino_reuse_no_refactor.md`
+  - `docs/continuity-reports/20260415_151953_continuity_ia_v1_archivista_magazzino_reuse_no_refactor.md`
+- Dipendenze o blocchi:
+  - per rendere possibile l'analisi anche sulla nuova route e stata aperta solo l'eccezione minima del barrier verso `estrazioneDocumenti` su `/next/ia/archivista`;
+  - salvataggi business, review finale confermativa e gli altri rami V1 restano fuori da questo step.
+
+### J-quinquies. Archivista V1 step 2 `Fattura / DDT + Manutenzione`
+- Stato: `FATTO`
+- Note: dentro `/next/ia/archivista` il ramo `Fattura / DDT + Manutenzione` e ora attivo davvero accanto al ramo Magazzino, ma resta confinato a una review analitica non chat. Il nuovo bridge `ArchivistaManutenzioneBridge.tsx` richiama il servizio reale `estrazioneDocumenti` e mostra stato analisi, riassunto breve in italiano, dati principali estratti, righe materiali/manodopera/ricambi se leggibili, avvisi, campi mancanti e callout espliciti che il documento non e ancora archiviato e che nessuna manutenzione e stata creata. Nessun writer business nuovo, nessun save automatico, nessun uso di `@costiMezzo` come destinazione primaria.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260415_154007_ia_v1_archivista_manutenzione_review_no_save.md`
+  - `docs/continuity-reports/20260415_154007_continuity_ia_v1_archivista_manutenzione_review_no_save.md`
+- Dipendenze o blocchi:
+  - il ramo Manutenzione non apre ancora archiviazione definitiva, collegamento a manutenzione esistente, creazione nuova manutenzione o altre azioni business finali;
+  - `Documento mezzo` e `Preventivo + Magazzino` restano fuori dall'attivazione di questo step.
+
+### J-sexies. Archivista V1 chiusura lato documenti / archiviazione
+- Stato: `FATTO`
+- Note: `/next/ia/archivista` chiude ora davvero il lato documenti sulle quattro famiglie V1. `Fattura / DDT + Magazzino` mantiene il motore gia attivo ma aggiunge regola duplicati, conferma finale e archiviazione vera in `@documenti_magazzino`; `Fattura / DDT + Manutenzione` resta OpenAI-only e archivia solo in `@documenti_mezzi`; `Documento mezzo` usa endpoint OpenAI dedicato, archivia l'originale, collega il record al mezzo e aggiorna `@mezzi_aziendali` solo su conferma esplicita; `Preventivo + Magazzino` usa endpoint OpenAI dedicato e archivia in `storage/@preventivi` senza aggiornare il listino. Il controllo duplicati e obbligatorio per tutte e quattro le famiglie e impone scelta utente `Stesso documento / Versione migliore / Documento diverso`. Il barrier resta stretto e apre solo upload originali e i target minimi richiesti da Archivista V1.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260415_181816_chiusura_archivista_v1_documenti_archiviazione.md`
+  - `docs/continuity-reports/20260415_181816_continuity_chiusura_archivista_v1_documenti_archiviazione.md`
+- Dipendenze o blocchi:
+  - IA Report, collegamento a manutenzione esistente, creazione nuova manutenzione, update listino e altri workflow business dopo archivio restano fuori da questa chiusura.
 
 ### J-bis. Dispatcher UI unico secondo spec 2026-04-12
 - Stato: `IN CORSO`
@@ -247,11 +293,13 @@ Stato macrofase: `IN CORSO`
 
 ### L.1.j Documento logico unico multi-file
 - Stato: `FATTO`
-- Note: `/next/ia/interna` puo ora trattare 2 o piu allegati della stessa manutenzione come un solo documento logico, mantenendo invariata l'estrazione del singolo file. Il toggle `Tratta questi file come un unico documento` si attiva di default solo con allegati multipli; l'orchestratore riceve il flag, router e handoff costruiscono un riepilogo unico e `internalAiDocumentAnalysis.ts` aggrega in modo prudente header, righe e warning delle analisi gia presenti sui singoli allegati. I conflitti non vengono inventati: restano vuoti o `da verificare`.
+- Note: `/next/ia/interna` puo ora trattare 2 o piu allegati della stessa manutenzione come un solo documento logico sia nel flusso chat/allegati sia nella card alta reale `Documento + Analizza`, mantenendo invariata l'estrazione del singolo file. Il toggle `Tratta questi file come un unico documento` si attiva di default solo con allegati multipli; l'orchestratore riceve il flag, router e handoff costruiscono un riepilogo unico e `internalAiDocumentAnalysis.ts` aggrega in modo prudente header, righe e warning delle analisi gia presenti sui singoli allegati. I conflitti non vengono inventati: restano vuoti o `da verificare`.
 - File/documenti collegati:
   - `docs/product/STATO_MIGRAZIONE_NEXT.md`
   - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
   - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/change-reports/20260414_174940_ia_interna_card_alta_multi_file.md`
+  - `docs/continuity-reports/20260414_174940_continuity_ia_interna_card_alta_multi_file.md`
   - `docs/change-reports/20260414_165421_ia_interna_multi_file_documento_logico_unico.md`
   - `docs/continuity-reports/20260414_165421_continuity_ia_interna_multi_file_documento_logico_unico.md`
 - Dipendenze o blocchi:
@@ -2507,3 +2555,29 @@ Stato macrofase: `NON FATTO`
   - finche il dataset live documentale non espone almeno un caso `Pronto`, la prova end-to-end su quantita prima/dopo resta non eseguibile senza forzature;
   - la presenza di badge alti come `Riconciliazione proposta` o `Pronto con conferma` non basta da sola: nel live corrente conta il blocco decisionale effettivo, che resta `DA VERIFICARE`;
   - la capability resta `PARZIALE` finche non esiste un documento live davvero eseguibile.
+
+### M.57 Fix motore OpenAI-only per `Archivista` Manutenzione
+- Stato: `FATTO`
+- Note: il `2026-04-15` il ramo `Fattura / DDT + Manutenzione` smette di usare `estrazioneDocumenti` e passa a un endpoint backend OpenAI dedicato, senza cambiare UI, writer o ramo `Magazzino`.
+- Cosa e stato chiuso:
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` chiama ora il backend IA separato locale e legge un envelope dedicato alla review manutenzione;
+  - `backend/internal-ai/server/internal-ai-adapter.js` espone `/internal-ai-backend/documents/manutenzione-analyze`;
+  - `backend/internal-ai/server/internal-ai-document-extraction.js` distingue il profilo `manutenzione` dal profilo `magazzino`, con provider OpenAI obbligatorio per questo ramo.
+- File/documenti collegati:
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-document-extraction.js`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260415_164047_ia_v1_manutenzione_openai_only_fix.md`
+  - `docs/continuity-reports/20260415_164047_continuity_ia_v1_manutenzione_openai_only_fix.md`
+- Verifiche eseguite:
+  - `npx eslint src/next/internal-ai/ArchivistaManutenzioneBridge.tsx backend/internal-ai/server/internal-ai-adapter.js backend/internal-ai/server/internal-ai-document-extraction.js` -> `OK`
+  - `npm run build` -> `OK`
+- Dipendenze o blocchi:
+  - nessun writer business viene aperto in questo task;
+  - archiviazione definitiva, collegamento a manutenzione esistente e creazione manutenzione restano fuori scope e quindi `NON FATTI`.

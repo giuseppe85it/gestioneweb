@@ -90,6 +90,165 @@ function normalizeTarga(value) {
   return typeof value === "string" ? value.trim().toUpperCase().replace(/\s+/g, "") : "";
 }
 
+function formatMaintenanceMissingFields(fields) {
+  const labels = {
+    targa: "Targa del mezzo",
+    fornitore: "Fornitore officina",
+    dataDocumento: "Data documento",
+    totaleDocumento: "Totale documento",
+    righe: "Righe materiali / manodopera / ricambi",
+  };
+
+  return uniqueStrings((fields ?? []).map((field) => labels[field] ?? field));
+}
+
+function buildMaintenanceSummary(analysis) {
+  if (typeof analysis?.riassuntoBreve === "string" && analysis.riassuntoBreve.trim()) {
+    return analysis.riassuntoBreve.trim();
+  }
+
+  const parts = [];
+  if (analysis?.targa) {
+    parts.push(`mezzo ${analysis.targa}`);
+  }
+  if (analysis?.fornitore) {
+    parts.push(`officina ${analysis.fornitore}`);
+  }
+  if (analysis?.dataDocumento) {
+    parts.push(`data ${analysis.dataDocumento}`);
+  }
+  if (analysis?.totaleDocumento !== null && analysis?.totaleDocumento !== undefined) {
+    parts.push(`totale ${analysis.totaleDocumento}`);
+  }
+
+  if (parts.length > 0) {
+    return `Documento manutenzione letto: ${parts.join(", ")}.`;
+  }
+
+  return "Documento manutenzione letto con campi ancora da verificare.";
+}
+
+function mapMaintenanceReviewRows(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows.map((row) => ({
+    descrizione: typeof row?.descrizione === "string" ? row.descrizione : null,
+    categoria: typeof row?.categoria === "string" ? row.categoria : null,
+    quantita: row?.quantita ?? null,
+    unita: typeof row?.unita === "string" ? row.unita : null,
+    prezzoUnitario: row?.prezzoUnitario ?? null,
+    importo: row?.totaleRiga ?? null,
+    totale: row?.totaleRiga ?? null,
+    codiceArticolo: typeof row?.codiceArticolo === "string" ? row.codiceArticolo : null,
+    codice: typeof row?.codiceArticolo === "string" ? row.codiceArticolo : null,
+  }));
+}
+
+function buildMaintenanceWarnings(analysis) {
+  const warnings = [
+    ...(Array.isArray(analysis?.warnings)
+      ? analysis.warnings.map((entry) => entry?.message ?? entry?.code)
+      : []),
+    ...(Array.isArray(analysis?.noteImportanti) ? analysis.noteImportanti : []),
+  ];
+  return uniqueStrings(warnings);
+}
+
+function formatVehicleDocumentMissingFields(fields) {
+  const labels = {
+    sottotipoDocumento: "Sottotipo documento",
+    targa: "Targa del mezzo",
+    dataDocumento: "Data documento",
+  };
+
+  return uniqueStrings((fields ?? []).map((field) => labels[field] ?? field));
+}
+
+function buildVehicleDocumentSummary(analysis) {
+  if (typeof analysis?.riassuntoBreve === "string" && analysis.riassuntoBreve.trim()) {
+    return analysis.riassuntoBreve.trim();
+  }
+
+  const parts = [];
+  if (analysis?.sottotipoDocumento || analysis?.tipoDocumento) {
+    parts.push(analysis.sottotipoDocumento || analysis.tipoDocumento);
+  }
+  if (analysis?.targa) {
+    parts.push(`mezzo ${analysis.targa}`);
+  }
+  if (analysis?.dataDocumento) {
+    parts.push(`data ${analysis.dataDocumento}`);
+  }
+  if (analysis?.dataScadenza || analysis?.dataScadenzaRevisione) {
+    parts.push(`scadenza ${analysis.dataScadenza || analysis.dataScadenzaRevisione}`);
+  }
+
+  if (parts.length > 0) {
+    return `Documento mezzo letto: ${parts.join(", ")}.`;
+  }
+
+  return "Documento mezzo letto con campi ancora da verificare.";
+}
+
+function buildVehicleDocumentWarnings(analysis) {
+  const warnings = [
+    ...(Array.isArray(analysis?.warnings)
+      ? analysis.warnings.map((entry) => entry?.message ?? entry?.code)
+      : []),
+    ...(Array.isArray(analysis?.noteImportanti) ? analysis.noteImportanti : []),
+  ];
+  return uniqueStrings(warnings);
+}
+
+function formatPreventivoMissingFields(fields) {
+  const labels = {
+    fornitore: "Fornitore",
+    numeroDocumento: "Numero preventivo",
+    dataDocumento: "Data preventivo",
+    righe: "Righe materiali",
+  };
+
+  return uniqueStrings((fields ?? []).map((field) => labels[field] ?? field));
+}
+
+function buildPreventivoSummary(analysis) {
+  if (typeof analysis?.riassuntoBreve === "string" && analysis.riassuntoBreve.trim()) {
+    return analysis.riassuntoBreve.trim();
+  }
+
+  const parts = [];
+  if (analysis?.fornitore) {
+    parts.push(`fornitore ${analysis.fornitore}`);
+  }
+  if (analysis?.numeroDocumento) {
+    parts.push(`numero ${analysis.numeroDocumento}`);
+  }
+  if (analysis?.dataDocumento) {
+    parts.push(`data ${analysis.dataDocumento}`);
+  }
+  if (analysis?.totaleDocumento !== null && analysis?.totaleDocumento !== undefined) {
+    parts.push(`totale ${analysis.totaleDocumento}`);
+  }
+
+  if (parts.length > 0) {
+    return `Preventivo letto: ${parts.join(", ")}.`;
+  }
+
+  return "Preventivo letto con campi ancora da verificare.";
+}
+
+function buildPreventivoWarnings(analysis) {
+  const warnings = [
+    ...(Array.isArray(analysis?.warnings)
+      ? analysis.warnings.map((entry) => entry?.message ?? entry?.code)
+      : []),
+    ...(Array.isArray(analysis?.noteImportanti) ? analysis.noteImportanti : []),
+  ];
+  return uniqueStrings(warnings);
+}
+
 function createId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -1341,6 +1500,341 @@ app.post("/internal-ai-backend/attachments/repository", async (req, res) => {
       ],
     },
   });
+});
+
+app.post("/internal-ai-backend/documents/manutenzione-analyze", async (req, res) => {
+  const fileName = typeof req.body?.fileName === "string" ? req.body.fileName.trim() : "";
+  const mimeType =
+    typeof req.body?.mimeType === "string" && req.body.mimeType.trim()
+      ? req.body.mimeType.trim()
+      : "application/octet-stream";
+  const contentBase64 =
+    typeof req.body?.contentBase64 === "string" && req.body.contentBase64.trim()
+      ? req.body.contentBase64.trim()
+      : "";
+  const textExcerpt =
+    typeof req.body?.textExcerpt === "string" && req.body.textExcerpt.trim()
+      ? req.body.textExcerpt.trim().slice(0, 1600)
+      : null;
+
+  if (!fileName || !contentBase64) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "documents.manutenzione-analyze",
+      status: "validation_error",
+      message: "File o contenuto documento non validi per la review manutenzione.",
+      data: { fileName },
+    });
+    return;
+  }
+
+  if (!isProviderConfigured()) {
+    sendEnvelope(res, {
+      httpStatus: 503,
+      ok: false,
+      endpointId: "documents.manutenzione-analyze",
+      status: "provider_not_configured",
+      message:
+        "Backend OpenAI non configurato. Imposta OPENAI_API_KEY lato server per analizzare i documenti manutenzione.",
+      data: {
+        providerConfigured: false,
+        providerTarget: getProviderTarget(),
+      },
+    });
+    return;
+  }
+
+  try {
+    const providerClient = getProviderClient();
+    const providerTarget = getProviderTarget();
+    const analysis = await extractInternalAiDocumentAnalysis({
+      fileName,
+      mimeType,
+      contentBase64,
+      textExcerpt,
+      providerClient,
+      providerTarget,
+      profile: "manutenzione",
+      providerRequired: true,
+    });
+
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "documents.manutenzione-analyze",
+        operation: "analyze_document",
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Review manutenzione OpenAI per ${fileName}.`,
+        entityCount: Array.isArray(analysis?.righe) ? analysis.righe.length : 0,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "documents.manutenzione-analyze",
+      status: "ok",
+      message: "Analisi OpenAI manutenzione completata dal backend server-side.",
+      data: {
+        analysis: {
+          stato: analysis?.stato ?? "partial",
+          tipoDocumento: analysis?.tipoDocumento ?? null,
+          fornitore: analysis?.fornitore ?? null,
+          numeroDocumento: analysis?.numeroDocumento ?? null,
+          dataDocumento: analysis?.dataDocumento ?? null,
+          totaleDocumento: analysis?.totaleDocumento ?? null,
+          targa: normalizeTarga(analysis?.targa ?? null) || null,
+          km: analysis?.km ?? null,
+          testo: analysis?.testoEstrattoBreve ?? null,
+          riassuntoBreve: buildMaintenanceSummary(analysis),
+          avvisi: buildMaintenanceWarnings(analysis),
+          campiMancanti: formatMaintenanceMissingFields(analysis?.campiMancanti),
+          voci: mapMaintenanceReviewRows(analysis?.righe),
+        },
+        providerTarget,
+        traceEntryId: traceEntry.id,
+      },
+    });
+  } catch (error) {
+    sendEnvelope(res, {
+      httpStatus: 502,
+      ok: false,
+      endpointId: "documents.manutenzione-analyze",
+      status: "upstream_error",
+      message:
+        error instanceof Error
+          ? `Analisi OpenAI manutenzione non completata: ${error.message}`
+          : "Analisi OpenAI manutenzione non completata.",
+      data: {
+        providerConfigured: isProviderConfigured(),
+        providerTarget: getProviderTarget(),
+      },
+    });
+  }
+});
+
+app.post("/internal-ai-backend/documents/documento-mezzo-analyze", async (req, res) => {
+  const fileName = typeof req.body?.fileName === "string" ? req.body.fileName.trim() : "";
+  const mimeType =
+    typeof req.body?.mimeType === "string" && req.body.mimeType.trim()
+      ? req.body.mimeType.trim()
+      : "application/octet-stream";
+  const contentBase64 =
+    typeof req.body?.contentBase64 === "string" && req.body.contentBase64.trim()
+      ? req.body.contentBase64.trim()
+      : "";
+  const documentSubtypeHint =
+    typeof req.body?.documentSubtypeHint === "string" && req.body.documentSubtypeHint.trim()
+      ? req.body.documentSubtypeHint.trim()
+      : null;
+
+  if (!fileName || !contentBase64) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "documents.documento-mezzo-analyze",
+      status: "validation_error",
+      message: "File o contenuto documento non validi per la review documento mezzo.",
+      data: { fileName },
+    });
+    return;
+  }
+
+  if (!isProviderConfigured()) {
+    sendEnvelope(res, {
+      httpStatus: 503,
+      ok: false,
+      endpointId: "documents.documento-mezzo-analyze",
+      status: "provider_not_configured",
+      message:
+        "Backend OpenAI non configurato. Imposta OPENAI_API_KEY lato server per analizzare i documenti mezzo.",
+      data: {
+        providerConfigured: false,
+        providerTarget: getProviderTarget(),
+      },
+    });
+    return;
+  }
+
+  try {
+    const providerClient = getProviderClient();
+    const providerTarget = getProviderTarget();
+    const analysis = await extractInternalAiDocumentAnalysis({
+      fileName,
+      mimeType,
+      contentBase64,
+      providerClient,
+      providerTarget,
+      profile: "documento_mezzo",
+      providerRequired: true,
+      documentSubtypeHint,
+    });
+
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "documents.documento-mezzo-analyze",
+        operation: "analyze_document",
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Review documento mezzo OpenAI per ${fileName}.`,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "documents.documento-mezzo-analyze",
+      status: "ok",
+      message: "Analisi OpenAI documento mezzo completata dal backend server-side.",
+      data: {
+        analysis: {
+          stato: analysis?.stato ?? "partial",
+          tipoDocumento: analysis?.sottotipoDocumento ?? analysis?.tipoDocumento ?? null,
+          sottotipoDocumento: analysis?.sottotipoDocumento ?? null,
+          fornitore: analysis?.fornitore ?? null,
+          numeroDocumento: analysis?.numeroDocumento ?? null,
+          dataDocumento: analysis?.dataDocumento ?? null,
+          targa: normalizeTarga(analysis?.targa ?? null) || null,
+          telaio: analysis?.telaio ?? null,
+          proprietario: analysis?.proprietario ?? null,
+          assicurazione: analysis?.assicurazione ?? null,
+          marca: analysis?.marca ?? null,
+          modello: analysis?.modello ?? null,
+          dataImmatricolazione: analysis?.dataImmatricolazione ?? null,
+          dataScadenza: analysis?.dataScadenza ?? null,
+          dataUltimoCollaudo: analysis?.dataUltimoCollaudo ?? null,
+          dataScadenzaRevisione: analysis?.dataScadenzaRevisione ?? null,
+          testo: analysis?.testoEstrattoBreve ?? null,
+          riassuntoBreve: buildVehicleDocumentSummary(analysis),
+          avvisi: buildVehicleDocumentWarnings(analysis),
+          campiMancanti: formatVehicleDocumentMissingFields(analysis?.campiMancanti),
+        },
+        providerTarget,
+        traceEntryId: traceEntry.id,
+      },
+    });
+  } catch (error) {
+    sendEnvelope(res, {
+      httpStatus: 502,
+      ok: false,
+      endpointId: "documents.documento-mezzo-analyze",
+      status: "upstream_error",
+      message:
+        error instanceof Error
+          ? `Analisi OpenAI documento mezzo non completata: ${error.message}`
+          : "Analisi OpenAI documento mezzo non completata.",
+      data: {
+        providerConfigured: isProviderConfigured(),
+        providerTarget: getProviderTarget(),
+      },
+    });
+  }
+});
+
+app.post("/internal-ai-backend/documents/preventivo-magazzino-analyze", async (req, res) => {
+  const fileName = typeof req.body?.fileName === "string" ? req.body.fileName.trim() : "";
+  const mimeType =
+    typeof req.body?.mimeType === "string" && req.body.mimeType.trim()
+      ? req.body.mimeType.trim()
+      : "application/octet-stream";
+  const contentBase64 =
+    typeof req.body?.contentBase64 === "string" && req.body.contentBase64.trim()
+      ? req.body.contentBase64.trim()
+      : "";
+
+  if (!fileName || !contentBase64) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "documents.preventivo-magazzino-analyze",
+      status: "validation_error",
+      message: "File o contenuto documento non validi per la review preventivo.",
+      data: { fileName },
+    });
+    return;
+  }
+
+  if (!isProviderConfigured()) {
+    sendEnvelope(res, {
+      httpStatus: 503,
+      ok: false,
+      endpointId: "documents.preventivo-magazzino-analyze",
+      status: "provider_not_configured",
+      message:
+        "Backend OpenAI non configurato. Imposta OPENAI_API_KEY lato server per analizzare i preventivi.",
+      data: {
+        providerConfigured: false,
+        providerTarget: getProviderTarget(),
+      },
+    });
+    return;
+  }
+
+  try {
+    const providerClient = getProviderClient();
+    const providerTarget = getProviderTarget();
+    const analysis = await extractInternalAiDocumentAnalysis({
+      fileName,
+      mimeType,
+      contentBase64,
+      providerClient,
+      providerTarget,
+      profile: "preventivo_magazzino",
+      providerRequired: true,
+    });
+
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "documents.preventivo-magazzino-analyze",
+        operation: "analyze_document",
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Review preventivo magazzino OpenAI per ${fileName}.`,
+        entityCount: Array.isArray(analysis?.righe) ? analysis.righe.length : 0,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "documents.preventivo-magazzino-analyze",
+      status: "ok",
+      message: "Analisi OpenAI preventivo completata dal backend server-side.",
+      data: {
+        analysis: {
+          stato: analysis?.stato ?? "partial",
+          tipoDocumento: analysis?.tipoDocumento ?? null,
+          fornitore: analysis?.fornitore ?? null,
+          numeroDocumento: analysis?.numeroDocumento ?? null,
+          dataDocumento: analysis?.dataDocumento ?? null,
+          totaleDocumento: analysis?.totaleDocumento ?? null,
+          testo: analysis?.testoEstrattoBreve ?? null,
+          riassuntoBreve: buildPreventivoSummary(analysis),
+          avvisi: buildPreventivoWarnings(analysis),
+          campiMancanti: formatPreventivoMissingFields(analysis?.campiMancanti),
+          voci: mapMaintenanceReviewRows(analysis?.righe),
+        },
+        providerTarget,
+        traceEntryId: traceEntry.id,
+      },
+    });
+  } catch (error) {
+    sendEnvelope(res, {
+      httpStatus: 502,
+      ok: false,
+      endpointId: "documents.preventivo-magazzino-analyze",
+      status: "upstream_error",
+      message:
+        error instanceof Error
+          ? `Analisi OpenAI preventivo non completata: ${error.message}`
+          : "Analisi OpenAI preventivo non completata.",
+      data: {
+        providerConfigured: isProviderConfigured(),
+        providerTarget: getProviderTarget(),
+      },
+    });
+  }
 });
 
 app.post("/internal-ai-backend/orchestrator/chat", async (req, res) => {

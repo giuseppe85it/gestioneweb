@@ -8,6 +8,7 @@ import NextHomePage from "./next/NextHomePage";
 import NextCentroControlloParityPage from "./next/NextCentroControlloParityPage";
 import NextIntelligenzaArtificialePage from "./next/NextIntelligenzaArtificialePage";
 import NextInternalAiPage from "./next/NextInternalAiPage";
+import NextIAArchivistaPage from "./next/NextIAArchivistaPage";
 import NextIAApiKeyPage from "./next/NextIAApiKeyPage";
 import NextIALibrettoPage from "./next/NextIALibrettoPage";
 import NextIADocumentiPage from "./next/NextIADocumentiPage";
@@ -473,6 +474,22 @@ function App() {
           element={
             <NextRoleGuard areaId="ia">
               <NextIntelligenzaArtificialePage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/report"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextInternalAiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
+          path="ia/archivista"
+          element={
+            <NextRoleGuard areaId="ia">
+              <NextIAArchivistaPage />
             </NextRoleGuard>
           }
         />

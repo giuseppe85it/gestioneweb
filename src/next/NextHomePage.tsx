@@ -670,18 +670,18 @@ export default function NextHomePage() {
         </section>
       ) : null}
 
-      <section className="next-home__ai-card" aria-label="Pannello IA interna">
+      <section className="next-home__ai-card" aria-label="Strumenti IA">
         <div className="next-home__ai-head">
           <div className="next-home__ai-title-wrap">
             <span className="next-home__ai-status-dot" aria-hidden="true" />
-            <div className="next-home__ai-title">IA interna</div>
+            <div className="next-home__ai-title">IA report e Archivista</div>
           </div>
-          <div className="next-home__ai-status">online &middot; pronta</div>
+          <div className="next-home__ai-status">due strumenti distinti</div>
         </div>
 
         <div className="next-home__ai-copy">
-          Apri l'ingresso unico della IA interna per caricare documenti, avviare l'analisi e usare
-          la chat come supporto secondario nella pagina reale della piattaforma NEXT.
+          Da qui apri due strumenti diversi: IA Report per domande e report in sola lettura,
+          Archivista documenti per caricare file con un flusso guidato.
         </div>
 
         <div className="next-home__ai-launcher">

@@ -37,6 +37,160 @@ La regola corrente da leggere insieme a questo registro e:
 
 ## 4. Registro storico
 
+### Voce 2026-04-15 154007
+
+- DATA: `2026-04-15 15:40`
+- TITOLO MODIFICA: `Archivista V1 step 2 - ramo Manutenzione review attivo senza save`
+- OBIETTIVO:
+  - rendere reale dentro `Archivista documenti` il ramo `Fattura / DDT + Manutenzione`, mantenendo separati IA 1 e IA 2, senza rifare Magazzino e senza aprire archiviazione definitiva o writer business.
+- FILE TOCCATI:
+  - `src/next/NextIAArchivistaPage.tsx`
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260415_154007_ia_v1_archivista_manutenzione_review_no_save.md`
+  - `docs/continuity-reports/20260415_154007_continuity_ia_v1_archivista_manutenzione_review_no_save.md`
+- COSA E STATO CAMBIATO:
+  - `NextIAArchivistaPage.tsx` rende ora attivi davvero i due soli rami V1 `Fattura / DDT + Magazzino` e `Fattura / DDT + Manutenzione`;
+  - il nuovo `ArchivistaManutenzioneBridge.tsx` richiama il servizio reale `estrazioneDocumenti` e mostra una review manutenzione non chat con stato analisi, riassunto breve, dati principali, righe trovate, avvisi, campi mancanti e callout espliciti di non salvataggio;
+  - `ArchivistaMagazzinoBridge.tsx` non viene rifatto, ma distingue meglio il proprio ramo dal nuovo flusso Manutenzione;
+  - `internal-ai.css` aggiunge solo il styling necessario per callout, righe e review manutenzione.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: Archivista passa da un solo ramo attivo a due rami attivi, chiaramente separati e non chat;
+  - lettura/analisi: il ramo Manutenzione usa il servizio documentale gia attivo nel progetto e non ricicla la review Magazzino;
+  - blocco scritture: invariato in questa patch; nessun writer business nuovo, nessun save automatico, nessun uso di `@costiMezzo` come destinazione primaria.
+- COME VERIFICARE:
+  - aprire `/next/ia/archivista`;
+  - selezionare `Fattura / DDT` + `Manutenzione`;
+  - caricare un PDF o una foto e verificare che `Analizza documento` mostri review con dati principali, righe, avvisi e callout `Documento analizzato`, `Non ancora archiviato`, `Nessuna manutenzione ancora creata`;
+  - selezionare `Fattura / DDT` + `Magazzino` e verificare che il ramo preesistente resti attivo senza regressioni;
+  - verificare che `Documento mezzo` e `Preventivo + Magazzino` restino visibili ma non attivi;
+  - eseguire `npx eslint src/next/NextIAArchivistaPage.tsx src/next/internal-ai/ArchivistaMagazzinoBridge.tsx src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` e `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `NO`
+- NOTE:
+  - nessun backend, function, api o writer business toccato;
+  - `npx eslint src/next/internal-ai/internal-ai.css` restituisce il warning noto `File ignored because no matching configuration was supplied`.
+
+### Voce 2026-04-15 151953
+
+- DATA: `2026-04-15 15:19`
+- TITOLO MODIFICA: `Archivista V1 step 1 - ramo Magazzino attivo`
+- OBIETTIVO:
+  - rendere reale dentro `Archivista documenti` il solo caso forte `Fattura / DDT + Magazzino`, senza rifare il cervello Magazzino, senza nuovi writer business e senza trasformare IA 2 in una chat.
+- FILE TOCCATI:
+  - `src/next/NextIAArchivistaPage.tsx`
+  - `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/utils/cloneWriteBarrier.ts`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+- COSA E STATO CAMBIATO:
+  - `NextIAArchivistaPage.tsx` rende ora attivo davvero solo `Fattura / DDT + Magazzino`;
+  - i rami `Fattura / DDT + Manutenzione`, `Documento mezzo` e `Preventivo + Magazzino` restano visibili ma marcati `In arrivo`;
+  - `Preventivo + Manutenzione` resta fuori V1;
+  - il nuovo bridge `ArchivistaMagazzinoBridge.tsx` richiama il servizio reale `estrazioneDocumenti` e mostra una review pulita con stato analisi, dati principali, righe trovate e avvisi;
+  - `cloneWriteBarrier.ts` apre solo l'eccezione minima gia esistente anche per il pathname `/next/ia/archivista`, limitata al `POST` verso `estrazioneDocumenti`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: Archivista non e piu solo shell, ma primo ramo attivo reale e non chat;
+  - lettura/analisi: il ramo Magazzino usa il servizio documentale gia attivo nel progetto;
+  - scritture: nessun writer business nuovo, nessun save automatico, nessun handoff nuovo.
+- COME VERIFICARE:
+  - aprire `/next/ia/archivista`;
+  - selezionare `Fattura / DDT` + `Magazzino`;
+  - caricare un PDF o una foto e verificare che `Analizza documento` mostri review con dati principali, righe e avvisi;
+  - selezionare `Fattura / DDT + Manutenzione`, `Documento mezzo` o `Preventivo + Magazzino` e verificare che risultino visibili ma non ancora attivi;
+  - eseguire `npx eslint src/next/NextIAArchivistaPage.tsx src/next/internal-ai/ArchivistaMagazzinoBridge.tsx src/utils/cloneWriteBarrier.ts` e `npm run build`.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `NO`
+- NOTE:
+  - nessun backend, function, api o writer business toccato;
+  - `npx eslint src/next/internal-ai/internal-ai.css` restituisce il warning noto `File ignored because no matching configuration was supplied`.
+
+### Voce 2026-04-15 144354
+- DATA: 2026-04-15
+- TITOLO MODIFICA: separazione runtime IA 1 `Report` / IA 2 `Archivista documenti`
+- OBIETTIVO: dare al sottosistema IA della NEXT una forma prodotto corretta e distinta, separando davvero la parte report/chat dalla nuova entrata guidata Archivista, senza aprire nuove scritture business
+- FILE TOCCATI:
+  - `src/App.tsx`
+  - `src/next/components/HomeInternalAiLauncher.tsx`
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/NextHomePage.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/next/NextIAArchivistaPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260415_144354_ia_v1_separazione_ingressi_report_archivista.md`
+  - `docs/continuity-reports/20260415_144354_continuity_ia_v1_separazione_ingressi_report_archivista.md`
+- COSA E STATO CAMBIATO:
+  - aggiunta la nuova route `/next/ia/archivista` e l'alias leggibile `/next/ia/report`
+  - creata `NextIAArchivistaPage.tsx` come nuova pagina non chat con scelta `Tipo`, scelta `Contesto`, area upload e pulsante `Analizza documento`
+  - riscritto `HomeInternalAiLauncher` per mostrare due strumenti distinti, con documenti mezzo riallineati all'Archivista e `Cisterna Caravate` lasciata fuori V1
+  - riposizionata `NextInternalAiPage` come area `IA Report`, con callout esplicito verso l'Archivista e vecchio blocco documentale declassato a supporto allegati temporaneo
+  - riallineata la card IA della Home e aggiunte le classi CSS necessarie alla nuova separazione visiva
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: l'utente vede finalmente due strumenti diversi e non un solo ingresso ibrido
+  - Lettura: la parte report/chat resta disponibile senza regressioni e senza perdere i flussi tecnici gia presenti
+  - Blocco scritture: invariato; nessun writer nuovo, nessuna modifica backend, nessuna apertura nuova su `cloneWriteBarrier.ts`
+- COME VERIFICARE:
+  - eseguire `npx eslint src/App.tsx src/next/components/HomeInternalAiLauncher.tsx src/next/NextInternalAiPage.tsx src/next/NextHomePage.tsx src/next/NextIAArchivistaPage.tsx`
+  - eseguire `npm run build`
+  - aprire `/next` e verificare due ingressi distinti nel launcher
+  - aprire `/next/ia/report` e verificare che la pagina sia percepita come area report/chat
+  - aprire `/next/ia/archivista` e verificare pagina non chat con scelta tipo, contesto, upload e flussi fuori V1 non disponibili
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: NO
+- NOTE:
+  - il task cambia la forma prodotto, non la profondita motore
+  - analisi guidata profonda, review finale e scritture business dell'Archivista restano fuori da questa patch
+
+### Voce 2026-04-14 174940
+- DATA: 2026-04-14
+- TITOLO MODIFICA: IA interna card alta `Documento + Analizza` abilitata al multi-file
+- OBIETTIVO: estendere alla card alta reale di `/next/ia/interna` la stessa capability multi-file gia approvata nel flusso chat/allegati, lasciando invariato il caso singolo
+- FILE TOCCATI:
+  - `src/next/NextInternalAiPage.tsx`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - mirror corrispondenti in `docs/fonti-pronte/*`
+  - `docs/change-reports/20260414_174940_ia_interna_card_alta_multi_file.md`
+  - `docs/continuity-reports/20260414_174940_continuity_ia_interna_card_alta_multi_file.md`
+- COSA E STATO CAMBIATO:
+  - il file input della card alta `Documento` accetta ora selezione multipla
+  - con `2 o piu file` la card mostra il toggle `Tratta questi file come un unico documento`, attivo di default e in italiano
+  - il click su `Analizza` dalla card alta riusa il percorso allegati/orchestrazione gia esistente per produrre un solo riepilogo finale aggregato
+  - con `1 file` il ramo continua a usare invariato `useIADocumentiEngine()` e non cambia comportamento
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: la card alta reale di `/next/ia/interna` supporta ora il multi-file senza introdurre una seconda UX separata
+  - Lettura: l'estrazione del singolo file resta invariata; il multi-file riusa il percorso allegati gia esistente con prompt neutro
+  - Blocco scritture: invariato; nessun writer nuovo, nessun cambio backend, nessuna modifica alla madre
+- COME VERIFICARE:
+  - eseguire `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/internalAiDocumentAnalysis.ts src/next/internal-ai/internalAiUniversalDocumentRouter.ts src/next/internal-ai/internalAiUniversalHandoff.ts src/next/internal-ai/internalAiUniversalOrchestrator.ts`
+  - eseguire `npm run build`
+  - aprire `/next/ia/interna`
+  - selezionare `1 file` nella card alta e verificare comportamento identico a prima
+  - selezionare `2 o piu file` nella card alta e verificare presenza del toggle, default attivo e riepilogo finale unico
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: DA VALUTARE
+- NOTE:
+  - il flusso chat/allegati gia patchato non e stato riscritto
+  - per mantenere un solo percorso coerente, la card alta multi-file sostituisce il contesto allegati corrente della pagina
+
 ### Voce 2026-04-14 165421
 - DATA: 2026-04-14
 - TITOLO MODIFICA: IA interna NEXT multi-file con riepilogo unico logico
@@ -10670,6 +10824,50 @@ La regola corrente da leggere insieme a questo registro e:
   - cliccare `Apri segnalazione` e verificare che il modale mostri la stessa descrizione reale
   - aprire `/next/dettagliolavori/7c6af494-9b02-4bf2-ac67-c994b39436c0?from=lavori-in-attesa` e verificare la stessa resa su route diretta.
 - SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+
+- ### Voce 2026-04-15 140
+- DATA: 2026-04-15
+- TITOLO MODIFICA: Chiusura `Archivista V1` lato documenti / archiviazione
+- OBIETTIVO: Chiudere il perimetro documentale di `Archivista` attivando tutte e sole le quattro famiglie V1, aggiungendo review coerente, controllo duplicati, conferma esplicita utente e archiviazione finale reale senza introdurre azioni business dopo l'archivio.
+- FILE TOCCATI:
+  - `src/next/NextIAArchivistaPage.tsx`
+  - `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx`
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `src/next/internal-ai/ArchivistaDocumentoMezzoBridge.tsx`
+  - `src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx`
+  - `src/next/internal-ai/ArchivistaArchiveClient.ts`
+  - `src/utils/cloneWriteBarrier.ts`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-document-extraction.js`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260415_181816_chiusura_archivista_v1_documenti_archiviazione.md`
+  - `docs/continuity-reports/20260415_181816_continuity_chiusura_archivista_v1_documenti_archiviazione.md`
+- COSA E STATO CAMBIATO:
+  - `Archivista` attiva ora davvero tutte e sole le quattro famiglie V1 `Fattura / DDT + Magazzino`, `Fattura / DDT + Manutenzione`, `Documento mezzo`, `Preventivo + Magazzino`;
+  - `Magazzino` viene riusato senza rifacimento e riceve solo il tratto finale di chiusura documentale: review, duplicati, conferma utente, archiviazione finale;
+  - `Manutenzione` resta OpenAI-only e aggiunge controllo duplicati e archiviazione in `@documenti_mezzi`, senza creare manutenzioni e senza usare `@costiMezzo`;
+  - il nuovo bridge `Documento mezzo` consente sottotipo `Libretto` / `Assicurazione` / `Revisione` / `Collaudo`, review dei campi letti, archiviazione dell'originale e update di `@mezzi_aziendali` solo su conferma esplicita;
+  - il nuovo bridge `Preventivo + Magazzino` analizza, mostra review, controlla i duplicati e archivia nel target coerente `storage/@preventivi` senza listino automatico;
+  - introdotto helper locale `ArchivistaArchiveClient` per upload originali, salvataggio record archivio, ricerca duplicati e update mezzo confermato;
+  - il backend IA separato espone endpoint OpenAI dedicati per `documento_mezzo` e `preventivo_magazzino` con campi, righe, avvisi e campi mancanti coerenti con la review;
+  - `cloneWriteBarrier.ts` apre solo le scritture minime necessarie a upload originali, `@documenti_magazzino`, `@documenti_mezzi`, `storage/@preventivi` e `@mezzi_aziendali`.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: `Archivista` resta non chat, ma ora completa davvero il lato documenti/archivio delle quattro famiglie V1 con callout chiari `Documento analizzato`, `Non ancora archiviato`, `Documento archiviato`;
+  - Lettura: review e duplicati si basano sui campi forti estratti, con controllo prudente `Stesso documento` / `Versione migliore` / `Documento diverso`;
+  - Scritture: abilitate solo upload originali e salvataggi archivio confermati; nessuna apertura per `@costiMezzo`, `@manutenzioni`, `@listino_prezzi` o azioni business post-archivio.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextIAArchivistaPage.tsx src/next/internal-ai/ArchivistaMagazzinoBridge.tsx src/next/internal-ai/ArchivistaManutenzioneBridge.tsx src/next/internal-ai/ArchivistaDocumentoMezzoBridge.tsx src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx src/next/internal-ai/ArchivistaArchiveClient.ts src/utils/cloneWriteBarrier.ts backend/internal-ai/server/internal-ai-adapter.js backend/internal-ai/server/internal-ai-document-extraction.js`
+  - `npm run build`
+  - aprire `/next/ia/archivista` e verificare che siano operative solo le quattro famiglie V1;
+  - per ciascuna famiglia: analizzare un file, eseguire controllo duplicati, scegliere una delle tre opzioni quando il match e forte e confermare l'archiviazione;
+  - per `Documento mezzo`: verificare che l'update del mezzo avvenga solo se selezionato esplicitamente.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
 - ### Voce 2026-04-12 140
 - DATA: 2026-04-12
 - TITOLO MODIFICA: Fix mirato `Analizza` IA interna via deroga stretta del clone barrier
@@ -11068,4 +11266,35 @@ La regola corrente da leggere insieme a questo registro e:
   - aprire `/next/manutenzioni`, registrare una manutenzione con materiale da inventario e verificare che il dataset `@materialiconsegnati` non perda il record appena scritto;
   - aprire `/next/dossier-mezzo/<targa>` e verificare la presenza di `Stato gomme per asse` ed `Eventi gomme straordinari`;
   - aprire `/next/dossier-gomme/<targa>` e verificare che l'ordinario per asse non dipenda piu solo dal parsing descrizione.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+
+- ### Voce 2026-04-15 139
+- DATA: 2026-04-15
+- TITOLO MODIFICA: Fix OpenAI-only del ramo `Archivista` -> `Fattura / DDT + Manutenzione`
+- OBIETTIVO: Eliminare dal ramo Manutenzione ogni chiamata a `estrazioneDocumenti` e spostare la sola review documentale su backend OpenAI server-side dedicato, senza toccare Magazzino, writer o barrier.
+- FILE TOCCATI:
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-document-extraction.js`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/product/CHECKLIST_IA_INTERNA.md`
+  - `CONTEXT_CLAUDE.md`
+  - `docs/change-reports/20260415_164047_ia_v1_manutenzione_openai_only_fix.md`
+  - `docs/continuity-reports/20260415_164047_continuity_ia_v1_manutenzione_openai_only_fix.md`
+- COSA E STATO CAMBIATO:
+  - il bridge `ArchivistaManutenzioneBridge` non punta piu alla cloud function `estrazioneDocumenti`;
+  - il backend IA separato espone ora un endpoint dedicato `documents.manutenzione-analyze`;
+  - l'estrazione documentale supporta un profilo `manutenzione` con prompt/schema OpenAI dedicati e provider obbligatorio;
+  - la review frontend riceve riassunto breve, targa, fornitore, data, totale, righe, avvisi e campi mancanti senza cambiare il prodotto visibile.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: invariata o quasi, con stessa review manutenzione gia costruita;
+  - Lettura: il ramo Manutenzione usa ora solo backend OpenAI server-side;
+  - Scritture: nessuna variazione, nessun writer business nuovo.
+- COME VERIFICARE:
+  - `npx eslint src/next/internal-ai/ArchivistaManutenzioneBridge.tsx backend/internal-ai/server/internal-ai-adapter.js backend/internal-ai/server/internal-ai-document-extraction.js`
+  - `npm run build`
+  - aprire `/next/ia/archivista`, scegliere `Fattura / DDT` + `Manutenzione`, caricare un documento officina e verificare che la review mostri i dati estratti senza passare da `estrazioneDocumenti`.
 - SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`

@@ -41,9 +41,16 @@ const DOSSIER_ALLOWED_STORAGE_KEYS = new Set([
   "@materialiconsegnati",
 ]);
 const INTERNAL_AI_MAGAZZINO_INLINE_SCOPE = "internal_ai_magazzino_inline_magazzino";
-const INTERNAL_AI_DOCUMENTI_PATH = "/next/ia/interna";
+const INTERNAL_AI_DOCUMENTI_ALLOWED_PATHS = ["/next/ia/interna", "/next/ia/archivista"] as const;
 const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti";
+const ARCHIVISTA_ALLOWED_FIRESTORE_COLLECTIONS = new Set([
+  "@documenti_magazzino",
+  "@documenti_mezzi",
+]);
+const ARCHIVISTA_ALLOWED_FIRESTORE_DOC_PATHS = new Set(["storage/@preventivi"]);
+const ARCHIVISTA_ALLOWED_STORAGE_KEYS = new Set(["@mezzi_aziendali"]);
+const ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES = ["documenti_pdf/", "preventivi/"] as const;
 const cloneWriteScopedAllowances = new Map<string, number>();
 
 declare global {
@@ -146,7 +153,7 @@ function isAllowedInternalAiDocumentAnalyzeFetch(
   pathname: string,
   meta: unknown,
 ): boolean {
-  if (pathname !== INTERNAL_AI_DOCUMENTI_PATH) return false;
+  if (!INTERNAL_AI_DOCUMENTI_ALLOWED_PATHS.some((entry) => pathname === entry)) return false;
   if (readMetaMethod(meta) !== "POST") return false;
 
   try {
@@ -155,6 +162,10 @@ function isAllowedInternalAiDocumentAnalyzeFetch(
   } catch {
     return false;
   }
+}
+
+function isAllowedArchivistaCloneWritePath(pathname: string): boolean {
+  return pathname === "/next/ia/archivista";
 }
 
 function isAllowedEuromeccCloneWritePath(pathname: string): boolean {
@@ -205,6 +216,27 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     isAllowedInternalAiDocumentAnalyzeFetch(pathname, meta)
   ) {
     return true;
+  }
+
+  if (isAllowedArchivistaCloneWritePath(pathname)) {
+    if (kind === "storage.uploadBytes") {
+      const path = readMetaPath(meta);
+      return ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
+
+    if (kind === "firestore.addDoc") {
+      return ARCHIVISTA_ALLOWED_FIRESTORE_COLLECTIONS.has(readMetaPath(meta));
+    }
+
+    if (kind === "firestore.setDoc") {
+      return ARCHIVISTA_ALLOWED_FIRESTORE_DOC_PATHS.has(readMetaPath(meta));
+    }
+
+    if (kind === "storageSync.setItemSync") {
+      return ARCHIVISTA_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    }
   }
 
   if (isAllowedLavoriCloneWritePath(pathname)) {

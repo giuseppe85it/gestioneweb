@@ -173,6 +173,23 @@ function normalizeDateToDDMMYYYY(value) {
   return `${day}/${month}/${year}`;
 }
 
+function normalizeVehiclePlate(value) {
+  const normalized = normalizeText(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^[A-Z]{2}[0-9]{3}[A-Z]{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^[A-Z]{2}[0-9]{4}[A-Z]$/.test(normalized)) {
+    return normalized;
+  }
+
+  return normalized.length >= 6 && normalized.length <= 8 ? normalized : null;
+}
+
 function normalizeDocumentType(value) {
   const normalized = normalizeText(value).toLowerCase();
   if (!normalized) {
@@ -203,6 +220,28 @@ function normalizeDocumentType(value) {
   return "altro";
 }
 
+function normalizeVehicleDocumentSubtype(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.includes("librett")) {
+    return "libretto";
+  }
+  if (normalized.includes("assicura") || normalized.includes("polizza")) {
+    return "assicurazione";
+  }
+  if (normalized.includes("revision")) {
+    return "revisione";
+  }
+  if (normalized.includes("collaud")) {
+    return "collaudo";
+  }
+
+  return null;
+}
+
 function pushWarning(target, code, severity, message) {
   if (!code || !message) {
     return;
@@ -223,11 +262,13 @@ function pushWarning(target, code, severity, message) {
 function buildBaseAnalysis(args) {
   return {
     version: SUPPORTED_OUTPUT_VERSION,
+    profilo: args.profilo ?? "magazzino",
     stato: args.stato,
     tipoSorgente: args.tipoSorgente,
     modalitaEstrazione: args.modalitaEstrazione,
     providerUsato: Boolean(args.providerUsato),
     tipoDocumento: null,
+    sottotipoDocumento: null,
     fornitore: null,
     numeroDocumento: null,
     dataDocumento: null,
@@ -237,6 +278,18 @@ function buildBaseAnalysis(args) {
     ivaImporto: null,
     ivaPercentuale: null,
     totaleDocumento: null,
+    targa: null,
+    km: null,
+    telaio: null,
+    proprietario: null,
+    assicurazione: null,
+    marca: null,
+    modello: null,
+    dataImmatricolazione: null,
+    dataScadenza: null,
+    dataUltimoCollaudo: null,
+    dataScadenzaRevisione: null,
+    riassuntoBreve: null,
     noteImportanti: [],
     righe: [],
     warnings: [],
@@ -277,6 +330,9 @@ function normalizeRow(entry, index, fallbackCurrency = null) {
   const codiceArticolo = toNullIfEmpty(
     source.codiceArticolo ?? source.articleCode ?? source.codice ?? source.codiceProdotto,
   );
+  const categoria = toNullIfEmpty(
+    source.categoria ?? source.category ?? source.tipo ?? source.kind ?? source.family,
+  );
   const valuta = normalizeCurrency(source.valuta ?? source.currency) || fallbackCurrency;
   const warnings = Array.isArray(source.warnings)
     ? uniqueStrings(
@@ -293,6 +349,7 @@ function normalizeRow(entry, index, fallbackCurrency = null) {
   return {
     id: normalizeText(source.id) || buildRowId(index),
     descrizione,
+    categoria,
     quantita,
     unita,
     prezzoUnitario,
@@ -306,6 +363,54 @@ function normalizeRow(entry, index, fallbackCurrency = null) {
 
 function buildMissingFields(analysis) {
   const missing = [];
+
+  if (analysis.profilo === "manutenzione") {
+    if (!analysis.targa) {
+      missing.push("targa");
+    }
+    if (!analysis.fornitore) {
+      missing.push("fornitore");
+    }
+    if (!analysis.dataDocumento) {
+      missing.push("dataDocumento");
+    }
+    if (analysis.totaleDocumento === null || analysis.totaleDocumento === undefined) {
+      missing.push("totaleDocumento");
+    }
+    if (!Array.isArray(analysis.righe) || analysis.righe.length === 0) {
+      missing.push("righe");
+    }
+    return missing;
+  }
+
+  if (analysis.profilo === "documento_mezzo") {
+    if (!analysis.sottotipoDocumento && !analysis.tipoDocumento) {
+      missing.push("sottotipoDocumento");
+    }
+    if (!analysis.targa) {
+      missing.push("targa");
+    }
+    if (!analysis.dataDocumento) {
+      missing.push("dataDocumento");
+    }
+    return missing;
+  }
+
+  if (analysis.profilo === "preventivo_magazzino") {
+    if (!analysis.fornitore) {
+      missing.push("fornitore");
+    }
+    if (!analysis.numeroDocumento) {
+      missing.push("numeroDocumento");
+    }
+    if (!analysis.dataDocumento) {
+      missing.push("dataDocumento");
+    }
+    if (!Array.isArray(analysis.righe) || analysis.righe.length === 0) {
+      missing.push("righe");
+    }
+    return missing;
+  }
 
   if (!analysis.tipoDocumento) {
     missing.push("tipoDocumento");
@@ -326,10 +431,99 @@ function buildMissingFields(analysis) {
   return missing;
 }
 
+function buildAnalysisSummary(analysis) {
+  if (analysis.profilo === "manutenzione") {
+    const parts = [];
+    if (analysis.targa) {
+      parts.push(`mezzo ${analysis.targa}`);
+    }
+    if (analysis.fornitore) {
+      parts.push(`officina ${analysis.fornitore}`);
+    }
+    if (analysis.dataDocumento) {
+      parts.push(`data ${analysis.dataDocumento}`);
+    }
+    if (analysis.totaleDocumento !== null && analysis.totaleDocumento !== undefined) {
+      parts.push(`totale ${analysis.totaleDocumento}`);
+    }
+    if (parts.length > 0) {
+      return `Documento manutenzione letto: ${parts.join(", ")}.`;
+    }
+    return "Documento manutenzione letto con campi ancora da verificare.";
+  }
+
+  if (analysis.profilo === "documento_mezzo") {
+    const parts = [];
+    if (analysis.sottotipoDocumento || analysis.tipoDocumento) {
+      parts.push(analysis.sottotipoDocumento || analysis.tipoDocumento);
+    }
+    if (analysis.targa) {
+      parts.push(`mezzo ${analysis.targa}`);
+    }
+    if (analysis.dataDocumento) {
+      parts.push(`data ${analysis.dataDocumento}`);
+    }
+    if (analysis.dataScadenza || analysis.dataScadenzaRevisione) {
+      parts.push(`scadenza ${analysis.dataScadenza || analysis.dataScadenzaRevisione}`);
+    }
+    if (parts.length > 0) {
+      return `Documento mezzo letto: ${parts.join(", ")}.`;
+    }
+    return "Documento mezzo letto con campi ancora da verificare.";
+  }
+
+  if (analysis.profilo === "preventivo_magazzino") {
+    const parts = [];
+    if (analysis.fornitore) {
+      parts.push(`fornitore ${analysis.fornitore}`);
+    }
+    if (analysis.numeroDocumento) {
+      parts.push(`numero ${analysis.numeroDocumento}`);
+    }
+    if (analysis.dataDocumento) {
+      parts.push(`data ${analysis.dataDocumento}`);
+    }
+    if (analysis.totaleDocumento !== null && analysis.totaleDocumento !== undefined) {
+      parts.push(`totale ${analysis.totaleDocumento}`);
+    }
+    if (parts.length > 0) {
+      return `Preventivo letto: ${parts.join(", ")}.`;
+    }
+    return "Preventivo letto con campi ancora da verificare.";
+  }
+
+  const parts = [];
+  if (analysis.tipoDocumento) {
+    parts.push(analysis.tipoDocumento);
+  }
+  if (analysis.fornitore) {
+    parts.push(`fornitore ${analysis.fornitore}`);
+  }
+  if (analysis.dataDocumento) {
+    parts.push(`data ${analysis.dataDocumento}`);
+  }
+  if (analysis.righe?.length) {
+    parts.push(`${analysis.righe.length} righe`);
+  }
+  if (parts.length > 0) {
+    return `Documento ${parts.join(", ")}.`;
+  }
+  return "Documento analizzato con campi ancora da verificare.";
+}
+
 function finalizeAnalysis(analysis, fallbackText = null) {
+  const profilo = analysis.profilo ?? "magazzino";
   const next = {
     ...analysis,
-    tipoDocumento: normalizeDocumentType(analysis.tipoDocumento),
+    profilo,
+    tipoDocumento:
+      profilo === "documento_mezzo"
+        ? normalizeVehicleDocumentSubtype(analysis.sottotipoDocumento ?? analysis.tipoDocumento)
+        : normalizeDocumentType(analysis.tipoDocumento),
+    sottotipoDocumento:
+      profilo === "documento_mezzo"
+        ? normalizeVehicleDocumentSubtype(analysis.sottotipoDocumento ?? analysis.tipoDocumento)
+        : null,
     fornitore: toNullIfEmpty(analysis.fornitore),
     numeroDocumento: toNullIfEmpty(analysis.numeroDocumento),
     dataDocumento: normalizeDateToDDMMYYYY(analysis.dataDocumento),
@@ -348,6 +542,21 @@ function finalizeAnalysis(analysis, fallbackText = null) {
       typeof analysis.totaleDocumento === "number" && Number.isFinite(analysis.totaleDocumento)
         ? analysis.totaleDocumento
         : null,
+    targa: normalizeVehiclePlate(analysis.targa),
+    km:
+      typeof analysis.km === "number" && Number.isFinite(analysis.km)
+        ? analysis.km
+        : parseLocalizedNumber(analysis.km),
+    telaio: toNullIfEmpty(analysis.telaio),
+    proprietario: toNullIfEmpty(analysis.proprietario),
+    assicurazione: toNullIfEmpty(analysis.assicurazione),
+    marca: toNullIfEmpty(analysis.marca),
+    modello: toNullIfEmpty(analysis.modello),
+    dataImmatricolazione: normalizeDateToDDMMYYYY(analysis.dataImmatricolazione),
+    dataScadenza: normalizeDateToDDMMYYYY(analysis.dataScadenza),
+    dataUltimoCollaudo: normalizeDateToDDMMYYYY(analysis.dataUltimoCollaudo),
+    dataScadenzaRevisione: normalizeDateToDDMMYYYY(analysis.dataScadenzaRevisione),
+    riassuntoBreve: toNullIfEmpty(analysis.riassuntoBreve),
     noteImportanti: uniqueStrings(analysis.noteImportanti ?? []),
     righe: Array.isArray(analysis.righe)
       ? analysis.righe.filter(Boolean).map((row, index) => normalizeRow(row, index, analysis.valuta)).filter(Boolean)
@@ -358,7 +567,33 @@ function finalizeAnalysis(analysis, fallbackText = null) {
     testoEstrattoBreve: toNullIfEmpty(analysis.testoEstrattoBreve ?? fallbackText)?.slice(0, 2000) ?? null,
   };
 
+  next.riassuntoBreve = next.riassuntoBreve ?? buildAnalysisSummary(next);
   next.campiMancanti = buildMissingFields(next);
+
+  if (next.profilo === "documento_mezzo") {
+    if (next.targa && (next.sottotipoDocumento || next.dataDocumento)) {
+      next.stato = next.campiMancanti.length <= 2 ? "ready" : "partial";
+    } else if (next.testoEstrattoBreve) {
+      next.stato = next.stato === "error" ? "error" : "partial";
+    } else if (next.stato !== "error") {
+      next.stato = "not_supported";
+    }
+    return next;
+  }
+
+  if (next.profilo === "preventivo_magazzino") {
+    if (next.righe.length > 0 && next.campiMancanti.length <= 2) {
+      next.stato = "ready";
+    } else if (
+      [next.fornitore, next.numeroDocumento, next.dataDocumento, next.totaleDocumento].filter(Boolean).length >= 2 ||
+      next.testoEstrattoBreve
+    ) {
+      next.stato = next.stato === "error" ? "error" : "partial";
+    } else if (next.stato !== "error") {
+      next.stato = "not_supported";
+    }
+    return next;
+  }
 
   if (next.righe.length > 0 && next.campiMancanti.length <= 2) {
     next.stato = "ready";
@@ -516,6 +751,7 @@ function extractHeuristicRows(text, fallbackCurrency = null) {
 
 function buildHeuristicAnalysis(args) {
   const analysis = buildBaseAnalysis({
+    profilo: args.profilo,
     stato: "partial",
     tipoSorgente: args.tipoSorgente,
     modalitaEstrazione: args.modalitaEstrazione,
@@ -528,6 +764,10 @@ function buildHeuristicAnalysis(args) {
       /\b(fattura(?:\s+accompagnatoria)?|documento di trasporto|doc\.?\s*di trasporto|ddt|preventivo|offerta)\b/i,
     ]),
   );
+  analysis.sottotipoDocumento =
+    normalizeVehicleDocumentSubtype(
+      extractFirstMatch(text, [/\b(libretto|assicurazione|polizza|revisione|collaudo)\b/i]),
+    ) || normalizeVehicleDocumentSubtype(args.documentSubtypeHint);
   analysis.fornitore = toNullIfEmpty(
     extractFirstMatch(text, [
       /(?:^|\n)fornitore\s*[:=-]\s*([^\n]+)/im,
@@ -567,6 +807,40 @@ function buildHeuristicAnalysis(args) {
       /(?:totale(?:\s*documento)?|tot\.)\s*[:=-]?\s*([0-9.,]+)/i,
       /(?:totale\s+da\s+pagare)\s*[:=-]?\s*([0-9.,]+)/i,
     ]),
+  );
+  analysis.targa = normalizeVehiclePlate(
+    extractFirstMatch(text, [
+      /(?:targa|mezzo|veicolo)\s*[:=-]?\s*([A-Z]{2}\s*[0-9]{3,4}\s*[A-Z]{1,2})/i,
+      /\b([A-Z]{2}\s*[0-9]{3,4}\s*[A-Z]{1,2})\b/,
+    ]),
+  );
+  analysis.km = parseLocalizedNumber(
+    extractFirstMatch(text, [
+      /(?:km(?:\/ore)?|chilometri|odometro|contachilometri)\s*[:=-]?\s*([0-9.]+(?:,[0-9]+)?)/i,
+    ]),
+  );
+  analysis.telaio = toNullIfEmpty(
+    extractFirstMatch(text, [/(?:telaio|vin)\s*[:=-]?\s*([A-Z0-9]{6,})/i]),
+  );
+  analysis.proprietario = toNullIfEmpty(
+    extractFirstMatch(text, [/(?:proprietario|intestatario)\s*[:=-]?\s*([^\n]+)/im]),
+  );
+  analysis.assicurazione = toNullIfEmpty(
+    extractFirstMatch(text, [/(?:assicurazione|compagnia)\s*[:=-]?\s*([^\n]+)/im]),
+  );
+  analysis.marca = toNullIfEmpty(extractFirstMatch(text, [/(?:marca)\s*[:=-]?\s*([^\n]+)/im]));
+  analysis.modello = toNullIfEmpty(extractFirstMatch(text, [/(?:modello)\s*[:=-]?\s*([^\n]+)/im]));
+  analysis.dataImmatricolazione = normalizeDateToDDMMYYYY(
+    extractFirstMatch(text, [/(?:immatricolazione|data immatricolazione)\s*[:=-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i]),
+  );
+  analysis.dataScadenza = normalizeDateToDDMMYYYY(
+    extractFirstMatch(text, [/(?:scadenza|valida fino al|valido fino al)\s*[:=-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i]),
+  );
+  analysis.dataUltimoCollaudo = normalizeDateToDDMMYYYY(
+    extractFirstMatch(text, [/(?:ultimo collaudo|collaudo)\s*[:=-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i]),
+  );
+  analysis.dataScadenzaRevisione = normalizeDateToDDMMYYYY(
+    extractFirstMatch(text, [/(?:scadenza revisione|revisione)\s*[:=-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i]),
   );
   analysis.valuta = normalizeCurrency(
     extractFirstMatch(text, [
@@ -644,6 +918,7 @@ function normalizeProviderAnalysis(parsed, args) {
           : [];
 
   const analysis = buildBaseAnalysis({
+    profilo: args.profilo,
     stato: "partial",
     tipoSorgente: args.tipoSorgente,
     modalitaEstrazione: args.modalitaEstrazione,
@@ -652,6 +927,14 @@ function normalizeProviderAnalysis(parsed, args) {
 
   analysis.tipoDocumento = normalizeDocumentType(
     rawDocument.type ?? rawDocument.tipoDocumento ?? source.tipoDocumento,
+  );
+  analysis.sottotipoDocumento = normalizeVehicleDocumentSubtype(
+    rawDocument.documentSubtype ??
+      rawDocument.sottotipoDocumento ??
+      source.documentSubtype ??
+      source.sottotipoDocumento ??
+      rawDocument.type ??
+      source.tipoDocumento,
   );
   analysis.fornitore = toNullIfEmpty(
     rawDocument.supplierName ??
@@ -698,6 +981,66 @@ function normalizeProviderAnalysis(parsed, args) {
       rawDocument.totalAmount ??
       source.totalAmount,
   );
+  analysis.targa = normalizeVehiclePlate(
+    rawDocument.targa ?? rawDocument.plate ?? source.targa ?? source.plate,
+  );
+  analysis.km = parseLocalizedNumber(
+    rawDocument.km ??
+      rawDocument.chilometri ??
+      rawDocument.odometerKm ??
+      source.km ??
+      source.odometerKm,
+  );
+  analysis.telaio = toNullIfEmpty(
+    rawDocument.vin ?? rawDocument.telaio ?? source.vin ?? source.telaio,
+  );
+  analysis.proprietario = toNullIfEmpty(
+    rawDocument.ownerName ??
+      rawDocument.proprietario ??
+      source.ownerName ??
+      source.proprietario ??
+      source.intestatario,
+  );
+  analysis.assicurazione = toNullIfEmpty(
+    rawDocument.insuranceCompany ??
+      rawDocument.assicurazione ??
+      source.insuranceCompany ??
+      source.assicurazione,
+  );
+  analysis.marca = toNullIfEmpty(rawDocument.vehicleMake ?? rawDocument.marca ?? source.vehicleMake ?? source.marca);
+  analysis.modello = toNullIfEmpty(
+    rawDocument.vehicleModel ?? rawDocument.modello ?? source.vehicleModel ?? source.modello,
+  );
+  analysis.dataImmatricolazione = normalizeDateToDDMMYYYY(
+    rawDocument.registrationDate ??
+      rawDocument.dataImmatricolazione ??
+      source.registrationDate ??
+      source.dataImmatricolazione,
+  );
+  analysis.dataScadenza = normalizeDateToDDMMYYYY(
+    rawDocument.expirationDate ??
+      rawDocument.dataScadenza ??
+      source.expirationDate ??
+      source.dataScadenza,
+  );
+  analysis.dataUltimoCollaudo = normalizeDateToDDMMYYYY(
+    rawDocument.inspectionDate ??
+      rawDocument.dataUltimoCollaudo ??
+      source.inspectionDate ??
+      source.dataUltimoCollaudo,
+  );
+  analysis.dataScadenzaRevisione = normalizeDateToDDMMYYYY(
+    rawDocument.reviewExpiryDate ??
+      rawDocument.dataScadenzaRevisione ??
+      source.reviewExpiryDate ??
+      source.dataScadenzaRevisione,
+  );
+  analysis.riassuntoBreve = toNullIfEmpty(
+    source.riassuntoBreve ??
+      source.summary ??
+      rawDocument.riassuntoBreve ??
+      rawDocument.summary,
+  );
   analysis.noteImportanti = uniqueStrings([
     ...(Array.isArray(rawDocument.notes) ? rawDocument.notes : []),
     ...(Array.isArray(source.noteImportanti) ? source.noteImportanti : []),
@@ -743,7 +1086,10 @@ function mergeAnalyses(primaryAnalysis, fallbackAnalysis) {
 
   const merged = {
     ...base,
+    profilo: primaryAnalysis?.profilo ?? fallbackAnalysis.profilo,
     tipoDocumento: primaryAnalysis?.tipoDocumento ?? fallbackAnalysis.tipoDocumento,
+    sottotipoDocumento:
+      primaryAnalysis?.sottotipoDocumento ?? fallbackAnalysis.sottotipoDocumento,
     fornitore: primaryAnalysis?.fornitore ?? fallbackAnalysis.fornitore,
     numeroDocumento: primaryAnalysis?.numeroDocumento ?? fallbackAnalysis.numeroDocumento,
     dataDocumento: primaryAnalysis?.dataDocumento ?? fallbackAnalysis.dataDocumento,
@@ -762,6 +1108,24 @@ function mergeAnalyses(primaryAnalysis, fallbackAnalysis) {
       primaryAnalysis?.totaleDocumento !== null && primaryAnalysis?.totaleDocumento !== undefined
         ? primaryAnalysis.totaleDocumento
         : fallbackAnalysis.totaleDocumento,
+    targa: primaryAnalysis?.targa ?? fallbackAnalysis.targa,
+    km:
+      primaryAnalysis?.km !== null && primaryAnalysis?.km !== undefined
+        ? primaryAnalysis.km
+        : fallbackAnalysis.km,
+    telaio: primaryAnalysis?.telaio ?? fallbackAnalysis.telaio,
+    proprietario: primaryAnalysis?.proprietario ?? fallbackAnalysis.proprietario,
+    assicurazione: primaryAnalysis?.assicurazione ?? fallbackAnalysis.assicurazione,
+    marca: primaryAnalysis?.marca ?? fallbackAnalysis.marca,
+    modello: primaryAnalysis?.modello ?? fallbackAnalysis.modello,
+    dataImmatricolazione:
+      primaryAnalysis?.dataImmatricolazione ?? fallbackAnalysis.dataImmatricolazione,
+    dataScadenza: primaryAnalysis?.dataScadenza ?? fallbackAnalysis.dataScadenza,
+    dataUltimoCollaudo:
+      primaryAnalysis?.dataUltimoCollaudo ?? fallbackAnalysis.dataUltimoCollaudo,
+    dataScadenzaRevisione:
+      primaryAnalysis?.dataScadenzaRevisione ?? fallbackAnalysis.dataScadenzaRevisione,
+    riassuntoBreve: primaryAnalysis?.riassuntoBreve ?? fallbackAnalysis.riassuntoBreve,
     noteImportanti: uniqueStrings([
       ...(primaryAnalysis?.noteImportanti ?? []),
       ...(fallbackAnalysis.noteImportanti ?? []),
@@ -779,7 +1143,37 @@ function mergeAnalyses(primaryAnalysis, fallbackAnalysis) {
   return finalizeAnalysis(merged, merged.testoEstrattoBreve);
 }
 
-function buildProviderSystemPrompt() {
+function buildProviderSystemPrompt(profile = "magazzino") {
+  if (profile === "manutenzione") {
+    return (
+      "Sei il parser documentale OpenAI della nuova IA interna del gestionale. " +
+      "Leggi fatture e DDT di officina o manutenzione mezzi. " +
+      "Rispondi solo con JSON valido. " +
+      "Non inventare mai dati: se un campo non e leggibile usa null. " +
+      "Estrai solo dati utili alla review manutenzione: riassunto breve, targa, fornitore officina, data, totale, km se presenti, righe materiali/manodopera/ricambi e dubbi reali."
+    );
+  }
+
+  if (profile === "documento_mezzo") {
+    return (
+      "Sei il parser documentale OpenAI della nuova IA interna del gestionale. " +
+      "Leggi documenti mezzo come libretto, assicurazione, revisione e collaudo. " +
+      "Rispondi solo con JSON valido. " +
+      "Non inventare mai dati: se un campo non e leggibile usa null. " +
+      "Estrai solo dati utili alla review e al possibile aggiornamento esplicito del mezzo: sottotipo documento, targa, telaio, proprietario, assicurazione/ente, marca, modello, date principali e dubbi reali."
+    );
+  }
+
+  if (profile === "preventivo_magazzino") {
+    return (
+      "Sei il parser documentale OpenAI della nuova IA interna del gestionale. " +
+      "Leggi preventivi di magazzino. " +
+      "Rispondi solo con JSON valido. " +
+      "Non inventare mai dati: se un campo non e leggibile usa null. " +
+      "Estrai solo dati utili alla review archivistica del preventivo: fornitore, numero, data, totale, righe materiali e dubbi reali."
+    );
+  }
+
   return (
     "Sei il parser documentale della nuova IA interna del gestionale. " +
     "Leggi fatture, DDT, preventivi e documenti materiali di magazzino. " +
@@ -789,12 +1183,160 @@ function buildProviderSystemPrompt() {
   );
 }
 
-function buildProviderUserInstructions(fileName, sourceHint) {
+function buildProviderUserInstructions(args) {
+  if ((args.profile ?? "magazzino") === "manutenzione") {
+    return JSON.stringify(
+      {
+        task: "Estrai dati documentali strutturati per review Manutenzione.",
+        fileName: args.fileName,
+        sourceHint: args.sourceHint,
+        outputSchema: {
+          document: {
+            type: "fattura|ddt|altro|null",
+            supplierName: "string|null",
+            documentNumber: "string|null",
+            documentDate: "dd/mm/yyyy|null",
+            currency: "EUR|CHF|null",
+            totalAmount: "number|null",
+            plate: "string|null",
+            odometerKm: "number|null",
+            summary: "string|null",
+            notes: ["string"],
+          },
+          items: [
+            {
+              description: "string|null",
+              category: "materiali|manodopera|ricambi|altro|null",
+              articleCode: "string|null",
+              quantity: "number|null",
+              uom: "string|null",
+              unitPrice: "number|null",
+              lineTotal: "number|null",
+              currency: "EUR|CHF|null",
+              confidence: "number|null",
+              warnings: ["string"],
+            },
+          ],
+          rawTextExcerpt: "string|null",
+          warnings: [
+            {
+              code: "string",
+              severity: "info|warn|error",
+              message: "string",
+            },
+          ],
+        },
+        guardrails: [
+          "Non aggiungere testo fuori dal JSON.",
+          "Se il documento e ambiguo mantieni i campi null.",
+          "Le quantita devono restare numeri, non stringhe.",
+          "Non inventare la targa o il totale se non sono leggibili.",
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
+  if ((args.profile ?? "magazzino") === "documento_mezzo") {
+    return JSON.stringify(
+      {
+        task: "Estrai dati documentali strutturati per review Documento mezzo.",
+        fileName: args.fileName,
+        sourceHint: args.sourceHint,
+        documentSubtypeHint: args.documentSubtypeHint || null,
+        outputSchema: {
+          document: {
+            documentSubtype: "libretto|assicurazione|revisione|collaudo|null",
+            documentDate: "dd/mm/yyyy|null",
+            plate: "string|null",
+            vin: "string|null",
+            ownerName: "string|null",
+            insuranceCompany: "string|null",
+            vehicleMake: "string|null",
+            vehicleModel: "string|null",
+            registrationDate: "dd/mm/yyyy|null",
+            expirationDate: "dd/mm/yyyy|null",
+            inspectionDate: "dd/mm/yyyy|null",
+            reviewExpiryDate: "dd/mm/yyyy|null",
+            summary: "string|null",
+            notes: ["string"],
+          },
+          rawTextExcerpt: "string|null",
+          warnings: [
+            {
+              code: "string",
+              severity: "info|warn|error",
+              message: "string",
+            },
+          ],
+        },
+        guardrails: [
+          "Non aggiungere testo fuori dal JSON.",
+          "Se il sottotipo non e chiaro usa null.",
+          "Non inventare targa, telaio o scadenze se non sono leggibili.",
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
+  if ((args.profile ?? "magazzino") === "preventivo_magazzino") {
+    return JSON.stringify(
+      {
+        task: "Estrai dati documentali strutturati per review Preventivo + Magazzino.",
+        fileName: args.fileName,
+        sourceHint: args.sourceHint,
+        outputSchema: {
+          document: {
+            type: "preventivo|offerta|altro|null",
+            supplierName: "string|null",
+            documentNumber: "string|null",
+            documentDate: "dd/mm/yyyy|null",
+            currency: "EUR|CHF|null",
+            totalAmount: "number|null",
+            summary: "string|null",
+            notes: ["string"],
+          },
+          items: [
+            {
+              description: "string|null",
+              articleCode: "string|null",
+              quantity: "number|null",
+              uom: "string|null",
+              unitPrice: "number|null",
+              lineTotal: "number|null",
+              currency: "EUR|CHF|null",
+              confidence: "number|null",
+              warnings: ["string"],
+            },
+          ],
+          rawTextExcerpt: "string|null",
+          warnings: [
+            {
+              code: "string",
+              severity: "info|warn|error",
+              message: "string",
+            },
+          ],
+        },
+        guardrails: [
+          "Non aggiungere testo fuori dal JSON.",
+          "Se il documento non e un preventivo mantieni type coerente ma non inventare.",
+          "Le righe devono restare numeri e descrizioni utili alla review.",
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
   return JSON.stringify(
     {
       task: "Estrai dati documentali strutturati per review Magazzino.",
-      fileName,
-      sourceHint,
+      fileName: args.fileName,
+      sourceHint: args.sourceHint,
       outputSchema: {
         document: {
           type: "fattura|ddt|preventivo|altro|null",
@@ -851,7 +1393,7 @@ async function runProviderTextExtraction(args) {
         content: [
           {
             type: "input_text",
-            text: buildProviderSystemPrompt(),
+            text: buildProviderSystemPrompt(args.profile),
           },
         ],
       },
@@ -860,7 +1402,7 @@ async function runProviderTextExtraction(args) {
         content: [
           {
             type: "input_text",
-            text: buildProviderUserInstructions(args.fileName, args.sourceHint),
+            text: buildProviderUserInstructions(args),
           },
           {
             type: "input_text",
@@ -878,7 +1420,7 @@ async function runProviderBinaryExtraction(args) {
   const content = [
     {
       type: "input_text",
-      text: buildProviderUserInstructions(args.fileName, args.sourceHint),
+      text: buildProviderUserInstructions(args),
     },
   ];
 
@@ -905,7 +1447,7 @@ async function runProviderBinaryExtraction(args) {
         content: [
           {
             type: "input_text",
-            text: buildProviderSystemPrompt(),
+            text: buildProviderSystemPrompt(args.profile),
           },
         ],
       },
@@ -940,6 +1482,7 @@ function detectAttachmentSourceKind(fileName, mimeType, text) {
 
 export async function extractInternalAiDocumentAnalysis(args) {
   const buffer = Buffer.from(args.contentBase64, "base64");
+  const profile = args.profile ?? "magazzino";
   let extractedText = null;
 
   if (
@@ -960,12 +1503,17 @@ export async function extractInternalAiDocumentAnalysis(args) {
 
   const tipoSorgente = detectAttachmentSourceKind(args.fileName, args.mimeType, extractedText);
   const heuristicAnalysis = buildHeuristicAnalysis({
+    profilo: profile,
     text: extractedText,
     tipoSorgente,
     modalitaEstrazione: extractedText ? "parser_locale" : "fallback_locale",
+    documentSubtypeHint: args.documentSubtypeHint,
   });
 
   if (!args.providerClient) {
+    if (args.providerRequired) {
+      throw new Error("Provider OpenAI non configurato per l'analisi documentale richiesta.");
+    }
     if (tipoSorgente === "image_document" || tipoSorgente === "pdf_scan") {
       pushWarning(
         heuristicAnalysis.warnings,
@@ -988,10 +1536,12 @@ export async function extractInternalAiDocumentAnalysis(args) {
       providerParsed = await runProviderBinaryExtraction({
         providerClient: args.providerClient,
         providerTarget: args.providerTarget,
+        profile,
         fileName: args.fileName,
         mimeType: args.mimeType,
         contentBase64: args.contentBase64,
         sourceHint: tipoSorgente,
+        documentSubtypeHint: args.documentSubtypeHint,
         isPdf: false,
       });
     } else if (tipoSorgente === "pdf_scan") {
@@ -999,10 +1549,12 @@ export async function extractInternalAiDocumentAnalysis(args) {
       providerParsed = await runProviderBinaryExtraction({
         providerClient: args.providerClient,
         providerTarget: args.providerTarget,
+        profile,
         fileName: args.fileName,
         mimeType: args.mimeType,
         contentBase64: args.contentBase64,
         sourceHint: tipoSorgente,
+        documentSubtypeHint: args.documentSubtypeHint,
         isPdf: true,
       });
     } else if (extractedText) {
@@ -1011,11 +1563,16 @@ export async function extractInternalAiDocumentAnalysis(args) {
         providerTarget: args.providerTarget,
         fileName: args.fileName,
         sourceHint: tipoSorgente,
+        profile,
+        documentSubtypeHint: args.documentSubtypeHint,
         rawText: extractedText,
       });
     }
 
     if (!providerParsed) {
+      if (args.providerRequired) {
+        throw new Error("Il provider OpenAI non ha restituito un JSON valido per la review documento.");
+      }
       pushWarning(
         heuristicAnalysis.warnings,
         "PROVIDER_JSON_EMPTY",
@@ -1026,6 +1583,7 @@ export async function extractInternalAiDocumentAnalysis(args) {
     }
 
     const providerAnalysis = normalizeProviderAnalysis(providerParsed, {
+      profilo: profile,
       tipoSorgente,
       modalitaEstrazione,
       fallbackText: extractedText,
@@ -1033,6 +1591,9 @@ export async function extractInternalAiDocumentAnalysis(args) {
 
     return mergeAnalyses(providerAnalysis, heuristicAnalysis);
   } catch (error) {
+    if (args.providerRequired) {
+      throw error;
+    }
     pushWarning(
       heuristicAnalysis.warnings,
       "PROVIDER_EXTRACTION_FAILED",
