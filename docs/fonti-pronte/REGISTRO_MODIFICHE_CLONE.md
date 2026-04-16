@@ -18,6 +18,27 @@ La regola corrente da leggere insieme a questo registro e:
 ## 2. Regola operativa ufficiale
 - Ogni patch futura che modifica il clone deve aggiungere una nuova voce in questo registro.
 - Per "modifica del clone" si intende almeno una di queste condizioni:
+
+## 3. 2026-04-15 - Importa documenti layout approvato allineato
+- File runtime toccati:
+  - `src/next/NextIAArchivistaPage.tsx`
+  - `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx`
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+- Obiettivo:
+  - unire la logica gia decisa di Archivista con il layout approvato di `docs/product/SPEC_UI_LAYOUT_IMPORTA_DOCUMENTI.md`, senza rifare Magazzino e senza trasformare IA 2 in chat.
+- Modifiche reali:
+  - rinominata la schermata visibile in `Importa documenti`;
+  - introdotta testata compatta con CTA `IA Report` e opzioni secondarie;
+  - ricomposta la fascia alta in tre aree affiancate `Tipo documento / Contesto / Upload + Analizza`;
+  - introdotto shell desktop con preview documento a sinistra, dati estratti a destra, tabella righe e convalida finale;
+  - ricomposti il ramo Magazzino e il ramo Manutenzione nel nuovo ordine visuale, preservando i motori esistenti.
+- Verifiche:
+  - `npx eslint src/next/NextIAArchivistaPage.tsx src/next/internal-ai/ArchivistaMagazzinoBridge.tsx src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- Note:
+  - nessuna patch a backend, barrier, writer business o archiviazione;
+  - `Documento mezzo` e `Preventivo + Magazzino` usano il nuovo shell visivo ma restano da rifinire nei dettagli fini della review.
   - modifica a `src/next/*`;
   - modifica documentale che cambia stato, regole, perimetro o tracciabilita del clone;
   - introduzione o rimozione di blocchi `read-only`, guard-rail, abilitazioni scrittura, badge o route del clone.
@@ -10823,6 +10844,36 @@ La regola corrente da leggere insieme a questo registro e:
   - aprire `/next/lavori-in-attesa`, dettaglio del lavoro `7c6af494-9b02-4bf2-ac67-c994b39436c0` e verificare `Problema segnalato = Freni da controllare`
   - cliccare `Apri segnalazione` e verificare che il modale mostri la stessa descrizione reale
   - aprire `/next/dettagliolavori/7c6af494-9b02-4bf2-ac67-c994b39436c0?from=lavori-in-attesa` e verificare la stessa resa su route diretta.
+- SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
+
+- ### Voce 2026-04-15 140
+- DATA: 2026-04-15
+- TITOLO MODIFICA: Integrazione UI approvata nella schermata `Importa documenti`
+- OBIETTIVO: Portare nella schermata reale il layout approvato `internal-ai-importa-documenti.css`, mantenendo invariata la logica documentale gia attiva dei 4 rami V1.
+- FILE TOCCATI:
+  - `src/next/NextIAArchivistaPage.tsx`
+  - `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx`
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `src/next/internal-ai/ArchivistaDocumentoMezzoBridge.tsx`
+  - `src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+  - `docs/STATO_ATTUALE_PROGETTO.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/REGISTRO_MODIFICHE_CLONE.md`
+  - `CONTEXT_CLAUDE.md`
+- COSA E STATO CAMBIATO:
+  - la pagina usa ora il naming finale `Importa documenti`;
+  - la scelta ramo visibile passa da una card unica `Destinazione rilevata` con cambio destinazione;
+  - i bridge runtime sono stati riallineati alle classi visuali `iai-*` nei blocchi upload, review, righe, duplicati e conferma finale;
+  - il CSS reale ingloba il sistema approvato per topbar, hero, card, top grid viewer/campi e barra conferma.
+- IMPATTO SU UI / LETTURA / BLOCCO SCRITTURE:
+  - UI: riallineata al layout approvato;
+  - Lettura: invariata;
+  - Scritture: invariate.
+- COME VERIFICARE:
+  - `npx eslint src/next/NextIAArchivistaPage.tsx src/next/internal-ai/ArchivistaMagazzinoBridge.tsx src/next/internal-ai/ArchivistaManutenzioneBridge.tsx src/next/internal-ai/ArchivistaDocumentoMezzoBridge.tsx src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx`
+  - `npx eslint src/next/internal-ai/internal-ai.css`
+  - `npm run build`
 - SE E CANDIDABILE A ESSERE PORTATO NELLA MADRE IN FUTURO: `DA VERIFICARE`
 
 - ### Voce 2026-04-15 140

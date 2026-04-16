@@ -148,6 +148,15 @@ Stato macrofase: `IN CORSO`
 - Dipendenze o blocchi:
   - IA Report, collegamento a manutenzione esistente, creazione nuova manutenzione, update listino e altri workflow business dopo archivio restano fuori da questa chiusura.
 
+### J-septies. Layout approvato `Importa documenti` unito alla logica Archivista
+- Stato: `FATTO`
+- Note: la schermata `/next/ia/archivista` usa ora il nome prodotto `Importa documenti` e segue il layout approvato desktop-first: testata compatta, fascia alta a tre aree, preview documento a sinistra, dati estratti a destra, tabella righe sotto, convalida finale in basso. In questo task sono stati ricomposti direttamente `NextIAArchivistaPage.tsx`, `ArchivistaMagazzinoBridge.tsx`, `ArchivistaManutenzioneBridge.tsx` e `internal-ai.css`, senza toccare i motori business dei rami. Resta `PARZIALE` solo la rifinitura fine dei bridge `Documento mezzo` e `Preventivo + Magazzino` sulla stessa grammatica visuale.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+- Dipendenze o blocchi:
+  - i dettagli fini dei campi estratti e della review nei bridge secondari restano da rifinire in un task successivo.
+
 ### J-bis. Dispatcher UI unico secondo spec 2026-04-12
 - Stato: `IN CORSO`
 - Note: la card Home e la pagina `/next/ia/interna` sono state riallineate alla spec `IA Universal Dispatcher` con launcher unico, prompt preload, menu `+`, shell dispatcher e review interna; `/next/ia/documenti` e stato riscritto come storico ufficiale read-only usando solo il domain reale. L'ingresso `/next/ia/interna` non reidrata piu automaticamente gli allegati IA-only persistiti, quindi non mostra piu banner o review sporche di default. Il task resta `PARZIALE` perche il domain read-only non espone ancora sezioni dedicate `Libretti`, `Cisterna`, `Manutenzioni`.

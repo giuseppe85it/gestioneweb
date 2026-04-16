@@ -282,16 +282,16 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
 
   return (
     <div className="ia-archivista-bridge">
-      <div className="ia-archivista-bridge__intro">
+      <div className="ia-archivista-bridge__intro iai-card">
         <div className="ia-archivista-bridge__intro-copy">
-          <p className="internal-ai-card__eyebrow">Ramo attivo in questo step</p>
+          <p className="internal-ai-card__eyebrow iai-sec-label">Ramo attivo in questo step</p>
           <h3>Preventivo + Magazzino</h3>
           <p>{summaryText}</p>
         </div>
         <span className="ia-archivista__flow-badge is-active">Attivo ora</span>
       </div>
 
-      <label className="ia-archivista__upload ia-archivista-bridge__upload">
+      <label className="ia-archivista__upload ia-archivista-bridge__upload iai-card">
         <input
           type="file"
           accept="image/*,application/pdf"
@@ -309,8 +309,10 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
             setDuplicateChoice(null);
           }}
         />
-        <strong>Carica preventivo di magazzino</strong>
-        <span>PDF, foto e scansioni. Il documento viene archiviato solo dopo la tua conferma.</span>
+        <strong className="iai-upload-combo-label">Carica preventivo di magazzino</strong>
+        <span className="iai-upload-hint">
+          PDF, foto e scansioni. Il documento viene archiviato solo dopo la tua conferma.
+        </span>
         <p className="internal-ai-card__meta">
           {selectedFile ? selectedFile.name : "Nessun file selezionato"}
         </p>
@@ -328,7 +330,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
       <div className="ia-archivista-bridge__actions">
         <button
           type="button"
-          className="internal-ai-search__button ia-archivista__analyze-button"
+          className="internal-ai-search__button ia-archivista__analyze-button iai-btn-analizza"
           disabled={!selectedFile || analysisStatus === "loading"}
           onClick={handleAnalyze}
         >
@@ -339,11 +341,11 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
         </p>
       </div>
 
-      {errorMessage ? <div className="ia-archivista__notice">{errorMessage}</div> : null}
-      {archiveError ? <div className="ia-archivista__notice">{archiveError}</div> : null}
+      {errorMessage ? <div className="ia-archivista__notice iai-avvisi-banner">{errorMessage}</div> : null}
+      {archiveError ? <div className="ia-archivista__notice iai-avvisi-banner">{archiveError}</div> : null}
 
-      <div className="ia-archivista-bridge__review-grid">
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
+      <div className="ia-archivista-bridge__review-grid iai-top-grid iai-top-grid--stacked-right">
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-doc-viewer">
           <div className="ia-archivista-bridge__review-head">
             <p className="internal-ai-card__eyebrow">Documento originale</p>
             <strong>{selectedFile ? selectedFile.name : "In attesa del file"}</strong>
@@ -374,7 +376,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
           </div>
         </article>
 
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-fields-card">
           <div className="ia-archivista-bridge__review-head">
             <p className="internal-ai-card__eyebrow">Dati estratti principali</p>
             <strong>Review Preventivo + Magazzino</strong>
@@ -413,7 +415,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
           </div>
         </article>
 
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-card">
           <div className="ia-archivista-bridge__review-head">
             <p className="internal-ai-card__eyebrow">Esito proposto</p>
             <strong>Review pronta, nessun listino automatico</strong>
@@ -472,8 +474,8 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
         </article>
       </div>
 
-      <div className="ia-archivista-bridge__archive-grid">
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
+      <div className="ia-archivista-bridge__archive-grid iai-archive-grid">
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-card">
           <div className="ia-archivista-bridge__review-head">
             <p className="internal-ai-card__eyebrow">Righe lette</p>
             <strong>{rows.length ? "Dettaglio materiali" : "In attesa del risultato"}</strong>
@@ -503,7 +505,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
           )}
         </article>
 
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-card">
           <div className="ia-archivista-bridge__review-head">
             <p className="internal-ai-card__eyebrow">Controllo duplicati</p>
             <strong>Archivio Preventivi</strong>
@@ -512,7 +514,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
           <div className="ia-archivista-bridge__actions">
             <button
               type="button"
-              className="internal-ai-search__button ia-archivista__analyze-button"
+              className="internal-ai-search__button ia-archivista__analyze-button iai-btn-analizza"
               disabled={!analysis || duplicateStatus === "checking"}
               onClick={handleCheckDuplicates}
             >
@@ -593,7 +595,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
         </article>
       </div>
 
-      <article className="internal-ai-card ia-archivista-bridge__review-card">
+      <article className="internal-ai-card ia-archivista-bridge__review-card iai-confirm-bar">
         <div className="ia-archivista-bridge__review-head">
           <p className="internal-ai-card__eyebrow">Conferma finale</p>
           <strong>Archiviazione Preventivo + Magazzino</strong>
@@ -602,7 +604,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
         <div className="ia-archivista-bridge__actions">
           <button
             type="button"
-            className="internal-ai-search__button ia-archivista__analyze-button"
+            className="internal-ai-search__button ia-archivista__analyze-button iai-btn-conferma"
             disabled={
               !analysis ||
               !selectedFile ||

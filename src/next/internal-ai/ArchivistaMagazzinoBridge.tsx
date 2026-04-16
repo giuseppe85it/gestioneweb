@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import {
   archiveArchivistaDocumentRecord,
   findArchivistaDuplicateCandidates,
@@ -49,10 +49,6 @@ type AnalysisStatus = "idle" | "loading" | "success" | "error";
 type DuplicateStatus = "idle" | "checking" | "ready" | "duplicates_found" | "error";
 type ArchiveStatus = "idle" | "saving" | "success" | "error";
 
-function formatRowsCount(value: ArchivistaMagazzinoVoce[] | undefined): string {
-  return `${Array.isArray(value) ? value.length : 0}`;
-}
-
 function looksLikeMagazzinoDocument(tipoDocumento: string): boolean {
   const normalized = tipoDocumento.toUpperCase();
   return normalized.includes("FATTURA") || normalized.includes("DDT");
@@ -94,6 +90,9 @@ function normalizeAnalysisPayload(payload: unknown): ArchivistaMagazzinoAnalysis
 export default function ArchivistaMagazzinoBridge() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewRotation, setPreviewRotation] = useState(0);
+  const [currency, setCurrency] = useState<"EUR" | "CHF">("EUR");
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [analysis, setAnalysis] = useState<ArchivistaMagazzinoAnalysis | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -104,6 +103,7 @@ export default function ArchivistaMagazzinoBridge() {
   const [archiveStatus, setArchiveStatus] = useState<ArchiveStatus>("idle");
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiveResult, setArchiveResult] = useState<ArchivistaArchiveResult | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
 
   useEffect(() => {
     if (!selectedFile || !selectedFile.type.startsWith("image/")) {
@@ -118,7 +118,19 @@ export default function ArchivistaMagazzinoBridge() {
     };
   }, [selectedFile]);
 
-  const rows = analysis?.voci ?? [];
+  const rows = useMemo(() => analysis?.voci ?? [], [analysis?.voci]);
+
+  useEffect(() => {
+    if (!analysis) {
+      setSelectedRowKeys([]);
+      return;
+    }
+
+    setSelectedRowKeys(rows.map((_, index) => `row-${index}`));
+  }, [analysis, rows]);
+
+  const selectedRows = rows.filter((_, index) => selectedRowKeys.includes(`row-${index}`));
+
   const missingFields = useMemo(() => {
     if (!analysis) return [];
     const nextMissing: string[] = [];
@@ -151,39 +163,16 @@ export default function ArchivistaMagazzinoBridge() {
         `Il tipo letto e "${tipoDocumento}". Verifica che il file appartenga davvero al ramo Fattura / DDT Magazzino.`,
       );
     }
+    if (!selectedRows.length && rows.length) {
+      nextWarnings.push("Tutte le righe sono state escluse dalla tabella importabile.");
+    }
     return nextWarnings;
-  }, [analysis, rows.length]);
+  }, [analysis, rows, selectedRows]);
 
   const duplicateCandidateSelected =
     duplicateCandidates.find((entry) => entry.id === selectedDuplicateId) ??
     duplicateCandidates[0] ??
     null;
-
-  const summaryText = useMemo(() => {
-    if (!analysis) {
-      return "Carica una fattura o un DDT di magazzino e avvia l'analisi. Archivista prepara la review, controlla i duplicati e archivia il documento solo dopo la tua conferma esplicita.";
-    }
-
-    return "Analisi completata. Questa review riguarda solo il ramo Magazzino: puoi verificare duplicati e confermare l'archiviazione senza aprire carichi stock o altri handoff business.";
-  }, [analysis]);
-
-  const statusLabel =
-    analysisStatus === "loading"
-      ? "Analisi in corso"
-      : analysisStatus === "success"
-      ? "Analisi completata"
-      : analysisStatus === "error"
-      ? "Errore analisi"
-      : "Pronto per analizzare";
-
-  const statusDescription =
-    analysisStatus === "loading"
-      ? "Il file viene letto con il motore documentale gia attivo nel progetto."
-      : analysisStatus === "success"
-      ? "La review sotto mostra i dati principali e le righe trovate."
-      : analysisStatus === "error"
-      ? "Controlla il file e riprova."
-      : "In questo step puoi analizzare un documento alla volta.";
 
   const handleAnalyze = async () => {
     if (!selectedFile) {
@@ -301,8 +290,9 @@ export default function ArchivistaMagazzinoBridge() {
           totaleDocumento: analysis.totaleDocumento ?? null,
           targa: analysis.targa || null,
           testo: analysis.testo || null,
-          voci: rows,
-          riassuntoBreve: summaryText,
+          voci: selectedRows,
+          valutaDocumento: currency,
+          riassuntoBreve: `Documento ${analysis.tipoDocumento || "letto"} con ${rows.length} righe`,
           avvisi: warnings,
           campiMancanti: missingFields,
         },
@@ -315,97 +305,166 @@ export default function ArchivistaMagazzinoBridge() {
     }
   };
 
+  const handleDiscard = () => {
+    setSelectedFile(null);
+    setImagePreviewUrl(null);
+    setPreviewScale(1);
+    setPreviewRotation(0);
+    setAnalysisStatus("idle");
+    setAnalysis(null);
+    setErrorMessage(null);
+    setDuplicateStatus("idle");
+    setDuplicateCandidates([]);
+    setSelectedDuplicateId("");
+    setDuplicateChoice(null);
+    setArchiveStatus("idle");
+    setArchiveError(null);
+    setArchiveResult(null);
+    setSelectedRowKeys([]);
+  };
+
+  const toggleRow = (rowKey: string) => {
+    setSelectedRowKeys((current) =>
+      current.includes(rowKey) ? current.filter((entry) => entry !== rowKey) : [...current, rowKey],
+    );
+  };
+
   return (
     <div className="ia-archivista-bridge">
-      <div className="ia-archivista-bridge__intro">
-        <div className="ia-archivista-bridge__intro-copy">
-          <p className="internal-ai-card__eyebrow">Ramo attivo in questo step</p>
-          <h3>Fattura / DDT + Magazzino</h3>
-          <p>{summaryText}</p>
+      <section className="next-panel ia-archivista__upload-shell iai-card">
+        <div className="ia-archivista__upload-shell-head">
+          <div>
+            <p className="internal-ai-card__eyebrow iai-sec-label">Upload + Analizza</p>
+            <h3 className="iai-upload-combo-label">Fattura / DDT + Magazzino</h3>
+          </div>
+          <span className="ia-archivista__flow-badge is-active">Attivo ora</span>
         </div>
-        <span className="ia-archivista__flow-badge is-active">Attivo ora</span>
-      </div>
 
-      <label className="ia-archivista__upload ia-archivista-bridge__upload">
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          onChange={(event) => {
-            const nextFile = event.target.files?.[0] ?? null;
-            setSelectedFile(nextFile);
-            setAnalysis(null);
-            setAnalysisStatus("idle");
-            setErrorMessage(null);
-          }}
-        />
-        <strong>Carica fattura o DDT di magazzino</strong>
-        <span>Supporta PDF, foto e scansioni. In questo step analizzi un documento alla volta.</span>
-        <p className="internal-ai-card__meta">
-          {selectedFile ? selectedFile.name : "Nessun file selezionato"}
-        </p>
-      </label>
+        <label className="ia-archivista__upload ia-archivista-bridge__upload">
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(event) => {
+              const nextFile = event.target.files?.[0] ?? null;
+              setSelectedFile(nextFile);
+              setAnalysis(null);
+              setAnalysisStatus("idle");
+              setErrorMessage(null);
+              setArchiveError(null);
+              setArchiveResult(null);
+              setPreviewScale(1);
+              setPreviewRotation(0);
+            }}
+          />
+          <strong className="iai-btn-file">Scegli file</strong>
+          <span className="iai-upload-hint">PDF e foto, un documento alla volta.</span>
+        </label>
 
-      {selectedFile ? (
-        <div className="ia-archivista-bridge__file-meta">
-          <span className="ia-archivista__file-pill">{selectedFile.name}</span>
-          <span className="ia-archivista-bridge__file-hint">
-            {selectedFile.type === "application/pdf" ? "PDF pronto" : "Immagine pronta"}
-          </span>
+        <div className="iai-upload-footer">
+          <div className="ia-archivista-bridge__file-meta">
+            {selectedFile ? (
+              <>
+                <span className="iai-file-chip">
+                  {selectedFile.name}
+                  <span className="iai-chip-badge">Immagine preview</span>
+                </span>
+              </>
+            ) : (
+              <span className="iai-upload-hint">Nessun file selezionato</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="iai-btn-analizza"
+            disabled={!selectedFile || analysisStatus === "loading"}
+            onClick={handleAnalyze}
+          >
+            {analysisStatus === "loading" ? "Analisi in corso..." : "Analizza doc →"}
+          </button>
         </div>
-      ) : null}
+      </section>
 
-      <div className="ia-archivista-bridge__actions">
-        <button
-          type="button"
-          className="internal-ai-search__button ia-archivista__analyze-button"
-          disabled={!selectedFile || analysisStatus === "loading"}
-          onClick={handleAnalyze}
-        >
-          {analysisStatus === "loading" ? "Analisi in corso..." : "Analizza documento"}
-        </button>
-        <p className="internal-ai-card__meta">
-          Nessun salvataggio parte in automatico: l'archiviazione avanza solo dopo la tua conferma.
+      {errorMessage ? <div className="ia-archivista__notice iai-avvisi-banner">{errorMessage}</div> : null}
+      {archiveError ? <div className="ia-archivista__notice iai-avvisi-banner">{archiveError}</div> : null}
+
+      <section className="next-panel iai-card">
+        <p className="iai-sec-label">AVVISI E CAMPI MANCANTI</p>
+        <p className="iai-upload-hint">
+          {warnings.length
+            ? [...warnings, ...missingFields].slice(0, 4).join(" · ")
+            : "Nessun avviso bloccante. Mantieni la conferma finale utente."}
         </p>
-      </div>
+      </section>
 
-      {errorMessage ? <div className="ia-archivista__notice">{errorMessage}</div> : null}
-      {archiveError ? <div className="ia-archivista__notice">{archiveError}</div> : null}
+      <section className="iai-top-grid">
+        <article className="next-panel ia-archivista-bridge__preview-card iai-doc-viewer">
+          <div className="ia-archivista-bridge__review-head iai-doc-topbar">
+            <p className="internal-ai-card__eyebrow iai-doc-fname">Documento</p>
+            <strong>{selectedFile ? selectedFile.name : "Anteprima in attesa"}</strong>
+          </div>
 
-      <div className="ia-archivista-bridge__review-grid">
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
-          <div className="ia-archivista-bridge__review-head">
-            <p className="internal-ai-card__eyebrow">Documento originale</p>
-            <strong>{selectedFile ? selectedFile.name : "In attesa del file"}</strong>
+          <div className="ia-archivista-bridge__preview-toolbar">
+            <button
+              type="button"
+              className="iai-doc-tbtn"
+              onClick={() => setPreviewScale((value) => Math.min(2, value + 0.1))}
+              disabled={!imagePreviewUrl}
+              title="Aumenta zoom anteprima"
+            >
+              Zoom +
+            </button>
+            <button
+              type="button"
+              className="iai-doc-tbtn"
+              onClick={() => setPreviewScale((value) => Math.max(0.8, value - 0.1))}
+              disabled={!imagePreviewUrl}
+              title="Riduci zoom anteprima"
+            >
+              Zoom -
+            </button>
+            <button
+              type="button"
+              className="iai-doc-tbtn"
+              onClick={() => setPreviewRotation((value) => value + 90)}
+              disabled={!imagePreviewUrl}
+              title="Ruota anteprima"
+            >
+              Ruota
+            </button>
           </div>
 
           {imagePreviewUrl ? (
-            <img
-              src={imagePreviewUrl}
-              alt="Anteprima documento caricato"
-              className="ia-archivista-bridge__image-preview"
-            />
+            <div className="ia-archivista-bridge__preview-frame iai-doc-body">
+              <img
+                src={imagePreviewUrl}
+                alt="Anteprima documento caricato"
+                className="ia-archivista-bridge__image-preview iai-doc-sheet-img"
+                style={{ transform: `scale(${previewScale}) rotate(${previewRotation}deg)` }}
+              />
+            </div>
           ) : (
-            <div className="ia-archivista-bridge__preview-placeholder">
+            <div className="ia-archivista-bridge__preview-placeholder iai-doc-body">
               {selectedFile
-                ? "Anteprima PDF disponibile dopo l'apertura del file originale."
-                : "Qui vedrai l'anteprima del documento caricato."}
+                ? "Per i PDF l'anteprima visuale si apre dal file originale archiviato."
+                : "Qui vedrai il documento grande e controllabile a colpo d'occhio."}
             </div>
           )}
-
-          <div className="ia-archivista-bridge__status-box">
-            <p className="internal-ai-card__eyebrow">Stato analisi</p>
-            <strong>{statusLabel}</strong>
-            <p>{statusDescription}</p>
-          </div>
         </article>
 
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
-          <div className="ia-archivista-bridge__review-head">
-            <p className="internal-ai-card__eyebrow">Dati estratti principali</p>
-            <strong>Review Magazzino</strong>
-          </div>
+        <article className="next-panel iai-fields-card">
+          <p className="iai-sec-label">DATI ESTRATTI</p>
+          <strong>Valuta</strong>
+          <select
+            className="iai-field-select"
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value as "EUR" | "CHF")}
+            title="Seleziona la valuta del documento"
+          >
+            <option value="EUR">EUR</option>
+            <option value="CHF">CHF</option>
+          </select>
 
-          <dl className="ia-archivista-bridge__facts">
+          <dl className="iai-fields-card ia-archivista-bridge__facts">
             <div>
               <dt>Tipo documento</dt>
               <dd>{formatValue(analysis?.tipoDocumento)}</dd>
@@ -426,209 +485,155 @@ export default function ArchivistaMagazzinoBridge() {
               <dt>Totale</dt>
               <dd>{formatValue(analysis?.totaleDocumento)}</dd>
             </div>
-            <div>
-              <dt>Righe trovate</dt>
-              <dd>{formatRowsCount(analysis?.voci)}</dd>
-            </div>
           </dl>
-
-          <div className="ia-archivista-bridge__summary">
-            <p className="internal-ai-card__eyebrow">Riassunto breve</p>
-            <p>{summaryText}</p>
-          </div>
         </article>
+      </section>
 
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
-          <div className="ia-archivista-bridge__review-head">
-            <p className="internal-ai-card__eyebrow">Righe e avvisi</p>
-            <strong>{rows.length ? "Dettaglio righe trovate" : "In attesa del risultato"}</strong>
-          </div>
-
-          {rows.length ? (
-            <div className="ia-archivista-bridge__rows">
-              {rows.map((row, index) => (
-                <article
-                  key={`${row.descrizione ?? "voce"}-${index}`}
-                  className="ia-archivista-bridge__row"
-                >
-                  <strong>{normalizeText(row.descrizione) || `Voce ${index + 1}`}</strong>
-                  <div className="ia-archivista-bridge__row-meta">
-                    <span>Qta: {formatValue(row.quantita, "-")}</span>
-                    <span>Unita: {formatValue(row.unita, "-")}</span>
-                    <span>Prezzo: {formatValue(row.prezzoUnitario ?? row.prezzo, "-")}</span>
-                    <span>Totale: {formatValue(row.importo ?? row.totale, "-")}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="ia-archivista-bridge__empty">
-              <p className="ia-archivista-bridge__empty-title">Nessuna riga disponibile</p>
-              <p className="ia-archivista-bridge__empty-copy">
-                Dopo l&apos;analisi vedrai qui le righe materiali trovate nel documento.
-              </p>
-            </div>
-          )}
-
-          <div className="ia-archivista-bridge__warnings">
-            <p className="internal-ai-card__eyebrow">Avvisi</p>
-            {warnings.length ? (
-              <ul className="ia-archivista-bridge__warning-list">
-                {warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="ia-archivista-bridge__warning-empty">
-                Nessun avviso bloccante rilevato in questa review.
-              </p>
-            )}
-          </div>
-        </article>
-      </div>
-
-      <div className="ia-archivista-bridge__archive-grid">
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
-          <div className="ia-archivista-bridge__review-head">
-            <p className="internal-ai-card__eyebrow">Stato archivio</p>
-            <strong>Conferma prima del salvataggio</strong>
-          </div>
-
-          <div className="ia-archivista-bridge__callout-stack">
-            <div className="ia-archivista-bridge__callout is-highlight">
-              <strong>{archiveResult ? "Documento archiviato" : "Documento analizzato"}</strong>
-              <p>
-                {archiveResult
-                  ? archiveResult.message
-                  : "La review e pronta. Il documento non e ancora archiviato finche non confermi."}
-              </p>
-            </div>
-            <div className="ia-archivista-bridge__callout">
-              <strong>{archiveResult ? "Originale disponibile" : "Non ancora archiviato"}</strong>
-              <p>
-                {archiveResult?.fileUrl
-                  ? "L'originale archiviato e disponibile nel link qui sotto."
-                  : "L'originale verra caricato solo dopo la conferma finale dell'utente."}
-              </p>
-            </div>
-            <div className="ia-archivista-bridge__callout is-warning">
-              <strong>Nessuna azione stock automatica</strong>
-              <p>Questo ramo archivia il documento ma non carica stock e non apre business flow.</p>
-            </div>
-          </div>
-
-          {archiveResult?.fileUrl ? (
-            <div className="ia-archivista-bridge__callout">
-              <strong>Originale archiviato</strong>
-              <p>
-                <a href={archiveResult.fileUrl} target="_blank" rel="noreferrer">
-                  Apri originale archiviato
-                </a>
-              </p>
-            </div>
-          ) : null}
-        </article>
-
-        <article className="internal-ai-card ia-archivista-bridge__review-card">
-          <div className="ia-archivista-bridge__review-head">
-            <p className="internal-ai-card__eyebrow">Controllo duplicati</p>
-            <strong>Archivio documenti magazzino</strong>
-          </div>
-
-          <div className="ia-archivista-bridge__actions">
-            <button
-              type="button"
-              className="internal-ai-search__button ia-archivista__analyze-button"
-              disabled={!analysis || duplicateStatus === "checking"}
-              onClick={handleCheckDuplicates}
-            >
-              {duplicateStatus === "checking" ? "Controllo in corso..." : "Controlla duplicati"}
-            </button>
-            <p className="internal-ai-card__meta">
-              Se il match e forte, Archivista ti chiede una scelta secca e non decide da solo.
-            </p>
-          </div>
-
-          {duplicateCandidates.length ? (
-            <div className="ia-archivista-bridge__rows">
-              {duplicateCandidates.map((candidate) => (
-                <article
-                  key={candidate.id}
-                  className={`ia-archivista-bridge__row ${selectedDuplicateId === candidate.id ? "is-selected" : ""}`}
-                >
-                  <div className="ia-archivista-bridge__row-head">
-                    <strong>{candidate.title}</strong>
-                    <button
-                      type="button"
-                      className="ia-archivista-bridge__ghost-button"
-                      onClick={() => setSelectedDuplicateId(candidate.id)}
-                    >
-                      {selectedDuplicateId === candidate.id ? "Selezionato" : "Usa questo"}
-                    </button>
-                  </div>
-                  <p className="ia-archivista-bridge__row-note">{candidate.subtitle || "Archivio esistente"}</p>
-                  <div className="ia-archivista-bridge__pill-row">
-                    {candidate.matchedFields.map((field) => (
-                      <span key={field} className="ia-archivista-bridge__mini-pill">
-                        {field}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : duplicateStatus === "ready" ? (
-            <div className="ia-archivista-bridge__callout is-highlight">
-              <strong>Nessun duplicato forte</strong>
-              <p>Puoi procedere con la conferma finale dell'archiviazione.</p>
-            </div>
-          ) : (
-            <div className="ia-archivista-bridge__empty">
-              <p className="ia-archivista-bridge__empty-title">Controllo non ancora eseguito</p>
-              <p className="ia-archivista-bridge__empty-copy">
-                Prima della conferma finale puoi controllare se esiste gia un documento molto simile in archivio.
-              </p>
-            </div>
-          )}
-
-          {duplicateCandidateSelected ? (
-            <div className="ia-archivista-bridge__choice-grid">
-              <button
-                type="button"
-                className={`ia-archivista-bridge__choice ${duplicateChoice === "stesso_documento" ? "is-active" : ""}`}
-                onClick={() => setDuplicateChoice("stesso_documento")}
-              >
-                Stesso documento
-              </button>
-              <button
-                type="button"
-                className={`ia-archivista-bridge__choice ${duplicateChoice === "versione_migliore" ? "is-active" : ""}`}
-                onClick={() => setDuplicateChoice("versione_migliore")}
-              >
-                Versione migliore
-              </button>
-              <button
-                type="button"
-                className={`ia-archivista-bridge__choice ${duplicateChoice === "documento_diverso" ? "is-active" : ""}`}
-                onClick={() => setDuplicateChoice("documento_diverso")}
-              >
-                Documento diverso
-              </button>
-            </div>
-          ) : null}
-        </article>
-      </div>
-
-      <article className="internal-ai-card ia-archivista-bridge__review-card">
-        <div className="ia-archivista-bridge__review-head">
-          <p className="internal-ai-card__eyebrow">Conferma finale</p>
-          <strong>Archiviazione Fattura / DDT + Magazzino</strong>
+      <section className="next-panel iai-card">
+        <div className="iai-righe-header">
+          <p className="iai-sec-label">RIGHE DOCUMENTO</p>
+          <strong>{rows.length ? "Controlla le righe prima di archiviare" : "Nessuna riga letta"}</strong>
         </div>
 
-        <div className="ia-archivista-bridge__actions">
+        {rows.length ? (
+          <div className="ia-archivista-bridge__table-wrap">
+            <table className="iai-righe-table">
+              <thead>
+                <tr>
+                  <th>Sel</th>
+                  <th>Descrizione</th>
+                  <th>Quantità</th>
+                  <th>Unità</th>
+                  <th>Prezzo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => {
+                  const rowKey = `row-${index}`;
+                  const isSelected = selectedRowKeys.includes(rowKey);
+                  return (
+                    <tr key={rowKey} className={!isSelected ? "iai-row-unchecked" : ""}>
+                      <td>
+                        <label className="ia-archivista-bridge__table-check iai-row-cb">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRow(rowKey)}
+                          />
+                        </label>
+                      </td>
+                      <td>{normalizeText(row.descrizione) || `Voce ${index + 1}`}</td>
+                      <td>{formatValue(row.quantita, "-")}</td>
+                      <td>{formatValue(row.unita, "-")}</td>
+                      <td>{formatValue(row.prezzoUnitario ?? row.prezzo, "-")}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="iai-upload-hint">Carica e analizza per leggere le righe.</p>
+        )}
+      </section>
+
+      <section className="next-panel iai-card">
+        <div className="iai-righe-header">
+          <p className="iai-sec-label">DUPLICATI</p>
+          <strong>
+            {duplicateStatus === "ready"
+              ? "Nessun match forte"
+              : duplicateStatus === "checking"
+                ? "Controllo in corso..."
+                : duplicateCandidates.length
+                  ? "Match forte"
+                  : "Controlla duplicati"}
+          </strong>
+        </div>
+
+        {!analysis ? (
+          <p className="iai-upload-hint">Avvia prima l&apos;analisi per verificare i possibili duplicati.</p>
+        ) : duplicateStatus === "checking" ? (
+          <p className="iai-upload-hint">Controllo duplicati in corso.</p>
+        ) : duplicateCandidates.length ? (
+          <>
+            <div className="iai-confirm-bar" style={{ marginTop: 8 }}>
+              <p className="iai-upload-hint">
+                <strong>{duplicateCandidateSelected?.title}</strong>
+                <span> · {duplicateCandidateSelected?.subtitle}</span>
+              </p>
+              <button
+                type="button"
+                className="iai-row-cb"
+                onClick={() => setSelectedDuplicateId(duplicateCandidateSelected?.id || "")}
+              >
+                Seleziona
+              </button>
+            </div>
+            <div className="ia-archivista-bridge__pill-row" style={{ marginTop: 8 }}>
+              {duplicateCandidateSelected?.matchedFields.map((field) => (
+                <span key={field} className="ia-archivista-bridge__mini-pill">
+                  {field}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="iai-upload-hint">Nessun duplicato forte rilevato.</p>
+        )}
+
+        <div className="ia-archivista-bridge__actions" style={{ marginTop: 10 }}>
           <button
             type="button"
-            className="internal-ai-search__button ia-archivista__analyze-button"
+            className="iai-btn-analizza"
+            disabled={!analysis || duplicateStatus === "checking"}
+            onClick={handleCheckDuplicates}
+          >
+            {duplicateStatus === "checking" ? "Controllo in corso..." : "Controlla duplicati"}
+          </button>
+        </div>
+
+        {duplicateCandidates.length ? (
+          <div className="ia-archivista-bridge__choice-grid" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className={`ia-archivista-bridge__choice ${duplicateChoice === "stesso_documento" ? "is-active" : ""}`}
+              onClick={() => setDuplicateChoice("stesso_documento")}
+            >
+              Stesso documento
+            </button>
+            <button
+              type="button"
+              className={`ia-archivista-bridge__choice ${duplicateChoice === "versione_migliore" ? "is-active" : ""}`}
+              onClick={() => setDuplicateChoice("versione_migliore")}
+            >
+              Versione migliore
+            </button>
+            <button
+              type="button"
+              className={`ia-archivista-bridge__choice ${duplicateChoice === "documento_diverso" ? "is-active" : ""}`}
+              onClick={() => setDuplicateChoice("documento_diverso")}
+            >
+              Documento diverso
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="iai-confirm-bar">
+        <p className="iai-upload-hint">Conferma l&apos;archiviazione dopo controllo finale.</p>
+        <div className="iai-confirm-bar">
+          <button
+            type="button"
+            className="iai-btn-scarta"
+            onClick={handleDiscard}
+            disabled={archiveStatus === "saving"}
+          >
+            Scarta documento
+          </button>
+          <button
+            type="button"
+            className="iai-btn-conferma"
             disabled={
               !analysis ||
               !selectedFile ||
@@ -639,13 +644,10 @@ export default function ArchivistaMagazzinoBridge() {
             }
             onClick={handleArchive}
           >
-            {archiveStatus === "saving" ? "Archiviazione in corso..." : "Conferma e archivia"}
+            {archiveStatus === "saving" ? "Archiviazione in corso..." : "Conferma e archivia →"}
           </button>
-          <p className="internal-ai-card__meta">
-            Conferma esplicita richiesta: il documento viene archiviato solo quando premi il pulsante.
-          </p>
         </div>
-      </article>
+      </section>
     </div>
   );
 }

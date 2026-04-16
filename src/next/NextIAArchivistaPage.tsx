@@ -1,13 +1,10 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ArchivistaDocumentoMezzoBridge from "./internal-ai/ArchivistaDocumentoMezzoBridge";
 import ArchivistaMagazzinoBridge from "./internal-ai/ArchivistaMagazzinoBridge";
 import ArchivistaManutenzioneBridge from "./internal-ai/ArchivistaManutenzioneBridge";
 import ArchivistaPreventivoMagazzinoBridge from "./internal-ai/ArchivistaPreventivoMagazzinoBridge";
-import {
-  NEXT_IA_DOCUMENTI_PATH,
-  NEXT_INTERNAL_AI_PATH,
-} from "./nextStructuralPaths";
+import { NEXT_IA_DOCUMENTI_PATH } from "./nextStructuralPaths";
 import "./internal-ai/internal-ai.css";
 
 type ArchivistaTipo = "fattura_ddt" | "preventivo" | "documento_mezzo";
@@ -30,103 +27,108 @@ type ArchivistaFlowState = {
   badge: string;
 };
 
-const TYPE_OPTIONS: Array<{ id: ArchivistaTipo; label: string; description: string }> = [
-  {
-    id: "fattura_ddt",
-    label: "Fattura / DDT",
-    description: "Materiali, fornitori e documenti di acquisto.",
-  },
-  {
-    id: "preventivo",
-    label: "Preventivo",
-    description: "Preventivi da archiviare prima di ogni decisione.",
-  },
-  {
-    id: "documento_mezzo",
-    label: "Documento mezzo",
-    description: "Libretto, assicurazione, revisione e collaudo.",
-  },
-];
-
-const CONTEXT_OPTIONS: Array<{
-  id: ArchivistaContesto;
+type DestinationOption = {
+  id: string;
   label: string;
-  description: string;
-}> = [
+  tipo: ArchivistaTipo;
+  contesto: ArchivistaContesto;
+  availability: ArchivistaAvailability;
+};
+
+const DESTINATION_OPTIONS: Array<DestinationOption> = [
   {
-    id: "magazzino",
-    label: "Magazzino",
-    description: "Ricambi, materiali, DDT e fatture di acquisto.",
+    id: "fattura_ddt_magazzino",
+    label: "Fattura / DDT → Magazzino",
+    tipo: "fattura_ddt",
+    contesto: "magazzino",
+    availability: "active",
   },
   {
-    id: "manutenzione",
-    label: "Manutenzione",
-    description: "Documenti legati a lavori officina e interventi sul mezzo.",
+    id: "fattura_ddt_manutenzione",
+    label: "Fattura / DDT → Manutenzione",
+    tipo: "fattura_ddt",
+    contesto: "manutenzione",
+    availability: "active",
   },
   {
     id: "documento_mezzo",
     label: "Documento mezzo",
-    description: "Archivio del mezzo con conferma finale dell'utente.",
+    tipo: "documento_mezzo",
+    contesto: "documento_mezzo",
+    availability: "active",
+  },
+  {
+    id: "preventivo_magazzino",
+    label: "Preventivo → Magazzino",
+    tipo: "preventivo",
+    contesto: "magazzino",
+    availability: "active",
+  },
+  {
+    id: "preventivo_manutenzione",
+    label: "Preventivo → Manutenzione",
+    tipo: "preventivo",
+    contesto: "manutenzione",
+    availability: "out_of_scope",
   },
 ];
 
 const FLOW_MATRIX: Record<`${ArchivistaTipo}:${ArchivistaContesto}`, ArchivistaFlowState> = {
   "fattura_ddt:magazzino": {
     availability: "active",
-    titolo: "Fattura / DDT magazzino",
+    titolo: "Fattura / DDT + Magazzino",
     descrizione:
-      "Analisi reale per fatture e DDT di acquisto. La review resta dentro Archivista, senza chat e senza azioni finali automatiche.",
+      "Review documentale e archiviazione finale del ramo Magazzino.",
     badge: "Attivo ora",
   },
   "fattura_ddt:manutenzione": {
     availability: "active",
-    titolo: "Fattura / DDT manutenzione",
-    descrizione:
-      "Analisi reale per documenti officina e costi manutenzione. La review e separata da Magazzino e non crea ancora alcuna manutenzione.",
+    titolo: "Fattura / DDT + Manutenzione",
+    descrizione: "Review documentale dedicata alla manutenzione con backend OpenAI separato.",
     badge: "Attivo ora",
   },
   "fattura_ddt:documento_mezzo": {
     availability: "not_available",
     titolo: "Fattura / DDT + Documento mezzo",
-    descrizione: "Questa combinazione non fa parte del perimetro V1.",
+    descrizione: "Combinazione non prevista nel modello V1.",
     badge: "Non disponibile",
   },
   "preventivo:magazzino": {
     availability: "active",
-    titolo: "Preventivo magazzino",
+    titolo: "Preventivo + Magazzino",
     descrizione:
-      "Analisi reale per preventivi di magazzino con review dedicata, regola duplicati e archiviazione finale nel ramo preventivi.",
+      "Review, duplicati e archiviazione finale nel ramo preventivi, senza update listino automatico.",
     badge: "Attivo ora",
   },
   "preventivo:manutenzione": {
     availability: "out_of_scope",
-    titolo: "Preventivo manutenzione",
-    descrizione: "Questo ramo resta fuori V1 e non viene attivato in Archivista.",
+    titolo: "Preventivo + Manutenzione",
+    descrizione: "Ramo fuori V1 in questa schermata.",
     badge: "Fuori V1",
   },
   "preventivo:documento_mezzo": {
     availability: "not_available",
     titolo: "Preventivo + Documento mezzo",
-    descrizione: "Questa combinazione non fa parte del perimetro V1.",
+    descrizione: "Combinazione non prevista nel modello V1.",
     badge: "Non disponibile",
   },
   "documento_mezzo:magazzino": {
     availability: "not_available",
     titolo: "Documento mezzo + Magazzino",
-    descrizione: "Questa combinazione non fa parte del perimetro V1.",
+    descrizione: "Combinazione non prevista nel modello V1.",
     badge: "Non disponibile",
   },
   "documento_mezzo:manutenzione": {
     availability: "not_available",
     titolo: "Documento mezzo + Manutenzione",
-    descrizione: "Questa combinazione non fa parte del perimetro V1.",
+    descrizione: "Combinazione non prevista nel modello V1.",
     badge: "Non disponibile",
   },
   "documento_mezzo:documento_mezzo": {
     availability: "active",
     titolo: "Documento mezzo",
     descrizione:
-      "Analisi reale per libretto, assicurazione, revisione e collaudo. L'archivio parte prima e l'update del mezzo resta sempre esplicito.",
+      "Analisi e archivio dei documenti mezzo con possibile aggiornamento mezzo su conferma.",
     badge: "Attivo ora",
   },
 };
@@ -144,15 +146,11 @@ function isContextAllowed(tipo: ArchivistaTipo, contesto: ArchivistaContesto) {
 }
 
 function getDefaultContextForType(tipo: ArchivistaTipo): ArchivistaContesto {
-  if (tipo === "fattura_ddt") {
-    return "magazzino";
+  if (tipo === "documento_mezzo") {
+    return "documento_mezzo";
   }
 
-  if (tipo === "preventivo") {
-    return "magazzino";
-  }
-
-  return "documento_mezzo";
+  return "magazzino";
 }
 
 function buildFlowKey(tipo: ArchivistaTipo, contesto: ArchivistaContesto) {
@@ -179,6 +177,17 @@ function getAvailabilityClass(availability: ArchivistaAvailability) {
   return "is-disabled";
 }
 
+function getTypeLabel(tipo: ArchivistaTipo) {
+  if (tipo === "fattura_ddt") return "Fattura / DDT";
+  if (tipo === "documento_mezzo") return "Documento mezzo";
+  return "Preventivo";
+}
+
+function getContextLabel(contesto: ArchivistaContesto) {
+  if (contesto === "documento_mezzo") return "Documento mezzo";
+  return contesto === "magazzino" ? "Magazzino" : "Manutenzione";
+}
+
 export default function NextIAArchivistaPage() {
   const location = useLocation();
   const navigationState = (location.state ?? null) as ArchivistaNavigationState | null;
@@ -190,165 +199,90 @@ export default function NextIAArchivistaPage() {
   const [tipo, setTipo] = useState<ArchivistaTipo>(normalizedPreset.tipo);
   const [contesto, setContesto] = useState<ArchivistaContesto>(normalizedPreset.contesto);
   const activeFlow = FLOW_MATRIX[buildFlowKey(tipo, contesto)];
+  const currentTypeLabel = getTypeLabel(tipo);
+  const currentContextLabel = getContextLabel(contesto);
 
   return (
-    <section className="next-page internal-ai-page ia-archivista-page">
-      <header className="ia-archivista__hero next-panel">
-        <div>
-          <p className="next-page__eyebrow">IA 2</p>
-          <h1>Archivista documenti</h1>
-          <p className="next-page__description">
-            Questa e l&apos;area per caricare e archiviare documenti. Non e una chat: prima scegli
-            tipo e contesto, poi carichi il file.
-          </p>
-        </div>
-
-        <div className="ia-archivista__hero-actions">
-          <Link to={NEXT_INTERNAL_AI_PATH} className="internal-ai-nav__link">
-            Vai a IA Report
-          </Link>
-          <Link to={NEXT_IA_DOCUMENTI_PATH} className="internal-ai-nav__link">
-            Apri storico documenti
-          </Link>
-        </div>
-      </header>
-
-      <div className="ia-archivista__meta-grid">
-        <article className="internal-ai-card ia-archivista__meta-card">
-          <p className="internal-ai-card__eyebrow">Rami attivi ora</p>
-          <strong>Fattura / DDT + Magazzino, Fattura / DDT + Manutenzione, Documento mezzo, Preventivo + Magazzino</strong>
-          <p className="internal-ai-card__meta">
-            In questo step Archivista analizza davvero le quattro famiglie V1 e chiude il lato documenti con review, duplicati e archiviazione confermata.
-          </p>
-        </article>
-        <article className="internal-ai-card ia-archivista__meta-card">
-          <p className="internal-ai-card__eyebrow">Visibili ma fuori attivazione</p>
-          <strong>Preventivo manutenzione</strong>
-          <p className="internal-ai-card__meta">
-            Resta visibile come direzione futura ma non entra in Archivista V1.
-          </p>
-        </article>
-        <article className="internal-ai-card ia-archivista__meta-card">
-          <p className="internal-ai-card__eyebrow">Fuori V1</p>
-          <strong>Preventivo manutenzione, Cisterna, Euromecc, Carburante</strong>
-          <p className="internal-ai-card__meta">
-            Restano fuori dal primo passo dell&apos;Archivista e non compaiono come rami operativi.
-          </p>
-        </article>
+    <section className="next-page internal-ai-page iai-page">
+      <div className="iai-topbar">
+        <span className="iai-topbar-label">IA 2</span>
+        <Link
+          to={NEXT_IA_DOCUMENTI_PATH}
+          className="iai-btn-storico"
+          title="Vai allo storico documenti"
+        >
+          Vai a storico →
+        </Link>
       </div>
 
-      <div className="ia-archivista__layout">
-        <article className="next-panel ia-archivista__panel">
-          <div className="ia-archivista__panel-head">
-            <div>
-              <p className="internal-ai-card__eyebrow">Passo 1</p>
-              <h2>Tipo documento</h2>
+      <header className="iai-hero">
+        <h1>Importa documenti</h1>
+        <p className="iai-sec-label">Upload e conferma documentale in un'unica schermata.</p>
+      </header>
+
+      <div className="iai-content">
+        <article className="iai-card">
+          <div className="iai-sec-label">DESTINAZIONE RILEVATA</div>
+          <div className="iai-dest-row">
+            <div className="iai-dest-badge">
+              <span className="iai-dest-dot" aria-hidden="true" />
+              <span className="iai-dest-name">{currentTypeLabel}</span>
+              <span className="iai-dest-arrow" aria-hidden="true">
+                →
+              </span>
+              <span className="iai-dest-ctx">{currentContextLabel}</span>
             </div>
-            <span className={`ia-archivista__flow-badge ${getAvailabilityClass(activeFlow.availability)}`}>
-              {activeFlow.badge}
-            </span>
-          </div>
-
-          <div className="ia-archivista__option-grid" role="radiogroup" aria-label="Tipo documento">
-            {TYPE_OPTIONS.map((option) => {
-              const active = option.id === tipo;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`ia-archivista__option ${active ? "is-active" : ""}`}
-                  onClick={() => {
-                    const nextContesto = isContextAllowed(option.id, contesto)
-                      ? contesto
-                      : getDefaultContextForType(option.id);
-                    setTipo(option.id);
-                    setContesto(nextContesto);
-                  }}
-                >
-                  <strong>{option.label}</strong>
-                  <span>{option.description}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="ia-archivista__panel-head">
-            <div>
-              <p className="internal-ai-card__eyebrow">Passo 2</p>
-              <h2>Contesto</h2>
-            </div>
-          </div>
-
-          <div className="ia-archivista__option-grid" role="radiogroup" aria-label="Contesto documento">
-            {CONTEXT_OPTIONS.map((option) => {
-              const disabled = !isContextAllowed(tipo, option.id);
-              const active = option.id === contesto;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`ia-archivista__option ${active ? "is-active" : ""} ${
-                    disabled ? "is-disabled" : ""
-                  }`}
-                  onClick={() => {
-                    if (disabled) {
-                      return;
-                    }
-                    setContesto(option.id);
-                  }}
-                  aria-disabled={disabled}
-                >
-                  <strong>{option.label}</strong>
-                  <span>{option.description}</span>
-                </button>
-              );
-            })}
+            <details className="iai-dest-control">
+              <summary className="iai-btn-cambia">Destinazione errata? Cambia ▾</summary>
+              <div className="iai-dest-dropdown">
+                {DESTINATION_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="iai-dd-item"
+                    onClick={() => {
+                      setTipo(option.tipo);
+                      setContesto(option.contesto);
+                    }}
+                    title={FLOW_MATRIX[buildFlowKey(option.tipo, option.contesto)]?.descrizione}
+                    disabled={option.availability !== "active"}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </details>
+            <span className="iai-chip-badge">{activeFlow.badge}</span>
           </div>
         </article>
 
-        <article className="next-panel ia-archivista__panel">
-          <div className="ia-archivista__panel-head">
-            <div>
-              <p className="internal-ai-card__eyebrow">Passo 3</p>
-              <h2>{activeFlow.titolo}</h2>
-            </div>
-            <span className={`ia-archivista__flow-badge ${getAvailabilityClass(activeFlow.availability)}`}>
-              {activeFlow.badge}
-            </span>
-          </div>
-
-          <div className="ia-archivista__flow-summary">
-            <p className="internal-ai-card__eyebrow">Flusso selezionato</p>
-            <h3>{activeFlow.titolo}</h3>
-            <p>{activeFlow.descrizione}</p>
-          </div>
-
+        <div className="ia-archivista__bridge-host">
           {activeFlow.availability === "active" && tipo === "fattura_ddt" && contesto === "magazzino" ? (
             <ArchivistaMagazzinoBridge />
           ) : activeFlow.availability === "active" &&
             tipo === "fattura_ddt" &&
             contesto === "manutenzione" ? (
-            <ArchivistaManutenzioneBridge />
-          ) : activeFlow.availability === "active" &&
-            tipo === "documento_mezzo" &&
-            contesto === "documento_mezzo" ? (
-            <ArchivistaDocumentoMezzoBridge />
-          ) : activeFlow.availability === "active" &&
-            tipo === "preventivo" &&
-            contesto === "magazzino" ? (
-            <ArchivistaPreventivoMagazzinoBridge />
-          ) : (
-            <div className={`ia-archivista__inactive-shell ${getAvailabilityClass(activeFlow.availability)}`}>
-              <p className="internal-ai-card__eyebrow">{activeFlow.badge}</p>
-              <h3>{activeFlow.titolo}</h3>
-              <p>{activeFlow.descrizione}</p>
-              <p className="internal-ai-card__meta">
-                In questo step partono solo i rami gia attivi di Archivista. Qui non parte ancora
-                nessuna analisi nuova.
-              </p>
+              <ArchivistaManutenzioneBridge />
+            ) : activeFlow.availability === "active" &&
+              tipo === "documento_mezzo" &&
+              contesto === "documento_mezzo" ? (
+                <ArchivistaDocumentoMezzoBridge />
+              ) : activeFlow.availability === "active" &&
+                tipo === "preventivo" &&
+                contesto === "magazzino" ? (
+                  <ArchivistaPreventivoMagazzinoBridge />
+                ) : (
+            <div className={`iai-card ia-archivista__inactive-shell ${getAvailabilityClass(activeFlow.availability)}`}>
+              <div className="iai-righe-header">
+                <div>
+                  <p className="iai-sec-label">Ramo non attivo</p>
+                  <strong>{activeFlow.titolo}</strong>
+                </div>
+              </div>
+              <p className="iai-upload-hint">{activeFlow.descrizione}</p>
             </div>
           )}
-        </article>
+        </div>
       </div>
     </section>
   );

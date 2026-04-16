@@ -39,6 +39,21 @@
   - Archivista V1 lato documenti / archiviazione -> `FATTO`
   - IA Report e azioni business dopo archivio -> `NON FATTO`
 
+## 0.0 Aggiornamento operativo 2026-04-15 Importa documenti layout approvato
+- execution completata nel perimetro `src/next/NextIAArchivistaPage.tsx`, `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx`, `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`, `src/next/internal-ai/internal-ai.css`, senza toccare madre, backend, barrier o writer business;
+- `/next/ia/archivista` usa ora il nome prodotto `Importa documenti` e una testata compatta con CTA `IA Report` + opzioni secondarie;
+- la fascia alta segue la struttura approvata `Tipo documento / Contesto / Upload + Analizza`;
+- il shell desktop ora dispone preview a sinistra, dati estratti a destra, tabella righe sotto e convalida finale in basso;
+- i rami `Magazzino` e `Manutenzione` sono stati ricomposti nel nuovo ordine visuale preservando i rispettivi motori;
+- `Documento mezzo` e `Preventivo + Magazzino` restano agganciati allo stesso shell visivo ma non sono stati rifiniti nei dettagli fini della review in questo task;
+- verifiche:
+  - `npx eslint src/next/NextIAArchivistaPage.tsx src/next/internal-ai/ArchivistaMagazzinoBridge.tsx src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` -> `OK`
+  - `npx eslint src/next/internal-ai/internal-ai.css` -> warning noto file ignorato dalla config
+  - `npm run build` -> `OK`
+- stato capability:
+  - layout prodotto `Importa documenti` -> `FATTO`
+  - uniformazione visuale fine di tutti i bridge Archivista -> `PARZIALE`
+
 ## 0.0 Aggiornamento operativo 2026-04-15 Archivista V1 step 2: ramo Manutenzione review attivo
 - execution completata nel perimetro `src/next/NextIAArchivistaPage.tsx`, nuovo `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`, `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx` e `src/next/internal-ai/internal-ai.css`, senza toccare madre, backend, functions, api o writer business;
 - `/next/ia/archivista`:
@@ -5750,3 +5765,19 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 - Verifiche:
   - `npx eslint src/next/internal-ai/ArchivistaManutenzioneBridge.tsx backend/internal-ai/server/internal-ai-adapter.js backend/internal-ai/server/internal-ai-document-extraction.js` -> `OK`
   - `npm run build` -> `OK`
+
+## 5.147 Aggiornamento 2026-04-15 - integrazione layout approvato su `Importa documenti`
+- La superficie NEXT `Importa documenti` e stata riallineata al layout UI approvato senza toccare backend, estrazione o writer.
+- `src/next/NextIAArchivistaPage.tsx` usa ora il guscio pagina `iai-*`:
+  - topbar;
+  - hero;
+  - card `Destinazione rilevata`;
+  - host dei bridge attivi.
+- I bridge runtime restano nel perimetro attuale ma si appoggiano alla grammatica visuale approvata:
+  - `ArchivistaMagazzinoBridge.tsx`
+  - `ArchivistaManutenzioneBridge.tsx`
+  - `ArchivistaDocumentoMezzoBridge.tsx`
+  - `ArchivistaPreventivoMagazzinoBridge.tsx`
+- `src/next/internal-ai/internal-ai.css` contiene ora il sistema classi `iai-*` necessario alla schermata reale.
+- Stato modulo:
+  - `IA interna / Importa documenti` -> `PARZIALE`

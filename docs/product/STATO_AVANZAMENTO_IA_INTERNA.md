@@ -34,6 +34,23 @@ Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema 
   - Archivista V1 lato documenti / archiviazione -> `FATTO`
   - IA Report, collegamento a manutenzione esistente, creazione nuova manutenzione, listino post-archivio -> `NON FATTO`
 
+## 0.0 Aggiornamento operativo 2026-04-15 - layout `Importa documenti` allineato alla spec UI
+- esecuzione completata nel solo perimetro frontend `NextIAArchivistaPage.tsx`, `ArchivistaMagazzinoBridge.tsx`, `ArchivistaManutenzioneBridge.tsx`, `internal-ai.css`;
+- il nome prodotto visibile passa a `Importa documenti`;
+- la UI desktop segue ora l'ordine approvato:
+  - fascia alta con `Tipo documento`, `Contesto`, `Upload + Analizza`
+  - preview documento a sinistra
+  - dati estratti a destra
+  - tabella righe sotto
+  - convalida finale in basso
+- Magazzino non e stato rifatto e Manutenzione resta OpenAI-only;
+- verifiche:
+  - `npx eslint src/next/NextIAArchivistaPage.tsx src/next/internal-ai/ArchivistaMagazzinoBridge.tsx src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` -> `OK`
+  - `npm run build` -> `OK`
+- stato capability:
+  - shell UI `Importa documenti` -> `FATTO`
+  - rifinitura visuale coerente di tutti i bridge Archivista -> `PARZIALE`
+
 ## 0.0 Aggiornamento operativo 2026-04-15 - Archivista step 2 con review Manutenzione attiva
 - esecuzione completata nel perimetro `NextIAArchivistaPage.tsx`, nuovo `ArchivistaManutenzioneBridge.tsx`, `ArchivistaMagazzinoBridge.tsx` e `internal-ai.css`, senza toccare backend, writer business o madre;
 - Archivista:

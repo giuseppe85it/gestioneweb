@@ -1,0 +1,750 @@
+/* ============================================================
+   internal-ai-importa-documenti.css
+   Pagina: /next/ia/interna — "Importa documenti"
+   Prefix classi: iai-
+   Fonte di verità: mockup approvato sessione 2026-04-15
+   NON tocca logica, writer, barrier, motore documentale.
+   ============================================================ */
+
+/* ── Reset base ── */
+.iai-page *,
+.iai-page *::before,
+.iai-page *::after {
+  box-sizing: border-box;
+}
+
+/* ── Page wrapper ── */
+.iai-page {
+  background: #f5f4f0;
+  min-height: 100vh;
+  padding-bottom: 3rem;
+  font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+  color: #1a1a18;
+}
+
+/* ============================================================
+   TOPBAR
+   ============================================================ */
+.iai-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 24px;
+  background: #ffffff;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
+}
+
+.iai-topbar-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888780;
+}
+
+.iai-btn-storico {
+  font-size: 12px;
+  padding: 5px 13px;
+  border: 0.5px solid rgba(0, 0, 0, 0.22);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #5f5e5a;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.iai-btn-storico:hover {
+  background: #f5f4f0;
+}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.iai-hero {
+  padding: 22px 24px 16px;
+  background: #ffffff;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
+}
+
+.iai-hero h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a18;
+  margin: 0;
+}
+
+/* ============================================================
+   CONTENT WRAPPER
+   ============================================================ */
+.iai-content {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ============================================================
+   CARD BASE
+   ============================================================ */
+.iai-card {
+  background: #ffffff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.iai-sec-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #888780;
+  margin-bottom: 8px;
+}
+
+/* ============================================================
+   CARD DESTINAZIONE RILEVATA
+   ============================================================ */
+.iai-dest-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.iai-dest-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f0faf4;
+  border: 1.5px solid #2d8a4e;
+  border-radius: 8px;
+  padding: 9px 16px;
+}
+
+.iai-dest-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2d8a4e;
+  flex-shrink: 0;
+}
+
+.iai-dest-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e6e3c;
+}
+
+.iai-dest-arrow {
+  font-size: 13px;
+  color: #2d8a4e;
+  opacity: 0.7;
+}
+
+.iai-dest-ctx {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e6e3c;
+}
+
+/* Bottone cambia destinazione */
+.iai-btn-cambia {
+  font-size: 11px;
+  padding: 5px 11px;
+  border: 0.5px solid rgba(0, 0, 0, 0.22);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #5f5e5a;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s;
+}
+
+.iai-btn-cambia:hover {
+  background: #f5f4f0;
+}
+
+/* Dropdown destinazioni alternative */
+.iai-dest-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: #ffffff;
+  border: 0.5px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  z-index: 20;
+  min-width: 220px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.iai-dest-dropdown.iai-open {
+  display: block;
+}
+
+.iai-dd-sublabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888780;
+  padding: 8px 14px 4px;
+}
+
+.iai-dd-item {
+  padding: 9px 14px;
+  font-size: 13px;
+  color: #1a1a18;
+  cursor: pointer;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+  transition: background 0.1s;
+}
+
+.iai-dd-item:last-child {
+  border-bottom: none;
+}
+
+.iai-dd-item:hover {
+  background: #f5f4f0;
+}
+
+/* ============================================================
+   CARD UPLOAD + ANALIZZA
+   ============================================================ */
+.iai-upload-combo-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a18;
+  margin-bottom: 8px;
+}
+
+.iai-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.iai-btn-file {
+  font-size: 12px;
+  padding: 5px 13px;
+  border: 0.5px solid rgba(0, 0, 0, 0.22);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1a1a18;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.iai-btn-file:hover {
+  background: #f5f4f0;
+}
+
+.iai-upload-hint {
+  font-size: 11px;
+  color: #888780;
+}
+
+.iai-upload-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Chip file caricato */
+.iai-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f5f4f0;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #1a1a18;
+}
+
+.iai-chip-badge {
+  font-size: 10px;
+  background: #e6f1fb;
+  color: #185fa5;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-weight: 500;
+}
+
+/* Bottone Analizza */
+.iai-btn-analizza {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  background: #185fa5;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.iai-btn-analizza:hover {
+  background: #0c447c;
+}
+
+.iai-btn-analizza:disabled {
+  background: rgba(0, 0, 0, 0.15);
+  color: #888780;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   BANNER AVVISI — full width, fuori dalla grid
+   ============================================================ */
+.iai-avvisi-banner {
+  background: #faeeda;
+  border: 0.5px solid #ef9f27;
+  border-radius: 8px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.iai-avvisi-icon {
+  font-size: 12px;
+  font-weight: 700;
+  color: #854f0b;
+  flex-shrink: 0;
+  margin-top: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #854f0b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iai-avvisi-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #854f0b;
+  margin-bottom: 3px;
+}
+
+.iai-avvisi-text {
+  font-size: 12px;
+  color: #633806;
+  line-height: 1.5;
+}
+
+.iai-avvisi-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.iai-avvisi-list li {
+  font-size: 12px;
+  color: #633806;
+  line-height: 1.5;
+  display: flex;
+  gap: 6px;
+}
+
+.iai-avvisi-list li::before {
+  content: '•';
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   TOP GRID — viewer sx (58%) + campi dx (42%)
+   Visibile solo dopo analisi completata
+   ============================================================ */
+.iai-top-grid {
+  display: grid;
+  grid-template-columns: 58% 42%;
+  gap: 14px;
+  align-items: start;
+}
+
+/* ── COLONNA SX: Document viewer scuro ── */
+.iai-doc-viewer {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 0.5px solid rgba(0, 0, 0, 0.18);
+}
+
+.iai-doc-topbar {
+  background: #2c2c2a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+}
+
+.iai-doc-fname {
+  font-size: 12px;
+  color: #d3d1c7;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iai-doc-tbtn {
+  font-size: 10px;
+  padding: 3px 9px;
+  border: 0.5px solid #5f5e5a;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  color: #b4b2a9;
+  transition: background 0.1s;
+}
+
+.iai-doc-tbtn:hover {
+  background: #444441;
+}
+
+.iai-doc-body {
+  background: #444441;
+  min-height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* Foglio documento dentro il viewer */
+.iai-doc-sheet {
+  background: #ffffff;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 340px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.iai-doc-sheet-img {
+  width: 100%;
+  max-width: 340px;
+  border-radius: 4px;
+  display: block;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.iai-doc-sheet-icon {
+  color: #888780;
+}
+
+.iai-doc-sheet-name {
+  font-size: 12px;
+  color: #5f5e5a;
+  text-align: center;
+}
+
+.iai-doc-sheet-sub {
+  font-size: 10px;
+  color: #b4b2a9;
+  text-align: center;
+}
+
+/* ── COLONNA DX: Campi estratti ── */
+.iai-fields-card {
+  background: #ffffff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.iai-fields-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+
+.iai-field-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+  gap: 10px;
+}
+
+.iai-field-row:last-child {
+  border-bottom: none;
+}
+
+.iai-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #888780;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.iai-field-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1a1a18;
+  text-align: right;
+}
+
+.iai-field-value--total {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a18;
+}
+
+.iai-field-select {
+  font-size: 11px;
+  border: 0.5px solid rgba(0, 0, 0, 0.22);
+  border-radius: 5px;
+  padding: 2px 6px;
+  background: #ffffff;
+  color: #1a1a18;
+  cursor: pointer;
+}
+
+/* ============================================================
+   RIGHE DOCUMENTO — full width, card bianca
+   ============================================================ */
+.iai-righe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.iai-righe-subtitle {
+  font-size: 11px;
+  color: #888780;
+}
+
+.iai-righe-count {
+  font-size: 11px;
+  color: #1e6e3c;
+  font-weight: 600;
+}
+
+.iai-righe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.iai-righe-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #888780;
+  padding: 6px 8px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+}
+
+.iai-righe-table th.iai-th-check {
+  width: 32px;
+}
+
+.iai-righe-table th.iai-th-qty {
+  width: 70px;
+}
+
+.iai-righe-table th.iai-th-unit {
+  width: 50px;
+}
+
+.iai-righe-table th.iai-th-price {
+  width: 80px;
+  text-align: right;
+}
+
+.iai-righe-table td {
+  padding: 8px 8px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.07);
+  color: #1a1a18;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.iai-righe-table tr:last-child td {
+  border-bottom: none;
+}
+
+.iai-righe-table td.iai-td-price {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Riga deselezionata */
+.iai-row-unchecked td {
+  opacity: 0.4;
+}
+
+/* Checkbox riga */
+.iai-row-cb {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  accent-color: #2d8a4e;
+}
+
+/* ============================================================
+   DUPLICATI — full width, card bianca
+   ============================================================ */
+.iai-dup-subtitle {
+  font-size: 11px;
+  color: #888780;
+  margin-bottom: 8px;
+}
+
+.iai-dup-empty {
+  font-size: 12px;
+  color: #888780;
+  font-style: italic;
+}
+
+.iai-dup-item {
+  background: #faeeda;
+  border: 0.5px solid #ef9f27;
+  border-radius: 7px;
+  padding: 10px 14px;
+  margin-top: 8px;
+}
+
+.iai-dup-item + .iai-dup-item {
+  margin-top: 6px;
+}
+
+.iai-dup-match {
+  font-size: 12px;
+  font-weight: 600;
+  color: #633806;
+  margin-bottom: 2px;
+}
+
+.iai-dup-detail {
+  font-size: 11px;
+  color: #854f0b;
+  line-height: 1.4;
+}
+
+/* ============================================================
+   BARRA CONFERMA FINALE
+   ============================================================ */
+.iai-confirm-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  background: #ffffff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+}
+
+.iai-confirm-text {
+  flex: 1;
+  min-width: 160px;
+}
+
+.iai-confirm-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a18;
+}
+
+.iai-confirm-sub {
+  font-size: 11px;
+  color: #888780;
+  margin-top: 2px;
+}
+
+.iai-btn-scarta {
+  font-size: 13px;
+  padding: 9px 18px;
+  background: #ffffff;
+  border: 0.5px solid rgba(0, 0, 0, 0.22);
+  border-radius: 8px;
+  cursor: pointer;
+  color: #5f5e5a;
+  transition: background 0.12s;
+}
+
+.iai-btn-scarta:hover {
+  background: #f5f4f0;
+}
+
+.iai-btn-conferma {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 22px;
+  background: #2d8a4e;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.iai-btn-conferma:hover {
+  background: #1e6e3c;
+}
+
+.iai-btn-conferma:disabled {
+  background: #3b6d11;
+  cursor: default;
+}
+
+/* ============================================================
+   STATI VISIBILITÀ
+   Usa queste classi in JSX per mostrare/nascondere le sezioni
+   post-analisi (top-grid, righe, duplicati, confirm-bar)
+   ============================================================ */
+.iai-post-analysis {
+  display: contents; /* visibile: lascia i figli nel flow normale */
+}
+
+.iai-post-analysis--hidden {
+  display: none;
+}
+
+/* ============================================================
+   RESPONSIVE — sotto 720px le due colonne si impilano
+   ============================================================ */
+@media (max-width: 720px) {
+  .iai-top-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .iai-confirm-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .iai-btn-scarta,
+  .iai-btn-conferma {
+    width: 100%;
+    text-align: center;
+  }
+}
