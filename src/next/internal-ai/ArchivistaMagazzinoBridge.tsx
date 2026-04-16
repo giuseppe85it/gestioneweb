@@ -102,7 +102,7 @@ export default function ArchivistaMagazzinoBridge() {
   const [duplicateChoice, setDuplicateChoice] = useState<ArchivistaDuplicateChoice | null>(null);
   const [archiveStatus, setArchiveStatus] = useState<ArchiveStatus>("idle");
   const [archiveError, setArchiveError] = useState<string | null>(null);
-  const [archiveResult, setArchiveResult] = useState<ArchivistaArchiveResult | null>(null);
+  const [, setArchiveResult] = useState<ArchivistaArchiveResult | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
 
   useEffect(() => {
