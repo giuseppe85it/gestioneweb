@@ -9,6 +9,75 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-04-16 separazione componente Libretto nel ramo review reale
+- execution completata nel solo perimetro `src/next/NextInternalAiPage.tsx` + nuovi `src/next/internal-ai/NextEstrazioneLibretto.tsx` e `src/next/internal-ai/next-estrazione-libretto.css`, senza toccare madre, router, backend, writer o barrier;
+- `/next/ia/interna`:
+  - il ramo reale del modale review operativo resta `documentReviewModalState.isOpen && activeDocumentReviewRoute`;
+  - quando la route reale e `Documento mezzo -> Libretto`, il modale monta ora `NextEstrazioneLibretto.tsx`;
+  - gli altri casi del modale continuano a usare il ramo generico gia esistente;
+- separazione UI:
+  - la UI del libretto e stata estratta da `NextInternalAiPage.tsx` in un componente dedicato;
+  - tutti gli stili del ramo sono isolati in `next-estrazione-libretto.css` con prefisso `iai-`;
+  - nessuna logica business nuova introdotta; il componente riusa solo state e handler del parent via props;
+- verifiche eseguite:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/NextEstrazioneLibretto.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - browser su `/next/ia/interna`:
+    - con iniezione locale di stato documentale nel runtime reale della pagina, il caso `Documento mezzo -> Libretto` monta il nuovo componente separato;
+    - un caso `Preventivo fornitore` continua a mostrare il modale generico;
+    - nessun errore console nuovo imputabile alla patch; restano solo i `403` Storage gia preesistenti;
+- stato onesto del ramo:
+  - separazione strutturale del caso `Documento mezzo -> Libretto` nel modale operativo -> `FATTO`
+  - altri rami del modale review operativo -> invariati
+
+## 0.0 Aggiornamento operativo 2026-04-16 fix barrier IA Libretto + audit mappa barrier
+- execution completata nel solo perimetro `src/utils/cloneWriteBarrier.ts`, senza modificare madre o altri file runtime;
+- `/next/ia/libretto`:
+  - resta autorizzato solo per `POST` a `https://estrazione-libretto-7bo6jdsreq-uc.a.run.app`;
+  - il check URL rimuove ora gli slash finali sia lato runtime sia lato costante ammessa;
+  - l'eccezione continua a non aprire altri endpoint, altri moduli o altri metodi;
+- verifiche eseguite:
+  - `npx eslint src/utils/cloneWriteBarrier.ts src/next/NextIALibrettoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - browser reale su `/next/ia/libretto`:
+    - upload file -> `OK`
+    - `Analizza` -> `POST` reale `200` verso `estrazione-libretto`
+    - nessun `[CLONE_NO_WRITE] ... fetch.runtime`
+    - risultati reali visibili
+    - `Salva` non cliccato per evitare scrittura su dataset reale;
+- audit creato:
+  - `docs/audit/AUDIT_CLONEWRITEBARRIER_MAPPA_REALE_2026-04-16_1947.md`
+- mappa barrier:
+  - eccezioni attive censite: 9 famiglie modulo/scope, 15 pattern di route, 1 scoped allowance;
+  - blocchi residui censiti: 16 gruppi;
+  - fragilita residue note: match esatto di `estrazioneDocumenti`, host hardcoded `127.0.0.1` per backend locale Euromecc, scoped allowance IA Magazzino inline non pathname-bound.
+
+## 0.0 Aggiornamento operativo 2026-04-16 IA Libretto NEXT riallineato alla madre
+- execution completata nel solo perimetro `src/next/NextIALibrettoPage.tsx` + `src/utils/cloneWriteBarrier.ts`, senza modificare la madre legacy;
+- `/next/ia/libretto`:
+  - esegue ora la stessa analisi reale della madre verso `https://estrazione-libretto-7bo6jdsreq-uc.a.run.app`;
+  - invia payload `base64Image` + `mimeType: image/jpeg`;
+  - mostra i risultati estratti come campi editabili e non piu come stub read-only;
+  - salva con la stessa pipeline dati della madre;
+- salvataggio finale:
+  - legge `storage/@mezzi_aziendali`;
+  - fa match del mezzo per targa normalizzata;
+  - crea un mezzo fallback se il match non esiste;
+  - carica il file preview su `mezzi_aziendali/<mezzoId>/libretto.jpg`;
+  - esegue `getDownloadURL`;
+  - aggiorna il record mezzo con gli stessi campi logici gia mappati nel legacy, inclusi almeno `assicurazione`, `dataImmatricolazione`, `dataUltimoCollaudo`, `dataScadenzaRevisione`, `librettoUrl`, `librettoStoragePath`;
+  - chiude con `setItemSync("@mezzi_aziendali", mezzi)`;
+- barrier:
+  - apertura stretta solo per `/next/ia/libretto`;
+  - consentiti solo `POST` a `estrazione-libretto`, `storage.uploadString` sotto `mezzi_aziendali/` e `setItemSync("@mezzi_aziendali")`;
+  - nessuna apertura ulteriore su altri dataset, altri path Storage o altri moduli;
+- verifiche eseguite:
+  - `npx eslint src/next/NextIALibrettoPage.tsx src/utils/cloneWriteBarrier.ts` -> `OK`
+  - `npm run build` -> `OK`;
+- stato onesto del ramo:
+  - `/next/ia/libretto` -> `FATTO` sul percorso dati madre
+  - `NEXT IA hub` complessivo -> `in sviluppo`
+
 ## 0.0 Aggiornamento operativo 2026-04-15 Archivista V1 chiusura lato documenti / archiviazione
 - execution completata nel perimetro `NextIAArchivistaPage.tsx`, bridge Archivista sotto `src/next/internal-ai/*`, backend documentale IA separato e `cloneWriteBarrier.ts`, senza toccare madre, writer business post-archivio o verticali fuori V1;
 - `/next/ia/archivista`:

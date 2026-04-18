@@ -19,6 +19,66 @@ La regola corrente da leggere insieme a questo registro e:
 - Ogni patch futura che modifica il clone deve aggiungere una nuova voce in questo registro.
 - Per "modifica del clone" si intende almeno una di queste condizioni:
 
+## 2.0 2026-04-16 - Separazione componente Libretto nel ramo review reale IA interna
+- File runtime toccati:
+  - `src/next/NextInternalAiPage.tsx`
+  - `src/next/internal-ai/NextEstrazioneLibretto.tsx`
+  - `src/next/internal-ai/next-estrazione-libretto.css`
+- Obiettivo:
+  - separare in un componente dedicato la UI del caso reale `Documento mezzo -> Libretto` dentro il modale review operativo di `/next/ia/interna`, senza toccare gli altri rami del dispatcher.
+- Modifiche reali:
+  - creato `NextEstrazioneLibretto.tsx` come componente puro che riceve via props i dati e gli handler gia esistenti nel parent;
+  - creato `next-estrazione-libretto.css` con stile dedicato e prefisso `iai-`;
+  - `NextInternalAiPage.tsx` importa il nuovo componente e lo monta solo nel ramo reale `documentReviewModalState.isOpen && activeDocumentReviewRoute` quando la route attiva e `Documento mezzo -> Libretto`;
+  - il ramo storico inline `renderLibrettoReviewColumns()` e gli altri casi del modale review operativo non sono stati rifatti in questa patch.
+- Verifiche:
+  - `npx eslint src/next/NextInternalAiPage.tsx src/next/internal-ai/NextEstrazioneLibretto.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - browser su `/next/ia/interna` con iniezione locale di stato documentale nel runtime reale:
+    - `Documento mezzo -> Libretto` -> mount del nuovo componente separato nel modale operativo `OK`
+    - `Preventivo fornitore` -> modale generico invariato `OK`
+- Note:
+  - nessun writer nuovo, nessun backend nuovo, nessuna modifica a router o barrier;
+  - restano visibili nel runtime i `403` Storage gia preesistenti e non collegati a questa patch.
+
+## 2.1 2026-04-16 - Fix chirurgico cloneWriteBarrier su IA Libretto
+- File runtime toccati:
+  - `src/utils/cloneWriteBarrier.ts`
+- Obiettivo:
+  - correggere il bug reale emerso nell'audit post-patch di `IA Libretto`, dove il barrier bloccava ancora `fetch.runtime` verso `estrazione-libretto` per mismatch tra URL con slash finale e costante senza slash finale.
+- Modifiche reali:
+  - normalizzato il confronto endpoint di `isAllowedIaLibrettoAnalyzeFetch()` rimuovendo gli slash finali sia dall'URL runtime sia dalla costante ammessa;
+  - nessun allargamento generico del barrier;
+  - nessuna nuova route autorizzata;
+  - nessun nuovo endpoint autorizzato.
+- Verifiche:
+  - `npx eslint src/utils/cloneWriteBarrier.ts src/next/NextIALibrettoPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - browser reale su `/next/ia/libretto`: upload file `OK`, `Analizza` -> `POST` reale `200` verso `estrazione-libretto`, risultati visibili, nessun `[CLONE_NO_WRITE] ... fetch.runtime`
+- Note:
+  - `Salva nei documenti del mezzo` non e stato cliccato in browser per evitare scrittura su dataset reale;
+  - creato audit completo del barrier: `docs/audit/AUDIT_CLONEWRITEBARRIER_MAPPA_REALE_2026-04-16_1947.md`
+
+## 2.2 2026-04-16 - IA Libretto NEXT riallineato alla madre
+- File runtime toccati:
+  - `src/next/NextIALibrettoPage.tsx`
+  - `src/utils/cloneWriteBarrier.ts`
+- Obiettivo:
+  - portare `/next/ia/libretto` a usare la stessa logica reale della madre per analisi e salvataggio, senza toccare `src/pages/IA/IALibretto.tsx`.
+- Modifiche reali:
+  - sostituito il ramo read-only di `handleAnalyze` con la chiamata reale a `https://estrazione-libretto-7bo6jdsreq-uc.a.run.app`;
+  - inviato lo stesso payload della madre: `base64Image` + `mimeType: image/jpeg`;
+  - sostituito il ramo read-only di `handleSave` con la stessa pipeline dati della madre: match mezzo per targa normalizzata, fallback mezzo, upload del preview su `mezzi_aziendali/<mezzoId>/libretto.jpg`, `getDownloadURL`, update del record mezzo e `setItemSync("@mezzi_aziendali", mezzi)`;
+  - mantenuto il dataset finale e i campi downstream gia letti da Dossier, Export, Copertura libretti e Home;
+  - aperta in `cloneWriteBarrier.ts` solo l'eccezione stretta per `/next/ia/libretto`: `POST` a `estrazione-libretto`, `storage.uploadString` su `mezzi_aziendali/` e `setItemSync("@mezzi_aziendali")`.
+- Verifiche:
+  - `npx eslint src/next/NextIALibrettoPage.tsx src/utils/cloneWriteBarrier.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Note:
+  - madre intoccata;
+  - nessun dataset alternativo introdotto;
+  - nessun path Storage alternativo introdotto.
+
 ## 3. 2026-04-15 - Importa documenti layout approvato allineato
 - File runtime toccati:
   - `src/next/NextIAArchivistaPage.tsx`

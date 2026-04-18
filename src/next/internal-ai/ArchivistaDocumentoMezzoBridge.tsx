@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   applyArchivistaVehicleUpdate,
   archiveArchivistaDocumentRecord,
@@ -12,14 +13,25 @@ import {
   type ArchivistaDuplicateChoice,
 } from "./ArchivistaArchiveClient";
 import { getInternalAiServerAdapterBaseUrl } from "./internalAiServerRepoUnderstandingClient";
+import NextEstrazioneLibretto from "./NextEstrazioneLibretto";
+import { NEXT_IA_DOCUMENTI_PATH } from "../nextStructuralPaths";
+import { setItemSync } from "../../utils/storageSync";
+import { buildOptimizedImageDebug } from "./utils/imagePreprocess";
+import { extractVinCandidateFromText, normalizeVinCandidate } from "./utils/librettoVinEnhance";
 
 const DOCUMENT_ANALYZE_PATH = "/internal-ai-backend/documents/documento-mezzo-analyze";
+const IA_LIBRETTO_ANALYZE_ENDPOINT = "https://estrazione-libretto-7bo6jdsreq-uc.a.run.app";
 
-type ArchivistaDocumentoMezzoSubtype =
+export type ArchivistaDocumentoMezzoSubtype =
   | "libretto"
   | "assicurazione"
   | "revisione"
   | "collaudo";
+
+type ArchivistaLibrettoDestinationOption = {
+  destination: string;
+  label: string;
+};
 
 type ArchivistaDocumentoMezzoAnalysis = {
   stato?: string;
@@ -38,6 +50,22 @@ type ArchivistaDocumentoMezzoAnalysis = {
   dataScadenza?: string;
   dataUltimoCollaudo?: string;
   dataScadenzaRevisione?: string;
+  ultimoCollaudo?: string;
+  categoria?: string;
+  genereVeicolo?: string;
+  tipoVeicolo?: string;
+  colore?: string;
+  pesoTotale?: string;
+  cilindrata?: string;
+  cilindrica?: string;
+  primaImmatricolazione?: string;
+  scadenzaRevisione?: string;
+  immatricolazione?: string;
+  immatricolato?: string;
+  luogoImmatricolazione?: string;
+  revisione?: string;
+  intestatario?: string;
+  detentoreDenominazione?: string;
   testo?: string;
   riassuntoBreve?: string;
   avvisi?: string[];
@@ -66,6 +94,47 @@ type VehicleOption = {
 type RawVehicle = Record<string, unknown> & {
   id?: string;
   targa?: string;
+  categoria?: string;
+  tipo?: string;
+};
+
+type ArchivistaNewVehicleMode = "esistente" | "nuovo";
+type ArchivistaLibrettoDebugImages = {
+  finalUrl: string | null;
+  originalUrl: string | null;
+  preprocessUrl: string | null;
+  vinUrl: string | null;
+};
+
+type ArchivistaLibrettoDebugTrace = {
+  rawUltimoCollaudo: string;
+  mappedDataUltimoCollaudo: string;
+  propDataUltimoCollaudo: string;
+};
+
+type ArchivistaLibrettoBackendDebugEntry = {
+  sentImageUrl: string | null;
+  rawUltimoCollaudo: string;
+  rawDataUltimoCollaudo: string;
+  rawDataScadenzaRevisione: string;
+  rawTarga: string;
+  rawMarca: string;
+  rawModello: string;
+  rawTelaio: string;
+  rawProprietario: string;
+  rawAssicurazione: string;
+  rawDataImmatricolazione: string;
+  rawColore: string;
+  rawCategoria: string;
+  rawCilindrata: string;
+  rawPotenza: string;
+  rawPesoTotale: string;
+};
+
+type ArchivistaLibrettoBackendDebugState = {
+  originale: ArchivistaLibrettoBackendDebugEntry | null;
+  preprocessata: ArchivistaLibrettoBackendDebugEntry | null;
+  activeMode: "ORIGINALE" | "PREPROCESSATA";
 };
 
 const SUBTYPE_OPTIONS: Array<{
@@ -103,6 +172,110 @@ function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }>
   });
 }
 
+function normalizeLibrettoDateValue(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return "";
+  }
+
+  const match = text.match(/(\d{1,2})[.\-/ ](\d{1,2})[.\-/ ](\d{4})/);
+  if (!match) {
+    return text;
+  }
+
+  const [, day, month, year] = match;
+  return `${day.padStart(2, "0")} ${month.padStart(2, "0")} ${year}`;
+}
+
+function containsLibrettoDateValue(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return false;
+  }
+
+  return /(\d{1,2})[.\-/ ](\d{1,2})[.\-/ ](\d{4})/.test(text);
+}
+
+function extractLibrettoPlaceDateValue(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return "";
+  }
+
+  return /[A-Za-zÀ-ÖØ-öø-ÿ]{3,}[^0-9]{0,20}\d{1,2}[.\-/ ]\d{1,2}[.\-/ ]\d{4}/.test(text)
+    ? normalizeLibrettoDateValue(text)
+    : "";
+}
+
+function resolveLibrettoUltimoCollaudoValue(record: Record<string, unknown>) {
+  const preferredSources = [
+    record.dataUltimoCollaudo,
+    record.ultimoCollaudo,
+    record.revisione,
+    record.collaudo,
+    record.ultimoControllo,
+  ];
+
+  for (const source of preferredSources) {
+    const placeDate = extractLibrettoPlaceDateValue(source);
+    if (placeDate) {
+      return placeDate;
+    }
+  }
+
+  for (const source of preferredSources) {
+    if (!containsLibrettoDateValue(source)) {
+      continue;
+    }
+    const normalizedDate = normalizeLibrettoDateValue(source);
+    if (normalizedDate) {
+      return normalizedDate;
+    }
+  }
+
+  return "";
+}
+
+function normalizeLibrettoAnalysisDateFields(
+  analysis: ArchivistaDocumentoMezzoAnalysis,
+): ArchivistaDocumentoMezzoAnalysis {
+  const normalizedImmatricolazione =
+    normalizeLibrettoDateValue(analysis.dataImmatricolazione) ||
+    normalizeLibrettoDateValue(analysis.immatricolazione) ||
+    normalizeLibrettoDateValue(analysis.primaImmatricolazione);
+  const normalizedUltimoCollaudo = resolveLibrettoUltimoCollaudoValue(
+    analysis as Record<string, unknown>,
+  );
+  const normalizedScadenzaRevisione =
+    normalizeLibrettoDateValue(analysis.dataScadenzaRevisione) ||
+    normalizeLibrettoDateValue(analysis.scadenzaRevisione) ||
+    normalizeLibrettoDateValue(analysis.dataScadenza);
+
+  return {
+    ...analysis,
+    dataImmatricolazione: normalizedImmatricolazione,
+    primaImmatricolazione:
+      normalizeLibrettoDateValue(analysis.primaImmatricolazione) || normalizedImmatricolazione,
+    immatricolazione:
+      normalizeLibrettoDateValue(analysis.immatricolazione) || normalizedImmatricolazione,
+    dataUltimoCollaudo: normalizedUltimoCollaudo,
+    ultimoCollaudo: normalizedUltimoCollaudo,
+    revisione: normalizeLibrettoDateValue(analysis.revisione),
+    dataScadenzaRevisione: normalizedScadenzaRevisione,
+    scadenzaRevisione:
+      normalizeLibrettoDateValue(analysis.scadenzaRevisione) || normalizedScadenzaRevisione,
+    dataScadenza: normalizeLibrettoDateValue(analysis.dataScadenza) || normalizedScadenzaRevisione,
+    dataDocumento:
+      normalizeLibrettoDateValue(analysis.dataDocumento) ||
+      normalizedImmatricolazione ||
+      normalizedUltimoCollaudo ||
+      normalizedScadenzaRevisione,
+    immatricolato: normalizeLibrettoDateValue(
+      (analysis as Record<string, unknown>).immatricolato,
+    ),
+  };
+}
+
 function normalizeAnalysisPayload(payload: unknown): ArchivistaDocumentoMezzoAnalysis | null {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -114,6 +287,375 @@ function normalizeAnalysisPayload(payload: unknown): ArchivistaDocumentoMezzoAna
   }
 
   return payload as ArchivistaDocumentoMezzoAnalysis;
+}
+
+function buildArchivistaLibrettoBackendDebugEntry(
+  rawPayload: unknown,
+  sentImageUrl: string | null,
+): ArchivistaLibrettoBackendDebugEntry {
+  const rawRecord =
+    rawPayload && typeof rawPayload === "object" && "data" in rawPayload
+      ? ((rawPayload as { data?: unknown }).data as Record<string, unknown> | null)
+      : (rawPayload as Record<string, unknown> | null);
+
+  return {
+    sentImageUrl,
+    rawUltimoCollaudo:
+      rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.ultimoCollaudo) : "",
+    rawDataUltimoCollaudo:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.dataUltimoCollaudo)
+        : "",
+    rawDataScadenzaRevisione:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.dataScadenzaRevisione) ||
+          normalizeText(rawRecord.scadenzaRevisione)
+        : "",
+    rawTarga: rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.targa) : "",
+    rawMarca: rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.marca) : "",
+    rawModello: rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.modello) : "",
+    rawTelaio:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.telaio) || normalizeText(rawRecord.vin)
+        : "",
+    rawProprietario:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.proprietario) ||
+          normalizeText(rawRecord.intestatario) ||
+          normalizeText(rawRecord.detentoreDenominazione)
+        : "",
+    rawAssicurazione:
+      rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.assicurazione) : "",
+    rawDataImmatricolazione:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.dataImmatricolazione) ||
+          normalizeText(rawRecord.immatricolazione) ||
+          normalizeText(rawRecord.primaImmatricolazione)
+        : "",
+    rawColore: rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.colore) : "",
+    rawCategoria:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.categoria) ||
+          normalizeText(rawRecord.genereVeicolo) ||
+          normalizeText(rawRecord.tipoVeicolo)
+        : "",
+    rawCilindrata:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.cilindrata) || normalizeText(rawRecord.cilindrica)
+        : "",
+    rawPotenza:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.potenza) || normalizeText(rawRecord.kw)
+        : "",
+    rawPesoTotale:
+      rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.pesoTotale) : "",
+  };
+}
+
+function extractLibrettoRawRecord(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  return "data" in payload && payload.data && typeof payload.data === "object"
+    ? (payload.data as Record<string, unknown>)
+    : (payload as Record<string, unknown>);
+}
+
+function pickFirstValidValue(...values: Array<unknown>) {
+  for (const value of values) {
+    const normalized = normalizeText(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+function mergeArchivistaLibrettoRawRecords(
+  rawOriginal: Record<string, unknown> | null,
+  rawEnhanced: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...(rawOriginal ?? {}),
+  };
+
+  const assignWithOriginalPriority = (targetKey: string, ...sources: Array<unknown>) => {
+    const nextValue = pickFirstValidValue(merged[targetKey], ...sources);
+    if (nextValue) {
+      merged[targetKey] = nextValue;
+    }
+  };
+  const assignWithEnhancedPriority = (
+    targetKey: string,
+    enhancedCandidates: Array<unknown>,
+    originalCandidates: Array<unknown>,
+  ) => {
+    const enhancedValue = pickFirstValidValue(...enhancedCandidates);
+    const originalValue = pickFirstValidValue(...originalCandidates);
+    const nextValue = enhancedValue || originalValue;
+    if (nextValue) {
+      merged[targetKey] = nextValue;
+    }
+  };
+
+  assignWithOriginalPriority(
+    "ultimoCollaudo",
+    rawOriginal?.ultimoCollaudo,
+    rawOriginal?.dataUltimoCollaudo,
+    rawOriginal?.revisione,
+    rawEnhanced?.ultimoCollaudo,
+    rawEnhanced?.dataUltimoCollaudo,
+    rawEnhanced?.revisione,
+  );
+  assignWithOriginalPriority(
+    "dataUltimoCollaudo",
+    rawOriginal?.dataUltimoCollaudo,
+    rawOriginal?.ultimoCollaudo,
+    rawOriginal?.revisione,
+    rawEnhanced?.dataUltimoCollaudo,
+    rawEnhanced?.ultimoCollaudo,
+    rawEnhanced?.revisione,
+  );
+  assignWithOriginalPriority(
+    "dataScadenzaRevisione",
+    rawOriginal?.dataScadenzaRevisione,
+    rawOriginal?.scadenzaRevisione,
+    rawOriginal?.dataScadenza,
+    rawOriginal?.scadenza,
+    rawEnhanced?.dataScadenzaRevisione,
+    rawEnhanced?.scadenzaRevisione,
+    rawEnhanced?.dataScadenza,
+    rawEnhanced?.scadenza,
+  );
+  assignWithOriginalPriority(
+    "dataImmatricolazione",
+    rawOriginal?.dataImmatricolazione,
+    rawOriginal?.immatricolazione,
+    rawOriginal?.primaImmatricolazione,
+    rawEnhanced?.dataImmatricolazione,
+    rawEnhanced?.immatricolazione,
+    rawEnhanced?.primaImmatricolazione,
+  );
+  assignWithOriginalPriority(
+    "immatricolazione",
+    rawOriginal?.immatricolazione,
+    rawOriginal?.dataImmatricolazione,
+    rawOriginal?.primaImmatricolazione,
+    rawEnhanced?.immatricolazione,
+    rawEnhanced?.dataImmatricolazione,
+    rawEnhanced?.primaImmatricolazione,
+  );
+  assignWithOriginalPriority(
+    "primaImmatricolazione",
+    rawOriginal?.primaImmatricolazione,
+    rawOriginal?.dataImmatricolazione,
+    rawOriginal?.immatricolazione,
+    rawEnhanced?.primaImmatricolazione,
+    rawEnhanced?.dataImmatricolazione,
+    rawEnhanced?.immatricolazione,
+  );
+
+  assignWithEnhancedPriority(
+    "telaio",
+    [rawEnhanced?.telaio, rawEnhanced?.vin, rawEnhanced?.numeroTelaio],
+    [rawOriginal?.telaio, rawOriginal?.vin, rawOriginal?.numeroTelaio],
+  );
+  assignWithEnhancedPriority(
+    "vin",
+    [rawEnhanced?.vin, rawEnhanced?.telaio],
+    [rawOriginal?.vin, rawOriginal?.telaio],
+  );
+
+  assignWithOriginalPriority("targa", rawOriginal?.targa, rawEnhanced?.targa);
+  assignWithOriginalPriority("marca", rawOriginal?.marca, rawEnhanced?.marca);
+  assignWithOriginalPriority("modello", rawOriginal?.modello, rawEnhanced?.modello);
+  assignWithOriginalPriority("assicurazione", rawOriginal?.assicurazione, rawEnhanced?.assicurazione);
+  assignWithOriginalPriority("colore", rawOriginal?.colore, rawEnhanced?.colore);
+  assignWithOriginalPriority("categoria", rawOriginal?.categoria, rawEnhanced?.categoria);
+  assignWithOriginalPriority(
+    "genereVeicolo",
+    rawOriginal?.genereVeicolo,
+    rawOriginal?.tipoVeicolo,
+    rawEnhanced?.genereVeicolo,
+    rawEnhanced?.tipoVeicolo,
+  );
+  assignWithOriginalPriority(
+    "tipoVeicolo",
+    rawOriginal?.tipoVeicolo,
+    rawOriginal?.genereVeicolo,
+    rawEnhanced?.tipoVeicolo,
+    rawEnhanced?.genereVeicolo,
+  );
+  assignWithOriginalPriority("cilindrata", rawOriginal?.cilindrata, rawOriginal?.cilindrica, rawEnhanced?.cilindrata, rawEnhanced?.cilindrica);
+  assignWithOriginalPriority("cilindrica", rawOriginal?.cilindrica, rawOriginal?.cilindrata, rawEnhanced?.cilindrica, rawEnhanced?.cilindrata);
+  assignWithOriginalPriority("potenza", rawOriginal?.potenza, rawOriginal?.kw, rawEnhanced?.potenza, rawEnhanced?.kw);
+  assignWithOriginalPriority("pesoTotale", rawOriginal?.pesoTotale, rawEnhanced?.pesoTotale);
+  assignWithOriginalPriority("proprietario", rawOriginal?.proprietario, rawOriginal?.intestatario, rawEnhanced?.proprietario, rawEnhanced?.intestatario);
+  assignWithOriginalPriority("intestatario", rawOriginal?.intestatario, rawOriginal?.proprietario, rawEnhanced?.intestatario, rawEnhanced?.proprietario);
+  assignWithOriginalPriority(
+    "detentoreDenominazione",
+    rawOriginal?.detentoreDenominazione,
+    rawOriginal?.proprietario,
+    rawEnhanced?.detentoreDenominazione,
+    rawEnhanced?.proprietario,
+  );
+
+  return merged;
+}
+
+function normalizeLibrettoAnalyzePayload(payload: unknown): ArchivistaDocumentoMezzoAnalysis | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const success = record.success;
+  if (success === false) {
+    const errorMessage =
+      typeof record.error === "string" && record.error.trim()
+        ? record.error.trim()
+        : "Errore backend durante l'analisi del libretto.";
+    throw new Error(errorMessage);
+  }
+
+  const rawData =
+    record.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : record;
+
+  const targa = normalizeText(rawData.targa).toUpperCase();
+  const marca = normalizeText(rawData.marca);
+  const modello = normalizeText(rawData.modello);
+  const proprietario =
+    normalizeText(rawData.proprietario) ||
+    normalizeText(rawData.intestatario) ||
+    normalizeText(rawData.detentoreDenominazione);
+  const dataImmatricolazione =
+    normalizeLibrettoDateValue(rawData.dataImmatricolazione) ||
+    normalizeLibrettoDateValue(rawData.immatricolazione) ||
+    normalizeLibrettoDateValue(rawData.primaImmatricolazione);
+  const dataUltimoCollaudo = resolveLibrettoUltimoCollaudoValue(rawData);
+  const dataScadenzaRevisione =
+    normalizeLibrettoDateValue(rawData.dataScadenzaRevisione) ||
+    normalizeLibrettoDateValue(rawData.scadenzaRevisione) ||
+    normalizeLibrettoDateValue(rawData.dataScadenza) ||
+    normalizeLibrettoDateValue(rawData.scadenza);
+  const categoria =
+    normalizeText(rawData.categoria) ||
+    normalizeText(rawData.genereVeicolo) ||
+    normalizeText(rawData.tipoVeicolo);
+  const analysis: ArchivistaDocumentoMezzoAnalysis = {
+    ...Object.fromEntries(Object.entries(rawData).map(([key, value]) => [key, typeof value === "number" ? String(value) : value])),
+    stato: "success",
+    tipoDocumento: "libretto",
+    sottotipoDocumento: "libretto",
+    targa,
+    marca,
+    modello,
+    telaio: normalizeText(rawData.telaio),
+    proprietario,
+    intestatario: normalizeText(rawData.intestatario) || proprietario,
+    detentoreDenominazione: normalizeText(rawData.detentoreDenominazione) || proprietario,
+    assicurazione: normalizeText(rawData.assicurazione),
+    dataImmatricolazione,
+    primaImmatricolazione:
+      normalizeLibrettoDateValue(rawData.primaImmatricolazione) || dataImmatricolazione,
+    immatricolazione: normalizeLibrettoDateValue(rawData.immatricolazione) || dataImmatricolazione,
+    dataUltimoCollaudo,
+    ultimoCollaudo: dataUltimoCollaudo,
+    revisione: normalizeLibrettoDateValue(rawData.revisione),
+    dataScadenzaRevisione,
+    scadenzaRevisione:
+      normalizeLibrettoDateValue(rawData.scadenzaRevisione) || dataScadenzaRevisione,
+    dataScadenza: normalizeLibrettoDateValue(rawData.dataScadenza) || dataScadenzaRevisione,
+    colore: normalizeText(rawData.colore),
+    categoria,
+    genereVeicolo: normalizeText(rawData.genereVeicolo) || categoria,
+    tipoVeicolo: normalizeText(rawData.tipoVeicolo) || normalizeText(rawData.genereVeicolo) || categoria,
+    pesoTotale: normalizeText(rawData.pesoTotale),
+    cilindrata: normalizeText(rawData.cilindrata) || normalizeText(rawData.cilindrica),
+    cilindrica: normalizeText(rawData.cilindrica) || normalizeText(rawData.cilindrata),
+    dataDocumento:
+      normalizeLibrettoDateValue(rawData.dataDocumento) ||
+      dataImmatricolazione ||
+      dataUltimoCollaudo ||
+      dataScadenzaRevisione,
+    testo: normalizeText(rawData.testo),
+    riassuntoBreve:
+      normalizeText(rawData.riassuntoBreve) ||
+      [
+        targa ? `Targa ${targa}` : "",
+        [marca, modello].filter(Boolean).join(" "),
+        proprietario ? `intestatario ${proprietario}` : "",
+        dataImmatricolazione ? `immatricolazione ${dataImmatricolazione}` : "",
+        dataScadenzaRevisione ? `scadenza revisione ${dataScadenzaRevisione}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+  };
+
+  const missing: string[] = [];
+  if (!analysis.targa) {
+    missing.push("Targa mezzo");
+  }
+  if (!analysis.telaio) {
+    missing.push("Telaio / VIN");
+  }
+  if (!analysis.dataImmatricolazione) {
+    missing.push("Data immatricolazione");
+  }
+  if (!analysis.dataScadenzaRevisione) {
+    missing.push("Scadenza revisione");
+  }
+  analysis.campiMancanti = missing;
+  return normalizeLibrettoAnalysisDateFields(analysis);
+}
+
+function normalizeArchivistaLibrettoAnalysisState(
+  analysis: ArchivistaDocumentoMezzoAnalysis | null,
+): ArchivistaDocumentoMezzoAnalysis | null {
+  if (!analysis) {
+    return analysis;
+  }
+
+  return normalizeLibrettoAnalysisDateFields(analysis);
+}
+
+function resolveValidVinFromAnalysis(analysis: ArchivistaDocumentoMezzoAnalysis | null) {
+  if (!analysis) {
+    return null;
+  }
+
+  const record = analysis as Record<string, unknown>;
+  const directCandidates = [
+    analysis.telaio,
+    typeof record.vin === "string" ? record.vin : null,
+    typeof record.numeroTelaio === "string" ? record.numeroTelaio : null,
+    typeof record.chassisNo === "string" ? record.chassisNo : null,
+    typeof record.numeroChassis === "string" ? record.numeroChassis : null,
+  ];
+
+  for (const candidate of directCandidates) {
+    const normalized = normalizeVinCandidate(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const textCandidates = [
+    typeof record.testo === "string" ? record.testo : null,
+    typeof record.riassuntoBreve === "string" ? record.riassuntoBreve : null,
+  ];
+
+  for (const candidate of textCandidates) {
+    const normalized = extractVinCandidateFromText(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
 }
 
 function getDocumentAnalyzeUrl(): string | null {
@@ -141,30 +683,310 @@ function toVehicleOptions(rawVehicles: Array<Record<string, unknown>>): VehicleO
     .sort((left, right) => left.targa.localeCompare(right.targa, "it"));
 }
 
-function buildMissingFields(analysis: ArchivistaDocumentoMezzoAnalysis | null): string[] {
+function buildMissingFields(
+  analysis: ArchivistaDocumentoMezzoAnalysis | null,
+  subtype: ArchivistaDocumentoMezzoSubtype,
+): string[] {
   if (!analysis) {
     return [];
-  }
-
-  if (Array.isArray(analysis.campiMancanti) && analysis.campiMancanti.length > 0) {
-    return analysis.campiMancanti.filter(Boolean);
   }
 
   const missing: string[] = [];
   if (!normalizeText(analysis.targa)) {
     missing.push("Targa mezzo");
   }
+  if (subtype === "libretto") {
+    if (!normalizeText(analysis.telaio)) {
+      missing.push("Telaio / VIN");
+    }
+    if (!normalizeText(analysis.dataImmatricolazione) && !normalizeText(analysis.primaImmatricolazione)) {
+      missing.push("Data immatricolazione");
+    }
+    if (!normalizeText(analysis.dataScadenzaRevisione) && !normalizeText(analysis.scadenzaRevisione)) {
+      missing.push("Scadenza revisione");
+    }
+    return missing;
+  }
+
   if (!normalizeText(analysis.dataDocumento)) {
     missing.push("Data documento");
   }
   return missing;
 }
 
-export default function ArchivistaDocumentoMezzoBridge() {
-  const [selectedSubtype, setSelectedSubtype] =
-    useState<ArchivistaDocumentoMezzoSubtype>("libretto");
+function readArchivistaLibrettoFieldValue(
+  analysis: ArchivistaDocumentoMezzoAnalysis | null,
+  field: string,
+) {
+  if (!analysis) {
+    return "";
+  }
+
+  const record = analysis as unknown as Record<string, unknown>;
+  const directValue = record[field];
+  if (typeof directValue === "string" || typeof directValue === "number") {
+    return String(directValue);
+  }
+
+  const aliases: Record<string, string[]> = {
+    categoria: ["categoria", "genereVeicolo", "tipoVeicolo"],
+    intestatario: ["intestatario", "proprietario", "detentoreDenominazione"],
+    detentoreDenominazione: ["proprietario", "intestatario", "detentoreDenominazione"],
+    detentoreComune: ["detentoreComune", "comune"],
+    detentoreIndirizzo: ["detentoreIndirizzo", "indirizzo"],
+    detentoreAfsAvs: ["detentoreAfsAvs", "numeroAvs"],
+    detentoreStatoOrigine: ["detentoreStatoOrigine", "statoOrigine"],
+    genereVeicolo: ["genereVeicolo", "tipoVeicolo"],
+    tipoVeicolo: ["tipoVeicolo", "genereVeicolo"],
+    approvazioneTipo: ["approvazioneTipo", "numeroApprovazioneTipo"],
+    numeroMatricolaTipo: ["numeroMatricolaTipo", "matricolaTipo"],
+    primaImmatricolazione: ["primaImmatricolazione", "dataImmatricolazione"],
+    dataScadenzaRevisione: ["dataScadenzaRevisione", "scadenzaRevisione", "dataScadenza"],
+    scadenzaRevisione: ["scadenzaRevisione", "dataScadenzaRevisione", "dataScadenza"],
+    dataUltimoCollaudo: ["dataUltimoCollaudo", "ultimoCollaudo", "revisione"],
+    luogoImmatricolazione: ["luogoImmatricolazione", "luogo"],
+    immatricolato: ["immatricolato", "dataDocumento"],
+  };
+
+  for (const alias of aliases[field] ?? []) {
+    const value = record[alias];
+    if (typeof value === "string" || typeof value === "number") {
+      return String(value);
+    }
+  }
+
+  return "";
+}
+
+function buildArchivistaVehicleCategoryOptions(rawVehicles: RawVehicle[]) {
+  const seededOptions = [
+    "motrice",
+    "trattore stradale",
+    "rimorchio",
+    "semirimorchio",
+    "furgone",
+    "autovettura",
+    "altro",
+  ];
+
+  const dynamicOptions = rawVehicles
+    .map((entry) => normalizeText(entry.categoria) || normalizeText(entry.tipo))
+    .filter(Boolean);
+
+  return Array.from(new Set([...seededOptions, ...dynamicOptions])).sort((left, right) =>
+    left.localeCompare(right, "it", { sensitivity: "base" }),
+  );
+}
+
+function buildArchivistaNewVehicleRecord(args: {
+  analysis: ArchivistaDocumentoMezzoAnalysis;
+  vehicleId?: string;
+  archiveFileUrl?: string | null;
+  archiveFileStoragePath?: string | null;
+}) {
+  const nowId =
+    args.vehicleId ||
+    (typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `MEZZO-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+  const categoria =
+    normalizeText((args.analysis as Record<string, unknown>).categoria) ||
+    normalizeText((args.analysis as Record<string, unknown>).genereVeicolo) ||
+    normalizeText((args.analysis as Record<string, unknown>).tipoVeicolo);
+  const marca = normalizeText(args.analysis.marca);
+  const modello = normalizeText(args.analysis.modello);
+  const dataImmatricolazione = normalizeLibrettoDateValue(
+    (args.analysis as Record<string, unknown>).primaImmatricolazione || args.analysis.dataImmatricolazione,
+  );
+
+  return {
+    id: nowId,
+    fotoUrl: null,
+    tipo: categoria || "motrice",
+    categoria,
+    targa: normalizeText(args.analysis.targa).toUpperCase().replace(/\s+/g, ""),
+    marca,
+    modello,
+    telaio: normalizeText(args.analysis.telaio),
+    colore: normalizeText((args.analysis as Record<string, unknown>).colore),
+    cilindrata: normalizeText((args.analysis as Record<string, unknown>).cilindrata),
+    potenza: normalizeText((args.analysis as Record<string, unknown>).potenza),
+    massaComplessiva: normalizeText((args.analysis as Record<string, unknown>).pesoTotale),
+    proprietario:
+      normalizeText((args.analysis as Record<string, unknown>).intestatario) ||
+      normalizeText(args.analysis.proprietario),
+    assicurazione: normalizeText(args.analysis.assicurazione),
+    dataImmatricolazione,
+    dataScadenzaRevisione:
+      normalizeText((args.analysis as Record<string, unknown>).scadenzaRevisione) ||
+      normalizeText(args.analysis.dataScadenzaRevisione) ||
+      normalizeText(args.analysis.dataScadenza),
+    dataUltimoCollaudo: normalizeText(args.analysis.dataUltimoCollaudo),
+    manutenzioneProgrammata: false,
+    manutenzioneDataInizio: "",
+    manutenzioneDataFine: "",
+    manutenzioneKmMax: "",
+    manutenzioneContratto: "",
+    note: normalizeText((args.analysis as Record<string, unknown>).note),
+    autistaId: null,
+    autistaNome: null,
+    marcaModello: [marca, modello].filter(Boolean).join(" "),
+    anno: dataImmatricolazione ? dataImmatricolazione.split(".").at(-1) ?? "" : "",
+    genereVeicolo:
+      normalizeText((args.analysis as Record<string, unknown>).genereVeicolo) ||
+      normalizeText((args.analysis as Record<string, unknown>).tipoVeicolo),
+    primaImmatricolazione: normalizeText((args.analysis as Record<string, unknown>).primaImmatricolazione),
+    librettoUrl: args.archiveFileUrl ?? null,
+    librettoStoragePath: args.archiveFileStoragePath ?? null,
+  } satisfies RawVehicle;
+}
+
+function buildArchivistaLibrettoVehicleUpdateFields(
+  mezzo: RawVehicle | null,
+  analysis: ArchivistaDocumentoMezzoAnalysis | null,
+) {
+  if (!mezzo || !analysis) {
+    return [];
+  }
+
+  const normalizedAnalysis = {
+    targa: normalizeText(analysis.targa).toUpperCase().replace(/\s+/g, ""),
+    marca: normalizeText(analysis.marca),
+    modello: normalizeText(analysis.modello),
+    telaio: normalizeText(analysis.telaio),
+    proprietario:
+      normalizeText(analysis.proprietario) ||
+      normalizeText(analysis.intestatario) ||
+      normalizeText(analysis.detentoreDenominazione),
+    assicurazione: normalizeText(analysis.assicurazione),
+    dataImmatricolazione:
+      normalizeText(analysis.dataImmatricolazione) || normalizeText(analysis.primaImmatricolazione),
+    dataUltimoCollaudo:
+      normalizeText(analysis.dataUltimoCollaudo) ||
+      normalizeText(analysis.ultimoCollaudo) ||
+      normalizeText(analysis.revisione),
+    dataScadenzaRevisione:
+      normalizeText(analysis.dataScadenzaRevisione) ||
+      normalizeText(analysis.scadenzaRevisione) ||
+      normalizeText(analysis.dataScadenza),
+    colore: normalizeText(analysis.colore),
+    categoria:
+      normalizeText(analysis.categoria) ||
+      normalizeText(analysis.genereVeicolo) ||
+      normalizeText(analysis.tipoVeicolo),
+    genereVeicolo:
+      normalizeText(analysis.genereVeicolo) ||
+      normalizeText(analysis.tipoVeicolo) ||
+      normalizeText(analysis.categoria),
+  };
+
+  const candidates = [
+    { key: "targa", label: "Targa", nextValue: normalizedAnalysis.targa },
+    { key: "marca", label: "Marca", nextValue: normalizedAnalysis.marca },
+    { key: "modello", label: "Modello", nextValue: normalizedAnalysis.modello },
+    { key: "telaio", label: "Telaio", nextValue: normalizedAnalysis.telaio },
+    { key: "proprietario", label: "Proprietario", nextValue: normalizedAnalysis.proprietario },
+    { key: "assicurazione", label: "Assicurazione", nextValue: normalizedAnalysis.assicurazione },
+    {
+      key: "dataImmatricolazione",
+      label: "Data immatricolazione",
+      nextValue: normalizedAnalysis.dataImmatricolazione,
+    },
+    {
+      key: "dataUltimoCollaudo",
+      label: "Data ultimo collaudo",
+      nextValue: normalizedAnalysis.dataUltimoCollaudo,
+    },
+    {
+      key: "dataScadenzaRevisione",
+      label: "Scadenza revisione",
+      nextValue: normalizedAnalysis.dataScadenzaRevisione,
+    },
+    { key: "colore", label: "Colore", nextValue: normalizedAnalysis.colore },
+    { key: "categoria", label: "Categoria", nextValue: normalizedAnalysis.categoria },
+    { key: "genereVeicolo", label: "Genere veicolo", nextValue: normalizedAnalysis.genereVeicolo },
+  ];
+
+  return candidates.filter((field) => {
+    const nextValue = normalizeText(field.nextValue);
+    if (!nextValue) {
+      return false;
+    }
+    const currentValue = normalizeText(mezzo[field.key]);
+    return currentValue !== nextValue;
+  });
+}
+
+async function applyArchivistaLibrettoVehicleUpdate(args: {
+  mezzoId: string;
+  analysis: ArchivistaDocumentoMezzoAnalysis;
+}) {
+  const mezzi = await readArchivistaVehicles();
+  const index = mezzi.findIndex((entry) => normalizeText(entry.id) === args.mezzoId);
+  if (index < 0) {
+    throw new Error("Mezzo non trovato per l'aggiornamento confermato.");
+  }
+
+  const current = { ...(mezzi[index] as RawVehicle) };
+  const appliedFields = buildArchivistaLibrettoVehicleUpdateFields(current, args.analysis);
+  if (!appliedFields.length) {
+    return { appliedFields };
+  }
+
+  appliedFields.forEach((field) => {
+    current[field.key] = normalizeText((args.analysis as Record<string, unknown>)[field.key]) || field.nextValue;
+  });
+
+  if (normalizeText(current.marca) || normalizeText(current.modello)) {
+    current.marcaModello = [normalizeText(current.marca), normalizeText(current.modello)]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const next = [...mezzi];
+  next[index] = current;
+  await setItemSync("@mezzi_aziendali", next);
+  return { appliedFields };
+}
+
+type ArchivistaDocumentoMezzoBridgeProps = {
+  destinationOptions?: ArchivistaLibrettoDestinationOption[];
+  onSelectDestination?: (destination: string) => void;
+  onSubtypeChange?: (subtype: ArchivistaDocumentoMezzoSubtype) => void;
+  selectedSubtype?: ArchivistaDocumentoMezzoSubtype;
+};
+
+export default function ArchivistaDocumentoMezzoBridge({
+  destinationOptions = [],
+  onSelectDestination,
+  onSubtypeChange,
+  selectedSubtype: selectedSubtypeProp = "libretto",
+}: ArchivistaDocumentoMezzoBridgeProps) {
+  const navigate = useNavigate();
+  const selectedSubtype = selectedSubtypeProp;
+  const [isLibrettoDestinationMenuOpen, setIsLibrettoDestinationMenuOpen] = useState(false);
+  const [mezzoMode, setMezzoMode] = useState<ArchivistaNewVehicleMode>("esistente");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [optimizeImageForExtraction, setOptimizeImageForExtraction] = useState(true);
+  const [librettoDebugImages, setLibrettoDebugImages] = useState<ArchivistaLibrettoDebugImages>({
+    finalUrl: null,
+    originalUrl: null,
+    preprocessUrl: null,
+    vinUrl: null,
+  });
+  const [librettoDebugTrace, setLibrettoDebugTrace] = useState<ArchivistaLibrettoDebugTrace>({
+    rawUltimoCollaudo: "",
+    mappedDataUltimoCollaudo: "",
+    propDataUltimoCollaudo: "",
+  });
+  const [librettoBackendDebug, setLibrettoBackendDebug] =
+    useState<ArchivistaLibrettoBackendDebugState>({
+      originale: null,
+      preprocessata: null,
+      activeMode: "PREPROCESSATA",
+    });
+  const [vinOptimizationUsed, setVinOptimizationUsed] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [analysis, setAnalysis] = useState<ArchivistaDocumentoMezzoAnalysis | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -180,6 +1002,52 @@ export default function ArchivistaDocumentoMezzoBridge() {
   const [archiveResult, setArchiveResult] = useState<ArchivistaArchiveResult | null>(null);
   const [applyVehicleUpdateChoice, setApplyVehicleUpdateChoice] = useState<boolean>(false);
   const [vehicleUpdateMessage, setVehicleUpdateMessage] = useState<string | null>(null);
+  const [librettoCompletionMessage, setLibrettoCompletionMessage] = useState<string | null>(null);
+  const [librettoResetKey, setLibrettoResetKey] = useState(0);
+
+  const resetLibrettoFlow = (options?: { preserveCompletionMessage?: boolean }) => {
+    if (!options?.preserveCompletionMessage) {
+      setLibrettoCompletionMessage(null);
+    }
+    setIsLibrettoDestinationMenuOpen(false);
+    setMezzoMode("esistente");
+    setSelectedFile(null);
+    setAnalysis(null);
+    setAnalysisStatus("idle");
+    setErrorMessage(null);
+    setArchiveResult(null);
+    setArchiveStatus("idle");
+    setArchiveError(null);
+    setDuplicateStatus("idle");
+    setDuplicateCandidates([]);
+    setDuplicateChoice(null);
+    setSelectedDuplicateId("");
+    setApplyVehicleUpdateChoice(false);
+    setVehicleUpdateMessage(null);
+    setSelectedVehicleId("");
+    setVinOptimizationUsed(false);
+    setLibrettoDebugImages({
+      finalUrl: null,
+      originalUrl: null,
+      preprocessUrl: null,
+      vinUrl: null,
+    });
+    setLibrettoDebugTrace({
+      rawUltimoCollaudo: "",
+      mappedDataUltimoCollaudo: "",
+      propDataUltimoCollaudo: "",
+    });
+    setLibrettoBackendDebug({
+      originale: null,
+      preprocessata: null,
+      activeMode: "PREPROCESSATA",
+    });
+    setLibrettoResetKey((current) => current + 1);
+  };
+
+  const setSelectedSubtype = (nextSubtype: ArchivistaDocumentoMezzoSubtype) => {
+    onSubtypeChange?.(nextSubtype);
+  };
 
   useEffect(() => {
     readArchivistaVehicles()
@@ -206,6 +1074,13 @@ export default function ArchivistaDocumentoMezzoBridge() {
     };
   }, [selectedFile]);
 
+  useEffect(() => {
+    setLibrettoDebugImages((current) => ({
+      ...current,
+      originalUrl: imagePreviewUrl,
+    }));
+  }, [imagePreviewUrl]);
+
   const selectedVehicle = useMemo(
     () => vehicles.find((entry) => entry.id === selectedVehicleId) ?? null,
     [selectedVehicleId, vehicles],
@@ -214,22 +1089,29 @@ export default function ArchivistaDocumentoMezzoBridge() {
     () => rawVehicles.find((entry) => normalizeText(entry.id) === selectedVehicleId) ?? null,
     [rawVehicles, selectedVehicleId],
   );
+  const categoryOptions = useMemo(
+    () => buildArchivistaVehicleCategoryOptions(rawVehicles),
+    [rawVehicles],
+  );
 
-  const missingFields = useMemo(() => buildMissingFields(analysis), [analysis]);
+  const missingFields = useMemo(
+    () => buildMissingFields(analysis, selectedSubtype),
+    [analysis, selectedSubtype],
+  );
   const warnings = useMemo(() => {
     if (!analysis) {
       return [];
     }
 
     const nextWarnings = Array.isArray(analysis.avvisi) ? [...analysis.avvisi] : [];
-    if (!selectedVehicleId) {
+    if (mezzoMode === "esistente" && !selectedVehicleId) {
       nextWarnings.push("Seleziona il mezzo corretto prima di archiviare il documento.");
     }
     if (!normalizeText(analysis.targa)) {
       nextWarnings.push("La targa non e stata letta in modo chiaro: puo servire una scelta manuale del mezzo.");
     }
     return Array.from(new Set(nextWarnings.filter(Boolean)));
-  }, [analysis, selectedVehicleId]);
+  }, [analysis, mezzoMode, selectedVehicleId]);
 
   const summaryText = useMemo(() => {
     if (!analysis) {
@@ -268,6 +1150,126 @@ export default function ArchivistaDocumentoMezzoBridge() {
           ? "Errore analisi"
           : "Pronto per analizzare";
 
+  const getLibrettoFieldValue = (field: string) => readArchivistaLibrettoFieldValue(analysis, field);
+  const librettoWarnings = Array.from(new Set([...warnings, ...missingFields])).filter(Boolean);
+  const validationDataUltimoCollaudoValue = normalizeText(getLibrettoFieldValue("dataUltimoCollaudo"));
+  const validationDataScadenzaRevisioneValue = normalizeText(
+    getLibrettoFieldValue("dataScadenzaRevisione"),
+  );
+  const canConfirmArchivistaReview =
+    Boolean(analysis) &&
+    Boolean(selectedFile) &&
+    archiveStatus !== "saving" &&
+    duplicateStatus !== "idle" &&
+    duplicateStatus !== "checking" &&
+    !(duplicateStatus === "duplicates_found" && !duplicateChoice) &&
+    (mezzoMode === "nuovo"
+      ? applyVehicleUpdateChoice &&
+        Boolean(normalizeText(getLibrettoFieldValue("categoria"))) &&
+        Boolean(normalizeText(getLibrettoFieldValue("targa")))
+      : Boolean(selectedVehicleId));
+  const canSaveBlockReasons = useMemo(() => {
+    const reasons: string[] = [];
+    const currentCategoria = normalizeText(readArchivistaLibrettoFieldValue(analysis, "categoria"));
+    const currentTarga = normalizeText(readArchivistaLibrettoFieldValue(analysis, "targa"));
+    if (!analysis) {
+      reasons.push("Analizza prima il libretto.");
+    }
+    if (!selectedFile) {
+      reasons.push("Carica il file del libretto.");
+    }
+    if (archiveStatus === "saving") {
+      reasons.push("Archiviazione gia in corso.");
+    }
+    if (duplicateStatus === "idle") {
+      reasons.push("Esegui prima Controlla duplicati.");
+    }
+    if (duplicateStatus === "checking") {
+      reasons.push("Attendi la fine del controllo duplicati.");
+    }
+    if (duplicateStatus === "duplicates_found" && !duplicateChoice) {
+      reasons.push("Scegli come gestire il duplicato trovato.");
+    }
+    if (mezzoMode === "nuovo") {
+      if (!applyVehicleUpdateChoice) {
+        reasons.push("Conferma la creazione del nuovo mezzo.");
+      }
+      if (!currentCategoria) {
+        reasons.push("Seleziona la categoria del nuovo mezzo.");
+      }
+      if (!currentTarga) {
+        reasons.push("Compila la targa del mezzo.");
+      }
+    } else if (!selectedVehicleId) {
+      reasons.push("Seleziona il mezzo da collegare.");
+    }
+    return reasons;
+  }, [
+    analysis,
+    archiveStatus,
+    applyVehicleUpdateChoice,
+    duplicateChoice,
+    duplicateStatus,
+    mezzoMode,
+    selectedFile,
+    selectedVehicleId,
+  ]);
+  const librettoConfirmState = useMemo(() => {
+    if (archiveStatus === "saving") {
+      return {
+        tone: "saving" as const,
+        title: "Archiviazione in corso",
+        message: "Archivista sta salvando il libretto e il collegamento al mezzo.",
+      };
+    }
+    if (archiveStatus === "error" && archiveError) {
+      return {
+        tone: "error" as const,
+        title: "Salvataggio non completato",
+        message: archiveError,
+      };
+    }
+    if (archiveStatus === "success" && librettoCompletionMessage) {
+      return {
+        tone: "success" as const,
+        title: "Salvataggio completato",
+        message: librettoCompletionMessage,
+      };
+    }
+    if (canConfirmArchivistaReview) {
+      return {
+        tone: "ready" as const,
+        title: "Pronto per confermare",
+        message:
+          "Puoi premere Conferma e archivia: duplicati verificati e dati minimi del flusso pronti.",
+      };
+    }
+    return {
+      tone: "blocked" as const,
+      title: "Conferma non ancora pronta",
+      message: "Il save resta bloccato finche non completi i passaggi richiesti qui sotto.",
+      reasons: canSaveBlockReasons,
+    };
+  }, [
+    archiveError,
+    archiveStatus,
+    canConfirmArchivistaReview,
+    canSaveBlockReasons,
+    librettoCompletionMessage,
+  ]);
+  const isLibrettoScadenzaRevisioneScaduta = useMemo(() => {
+    const value = readArchivistaLibrettoFieldValue(analysis, "dataScadenzaRevisione").trim();
+    if (!value) {
+      return false;
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return false;
+    }
+    return parsed < new Date();
+  }, [analysis]);
+  const isDevEnvironment = typeof import.meta !== "undefined" && Boolean(import.meta.env?.DEV);
+
   const handleAnalyze = async () => {
     if (!selectedFile) {
       setErrorMessage("Carica prima un file o una foto del documento.");
@@ -277,6 +1279,7 @@ export default function ArchivistaDocumentoMezzoBridge() {
 
     try {
       setAnalysisStatus("loading");
+      setLibrettoCompletionMessage(null);
       setErrorMessage(null);
       setArchiveError(null);
       setArchiveResult(null);
@@ -287,44 +1290,217 @@ export default function ArchivistaDocumentoMezzoBridge() {
       setSelectedDuplicateId("");
       setDuplicateChoice(null);
       setArchiveStatus("idle");
+      setVinOptimizationUsed(false);
 
-      const { base64, mimeType } = await fileToBase64(selectedFile);
-      const endpoint = getDocumentAnalyzeUrl();
-      if (!endpoint) {
-        throw new Error(
-          "Backend IA OpenAI non disponibile in questo ambiente. Avvia il server IA separato per analizzare il documento mezzo.",
-        );
+      let base64 = "";
+      let mimeType = selectedFile.type || "application/octet-stream";
+      let vinBase64: string | null = null;
+      let vinMimeType: string | null = null;
+      let librettoDataUrl: string | null = null;
+      let originalLibrettoDataUrl: string | null = null;
+      let vinDataUrl: string | null = null;
+      let originalRawUltimoCollaudo = "";
+      let preprocessRawUltimoCollaudo = "";
+      let rawOriginalRecord: Record<string, unknown> | null = null;
+      let rawEnhancedRecord: Record<string, unknown> | null = null;
+
+      if (selectedFile.type.startsWith("image/")) {
+        const originalImage = await fileToBase64(selectedFile);
+        originalLibrettoDataUrl = `data:${originalImage.mimeType || "image/jpeg"};base64,${originalImage.base64}`;
+
+        if (optimizeImageForExtraction) {
+          const optimizedImage = await buildOptimizedImageDebug(selectedFile);
+          base64 = optimizedImage.base64;
+          mimeType = optimizedImage.mimeType;
+          vinBase64 = optimizedImage.vinDataUrl
+            ? optimizedImage.vinDataUrl.split(",").slice(1).join(",")
+            : null;
+          vinMimeType = optimizedImage.vinDataUrl ? "image/jpeg" : null;
+          librettoDataUrl =
+            optimizedImage.finalDataUrl ||
+            `data:${optimizedImage.mimeType || "image/jpeg"};base64,${optimizedImage.base64}`;
+          vinDataUrl = optimizedImage.vinDataUrl;
+          setLibrettoDebugImages({
+            finalUrl: optimizedImage.finalDataUrl,
+            originalUrl: imagePreviewUrl,
+            preprocessUrl: optimizedImage.preprocessDataUrl,
+            vinUrl: optimizedImage.vinDataUrl,
+          });
+        } else {
+          base64 = originalImage.base64;
+          mimeType = originalImage.mimeType;
+          librettoDataUrl = originalLibrettoDataUrl;
+          setLibrettoDebugImages({
+            finalUrl: originalLibrettoDataUrl,
+            originalUrl: imagePreviewUrl,
+            preprocessUrl: null,
+            vinUrl: null,
+          });
+        }
+      } else {
+        const originalFile = await fileToBase64(selectedFile);
+        base64 = originalFile.base64;
+        mimeType = originalFile.mimeType;
       }
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: selectedFile.name,
-          contentBase64: base64,
-          mimeType,
-          documentSubtypeHint: selectedSubtype,
-        }),
-      });
+      const runAnalyzeRequest = async (
+        requestBase64: string,
+        requestMimeType: string,
+        debugMode?: "ORIGINALE" | "PREPROCESSATA",
+      ) => {
+        if (selectedSubtype === "libretto") {
+          if (!selectedFile.type.startsWith("image/")) {
+            throw new Error("Il ramo Libretto Archivista accetta solo immagini, come la madre.");
+          }
 
-      const rawPayload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) {
-        const errorText =
-          rawPayload &&
-          typeof rawPayload === "object" &&
-          "message" in rawPayload &&
-          typeof (rawPayload as { message?: unknown }).message === "string"
-            ? (rawPayload as { message: string }).message
-            : "Errore durante l'analisi del documento mezzo.";
-        throw new Error(errorText);
+          const normalizedDataUrl = requestBase64.replace(/^data:image\/[^;]+;/i, "data:image/jpeg;");
+          const response = await fetch(IA_LIBRETTO_ANALYZE_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              base64Image: normalizedDataUrl,
+              mimeType: "image/jpeg",
+            }),
+          });
+
+          const rawPayload = (await response.json().catch(() => null)) as unknown;
+          if (!response.ok) {
+            const errorText =
+              rawPayload &&
+              typeof rawPayload === "object" &&
+              "error" in rawPayload &&
+              typeof (rawPayload as { error?: unknown }).error === "string"
+                ? (rawPayload as { error: string }).error
+                : "Errore durante l'analisi del libretto.";
+            throw new Error(errorText);
+          }
+
+          if (debugMode) {
+            const debugEntry = buildArchivistaLibrettoBackendDebugEntry(rawPayload, requestBase64);
+            if (debugMode === "ORIGINALE") {
+              originalRawUltimoCollaudo = debugEntry.rawUltimoCollaudo;
+              rawOriginalRecord = extractLibrettoRawRecord(rawPayload);
+            }
+            if (debugMode === "PREPROCESSATA") {
+              preprocessRawUltimoCollaudo = debugEntry.rawUltimoCollaudo;
+              rawEnhancedRecord = extractLibrettoRawRecord(rawPayload);
+            }
+            setLibrettoBackendDebug((current) => ({
+              ...current,
+              originale: debugMode === "ORIGINALE" ? debugEntry : current.originale,
+              preprocessata: debugMode === "PREPROCESSATA" ? debugEntry : current.preprocessata,
+              activeMode: debugMode,
+            }));
+            setLibrettoDebugTrace((traceCurrent) => ({
+              ...traceCurrent,
+              rawUltimoCollaudo: debugEntry.rawUltimoCollaudo,
+            }));
+          }
+
+          return normalizeLibrettoAnalyzePayload(rawPayload);
+        }
+
+        const endpoint = getDocumentAnalyzeUrl();
+        if (!endpoint) {
+          throw new Error(
+            "Backend IA OpenAI non disponibile in questo ambiente. Avvia il server IA separato per analizzare il documento mezzo.",
+          );
+        }
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: selectedFile.name,
+            contentBase64: requestBase64,
+            mimeType: requestMimeType,
+            documentSubtypeHint: selectedSubtype,
+          }),
+        });
+
+        const rawPayload = (await response.json().catch(() => null)) as unknown;
+        if (!response.ok) {
+          const errorText =
+            rawPayload &&
+            typeof rawPayload === "object" &&
+            "message" in rawPayload &&
+            typeof (rawPayload as { message?: unknown }).message === "string"
+              ? (rawPayload as { message: string }).message
+              : "Errore durante l'analisi del documento mezzo.";
+          throw new Error(errorText);
+        }
+
+        return normalizeAnalysisPayload(rawPayload);
+      };
+
+      let normalizedAnalysis: ArchivistaDocumentoMezzoAnalysis | null = null;
+      if (selectedSubtype === "libretto") {
+        await runAnalyzeRequest(originalLibrettoDataUrl || "", "image/jpeg", "ORIGINALE");
+        if (librettoDataUrl && librettoDataUrl !== originalLibrettoDataUrl) {
+          await runAnalyzeRequest(librettoDataUrl, "image/jpeg", "PREPROCESSATA");
+        } else {
+          rawEnhancedRecord = rawOriginalRecord;
+          preprocessRawUltimoCollaudo = originalRawUltimoCollaudo;
+          setLibrettoBackendDebug((current) => ({
+            ...current,
+            preprocessata: current.originale,
+          }));
+        }
+        const mergedRawRecord = mergeArchivistaLibrettoRawRecords(rawOriginalRecord, rawEnhancedRecord);
+        setLibrettoBackendDebug((current) => ({
+          ...current,
+          activeMode: "PREPROCESSATA",
+        }));
+        setLibrettoDebugTrace((current) => ({
+          ...current,
+          rawUltimoCollaudo:
+            pickFirstValidValue(
+              mergedRawRecord.ultimoCollaudo,
+              mergedRawRecord.dataUltimoCollaudo,
+              mergedRawRecord.revisione,
+            ) || originalRawUltimoCollaudo || preprocessRawUltimoCollaudo,
+        }));
+        normalizedAnalysis = normalizeLibrettoAnalyzePayload({ data: mergedRawRecord });
+      } else {
+        normalizedAnalysis = await runAnalyzeRequest(base64, mimeType);
       }
-
-      const normalizedAnalysis = normalizeAnalysisPayload(rawPayload);
       if (!normalizedAnalysis) {
         throw new Error("Analisi non disponibile per il documento selezionato.");
       }
 
-      setAnalysis(normalizedAnalysis);
+      let nextAnalysis = normalizeArchivistaLibrettoAnalysisState(normalizedAnalysis);
+      const primaryVin = resolveValidVinFromAnalysis(normalizedAnalysis);
+      if (
+        !primaryVin &&
+        optimizeImageForExtraction &&
+        ((selectedSubtype === "libretto" && vinDataUrl) ||
+          (selectedSubtype !== "libretto" && vinBase64 && vinMimeType))
+      ) {
+        const vinFocusedAnalysis = await runAnalyzeRequest(
+          selectedSubtype === "libretto" ? vinDataUrl || "" : vinBase64 || "",
+          selectedSubtype === "libretto" ? "image/jpeg" : vinMimeType || mimeType,
+        ).catch(() => null);
+        const fallbackVin = resolveValidVinFromAnalysis(vinFocusedAnalysis);
+        if (fallbackVin) {
+          nextAnalysis = normalizeArchivistaLibrettoAnalysisState({
+            ...normalizedAnalysis,
+            telaio: fallbackVin,
+          });
+          setVinOptimizationUsed(true);
+        }
+      }
+
+      if (!nextAnalysis) {
+        throw new Error("Analisi non disponibile per il documento selezionato.");
+      }
+
+      setLibrettoDebugTrace((current) => ({
+        ...current,
+        mappedDataUltimoCollaudo: normalizeText(nextAnalysis.dataUltimoCollaudo),
+        propDataUltimoCollaudo: normalizeText(nextAnalysis.dataUltimoCollaudo),
+      }));
+
+      setAnalysis(nextAnalysis);
       setAnalysisStatus("success");
 
       const nextRawVehicles = await readArchivistaVehicles();
@@ -332,9 +1508,10 @@ export default function ArchivistaDocumentoMezzoBridge() {
       setRawVehicles(nextRawVehicles as RawVehicle[]);
       setVehicles(nextVehicles);
       const matchedVehicle =
-        nextVehicles.find((entry) => entry.targa === normalizeText(normalizedAnalysis.targa).toUpperCase()) ??
-        null;
+        nextVehicles.find((entry) => entry.targa === normalizeText(nextAnalysis.targa).toUpperCase()) ?? null;
       setSelectedVehicleId(matchedVehicle?.id ?? "");
+      setMezzoMode(matchedVehicle ? "esistente" : "nuovo");
+      setApplyVehicleUpdateChoice(!matchedVehicle);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Errore durante l'analisi.");
       setAnalysisStatus("error");
@@ -381,8 +1558,16 @@ export default function ArchivistaDocumentoMezzoBridge() {
       setArchiveError("Controlla duplicati prima della conferma finale.");
       return;
     }
-    if (!selectedVehicleId) {
+    if (mezzoMode === "esistente" && !selectedVehicleId) {
       setArchiveError("Seleziona il mezzo corretto prima della conferma di archiviazione.");
+      return;
+    }
+    if (mezzoMode === "nuovo" && !applyVehicleUpdateChoice) {
+      setArchiveError("Conferma il salvataggio del nuovo mezzo prima dell'archiviazione.");
+      return;
+    }
+    if (mezzoMode === "nuovo" && !normalizeText(getLibrettoFieldValue("categoria"))) {
+      setArchiveError("Seleziona la categoria del nuovo mezzo prima dell'archiviazione.");
       return;
     }
     if (duplicateStatus === "duplicates_found" && !duplicateChoice) {
@@ -390,10 +1575,33 @@ export default function ArchivistaDocumentoMezzoBridge() {
       return;
     }
 
+    let createdVehicleId: string | null = null;
     try {
       setArchiveStatus("saving");
       setArchiveError(null);
       setVehicleUpdateMessage(null);
+      const previousVehicles = [...rawVehicles];
+      createdVehicleId =
+        mezzoMode === "nuovo"
+          ? typeof globalThis.crypto?.randomUUID === "function"
+            ? globalThis.crypto.randomUUID()
+            : `MEZZO-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+          : null;
+      const newVehicleRecord =
+        mezzoMode === "nuovo"
+          ? buildArchivistaNewVehicleRecord({
+              analysis,
+              vehicleId: createdVehicleId ?? undefined,
+            })
+          : null;
+
+      if (newVehicleRecord) {
+        const nextVehicles = [newVehicleRecord, ...previousVehicles];
+        await setItemSync("@mezzi_aziendali", nextVehicles);
+        setRawVehicles(nextVehicles);
+        setVehicles(toVehicleOptions(nextVehicles));
+        setSelectedVehicleId(String(newVehicleRecord.id ?? ""));
+      }
 
       const result = await archiveArchivistaDocumentRecord({
         family: "documento_mezzo",
@@ -410,8 +1618,11 @@ export default function ArchivistaDocumentoMezzoBridge() {
           fornitore: analysis.fornitore || null,
           numeroDocumento: analysis.numeroDocumento || null,
           dataDocumento: analysis.dataDocumento || null,
-          targa: selectedVehicle?.targa || analysis.targa || null,
-          mezzoId: selectedVehicleId,
+          targa:
+            (newVehicleRecord ? normalizeText(newVehicleRecord.targa) : selectedVehicle?.targa) ||
+            analysis.targa ||
+            null,
+          mezzoId: String(newVehicleRecord?.id ?? selectedVehicleId),
           telaio: analysis.telaio || null,
           proprietario: analysis.proprietario || null,
           assicurazione: analysis.assicurazione || null,
@@ -429,12 +1640,36 @@ export default function ArchivistaDocumentoMezzoBridge() {
         },
       });
 
-      if (applyVehicleUpdateChoice && result.status === "archived") {
-        const vehicleUpdate = await applyArchivistaVehicleUpdate({
-          mezzoId: selectedVehicleId,
-          subtype: selectedSubtype,
-          analysis: analysis as unknown as Record<string, unknown>,
+      if (newVehicleRecord && result.status === "archived") {
+        const refreshedVehicle = buildArchivistaNewVehicleRecord({
+          analysis,
+          vehicleId: String(newVehicleRecord.id ?? ""),
+          archiveFileUrl: result.fileUrl,
+          archiveFileStoragePath: result.fileStoragePath,
         });
+        const currentVehicles = await readArchivistaVehicles();
+        const updatedVehicles = currentVehicles.map((entry) =>
+          normalizeText(entry.id) === normalizeText(newVehicleRecord.id)
+            ? { ...refreshedVehicle }
+            : entry,
+        );
+        await setItemSync("@mezzi_aziendali", updatedVehicles);
+        setRawVehicles(updatedVehicles as RawVehicle[]);
+        setVehicles(toVehicleOptions(updatedVehicles as RawVehicle[]));
+      }
+
+      if (mezzoMode === "esistente" && applyVehicleUpdateChoice && result.status === "archived") {
+        const vehicleUpdate =
+          selectedSubtype === "libretto"
+            ? await applyArchivistaLibrettoVehicleUpdate({
+                mezzoId: selectedVehicleId,
+                analysis,
+              })
+            : await applyArchivistaVehicleUpdate({
+                mezzoId: selectedVehicleId,
+                subtype: selectedSubtype,
+                analysis: analysis as unknown as Record<string, unknown>,
+              });
         setVehicleUpdateMessage(
           vehicleUpdate.appliedFields.length
             ? `Campi mezzo aggiornati su conferma: ${vehicleUpdate.appliedFields
@@ -446,11 +1681,284 @@ export default function ArchivistaDocumentoMezzoBridge() {
 
       setArchiveResult(result);
       setArchiveStatus("success");
+      const savedTarga =
+        normalizeText(newVehicleRecord?.targa) ||
+        normalizeText(selectedVehicle?.targa) ||
+        normalizeText(analysis.targa);
+      const completionMessage = newVehicleRecord
+        ? `Peppe, ho creato e salvato il mezzo ${savedTarga || "senza targa"} nei Mezzi. Vai a controllare.`
+        : `Peppe, ho aggiornato e salvato il mezzo ${savedTarga || "selezionato"} nei Mezzi. Vai a controllare.`;
+      setVehicleUpdateMessage(completionMessage);
+      setLibrettoCompletionMessage(completionMessage);
+      resetLibrettoFlow({ preserveCompletionMessage: true });
     } catch (error) {
+      if (mezzoMode === "nuovo" && createdVehicleId) {
+        const fallbackVehicles = await readArchivistaVehicles().catch(() => rawVehicles);
+        const rollbackVehicles = fallbackVehicles.filter(
+          (entry) => normalizeText(entry.id) !== normalizeText(createdVehicleId),
+        );
+        if (rollbackVehicles.length !== fallbackVehicles.length) {
+          await setItemSync("@mezzi_aziendali", rollbackVehicles);
+          setRawVehicles(rollbackVehicles as RawVehicle[]);
+          setVehicles(toVehicleOptions(rollbackVehicles as RawVehicle[]));
+          setSelectedVehicleId("");
+        }
+      }
       setArchiveError(error instanceof Error ? error.message : "Archiviazione non completata.");
       setArchiveStatus("error");
     }
   };
+
+  const handleDiscardLibrettoReview = () => {
+    resetLibrettoFlow();
+  };
+
+  if (selectedSubtype === "libretto") {
+    return (
+      <>
+        <NextEstrazioneLibretto
+          acceptedFileTypes="image/*"
+          analyzeButtonLabel={analysisStatus === "loading" ? "Analisi in corso..." : "Analizza documento"}
+          categoryOptions={categoryOptions}
+          confirmCompleted={archiveStatus === "success"}
+          confirmState={librettoConfirmState}
+          duplicateCandidates={duplicateCandidates}
+          duplicateChoice={duplicateChoice}
+          duplicateStatus={duplicateStatus}
+          debugImages={librettoDebugImages}
+          destinationOptions={destinationOptions}
+          fileName={selectedFile?.name ?? "Nessun file selezionato"}
+          fileTypeLabel={
+            !selectedFile
+              ? "Documento pronto"
+              : selectedFile.type === "application/pdf"
+                ? "Documento pronto"
+                : "Immagine pronta"
+          }
+          getFieldValue={getLibrettoFieldValue}
+          isAnalyzeDisabled={!selectedFile || analysisStatus === "loading"}
+          isDuplicateCheckDisabled={!analysis || duplicateStatus === "checking"}
+          isConfirmDisabled={!canConfirmArchivistaReview}
+          isDestinationMenuOpen={isLibrettoDestinationMenuOpen}
+          isScadenzaRevisioneScaduta={isLibrettoScadenzaRevisioneScaduta}
+          mezzoMode={mezzoMode}
+          optimizeImageForExtraction={optimizeImageForExtraction}
+          previewMode={imagePreviewUrl ? "image" : selectedFile?.type === "application/pdf" ? "pdf" : null}
+          previewText={analysis?.testo ?? null}
+          previewTitle={selectedFile?.name ?? "Documento caricato"}
+          previewUrl={imagePreviewUrl}
+          completionMessage={librettoCompletionMessage}
+          resetKey={librettoResetKey}
+          saveNewVehicle={applyVehicleUpdateChoice}
+          selectedDuplicateId={selectedDuplicateId}
+          selectedTarga={selectedVehicleId}
+          showSubtypeCard={false}
+          showVehicleModeToggle
+          vinOptimizationUsed={vinOptimizationUsed}
+          vehicleOptions={vehicles.map((vehicle) => ({
+            value: vehicle.id,
+            label: vehicle.label,
+            targa: vehicle.targa,
+          }))}
+          warnings={librettoWarnings}
+          debugTrace={librettoDebugTrace}
+          onAnalyze={() => void handleAnalyze()}
+          onCheckDuplicates={() => void handleCheckDuplicates()}
+          onConfirm={() => void handleArchive()}
+          onDiscard={handleDiscardLibrettoReview}
+          onSelectDuplicateChoice={setDuplicateChoice}
+          onSelectDuplicateId={setSelectedDuplicateId}
+          onFieldChange={(field, value) => {
+            const nextValue =
+              field === "dataUltimoCollaudo" ||
+              field === "dataScadenzaRevisione" ||
+              field === "scadenzaRevisione" ||
+              field === "dataImmatricolazione" ||
+              field === "primaImmatricolazione" ||
+              field === "immatricolazione" ||
+              field === "immatricolato" ||
+              field === "dataDocumento"
+                ? normalizeLibrettoDateValue(value)
+                : value;
+            setLibrettoCompletionMessage(null);
+            const nextFieldPatch =
+              field === "dataUltimoCollaudo"
+                ? {
+                    dataUltimoCollaudo: nextValue,
+                    ultimoCollaudo: nextValue,
+                  }
+                : field === "dataScadenzaRevisione" || field === "scadenzaRevisione"
+                  ? {
+                      dataScadenzaRevisione: nextValue,
+                      scadenzaRevisione: nextValue,
+                      dataScadenza: nextValue,
+                    }
+                  : null;
+            const nextTraceUpdate =
+              field === "dataUltimoCollaudo"
+                ? { propDataUltimoCollaudo: nextValue, mappedDataUltimoCollaudo: nextValue }
+                : null;
+            setAnalysis((current) =>
+              current
+                ? normalizeArchivistaLibrettoAnalysisState({
+                    ...current,
+                    ...(nextFieldPatch ?? { [field]: nextValue }),
+                  })
+                : current,
+            );
+            if (nextTraceUpdate) {
+              setLibrettoDebugTrace((current) => ({
+                ...current,
+                ...nextTraceUpdate,
+              }));
+            }
+          }}
+          onFileSelect={(nextFile) => {
+            setLibrettoCompletionMessage(null);
+            setSelectedFile(nextFile);
+            setMezzoMode("esistente");
+            setAnalysis(null);
+            setAnalysisStatus("idle");
+            setErrorMessage(null);
+            setArchiveResult(null);
+            setArchiveStatus("idle");
+            setArchiveError(null);
+            setDuplicateStatus("idle");
+            setDuplicateCandidates([]);
+            setDuplicateChoice(null);
+            setSelectedDuplicateId("");
+            setApplyVehicleUpdateChoice(false);
+            setVehicleUpdateMessage(null);
+            setSelectedVehicleId("");
+            setVinOptimizationUsed(false);
+            setLibrettoDebugImages({
+              finalUrl: null,
+              originalUrl: null,
+              preprocessUrl: null,
+              vinUrl: null,
+            });
+            setLibrettoDebugTrace({
+              rawUltimoCollaudo: "",
+              mappedDataUltimoCollaudo: "",
+              propDataUltimoCollaudo: "",
+            });
+            setLibrettoBackendDebug({
+              originale: null,
+              preprocessata: null,
+              activeMode: "PREPROCESSATA",
+            });
+            setLibrettoResetKey((current) => current + 1);
+          }}
+          onOpenHistory={() => navigate(NEXT_IA_DOCUMENTI_PATH)}
+          onOptimizeImageChange={setOptimizeImageForExtraction}
+          onSaveNewVehicleChange={setApplyVehicleUpdateChoice}
+          onSelectDestination={(destination) => {
+            setIsLibrettoDestinationMenuOpen(false);
+            onSelectDestination?.(destination);
+          }}
+          onSelectTarga={setSelectedVehicleId}
+          onToggleDestinationMenu={() =>
+            setIsLibrettoDestinationMenuOpen((current) => !current)
+          }
+          onToggleMezzoMode={(mode) => {
+            setMezzoMode(mode);
+            setArchiveError(null);
+            if (mode === "nuovo") {
+              setApplyVehicleUpdateChoice(true);
+              if (!normalizeText(getLibrettoFieldValue("categoria"))) {
+                setAnalysis((current) =>
+                  current
+                    ? {
+                        ...current,
+                        categoria:
+                          normalizeText((current as Record<string, unknown>).genereVeicolo) ||
+                          normalizeText((current as Record<string, unknown>).tipoVeicolo) ||
+                          "",
+                      }
+                    : current,
+                );
+              }
+              setSelectedVehicleId("");
+            } else {
+              setApplyVehicleUpdateChoice(false);
+            }
+          }}
+        />
+        {isDevEnvironment ? (
+          <div
+            style={{
+              marginTop: 16,
+              border: "1px solid #d0d7de",
+              borderRadius: 12,
+              padding: 12,
+              background: "#fffaf2",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>
+              Debug backend Libretto Archivista
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div>raw ultimoCollaudo: {librettoBackendDebug.originale?.rawUltimoCollaudo || "-"}</div>
+              <div>
+                raw dataScadenzaRevisione:{" "}
+                {librettoBackendDebug.originale?.rawDataScadenzaRevisione || "-"}
+              </div>
+              <div>mapped dataUltimoCollaudo: {normalizeText(analysis?.dataUltimoCollaudo) || "-"}</div>
+              <div>
+                mapped dataScadenzaRevisione:{" "}
+                {normalizeText(analysis?.dataScadenzaRevisione) || "-"}
+              </div>
+              <div>field value dataUltimoCollaudo: {getLibrettoFieldValue("dataUltimoCollaudo") || "-"}</div>
+              <div>
+                field value dataScadenzaRevisione:{" "}
+                {getLibrettoFieldValue("dataScadenzaRevisione") || "-"}
+              </div>
+              <div>validazione save dataUltimoCollaudo: {validationDataUltimoCollaudoValue || "-"}</div>
+              <div>
+                validazione save dataScadenzaRevisione:{" "}
+                {validationDataScadenzaRevisioneValue || "-"}
+              </div>
+              <div>payload save dataUltimoCollaudo: {normalizeText(analysis?.dataUltimoCollaudo) || "-"}</div>
+              <div>
+                payload save dataScadenzaRevisione:{" "}
+                {normalizeText(analysis?.dataScadenzaRevisione) || "-"}
+              </div>
+              <div>canSave: {canConfirmArchivistaReview ? "SI" : "NO"}</div>
+              <div>
+                motivi blocco: {canSaveBlockReasons.length ? canSaveBlockReasons.join(" | ") : "-"}
+              </div>
+            </div>
+            <div style={{ marginTop: 10, fontWeight: 700 }}>Raw backend principale</div>
+            <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+              <div>targa: {librettoBackendDebug.originale?.rawTarga || "-"}</div>
+              <div>
+                marca/modello:{" "}
+                {[librettoBackendDebug.originale?.rawMarca, librettoBackendDebug.originale?.rawModello]
+                  .filter(Boolean)
+                  .join(" ") || "-"}
+              </div>
+              <div>telaio/VIN: {librettoBackendDebug.originale?.rawTelaio || "-"}</div>
+              <div>proprietario: {librettoBackendDebug.originale?.rawProprietario || "-"}</div>
+              <div>assicurazione: {librettoBackendDebug.originale?.rawAssicurazione || "-"}</div>
+              <div>
+                dataImmatricolazione: {librettoBackendDebug.originale?.rawDataImmatricolazione || "-"}
+              </div>
+              <div>ultimoCollaudo: {librettoBackendDebug.originale?.rawUltimoCollaudo || "-"}</div>
+              <div>
+                dataScadenzaRevisione:{" "}
+                {librettoBackendDebug.originale?.rawDataScadenzaRevisione || "-"}
+              </div>
+              <div>colore: {librettoBackendDebug.originale?.rawColore || "-"}</div>
+              <div>categoria/genere veicolo: {librettoBackendDebug.originale?.rawCategoria || "-"}</div>
+              <div>cilindrata: {librettoBackendDebug.originale?.rawCilindrata || "-"}</div>
+              <div>potenza: {librettoBackendDebug.originale?.rawPotenza || "-"}</div>
+              <div>pesoTotale: {librettoBackendDebug.originale?.rawPesoTotale || "-"}</div>
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <div className="ia-archivista-bridge">

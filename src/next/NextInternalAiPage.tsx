@@ -186,6 +186,7 @@ import type {
   InternalAiUniversalOrchestrationResult,
 } from "./internal-ai/internalAiUniversalTypes";
 import { formatDateTimeUI } from "./nextDateFormat";
+import NextEstrazioneLibretto from "./internal-ai/NextEstrazioneLibretto";
 import "./next-shell.css";
 import "./internal-ai/internal-ai.css";
 
@@ -2619,6 +2620,19 @@ function normalizeDocumentProposalValue(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function isLibrettoProposalValue(value: unknown): boolean {
+  const normalized = normalizeDocumentProposalValue(value);
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized === "libretto" ||
+    normalized.includes("libretto") ||
+    normalized.includes("fahrzeugausweis")
+  );
+}
+
 function sanitizeDocumentProposalLabel(value: string | null | undefined): string | null {
   const rawValue = String(value ?? "").trim();
   if (!rawValue) {
@@ -2832,10 +2846,10 @@ function buildLogicalDocumentAttachmentNamesLabel(
 
   const remaining = attachments.length - visibleNames.length;
   if (remaining > 0) {
-    return `${visibleNames.join(" · ")} +${remaining}`;
+    return `${visibleNames.join(" � ")} +${remaining}`;
   }
 
-  return visibleNames.join(" · ");
+  return visibleNames.join(" � ");
 }
 
 function isWarehouseInvoiceDocumentRoute(route: InternalAiUniversalDocumentRoute): boolean {
@@ -3464,10 +3478,10 @@ function buildDocumentProposalDetectedItems(
   const normalizedData = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
   const prefill = route.handoffPayload?.prefillCanonico ?? {};
   const combinedData = { ...normalizedData, ...prefill };
-  const quantity = pickDocumentProposalValue(combinedData, ["quantita"]) ?? "—";
-  const unit = pickDocumentProposalValue(combinedData, ["unita", "unitaMisura", "udm"]) ?? "—";
-  const supplier = pickDocumentProposalValue(combinedData, ["fornitore", "supplier"]) ?? "—";
-  const entityLabel = route.handoffPayload?.entityRef?.label ?? "—";
+  const quantity = pickDocumentProposalValue(combinedData, ["quantita"]) ?? "�";
+  const unit = pickDocumentProposalValue(combinedData, ["unita", "unitaMisura", "udm"]) ?? "�";
+  const supplier = pickDocumentProposalValue(combinedData, ["fornitore", "supplier"]) ?? "�";
+  const entityLabel = route.handoffPayload?.entityRef?.label ?? "�";
   const descriptions = [
     pickDocumentProposalValue(combinedData, ["materiale", "queryMateriale", "descrizione"]),
     ...route.entityCandidateLabels,
@@ -3483,20 +3497,20 @@ function buildDocumentProposalDetectedItems(
 
   return descriptions.map((description, index) => ({
     description,
-    quantity: index === 0 ? quantity : "—",
-    unit: index === 0 ? unit : "—",
-    supplier: index === 0 ? supplier : "—",
+    quantity: index === 0 ? quantity : "�",
+    unit: index === 0 ? unit : "�",
+    supplier: index === 0 ? supplier : "�",
     match:
       route.status === "da_verificare"
         ? "DA VERIFICARE"
-        : entityLabel !== "—" && index === 0
+        : entityLabel !== "�" && index === 0
           ? "Match con inventario trovato"
           : "Riferimento documentale",
-    inventory: entityLabel !== "—" && index === 0 ? entityLabel : "—",
+    inventory: entityLabel !== "�" && index === 0 ? entityLabel : "�",
     tone:
       route.status === "da_verificare"
         ? "warning"
-        : entityLabel !== "—" && index === 0
+        : entityLabel !== "�" && index === 0
           ? "positive"
           : "default",
   }));
@@ -3894,7 +3908,7 @@ function buildDocumentReviewTechnicalFacts(args: {
     {
       label: "Estrazione",
       value:
-        [extractionSource, extractionStatus].filter(Boolean).join(" · ") || "Non dichiarata nel payload",
+        [extractionSource, extractionStatus].filter(Boolean).join(" � ") || "Non dichiarata nel payload",
       tone: extractionSource || extractionStatus ? "default" : "warning",
     },
   ];
@@ -3955,7 +3969,7 @@ function buildDocumentReviewTechnicalFacts(args: {
       },
       {
         label: "UDM risolta",
-        value: `${candidate.unita ?? "Non rilevata"} · fonte ${candidate.unitaSource}`,
+        value: `${candidate.unita ?? "Non rilevata"} � fonte ${candidate.unitaSource}`,
         tone: candidate.unita ? "default" : "warning",
       },
     );
@@ -4345,6 +4359,10 @@ function NextInternalAiPage({
     useState(false);
   const [documentEntryUsesMultiFileFlow, setDocumentEntryUsesMultiFileFlow] = useState(false);
   const [documentEntryMultiFileLoading, setDocumentEntryMultiFileLoading] = useState(false);
+  const [isLibrettoDestinationMenuOpen, setIsLibrettoDestinationMenuOpen] = useState(false);
+  const [librettoMezzoMode, setLibrettoMezzoMode] = useState<"esistente" | "nuovo">("esistente");
+  const [librettoSaveNewVehicle, setLibrettoSaveNewVehicle] = useState(true);
+  const [librettoConfermaEffettuata, setLibrettoConfermaEffettuata] = useState(false);
   const [isMergeToolOpen, setIsMergeToolOpen] = useState(false);
   const [reportPdfPreviewState, setReportPdfPreviewState] = useState<ReportPdfPreviewState>({
     status: "idle",
@@ -7508,11 +7526,11 @@ function NextInternalAiPage({
     const factsLabel = summaryFacts
       .map((fact) => `${fact.label}: ${fact.value}`)
       .filter(Boolean)
-      .join(" · ");
+      .join(" � ");
     const secondaryLabel = [...extractedFacts, ...matchFacts]
       .map((fact) => `${fact.label}: ${fact.value}`)
       .filter(Boolean)
-      .join(" · ");
+      .join(" � ");
 
     return (
       <section ref={chatDocumentProposalPanelRef} className={shellClassName} aria-live="polite">
@@ -7562,8 +7580,8 @@ function NextInternalAiPage({
               onClick={() => openDocumentReviewModal(routeKey)}
             >
               {logicalDocumentGroupingEnabled && routes.length > 1
-                ? "Apri review unica →"
-                : "Apri review →"}
+                ? "Apri review unica ?"
+                : "Apri review ?"}
             </button>
             {attachment ? (
               <button
@@ -8457,7 +8475,7 @@ function NextInternalAiPage({
           documentResults?.fornitore ?? null,
         );
       } catch {
-        // importazione righe non riuscita — il documento è già salvato
+        // importazione righe non riuscita � il documento � gi� salvato
       }
     }
     setDocumentWorkspaceTab("saved");
@@ -8510,6 +8528,100 @@ function NextInternalAiPage({
     : documentResults && activeReviewDestination
       ? selectedDocumentDestinationSummary
       : null;
+
+  const isLibrettoDocumentoRoute = useMemo(() => {
+    const isLibrettoRoute = (route: InternalAiUniversalDocumentRoute | null): boolean => {
+      if (!route) {
+        return false;
+      }
+
+      if (route.classification !== "documento_mezzo" && route.classification !== "libretto_mezzo") {
+        return false;
+      }
+
+      const prefill = route.handoffPayload?.prefillCanonico ?? {};
+      const extracted = route.handoffPayload?.datiEstrattiNormalizzati ?? {};
+      const sourceValues = [
+        route.targetPath,
+        route.handoffPayload?.routeTarget,
+        prefill.vistaTarget,
+        prefill.viewTarget,
+        prefill.documentType,
+        prefill.tipoDocumento,
+        prefill.documentoTipo,
+        prefill.tipologiaDocumento,
+        prefill.subType,
+        prefill.sottotipo,
+        prefill.sottotipo,
+        ...Object.values(prefill),
+        ...Object.keys(prefill),
+        ...Object.values(extracted),
+        ...Object.keys(extracted),
+      ];
+
+      return sourceValues.some(isLibrettoProposalValue);
+    };
+
+    if (activeDocumentReviewRoute) {
+      return isLibrettoRoute(activeDocumentReviewRoute);
+    }
+
+    const fallbackRoute = documentReviewRoutes.find((route) =>
+      route.classification === "documento_mezzo" || route.classification === "libretto_mezzo",
+    ) ?? null;
+    return isLibrettoRoute(fallbackRoute);
+  }, [activeDocumentReviewRoute, documentReviewRoutes]);
+
+  const isLibrettoDocumentoAnalisi = useMemo(() => {
+    if (!documentResults) {
+      return false;
+    }
+
+    const extra = documentResults as unknown as Record<string, unknown>;
+    const valuesToCheck: unknown[] = [
+      documentResults.tipoDocumento,
+      documentResults.testo,
+      extra.sottotipo,
+      extra.subType,
+      extra.documentType,
+      extra.documentoTipo,
+      extra.tipologiaDocumento,
+    ];
+
+    return valuesToCheck.some(isLibrettoProposalValue);
+  }, [documentResults]);
+
+  const isLibrettoHistoryDocumento = useMemo(() => {
+    if (!openedHistoryDocument) {
+      return false;
+    }
+
+    const normalizedTipo = normalizeDocumentProposalValue(openedHistoryDocument.tipoDocumento);
+    const normalizedTesto = normalizeDocumentProposalValue(openedHistoryDocument.testo);
+    return (
+      normalizedTipo.includes("libretto") ||
+      normalizedTipo.includes("fahrzeugausweis") ||
+      normalizedTesto.includes("libretto") ||
+      normalizedTesto.includes("fahrzeugausweis")
+    );
+  }, [openedHistoryDocument]);
+
+  const shouldRenderLibrettoReview =
+    isLibrettoDocumentoRoute || isLibrettoHistoryDocumento || isLibrettoDocumentoAnalisi;
+  const shouldRenderLibrettoReviewUnified = shouldRenderLibrettoReview;
+
+  useEffect(() => {
+    if (!isLibrettoDocumentoRoute) {
+      setIsLibrettoDestinationMenuOpen(false);
+      setLibrettoMezzoMode("esistente");
+      setLibrettoSaveNewVehicle(true);
+      setLibrettoConfermaEffettuata(false);
+      return;
+    }
+    if (!documentResults) {
+      setLibrettoConfermaEffettuata(false);
+    }
+  }, [documentResults, isLibrettoDocumentoRoute]);
 
   const documentEntryVisibleMultiFileItems =
     documentEntryPendingFiles.length > 1
@@ -8619,7 +8731,214 @@ function NextInternalAiPage({
     [setDocumentResults],
   );
 
+  const librettoWarnings = [
+    documentDestinationMissingTarga
+      ? "Completa o conferma la targa per collegare il documento al mezzo."
+      : null,
+    documentNeedsManualTarga && !documentTargaSelezionata && !documentResolvedTarga
+      ? "Il motore non ha rilevato una targa valida dal file."
+      : null,
+    documentErrorMessage ?? null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const librettoDestinationOptions: Array<{ destination: InternalAiUnifiedDestination; label: string }> = [
+    {
+      destination: "magazzino_inventario",
+      label: "Fattura / DDT → Magazzino",
+    },
+    {
+      destination: "mezzo_manutenzioni",
+      label: "Fattura / DDT → Manutenzione",
+    },
+    {
+      destination: "mezzo_preventivi",
+      label: "Preventivo → Magazzino",
+    },
+    {
+      destination: "mezzo_manutenzioni",
+      label: "Documento mezzo → Manutenzione",
+    },
+    {
+      destination: "archivio_generico",
+      label: "Documento mezzo → Archivio mezzo",
+    },
+  ];
+
+  const librettoFileName = documentEntryFileSelectionLabel;
+  const librettoFileType = documentSelectedFile?.type.startsWith("image/")
+    ? "Immagine pronta"
+    : "Documento pronto";
+  const getLibrettoValue = useCallback(
+    (field: string): string => {
+      const raw = (documentResults as Record<string, unknown> | null)?.[field];
+      if (raw === null || raw === undefined) {
+        return "";
+      }
+      return typeof raw === "string" ? raw : String(raw);
+    },
+    [documentResults],
+  );
+  const setLibrettoValue = useCallback(
+    (field: string, value: string) => {
+      updateCurrentDocumentField(field as keyof DocumentoAnalizzato, value);
+    },
+    [updateCurrentDocumentField],
+  );
+  const isLibrettoScadenzaRevisioneScaduta = useMemo(() => {
+    const value = getLibrettoValue("scadenzaRevisione").trim();
+    if (!value) {
+      return false;
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return false;
+    }
+    return parsed < new Date();
+  }, [getLibrettoValue]);
+  const shouldRenderLibrettoReviewModal = shouldRenderLibrettoReview;
+  const renderLibrettoReviewColumns = (options: {
+    analyzeButtonLabel: string;
+    confirmCompleted: boolean;
+    destinationOptions: { destination: InternalAiUnifiedDestination; label: string }[];
+    fileName: string;
+    fileTypeLabel: string;
+    getFieldValue: (field: string) => string;
+    isAnalyzeDisabled: boolean;
+    isConfirmDisabled: boolean;
+    isDestinationMenuOpen: boolean;
+    isScadenzaRevisioneScaduta: boolean;
+    mezzoMode: "esistente" | "nuovo";
+    onConfirm: () => void;
+    onDiscard: () => void;
+    onAnalyze: () => void;
+    onFieldChange: (field: string, value: string) => void;
+    onOpenHistory: () => void;
+    onSaveNewVehicleChange: (checked: boolean) => void;
+    onSelectDestination: (destination: string) => void;
+    onSelectTarga: (value: string) => void;
+    onToggleDestinationMenu: () => void;
+    onToggleMezzoMode: (mode: "esistente" | "nuovo") => void;
+    onCheckDuplicates?: () => void;
+    previewMode: string | null;
+    previewText?: string | null;
+    previewTitle: string;
+    previewUrl: string | null;
+    saveNewVehicle: boolean;
+    selectedTarga: string;
+    warnings: string[];
+    vehicleOptions: { targa?: string | null }[];
+  }) => {
+    return (
+      <NextEstrazioneLibretto
+        analyzeButtonLabel={options.analyzeButtonLabel}
+        confirmCompleted={options.confirmCompleted}
+        destinationOptions={options.destinationOptions}
+        fileName={options.fileName}
+        fileTypeLabel={options.fileTypeLabel}
+        getFieldValue={options.getFieldValue}
+        isAnalyzeDisabled={options.isAnalyzeDisabled}
+        isConfirmDisabled={options.isConfirmDisabled}
+        isDestinationMenuOpen={options.isDestinationMenuOpen}
+        isScadenzaRevisioneScaduta={options.isScadenzaRevisioneScaduta}
+        mezzoMode={options.mezzoMode}
+        previewMode={options.previewMode}
+        previewText={options.previewText}
+        previewTitle={options.previewTitle}
+        previewUrl={options.previewUrl}
+        saveNewVehicle={options.saveNewVehicle}
+        selectedTarga={options.selectedTarga}
+        vehicleOptions={options.vehicleOptions}
+        warnings={options.warnings}
+        onAnalyze={options.onAnalyze}
+        onCheckDuplicates={options.onCheckDuplicates}
+        onConfirm={options.onConfirm}
+        onDiscard={options.onDiscard}
+        onFieldChange={options.onFieldChange}
+        onOpenHistory={options.onOpenHistory}
+        onSaveNewVehicleChange={options.onSaveNewVehicleChange}
+        onSelectDestination={options.onSelectDestination}
+        onSelectTarga={options.onSelectTarga}
+        onToggleDestinationMenu={options.onToggleDestinationMenu}
+        onToggleMezzoMode={options.onToggleMezzoMode}
+      />
+    );
+  };
+
   const renderUnifiedReviewColumns = () => {
+    if (shouldRenderLibrettoReviewUnified) {
+      return renderLibrettoReviewColumns({
+        analyzeButtonLabel: documentEntryAnalyzeLoading ? "Analisi in corso..." : "Analizza nel report",
+        confirmCompleted: librettoConfermaEffettuata,
+        destinationOptions: librettoDestinationOptions,
+        fileName: isHistoryReviewActive
+          ? currentDocumentReviewTitle ?? "Documento in review"
+          : librettoFileName,
+        fileTypeLabel: currentDocumentReviewOriginalUrl || isHistoryReviewActive ? "Documento pronto" : librettoFileType,
+        getFieldValue: getLibrettoValue,
+        isAnalyzeDisabled:
+          !documentEntryHasPendingSelection || documentEntryAnalyzeLoading || documentApiKeyExists === false,
+        isConfirmDisabled: isHistoryReviewActive || !documentResults || librettoConfermaEffettuata,
+        isDestinationMenuOpen: isLibrettoDestinationMenuOpen,
+        isScadenzaRevisioneScaduta: isLibrettoScadenzaRevisioneScaduta,
+        mezzoMode: librettoMezzoMode,
+        previewMode:
+          currentDocumentReviewOriginalUrl ? "pdf" : documentPreview ? "image" : "pdf",
+        previewText: currentDocumentReviewText,
+        previewTitle: currentDocumentReviewTitle ?? "Documento in review",
+        previewUrl: currentDocumentReviewOriginalUrl ?? documentPreview ?? null,
+        saveNewVehicle: librettoSaveNewVehicle,
+        selectedTarga: documentTargaSelezionata,
+        warnings: librettoWarnings,
+        vehicleOptions: documentMezzi,
+        onAnalyze: () => void handleUnifiedDocumentAnalyze(),
+        onCheckDuplicates: () => undefined,
+        onConfirm: () => {
+          if (librettoConfermaEffettuata) {
+            return;
+          }
+          setLibrettoConfermaEffettuata(true);
+          void handleUnifiedDocumentSave();
+        },
+        onDiscard: closeUnifiedDocumentReview,
+        onFieldChange: (field, value) => {
+          if (!isHistoryReviewActive) {
+            setLibrettoValue(field, value);
+          }
+        },
+        onOpenHistory: () => setDocumentHistoryOpen(true),
+        onSaveNewVehicleChange: (checked) => {
+          if (!isHistoryReviewActive) {
+            setLibrettoSaveNewVehicle(checked);
+          }
+        },
+        onSelectDestination: (destination) => {
+          if (isHistoryReviewActive) {
+            return;
+          }
+          const nextDestination = destination as InternalAiUnifiedDestination;
+          setDocumentUserDestination(nextDestination);
+          setDocumentArchivio(mapUnifiedDestinationToArchivio(nextDestination));
+          setIsLibrettoDestinationMenuOpen(false);
+        },
+        onSelectTarga: (value) => {
+          if (!isHistoryReviewActive) {
+            setDocumentTargaSelezionata(value);
+            updateCurrentDocumentField("targa", value);
+          }
+        },
+        onToggleDestinationMenu: () => {
+          if (!isHistoryReviewActive) {
+            setIsLibrettoDestinationMenuOpen((current) => !current);
+          }
+        },
+        onToggleMezzoMode: (mode) => {
+          if (!isHistoryReviewActive) {
+            setLibrettoMezzoMode(mode);
+          }
+        },
+      });
+    }
+
     if (!documentResults && !openedHistoryDocument) {
       return (
         <div className="internal-ai-unified-documents__empty-review">
@@ -8633,13 +8952,26 @@ function NextInternalAiPage({
 
     return (
       <div className="internal-ai-unified-documents__review-shell">
+        <div
+          style={{
+            background: "red",
+            color: "#fff",
+            padding: "16px",
+            fontSize: "28px",
+            fontWeight: 700,
+            marginBottom: "16px",
+            borderRadius: "8px",
+          }}
+        >
+          TEST RAMO B
+        </div>
         <header className="internal-ai-unified-documents__review-toolbar">
           <button
             type="button"
             className="internal-ai-search__button internal-ai-search__button--secondary"
             onClick={closeUnifiedDocumentReview}
           >
-            ← Torna alla chat
+            ? Torna alla chat
           </button>
           <strong className="internal-ai-unified-documents__review-title">
             {currentDocumentReviewTitle}
@@ -8856,7 +9188,7 @@ function NextInternalAiPage({
                       <div className="internal-ai-unified-documents__rows-col-header">
                         <span />
                         <span>Descrizione</span>
-                        <span>Qtà</span>
+                        <span>Qt�</span>
                         <span>Pr. unit.</span>
                         <span>Totale</span>
                         <span>Codice</span>
@@ -8868,10 +9200,10 @@ function NextInternalAiPage({
                         >
                           <input type="checkbox" defaultChecked />
                           <span className="row-desc">{row.descrizione || "Voce senza descrizione"}</span>
-                          <span className="row-qta">{row.quantita || "—"}</span>
+                          <span className="row-qta">{row.quantita || "�"}</span>
                           <span className="row-pru">{row.prezzoUnitario || "n.d."}</span>
                           <span className="row-tot">{row.importo || "n.d."}</span>
-                          <span className="row-cod">{row.codice || "—"}</span>
+                          <span className="row-cod">{row.codice || "�"}</span>
                         </div>
                       ))}
                     </>
@@ -9779,7 +10111,7 @@ function NextInternalAiPage({
                     }
                     onClick={() => void handleChatSubmit()}
                   >
-                    →
+                    ?
                   </button>
                 </div>
                 {renderChatAttachmentsList({ showStorageDetails: false })}
@@ -10254,7 +10586,7 @@ function NextInternalAiPage({
                         disabled={chatStatus === "running" || chatAttachmentRepositoryState.status === "loading"}
                         onClick={() => setIsMergeToolOpen(true)}
                       >
-                        Unisci più file
+                        Unisci pi� file
                       </button>
                       <button
                         type="button"
@@ -13893,75 +14225,133 @@ function NextInternalAiPage({
             onClick={closeDocumentReviewModal}
           />
           <div className="internal-ai-review-modal__sheet">
-            <header className="internal-ai-review-modal__toolbar">
-              <div className="internal-ai-review-modal__toolbar-main">
-                <p className="internal-ai-card__eyebrow">Review documento operativa</p>
-                <h2>
-                  {logicalDocumentGroupingEnabled && documentReviewRoutes.length > 1
-                    ? "Documento logico unificato"
-                    : buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)}
-                </h2>
-                <p className="internal-ai-card__meta">
-                  {logicalDocumentGroupingEnabled && documentReviewRoutes.length > 1
-                    ? `${buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)} · ${buildLogicalDocumentAttachmentCountLabel(documentReviewRoutes.length)} · anteprima attuale: ${activeDocumentReviewRoute.fileName}`
-                    : activeDocumentReviewRoute.fileName}
-                </p>
-                <div className="internal-ai-pill-row">
-                  <span
-                    className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "status")}
-                  >
-                    {activeDocumentReviewInlineState?.executionStatus === "success"
-                      ? "Eseguita inline"
-                      : buildDocumentProposalStatusLabel(activeDocumentReviewRoute)}
-                  </span>
-                  <span
-                    className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "action")}
-                  >
-                    {buildDocumentRouteActionLabel(activeDocumentReviewRoute)}
-                  </span>
-                  <span
-                    className={buildDocumentProposalPillClass(
-                      activeDocumentReviewRoute,
-                      "confidence",
-                    )}
-                  >
-                    Confidenza {buildDocumentRouteConfidenceLabel(activeDocumentReviewRoute)}
-                  </span>
-                </div>
-              </div>
-              <div className="internal-ai-button-row">
-                {activeDocumentReviewAttachment ? (
-                  <button
-                    type="button"
-                    className="internal-ai-search__button internal-ai-search__button--secondary"
-                    onClick={() => handleOpenChatAttachment(activeDocumentReviewAttachment)}
-                  >
-                    Apri originale
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="internal-ai-search__button internal-ai-search__button--secondary"
-                  onClick={() => {
-                    closeDocumentReviewModal();
-                    navigate(
-                      activeDocumentReviewRoute.handoffPayload?.routeTarget ??
-                        activeDocumentReviewRoute.targetPath,
-                    );
-                  }}
-                >
-                  {buildDocumentRouteOpenLabel(activeDocumentReviewRoute)}
-                </button>
-                <button
-                  type="button"
-                  className="internal-ai-search__button"
-                  onClick={closeDocumentReviewModal}
-                >
-                  Chiudi
-                </button>
-              </div>
-            </header>
-
+            {shouldRenderLibrettoReviewModal ? (
+              <NextEstrazioneLibretto
+                analyzeButtonLabel={documentEntryAnalyzeLoading ? "Analisi in corso..." : "Analizza documento"}
+                confirmCompleted={librettoConfermaEffettuata}
+                destinationOptions={librettoDestinationOptions}
+                fileName={activeDocumentReviewRoute.fileName}
+                fileTypeLabel={
+                  activeDocumentReviewAttachment?.previewMode === "image" ? "Immagine pronta" : "Documento pronto"
+                }
+                getFieldValue={getLibrettoValue}
+                isAnalyzeDisabled={
+                  !documentEntryHasPendingSelection ||
+                  documentEntryAnalyzeLoading ||
+                  documentApiKeyExists === false
+                }
+                isConfirmDisabled={isHistoryReviewActive || !documentResults || librettoConfermaEffettuata}
+                isDestinationMenuOpen={isLibrettoDestinationMenuOpen}
+                isScadenzaRevisioneScaduta={isLibrettoScadenzaRevisioneScaduta}
+                mezzoMode={librettoMezzoMode}
+                previewMode={activeDocumentReviewAttachment?.previewMode ?? "pdf"}
+                previewText={
+                  activeDocumentReviewAttachment?.textExcerpt ?? activeDocumentReviewEvidenceText
+                }
+                previewTitle={currentDocumentReviewTitle ?? activeDocumentReviewRoute.fileName}
+                previewUrl={activeDocumentReviewPreviewUrl}
+                saveNewVehicle={librettoSaveNewVehicle}
+                selectedTarga={documentTargaSelezionata}
+                vehicleOptions={documentMezzi}
+                warnings={librettoWarnings}
+                onAnalyze={() => void handleUnifiedDocumentAnalyze()}
+                onCheckDuplicates={() => undefined}
+                onConfirm={() => {
+                  if (librettoConfermaEffettuata) {
+                    return;
+                  }
+                  setLibrettoConfermaEffettuata(true);
+                  void handleUnifiedDocumentSave();
+                }}
+                onDiscard={closeDocumentReviewModal}
+                onFieldChange={setLibrettoValue}
+                onOpenHistory={() => setDocumentHistoryOpen(true)}
+                onSaveNewVehicleChange={(checked) => setLibrettoSaveNewVehicle(checked)}
+                onSelectDestination={(destination) => {
+                  const nextDestination = destination as InternalAiUnifiedDestination;
+                  setDocumentUserDestination(nextDestination);
+                  setDocumentArchivio(mapUnifiedDestinationToArchivio(nextDestination));
+                  setIsLibrettoDestinationMenuOpen(false);
+                }}
+                onSelectTarga={(value) => {
+                  setDocumentTargaSelezionata(value);
+                  updateCurrentDocumentField("targa", value);
+                }}
+                onToggleDestinationMenu={() =>
+                  setIsLibrettoDestinationMenuOpen((current) => !current)
+                }
+                onToggleMezzoMode={setLibrettoMezzoMode}
+              />
+            ) : (
+              <>
+                <header className="internal-ai-review-modal__toolbar">
+                  <div className="internal-ai-review-modal__toolbar-main">
+                    <p className="internal-ai-card__eyebrow">Review documento operativa</p>
+                    <h2>
+                      {logicalDocumentGroupingEnabled && documentReviewRoutes.length > 1
+                        ? "Documento logico unificato"
+                        : buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)}
+                    </h2>
+                    <p className="internal-ai-card__meta">
+                      {logicalDocumentGroupingEnabled && documentReviewRoutes.length > 1
+                        ? `${buildDocumentRouteClassificationLabel(activeDocumentReviewRoute)} � ${buildLogicalDocumentAttachmentCountLabel(documentReviewRoutes.length)} � anteprima attuale: ${activeDocumentReviewRoute.fileName}`
+                        : activeDocumentReviewRoute.fileName}
+                    </p>
+                    <div className="internal-ai-pill-row">
+                      <span
+                        className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "status")}
+                      >
+                        {activeDocumentReviewInlineState?.executionStatus === "success"
+                          ? "Eseguita inline"
+                          : buildDocumentProposalStatusLabel(activeDocumentReviewRoute)}
+                      </span>
+                      <span
+                        className={buildDocumentProposalPillClass(activeDocumentReviewRoute, "action")}
+                      >
+                        {buildDocumentRouteActionLabel(activeDocumentReviewRoute)}
+                      </span>
+                      <span
+                        className={buildDocumentProposalPillClass(
+                          activeDocumentReviewRoute,
+                          "confidence",
+                        )}
+                      >
+                        Confidenza {buildDocumentRouteConfidenceLabel(activeDocumentReviewRoute)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="internal-ai-button-row">
+                    {activeDocumentReviewAttachment ? (
+                      <button
+                        type="button"
+                        className="internal-ai-search__button internal-ai-search__button--secondary"
+                        onClick={() => handleOpenChatAttachment(activeDocumentReviewAttachment)}
+                      >
+                        Apri originale
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="internal-ai-search__button internal-ai-search__button--secondary"
+                      onClick={() => {
+                        closeDocumentReviewModal();
+                        navigate(
+                          activeDocumentReviewRoute.handoffPayload?.routeTarget ??
+                            activeDocumentReviewRoute.targetPath,
+                        );
+                      }}
+                    >
+                      {buildDocumentRouteOpenLabel(activeDocumentReviewRoute)}
+                    </button>
+                    <button
+                      type="button"
+                      className="internal-ai-search__button"
+                      onClick={closeDocumentReviewModal}
+                    >
+                      Chiudi
+                    </button>
+                  </div>
+                </header>
             {documentReviewRoutes.length > 1 ? (
               <div className="internal-ai-review-modal__route-tabs">
                 {documentReviewRoutes.slice(0, 3).map((route) => {
@@ -14346,6 +14736,8 @@ function NextInternalAiPage({
                 </section>
               </aside>
             </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
@@ -14494,3 +14886,5 @@ function NextInternalAiPage({
 }
 
 export default NextInternalAiPage;
+
+

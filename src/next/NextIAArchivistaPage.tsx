@@ -1,6 +1,8 @@
 ﻿import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import ArchivistaDocumentoMezzoBridge from "./internal-ai/ArchivistaDocumentoMezzoBridge";
+import ArchivistaDocumentoMezzoBridge, {
+  type ArchivistaDocumentoMezzoSubtype,
+} from "./internal-ai/ArchivistaDocumentoMezzoBridge";
 import ArchivistaMagazzinoBridge from "./internal-ai/ArchivistaMagazzinoBridge";
 import ArchivistaManutenzioneBridge from "./internal-ai/ArchivistaManutenzioneBridge";
 import ArchivistaPreventivoMagazzinoBridge from "./internal-ai/ArchivistaPreventivoMagazzinoBridge";
@@ -188,6 +190,25 @@ function getContextLabel(contesto: ArchivistaContesto) {
   return contesto === "magazzino" ? "Magazzino" : "Manutenzione";
 }
 
+function mapArchivistaDestinationSelection(
+  destination: string,
+): { tipo: ArchivistaTipo; contesto: ArchivistaContesto } | null {
+  if (destination === "fattura_ddt_magazzino") {
+    return { tipo: "fattura_ddt", contesto: "magazzino" };
+  }
+  if (destination === "fattura_ddt_manutenzione") {
+    return { tipo: "fattura_ddt", contesto: "manutenzione" };
+  }
+  if (destination === "preventivo_magazzino") {
+    return { tipo: "preventivo", contesto: "magazzino" };
+  }
+  if (destination === "documento_mezzo") {
+    return { tipo: "documento_mezzo", contesto: "documento_mezzo" };
+  }
+
+  return null;
+}
+
 export default function NextIAArchivistaPage() {
   const location = useLocation();
   const navigationState = (location.state ?? null) as ArchivistaNavigationState | null;
@@ -198,9 +219,41 @@ export default function NextIAArchivistaPage() {
 
   const [tipo, setTipo] = useState<ArchivistaTipo>(normalizedPreset.tipo);
   const [contesto, setContesto] = useState<ArchivistaContesto>(normalizedPreset.contesto);
+  const [documentoMezzoSubtype, setDocumentoMezzoSubtype] =
+    useState<ArchivistaDocumentoMezzoSubtype>("libretto");
   const activeFlow = FLOW_MATRIX[buildFlowKey(tipo, contesto)];
   const currentTypeLabel = getTypeLabel(tipo);
   const currentContextLabel = getContextLabel(contesto);
+  const isArchivistaDocumentoMezzoLibretto =
+    activeFlow.availability === "active" &&
+    tipo === "documento_mezzo" &&
+    contesto === "documento_mezzo" &&
+    documentoMezzoSubtype === "libretto";
+  const archivistaLibrettoDestinationOptions = [
+    { destination: "fattura_ddt_magazzino", label: "Fattura / DDT → Magazzino" },
+    { destination: "fattura_ddt_manutenzione", label: "Fattura / DDT → Manutenzione" },
+    { destination: "preventivo_magazzino", label: "Preventivo → Magazzino" },
+  ];
+
+  if (isArchivistaDocumentoMezzoLibretto) {
+    return (
+      <section className="next-page internal-ai-page">
+        <ArchivistaDocumentoMezzoBridge
+          destinationOptions={archivistaLibrettoDestinationOptions}
+          onSelectDestination={(destination) => {
+            const nextDestination = mapArchivistaDestinationSelection(destination);
+            if (!nextDestination) {
+              return;
+            }
+            setTipo(nextDestination.tipo);
+            setContesto(nextDestination.contesto);
+          }}
+          onSubtypeChange={setDocumentoMezzoSubtype}
+          selectedSubtype={documentoMezzoSubtype}
+        />
+      </section>
+    );
+  }
 
   return (
     <section className="next-page internal-ai-page iai-page">
@@ -263,13 +316,25 @@ export default function NextIAArchivistaPage() {
             tipo === "fattura_ddt" &&
             contesto === "manutenzione" ? (
               <ArchivistaManutenzioneBridge />
+          ) : activeFlow.availability === "active" &&
+            tipo === "documento_mezzo" &&
+            contesto === "documento_mezzo" ? (
+              <ArchivistaDocumentoMezzoBridge
+                destinationOptions={archivistaLibrettoDestinationOptions}
+                onSelectDestination={(destination) => {
+                  const nextDestination = mapArchivistaDestinationSelection(destination);
+                  if (!nextDestination) {
+                    return;
+                  }
+                  setTipo(nextDestination.tipo);
+                  setContesto(nextDestination.contesto);
+                }}
+                onSubtypeChange={setDocumentoMezzoSubtype}
+                selectedSubtype={documentoMezzoSubtype}
+              />
             ) : activeFlow.availability === "active" &&
-              tipo === "documento_mezzo" &&
-              contesto === "documento_mezzo" ? (
-                <ArchivistaDocumentoMezzoBridge />
-              ) : activeFlow.availability === "active" &&
-                tipo === "preventivo" &&
-                contesto === "magazzino" ? (
+              tipo === "preventivo" &&
+              contesto === "magazzino" ? (
                   <ArchivistaPreventivoMagazzinoBridge />
                 ) : (
             <div className={`iai-card ia-archivista__inactive-shell ${getAvailabilityClass(activeFlow.availability)}`}>

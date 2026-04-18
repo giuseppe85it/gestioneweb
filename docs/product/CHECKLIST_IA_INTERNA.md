@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-04-15
+Ultimo aggiornamento: 2026-04-16
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -156,6 +156,17 @@ Stato macrofase: `IN CORSO`
   - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
 - Dipendenze o blocchi:
   - i dettagli fini dei campi estratti e della review nei bridge secondari restano da rifinire in un task successivo.
+
+### J-octies. Separazione del ramo reale `Documento mezzo -> Libretto` nel modale review operativo
+- Stato: `FATTO`
+- Note: `src/next/NextInternalAiPage.tsx` monta ora `src/next/internal-ai/NextEstrazioneLibretto.tsx` solo nel ramo reale del modale review operativo `documentReviewModalState.isOpen && activeDocumentReviewRoute` quando la route attiva e `Documento mezzo -> Libretto`. Il nuovo componente riceve solo props dal parent, non introduce writer o hook nuovi e usa stile dedicato in `src/next/internal-ai/next-estrazione-libretto.css`. Gli altri rami del modale restano invariati.
+- File/documenti collegati:
+  - `docs/product/SPEC_IA_IMPORTA_DOCUMENTI_LIBRETTO_NEXT.md`
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/change-reports/20260416_222127_estrazione_libretto_component_separation.md`
+  - `docs/continuity-reports/20260416_222127_continuity_estrazione_libretto_component_separation.md`
+- Dipendenze o blocchi:
+  - la verifica browser e stata eseguita nel runtime reale di `/next/ia/interna` con iniezione locale di stato documentale per forzare il caso `Documento mezzo -> Libretto`; restano fuori da questo task refinement visivi o business dei rami non-libretto.
 
 ### J-bis. Dispatcher UI unico secondo spec 2026-04-12
 - Stato: `IN CORSO`

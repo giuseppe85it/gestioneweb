@@ -44,6 +44,12 @@ const INTERNAL_AI_MAGAZZINO_INLINE_SCOPE = "internal_ai_magazzino_inline_magazzi
 const INTERNAL_AI_DOCUMENTI_ALLOWED_PATHS = ["/next/ia/interna", "/next/ia/archivista"] as const;
 const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti";
+const IA_LIBRETTO_ALLOWED_WRITE_PATH = "/next/ia/libretto";
+const IA_LIBRETTO_ALLOWED_FETCH_PATHS = ["/next/ia/libretto", "/next/ia/archivista"] as const;
+const IA_LIBRETTO_ANALYZE_ENDPOINT =
+  "https://estrazione-libretto-7bo6jdsreq-uc.a.run.app";
+const IA_LIBRETTO_ALLOWED_STORAGE_KEYS = new Set(["@mezzi_aziendali"]);
+const IA_LIBRETTO_ALLOWED_STORAGE_PATH_PREFIXES = ["mezzi_aziendali/"] as const;
 const ARCHIVISTA_ALLOWED_FIRESTORE_COLLECTIONS = new Set([
   "@documenti_magazzino",
   "@documenti_mezzi",
@@ -168,6 +174,24 @@ function isAllowedArchivistaCloneWritePath(pathname: string): boolean {
   return pathname === "/next/ia/archivista";
 }
 
+function isAllowedIaLibrettoCloneWritePath(pathname: string): boolean {
+  return pathname === IA_LIBRETTO_ALLOWED_WRITE_PATH;
+}
+
+function isAllowedIaLibrettoAnalyzeFetch(pathname: string, meta: unknown): boolean {
+  if (!IA_LIBRETTO_ALLOWED_FETCH_PATHS.some((entry) => pathname === entry)) return false;
+  if (readMetaMethod(meta) !== "POST") return false;
+
+  try {
+    const parsed = new URL(readMetaUrl(meta), window.location.origin);
+    const normalizedRuntimeEndpoint = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
+    const normalizedAllowedEndpoint = IA_LIBRETTO_ANALYZE_ENDPOINT.replace(/\/+$/, "");
+    return normalizedRuntimeEndpoint === normalizedAllowedEndpoint;
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedEuromeccCloneWritePath(pathname: string): boolean {
   return EUROMECC_ALLOWED_WRITE_PATHS.some(
     (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
@@ -213,9 +237,23 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
 
   if (
     kind === "fetch.runtime" &&
-    isAllowedInternalAiDocumentAnalyzeFetch(pathname, meta)
+    (isAllowedInternalAiDocumentAnalyzeFetch(pathname, meta) ||
+      isAllowedIaLibrettoAnalyzeFetch(pathname, meta))
   ) {
     return true;
+  }
+
+  if (isAllowedIaLibrettoCloneWritePath(pathname)) {
+    if (kind === "storage.uploadString") {
+      const path = readMetaPath(meta);
+      return IA_LIBRETTO_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
+
+    if (kind === "storageSync.setItemSync") {
+      return IA_LIBRETTO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    }
   }
 
   if (isAllowedArchivistaCloneWritePath(pathname)) {

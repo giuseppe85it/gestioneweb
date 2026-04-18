@@ -1,16 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { getDownloadURL, ref, uploadString } from "firebase/storage";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../pages/IA/IALibretto.css";
+import { db, storage } from "../firebase";
 import { readNextIaConfigSnapshot } from "./domain/nextIaConfigDomain";
 import {
   readNextIaLibrettoArchiveSnapshot,
   type NextIaLibrettoArchiveItem,
 } from "./domain/nextIaLibrettoDomain";
+import { assertCloneWriteAllowed } from "../utils/cloneWriteBarrier";
+import { setItemSync } from "../utils/storageSync";
 
 function normalizeTarga(value: string | null | undefined) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function normalizeTargaKey(value: string | null | undefined) {
+  return normalizeTarga(value).replace(/[^A-Z0-9]/g, "");
+}
+
+type LibrettoResults = Record<string, string | number | null | undefined>;
+type MezzoRecord = Record<string, unknown>;
 type ArchiveGroup = {
   targa: string;
   items: Array<{
@@ -28,8 +39,8 @@ export default function NextIALibrettoPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<LibrettoResults | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [analysisBlocked, setAnalysisBlocked] = useState(false);
   const [archiveItems, setArchiveItems] = useState<NextIaLibrettoArchiveItem[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
@@ -42,6 +53,7 @@ export default function NextIALibrettoPage() {
   const [viewerRotate, setViewerRotate] = useState(0);
   const [viewerZoom, setViewerZoom] = useState(1);
   const [viewerError, setViewerError] = useState<string | null>(null);
+  const debugSaveEnabled = import.meta.env.DEV;
 
   const openViewer = (url: string, targa?: string | null) => {
     setViewerUrl(url);
@@ -172,13 +184,13 @@ export default function NextIALibrettoPage() {
       setErrorMessage("Carica solo immagini (JPG o PNG).");
       setSelectedFile(null);
       setPreview(null);
-      setAnalysisBlocked(false);
+      setResults(null);
       return;
     }
 
     setSelectedFile(file);
     setErrorMessage(null);
-    setAnalysisBlocked(false);
+    setResults(null);
 
     const reader = new FileReader();
     reader.onload = () => setPreview(typeof reader.result === "string" ? reader.result : null);
@@ -195,24 +207,291 @@ export default function NextIALibrettoPage() {
     setErrorMessage(null);
 
     try {
-      setAnalysisBlocked(true);
+      const base64: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => reject(new Error("Errore lettura immagine"));
+        reader.readAsDataURL(selectedFile);
+      });
+
+      if (!base64) {
+        throw new Error("Immagine non letta correttamente.");
+      }
+
+      const jpegBase64 = base64.startsWith("data:image/png")
+        ? base64.replace("data:image/png", "data:image/jpeg")
+        : base64;
+
+      const response = await fetch("https://estrazione-libretto-7bo6jdsreq-uc.a.run.app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base64Image: jpegBase64,
+          mimeType: "image/jpeg",
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Errore HTTP: ${response.status} -> ${text}`);
+      }
+
+      const json = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        data?: LibrettoResults;
+      };
+
+      if (!json.success) {
+        throw new Error(json.error || "Errore backend");
+      }
+
+      setResults(json.data ?? {});
+    } catch (error) {
+      console.error("Errore durante l'analisi:", error);
       setErrorMessage(
-        "Clone read-only: Analizza con IA resta visibile come nella madre, ma non invia file al servizio IA.",
+        error instanceof Error
+          ? error.message
+          : "Errore durante l'analisi. Controlla la connessione e riprova.",
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = () => {
-    if (!analysisBlocked) {
-      setErrorMessage("Nessun dato valido da salvare.");
+  const handleSave = async () => {
+    if (!results || !results.targa) {
+      alert("Nessun dato valido da salvare.");
       return;
     }
 
-    setErrorMessage(
-      "Clone read-only: Salva nei documenti del mezzo resta visibile come nella madre, ma non aggiorna l'archivio mezzi.",
-    );
+    setLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const firestorePath = "storage/@mezzi_aziendali";
+      const rawTarga = String(results.targa ?? "");
+      const targaKey = normalizeTargaKey(rawTarga);
+      const targa = normalizeTarga(rawTarga).replace(/\s+/g, "");
+
+      if (debugSaveEnabled) {
+        console.log("[NextIALibretto][SAVE] START", {
+          resultsTargaRaw: results.targa,
+          resultsTargaKey: targaKey,
+        });
+      }
+
+      if (!targaKey) {
+        throw new Error("Targa non valida per il salvataggio.");
+      }
+
+      const refMezzi = doc(db, "storage", "@mezzi_aziendali");
+      const snap = await getDoc(refMezzi);
+
+      let mezzi = snap.exists() ? snap.data().value || [] : [];
+      mezzi = Array.isArray(mezzi) ? mezzi : [];
+
+      if (debugSaveEnabled) {
+        console.log("[NextIALibretto][SAVE] DATASET", {
+          firestorePath,
+          mezzoCount: mezzi.length,
+        });
+      }
+
+      const foundIndex = mezzi.findIndex(
+        (mezzo: MezzoRecord) => normalizeTargaKey(String(mezzo.targa ?? "")) === targaKey,
+      );
+
+      if (debugSaveEnabled) {
+        if (foundIndex === -1) {
+          console.warn("[NextIALibretto][SAVE] INDEX NOT FOUND", {
+            index: foundIndex,
+            resultsTargaRaw: results.targa,
+            resultsTargaKey: targaKey,
+          });
+        } else {
+          const foundMezzo = mezzi[foundIndex] as MezzoRecord;
+          console.log("[NextIALibretto][SAVE] INDEX FOUND", {
+            index: foundIndex,
+            mezzoTargaRaw: String(foundMezzo.targa ?? ""),
+            mezzoTargaKey: normalizeTargaKey(String(foundMezzo.targa ?? "")),
+            librettoUrlBefore:
+              typeof foundMezzo.librettoUrl === "string" ? foundMezzo.librettoUrl : null,
+          });
+        }
+      }
+
+      let index = foundIndex;
+      let mezzo: MezzoRecord;
+
+      if (index >= 0) {
+        mezzo = { ...(mezzi[index] as MezzoRecord) };
+      } else {
+        mezzo = {
+          id: `MEZZO-${Date.now()}`,
+          fotoUrl: null,
+          tipo: "motrice",
+          categoria: "",
+          targa,
+          marca: "",
+          modello: "",
+          telaio: "",
+          colore: "",
+          cilindrata: "",
+          potenza: "",
+          massaComplessiva: "",
+          proprietario: "",
+          assicurazione: "",
+          dataImmatricolazione: "",
+          dataScadenzaRevisione: "",
+          dataUltimoCollaudo: "",
+          manutenzioneProgrammata: false,
+          manutenzioneDataInizio: "",
+          manutenzioneDataFine: "",
+          manutenzioneKmMax: "",
+          manutenzioneContratto: "",
+          note: "",
+          autistaId: null,
+          autistaNome: null,
+          marcaModello: "",
+          anno: "",
+        };
+
+        mezzi.push(mezzo);
+        index = mezzi.length - 1;
+
+        if (debugSaveEnabled) {
+          console.warn("[NextIALibretto][SAVE] FALLBACK NEW MEZZO", {
+            index,
+            mezzoTargaRaw: String(mezzo.targa ?? ""),
+            mezzoTargaKey: normalizeTargaKey(String(mezzo.targa ?? "")),
+          });
+        }
+      }
+
+      const librettoUrlBefore =
+        typeof mezzo.librettoUrl === "string" ? mezzo.librettoUrl : null;
+
+      if (debugSaveEnabled) {
+        console.log("[NextIALibretto][SAVE] TARGET BEFORE", {
+          index,
+          mezzoTargaRaw: String(mezzo.targa ?? ""),
+          mezzoTargaKey: normalizeTargaKey(String(mezzo.targa ?? "")),
+          librettoUrlBefore,
+        });
+      }
+
+      const mappaCampi: Record<string, string> = {
+        marca: "marca",
+        modello: "modello",
+        telaio: "telaio",
+        colore: "colore",
+        categoria: "categoria",
+        cilindrata: "cilindrica",
+        potenza: "potenza",
+        massaComplessiva: "pesoTotale",
+        proprietario: "proprietario",
+        assicurazione: "assicurazione",
+        dataImmatricolazione: "immatricolazione",
+        dataUltimoCollaudo: "revisione",
+        dataScadenzaRevisione: "dataScadenzaRevisione",
+        note: "note",
+      };
+
+      Object.entries(mappaCampi).forEach(([campoMezzo, campoIa]) => {
+        const valore = results[campoIa];
+        if (valore !== undefined && valore !== null && String(valore).trim() !== "") {
+          mezzo[campoMezzo] = String(valore).trim();
+        }
+      });
+
+      mezzo.marcaModello = `${String(mezzo.marca ?? "").trim()} ${String(
+        mezzo.modello ?? "",
+      ).trim()}`.trim();
+
+      const dataImmatricolazione = String(mezzo.dataImmatricolazione ?? "").trim();
+      if (dataImmatricolazione) {
+        const parti = dataImmatricolazione.split(".");
+        if (parti.length === 3) {
+          mezzo.anno = parti[2];
+        }
+      }
+
+      if (preview) {
+        const mezzoId = String(mezzo.id || `MEZZO-${Date.now()}`);
+        mezzo.id = mezzoId;
+        const path = `mezzi_aziendali/${mezzoId}/libretto.jpg`;
+        assertCloneWriteAllowed("storage.uploadString", { path });
+        const storageRef = ref(storage, path);
+        await uploadString(storageRef, preview, "data_url");
+        const url = await getDownloadURL(storageRef);
+        mezzo.librettoUrl = url;
+        mezzo.librettoStoragePath = path;
+
+        if (debugSaveEnabled) {
+          console.log("[NextIALibretto][SAVE] UPLOAD OK", {
+            storagePath: path,
+            librettoUrlAfter: mezzo.librettoUrl,
+          });
+        }
+      }
+
+      Object.keys(mezzo).forEach((key) => {
+        if (mezzo[key] === undefined) {
+          mezzo[key] = null;
+        }
+      });
+
+      if (index < 0 || index >= mezzi.length) {
+        throw new Error("Impossibile associare il libretto al mezzo corretto.");
+      }
+
+      mezzi[index] = mezzo;
+
+      if (debugSaveEnabled) {
+        console.log("[NextIALibretto][SAVE] WRITE REQUEST", {
+          firestorePath,
+          functionUsed: "setItemSync",
+          payloadShape: "{ value: mezzi[] }",
+          mezzoCount: mezzi.length,
+          index,
+          librettoUrlBefore,
+          librettoUrlAfter:
+            typeof mezzo.librettoUrl === "string" ? mezzo.librettoUrl : null,
+        });
+      }
+
+      try {
+        await setItemSync("@mezzi_aziendali", mezzi);
+        if (debugSaveEnabled) {
+          console.log("[NextIALibretto][SAVE] WRITE OK", {
+            firestorePath,
+            functionUsed: "setItemSync",
+            mezzoCount: mezzi.length,
+            index,
+          });
+        }
+      } catch (writeError) {
+        console.error("[NextIALibretto][SAVE] WRITE ERROR", {
+          firestorePath,
+          functionUsed: "setItemSync",
+          mezzoCount: mezzi.length,
+          index,
+          error: writeError,
+        });
+        throw writeError;
+      }
+
+      alert("Dati libretto salvati correttamente.");
+    } catch (error) {
+      console.error("Errore salvataggio:", error);
+      const message =
+        error instanceof Error ? error.message : "Errore durante il salvataggio.";
+      setErrorMessage(message);
+      alert(`Salvataggio libretto non completato: ${message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (apiKeyExists === null) {
@@ -305,14 +584,32 @@ export default function NextIALibrettoPage() {
               <div className="ialibretto-empty">Nessuna anteprima</div>
             )}
 
-            {analysisBlocked ? (
+            {results ? (
               <div className="ialibretto-results">
                 <h2>Dati estratti</h2>
-                <div className="ialibretto-empty">
-                  Nel clone read-only l&apos;analisi resta visibile come nella madre, ma non invia
-                  la foto al backend IA e non genera nuovi campi editabili.
-                </div>
-                <button className="ia-btn primary" type="button" onClick={handleSave}>
+
+                {Object.entries(results).map(([key, value]) => (
+                  <div key={key} className="ialibretto-field">
+                    <label>{key}</label>
+                    <input
+                      value={String(value ?? "")}
+                      onChange={(event) =>
+                        setResults((current) =>
+                          current ? { ...current, [key]: event.target.value } : current,
+                        )
+                      }
+                    />
+                  </div>
+                ))}
+
+                <button
+                  className="ia-btn primary"
+                  type="button"
+                  onClick={() => {
+                    void handleSave();
+                  }}
+                  disabled={loading}
+                >
                   Salva nei documenti del mezzo
                 </button>
               </div>
