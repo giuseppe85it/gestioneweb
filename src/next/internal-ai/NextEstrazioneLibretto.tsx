@@ -8,10 +8,7 @@ import {
   applyLibrettoTemplateFieldChange,
   getLibrettoTemplateFieldValue,
 } from "./utils/librettoFieldMapper";
-import {
-  LIBRETTO_LAYOUT_ZONES,
-  type LibrettoTemplateField,
-} from "./utils/librettoLayoutZones";
+import { type LibrettoTemplateField } from "./utils/librettoLayoutZones";
 import "./next-estrazione-libretto.css";
 
 type NextEstrazioneLibrettoDestinationOption = {
@@ -50,6 +47,8 @@ type NextEstrazioneLibrettoProps = {
     rawUltimoCollaudo?: string | null;
     mappedDataUltimoCollaudo?: string | null;
     propDataUltimoCollaudo?: string | null;
+    duplicatePlateKey?: string | null;
+    duplicateCandidateCount?: string | null;
   };
   fileName: string;
   fileTypeLabel: string;
@@ -67,6 +66,8 @@ type NextEstrazioneLibrettoProps = {
   resetKey?: number;
   saveNewVehicle: boolean;
   selectedTarga: string;
+  vehiclePhotoFileName?: string;
+  vehiclePhotoPreviewUrl?: string | null;
   warnings: string[];
   vinOptimizationUsed?: boolean;
   destinationOptions: NextEstrazioneLibrettoDestinationOption[];
@@ -82,6 +83,8 @@ type NextEstrazioneLibrettoProps = {
   onOpenHistory: () => void;
   onOptimizeImageChange?: (checked: boolean) => void;
   onSaveNewVehicleChange: (checked: boolean) => void;
+  onVehiclePhotoClear?: () => void;
+  onVehiclePhotoSelect?: (file: File | null) => void;
   onSelectDuplicateChoice?: (choice: ArchivistaDuplicateChoice) => void;
   onSelectDuplicateId?: (id: string) => void;
   onSelectDestination: (destination: string) => void;
@@ -162,6 +165,63 @@ function renderTemplateInput(args: {
   );
 }
 
+function createTemplateField(
+  key: string,
+  label: string,
+  options?: Partial<Omit<LibrettoTemplateField, "key" | "label">>,
+): LibrettoTemplateField {
+  return {
+    key,
+    label,
+    inputType: options?.inputType ?? "text",
+    variant: options?.variant ?? "plain",
+    colSpan: options?.colSpan,
+  };
+}
+
+const TARGET_FIELDS = {
+  nAvs: createTemplateField("nAvs", "N. AVS", { variant: "mono" }),
+  proprietario: createTemplateField("proprietario", "Proprietario"),
+  indirizzo: createTemplateField("indirizzo", "Indirizzo"),
+  statoOrigine: createTemplateField("statoOrigine", "Stato d'origine"),
+  assicurazione: createTemplateField("assicurazione", "Assicurazione"),
+  annotazioni: createTemplateField("annotazioni", "Annotazioni", { inputType: "textarea" }),
+  targa: createTemplateField("targa", "Targa", { variant: "plate" }),
+  colore: createTemplateField("colore", "Colore"),
+  genereVeicolo: createTemplateField("genereVeicolo", "Genere veicolo"),
+  marcaTipo: createTemplateField("marcaTipo", "Marca e tipo"),
+  telaio: createTemplateField("telaio", "Telaio", { variant: "mono" }),
+  carrozzeria: createTemplateField("carrozzeria", "Carrozzeria"),
+  numeroMatricola: createTemplateField("numeroMatricola", "Numero matricola", { variant: "mono" }),
+  approvazioneTipo: createTemplateField("approvazioneTipo", "Approvazione tipo", {
+    variant: "mono",
+  }),
+  cilindrata: createTemplateField("cilindrata", "Cilindrata", { variant: "mono" }),
+  potenza: createTemplateField("potenza", "Potenza", { variant: "mono" }),
+  pesoVuoto: createTemplateField("pesoVuoto", "Peso a vuoto", { variant: "mono" }),
+  caricoUtileSella: createTemplateField("caricoUtileSella", "Carico utile / sella", {
+    variant: "mono",
+  }),
+  pesoTotale: createTemplateField("pesoTotale", "Peso totale", { variant: "mono" }),
+  pesoTotaleRimorchio: createTemplateField("pesoTotaleRimorchio", "Peso totale rimorchio", {
+    variant: "mono",
+  }),
+  caricoSulLetto: createTemplateField("caricoSulLetto", "Carico sul letto", { variant: "mono" }),
+  pesoRimorchiabile: createTemplateField("pesoRimorchiabile", "Peso rimorchiabile", {
+    variant: "mono",
+  }),
+  primaImmatricolazione: createTemplateField("primaImmatricolazione", "Prima immatricolazione", {
+    variant: "date",
+  }),
+  luogoDataRilascio: createTemplateField("luogoDataRilascio", "Luogo / data rilascio"),
+  ultimoCollaudo: createTemplateField("ultimoCollaudo", "Ultimo collaudo", { variant: "date" }),
+  prossimoCollaudoRevisione: createTemplateField(
+    "prossimoCollaudoRevisione",
+    "Prossimo collaudo / revisione",
+    { variant: "date" },
+  ),
+};
+
 function NextEstrazioneLibretto({
   acceptedFileTypes = "image/*,application/pdf",
   analyzeButtonLabel,
@@ -194,6 +254,8 @@ function NextEstrazioneLibretto({
   onOpenHistory,
   onOptimizeImageChange,
   onSaveNewVehicleChange,
+  onVehiclePhotoClear,
+  onVehiclePhotoSelect,
   onSelectDuplicateChoice,
   onSelectDuplicateId,
   onSelectDestination,
@@ -210,6 +272,8 @@ function NextEstrazioneLibretto({
   showSubtypeCard = true,
   showVehicleModeToggle = true,
   selectedTarga,
+  vehiclePhotoFileName = "",
+  vehiclePhotoPreviewUrl = null,
   vinOptimizationUsed = false,
   vehicleOptions,
   warnings,
@@ -219,6 +283,8 @@ function NextEstrazioneLibretto({
   const handleCheckDuplicates = onCheckDuplicates ?? (() => undefined);
   const handleSelectDuplicateChoice = onSelectDuplicateChoice ?? (() => undefined);
   const handleSelectDuplicateId = onSelectDuplicateId ?? (() => undefined);
+  const handleVehiclePhotoClear = onVehiclePhotoClear ?? (() => undefined);
+  const handleVehiclePhotoSelect = onVehiclePhotoSelect ?? (() => undefined);
   const fieldDataUltimoCollaudo = getFieldValue("dataUltimoCollaudo");
   const fieldDataScadenzaRevisione = getFieldValue("dataScadenzaRevisione");
   const canTransformViewer = Boolean(previewUrl && previewMode === "image");
@@ -226,6 +292,21 @@ function NextEstrazioneLibretto({
     import.meta.env.DEV &&
     Boolean(debugImages?.originalUrl || debugImages?.preprocessUrl || debugImages?.finalUrl);
   const hasDuplicateCandidates = duplicateCandidates.length > 0;
+  const renderTargetField = (
+    field: LibrettoTemplateField,
+    className?: string,
+    labelClassName?: string,
+  ) => (
+    <label className={className ?? "iai-target-field"}>
+      <span className={labelClassName ?? "iai-target-field__label"}>{field.label}</span>
+      {renderTemplateInput({
+        field,
+        getFieldValue,
+        isScadenzaRevisioneScaduta,
+        onFieldChange,
+      })}
+    </label>
+  );
 
   return (
     <div className="iai-libretto-extraction">
@@ -461,11 +542,13 @@ function NextEstrazioneLibretto({
               <div>prop ultimo collaudo: {debugTrace?.propDataUltimoCollaudo || "-"}</div>
               <div>field ultimo collaudo: {fieldDataUltimoCollaudo || "-"}</div>
               <div>field prossimo collaudo / revisione: {fieldDataScadenzaRevisione || "-"}</div>
+              <div>chiave targa duplicati: {debugTrace?.duplicatePlateKey || "-"}</div>
+              <div>candidati duplicati trovati: {debugTrace?.duplicateCandidateCount || "0"}</div>
             </div>
           </section>
         ) : null}
 
-        <section className="iai-libretto-template iai-libretto-sheet">
+        <section className="iai-libretto-template iai-libretto-template--target iai-libretto-sheet">
           <header className="iai-libretto-template__header">
             <div>
               <p className="iai-libretto-template__eyebrow">Copia editabile del documento</p>
@@ -474,36 +557,202 @@ function NextEstrazioneLibretto({
             <span className="iai-libretto-template__tag">Campi editabili</span>
           </header>
 
-          <div className="iai-libretto-sheet__paper">
-            {LIBRETTO_LAYOUT_ZONES.map((zone) => (
-              <section key={zone.id} className="iai-libretto-zone iai-libretto-sheet__band">
-              <div className="iai-libretto-zone__header">
-                <div>
-                  <h3>{zone.title}</h3>
-                </div>
+          <div className="iai-target-sheet">
+            <div className="iai-target-sheet__scale">
+              <div className="iai-target-sheet__spread">
+                <section className="iai-target-page iai-target-page--left">
+                  <div className="iai-target-page__number">Pagina 2</div>
+
+                  <div className="iai-target-row iai-target-row--owner">
+                    <div className="iai-target-rail">Detentore</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(
+                        TARGET_FIELDS.nAvs,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row">
+                    <div className="iai-target-rail">Ragione sociale</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(
+                        TARGET_FIELDS.proprietario,
+                        "iai-target-field iai-target-field--strong",
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row iai-target-row--address">
+                    <div className="iai-target-rail">Domicilio</div>
+                    <div className="iai-target-main iai-target-main--stack">
+                      {renderTargetField(TARGET_FIELDS.indirizzo)}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row iai-target-row--split">
+                    <div className="iai-target-rail">Dati titolare</div>
+                    <div className="iai-target-split">
+                      {renderTargetField(
+                        TARGET_FIELDS.statoOrigine,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.assicurazione,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row iai-target-row--notes">
+                    <div className="iai-target-strip">
+                      <span>Annotazioni cantonali</span>
+                      <span>Decisioni autorità</span>
+                      <span>Annotazioni</span>
+                    </div>
+                    <div className="iai-target-main">
+                      {renderTargetField(
+                        TARGET_FIELDS.annotazioni,
+                        "iai-target-field iai-target-field--notes",
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="iai-target-page iai-target-page--right">
+                  <div className="iai-target-page__number">Pagina 3</div>
+
+                  <div className="iai-target-row iai-target-row--plate">
+                    <div className="iai-target-code">A / 15</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(
+                        TARGET_FIELDS.targa,
+                        "iai-target-field iai-target-field--plate",
+                        "iai-target-field__label iai-target-field__label--sr",
+                      )}
+                    </div>
+                    <div className="iai-target-side">{renderTargetField(TARGET_FIELDS.colore)}</div>
+                  </div>
+
+                  <div className="iai-target-row">
+                    <div className="iai-target-code">19</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(TARGET_FIELDS.genereVeicolo)}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row">
+                    <div className="iai-target-code">D / 21</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(TARGET_FIELDS.marcaTipo)}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row">
+                    <div className="iai-target-code">E / 23</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(TARGET_FIELDS.telaio)}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row iai-target-row--split-right">
+                    <div className="iai-target-code">25</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(TARGET_FIELDS.carrozzeria)}
+                    </div>
+                    <div className="iai-target-mini">
+                      {renderTargetField(TARGET_FIELDS.colore)}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-tech-grid">
+                    <div className="iai-target-tech-grid__left">
+                      {renderTargetField(
+                        TARGET_FIELDS.numeroMatricola,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.approvazioneTipo,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.cilindrata,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.potenza,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                    <div className="iai-target-tech-grid__right">
+                      {renderTargetField(
+                        TARGET_FIELDS.pesoVuoto,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.caricoUtileSella,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.pesoTotale,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.pesoTotaleRimorchio,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.caricoSulLetto,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                      {renderTargetField(
+                        TARGET_FIELDS.pesoRimorchiabile,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row iai-target-row--dates">
+                    <div className="iai-target-code">B / 36</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(
+                        TARGET_FIELDS.primaImmatricolazione,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                    <div className="iai-target-side">
+                      {renderTargetField(
+                        TARGET_FIELDS.luogoDataRilascio,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row iai-target-row--collaudo">
+                    <div className="iai-target-code iai-target-code--highlight">38</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(
+                        TARGET_FIELDS.ultimoCollaudo,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="iai-target-row iai-target-row--revision">
+                    <div className="iai-target-code">39</div>
+                    <div className="iai-target-main">
+                      {renderTargetField(
+                        TARGET_FIELDS.prossimoCollaudoRevisione,
+                        "iai-target-field iai-target-field--compact",
+                      )}
+                    </div>
+                  </div>
+                </section>
               </div>
-              <div
-                className="iai-libretto-zone__grid"
-                style={{ gridTemplateColumns: `repeat(${zone.columns}, minmax(0, 1fr))` }}
-              >
-                {zone.fields.map((field) => (
-                  <label
-                    key={field.key}
-                    className="iai-libretto-zone__field"
-                    style={{ gridColumn: `span ${field.colSpan ?? 1}` }}
-                  >
-                    <span className="iai-libretto-zone__label">{field.label}</span>
-                    {renderTemplateInput({
-                      field,
-                      getFieldValue,
-                      isScadenzaRevisioneScaduta,
-                      onFieldChange,
-                    })}
-                  </label>
-                ))}
-              </div>
-              </section>
-            ))}
+            </div>
+            <div className="iai-target-sheet__note">
+              Tutti i campi sono editabili e seguono il layout del mockup di riferimento.
+            </div>
           </div>
         </section>
 
@@ -627,6 +876,47 @@ function NextEstrazioneLibretto({
                 </label>
               </>
             )}
+
+            <div className="iai-divider" />
+            <div className="iai-vehicle-photo">
+              <span className="iai-field-code">Foto del mezzo (opzionale)</span>
+              <p className="iai-upload-hint">
+                Viene salvata sul record del mezzo con la stessa logica della madre.
+              </p>
+              <div className="iai-vehicle-photo__row">
+                <div className="iai-vehicle-photo__preview">
+                  {vehiclePhotoPreviewUrl ? (
+                    <img src={vehiclePhotoPreviewUrl} alt="Anteprima foto mezzo" />
+                  ) : (
+                    <div className="iai-vehicle-photo__placeholder">Nessuna foto selezionata</div>
+                  )}
+                </div>
+                <div className="iai-vehicle-photo__actions">
+                  <label className="iai-btn-upload iai-btn-upload--small iai-vehicle-photo__picker">
+                    <span>Seleziona foto</span>
+                    <input
+                      key={`vehicle-photo:${resetKey}`}
+                      type="file"
+                      accept="image/*"
+                      className="iai-upload-input iai-vehicle-photo__input"
+                      onChange={(event) => handleVehiclePhotoSelect(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {vehiclePhotoFileName ? (
+                    <button
+                      type="button"
+                      className="iai-btn-duplicate"
+                      onClick={handleVehiclePhotoClear}
+                    >
+                      Rimuovi foto
+                    </button>
+                  ) : null}
+                  {vehiclePhotoFileName ? (
+                    <span className="iai-vehicle-photo__name">{vehiclePhotoFileName}</span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </article>
 
           <article className="iai-card">

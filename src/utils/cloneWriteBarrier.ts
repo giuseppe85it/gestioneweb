@@ -57,6 +57,7 @@ const ARCHIVISTA_ALLOWED_FIRESTORE_COLLECTIONS = new Set([
 const ARCHIVISTA_ALLOWED_FIRESTORE_DOC_PATHS = new Set(["storage/@preventivi"]);
 const ARCHIVISTA_ALLOWED_STORAGE_KEYS = new Set(["@mezzi_aziendali"]);
 const ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES = ["documenti_pdf/", "preventivi/"] as const;
+const ARCHIVISTA_ALLOWED_IMAGE_STORAGE_PATH_PREFIXES = ["mezzi/"] as const;
 const cloneWriteScopedAllowances = new Map<string, number>();
 
 declare global {
@@ -260,6 +261,13 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     if (kind === "storage.uploadBytes") {
       const path = readMetaPath(meta);
       return ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
+
+    if (kind === "storage.uploadString") {
+      const path = readMetaPath(meta);
+      return ARCHIVISTA_ALLOWED_IMAGE_STORAGE_PATH_PREFIXES.some((prefix) =>
         path.startsWith(prefix),
       );
     }
