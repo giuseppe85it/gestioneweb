@@ -1915,3 +1915,17 @@ Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema 
 - Non scrivere su dataset business reali.
 - Non salvare chiavi provider dal client.
 - Non far generare patch dirette al repository senza preview e approvazione.
+
+## 12.55 Aggiornamento 2026-04-22 - Fix leak preventivi manutenzione nel layer procurement
+- Chiusura del leak per cui i preventivi Archivista Manutenzione comparivano nelle superfici procurement NEXT.
+- Cosa cambia davvero nel runtime:
+  - `nextProcurementDomain.ts`: `readNextProcurementSnapshot()` non include piu i record `ambitoPreventivo: "manutenzione"` in `snapshot.preventivi`;
+  - `nextDocumentiCostiDomain.ts`: `readNextDocumentiCostiProcurementSupportSnapshot()` esclude gli stessi record da `preventiviItems`;
+  - `internalAiUnifiedIntelligenceEngine.ts`: il registry universale filtra `storage/@preventivi` prima della materializzazione grezza.
+- Boundary preservati:
+  - nessun writer, barrier o regola storage modificata;
+  - record storici senza `ambitoPreventivo` restano inclusi;
+  - dossier mezzo non toccato.
+- Verifiche eseguite:
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `582/567/15` (delta zero)

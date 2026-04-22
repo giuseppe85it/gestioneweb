@@ -15,7 +15,8 @@ export type ArchivistaFamily =
   | "fattura_ddt_magazzino"
   | "fattura_ddt_manutenzione"
   | "documento_mezzo"
-  | "preventivo_magazzino";
+  | "preventivo_magazzino"
+  | "preventivo_manutenzione";
 
 export type ArchivistaDuplicateChoice =
   | "stesso_documento"
@@ -91,6 +92,11 @@ type ArchivistaPreventivoArchiveArgs = {
   righe: ArchivistaReviewRow[];
   avvisi: string[];
   campiMancanti: string[];
+  ambitoPreventivo?: "magazzino" | "manutenzione" | null;
+  metadatiMezzo?: {
+    targa: string;
+    km?: string | number | null;
+  } | null;
   duplicateChoice?: ArchivistaDuplicateChoice | null;
   duplicateCandidate?: ArchivistaDuplicateCandidate | null;
 };
@@ -201,7 +207,7 @@ function sanitizeFileName(value: string): string {
 function buildStoragePathForFile(fileName: string, family: ArchivistaFamily, preferredId?: string): string {
   const safeName = sanitizeFileName(fileName);
   const stamp = preferredId || `${Date.now()}`;
-  if (family === "preventivo_magazzino") {
+  if (family === "preventivo_magazzino" || family === "preventivo_manutenzione") {
     return `preventivi/${stamp}_${safeName}`;
   }
   return `documenti_pdf/${stamp}_${safeName}`;
@@ -246,12 +252,16 @@ function inferFamilyFromRecord(target: string, rawRecord: Record<string, unknown
     explicit === "fattura_ddt_magazzino" ||
     explicit === "fattura_ddt_manutenzione" ||
     explicit === "documento_mezzo" ||
-    explicit === "preventivo_magazzino"
+    explicit === "preventivo_magazzino" ||
+    explicit === "preventivo_manutenzione"
   ) {
     return explicit;
   }
 
   if (target === "@preventivi") {
+    if (normalizeText(rawRecord.ambitoPreventivo) === "manutenzione") {
+      return "preventivo_manutenzione";
+    }
     return "preventivo_magazzino";
   }
 
@@ -376,6 +386,10 @@ export async function findArchivistaDuplicateCandidates(args: {
       const rawRecord = { ...record, __target: target } as Record<string, unknown> & {
         __target: string;
       };
+      const family = inferFamilyFromRecord(target, rawRecord);
+      if (family !== criteria.family) {
+        return null;
+      }
       const matchedFields = buildCandidateMatchFields(rawRecord, criteria);
       if (!isStrongDuplicateMatch(matchedFields)) {
         return null;
@@ -405,7 +419,7 @@ export async function findArchivistaDuplicateCandidates(args: {
             ? normalizeText(rawRecord.imageStoragePaths[0])
             : "") ||
           null,
-        family: inferFamilyFromRecord(target, rawRecord),
+        family,
         rawRecord,
       } as ArchivistaDuplicateCandidate;
     })
@@ -559,10 +573,17 @@ export async function archiveArchivistaPreventivoRecord(
     createdAt: now,
     updatedAt: now,
     famigliaArchivista: args.family,
+    ambitoPreventivo: args.ambitoPreventivo ?? null,
     statoArchivio: "archiviato",
     riassuntoBreve: args.riassuntoBreve,
     avvisiArchivista: args.avvisi,
     campiMancantiArchivista: args.campiMancanti,
+    metadatiMezzo: args.metadatiMezzo
+      ? {
+          targa: normalizeText(args.metadatiMezzo.targa),
+          km: args.metadatiMezzo.km ?? null,
+        }
+      : null,
     ...buildDuplicateMetadata(duplicateChoice, duplicateCandidate),
   });
 

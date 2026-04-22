@@ -21,6 +21,12 @@ const MANUTENZIONI_ALLOWED_STORAGE_KEYS = new Set([
   "@mezzi_hotspot_mapping",
 ]);
 const MANUTENZIONI_ALLOWED_STORAGE_PATH_PREFIXES = ["mezzi_foto/"] as const;
+const MATERIALI_DA_ORDINARE_ALLOWED_WRITE_PATHS = ["/next/materiali-da-ordinare"] as const;
+const MATERIALI_DA_ORDINARE_ALLOWED_FIRESTORE_DOC_PATHS = new Set([
+  "storage/@preventivi",
+  "storage/@listino_prezzi",
+]);
+const MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES = ["preventivi/manuali/"] as const;
 const SAFE_FETCH_METHODS = new Set(["GET", "HEAD"]);
 const MUTATING_FETCH_URL_PATTERNS = [
   "cloudfunctions.net/analisi_economica_mezzo",
@@ -138,6 +144,12 @@ function isAllowedManutenzioniCloneWritePath(pathname: string): boolean {
 
 function isAllowedMagazzinoCloneWritePath(pathname: string): boolean {
   return MAGAZZINO_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
+}
+
+function isAllowedMaterialiDaOrdinareCloneWritePath(pathname: string): boolean {
+  return MATERIALI_DA_ORDINARE_ALLOWED_WRITE_PATHS.some(
+    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
+  );
 }
 
 function readMetaKey(meta: unknown): string {
@@ -361,6 +373,18 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     }
 
     return false;
+  }
+
+  if (isAllowedMaterialiDaOrdinareCloneWritePath(pathname)) {
+    if (kind === "firestore.setDoc") {
+      return MATERIALI_DA_ORDINARE_ALLOWED_FIRESTORE_DOC_PATHS.has(readMetaPath(meta));
+    }
+    if (kind === "storage.uploadBytes") {
+      const path = readMetaPath(meta);
+      return MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
   }
 
   if (isAllowedMagazzinoCloneWritePath(pathname)) {

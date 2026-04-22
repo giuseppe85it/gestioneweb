@@ -140,3 +140,39 @@
 - Quando un task aggiorna uno dei file sorgente chiave gia specchiati in `docs/fonti-pronte/`, nello stesso task va aggiornata anche la copia corrispondente dentro `docs/fonti-pronte/`.
 - Se cambia l'elenco delle fonti pronte, va aggiornato anche `docs/fonti-pronte/00_INDICE_FONTI_PRONTE.md`.
 - Una patch documentale che tocca un file sorgente chiave ma lascia stale la sua copia in `docs/fonti-pronte/` non e completa.
+
+## REGOLA FILE DI DOCUMENTAZIONE
+
+I file di documentazione attivi del progetto vivono ESCLUSIVAMENTE in `docs/_live/`. Ogni chat con Claude/Codex legge da li. Il resto del repo documentale e storico o archiviato e non va consultato ne aggiornato.
+
+### File che vivono in root
+- `AGENTS.md`
+- `CLAUDE.md`
+- `CONTEXT_CLAUDE.md`
+- `README.md`
+
+### File che Codex DEVE aggiornare quando pertinenti a una patch
+- `docs/_live/STATO_MIGRAZIONE_NEXT.md` (se la patch cambia stato di un modulo NEXT)
+- `docs/_live/REGISTRO_MODIFICHE_CLONE.md` (voce BREVE 5-10 righe, non voce lunga)
+- `CONTEXT_CLAUDE.md` (bullet in cima a `Ultimo task completato`)
+- la SPEC del modulo toccato (se esiste in `docs/_live/spec/`)
+
+### Cosa Codex NON DEVE fare
+- NON creare nuovi change-report o continuity-report. Le directory `docs/change-reports/` e `docs/continuity-reports/` sono deprecate. Lo storico e compresso in `docs/_live/STORICO_PATCH_COMPRESSO.md`.
+- NON creare nuovi audit se non richiesti esplicitamente. Lo storico e in `docs/_live/STORICO_AUDIT_COMPRESSO.md`.
+- NON creare nuove SPEC se non si tratta di un nuovo modulo.
+- NON creare mirror o copie di file. La cartella `docs/fonti-pronte/` e deprecata.
+- NON scrivere file MD fuori da `docs/_live/`, tranne nei 4 file root.
+
+### Formato voci `REGISTRO_MODIFICHE_CLONE.md`
+Voce `YYYY-MM-DD HHMM`
+
+DATA: `YYYY-MM-DD`
+TITOLO: `<titolo secco>`
+FILE TOCCATI: `<lista breve>`
+COSA: `<2-3 righe asciutte>`
+ESITO: `FATTO | FATTO_CON_VERIFICA_MANCANTE | ROLLBACK`
+NOTE: `<opzionale>`
+
+### Eccezioni
+Se l'utente chiede esplicitamente un audit, un change-report, un continuity-report o una nuova SPEC, Codex lo crea in `docs/_live/`. Altrimenti, non-proliferazione assoluta.

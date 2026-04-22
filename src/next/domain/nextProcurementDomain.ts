@@ -929,10 +929,13 @@ export async function readNextProcurementSnapshot(
 
   const preventivi = sortPreventivi(
     preventiviDataset.items
-      .map((entry, index) => {
-        if (!entry || typeof entry !== "object") return null;
-        return mapPreventivoRecord(entry as RawGenericRecord, index, approvalIndex);
-      })
+      .filter(
+        (entry): entry is RawGenericRecord =>
+          Boolean(entry) &&
+          typeof entry === "object" &&
+          (entry as RawGenericRecord).ambitoPreventivo !== "manutenzione"
+      )
+      .map((entry, index) => mapPreventivoRecord(entry, index, approvalIndex))
       .filter((entry): entry is NextProcurementPreventivoItem => Boolean(entry))
   );
 

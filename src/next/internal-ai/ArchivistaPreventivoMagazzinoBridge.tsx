@@ -269,6 +269,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
         righe: rows,
         avvisi: warnings,
         campiMancanti: missingFields,
+        ambitoPreventivo: "magazzino",
         duplicateChoice,
         duplicateCandidate: duplicateCandidateSelected,
       });

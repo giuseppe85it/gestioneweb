@@ -2591,10 +2591,19 @@ async function buildUnifiedRegistrySnapshot(): Promise<UnifiedRegistrySnapshot> 
 
     for (const descriptor of UNIFIED_SOURCE_DESCRIPTORS.filter((entry) => entry.kind === "raw_storage_doc")) {
       try {
-        const result = await readNextUnifiedStorageDocument({
+        const rawResult = await readNextUnifiedStorageDocument({
           key: descriptor.storageKey!,
           preferredArrayKeys: descriptor.preferredArrayKeys,
         });
+        const result =
+          descriptor.sourceId === "storage/@preventivi"
+            ? {
+                ...rawResult,
+                records: rawResult.records.filter(
+                  (r) => r.ambitoPreventivo !== "manutenzione"
+                ),
+              }
+            : rawResult;
         sourceMap.set(descriptor.sourceId, snapshotFromRawStorage({ descriptor, result }));
       } catch (error) {
         sourceMap.set(descriptor.sourceId, buildErrorSnapshot(descriptor, error instanceof Error ? error.message : "Adapter storage fallito."));

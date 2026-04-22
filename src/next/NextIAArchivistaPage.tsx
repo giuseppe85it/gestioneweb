@@ -6,6 +6,7 @@ import ArchivistaDocumentoMezzoBridge, {
 import ArchivistaMagazzinoBridge from "./internal-ai/ArchivistaMagazzinoBridge";
 import ArchivistaManutenzioneBridge from "./internal-ai/ArchivistaManutenzioneBridge";
 import ArchivistaPreventivoMagazzinoBridge from "./internal-ai/ArchivistaPreventivoMagazzinoBridge";
+import ArchivistaPreventivoManutenzioneBridge from "./internal-ai/ArchivistaPreventivoManutenzioneBridge";
 import { NEXT_IA_DOCUMENTI_PATH } from "./nextStructuralPaths";
 import "./internal-ai/internal-ai.css";
 
@@ -71,7 +72,7 @@ const DESTINATION_OPTIONS: Array<DestinationOption> = [
     label: "Preventivo → Manutenzione",
     tipo: "preventivo",
     contesto: "manutenzione",
-    availability: "out_of_scope",
+    availability: "active",
   },
 ];
 
@@ -103,10 +104,11 @@ const FLOW_MATRIX: Record<`${ArchivistaTipo}:${ArchivistaContesto}`, ArchivistaF
     badge: "Attivo ora",
   },
   "preventivo:manutenzione": {
-    availability: "out_of_scope",
+    availability: "active",
     titolo: "Preventivo + Manutenzione",
-    descrizione: "Ramo fuori V1 in questa schermata.",
-    badge: "Fuori V1",
+    descrizione:
+      "Review preventivo officina con campi mezzo-centrici e archiviazione finale nel ramo preventivi.",
+    badge: "Attivo ora",
   },
   "preventivo:documento_mezzo": {
     availability: "not_available",
@@ -141,7 +143,7 @@ function isContextAllowed(tipo: ArchivistaTipo, contesto: ArchivistaContesto) {
   }
 
   if (tipo === "preventivo") {
-    return contesto === "magazzino";
+    return contesto === "magazzino" || contesto === "manutenzione";
   }
 
   return contesto === "documento_mezzo";
@@ -202,6 +204,9 @@ function mapArchivistaDestinationSelection(
   if (destination === "preventivo_magazzino") {
     return { tipo: "preventivo", contesto: "magazzino" };
   }
+  if (destination === "preventivo_manutenzione") {
+    return { tipo: "preventivo", contesto: "manutenzione" };
+  }
   if (destination === "documento_mezzo") {
     return { tipo: "documento_mezzo", contesto: "documento_mezzo" };
   }
@@ -233,6 +238,7 @@ export default function NextIAArchivistaPage() {
     { destination: "fattura_ddt_magazzino", label: "Fattura / DDT → Magazzino" },
     { destination: "fattura_ddt_manutenzione", label: "Fattura / DDT → Manutenzione" },
     { destination: "preventivo_magazzino", label: "Preventivo → Magazzino" },
+    { destination: "preventivo_manutenzione", label: "Preventivo → Manutenzione" },
   ];
 
   if (isArchivistaDocumentoMezzoLibretto) {
@@ -332,11 +338,15 @@ export default function NextIAArchivistaPage() {
                 onSubtypeChange={setDocumentoMezzoSubtype}
                 selectedSubtype={documentoMezzoSubtype}
               />
-            ) : activeFlow.availability === "active" &&
+          ) : activeFlow.availability === "active" &&
               tipo === "preventivo" &&
               contesto === "magazzino" ? (
-                  <ArchivistaPreventivoMagazzinoBridge />
-                ) : (
+            <ArchivistaPreventivoMagazzinoBridge />
+          ) : activeFlow.availability === "active" &&
+            tipo === "preventivo" &&
+            contesto === "manutenzione" ? (
+            <ArchivistaPreventivoManutenzioneBridge />
+          ) : (
             <div className={`iai-card ia-archivista__inactive-shell ${getAvailabilityClass(activeFlow.availability)}`}>
               <div className="iai-righe-header">
                 <div>

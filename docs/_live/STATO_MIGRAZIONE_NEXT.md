@@ -9,6 +9,69 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-04-22 IA Archivista: fix Storage Rules per `preventivi/`
+- execution completata nel solo file `storage.rules`, senza toccare file sorgente, barrier o altre regole;
+- causa: la regola `preventivi/{allPaths=**}` mancava da sempre — tutti gli upload Archivista su `preventivi/` ricevevano `storage/unauthorized`;
+- fix: aggiunto `match /preventivi/{allPaths=**} { allow read, write: if request.auth != null; }` prima del catch-all;
+- deploy: `firebase deploy --only storage` -> `OK` — progetto `gestionemanutenzione-934ef`;
+- impatto: ramo `Preventivo -> Manutenzione` e ramo `Preventivo -> Magazzino` ora operativi lato Storage;
+- verifiche: `npm run build` `OK`, `npm run lint` `582/567/15` delta zero;
+- stato onesto dei rami: verifica runtime con preventivo reale -> `DA VERIFICARE`.
+
+## 0.0 Aggiornamento operativo 2026-04-22 IA Archivista: distinzione esplicita `Preventivo -> Magazzino` vs `Preventivo -> Manutenzione`
+- execution completata nel solo perimetro `src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx`, `src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx` e `src/next/internal-ai/ArchivistaArchiveClient.ts`, piu aggiornamento contesto/documentazione, senza toccare wiring pagina, barrier, writer manutenzioni o dataset fuori da `storage/@preventivi`;
+- `/next/ia/archivista`:
+  - il ramo `Preventivo -> Manutenzione` non usa piu la family `preventivo_magazzino`, ma `preventivo_manutenzione`;
+  - il ramo `Preventivo -> Magazzino` mantiene la family `preventivo_magazzino`;
+  - entrambi i rami archiviano sempre e solo in `storage/@preventivi`;
+- payload preventivo:
+  - il record archivista su `@preventivi` persiste ora in modo additivo `ambitoPreventivo`;
+  - valori usati:
+    - `magazzino` per `ArchivistaPreventivoMagazzinoBridge.tsx`
+    - `manutenzione` per `ArchivistaPreventivoManutenzioneBridge.tsx`
+  - `metadatiMezzo: { targa, km }` resta invariato e continua a comparire solo nel ramo manutenzione;
+- duplicate check:
+  - `findArchivistaDuplicateCandidates(...)` filtra ora i candidati per family reale del record;
+  - il ramo `Preventivo -> Manutenzione` controlla duplicati solo contro `preventivo_manutenzione`;
+  - il ramo `Preventivo -> Magazzino` continua a controllare solo `preventivo_magazzino`;
+- continuita dati:
+  - nessuna migrazione dei record gia presenti in `storage/@preventivi`;
+  - eventuali record storici manutenzione archiviati prima di questa patch con family `preventivo_magazzino` restano invariati e costituiscono debito noto;
+- verifiche eseguite:
+  - `npx eslint src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx src/next/internal-ai/ArchivistaArchiveClient.ts` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` per errori globali preesistenti fuori perimetro patch;
+- stato onesto del ramo:
+  - distinzione `family + ambitoPreventivo` lato runtime -> `FATTO`
+  - verifica browser live con preventivi reali dei due rami -> `DA VERIFICARE`
+
+## 0.0 Aggiornamento operativo 2026-04-22 IA Archivista: attivato il ramo `Preventivo -> Manutenzione`
+- execution completata nel perimetro `src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx`, `src/next/internal-ai/ArchivistaArchiveClient.ts` e `src/next/NextIAArchivistaPage.tsx`, piu aggiornamento contesto/documentazione, senza toccare writer manutenzioni, barrier, domain procurement o moduli esterni;
+- `/next/ia/archivista`:
+  - la combinazione `Preventivo -> Manutenzione` non e piu `out_of_scope` e monta ora un bridge reale;
+  - la UI del nuovo bridge ricalca visivamente il ramo `Fattura / DDT + Manutenzione` per step upload, analisi, duplicati e conferma archivio;
+  - la logica non segue il ramo consuntivo manutenzioni: usa la stessa pipeline del ramo `Preventivo -> Magazzino`;
+  - l'analisi resta sull'endpoint `documents/preventivo-magazzino-analyze`;
+  - il duplicate check resta su `@preventivi` con family `preventivo_magazzino`;
+  - l'archiviazione finale resta sempre e solo su `storage/@preventivi`;
+- payload preventivo:
+  - il record salvato mantiene la shape esistente del preventivo archivista;
+  - la sola estensione additiva introdotta e `metadatiMezzo: { targa, km }`;
+  - `targa` e obbligatoria a livello UI prima dell'archiviazione;
+  - `km` resta opzionale;
+- boundary confermati:
+  - nessuna scrittura in `@manutenzioni`;
+  - nessuna scrittura in `@documenti_mezzi`;
+  - nessun tocco a `@inventario` o `@materialiconsegnati`;
+  - nessuna modifica a `cloneWriteBarrier.ts`, perche la write su `storage/@preventivi` era gia ammessa nel contesto Archivista;
+- verifiche eseguite:
+  - `npx eslint src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx src/next/internal-ai/ArchivistaArchiveClient.ts src/next/NextIAArchivistaPage.tsx` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` per errori globali preesistenti fuori perimetro patch;
+- stato onesto del ramo:
+  - Archivista `Preventivo -> Manutenzione` lato runtime -> `FATTO`
+  - verifica browser live del nuovo bridge e del record finale in `storage/@preventivi` -> `DA VERIFICARE`
+
 ## 0.0 Aggiornamento operativo 2026-04-21 IA Archivista: restyling completo `ArchivistaManutenzioneBridge`
 - execution completata nel solo perimetro `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` e `src/next/internal-ai/internal-ai.css`, piu aggiornamento contesto/documentazione, senza toccare writer, handler business, barrier o moduli esterni;
 - `/next/ia/archivista` ramo `Fattura / DDT + Manutenzione`:
@@ -6009,3 +6072,22 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 - `src/next/internal-ai/internal-ai.css` contiene ora il sistema classi `iai-*` necessario alla schermata reale.
 - Stato modulo:
   - `IA interna / Importa documenti` -> `PARZIALE`
+
+## 5.148 Aggiornamento 2026-04-22 - `Preventivo manuale` NEXT in `Prezzi & Preventivi`
+- `/next/materiali-da-ordinare?tab=preventivi` espone ora il pulsante `PREVENTIVO MANUALE` accanto a `CARICA PREVENTIVO` e apre un modale nativo NEXT per inserimento testata, righe e foto.
+- `src/next/nextPreventivoManualeWriter.ts` salva il preventivo reale su `storage/@preventivi` e aggiorna il listino reale su `storage/@listino_prezzi`, passando solo dai wrapper `src/utils/firestoreWriteOps.ts` e `src/utils/storageWriteOps.ts`.
+- Le foto opzionali vengono caricate sotto `preventivi/manuali/` con path `preventivi/manuali/<preventivoId>_<idx>.<ext>` e i download URL finiscono in `imageStoragePaths` / `imageUrls` del record `Preventivo`.
+- `src/utils/cloneWriteBarrier.ts` apre ora per il solo pathname `/next/materiali-da-ordinare` esclusivamente:
+  - `firestore.setDoc` su `storage/@preventivi`
+  - `firestore.setDoc` su `storage/@listino_prezzi`
+  - `storage.uploadBytes` sotto `preventivi/manuali/`
+- Deviazione autorizzata applicata sulla valuta:
+  - il record `Preventivo` persistito resta invariato e NON contiene `valuta`
+  - la valuta del form viene passata come parametro esplicito al solo `upsertListinoFromPreventivoManuale(...)`
+  - `ListinoVoce.valuta` resta il solo punto persistente in cui la valuta viene salvata
+- `src/next/NextMaterialiDaOrdinarePage.tsx` riallinea il refresh snapshot del tab procurement tramite callback `onPreventivoSaved`, cosi l'elenco si puo ricaricare dopo il salvataggio.
+- Verifiche tecniche eseguite:
+  - `npx eslint src/next/NextPreventivoManualeModal.tsx src/next/nextPreventivoManualeWriter.ts src/next/NextProcurementConvergedSection.tsx src/next/NextMaterialiDaOrdinarePage.tsx src/utils/cloneWriteBarrier.ts` -> `OK`
+  - `npm run build` -> `OK`
+- Stato modulo:
+  - `NEXT Procurement` -> `PARZIALE`

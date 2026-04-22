@@ -2590,3 +2590,25 @@ Stato macrofase: `NON FATTO`
 - Dipendenze o blocchi:
   - nessun writer business viene aperto in questo task;
   - archiviazione definitiva, collegamento a manutenzione esistente e creazione manutenzione restano fuori scope e quindi `NON FATTI`.
+
+### M.58 Fix leak preventivi manutenzione nel layer procurement
+- Stato: `FATTO`
+- Note: il `2026-04-22` i tre vettori di leak identificati nell'audit procurement sono stati chiusi con filtri read-only.
+- Cosa e stato chiuso:
+  - `src/next/domain/nextProcurementDomain.ts`: `readNextProcurementSnapshot()` esclude ora i record `ambitoPreventivo === "manutenzione"`;
+  - `src/next/domain/nextDocumentiCostiDomain.ts`: `readNextDocumentiCostiProcurementSupportSnapshot()` estende il filtro `preventiviItems` con la stessa condizione;
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`: il registry universale filtra `storage/@preventivi` prima della materializzazione grezza.
+- File/documenti collegati:
+  - `src/next/domain/nextProcurementDomain.ts`
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts`
+  - `docs/product/AUDIT_PREVENTIVO_MANUTENZIONE_LEAK_PROCUREMENT.md`
+  - `docs/product/AUDIT_LEAK_PREVENTIVO_MANUTENZIONE_COMPLETO.md`
+  - `docs/change-reports/2026-04-22_1600_fix_leak_preventivi_manutenzione_procurement.md`
+  - `docs/continuity-reports/2026-04-22_1600_continuity_fix_leak_preventivi_manutenzione_procurement.md`
+- Verifiche eseguite:
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `582/567/15` (delta zero)
+- Dipendenze o blocchi:
+  - verifica runtime non certificata in questa sessione per assenza browser MCP;
+  - bug ortogonale `entry.targa` vs `entry.metadatiMezzo.targa` nel dossier mezzo resta aperto come debito separato.

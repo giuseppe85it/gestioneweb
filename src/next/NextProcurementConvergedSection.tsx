@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import NextProcurementReadOnlyPanel from "./NextProcurementReadOnlyPanel";
+import NextPreventivoManualeModal from "./NextPreventivoManualeModal";
 import type {
   NextProcurementListTab,
   NextProcurementListinoItem,
@@ -253,6 +254,7 @@ export default function NextProcurementConvergedSection({
   onCloseOrder,
   onGoOrdini,
   onGoArrivi,
+  onPreventivoSaved,
 }: {
   snapshot: NextProcurementSnapshot | null;
   activeTab: ProcurementHomeTab;
@@ -267,12 +269,14 @@ export default function NextProcurementConvergedSection({
   onCloseOrder: (backTab: NextProcurementListTab) => void;
   onGoOrdini: () => void;
   onGoArrivi: () => void;
+  onPreventivoSaved?: () => void | Promise<void>;
 }) {
   const pricingView: PricingView = activeTab === "Listino Prezzi" ? "listino" : "preventivi";
   const [supplierFilter, setSupplierFilter] = useState("");
   const [currencyFilter, setCurrencyFilter] = useState("");
   const [soloNonImportati, setSoloNonImportati] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [showManualeModal, setShowManualeModal] = useState(false);
   const [openGroupKeys, setOpenGroupKeys] = useState<Record<string, boolean>>({});
   const [preventiviMenuKey, setPreventiviMenuKey] = useState<string | null>(null);
   const [preventiviMenuPosition, setPreventiviMenuPosition] = useState<MenuPosition | null>(null);
@@ -397,7 +401,8 @@ export default function NextProcurementConvergedSection({
   if (pricingView === "preventivi") {
     return (
       <section className="acq-content"><div className="acq-tab-panel"><div className="acq-prev-shell">
-        <div className="acq-prev-topbar"><h2>Registro Preventivi</h2><button type="button" className="acq-btn acq-btn--primary" onClick={() => setShowNew((current) => !current)}>{showNew ? "Chiudi" : "Carica preventivo"}</button></div>
+        <div className="acq-prev-topbar"><h2>Registro Preventivi</h2><div className="acq-prev-actions"><button type="button" className="acq-btn acq-btn--primary" onClick={() => setShowManualeModal(true)}>PREVENTIVO MANUALE</button><button type="button" className="acq-btn acq-btn--primary" onClick={() => setShowNew((current) => !current)}>{showNew ? "CHIUDI" : "CARICA PREVENTIVO"}</button></div></div>
+        {showManualeModal ? <NextPreventivoManualeModal onClose={() => setShowManualeModal(false)} onSaved={onPreventivoSaved} /> : null}
         {showNew ? <div className="acq-prev-card"><h3>Nuovo preventivo</h3><p className="acq-prev-draft-meta">Clone-safe: la form resta visibile ma il salvataggio business reale non viene riaperto.</p><div className="acq-prev-form-grid"><label className="acq-prev-field"><span>Fornitore</span><select><option value="">Seleziona</option>{preventiviSupplierOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label className="acq-prev-field"><span>N. preventivo</span><input type="text" placeholder="Numero preventivo" /></label><label className="acq-prev-field"><span>Data preventivo</span><input type="text" defaultValue={formatTodayLabel()} /></label><label className="acq-prev-field"><span>Documento</span><input type="file" accept="application/pdf,image/*" /></label></div><div className="acq-prev-actions"><button type="button" className="acq-btn" onClick={() => setShowNew(false)}>Annulla</button><button type="button" className="acq-btn acq-btn--primary" onClick={() => window.alert("Clone read-only: caricamento preventivo non disponibile.")}>Salva preventivo</button></div></div> : null}
         <div className="acq-prev-card">
           <div className="acq-prev-groups-head"><h3>Elenco preventivi</h3><div className="acq-prev-groups-tools"><button type="button" className="acq-btn" onClick={() => window.alert("Clone read-only: pulizia allegati IA non disponibile.")}>PULISCI ALLEGATI IA</button><button type="button" className="acq-btn" onClick={() => setOpenGroupKeys((prev) => { const next = { ...prev }; groupedPreventivi.forEach((group) => { next[group.key] = true; }); return next; })}>Apri tutti</button><button type="button" className="acq-btn" onClick={() => setOpenGroupKeys((prev) => { const next = { ...prev }; groupedPreventivi.forEach((group) => { next[group.key] = false; }); return next; })}>Chiudi tutti</button></div></div>

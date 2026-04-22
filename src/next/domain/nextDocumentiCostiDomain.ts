@@ -1851,7 +1851,10 @@ export async function readNextDocumentiCostiProcurementSupportSnapshot(
         }) as { datasetShape: NextLegacyDatasetShape; items: unknown[] });
 
   const preventiviItems = preventiviDataset.items.filter(
-    (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object"
+    (entry): entry is RawRecord =>
+      Boolean(entry) &&
+      typeof entry === "object" &&
+      (entry as RawRecord).ambitoPreventivo !== "manutenzione"
   );
   const approvalItems = approvalsDataset.items.filter(
     (entry): entry is RawRecord => Boolean(entry) && typeof entry === "object"

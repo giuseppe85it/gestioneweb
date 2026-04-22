@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-04-16
+Ultimo aggiornamento: 2026-04-22
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -157,7 +157,21 @@ Stato macrofase: `IN CORSO`
 - Dipendenze o blocchi:
   - i dettagli fini dei campi estratti e della review nei bridge secondari restano da rifinire in un task successivo.
 
-### J-octies. Separazione del ramo reale `Documento mezzo -> Libretto` nel modale review operativo
+### J-octies. Archivista `Preventivo -> Manutenzione` attivo su pipeline `@preventivi`
+- Stato: `FATTO`
+- Note: `/next/ia/archivista` monta ora un bridge reale anche per `Preventivo -> Manutenzione`. Il nuovo ramo riusa la UI step-based del bridge `Fattura / DDT + Manutenzione`, ma non riusa la sua logica consuntiva: usa l'endpoint `documents/preventivo-magazzino-analyze`, il duplicate check su `@preventivi`, la family dedicata `preventivo_manutenzione` e archivia solo in `storage/@preventivi`. Il ramo `Preventivo -> Magazzino` mantiene family `preventivo_magazzino`. Entrambi i rami persistono ora in modo additivo `ambitoPreventivo` (`magazzino` | `manutenzione`); il payload manutenzione continua a estendere il preventivo solo con `metadatiMezzo: { targa, km }`, dove `targa` e obbligatoria in UI e `km` resta opzionale. Nessuna write su `@manutenzioni`, `@documenti_mezzi`, `@inventario`, `@materialiconsegnati`.
+- File/documenti collegati:
+  - `docs/product/STATO_MIGRAZIONE_NEXT.md`
+  - `docs/product/STATO_AVANZAMENTO_IA_INTERNA.md`
+  - `docs/change-reports/20260422_113349_archivista_preventivo_manutenzione_bridge.md`
+  - `docs/continuity-reports/20260422_113349_continuity_archivista_preventivo_manutenzione_bridge.md`
+  - `docs/change-reports/20260422_121706_archivista_preventivo_ambito_distinction.md`
+  - `docs/continuity-reports/20260422_121706_continuity_archivista_preventivo_ambito_distinction.md`
+- Dipendenze o blocchi:
+  - verifica browser live del nuovo ramo e del record finale in `storage/@preventivi` ancora `DA VERIFICARE`;
+  - `npm run lint` resta rosso per errori globali preesistenti fuori perimetro.
+
+### J-novies. Separazione del ramo reale `Documento mezzo -> Libretto` nel modale review operativo
 - Stato: `FATTO`
 - Note: `src/next/NextInternalAiPage.tsx` monta ora `src/next/internal-ai/NextEstrazioneLibretto.tsx` solo nel ramo reale del modale review operativo `documentReviewModalState.isOpen && activeDocumentReviewRoute` quando la route attiva e `Documento mezzo -> Libretto`. Il nuovo componente riceve solo props dal parent, non introduce writer o hook nuovi e usa stile dedicato in `src/next/internal-ai/next-estrazione-libretto.css`. Gli altri rami del modale restano invariati.
 - File/documenti collegati:

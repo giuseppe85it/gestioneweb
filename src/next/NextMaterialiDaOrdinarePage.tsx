@@ -614,38 +614,29 @@ export default function NextMaterialiDaOrdinarePage() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadProcurement = async () => {
-      try {
-        setLoadingProcurement(true);
-        setProcurementError(null);
-        const snapshot = await readNextProcurementSnapshot({
-          includeCloneOverlays: false,
-        });
-        if (cancelled) return;
-        setProcurementSnapshot(snapshot);
-      } catch (loadError) {
-        if (cancelled) return;
-        setProcurementSnapshot(null);
-        setProcurementError(
-          loadError instanceof Error && loadError.message
-            ? loadError.message
-            : "Snapshot procurement clone non disponibile.",
-        );
-      } finally {
-        if (!cancelled) {
-          setLoadingProcurement(false);
-        }
-      }
-    };
-
-    void loadProcurement();
-    return () => {
-      cancelled = true;
-    };
+  const refreshProcurementSnapshot = useCallback(async () => {
+    try {
+      setLoadingProcurement(true);
+      setProcurementError(null);
+      const snapshot = await readNextProcurementSnapshot({
+        includeCloneOverlays: false,
+      });
+      setProcurementSnapshot(snapshot);
+    } catch (loadError) {
+      setProcurementSnapshot(null);
+      setProcurementError(
+        loadError instanceof Error && loadError.message
+          ? loadError.message
+          : "Snapshot procurement clone non disponibile.",
+      );
+    } finally {
+      setLoadingProcurement(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshProcurementSnapshot();
+  }, [refreshProcurementSnapshot]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1953,6 +1944,7 @@ export default function NextMaterialiDaOrdinarePage() {
               onCloseOrder={(backTab) =>
                 openCanonicalProcurementView({ tab: backTab, from: backTab })
               }
+              onPreventivoSaved={refreshProcurementSnapshot}
             />
           )}
         </div>

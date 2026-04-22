@@ -10,6 +10,55 @@ Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema 
 - Questo documento resta il quadro esteso di contesto, rischi, fasi e fatti verificati.
 - Ogni futuro task relativo alla IA interna deve aggiornare obbligatoriamente la checklist unica; se non lo fa, il task e incompleto.
 
+## 0.0 Aggiornamento operativo 2026-04-22 - Archivista `Preventivo` con distinzione esplicita magazzino/manutenzione
+- esecuzione completata nel solo perimetro `src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx`, `src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx` e `src/next/internal-ai/ArchivistaArchiveClient.ts`, senza toccare writer manutenzioni, barrier o dataset fuori da `@preventivi`;
+- Archivista:
+  - il ramo `Preventivo -> Manutenzione` mantiene UI e campi mezzo-centrici, ma usa ora family dedicata `preventivo_manutenzione`;
+  - il ramo `Preventivo -> Magazzino` mantiene family `preventivo_magazzino`;
+  - nessuno dei due rami cambia destinazione: entrambi restano su `storage/@preventivi`;
+- pipeline dati:
+  - il record preventivo persiste ora in modo additivo `ambitoPreventivo`
+  - valori usati:
+    - `magazzino`
+    - `manutenzione`
+  - il ramo manutenzione continua a usare `metadatiMezzo: { targa, km }`
+  - il duplicate check filtra ora i record della stessa family, evitando contaminazione tra i due rami;
+- continuita:
+  - nessuna migrazione dei record gia presenti in `storage/@preventivi`
+  - eventuali record storici manutenzione salvati prima di questa patch con family `preventivo_magazzino` restano invariati e vanno trattati come debito noto;
+- verifiche tecniche:
+  - `npx eslint src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx src/next/internal-ai/ArchivistaArchiveClient.ts` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` per errori globali preesistenti fuori dal perimetro patch
+- stato onesto:
+  - distinzione family/ambito lato Archivista preventivi -> `FATTO`
+  - verifica browser live dei due rami su dataset reale -> `DA VERIFICARE`
+
+## 0.0 Aggiornamento operativo 2026-04-22 - Archivista `Preventivo -> Manutenzione` attivo
+- esecuzione completata nel perimetro `src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx`, `src/next/internal-ai/ArchivistaArchiveClient.ts` e `src/next/NextIAArchivistaPage.tsx`, senza toccare writer manutenzioni, barrier o dataset fuori da `@preventivi`;
+- Archivista:
+  - la combinazione `Preventivo -> Manutenzione` non e piu `out_of_scope`;
+  - il dispatcher monta ora un bridge reale dedicato;
+  - la UI ricalca il ramo manutenzione per upload, analisi, review, duplicati e conferma finale;
+- pipeline dati:
+  - analisi via `documents/preventivo-magazzino-analyze`
+  - duplicate check su `@preventivi`
+  - family usata `preventivo_magazzino`
+  - archiviazione sempre e solo in `storage/@preventivi`
+  - shape preventivo estesa solo con `metadatiMezzo: { targa, km }`
+- boundary:
+  - nessuna write in `@manutenzioni`
+  - nessuna write in `@documenti_mezzi`
+  - nessun side-effect su inventario o materiali consegnati
+  - `cloneWriteBarrier.ts` invariato, perche il ramo riusa la deroga Archivista gia attiva verso `storage/@preventivi`
+- verifiche tecniche:
+  - `npx eslint src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx src/next/internal-ai/ArchivistaArchiveClient.ts src/next/NextIAArchivistaPage.tsx` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` per errori globali preesistenti fuori dal perimetro patch
+- stato onesto:
+  - ramo Archivista `Preventivo -> Manutenzione` -> `FATTO`
+  - verifica browser live end-to-end -> `DA VERIFICARE`
+
 ## 0.0 Aggiornamento operativo 2026-04-15 - Archivista V1 chiusura lato documenti / archiviazione
 - esecuzione completata nel perimetro `NextIAArchivistaPage.tsx`, bridge Archivista, backend documentale IA separato e `cloneWriteBarrier.ts`, senza toccare madre o writer business post-archivio;
 - Archivista:
