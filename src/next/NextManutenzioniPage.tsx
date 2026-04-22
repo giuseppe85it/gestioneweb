@@ -29,6 +29,7 @@ import {
   readNextAnagraficheFlottaSnapshot,
   type NextMezzoListItem,
 } from "./nextAnagraficheFlottaDomain";
+import { formatDateTimeUI } from "./nextDateFormat";
 import { buildNextDossierPath } from "./nextStructuralPaths";
 import "./next-mappa-storico.css";
 import "../pages/Manutenzioni.css";
@@ -190,6 +191,26 @@ function buildDescrizioneSnippet(value: string, limit = 140) {
   return `${normalized.slice(0, limit - 3)}...`;
 }
 
+function formatMaintenanceImporto(
+  item: Pick<
+    NextManutenzioniLegacyDatasetRecord,
+    "importo" | "sourceDocumentCurrency"
+  >,
+) {
+  if (item.importo == null) return null;
+  const amount = item.importo.toLocaleString("it-IT", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (item.sourceDocumentCurrency === "CHF") {
+    return `CHF ${amount}`;
+  }
+  if (item.sourceDocumentCurrency === "EUR") {
+    return `€ ${amount}`;
+  }
+  return amount;
+}
+
 function buildPdfFileName(value: string) {
   const normalized = value
     .trim()
@@ -200,13 +221,7 @@ function buildPdfFileName(value: string) {
 }
 
 function formatPdfGenerationDate() {
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date());
+  return formatDateTimeUI(new Date());
 }
 
 async function loadPdfImageData(url: string): Promise<{ dataUrl: string; format: "JPEG" | "PNG" } | null> {
@@ -841,7 +856,7 @@ export default function NextManutenzioniPage() {
         metricInfo: buildPdfMetricInfo({
           subjectType: pdfSubjectType,
           latestItem: items[0],
-          currentKm: currentMetrics.km ?? kmUltimoByTarga[targaKey] ?? null,
+          currentKm: kmUltimoByTarga[targaKey] ?? null,
           currentOre: currentMetrics.ore,
         }),
         gommePerAsse: buildNextGommeStateByAsse({
@@ -1388,9 +1403,17 @@ export default function NextManutenzioniPage() {
               >
                 <div className="man2-last-item__row1">
                   <div>
-                    <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 88)}</span>
+                    <span className="man2-last-item__title">{buildDescrizioneSnippet(item.descrizione, 40)}</span>
                     <div className="man2-last-item__meta">
-                      {item.data} - {buildMisuraLabel(item)} - {item.sottotipo || "intervento programmato"}
+                      {[
+                        item.data,
+                        buildMisuraLabel(item),
+                        item.fornitore || null,
+                        formatMaintenanceImporto(item),
+                        item.sottotipo || "intervento programmato",
+                      ]
+                        .filter(Boolean)
+                        .join(" - ")}
                     </div>
                   </div>
                   <span className={`man2-badge man2-badge--${item.tipo}`}>{item.tipo}</span>
@@ -2070,6 +2093,11 @@ export default function NextManutenzioniPage() {
                   assiCoinvolti: selectedDetailRecord.assiCoinvolti ?? [],
                   km: selectedDetailRecord.km ?? null,
                   tipo: selectedDetailRecord.tipo ?? null,
+                  materiali: selectedDetailRecord.materiali ?? [],
+                  importo: selectedDetailRecord.importo ?? null,
+                  sourceDocumentId: selectedDetailRecord.sourceDocumentId ?? null,
+                  sourceDocumentFileUrl: selectedDetailRecord.sourceDocumentFileUrl ?? null,
+                  fornitore: selectedDetailRecord.fornitore ?? null,
                 }
               : null
           }

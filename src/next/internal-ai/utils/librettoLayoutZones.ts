@@ -37,6 +37,7 @@ export const LIBRETTO_LAYOUT_ZONES: LibrettoTemplateZone[] = [
     fields: [
       { key: "proprietario", label: "Proprietario", colSpan: 2 },
       { key: "indirizzo", label: "Indirizzo", colSpan: 2 },
+      { key: "localita", label: "Località", colSpan: 2 },
       { key: "nAvs", label: "N. AVS", variant: "mono" },
       { key: "statoOrigine", label: "Stato d'origine" },
       { key: "assicurazione", label: "Assicurazione", colSpan: 2 },

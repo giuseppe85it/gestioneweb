@@ -32,7 +32,10 @@ import {
   materializeInternalAiChatAttachmentRecord,
   writeInternalAiChatAttachmentFile,
 } from "./internal-ai-chat-attachments.js";
-import { extractInternalAiDocumentAnalysis } from "./internal-ai-document-extraction.js";
+import {
+  extractInternalAiDocumentAnalysis,
+  LIBRETTO_CANONICAL_FIELDS,
+} from "./internal-ai-document-extraction.js";
 import {
   buildRepoOperationalAnswer,
   buildRepoUnderstandingMeta,
@@ -164,6 +167,18 @@ function formatVehicleDocumentMissingFields(fields) {
   };
 
   return uniqueStrings((fields ?? []).map((field) => labels[field] ?? field));
+}
+
+function isLibrettoVehicleDocumentAnalysis(analysis) {
+  return (analysis?.sottotipoDocumento ?? analysis?.tipoDocumento) === "libretto";
+}
+
+function mapCanonicalLibrettoAnalysisFields(analysis) {
+  const output = {};
+  LIBRETTO_CANONICAL_FIELDS.forEach((field) => {
+    output[field] = typeof analysis?.[field] === "string" ? analysis[field] : "";
+  });
+  return output;
 }
 
 function buildVehicleDocumentSummary(analysis) {
@@ -1516,15 +1531,51 @@ app.post("/internal-ai-backend/documents/manutenzione-analyze", async (req, res)
     typeof req.body?.textExcerpt === "string" && req.body.textExcerpt.trim()
       ? req.body.textExcerpt.trim().slice(0, 1600)
       : null;
+  const pages = Array.isArray(req.body?.pages)
+    ? req.body.pages
+        .map((page) => {
+          if (!page || typeof page !== "object") {
+            return null;
+          }
 
-  if (!fileName || !contentBase64) {
+          const pageFileName =
+            typeof page.fileName === "string" && page.fileName.trim() ? page.fileName.trim() : "";
+          const pageMimeType =
+            typeof page.mimeType === "string" && page.mimeType.trim()
+              ? page.mimeType.trim()
+              : "application/octet-stream";
+          const pageContentBase64 =
+            typeof page.contentBase64 === "string" && page.contentBase64.trim()
+              ? page.contentBase64.trim()
+              : "";
+
+          if (!pageContentBase64) {
+            return null;
+          }
+
+          return {
+            fileName: pageFileName,
+            mimeType: pageMimeType,
+            contentBase64: pageContentBase64,
+          };
+        })
+        .filter((page) => Boolean(page))
+    : null;
+  const hasPages = Array.isArray(pages) && pages.length > 0;
+  const effectiveFileName = hasPages ? pages[0]?.fileName || fileName || "documento_multipagina" : fileName;
+  const effectiveMimeType = hasPages
+    ? pages[0]?.mimeType || mimeType || "application/octet-stream"
+    : mimeType;
+  const effectiveContentBase64 = hasPages ? pages[0]?.contentBase64 || contentBase64 : contentBase64;
+
+  if ((!hasPages && (!fileName || !contentBase64)) || (hasPages && !effectiveFileName)) {
     sendEnvelope(res, {
       httpStatus: 400,
       ok: false,
       endpointId: "documents.manutenzione-analyze",
       status: "validation_error",
       message: "File o contenuto documento non validi per la review manutenzione.",
-      data: { fileName },
+      data: { fileName: effectiveFileName || fileName },
     });
     return;
   }
@@ -1549,9 +1600,10 @@ app.post("/internal-ai-backend/documents/manutenzione-analyze", async (req, res)
     const providerClient = getProviderClient();
     const providerTarget = getProviderTarget();
     const analysis = await extractInternalAiDocumentAnalysis({
-      fileName,
-      mimeType,
-      contentBase64,
+      fileName: effectiveFileName,
+      mimeType: effectiveMimeType,
+      contentBase64: effectiveContentBase64,
+      ...(hasPages ? { pages } : {}),
       textExcerpt,
       providerClient,
       providerTarget,
@@ -1565,7 +1617,7 @@ app.post("/internal-ai-backend/documents/manutenzione-analyze", async (req, res)
         operation: "analyze_document",
         actorId: req.body?.actorId,
         requestId: req.body?.requestId,
-        note: `Review manutenzione OpenAI per ${fileName}.`,
+        note: `Review manutenzione OpenAI per ${effectiveFileName}.`,
         entityCount: Array.isArray(analysis?.righe) ? analysis.righe.length : 0,
       }),
     );
@@ -1680,6 +1732,29 @@ app.post("/internal-ai-backend/documents/documento-mezzo-analyze", async (req, r
         note: `Review documento mezzo OpenAI per ${fileName}.`,
       }),
     );
+    const isLibrettoAnalysis = isLibrettoVehicleDocumentAnalysis(analysis);
+    const baseAnalysisPayload = {
+      stato: analysis?.stato ?? "partial",
+      tipoDocumento: analysis?.sottotipoDocumento ?? analysis?.tipoDocumento ?? null,
+      sottotipoDocumento: analysis?.sottotipoDocumento ?? null,
+      fornitore: analysis?.fornitore ?? null,
+      numeroDocumento: analysis?.numeroDocumento ?? null,
+      dataDocumento: analysis?.dataDocumento ?? null,
+      targa: normalizeTarga(analysis?.targa ?? null) || null,
+      telaio: analysis?.telaio ?? null,
+      proprietario: analysis?.proprietario ?? null,
+      assicurazione: analysis?.assicurazione ?? null,
+      marca: analysis?.marca ?? null,
+      modello: analysis?.modello ?? null,
+      dataImmatricolazione: analysis?.dataImmatricolazione ?? null,
+      dataScadenza: analysis?.dataScadenza ?? null,
+      dataUltimoCollaudo: analysis?.dataUltimoCollaudo ?? null,
+      dataScadenzaRevisione: analysis?.dataScadenzaRevisione ?? null,
+      testo: analysis?.testoEstrattoBreve ?? null,
+      riassuntoBreve: buildVehicleDocumentSummary(analysis),
+      avvisi: buildVehicleDocumentWarnings(analysis),
+      campiMancanti: formatVehicleDocumentMissingFields(analysis?.campiMancanti),
+    };
 
     sendEnvelope(res, {
       httpStatus: 200,
@@ -1688,28 +1763,12 @@ app.post("/internal-ai-backend/documents/documento-mezzo-analyze", async (req, r
       status: "ok",
       message: "Analisi OpenAI documento mezzo completata dal backend server-side.",
       data: {
-        analysis: {
-          stato: analysis?.stato ?? "partial",
-          tipoDocumento: analysis?.sottotipoDocumento ?? analysis?.tipoDocumento ?? null,
-          sottotipoDocumento: analysis?.sottotipoDocumento ?? null,
-          fornitore: analysis?.fornitore ?? null,
-          numeroDocumento: analysis?.numeroDocumento ?? null,
-          dataDocumento: analysis?.dataDocumento ?? null,
-          targa: normalizeTarga(analysis?.targa ?? null) || null,
-          telaio: analysis?.telaio ?? null,
-          proprietario: analysis?.proprietario ?? null,
-          assicurazione: analysis?.assicurazione ?? null,
-          marca: analysis?.marca ?? null,
-          modello: analysis?.modello ?? null,
-          dataImmatricolazione: analysis?.dataImmatricolazione ?? null,
-          dataScadenza: analysis?.dataScadenza ?? null,
-          dataUltimoCollaudo: analysis?.dataUltimoCollaudo ?? null,
-          dataScadenzaRevisione: analysis?.dataScadenzaRevisione ?? null,
-          testo: analysis?.testoEstrattoBreve ?? null,
-          riassuntoBreve: buildVehicleDocumentSummary(analysis),
-          avvisi: buildVehicleDocumentWarnings(analysis),
-          campiMancanti: formatVehicleDocumentMissingFields(analysis?.campiMancanti),
-        },
+        analysis: isLibrettoAnalysis
+          ? {
+              ...baseAnalysisPayload,
+              ...mapCanonicalLibrettoAnalysisFields(analysis),
+            }
+          : baseAnalysisPayload,
         providerTarget,
         traceEntryId: traceEntry.id,
       },

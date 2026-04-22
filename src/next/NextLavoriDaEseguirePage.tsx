@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { NextLavoriRealDetailView } from "./NextDettaglioLavoroPage";
-import { formatDateUI } from "../utils/dateFormat";
+import { formatDateUI } from "./nextDateFormat";
 import { generateSmartPDFBlob } from "../utils/pdfEngine";
 import {
   buildPdfShareText,

@@ -23,31 +23,90 @@ const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODE
 const VEHICLE_DATA_SCHEMA = {
   type: "OBJECT",
   properties: {
+    nAvs: { type: "STRING" },
+    proprietario: { type: "STRING" },
+    indirizzo: { type: "STRING" },
+    localita: { type: "STRING" },
+    statoOrigine: { type: "STRING" },
+    assicurazione: { type: "STRING" },
+    annotazioni: { type: "STRING" },
     targa: { type: "STRING" },
-    marca: { type: "STRING" },
-    modello: { type: "STRING" },
-    telaio: { type: "STRING" },
-
     colore: { type: "STRING" },
-    categoria: { type: "STRING" },
-
+    genereVeicolo: { type: "STRING" },
+    marcaTipo: { type: "STRING" },
+    telaio: { type: "STRING" },
+    carrozzeria: { type: "STRING" },
+    numeroMatricola: { type: "STRING" },
+    approvazioneTipo: { type: "STRING" },
     cilindrata: { type: "STRING" },
     potenza: { type: "STRING" },
-
     pesoVuoto: { type: "STRING" },
+    caricoUtileSella: { type: "STRING" },
     pesoTotale: { type: "STRING" },
-
-    proprietario: { type: "STRING" },
-    assicurazione: { type: "STRING" },
-
-    immatricolazione: { type: "STRING" },
-
+    pesoTotaleRimorchio: { type: "STRING" },
+    caricoSulLetto: { type: "STRING" },
+    pesoRimorchiabile: { type: "STRING" },
+    primaImmatricolazione: { type: "STRING" },
+    luogoDataRilascio: { type: "STRING" },
     ultimoCollaudo: { type: "STRING" },
-
-    note: { type: "STRING" }
+    prossimoCollaudoRevisione: { type: "STRING" }
   },
-  required: ["targa", "marca", "modello", "telaio"]
+  required: ["targa", "marcaTipo", "telaio"]
 };
+
+const LIBRETTO_EXTRACTION_PROMPT = `Leggi il documento come un libretto di circolazione svizzero a template fisso con codici numerati a lato dei campi.
+
+Devi restituire un JSON che rispetti ESATTAMENTE lo schema richiesto e contenga TUTTE le 27 chiavi richieste.
+Per ogni chiave devi restituire SEMPRE una stringa.
+Se un campo non e presente sul documento oppure non e leggibile, restituisci stringa vuota "".
+Non restituire mai null.
+Non omettere mai nessuna chiave.
+Non inventare valori.
+Non dedurre valori mancanti da altri campi.
+Non normalizzare, non tradurre e non cambiare il formato originale dei valori letti.
+
+Regole di estrazione:
+1. Il documento e un libretto di circolazione svizzero a template fisso.
+2. Usa i codici numerati del libretto per localizzare i campi, non le posizioni assolute.
+3. I codici utili sono: 03, 05, 08, 11, 13, 14, 15, 19, 21, 23, 25, 26, 28, 29, 30, 31, 35, 36, 37, 38, 39, 76, 77, 78.
+4. Il veicolo puo essere rimorchio, trattore stradale, autocarro, autovettura o motoveicolo: non tutti i campi sono sempre presenti.
+5. Mantieni la formattazione originale dei valori: punti, asterischi, maiuscole, spazi e date come sul documento.
+6. indirizzo e localita devono essere separati: indirizzo = via e numero civico, localita = CAP e luogo.
+7. luogoDataRilascio deve unire luogo e data del codice 38 con uno spazio, esempio "Camorino 09.04.2026".
+8. annotazioni deve contenere il testo integrale dei codici 13 e 14, con righe separate da \\n quando multilinea.
+9. Non usare la riga 39 come ultimoCollaudo: la riga 39 e prossimoCollaudoRevisione.
+10. ultimoCollaudo va letto dalla riga 38 quando presente come data di collaudo piu recente.
+
+Campi da estrarre con nome chiave, codice e formato atteso:
+- nAvs — codice 03, numero AVS / AHV-Nr, esempio "922.586"
+- proprietario — codice 05, nome o ragione sociale, esempio "GHIELMICEMENTI SA"
+- indirizzo — codice 05, via e numero, esempio "Via Cantonale 8"
+- localita — codice 05, CAP e luogo, esempio "6805 Mezzovico"
+- statoOrigine — codice 08, Stato d'origine
+- assicurazione — codice 11, compagnia assicurazione
+- annotazioni — codici 13/14, testo integrale riga per riga con \\n
+- targa — codice 15, numero di targa, esempio "TI 282780"
+- colore — codice 26, colore carrozzeria, esempio "bianco"
+- genereVeicolo — codice 19, genere veicolo, esempio "Semirimorchio trasporto di cose"
+- marcaTipo — codice 21, marca e tipo, esempio "O.ME.P.S. CM35"
+- telaio — codice 23, numero telaio o chassis, esempio "ZA9 S35 A48 BAH 028 00"
+- carrozzeria — codice 25, tipo carrozzeria, esempio "Silo per cemento"
+- numeroMatricola — codice 28, numero matricola, esempio "149.499.374"
+- approvazioneTipo — codice 29, approvazione del tipo
+- cilindrata — codice 37, cilindrata in cm3
+- potenza — codice 76, potenza in kW
+- pesoVuoto — codice 30, peso a vuoto in kg, esempio "4350"
+- caricoUtileSella — codice 31, carico utile o sella in kg, esempio "34650"
+- pesoTotale — codice 35, peso totale in kg, esempio "39000"
+- pesoTotaleRimorchio — codice 36, peso totale del convoglio in kg
+- caricoSulLetto — codice 77, carico sul letto in kg
+- pesoRimorchiabile — codice 78, carico rimorchiabile o chargia annexa in kg
+- primaImmatricolazione — codice 36 bis riga B, prima messa in circolazione, esempio "01.08.2022"
+- luogoDataRilascio — codice 38, luogo e data rilascio, esempio "Camorino 09.04.2026"
+- ultimoCollaudo — codice 38, data ultimo collaudo, esempio "09.04.2026"
+- prossimoCollaudoRevisione — codice 39, prossimo collaudo o perizia, esempio "31.03.2026 TI"
+
+Restituisci solo il JSON conforme allo schema richiesto.`;
 
 // Recupero API key
 async function getGeminiApiKey() {
@@ -767,8 +826,7 @@ exports.estrazione_libretto = functions.https.onRequest(async (req, res) => {
           role: "user",
           parts: [
             {
-              text:
-                "Estrai i dati del veicolo dal seguente libretto. Rispetta esattamente lo schema JSON richiesto."
+              text: LIBRETTO_EXTRACTION_PROMPT
             },
             {
               inlineData: {

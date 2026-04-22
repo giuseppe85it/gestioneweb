@@ -6,7 +6,6 @@ import type {
 
 import {
   applyLibrettoTemplateFieldChange,
-  getLibrettoTemplateFieldValue,
 } from "./utils/librettoFieldMapper";
 import { type LibrettoTemplateField } from "./utils/librettoLayoutZones";
 import "./next-estrazione-libretto.css";
@@ -50,6 +49,14 @@ type NextEstrazioneLibrettoProps = {
     duplicatePlateKey?: string | null;
     duplicateCandidateCount?: string | null;
   };
+  debugFieldTrace?: Array<{
+    key: string;
+    label: string;
+    rawBackendValue?: string | null;
+    mappedValue?: string | null;
+    propValue?: string | null;
+    fieldDomValue?: string | null;
+  }>;
   fileName: string;
   fileTypeLabel: string;
   isAnalyzeDisabled: boolean;
@@ -72,6 +79,18 @@ type NextEstrazioneLibrettoProps = {
   vinOptimizationUsed?: boolean;
   destinationOptions: NextEstrazioneLibrettoDestinationOption[];
   vehicleOptions: NextEstrazioneLibrettoVehicleOption[];
+  canonicalLibrettoViewModel?: {
+    nAvs: string;
+    indirizzo: string;
+    localita: string;
+    carrozzeria: string;
+    numeroMatricola: string;
+    caricoUtileSella: string;
+    luogoDataRilascio: string;
+    ultimoCollaudo: string;
+    prossimoCollaudoRevisione: string;
+    annotazioni: string;
+  };
   getFieldValue: (field: string) => string;
   showSubtypeCard?: boolean;
   showVehicleModeToggle?: boolean;
@@ -96,13 +115,42 @@ type NextEstrazioneLibrettoProps = {
 };
 
 function renderTemplateInput(args: {
+  canonicalLibrettoViewModel: {
+    nAvs: string;
+    indirizzo: string;
+    localita: string;
+    carrozzeria: string;
+    numeroMatricola: string;
+    caricoUtileSella: string;
+    luogoDataRilascio: string;
+    ultimoCollaudo: string;
+    prossimoCollaudoRevisione: string;
+    annotazioni: string;
+  };
   field: LibrettoTemplateField;
   getFieldValue: (field: string) => string;
   onFieldChange: (field: string, value: string) => void;
   isScadenzaRevisioneScaduta: boolean;
 }) {
-  const { field, getFieldValue, isScadenzaRevisioneScaduta, onFieldChange } = args;
-  const value = getLibrettoTemplateFieldValue(getFieldValue, field.key);
+  const { canonicalLibrettoViewModel, field, getFieldValue, isScadenzaRevisioneScaduta, onFieldChange } =
+    args;
+  const requiredCanonicalLabels: Record<string, string> = {
+    nAvs: "nAvs",
+    indirizzo: "indirizzo",
+    localita: "localita",
+    carrozzeria: "carrozzeria",
+    numeroMatricola: "numeroMatricola",
+    caricoUtileSella: "caricoUtileSella",
+    luogoDataRilascio: "luogoDataRilascio",
+    ultimoCollaudo: "ultimoCollaudo",
+    prossimoCollaudoRevisione: "prossimoCollaudoRevisione",
+    annotazioni: "annotazioni",
+  };
+  const value =
+    field.key in requiredCanonicalLabels
+      ? canonicalLibrettoViewModel[field.key as keyof typeof canonicalLibrettoViewModel] ||
+        `MISSING:${requiredCanonicalLabels[field.key]}`
+      : getFieldValue(field.key);
   const handleChange = (nextValue: string) =>
     applyLibrettoTemplateFieldChange({
       key: field.key,
@@ -157,7 +205,10 @@ function renderTemplateInput(args: {
         onChange={(event) => handleChange(event.target.value)}
       />
       {field.key === "prossimoCollaudoRevisione" ? (
-        <span className={`iai-template-badge ${isScadenzaRevisioneScaduta ? "is-expired" : "is-active"}`}>
+        <span
+          className={`iai-template-badge ${isScadenzaRevisioneScaduta ? "is-expired" : "is-active"}`}
+          aria-hidden="true"
+        >
           {isScadenzaRevisioneScaduta ? "Scaduto" : "Registrato"}
         </span>
       ) : null}
@@ -183,6 +234,7 @@ const TARGET_FIELDS = {
   nAvs: createTemplateField("nAvs", "N. AVS", { variant: "mono" }),
   proprietario: createTemplateField("proprietario", "Proprietario"),
   indirizzo: createTemplateField("indirizzo", "Indirizzo"),
+  localita: createTemplateField("localita", "Località"),
   statoOrigine: createTemplateField("statoOrigine", "Stato d'origine"),
   assicurazione: createTemplateField("assicurazione", "Assicurazione"),
   annotazioni: createTemplateField("annotazioni", "Annotazioni", { inputType: "textarea" }),
@@ -232,7 +284,20 @@ function NextEstrazioneLibretto({
   duplicateCandidates = [],
   duplicateChoice = null,
   duplicateStatus = "idle",
+  canonicalLibrettoViewModel = {
+    nAvs: "",
+    indirizzo: "",
+    localita: "",
+    carrozzeria: "",
+    numeroMatricola: "",
+    caricoUtileSella: "",
+    luogoDataRilascio: "",
+    ultimoCollaudo: "",
+    prossimoCollaudoRevisione: "",
+    annotazioni: "",
+  },
   debugImages,
+  debugFieldTrace = [],
   debugTrace,
   destinationOptions,
   fileName,
@@ -285,8 +350,29 @@ function NextEstrazioneLibretto({
   const handleSelectDuplicateId = onSelectDuplicateId ?? (() => undefined);
   const handleVehiclePhotoClear = onVehiclePhotoClear ?? (() => undefined);
   const handleVehiclePhotoSelect = onVehiclePhotoSelect ?? (() => undefined);
-  const fieldDataUltimoCollaudo = getFieldValue("dataUltimoCollaudo");
-  const fieldDataScadenzaRevisione = getFieldValue("dataScadenzaRevisione");
+  const getLibrettoFieldValue = (field: string) => {
+    const requiredCanonicalLabels: Record<string, string> = {
+      nAvs: "nAvs",
+      indirizzo: "indirizzo",
+      localita: "localita",
+      carrozzeria: "carrozzeria",
+      numeroMatricola: "numeroMatricola",
+      caricoUtileSella: "caricoUtileSella",
+      luogoDataRilascio: "luogoDataRilascio",
+      ultimoCollaudo: "ultimoCollaudo",
+      prossimoCollaudoRevisione: "prossimoCollaudoRevisione",
+      annotazioni: "annotazioni",
+    };
+    if (field in requiredCanonicalLabels) {
+      return (
+        canonicalLibrettoViewModel[field as keyof typeof canonicalLibrettoViewModel] ||
+        `MISSING:${requiredCanonicalLabels[field]}`
+      );
+    }
+    return getFieldValue(field);
+  };
+  const fieldDataUltimoCollaudo = getLibrettoFieldValue("ultimoCollaudo");
+  const fieldDataScadenzaRevisione = getLibrettoFieldValue("prossimoCollaudoRevisione");
   const canTransformViewer = Boolean(previewUrl && previewMode === "image");
   const shouldShowDebugImages =
     import.meta.env.DEV &&
@@ -300,6 +386,7 @@ function NextEstrazioneLibretto({
     <label className={className ?? "iai-target-field"}>
       <span className={labelClassName ?? "iai-target-field__label"}>{field.label}</span>
       {renderTemplateInput({
+        canonicalLibrettoViewModel,
         field,
         getFieldValue,
         isScadenzaRevisioneScaduta,
@@ -500,52 +587,99 @@ function NextEstrazioneLibretto({
           </div>
         </section>
 
-        {shouldShowDebugImages ? (
-          <section className="iai-card">
-            <p className="iai-sec-label">Debug ottimizzazione</p>
-            <p className="iai-upload-hint" style={{ marginBottom: "10px" }}>
-              Zona telaio ottimizzata usata: {vinOptimizationUsed ? "SI" : "NO"}
-            </p>
-            <div className="iai-debug-image-grid">
-              {[
-                { label: "Immagine originale", url: debugImages?.originalUrl },
-                { label: "Immagine preprocessata", url: debugImages?.preprocessUrl },
-                { label: "Immagine finale inviata", url: debugImages?.finalUrl },
-                { label: "Zona telaio ottimizzata", url: debugImages?.vinUrl },
-              ]
-                .filter((entry) => Boolean(entry.url))
-                .map((entry) => (
-                  <div key={entry.label}>
-                    <p className="iai-sec-label" style={{ marginBottom: "6px" }}>
-                      {entry.label}
-                    </p>
-                    <div className="iai-viewer-body iai-viewer-body--debug">
-                      <img
-                        src={entry.url ?? undefined}
-                        alt={entry.label}
-                        className="iai-viewer-img"
-                        style={{ maxHeight: "180px" }}
-                      />
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </section>
-        ) : null}
-
         {import.meta.env.DEV ? (
-          <section className="iai-card">
-            <p className="iai-sec-label">Debug date libretto</p>
-            <div className="iai-template-debug-list">
-              <div>raw ultimo collaudo: {debugTrace?.rawUltimoCollaudo || "-"}</div>
-              <div>mapped ultimo collaudo: {debugTrace?.mappedDataUltimoCollaudo || "-"}</div>
-              <div>prop ultimo collaudo: {debugTrace?.propDataUltimoCollaudo || "-"}</div>
-              <div>field ultimo collaudo: {fieldDataUltimoCollaudo || "-"}</div>
-              <div>field prossimo collaudo / revisione: {fieldDataScadenzaRevisione || "-"}</div>
-              <div>chiave targa duplicati: {debugTrace?.duplicatePlateKey || "-"}</div>
-              <div>candidati duplicati trovati: {debugTrace?.duplicateCandidateCount || "0"}</div>
+          <details className="iai-debug-tools">
+            <summary>Strumenti debug</summary>
+            <div className="iai-debug-tools__body">
+              <section className="iai-card iai-card--debug">
+                <p className="iai-sec-label">Date libretto</p>
+                <div className="iai-template-debug-list">
+                  <div>raw ultimo collaudo: {debugTrace?.rawUltimoCollaudo || "-"}</div>
+                  <div>mapped ultimo collaudo: {debugTrace?.mappedDataUltimoCollaudo || "-"}</div>
+                  <div>prop ultimo collaudo: {debugTrace?.propDataUltimoCollaudo || "-"}</div>
+                  <div>field ultimo collaudo: {fieldDataUltimoCollaudo || "-"}</div>
+                  <div>field prossimo collaudo / revisione: {fieldDataScadenzaRevisione || "-"}</div>
+                  <div>chiave targa duplicati: {debugTrace?.duplicatePlateKey || "-"}</div>
+                  <div>candidati duplicati trovati: {debugTrace?.duplicateCandidateCount || "0"}</div>
+                </div>
+              </section>
+              <section className="iai-card iai-card--debug">
+                <p className="iai-sec-label">Campi mappati finali</p>
+                <div className="iai-template-debug-list">
+                  {[
+                    ["N. AVS", getLibrettoFieldValue("nAvs")],
+                    ["Proprietario", getLibrettoFieldValue("proprietario")],
+                    ["Indirizzo", getLibrettoFieldValue("indirizzo")],
+                    ["Località", getLibrettoFieldValue("localita")],
+                    ["Targa", getLibrettoFieldValue("targa")],
+                    ["Colore", getLibrettoFieldValue("colore")],
+                    ["Genere veicolo", getLibrettoFieldValue("genereVeicolo")],
+                    ["Marca e tipo", getLibrettoFieldValue("marcaTipo")],
+                    ["Telaio", getLibrettoFieldValue("telaio")],
+                    ["Carrozzeria", getLibrettoFieldValue("carrozzeria")],
+                    ["Numero matricola", getLibrettoFieldValue("numeroMatricola")],
+                    ["Approvazione tipo", getLibrettoFieldValue("approvazioneTipo")],
+                    ["Peso a vuoto", getLibrettoFieldValue("pesoVuoto")],
+                    ["Carico utile / sella", getLibrettoFieldValue("caricoUtileSella")],
+                    ["Peso totale", getLibrettoFieldValue("pesoTotale")],
+                    ["Prima immatricolazione", getLibrettoFieldValue("primaImmatricolazione")],
+                    ["Luogo / data rilascio", getLibrettoFieldValue("luogoDataRilascio")],
+                    ["Ultimo collaudo", getLibrettoFieldValue("ultimoCollaudo")],
+                    ["Prossimo collaudo / revisione", getLibrettoFieldValue("prossimoCollaudoRevisione")],
+                    ["Annotazioni", getLibrettoFieldValue("annotazioni")],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      {label}: {value || "-"}
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="iai-card iai-card--debug">
+                <p className="iai-sec-label">Traccia binding campi</p>
+                <div className="iai-template-debug-list">
+                  {debugFieldTrace.map((entry) => (
+                    <div key={entry.key}>
+                      {entry.label}: raw={entry.rawBackendValue || "-"} | mapped=
+                      {entry.mappedValue || "-"} | prop={entry.propValue || "-"} | field=
+                      {entry.fieldDomValue || "-"}
+                    </div>
+                  ))}
+                </div>
+              </section>
+              {shouldShowDebugImages ? (
+                <section className="iai-card iai-card--debug">
+                  <p className="iai-sec-label">Ottimizzazione</p>
+                  <p className="iai-upload-hint" style={{ marginBottom: "10px" }}>
+                    Zona telaio ottimizzata usata: {vinOptimizationUsed ? "SI" : "NO"}
+                  </p>
+                  <div className="iai-debug-image-grid">
+                    {[
+                      { label: "Immagine originale", url: debugImages?.originalUrl },
+                      { label: "Immagine preprocessata", url: debugImages?.preprocessUrl },
+                      { label: "Immagine finale inviata", url: debugImages?.finalUrl },
+                      { label: "Zona telaio ottimizzata", url: debugImages?.vinUrl },
+                    ]
+                      .filter((entry) => Boolean(entry.url))
+                      .map((entry) => (
+                        <div key={entry.label}>
+                          <p className="iai-sec-label" style={{ marginBottom: "6px" }}>
+                            {entry.label}
+                          </p>
+                          <div className="iai-viewer-body iai-viewer-body--debug">
+                            <img
+                              src={entry.url ?? undefined}
+                              alt={entry.label}
+                              className="iai-viewer-img"
+                              style={{ maxHeight: "180px" }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </section>
+              ) : null}
             </div>
-          </section>
+          </details>
         ) : null}
 
         <section className="iai-libretto-template iai-libretto-template--target iai-libretto-sheet">
@@ -587,6 +721,10 @@ function NextEstrazioneLibretto({
                     <div className="iai-target-rail">Domicilio</div>
                     <div className="iai-target-main iai-target-main--stack">
                       {renderTargetField(TARGET_FIELDS.indirizzo)}
+                      {renderTargetField(
+                        TARGET_FIELDS.localita,
+                        "iai-target-field iai-target-field--compact",
+                      )}
                     </div>
                   </div>
 
@@ -845,7 +983,7 @@ function NextEstrazioneLibretto({
                     <input
                       type="text"
                       className="iai-field-input iai-field-input--bold"
-                      value={getLibrettoTemplateFieldValue(getFieldValue, "marcaTipo")}
+                      value={getFieldValue("marcaTipo")}
                       onChange={(event) =>
                         applyLibrettoTemplateFieldChange({
                           key: "marcaTipo",

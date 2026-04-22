@@ -16,6 +16,7 @@ const MANUTENZIONI_KEY = "@manutenzioni";
 const MEZZI_KEY = "@mezzi_aziendali";
 const INVENTARIO_KEY = "@inventario";
 const MATERIALI_CONSEGNATI_KEY = "@materialiconsegnati";
+const DOCUMENTI_MEZZI_COLLECTION = "@documenti_mezzi";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type RawRecord = Record<string, unknown>;
@@ -123,6 +124,9 @@ export type NextManutenzioniLegacyDatasetRecord = {
   gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo;
   gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord;
   sourceDocumentId?: string | null;
+  importo?: number | null;
+  sourceDocumentFileUrl?: string | null;
+  sourceDocumentCurrency?: "EUR" | "CHF" | "UNKNOWN" | null;
 };
 
 export type NextManutenzioniMezzoOption = {
@@ -181,6 +185,7 @@ export type NextManutenzioneBusinessSavePayload = {
   gommeInterventoTipo?: NextManutenzioneGommeInterventoTipo | null;
   gommeStraordinario?: NextManutenzioneGommeStraordinarioRecord | null;
   sourceDocumentId?: string | null;
+  importo?: number | null;
 };
 
 type NextLegacyInventarioRecord = Record<string, unknown>;
@@ -422,6 +427,44 @@ function sanitizeLegacyMateriali(value: unknown): NextManutenzioniLegacyMaterial
     .filter((entry): entry is NextManutenzioniLegacyMaterialRecord => Boolean(entry));
 }
 
+function normalizeSourceDocumentCurrency(value: unknown): "EUR" | "CHF" | "UNKNOWN" | null {
+  const normalized = normalizeText(value).toUpperCase();
+  if (!normalized) return null;
+  if (normalized === "EUR") return "EUR";
+  if (normalized === "CHF") return "CHF";
+  if (normalized === "UNKNOWN") return "UNKNOWN";
+  return null;
+}
+
+async function readSourceDocumentMetadataByIds(sourceDocumentIds: string[]): Promise<
+  Map<string, { fileUrl: string | null; currency: "EUR" | "CHF" | "UNKNOWN" | null }>
+> {
+  const uniqueIds = Array.from(new Set(sourceDocumentIds.map((entry) => normalizeText(entry)).filter(Boolean)));
+  if (uniqueIds.length === 0) return new Map();
+
+  const entries = await Promise.all(
+    uniqueIds.map(async (sourceDocumentId) => {
+      const snapshot = await getDoc(doc(db, DOCUMENTI_MEZZI_COLLECTION, sourceDocumentId));
+      if (!snapshot.exists()) {
+        return [sourceDocumentId, { fileUrl: null, currency: null }] as const;
+      }
+
+      const raw = ((snapshot.data() as RawRecord | undefined) ?? {}) as RawRecord;
+      return [
+        sourceDocumentId,
+        {
+          fileUrl: normalizeOptionalText(raw.fileUrl),
+          currency:
+            normalizeSourceDocumentCurrency(raw.valuta) ??
+            normalizeSourceDocumentCurrency(raw.currency),
+        },
+      ] as const;
+    }),
+  );
+
+  return new Map(entries);
+}
+
 function toLegacyDatasetRecord(
   raw: RawRecord,
   index: number,
@@ -474,10 +517,14 @@ function toLegacyDatasetRecord(
       normalizeOptionalText(raw.eseguito) ??
       undefined,
     materiali,
+    importo: normalizeNumber(raw.importo),
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario ? { gommeStraordinario } : {}),
     ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),
     ...(gommePerAsse.length > 0 ? { gommePerAsse } : {}),
+    ...(normalizeOptionalText(raw.sourceDocumentId) != null
+      ? { sourceDocumentId: normalizeOptionalText(raw.sourceDocumentId) }
+      : {}),
   };
 }
 
@@ -663,8 +710,7 @@ export async function readNextManutenzioniLegacyDataset(): Promise<
   NextManutenzioniLegacyDatasetRecord[]
 > {
   const manutenzioniRaw = await readStorageDataset(MANUTENZIONI_KEY);
-
-  return manutenzioniRaw
+  const baseRecords = manutenzioniRaw
     .map((entry, index) => {
       if (!entry || typeof entry !== "object") return null;
       return toLegacyDatasetRecord(entry as RawRecord, index);
@@ -676,6 +722,24 @@ export async function readNextManutenzioniLegacyDataset(): Promise<
       if (rightTs !== leftTs) return rightTs - leftTs;
       return right.id.localeCompare(left.id);
     });
+
+  const sourceDocumentMetadata = await readSourceDocumentMetadataByIds(
+    baseRecords
+      .map((entry) => normalizeOptionalText(entry.sourceDocumentId))
+      .filter((entry): entry is string => Boolean(entry)),
+  );
+
+  return baseRecords.map((entry) => {
+    const sourceDocumentId = normalizeOptionalText(entry.sourceDocumentId);
+    if (!sourceDocumentId) return entry;
+    const metadata = sourceDocumentMetadata.get(sourceDocumentId);
+    if (!metadata) return entry;
+    return {
+      ...entry,
+      sourceDocumentFileUrl: metadata.fileUrl,
+      sourceDocumentCurrency: metadata.currency,
+    };
+  });
 }
 
 export async function readNextManutenzioniWorkspaceSnapshot(): Promise<
@@ -774,6 +838,7 @@ function sanitizeBusinessRecord(
     eseguito: normalizeOptionalText(payload.eseguito),
     data,
     materiali: sanitizeMaterialiForWrite(payload.materiali),
+    importo: typeof payload.importo === "number" ? payload.importo : null,
     ...(gommeInterventoTipo ? { gommeInterventoTipo } : {}),
     ...(gommeStraordinario && gommeInterventoTipo === "straordinario" ? { gommeStraordinario } : {}),
     ...(gommeInterventoTipo === "ordinario" && assiCoinvolti.length > 0 ? { assiCoinvolti } : {}),

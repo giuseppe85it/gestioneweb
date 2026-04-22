@@ -42,7 +42,7 @@ export function getLibrettoTemplateFieldValue(
 ) {
   switch (key) {
     case "marcaTipo":
-      return joinValues(getFieldValue("marca"), getFieldValue("modello"));
+      return getFieldValue("marcaTipo") || joinValues(getFieldValue("marca"), getFieldValue("modello"));
     case "proprietario":
       return (
         getFieldValue("proprietario") ||
@@ -50,28 +50,55 @@ export function getLibrettoTemplateFieldValue(
         getFieldValue("detentoreDenominazione")
       );
     case "indirizzo":
-      return joinValues(getFieldValue("detentoreIndirizzo"), getFieldValue("detentoreComune"));
+      return getFieldValue("indirizzo") || getFieldValue("detentoreIndirizzo");
+    case "localita":
+      return (
+        getFieldValue("localita") ||
+        getFieldValue("detentoreComune") ||
+        getFieldValue("comune")
+      );
     case "nAvs":
-      return getFieldValue("detentoreAfsAvs");
+      return getFieldValue("nAvs") || getFieldValue("detentoreAfsAvs") || getFieldValue("numeroAvs");
     case "statoOrigine":
-      return getFieldValue("detentoreStatoOrigine");
+      return getFieldValue("statoOrigine") || getFieldValue("detentoreStatoOrigine");
     case "numeroMatricola":
-      return getFieldValue("numeroMatricolaTipo");
+      return getFieldValue("numeroMatricola") || getFieldValue("numeroMatricolaTipo");
+    case "carrozzeria":
+      return getFieldValue("carrozzeria") || getFieldValue("tipoCarrozzeria");
+    case "approvazioneTipo":
+      return getFieldValue("approvazioneTipo") || getFieldValue("numeroApprovazioneTipo");
     case "caricoUtileSella":
-      return getFieldValue("caricoUtile");
+      return getFieldValue("caricoUtileSella") || getFieldValue("caricoUtile");
+    case "pesoVuoto":
+      return getFieldValue("pesoVuoto") || getFieldValue("tara");
+    case "pesoTotaleRimorchio":
+      return getFieldValue("pesoTotaleRimorchio") || getFieldValue("pesoConvoglio");
+    case "caricoSulLetto":
+      return getFieldValue("caricoSulLetto") || getFieldValue("caricoTetto");
     case "pesoRimorchiabile":
-      return getFieldValue("caricoRimorchiabile");
+      return getFieldValue("pesoRimorchiabile") || getFieldValue("caricoRimorchiabile");
     case "luogoDataRilascio":
-      return [getFieldValue("luogoImmatricolazione"), getFieldValue("immatricolato")]
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .join(" / ");
+      return (
+        getFieldValue("luogoDataRilascio") ||
+        [
+          getFieldValue("luogoImmatricolazione") || getFieldValue("luogoRilascio"),
+          getFieldValue("immatricolato") || getFieldValue("dataRilascio"),
+        ]
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .join(" / ")
+      );
     case "ultimoCollaudo":
-      return getFieldValue("dataUltimoCollaudo");
+      return getFieldValue("ultimoCollaudo") || getFieldValue("dataUltimoCollaudo");
     case "prossimoCollaudoRevisione":
-      return getFieldValue("dataScadenzaRevisione");
+      return getFieldValue("prossimoCollaudoRevisione") || getFieldValue("dataScadenzaRevisione");
     case "annotazioni":
-      return getFieldValue("note");
+      return (
+        getFieldValue("annotazioni") ||
+        getFieldValue("note") ||
+        getFieldValue("testo") ||
+        getFieldValue("riassuntoBreve")
+      );
     default:
       return getFieldValue(key);
   }
@@ -103,6 +130,12 @@ export function applyLibrettoTemplateFieldChange(args: {
       return;
     case "indirizzo":
       onFieldChange("detentoreIndirizzo", value);
+      onFieldChange("indirizzo", value);
+      return;
+    case "localita":
+      onFieldChange("detentoreComune", value);
+      onFieldChange("comune", value);
+      onFieldChange("localita", value);
       return;
     case "nAvs":
       onFieldChange("detentoreAfsAvs", value);
@@ -112,11 +145,34 @@ export function applyLibrettoTemplateFieldChange(args: {
       return;
     case "numeroMatricola":
       onFieldChange("numeroMatricolaTipo", value);
+      onFieldChange("numeroMatricola", value);
+      return;
+    case "carrozzeria":
+      onFieldChange("carrozzeria", value);
+      onFieldChange("tipoCarrozzeria", value);
+      return;
+    case "approvazioneTipo":
+      onFieldChange("approvazioneTipo", value);
+      onFieldChange("numeroApprovazioneTipo", value);
       return;
     case "caricoUtileSella":
       onFieldChange("caricoUtile", value);
+      onFieldChange("caricoUtileSella", value);
+      return;
+    case "pesoVuoto":
+      onFieldChange("pesoVuoto", value);
+      onFieldChange("tara", value);
+      return;
+    case "pesoTotaleRimorchio":
+      onFieldChange("pesoTotaleRimorchio", value);
+      onFieldChange("pesoConvoglio", value);
+      return;
+    case "caricoSulLetto":
+      onFieldChange("caricoSulLetto", value);
+      onFieldChange("caricoTetto", value);
       return;
     case "pesoRimorchiabile":
+      onFieldChange("pesoRimorchiabile", value);
       onFieldChange("caricoRimorchiabile", value);
       return;
     case "luogoDataRilascio": {
@@ -130,13 +186,14 @@ export function applyLibrettoTemplateFieldChange(args: {
       return;
     }
     case "ultimoCollaudo":
-      onFieldChange("dataUltimoCollaudo", normalizeDateValue(value));
+      onFieldChange("dataUltimoCollaudo", value);
       return;
     case "prossimoCollaudoRevisione":
-      onFieldChange("dataScadenzaRevisione", normalizeDateValue(value));
+      onFieldChange("dataScadenzaRevisione", value);
       return;
     case "annotazioni":
       onFieldChange("note", value);
+      onFieldChange("testo", value);
       return;
     default:
       onFieldChange(key, value);

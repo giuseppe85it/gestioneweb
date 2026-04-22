@@ -34,12 +34,27 @@ const MUTATING_FETCH_URL_PATTERNS = [
 const SAME_ORIGIN_MUTATING_API_PREFIXES = ["/api/"] as const;
 const EUROMECC_ALLOWED_WRITE_PATHS = ["/next/euromecc"] as const;
 const EUROMECC_ALLOWED_FETCH_API_PATHS = new Set(["/api/pdf-ai-enhance"]);
-const DOSSIER_ALLOWED_WRITE_PATH_PREFIXES = ["/next/dossiermezzi/", "/next/dossier/"] as const;
-const DOSSIER_ALLOWED_STORAGE_KEYS = new Set([
-  "@manutenzioni",
-  "@inventario",
-  "@materialiconsegnati",
-]);
+const DOSSIER_ALLOWED_WRITE_PATH_PREFIXES = [
+  "/next/dossiermezzi/",
+  "/next/dossier/",
+  "/next/mezzi-dossier/",
+] as const;
+const DOSSIER_ALLOWED_FIRESTORE_DELETE_DOC_PATH_PREFIXES = [
+  "@documenti_mezzi/",
+  "@documenti_magazzino/",
+  "@documenti_generici/",
+] as const;
+const DOSSIER_ALLOWED_STORAGE_KEYS = new Set(["@costiMezzo"]);
+const IA_DOCUMENTI_ALLOWED_WRITE_PATH = "/next/ia/documenti";
+const IA_DOCUMENTI_ALLOWED_FIRESTORE_UPDATE_DOC_PATH_PREFIXES = [
+  "@documenti_mezzi/",
+  "@documenti_magazzino/",
+  "@documenti_generici/",
+] as const;
+const IA_DOCUMENTI_ALLOWED_FIRESTORE_DELETE_DOC_PATH_PREFIXES = [
+  "@documenti_mezzi/",
+] as const;
+const IA_DOCUMENTI_ALLOWED_STORAGE_KEYS = new Set(["@costiMezzo"]);
 const INTERNAL_AI_MAGAZZINO_INLINE_SCOPE = "internal_ai_magazzino_inline_magazzino";
 const INTERNAL_AI_DOCUMENTI_ALLOWED_PATHS = ["/next/ia/interna", "/next/ia/archivista"] as const;
 const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
@@ -55,7 +70,12 @@ const ARCHIVISTA_ALLOWED_FIRESTORE_COLLECTIONS = new Set([
   "@documenti_mezzi",
 ]);
 const ARCHIVISTA_ALLOWED_FIRESTORE_DOC_PATHS = new Set(["storage/@preventivi"]);
-const ARCHIVISTA_ALLOWED_STORAGE_KEYS = new Set(["@mezzi_aziendali"]);
+const ARCHIVISTA_ALLOWED_STORAGE_KEYS = new Set([
+  "@mezzi_aziendali",
+  "@manutenzioni",
+  "@inventario",
+  "@materialiconsegnati",
+]);
 const ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES = ["documenti_pdf/", "preventivi/"] as const;
 const ARCHIVISTA_ALLOWED_IMAGE_STORAGE_PATH_PREFIXES = ["mezzi/"] as const;
 const cloneWriteScopedAllowances = new Map<string, number>();
@@ -205,6 +225,10 @@ function isAllowedDossierCloneWritePath(pathname: string): boolean {
   );
 }
 
+function isAllowedIaDocumentiCloneWritePath(pathname: string): boolean {
+  return pathname === IA_DOCUMENTI_ALLOWED_WRITE_PATH;
+}
+
 function hasCloneWriteScopedAllowance(scope: string): boolean {
   return (cloneWriteScopedAllowances.get(scope) ?? 0) > 0;
 }
@@ -317,6 +341,28 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     }
   }
 
+  if (isAllowedIaDocumentiCloneWritePath(pathname)) {
+    if (kind === "firestore.deleteDoc") {
+      const path = readMetaPath(meta);
+      return IA_DOCUMENTI_ALLOWED_FIRESTORE_DELETE_DOC_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
+
+    if (kind === "firestore.updateDoc") {
+      const path = readMetaPath(meta);
+      return IA_DOCUMENTI_ALLOWED_FIRESTORE_UPDATE_DOC_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
+
+    if (kind === "storageSync.setItemSync") {
+      return IA_DOCUMENTI_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
+    }
+
+    return false;
+  }
+
   if (isAllowedMagazzinoCloneWritePath(pathname)) {
     if (kind === "storageSync.setItemSync") {
       return MAGAZZINO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
@@ -331,9 +377,17 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
   }
 
   if (isAllowedDossierCloneWritePath(pathname)) {
+    if (kind === "firestore.deleteDoc") {
+      const path = readMetaPath(meta);
+      return DOSSIER_ALLOWED_FIRESTORE_DELETE_DOC_PATH_PREFIXES.some((prefix) =>
+        path.startsWith(prefix),
+      );
+    }
+
     if (kind === "storageSync.setItemSync") {
       return DOSSIER_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
     }
+
     return false;
   }
 

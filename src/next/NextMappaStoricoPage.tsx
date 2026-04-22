@@ -12,6 +12,7 @@ import {
   normalizeNextAssiCoinvolti,
   resolveNextManutenzioneTechnicalView,
 } from "./domain/nextManutenzioniGommeDomain";
+import type { NextManutenzioniLegacyMaterialRecord } from "./domain/nextManutenzioniDomain";
 import {
   getNextMezzoHotspotAreaById,
   getNextMezzoHotspotTargetKindById,
@@ -31,6 +32,11 @@ type NextMappaStoricoPageProps = {
     assiCoinvolti: string[];
     km: number | null;
     tipo: string | null;
+    materiali?: NextManutenzioniLegacyMaterialRecord[];
+    importo?: number | null;
+    sourceDocumentId?: string | null;
+    sourceDocumentFileUrl?: string | null;
+    fornitore?: string | null;
   } | null;
   mezzoInfo?: {
     targa: string;
@@ -487,6 +493,25 @@ export default function NextMappaStoricoPage({
               )}
             </section>
 
+            {selectedMaintenance?.materiali && selectedMaintenance.materiali.length > 0 ? (
+              <section className="man2-detail-selected">
+                <div className="man2-section-title">Materiali / ricambi</div>
+                <div className="man2-detail-history-list">
+                  {selectedMaintenance.materiali.map((materiale) => (
+                    <div
+                      key={materiale.id}
+                      className="man2-detail-history-item"
+                    >
+                      <strong>{materiale.label}</strong>
+                      <span>
+                        {formatNumberIt(materiale.quantita)} {materiale.unita}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             {viewerImageSrc ? (
               <div className="man2-detail-surface man2-detail-surface--viewer">
                 <div className="ms-surface man2-detail-surface__static">
@@ -617,6 +642,15 @@ export default function NextMappaStoricoPage({
               <button type="button" className="man2-btn" onClick={() => onOpenPdf?.()}>
                 Apri quadro PDF
               </button>
+              {selectedMaintenance?.sourceDocumentId && selectedMaintenance.sourceDocumentFileUrl ? (
+                <button
+                  type="button"
+                  className="man2-btn"
+                  onClick={() => window.open(selectedMaintenance.sourceDocumentFileUrl ?? "", "_blank", "noopener,noreferrer")}
+                >
+                  Apri fattura
+                </button>
+              ) : null}
               <button type="button" className="man2-btn man2-btn--secondary" onClick={() => onEditLatest?.()}>
                 Modifica manutenzione aperta
               </button>

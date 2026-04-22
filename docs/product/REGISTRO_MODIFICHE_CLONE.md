@@ -19,6 +19,167 @@ La regola corrente da leggere insieme a questo registro e:
 - Ogni patch futura che modifica il clone deve aggiungere una nuova voce in questo registro.
 - Per "modifica del clone" si intende almeno una di queste condizioni:
 
+## 2.0 2026-04-21 - Restyling completo `ArchivistaManutenzioneBridge` a step 1-5
+- File runtime toccati:
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `src/next/internal-ai/internal-ai.css`
+- Obiettivo:
+  - riallineare la UI del ramo `Fattura / DDT + Manutenzione` in `/next/ia/archivista` al mockup approvato, sostituendo il layout precedente con una struttura a step numerati senza alterare logica, writer o contratti.
+- Modifiche reali:
+  - `ArchivistaManutenzioneBridge.tsx` riorganizza il solo JSX in 5 card step:
+    - `Step 1` upload + thumbnails + aggiungi pagina + analisi
+    - `Step 2` risultato analisi con riassunto, campi, materiali e avvisi
+    - `Step 3` duplicati
+    - `Step 4` documento archiviato
+    - `Step 5` creazione/successo manutenzione
+  - aggiunti i soli due toggle UI richiesti:
+    - `showMateriali` con default `true`
+    - `showAvvisi` con default `false`
+  - `internal-ai.css` estende le classi `ia-archivista-bridge__*` per card step, griglie, thumbnails, collapsible e form;
+- Verifiche:
+  - `npx eslint src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+- Note:
+  - nessun handler esistente e stato modificato;
+  - nessun writer o stato business e stato toccato;
+  - runtime browser completo del mockup resta `DA VERIFICARE`.
+
+## 2.0 2026-04-21 - IA Documenti: tab `Libretti` con delete dedicato
+- File runtime toccati:
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/utils/cloneWriteBarrier.ts`
+- Obiettivo:
+  - aggiungere nello storico documenti NEXT un tab dedicato ai libretti, con filtro per `tipoDocumento === "libretto"` e delete mirato del solo documento archivio in `@documenti_mezzi`.
+- Modifiche reali:
+  - `NextIADocumentiPage.tsx` aggiunge il filtro `Libretti` senza alterare i filtri esistenti;
+  - il tab `Libretti` mostra solo record con `tipoDocumento` uguale a `libretto` in modo case-insensitive;
+  - il tab `Tutti` continua a mostrare anche i libretti;
+  - nel solo tab `Libretti` ogni riga espone `Elimina` con conferma inline `Eliminare questo libretto?`;
+  - alla conferma la pagina riusa `deleteNextDocumentoCosto(item)` e aggiorna subito la lista locale;
+  - `cloneWriteBarrier.ts` apre su `/next/ia/documenti` solo `firestore.deleteDoc` sui path sotto `@documenti_mezzi/`;
+- Verifiche:
+  - `npx eslint src/next/NextIADocumentiPage.tsx src/utils/cloneWriteBarrier.ts` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+- Note:
+  - la targa cliccabile verso il Dossier resta invariata;
+  - la logica di archiviazione libretti non viene toccata;
+  - verifica browser live del delete reale resta `DA VERIFICARE`.
+
+## 2.0 2026-04-21 - IA Documenti: cambio valuta inline, targa -> Dossier, link storico dal Dossier
+- File runtime toccati:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/NextIADocumentiPage.tsx`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/utils/cloneWriteBarrier.ts`
+- Obiettivo:
+  - aprire in modo chirurgico su `/next/ia/documenti` il solo aggiornamento valuta source-aware, rendere cliccabile la targa verso il Dossier mezzo e aggiungere dal Dossier il link di ritorno allo storico documenti.
+- Modifiche reali:
+  - `nextDocumentiCostiDomain.ts` esporta ora `updateNextDocumentoCurrency(item, newCurrency)`, che instrada l'update su `item.sourceKey`:
+    - `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici` -> `updateDoc` Firestore clone-safe di `currency` e `valuta`
+    - `@costiMezzo` -> update del record target e riscrittura del dataset `storage/@costiMezzo`
+  - `NextIADocumentiPage.tsx` aggiunge editor valuta inline per riga con `Modifica`, select `EUR | CHF`, `Salva`, `Annulla` e aggiornamento locale post-save;
+  - quando `currency === "UNKNOWN"`, il badge `Valuta da verificare` diventa il punto di ingresso all'editor valuta e sparisce dopo un salvataggio riuscito;
+  - la colonna `Targa` usa ora `buildNextDossierPath(targa)` e navigazione esplicita senza aprire il modale di riga;
+  - `NextDossierMezzoPage.tsx` aggiunge nella testata `Fatture` il link `Vai allo storico ->` verso `/next/ia/documenti`;
+  - `cloneWriteBarrier.ts` apre solo per il pathname `/next/ia/documenti`:
+    - `firestore.updateDoc` su `@documenti_mezzi/`, `@documenti_magazzino/`, `@documenti_generici/`
+    - `storageSync.setItemSync` su `@costiMezzo`
+- Verifiche:
+  - `npx eslint src/next/NextIADocumentiPage.tsx src/next/NextDossierMezzoPage.tsx src/next/domain/nextDocumentiCostiDomain.ts src/utils/cloneWriteBarrier.ts` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+- Note:
+  - il modale dettaglio e le azioni `PDF`, `Riapri review`, `Chiedi alla IA` restano invariati;
+  - la verifica browser live del cambio valuta e della navigazione reale resta `DA VERIFICARE`.
+
+## 2.0 2026-04-21 - Dossier Mezzo: eliminazione fatture source-aware multi-collection
+- File runtime toccati:
+  - `src/next/domain/nextDocumentiCostiDomain.ts`
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/utils/cloneWriteBarrier.ts`
+- Obiettivo:
+  - permettere dal Dossier Mezzo l'eliminazione mirata di una fattura dalla sua collection o dataset reale di origine, in base a `item.sourceKey`, senza toccare la manutenzione eventualmente collegata.
+- Modifiche reali:
+  - `nextDocumentiCostiDomain.ts` esporta ora `deleteNextDocumentoCosto(item)` che usa `item.sourceKey` per instradare il delete:
+    - `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici` -> delete Firestore clone-safe via `firestoreWriteOps`
+    - `@costiMezzo` -> filter + riscrittura del dataset `storage/@costiMezzo` senza aprire reader o writer nuovi;
+  - `NextDossierMezzoPage.tsx` aggiunge il bottone `Elimina` sulle righe fattura, mantiene invariato il bottone `Elimina` dei preventivi e apre una conferma con due testi possibili:
+    - `Eliminare questa fattura?`
+    - `Questa fattura ha una manutenzione collegata. Eliminando la fattura la manutenzione rimarra. Confermi l'eliminazione?`
+  - dopo `Conferma`, la pagina elimina solo la fattura e ricarica `readNextDossierMezzoCompositeSnapshot(targa)` senza reload;
+  - `cloneWriteBarrier.ts` riconosce ora il perimetro Dossier per:
+    - `firestore.deleteDoc` solo su `@documenti_mezzi/`, `@documenti_magazzino/`, `@documenti_generici/`
+    - `storageSync.setItemSync` solo su `@costiMezzo`;
+- Verifiche:
+  - `npx eslint src/next/domain/nextDocumentiCostiDomain.ts src/next/NextDossierMezzoPage.tsx src/utils/cloneWriteBarrier.ts` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+- Note:
+  - la manutenzione collegata non viene mai eliminata;
+  - non sono state aperte delete o write fuori dai casi documentali richiesti;
+  - la verifica browser del flusso live resta `DA VERIFICARE`.
+
+## 2.0 2026-04-21 - Manutenzioni NEXT: importo, materiali e link fattura nel dettaglio
+- File runtime toccati:
+  - `src/next/domain/nextManutenzioniDomain.ts`
+  - `src/next/NextManutenzioniPage.tsx`
+  - `src/next/NextMappaStoricoPage.tsx`
+- Obiettivo:
+  - estendere in modo additivo il dominio `Manutenzioni` per salvare `importo`, mostrare una riga Dashboard piu informativa e rendere il dettaglio embedded capace di mostrare materiali e link al documento origine senza regressioni sui record storici.
+- Modifiche reali:
+  - `nextManutenzioniDomain.ts` salva ora `importo` nel record `@manutenzioni` e, in lettura, arricchisce i record con `sourceDocumentFileUrl` e `sourceDocumentCurrency` usando `sourceDocumentId` contro `@documenti_mezzi` solo quando il collegamento esiste;
+  - `NextManutenzioniPage.tsx` compatta la riga `Ultimi interventi` con titolo breve, misura, officina e importo opzionale, e passa al dettaglio embedded i campi `materiali`, `importo`, `fornitore`, `sourceDocumentId`, `sourceDocumentFileUrl`;
+  - `NextMappaStoricoPage.tsx` mostra ora `Materiali / ricambi` solo se la manutenzione selezionata li possiede e abilita `Apri fattura` solo se il `fileUrl` del documento collegato e davvero disponibile;
+- Verifiche:
+  - `npx eslint src/next/domain/nextManutenzioniDomain.ts src/next/NextManutenzioniPage.tsx src/next/NextMappaStoricoPage.tsx` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+- Note:
+  - l'estensione e completamente additiva: i record esistenti senza `importo`, `materiali` o `sourceDocumentId` continuano a renderizzare senza differenze strutturali;
+  - la verifica browser con record live che espongano davvero i nuovi campi resta `DA VERIFICARE`.
+
+## 2.0 2026-04-21 - rollback `Dossier Mezzo` fattura -> manutenzione
+- File runtime toccati:
+  - `src/next/NextDossierMezzoPage.tsx`
+  - `src/next/domain/nextDossierMezzoDomain.ts`
+  - `src/utils/cloneWriteBarrier.ts`
+- Obiettivo:
+  - rimuovere dal Dossier Mezzo solo il bottone `Crea manutenzione`, il badge `Manutenzione collegata`, il modal dedicato e la write exception locale introdotti dal task 38A, lasciando intatti Archivista e il writer canonico manutenzioni.
+- Modifiche reali:
+  - `NextDossierMezzoPage.tsx` non importa piu `NextDossierFatturaToManutenzioneModal` ne `hasLinkedManutenzione`, non mantiene piu stato locale `fatturaModal` e la sezione `Fatture` torna a mostrare solo l'elenco con `Anteprima PDF`;
+  - eliminato `src/next/NextDossierFatturaToManutenzioneModal.tsx`;
+  - `nextDossierMezzoDomain.ts` non esporta piu `hasLinkedManutenzione`;
+  - `cloneWriteBarrier.ts` non consente piu dal contesto `/next/dossiermezzi/*` e `/next/dossier/*` scritture su `@manutenzioni`, `@inventario`, `@materialiconsegnati`;
+  - la deroga `/next/ia/archivista` introdotta per il task 39 resta intatta;
+- Verifiche:
+  - `npx eslint src/next/NextDossierMezzoPage.tsx src/next/domain/nextDossierMezzoDomain.ts src/utils/cloneWriteBarrier.ts` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `OK`
+- Note:
+  - `src/next/domain/nextManutenzioniDomain.ts` non e stato toccato;
+  - `sourceDocumentId` nel writer manutenzioni resta disponibile per Archivista;
+  - la verifica browser della sezione `Fatture` su `/next/dossier/<targa>` resta `DA VERIFICARE`.
+
+## 2.0 2026-04-21 - Archivista Manutenzione multipagina + step 2 verso `@manutenzioni`
+- File runtime toccati:
+  - `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`
+  - `src/utils/cloneWriteBarrier.ts`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `backend/internal-ai/server/internal-ai-document-extraction.js`
+- Obiettivo:
+  - estendere solo il ramo `Fattura / DDT + Manutenzione` di Archivista con supporto multi-pagina in analisi e con un secondo step opzionale che crea una manutenzione reale dopo l'archiviazione del documento.
+- Modifiche reali:
+  - il backend accetta ora `pages[]` opzionale solo nella route `documents.manutenzione-analyze`;
+  - il path binario dell'extractor OpenAI costruisce piu `input_image` / `input_file` solo quando `pages[]` esiste; il caso single-file non cambia;
+  - `ArchivistaManutenzioneBridge.tsx` gestisce ora `selectedFiles[]`, preview multipla con rimozione singola, invio `pages[]` quando i file sono piu di uno e, al momento dell'archivio, combina i file multipli in un PDF unico per non perdere pagine nell'originale archiviato;
+  - dopo `Conferma e archivia`, il bridge apre uno step 2 opzionale con form precompilato e modificabile che chiama `saveNextManutenzioneBusinessRecord()` usando `sourceDocumentId` del documento archiviato;
+  - `cloneWriteBarrier.ts` consente su `/next/ia/archivista` solo `storageSync.setItemSync` per `@manutenzioni`, `@inventario`, `@materialiconsegnati`, oltre alle deroghe Archivista gia esistenti.
+- Verifiche:
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> `OK`
+  - `node --check backend/internal-ai/server/internal-ai-document-extraction.js` -> `OK`
+  - `npx eslint src/next/internal-ai/ArchivistaManutenzioneBridge.tsx src/utils/cloneWriteBarrier.ts` -> `OK` con warning noto `baseline-browser-mapping`
+  - `npm run build` -> `DA ESEGUIRE` nel task in chiusura
+- Note:
+  - nessuna route backend fuori da `manutenzione-analyze` e stata toccata;
+  - il writer business resta quello canonico di `nextManutenzioniDomain.ts`;
+  - la verifica live completa del salvataggio in `/next/manutenzioni` resta separata finche non viene eseguita su dataset utile.
+
 ## 2.0 2026-04-16 - Separazione componente Libretto nel ramo review reale IA interna
 - File runtime toccati:
   - `src/next/NextInternalAiPage.tsx`

@@ -12,7 +12,8 @@ import {
   type NextAnagraficheFlottaMezzoItem,
 } from "./nextAnagraficheFlottaDomain";
 import { buildNextDossierPath } from "./nextStructuralPaths";
-import { formatDateInput, formatDateUI } from "../utils/dateFormat";
+import { formatDateUI } from "./nextDateFormat";
+import { formatDateInput } from "../utils/dateFormat";
 import "../pages/Mezzi.css";
 
 const CATEGORIE_ORDINATE = [

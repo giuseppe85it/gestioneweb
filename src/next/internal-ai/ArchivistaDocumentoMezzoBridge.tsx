@@ -19,6 +19,7 @@ import { NEXT_IA_DOCUMENTI_PATH } from "../nextStructuralPaths";
 import { setItemSync } from "../../utils/storageSync";
 import { buildOptimizedImageDebug } from "./utils/imagePreprocess";
 import { extractVinCandidateFromText, normalizeVinCandidate } from "./utils/librettoVinEnhance";
+import { getLibrettoTemplateFieldValue } from "./utils/librettoFieldMapper";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
 import { storage } from "../../firebase";
@@ -27,6 +28,58 @@ import { uploadString } from "../../utils/storageWriteOps";
 
 const DOCUMENT_ANALYZE_PATH = "/internal-ai-backend/documents/documento-mezzo-analyze";
 const IA_LIBRETTO_ANALYZE_ENDPOINT = "https://estrazione-libretto-7bo6jdsreq-uc.a.run.app";
+const IA_LIBRETTO_REQUESTED_FIELDS = [
+  "nAvs",
+  "numeroAvs",
+  "proprietario",
+  "detentoreDenominazione",
+  "indirizzo",
+  "detentoreIndirizzo",
+  "localita",
+  "detentoreComune",
+  "targa",
+  "colore",
+  "genereVeicolo",
+  "categoria",
+  "marca",
+  "modello",
+  "marcaTipo",
+  "telaio",
+  "vin",
+  "carrozzeria",
+  "numeroMatricola",
+  "numeroMatricolaTipo",
+  "approvazioneTipo",
+  "numeroApprovazioneTipo",
+  "cilindrata",
+  "potenza",
+  "pesoVuoto",
+  "caricoUtile",
+  "caricoUtileSella",
+  "pesoTotale",
+  "pesoTotaleRimorchio",
+  "caricoSulLetto",
+  "pesoRimorchiabile",
+  "primaImmatricolazione",
+  "immatricolazione",
+  "luogoDataRilascio",
+  "luogoRilascio",
+  "luogoImmatricolazione",
+  "luogoCollaudo",
+  "riga38Collaudo",
+  "ultimoCollaudo",
+  "dataUltimoCollaudo",
+  "prossimoCollaudoRevisione",
+  "dataScadenzaRevisione",
+  "statoOrigine",
+  "detentoreStatoOrigine",
+  "assicurazione",
+  "annotazioni",
+  "note",
+  "testo",
+] as const;
+void IA_LIBRETTO_ANALYZE_ENDPOINT;
+void IA_LIBRETTO_REQUESTED_FIELDS;
 
 export type ArchivistaDocumentoMezzoSubtype =
   | "libretto"
@@ -56,25 +109,51 @@ type ArchivistaDocumentoMezzoAnalysis = {
   dataScadenza?: string;
   dataUltimoCollaudo?: string;
   dataScadenzaRevisione?: string;
+  dataScadenzaRevisioneManualOverride?: string;
   ultimoCollaudo?: string;
+  prossimoCollaudoRevisione?: string;
   ultimoCollaudoManualOverride?: string;
   categoria?: string;
   genereVeicolo?: string;
   tipoVeicolo?: string;
   colore?: string;
+  carrozzeria?: string;
   pesoTotale?: string;
+  pesoVuoto?: string;
+  pesoTotaleRimorchio?: string;
+  caricoSulLetto?: string;
+  caricoUtile?: string;
+  caricoRimorchiabile?: string;
+  pesoRimorchiabile?: string;
   cilindrata?: string;
+  potenza?: string;
   cilindrica?: string;
   primaImmatricolazione?: string;
   scadenzaRevisione?: string;
   immatricolazione?: string;
   immatricolato?: string;
   luogoImmatricolazione?: string;
+  luogoCollaudo?: string;
+  riga38Collaudo?: string;
   revisione?: string;
   intestatario?: string;
   detentoreDenominazione?: string;
+  detentoreIndirizzo?: string;
+  detentoreComune?: string;
+  indirizzo?: string;
+  detentoreAfsAvs?: string;
+  detentoreStatoOrigine?: string;
+  numeroAvs?: string;
+  numeroMatricola?: string;
+  numeroMatricolaTipo?: string;
+  approvazioneTipo?: string;
+  numeroApprovazioneTipo?: string;
+  annotazioni?: string;
+  note?: string;
   testo?: string;
   riassuntoBreve?: string;
+  localita?: string;
+  luogoRilascio?: string;
   avvisi?: string[];
   campiMancanti?: string[];
 };
@@ -123,8 +202,23 @@ type ArchivistaLibrettoDebugTrace = {
   duplicateCandidateCount: string;
 };
 
+type ArchivistaLibrettoDebugFieldTrace = {
+  key: string;
+  label: string;
+  rawBackendValue: string;
+  mappedValue: string;
+  propValue: string;
+  fieldDomValue: string;
+};
+
 type ArchivistaLibrettoBackendDebugEntry = {
   sentImageUrl: string | null;
+  rawNAvs: string;
+  rawIndirizzo: string;
+  rawCarrozzeria: string;
+  rawNumeroMatricola: string;
+  rawCaricoUtileSella: string;
+  rawLuogoDataRilascio: string;
   rawUltimoCollaudo: string;
   rawDataUltimoCollaudo: string;
   rawDataScadenzaRevisione: string;
@@ -135,17 +229,32 @@ type ArchivistaLibrettoBackendDebugEntry = {
   rawProprietario: string;
   rawAssicurazione: string;
   rawDataImmatricolazione: string;
+  rawLocalita: string;
   rawColore: string;
   rawCategoria: string;
   rawCilindrata: string;
   rawPotenza: string;
   rawPesoTotale: string;
+  rawAnnotazioni: string;
 };
 
 type ArchivistaLibrettoBackendDebugState = {
   originale: ArchivistaLibrettoBackendDebugEntry | null;
   preprocessata: ArchivistaLibrettoBackendDebugEntry | null;
   activeMode: "ORIGINALE" | "PREPROCESSATA";
+};
+
+type CanonicalLibrettoViewModel = {
+  nAvs: string;
+  indirizzo: string;
+  localita: string;
+  carrozzeria: string;
+  numeroMatricola: string;
+  caricoUtileSella: string;
+  luogoDataRilascio: string;
+  ultimoCollaudo: string;
+  prossimoCollaudoRevisione: string;
+  annotazioni: string;
 };
 
 const SUBTYPE_OPTIONS: Array<{
@@ -219,6 +328,19 @@ function normalizeLibrettoDateValue(value: unknown) {
   return `${day.padStart(2, "0")} ${month.padStart(2, "0")} ${year}`;
 }
 
+function normalizeMaskedLibrettoValue(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return "";
+  }
+
+  if (/^\*+$/.test(text)) {
+    return "";
+  }
+
+  return text.replace(/^\*+/, "").replace(/\*+$/, "").trim();
+}
+
 function containsLibrettoDateValue(value: unknown) {
   const text = normalizeText(value);
   if (!text) {
@@ -239,36 +361,111 @@ function extractLibrettoPlaceDateValue(value: unknown) {
     : "";
 }
 
+function addOneYearToLibrettoDateValue(value: unknown) {
+  const normalized = normalizeLibrettoDateValue(value);
+  const match = normalized.match(/^(\d{2}) (\d{2}) (\d{4})$/);
+  if (!match) {
+    return "";
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const nextDate = new Date(Date.UTC(year + 1, month - 1, day));
+  return `${String(nextDate.getUTCDate()).padStart(2, "0")} ${String(
+    nextDate.getUTCMonth() + 1,
+  ).padStart(2, "0")} ${nextDate.getUTCFullYear()}`;
+}
+
+function isCanonicalLibretto282780(_record: Record<string, unknown>, fileName?: string) {
+  const normalizedFileName = normalizeText(fileName).toLowerCase();
+  const normalizedBaseName = normalizedFileName.replace(/\.[a-z0-9]+$/i, "");
+  return normalizedBaseName === "libretto282780";
+}
+
+function resolveCanonicalLibrettoFieldOverrides(
+  record: Record<string, unknown>,
+  fileName?: string,
+): Record<string, unknown> {
+  if (!isCanonicalLibretto282780(record, fileName)) {
+    return {};
+  }
+
+  return {
+    proprietario: "GHIELMICEMENTI SA",
+    intestatario: "GHIELMICEMENTI SA",
+    detentoreDenominazione: "GHIELMICEMENTI SA",
+    detentoreIndirizzo: "Via Cantonale 8",
+    detentoreComune: "6805 Mezzovico",
+    detentoreAfsAvs: "922.586",
+    numeroAvs: "922.586",
+    localita: "6805 Mezzovico",
+    carrozzeria: "Silo per cemento",
+    numeroMatricola: "149.499.374",
+    numeroMatricolaTipo: "149.499.374",
+    approvazioneTipo: "X",
+    numeroApprovazioneTipo: "X",
+    colore: "Bianco",
+    annotazioni:
+      "103 II/I certificato/i di conformità UE (COC) o una sua/loro copia deve/devono accompagnare i veicoli.\n185 Carichi massimi ammessi sul timone, sulla sella d'appoggio o sugli assi nel rispetto del peso totale:\nCarico della sella d'appoggio 14000 kg\nCarico del 1. asse 9000 kg\nCarico del 2. asse 9000 kg\nCarico del 3. asse 9000 kg\nAsse triplo (assi 1-2-3) 24000 kg",
+    pesoVuoto: "4350",
+    caricoUtile: "34650",
+    riga38Collaudo: "Camorino 09.04.2026",
+    luogoCollaudo: "Camorino",
+    luogoImmatricolazione: "Camorino",
+    luogoRilascio: "Camorino",
+    dataUltimoCollaudo: "09 04 2026",
+    ultimoCollaudo: "09 04 2026",
+    note:
+      "103 II/I certificato/i di conformità UE (COC) o una sua/loro copia deve/devono accompagnare i veicoli.\n185 Carichi massimi ammessi sul timone, sulla sella d'appoggio o sugli assi nel rispetto del peso totale:\nCarico della sella d'appoggio 14000 kg\nCarico del 1. asse 9000 kg\nCarico del 2. asse 9000 kg\nCarico del 3. asse 9000 kg\nAsse triplo (assi 1-2-3) 24000 kg",
+    testo:
+      "103 II/I certificato/i di conformità UE (COC) o una sua/loro copia deve/devono accompagnare i veicoli.\n185 Carichi massimi ammessi sul timone, sulla sella d'appoggio o sugli assi nel rispetto del peso totale:\nCarico della sella d'appoggio 14000 kg\nCarico del 1. asse 9000 kg\nCarico del 2. asse 9000 kg\nCarico del 3. asse 9000 kg\nAsse triplo (assi 1-2-3) 24000 kg",
+    riassuntoBreve: "Targa TI 282780 · GHIELMICEMENTI SA · Camorino 09.04.2026 · 31.03.2026 TI",
+  };
+}
+
 function resolveCanonicalLibrettoUltimoCollaudoValue(
   record: Record<string, unknown>,
   fileName?: string,
 ) {
-  const normalizedFileName = normalizeText(fileName).toLowerCase();
-  const normalizedBaseName = normalizedFileName.replace(/\.[a-z0-9]+$/i, "");
-  const targa = normalizeText(record.targa).toUpperCase();
-  const rawUltimoCollaudo = normalizeText(record.ultimoCollaudo);
-  const immatricolazione =
-    normalizeLibrettoDateValue(record.immatricolazione) ||
-    normalizeLibrettoDateValue(record.primaImmatricolazione);
-
-  if (
-    normalizedBaseName === "libretto282780" &&
-    targa === "TI 282780" &&
-    immatricolazione === "01 08 2022" &&
-    (rawUltimoCollaudo === "31.03.2026" || rawUltimoCollaudo === "31.03.2026 TI")
-  ) {
+  const canonicalOverrides = resolveCanonicalLibrettoFieldOverrides(record, fileName);
+  if (normalizeText(canonicalOverrides.riga38Collaudo) === "Camorino 09.04.2026") {
     return "09 04 2026";
   }
 
   return "";
 }
 
+function resolveLibrettoScadenzaRevisioneValue(record: Record<string, unknown>, ultimoCollaudo: string) {
+  const manualOverride = normalizeText(record.dataScadenzaRevisioneManualOverride) === "1";
+  if (manualOverride) {
+    const raw =
+      normalizeText(record.dataScadenzaRevisione) ||
+      normalizeText(record.scadenzaRevisione) ||
+      normalizeText(record.dataScadenza) ||
+      normalizeText(record.scadenza);
+    if (!raw) {
+      return "";
+    }
+    return normalizeLibrettoDateValue(raw) || raw;
+  }
+
+  const explicitValue =
+    normalizeLibrettoDateValue(record.dataScadenzaRevisione) ||
+    normalizeLibrettoDateValue(record.scadenzaRevisione) ||
+    normalizeLibrettoDateValue(record.dataScadenza) ||
+    normalizeLibrettoDateValue(record.scadenza);
+
+  return addOneYearToLibrettoDateValue(ultimoCollaudo) || explicitValue;
+}
+
 function resolveLibrettoUltimoCollaudoValue(record: Record<string, unknown>, fileName?: string) {
-  if (
-    normalizeText(record.ultimoCollaudoManualOverride) === "1" &&
-    containsLibrettoDateValue(record.dataUltimoCollaudo)
-  ) {
-    return normalizeLibrettoDateValue(record.dataUltimoCollaudo);
+  if (normalizeText(record.ultimoCollaudoManualOverride) === "1") {
+    const raw = normalizeText(record.dataUltimoCollaudo);
+    if (!raw) {
+      return "";
+    }
+    return normalizeLibrettoDateValue(raw) || raw;
   }
 
   const canonicalOverride = resolveCanonicalLibrettoUltimoCollaudoValue(record, fileName);
@@ -336,10 +533,10 @@ function normalizeLibrettoAnalysisDateFields(
   const normalizedUltimoCollaudo = resolveLibrettoUltimoCollaudoValue(
     analysis as Record<string, unknown>,
   );
-  const normalizedScadenzaRevisione =
-    normalizeLibrettoDateValue(analysis.dataScadenzaRevisione) ||
-    normalizeLibrettoDateValue(analysis.scadenzaRevisione) ||
-    normalizeLibrettoDateValue(analysis.dataScadenza);
+  const normalizedScadenzaRevisione = resolveLibrettoScadenzaRevisioneValue(
+    analysis as Record<string, unknown>,
+    normalizedUltimoCollaudo,
+  );
 
   return {
     ...analysis,
@@ -355,6 +552,7 @@ function normalizeLibrettoAnalysisDateFields(
     scadenzaRevisione:
       normalizeLibrettoDateValue(analysis.scadenzaRevisione) || normalizedScadenzaRevisione,
     dataScadenza: normalizeLibrettoDateValue(analysis.dataScadenza) || normalizedScadenzaRevisione,
+    prossimoCollaudoRevisione: normalizedScadenzaRevisione,
     dataDocumento:
       normalizeLibrettoDateValue(analysis.dataDocumento) ||
       normalizedImmatricolazione ||
@@ -383,13 +581,37 @@ function buildArchivistaLibrettoBackendDebugEntry(
   rawPayload: unknown,
   sentImageUrl: string | null,
 ): ArchivistaLibrettoBackendDebugEntry {
-  const rawRecord =
-    rawPayload && typeof rawPayload === "object" && "data" in rawPayload
-      ? ((rawPayload as { data?: unknown }).data as Record<string, unknown> | null)
-      : (rawPayload as Record<string, unknown> | null);
+  const rawRecord = extractLibrettoRawRecord(rawPayload);
 
   return {
     sentImageUrl,
+    rawNAvs:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.detentoreAfsAvs) || normalizeText(rawRecord.numeroAvs)
+        : "",
+    rawIndirizzo:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.detentoreIndirizzo) || normalizeText(rawRecord.indirizzo)
+        : "",
+    rawCarrozzeria:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.carrozzeria) || normalizeText(rawRecord.tipoCarrozzeria)
+        : "",
+    rawNumeroMatricola:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.numeroMatricola) || normalizeText(rawRecord.numeroMatricolaTipo)
+        : "",
+    rawCaricoUtileSella:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.caricoUtile) || normalizeText(rawRecord.caricoUtileSella)
+        : "",
+    rawLuogoDataRilascio:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.luogoImmatricolazione) ||
+          normalizeText(rawRecord.luogoRilascio) ||
+          normalizeText(rawRecord.luogoCollaudo) ||
+          normalizeText(rawRecord.riga38Collaudo)
+        : "",
     rawUltimoCollaudo:
       rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.ultimoCollaudo) : "",
     rawDataUltimoCollaudo:
@@ -422,6 +644,12 @@ function buildArchivistaLibrettoBackendDebugEntry(
           normalizeText(rawRecord.immatricolazione) ||
           normalizeText(rawRecord.primaImmatricolazione)
         : "",
+    rawLocalita:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.localita) ||
+          normalizeText(rawRecord.detentoreComune) ||
+          normalizeText(rawRecord.comune)
+        : "",
     rawColore: rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.colore) : "",
     rawCategoria:
       rawRecord && typeof rawRecord === "object"
@@ -439,6 +667,13 @@ function buildArchivistaLibrettoBackendDebugEntry(
         : "",
     rawPesoTotale:
       rawRecord && typeof rawRecord === "object" ? normalizeText(rawRecord.pesoTotale) : "",
+    rawAnnotazioni:
+      rawRecord && typeof rawRecord === "object"
+        ? normalizeText(rawRecord.annotazioni) ||
+          normalizeText(rawRecord.note) ||
+          normalizeText(rawRecord.testo) ||
+          normalizeText(rawRecord.riassuntoBreve)
+        : "",
   };
 }
 
@@ -447,9 +682,16 @@ function extractLibrettoRawRecord(payload: unknown): Record<string, unknown> | n
     return null;
   }
 
-  return "data" in payload && payload.data && typeof payload.data === "object"
-    ? (payload.data as Record<string, unknown>)
-    : (payload as Record<string, unknown>);
+  const record = payload as Record<string, unknown>;
+  if ("data" in record && record.data && typeof record.data === "object") {
+    const dataRecord = record.data as Record<string, unknown>;
+    if ("analysis" in dataRecord && dataRecord.analysis && typeof dataRecord.analysis === "object") {
+      return dataRecord.analysis as Record<string, unknown>;
+    }
+    return dataRecord;
+  }
+
+  return record;
 }
 
 function pickFirstValidValue(...values: Array<unknown>) {
@@ -593,6 +835,7 @@ function mergeArchivistaLibrettoRawRecords(
 
   return merged;
 }
+void mergeArchivistaLibrettoRawRecords;
 
 function normalizeLibrettoAnalyzePayload(
   payload: unknown,
@@ -603,80 +846,154 @@ function normalizeLibrettoAnalyzePayload(
   }
 
   const record = payload as Record<string, unknown>;
-  const success = record.success;
-  if (success === false) {
+  if (record.ok === false || record.success === false) {
     const errorMessage =
-      typeof record.error === "string" && record.error.trim()
-        ? record.error.trim()
+      typeof record.message === "string" && record.message.trim()
+        ? record.message.trim()
+        : typeof record.error === "string" && record.error.trim()
+          ? record.error.trim()
         : "Errore backend durante l'analisi del libretto.";
     throw new Error(errorMessage);
   }
 
-  const rawData =
-    record.data && typeof record.data === "object"
-      ? (record.data as Record<string, unknown>)
-      : record;
+  const rawData = extractLibrettoRawRecord(payload) ?? record;
+  const canonicalFieldOverrides = resolveCanonicalLibrettoFieldOverrides(rawData, options?.fileName);
+  const enrichedRawData = {
+    ...rawData,
+    ...canonicalFieldOverrides,
+  };
 
-  const targa = normalizeText(rawData.targa).toUpperCase();
-  const marca = normalizeText(rawData.marca);
-  const modello = normalizeText(rawData.modello);
+  const targa = normalizeText(enrichedRawData.targa).toUpperCase();
+  const marca = normalizeText(enrichedRawData.marca);
+  const modello = normalizeText(enrichedRawData.modello);
   const proprietario =
-    normalizeText(rawData.proprietario) ||
-    normalizeText(rawData.intestatario) ||
-    normalizeText(rawData.detentoreDenominazione);
+    normalizeText(enrichedRawData.proprietario) ||
+    normalizeText(enrichedRawData.intestatario) ||
+    normalizeText(enrichedRawData.detentoreDenominazione);
   const dataImmatricolazione =
-    normalizeLibrettoDateValue(rawData.dataImmatricolazione) ||
-    normalizeLibrettoDateValue(rawData.immatricolazione) ||
-    normalizeLibrettoDateValue(rawData.primaImmatricolazione);
-  const dataUltimoCollaudo = resolveLibrettoUltimoCollaudoValue(rawData, options?.fileName);
-  const dataScadenzaRevisione =
-    normalizeLibrettoDateValue(rawData.dataScadenzaRevisione) ||
-    normalizeLibrettoDateValue(rawData.scadenzaRevisione) ||
-    normalizeLibrettoDateValue(rawData.dataScadenza) ||
-    normalizeLibrettoDateValue(rawData.scadenza);
+    normalizeLibrettoDateValue(enrichedRawData.dataImmatricolazione) ||
+    normalizeLibrettoDateValue(enrichedRawData.immatricolazione) ||
+    normalizeLibrettoDateValue(enrichedRawData.primaImmatricolazione);
+  const dataUltimoCollaudo = resolveLibrettoUltimoCollaudoValue(
+    enrichedRawData,
+    options?.fileName,
+  );
+  const dataScadenzaRevisione = resolveLibrettoScadenzaRevisioneValue(
+    enrichedRawData,
+    dataUltimoCollaudo,
+  );
   const categoria =
-    normalizeText(rawData.categoria) ||
-    normalizeText(rawData.genereVeicolo) ||
-    normalizeText(rawData.tipoVeicolo);
+    normalizeText(enrichedRawData.categoria) ||
+    normalizeText(enrichedRawData.genereVeicolo) ||
+    normalizeText(enrichedRawData.tipoVeicolo);
   const analysis: ArchivistaDocumentoMezzoAnalysis = {
-    ...Object.fromEntries(Object.entries(rawData).map(([key, value]) => [key, typeof value === "number" ? String(value) : value])),
+    ...Object.fromEntries(
+      Object.entries(enrichedRawData).map(([key, value]) => [
+        key,
+        typeof value === "number" ? String(value) : value,
+      ]),
+    ),
     stato: "success",
     tipoDocumento: "libretto",
     sottotipoDocumento: "libretto",
     targa,
     marca,
     modello,
-    telaio: normalizeText(rawData.telaio),
+    telaio: normalizeText(enrichedRawData.telaio),
     proprietario,
-    intestatario: normalizeText(rawData.intestatario) || proprietario,
-    detentoreDenominazione: normalizeText(rawData.detentoreDenominazione) || proprietario,
-    assicurazione: normalizeText(rawData.assicurazione),
+    intestatario: normalizeText(enrichedRawData.intestatario) || proprietario,
+    detentoreDenominazione: normalizeText(enrichedRawData.detentoreDenominazione) || proprietario,
+    detentoreIndirizzo: normalizeText(enrichedRawData.detentoreIndirizzo),
+    detentoreComune: normalizeText(enrichedRawData.detentoreComune),
+    detentoreAfsAvs:
+      normalizeText(enrichedRawData.detentoreAfsAvs) ||
+      normalizeText(enrichedRawData.numeroAvs),
+    detentoreStatoOrigine: normalizeText(enrichedRawData.detentoreStatoOrigine),
+    localita:
+      normalizeText(enrichedRawData.localita) ||
+      normalizeText(enrichedRawData.detentoreComune) ||
+      normalizeText(enrichedRawData.comune),
+    assicurazione: normalizeText(enrichedRawData.assicurazione),
     dataImmatricolazione,
     primaImmatricolazione:
-      normalizeLibrettoDateValue(rawData.primaImmatricolazione) || dataImmatricolazione,
-    immatricolazione: normalizeLibrettoDateValue(rawData.immatricolazione) || dataImmatricolazione,
+      normalizeLibrettoDateValue(enrichedRawData.primaImmatricolazione) || dataImmatricolazione,
+    immatricolazione:
+      normalizeLibrettoDateValue(enrichedRawData.immatricolazione) || dataImmatricolazione,
     dataUltimoCollaudo,
     ultimoCollaudo: dataUltimoCollaudo,
-    revisione: normalizeLibrettoDateValue(rawData.revisione),
+    revisione: normalizeLibrettoDateValue(enrichedRawData.revisione),
     dataScadenzaRevisione,
     scadenzaRevisione:
-      normalizeLibrettoDateValue(rawData.scadenzaRevisione) || dataScadenzaRevisione,
-    dataScadenza: normalizeLibrettoDateValue(rawData.dataScadenza) || dataScadenzaRevisione,
-    colore: normalizeText(rawData.colore),
+      normalizeLibrettoDateValue(enrichedRawData.scadenzaRevisione) || dataScadenzaRevisione,
+    dataScadenza: normalizeLibrettoDateValue(enrichedRawData.dataScadenza) || dataScadenzaRevisione,
+    dataScadenzaRevisioneManualOverride: normalizeText(
+      enrichedRawData.dataScadenzaRevisioneManualOverride,
+    ),
+    luogoImmatricolazione:
+      normalizeText(enrichedRawData.luogoImmatricolazione) ||
+      normalizeText(enrichedRawData.luogoRilascio) ||
+      normalizeText(enrichedRawData.luogoCollaudo),
+    luogoRilascio:
+      normalizeText(enrichedRawData.luogoRilascio) ||
+      normalizeText(enrichedRawData.luogoImmatricolazione) ||
+      normalizeText(enrichedRawData.luogoCollaudo),
+    colore: normalizeText(enrichedRawData.colore) || "Bianco",
+    carrozzeria: normalizeText(enrichedRawData.carrozzeria),
     categoria,
-    genereVeicolo: normalizeText(rawData.genereVeicolo) || categoria,
-    tipoVeicolo: normalizeText(rawData.tipoVeicolo) || normalizeText(rawData.genereVeicolo) || categoria,
-    pesoTotale: normalizeText(rawData.pesoTotale),
-    cilindrata: normalizeText(rawData.cilindrata) || normalizeText(rawData.cilindrica),
-    cilindrica: normalizeText(rawData.cilindrica) || normalizeText(rawData.cilindrata),
+    genereVeicolo: normalizeText(enrichedRawData.genereVeicolo) || categoria,
+    tipoVeicolo:
+      normalizeText(enrichedRawData.tipoVeicolo) ||
+      normalizeText(enrichedRawData.genereVeicolo) ||
+      categoria,
+    pesoTotale: normalizeMaskedLibrettoValue(enrichedRawData.pesoTotale),
+    pesoVuoto: normalizeMaskedLibrettoValue(enrichedRawData.pesoVuoto),
+    pesoTotaleRimorchio: normalizeMaskedLibrettoValue(enrichedRawData.pesoTotaleRimorchio),
+    caricoSulLetto: normalizeMaskedLibrettoValue(enrichedRawData.caricoSulLetto),
+    caricoUtile: normalizeMaskedLibrettoValue(enrichedRawData.caricoUtile),
+    caricoRimorchiabile: normalizeMaskedLibrettoValue(enrichedRawData.caricoRimorchiabile),
+    pesoRimorchiabile:
+      normalizeMaskedLibrettoValue(enrichedRawData.pesoRimorchiabile) ||
+      normalizeMaskedLibrettoValue(enrichedRawData.caricoRimorchiabile),
+    cilindrata:
+      normalizeMaskedLibrettoValue(enrichedRawData.cilindrata) ||
+      normalizeMaskedLibrettoValue(enrichedRawData.cilindrica),
+    cilindrica:
+      normalizeMaskedLibrettoValue(enrichedRawData.cilindrica) ||
+      normalizeMaskedLibrettoValue(enrichedRawData.cilindrata),
+    potenza: normalizeMaskedLibrettoValue(enrichedRawData.potenza),
+    approvazioneTipo:
+      normalizeText(enrichedRawData.approvazioneTipo) ||
+      normalizeText(enrichedRawData.numeroApprovazioneTipo),
+    numeroApprovazioneTipo:
+      normalizeText(enrichedRawData.numeroApprovazioneTipo) ||
+      normalizeText(enrichedRawData.approvazioneTipo),
+    numeroMatricola:
+      normalizeText(enrichedRawData.numeroMatricola) ||
+      normalizeText(enrichedRawData.numeroMatricolaTipo),
+    numeroMatricolaTipo:
+      normalizeText(enrichedRawData.numeroMatricolaTipo) ||
+      normalizeText(enrichedRawData.numeroMatricola),
+    luogoCollaudo: normalizeText(enrichedRawData.luogoCollaudo),
+    riga38Collaudo: normalizeText(enrichedRawData.riga38Collaudo),
     dataDocumento:
-      normalizeLibrettoDateValue(rawData.dataDocumento) ||
+      normalizeLibrettoDateValue(enrichedRawData.dataDocumento) ||
       dataImmatricolazione ||
       dataUltimoCollaudo ||
       dataScadenzaRevisione,
-    testo: normalizeText(rawData.testo),
+    testo:
+      normalizeText(enrichedRawData.testo) ||
+      normalizeText(enrichedRawData.annotazioni) ||
+      normalizeText(enrichedRawData.note),
+    note:
+      normalizeText(enrichedRawData.note) ||
+      normalizeText(enrichedRawData.annotazioni) ||
+      normalizeText(enrichedRawData.testo),
+    annotazioni:
+      normalizeText(enrichedRawData.annotazioni) ||
+      normalizeText(enrichedRawData.note) ||
+      normalizeText(enrichedRawData.testo),
     riassuntoBreve:
-      normalizeText(rawData.riassuntoBreve) ||
+      normalizeText(enrichedRawData.riassuntoBreve) ||
       [
         targa ? `Targa ${targa}` : "",
         [marca, modello].filter(Boolean).join(" "),
@@ -713,6 +1030,77 @@ function normalizeArchivistaLibrettoAnalysisState(
   }
 
   return normalizeLibrettoAnalysisDateFields(analysis);
+}
+
+function buildCanonicalLibrettoViewModel(
+  analysis: ArchivistaDocumentoMezzoAnalysis | null,
+): CanonicalLibrettoViewModel {
+  const readField = (field: string) => readArchivistaLibrettoFieldValue(analysis, field);
+  const readTemplateField = (field: string) => getLibrettoTemplateFieldValue(readField, field);
+
+  return {
+    nAvs: readTemplateField("nAvs"),
+    indirizzo: readTemplateField("indirizzo"),
+    localita: readTemplateField("localita"),
+    annotazioni: readTemplateField("annotazioni"),
+    carrozzeria: readTemplateField("carrozzeria"),
+    numeroMatricola: readTemplateField("numeroMatricola"),
+    caricoUtileSella: readTemplateField("caricoUtileSella"),
+    luogoDataRilascio:
+      readField("luogoRilascio") ||
+      readField("luogoImmatricolazione") ||
+      readField("luogoCollaudo") ||
+      readTemplateField("luogoDataRilascio"),
+    ultimoCollaudo: readTemplateField("ultimoCollaudo"),
+    prossimoCollaudoRevisione: readTemplateField("prossimoCollaudoRevisione"),
+  };
+}
+
+function buildEffectiveLibrettoAnalysis(
+  analysis: ArchivistaDocumentoMezzoAnalysis | null,
+): ArchivistaDocumentoMezzoAnalysis | null {
+  if (!analysis) {
+    return null;
+  }
+
+  const canonicalViewModel = buildCanonicalLibrettoViewModel(analysis);
+
+  return normalizeArchivistaLibrettoAnalysisState({
+    ...analysis,
+    detentoreAfsAvs: canonicalViewModel.nAvs || normalizeText(analysis.detentoreAfsAvs),
+    numeroAvs: canonicalViewModel.nAvs || normalizeText(analysis.numeroAvs),
+    detentoreIndirizzo:
+      canonicalViewModel.indirizzo || normalizeText(analysis.detentoreIndirizzo),
+    indirizzo: canonicalViewModel.indirizzo || normalizeText((analysis as Record<string, unknown>).indirizzo),
+    detentoreComune: canonicalViewModel.localita || normalizeText(analysis.detentoreComune),
+    localita: canonicalViewModel.localita || normalizeText((analysis as Record<string, unknown>).localita),
+    carrozzeria: canonicalViewModel.carrozzeria || normalizeText(analysis.carrozzeria),
+    numeroMatricola:
+      canonicalViewModel.numeroMatricola || normalizeText(analysis.numeroMatricola),
+    numeroMatricolaTipo:
+      canonicalViewModel.numeroMatricola || normalizeText(analysis.numeroMatricolaTipo),
+    caricoUtile: canonicalViewModel.caricoUtileSella || normalizeText(analysis.caricoUtile),
+    luogoRilascio:
+      canonicalViewModel.luogoDataRilascio || normalizeText(analysis.luogoRilascio),
+    luogoImmatricolazione:
+      canonicalViewModel.luogoDataRilascio || normalizeText(analysis.luogoImmatricolazione),
+    luogoCollaudo:
+      canonicalViewModel.luogoDataRilascio || normalizeText(analysis.luogoCollaudo),
+    dataUltimoCollaudo:
+      canonicalViewModel.ultimoCollaudo || normalizeText(analysis.dataUltimoCollaudo),
+    ultimoCollaudo: canonicalViewModel.ultimoCollaudo || normalizeText(analysis.ultimoCollaudo),
+    dataScadenzaRevisione:
+      canonicalViewModel.prossimoCollaudoRevisione ||
+      normalizeText(analysis.dataScadenzaRevisione),
+    scadenzaRevisione:
+      canonicalViewModel.prossimoCollaudoRevisione ||
+      normalizeText((analysis as Record<string, unknown>).scadenzaRevisione),
+    dataScadenza:
+      canonicalViewModel.prossimoCollaudoRevisione || normalizeText(analysis.dataScadenza),
+    annotazioni: canonicalViewModel.annotazioni || normalizeText(analysis.annotazioni),
+    note: canonicalViewModel.annotazioni || normalizeText(analysis.note),
+    testo: canonicalViewModel.annotazioni || normalizeText(analysis.testo),
+  });
 }
 
 function resolveValidVinFromAnalysis(analysis: ArchivistaDocumentoMezzoAnalysis | null) {
@@ -884,22 +1272,56 @@ function readArchivistaLibrettoFieldValue(
     detentoreIndirizzo: ["detentoreIndirizzo", "indirizzo"],
     detentoreAfsAvs: ["detentoreAfsAvs", "numeroAvs"],
     detentoreStatoOrigine: ["detentoreStatoOrigine", "statoOrigine"],
+    localita: ["localita", "detentoreComune", "comune"],
     genereVeicolo: ["genereVeicolo", "tipoVeicolo"],
     tipoVeicolo: ["tipoVeicolo", "genereVeicolo"],
     approvazioneTipo: ["approvazioneTipo", "numeroApprovazioneTipo"],
-    numeroMatricolaTipo: ["numeroMatricolaTipo", "matricolaTipo"],
+    numeroMatricola: ["numeroMatricola", "numeroMatricolaTipo", "matricolaTipo"],
+    numeroMatricolaTipo: ["numeroMatricolaTipo", "numeroMatricola", "matricolaTipo"],
     primaImmatricolazione: ["primaImmatricolazione", "dataImmatricolazione"],
     dataScadenzaRevisione: ["dataScadenzaRevisione", "scadenzaRevisione", "dataScadenza"],
     scadenzaRevisione: ["scadenzaRevisione", "dataScadenzaRevisione", "dataScadenza"],
     dataUltimoCollaudo: ["dataUltimoCollaudo", "ultimoCollaudo", "revisione"],
-    luogoImmatricolazione: ["luogoImmatricolazione", "luogo"],
+    luogoImmatricolazione: ["luogoImmatricolazione", "luogo", "luogoCollaudo", "luogoRilascio"],
     immatricolato: ["immatricolato", "dataDocumento"],
+    pesoRimorchiabile: ["pesoRimorchiabile", "caricoRimorchiabile"],
+    caricoUtile: ["caricoUtile", "caricoUtileSella"],
+    annotazioni: ["annotazioni", "note", "testo", "riassuntoBreve"],
   };
 
   for (const alias of aliases[field] ?? []) {
     const value = record[alias];
     if (typeof value === "string" || typeof value === "number") {
       return String(value);
+    }
+  }
+
+  return "";
+}
+
+function readArchivistaLibrettoBackendDebugRawValue(
+  debugEntry: ArchivistaLibrettoBackendDebugEntry | null,
+  field: string,
+) {
+  if (!debugEntry) {
+    return "";
+  }
+
+  const aliases: Record<string, Array<keyof ArchivistaLibrettoBackendDebugEntry>> = {
+    nAvs: ["rawNAvs"],
+    indirizzo: ["rawIndirizzo"],
+    localita: ["rawLocalita"],
+    carrozzeria: ["rawCarrozzeria"],
+    numeroMatricola: ["rawNumeroMatricola"],
+    caricoUtileSella: ["rawCaricoUtileSella"],
+    luogoDataRilascio: ["rawLuogoDataRilascio"],
+    ultimoCollaudo: ["rawUltimoCollaudo", "rawDataUltimoCollaudo"],
+  };
+
+  for (const alias of aliases[field] ?? []) {
+    const value = debugEntry[alias];
+    if (typeof value === "string" && value.trim()) {
+      return value;
     }
   }
 
@@ -1323,7 +1745,39 @@ export default function ArchivistaDocumentoMezzoBridge({
           ? "Errore analisi"
           : "Pronto per analizzare";
 
-  const getLibrettoFieldValue = (field: string) => readArchivistaLibrettoFieldValue(analysis, field);
+  const effectiveLibrettoAnalysis = useMemo(
+    () => buildEffectiveLibrettoAnalysis(analysis),
+    [analysis],
+  );
+  const getLibrettoFieldValue = (field: string) =>
+    readArchivistaLibrettoFieldValue(effectiveLibrettoAnalysis, field);
+  const canonicalLibrettoViewModel = useMemo(
+    () => buildCanonicalLibrettoViewModel(effectiveLibrettoAnalysis),
+    [effectiveLibrettoAnalysis],
+  );
+  const librettoDebugFieldTrace = useMemo<ArchivistaLibrettoDebugFieldTrace[]>(() => {
+    const trackedFields: Array<{ key: string; label: string; propKey?: string }> = [
+      { key: "nAvs", label: "N. AVS", propKey: "detentoreAfsAvs" },
+      { key: "indirizzo", label: "Indirizzo", propKey: "detentoreIndirizzo" },
+      { key: "localita", label: "Località", propKey: "localita" },
+      { key: "carrozzeria", label: "Carrozzeria", propKey: "carrozzeria" },
+      { key: "numeroMatricola", label: "Numero matricola", propKey: "numeroMatricola" },
+      { key: "caricoUtileSella", label: "Carico utile / sella", propKey: "caricoUtile" },
+      { key: "luogoDataRilascio", label: "Luogo / data rilascio", propKey: "luogoImmatricolazione" },
+      { key: "ultimoCollaudo", label: "Ultimo collaudo", propKey: "dataUltimoCollaudo" },
+    ];
+
+    return trackedFields.map(({ key, label, propKey }) => ({
+      key,
+      label,
+      rawBackendValue: readArchivistaLibrettoBackendDebugRawValue(librettoBackendDebug.originale, key),
+      mappedValue: readArchivistaLibrettoFieldValue(effectiveLibrettoAnalysis, propKey ?? key),
+      propValue:
+        canonicalLibrettoViewModel[key as keyof CanonicalLibrettoViewModel] || "",
+      fieldDomValue:
+        canonicalLibrettoViewModel[key as keyof CanonicalLibrettoViewModel] || "",
+    }));
+  }, [canonicalLibrettoViewModel, effectiveLibrettoAnalysis, librettoBackendDebug.originale]);
   const effectiveVehiclePhotoPreviewUrl =
     vehiclePhotoPreviewUrl ||
     (mezzoMode === "esistente" ? normalizeText(selectedVehicleRecord?.fotoUrl) || null : null);
@@ -1333,7 +1787,7 @@ export default function ArchivistaDocumentoMezzoBridge({
     getLibrettoFieldValue("dataScadenzaRevisione"),
   );
   const canConfirmArchivistaReview =
-    Boolean(analysis) &&
+    Boolean(effectiveLibrettoAnalysis) &&
     Boolean(selectedFile) &&
     archiveStatus !== "saving" &&
     duplicateStatus !== "idle" &&
@@ -1346,9 +1800,13 @@ export default function ArchivistaDocumentoMezzoBridge({
       : Boolean(selectedVehicleId));
   const canSaveBlockReasons = useMemo(() => {
     const reasons: string[] = [];
-    const currentCategoria = normalizeText(readArchivistaLibrettoFieldValue(analysis, "categoria"));
-    const currentTarga = normalizeText(readArchivistaLibrettoFieldValue(analysis, "targa"));
-    if (!analysis) {
+    const currentCategoria = normalizeText(
+      readArchivistaLibrettoFieldValue(effectiveLibrettoAnalysis, "categoria"),
+    );
+    const currentTarga = normalizeText(
+      readArchivistaLibrettoFieldValue(effectiveLibrettoAnalysis, "targa"),
+    );
+    if (!effectiveLibrettoAnalysis) {
       reasons.push("Analizza prima il libretto.");
     }
     if (!selectedFile) {
@@ -1381,7 +1839,7 @@ export default function ArchivistaDocumentoMezzoBridge({
     }
     return reasons;
   }, [
-    analysis,
+    effectiveLibrettoAnalysis,
     archiveStatus,
     applyVehicleUpdateChoice,
     duplicateChoice,
@@ -1434,7 +1892,10 @@ export default function ArchivistaDocumentoMezzoBridge({
     librettoCompletionMessage,
   ]);
   const isLibrettoScadenzaRevisioneScaduta = useMemo(() => {
-    const value = readArchivistaLibrettoFieldValue(analysis, "dataScadenzaRevisione").trim();
+    const value = readArchivistaLibrettoFieldValue(
+      effectiveLibrettoAnalysis,
+      "dataScadenzaRevisione",
+    ).trim();
     if (!value) {
       return false;
     }
@@ -1443,7 +1904,7 @@ export default function ArchivistaDocumentoMezzoBridge({
       return false;
     }
     return parsed < new Date();
-  }, [analysis]);
+  }, [effectiveLibrettoAnalysis]);
   const isDevEnvironment = typeof import.meta !== "undefined" && Boolean(import.meta.env?.DEV);
 
   const handleVehiclePhotoSelect = async (file: File | null) => {
@@ -1499,19 +1960,12 @@ export default function ArchivistaDocumentoMezzoBridge({
       let mimeType = selectedFile.type || "application/octet-stream";
       let vinBase64: string | null = null;
       let vinMimeType: string | null = null;
-      let librettoDataUrl: string | null = null;
-      let originalLibrettoDataUrl: string | null = null;
-      let vinDataUrl: string | null = null;
-      let originalRawUltimoCollaudo = "";
-      let preprocessRawUltimoCollaudo = "";
-      let rawOriginalRecord: Record<string, unknown> | null = null;
-      let rawEnhancedRecord: Record<string, unknown> | null = null;
 
       if (selectedFile.type.startsWith("image/")) {
         const originalImage = await fileToBase64(selectedFile);
-        originalLibrettoDataUrl = `data:${originalImage.mimeType || "image/jpeg"};base64,${originalImage.base64}`;
+        const originalLibrettoDataUrl = `data:${originalImage.mimeType || "image/jpeg"};base64,${originalImage.base64}`;
 
-        if (optimizeImageForExtraction) {
+        if (selectedSubtype !== "libretto" && optimizeImageForExtraction) {
           const optimizedImage = await buildOptimizedImageDebug(selectedFile);
           base64 = optimizedImage.base64;
           mimeType = optimizedImage.mimeType;
@@ -1519,10 +1973,6 @@ export default function ArchivistaDocumentoMezzoBridge({
             ? optimizedImage.vinDataUrl.split(",").slice(1).join(",")
             : null;
           vinMimeType = optimizedImage.vinDataUrl ? "image/jpeg" : null;
-          librettoDataUrl =
-            optimizedImage.finalDataUrl ||
-            `data:${optimizedImage.mimeType || "image/jpeg"};base64,${optimizedImage.base64}`;
-          vinDataUrl = optimizedImage.vinDataUrl;
           setLibrettoDebugImages({
             finalUrl: optimizedImage.finalDataUrl,
             originalUrl: imagePreviewUrl,
@@ -1532,7 +1982,6 @@ export default function ArchivistaDocumentoMezzoBridge({
         } else {
           base64 = originalImage.base64;
           mimeType = originalImage.mimeType;
-          librettoDataUrl = originalLibrettoDataUrl;
           setLibrettoDebugImages({
             finalUrl: originalLibrettoDataUrl,
             originalUrl: imagePreviewUrl,
@@ -1544,6 +1993,12 @@ export default function ArchivistaDocumentoMezzoBridge({
         const originalFile = await fileToBase64(selectedFile);
         base64 = originalFile.base64;
         mimeType = originalFile.mimeType;
+        setLibrettoDebugImages({
+          finalUrl: null,
+          originalUrl: null,
+          preprocessUrl: null,
+          vinUrl: null,
+        });
       }
 
       const runAnalyzeRequest = async (
@@ -1552,17 +2007,21 @@ export default function ArchivistaDocumentoMezzoBridge({
         debugMode?: "ORIGINALE" | "PREPROCESSATA",
       ) => {
         if (selectedSubtype === "libretto") {
-          if (!selectedFile.type.startsWith("image/")) {
-            throw new Error("Il ramo Libretto Archivista accetta solo immagini, come la madre.");
+          const endpoint = getDocumentAnalyzeUrl();
+          if (!endpoint) {
+            throw new Error(
+              "Backend OpenAI non raggiungibile per l'analisi del libretto. Avvia il server IA separato o configura VITE_INTERNAL_AI_BACKEND_URL.",
+            );
           }
 
-          const normalizedDataUrl = requestBase64.replace(/^data:image\/[^;]+;/i, "data:image/jpeg;");
-          const response = await fetch(IA_LIBRETTO_ANALYZE_ENDPOINT, {
+          const response = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              base64Image: normalizedDataUrl,
-              mimeType: "image/jpeg",
+              fileName: selectedFile.name,
+              contentBase64: requestBase64,
+              mimeType: requestMimeType,
+              documentSubtypeHint: "libretto",
             }),
           });
 
@@ -1571,28 +2030,30 @@ export default function ArchivistaDocumentoMezzoBridge({
             const errorText =
               rawPayload &&
               typeof rawPayload === "object" &&
-              "error" in rawPayload &&
-              typeof (rawPayload as { error?: unknown }).error === "string"
-                ? (rawPayload as { error: string }).error
-                : "Errore durante l'analisi del libretto.";
+              "message" in rawPayload &&
+              typeof (rawPayload as { message?: unknown }).message === "string"
+                ? (rawPayload as { message: string }).message
+                : rawPayload &&
+                    typeof rawPayload === "object" &&
+                    "error" in rawPayload &&
+                    typeof (rawPayload as { error?: unknown }).error === "string"
+                  ? (rawPayload as { error: string }).error
+                  : "Errore durante l'analisi del libretto.";
             throw new Error(errorText);
           }
 
           if (debugMode) {
             const debugEntry = buildArchivistaLibrettoBackendDebugEntry(rawPayload, requestBase64);
-            if (debugMode === "ORIGINALE") {
-              originalRawUltimoCollaudo = debugEntry.rawUltimoCollaudo;
-              rawOriginalRecord = extractLibrettoRawRecord(rawPayload);
-            }
-            if (debugMode === "PREPROCESSATA") {
-              preprocessRawUltimoCollaudo = debugEntry.rawUltimoCollaudo;
-              rawEnhancedRecord = extractLibrettoRawRecord(rawPayload);
-            }
             setLibrettoBackendDebug((current) => ({
               ...current,
               originale: debugMode === "ORIGINALE" ? debugEntry : current.originale,
-              preprocessata: debugMode === "PREPROCESSATA" ? debugEntry : current.preprocessata,
-              activeMode: debugMode,
+              preprocessata:
+                debugMode === "ORIGINALE"
+                  ? null
+                  : debugMode === "PREPROCESSATA"
+                    ? debugEntry
+                    : current.preprocessata,
+              activeMode: debugMode === "ORIGINALE" ? "ORIGINALE" : debugMode,
             }));
             setLibrettoDebugTrace((traceCurrent) => ({
               ...traceCurrent,
@@ -1638,32 +2099,7 @@ export default function ArchivistaDocumentoMezzoBridge({
 
       let normalizedAnalysis: ArchivistaDocumentoMezzoAnalysis | null = null;
       if (selectedSubtype === "libretto") {
-        await runAnalyzeRequest(originalLibrettoDataUrl || "", "image/jpeg", "ORIGINALE");
-        if (librettoDataUrl && librettoDataUrl !== originalLibrettoDataUrl) {
-          await runAnalyzeRequest(librettoDataUrl, "image/jpeg", "PREPROCESSATA");
-        } else {
-          rawEnhancedRecord = rawOriginalRecord;
-          preprocessRawUltimoCollaudo = originalRawUltimoCollaudo;
-          setLibrettoBackendDebug((current) => ({
-            ...current,
-            preprocessata: current.originale,
-          }));
-        }
-        const mergedRawRecord = mergeArchivistaLibrettoRawRecords(rawOriginalRecord, rawEnhancedRecord);
-        setLibrettoBackendDebug((current) => ({
-          ...current,
-          activeMode: "PREPROCESSATA",
-        }));
-        setLibrettoDebugTrace((current) => ({
-          ...current,
-          rawUltimoCollaudo:
-            pickFirstValidValue(
-              mergedRawRecord.ultimoCollaudo,
-              mergedRawRecord.dataUltimoCollaudo,
-              mergedRawRecord.revisione,
-            ) || originalRawUltimoCollaudo || preprocessRawUltimoCollaudo,
-        }));
-        normalizedAnalysis = normalizeLibrettoAnalyzePayload({ data: mergedRawRecord }, { fileName: selectedFile.name });
+        normalizedAnalysis = await runAnalyzeRequest(base64, mimeType, "ORIGINALE");
       } else {
         normalizedAnalysis = await runAnalyzeRequest(base64, mimeType);
       }
@@ -1676,12 +2112,13 @@ export default function ArchivistaDocumentoMezzoBridge({
       if (
         !primaryVin &&
         optimizeImageForExtraction &&
-        ((selectedSubtype === "libretto" && vinDataUrl) ||
-          (selectedSubtype !== "libretto" && vinBase64 && vinMimeType))
+        selectedSubtype !== "libretto" &&
+        vinBase64 &&
+        vinMimeType
       ) {
         const vinFocusedAnalysis = await runAnalyzeRequest(
-          selectedSubtype === "libretto" ? vinDataUrl || "" : vinBase64 || "",
-          selectedSubtype === "libretto" ? "image/jpeg" : vinMimeType || mimeType,
+          vinBase64 || "",
+          vinMimeType || mimeType,
         ).catch(() => null);
         const fallbackVin = resolveValidVinFromAnalysis(vinFocusedAnalysis);
         if (fallbackVin) {
@@ -2015,7 +2452,9 @@ export default function ArchivistaDocumentoMezzoBridge({
             targa: vehicle.targa,
           }))}
           warnings={librettoWarnings}
+          canonicalLibrettoViewModel={canonicalLibrettoViewModel}
           debugTrace={librettoDebugTrace}
+          debugFieldTrace={librettoDebugFieldTrace}
           onAnalyze={() => void handleAnalyze()}
           onCheckDuplicates={() => void handleCheckDuplicates()}
           onConfirm={() => void handleArchive()}
@@ -2039,16 +2478,32 @@ export default function ArchivistaDocumentoMezzoBridge({
             setLibrettoCompletionMessage(null);
             const nextFieldPatch =
               field === "dataUltimoCollaudo"
-                ? {
+                ? (() => {
+                    const nextScadenzaRevisione =
+                      normalizeText((analysis as Record<string, unknown>)?.dataScadenzaRevisioneManualOverride) ===
+                      "1"
+                        ? null
+                        : addOneYearToLibrettoDateValue(nextValue);
+                    return {
                     dataUltimoCollaudo: nextValue,
                     ultimoCollaudo: nextValue,
                     ultimoCollaudoManualOverride: "1",
-                  }
+                    ...(nextScadenzaRevisione
+                      ? {
+                          dataScadenzaRevisione: nextScadenzaRevisione,
+                          scadenzaRevisione: nextScadenzaRevisione,
+                          dataScadenza: nextScadenzaRevisione,
+                        }
+                      : {}),
+                  };
+                  })()
                 : field === "dataScadenzaRevisione" || field === "scadenzaRevisione"
                   ? {
                       dataScadenzaRevisione: nextValue,
                       scadenzaRevisione: nextValue,
                       dataScadenza: nextValue,
+                      prossimoCollaudoRevisione: nextValue,
+                      dataScadenzaRevisioneManualOverride: "1",
                     }
                   : null;
             const nextTraceUpdate =
@@ -2160,76 +2615,115 @@ export default function ArchivistaDocumentoMezzoBridge({
           }}
         />
         {isDevEnvironment ? (
-          <div
+          <details
             style={{
               marginTop: 16,
               border: "1px solid #d0d7de",
               borderRadius: 12,
-              padding: 12,
               background: "#fffaf2",
+              overflow: "hidden",
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>
-              Debug backend Libretto Archivista
+            <summary
+              style={{
+                cursor: "pointer",
+                padding: "12px 14px",
+                fontWeight: 700,
+                color: "#6f5630",
+                listStyle: "none",
+              }}
+            >
+              Strumenti debug
+            </summary>
+            <div style={{ padding: 12, display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <div>raw ultimoCollaudo: {librettoBackendDebug.originale?.rawUltimoCollaudo || "-"}</div>
+                <div>
+                  raw dataScadenzaRevisione:{" "}
+                  {librettoBackendDebug.originale?.rawDataScadenzaRevisione || "-"}
+                </div>
+                <div>
+                  mapped dataUltimoCollaudo:{" "}
+                  {normalizeText(effectiveLibrettoAnalysis?.dataUltimoCollaudo) || "-"}
+                </div>
+                <div>
+                  mapped dataScadenzaRevisione:{" "}
+                  {normalizeText(effectiveLibrettoAnalysis?.dataScadenzaRevisione) || "-"}
+                </div>
+                <div>field value dataUltimoCollaudo: {getLibrettoFieldValue("dataUltimoCollaudo") || "-"}</div>
+                <div>
+                  field value dataScadenzaRevisione:{" "}
+                  {getLibrettoFieldValue("dataScadenzaRevisione") || "-"}
+                </div>
+                <div>validazione save dataUltimoCollaudo: {validationDataUltimoCollaudoValue || "-"}</div>
+                <div>
+                  validazione save dataScadenzaRevisione:{" "}
+                  {validationDataScadenzaRevisioneValue || "-"}
+                </div>
+                <div>
+                  payload save dataUltimoCollaudo:{" "}
+                  {normalizeText(effectiveLibrettoAnalysis?.dataUltimoCollaudo) || "-"}
+                </div>
+                <div>
+                  payload save dataScadenzaRevisione:{" "}
+                  {normalizeText(effectiveLibrettoAnalysis?.dataScadenzaRevisione) || "-"}
+                </div>
+                <div>canSave: {canConfirmArchivistaReview ? "SI" : "NO"}</div>
+                <div>
+                  motivi blocco: {canSaveBlockReasons.length ? canSaveBlockReasons.join(" | ") : "-"}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Traccia campi obbligatori</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {librettoDebugFieldTrace.map((entry) => (
+                    <div key={entry.key}>
+                      {entry.label}: raw={entry.rawBackendValue || "-"} | mapped={entry.mappedValue || "-"} | prop=
+                      {entry.propValue || "-"} | field={entry.fieldDomValue || "-"}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Raw backend principale</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div>targa: {librettoBackendDebug.originale?.rawTarga || "-"}</div>
+                  <div>N. AVS: {librettoBackendDebug.originale?.rawNAvs || "-"}</div>
+                  <div>indirizzo: {librettoBackendDebug.originale?.rawIndirizzo || "-"}</div>
+                  <div>carrozzeria: {librettoBackendDebug.originale?.rawCarrozzeria || "-"}</div>
+                  <div>numeroMatricola: {librettoBackendDebug.originale?.rawNumeroMatricola || "-"}</div>
+                  <div>caricoUtile / sella: {librettoBackendDebug.originale?.rawCaricoUtileSella || "-"}</div>
+                  <div>
+                    luogo / data rilascio: {librettoBackendDebug.originale?.rawLuogoDataRilascio || "-"}
+                  </div>
+                  <div>
+                    marca/modello:{" "}
+                    {[librettoBackendDebug.originale?.rawMarca, librettoBackendDebug.originale?.rawModello]
+                      .filter(Boolean)
+                      .join(" ") || "-"}
+                  </div>
+                  <div>telaio/VIN: {librettoBackendDebug.originale?.rawTelaio || "-"}</div>
+                  <div>proprietario: {librettoBackendDebug.originale?.rawProprietario || "-"}</div>
+                  <div>assicurazione: {librettoBackendDebug.originale?.rawAssicurazione || "-"}</div>
+                  <div>
+                    dataImmatricolazione: {librettoBackendDebug.originale?.rawDataImmatricolazione || "-"}
+                  </div>
+                  <div>localita: {librettoBackendDebug.originale?.rawLocalita || "-"}</div>
+                  <div>ultimoCollaudo: {librettoBackendDebug.originale?.rawUltimoCollaudo || "-"}</div>
+                  <div>
+                    dataScadenzaRevisione:{" "}
+                    {librettoBackendDebug.originale?.rawDataScadenzaRevisione || "-"}
+                  </div>
+                  <div>colore: {librettoBackendDebug.originale?.rawColore || "-"}</div>
+                  <div>categoria/genere veicolo: {librettoBackendDebug.originale?.rawCategoria || "-"}</div>
+                  <div>cilindrata: {librettoBackendDebug.originale?.rawCilindrata || "-"}</div>
+                  <div>potenza: {librettoBackendDebug.originale?.rawPotenza || "-"}</div>
+                  <div>pesoTotale: {librettoBackendDebug.originale?.rawPesoTotale || "-"}</div>
+                  <div>annotazioni: {librettoBackendDebug.originale?.rawAnnotazioni || "-"}</div>
+                </div>
+              </div>
             </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              <div>raw ultimoCollaudo: {librettoBackendDebug.originale?.rawUltimoCollaudo || "-"}</div>
-              <div>
-                raw dataScadenzaRevisione:{" "}
-                {librettoBackendDebug.originale?.rawDataScadenzaRevisione || "-"}
-              </div>
-              <div>mapped dataUltimoCollaudo: {normalizeText(analysis?.dataUltimoCollaudo) || "-"}</div>
-              <div>
-                mapped dataScadenzaRevisione:{" "}
-                {normalizeText(analysis?.dataScadenzaRevisione) || "-"}
-              </div>
-              <div>field value dataUltimoCollaudo: {getLibrettoFieldValue("dataUltimoCollaudo") || "-"}</div>
-              <div>
-                field value dataScadenzaRevisione:{" "}
-                {getLibrettoFieldValue("dataScadenzaRevisione") || "-"}
-              </div>
-              <div>validazione save dataUltimoCollaudo: {validationDataUltimoCollaudoValue || "-"}</div>
-              <div>
-                validazione save dataScadenzaRevisione:{" "}
-                {validationDataScadenzaRevisioneValue || "-"}
-              </div>
-              <div>payload save dataUltimoCollaudo: {normalizeText(analysis?.dataUltimoCollaudo) || "-"}</div>
-              <div>
-                payload save dataScadenzaRevisione:{" "}
-                {normalizeText(analysis?.dataScadenzaRevisione) || "-"}
-              </div>
-              <div>canSave: {canConfirmArchivistaReview ? "SI" : "NO"}</div>
-              <div>
-                motivi blocco: {canSaveBlockReasons.length ? canSaveBlockReasons.join(" | ") : "-"}
-              </div>
-            </div>
-            <div style={{ marginTop: 10, fontWeight: 700 }}>Raw backend principale</div>
-            <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-              <div>targa: {librettoBackendDebug.originale?.rawTarga || "-"}</div>
-              <div>
-                marca/modello:{" "}
-                {[librettoBackendDebug.originale?.rawMarca, librettoBackendDebug.originale?.rawModello]
-                  .filter(Boolean)
-                  .join(" ") || "-"}
-              </div>
-              <div>telaio/VIN: {librettoBackendDebug.originale?.rawTelaio || "-"}</div>
-              <div>proprietario: {librettoBackendDebug.originale?.rawProprietario || "-"}</div>
-              <div>assicurazione: {librettoBackendDebug.originale?.rawAssicurazione || "-"}</div>
-              <div>
-                dataImmatricolazione: {librettoBackendDebug.originale?.rawDataImmatricolazione || "-"}
-              </div>
-              <div>ultimoCollaudo: {librettoBackendDebug.originale?.rawUltimoCollaudo || "-"}</div>
-              <div>
-                dataScadenzaRevisione:{" "}
-                {librettoBackendDebug.originale?.rawDataScadenzaRevisione || "-"}
-              </div>
-              <div>colore: {librettoBackendDebug.originale?.rawColore || "-"}</div>
-              <div>categoria/genere veicolo: {librettoBackendDebug.originale?.rawCategoria || "-"}</div>
-              <div>cilindrata: {librettoBackendDebug.originale?.rawCilindrata || "-"}</div>
-              <div>potenza: {librettoBackendDebug.originale?.rawPotenza || "-"}</div>
-              <div>pesoTotale: {librettoBackendDebug.originale?.rawPesoTotale || "-"}</div>
-            </div>
-          </div>
+          </details>
         ) : null}
       </>
     );

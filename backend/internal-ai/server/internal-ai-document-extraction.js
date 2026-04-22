@@ -3,6 +3,36 @@ import { pathToFileURL } from "node:url";
 
 const MAX_TEXT_FOR_PROVIDER = 18000;
 const SUPPORTED_OUTPUT_VERSION = 1;
+export const LIBRETTO_CANONICAL_FIELDS = [
+  "nAvs",
+  "proprietario",
+  "indirizzo",
+  "localita",
+  "statoOrigine",
+  "assicurazione",
+  "annotazioni",
+  "targa",
+  "colore",
+  "genereVeicolo",
+  "marcaTipo",
+  "telaio",
+  "carrozzeria",
+  "numeroMatricola",
+  "approvazioneTipo",
+  "cilindrata",
+  "potenza",
+  "pesoVuoto",
+  "caricoUtileSella",
+  "pesoTotale",
+  "pesoTotaleRimorchio",
+  "caricoSulLetto",
+  "pesoRimorchiabile",
+  "primaImmatricolazione",
+  "luogoDataRilascio",
+  "ultimoCollaudo",
+  "prossimoCollaudoRevisione",
+];
+const LIBRETTO_MULTILINE_FIELDS = new Set(["annotazioni"]);
 
 function normalizeText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -242,6 +272,14 @@ function normalizeVehicleDocumentSubtype(value) {
   return null;
 }
 
+function isLibrettoDocumentSubtype(value) {
+  return normalizeVehicleDocumentSubtype(value) === "libretto";
+}
+
+function isLibrettoDocumentContext(profile, subtype) {
+  return profile === "documento_mezzo" && isLibrettoDocumentSubtype(subtype);
+}
+
 function pushWarning(target, code, severity, message) {
   if (!code || !message) {
     return;
@@ -296,6 +334,63 @@ function buildBaseAnalysis(args) {
     campiMancanti: [],
     testoEstrattoBreve: null,
   };
+}
+
+function buildBaseLibrettoAnalysis(args) {
+  const analysis = buildBaseAnalysis(args);
+  LIBRETTO_CANONICAL_FIELDS.forEach((field) => {
+    analysis[field] = "";
+  });
+  return analysis;
+}
+
+function normalizeLibrettoFieldValue(value, multiline = false) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.replace(/\r/g, "");
+  if (multiline) {
+    return normalized
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .trim();
+  }
+
+  return normalized.trim();
+}
+
+function normalizeLibrettoFieldMap(source) {
+  const output = {};
+  LIBRETTO_CANONICAL_FIELDS.forEach((field) => {
+    output[field] = normalizeLibrettoFieldValue(
+      source?.[field],
+      LIBRETTO_MULTILINE_FIELDS.has(field),
+    );
+  });
+  return output;
+}
+
+function buildEmptyLibrettoFieldMap() {
+  return normalizeLibrettoFieldMap({});
+}
+
+function hasLibrettoValue(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function buildHeuristicLibrettoFieldMap(analysis) {
+  const fields = buildEmptyLibrettoFieldMap();
+
+  if (analysis?.targa) {
+    fields.targa = normalizeText(analysis.targa);
+  }
+  if (analysis?.telaio) {
+    fields.telaio = normalizeText(analysis.telaio);
+  }
+
+  return fields;
 }
 
 function buildRowId(index) {
@@ -384,6 +479,19 @@ function buildMissingFields(analysis) {
   }
 
   if (analysis.profilo === "documento_mezzo") {
+    if (isLibrettoDocumentSubtype(analysis.sottotipoDocumento ?? analysis.tipoDocumento)) {
+      if (!analysis.targa) {
+        missing.push("targa");
+      }
+      if (!analysis.telaio) {
+        missing.push("telaio");
+      }
+      if (!analysis.marcaTipo) {
+        missing.push("marcaTipo");
+      }
+      return missing;
+    }
+
     if (!analysis.sottotipoDocumento && !analysis.tipoDocumento) {
       missing.push("sottotipoDocumento");
     }
@@ -453,6 +561,27 @@ function buildAnalysisSummary(analysis) {
   }
 
   if (analysis.profilo === "documento_mezzo") {
+    if (isLibrettoDocumentSubtype(analysis.sottotipoDocumento ?? analysis.tipoDocumento)) {
+      const parts = [];
+      parts.push("libretto");
+      if (analysis.targa) {
+        parts.push(`mezzo ${analysis.targa}`);
+      }
+      if (analysis.proprietario) {
+        parts.push(`intestatario ${analysis.proprietario}`);
+      }
+      if (analysis.luogoDataRilascio) {
+        parts.push(`rilascio ${analysis.luogoDataRilascio}`);
+      }
+      if (analysis.prossimoCollaudoRevisione) {
+        parts.push(`prossimo collaudo ${analysis.prossimoCollaudoRevisione}`);
+      }
+      if (parts.length > 0) {
+        return `Documento mezzo letto: ${parts.join(", ")}.`;
+      }
+      return "Documento mezzo letto con campi ancora da verificare.";
+    }
+
     const parts = [];
     if (analysis.sottotipoDocumento || analysis.tipoDocumento) {
       parts.push(analysis.sottotipoDocumento || analysis.tipoDocumento);
@@ -511,8 +640,84 @@ function buildAnalysisSummary(analysis) {
   return "Documento analizzato con campi ancora da verificare.";
 }
 
+function finalizeLibrettoAnalysis(analysis, fallbackText = null) {
+  const next = {
+    ...buildBaseLibrettoAnalysis({
+      profilo: "documento_mezzo",
+      stato: analysis?.stato ?? "partial",
+      tipoSorgente: analysis?.tipoSorgente,
+      modalitaEstrazione: analysis?.modalitaEstrazione,
+      providerUsato: analysis?.providerUsato,
+    }),
+    ...analysis,
+  };
+
+  const canonicalFields = normalizeLibrettoFieldMap(next);
+  Object.assign(next, canonicalFields);
+
+  next.tipoDocumento = "libretto";
+  next.sottotipoDocumento = "libretto";
+  next.fornitore = toNullIfEmpty(next.fornitore);
+  next.numeroDocumento = toNullIfEmpty(next.numeroDocumento);
+  next.dataDocumento = toNullIfEmpty(next.dataDocumento);
+  next.destinatario = toNullIfEmpty(next.destinatario);
+  next.valuta = normalizeCurrency(next.valuta);
+  next.imponibile =
+    typeof next.imponibile === "number" && Number.isFinite(next.imponibile) ? next.imponibile : null;
+  next.ivaImporto =
+    typeof next.ivaImporto === "number" && Number.isFinite(next.ivaImporto) ? next.ivaImporto : null;
+  next.ivaPercentuale = toNullIfEmpty(next.ivaPercentuale);
+  next.totaleDocumento =
+    typeof next.totaleDocumento === "number" && Number.isFinite(next.totaleDocumento)
+      ? next.totaleDocumento
+      : null;
+  next.km = typeof next.km === "number" && Number.isFinite(next.km) ? next.km : parseLocalizedNumber(next.km);
+  next.marca = toNullIfEmpty(next.marca);
+  next.modello = toNullIfEmpty(next.modello);
+  next.dataImmatricolazione = toNullIfEmpty(next.dataImmatricolazione);
+  next.dataScadenza = toNullIfEmpty(next.dataScadenza);
+  next.dataUltimoCollaudo = toNullIfEmpty(next.dataUltimoCollaudo);
+  next.dataScadenzaRevisione = toNullIfEmpty(next.dataScadenzaRevisione);
+  next.noteImportanti = uniqueStrings(next.noteImportanti ?? []);
+  next.righe = [];
+  next.warnings = Array.isArray(next.warnings)
+    ? next.warnings.filter((entry) => entry && entry.code && entry.message)
+    : [];
+  next.testoEstrattoBreve =
+    toNullIfEmpty(next.testoEstrattoBreve ?? fallbackText)?.slice(0, 2000) ?? null;
+  next.riassuntoBreve = toNullIfEmpty(next.riassuntoBreve) ?? buildAnalysisSummary(next);
+  next.campiMancanti = buildMissingFields(next);
+
+  const populatedCoreCount = [
+    next.targa,
+    next.marcaTipo,
+    next.telaio,
+    next.proprietario,
+    next.luogoDataRilascio,
+    next.ultimoCollaudo,
+  ].filter(hasLibrettoValue).length;
+
+  if (populatedCoreCount >= 3) {
+    next.stato = next.campiMancanti.length <= 1 ? "ready" : "partial";
+  } else if (
+    next.testoEstrattoBreve ||
+    LIBRETTO_CANONICAL_FIELDS.some((field) => hasLibrettoValue(next[field]))
+  ) {
+    next.stato = next.stato === "error" ? "error" : "partial";
+  } else if (next.stato !== "error") {
+    next.stato = "not_supported";
+  }
+
+  return next;
+}
+
 function finalizeAnalysis(analysis, fallbackText = null) {
   const profilo = analysis.profilo ?? "magazzino";
+  const subtype = analysis.sottotipoDocumento ?? analysis.tipoDocumento;
+  if (isLibrettoDocumentContext(profilo, subtype)) {
+    return finalizeLibrettoAnalysis(analysis, fallbackText);
+  }
+
   const next = {
     ...analysis,
     profilo,
@@ -750,6 +955,34 @@ function extractHeuristicRows(text, fallbackCurrency = null) {
 }
 
 function buildHeuristicAnalysis(args) {
+  if (isLibrettoDocumentContext(args.profilo, args.documentSubtypeHint)) {
+    const analysis = buildBaseLibrettoAnalysis({
+      profilo: args.profilo,
+      stato: "partial",
+      tipoSorgente: args.tipoSorgente,
+      modalitaEstrazione: args.modalitaEstrazione,
+      providerUsato: false,
+    });
+    const text = normalizeMultilineText(args.text || "");
+
+    analysis.tipoDocumento = "libretto";
+    analysis.sottotipoDocumento = "libretto";
+    analysis.targa =
+      normalizeText(
+        extractFirstMatch(text, [
+          /(?:targa|mezzo|veicolo)\s*[:=-]?\s*([A-Z]{2}\s*[0-9]{3,6})/i,
+          /\b([A-Z]{2}\s*[0-9]{3,6})\b/,
+        ]),
+      ) || "";
+    analysis.telaio =
+      toNullIfEmpty(
+        extractFirstMatch(text, [/(?:telaio|vin|chassis)\s*[:=-]?\s*([A-Z0-9 ]{6,})/i]),
+      ) ?? "";
+    analysis.testoEstrattoBreve = toNullIfEmpty(text)?.slice(0, 2000) ?? null;
+
+    return finalizeAnalysis(analysis, text);
+  }
+
   const analysis = buildBaseAnalysis({
     profilo: args.profilo,
     stato: "partial",
@@ -907,6 +1140,15 @@ function normalizeProviderAnalysis(parsed, args) {
       : source.header && typeof source.header === "object"
         ? source.header
         : source;
+  const normalizedSubtype = normalizeVehicleDocumentSubtype(
+    args.documentSubtypeHint ??
+      rawDocument.documentSubtype ??
+      rawDocument.sottotipoDocumento ??
+      source.documentSubtype ??
+      source.sottotipoDocumento ??
+      rawDocument.type ??
+      source.tipoDocumento,
+  );
   const rawItems = Array.isArray(source.items)
     ? source.items
     : Array.isArray(source.righe)
@@ -916,6 +1158,52 @@ function normalizeProviderAnalysis(parsed, args) {
         : Array.isArray(source.voci)
           ? source.voci
           : [];
+
+  if (isLibrettoDocumentContext(args.profilo, normalizedSubtype)) {
+    const analysis = buildBaseLibrettoAnalysis({
+      profilo: args.profilo,
+      stato: "partial",
+      tipoSorgente: args.tipoSorgente,
+      modalitaEstrazione: args.modalitaEstrazione,
+      providerUsato: true,
+    });
+
+    Object.assign(analysis, normalizeLibrettoFieldMap(rawDocument));
+    analysis.tipoDocumento = "libretto";
+    analysis.sottotipoDocumento = "libretto";
+    analysis.riassuntoBreve = toNullIfEmpty(
+      source.riassuntoBreve ??
+        source.summary ??
+        rawDocument.riassuntoBreve ??
+        rawDocument.summary,
+    );
+    analysis.noteImportanti = [];
+    analysis.testoEstrattoBreve = toNullIfEmpty(
+      source.rawTextExcerpt ?? source.testoEstrattoBreve ?? source.rawText,
+    )?.slice(0, 2000) ?? null;
+
+    if (Array.isArray(source.warnings)) {
+      source.warnings.forEach((warning) => {
+        if (!warning) {
+          return;
+        }
+
+        if (typeof warning === "string") {
+          pushWarning(analysis.warnings, "MODEL_WARNING", "info", warning);
+          return;
+        }
+
+        pushWarning(
+          analysis.warnings,
+          warning.code ?? "MODEL_WARNING",
+          warning.severity ?? "info",
+          warning.message ?? warning.code ?? "Segnalazione del provider.",
+        );
+      });
+    }
+
+    return finalizeAnalysis(analysis, args.fallbackText);
+  }
 
   const analysis = buildBaseAnalysis({
     profilo: args.profilo,
@@ -1077,6 +1365,80 @@ function normalizeProviderAnalysis(parsed, args) {
 }
 
 function mergeAnalyses(primaryAnalysis, fallbackAnalysis) {
+  if (
+    isLibrettoDocumentContext(
+      primaryAnalysis?.profilo ?? fallbackAnalysis?.profilo,
+      primaryAnalysis?.sottotipoDocumento ?? fallbackAnalysis?.sottotipoDocumento,
+    )
+  ) {
+    const merged = buildBaseLibrettoAnalysis({
+      stato: "partial",
+      tipoSorgente: primaryAnalysis?.tipoSorgente ?? fallbackAnalysis?.tipoSorgente,
+      modalitaEstrazione:
+        primaryAnalysis?.modalitaEstrazione ?? fallbackAnalysis?.modalitaEstrazione,
+      providerUsato: Boolean(primaryAnalysis?.providerUsato),
+    });
+    const primaryFields = normalizeLibrettoFieldMap(primaryAnalysis);
+    const fallbackFields = buildHeuristicLibrettoFieldMap(fallbackAnalysis);
+
+    LIBRETTO_CANONICAL_FIELDS.forEach((field) => {
+      merged[field] = hasLibrettoValue(primaryFields[field])
+        ? primaryFields[field]
+        : fallbackFields[field];
+    });
+
+    merged.profilo = "documento_mezzo";
+    merged.tipoDocumento = "libretto";
+    merged.sottotipoDocumento = "libretto";
+    merged.fornitore = primaryAnalysis?.fornitore ?? fallbackAnalysis?.fornitore;
+    merged.numeroDocumento =
+      primaryAnalysis?.numeroDocumento ?? fallbackAnalysis?.numeroDocumento;
+    merged.dataDocumento = primaryAnalysis?.dataDocumento ?? fallbackAnalysis?.dataDocumento;
+    merged.destinatario = primaryAnalysis?.destinatario ?? fallbackAnalysis?.destinatario;
+    merged.valuta = primaryAnalysis?.valuta ?? fallbackAnalysis?.valuta;
+    merged.imponibile =
+      primaryAnalysis?.imponibile !== null && primaryAnalysis?.imponibile !== undefined
+        ? primaryAnalysis.imponibile
+        : fallbackAnalysis?.imponibile;
+    merged.ivaImporto =
+      primaryAnalysis?.ivaImporto !== null && primaryAnalysis?.ivaImporto !== undefined
+        ? primaryAnalysis.ivaImporto
+        : fallbackAnalysis?.ivaImporto;
+    merged.ivaPercentuale = primaryAnalysis?.ivaPercentuale ?? fallbackAnalysis?.ivaPercentuale;
+    merged.totaleDocumento =
+      primaryAnalysis?.totaleDocumento !== null && primaryAnalysis?.totaleDocumento !== undefined
+        ? primaryAnalysis.totaleDocumento
+        : fallbackAnalysis?.totaleDocumento;
+    merged.km =
+      primaryAnalysis?.km !== null && primaryAnalysis?.km !== undefined
+        ? primaryAnalysis.km
+        : fallbackAnalysis?.km;
+    merged.marca = primaryAnalysis?.marca ?? fallbackAnalysis?.marca;
+    merged.modello = primaryAnalysis?.modello ?? fallbackAnalysis?.modello;
+    merged.dataImmatricolazione =
+      primaryAnalysis?.dataImmatricolazione ?? fallbackAnalysis?.dataImmatricolazione;
+    merged.dataScadenza = primaryAnalysis?.dataScadenza ?? fallbackAnalysis?.dataScadenza;
+    merged.dataUltimoCollaudo =
+      primaryAnalysis?.dataUltimoCollaudo ?? fallbackAnalysis?.dataUltimoCollaudo;
+    merged.dataScadenzaRevisione =
+      primaryAnalysis?.dataScadenzaRevisione ?? fallbackAnalysis?.dataScadenzaRevisione;
+    merged.riassuntoBreve = primaryAnalysis?.riassuntoBreve ?? fallbackAnalysis?.riassuntoBreve;
+    merged.noteImportanti = uniqueStrings([
+      ...(primaryAnalysis?.noteImportanti ?? []),
+      ...(fallbackAnalysis?.noteImportanti ?? []),
+    ]);
+    merged.righe = [];
+    merged.warnings = [
+      ...(primaryAnalysis?.warnings ?? []),
+      ...(fallbackAnalysis?.warnings ?? []),
+    ];
+    merged.campiMancanti = [];
+    merged.testoEstrattoBreve =
+      primaryAnalysis?.testoEstrattoBreve ?? fallbackAnalysis?.testoEstrattoBreve;
+
+    return finalizeAnalysis(merged, merged.testoEstrattoBreve);
+  }
+
   const base = buildBaseAnalysis({
     stato: "partial",
     tipoSorgente: primaryAnalysis?.tipoSorgente ?? fallbackAnalysis.tipoSorgente,
@@ -1143,7 +1505,7 @@ function mergeAnalyses(primaryAnalysis, fallbackAnalysis) {
   return finalizeAnalysis(merged, merged.testoEstrattoBreve);
 }
 
-function buildProviderSystemPrompt(profile = "magazzino") {
+function buildProviderSystemPrompt(profile = "magazzino", subtype = null) {
   if (profile === "manutenzione") {
     return (
       "Sei il parser documentale OpenAI della nuova IA interna del gestionale. " +
@@ -1151,6 +1513,19 @@ function buildProviderSystemPrompt(profile = "magazzino") {
       "Rispondi solo con JSON valido. " +
       "Non inventare mai dati: se un campo non e leggibile usa null. " +
       "Estrai solo dati utili alla review manutenzione: riassunto breve, targa, fornitore officina, data, totale, km se presenti, righe materiali/manodopera/ricambi e dubbi reali."
+    );
+  }
+
+  if (profile === "documento_mezzo" && isLibrettoDocumentSubtype(subtype)) {
+    return (
+      "Sei il parser documentale OpenAI della nuova IA interna del gestionale. " +
+      "Leggi libretti di circolazione svizzeri a template fisso con codici numerati. " +
+      "Rispondi solo con JSON valido. " +
+      "Non restituire mai null. " +
+      "Non omettere mai nessuna delle 27 chiavi richieste. " +
+      'Se un campo non e leggibile o assente restituisci sempre stringa vuota "". ' +
+      "Non inventare, non dedurre e non tradurre i valori. " +
+      "Estrai solo i 27 campi canonici del libretto richiesti dal client."
     );
   }
 
@@ -1184,6 +1559,8 @@ function buildProviderSystemPrompt(profile = "magazzino") {
 }
 
 function buildProviderUserInstructions(args) {
+  const subtype = normalizeVehicleDocumentSubtype(args.documentSubtypeHint);
+
   if ((args.profile ?? "magazzino") === "manutenzione") {
     return JSON.stringify(
       {
@@ -1231,6 +1608,44 @@ function buildProviderUserInstructions(args) {
           "Se il documento e ambiguo mantieni i campi null.",
           "Le quantita devono restare numeri, non stringhe.",
           "Non inventare la targa o il totale se non sono leggibili.",
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
+  if ((args.profile ?? "magazzino") === "documento_mezzo" && subtype === "libretto") {
+    return JSON.stringify(
+      {
+        task: "Estrai i 27 campi canonici del libretto di circolazione svizzero.",
+        fileName: args.fileName,
+        sourceHint: args.sourceHint,
+        documentSubtypeHint: subtype,
+        outputSchema: Object.fromEntries(
+          LIBRETTO_CANONICAL_FIELDS.map((field) => [field, "string"]),
+        ),
+        extractionRules: [
+          "Il documento e un libretto di circolazione svizzero a template fisso con codici numerati a lato dei campi.",
+          "Usa i codici numerati del libretto (03, 05, 08, 11, 13, 14, 15, 19, 21, 23, 25, 26, 28, 29, 30, 31, 35, 36, 37, 38, 39, 76, 77, 78) per localizzare i campi.",
+          'Il veicolo puo essere rimorchio, trattore stradale, autocarro, autovettura o motoveicolo: se un campo non e presente o non e leggibile restituisci sempre "".',
+          "Preserva la formattazione originale dei valori: punti, asterischi, maiuscole, spazi e date come sul documento.",
+          "indirizzo e localita devono essere separati: indirizzo = via e numero civico, localita = CAP e citta.",
+          'luogoDataRilascio (codice 38) deve essere luogo + data uniti da uno spazio, ad esempio "Camorino 09.04.2026".',
+          'annotazioni (codici 13/14) deve riportare il testo integrale riga per riga, con "\\n" tra le righe se multilinea.',
+          "Non usare la riga 39 come ultimoCollaudo: la riga 39 e prossimoCollaudoRevisione.",
+          "ultimoCollaudo va letto dalla riga 38 come data di collaudo piu recente.",
+          "Non inventare, non dedurre da altri campi, non normalizzare e non tradurre.",
+          'Gli asterischi nei libretti svizzeri hanno due significati distinti: (a) uno o due asterischi PREFISSI a un valore numerico (es. "**4350", "*34650", "*39000") sono marcatori tipografici del valore stesso: il numero c\'e e va estratto SENZA gli asterischi (es. restituire "4350", "34650", "39000"); (b) una cella che contiene SOLO asterischi (es. "******") indica un campo non applicabile o non leggibile e va restituito come stringa vuota "".',
+          "Il campo nAvs (codice 03, etichetta 'N. AVS / AHV-Nr') si trova sempre in alto a sinistra del libretto, nella sezione Detentore/Possessore, come prima riga della prima colonna. Il valore e tipicamente un numero con separatori a punto (es. '922.586'). Se leggibile va SEMPRE estratto in nAvs. Non confonderlo con altri numeri del documento.",
+          "I campi pesi/carichi hanno codici specifici che NON vanno mai confusi: codice 30 'Peso a vuoto / Leergewicht' va in pesoVuoto; codice 31 'Carico utile / sella / Nutz-/Sattellast / Charge utile/sellette' va in caricoUtileSella; codice 35 'Peso totale / Gesamtgewicht / Poids total' va in pesoTotale; codice 36 'Peso totale del convoglio / Gewicht des Zuges / Poids de l ensemble' va in pesoTotaleRimorchio; codice 77 'Carico sul letto / Charge sur le toit' va in caricoSulLetto; codice 78 'Carico rimorchiabile / Chargia annexa / Anhangelast' va in pesoRimorchiabile. Leggi SEMPRE il codice numerico a sinistra del valore, non la posizione visiva. Se il codice non e chiaro, preferisci stringa vuota piuttosto che mettere il valore nel campo sbagliato.",
+        ],
+        guardrails: [
+          "Non aggiungere testo fuori dal JSON.",
+          "Mai null, sempre stringa.",
+          "Mai omettere una delle 27 chiavi.",
+          "Non inventare, non dedurre da altri campi.",
+          "Se due campi peso hanno valori diversi, NON invertirli: ogni valore appartiene al codice numerico che lo precede sul libretto. In caso di dubbio sul codice, restituisci stringa vuota per quel campo, non un valore preso da un altro codice.",
         ],
       },
       null,
@@ -1393,7 +1808,7 @@ async function runProviderTextExtraction(args) {
         content: [
           {
             type: "input_text",
-            text: buildProviderSystemPrompt(args.profile),
+            text: buildProviderSystemPrompt(args.profile, args.documentSubtypeHint),
           },
         ],
       },
@@ -1424,7 +1839,51 @@ async function runProviderBinaryExtraction(args) {
     },
   ];
 
-  if (args.isPdf) {
+  const pages =
+    Array.isArray(args.pages) && args.pages.length > 0
+      ? args.pages.filter(
+          (page) =>
+            page &&
+            typeof page === "object" &&
+            typeof page.contentBase64 === "string" &&
+            page.contentBase64.trim(),
+        )
+      : null;
+
+  if (pages?.length) {
+    pages.forEach((page, index) => {
+      const pageMimeType =
+        typeof page.mimeType === "string" && page.mimeType.trim()
+          ? page.mimeType.trim()
+          : "application/octet-stream";
+      const pageFileName =
+        typeof page.fileName === "string" && page.fileName.trim()
+          ? page.fileName.trim()
+          : pageMimeType === "application/pdf"
+            ? `pagina-${index + 1}.pdf`
+            : `pagina-${index + 1}.jpg`;
+      const pageContentBase64 = page.contentBase64.trim();
+
+      if (
+        pageMimeType === "application/pdf" ||
+        normalizeText(pageFileName).toLowerCase().endsWith(".pdf")
+      ) {
+        content.push({
+          type: "input_file",
+          filename: pageFileName,
+          file_data: `data:${pageMimeType || "application/pdf"};base64,${pageContentBase64}`,
+        });
+        return;
+      }
+
+      content.push({
+        type: "input_image",
+        image_url: pageContentBase64.startsWith("data:")
+          ? pageContentBase64
+          : `data:${pageMimeType || "image/jpeg"};base64,${pageContentBase64}`,
+      });
+    });
+  } else if (args.isPdf) {
     content.push({
       type: "input_file",
       filename: args.fileName || "documento.pdf",
@@ -1447,7 +1906,7 @@ async function runProviderBinaryExtraction(args) {
         content: [
           {
             type: "input_text",
-            text: buildProviderSystemPrompt(args.profile),
+            text: buildProviderSystemPrompt(args.profile, args.documentSubtypeHint),
           },
         ],
       },
@@ -1481,13 +1940,56 @@ function detectAttachmentSourceKind(fileName, mimeType, text) {
 }
 
 export async function extractInternalAiDocumentAnalysis(args) {
-  const buffer = Buffer.from(args.contentBase64, "base64");
+  const normalizedPages =
+    Array.isArray(args.pages) && args.pages.length > 0
+      ? args.pages
+          .map((page) => {
+            if (!page || typeof page !== "object") {
+              return null;
+            }
+
+            const fileName =
+              typeof page.fileName === "string" && page.fileName.trim()
+                ? page.fileName.trim()
+                : null;
+            const mimeType =
+              typeof page.mimeType === "string" && page.mimeType.trim()
+                ? page.mimeType.trim()
+                : null;
+            const contentBase64 =
+              typeof page.contentBase64 === "string" && page.contentBase64.trim()
+                ? page.contentBase64.trim()
+                : null;
+
+            if (!contentBase64) {
+              return null;
+            }
+
+            return {
+              fileName,
+              mimeType,
+              contentBase64,
+            };
+          })
+          .filter((page) => Boolean(page))
+      : [];
+  const hasPages = normalizedPages.length > 0;
+  const pagesContainPdf = normalizedPages.some(
+    (page) =>
+      normalizeText(page?.mimeType).toLowerCase() === "application/pdf" ||
+      normalizeText(page?.fileName).toLowerCase().endsWith(".pdf"),
+  );
+  const primaryPage = normalizedPages[0] ?? null;
+  const effectiveContentBase64 = primaryPage?.contentBase64 ?? args.contentBase64;
+  const effectiveMimeType = primaryPage?.mimeType ?? args.mimeType;
+  const effectiveFileName = primaryPage?.fileName ?? args.fileName;
+  const buffer = Buffer.from(effectiveContentBase64, "base64");
   const profile = args.profile ?? "magazzino";
   let extractedText = null;
 
   if (
-    normalizeText(args.mimeType).toLowerCase() === "application/pdf" ||
-    normalizeText(args.fileName).toLowerCase().endsWith(".pdf")
+    normalizeText(effectiveMimeType).toLowerCase() === "application/pdf" ||
+    normalizeText(effectiveFileName).toLowerCase().endsWith(".pdf")
   ) {
     try {
       const pdfResult = await extractTextFromPdf(buffer);
@@ -1495,13 +1997,17 @@ export async function extractInternalAiDocumentAnalysis(args) {
     } catch {
       extractedText = null;
     }
-  } else if (normalizeText(args.mimeType).toLowerCase().startsWith("text/")) {
+  } else if (normalizeText(effectiveMimeType).toLowerCase().startsWith("text/")) {
     extractedText = buffer.toString("utf8");
   } else {
     extractedText = normalizeText(args.textExcerpt);
   }
 
-  const tipoSorgente = detectAttachmentSourceKind(args.fileName, args.mimeType, extractedText);
+  const tipoSorgente = hasPages
+    ? pagesContainPdf
+      ? "pdf_scan"
+      : "image_document"
+    : detectAttachmentSourceKind(effectiveFileName, effectiveMimeType, extractedText);
   const heuristicAnalysis = buildHeuristicAnalysis({
     profilo: profile,
     text: extractedText,
@@ -1537,9 +2043,10 @@ export async function extractInternalAiDocumentAnalysis(args) {
         providerClient: args.providerClient,
         providerTarget: args.providerTarget,
         profile,
-        fileName: args.fileName,
-        mimeType: args.mimeType,
-        contentBase64: args.contentBase64,
+        fileName: effectiveFileName,
+        mimeType: effectiveMimeType,
+        contentBase64: effectiveContentBase64,
+        pages: normalizedPages,
         sourceHint: tipoSorgente,
         documentSubtypeHint: args.documentSubtypeHint,
         isPdf: false,
@@ -1550,9 +2057,10 @@ export async function extractInternalAiDocumentAnalysis(args) {
         providerClient: args.providerClient,
         providerTarget: args.providerTarget,
         profile,
-        fileName: args.fileName,
-        mimeType: args.mimeType,
-        contentBase64: args.contentBase64,
+        fileName: effectiveFileName,
+        mimeType: effectiveMimeType,
+        contentBase64: effectiveContentBase64,
+        pages: normalizedPages,
         sourceHint: tipoSorgente,
         documentSubtypeHint: args.documentSubtypeHint,
         isPdf: true,
@@ -1561,7 +2069,7 @@ export async function extractInternalAiDocumentAnalysis(args) {
       providerParsed = await runProviderTextExtraction({
         providerClient: args.providerClient,
         providerTarget: args.providerTarget,
-        fileName: args.fileName,
+        fileName: effectiveFileName,
         sourceHint: tipoSorgente,
         profile,
         documentSubtypeHint: args.documentSubtypeHint,
@@ -1587,6 +2095,7 @@ export async function extractInternalAiDocumentAnalysis(args) {
       tipoSorgente,
       modalitaEstrazione,
       fallbackText: extractedText,
+      documentSubtypeHint: args.documentSubtypeHint,
     });
 
     return mergeAnalyses(providerAnalysis, heuristicAnalysis);

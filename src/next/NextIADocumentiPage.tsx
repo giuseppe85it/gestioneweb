@@ -1,20 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./internal-ai/internal-ai.css";
+import { formatDateUI } from "./nextDateFormat";
 import {
+  buildNextDossierPath,
   NEXT_INTERNAL_AI_PATH,
 } from "./nextStructuralPaths";
 import {
+  deleteNextDocumentoCosto,
   readNextIADocumentiArchiveSnapshot,
+  type NextDocumentiCostiCurrency,
+  type NextDocumentiCostiLegacyViewItem,
   type NextIADocumentiArchiveItem,
+  updateNextDocumentoCurrency,
 } from "./domain/nextDocumentiCostiDomain";
+import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
 
 type DocumentiCostiFilter =
   | "tutti"
   | "fatture"
   | "ddt"
   | "preventivi"
-  | "da_verificare";
+  | "da_verificare"
+  | "libretti";
 
 type SupplierGroup = {
   supplier: string;
@@ -28,6 +36,7 @@ const FILTERS: Array<{ id: DocumentiCostiFilter; label: string }> = [
   { id: "ddt", label: "DDT" },
   { id: "preventivi", label: "Preventivi" },
   { id: "da_verificare", label: "Da verificare" },
+  { id: "libretti", label: "Libretti" },
 ];
 
 function normalizeText(value: string | number | null | undefined) {
@@ -95,7 +104,7 @@ function formatMoneyCompact(value: number) {
 
 function formatDate(item: NextIADocumentiArchiveItem) {
   if (typeof item.sortTimestamp === "number" && Number.isFinite(item.sortTimestamp)) {
-    return new Intl.DateTimeFormat("it-IT").format(new Date(item.sortTimestamp));
+    return formatDateUI(item.sortTimestamp);
   }
 
   return normalizeText(item.dataDocumento) || "-";
@@ -151,6 +160,10 @@ function isFattura(item: NextIADocumentiArchiveItem) {
   return type === "FATTURA" || (item.sourceKey === "@documenti_magazzino" && !isPreventivo(item));
 }
 
+function isLibretto(item: NextIADocumentiArchiveItem) {
+  return normalizeType(item) === "LIBRETTO";
+}
+
 function getItemKindLabel(item: NextIADocumentiArchiveItem) {
   if (isPreventivo(item)) return "PREVENTIVO";
   if (isDdt(item)) return "DDT";
@@ -166,6 +179,28 @@ function getItemBadgeClass(item: NextIADocumentiArchiveItem) {
 
 function buildSupplierLabel(item: NextIADocumentiArchiveItem) {
   return normalizeText(item.fornitore) || "Fornitore non specificato";
+}
+
+function mapArchiveItemToLegacyDocument(item: NextIADocumentiArchiveItem): NextDocumentiCostiLegacyViewItem {
+  return {
+    id: item.id,
+    mezzoTarga: normalizeText(item.targa),
+    targa: normalizeText(item.targa),
+    tipo: isPreventivo(item) ? "PREVENTIVO" : "FATTURA",
+    data: normalizeText(item.dataDocumento),
+    timestamp: item.sortTimestamp,
+    descrizione: buildDescription(item),
+    importo: parseAmount(item.totaleDocumento) ?? undefined,
+    valuta: item.currency ?? item.valuta ?? "UNKNOWN",
+    currency: item.currency ?? item.valuta ?? "UNKNOWN",
+    fornitoreLabel: buildSupplierLabel(item),
+    fileUrl: item.fileUrl,
+    sourceKey: item.sourceKey,
+    sourceDocId: item.sourceDocId,
+    quality: "certo",
+    flags: [],
+    dedupGroup: null,
+  };
 }
 
 function buildReviewPath(item: NextIADocumentiArchiveItem) {
@@ -248,6 +283,13 @@ export default function NextIADocumentiPage() {
   const [sezioniAperte, setSezioniAperte] = useState<Set<string>>(new Set());
   const [modalItem, setModalItem] = useState<NextIADocumentiArchiveItem | null>(null);
   const [localDaVerificareIds, setLocalDaVerificareIds] = useState<Set<string>>(new Set());
+  const [editingCurrencyId, setEditingCurrencyId] = useState<string | null>(null);
+  const [editingCurrencyValue, setEditingCurrencyValue] = useState<NextDocumentiCostiCurrency>("EUR");
+  const [savingCurrencyId, setSavingCurrencyId] = useState<string | null>(null);
+  const [currencyErrorMessage, setCurrencyErrorMessage] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,6 +356,7 @@ export default function NextIADocumentiPage() {
         if (filtroAttivo === "ddt") return isDdt(item);
         if (filtroAttivo === "preventivi") return isPreventivo(item);
         if (filtroAttivo === "da_verificare") return isReviewItem;
+        if (filtroAttivo === "libretti") return isLibretto(item);
         return true;
       })
       .filter((item) => matchesSearch(item, searchQuery));
@@ -404,6 +447,29 @@ export default function NextIADocumentiPage() {
     navigate(buildReviewPath(item));
   };
 
+  const handleDeleteDocumento = async (
+    event: React.MouseEvent,
+    item: NextIADocumentiArchiveItem,
+  ) => {
+    event.stopPropagation();
+    try {
+      setDeletingDocumentId(item.id);
+      setDeleteErrorMessage(null);
+      await runWithCloneWriteScopedAllowance(
+        "internal_ai_magazzino_inline_magazzino",
+        async () => deleteNextDocumentoCosto(mapArchiveItemToLegacyDocument(item)),
+      );
+      setItems((current) => current.filter((entry) => entry.id !== item.id));
+      setDeleteConfirmId(null);
+    } catch (error) {
+      setDeleteErrorMessage(
+        error instanceof Error ? error.message : "Eliminazione documento non completata.",
+      );
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  };
+
   const handleToggleLocalReview = () => {
     if (!modalItem) {
       return;
@@ -418,6 +484,52 @@ export default function NextIADocumentiPage() {
       }
       return next;
     });
+  };
+
+  const openCurrencyEditor = (
+    event: React.MouseEvent,
+    item: NextIADocumentiArchiveItem,
+    forcedCurrency?: NextDocumentiCostiCurrency,
+  ) => {
+    event.stopPropagation();
+    setCurrencyErrorMessage(null);
+    setEditingCurrencyId(item.id);
+    setEditingCurrencyValue(
+      forcedCurrency ?? (item.currency === "UNKNOWN" ? "EUR" : item.currency ?? item.valuta ?? "EUR"),
+    );
+  };
+
+  const cancelCurrencyEditor = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEditingCurrencyId(null);
+    setSavingCurrencyId(null);
+    setCurrencyErrorMessage(null);
+  };
+
+  const handleSaveCurrency = async (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    try {
+      setSavingCurrencyId(item.id);
+      setCurrencyErrorMessage(null);
+      await runWithCloneWriteScopedAllowance(
+        "internal_ai_magazzino_inline_magazzino",
+        async () => updateNextDocumentoCurrency(mapArchiveItemToLegacyDocument(item), editingCurrencyValue),
+      );
+      setItems((current) =>
+        current.map((entry) =>
+          entry.id === item.id
+            ? { ...entry, currency: editingCurrencyValue, valuta: editingCurrencyValue }
+            : entry,
+        ),
+      );
+      setEditingCurrencyId(null);
+    } catch (error) {
+      setCurrencyErrorMessage(
+        error instanceof Error ? error.message : "Aggiornamento valuta non completato.",
+      );
+    } finally {
+      setSavingCurrencyId(null);
+    }
   };
 
   return (
@@ -525,7 +637,17 @@ export default function NextIADocumentiPage() {
                             <td>{normalizeText(item.numeroDocumento) || "-"}</td>
                             <td>
                               {normalizeText(item.targa) ? (
-                                <span className="doc-costi-targa">{normalizeText(item.targa)}</span>
+                                <a
+                                  href={buildNextDossierPath(normalizeText(item.targa))}
+                                  className="doc-costi-targa"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    navigate(buildNextDossierPath(normalizeText(item.targa)));
+                                  }}
+                                >
+                                  {normalizeText(item.targa)}
+                                </a>
                               ) : (
                                 "-"
                               )}
@@ -533,10 +655,65 @@ export default function NextIADocumentiPage() {
                             <td>{buildDescription(item)}</td>
                             <td className="doc-costi-importo">
                               {formatMoney(item.totaleDocumento, item.currency)}
-                              {normalizeText(item.currency) &&
-                              normalizeText(item.currency) !== "EUR" ? (
-                                <span className="doc-costi-valuta">{item.currency}</span>
-                              ) : null}
+                              {editingCurrencyId === item.id ? (
+                                <span
+                                  style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <select
+                                    value={editingCurrencyValue}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={(event) =>
+                                      setEditingCurrencyValue(
+                                        event.target.value as NextDocumentiCostiCurrency,
+                                      )
+                                    }
+                                  >
+                                    <option value="EUR">EUR</option>
+                                    <option value="CHF">CHF</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    onClick={(event) => void handleSaveCurrency(event, item)}
+                                    disabled={savingCurrencyId === item.id}
+                                  >
+                                    {savingCurrencyId === item.id ? "Salvataggio..." : "Salva"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    onClick={cancelCurrencyEditor}
+                                    disabled={savingCurrencyId === item.id}
+                                  >
+                                    Annulla
+                                  </button>
+                                </span>
+                              ) : normalizeText(item.currency) === "UNKNOWN" ? (
+                                <button
+                                  type="button"
+                                  className="doc-costi-row-flag"
+                                  style={{ marginLeft: 8 }}
+                                  onClick={(event) => openCurrencyEditor(event, item, "EUR")}
+                                >
+                                  Valuta da verificare
+                                </button>
+                              ) : (
+                                <>
+                                  {normalizeText(item.currency) &&
+                                  normalizeText(item.currency) !== "EUR" ? (
+                                    <span className="doc-costi-valuta">{item.currency}</span>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    style={{ marginLeft: 8 }}
+                                    onClick={(event) => openCurrencyEditor(event, item)}
+                                  >
+                                    Modifica
+                                  </button>
+                                </>
+                              )}
                             </td>
                             <td>
                               <div className="doc-costi-actions">
@@ -562,9 +739,56 @@ export default function NextIADocumentiPage() {
                                 >
                                   Chiedi alla IA
                                 </button>
+                                {filtroAttivo === "libretti" ? (
+                                  deleteConfirmId === item.id ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="doc-costi-btn"
+                                        onClick={(event) => void handleDeleteDocumento(event, item)}
+                                        disabled={deletingDocumentId === item.id}
+                                      >
+                                        {deletingDocumentId === item.id ? "Elimino..." : "Conferma"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="doc-costi-btn"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setDeleteConfirmId(null);
+                                          setDeleteErrorMessage(null);
+                                        }}
+                                        disabled={deletingDocumentId === item.id}
+                                      >
+                                        Annulla
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="doc-costi-btn"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setDeleteErrorMessage(null);
+                                        setDeleteConfirmId(item.id);
+                                      }}
+                                    >
+                                      Elimina
+                                    </button>
+                                  )
+                                ) : null}
                               </div>
+                              {filtroAttivo === "libretti" && deleteConfirmId === item.id ? (
+                                <span className="doc-costi-row-flag">Eliminare questo libretto?</span>
+                              ) : null}
                               {isMarkedDaVerificare ? (
                                 <span className="doc-costi-row-flag">Da verificare</span>
+                              ) : null}
+                              {currencyErrorMessage && editingCurrencyId === item.id ? (
+                                <span className="doc-costi-row-flag">{currencyErrorMessage}</span>
+                              ) : null}
+                              {deleteErrorMessage && deleteConfirmId === item.id ? (
+                                <span className="doc-costi-row-flag">{deleteErrorMessage}</span>
                               ) : null}
                             </td>
                           </tr>

@@ -46,6 +46,7 @@ import {
   type NextMagazzinoStockUnit,
 } from "./domain/nextMagazzinoStockContract";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
+import { formatDateUI } from "./nextDateFormat";
 import "./internal-ai/internal-ai.css";
 import "./next-magazzino.css";
 
@@ -495,7 +496,7 @@ function parseStoredDate(value: string | null | undefined): Date | null {
 function formatStoredDateForUi(value: string | null | undefined): string {
   const parsed = parseStoredDate(value);
   if (!parsed) return normalizeText(value) || "-";
-  return parsed.toLocaleDateString("it-IT");
+  return formatDateUI(parsed);
 }
 
 function dateDiffDays(start: Date | null, end: Date | null): number | null {
@@ -1292,7 +1293,7 @@ function stimaDataFine(ultimoCambio: CambioAdBlue | null, mediaGiorni: number): 
   if (!baseDate || mediaGiorni <= 0) return "-";
   const target = new Date(baseDate.getTime());
   target.setDate(target.getDate() + mediaGiorni);
-  return target.toLocaleDateString("it-IT");
+  return formatDateUI(target);
 }
 
 export default function NextMagazzinoPage() {

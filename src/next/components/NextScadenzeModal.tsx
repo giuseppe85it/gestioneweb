@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatDateUI } from "../nextDateFormat";
 import {
   parseNextCentroControlloDate,
   readNextCentroControlloSnapshot,
@@ -67,11 +68,7 @@ function formatDateLabel(timestamp: number | null): string {
     return "-";
   }
 
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(timestamp));
+  return formatDateUI(new Date(timestamp));
 }
 
 function formatEditableDate(value: string | null | undefined): string {
@@ -85,11 +82,7 @@ function formatEditableDate(value: string | null | undefined): string {
     return raw;
   }
 
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(parsed);
+  return formatDateUI(parsed);
 }
 
 function formatGiorniLabel(giorni: number | null): string {

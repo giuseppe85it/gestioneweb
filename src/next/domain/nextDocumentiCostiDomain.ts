@@ -2320,3 +2320,171 @@ export function mapNextDocumentiCostiItemsToLegacyView(
       dedupGroup: item.dedupGroup,
     }));
 }
+
+export async function deleteNextDocumentoMezzo(
+  documentoId: string
+): Promise<void> {
+  const normalizedId = String(documentoId ?? "").trim();
+  if (!normalizedId) {
+    throw new Error("Documento non valido.");
+  }
+
+  const { deleteDoc } = await import("../../utils/firestoreWriteOps");
+  await deleteDoc(doc(db, "@documenti_mezzi", normalizedId));
+}
+
+export async function deleteNextDocumentoCosto(
+  item: NextDocumentiCostiLegacyViewItem
+): Promise<void> {
+  const sourceKey = String(item.sourceKey ?? "").trim();
+
+  if (sourceKey === COSTI_DATASET_KEY) {
+    const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, COSTI_DATASET_KEY));
+    if (!snapshot.exists()) {
+      return;
+    }
+
+    const rawDoc = snapshot.data() as Record<string, unknown>;
+    const items = Array.isArray(rawDoc.items)
+      ? rawDoc.items
+      : Array.isArray((rawDoc.value as { items?: unknown[] } | undefined)?.items)
+      ? (rawDoc.value as { items: unknown[] }).items
+      : Array.isArray(rawDoc.value)
+      ? (rawDoc.value as unknown[])
+      : null;
+
+    if (!items) {
+      throw new Error("Dataset @costiMezzo non leggibile per eliminazione.");
+    }
+
+    const rawId = String(item.sourceDocId ?? "").trim();
+    const fallbackMatch = String(item.id ?? "")
+      .trim()
+      .match(/^costo-mezzo:[^:]+:(\d+)$/);
+    const fallbackIndex = rawId
+      ? null
+      : fallbackMatch
+      ? Number(fallbackMatch[1])
+      : null;
+
+    const nextItems = items.filter((entry, index) => {
+      if (rawId) {
+        if (!entry || typeof entry !== "object") return true;
+        return String((entry as Record<string, unknown>).id ?? "").trim() !== rawId;
+      }
+
+      if (fallbackIndex !== null && Number.isFinite(fallbackIndex)) {
+        return index !== fallbackIndex;
+      }
+
+      return true;
+    });
+
+    const { setItemSync } = await import("../../utils/storageSync");
+    await setItemSync(COSTI_DATASET_KEY, nextItems);
+    return;
+  }
+
+  if (
+    sourceKey === "@documenti_mezzi" ||
+    sourceKey === "@documenti_magazzino" ||
+    sourceKey === "@documenti_generici"
+  ) {
+    const normalizedId = String(item.sourceDocId ?? "").trim();
+    if (!normalizedId) {
+      throw new Error("Documento non valido.");
+    }
+
+    const { deleteDoc } = await import("../../utils/firestoreWriteOps");
+    await deleteDoc(doc(db, sourceKey, normalizedId));
+    return;
+  }
+
+  throw new Error(`Collection non supportata per aggiornamento valuta: ${sourceKey}`);
+}
+
+export async function updateNextDocumentoCurrency(
+  item: NextDocumentiCostiLegacyViewItem,
+  newCurrency: NextDocumentiCostiCurrency
+): Promise<void> {
+  const sourceKey = String(item.sourceKey ?? "").trim();
+  const nextCurrency = newCurrency === "CHF" || newCurrency === "UNKNOWN" ? newCurrency : "EUR";
+
+  if (sourceKey === COSTI_DATASET_KEY) {
+    const snapshot = await getDoc(doc(db, STORAGE_COLLECTION, COSTI_DATASET_KEY));
+    if (!snapshot.exists()) {
+      throw new Error("Dataset @costiMezzo non disponibile.");
+    }
+
+    const rawDoc = snapshot.data() as Record<string, unknown>;
+    const items = Array.isArray(rawDoc.items)
+      ? rawDoc.items
+      : Array.isArray((rawDoc.value as { items?: unknown[] } | undefined)?.items)
+      ? (rawDoc.value as { items: unknown[] }).items
+      : Array.isArray(rawDoc.value)
+      ? (rawDoc.value as unknown[])
+      : null;
+
+    if (!items) {
+      throw new Error("Dataset @costiMezzo non leggibile per aggiornamento valuta.");
+    }
+
+    const rawId = String(item.sourceDocId ?? "").trim();
+    const fallbackMatch = String(item.id ?? "")
+      .trim()
+      .match(/^costo-mezzo:[^:]+:(\d+)$/);
+    const fallbackIndex = rawId
+      ? null
+      : fallbackMatch
+      ? Number(fallbackMatch[1])
+      : null;
+
+    const nextItems = items.map((entry, index) => {
+      if (rawId) {
+        if (!entry || typeof entry !== "object") return entry;
+        const entryId = String((entry as Record<string, unknown>).id ?? "").trim();
+        if (entryId !== rawId) return entry;
+        return {
+          ...(entry as Record<string, unknown>),
+          currency: nextCurrency,
+          valuta: nextCurrency,
+        };
+      }
+
+      if (fallbackIndex !== null && Number.isFinite(fallbackIndex) && index === fallbackIndex) {
+        if (!entry || typeof entry !== "object") return entry;
+        return {
+          ...(entry as Record<string, unknown>),
+          currency: nextCurrency,
+          valuta: nextCurrency,
+        };
+      }
+
+      return entry;
+    });
+
+    const { setItemSync } = await import("../../utils/storageSync");
+    await setItemSync(COSTI_DATASET_KEY, nextItems);
+    return;
+  }
+
+  if (
+    sourceKey === "@documenti_mezzi" ||
+    sourceKey === "@documenti_magazzino" ||
+    sourceKey === "@documenti_generici"
+  ) {
+    const normalizedId = String(item.sourceDocId ?? "").trim();
+    if (!normalizedId) {
+      throw new Error("Documento non valido.");
+    }
+
+    const { updateDoc } = await import("../../utils/firestoreWriteOps");
+    await updateDoc(doc(db, sourceKey, normalizedId), {
+      currency: nextCurrency,
+      valuta: nextCurrency,
+    });
+    return;
+  }
+
+  throw new Error(`Collection non supportata per eliminazione: ${sourceKey}`);
+}

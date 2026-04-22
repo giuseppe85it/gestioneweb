@@ -699,6 +699,37 @@
   color: #633806;
 }
 
+.iai-libretto-extraction .iai-debug-tools {
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  background: #f7f3ea;
+  overflow: hidden;
+}
+
+.iai-libretto-extraction .iai-debug-tools summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6f5630;
+  list-style: none;
+}
+
+.iai-libretto-extraction .iai-debug-tools summary::-webkit-details-marker {
+  display: none;
+}
+
+.iai-libretto-extraction .iai-debug-tools__body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.iai-libretto-extraction .iai-card--debug {
+  padding: 14px 16px;
+  background: #fffaf2;
+}
+
 .iai-libretto-extraction .iai-confirm-state {
   padding: 14px 16px;
   border-radius: 10px;

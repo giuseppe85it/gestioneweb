@@ -15,26 +15,30 @@ import "../pages/DossierMezzo.css";
 import "./next-shell.css";
 import {
   buildNextDossierMezzoLegacyView,
-  hasLinkedManutenzione,
   readNextDossierMezzoCompositeSnapshot,
   type NextDossierFatturaPreventivoLegacyItem,
   type NextDossierManutenzioneLegacyItem,
   type NextDossierMezzoLegacyViewState,
 } from "./domain/nextDossierMezzoDomain";
-import NextDossierFatturaToManutenzioneModal from "./NextDossierFatturaToManutenzioneModal";
+import { deleteNextDocumentoCosto } from "./domain/nextDocumentiCostiDomain";
 import {
   buildNextAnalisiEconomicaPath,
   buildNextDossierGommePath,
   buildNextDossierRifornimentiPath,
   NEXT_DETTAGLIO_LAVORI_PATH,
   NEXT_DOSSIER_LISTA_PATH,
+  NEXT_IA_DOCUMENTI_PATH,
   NEXT_IA_LIBRETTO_PATH,
 } from "./nextStructuralPaths";
+import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
 
 type Currency = "EUR" | "CHF" | "UNKNOWN";
 
 const CLONE_READ_ONLY_PREVENTIVO_DELETE_MESSAGE =
   "Clone read-only: eliminazione preventivo non disponibile.";
+const DOSSIER_DELETE_SIMPLE_MESSAGE = "Eliminare questa fattura?";
+const DOSSIER_DELETE_LINKED_MESSAGE =
+  "Questa fattura ha una manutenzione collegata. Eliminando la fattura la manutenzione rimarra. Confermi l'eliminazione?";
 
 function readErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -140,7 +144,6 @@ export default function NextDossierMezzoPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<null | "attesa" | "eseguiti" | "manutenzioni" | "libretto" | "foto">(null);
-  const [fatturaModal, setFatturaModal] = useState<NextDossierFatturaPreventivoLegacyItem | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -148,6 +151,11 @@ export default function NextDossierMezzoPage() {
   const [pdfTitle, setPdfTitle] = useState("Anteprima PDF dossier mezzo");
   const [pdfHint, setPdfHint] = useState<string | null>(null);
   const [pdfContext, setPdfContext] = useState("Dossier mezzo");
+  const [fatturaToDelete, setFatturaToDelete] =
+    useState<NextDossierFatturaPreventivoLegacyItem | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
   const requestedSection = useMemo(
     () => location.hash.replace(/^#/, "").trim().toLowerCase(),
     [location.hash],
@@ -301,6 +309,81 @@ export default function NextDossierMezzoPage() {
     window.alert(CLONE_READ_ONLY_PREVENTIVO_DELETE_MESSAGE);
   };
 
+  const openFatturaDeleteConfirm = (item: NextDossierFatturaPreventivoLegacyItem) => {
+    setFatturaToDelete(item);
+    setDeleteError(null);
+    setShowDeleteConfirm(true);
+  };
+
+  const closeFatturaDeleteConfirm = () => {
+    if (deletePending) return;
+    setShowDeleteConfirm(false);
+    setFatturaToDelete(null);
+    setDeleteError(null);
+  };
+
+  const confirmFatturaDelete = async () => {
+    if (!fatturaToDelete || !targa) return;
+
+    try {
+      setDeletePending(true);
+      setDeleteError(null);
+      await runWithCloneWriteScopedAllowance(
+        "internal_ai_magazzino_inline_magazzino",
+        async () => deleteNextDocumentoCosto(fatturaToDelete),
+      );
+
+      try {
+        const nextSnapshot = await readNextDossierMezzoCompositeSnapshot(targa);
+        if (nextSnapshot) {
+          setLegacy(buildNextDossierMezzoLegacyView(nextSnapshot));
+          setLegacy((current) =>
+            current
+              ? {
+                  ...current,
+                  documentiCosti: current.documentiCosti.filter(
+                    (item) => item.id !== fatturaToDelete.id,
+                  ),
+                }
+              : current,
+          );
+        } else {
+          setLegacy((current) =>
+            current
+              ? {
+                  ...current,
+                  documentiCosti: current.documentiCosti.filter(
+                    (item) => item.id !== fatturaToDelete.id,
+                  ),
+                }
+              : current,
+          );
+        }
+      } catch {
+        setLegacy((current) =>
+          current
+            ? {
+                ...current,
+                documentiCosti: current.documentiCosti.filter(
+                  (item) => item.id !== fatturaToDelete.id,
+                ),
+              }
+            : current,
+        );
+      }
+
+      setShowDeleteConfirm(false);
+      setFatturaToDelete(null);
+      setDeleteError(null);
+    } catch (deleteFatturaError) {
+      setDeleteError(
+        readErrorMessage(deleteFatturaError, "Eliminazione fattura non completata."),
+      );
+    } finally {
+      setDeletePending(false);
+    }
+  };
+
   const openLavoro = (id: string) => navigate(`${NEXT_DETTAGLIO_LAVORI_PATH}/${encodeURIComponent(id)}`);
   const back = () => navigate(NEXT_DOSSIER_LISTA_PATH);
 
@@ -335,11 +418,7 @@ export default function NextDossierMezzoPage() {
               <span>{item.fornitoreLabel || "-"}</span>
               {item.fileUrl ? <button className="dossier-button" type="button" onClick={() => openDocumentPdf(item.fileUrl!, `Anteprima PDF ${kind}`, `${kind}-${item.id}.pdf`)}>Anteprima PDF</button> : null}
               {kind === "preventivo" ? <button className="dossier-button" type="button" onClick={blockPreventivoDelete}>Elimina</button> : null}
-              {kind === "fattura" && (
-                hasLinkedManutenzione(legacy.manutenzioni, item.id)
-                  ? <span className="dossier-badge badge-success" style={{ fontSize: 11 }}>✓ Manutenzione collegata</span>
-                  : <button className="dossier-button" type="button" onClick={() => setFatturaModal(item)}>Crea manutenzione</button>
-              )}
+              {kind === "fattura" ? <button className="dossier-button" type="button" onClick={() => openFatturaDeleteConfirm(item)}>Elimina</button> : null}
             </div>
           </li>
         ))}
@@ -354,6 +433,64 @@ export default function NextDossierMezzoPage() {
       ) : null}
       {modal === "foto" && mezzo.fotoUrl ? (
         <div className="dossier-modal-overlay" onClick={() => setModal(null)}><div className="dossier-modal" style={{ maxWidth: 920 }} onClick={(event) => event.stopPropagation()}><div className="dossier-modal-header"><h2>Foto mezzo</h2><button className="dossier-button" type="button" onClick={() => setModal(null)}>Chiudi</button></div><div className="dossier-modal-body"><img src={mezzo.fotoUrl} alt={mezzo.targa} className="dossier-photo-modal-img" /></div></div></div>
+      ) : null}
+      {showDeleteConfirm && fatturaToDelete ? (
+        <div className="dossier-modal-overlay" onClick={closeFatturaDeleteConfirm}>
+          <div
+            className="dossier-modal"
+            style={{ maxWidth: 620 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="dossier-modal-header">
+              <h2>Conferma eliminazione fattura</h2>
+              <button
+                className="dossier-button"
+                type="button"
+                onClick={closeFatturaDeleteConfirm}
+                disabled={deletePending}
+              >
+                Chiudi
+              </button>
+            </div>
+            <div className="dossier-modal-body" style={{ display: "grid", gap: 12 }}>
+              <p>
+                {legacy.manutenzioni.some(
+                  (record) => record.sourceDocumentId === fatturaToDelete.id,
+                )
+                  ? DOSSIER_DELETE_LINKED_MESSAGE
+                  : DOSSIER_DELETE_SIMPLE_MESSAGE}
+              </p>
+              <div className="dossier-list-meta">
+                <span>{fatturaToDelete.descrizione || "-"}</span>
+                <span>{fatturaToDelete.data || "-"}</span>
+                <span>{renderAmount(fatturaToDelete.importo, resolveCurrency(fatturaToDelete))}</span>
+              </div>
+              {deleteError ? (
+                <p className="dossier-empty" style={{ color: "#b42318", margin: 0 }}>
+                  {deleteError}
+                </p>
+              ) : null}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  className="dossier-button"
+                  type="button"
+                  onClick={confirmFatturaDelete}
+                  disabled={deletePending}
+                >
+                  {deletePending ? "Eliminazione..." : "Conferma"}
+                </button>
+                <button
+                  className="dossier-button"
+                  type="button"
+                  onClick={closeFatturaDeleteConfirm}
+                  disabled={deletePending}
+                >
+                  Annulla
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <div className="dossier-header-bar">
@@ -394,25 +531,8 @@ export default function NextDossierMezzoPage() {
         <section className="dossier-card"><div className="dossier-card-header"><h2>Rifornimenti</h2></div><div className="dossier-card-body">{legacy.rifornimenti.length === 0 ? <p className="dossier-empty">Nessun rifornimento registrato per questo mezzo.</p> : <div className="dossier-table-wrapper"><table className="dossier-table"><thead><tr><th>Data/Ora</th><th>Litri</th><th>Km</th><th>Tipo</th><th>Autista</th></tr></thead><tbody>{legacy.rifornimenti.map((item) => <tr key={item.id}><td>{formatDateTime(item.data)}</td><td>{item.litri ?? "-"}</td><td>{item.km ?? "-"}</td><td>{item.tipo ?? "-"}</td><td>{item.autistaNome ? `${item.autistaNome}${item.badgeAutista ? ` (${item.badgeAutista})` : ""}` : item.badgeAutista ?? "-"}</td></tr>)}</tbody></table></div>}</div></section>
 
         <section ref={preventiviSectionRef} id="preventivi" className="dossier-card" tabIndex={-1}><div className="dossier-card-header"><h2>Preventivi</h2><div className="dossier-chip">Totale preventivi: <strong>CHF {preventiviTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {preventiviTotals.eur.toFixed(2)}</span>{preventiviTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({preventiviTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(preventivi, "preventivo")}</div></section>
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Fatture</h2><div className="dossier-chip">Totale fatture: <strong>CHF {fattureTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {fattureTotals.eur.toFixed(2)}</span>{fattureTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({fattureTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(fatture, "fattura")}</div></section>
+        <section className="dossier-card"><div className="dossier-card-header"><div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><h2>Fatture</h2><button className="dossier-button ghost" type="button" onClick={() => navigate(NEXT_IA_DOCUMENTI_PATH)}>Vai allo storico -&gt;</button></div><div className="dossier-chip">Totale fatture: <strong>CHF {fattureTotals.chf.toFixed(2)}</strong><span style={{ marginLeft: 8 }}>EUR {fattureTotals.eur.toFixed(2)}</span>{fattureTotals.unknown > 0 ? <span className="dossier-badge badge-info" style={{ marginLeft: 8 }}>VALUTA DA VERIFICARE ({fattureTotals.unknown})</span> : null}</div></div><div className="dossier-card-body">{renderDocList(fatture, "fattura")}</div></section>
       </div>
-
-      {fatturaModal && targa && (
-        <NextDossierFatturaToManutenzioneModal
-          fattura={fatturaModal}
-          targa={targa}
-          onClose={() => setFatturaModal(null)}
-          onSaved={() => {
-            setFatturaModal(null);
-            void (async () => {
-              try {
-                const nextSnapshot = await readNextDossierMezzoCompositeSnapshot(targa);
-                if (nextSnapshot) setLegacy(buildNextDossierMezzoLegacyView(nextSnapshot));
-              } catch { /* silent */ }
-            })();
-          }}
-        />
-      )}
 
       {(["attesa", "eseguiti", "manutenzioni"] as const).map((key) =>
         modal === key ? (
@@ -438,3 +558,4 @@ export default function NextDossierMezzoPage() {
     </div>
   );
 }
+

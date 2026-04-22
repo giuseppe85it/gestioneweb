@@ -956,11 +956,3 @@ export function buildNextAnalisiEconomicaLegacyView(
   };
 }
 
-export function hasLinkedManutenzione(
-  manutenzioni: NextDossierManutenzioneLegacyItem[],
-  documentId: string
-): boolean {
-  return manutenzioni.some(
-    (m) => m.sourceDocumentId != null && m.sourceDocumentId === documentId
-  );
-}
