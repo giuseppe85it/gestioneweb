@@ -19,6 +19,38 @@ La regola corrente da leggere insieme a questo registro e:
 - Ogni patch futura che modifica il clone deve aggiungere una nuova voce in questo registro.
 - Per "modifica del clone" si intende almeno una di queste condizioni:
 
+### Voce 2026-04-23 0838
+- DATA: 2026-04-23
+- TITOLO: Fix PDF quadro manutenzioni + click Dossier verso dettaglio manutenzione
+- FILE TOCCATI: `src/next/NextManutenzioniPage.tsx`, `src/next/NextDossierMezzoPage.tsx`, `src/next/nextStructuralPaths.ts`, `docs/_live/STATO_MIGRAZIONE_NEXT.md`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`, `CONTEXT_CLAUDE.md`
+- COSA: Nel Quadro manutenzioni PDF le foto leggono ora l'orientamento EXIF prima dell'export, il PDF prova un font Unicode `Roboto` con fallback silenzioso e la UI distingue i km mancanti tra mezzi motorizzati (`— (km da inserire)`) e non motorizzati (`—`). Nel Dossier Mezzo, card `Ultime 5 manutenzioni` e modale `Mostra tutti` navigano ora a `/next/manutenzioni?targa=...&recordId=...`, e `/next/manutenzioni` apre il tab `Dettaglio` selezionando la manutenzione richiesta.
+- ESITO: FATTO
+- NOTE: `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextDossierMezzoPage.tsx src/next/nextStructuralPaths.ts` OK; `npm run build` OK; `npm run lint` fermo al baseline globale `582/567/15` con delta zero nel perimetro patch. Verifica browser live: DA VERIFICARE.
+
+### Voce 2026-04-22 2251
+- DATA: 2026-04-22
+- TITOLO: Quadro manutenzioni PDF riallineato alla spec finale
+- FILE TOCCATI: `src/next/NextManutenzioniPage.tsx`, `src/next/next-mappa-storico.css`, `docs/_live/STATO_MIGRAZIONE_NEXT.md`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`, `docs/_live/INDICE_SPEC.md`, `CONTEXT_CLAUDE.md`
+- COSA: Nel tab `/next/manutenzioni` il Quadro PDF mostra ora la sezione inline `Ultime 3 manutenzioni`, la targa cliccabile verso il dossier via `button + navigate`, il modale unico a 3 layout e i PDF quadro/singolo riallineati al mockup con foto mezzo e fallback senza placeholder.
+- ESITO: FATTO
+- NOTE: `npm run build` OK; `npx eslint src/next/NextManutenzioniPage.tsx` OK; `npm run lint` fermo al baseline globale `582/567/15` con delta zero. Verifica browser live del modulo: DA VERIFICARE.
+
+### Voce 2026-04-22 1943
+- DATA: 2026-04-22
+- TITOLO: Cancellazione definitiva file storici post-compressione
+- FILE TOCCATI: docs/change-reports/ (rimossa), docs/continuity-reports/ (rimossa), docs/audit/ (rimossa), docs/fonti-pronte/ (rimossa), docs/ui-audit/ (rimossa), docs/ui-blueprint/ (rimossa), docs/ui-redesign/ (rimossa inclusi .mmd), docs/ui-capture/ (rimossa inclusi .png .zip .json)
+- COSA: Eliminati in blocco tutti i file storici ora coperti dai compressi in docs/_live/. Autorizzazione utente esplicita per file non-md. Repo scende sotto 100 MD visibili dai 1031 originali.
+- ESITO: FATTO
+- NOTE: revertibile via git revert del commit di cancellazione (commit verra fatto dall'utente manualmente dopo questa patch).
+
+## 2026-04-22 1954 — Rimozione 4 stub Archivista (dead code FLOW_MATRIX)
+- DATA: 2026-04-22
+- TITOLO: Rimozione 4 entry `not_available` da FLOW_MATRIX in NextIAArchivistaPage.tsx
+- FILE TOCCATI: `src/next/NextIAArchivistaPage.tsx`
+- COSA: Rimosse le 4 combinazioni stub (`fattura_ddt:documento_mezzo`, `preventivo:documento_mezzo`, `documento_mezzo:magazzino`, `documento_mezzo:manutenzione`) da FLOW_MATRIX. Aggiornata type annotation da `Record<...>` a `Partial<Record<...>>`, aggiunto `!` sull'accesso `activeFlow`. Nessun bridge, family, Storage path o dato salvato coinvolti. Classificazione audit: RIMOVIBILE PULITA su 4/4.
+- ESITO: FATTO
+- BUILD/LINT: `npm run build` OK; `npm run lint` 582/567/15 delta zero
+
 ## 2.0 2026-04-22 - Fix Firebase Storage Rules: aggiunta regola `preventivi/{allPaths=**}`
 - File toccati:
   - `storage.rules`

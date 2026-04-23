@@ -9,6 +9,47 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-04-23 Manutenzioni: fix PDF runtime + salto Dossier -> Dettaglio
+- execution completata nel solo perimetro `src/next/NextManutenzioniPage.tsx`, `src/next/NextDossierMezzoPage.tsx`, `src/next/nextStructuralPaths.ts`, piu aggiornamento contesto/documentazione, senza toccare domain, writer, barrier o `NextMappaStoricoPage`;
+- `/next/manutenzioni`:
+  - l'export PDF corregge ora l'orientamento foto leggendo l'EXIF lato client prima di `jspdf.addImage`;
+  - il PDF prova a registrare un font Unicode `Roboto` via fetch runtime e usa fallback Helvetica solo se il font non e disponibile, con normalizzazione minima dei caratteri speciali nel solo fallback;
+  - nel quadro web e nel PDF, per i mezzi motorizzati senza km intervento compare `— (km da inserire)`, mentre per i mezzi non motorizzati resta `—`;
+  - la query string accetta ora anche `recordId` oltre a `targa`: con entrambi presenti la pagina apre direttamente il tab `Dettaglio` e seleziona la manutenzione;
+- `/next/dossier/:targa`:
+  - le righe `Ultime 5 manutenzioni` e le righe del modale `Mostra tutti` sono ora cliccabili e navigano a `/next/manutenzioni?targa=...&recordId=...`;
+- verifiche eseguite:
+  - `npx eslint src/next/NextManutenzioniPage.tsx src/next/NextDossierMezzoPage.tsx src/next/nextStructuralPaths.ts` -> `OK`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` al baseline globale invariato `582 / 567 / 15`, delta zero nel perimetro patch;
+- stato onesto del ramo:
+  - fix runtime PDF + navigazione dossier -> dettaglio -> `FATTO`
+  - verifica browser live dei 9 check finali -> `DA VERIFICARE`
+
+## 0.0 Aggiornamento operativo 2026-04-22 Manutenzioni: Quadro PDF riallineato alla spec finale
+- execution completata nel solo perimetro `src/next/NextManutenzioniPage.tsx` e `src/next/next-mappa-storico.css`, piu aggiornamento contesto/documentazione, senza toccare domain, writer, barrier o altre tab del modulo;
+- `/next/manutenzioni` tab `Quadro manutenzioni PDF`:
+  - la targa nella card usa ora il pattern corretto `button + navigate(buildNextDossierPath(...))`, senza `Link/NavLink`;
+  - ogni card mostra `Ultime 3 manutenzioni` tra `man2-pdf-row__meta` e `man2-pdf-row__actions`, con tabella inline `Data | Km/Ore | Δ | Tipo | Descrizione` e bottone `Vedi tutte (N)` se i record del periodo sono piu di 3;
+  - il nuovo modale unico `Tutte le manutenzioni` espone i 3 layout `Per data`, `Per mese`, `Per tipo`, con chiusura via `×`, overlay ed `Esc`;
+  - l'export PDF quadro generale e per singola targa mantiene foto mezzo reali con fallback silenzioso senza placeholder e layout ricollassato quando la foto manca;
+- verifiche eseguite:
+  - `npx eslint src/next/NextManutenzioniPage.tsx` -> `OK`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` al baseline globale invariato `582 / 567 / 15`, delta zero fuori perimetro;
+- stato onesto del ramo:
+  - implementazione spec `SPEC_QUADRO_MANUTENZIONI_PDF_NEXT` -> `FATTO`
+  - verifica browser live dei punti runtime/spec -> `DA VERIFICARE`
+
+## 0.0 Aggiornamento operativo 2026-04-22 IA Archivista: rimozione 4 stub dead code da FLOW_MATRIX
+- execution completata nel solo file `src/next/NextIAArchivistaPage.tsx`, senza toccare bridge, ArchivistaArchiveClient, storage.rules, cloneWriteBarrier o qualsiasi domain;
+- rimossi da `FLOW_MATRIX` i 4 entry `not_available` (`fattura_ddt:documento_mezzo`, `preventivo:documento_mezzo`, `documento_mezzo:magazzino`, `documento_mezzo:manutenzione`), confermati dead code dall'audit `AUDIT_RIMOZIONE_STUB_ARCHIVISTA.md` (classificazione RIMOVIBILE PULITA su 4/4);
+- type annotation `FLOW_MATRIX` aggiornata da `Record<...>` a `Partial<Record<...>>`; aggiunto `!` sull'accesso `activeFlow` (riga 205), giustificato dal guard `isContextAllowed` preesistente;
+- ramo `documento_mezzo:documento_mezzo` (attivo) e funzione `isContextAllowed` intatti;
+- `DESTINATION_OPTIONS` e `HomeInternalAiLauncher.tsx` invariati (non contenevano le 4 stub);
+- verifiche: `npx eslint src/next/NextIAArchivistaPage.tsx` OK; `npm run build` OK; `npm run lint` 582/567/15 delta zero;
+- stato onesto: verifica browser live del ramo Archivista con tutti e 5 i rami attivi → `DA VERIFICARE`.
+
 ## 0.0 Aggiornamento operativo 2026-04-22 IA Archivista: fix Storage Rules per `preventivi/`
 - execution completata nel solo file `storage.rules`, senza toccare file sorgente, barrier o altre regole;
 - causa: la regola `preventivi/{allPaths=**}` mancava da sempre — tutti gli upload Archivista su `preventivi/` ricevevano `storage/unauthorized`;

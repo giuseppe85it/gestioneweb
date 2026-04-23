@@ -33,6 +33,14 @@ export const LIBRETTO_CANONICAL_FIELDS = [
   "prossimoCollaudoRevisione",
 ];
 const LIBRETTO_MULTILINE_FIELDS = new Set(["annotazioni"]);
+const PREVENTIVO_PRICE_EXTRACT_WARNING_CODES = new Set([
+  "MISSING_CURRENCY",
+  "MISSING_UNIT_PRICE",
+  "LIKELY_TOTAL_PRICE",
+  "PARTIAL_TABLE",
+  "LOW_CONFIDENCE",
+]);
+const PREVENTIVO_PRICE_EXTRACT_WARNING_SEVERITIES = new Set(["info", "warn", "error"]);
 
 function normalizeText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -201,6 +209,238 @@ function normalizeDateToDDMMYYYY(value) {
   const month = String(parsed.getMonth() + 1).padStart(2, "0");
   const year = String(parsed.getFullYear());
   return `${day}/${month}/${year}`;
+}
+
+function isValidDDMMYYYYDate(value) {
+  const normalized = normalizeText(value);
+  const match = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) {
+    return false;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) {
+    return false;
+  }
+
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
+function sanitizeUndefinedDeep(value) {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeUndefinedDeep(entry));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizeUndefinedDeep(entry)]),
+    );
+  }
+
+  return value;
+}
+
+function pushPreventivoPriceWarning(target, code, severity, message) {
+  if (!PREVENTIVO_PRICE_EXTRACT_WARNING_CODES.has(code)) {
+    return;
+  }
+
+  if (target.some((entry) => entry.code === code)) {
+    return;
+  }
+
+  target.push({
+    code,
+    severity: PREVENTIVO_PRICE_EXTRACT_WARNING_SEVERITIES.has(severity) ? severity : "warn",
+    message: normalizeText(message) || code,
+  });
+}
+
+function normalizePreventivoPriceExtractOutput(parsed) {
+  const source = parsed && typeof parsed === "object" ? parsed : {};
+  const rawDocument =
+    source.document && typeof source.document === "object"
+      ? source.document
+      : source.header && typeof source.header === "object"
+        ? source.header
+        : {};
+  const rawSupplier =
+    source.supplier && typeof source.supplier === "object" ? source.supplier : {};
+  const rawItems = Array.isArray(source.items)
+    ? source.items
+    : Array.isArray(source.righe)
+      ? source.righe
+      : Array.isArray(source.rows)
+        ? source.rows
+        : Array.isArray(source.voci)
+          ? source.voci
+          : [];
+  const warnings = [];
+  let removedRowsCount = 0;
+
+  const documentCurrency = normalizeCurrency(
+    rawDocument.currency ??
+      rawDocument.valuta ??
+      source.documentCurrency ??
+      source.currency ??
+      source.valuta,
+  );
+  const documentDate = normalizeDateToDDMMYYYY(
+    rawDocument.date ??
+      rawDocument.documentDate ??
+      rawDocument.dataDocumento ??
+      source.date ??
+      source.documentDate ??
+      source.dataDocumento,
+  );
+
+  const document = {
+    number: toNullIfEmpty(
+      rawDocument.number ??
+        rawDocument.documentNumber ??
+        rawDocument.numeroDocumento ??
+        source.number ??
+        source.documentNumber ??
+        source.numeroDocumento ??
+        source.numeroPreventivo,
+    ),
+    date: documentDate && isValidDDMMYYYYDate(documentDate) ? documentDate : null,
+    currency: documentCurrency,
+    confidence: clampConfidence(
+      rawDocument.confidence ?? source.documentConfidence ?? source.confidence,
+      0,
+    ),
+  };
+
+  if (!document.currency) {
+    pushPreventivoPriceWarning(
+      warnings,
+      "MISSING_CURRENCY",
+      "warn",
+      "Valuta documento mancante o non valida.",
+    );
+  }
+
+  const supplier = {
+    name: toNullIfEmpty(
+      rawSupplier.name ?? source.supplierName ?? source.fornitore ?? source.ragioneSociale,
+    ),
+    confidence: clampConfidence(rawSupplier.confidence ?? source.supplierConfidence, 0),
+  };
+
+  const items = rawItems
+    .map((item) => {
+      const entry = item && typeof item === "object" ? item : {};
+      const description = toNullIfEmpty(
+        entry.description ?? entry.descrizione ?? entry.articolo ?? entry.itemDescription,
+      );
+      const articleCode = toNullIfEmpty(
+        entry.articleCode ??
+          entry.codiceArticolo ??
+          entry.codice ??
+          entry.article_code ??
+          entry.sku,
+      );
+      const uom = toNullIfEmpty(
+        entry.uom ?? entry.um ?? entry.unita ?? entry.unit ?? entry.unitOfMeasure,
+      );
+      const unitPriceValue = parseLocalizedNumber(
+        entry.unitPrice ??
+          entry.prezzoUnitario ??
+          entry.prezzo_unitario ??
+          entry.unit_price ??
+          entry.prezzo,
+      );
+      const unitPrice =
+        typeof unitPriceValue === "number" &&
+        Number.isFinite(unitPriceValue) &&
+        unitPriceValue > 0
+          ? unitPriceValue
+          : null;
+      const itemCurrency = normalizeCurrency(entry.currency ?? entry.valuta);
+      const confidence = clampConfidence(entry.confidence, 0);
+
+      if (!description && unitPrice === null) {
+        removedRowsCount += 1;
+        return null;
+      }
+
+      if (!itemCurrency) {
+        pushPreventivoPriceWarning(
+          warnings,
+          "MISSING_CURRENCY",
+          "warn",
+          "Una o piu righe non espongono una valuta valida.",
+        );
+      }
+
+      if (unitPrice === null) {
+        pushPreventivoPriceWarning(
+          warnings,
+          "MISSING_UNIT_PRICE",
+          "warn",
+          "Una o piu righe non espongono un prezzo unitario valido.",
+        );
+      }
+
+      return {
+        description,
+        articleCode,
+        uom,
+        unitPrice,
+        currency: itemCurrency,
+        confidence,
+      };
+    })
+    .filter((entry) => Boolean(entry));
+
+  if (removedRowsCount > 0) {
+    pushPreventivoPriceWarning(
+      warnings,
+      "PARTIAL_TABLE",
+      "info",
+      "Sono state scartate righe incomplete senza descrizione e senza prezzo unitario.",
+    );
+  }
+
+  if (Array.isArray(source.warnings)) {
+    source.warnings.forEach((warning) => {
+      if (!warning || typeof warning !== "object") {
+        return;
+      }
+
+      const code = normalizeText(warning.code).toUpperCase();
+      if (!PREVENTIVO_PRICE_EXTRACT_WARNING_CODES.has(code)) {
+        return;
+      }
+
+      pushPreventivoPriceWarning(
+        warnings,
+        code,
+        normalizeText(warning.severity).toLowerCase(),
+        warning.message ?? code,
+      );
+    });
+  }
+
+  return sanitizeUndefinedDeep({
+    schemaVersion: "preventivo_price_extract_v1",
+    document,
+    supplier,
+    items,
+    warnings,
+  });
 }
 
 function normalizeVehiclePlate(value) {
@@ -1549,6 +1789,21 @@ function buildProviderSystemPrompt(profile = "magazzino", subtype = null) {
     );
   }
 
+  if (profile === "preventivo_price_extract") {
+    return (
+      "Sei il parser documentale OpenAI della nuova IA interna del gestionale. " +
+      "Leggi preventivi PDF o immagini e rispondi solo con JSON valido. " +
+      "Non usare mai undefined: usa null se il dato non e disponibile. " +
+      "Estrai solo il contratto preventivo_price_extract_v1 con document, supplier, items e warnings. " +
+      "Date obbligatorie nel formato dd/mm/yyyy. " +
+      "Valute ammesse solo CHF o EUR. " +
+      "warnings.code puo contenere solo MISSING_CURRENCY, MISSING_UNIT_PRICE, LIKELY_TOTAL_PRICE, PARTIAL_TABLE, LOW_CONFIDENCE. " +
+      "warnings.severity puo contenere solo info, warn, error. " +
+      "confidence deve sempre essere un numero tra 0 e 1. " +
+      "Non aggiungere testo fuori dal JSON."
+    );
+  }
+
   return (
     "Sei il parser documentale della nuova IA interna del gestionale. " +
     "Leggi fatture, DDT, preventivi e documenti materiali di magazzino. " +
@@ -1747,6 +2002,57 @@ function buildProviderUserInstructions(args) {
     );
   }
 
+  if ((args.profile ?? "magazzino") === "preventivo_price_extract") {
+    return JSON.stringify(
+      {
+        task: "Estrai il contratto legacy preventivo_price_extract_v1 da un preventivo.",
+        fileName: args.fileName,
+        sourceHint: args.sourceHint,
+        outputSchema: {
+          schemaVersion: "preventivo_price_extract_v1",
+          document: {
+            number: "string|null",
+            date: "dd/mm/yyyy|null",
+            currency: "CHF|EUR|null",
+            confidence: "number(0..1)",
+          },
+          supplier: {
+            name: "string|null",
+            confidence: "number(0..1)",
+          },
+          items: [
+            {
+              description: "string|null",
+              articleCode: "string|null",
+              uom: "string|null",
+              unitPrice: "number|null",
+              currency: "CHF|EUR|null",
+              confidence: "number(0..1)",
+            },
+          ],
+          warnings: [
+            {
+              code:
+                "MISSING_CURRENCY|MISSING_UNIT_PRICE|LIKELY_TOTAL_PRICE|PARTIAL_TABLE|LOW_CONFIDENCE",
+              severity: "info|warn|error",
+              message: "string",
+            },
+          ],
+        },
+        guardrails: [
+          "Non aggiungere testo fuori dal JSON.",
+          "Se un dato non e leggibile usa null, mai undefined.",
+          "Date sempre in formato dd/mm/yyyy.",
+          "Le valute ammesse sono solo CHF o EUR.",
+          "unitPrice deve essere il prezzo unitario della riga, non il totale documento.",
+          "Non introdurre codici warning diversi da quelli richiesti.",
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
   return JSON.stringify(
     {
       task: "Estrai dati documentali strutturati per review Magazzino.",
@@ -1918,6 +2224,119 @@ async function runProviderBinaryExtraction(args) {
   });
 
   return parseProviderJson(response.output_text);
+}
+
+export async function extractPreventivoPriceFromDocument(args) {
+  const normalizedPages =
+    Array.isArray(args.pages) && args.pages.length > 0
+      ? args.pages
+          .map((page) => {
+            if (!page || typeof page !== "object") {
+              return null;
+            }
+
+            const fileName =
+              typeof page.fileName === "string" && page.fileName.trim()
+                ? page.fileName.trim()
+                : null;
+            const mimeType =
+              typeof page.mimeType === "string" && page.mimeType.trim()
+                ? page.mimeType.trim()
+                : null;
+            const contentBase64 =
+              typeof page.contentBase64 === "string" && page.contentBase64.trim()
+                ? page.contentBase64.trim()
+                : null;
+
+            if (!contentBase64) {
+              return null;
+            }
+
+            return {
+              fileName,
+              mimeType,
+              contentBase64,
+            };
+          })
+          .filter((page) => Boolean(page))
+      : [];
+  const hasPages = normalizedPages.length > 0;
+  const pagesContainPdf = normalizedPages.some(
+    (page) =>
+      normalizeText(page?.mimeType).toLowerCase() === "application/pdf" ||
+      normalizeText(page?.fileName).toLowerCase().endsWith(".pdf"),
+  );
+
+  if (hasPages && pagesContainPdf) {
+    throw new Error("Il payload pages[] supporta solo immagini per preventivo-extract.");
+  }
+
+  if (!args.providerClient) {
+    throw new Error("Provider OpenAI non configurato per l'estrazione preventivo.");
+  }
+
+  const primaryPage = normalizedPages[0] ?? null;
+  const effectiveContentBase64 = primaryPage?.contentBase64 ?? args.contentBase64;
+  const effectiveMimeType = primaryPage?.mimeType ?? args.mimeType;
+  const effectiveFileName =
+    primaryPage?.fileName ??
+    args.fileName ??
+    (normalizeText(effectiveMimeType).toLowerCase() === "application/pdf"
+      ? "preventivo.pdf"
+      : "preventivo.jpg");
+
+  if (!effectiveContentBase64) {
+    throw new Error("Contenuto documento mancante per l'estrazione preventivo.");
+  }
+
+  const buffer = Buffer.from(effectiveContentBase64, "base64");
+  let extractedText = null;
+
+  if (
+    normalizeText(effectiveMimeType).toLowerCase() === "application/pdf" ||
+    normalizeText(effectiveFileName).toLowerCase().endsWith(".pdf")
+  ) {
+    try {
+      const pdfResult = await extractTextFromPdf(buffer);
+      extractedText = normalizeMultilineText(pdfResult.text);
+    } catch {
+      extractedText = null;
+    }
+  }
+
+  const sourceHint = hasPages
+    ? "image_document"
+    : detectAttachmentSourceKind(effectiveFileName, effectiveMimeType, extractedText);
+  let providerParsed = null;
+
+  if (sourceHint === "image_document" || sourceHint === "pdf_scan") {
+    providerParsed = await runProviderBinaryExtraction({
+      providerClient: args.providerClient,
+      providerTarget: args.providerTarget,
+      profile: "preventivo_price_extract",
+      fileName: effectiveFileName,
+      mimeType: effectiveMimeType,
+      contentBase64: effectiveContentBase64,
+      pages: normalizedPages,
+      sourceHint,
+      isPdf: sourceHint === "pdf_scan",
+    });
+  } else if (extractedText) {
+    providerParsed = await runProviderTextExtraction({
+      providerClient: args.providerClient,
+      providerTarget: args.providerTarget,
+      fileName: effectiveFileName,
+      sourceHint,
+      profile: "preventivo_price_extract",
+      rawText: extractedText,
+    });
+  }
+
+  if (!providerParsed) {
+    throw new Error("Il provider OpenAI non ha restituito un JSON valido per preventivo-extract.");
+  }
+
+  return normalizePreventivoPriceExtractOutput(providerParsed);
 }
 
 function detectAttachmentSourceKind(fileName, mimeType, text) {

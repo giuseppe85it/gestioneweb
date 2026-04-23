@@ -114,3 +114,9 @@ Numero spec: 16
 - Ultima modifica: 2026-04-08
 - Cosa copre: Percorso: `docs/product/SPEC_MAGAZZINO_NEXT.md / --
 
+### SPEC_QUADRO_MANUTENZIONI_PDF_NEXT
+   - Path: docs/_live/spec/SPEC_QUADRO_MANUTENZIONI_PDF_NEXT.md
+   - Modulo: Manutenzioni
+   - Stato: IMPLEMENTATA
+   - Ultima modifica: 2026-04-22
+   - Cosa copre: Potenziamento tab "Quadro manutenzioni PDF" — lista manutenzioni in card con Δ km, targa cliccabile al dossier, modale 3 layout, PDF quadro generale sezioni-per-mezzo, PDF singolo mezzo hero mezzo-centrica, foto nei PDF.

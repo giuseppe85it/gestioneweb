@@ -2517,6 +2517,298 @@
   gap: 12px;
 }
 
+.man2-pdf-targa-btn {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #7c4a00;
+  font: inherit;
+  font-weight: 800;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.man2-pdf-targa-btn:hover {
+  color: #5a3600;
+}
+
+.man2-pdf-targa-btn:focus-visible,
+.man2-pdf-list__button:focus-visible,
+.man2-pdf-modal__close:focus-visible,
+.man2-pdf-modal__tab:focus-visible {
+  outline: 2px solid rgba(124, 74, 0, 0.32);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.man2-pdf-list {
+  margin-top: 2px;
+  padding-top: 16px;
+  border-top: 1px dashed #d6d3cd;
+}
+
+.man2-pdf-list__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.man2-pdf-list__title {
+  color: #57534e;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.man2-pdf-list__button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #7c4a00;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.man2-pdf-list__button:hover {
+  color: #5a3600;
+}
+
+.man2-pdf-list__table-wrap,
+.man2-pdf-modal__table-wrap {
+  overflow-x: auto;
+}
+
+.man2-pdf-list__table,
+.man2-pdf-modal__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.man2-pdf-list__table th,
+.man2-pdf-modal__table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e0dccf;
+  color: #78716c;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.man2-pdf-list__table td,
+.man2-pdf-modal__table td {
+  padding: 8px;
+  border-bottom: 1px solid #ede7d9;
+  vertical-align: top;
+}
+
+.man2-pdf-list__table tbody tr:last-child td,
+.man2-pdf-modal__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.man2-pdf-list__date,
+.man2-pdf-modal__date {
+  color: #1a1a1a;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.man2-pdf-list__metric,
+.man2-pdf-modal__metric {
+  color: #78716c;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.man2-pdf-list__delta,
+.man2-pdf-modal__delta {
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.man2-pdf-list__desc,
+.man2-pdf-modal__desc {
+  color: #1a1a1a;
+}
+
+.man2-pdf-list__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid #e0dccf;
+  border-radius: 999px;
+  background: #f5f1e8;
+  color: #7c4a00;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.man2-pdf-list__empty {
+  color: #78716c;
+  font-size: 0.82rem;
+}
+
+.man2-pdf-modal__overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 20px;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+}
+
+.man2-pdf-modal {
+  width: min(1000px, 100%);
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  padding: 24px 24px 28px;
+  border-radius: 24px;
+  background: #fffdf8;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
+}
+
+.man2-pdf-modal__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.man2-pdf-modal__title {
+  margin: 0;
+  color: #111;
+  font-size: 1.65rem;
+}
+
+.man2-pdf-modal__sub {
+  margin-top: 6px;
+  color: #57534e;
+  font-size: 0.92rem;
+}
+
+.man2-pdf-modal__close {
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 999px;
+  background: #f3eee4;
+  color: #1a1a1a;
+  font-size: 1.4rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.man2-pdf-modal__info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #f5f1e8;
+  color: #1a1a1a;
+  font-size: 0.88rem;
+}
+
+.man2-pdf-modal__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.man2-pdf-modal__tab {
+  padding: 10px 14px;
+  border: 1px solid #d6d3cd;
+  border-radius: 999px;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.man2-pdf-modal__tab.is-active {
+  border-color: #7c4a00;
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.man2-pdf-modal__content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.man2-pdf-modal__month-group,
+.man2-pdf-modal__type-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid #e0dccf;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.man2-pdf-modal__month-head {
+  color: #3f3a34;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.man2-pdf-modal__type-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.man2-pdf-modal__type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #c9a86a;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.man2-pdf-modal__type-label {
+  color: #1a1a1a;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.man2-pdf-modal__type-count {
+  color: #6a6358;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .man2-viste-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3242,7 +3534,8 @@
   }
 
   .man2-screen-head,
-  .man2-pdf-head {
+  .man2-pdf-head,
+  .man2-pdf-modal__head {
     flex-direction: column;
     align-items: stretch;
   }
@@ -3309,5 +3602,20 @@
   .man2-last-item__row1 {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .man2-pdf-list__head,
+  .man2-pdf-modal__tabs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .man2-pdf-modal__overlay {
+    padding: 14px 10px;
+  }
+
+  .man2-pdf-modal {
+    max-height: calc(100vh - 28px);
+    padding: 18px 16px 20px;
   }
 }

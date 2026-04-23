@@ -53,9 +53,16 @@ export function buildNextMagazzinoPath(tab?: NextMagazzinoTab) {
   return `${NEXT_MAGAZZINO_PATH}?tab=${encodeURIComponent(tab)}`;
 }
 
-export function buildNextManutenzioniPath(targa?: string) {
-  if (!targa) return NEXT_MANUTENZIONI_PATH;
-  return `${NEXT_MANUTENZIONI_PATH}?targa=${encodeURIComponent(targa)}`;
+export function buildNextManutenzioniPath(targa?: string, recordId?: string) {
+  const params = new URLSearchParams();
+  if (targa) {
+    params.set("targa", targa);
+  }
+  if (recordId) {
+    params.set("recordId", recordId);
+  }
+  const serialized = params.toString();
+  return serialized ? `${NEXT_MANUTENZIONI_PATH}?${serialized}` : NEXT_MANUTENZIONI_PATH;
 }
 
 export function buildNextDossierPath(targa: string) {

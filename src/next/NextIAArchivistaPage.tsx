@@ -76,7 +76,7 @@ const DESTINATION_OPTIONS: Array<DestinationOption> = [
   },
 ];
 
-const FLOW_MATRIX: Record<`${ArchivistaTipo}:${ArchivistaContesto}`, ArchivistaFlowState> = {
+const FLOW_MATRIX: Partial<Record<`${ArchivistaTipo}:${ArchivistaContesto}`, ArchivistaFlowState>> = {
   "fattura_ddt:magazzino": {
     availability: "active",
     titolo: "Fattura / DDT + Magazzino",
@@ -89,12 +89,6 @@ const FLOW_MATRIX: Record<`${ArchivistaTipo}:${ArchivistaContesto}`, ArchivistaF
     titolo: "Fattura / DDT + Manutenzione",
     descrizione: "Review documentale dedicata alla manutenzione con backend OpenAI separato.",
     badge: "Attivo ora",
-  },
-  "fattura_ddt:documento_mezzo": {
-    availability: "not_available",
-    titolo: "Fattura / DDT + Documento mezzo",
-    descrizione: "Combinazione non prevista nel modello V1.",
-    badge: "Non disponibile",
   },
   "preventivo:magazzino": {
     availability: "active",
@@ -109,24 +103,6 @@ const FLOW_MATRIX: Record<`${ArchivistaTipo}:${ArchivistaContesto}`, ArchivistaF
     descrizione:
       "Review preventivo officina con campi mezzo-centrici e archiviazione finale nel ramo preventivi.",
     badge: "Attivo ora",
-  },
-  "preventivo:documento_mezzo": {
-    availability: "not_available",
-    titolo: "Preventivo + Documento mezzo",
-    descrizione: "Combinazione non prevista nel modello V1.",
-    badge: "Non disponibile",
-  },
-  "documento_mezzo:magazzino": {
-    availability: "not_available",
-    titolo: "Documento mezzo + Magazzino",
-    descrizione: "Combinazione non prevista nel modello V1.",
-    badge: "Non disponibile",
-  },
-  "documento_mezzo:manutenzione": {
-    availability: "not_available",
-    titolo: "Documento mezzo + Manutenzione",
-    descrizione: "Combinazione non prevista nel modello V1.",
-    badge: "Non disponibile",
   },
   "documento_mezzo:documento_mezzo": {
     availability: "active",
@@ -226,7 +202,7 @@ export default function NextIAArchivistaPage() {
   const [contesto, setContesto] = useState<ArchivistaContesto>(normalizedPreset.contesto);
   const [documentoMezzoSubtype, setDocumentoMezzoSubtype] =
     useState<ArchivistaDocumentoMezzoSubtype>("libretto");
-  const activeFlow = FLOW_MATRIX[buildFlowKey(tipo, contesto)];
+  const activeFlow = FLOW_MATRIX[buildFlowKey(tipo, contesto)]!;
   const currentTypeLabel = getTypeLabel(tipo);
   const currentContextLabel = getContextLabel(contesto);
   const isArchivistaDocumentoMezzoLibretto =

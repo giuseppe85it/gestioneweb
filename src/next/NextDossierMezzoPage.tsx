@@ -24,6 +24,7 @@ import { deleteNextDocumentoCosto } from "./domain/nextDocumentiCostiDomain";
 import {
   buildNextAnalisiEconomicaPath,
   buildNextDossierGommePath,
+  buildNextManutenzioniPath,
   buildNextDossierRifornimentiPath,
   NEXT_DETTAGLIO_LAVORI_PATH,
   NEXT_DOSSIER_LISTA_PATH,
@@ -385,6 +386,10 @@ export default function NextDossierMezzoPage() {
   };
 
   const openLavoro = (id: string) => navigate(`${NEXT_DETTAGLIO_LAVORI_PATH}/${encodeURIComponent(id)}`);
+  const openManutenzione = (item: NextDossierManutenzioneLegacyItem) => {
+    setModal(null);
+    navigate(buildNextManutenzioniPath(item.targa, item.id));
+  };
   const back = () => navigate(NEXT_DOSSIER_LISTA_PATH);
 
   if (loading) {
@@ -520,7 +525,7 @@ export default function NextDossierMezzoPage() {
           ))}
         </div></section>
 
-        <section className="dossier-card"><div className="dossier-card-header"><h2>Manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
+        <section className="dossier-card"><div className="dossier-card-header"><h2>Manutenzioni</h2><button className="dossier-button" type="button" onClick={() => setModal("manutenzioni")}>Mostra tutti</button></div><div className="dossier-card-body">{legacy.manutenzioni.slice(0, 5).length === 0 ? <p className="dossier-empty">Nessuna manutenzione registrata per questo mezzo.</p> : <ul className="dossier-list">{legacy.manutenzioni.slice(0, 5).map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>}</div></section>
 
         <section className="dossier-card"><div className="dossier-card-header"><h2>Stato gomme per asse</h2></div><div className="dossier-card-body">{legacy.gommePerAsse.length === 0 ? <p className="dossier-empty">Nessun cambio gomme ordinario strutturato disponibile.</p> : <ul className="dossier-list">{legacy.gommePerAsse.map((item) => <li key={item.asseId} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.asseLabel}</strong></div><div className="dossier-list-meta"><span>{formatGommePerAsseMeta(item)}</span></div></li>)}</ul>}</div></section>
 
@@ -544,7 +549,7 @@ export default function NextDossierMezzoPage() {
               </div>
               <div className="dossier-modal-body">
                 {key === "manutenzioni" ? (
-                  lavoriLists.manutenzioni.length === 0 ? <p>Nessuna manutenzione registrata.</p> : <ul className="dossier-list">{lavoriLists.manutenzioni.map((item) => <li key={item.id} className="dossier-list-item"><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>
+                  lavoriLists.manutenzioni.length === 0 ? <p>Nessuna manutenzione registrata.</p> : <ul className="dossier-list">{lavoriLists.manutenzioni.map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openManutenzione(item)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><strong>{item.descrizione || "-"}</strong></div><div className="dossier-list-meta"><span>{item.data || "-"}</span><span>{formatKmOre(item)}</span></div></li>)}</ul>
                 ) : (
                   lavoriLists[key].length === 0 ? <p>{key === "attesa" ? "Nessun lavoro in attesa." : "Nessun lavoro eseguito."}</p> : <ul className="dossier-list">{lavoriLists[key].map((item) => <li key={item.id} className="dossier-list-item" onClick={() => openLavoro(item.id)} style={{ cursor: "pointer" }}><div className="dossier-list-main"><span className={`dossier-badge ${key === "attesa" ? "badge-info" : "badge-success"}`}>{key === "attesa" ? "IN ATTESA" : "ESEGUITO"}</span><strong>{item.descrizione}</strong></div><div className="dossier-list-meta"><span>{item.dettagli || "-"}</span><span>{item.dataInserimento || "-"}</span></div></li>)}</ul>
                 )}

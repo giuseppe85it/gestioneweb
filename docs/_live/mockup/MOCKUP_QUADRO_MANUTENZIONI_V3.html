@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Mockup v3 — Card + PDF Quadro manutenzioni</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Inter", sans-serif;
+    background: #1a1a1a;
+    color: #f5f1e8;
+    padding: 24px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 8px; color: #f5f1e8; }
+  h2 { font-size: 16px; margin: 32px 0 12px; color: #c9a86a; letter-spacing: 0.05em; text-transform: uppercase; }
+  .sub { color: #a8a29e; font-size: 13px; margin-bottom: 20px; }
+
+  .note {
+    background: #2a2a2a;
+    border-left: 4px solid #c9a86a;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #e7e5e4;
+    margin-bottom: 20px;
+  }
+
+  /* =========================================== */
+  /* CARD WEB                                    */
+  /* =========================================== */
+  .card {
+    background: #f5f1e8;
+    color: #1a1a1a;
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 24px;
+    border: 1px solid #ede7d9;
+  }
+  .thumb {
+    width: 140px;
+    height: 140px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #94a3b8, #475569);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 32px;
+    font-weight: 700;
+  }
+  .head {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 16px;
+  }
+  .field { display: flex; flex-direction: column; }
+  .label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: #78716c;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .value { font-size: 18px; font-weight: 700; color: #1a1a1a; }
+  .value.small { font-size: 15px; font-weight: 600; }
+
+  .targa-link {
+    color: #7c4a00;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .targa-link:hover { color: #5a3600; }
+
+  .buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-dark { background: #1a1a1a; color: #fff; }
+  .btn-light { background: #fff; border-color: #d6d3cd; color: #1a1a1a; }
+
+  /* Lista manutenzioni inline */
+  .manut-section {
+    margin-top: 18px;
+    border-top: 1px dashed #d6d3cd;
+    padding-top: 16px;
+  }
+  .manut-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .manut-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #57534e;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .btn-see-all {
+    background: none;
+    border: none;
+    color: #7c4a00;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .btn-see-all:hover { color: #5a3600; }
+
+  .manut-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .manut-table th {
+    text-align: left;
+    padding: 6px 8px;
+    color: #78716c;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #e0dccf;
+  }
+  .manut-table td {
+    padding: 8px;
+    border-bottom: 1px solid #ede7d9;
+    vertical-align: top;
+  }
+  .manut-table tr:last-child td { border-bottom: none; }
+  .manut-date { white-space: nowrap; color: #1a1a1a; font-weight: 600; }
+  .manut-km { white-space: nowrap; color: #78716c; font-size: 12px; }
+  .manut-delta {
+    white-space: nowrap;
+    color: #166534;
+    font-weight: 600;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .manut-desc { color: #1a1a1a; }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #f5f1e8;
+    color: #7c4a00;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid #e0dccf;
+  }
+
+  /* =========================================== */
+  /* MODALE                                      */
+  /* =========================================== */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 20px;
+    overflow-y: auto;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #f5f1e8;
+    color: #1a1a1a;
+    width: 100%;
+    max-width: 1000px;
+    border-radius: 16px;
+    padding: 28px 32px;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.4);
+  }
+  .modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e0dccf;
+  }
+  .modal-title { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+  .modal-sub { font-size: 13px; color: #78716c; }
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #78716c;
+    line-height: 1;
+  }
+  .modal-km-bar {
+    background: #ede7d9;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 14px 0 20px;
+    font-size: 13px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+  .modal-km-bar strong { color: #7c4a00; font-weight: 700; }
+
+  .modal-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    background: #ede7d9;
+    padding: 4px;
+    border-radius: 10px;
+    width: fit-content;
+  }
+  .modal-tab {
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #57534e;
+  }
+  .modal-tab.active { background: #1a1a1a; color: #fff; }
+
+  .layout-content > div { display: none; }
+  .layout-content > div.active { display: block; }
+
+  .flat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .flat-table th {
+    text-align: left;
+    padding: 10px;
+    background: #ede7d9;
+    color: #57534e;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .flat-table td {
+    padding: 10px;
+    border-bottom: 1px solid #ede7d9;
+    vertical-align: top;
+  }
+  .flat-table .td-delta {
+    color: #166534;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .flat-table .td-km {
+    font-variant-numeric: tabular-nums;
+    color: #57534e;
+  }
+
+  /* Layout B: per mese */
+  .month-group { margin-bottom: 20px; }
+  .month-head {
+    font-size: 12px;
+    font-weight: 700;
+    color: #7c4a00;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #c9a86a;
+  }
+
+  /* Layout C: per tipo */
+  .type-group {
+    margin-bottom: 20px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px;
+    border: 1px solid #e0dccf;
+  }
+  .type-head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .type-icon {
+    width: 28px; height: 28px;
+    background: #1a1a1a;
+    color: #fff;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .type-label { font-size: 14px; font-weight: 700; }
+  .type-count { font-size: 11px; color: #78716c; }
+
+  /* =========================================== */
+  /* MOCKUP PDF                                  */
+  /* =========================================== */
+  .pdf-page {
+    background: #fff;
+    color: #1a1a1a;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto 20px;
+    padding: 40px 48px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    border-radius: 4px;
+  }
+  .pdf-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+  }
+  .pdf-title { font-size: 20px; font-weight: 700; }
+  .pdf-meta { font-size: 11px; color: #6b7280; }
+
+  .pdf-section {
+    margin-bottom: 24px;
+    page-break-inside: avoid;
+  }
+  .pdf-sec-head {
+    background: #1a1a1a;
+    color: #fff;
+    padding: 10px 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    font-size: 11px;
+    border-radius: 4px 4px 0 0;
+  }
+  .pdf-sec-head .k {
+    font-size: 9px;
+    color: #c9a86a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .pdf-sec-head .v { font-weight: 700; font-size: 13px; }
+  .pdf-sec-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .pdf-sec-table th {
+    background: #374151;
+    color: #fff;
+    text-align: left;
+    padding: 6px;
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .pdf-sec-table td {
+    padding: 6px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .pdf-delta {
+    color: #166534;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .pdf-km { font-variant-numeric: tabular-nums; }
+
+  /* PDF singolo mezzo: hero mezzo-centrica */
+  .pdf-mezzo-hero {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+    color: #fff;
+    padding: 24px 28px;
+    border-radius: 4px 4px 0 0;
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 24px;
+    align-items: center;
+    border-left: 6px solid #c9a86a;
+  }
+  .pdf-mezzo-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .pdf-mezzo-targa {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #c9a86a;
+    line-height: 1;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+  .pdf-mezzo-model {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e7e5e4;
+  }
+  .pdf-mezzo-right {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 20px;
+  }
+  .pdf-mezzo-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .pdf-mezzo-stat .k {
+    font-size: 9px;
+    color: #c9a86a;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+  .pdf-mezzo-stat .v {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  /* Foto mezzo nell'hero singolo mezzo */
+  .pdf-mezzo-photo {
+    width: 140px;
+    height: 105px;
+    border-radius: 4px;
+    object-fit: cover;
+    border: 2px solid #c9a86a;
+    background: linear-gradient(135deg, #94a3b8, #475569);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .pdf-mezzo-hero.with-photo {
+    grid-template-columns: 140px 1fr 1.2fr;
+  }
+
+  /* Foto piccola nel quadro generale per ciascuna sezione */
+  .pdf-sec-head.with-photo {
+    grid-template-columns: 56px 1fr 1fr 1fr 1fr;
+    align-items: center;
+  }
+  .pdf-sec-photo {
+    width: 56px;
+    height: 42px;
+    border-radius: 3px;
+    object-fit: cover;
+    background: linear-gradient(135deg, #94a3b8, #475569);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    border: 1px solid #c9a86a;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Mockup v3 — pacchetto completo</h1>
+  <div class="sub">Card web + modale "Tutte le manutenzioni" + PDF quadro generale (sezione per mezzo, con foto) + PDF singolo mezzo (hero con foto). Delta km ovunque.</div>
+
+  <div class="note">
+    <strong>Istruzioni:</strong> (1) clicca la targa <em>TI324623</em> per testare il link dossier. (2) Clicca "Vedi tutte (7)" per aprire il modale — dentro prova i 3 layout. (3) Scorri per vedere il PDF quadro generale (le prime 2 sezioni hanno foto, la terza "CD789EF" no — è il fallback). (4) In fondo il PDF singolo mezzo con foto hero.
+  </div>
+
+  <!-- ========================================= -->
+  <h2>1 · Card web (vista /next/manutenzioni)</h2>
+  <!-- ========================================= -->
+
+  <div class="card">
+    <div class="thumb">DAF</div>
+    <div>
+      <div class="head">
+        <div class="field">
+          <span class="label">Targa</span>
+          <span class="value"><span class="targa-link" onclick="alert('→ Apre dossier di TI324623')">TI324623</span></span>
+        </div>
+        <div class="field">
+          <span class="label">Mezzo / Modello</span>
+          <span class="value small">DAF FT XF</span>
+        </div>
+        <div class="field">
+          <span class="label">Autista</span>
+          <span class="value small">IVAN ATTARDI</span>
+        </div>
+      </div>
+
+      <div class="head">
+        <div class="field">
+          <span class="label">Km attuali</span>
+          <span class="value small">267.400 km</span>
+        </div>
+        <div class="field">
+          <span class="label">Ultima manutenzione</span>
+          <span class="value small">22/04/2026</span>
+        </div>
+        <div class="field">
+          <span class="label">Tipo</span>
+          <span class="value small">mezzo</span>
+        </div>
+      </div>
+
+      <div class="manut-section">
+        <div class="manut-head">
+          <div class="manut-title">Ultime 3 manutenzioni</div>
+          <button class="btn-see-all" onclick="openModal()">Vedi tutte (7) →</button>
+        </div>
+        <table class="manut-table">
+          <thead>
+            <tr>
+              <th style="width: 90px">Data</th>
+              <th style="width: 80px">Km</th>
+              <th style="width: 80px">Δ km</th>
+              <th style="width: 90px">Tipo</th>
+              <th>Descrizione</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="manut-date">22/04/2026</td>
+              <td class="manut-km">267.400</td>
+              <td class="manut-delta">0</td>
+              <td><span class="pill">mezzo</span></td>
+              <td class="manut-desc">Carico compressore aria condizionata e aggiornamento software</td>
+            </tr>
+            <tr>
+              <td class="manut-date">08/04/2026</td>
+              <td class="manut-km">264.120</td>
+              <td class="manut-delta">+3.280</td>
+              <td><span class="pill">mezzo</span></td>
+              <td class="manut-desc">Sostituzione filtro gasolio e controllo pressione pneumatici</td>
+            </tr>
+            <tr>
+              <td class="manut-date">28/03/2026</td>
+              <td class="manut-km">260.850</td>
+              <td class="manut-delta">+6.550</td>
+              <td><span class="pill">mezzo</span></td>
+              <td class="manut-desc">Tagliando ordinario 260.000 km — olio motore, filtri aria e abitacolo</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="buttons">
+        <button class="btn btn-dark">PDF</button>
+        <button class="btn btn-light">Apri dettaglio</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================= -->
+  <h2>2 · PDF "Quadro generale" (variante B — sezione per mezzo)</h2>
+  <!-- ========================================= -->
+
+  <div class="pdf-page">
+    <div class="pdf-head">
+      <div>
+        <div class="pdf-title">Quadro manutenzioni</div>
+        <div class="pdf-meta">Periodo: 01/03/2026 – 22/04/2026 · Filtro: tutti i mezzi</div>
+      </div>
+      <div class="pdf-meta">Generato: 22/04/2026 20:30</div>
+    </div>
+
+    <!-- SEZIONE MEZZO 1 -->
+    <div class="pdf-section">
+      <div class="pdf-sec-head with-photo">
+        <div class="pdf-sec-photo">DAF</div>
+        <div><span class="k">Targa</span><span class="v">TI324623</span></div>
+        <div><span class="k">Mezzo</span><span class="v">DAF FT XF</span></div>
+        <div><span class="k">Autista</span><span class="v">Ivan Attardi</span></div>
+        <div><span class="k">Km attuali</span><span class="v">267.400</span></div>
+      </div>
+      <table class="pdf-sec-table">
+        <thead>
+          <tr><th style="width:80px">Data</th><th style="width:70px">Km</th><th style="width:70px">Δ km</th><th style="width:80px">Tipo</th><th>Descrizione</th><th style="width:110px">Fornitore</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>22/04/2026</td><td class="pdf-km">267.400</td><td class="pdf-delta">0</td><td>mezzo</td><td>Carico compressore aria condizionata e aggiornamento software</td><td>Off. Rossi</td></tr>
+          <tr><td>18/04/2026</td><td class="pdf-km">266.200</td><td class="pdf-delta">+1.200</td><td>gomme</td><td>Rotazione pneumatici stagionale</td><td>Gomme Bianchi</td></tr>
+          <tr><td>08/04/2026</td><td class="pdf-km">264.120</td><td class="pdf-delta">+3.280</td><td>mezzo</td><td>Sostituzione filtro gasolio e controllo pressione pneumatici</td><td>Off. Rossi</td></tr>
+          <tr><td>28/03/2026</td><td class="pdf-km">260.850</td><td class="pdf-delta">+6.550</td><td>mezzo</td><td>Tagliando ordinario 260.000 km — olio motore, filtri aria e abitacolo</td><td>Off. Rossi</td></tr>
+          <tr><td>15/03/2026</td><td class="pdf-km">258.300</td><td class="pdf-delta">+9.100</td><td>gomme</td><td>Sostituzione pneumatico anteriore sinistro</td><td>Gomme Bianchi</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- SEZIONE MEZZO 2 -->
+    <div class="pdf-section">
+      <div class="pdf-sec-head with-photo">
+        <div class="pdf-sec-photo">MB</div>
+        <div><span class="k">Targa</span><span class="v">AB456CD</span></div>
+        <div><span class="k">Mezzo</span><span class="v">Mercedes Actros</span></div>
+        <div><span class="k">Autista</span><span class="v">Luigi Bianchi</span></div>
+        <div><span class="k">Km attuali</span><span class="v">412.900</span></div>
+      </div>
+      <table class="pdf-sec-table">
+        <thead>
+          <tr><th style="width:80px">Data</th><th style="width:70px">Km</th><th style="width:70px">Δ km</th><th style="width:80px">Tipo</th><th>Descrizione</th><th style="width:110px">Fornitore</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>15/04/2026</td><td class="pdf-km">412.900</td><td class="pdf-delta">0</td><td>mezzo</td><td>Revisione impianto frenante — sostituzione pastiglie anteriori e dischi</td><td>Off. Rossi</td></tr>
+          <tr><td>20/03/2026</td><td class="pdf-km">408.200</td><td class="pdf-delta">+4.700</td><td>mezzo</td><td>Tagliando 400.000 km</td><td>Off. Rossi</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- SEZIONE MEZZO 3 -->
+    <div class="pdf-section">
+      <div class="pdf-sec-head">
+        <div><span class="k">Targa</span><span class="v">CD789EF</span></div>
+        <div><span class="k">Mezzo</span><span class="v">Iveco Stralis</span></div>
+        <div><span class="k">Autista</span><span class="v">Marco Rossi</span></div>
+        <div><span class="k">Km attuali</span><span class="v">198.500</span></div>
+      </div>
+      <table class="pdf-sec-table">
+        <thead>
+          <tr><th style="width:80px">Data</th><th style="width:70px">Km</th><th style="width:70px">Δ km</th><th style="width:80px">Tipo</th><th>Descrizione</th><th style="width:110px">Fornitore</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>02/04/2026</td><td class="pdf-km">198.500</td><td class="pdf-delta">0</td><td>rimorchio</td><td>Controllo impianto luci e sostituzione faro posteriore destro</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ========================================= -->
+  <h2>3 · PDF singolo mezzo (pulsante "PDF" sulla card)</h2>
+  <!-- ========================================= -->
+
+  <div class="pdf-page">
+    <div class="pdf-head">
+      <div>
+        <div class="pdf-title">Scheda manutenzioni mezzo</div>
+        <div class="pdf-meta">Periodo: 01/03/2026 – 22/04/2026</div>
+      </div>
+      <div class="pdf-meta">Generato: 22/04/2026 20:30</div>
+    </div>
+
+    <!-- INTESTAZIONE MEZZO-CENTRICA: header grande dedicato al mezzo -->
+    <div class="pdf-mezzo-hero with-photo">
+      <div class="pdf-mezzo-photo">DAF</div>
+      <div class="pdf-mezzo-left">
+        <div class="pdf-mezzo-targa">TI324623</div>
+        <div class="pdf-mezzo-model">DAF FT XF</div>
+      </div>
+      <div class="pdf-mezzo-right">
+        <div class="pdf-mezzo-stat">
+          <span class="k">Km attuali</span>
+          <span class="v">267.400</span>
+        </div>
+        <div class="pdf-mezzo-stat">
+          <span class="k">Autista</span>
+          <span class="v">Ivan Attardi</span>
+        </div>
+        <div class="pdf-mezzo-stat">
+          <span class="k">Ultima manutenzione</span>
+          <span class="v">22/04/2026</span>
+        </div>
+        <div class="pdf-mezzo-stat">
+          <span class="k">Tot. interventi nel periodo</span>
+          <span class="v">5</span>
+        </div>
+      </div>
+    </div>
+
+    <table class="pdf-sec-table" style="margin-top: 0">
+      <thead>
+        <tr><th style="width:80px">Data</th><th style="width:70px">Km</th><th style="width:70px">Δ km</th><th style="width:80px">Tipo</th><th>Descrizione</th><th style="width:110px">Fornitore</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>22/04/2026</td><td class="pdf-km">267.400</td><td class="pdf-delta">0</td><td>mezzo</td><td>Carico compressore aria condizionata e aggiornamento software</td><td>Off. Rossi</td></tr>
+        <tr><td>18/04/2026</td><td class="pdf-km">266.200</td><td class="pdf-delta">+1.200</td><td>gomme</td><td>Rotazione pneumatici stagionale</td><td>Gomme Bianchi</td></tr>
+        <tr><td>08/04/2026</td><td class="pdf-km">264.120</td><td class="pdf-delta">+3.280</td><td>mezzo</td><td>Sostituzione filtro gasolio e controllo pressione pneumatici</td><td>Off. Rossi</td></tr>
+        <tr><td>28/03/2026</td><td class="pdf-km">260.850</td><td class="pdf-delta">+6.550</td><td>mezzo</td><td>Tagliando ordinario 260.000 km — olio motore, filtri aria e abitacolo</td><td>Off. Rossi</td></tr>
+        <tr><td>15/03/2026</td><td class="pdf-km">258.300</td><td class="pdf-delta">+9.100</td><td>gomme</td><td>Sostituzione pneumatico anteriore sinistro</td><td>Gomme Bianchi</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+
+</div>
+
+<!-- ========================================= -->
+<!-- MODALE                                    -->
+<!-- ========================================= -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2 class="modal-title">Tutte le manutenzioni — TI324623</h2>
+        <div class="modal-sub">DAF FT XF · Ivan Attardi · Periodo: 01/03/2026 – 22/04/2026 · 7 manutenzioni</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+
+    <div class="modal-km-bar">
+      <span>Km attuali del mezzo: <strong>267.400 km</strong></span>
+      <span style="color: #78716c;">· la colonna Δ km mostra quanti km ha percorso il mezzo dall'intervento ad oggi</span>
+    </div>
+
+    <div class="modal-tabs">
+      <button class="modal-tab active" onclick="switchLayout(this, 'flat')">A — Per data</button>
+      <button class="modal-tab" onclick="switchLayout(this, 'month')">B — Per mese</button>
+      <button class="modal-tab" onclick="switchLayout(this, 'type')">C — Per tipo</button>
+    </div>
+
+    <div class="layout-content">
+      <!-- A: FLAT PER DATA -->
+      <div id="layout-flat" class="active">
+        <table class="flat-table">
+          <thead>
+            <tr><th style="width:100px">Data</th><th style="width:80px">Km</th><th style="width:80px">Δ km</th><th style="width:90px">Tipo</th><th>Descrizione</th><th style="width:110px">Fornitore</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>22/04/2026</td><td class="td-km">267.400</td><td class="td-delta">0</td><td><span class="pill">mezzo</span></td><td>Carico compressore aria condizionata e aggiornamento software</td><td>Off. Rossi</td></tr>
+            <tr><td>18/04/2026</td><td class="td-km">266.200</td><td class="td-delta">+1.200</td><td><span class="pill">gomme</span></td><td>Rotazione pneumatici stagionale</td><td>Gomme Bianchi</td></tr>
+            <tr><td>08/04/2026</td><td class="td-km">264.120</td><td class="td-delta">+3.280</td><td><span class="pill">mezzo</span></td><td>Sostituzione filtro gasolio e controllo pressione pneumatici</td><td>Off. Rossi</td></tr>
+            <tr><td>03/04/2026</td><td class="td-km">262.540</td><td class="td-delta">+4.860</td><td><span class="pill">rimorchio</span></td><td>Controllo ganci e sistema di aggancio rimorchio</td><td>—</td></tr>
+            <tr><td>28/03/2026</td><td class="td-km">260.850</td><td class="td-delta">+6.550</td><td><span class="pill">mezzo</span></td><td>Tagliando ordinario 260.000 km — olio motore, filtri aria e abitacolo</td><td>Off. Rossi</td></tr>
+            <tr><td>15/03/2026</td><td class="td-km">258.300</td><td class="td-delta">+9.100</td><td><span class="pill">gomme</span></td><td>Sostituzione pneumatico anteriore sinistro</td><td>Gomme Bianchi</td></tr>
+            <tr><td>02/03/2026</td><td class="td-km">255.100</td><td class="td-delta">+12.300</td><td><span class="pill">mezzo</span></td><td>Controllo impianto frenante e livello liquidi</td><td>Off. Rossi</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- B: PER MESE -->
+      <div id="layout-month">
+        <div class="month-group">
+          <div class="month-head">Aprile 2026 — 4 manutenzioni</div>
+          <table class="flat-table">
+            <tbody>
+              <tr><td style="width:100px">22/04/2026</td><td style="width:80px" class="td-km">267.400</td><td style="width:80px" class="td-delta">0</td><td style="width:90px"><span class="pill">mezzo</span></td><td>Carico compressore aria condizionata e aggiornamento software</td></tr>
+              <tr><td>18/04/2026</td><td class="td-km">266.200</td><td class="td-delta">+1.200</td><td><span class="pill">gomme</span></td><td>Rotazione pneumatici stagionale</td></tr>
+              <tr><td>08/04/2026</td><td class="td-km">264.120</td><td class="td-delta">+3.280</td><td><span class="pill">mezzo</span></td><td>Sostituzione filtro gasolio e controllo pressione pneumatici</td></tr>
+              <tr><td>03/04/2026</td><td class="td-km">262.540</td><td class="td-delta">+4.860</td><td><span class="pill">rimorchio</span></td><td>Controllo ganci e sistema di aggancio rimorchio</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="month-group">
+          <div class="month-head">Marzo 2026 — 3 manutenzioni</div>
+          <table class="flat-table">
+            <tbody>
+              <tr><td style="width:100px">28/03/2026</td><td style="width:80px" class="td-km">260.850</td><td style="width:80px" class="td-delta">+6.550</td><td style="width:90px"><span class="pill">mezzo</span></td><td>Tagliando ordinario 260.000 km — olio motore, filtri aria e abitacolo</td></tr>
+              <tr><td>15/03/2026</td><td class="td-km">258.300</td><td class="td-delta">+9.100</td><td><span class="pill">gomme</span></td><td>Sostituzione pneumatico anteriore sinistro</td></tr>
+              <tr><td>02/03/2026</td><td class="td-km">255.100</td><td class="td-delta">+12.300</td><td><span class="pill">mezzo</span></td><td>Controllo impianto frenante e livello liquidi</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- C: PER TIPO -->
+      <div id="layout-type">
+        <div class="type-group">
+          <div class="type-head">
+            <div class="type-icon">M</div>
+            <div class="type-label">Mezzo</div>
+            <div class="type-count">· 4 interventi</div>
+          </div>
+          <table class="flat-table">
+            <tbody>
+              <tr><td style="width:100px">22/04/2026</td><td style="width:80px" class="td-km">267.400</td><td style="width:80px" class="td-delta">0</td><td>Carico compressore aria condizionata e aggiornamento software</td></tr>
+              <tr><td>08/04/2026</td><td class="td-km">264.120</td><td class="td-delta">+3.280</td><td>Sostituzione filtro gasolio e controllo pressione pneumatici</td></tr>
+              <tr><td>28/03/2026</td><td class="td-km">260.850</td><td class="td-delta">+6.550</td><td>Tagliando ordinario 260.000 km — olio motore, filtri aria e abitacolo</td></tr>
+              <tr><td>02/03/2026</td><td class="td-km">255.100</td><td class="td-delta">+12.300</td><td>Controllo impianto frenante e livello liquidi</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="type-group">
+          <div class="type-head">
+            <div class="type-icon">G</div>
+            <div class="type-label">Gomme</div>
+            <div class="type-count">· 2 interventi</div>
+          </div>
+          <table class="flat-table">
+            <tbody>
+              <tr><td style="width:100px">18/04/2026</td><td style="width:80px" class="td-km">266.200</td><td style="width:80px" class="td-delta">+1.200</td><td>Rotazione pneumatici stagionale</td></tr>
+              <tr><td>15/03/2026</td><td class="td-km">258.300</td><td class="td-delta">+9.100</td><td>Sostituzione pneumatico anteriore sinistro</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="type-group">
+          <div class="type-head">
+            <div class="type-icon">R</div>
+            <div class="type-label">Rimorchio</div>
+            <div class="type-count">· 1 intervento</div>
+          </div>
+          <table class="flat-table">
+            <tbody>
+              <tr><td style="width:100px">03/04/2026</td><td style="width:80px" class="td-km">262.540</td><td style="width:80px" class="td-delta">+4.860</td><td>Controllo ganci e sistema di aggancio rimorchio</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openModal() { document.getElementById('modal').classList.add('open'); }
+  function closeModal() { document.getElementById('modal').classList.remove('open'); }
+  function switchLayout(btn, layout) {
+    document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.layout-content > div').forEach(d => d.classList.remove('active'));
+    document.getElementById('layout-' + layout).classList.add('active');
+  }
+  document.getElementById('modal').addEventListener('click', e => {
+    if (e.target.id === 'modal') closeModal();
+  });
+</script>
+</body>
+</html>

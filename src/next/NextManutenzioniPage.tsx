@@ -76,6 +76,25 @@ type PdfMetricInfo = {
   deltaValue?: string;
 };
 
+type PdfModalLayout = "data" | "month" | "type";
+
+type PdfImageData = {
+  dataUrl: string;
+  format: "JPEG" | "PNG";
+};
+
+type PdfDocWithPlugins = {
+  addFileToVFS(fileName: string, fileData: string): void;
+  addFont(
+    postScriptName: string,
+    id: string,
+    fontStyle: "normal" | "bold" | "italic" | "bolditalic",
+    fontWeight?: string | number,
+  ): void;
+  setFont(fontName: string, fontStyle?: "normal" | "bold" | "italic" | "bolditalic"): void;
+  __nextUnicodeFontReady?: boolean;
+};
+
 type PageLoadData = {
   storico: NextManutenzioniLegacyDatasetRecord[];
   mezzi: NextManutenzioniMezzoOption[];
@@ -89,6 +108,13 @@ const MESE_LABEL = new Intl.DateTimeFormat("it-IT", {
   month: "long",
   year: "numeric",
 });
+
+const PDF_UNICODE_FONT_URL =
+  "https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxP.ttf";
+const PDF_UNICODE_FONT_FILE = "Roboto-Regular.ttf";
+const PDF_UNICODE_FONT_FAMILY = "RobotoUnicode";
+
+let pdfUnicodeFontBase64Promise: Promise<string | null> | null = null;
 
 const TAGLIANDO_COMPONENTI = [
   "olio motore",
@@ -180,9 +206,51 @@ function formatDateShort(value: string | null | undefined) {
   return `${day}/${month}`;
 }
 
+function formatDateFull(value: string | null | undefined) {
+  const parsed = parseLegacyDate(value);
+  if (!parsed) return value || "DA VERIFICARE";
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${parsed.getFullYear()}`;
+}
+
 function formatNumberIt(value: number | null | undefined) {
   if (value == null) return "DA VERIFICARE";
   return new Intl.NumberFormat("it-IT").format(value);
+}
+
+function capitalizeLabel(value: string) {
+  if (!value) return value;
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function resolvePdfMaintenanceTypeLabel(item: NextManutenzioniLegacyDatasetRecord) {
+  if (
+    item.gommeInterventoTipo === "ordinario" ||
+    item.gommeInterventoTipo === "straordinario" ||
+    (item.gommePerAsse?.length ?? 0) > 0 ||
+    (item.assiCoinvolti?.length ?? 0) > 0
+  ) {
+    return "gomme";
+  }
+
+  if (item.tipo === "compressore") return "compressore";
+  if (item.tipo === "attrezzature") return "attrezzature";
+  return item.tipo || "altro";
+}
+
+function resolvePdfListTitle(count: number) {
+  if (count <= 1) return "Ultima manutenzione";
+  if (count === 2) return "Ultime 2 manutenzioni";
+  return "Ultime 3 manutenzioni";
+}
+
+function buildPdfPeriodRangeLabel(items: NextManutenzioniLegacyDatasetRecord[]) {
+  if (!items.length) return "DA VERIFICARE";
+  const sorted = [...items].sort(
+    (left, right) => getLegacyDateTimestamp(left.data) - getLegacyDateTimestamp(right.data),
+  );
+  return `${formatDateFull(sorted[0]?.data)} – ${formatDateFull(sorted[sorted.length - 1]?.data)}`;
 }
 
 function buildDescrizioneSnippet(value: string, limit = 140) {
@@ -224,24 +292,220 @@ function formatPdfGenerationDate() {
   return formatDateTimeUI(new Date());
 }
 
-async function loadPdfImageData(url: string): Promise<{ dataUrl: string; format: "JPEG" | "PNG" } | null> {
+function getPdfImageFormat(mimeType: string | null | undefined): "JPEG" | "PNG" {
+  return mimeType?.toLowerCase().includes("png") ? "PNG" : "JPEG";
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+async function getPdfUnicodeFontBase64(): Promise<string | null> {
+  if (!pdfUnicodeFontBase64Promise) {
+    pdfUnicodeFontBase64Promise = (async () => {
+      try {
+        const response = await fetch(PDF_UNICODE_FONT_URL);
+        if (!response.ok) return null;
+        const buffer = await response.arrayBuffer();
+        return arrayBufferToBase64(buffer);
+      } catch {
+        return null;
+      }
+    })();
+  }
+
+  return pdfUnicodeFontBase64Promise;
+}
+
+function normalizePdfFallbackText(value: string): string {
+  return value
+    .replace(/Δ/g, "Delta")
+    .replace(/[–—]/g, "-")
+    .replace(/€/g, "EUR");
+}
+
+function toPdfText(value: string, fontReady: boolean): string {
+  return fontReady ? value : normalizePdfFallbackText(value);
+}
+
+async function ensurePdfUnicodeFont(doc: PdfDocWithPlugins): Promise<boolean> {
+  if (doc.__nextUnicodeFontReady) {
+    doc.setFont(PDF_UNICODE_FONT_FAMILY, "normal");
+    return true;
+  }
+
   try {
-    const response = await fetch(url);
+    const fontBase64 = await getPdfUnicodeFontBase64();
+    if (!fontBase64) {
+      console.warn("Font Unicode PDF non disponibile: fallback Helvetica.");
+      return false;
+    }
+
+    doc.addFileToVFS(PDF_UNICODE_FONT_FILE, fontBase64);
+    doc.addFont(PDF_UNICODE_FONT_FILE, PDF_UNICODE_FONT_FAMILY, "normal");
+    doc.addFont(PDF_UNICODE_FONT_FILE, PDF_UNICODE_FONT_FAMILY, "bold");
+    doc.__nextUnicodeFontReady = true;
+    doc.setFont(PDF_UNICODE_FONT_FAMILY, "normal");
+    return true;
+  } catch (error) {
+    console.warn("Registrazione font Unicode PDF fallita:", error);
+    return false;
+  }
+}
+
+async function loadImageElement(source: string): Promise<HTMLImageElement | null> {
+  return await new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = source;
+  });
+}
+
+function readExifOrientation(buffer: ArrayBuffer): number {
+  const view = new DataView(buffer);
+  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) {
+    return 1;
+  }
+
+  let offset = 2;
+  while (offset + 4 <= view.byteLength) {
+    if (view.getUint8(offset) !== 0xff) break;
+    const marker = view.getUint8(offset + 1);
+    if (marker === 0xda || marker === 0xd9) break;
+    if (offset + 4 > view.byteLength) break;
+
+    const segmentLength = view.getUint16(offset + 2, false);
+    if (segmentLength < 2 || offset + 2 + segmentLength > view.byteLength) break;
+
+    if (marker === 0xe1 && segmentLength >= 10) {
+      const exifHeaderOffset = offset + 4;
+      if (view.getUint32(exifHeaderOffset, false) === 0x45786966) {
+        const tiffOffset = exifHeaderOffset + 6;
+        if (tiffOffset + 8 > view.byteLength) return 1;
+
+        const byteOrder = view.getUint16(tiffOffset, false);
+        const littleEndian = byteOrder === 0x4949;
+        const bigEndian = byteOrder === 0x4d4d;
+        if (!littleEndian && !bigEndian) return 1;
+
+        const ifdOffset = view.getUint32(tiffOffset + 4, littleEndian);
+        const directoryOffset = tiffOffset + ifdOffset;
+        if (directoryOffset + 2 > view.byteLength) return 1;
+
+        const entries = view.getUint16(directoryOffset, littleEndian);
+        for (let index = 0; index < entries; index += 1) {
+          const entryOffset = directoryOffset + 2 + index * 12;
+          if (entryOffset + 12 > view.byteLength) break;
+          if (view.getUint16(entryOffset, littleEndian) === 0x0112) {
+            return view.getUint16(entryOffset + 8, littleEndian);
+          }
+        }
+      }
+    }
+
+    offset += 2 + segmentLength;
+  }
+
+  return 1;
+}
+
+function drawImageWithExifOrientation(
+  image: HTMLImageElement,
+  orientation: number,
+  mimeType: string,
+): string | null {
+  const width = image.naturalWidth || image.width || 0;
+  const height = image.naturalHeight || image.height || 0;
+  if (!width || !height) return null;
+
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  const shouldSwap = [5, 6, 7, 8].includes(orientation);
+  canvas.width = shouldSwap ? height : width;
+  canvas.height = shouldSwap ? width : height;
+
+  switch (orientation) {
+    case 2:
+      context.transform(-1, 0, 0, 1, width, 0);
+      break;
+    case 3:
+      context.transform(-1, 0, 0, -1, width, height);
+      break;
+    case 4:
+      context.transform(1, 0, 0, -1, 0, height);
+      break;
+    case 5:
+      context.transform(0, 1, 1, 0, 0, 0);
+      break;
+    case 6:
+      context.transform(0, 1, -1, 0, height, 0);
+      break;
+    case 7:
+      context.transform(0, -1, -1, 0, height, width);
+      break;
+    case 8:
+      context.transform(0, -1, 1, 0, 0, width);
+      break;
+    default:
+      break;
+  }
+
+  context.drawImage(image, 0, 0, width, height);
+  const outputMimeType = mimeType.toLowerCase().includes("png") ? "image/png" : "image/jpeg";
+  return canvas.toDataURL(outputMimeType, 0.92);
+}
+
+async function loadPdfImageData(url: string): Promise<PdfImageData | null> {
+  try {
+    const normalizedUrl = url.trim();
+    if (!normalizedUrl) return null;
+
+    const response = await fetch(normalizedUrl);
     if (!response.ok) return null;
     const blob = await response.blob();
     if (!blob.type.startsWith("image/")) return null;
 
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error("Errore lettura immagine PDF."));
-      reader.readAsDataURL(blob);
-    });
+    const blobUrl = URL.createObjectURL(blob);
+    try {
+      const image = await loadImageElement(blobUrl);
+      if (!image) return null;
 
-    return {
-      dataUrl,
-      format: blob.type.includes("png") ? "PNG" : "JPEG",
-    };
+      const orientation = readExifOrientation(await blob.arrayBuffer());
+      const rotatedDataUrl =
+        orientation !== 1 ? drawImageWithExifOrientation(image, orientation, blob.type) : null;
+      if (rotatedDataUrl) {
+        return {
+          dataUrl: rotatedDataUrl,
+          format: getPdfImageFormat(blob.type),
+        };
+      }
+
+      const fallbackDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(new Error("Errore lettura immagine PDF."));
+        reader.readAsDataURL(blob);
+      });
+
+      return {
+        dataUrl: fallbackDataUrl,
+        format: getPdfImageFormat(blob.type),
+      };
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
   } catch {
     return null;
   }
@@ -328,6 +592,16 @@ function buildMisuraLabel(item: NextManutenzioniLegacyDatasetRecord) {
   return "-";
 }
 
+function resolveMissingInterventoMetricLabel(
+  subjectType: TipoVoce,
+  categoria?: string | null,
+) {
+  if (subjectType === "mezzo" && isNextCategoriaMotorizzata(categoria)) {
+    return "— (km da inserire)";
+  }
+  return "—";
+}
+
 function formatMetricValue(value: number | null | undefined, suffix: "KM" | "ORE") {
   if (value == null) return "DA VERIFICARE";
   return `${formatNumberIt(value)} ${suffix}`;
@@ -338,26 +612,34 @@ function buildPdfMetricInfo(args: {
   latestItem: NextManutenzioniLegacyDatasetRecord;
   currentKm: number | null;
   currentOre: number | null;
+  categoria?: string | null;
 }): PdfMetricInfo | null {
   if (args.subjectType === "mezzo") {
     const currentKm = args.currentKm;
     const interventoKm = args.latestItem.km ?? null;
     const deltaKm =
-      currentKm !== null && interventoKm !== null && currentKm >= interventoKm
+      currentKm !== null && interventoKm !== null
         ? currentKm - interventoKm
         : null;
+    const deltaValue =
+      deltaKm === null
+        ? "—"
+        : deltaKm < 0
+          ? "—"
+          : deltaKm === 0
+            ? "0"
+            : `+${formatNumberIt(deltaKm)}`;
 
     return {
       primaryLabel: "Km attuali",
       primaryValue: formatMetricValue(currentKm, "KM"),
       secondaryLabel: "Km intervento",
-      secondaryValue: formatMetricValue(interventoKm, "KM"),
-      ...(deltaKm !== null
-        ? {
-            deltaLabel: "Δ km",
-            deltaValue: formatMetricValue(deltaKm, "KM"),
-          }
-        : {}),
+      secondaryValue:
+        interventoKm !== null
+          ? formatMetricValue(interventoKm, "KM")
+          : resolveMissingInterventoMetricLabel(args.subjectType, args.categoria),
+      deltaLabel: "Δ km",
+      deltaValue,
     };
   }
 
@@ -365,21 +647,25 @@ function buildPdfMetricInfo(args: {
     const currentOre = args.currentOre;
     const interventoOre = args.latestItem.ore ?? null;
     const deltaOre =
-      currentOre !== null && interventoOre !== null && currentOre >= interventoOre
+      currentOre !== null && interventoOre !== null
         ? currentOre - interventoOre
         : null;
+    const deltaValue =
+      deltaOre === null
+        ? "—"
+        : deltaOre < 0
+          ? "—"
+          : deltaOre === 0
+            ? "0"
+            : `+${formatNumberIt(deltaOre)}`;
 
     return {
       primaryLabel: "Ore attuali",
       primaryValue: formatMetricValue(currentOre, "ORE"),
       secondaryLabel: "Ore intervento",
       secondaryValue: formatMetricValue(interventoOre, "ORE"),
-      ...(deltaOre !== null
-        ? {
-            deltaLabel: "Δ ore",
-            deltaValue: formatMetricValue(deltaOre, "ORE"),
-          }
-        : {}),
+      deltaLabel: "Δ ore",
+      deltaValue,
     };
   }
 
@@ -465,18 +751,6 @@ function buildGommeStraordinarioPayload(args: {
   };
 }
 
-function formatGommeInterventoPdfLabel(item: NextManutenzioniLegacyDatasetRecord) {
-  if (item.gommeInterventoTipo === "straordinario") return "Gomme straordinarie";
-  if (
-    item.gommeInterventoTipo === "ordinario" ||
-    (item.gommePerAsse?.length ?? 0) > 0 ||
-    (item.assiCoinvolti?.length ?? 0) > 0
-  ) {
-    return "Gomme ordinarie per asse";
-  }
-  return item.sottotipo || "-";
-}
-
 function buildPdfDescrizione(item: NextManutenzioniLegacyDatasetRecord) {
   if (item.gommeInterventoTipo === "straordinario") {
     const motivo = item.gommeStraordinario?.motivo || "Evento gomme straordinario";
@@ -490,6 +764,27 @@ function buildPdfDescrizione(item: NextManutenzioniLegacyDatasetRecord) {
     return `[ORDINARIO] ${item.descrizione}`;
   }
   return item.descrizione;
+}
+
+function buildPdfTableMetricValue(
+  item: NextManutenzioniLegacyDatasetRecord,
+  categoria?: string | null,
+) {
+  if (item.tipo === "mezzo") {
+    return item.km !== null
+      ? formatNumberIt(item.km)
+      : resolveMissingInterventoMetricLabel(item.tipo, categoria);
+  }
+  if (item.tipo === "compressore") {
+    return item.ore !== null ? formatNumberIt(item.ore) : "—";
+  }
+  if (item.ore !== null) {
+    return formatNumberIt(item.ore);
+  }
+  if (item.km !== null) {
+    return formatNumberIt(item.km);
+  }
+  return "—";
 }
 
 function mapLegacyRecordToGommeReadModel(item: NextManutenzioniLegacyDatasetRecord) {
@@ -607,6 +902,8 @@ export default function NextManutenzioniPage() {
   const [pdfQuickSearch, setPdfQuickSearch] = useState("");
   const [pdfSubjectType, setPdfSubjectType] = useState<TipoVoce>("mezzo");
   const [pdfPeriodFilter, setPdfPeriodFilter] = useState<PdfPeriodFilter>("ultimo-mese");
+  const [modalOpenForTarga, setModalOpenForTarga] = useState<string | null>(null);
+  const [pdfModalLayout, setPdfModalLayout] = useState<PdfModalLayout>("data");
 
   const [targa, setTarga] = useState("");
   const [tipo, setTipo] = useState<TipoVoce>("mezzo");
@@ -628,6 +925,10 @@ export default function NextManutenzioniPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const requestedTarga = useMemo(
     () => normalizeText(new URLSearchParams(location.search).get("targa") ?? ""),
+    [location.search],
+  );
+  const requestedRecordId = useMemo(
+    () => normalizeFreeText(new URLSearchParams(location.search).get("recordId") ?? ""),
     [location.search],
   );
 
@@ -851,13 +1152,17 @@ export default function NextManutenzioniPage() {
       return {
         targa: targaKey,
         latest: items[0],
+        items,
         mezzo: mezzoPreview.find((entry) => entry.targa === targaKey) ?? null,
         total: items.length,
+        currentKm: kmUltimoByTarga[targaKey] ?? null,
+        currentOre: currentMetrics.ore,
         metricInfo: buildPdfMetricInfo({
           subjectType: pdfSubjectType,
           latestItem: items[0],
           currentKm: kmUltimoByTarga[targaKey] ?? null,
           currentOre: currentMetrics.ore,
+          categoria,
         }),
         gommePerAsse: buildNextGommeStateByAsse({
           categoria,
@@ -916,6 +1221,58 @@ export default function NextManutenzioniPage() {
     const visibleTarghe = new Set(pdfVisibleResults.map((result) => normalizeText(result.targa)));
     return pdfFilteredItems.filter((item) => visibleTarghe.has(normalizeText(item.targa)));
   }, [pdfFilteredItems, pdfVisibleResults]);
+  const pdfModalResult = useMemo(
+    () => pdfVisibleResults.find((result) => result.targa === modalOpenForTarga) ?? null,
+    [modalOpenForTarga, pdfVisibleResults],
+  );
+  const pdfModalPeriodLabel = useMemo(
+    () => (pdfModalResult ? buildPdfPeriodRangeLabel(pdfModalResult.items) : "DA VERIFICARE"),
+    [pdfModalResult],
+  );
+  const pdfModalMonthGroups = useMemo(() => {
+    if (!pdfModalResult) return [];
+    const grouped = new Map<string, NextManutenzioniLegacyDatasetRecord[]>();
+    pdfModalResult.items.forEach((item) => {
+      const parsed = parseLegacyDate(item.data);
+      const key = parsed ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}` : "senza-data";
+      const current = grouped.get(key) ?? [];
+      current.push(item);
+      grouped.set(key, current);
+    });
+
+    return [...grouped.entries()].map(([key, items]) => {
+      const [yearRaw, monthRaw] = key.split("-");
+      const year = Number(yearRaw);
+      const monthIndex = Number(monthRaw) - 1;
+      const label =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? capitalizeLabel(MESE_LABEL.format(new Date(year, monthIndex, 1)))
+          : "Senza data";
+      return {
+        key,
+        label: `${label} – ${items.length} ${items.length === 1 ? "manutenzione" : "manutenzioni"}`,
+        items,
+      };
+    });
+  }, [pdfModalResult]);
+  const pdfModalTypeGroups = useMemo(() => {
+    if (!pdfModalResult) return [];
+    const grouped = new Map<string, NextManutenzioniLegacyDatasetRecord[]>();
+    pdfModalResult.items.forEach((item) => {
+      const key = resolvePdfMaintenanceTypeLabel(item);
+      const current = grouped.get(key) ?? [];
+      current.push(item);
+      grouped.set(key, current);
+    });
+
+    return [...grouped.entries()].map(([label, items]) => ({
+      key: label,
+      label,
+      icon: label.slice(0, 1).toUpperCase(),
+      countLabel: `${items.length} ${items.length === 1 ? "intervento" : "interventi"}`,
+      items,
+    }));
+  }, [pdfModalResult]);
   const contextPlaceholder = !activeTarga && !mezzoPreviewSelezionato;
 
   useEffect(() => {
@@ -930,10 +1287,48 @@ export default function NextManutenzioniPage() {
 
     setSelectedTarga((current) => (current === requestedTarga ? current : requestedTarga));
     setTarga((current) => (current === requestedTarga ? current : requestedTarga));
-    setSelectedDetailRecordId(null);
-    setView("dashboard");
+    if (requestedRecordId) {
+      setView("mappa");
+    } else {
+      setSelectedDetailRecordId(null);
+      setView("dashboard");
+    }
     setNotice(null);
-  }, [mezzi, requestedTarga]);
+  }, [mezzi, requestedRecordId, requestedTarga]);
+
+  useEffect(() => {
+    if (!requestedTarga || !requestedRecordId) {
+      return;
+    }
+
+    if (!storicoMezzoOrdinato.some((item) => item.id === requestedRecordId)) {
+      return;
+    }
+
+    setSelectedDetailRecordId((current) => (current === requestedRecordId ? current : requestedRecordId));
+    setView("mappa");
+    setNotice(null);
+  }, [requestedRecordId, requestedTarga, storicoMezzoOrdinato]);
+
+  useEffect(() => {
+    if (modalOpenForTarga && !pdfModalResult) {
+      setModalOpenForTarga(null);
+      setPdfModalLayout("data");
+    }
+  }, [modalOpenForTarga, pdfModalResult]);
+
+  useEffect(() => {
+    if (!modalOpenForTarga) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setModalOpenForTarga(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalOpenForTarga]);
 
   useEffect(() => {
     const validAssi = new Set(assiDisponibili.map((asse) => asse.id));
@@ -964,6 +1359,46 @@ export default function NextManutenzioniPage() {
     setSelectedDetailRecordId(item.id);
     setNotice(null);
     setView("mappa");
+  }
+
+  function renderPdfRows(args: {
+    items: NextManutenzioniLegacyDatasetRecord[];
+    currentKm: number | null;
+    currentOre: number | null;
+    categoria?: string | null;
+    showType: boolean;
+    showSupplier: boolean;
+    variant: "list" | "modal";
+  }) {
+    const dateClass = args.variant === "list" ? "man2-pdf-list__date" : "man2-pdf-modal__date";
+    const metricClass = args.variant === "list" ? "man2-pdf-list__metric" : "man2-pdf-modal__metric";
+    const deltaClass = args.variant === "list" ? "man2-pdf-list__delta" : "man2-pdf-modal__delta";
+    const descClass = args.variant === "list" ? "man2-pdf-list__desc" : "man2-pdf-modal__desc";
+
+    return args.items.map((item) => {
+      const rowMetricInfo = buildPdfMetricInfo({
+        subjectType: pdfSubjectType,
+        latestItem: item,
+        currentKm: args.currentKm,
+        currentOre: args.currentOre,
+        categoria: args.categoria,
+      });
+
+      return (
+        <tr key={`${item.id}-${args.variant}-${args.showSupplier ? "supplier" : "compact"}`}>
+          <td className={dateClass}>{item.data || "DA VERIFICARE"}</td>
+          <td className={metricClass}>{buildPdfTableMetricValue(item, args.categoria)}</td>
+          <td className={deltaClass}>{rowMetricInfo?.deltaValue ?? "—"}</td>
+          {args.showType ? (
+            <td>
+              <span className="man2-pdf-list__pill">{resolvePdfMaintenanceTypeLabel(item)}</span>
+            </td>
+          ) : null}
+          <td className={descClass}>{buildPdfDescrizione(item) || "—"}</td>
+          {args.showSupplier ? <td>{item.fornitore || "—"}</td> : null}
+        </tr>
+      );
+    });
   }
 
   function resetForm(nextTarga?: string) {
@@ -1155,130 +1590,377 @@ export default function NextManutenzioniPage() {
     const { default: autoTable } = await import("jspdf-autotable");
 
     const doc = new JsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const pageWidth = 297;
-    const pageHeight = 210;
+    const docWithTable = doc as typeof doc & PdfDocWithPlugins & { lastAutoTable?: { finalY?: number } };
+    const fontReady = await ensurePdfUnicodeFont(docWithTable);
+    const pdfBodyFont = fontReady ? PDF_UNICODE_FONT_FAMILY : "helvetica";
+    const setPdfFont = (style: "normal" | "bold" = "normal") => {
+      doc.setFont(fontReady ? PDF_UNICODE_FONT_FAMILY : "helvetica", style);
+    };
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
+    const topMargin = 24;
+    const bottomMargin = 14;
+    const uniqueTarghe = Array.from(new Set(items.map((item) => normalizeText(item.targa)).filter(Boolean)));
+    const orderedTarghe = [...uniqueTarghe].sort((left, right) => left.localeCompare(right, "it"));
+    const singleTarga = orderedTarghe.length === 1 ? orderedTarghe[0] : null;
+    const periodLabel = buildPdfPeriodRangeLabel(items);
+    const generatedLabel = formatPdfGenerationDate();
     const misuraColumnLabel = resolvePdfMetricColumnLabel(items);
-    let y = margin;
+    let y = topMargin;
 
-    const checkPage = (neededHeight: number) => {
-      if (y + neededHeight > pageHeight - margin) {
-        doc.addPage();
-        y = margin;
+    const groupedItems = orderedTarghe.map((targaKey) => {
+      const groupedRecords = items
+        .filter((item) => normalizeText(item.targa) === targaKey)
+        .sort((left, right) => getLegacyDateTimestamp(right.data) - getLegacyDateTimestamp(left.data));
+      const currentMetrics = latestMetricByTargaAndTipo.get(`${pdfSubjectType}:${targaKey}`) ?? {
+        km: null,
+        ore: null,
+      };
+
+      return {
+        targa: targaKey,
+        items: groupedRecords,
+        latest: groupedRecords[0] ?? null,
+        mezzo: mezzoPreviewByTarga.get(targaKey) ?? null,
+        currentKm: kmUltimoByTarga[targaKey] ?? null,
+        currentOre: currentMetrics.ore,
+      };
+    });
+
+    const photoDataByTarga = new Map(
+      await Promise.all(
+        groupedItems.map(async (group) => [
+          group.targa,
+          group.mezzo?.fotoUrl ? await loadPdfImageData(group.mezzo.fotoUrl) : null,
+        ] as const),
+      ),
+    );
+
+    const decoratePages = (titleLabel: string) => {
+      const totalPages = doc.getNumberOfPages();
+      for (let pageIndex = 1; pageIndex <= totalPages; pageIndex += 1) {
+        doc.setPage(pageIndex);
+        setPdfFont("bold");
+        doc.setFontSize(11);
+        doc.setTextColor(26, 26, 26);
+        doc.text(toPdfText(`${titleLabel} – Periodo: ${periodLabel}`, fontReady), margin, 10);
+
+        setPdfFont("normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(107, 114, 128);
+        doc.text(toPdfText(`Generato il ${generatedLabel}`, fontReady), pageWidth - margin, 10, {
+          align: "right",
+        });
+        doc.setDrawColor(26, 26, 26);
+        doc.setLineWidth(0.35);
+        doc.line(margin, 14, pageWidth - margin, 14);
+        doc.text(toPdfText(`Pagina ${pageIndex} di ${totalPages}`, fontReady), pageWidth - margin, pageHeight - 6, {
+          align: "right",
+        });
       }
     };
 
-    const uniqueTarghe = Array.from(new Set(items.map((item) => normalizeText(item.targa)).filter(Boolean)));
-    const singleTarga = uniqueTarghe.length === 1 ? uniqueTarghe[0] : null;
-    const mezzoPdf = singleTarga ? mezzoPreviewByTarga.get(singleTarga) ?? null : null;
-    const photoData =
-      singleTarga && mezzoPdf?.fotoUrl
-        ? await loadPdfImageData(mezzoPdf.fotoUrl)
-        : null;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(17);
-    doc.text(title, margin, y);
-    y += 7;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(`Generato il ${formatPdfGenerationDate()}`, margin, y);
-    y += 7;
+    const checkPage = (neededHeight: number) => {
+      if (y + neededHeight > pageHeight - bottomMargin) {
+        doc.addPage();
+        y = topMargin;
+      }
+    };
 
     if (singleTarga) {
-      checkPage(42);
-      const headerTop = y;
-      const photoWidth = 58;
-      const photoHeight = 36;
-      const photoX = pageWidth - margin - photoWidth;
-      const textWidth = pageWidth - margin * 2 - photoWidth - 10;
-      const headerLines = [
-        `Targa: ${singleTarga}`,
-        `Mezzo: ${mezzoPdf?.marcaModello ?? mezzoPdf?.label ?? "DA VERIFICARE"}`,
-        `Autista: ${mezzoPdf?.autistaNome || "DA VERIFICARE"}`,
-        `Record esportati: ${items.length}`,
-      ];
+      const group = groupedItems[0];
+      const mezzoPdf = group?.mezzo ?? null;
+      const photoData = photoDataByTarga.get(singleTarga) ?? null;
+      const metricInfo =
+        group?.latest
+              ? buildPdfMetricInfo({
+                  subjectType: pdfSubjectType,
+                  latestItem: group.latest,
+                  currentKm: group.currentKm,
+                  currentOre: group.currentOre,
+                  categoria: group.mezzo?.categoria ?? null,
+                })
+          : null;
 
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text("Mezzo selezionato", margin, headerTop);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      headerLines.forEach((line, index) => {
-        doc.text(line, margin, headerTop + 7 + index * 5, { maxWidth: textWidth });
-      });
+      checkPage(photoData ? 54 : 48);
+      const heroTop = y;
+      const heroHeight = photoData ? 50 : 44;
+      const heroWidth = pageWidth - margin * 2;
+      doc.setFillColor(26, 26, 26);
+      doc.roundedRect(margin, heroTop, heroWidth, heroHeight, 4, 4, "F");
+      doc.setFillColor(201, 168, 106);
+      doc.rect(margin, heroTop, 4, heroHeight, "F");
 
+      let titleStartX = margin + 10;
       if (photoData) {
-        doc.addImage(photoData.dataUrl, photoData.format, photoX, headerTop, photoWidth, photoHeight, undefined, "FAST");
-      } else {
-        doc.setDrawColor(200, 190, 176);
-        doc.setFillColor(250, 246, 240);
-        doc.roundedRect(photoX, headerTop, photoWidth, photoHeight, 3, 3, "FD");
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
-        doc.text("Foto reale non disponibile", photoX + photoWidth / 2, headerTop + photoHeight / 2, {
-          align: "center",
-        });
+        doc.setDrawColor(201, 168, 106);
+        doc.setLineWidth(0.7);
+        doc.roundedRect(margin + 8, heroTop + 8, 42, 31.5, 2, 2);
+        doc.addImage(photoData.dataUrl, photoData.format, margin + 8, heroTop + 8, 42, 31.5, undefined, "FAST");
+        titleStartX = margin + 56;
       }
 
-      y += 42;
+      doc.setFont("courier", "bold");
+      doc.setFontSize(28);
+      doc.setTextColor(201, 168, 106);
+      doc.text(toPdfText(singleTarga, fontReady), titleStartX, heroTop + 18);
+
+      setPdfFont("bold");
+      doc.setFontSize(15);
+      doc.setTextColor(231, 229, 228);
+      doc.text(
+        toPdfText(mezzoPdf?.marcaModello ?? mezzoPdf?.label ?? "DA VERIFICARE", fontReady),
+        titleStartX,
+        heroTop + 28,
+      );
+
+      const statStartX = photoData ? margin + 164 : margin + 156;
+      const statWidth = photoData ? 54 : 60;
+      const statGap = 18;
+      const stats = [
+        {
+          label: metricInfo?.primaryLabel ?? (pdfSubjectType === "compressore" ? "Ore attuali" : "Km attuali"),
+          value: metricInfo?.primaryValue ?? "DA VERIFICARE",
+        },
+        {
+          label: "Autista",
+          value: mezzoPdf?.autistaNome || "DA VERIFICARE",
+        },
+        {
+          label: "Ultima manutenzione",
+          value: group?.latest ? formatDateFull(group.latest.data) : "DA VERIFICARE",
+        },
+        {
+          label: "Tot. interventi nel periodo",
+          value: String(group?.items.length ?? 0),
+        },
+      ];
+
+      stats.forEach((stat, index) => {
+        const columnIndex = index % 2;
+        const rowIndex = Math.floor(index / 2);
+        const cellX = statStartX + columnIndex * (statWidth + statGap);
+        const cellY = heroTop + 12 + rowIndex * 16;
+        setPdfFont("bold");
+        doc.setFontSize(8);
+        doc.setTextColor(201, 168, 106);
+        doc.text(toPdfText(stat.label.toUpperCase(), fontReady), cellX, cellY);
+        setPdfFont("bold");
+        doc.setFontSize(12);
+        doc.setTextColor(255, 255, 255);
+        doc.text(toPdfText(stat.value, fontReady), cellX, cellY + 6, { maxWidth: statWidth + 10 });
+      });
+
+      y = heroTop + heroHeight + 8;
+
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin, top: topMargin, bottom: bottomMargin },
+        head: [[
+          toPdfText("Data", fontReady),
+          toPdfText(misuraColumnLabel, fontReady),
+          toPdfText(metricInfo?.deltaLabel ?? "Δ km", fontReady),
+          toPdfText("Tipo", fontReady),
+          toPdfText("Descrizione", fontReady),
+          toPdfText("Fornitore", fontReady),
+        ]],
+        body: (group?.items ?? []).map((item) => {
+          const rowMetricInfo = buildPdfMetricInfo({
+            subjectType: pdfSubjectType,
+            latestItem: item,
+            currentKm: group?.currentKm ?? null,
+            currentOre: group?.currentOre ?? null,
+            categoria: group?.mezzo?.categoria ?? null,
+          });
+
+          return [
+            toPdfText(formatDateFull(item.data), fontReady),
+            toPdfText(buildPdfTableMetricValue(item, group?.mezzo?.categoria ?? null), fontReady),
+            toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
+            toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
+            toPdfText(buildPdfDescrizione(item), fontReady),
+            toPdfText(item.fornitore || "—", fontReady),
+          ];
+        }),
+        styles: {
+          font: pdfBodyFont,
+          fontSize: 8,
+          cellPadding: 2.6,
+          lineColor: [222, 214, 203],
+          lineWidth: 0.1,
+          overflow: "linebreak",
+          valign: "middle",
+        },
+        headStyles: {
+          font: pdfBodyFont,
+          fillColor: [55, 65, 81],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [249, 245, 238],
+        },
+        bodyStyles: {
+          font: pdfBodyFont,
+          textColor: [37, 35, 32],
+        },
+        columnStyles: {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 22 },
+          3: { cellWidth: 28 },
+          4: { cellWidth: 126 },
+          5: { cellWidth: 32 },
+        },
+        didParseCell: (hookData) => {
+          if (hookData.section === "body" && hookData.column.index === 2) {
+            hookData.cell.styles.textColor = [22, 101, 52];
+            hookData.cell.styles.fontStyle = "bold";
+          }
+        },
+        rowPageBreak: "avoid",
+      });
+
+      decoratePages("Scheda manutenzioni mezzo");
+      doc.save(buildPdfFileName(title));
+      return;
     }
 
-    checkPage(20);
-    autoTable(doc as Parameters<typeof autoTable>[0], {
-      startY: y,
-      margin: { left: margin, right: margin },
-      head: [[
-        "Targa",
-        "Tipo",
-        misuraColumnLabel,
-        "Sottotipo",
-        "Descrizione",
-        "Fornitore",
-        "Eseguito da",
-        "Data",
-      ]],
-      body: items.map((item) => [
-        item.targa,
-        item.tipo === "mezzo" ? "MEZZO" : item.tipo === "compressore" ? "COMPRESSORE" : "ATTREZZATURE",
-        buildMisuraLabel(item),
-        formatGommeInterventoPdfLabel(item),
-        buildPdfDescrizione(item),
-        item.fornitore || "-",
-        item.eseguito || "-",
-        item.data,
-      ]),
-      styles: {
-        fontSize: 8,
-        cellPadding: 2.4,
-        lineColor: [222, 214, 203],
-        lineWidth: 0.1,
-        overflow: "linebreak",
-      },
-      headStyles: {
-        fillColor: [52, 50, 46],
-        textColor: [245, 240, 230],
-        fontStyle: "bold",
-      },
-      alternateRowStyles: {
-        fillColor: [249, 245, 238],
-      },
-      bodyStyles: {
-        textColor: [37, 35, 32],
-      },
-      columnStyles: {
-        0: { cellWidth: 24 },
-        1: { cellWidth: 24 },
-        2: { cellWidth: 24 },
-        3: { cellWidth: 32 },
-        4: { cellWidth: 92 },
-        5: { cellWidth: 32 },
-        6: { cellWidth: 30 },
-        7: { cellWidth: 18 },
-      },
+    groupedItems.forEach((group) => {
+      const photoData = photoDataByTarga.get(group.targa) ?? null;
+      const metricInfo =
+        group.latest
+          ? buildPdfMetricInfo({
+              subjectType: pdfSubjectType,
+              latestItem: group.latest,
+              currentKm: group.currentKm,
+              currentOre: group.currentOre,
+              categoria: group.mezzo?.categoria ?? null,
+            })
+          : null;
+      const sectionHeight = photoData ? 24 : 18;
+      checkPage(sectionHeight + 18);
+      const sectionTop = y;
+      const sectionWidth = pageWidth - margin * 2;
+
+      doc.setFillColor(26, 26, 26);
+      doc.roundedRect(margin, sectionTop, sectionWidth, sectionHeight, 3, 3, "F");
+      doc.setFillColor(201, 168, 106);
+      doc.rect(margin, sectionTop, 4, sectionHeight, "F");
+
+      let currentX = margin + 8;
+      if (photoData) {
+        doc.setDrawColor(201, 168, 106);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(currentX, sectionTop + 4.5, 20, 15, 1.5, 1.5);
+        doc.addImage(photoData.dataUrl, photoData.format, currentX, sectionTop + 4.5, 20, 15, undefined, "FAST");
+        currentX += 24;
+      }
+
+      const availableWidth = pageWidth - margin - currentX - 4;
+      const columnWidth = availableWidth / 4;
+      const sectionFields = [
+        { label: "Targa", value: group.targa },
+        { label: "Mezzo", value: group.mezzo?.marcaModello ?? group.mezzo?.label ?? "DA VERIFICARE" },
+        { label: "Autista", value: group.mezzo?.autistaNome || "DA VERIFICARE" },
+        {
+          label: metricInfo?.primaryLabel ?? (pdfSubjectType === "compressore" ? "Ore attuali" : "Km attuali"),
+          value:
+            pdfSubjectType === "compressore"
+              ? metricInfo?.primaryValue ?? "DA VERIFICARE"
+              : group.currentKm !== null
+                ? formatNumberIt(group.currentKm)
+                : "DA VERIFICARE",
+        },
+      ];
+
+      sectionFields.forEach((field, index) => {
+        const x = currentX + index * columnWidth;
+        setPdfFont("bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(201, 168, 106);
+        doc.text(toPdfText(field.label.toUpperCase(), fontReady), x, sectionTop + 8);
+        setPdfFont("bold");
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(toPdfText(field.value, fontReady), x, sectionTop + 14, { maxWidth: columnWidth - 4 });
+      });
+
+      y = sectionTop + sectionHeight + 4;
+
+      autoTable(doc as Parameters<typeof autoTable>[0], {
+        startY: y,
+        margin: { left: margin, right: margin, top: topMargin, bottom: bottomMargin },
+        head: [[
+          toPdfText("Data", fontReady),
+          toPdfText(misuraColumnLabel, fontReady),
+          toPdfText(metricInfo?.deltaLabel ?? "Δ km", fontReady),
+          toPdfText("Tipo", fontReady),
+          toPdfText("Descrizione", fontReady),
+          toPdfText("Fornitore", fontReady),
+        ]],
+        body: group.items.map((item) => {
+          const rowMetricInfo = buildPdfMetricInfo({
+            subjectType: pdfSubjectType,
+            latestItem: item,
+            currentKm: group.currentKm,
+            currentOre: group.currentOre,
+            categoria: group.mezzo?.categoria ?? null,
+          });
+
+          return [
+            toPdfText(formatDateFull(item.data), fontReady),
+            toPdfText(buildPdfTableMetricValue(item, group.mezzo?.categoria ?? null), fontReady),
+            toPdfText(rowMetricInfo?.deltaValue ?? "—", fontReady),
+            toPdfText(resolvePdfMaintenanceTypeLabel(item), fontReady),
+            toPdfText(buildPdfDescrizione(item), fontReady),
+            toPdfText(item.fornitore || "—", fontReady),
+          ];
+        }),
+        styles: {
+          font: pdfBodyFont,
+          fontSize: 8,
+          cellPadding: 2.4,
+          lineColor: [229, 231, 235],
+          lineWidth: 0.1,
+          overflow: "linebreak",
+          valign: "middle",
+        },
+        headStyles: {
+          font: pdfBodyFont,
+          fillColor: [55, 65, 81],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [249, 245, 238],
+        },
+        bodyStyles: {
+          font: pdfBodyFont,
+          textColor: [37, 35, 32],
+        },
+        columnStyles: {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 22 },
+          3: { cellWidth: 28 },
+          4: { cellWidth: 126 },
+          5: { cellWidth: 32 },
+        },
+        didParseCell: (hookData) => {
+          if (hookData.section === "body" && hookData.column.index === 2) {
+            hookData.cell.styles.textColor = [22, 101, 52];
+            hookData.cell.styles.fontStyle = "bold";
+          }
+        },
+        rowPageBreak: "avoid",
+      });
+
+      y = (docWithTable.lastAutoTable?.finalY ?? y) + 10;
     });
 
+    decoratePages("Quadro manutenzioni");
     doc.save(buildPdfFileName(title));
   }
 
@@ -1870,141 +2552,369 @@ export default function NextManutenzioniPage() {
         <div className="man2-section-title">Risultati esportabili</div>
         <div className="man2-pdf-results">
           {pdfVisibleResults.length > 0 ? (
-            pdfVisibleResults.map((result) => (
-              <article key={`${pdfSubjectType}:${result.targa}`} className="man2-pdf-row">
-                <div className="man2-pdf-row__media">
-                  {result.mezzo?.fotoUrl ? (
-                    <img src={result.mezzo.fotoUrl} alt={`Mezzo ${result.targa}`} className="man2-pdf-thumb" />
-                  ) : (
-                    <div className="man2-pdf-thumb man2-pdf-thumb--placeholder">{result.targa}</div>
-                  )}
-                </div>
-                <div className="man2-pdf-row__content">
-                  <div className="man2-pdf-row__meta">
-                    <div>
-                      <span className="man2-pdf-row__label">Targa</span>
-                      <strong>{result.targa}</strong>
-                    </div>
-                    <div>
-                      <span className="man2-pdf-row__label">Mezzo / modello</span>
-                      <strong>{result.mezzo?.marcaModello ?? result.mezzo?.label ?? "DA VERIFICARE"}</strong>
-                    </div>
-                    <div>
-                      <span className="man2-pdf-row__label">Autista</span>
-                      <strong>{result.mezzo?.autistaNome || "DA VERIFICARE"}</strong>
-                    </div>
-                    {result.metricInfo ? (
-                      <div>
-                        <span className="man2-pdf-row__label">{result.metricInfo.primaryLabel}</span>
-                        <strong>{result.metricInfo.primaryValue}</strong>
-                      </div>
-                    ) : null}
-                    {result.metricInfo?.secondaryLabel ? (
-                      <div>
-                        <span className="man2-pdf-row__label">{result.metricInfo.secondaryLabel}</span>
-                        <strong>{result.metricInfo.secondaryValue}</strong>
-                      </div>
-                    ) : null}
-                    {result.metricInfo?.deltaLabel ? (
-                      <div>
-                        <span className="man2-pdf-row__label">{result.metricInfo.deltaLabel}</span>
-                        <strong>{result.metricInfo.deltaValue}</strong>
-                      </div>
-                    ) : null}
-                    <div>
-                      <span className="man2-pdf-row__label">Data</span>
-                      <strong>{result.latest.data}</strong>
-                    </div>
-                    <div>
-                      <span className="man2-pdf-row__label">Tipo</span>
-                      <strong>{result.latest.tipo}</strong>
-                    </div>
-                  </div>
-                  <div className="man2-pdf-row__actions">
-                    <button
-                      type="button"
-                      className="man2-btn"
-                      title="Esporta il PDF della targa selezionata con la foto reale del mezzo, se disponibile."
-                      aria-label={`Esporta PDF ${result.targa}`}
-                      onClick={() =>
-                        void exportPdfForItems(
-                          pdfFilteredItems.filter((item) => item.targa === result.targa),
-                          `PDF ${pdfSubjectType} - ${result.targa}`,
-                        )
-                      }
-                    >
-                      PDF
-                    </button>
-                    <button
-                      type="button"
-                      className="man2-btn man2-btn--secondary"
-                      onClick={() => openDetailForRecord(result.latest)}
-                    >
-                      Apri dettaglio
-                    </button>
-                  </div>
-                  {pdfSubjectType === "mezzo" && (result.gommePerAsse.length > 0 || result.gommeStraordinarie.length > 0) ? (
-                    <div className="man2-gomme-pdf-state">
-                      {result.gommePerAsse.length > 0 ? (
-                        <div className="man2-gomme-pdf-block">
-                          <div className="man2-gomme-pdf-state__title">Stato gomme ordinario per asse</div>
-                          <div className="man2-gomme-pdf-state__grid">
-                            {result.gommePerAsse.map((entry) => (
-                              <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
-                                <strong>{entry.asseLabel}</strong>
-                                <span>Data cambio: {entry.dataCambio || "DA VERIFICARE"}</span>
-                                {entry.isMotorizzato ? (
-                                  <>
-                                    <span>
-                                      Km cambio: {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA VERIFICARE"}
-                                    </span>
-                                    <span>
-                                      Km attuali: {entry.kmAttuali !== null ? formatNumberIt(entry.kmAttuali) : "DA VERIFICARE"}
-                                    </span>
-                                    {entry.kmPercorsi !== null ? (
-                                      <span>Km percorsi dal cambio: {formatNumberIt(entry.kmPercorsi)}</span>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <span>Per questa categoria fa fede soprattutto la data cambio.</span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
+            pdfVisibleResults.map((result) => {
+              const previewItems = result.items.slice(0, 3);
+              const metricColumnLabel = resolvePdfMetricColumnLabel(result.items);
+              const deltaColumnLabel = result.metricInfo?.deltaLabel ?? "Δ km";
 
-                      {result.gommeStraordinarie.length > 0 ? (
-                        <div className="man2-gomme-pdf-block man2-gomme-pdf-block--straordinario">
-                          <div className="man2-gomme-pdf-state__title">Eventi gomme straordinari</div>
-                          <div className="man2-gomme-pdf-events">
-                            {result.gommeStraordinarie.map((entry) => (
-                              <div
-                                key={`${result.targa}:${entry.sourceMaintenanceId}`}
-                                className="man2-gomme-pdf-event"
-                              >
-                                <strong>{entry.motivo || "Evento gomme straordinario"}</strong>
-                                <span>Data: {entry.dataLabel || "DA VERIFICARE"}</span>
-                                <span>Asse: {entry.asseLabel || "Non specificato"}</span>
-                                <span>
-                                  Gomme coinvolte: {entry.quantita !== null ? formatNumberIt(entry.quantita) : "DA VERIFICARE"}
-                                </span>
-                                {entry.fornitore ? <span>Fornitore: {entry.fornitore}</span> : null}
-                                {entry.descrizione ? <span>Nota: {buildDescrizioneSnippet(entry.descrizione, 120)}</span> : null}
-                              </div>
-                            ))}
-                          </div>
+              return (
+                <article key={`${pdfSubjectType}:${result.targa}`} className="man2-pdf-row">
+                  <div className="man2-pdf-row__media">
+                    {result.mezzo?.fotoUrl ? (
+                      <img src={result.mezzo.fotoUrl} alt={`Mezzo ${result.targa}`} className="man2-pdf-thumb" />
+                    ) : (
+                      <div className="man2-pdf-thumb man2-pdf-thumb--placeholder">{result.targa}</div>
+                    )}
+                  </div>
+                  <div className="man2-pdf-row__content">
+                    <div className="man2-pdf-row__meta">
+                      <div>
+                        <span className="man2-pdf-row__label">Targa</span>
+                        <button
+                          type="button"
+                          className="man2-pdf-targa-btn"
+                          aria-label={`Apri dossier mezzo ${result.targa}`}
+                          onClick={() => navigate(buildNextDossierPath(result.targa))}
+                        >
+                          {result.targa}
+                        </button>
+                      </div>
+                      <div>
+                        <span className="man2-pdf-row__label">Mezzo / modello</span>
+                        <strong>{result.mezzo?.marcaModello ?? result.mezzo?.label ?? "DA VERIFICARE"}</strong>
+                      </div>
+                      <div>
+                        <span className="man2-pdf-row__label">Autista</span>
+                        <strong>{result.mezzo?.autistaNome || "DA VERIFICARE"}</strong>
+                      </div>
+                      {result.metricInfo ? (
+                        <div>
+                          <span className="man2-pdf-row__label">{result.metricInfo.primaryLabel}</span>
+                          <strong>{result.metricInfo.primaryValue}</strong>
                         </div>
                       ) : null}
+                      {result.metricInfo?.secondaryLabel ? (
+                        <div>
+                          <span className="man2-pdf-row__label">{result.metricInfo.secondaryLabel}</span>
+                          <strong>{result.metricInfo.secondaryValue}</strong>
+                        </div>
+                      ) : null}
+                      {result.metricInfo?.deltaLabel ? (
+                        <div>
+                          <span className="man2-pdf-row__label">{result.metricInfo.deltaLabel}</span>
+                          <strong>{result.metricInfo.deltaValue}</strong>
+                        </div>
+                      ) : null}
+                      <div>
+                        <span className="man2-pdf-row__label">Data</span>
+                        <strong>{result.latest.data}</strong>
+                      </div>
+                      <div>
+                        <span className="man2-pdf-row__label">Tipo</span>
+                        <strong>{result.latest.tipo}</strong>
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              </article>
-            ))
+
+                    <section className="man2-pdf-list" aria-label={`Ultime manutenzioni ${result.targa}`}>
+                      <div className="man2-pdf-list__head">
+                        <div className="man2-pdf-list__title">Ultime 3 manutenzioni</div>
+                        {result.total > 3 ? (
+                          <button
+                            type="button"
+                            className="man2-pdf-list__button"
+                            onClick={() => {
+                              setModalOpenForTarga(result.targa);
+                              setPdfModalLayout("data");
+                            }}
+                          >
+                            Vedi tutte ({result.total}) →
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {previewItems.length > 0 ? (
+                        <div className="man2-pdf-list__table-wrap">
+                          <table className="man2-pdf-list__table">
+                            <thead>
+                              <tr>
+                                <th>Data</th>
+                                <th>{metricColumnLabel}</th>
+                                <th>{deltaColumnLabel}</th>
+                                <th>Tipo</th>
+                                <th>Descrizione</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {renderPdfRows({
+                                items: previewItems,
+                                currentKm: result.currentKm,
+                                currentOre: result.currentOre,
+                                categoria: result.mezzo?.categoria ?? null,
+                                showType: true,
+                                showSupplier: false,
+                                variant: "list",
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="man2-pdf-list__empty">Nessuna manutenzione nel periodo selezionato.</div>
+                      )}
+                    </section>
+
+                    <div className="man2-pdf-row__actions">
+                      <button
+                        type="button"
+                        className="man2-btn"
+                        title="Esporta il PDF della targa selezionata con la foto reale del mezzo, se disponibile."
+                        aria-label={`Esporta PDF ${result.targa}`}
+                        onClick={() =>
+                          void exportPdfForItems(
+                            pdfFilteredItems.filter((item) => item.targa === result.targa),
+                            `PDF ${pdfSubjectType} - ${result.targa}`,
+                          )
+                        }
+                      >
+                        PDF
+                      </button>
+                      <button
+                        type="button"
+                        className="man2-btn man2-btn--secondary"
+                        onClick={() => openDetailForRecord(result.latest)}
+                      >
+                        Apri dettaglio
+                      </button>
+                    </div>
+                    {pdfSubjectType === "mezzo" && (result.gommePerAsse.length > 0 || result.gommeStraordinarie.length > 0) ? (
+                      <div className="man2-gomme-pdf-state">
+                        {result.gommePerAsse.length > 0 ? (
+                          <div className="man2-gomme-pdf-block">
+                            <div className="man2-gomme-pdf-state__title">Stato gomme ordinario per asse</div>
+                            <div className="man2-gomme-pdf-state__grid">
+                              {result.gommePerAsse.map((entry) => (
+                                <div key={`${result.targa}:${entry.asseId}`} className="man2-gomme-pdf-axis">
+                                  <strong>{entry.asseLabel}</strong>
+                                  <span>Data cambio: {entry.dataCambio || "DA VERIFICARE"}</span>
+                                  {entry.isMotorizzato ? (
+                                    <>
+                                      <span>
+                                        Km cambio: {entry.kmCambio !== null ? formatNumberIt(entry.kmCambio) : "DA VERIFICARE"}
+                                      </span>
+                                      <span>
+                                        Km attuali: {entry.kmAttuali !== null ? formatNumberIt(entry.kmAttuali) : "DA VERIFICARE"}
+                                      </span>
+                                      {entry.kmPercorsi !== null ? (
+                                        <span>Km percorsi dal cambio: {formatNumberIt(entry.kmPercorsi)}</span>
+                                      ) : null}
+                                    </>
+                                  ) : (
+                                    <span>Per questa categoria fa fede soprattutto la data cambio.</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {result.gommeStraordinarie.length > 0 ? (
+                          <div className="man2-gomme-pdf-block man2-gomme-pdf-block--straordinario">
+                            <div className="man2-gomme-pdf-state__title">Eventi gomme straordinari</div>
+                            <div className="man2-gomme-pdf-events">
+                              {result.gommeStraordinarie.map((entry) => (
+                                <div
+                                  key={`${result.targa}:${entry.sourceMaintenanceId}`}
+                                  className="man2-gomme-pdf-event"
+                                >
+                                  <strong>{entry.motivo || "Evento gomme straordinario"}</strong>
+                                  <span>Data: {entry.dataLabel || "DA VERIFICARE"}</span>
+                                  <span>Asse: {entry.asseLabel || "Non specificato"}</span>
+                                  <span>
+                                    Gomme coinvolte: {entry.quantita !== null ? formatNumberIt(entry.quantita) : "DA VERIFICARE"}
+                                  </span>
+                                  {entry.fornitore ? <span>Fornitore: {entry.fornitore}</span> : null}
+                                  {entry.descrizione ? <span>Nota: {buildDescrizioneSnippet(entry.descrizione, 120)}</span> : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })
           ) : (
             <div className="man-empty">Nessun risultato disponibile con i filtri attuali.</div>
           )}
         </div>
+
+        {pdfModalResult ? (
+          <div
+            className="man2-pdf-modal__overlay"
+            role="presentation"
+            onClick={() => {
+              setModalOpenForTarga(null);
+              setPdfModalLayout("data");
+            }}
+          >
+            <div
+              className="man2-pdf-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="man2-pdf-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="man2-pdf-modal__head">
+                <div>
+                  <h2 id="man2-pdf-modal-title" className="man2-pdf-modal__title">
+                    Tutte le manutenzioni — {pdfModalResult.targa}
+                  </h2>
+                  <div className="man2-pdf-modal__sub">
+                    {pdfModalResult.mezzo?.marcaModello || "DA VERIFICARE"} ·{" "}
+                    {pdfModalResult.mezzo?.autistaNome || "DA VERIFICARE"} · Periodo: {pdfModalPeriodLabel} ·{" "}
+                    {resolvePdfListTitle(pdfModalResult.total)}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="man2-pdf-modal__close"
+                  aria-label={`Chiudi modale manutenzioni ${pdfModalResult.targa}`}
+                  onClick={() => {
+                    setModalOpenForTarga(null);
+                    setPdfModalLayout("data");
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="man2-pdf-modal__info">
+                <span>
+                  {pdfModalResult.metricInfo?.primaryLabel || "Valore attuale"}:{" "}
+                  <strong>{pdfModalResult.metricInfo?.primaryValue || "DA VERIFICARE"}</strong>
+                </span>
+                <span>
+                  · La colonna {pdfModalResult.metricInfo?.deltaLabel || "Δ km"} mostra come varia la metrica dal
+                  singolo intervento ad oggi
+                </span>
+              </div>
+
+              <div className="man2-pdf-modal__tabs" role="tablist" aria-label="Layout modale manutenzioni">
+                <button
+                  type="button"
+                  className={`man2-pdf-modal__tab${pdfModalLayout === "data" ? " is-active" : ""}`}
+                  onClick={() => setPdfModalLayout("data")}
+                >
+                  A — Per data
+                </button>
+                <button
+                  type="button"
+                  className={`man2-pdf-modal__tab${pdfModalLayout === "month" ? " is-active" : ""}`}
+                  onClick={() => setPdfModalLayout("month")}
+                >
+                  B — Per mese
+                </button>
+                <button
+                  type="button"
+                  className={`man2-pdf-modal__tab${pdfModalLayout === "type" ? " is-active" : ""}`}
+                  onClick={() => setPdfModalLayout("type")}
+                >
+                  C — Per tipo
+                </button>
+              </div>
+
+              <div className="man2-pdf-modal__content">
+                {pdfModalLayout === "data" ? (
+                  <div className="man2-pdf-modal__table-wrap">
+                    <table className="man2-pdf-modal__table">
+                      <thead>
+                        <tr>
+                          <th>Data</th>
+                          <th>{resolvePdfMetricColumnLabel(pdfModalResult.items)}</th>
+                          <th>{pdfModalResult.metricInfo?.deltaLabel || "Δ km"}</th>
+                          <th>Tipo</th>
+                          <th>Descrizione</th>
+                          <th>Fornitore</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {renderPdfRows({
+                          items: pdfModalResult.items,
+                          currentKm: pdfModalResult.currentKm,
+                          currentOre: pdfModalResult.currentOre,
+                          categoria: pdfModalResult.mezzo?.categoria ?? null,
+                          showType: true,
+                          showSupplier: true,
+                          variant: "modal",
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {pdfModalLayout === "month"
+                  ? pdfModalMonthGroups.map((group) => (
+                      <section key={group.key} className="man2-pdf-modal__month-group">
+                        <div className="man2-pdf-modal__month-head">{group.label}</div>
+                        <div className="man2-pdf-modal__table-wrap">
+                          <table className="man2-pdf-modal__table">
+                            <thead>
+                              <tr>
+                                <th>Data</th>
+                                <th>{resolvePdfMetricColumnLabel(group.items)}</th>
+                                <th>{pdfModalResult.metricInfo?.deltaLabel || "Δ km"}</th>
+                                <th>Tipo</th>
+                                <th>Descrizione</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {renderPdfRows({
+                                items: group.items,
+                                currentKm: pdfModalResult.currentKm,
+                                currentOre: pdfModalResult.currentOre,
+                                categoria: pdfModalResult.mezzo?.categoria ?? null,
+                                showType: true,
+                                showSupplier: false,
+                                variant: "modal",
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    ))
+                  : null}
+
+                {pdfModalLayout === "type"
+                  ? pdfModalTypeGroups.map((group) => (
+                      <section key={group.key} className="man2-pdf-modal__type-group">
+                        <div className="man2-pdf-modal__type-head">
+                          <div className="man2-pdf-modal__type-icon">{group.icon}</div>
+                          <div className="man2-pdf-modal__type-label">{group.label}</div>
+                          <div className="man2-pdf-modal__type-count">· {group.countLabel}</div>
+                        </div>
+                        <div className="man2-pdf-modal__table-wrap">
+                          <table className="man2-pdf-modal__table">
+                            <tbody>
+                              {renderPdfRows({
+                                items: group.items,
+                                currentKm: pdfModalResult.currentKm,
+                                currentOre: pdfModalResult.currentOre,
+                                categoria: pdfModalResult.mezzo?.categoria ?? null,
+                                showType: false,
+                                showSupplier: false,
+                                variant: "modal",
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    ))
+                  : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     );
   }

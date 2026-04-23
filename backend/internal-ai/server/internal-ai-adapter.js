@@ -34,6 +34,7 @@ import {
 } from "./internal-ai-chat-attachments.js";
 import {
   extractInternalAiDocumentAnalysis,
+  extractPreventivoPriceFromDocument,
   LIBRETTO_CANONICAL_FIELDS,
 } from "./internal-ai-document-extraction.js";
 import {
@@ -1888,6 +1889,207 @@ app.post("/internal-ai-backend/documents/preventivo-magazzino-analyze", async (r
         error instanceof Error
           ? `Analisi OpenAI preventivo non completata: ${error.message}`
           : "Analisi OpenAI preventivo non completata.",
+      data: {
+        providerConfigured: isProviderConfigured(),
+        providerTarget: getProviderTarget(),
+      },
+    });
+  }
+});
+
+app.post("/internal-ai-backend/documents/preventivo-extract", async (req, res) => {
+  const fileName = typeof req.body?.fileName === "string" ? req.body.fileName.trim() : "";
+  const originalFileName =
+    typeof req.body?.originalFileName === "string" && req.body.originalFileName.trim()
+      ? req.body.originalFileName.trim()
+      : null;
+  const mimeType =
+    typeof req.body?.mimeType === "string" && req.body.mimeType.trim()
+      ? req.body.mimeType.trim()
+      : "application/octet-stream";
+  const contentBase64 =
+    typeof req.body?.contentBase64 === "string" && req.body.contentBase64.trim()
+      ? req.body.contentBase64.trim()
+      : "";
+  const pages = Array.isArray(req.body?.pages)
+    ? req.body.pages
+        .map((page, index) => {
+          if (!page || typeof page !== "object") {
+            return null;
+          }
+
+          const pageMimeType =
+            typeof page.mimeType === "string" && page.mimeType.trim()
+              ? page.mimeType.trim()
+              : "application/octet-stream";
+          const pageContentBase64 =
+            typeof page.contentBase64 === "string" && page.contentBase64.trim()
+              ? page.contentBase64.trim()
+              : "";
+          const pageFileName =
+            typeof page.fileName === "string" && page.fileName.trim()
+              ? page.fileName.trim()
+              : `preventivo-${index + 1}.jpg`;
+
+          if (!pageContentBase64) {
+            return null;
+          }
+
+          return {
+            fileName: pageFileName,
+            mimeType: pageMimeType,
+            contentBase64: pageContentBase64,
+          };
+        })
+        .filter((page) => Boolean(page))
+    : [];
+  const hasSingleVariant = Boolean(contentBase64);
+  const hasPagesVariant = pages.length > 0;
+  const effectiveFileName =
+    originalFileName ||
+    fileName ||
+    (hasPagesVariant
+      ? pages[0]?.fileName || "preventivo-multipagina"
+      : mimeType === "application/pdf"
+        ? "preventivo.pdf"
+        : "preventivo.jpg");
+
+  if ((hasSingleVariant && hasPagesVariant) || (!hasSingleVariant && !hasPagesVariant)) {
+    sendEnvelope(res, {
+      httpStatus: 400,
+      ok: false,
+      endpointId: "documents.preventivo-extract",
+      status: "validation_error",
+      message:
+        "Payload non valido per preventivo-extract: fornire un singolo file oppure pages[] di immagini, ma non entrambi.",
+      data: {
+        fileName: effectiveFileName,
+      },
+    });
+    return;
+  }
+
+  if (hasSingleVariant) {
+    const isAllowedSingleMime =
+      mimeType === "application/pdf" || mimeType.toLowerCase().startsWith("image/");
+    if (!isAllowedSingleMime) {
+      sendEnvelope(res, {
+        httpStatus: 400,
+        ok: false,
+        endpointId: "documents.preventivo-extract",
+        status: "validation_error",
+        message:
+          "Payload non valido per preventivo-extract: la variante singola accetta solo application/pdf o mime image/*.",
+        data: {
+          fileName: effectiveFileName,
+          mimeType,
+        },
+      });
+      return;
+    }
+  }
+
+  if (hasPagesVariant) {
+    if (pages.length > 10) {
+      sendEnvelope(res, {
+        httpStatus: 400,
+        ok: false,
+        endpointId: "documents.preventivo-extract",
+        status: "validation_error",
+        message:
+          "Payload non valido per preventivo-extract: pages[] supporta da 1 a 10 immagini.",
+        data: {
+          fileName: effectiveFileName,
+          pagesCount: pages.length,
+        },
+      });
+      return;
+    }
+
+    const invalidPage = pages.find(
+      (page) =>
+        !page?.contentBase64 ||
+        typeof page.mimeType !== "string" ||
+        !page.mimeType.toLowerCase().startsWith("image/"),
+    );
+    if (invalidPage) {
+      sendEnvelope(res, {
+        httpStatus: 400,
+        ok: false,
+        endpointId: "documents.preventivo-extract",
+        status: "validation_error",
+        message:
+          "Payload non valido per preventivo-extract: ogni elemento di pages[] deve essere un'immagine con contentBase64 non vuoto.",
+        data: {
+          fileName: effectiveFileName,
+          mimeType: invalidPage.mimeType ?? null,
+        },
+      });
+      return;
+    }
+  }
+
+  if (!isProviderConfigured()) {
+    sendEnvelope(res, {
+      httpStatus: 503,
+      ok: false,
+      endpointId: "documents.preventivo-extract",
+      status: "provider_not_configured",
+      message:
+        "Backend OpenAI non configurato. Imposta OPENAI_API_KEY lato server per estrarre i preventivi.",
+      data: {
+        providerConfigured: false,
+        providerTarget: getProviderTarget(),
+      },
+    });
+    return;
+  }
+
+  try {
+    const providerClient = getProviderClient();
+    const providerTarget = getProviderTarget();
+    const result = await extractPreventivoPriceFromDocument({
+      fileName: effectiveFileName,
+      mimeType,
+      contentBase64,
+      ...(hasPagesVariant ? { pages } : {}),
+      providerClient,
+      providerTarget,
+    });
+
+    const traceEntry = await appendTraceabilityEntry(
+      buildTraceabilityEntry({
+        endpointId: "documents.preventivo-extract",
+        operation: "analyze_document",
+        actorId: req.body?.actorId,
+        requestId: req.body?.requestId,
+        note: `Review preventivo OpenAI per ${effectiveFileName}.`,
+        entityCount: Array.isArray(result?.items) ? result.items.length : 0,
+      }),
+    );
+
+    sendEnvelope(res, {
+      httpStatus: 200,
+      ok: true,
+      endpointId: "documents.preventivo-extract",
+      status: "ok",
+      message: "Estrazione preventivo completata.",
+      data: {
+        result,
+        providerTarget,
+        traceEntryId: traceEntry.id,
+      },
+    });
+  } catch (error) {
+    sendEnvelope(res, {
+      httpStatus: 502,
+      ok: false,
+      endpointId: "documents.preventivo-extract",
+      status: "upstream_error",
+      message:
+        error instanceof Error
+          ? `Estrazione preventivo non completata: ${error.message}`
+          : "Estrazione preventivo non completata.",
       data: {
         providerConfigured: isProviderConfigured(),
         providerTarget: getProviderTarget(),
