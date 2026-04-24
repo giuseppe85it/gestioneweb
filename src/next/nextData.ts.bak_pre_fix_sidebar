@@ -206,6 +206,8 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     title: "ANAGRAFICHE",
     items: [
       { id: "anagrafiche", label: "Anagrafiche", path: "/next/anagrafiche" },
+      { id: "colleghi", label: "Colleghi", path: "/next/colleghi" },
+      { id: "fornitori", label: "Fornitori", path: "/next/fornitori" },
       { id: "mezzi-aziendali", label: "Mezzi aziendali", path: NEXT_MEZZI_PATH },
     ],
   },
@@ -309,6 +311,18 @@ export const NEXT_NAV_ITEMS = [
     path: "/next/anagrafiche",
     label: "Anagrafiche",
     scope: "Colleghi, fornitori e officine",
+  },
+  {
+    id: "colleghi",
+    path: "/next/colleghi",
+    label: "Colleghi",
+    scope: "Anagrafica persone",
+  },
+  {
+    id: "fornitori",
+    path: "/next/fornitori",
+    label: "Fornitori",
+    scope: "Anagrafica fornitori",
   },
   {
     id: "autisti-inbox",

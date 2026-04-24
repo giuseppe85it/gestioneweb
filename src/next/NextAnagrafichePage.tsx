@@ -1,0 +1,376 @@
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import NextAnagraficaModal, {
+  type NextAnagraficaKind,
+} from "./components/NextAnagraficaModal";
+import {
+  readNextColleghiSnapshot,
+  type NextCollegaReadOnlyItem,
+} from "./domain/nextColleghiDomain";
+import {
+  readNextFornitoriSnapshot,
+  type NextFornitoreReadOnlyItem,
+} from "./domain/nextFornitoriDomain";
+import {
+  readNextOfficineSnapshot,
+  type NextOfficinaReadOnlyItem,
+} from "./domain/nextOfficineDomain";
+import "./NextAnagrafichePage.css";
+
+type NextAnagraficheTab = "colleghi" | "fornitori" | "officine";
+
+type AnagraficaListItem = {
+  id: string;
+  kind: NextAnagraficaKind;
+  nome: string;
+  telefono: string | null;
+  info: string | null;
+  quality: "certo" | "parziale" | "da_verificare";
+  flags: string[];
+};
+
+type ModalState = {
+  kind: NextAnagraficaKind;
+  recordId: string | null;
+  initialMode: "read" | "edit";
+};
+
+const LAST_TAB_STORAGE_KEY = "@next_anagrafiche:lastTab";
+
+const TABS: Array<{
+  id: NextAnagraficheTab;
+  label: string;
+  kind: NextAnagraficaKind;
+  accent: "terra" | "olive" | "teal";
+}> = [
+  { id: "colleghi", label: "Colleghi", kind: "collega", accent: "terra" },
+  { id: "fornitori", label: "Fornitori", kind: "fornitore", accent: "olive" },
+  { id: "officine", label: "Officine", kind: "officina", accent: "teal" },
+];
+
+function parseTab(value: string | null): NextAnagraficheTab | null {
+  return value === "colleghi" || value === "fornitori" || value === "officine"
+    ? value
+    : null;
+}
+
+function readStoredTab(): NextAnagraficheTab | null {
+  try {
+    return parseTab(window.localStorage.getItem(LAST_TAB_STORAGE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function readTabFromSearch(search: string): NextAnagraficheTab | null {
+  return parseTab(new URLSearchParams(search).get("tab"));
+}
+
+function resolveInitialTab(search: string): NextAnagraficheTab {
+  return readTabFromSearch(search) ?? readStoredTab() ?? "colleghi";
+}
+
+function mapCollega(item: NextCollegaReadOnlyItem): AnagraficaListItem {
+  return {
+    id: item.id,
+    kind: "collega",
+    nome: item.nome,
+    telefono: item.telefono,
+    info: item.telefonoPrivato ?? item.descrizione,
+    quality: item.quality,
+    flags: item.flags,
+  };
+}
+
+function mapFornitore(item: NextFornitoreReadOnlyItem): AnagraficaListItem {
+  return {
+    id: item.id,
+    kind: "fornitore",
+    nome: item.nome,
+    telefono: item.telefono,
+    info: item.descrizione,
+    quality: item.quality,
+    flags: item.flags,
+  };
+}
+
+function mapOfficina(item: NextOfficinaReadOnlyItem): AnagraficaListItem {
+  return {
+    id: item.id,
+    kind: "officina",
+    nome: item.nome,
+    telefono: item.telefono,
+    info: item.citta,
+    quality: item.quality,
+    flags: item.flags,
+  };
+}
+
+function firstLetter(nome: string): string {
+  const letter = nome.trim().charAt(0).toLocaleUpperCase("it");
+  return letter || "#";
+}
+
+function groupItems(items: AnagraficaListItem[]) {
+  return items.reduce<Array<{ letter: string; items: AnagraficaListItem[] }>>(
+    (groups, item) => {
+      const letter = firstLetter(item.nome);
+      const existing = groups.find((group) => group.letter === letter);
+      if (existing) {
+        existing.items.push(item);
+        return groups;
+      }
+
+      groups.push({ letter, items: [item] });
+      return groups;
+    },
+    [],
+  );
+}
+
+function readErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Errore durante il caricamento delle anagrafiche.";
+}
+
+function NextAnagrafichePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<NextAnagraficheTab>(() =>
+    resolveInitialTab(location.search),
+  );
+  const [items, setItems] = useState<AnagraficaListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+  const [modal, setModal] = useState<ModalState | null>(null);
+
+  const activeTabConfig = useMemo(
+    () => TABS.find((tab) => tab.id === activeTab) ?? TABS[0],
+    [activeTab],
+  );
+
+  useEffect(() => {
+    const tabFromSearch = readTabFromSearch(location.search);
+    const nextTab = tabFromSearch ?? readStoredTab() ?? "colleghi";
+    setActiveTab(nextTab);
+
+    if (!tabFromSearch) {
+      const params = new URLSearchParams(location.search);
+      params.set("tab", nextTab);
+      navigate(
+        {
+          pathname: location.pathname,
+          search: `?${params.toString()}`,
+        },
+        { replace: true },
+      );
+    }
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LAST_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // localStorage non disponibile: il query param resta la fonte del tab corrente.
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (activeTab === "colleghi") {
+          const snapshot = await readNextColleghiSnapshot({ includeCloneOverlays: false });
+          if (!cancelled) setItems(snapshot.items.map(mapCollega));
+          return;
+        }
+
+        if (activeTab === "fornitori") {
+          const snapshot = await readNextFornitoriSnapshot({ includeCloneOverlays: false });
+          if (!cancelled) setItems(snapshot.items.map(mapFornitore));
+          return;
+        }
+
+        const snapshot = await readNextOfficineSnapshot({ includeCloneOverlays: false });
+        if (!cancelled) setItems(snapshot.items.map(mapOfficina));
+      } catch (loadError) {
+        if (cancelled) return;
+        console.error("Errore caricamento anagrafiche NEXT:", loadError);
+        setError(readErrorMessage(loadError));
+        setItems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, reloadToken]);
+
+  const filteredItems = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase("it");
+    if (!normalizedSearch) return items;
+
+    return items.filter((item) =>
+      item.nome.toLocaleLowerCase("it").includes(normalizedSearch),
+    );
+  }, [items, search]);
+
+  const groupedItems = useMemo(() => groupItems(filteredItems), [filteredItems]);
+
+  const counts = useMemo(
+    () => ({
+      total: items.length,
+      filtered: filteredItems.length,
+      withTelefono: items.filter((item) => Boolean(item.telefono)).length,
+      qualityCertain: items.filter((item) => item.quality === "certo").length,
+    }),
+    [filteredItems.length, items],
+  );
+
+  const selectTab = (tabId: NextAnagraficheTab) => {
+    const params = new URLSearchParams(location.search);
+    params.set("tab", tabId);
+    navigate({
+      pathname: location.pathname,
+      search: `?${params.toString()}`,
+    });
+  };
+
+  const openExisting = (item: AnagraficaListItem) => {
+    setModal({ kind: item.kind, recordId: item.id, initialMode: "read" });
+  };
+
+  const openNew = () => {
+    setModal({ kind: activeTabConfig.kind, recordId: null, initialMode: "edit" });
+  };
+
+  const reloadAfterMutation = () => {
+    setReloadToken((current) => current + 1);
+  };
+
+  return (
+    <div className={`ana-page ana-page--${activeTabConfig.accent}`}>
+      <header className="ana-page-header">
+        <div className="ana-page-title-block">
+          <div className="ana-page-eyebrow">Archivio operativo</div>
+          <h1>Anagrafiche</h1>
+          <p>Colleghi, fornitori e officine in un indice unico NEXT.</p>
+        </div>
+
+        <div className="ana-page-kpis" aria-label="Conteggi anagrafiche">
+          <div className="ana-page-kpi">
+            <span>Totale</span>
+            <strong>{counts.total}</strong>
+          </div>
+          <div className="ana-page-kpi">
+            <span>Filtrate</span>
+            <strong>{counts.filtered}</strong>
+          </div>
+          <div className="ana-page-kpi">
+            <span>Telefono</span>
+            <strong>{counts.withTelefono}</strong>
+          </div>
+          <div className="ana-page-kpi">
+            <span>Certe</span>
+            <strong>{counts.qualityCertain}</strong>
+          </div>
+        </div>
+      </header>
+
+      <section className="ana-page-toolbar" aria-label="Controlli anagrafiche">
+        <div className="ana-page-tabs" role="tablist" aria-label="Tipi anagrafica">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={tab.id === activeTab ? "ana-page-tab ana-page-tab--active" : "ana-page-tab"}
+              onClick={() => selectTab(tab.id)}
+              role="tab"
+              aria-selected={tab.id === activeTab}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="ana-page-actions">
+          <label className="ana-page-search">
+            <span>Cerca</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Nome"
+            />
+          </label>
+          <button type="button" className="ana-page-new" onClick={openNew}>
+            + Nuova voce
+          </button>
+        </div>
+      </section>
+
+      <section className="ana-page-index" aria-live="polite">
+        {error ? <div className="ana-page-error">{error}</div> : null}
+        {loading ? <div className="ana-page-state">Caricamento...</div> : null}
+
+        {!loading && groupedItems.length === 0 ? (
+          <div className="ana-page-empty">Nessuna voce trovata.</div>
+        ) : null}
+
+        {!loading
+          ? groupedItems.map((group) => (
+              <section className="ana-page-group" key={group.letter}>
+                <div className="ana-page-group-letter">{group.letter}</div>
+                <div className="ana-page-group-rows">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="ana-page-row"
+                      onClick={() => openExisting(item)}
+                    >
+                      <span className="ana-page-row-main">
+                        <span className="ana-page-row-title">{item.nome}</span>
+                        <span className="ana-page-row-subtitle">
+                          {item.info || item.telefono || "Dati essenziali"}
+                        </span>
+                      </span>
+                      <span className="ana-page-row-meta">
+                        <span>{item.telefono || "Telefono non indicato"}</span>
+                        <span>{item.quality.replace("_", " ")}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))
+          : null}
+      </section>
+
+      {modal ? (
+        <NextAnagraficaModal
+          open
+          kind={modal.kind}
+          recordId={modal.recordId}
+          initialMode={modal.initialMode}
+          originLabel="da Anagrafiche"
+          onClose={() => setModal(null)}
+          onSaved={reloadAfterMutation}
+          onDeleted={reloadAfterMutation}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export default NextAnagrafichePage;

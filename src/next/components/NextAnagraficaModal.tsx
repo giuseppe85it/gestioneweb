@@ -1,0 +1,586 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  readNextColleghiSnapshot,
+  type NextCollegaReadOnlyItem,
+} from "../domain/nextColleghiDomain";
+import {
+  readNextFornitoriSnapshot,
+  type NextFornitoreReadOnlyItem,
+} from "../domain/nextFornitoriDomain";
+import {
+  readNextOfficineSnapshot,
+  type NextOfficinaReadOnlyItem,
+} from "../domain/nextOfficineDomain";
+import {
+  deleteNextCollega,
+  deleteNextFornitore,
+  deleteNextOfficina,
+  saveNextCollega,
+  saveNextFornitore,
+  saveNextOfficina,
+  type NextCollegaFuelCardRecord,
+} from "../nextAnagraficheWriter";
+import "./NextAnagraficaModal.css";
+
+export type NextAnagraficaKind = "collega" | "fornitore" | "officina";
+
+type NextAnagraficaModalProps = {
+  open: boolean;
+  kind: NextAnagraficaKind;
+  recordId: string | null;
+  initialMode?: "read" | "edit";
+  originLabel?: string;
+  onClose: () => void;
+  onSaved?: (savedId: string) => void;
+  onDeleted?: (deletedId: string) => void;
+};
+
+type FormRecord = {
+  id: string | null;
+  nome: string;
+  telefono: string;
+  telefonoPrivato: string;
+  badge: string;
+  codice: string;
+  descrizione: string;
+  pinSim: string;
+  pukSim: string;
+  schedeCarburante: NextCollegaFuelCardRecord[];
+  telefoniAggiuntivi: string[];
+  citta: string;
+};
+
+const KIND_LABELS: Record<NextAnagraficaKind, { singular: string; plural: string }> = {
+  collega: { singular: "Collega", plural: "Colleghi" },
+  fornitore: { singular: "Fornitore", plural: "Fornitori" },
+  officina: { singular: "Officina", plural: "Officine" },
+};
+
+function emptyRecord(kind: NextAnagraficaKind): FormRecord {
+  return {
+    id: null,
+    nome: "",
+    telefono: "",
+    telefonoPrivato: "",
+    badge: "",
+    codice: "",
+    descrizione: "",
+    pinSim: "",
+    pukSim: "",
+    schedeCarburante: [],
+    telefoniAggiuntivi: kind === "officina" ? [] : [],
+    citta: "",
+  };
+}
+
+function fromCollega(item: NextCollegaReadOnlyItem): FormRecord {
+  return {
+    ...emptyRecord("collega"),
+    id: item.id,
+    nome: item.nome,
+    telefono: item.telefono ?? "",
+    telefonoPrivato: item.telefonoPrivato ?? "",
+    badge: item.badge ?? "",
+    codice: item.codice ?? "",
+    descrizione: item.descrizione ?? "",
+    pinSim: item.pinSim ?? "",
+    pukSim: item.pukSim ?? "",
+    schedeCarburante: item.schedeCarburante.map((entry) => ({
+      id: entry.id,
+      nomeCarta: entry.nomeCarta ?? "",
+      pinCarta: entry.pinCarta ?? "",
+    })),
+  };
+}
+
+function fromFornitore(item: NextFornitoreReadOnlyItem): FormRecord {
+  return {
+    ...emptyRecord("fornitore"),
+    id: item.id,
+    nome: item.nome,
+    telefono: item.telefono ?? "",
+    badge: item.badge ?? "",
+    codice: item.codice ?? "",
+    descrizione: item.descrizione ?? "",
+  };
+}
+
+function fromOfficina(item: NextOfficinaReadOnlyItem): FormRecord {
+  return {
+    ...emptyRecord("officina"),
+    id: item.id,
+    nome: item.nome,
+    telefono: item.telefono ?? "",
+    telefoniAggiuntivi: item.telefoniAggiuntivi,
+    citta: item.citta ?? "",
+  };
+}
+
+async function readRecord(kind: NextAnagraficaKind, id: string): Promise<FormRecord | null> {
+  if (kind === "collega") {
+    const snapshot = await readNextColleghiSnapshot({ includeCloneOverlays: false });
+    const item = snapshot.items.find((entry) => entry.id === id);
+    return item ? fromCollega(item) : null;
+  }
+
+  if (kind === "fornitore") {
+    const snapshot = await readNextFornitoriSnapshot({ includeCloneOverlays: false });
+    const item = snapshot.items.find((entry) => entry.id === id);
+    return item ? fromFornitore(item) : null;
+  }
+
+  const snapshot = await readNextOfficineSnapshot({ includeCloneOverlays: false });
+  const item = snapshot.items.find((entry) => entry.id === id);
+  return item ? fromOfficina(item) : null;
+}
+
+function normalizeTelefoniAggiuntivi(value: string[]): string[] {
+  return value.map((entry) => entry.trim()).filter(Boolean);
+}
+
+function NextAnagraficaModal({
+  open,
+  kind,
+  recordId,
+  initialMode,
+  originLabel = "da Anagrafiche",
+  onClose,
+  onSaved,
+  onDeleted,
+}: NextAnagraficaModalProps) {
+  const [mode, setMode] = useState<"read" | "edit">("read");
+  const [record, setRecord] = useState<FormRecord | null>(null);
+  const [form, setForm] = useState<FormRecord>(() => emptyRecord(kind));
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const labels = KIND_LABELS[kind];
+  const isNew = !recordId;
+
+  const title = useMemo(() => {
+    const name = form.nome.trim();
+    return name || `Nuovo ${labels.singular.toLowerCase()}`;
+  }, [form.nome, labels.singular]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    const fallbackMode = recordId ? initialMode ?? "read" : "edit";
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setMode(fallbackMode);
+
+      if (!recordId) {
+        const empty = emptyRecord(kind);
+        if (!cancelled) {
+          setRecord(empty);
+          setForm(empty);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const loaded = await readRecord(kind, recordId);
+        if (cancelled) return;
+        if (!loaded) {
+          setError("Voce anagrafica non trovata.");
+          setRecord(null);
+          setForm(emptyRecord(kind));
+          return;
+        }
+
+        setRecord(loaded);
+        setForm(loaded);
+      } catch (loadError) {
+        if (cancelled) return;
+        console.error("Errore caricamento anagrafica:", loadError);
+        setError("Errore durante il caricamento della voce.");
+        setRecord(null);
+        setForm(emptyRecord(kind));
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, initialMode, open, recordId]);
+
+  if (!open) return null;
+
+  const updateField = (field: keyof FormRecord, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateFuelCard = (
+    index: number,
+    field: "nomeCarta" | "pinCarta",
+    value: string,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      schedeCarburante: current.schedeCarburante.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, [field]: value } : entry,
+      ),
+    }));
+  };
+
+  const addFuelCard = () => {
+    setForm((current) => ({
+      ...current,
+      schedeCarburante: [
+        ...current.schedeCarburante,
+        { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, nomeCarta: "", pinCarta: "" },
+      ],
+    }));
+  };
+
+  const removeFuelCard = (index: number) => {
+    setForm((current) => ({
+      ...current,
+      schedeCarburante: current.schedeCarburante.filter((_, entryIndex) => entryIndex !== index),
+    }));
+  };
+
+  const updateTelefonoAggiuntivo = (index: number, value: string) => {
+    setForm((current) => ({
+      ...current,
+      telefoniAggiuntivi: current.telefoniAggiuntivi.map((entry, entryIndex) =>
+        entryIndex === index ? value : entry,
+      ),
+    }));
+  };
+
+  const addTelefonoAggiuntivo = () => {
+    setForm((current) => ({
+      ...current,
+      telefoniAggiuntivi: [...current.telefoniAggiuntivi, ""],
+    }));
+  };
+
+  const removeTelefonoAggiuntivo = (index: number) => {
+    setForm((current) => ({
+      ...current,
+      telefoniAggiuntivi: current.telefoniAggiuntivi.filter((_, entryIndex) => entryIndex !== index),
+    }));
+  };
+
+  const handleCancel = () => {
+    if (isNew) {
+      onClose();
+      return;
+    }
+
+    if (record) {
+      setForm(record);
+    }
+    setMode("read");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      let savedId = "";
+      if (kind === "collega") {
+        savedId = await saveNextCollega({
+          id: form.id,
+          nome: form.nome,
+          telefono: form.telefono,
+          telefonoPrivato: form.telefonoPrivato,
+          badge: form.badge,
+          codice: form.codice,
+          descrizione: form.descrizione,
+          pinSim: form.pinSim,
+          pukSim: form.pukSim,
+          schedeCarburante: form.schedeCarburante,
+        });
+      } else if (kind === "fornitore") {
+        savedId = await saveNextFornitore({
+          id: form.id,
+          nome: form.nome,
+          telefono: form.telefono,
+          descrizione: form.descrizione,
+        });
+      } else {
+        savedId = await saveNextOfficina({
+          id: form.id,
+          nome: form.nome,
+          telefono: form.telefono,
+          telefoniAggiuntivi: normalizeTelefoniAggiuntivi(form.telefoniAggiuntivi),
+          citta: form.citta,
+        });
+      }
+
+      const nextRecord = { ...form, id: savedId };
+      setRecord(nextRecord);
+      setForm(nextRecord);
+      setMode("read");
+      onSaved?.(savedId);
+    } catch (saveError) {
+      console.error("Errore salvataggio anagrafica:", saveError);
+      setError("Errore durante il salvataggio.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!form.id) return;
+    if (!window.confirm(`Eliminare ${title}?`)) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      if (kind === "collega") {
+        await deleteNextCollega(form.id);
+      } else if (kind === "fornitore") {
+        await deleteNextFornitore(form.id);
+      } else {
+        await deleteNextOfficina(form.id);
+      }
+
+      onDeleted?.(form.id);
+      onClose();
+    } catch (deleteError) {
+      console.error("Errore eliminazione anagrafica:", deleteError);
+      setError("Errore durante l'eliminazione.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderValue = (label: string, value: string | string[]) => {
+    const display = Array.isArray(value)
+      ? value.filter(Boolean).join(", ")
+      : value.trim();
+    return (
+      <div className="ana-read-row">
+        <dt>{label}</dt>
+        <dd>{display || "Non indicato"}</dd>
+      </div>
+    );
+  };
+
+  return (
+    <div className="ana-backdrop" role="presentation">
+      <section className={`ana-modal ana-modal--${kind}`} role="dialog" aria-modal="true">
+        <header className="ana-header">
+          <div className="ana-eyebrow">
+            <span className="ana-kind-dot" aria-hidden="true" />
+            <span>{labels.singular} · {form.id ? `Voce ${form.id}` : "Nuova voce"} · {originLabel}</span>
+          </div>
+          <h2>{title}</h2>
+          <p>{mode === "read" ? "Scheda anagrafica" : "Modifica voce anagrafica"}</p>
+        </header>
+
+        <div className="ana-body">
+          {loading ? <div className="ana-state">Caricamento...</div> : null}
+          {error ? <div className="ana-error">{error}</div> : null}
+
+          {!loading ? (
+            mode === "read" ? (
+              <div className="ana-sections">
+                <section className="ana-section">
+                  <h3>Contatti</h3>
+                  <dl>
+                    {renderValue("Nome", form.nome)}
+                    {renderValue("Telefono", form.telefono)}
+                    {kind === "collega" ? renderValue("Telefono privato", form.telefonoPrivato) : null}
+                    {kind === "officina" ? renderValue("Telefoni aggiuntivi", form.telefoniAggiuntivi) : null}
+                    {kind === "officina" ? renderValue("Citta", form.citta) : null}
+                  </dl>
+                </section>
+
+                {kind === "collega" ? (
+                  <>
+                    <section className="ana-section">
+                      <h3>Identificativi</h3>
+                      <dl>
+                        {renderValue("Badge", form.badge)}
+                        {renderValue("Codice", form.codice)}
+                        {renderValue("Descrizione", form.descrizione)}
+                      </dl>
+                    </section>
+                    <section className="ana-section">
+                      <h3>SIM e carte</h3>
+                      <dl>
+                        {renderValue("PIN SIM", form.pinSim)}
+                        {renderValue("PUK SIM", form.pukSim)}
+                        {renderValue(
+                          "Schede carburante",
+                          form.schedeCarburante.map((entry) =>
+                            [entry.nomeCarta, entry.pinCarta].filter(Boolean).join(" · "),
+                          ),
+                        )}
+                      </dl>
+                    </section>
+                  </>
+                ) : null}
+
+                {kind === "fornitore" ? (
+                  <section className="ana-section">
+                    <h3>Note</h3>
+                    <dl>{renderValue("Descrizione", form.descrizione)}</dl>
+                  </section>
+                ) : null}
+              </div>
+            ) : (
+              <div className="ana-sections">
+                <section className="ana-section">
+                  <h3>Contatti</h3>
+                  <label>
+                    <span>Nome</span>
+                    <input value={form.nome} onChange={(event) => updateField("nome", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>Telefono</span>
+                    <input value={form.telefono} onChange={(event) => updateField("telefono", event.target.value)} />
+                  </label>
+                  {kind === "collega" ? (
+                    <label>
+                      <span>Telefono privato</span>
+                      <input
+                        value={form.telefonoPrivato}
+                        onChange={(event) => updateField("telefonoPrivato", event.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  {kind === "officina" ? (
+                    <>
+                      <label>
+                        <span>Citta</span>
+                        <input value={form.citta} onChange={(event) => updateField("citta", event.target.value)} />
+                      </label>
+                      <div className="ana-repeat">
+                        <div className="ana-repeat-head">
+                          <span>Telefoni aggiuntivi</span>
+                          <button type="button" onClick={addTelefonoAggiuntivo}>Aggiungi</button>
+                        </div>
+                        {form.telefoniAggiuntivi.map((telefono, index) => (
+                          <div className="ana-inline-row" key={`tel-${index}`}>
+                            <input
+                              value={telefono}
+                              onChange={(event) => updateTelefonoAggiuntivo(index, event.target.value)}
+                            />
+                            <button type="button" onClick={() => removeTelefonoAggiuntivo(index)}>Rimuovi</button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                </section>
+
+                {kind === "collega" ? (
+                  <>
+                    <section className="ana-section">
+                      <h3>Identificativi</h3>
+                      <label>
+                        <span>Badge</span>
+                        <input value={form.badge} onChange={(event) => updateField("badge", event.target.value)} />
+                      </label>
+                      <label>
+                        <span>Codice</span>
+                        <input value={form.codice} onChange={(event) => updateField("codice", event.target.value)} />
+                      </label>
+                      <label>
+                        <span>Descrizione</span>
+                        <textarea
+                          value={form.descrizione}
+                          onChange={(event) => updateField("descrizione", event.target.value)}
+                        />
+                      </label>
+                    </section>
+                    <section className="ana-section">
+                      <h3>SIM e carte</h3>
+                      <label>
+                        <span>PIN SIM</span>
+                        <input value={form.pinSim} onChange={(event) => updateField("pinSim", event.target.value)} />
+                      </label>
+                      <label>
+                        <span>PUK SIM</span>
+                        <input value={form.pukSim} onChange={(event) => updateField("pukSim", event.target.value)} />
+                      </label>
+                      <div className="ana-repeat">
+                        <div className="ana-repeat-head">
+                          <span>Schede carburante</span>
+                          <button type="button" onClick={addFuelCard}>Aggiungi</button>
+                        </div>
+                        {form.schedeCarburante.map((scheda, index) => (
+                          <div className="ana-inline-row" key={scheda.id ?? index}>
+                            <input
+                              placeholder="Carta"
+                              value={scheda.nomeCarta ?? ""}
+                              onChange={(event) => updateFuelCard(index, "nomeCarta", event.target.value)}
+                            />
+                            <input
+                              placeholder="PIN"
+                              value={scheda.pinCarta ?? ""}
+                              onChange={(event) => updateFuelCard(index, "pinCarta", event.target.value)}
+                            />
+                            <button type="button" onClick={() => removeFuelCard(index)}>Rimuovi</button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  </>
+                ) : null}
+
+                {kind === "fornitore" ? (
+                  <section className="ana-section">
+                    <h3>Note</h3>
+                    <label>
+                      <span>Descrizione</span>
+                      <textarea
+                        value={form.descrizione}
+                        onChange={(event) => updateField("descrizione", event.target.value)}
+                      />
+                    </label>
+                  </section>
+                ) : null}
+              </div>
+            )
+          ) : null}
+        </div>
+
+        <footer className="ana-footer">
+          <div>
+            {mode === "read" && form.id ? (
+              <button type="button" className="ana-danger" onClick={handleDelete} disabled={saving}>
+                Elimina
+              </button>
+            ) : null}
+          </div>
+          <div className="ana-footer-actions">
+            {mode === "read" ? (
+              <>
+                <button type="button" onClick={onClose}>Chiudi</button>
+                <button type="button" className="ana-primary" onClick={() => setMode("edit")}>
+                  Modifica
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={handleCancel}>Annulla</button>
+                <button type="button" className="ana-primary" onClick={handleSave} disabled={saving}>
+                  {saving ? "Salvataggio..." : "Salva"}
+                </button>
+              </>
+            )}
+          </div>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+export default NextAnagraficaModal;

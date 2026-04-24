@@ -981,7 +981,7 @@ export default function NextMaterialiDaOrdinarePage() {
     );
     const id = generaId();
 
-    let fotoUrl: string | null = null;
+    let fotoUrl: string | null = fotoPreview;
     let fotoStoragePath: string | null = null;
 
     if (fotoFile) {
@@ -993,8 +993,6 @@ export default function NextMaterialiDaOrdinarePage() {
         fotoStoragePath = path;
       } catch (err) {
         console.error("Errore upload foto materiale:", err);
-        window.alert("Errore caricamento foto. Materiale non aggiunto, riprova.");
-        return;
       }
     }
 
@@ -1049,42 +1047,19 @@ export default function NextMaterialiDaOrdinarePage() {
     });
   };
 
-  const aggiornaFotoMateriale = async (materialId: string, file: File) => {
-    const currentMateriale = materiali.find((item) => item.id === materialId);
-    if (!currentMateriale) return;
-
-    setSavingOrdine(true);
-    try {
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const path = `materiali/${materialId}-${Date.now()}.${ext}`;
-      const snap = await uploadBytes(storageRef(storage, path), file);
-      const url = await getDownloadURL(snap.ref);
-
-      if (currentMateriale.fotoStoragePath) {
-        try {
-          await deleteObject(storageRef(storage, currentMateriale.fotoStoragePath));
-        } catch (deleteError) {
-          console.warn("Errore rimozione foto materiale precedente:", deleteError);
-        }
-      }
-
-      setMateriali((current) =>
-        current.map((item) =>
-          item.id === materialId
-            ? {
-                ...item,
-                fotoUrl: url,
-                fotoStoragePath: path,
-              }
-            : item,
-        ),
-      );
-    } catch (err) {
-      console.error("Errore upload nuova foto materiale:", err);
-      window.alert("Errore durante il caricamento della foto. Riprova.");
-    } finally {
-      setSavingOrdine(false);
-    }
+  const aggiornaFotoMateriale = (materialId: string, file: File) => {
+    const preview = URL.createObjectURL(file);
+    setMateriali((current) =>
+      current.map((item) =>
+        item.id === materialId
+          ? {
+              ...item,
+              fotoUrl: preview,
+              fotoStoragePath: null,
+            }
+          : item,
+      ),
+    );
   };
 
   const rimuoviFotoMateriale = (materialId: string) => {
@@ -1726,8 +1701,8 @@ export default function NextMaterialiDaOrdinarePage() {
                                   onChange={(event) => {
                                     const file = event.target.files?.[0];
                                     if (!file) return;
+                                    aggiornaFotoMateriale(materiale.id, file);
                                     event.currentTarget.value = "";
-                                    void aggiornaFotoMateriale(materiale.id, file);
                                   }}
                                 />
                                 <div
@@ -1778,8 +1753,6 @@ export default function NextMaterialiDaOrdinarePage() {
                                       <button
                                         type="button"
                                         className="acq-kebab-item"
-                                        disabled={savingOrdine}
-                                        title={savingOrdine ? "Caricamento foto in corso..." : undefined}
                                         onClick={() => {
                                           const inputElement = document.getElementById(
                                             `om-photo-${materiale.id}`,

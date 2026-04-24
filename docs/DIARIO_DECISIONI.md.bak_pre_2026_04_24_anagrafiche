@@ -48,31 +48,6 @@ Writer: ereditati al 100% da Materiali da ordinare. Per effetto della chiusura o
 Cosa resta da testare: il flusso IA preventivi (estrazione da PDF tramite endpoint preventivo-extract) dovrebbe funzionare perche le deroghe barriera sono gia attive, ma non e stato testato nel browser il 2026-04-23. Da verificare.
 Conseguenza per gli audit: il conteggio gap scriventi della NEXT passa da 6 a 5. L'audit del 2026-04-22 leggeva Acquisti come modulo autonomo, lettura errata.
 
-### 2026-04-24 — Modulo Anagrafiche NEXT CHIUSO AL 100%
-Decisione: il modulo Anagrafiche NEXT e chiuso al 100%.
-Motivo del momento: doppio audit Codex + Claude Code concorde su tutti i 10 punti della checklist permanente. Build OK. Test browser di Giuseppe OK su creazione, modifica, cancellazione, refresh, schede carburante, telefoni aggiuntivi, preservazione badge/codice Fornitori. Primo modulo NEXT a unificare tre entita anagrafiche sotto un unico contenitore.
-Conseguenza: Anagrafiche diventa il riferimento per i moduli NEXT scriventi anagrafici.
-
-### 2026-04-24 — Unificazione Colleghi + Fornitori + Officine sotto /next/anagrafiche
-Decisione: Colleghi, Fornitori e Officine vivono in un solo modulo NEXT a 3 tab.
-Motivo del momento: decisione di design approvata da Giuseppe durante sessione di design. Un solo modulo, 3 tab, UI editoriale, modale unico riutilizzabile. Route /next/colleghi e /next/fornitori conservate come alias redirect a /next/anagrafiche?tab=... per retrocompatibilita link esterni.
-Conseguenza: negli audit futuri Colleghi e Fornitori NEXT non vanno letti come moduli scriventi separati, ma come tab del modulo Anagrafiche.
-
-### 2026-04-24 — Officine introdotta come nuova entita nativa NEXT
-Decisione: Officine e una nuova entita nativa NEXT.
-Motivo del momento: nella madre non esiste il concetto di Officina come entita distinta, perche era confuso dentro Fornitori. Ora e separata. Collection Firestore @officine nativa NEXT, assente nella madre. Campi: nome, telefono, telefoniAggiuntivi[], citta. Domain code D13-OFFICINE.
-Conseguenza: Officine non ha parity madre da verificare, ma entra nel perimetro anagrafico NEXT.
-
-### 2026-04-24 — Modale NextAnagraficaModal disponibile per riuso esterno
-Decisione: `NextAnagraficaModal` diventa componente riutilizzabile.
-Motivo del momento: componente React modale unificato per le 3 entita, con stati read/edit. Pronto per integrazione futura da Mezzi (picker autista), Materiali da ordinare (picker fornitore), Manutenzioni (picker officina). Non c'e ancora nessun consumer esterno: i picker verranno aggiunti quando si lavorera a quei moduli.
-Conseguenza: i moduli futuri devono preferire questo modale invece di ricreare modali anagrafici dedicati.
-
-### 2026-04-24 — Stato scriventi NEXT: 4 su 7 chiusi
-Decisione: il conteggio degli scriventi NEXT chiusi passa a 4 su 7.
-Motivo del momento: con la chiusura di oggi salgono a 4 i moduli NEXT scriventi chiusi al 100% (Materiali da ordinare, Acquisti alias, Colleghi, Fornitori) piu 1 nativo NEXT (Officine). Restano 3 da affrontare: Mezzi, Attrezzature Cantieri, Cisterna.
-Conseguenza: la roadmap scriventi residua si concentra su Mezzi, Attrezzature Cantieri e Cisterna.
-
 ## Convenzioni per future entries
 
 Template:

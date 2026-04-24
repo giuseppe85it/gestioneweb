@@ -68,7 +68,6 @@ import NextCapoMezziPage from "./next/NextCapoMezziPage";
 import NextCapoCostiMezzoPage from "./next/NextCapoCostiMezzoPage";
 import NextColleghiPage from "./next/NextColleghiPage";
 import NextFornitoriPage from "./next/NextFornitoriPage";
-import NextAnagrafichePage from "./next/NextAnagrafichePage";
 import NextEuromeccPage from "./next/NextEuromeccPage";
 import { buildNextMagazzinoPath } from "./next/nextStructuralPaths";
 
@@ -153,17 +152,6 @@ function NextLegacyIaRedirect() {
       }}
     />
   );
-}
-
-function NextAnagraficheAliasRedirect({
-  to,
-  legacyFallback,
-}: {
-  to: string;
-  legacyFallback: unknown;
-}) {
-  void legacyFallback;
-  return <Navigate to={to} replace />;
 }
 
 function App() {
@@ -362,21 +350,10 @@ function App() {
           }
         />
         <Route
-          path="anagrafiche"
-          element={
-            <NextRoleGuard areaId="anagrafiche">
-              <NextAnagrafichePage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
           path="colleghi"
           element={
             <NextRoleGuard areaId="colleghi">
-              <NextAnagraficheAliasRedirect
-                to="/next/anagrafiche?tab=colleghi"
-                legacyFallback={NextColleghiPage}
-              />
+              <NextColleghiPage />
             </NextRoleGuard>
           }
         />
@@ -384,10 +361,7 @@ function App() {
           path="fornitori"
           element={
             <NextRoleGuard areaId="fornitori">
-              <NextAnagraficheAliasRedirect
-                to="/next/anagrafiche?tab=fornitori"
-                legacyFallback={NextFornitoriPage}
-              />
+              <NextFornitoriPage />
             </NextRoleGuard>
           }
         />

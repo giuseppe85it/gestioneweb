@@ -1,0 +1,410 @@
+# SPEC · Modulo Anagrafiche NEXT
+
+**Documento:** `docs/_live/spec/SPEC_ANAGRAFICHE_NEXT.md`
+**Versione:** 1.1
+**Data:** 2026-04-24
+**Stato:** bozza da verificare con Codex prima dell'implementazione
+
+---
+
+## 1. Obiettivo
+
+Creare un modulo NEXT unificato `Anagrafiche` che sostituisca le due pagine read-only attuali `NextColleghiPage` e `NextFornitoriPage` con una **pagina unica a tre tab** (Colleghi, Fornitori, Officine), dotata di un **modale riutilizzabile** usabile sia dalla pagina stessa sia da moduli esterni futuri (Mezzi, Materiali da ordinare, Manutenzioni).
+
+Il modulo dovrà:
+- Essere pienamente **scrivente** sulle collection Firestore `storage/@colleghi`, `storage/@fornitori`, `storage/@officine`
+- Rispettare la barriera `cloneWriteBarrier` tramite deroghe esplicite
+- Usare `firestoreWriteOps` (mai SDK Firestore raw)
+- Introdurre da zero l'entità **Officine** (nuova collection `@officine`, non esistente nella madre)
+- Mantenere retro-compatibilità madre: le collection `@colleghi` e `@fornitori` restano condivise
+- Superare i 10 punti della checklist "modulo chiuso al 100%"
+
+---
+
+## 2. Architettura
+
+### 2.1 Route
+
+Il modulo introduce **una sola nuova route canonica**:
+
+- `/next/anagrafiche` — pagina principale con 3 tab
+- Le due route esistenti `/next/colleghi` e `/next/fornitori` **restano in App.tsx come alias** che reindirizzano a `/next/anagrafiche?tab=colleghi` e `/next/anagrafiche?tab=fornitori`
+- Motivo dell'alias: preservare retrocompatibilità con eventuali link sparsi e con `NextRoleGuard areaId`
+
+### 2.2 Tab
+
+Il tab attivo è pilotato da query param `?tab=colleghi|fornitori|officine` e memorizzato in `localStorage` con chiave `@next_anagrafiche:lastTab`. Fallback se assente: `colleghi`.
+
+### 2.3 Collection Firestore
+
+| Tab | Collection | Documento | Stato |
+|---|---|---|---|
+| Colleghi | `storage` | `@colleghi` | esistente, condivisa madre+NEXT |
+| Fornitori | `storage` | `@fornitori` | esistente, condivisa madre+NEXT |
+| Officine | `storage` | `@officine` | **nuova**, solo NEXT |
+
+Shape documento: `{ value: Item[] }` per tutti e tre (pattern canonico del progetto).
+
+### 2.4 Shell e Guard
+
+- La pagina è figlia di `<Route path="/next" element={<NextShell />}>` come tutte le altre
+- Wrap con `<NextRoleGuard areaId="anagrafiche">` (nuovo areaId unificato)
+- Gli alias `/next/colleghi` e `/next/fornitori` mantengono i rispettivi `areaId` legacy per non rompere il contratto esistente
+
+---
+
+## 3. Shape dati
+
+### 3.1 Colleghi
+
+Invariato rispetto a `NextCollegaReadOnlyItem` già definito in `src/next/domain/nextColleghiDomain.ts`:
+
+```ts
+{
+  id: string;
+  nome: string;              // salvato UPPERCASE
+  telefono: string | null;
+  telefonoPrivato: string | null;
+  badge: string | null;
+  codice: string | null;
+  descrizione: string | null;
+  pinSim: string | null;
+  pukSim: string | null;
+  schedeCarburante: NextCollegaFuelCard[];
+  sourceCollection: "storage";
+  sourceKey: "@colleghi";
+  quality: "certo" | "parziale" | "da_verificare";
+  flags: string[];
+}
+
+export type NextCollegaFuelCard = {
+  id: string;
+  nomeCarta: string | null;
+  pinCarta: string | null;
+  flags: string[];
+};
+```
+
+### 3.2 Fornitori
+
+Invariato rispetto a `NextFornitoreReadOnlyItem` già definito in `src/next/domain/nextFornitoriDomain.ts`:
+
+```ts
+{
+  id: string;
+  nome: string;              // salvato UPPERCASE
+  telefono: string | null;
+  badge: string | null;      // preservato ma NON mostrato in UI NEXT
+  codice: string | null;     // preservato ma NON mostrato in UI NEXT
+  descrizione: string | null;
+  sourceCollection: "storage";
+  sourceKey: "@fornitori";
+  quality: "certo" | "parziale" | "da_verificare";
+  flags: string[];
+}
+```
+
+**Decisione UX:** i campi `badge` e `codice` non sono mostrati nel modale NEXT (né in lettura né in modifica) ma vengono **letti, preservati e riscritti come sono** al salvataggio. Nessuna cancellazione distruttiva dei dati esistenti.
+
+### 3.3 Officine (nuova)
+
+Nuovo tipo da definire:
+
+```ts
+{
+  id: string;
+  nome: string;                         // salvato UPPERCASE
+  telefono: string | null;
+  telefoniAggiuntivi: string[];         // array, può essere vuoto
+  citta: string | null;
+  sourceCollection: "storage";
+  sourceKey: "@officine";
+  quality: "certo" | "parziale" | "da_verificare";
+  flags: string[];
+}
+```
+
+Obbligatorietà: solo `nome`. Tutto il resto opzionale.
+
+---
+
+## 4. Componente modale riutilizzabile
+
+### 4.1 Obiettivo
+
+Un **unico componente React** che mostra la scheda di una voce anagrafica e gestisce sia lettura sia modifica, usato:
+- Internamente dalla pagina Anagrafiche
+- In futuro da Mezzi (picker autista → modale Collega), Materiali da ordinare (picker fornitore → modale Fornitore), Manutenzioni (picker officina → modale Officina)
+
+### 4.2 File e firma
+
+**File nuovo:** `src/next/components/NextAnagraficaModal.tsx`
+
+```ts
+type NextAnagraficaKind = "collega" | "fornitore" | "officina";
+
+type NextAnagraficaModalProps = {
+  open: boolean;
+  kind: NextAnagraficaKind;
+  recordId: string | null;        // null = modalità "nuovo"
+  initialMode?: "read" | "edit";  // default "read" se recordId presente, "edit" se null
+  originLabel?: string;            // opzionale: es. "da Mezzi", "aperto da Materiali"
+  onClose: () => void;
+  onSaved?: (savedId: string) => void;
+  onDeleted?: (deletedId: string) => void;
+};
+```
+
+### 4.3 Comportamento
+
+- **Stato interno:** `mode: "read" | "edit"`, `record: Item | null`, `loading`, `saving`, `error`
+- **Al mount:** se `recordId` presente → legge il record dal domain corrispondente; se null → inizializza un record vuoto e forza `mode="edit"`
+- **Switch read↔edit:** click su "Modifica" nel footer read → `mode="edit"`; click su "Annulla" in edit → torna a read (o chiude modale se era "nuovo")
+- **Salvataggio:** scrive tramite writer dedicato (vedi §5), chiama `onSaved(id)`, torna in `mode="read"` mostrando i dati appena salvati
+- **Eliminazione:** chiede conferma via `window.confirm`, scrive via writer, chiama `onDeleted(id)`, chiude modale
+- **Campi mostrati:** determinati da `kind` secondo le shape di §3. Fornitori: mai badge/codice. Officine: mai badge/codice/descrizione/SIM/schede.
+
+### 4.4 Stile
+
+Il modale adotta la direzione editoriale già approvata:
+- Header con eyebrow mono (`Collega · Voce № 04 · da Anagrafiche`), titolo serif Fraunces grande, kicker italico
+- Body con sezioni numerate (`§01 Contatti`, `§02 Identificativi`, ecc.)
+- Footer con Elimina a sinistra, Chiudi + Modifica a destra (modo read) oppure Annulla + Salva (modo edit)
+- Palette: paper/terra/olive/teal (vedi mockup)
+
+### 4.5 CSS
+
+Nuovo file **`src/next/components/NextAnagraficaModal.css`** con prefisso `ana-` (convenzione progetto: nessun Tailwind, CSS custom per modulo).
+
+---
+
+## 5. Writer dedicato
+
+### 5.1 File nuovo
+
+**`src/next/nextAnagraficheWriter.ts`**
+
+Centralizza tutte le scritture Firestore per le 3 collection, seguendo il pattern di `nextPreventivoManualeWriter.ts` (helper dedicato, non inline nel componente).
+
+### 5.2 API
+
+```ts
+export async function saveNextCollega(record: NextCollegaRecord): Promise<string>;
+export async function deleteNextCollega(id: string): Promise<void>;
+
+export async function saveNextFornitore(record: NextFornitoreRecord): Promise<string>;
+export async function deleteNextFornitore(id: string): Promise<void>;
+
+export async function saveNextOfficina(record: NextOfficinaRecord): Promise<string>;
+export async function deleteNextOfficina(id: string): Promise<void>;
+```
+
+Ogni funzione ritorna l'`id` del record salvato (generato se `nuovo`, invariato se modifica).
+
+### 5.3 Pattern di scrittura (canonico)
+
+Per ogni save:
+
+1. Costruisce il reference `doc(db, "storage", "@<tipo>")`
+2. `getDoc(ref)` → legge array corrente `snap.data()?.value ?? []`
+3. Se nuovo (no id): genera id con pattern `${Date.now()}-${Math.random().toString(16).slice(2)}` (già usato dalla madre) e fa `append`
+4. Se modifica: `map` sostituendo il record con id corrispondente
+5. `await setDoc(ref, { value: updatedArray }, { merge: true })` usando `setDoc` di `firestoreWriteOps`, **mai dall'SDK raw**
+
+Per ogni delete:
+
+1. `getDoc` → array corrente
+2. `filter` escludendo l'id
+3. `setDoc(..., { merge: true })` via `firestoreWriteOps`
+
+### 5.4 Uppercase e sanitizzazione
+
+Il writer applica `.toUpperCase()` al campo `nome` e `.trim()` a tutti i campi testuali prima di salvare (replica comportamento madre).
+
+### 5.5 Preservazione campi Fornitori
+
+Per Fornitori: quando il writer riscrive un record esistente, se il record originale su Firestore contiene `badge`/`codice`, questi vengono **copiati tali e quali** nel record aggiornato (il modale NEXT non li mostra ma non li cancella).
+
+---
+
+## 6. File da creare
+
+| Path | Scopo |
+|---|---|
+| `src/next/NextAnagrafichePage.tsx` | pagina unificata con 3 tab, gestisce lista + apre modale |
+| `src/next/components/NextAnagraficaModal.tsx` | componente modale riutilizzabile |
+| `src/next/components/NextAnagraficaModal.css` | stile modale (prefisso `ana-`) |
+| `src/next/NextAnagrafichePage.css` | stile pagina (prefisso `ana-page-`) |
+| `src/next/domain/nextOfficineDomain.ts` | domain per `@officine` (replica pattern di `nextColleghiDomain`/`nextFornitoriDomain`, nuovo domain code da assegnare verificando il prossimo libero in `internalAiUnifiedIntelligenceEngine.ts`) |
+| `src/next/nextAnagraficheWriter.ts` | writer helper per le 3 collection |
+
+---
+
+## 7. File da modificare
+
+| Path | Modifica |
+|---|---|
+| `src/next/nextAnagraficheCloneState.ts` | aggiungere funzioni analoghe per Officine: `readNextOfficineCloneRecords`, `upsertNextOfficinaCloneRecord`, `readNextDeletedOfficinaIds`, `markNextOfficinaCloneDeleted`. Chiavi localStorage: `@next_clone:officine` e `@next_clone:officine:deleted` |
+| `src/utils/cloneWriteBarrier.ts` | aggiungere eccezioni (vedi §8) |
+| `src/App.tsx` | aggiungere route `/next/anagrafiche` wrappata in `NextRoleGuard areaId="anagrafiche"`; convertire `/next/colleghi` e `/next/fornitori` in alias redirect verso `/next/anagrafiche?tab=...` mantenendo `NextRoleGuard` originale |
+
+---
+
+## 8. Eccezioni cloneWriteBarrier
+
+Aggiungere in `src/utils/cloneWriteBarrier.ts` nuove costanti e il relativo ramo in `isAllowedCloneWriteException`. Pattern da replicare: quello usato per `MATERIALI_DA_ORDINARE_ALLOWED_*`.
+
+### 8.1 Costanti da aggiungere
+
+```ts
+const ANAGRAFICHE_ALLOWED_FIRESTORE_DOC_PATHS: ReadonlySet<string> = new Set([
+  "storage/@colleghi",
+  "storage/@fornitori",
+  "storage/@officine",
+]);
+
+const ANAGRAFICHE_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
+  "/next/anagrafiche",
+  "/next/colleghi",      // alias retrocompatibile
+  "/next/fornitori",     // alias retrocompatibile
+]);
+```
+
+### 8.2 Ramo in isAllowedCloneWriteException
+
+Aggiungere nel dispatcher il controllo:
+- `kind === "firestore.setDoc"` AND `meta.path ∈ ANAGRAFICHE_ALLOWED_FIRESTORE_DOC_PATHS` AND `route ∈ ANAGRAFICHE_ALLOWED_ROUTES` → permesso
+- Nessun permesso Storage (il modulo non carica file)
+
+### 8.3 Nessuna rimozione della barriera
+
+La barriera resta attiva su tutto il resto. Le deroghe sono pulite e scoped al modulo.
+
+---
+
+## 9. Ordine di implementazione (file per file)
+
+Codex dovrà seguire **questo ordine**, con STOP e verifica dopo ogni step:
+
+1. **Aggiungere eccezioni in `cloneWriteBarrier.ts`** (costanti + dispatcher) → verificare build
+2. **Creare `nextOfficineDomain.ts`** → verificare tipi e import
+3. **Estendere `nextAnagraficheCloneState.ts`** con le funzioni Officine → verificare tipi
+4. **Creare `nextAnagraficheWriter.ts`** → verificare tipi
+5. **Creare `NextAnagraficaModal.tsx` + `.css`** → verificare render
+6. **Creare `NextAnagrafichePage.tsx` + `.css`** → verificare render
+7. **Modificare `App.tsx`** con nuova route + alias → verificare navigazione
+8. **Rimuovere** (o deprecare commentate) le vecchie `NextColleghiPage.tsx` e `NextFornitoriPage.tsx`: **decisione da prendere in fase 7 con Giuseppe**. Default: NON rimuoverle ora, lasciarle come fallback. Si rimuovono dopo conferma runtime.
+
+---
+
+## 10. Pattern CRUD operazione per operazione
+
+### 10.1 Lettura lista (pagina Anagrafiche)
+
+- Tab Colleghi: `readNextColleghiSnapshot({ includeCloneOverlays: false })`
+- Tab Fornitori: `readNextFornitoriSnapshot({ includeCloneOverlays: false })`
+- Tab Officine: `readNextOfficineSnapshot({ includeCloneOverlays: false })` (nuovo)
+
+### 10.2 Apertura modale
+
+Il modale prende `recordId` e `kind`, legge dal domain corrispondente filtrando per `id`.
+
+### 10.3 Creazione
+
+- `saveNextCollega(record)` / `saveNextFornitore(record)` / `saveNextOfficina(record)` nel writer
+- Genera id localmente prima della scrittura
+- Ritorna l'id generato
+- Il modale chiama `onSaved(id)` e passa in `mode="read"`
+
+### 10.4 Modifica
+
+- Stessa funzione save del writer (logica: "se id esiste già nell'array, sostituisci; altrimenti append")
+- Il modale rimane aperto in `mode="read"` mostrando il record aggiornato
+
+### 10.5 Eliminazione
+
+- `window.confirm` nel modale
+- `deleteNext*(id)` dal writer
+- Chiude modale, callback `onDeleted(id)`
+
+### 10.6 Refresh lista
+
+La pagina Anagrafiche ricarica lo snapshot del tab corrente dopo ogni `onSaved` o `onDeleted`.
+
+---
+
+## 11. Criteri "modulo chiuso al 100%"
+
+La checklist a 10 punti deve essere tutta verde per dichiarare il modulo chiuso:
+
+1. ✅ Zero pulsanti `disabled` senza motivo di business
+2. ✅ Zero alert `read-only` nel codice — grep `"read-only"` su `NextAnagrafichePage.tsx` e `NextAnagraficaModal.tsx` deve essere vuoto
+3. ✅ Zero scritture che finiscono solo in React state senza persistenza Firestore
+4. ✅ Tutti i writer passano da `firestoreWriteOps` — grep `"firebase/firestore"` in `nextAnagraficheWriter.ts` deve essere vuoto
+5. ✅ `cloneWriteBarrier` ha le 3 deroghe esplicite per `@colleghi`, `@fornitori`, `@officine`
+6. ✅ Storage rules: non applicabile (il modulo non usa Storage)
+7. ✅ Test browser end-to-end su ciascun tab: creazione, modifica, cancellazione, refresh
+8. ✅ Verifica "tolgo la madre, modulo funziona da solo" per Colleghi/Fornitori (dati persistiti dopo refresh); per Officine la madre non esiste quindi è nativo
+9. ✅ Audit incrociato Codex + Claude Code sui punti 1–7 (doppio audit richiesto solo per il verdetto finale di chiusura, vedi regola 2026-04-24)
+10. ✅ Confronto comportamentale 1:1 con madre per Colleghi e Fornitori (ogni azione madre ha equivalente NEXT); Officine è nativo, non si applica
+
+---
+
+## 12. Fuori scope di questa SPEC
+
+Esplicitamente **NON** inclusi in questo lavoro:
+
+- Picker "Autista" in Mezzi → modale Collega
+- Picker "Fornitore" in Materiali da ordinare → modale Fornitore
+- Picker "Officina" in Manutenzioni → modale Officina
+- Migrazione dei record "officine" attualmente presenti in `@fornitori` (es. OFFICINA FRATELLI BRUN, GOMMISTA ALPINO): resteranno in `@fornitori`. Giuseppe li sposterà manualmente creando la voce in Officine e cancellandola da Fornitori.
+- Ricostruzione del modulo Mezzi stesso
+- Correzione dell'incoerenza del domain code di Fornitori (dichiarato `D05` nel file, registrato come `D06` nell'IA interna): da affrontare in un lavoro separato, non in questa SPEC
+
+---
+
+## 13. Rischi e note
+
+### 13.1 Funzioni clone orfane
+
+`nextAnagraficheCloneState.ts` contiene già `upsertNextCollegaCloneRecord`, `markNextCollegaCloneDeleted`, `upsertNextFornitoreCloneRecord`, `markNextFornitoreCloneDeleted` ma senza chiamanti. Questo lavoro non le collega più: il writer nuovo scrive **direttamente su Firestore**, non via clone state. Il clone state resta come infrastruttura parallela non usata per questi 3 moduli. **Non si tocca** per non introdurre rischi — in futuro valutare se rimuovere o riattivare per overlay non sincronizzati.
+
+### 13.2 `includeCloneOverlays`
+
+I domain esistenti hanno default `true`. La pagina Anagrafiche li chiamerà con `false` (scrittura diretta, no overlay). Comportamento coerente con le pagine attuali.
+
+### 13.3 NextRoleGuard permissivo
+
+L'audit ha confermato che `NextRoleGuard` oggi è solo osservativo (log in DEV). La SPEC non cambia questo comportamento. Una chiusura scrivente reale richiederà in futuro auth reale + regole Firestore per ruolo.
+
+### 13.4 Alias route
+
+Gli alias `/next/colleghi` e `/next/fornitori` devono:
+- Conservare il proprio `NextRoleGuard areaId` originale per non rompere log di guard
+- Fare redirect interno a `/next/anagrafiche?tab=<tipo>` al mount
+
+---
+
+## 14. Mockup UI di riferimento
+
+I mockup UI di questo modulo sono stati prodotti da Claude in chat e approvati visivamente da Giuseppe. **Non sono file presenti nel repo.** Codex non puo leggerli. La fonte di verita visiva per Codex e:
+
+- la descrizione testuale di UI/UX contenuta in questa SPEC (sezione 4 per il modale, sezioni 2 e 3 per la pagina)
+
+- la direzione estetica editoriale concordata: palette paper (#F4EFE6) / terra (#B8482A) / olive (#4A5D2C) / teal (#1E5F5F), font Fraunces + Inter + JetBrains Mono, sezioni numerate §NN, righe-indice con raggruppamento alfabetico, niente card generiche
+
+Codex deve replicare questa direzione fedelmente. Se durante l'implementazione emergono dubbi di layout, Codex deve fermarsi e chiedere a Giuseppe, non inventare varianti.
+
+---
+
+## 15. Verifica SPEC
+
+Prima di qualsiasi implementazione, questa SPEC deve essere sottoposta a Codex con prompt di verifica:
+
+> "Leggi docs/_live/spec/SPEC_ANAGRAFICHE_NEXT.md e verifica che ogni affermazione tecnica (nomi funzioni, shape tipi, path file, righe App.tsx, firme, pattern CRUD) corrisponda al codice reale del repo. Riporta tutte le divergenze."
+
+**Implementazione autorizzata solo con divergenze = 0.**
+
+---
+
+**Fine SPEC.**

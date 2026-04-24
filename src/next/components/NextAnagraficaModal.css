@@ -1,0 +1,320 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap");
+
+:root {
+  --ana-paper: #f4efe6;
+  --ana-paper-strong: #fffaf0;
+  --ana-ink: #27231f;
+  --ana-muted: #766f66;
+  --ana-line: rgba(39, 35, 31, 0.16);
+  --ana-terra: #b8482a;
+  --ana-olive: #4a5d2c;
+  --ana-teal: #1e5f5f;
+}
+
+.ana-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(18, 17, 15, 0.42);
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.ana-modal {
+  width: min(940px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(39, 35, 31, 0.22);
+  border-radius: 8px;
+  background: var(--ana-paper);
+  color: var(--ana-ink);
+  box-shadow: 0 24px 70px rgba(18, 17, 15, 0.32);
+}
+
+.ana-header {
+  padding: 28px 32px 22px;
+  border-bottom: 1px solid var(--ana-line);
+  background: var(--ana-paper-strong);
+}
+
+.ana-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: var(--ana-muted);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ana-kind-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--ana-terra);
+}
+
+.ana-modal--fornitore .ana-kind-dot {
+  background: var(--ana-olive);
+}
+
+.ana-modal--officina .ana-kind-dot {
+  background: var(--ana-teal);
+}
+
+.ana-header h2 {
+  margin: 0;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(34px, 5vw, 62px);
+  font-weight: 650;
+  line-height: 0.95;
+}
+
+.ana-header p {
+  margin: 12px 0 0;
+  color: var(--ana-muted);
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 18px;
+  font-style: italic;
+}
+
+.ana-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 32px 28px;
+}
+
+.ana-state,
+.ana-error {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.ana-state {
+  background: rgba(30, 95, 95, 0.1);
+  color: var(--ana-teal);
+}
+
+.ana-error {
+  background: rgba(184, 72, 42, 0.12);
+  color: var(--ana-terra);
+}
+
+.ana-sections {
+  display: grid;
+  gap: 18px;
+}
+
+.ana-section {
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--ana-line);
+}
+
+.ana-section:last-child {
+  border-bottom: 0;
+}
+
+.ana-section h3 {
+  margin: 0 0 14px;
+  color: var(--ana-terra);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ana-modal--fornitore .ana-section h3 {
+  color: var(--ana-olive);
+}
+
+.ana-modal--officina .ana-section h3 {
+  color: var(--ana-teal);
+}
+
+.ana-section dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.ana-read-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.35fr) 1fr;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(39, 35, 31, 0.08);
+}
+
+.ana-read-row:first-child {
+  border-top: 0;
+}
+
+.ana-read-row dt {
+  color: var(--ana-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ana-read-row dd {
+  margin: 0;
+  color: var(--ana-ink);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.ana-section label {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.ana-section label span,
+.ana-repeat-head span {
+  color: var(--ana-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ana-section input,
+.ana-section textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(39, 35, 31, 0.22);
+  border-radius: 6px;
+  background: rgba(255, 250, 240, 0.86);
+  color: var(--ana-ink);
+  font: inherit;
+  padding: 11px 12px;
+}
+
+.ana-section textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.ana-repeat {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ana-repeat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ana-inline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.ana-modal--officina .ana-inline-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.ana-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 32px;
+  border-top: 1px solid var(--ana-line);
+  background: var(--ana-paper-strong);
+}
+
+.ana-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ana-footer button,
+.ana-repeat button,
+.ana-inline-row button {
+  border: 1px solid rgba(39, 35, 31, 0.22);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ana-ink);
+  cursor: pointer;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+.ana-footer button:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.ana-primary {
+  border-color: transparent !important;
+  background: var(--ana-terra) !important;
+  color: #fffaf0 !important;
+}
+
+.ana-modal--fornitore .ana-primary {
+  background: var(--ana-olive) !important;
+}
+
+.ana-modal--officina .ana-primary {
+  background: var(--ana-teal) !important;
+}
+
+.ana-danger {
+  border-color: rgba(184, 72, 42, 0.28) !important;
+  color: var(--ana-terra) !important;
+}
+
+@media (max-width: 720px) {
+  .ana-backdrop {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .ana-modal {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+  }
+
+  .ana-header,
+  .ana-body,
+  .ana-footer {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .ana-read-row,
+  .ana-inline-row,
+  .ana-modal--officina .ana-inline-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ana-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ana-footer-actions {
+    justify-content: stretch;
+  }
+
+  .ana-footer button,
+  .ana-footer-actions button {
+    width: 100%;
+  }
+}

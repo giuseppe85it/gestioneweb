@@ -27,7 +27,6 @@ export type NextAreaId =
   | "mezzi-dossier"
   | "operativita-globale"
   | "capo"
-  | "anagrafiche"
   | "colleghi"
   | "fornitori"
   | "ia"
@@ -205,7 +204,8 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "anagrafiche",
     title: "ANAGRAFICHE",
     items: [
-      { id: "anagrafiche", label: "Anagrafiche", path: "/next/anagrafiche" },
+      { id: "colleghi", label: "Colleghi", path: "/next/colleghi" },
+      { id: "fornitori", label: "Fornitori", path: "/next/fornitori" },
       { id: "mezzi-aziendali", label: "Mezzi aziendali", path: NEXT_MEZZI_PATH },
     ],
   },
@@ -305,10 +305,16 @@ export const NEXT_NAV_ITEMS = [
     scope: "Archivio, report e moduli clone-safe",
   },
   {
-    id: "anagrafiche",
-    path: "/next/anagrafiche",
-    label: "Anagrafiche",
-    scope: "Colleghi, fornitori e officine",
+    id: "colleghi",
+    path: "/next/colleghi",
+    label: "Colleghi",
+    scope: "Anagrafica persone",
+  },
+  {
+    id: "fornitori",
+    path: "/next/fornitori",
+    label: "Fornitori",
+    scope: "Anagrafica fornitori",
   },
   {
     id: "autisti-inbox",
@@ -372,13 +378,6 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     label: "Area Capo",
     status: "ACTIVE_PARTIAL",
     note: "Route attive per overview mezzi e costi, con approvazioni e PDF timbrati ancora bloccati.",
-  },
-  {
-    id: "anagrafiche",
-    path: "/next/anagrafiche",
-    label: "Anagrafiche",
-    status: "ACTIVE",
-    note: "Modulo NEXT unificato per Colleghi, Fornitori e Officine con scrittura Firestore scoped dalla barriera clone.",
   },
   {
     id: "colleghi",
@@ -705,43 +704,6 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
         description:
           "La route madre mescola consultazione, approvazione stati e PDF timbrati: il clone conserva solo il perimetro leggibile.",
         tone: "accent",
-      },
-    ],
-  },
-  "anagrafiche": {
-    id: "anagrafiche",
-    routePath: "/next/anagrafiche",
-    relatedPaths: ["/next/colleghi", "/next/fornitori"],
-    navLabel: "Anagrafiche",
-    shortLabel: "Anagrafiche",
-    eyebrow: "Anagrafiche operative",
-    title: "Anagrafiche",
-    description:
-      "Modulo NEXT unificato per gestire Colleghi, Fornitori e Officine con modale riutilizzabile e writer Firestore scoped.",
-    phase: "Modulo NEXT scrivente",
-    primaryGrammar: "Anagrafica",
-    searchPlaceholder: "Nome, telefono, citta",
-    shellFocus: "Lista e modifica anagrafiche condivise",
-    visibility: ["Account gestionale", "Super Admin"],
-    cards: [
-      {
-        label: "Tab",
-        value: "3",
-        meta: "Colleghi, Fornitori e Officine sono raccolti in una pagina unica.",
-        tone: "accent",
-      },
-      {
-        label: "Writer",
-        value: "Firestore",
-        meta: "Le scritture passano da writer dedicato e barrier scoped.",
-        tone: "success",
-      },
-    ],
-    sections: [
-      {
-        title: "Copertura reale",
-        description:
-          "La route unificata sostituisce le superfici anagrafiche separate e mantiene alias compatibili per Colleghi e Fornitori.",
       },
     ],
   },

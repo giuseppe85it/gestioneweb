@@ -981,7 +981,7 @@ export default function NextMaterialiDaOrdinarePage() {
     );
     const id = generaId();
 
-    let fotoUrl: string | null = null;
+    let fotoUrl: string | null = fotoPreview;
     let fotoStoragePath: string | null = null;
 
     if (fotoFile) {
@@ -993,8 +993,6 @@ export default function NextMaterialiDaOrdinarePage() {
         fotoStoragePath = path;
       } catch (err) {
         console.error("Errore upload foto materiale:", err);
-        window.alert("Errore caricamento foto. Materiale non aggiunto, riprova.");
-        return;
       }
     }
 

@@ -2,8 +2,6 @@ const NEXT_CLONE_COLLEGHI_KEY = "@next_clone:colleghi";
 const NEXT_CLONE_COLLEGHI_DELETED_KEY = "@next_clone:colleghi:deleted";
 const NEXT_CLONE_FORNITORI_KEY = "@next_clone:fornitori";
 const NEXT_CLONE_FORNITORI_DELETED_KEY = "@next_clone:fornitori:deleted";
-const NEXT_CLONE_OFFICINE_KEY = "@next_clone:officine";
-const NEXT_CLONE_OFFICINE_DELETED_KEY = "@next_clone:officine:deleted";
 
 export type NextAnagraficaCloneFuelCard = {
   id: string;
@@ -33,16 +31,6 @@ export type NextFornitoreCloneRecord = {
   badge: string | null;
   codice: string | null;
   descrizione: string | null;
-  __nextCloneOnly: true;
-  __nextCloneSavedAt: number;
-};
-
-export type NextOfficinaCloneRecord = {
-  id: string;
-  nome: string;
-  telefono: string | null;
-  telefoniAggiuntivi: string[];
-  citta: string | null;
   __nextCloneOnly: true;
   __nextCloneSavedAt: number;
 };
@@ -172,38 +160,5 @@ export function markNextFornitoreCloneDeleted(id: string) {
   writeJson(
     NEXT_CLONE_FORNITORI_KEY,
     readNextFornitoriCloneRecords().filter((entry) => entry.id !== id),
-  );
-}
-
-export function readNextOfficineCloneRecords(): NextOfficinaCloneRecord[] {
-  const parsed = readJson<unknown[]>(NEXT_CLONE_OFFICINE_KEY, []);
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-
-  return parsed.filter(
-    (entry): entry is NextOfficinaCloneRecord =>
-      Boolean(entry) &&
-      typeof entry === "object" &&
-      (entry as { __nextCloneOnly?: boolean }).__nextCloneOnly === true &&
-      typeof (entry as { id?: unknown }).id === "string",
-  );
-}
-
-export function upsertNextOfficinaCloneRecord(record: NextOfficinaCloneRecord) {
-  const current = readNextOfficineCloneRecords().filter((entry) => entry.id !== record.id);
-  writeJson(NEXT_CLONE_OFFICINE_KEY, [record, ...current]);
-  clearDeleted(NEXT_CLONE_OFFICINE_DELETED_KEY, record.id);
-}
-
-export function readNextDeletedOfficinaIds(): string[] {
-  return readDeletedIds(NEXT_CLONE_OFFICINE_DELETED_KEY);
-}
-
-export function markNextOfficinaCloneDeleted(id: string) {
-  markDeleted(NEXT_CLONE_OFFICINE_DELETED_KEY, id);
-  writeJson(
-    NEXT_CLONE_OFFICINE_KEY,
-    readNextOfficineCloneRecords().filter((entry) => entry.id !== id),
   );
 }

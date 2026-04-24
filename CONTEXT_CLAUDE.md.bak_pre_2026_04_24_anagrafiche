@@ -45,7 +45,7 @@
 | NEXT Operativita globale | Controparti NEXT di `Gestione Operativa`, `Magazzino` come ingresso pubblico unificato del dominio stock (inventario, materiali consegnati, cisterne AdBlue, documenti e costi, carichi arrivi procurement consolidati in `Magazzino`), compat redirect da `Inventario` e `MaterialiConsegnati`, contratto stock condiviso locale su `@inventario` (`pz/lt/kg/mt`, matching stabile, scarico AdBlue, deduplica prudente documenti/arrivi), `AttrezzatureCantieri`, con `Lavori` gia scrivente via deroga chirurgica e `Manutenzioni` ora scrivente con vista interna `Mappa storico`; dopo i fix 2026-04-13 il tab `/next/magazzino?tab=documenti-costi` non e piu archivio globale IA, mostra solo documenti `@documenti_magazzino` e preventivi procurement materiali e usa ora la UI `Documenti e costi` per fornitore, con limite residuo sui preventivi senza `voci`. | in sviluppo |
 | NEXT Procurement | Modulo unico clone su `/next/materiali-da-ordinare` con tab ordini/arrivi/dettaglio/prezzi/listino. | in sviluppo |
 | NEXT Euromecc | Modulo nativo NEXT su `/next/euromecc` con mappa impianto, manutenzioni, problemi, riepilogo, fullscreen area e scrittura reale solo su collection dedicate, inclusa meta area per `tipo cemento` dei sili con nome completo e short label. | in sviluppo |
-| NEXT Area Capo + Anagrafiche | Area Capo resta in sviluppo; Anagrafiche e chiuso al 100% su `/next/anagrafiche` con tab `Colleghi`, `Fornitori`, `Officine` e alias `/next/colleghi` + `/next/fornitori` verso query tab. | parziale / Anagrafiche chiuso |
+| NEXT Area Capo + Anagrafiche | Controparti clone di `Capo`, `Colleghi`, `Fornitori`. | in sviluppo |
 | NEXT IA hub | Controparti clone di `IA`, `apikey`, `libretto`, `documenti`, `copertura-libretti`, `libretti-export`; `/next/ia/documenti` e ora una vista `Documenti e costi` con gruppi per fornitore, filtro `DDT` UI/fallback, ricerca locale, modale dettaglio, `Riapri review`, targa cliccabile verso il Dossier e cambio valuta inline source-aware sui soli dataset consentiti (`@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, `@costiMezzo`), ma ancora senza righe documento perche `NextIADocumentiArchiveItem` non espone `voci`. | in sviluppo |
 | NEXT IA interna universale | Sottosistema IA separato in due superfici: `IA Report` su `/next/ia/interna` e alias `/next/ia/report`, piu `Archivista documenti` su `/next/ia/archivista`; la Home mostra due ingressi distinti, `NextInternalAiPage` resta la parte chat/report e `NextIAArchivistaPage` governa la V1 documentale non chat. Dentro Archivista sono ora attivi cinque rami documentali: `Fattura / DDT + Magazzino`, `Fattura / DDT + Manutenzione`, `Documento mezzo`, `Preventivo + Magazzino`, `Preventivo + Manutenzione`, con review non chat, controllo duplicati obbligatorio, conferma finale utente e archiviazione vera nei target reali `@documenti_magazzino`, `@documenti_mezzi`, `storage/@preventivi`; `Documento mezzo` puo aggiornare `@mezzi_aziendali` solo su conferma esplicita. I due rami preventivo restano entrambi su `storage/@preventivi`, ma sono ora distinti da `famigliaArchivista` (`preventivo_magazzino` / `preventivo_manutenzione`) e da `ambitoPreventivo` (`magazzino` / `manutenzione`). Nel solo ramo `Fattura / DDT + Manutenzione`, Archivista accetta ora anche piu pagine come documento logico unico e, dopo l'archiviazione, puo aprire uno step 2 opzionale che crea una manutenzione reale via writer canonico `@manutenzioni` usando `sourceDocumentId` del documento archiviato. Dentro `/next/ia/interna` il ramo reale del modale review `Documento mezzo -> Libretto` monta ora il componente separato `src/next/internal-ai/NextEstrazioneLibretto.tsx`, mentre gli altri casi continuano a usare il modale generico. Manutenzione, Documento mezzo e Preventivo usano backend OpenAI server-side dedicato; Magazzino mantiene il motore gia attivo. | in sviluppo |
 | NEXT Cisterna | Controparti clone di archivio cisterna, IA cisterna e schede test. | in sviluppo |
@@ -54,7 +54,6 @@
 | Backend IA separato | Backend server-side dedicato all'IA interna con persistenza locale e provider OpenAI solo server-side. | in sviluppo |
 
 ## 3. STATO ATTUALE
-- Ultimo task completato: chiusura modulo `Anagrafiche` NEXT il `2026-04-24`. `/next/anagrafiche` e il modulo unico a 3 tab `Colleghi`, `Fornitori`, `Officine`; `/next/colleghi` e `/next/fornitori` restano alias redirect per retrocompatibilita. Doppio audit Codex + Claude Code verde sui 10 punti, build OK e test browser Giuseppe OK su creazione, modifica, cancellazione, refresh, schede carburante, telefoni aggiuntivi e preservazione badge/codice Fornitori.
 - Ultimo task completato: bottone rosso `Elimina` nel pannello dettaglio embedded di `/next/manutenzioni` il `2026-04-23`. `src/next/NextMappaStoricoPage.tsx` espone ora la prop opzionale `onDelete(record)` e mostra il quinto bottone contestuale dopo `Scarica PDF`; `src/next/NextManutenzioniPage.tsx` richiama `deleteNextManutenzioneBusinessRecord(record.id)` dopo `window.confirm`, informa l'utente che l'operazione e irreversibile e che ripristina inventario/rimuove consegne collegate, poi azzera `selectedDetailRecordId` e rilegge i dati via `refreshData()`. `src/next/next-mappa-storico.css` aggiunge solo la variante `man2-detail-v2__action--danger`. Verifiche tecniche: `npx eslint src/next/NextMappaStoricoPage.tsx src/next/NextManutenzioniPage.tsx` `OK`, `npm run build` `OK`, `npm run lint` fermo al baseline globale `582/567/15` con delta zero. Verifica browser live della delete: `DA VERIFICARE`.
 - Ultimo task completato: fix domain `Manutenzioni` per il bug "modifica crea duplicato" il `2026-04-23`. `src/next/domain/nextManutenzioniDomain.ts` usa ora l'helper interno `buildHistoryTargaKey(rawTarga)` sia nella read side sia nella match side degli id sintetici legacy, uniformando la normalizzazione targa (`normalizeNextMezzoTarga(...)` con fallback `trim + uppercase`) e impedendo che un update su record senza `raw.id` stabile lasci il vecchio record nello storico. `buildGeneratedId`, `unshift` e `setItemSync` restano invariati; il fix agisce solo sul match deterministico del record legacy da sostituire. Verifiche tecniche: `npx eslint src/next/domain/nextManutenzioniDomain.ts` `OK`, `npm run build` `OK`, `npm run lint` fermo al baseline globale `582/567/15` con delta zero. Cleanup dei duplicati gia creati nel dataset: `DA FARE` manualmente.
 - Ultimo task completato: restyling completo del tab `Dettaglio` di `/next/manutenzioni` il `2026-04-23`. Il solo ramo `embedded` di `src/next/NextMappaStoricoPage.tsx` e stato riallineato alla spec con split view lista storico + pannello dettaglio, filtri chip dinamici, deselezione al secondo click, bottoni contestuali testuali e layout responsive a colonna singola sotto `900px`; sono stati rimossi dal ramo embedded viewer tecnico, toggle `Sinistra/Destra`, card laterale `Dettaglio mezzo`, KPI strip legacy e bottoni fissi in fondo. `src/next/NextManutenzioniPage.tsx` passa ora al dettaglio `storicoMezzoOrdinato`, `kmUltimoByTarga[activeTarga]`, i campi dominio aggiuntivi (`ore`, `sottotipo`, `gommePerAsse`, `gommeInterventoTipo`, `gommeStraordinario`, `sourceDocumentCurrency`) e i callback `onOpenDocument` / `onDownloadPdfSingle`; `src/next/next-mappa-storico.css` aggiunge solo classi nuove `man2-detail-v2__*`. La sezione gialla gomme mostra solo dati reali del dominio (`assiCoinvolti`, `gommePerAsse`, `gommeInterventoTipo`, badge `STRAORDINARIO`) e non inventa `marca`, `misura`, `intervento`. Verifiche tecniche: `npx eslint src/next/NextMappaStoricoPage.tsx src/next/NextManutenzioniPage.tsx src/next/next-mappa-storico.css` `OK`, `npm run build` `OK`, `npm run lint` fermo al baseline globale `582/567/15` con delta zero. Verifica browser live finale: `DA VERIFICARE`.
@@ -106,7 +105,7 @@
 - Ultimo task completato: PROMPT34 - fix cross-modulo `Manutenzioni` NEXT. Il bug reale del writer materiali su `@materialiconsegnati` e stato corretto eliminando la doppia scrittura consecutiva e sostituendola con un record unificato per i materiali scaricati da manutenzione; `nextManutenzioniGommeDomain.ts`, `NextGommeEconomiaSection.tsx`, `nextDossierMezzoDomain.ts`, `NextDossierMezzoPage.tsx` e `nextOperativitaGlobaleDomain.ts` valorizzano ora i campi gomme strutturati (`gommePerAsse`, `gommeInterventoTipo`, `gommeStraordinario`) prima del parsing legacy. Build OK.
 - Ultimo task completato: PROMPT33 — Feature A (upload documento originale su Firebase Storage + "Apri documento" nello storico Euromecc) + Feature B (selettore tipo documento, flusso AI lista ricambi, writer ordine su `@ordini`, badge ordine nello storico). Deroghe barrier aggiunte in `cloneWriteBarrier.ts` per `storage.uploadBytes` (euromecc/relazioni/) e `storageSync.setItemSync` (@ordini). Regola aggiunta in `storage.rules` per euromecc/relazioni. Build OK, zero errori TypeScript.
 - Stato app legacy: attiva e fonte di verita operativa.
-- Stato NEXT: nuovo perimetro applicativo non ancora chiuso come nuova madre; le scritture reali non sono globali ma si aprono modulo per modulo. Stato scriventi NEXT: 4/7 chiusi (`Materiali da ordinare`, `Acquisti` alias, `Colleghi`, `Fornitori`) piu `Officine` come entita nativa NEXT su collection `@officine`; restano `Mezzi`, `Attrezzature Cantieri`, `Cisterna`.
+- Stato NEXT: nuovo perimetro applicativo non ancora chiuso come nuova madre; le scritture reali non sono globali ma si aprono modulo per modulo, e oggi esistono moduli gia promossi come `Lavori`, `Manutenzioni`, `Magazzino` ed `Euromecc`.
 - Stato build root: `npm run build` = OK.
 - Stato lint root: `npm run lint` = KO con 584 problemi totali (568 errori, 16 warning).
 - Aree con piu errori lint verificati: `src/autistiInbox/*`, `src/autisti/*`, `src/pages/*`, `src/utils/*`, `api/pdf-ai-enhance.ts`, `pdfEngine.ts`.
@@ -185,13 +184,11 @@
 ## 5. CONVENZIONI
 ### Dati e chiavi
 - Collection key-value principale: `storage/<key>`.
-- Le chiavi business principali su `storage` usano prefisso `@`, per esempio `@mezzi_aziendali`, `@lavori`, `@manutenzioni`, `@rifornimenti`, `@inventario`, `@ordini`, `@preventivi`, `@listino_prezzi`, `@fornitori`, `@colleghi`, `@officine`.
+- Le chiavi business principali su `storage` usano prefisso `@`, per esempio `@mezzi_aziendali`, `@lavori`, `@manutenzioni`, `@rifornimenti`, `@inventario`, `@ordini`, `@preventivi`, `@listino_prezzi`, `@fornitori`, `@colleghi`.
 - `@mezzi_aziendali` ha merge speciale in `setItemSync()`; le altre key vengono sovrascritte in blocco.
 - Collection dedicate verificate: `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici`, `@impostazioni_app/gemini`, `@analisi_economica_mezzi`, `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili`.
 - Collection dedicate modulo nativo NEXT `Euromecc`: `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta`.
-- Collection nativa NEXT `Officine`: `@officine`, domain code `D13-OFFICINE`, campi principali `nome`, `telefono`, `telefoniAggiuntivi[]`, `citta`.
 - Collection visuali NEXT `Manutenzioni`: `@mezzi_foto_viste`, `@mezzi_hotspot_mapping`.
-- Anagrafiche NEXT usa `@next_anagrafiche:lastTab`; clone state Officine usa `@next_clone:officine` e `@next_clone:officine:deleted`.
 - Local storage autisti verificato: `@autista_attivo_local`, `@mezzo_attivo_autista_local`.
 
 ### Date e formati
@@ -203,14 +200,12 @@
 ### Routing e naming
 - Legacy admin: route root `/...`.
 - Clone NEXT: route `/next/...`.
-- Anagrafiche NEXT canonica: `/next/anagrafiche`; alias `/next/colleghi` e `/next/fornitori` redirectano a `/next/anagrafiche?tab=...`.
 - App autisti legacy: `/autisti/...`.
 - App autisti clone: `/next/autisti/...`.
 - Pagine routed NEXT: `src/next/Next*Page.tsx`.
 - Reader/domain NEXT: `src/next/domain/next*Domain.ts`.
 - Clone state locale NEXT: file `next*CloneState.ts`.
 - Path builder NEXT: `src/next/nextStructuralPaths.ts`.
-- Modale riutilizzabile Anagrafiche: `src/next/components/NextAnagraficaModal.tsx`, pronto per picker futuri da `Mezzi`, `Materiali da ordinare`, `Manutenzioni`; nessun consumer esterno ancora collegato.
 
 ### UI e lingua
 - Lingua UI: italiana.
@@ -235,22 +230,21 @@
 - `preventivi/<id>.pdf`
 
 ## 6. PROSSIMI TASK
-0. Chiudere i 3 scriventi NEXT rimasti aperti nella checklist operativa: `Mezzi`, `Attrezzature Cantieri`, `Cisterna`.
-1. Fare audit separato di rivalidazione del dominio `Magazzino NEXT` dopo l'autonomia stock lato NEXT, dopo l'integrazione read-only nella IA interna e dopo la nuova UX document-driven della chat; oggi non va promosso a `CHIUSO` senza prova extra su writer legacy, PDF, rischi multi-writer, robustezza documentale su allegati reali e correttezza dell'handoff IA sui prompt misti.
-2. Fare audit separato del modulo `Manutenzioni` dopo la riapertura in scrittura e la nuova vista `Mappa storico`; oggi non va promosso a `CHIUSO` senza prova extra.
-3. Fare audit separato del modulo `Lavori` dopo il redesign unificato e la deroga chirurgica su `cloneWriteBarrier.ts`; oggi non va promosso a `CHIUSO` senza prova extra.
-4. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
-5. Estendere oltre `Euromecc` la versione verificabile delle policy Firestore effettive e riallinearle al codice.
-6. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
-7. Chiudere il modello sicurezza per-ruolo reale oltre l'attuale bootstrap con auth anonima globale.
-8. Fare audit V1 del modulo `Euromecc` prima di promuoverlo oltre `PARZIALE`.
-9. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
-10. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.
-11. Continuare l'hardening del clone NEXT sui moduli ancora `ACTIVE_PARTIAL`, soprattutto procurement, area capo, cisterna, autisti admin e IA legacy clone.
-12. Chiudere la matrice ruoli/permessi reale oltre ai preset frontend `role`.
-13. Consolidare i canali server-side IA/PDF; oggi il repo ha backend multipli concorrenti.
-14. Aprire il live-read del backend IA separato solo dopo credenziali server-side dedicate e boundary whitelisted verificati.
-15. Ridurre il peso del bundle client e la duplicazione `jspdf` se si apre un task performance.
+0. Fare audit separato di rivalidazione del dominio `Magazzino NEXT` dopo l'autonomia stock lato NEXT, dopo l'integrazione read-only nella IA interna e dopo la nuova UX document-driven della chat; oggi non va promosso a `CHIUSO` senza prova extra su writer legacy, PDF, rischi multi-writer, robustezza documentale su allegati reali e correttezza dell'handoff IA sui prompt misti.
+1. Fare audit separato del modulo `Manutenzioni` dopo la riapertura in scrittura e la nuova vista `Mappa storico`; oggi non va promosso a `CHIUSO` senza prova extra.
+2. Fare audit separato del modulo `Lavori` dopo il redesign unificato e la deroga chirurgica su `cloneWriteBarrier.ts`; oggi non va promosso a `CHIUSO` senza prova extra.
+3. Ridurre il debito lint globale; oggi e il problema tecnico piu chiaramente verificabile e diffuso.
+4. Estendere oltre `Euromecc` la versione verificabile delle policy Firestore effettive e riallinearle al codice.
+5. Riallineare `storage.rules` al perimetro reale usato dai moduli e dai backend.
+6. Chiudere il modello sicurezza per-ruolo reale oltre l'attuale bootstrap con auth anonima globale.
+7. Fare audit V1 del modulo `Euromecc` prima di promuoverlo oltre `PARZIALE`.
+8. Canonicalizzare il flusso eventi autisti scegliendo una sola sorgente tra `@storico_eventi_operativi` e `autisti_eventi`.
+9. Canonicalizzare il contratto allegati preventivi e i path Storage del procurement.
+10. Continuare l'hardening del clone NEXT sui moduli ancora `ACTIVE_PARTIAL`, soprattutto procurement, area capo, cisterna, autisti admin e IA legacy clone.
+11. Chiudere la matrice ruoli/permessi reale oltre ai preset frontend `role`.
+12. Consolidare i canali server-side IA/PDF; oggi il repo ha backend multipli concorrenti.
+13. Aprire il live-read del backend IA separato solo dopo credenziali server-side dedicate e boundary whitelisted verificati.
+14. Ridurre il peso del bundle client e la duplicazione `jspdf` se si apre un task performance.
 
 ## 7. FILE CHIAVE
 ### Routing e bootstrap
@@ -279,15 +273,6 @@
 - `src/next/nextData.ts`
 - `src/next/nextAccess.ts`
 - `src/next/nextStructuralPaths.ts`
-
-### NEXT Anagrafiche
-- `src/next/NextAnagrafichePage.tsx`
-- `src/next/components/NextAnagraficaModal.tsx`
-- `src/next/nextAnagraficheWriter.ts`
-- `src/next/nextAnagraficheCloneState.ts`
-- `src/next/domain/nextColleghiDomain.ts`
-- `src/next/domain/nextFornitoriDomain.ts`
-- `src/next/domain/nextOfficineDomain.ts`
 
 ### NEXT mezzi e dossier
 - `src/next/NextMezziPage.tsx`
@@ -357,8 +342,90 @@
 - `docs/product/REGISTRO_PUNTI_DA_VERIFICARE.md`
 - `docs/product/STATO_MIGRAZIONE_NEXT.md`
 
-### Storico rapido compresso aprile 2026
-- Micro-fix UI progressivi di `Manutenzioni` NEXT dell'8 aprile: assestata la riga `Data / KM-Ore / Fornitore`, separazione visiva dei campi e binding esplicito del record nel tab `Dettaglio`; nessuna modifica a logica dati, PDF o routing in quei passaggi.
-- Aggiornamenti IA Archivista del 15 e 21 aprile: ramo `Fattura / DDT + Manutenzione` su backend OpenAI server-side, supporto `pages[]` per documento logico unico e step 2 opzionale per creare manutenzione reale.
-- Aggiornamento UI IA del 15 aprile: schermata `Importa documenti` con topbar, hero e card `Destinazione rilevata`; bridge invariati nella logica.
-- Fix leak del 22 aprile: preventivi Archivista Manutenzione filtrati fuori dalle superfici procurement NEXT e IA interna; writer, barrier e `storage.rules` non toccati.
+### Aggiornamento rapido 2026-04-08
+- `Manutenzioni` NEXT resta `PARZIALE`.
+- Ultimo micro-fix solo UI/CSS sulla tab `Nuova / Modifica`:
+  - riga `Data / KM-Ore / Fornitore` resa piu separata e proporzionata;
+  - card `Mezzo attivo` con piu stacco verticale dal blocco `Campi base`.
+- Nessuna modifica a logica dati, routing, PDF, foto o dominio.
+
+### Aggiornamento rapido 2026-04-08 bis
+- La riga `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT e ora composta da 3 mini-card separate vere nel JSX, non piu da tre soli input affiancati.
+- `Mezzo attivo` ha uno stacco verticale piu evidente sopra `Campi base`.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 ter
+- Il tentativo a 3 mini-card alte per `Data / KM-Ore / Fornitore` e stato rimosso.
+- La riga usa ora 3 field-group compatti e separati, con `Fornitore` flessibile e altezza ridotta.
+- `Mezzo attivo` resta rialzato e separato da `Campi base`.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 quater
+- Il blocco `Data / KM-Ore / Fornitore` in `Manutenzioni` NEXT e ora fissato nella struttura finale:
+  - `man2-metric-row`
+  - tre `man2-metric-group` semplici
+  - colonne `180px / 180px / minmax(360px, 1fr)`
+- Nessuna mini-card e nessun wrapper alto per singolo campo.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 quinquies
+- I campi `Data / KM-Ore / Fornitore` riusano ora la stessa base visiva dei controlli corretti del form (`Tipo`, `Sottotipo`).
+- Layout e proporzioni della riga restano invariati.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 sexies
+- Micro-fix UI su `Manutenzioni` NEXT:
+  - rimossa la label sbiadita sopra `Nuova manutenzione`;
+  - testata con piu aria a sinistra per ridurre l'impatto del menu flottante;
+  - riga `Data / KM-Ore / Fornitore` leggermente ribilanciata a favore del campo centrale.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 septies
+- La riga `Data / KM-Ore / Fornitore` di `Manutenzioni` NEXT usa ora larghezze fisse desktop `190px / 140px / 260px`.
+- `Fornitore` non usa piu `1fr` su desktop.
+- Nessuna modifica a logica dati, foto, PDF, `Dettaglio`, routing o dominio.
+
+### Aggiornamento rapido 2026-04-08 octies
+- Il viewer tecnico di `Manutenzioni` NEXT usa ora `mezziHotspotAreas.ts` come tassonomia reale dei target (`assi`, `fanali_specchi`, `attrezzature`).
+- In vista normale non compaiono piu cerchi neutrali permanenti; `Calibra` mostra invece preview asse e grammatica target solo quando richiesto.
+- `Fronte/Retro` restano invariati sul fallback foto/hotspot.
+
+### Aggiornamento rapido 2026-04-08 nonies
+- Il tab `Dettaglio` di `Manutenzioni` NEXT non pesca piu gli assi da una manutenzione implicita del mezzo.
+- Il parent mantiene ora un `selectedDetailRecordId` esplicito e il viewer tecnico legge solo il record aperto.
+- Se il record aperto non ha `assiCoinvolti`, il viewer resta pulito.
+
+### Aggiornamento rapido 2026-04-21
+- Il backend IA separato accetta ora `pages[]` opzionale solo su `/internal-ai-backend/documents/manutenzione-analyze`.
+- Il ramo `Archivista documenti -> Fattura / DDT + Manutenzione` puo analizzare piu immagini/PDF dello stesso documento come un unico input logico.
+- Dopo l'archiviazione, lo stesso ramo puo aprire uno step 2 opzionale che crea una manutenzione reale via `saveNextManutenzioneBusinessRecord()`.
+- La deroga `/next/ia/archivista` in `cloneWriteBarrier.ts` include ora solo `@manutenzioni`, `@inventario`, `@materialiconsegnati` oltre alle eccezioni Archivista gia presenti.
+
+### Aggiornamento rapido 2026-04-15
+- `Archivista documenti` ha ora il ramo `Fattura / DDT + Manutenzione` su backend OpenAI server-side dedicato.
+- Il bridge `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx` non usa piu `estrazioneDocumenti`.
+- Il backend IA separato espone `/internal-ai-backend/documents/manutenzione-analyze`, accetta `contentBase64` singolo oppure `pages[]` opzionale solo per questo ramo e restituisce review strutturata con:
+  - riassunto breve;
+  - targa;
+  - fornitore;
+  - data;
+  - totale;
+  - km se leggibili;
+  - righe;
+  - avvisi;
+  - campi mancanti.
+- `Magazzino` resta invariato in questo step.
+
+### Aggiornamento rapido 2026-04-15 bis
+- La schermata IA 2 si presenta ora come `Importa documenti`.
+- `src/next/NextIAArchivistaPage.tsx` usa topbar, hero e card `Destinazione rilevata` coerenti con il layout approvato.
+- I bridge `Magazzino`, `Manutenzione`, `Documento mezzo` e `Preventivo + Magazzino` restano invariati nella logica ma usano il vocabolario visuale `iai-*` dentro la schermata reale.
+- Nessuna modifica a backend, estrazione, writer business o barrier in questo passaggio.
+
+### Aggiornamento rapido 2026-04-22 bis
+- Fix leak: i preventivi Archivista Manutenzione (`ambitoPreventivo: "manutenzione"`) non compaiono piu nelle superfici procurement NEXT (`Materiali da ordinare`, `Magazzino documenti-costi`, IA interna).
+- `nextProcurementDomain.ts`: `readNextProcurementSnapshot()` filtra ora `ambitoPreventivo === "manutenzione"` in ingresso.
+- `nextDocumentiCostiDomain.ts`: `readNextDocumentiCostiProcurementSupportSnapshot()` estende il filtro `preventiviItems` con la stessa condizione.
+- `internalAiUnifiedIntelligenceEngine.ts`: il loop `raw_storage_doc` filtra `storage/@preventivi` prima della materializzazione.
+- Record storici senza `ambitoPreventivo` restano inclusi (retrocompatibilita).
+- Writer, barrier, `storage.rules` non toccati.

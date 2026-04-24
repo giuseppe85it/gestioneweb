@@ -683,7 +683,7 @@ function OrderDetailPanel(props: {
     }));
   };
 
-  const saveNewMaterial = async () => {
+  const saveNewMaterial = () => {
     if (!newDesc.trim() || !newQty.trim()) return;
     const quantity = Number.parseInt(newQty, 10);
     if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -691,65 +691,44 @@ function OrderDetailPanel(props: {
       return;
     }
 
-    const nextMaterialId = `detail-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const nextMaterial: DetailWorkingMaterial = {
+      id: `detail-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      descrizione: newDesc.trim().toUpperCase(),
+      quantita: quantity,
+      unita: newUnit,
+      arrived: false,
+      arrivalDateLabel: null,
+      arrivalTimestamp: null,
+      note: newNote.trim() || null,
+      photoUrl: newPhotoFile ? URL.createObjectURL(newPhotoFile) : null,
+      photoStoragePath: null,
+      unitPrice: selectedDetailListino?.prezzoAttuale ?? null,
+      currency: selectedDetailListino?.valuta ?? null,
+      unitPriceUnit: selectedDetailListino?.unita ?? null,
+      lineTotal: null,
+      sourceCollection: order.sourceCollection,
+      sourceKey: order.sourceKey,
+      quality: "parziale",
+      flags: ["clone_readonly_local"],
+      sourceUnitPrice: selectedDetailListino?.prezzoAttuale ?? null,
+      sourceCurrency: selectedDetailListino?.valuta ?? null,
+      sourceUnitPriceUnit: selectedDetailListino?.unita ?? null,
+      sourcePreventivoNumero: selectedDetailListino?.fonteNumeroPreventivo ?? null,
+      sourcePreventivoData: selectedDetailListino?.fonteDataPreventivo ?? null,
+    };
 
-    setSavingDetail(true);
-    try {
-      let photoUrl: string | null = null;
-      let photoStoragePath: string | null = null;
-
-      if (newPhotoFile) {
-        const ext = newPhotoFile.name.split(".").pop() ?? "jpg";
-        const path = `materiali/${nextMaterialId}-${Date.now()}.${ext}`;
-        const snap = await uploadBytes(storageRef(storage, path), newPhotoFile);
-        photoUrl = await getDownloadURL(snap.ref);
-        photoStoragePath = path;
-      }
-
-      const nextMaterial: DetailWorkingMaterial = {
-        id: nextMaterialId,
-        descrizione: newDesc.trim().toUpperCase(),
-        quantita: quantity,
-        unita: newUnit,
-        arrived: false,
-        arrivalDateLabel: null,
-        arrivalTimestamp: null,
-        note: newNote.trim() || null,
-        photoUrl,
-        photoStoragePath,
-        unitPrice: selectedDetailListino?.prezzoAttuale ?? null,
-        currency: selectedDetailListino?.valuta ?? null,
-        unitPriceUnit: selectedDetailListino?.unita ?? null,
-        lineTotal: null,
-        sourceCollection: order.sourceCollection,
-        sourceKey: order.sourceKey,
-        quality: "parziale",
-        flags: ["clone_readonly_local"],
-        sourceUnitPrice: selectedDetailListino?.prezzoAttuale ?? null,
-        sourceCurrency: selectedDetailListino?.valuta ?? null,
-        sourceUnitPriceUnit: selectedDetailListino?.unita ?? null,
-        sourcePreventivoNumero: selectedDetailListino?.fonteNumeroPreventivo ?? null,
-        sourcePreventivoData: selectedDetailListino?.fonteDataPreventivo ?? null,
-      };
-
-      setWorkingOrder((current) => ({
-        ...current,
-        materials: [...current.materials, nextMaterial],
-      }));
-      setAddingMaterial(false);
-      setNewDesc("");
-      setNewQty("");
-      setNewUnit("pz");
-      setNewNote("");
-      setNewPhotoFile(null);
-      setSelectedDetailListino(null);
-      setDetailSuggestOpen(false);
-    } catch (err) {
-      console.error("Errore upload foto nuovo materiale:", err);
-      window.alert("Errore durante il caricamento della foto. Riprova.");
-    } finally {
-      setSavingDetail(false);
-    }
+    setWorkingOrder((current) => ({
+      ...current,
+      materials: [...current.materials, nextMaterial],
+    }));
+    setAddingMaterial(false);
+    setNewDesc("");
+    setNewQty("");
+    setNewUnit("pz");
+    setNewNote("");
+    setNewPhotoFile(null);
+    setSelectedDetailListino(null);
+    setDetailSuggestOpen(false);
   };
 
   const buildPdfPayload = (mode: "fornitori" | "interno") => ({
@@ -1025,12 +1004,7 @@ function OrderDetailPanel(props: {
               onChange={(event) => setNewPhotoFile(event.target.files?.[0] || null)}
             />
             <div className="acq-detail-head-actions">
-              <button
-                type="button"
-                className="acq-btn acq-btn--primary"
-                onClick={() => void saveNewMaterial()}
-                disabled={savingDetail}
-              >
+              <button type="button" className="acq-btn acq-btn--primary" onClick={saveNewMaterial}>
                 Salva
               </button>
               <button type="button" className="acq-btn" onClick={() => setAddingMaterial(false)}>

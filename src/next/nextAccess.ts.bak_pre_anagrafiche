@@ -13,7 +13,6 @@ export type NextPermissionKey =
   | "next.mezzi-dossier"
   | "next.operativita-globale"
   | "next.capo"
-  | "next.anagrafiche"
   | "next.colleghi"
   | "next.fornitori"
   | "next.ia"
@@ -104,11 +103,6 @@ export const NEXT_AREA_ACCESS: Record<NextAreaId, NextAreaAccessConfig> = {
     allowedRoles: ["admin", "gestionale"],
     futureScope: "Route capo gia attive nel clone, con consultazione aperta e writer di approvazione ancora bloccati.",
   },
-  "anagrafiche": {
-    permissionKey: "next.anagrafiche",
-    allowedRoles: ["admin", "gestionale"],
-    futureScope: "Modulo anagrafiche NEXT unificato per colleghi, fornitori e officine.",
-  },
   "colleghi": {
     permissionKey: "next.colleghi",
     allowedRoles: ["admin", "gestionale"],
@@ -157,7 +151,6 @@ const NEXT_BASE_PERMISSIONS: Record<NextRole, NextPermissionMatrix> = {
     "next.mezzi-dossier": true,
     "next.operativita-globale": true,
     "next.capo": true,
-    "next.anagrafiche": true,
     "next.colleghi": true,
     "next.fornitori": true,
     "next.ia": true,
@@ -170,7 +163,6 @@ const NEXT_BASE_PERMISSIONS: Record<NextRole, NextPermissionMatrix> = {
     "next.mezzi-dossier": true,
     "next.operativita-globale": true,
     "next.capo": true,
-    "next.anagrafiche": true,
     "next.colleghi": true,
     "next.fornitori": true,
     "next.ia": true,
@@ -183,7 +175,6 @@ const NEXT_BASE_PERMISSIONS: Record<NextRole, NextPermissionMatrix> = {
     "next.mezzi-dossier": false,
     "next.operativita-globale": false,
     "next.capo": false,
-    "next.anagrafiche": false,
     "next.colleghi": false,
     "next.fornitori": false,
     "next.ia": false,

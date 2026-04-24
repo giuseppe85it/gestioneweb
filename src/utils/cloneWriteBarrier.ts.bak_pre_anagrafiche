@@ -32,25 +32,8 @@ const MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES = [
   "preventivi/ia/",
   "materiali/",
 ] as const;
-const ATTREZZATURE_CANTIERI_ALLOWED_WRITE_PATHS = ["/next/attrezzature-cantieri"] as const;
-const ATTREZZATURE_CANTIERI_ALLOWED_FIRESTORE_DOC_PATHS = new Set([
-  "storage/@attrezzature_cantieri",
-]);
-const ATTREZZATURE_CANTIERI_ALLOWED_STORAGE_PATH_PREFIXES = [
-  "attrezzature/",
-] as const;
 const MATERIALI_DA_ORDINARE_ALLOWED_FETCH_ENDPOINT =
   "http://127.0.0.1:4310/internal-ai-backend/documents/preventivo-extract";
-const ANAGRAFICHE_ALLOWED_FIRESTORE_DOC_PATHS: ReadonlySet<string> = new Set([
-  "storage/@colleghi",
-  "storage/@fornitori",
-  "storage/@officine",
-]);
-const ANAGRAFICHE_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
-  "/next/anagrafiche",
-  "/next/colleghi",
-  "/next/fornitori",
-]);
 const SAFE_FETCH_METHODS = new Set(["GET", "HEAD"]);
 const MUTATING_FETCH_URL_PATTERNS = [
   "cloudfunctions.net/analisi_economica_mezzo",
@@ -174,16 +157,6 @@ function isAllowedMaterialiDaOrdinareCloneWritePath(pathname: string): boolean {
   return MATERIALI_DA_ORDINARE_ALLOWED_WRITE_PATHS.some(
     (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
   );
-}
-
-function isAllowedAttrezzatureCantieriCloneWritePath(pathname: string): boolean {
-  return ATTREZZATURE_CANTIERI_ALLOWED_WRITE_PATHS.some(
-    (entry) => pathname === entry || pathname.startsWith(`${entry}/`),
-  );
-}
-
-function isAllowedAnagraficheCloneWritePath(pathname: string): boolean {
-  return ANAGRAFICHE_ALLOWED_ROUTES.has(pathname);
 }
 
 function isAllowedMaterialiDaOrdinarePreventivoIaFetch(
@@ -428,14 +401,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     return false;
   }
 
-  if (isAllowedAnagraficheCloneWritePath(pathname)) {
-    if (kind === "firestore.setDoc" || kind === "firestore.getDoc") {
-      return ANAGRAFICHE_ALLOWED_FIRESTORE_DOC_PATHS.has(readMetaPath(meta));
-    }
-
-    return false;
-  }
-
   if (isAllowedMaterialiDaOrdinareCloneWritePath(pathname)) {
     if (kind === "fetch.runtime") {
       return isAllowedMaterialiDaOrdinarePreventivoIaFetch(pathname, meta);
@@ -452,24 +417,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     if (kind === "storage.deleteObject") {
       const path = readMetaPath(meta);
       return MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
-        path.startsWith(prefix),
-      );
-    }
-  }
-
-  if (isAllowedAttrezzatureCantieriCloneWritePath(pathname)) {
-    if (kind === "firestore.setDoc") {
-      return ATTREZZATURE_CANTIERI_ALLOWED_FIRESTORE_DOC_PATHS.has(readMetaPath(meta));
-    }
-    if (kind === "storage.uploadBytes") {
-      const path = readMetaPath(meta);
-      return ATTREZZATURE_CANTIERI_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
-        path.startsWith(prefix),
-      );
-    }
-    if (kind === "storage.deleteObject") {
-      const path = readMetaPath(meta);
-      return ATTREZZATURE_CANTIERI_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
         path.startsWith(prefix),
       );
     }
