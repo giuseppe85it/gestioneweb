@@ -107,6 +107,8 @@ export type NextProcurementPreventivoItem = {
   dataPreventivoTimestamp: number | null;
   pdfUrl: string | null;
   pdfStoragePath: string | null;
+  ricevutoDaWhatsapp?: boolean;
+  ricevutoDaEmail?: boolean;
   imageUrls: string[];
   imageStoragePaths: string[];
   righeCount: number;
@@ -738,6 +740,8 @@ function mapPreventivoRecord(
     dataPreventivoTimestamp: toTimestamp(raw.dataPreventivo),
     pdfUrl: normalizeOptionalText(raw.pdfUrl),
     pdfStoragePath: normalizeOptionalText(raw.pdfStoragePath),
+    ricevutoDaWhatsapp: raw?.ricevutoDaWhatsapp === true ? true : undefined,
+    ricevutoDaEmail: raw?.ricevutoDaEmail === true ? true : undefined,
     imageUrls: Array.isArray(raw.imageUrls)
       ? raw.imageUrls.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
       : [],

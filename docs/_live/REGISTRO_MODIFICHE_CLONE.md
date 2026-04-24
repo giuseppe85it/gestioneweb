@@ -19,6 +19,22 @@ La regola corrente da leggere insieme a questo registro e:
 - Ogni patch futura che modifica il clone deve aggiungere una nuova voce in questo registro.
 - Per "modifica del clone" si intende almeno una di queste condizioni:
 
+### Voce 2026-04-23 1820
+- DATA: 2026-04-23
+- TITOLO: Fix update manutenzioni legacy senza duplicati
+- FILE TOCCATI: `src/next/domain/nextManutenzioniDomain.ts`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`, `CONTEXT_CLAUDE.md`
+- COSA: Introdotto un helper unico per normalizzare la targa usata negli id sintetici legacy delle manutenzioni. Read side e match side del domain usano ora la stessa chiave deterministica, cosi l'update di record senza `raw.id` stabile trova il vecchio record e non lascia duplicati.
+- ESITO: FATTO
+- NOTE: nessun refactor del writer; `buildGeneratedId`, `unshift` e `setItemSync` invariati. Cleanup dei duplicati gia presenti demandato a rimozione manuale.
+
+### Voce 2026-04-23 1708
+- DATA: 2026-04-23
+- TITOLO: Restyling tab Dettaglio manutenzioni NEXT
+- FILE TOCCATI: `src/next/NextMappaStoricoPage.tsx`, `src/next/NextManutenzioniPage.tsx`, `src/next/next-mappa-storico.css`, `docs/_live/STATO_MIGRAZIONE_NEXT.md`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`, `docs/_live/INDICE_SPEC.md`, `CONTEXT_CLAUDE.md`
+- COSA: Il solo ramo `embedded` di `NextMappaStoricoPage` e stato riscritto come split view lista storico + pannello dettaglio, rimuovendo viewer tecnico, card mezzo e bottoni fissi legacy. Il parent passa ora piu campi dominio al dettaglio, abilita deselezione al secondo click, apertura documento e download PDF singolo del record.
+- ESITO: FATTO_CON_VERIFICA_MANCANTE
+- NOTE: aggiunte solo nuove classi `man2-detail-v2__*`; sezione gomme limitata ai campi reali del dominio (`assiCoinvolti`, `gommePerAsse`, `gommeInterventoTipo`, `gommeStraordinario`); `npx eslint` mirato OK, `npm run build` OK, `npm run lint` al baseline globale invariato.
+
 ### Voce 2026-04-23 0838
 - DATA: 2026-04-23
 - TITOLO: Fix PDF quadro manutenzioni + click Dossier verso dettaglio manutenzione
@@ -42,6 +58,14 @@ La regola corrente da leggere insieme a questo registro e:
 - COSA: Eliminati in blocco tutti i file storici ora coperti dai compressi in docs/_live/. Autorizzazione utente esplicita per file non-md. Repo scende sotto 100 MD visibili dai 1031 originali.
 - ESITO: FATTO
 - NOTE: revertibile via git revert del commit di cancellazione (commit verra fatto dall'utente manualmente dopo questa patch).
+
+### Voce 2026-04-23 1000
+- DATA: 2026-04-23
+- TITOLO: Aggiornamento SPEC v3 preventivo manuale (checkbox WhatsApp/Email)
+- FILE TOCCATI: `docs/_live/spec/SPEC_ACQUISTI_PREVENTIVO_MANUALE_NEXT.md`
+- COSA: Aggiornata spec da v2 a v3 per riflettere l'aggiunta delle due checkbox opzionali "Ricevuto via WhatsApp" e "Ricevuto via Email" implementate e testate. Aggiunti: D8, nota campi NEXT-only in §4.2, sezione "Canale ricezione" in §5.2, §5.4 "Badge nel tab preventivi" nuova, spread condizionale in §6.2, §9.6 "Estensione dominio NEXT" nuova, 4 nuovi anti-pattern in §11.
+- ESITO: FATTO
+- NOTE: solo documentale, nessun codice toccato.
 
 ## 2026-04-22 1954 — Rimozione 4 stub Archivista (dead code FLOW_MATRIX)
 - DATA: 2026-04-22
@@ -11793,3 +11817,34 @@ La regola corrente da leggere insieme a questo registro e:
   - il campo `ambitoPreventivo` e scritto da `archiveArchivistaPreventivoRecord()` in `ArchivistaArchiveClient.ts` — il writer non e stato toccato;
   - il bug ortogonale `entry.targa` vs `entry.metadatiMezzo.targa` nel dossier mezzo e un debito separato non chiuso in questo task;
   - bridge, `cloneWriteBarrier.ts`, `storage.rules` non toccati.
+### Voce 2026-04-23 1355
+- DATA: 2026-04-23
+- TITOLO: Fix foto PDF mezzi + correzione hero scheda singola
+- FILE TOCCATI: `src/next/NextManutenzioniPage.tsx`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`, `CONTEXT_CLAUDE.md`
+- COSA: Rimossa la doppia rotazione della foto nei PDF del Quadro manutenzioni, affidando l'orientamento al rendering browser su `Image()` e canvas. Ricalcolato il layout dell'hero del PDF singolo mezzo con larghezze derivate dalla card reale e label finale accorciata a `Interventi periodo` per evitare sbordi.
+- ESITO: FATTO
+- NOTE: `npx eslint src/next/NextManutenzioniPage.tsx` OK; `npm run build` OK; `npm run lint` fermo al baseline globale `582/567/15`.
+
+### Voce 2026-04-23 1446
+- DATA: 2026-04-23
+- TITOLO: Consumer IA preventivi NEXT nel tab Procurement
+- FILE TOCCATI: `src/next/NextPreventivoIaModal.tsx`, `src/next/nextPreventivoIaClient.ts`, `src/next/nextPreventivoIaHelpers.ts`, `src/next/nextPreventivoManualeWriter.ts`, `src/next/NextProcurementConvergedSection.tsx`, `src/utils/cloneWriteBarrier.ts`, `docs/_live/STATO_MIGRAZIONE_NEXT.md`, `docs/_live/REGISTRO_MODIFICHE_CLONE.md`, `CONTEXT_CLAUDE.md`
+- COSA: Sostituito il placeholder `CARICA PREVENTIVO` con un flusso IA reale NEXT a due step (upload + review) che chiama il backend `documents/preventivo-extract`, non carica file lato consumer e salva tramite writer esteso additivamente. Il writer ora supporta PDF e prefisso `preventivi/ia/`; il barrier autorizza `preventivi/ia/` e la sola fetch runtime verso l'endpoint backend previsto.
+- ESITO: FATTO
+- NOTE: `npx eslint` sui file toccati `OK`; `npm run build` `OK`; smoke test browser parziale positivo su apertura modale IA e non-regressione di apertura del modale manuale. Estrazione reale con file e salvataggio end-to-end `DA VERIFICARE`.
+
+### Voce 2026-04-23 1549
+- DATA: 2026-04-23
+- TITOLO: Checkbox WhatsApp/Email su preventivo manuale NEXT
+- FILE TOCCATI: `src/next/NextPreventivoManualeModal.tsx`, `src/next/nextPreventivoManualeWriter.ts`, `src/next/NextProcurementConvergedSection.tsx`, `src/next/domain/nextProcurementDomain.ts`
+- COSA: Aggiunte due checkbox opzionali `Ricevuto via WhatsApp` e `Ricevuto via Email` nel modale preventivo manuale. Valori salvati come campi booleani opzionali in `storage/@preventivi`. Badge visibile nell'area preventivo espansa del tab `Prezzi & Preventivi` se attivi. Lista preventivi non modificata.
+- ESITO: FATTO_CON_VERIFICA_MANCANTE
+- NOTE: campi opzionali, madre ignora senza rotture
+
+### Voce 2026-04-23 1847
+- DATA: 2026-04-23
+- TITOLO: Elimina manutenzione dal pannello dettaglio NEXT
+- FILE TOCCATI: `src/next/NextMappaStoricoPage.tsx`, `src/next/NextManutenzioniPage.tsx`, `src/next/next-mappa-storico.css`
+- COSA: Aggiunto il quinto bottone rosso `Elimina` nel pannello dettaglio embedded di `/next/manutenzioni`, con `window.confirm` esplicito sull'irreversibilita e sugli effetti collaterali su inventario e consegne. Il parent richiama il domain `deleteNextManutenzioneBusinessRecord()`, azzera la selezione e ricarica lo snapshot con `refreshData()`.
+- ESITO: FATTO
+- NOTE: nessun tocco a domain delete o barrier; build ed eslint mirati eseguiti, runtime live da riverificare.

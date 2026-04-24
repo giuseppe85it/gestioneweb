@@ -124,6 +124,8 @@ export default function NextPreventivoManualeModal({
   const [numeroPreventivo, setNumeroPreventivo] = useState(buildDefaultNumeroPreventivo);
   const [dataPreventivo, setDataPreventivo] = useState(buildTodayInputValue);
   const [valuta, setValuta] = useState<Valuta>("CHF");
+  const [ricevutoDaWhatsapp, setRicevutoDaWhatsapp] = useState(false);
+  const [ricevutoDaEmail, setRicevutoDaEmail] = useState(false);
   const [rows, setRows] = useState<PreventivoManualeRowFormState[]>([buildEmptyRow()]);
   const [foto, setFoto] = useState<File[]>([]);
   const [validationState, setValidationState] = useState<PreventivoManualeValidationState>(emptyValidationState);
@@ -271,6 +273,8 @@ export default function NextPreventivoManualeModal({
         })),
         valuta,
         foto,
+        ricevutoDaWhatsapp,
+        ricevutoDaEmail,
       });
       setSuccessMessage("Preventivo salvato e listino aggiornato");
       if (onSaved) {
@@ -387,6 +391,38 @@ export default function NextPreventivoManualeModal({
                 <option value="EUR">EUR</option>
               </select>
             </label>
+
+            <div className="acq-prev-field">
+              <span>Canale ricezione</span>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 12,
+                  alignItems: "center",
+                  minHeight: 36,
+                }}
+              >
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={ricevutoDaWhatsapp}
+                    onChange={(event) => setRicevutoDaWhatsapp(event.target.checked)}
+                    disabled={saving}
+                  />
+                  <span>Ricevuto via WhatsApp</span>
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={ricevutoDaEmail}
+                    onChange={(event) => setRicevutoDaEmail(event.target.checked)}
+                    disabled={saving}
+                  />
+                  <span>Ricevuto via Email</span>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div className="acq-prev-righe-box">

@@ -25,12 +25,10 @@ const MATERIALI_DA_ORDINARE_ALLOWED_WRITE_PATHS = ["/next/materiali-da-ordinare"
 const MATERIALI_DA_ORDINARE_ALLOWED_FIRESTORE_DOC_PATHS = new Set([
   "storage/@preventivi",
   "storage/@listino_prezzi",
-  "storage/@ordini",
 ]);
 const MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES = [
   "preventivi/manuali/",
   "preventivi/ia/",
-  "materiali/",
 ] as const;
 const MATERIALI_DA_ORDINARE_ALLOWED_FETCH_ENDPOINT =
   "http://127.0.0.1:4310/internal-ai-backend/documents/preventivo-extract";
@@ -409,12 +407,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
       return MATERIALI_DA_ORDINARE_ALLOWED_FIRESTORE_DOC_PATHS.has(readMetaPath(meta));
     }
     if (kind === "storage.uploadBytes") {
-      const path = readMetaPath(meta);
-      return MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
-        path.startsWith(prefix),
-      );
-    }
-    if (kind === "storage.deleteObject") {
       const path = readMetaPath(meta);
       return MATERIALI_DA_ORDINARE_ALLOWED_STORAGE_PATH_PREFIXES.some((prefix) =>
         path.startsWith(prefix),

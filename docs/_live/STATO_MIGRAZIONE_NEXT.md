@@ -9,6 +9,23 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-04-23 Manutenzioni: restyling tab Dettaglio embedded
+- execution completata nel solo perimetro `src/next/NextMappaStoricoPage.tsx` (solo ramo `embedded`), `src/next/NextManutenzioniPage.tsx`, `src/next/next-mappa-storico.css`, piu aggiornamento contesto/documentazione, senza toccare domain, barrier, writer o le altre tab di `/next/manutenzioni`;
+- `/next/manutenzioni` tab `Dettaglio`:
+  - il ramo embedded di `NextMappaStoricoPage` non mostra piu viewer tecnico, toggle `Sinistra/Destra`, card laterale `Dettaglio mezzo`, KPI strip legacy e bottoni fissi in fondo;
+  - il layout e ora una split view lista storico + pannello dettaglio, con filtri chip per tipo, deselezione al secondo click, stato vuoto, KPI scura, campi dominio reali, materiali senza costi e bottoni contestuali `Modifica`, `Apri dossier`, `Apri documento`, `Scarica PDF`;
+  - la sezione gomme condizionale espone solo i campi realmente disponibili nel dominio (`assiCoinvolti`, `gommeInterventoTipo`, `gommePerAsse`, `gommeStraordinario`) e non inventa `marca`, `misura`, `intervento`;
+  - il parent estende ora `selectedMaintenance`, passa `storicoMezzoOrdinato`, `kmUltimoByTarga[activeTarga]`, apertura documento e download PDF singolo;
+- CSS:
+  - aggiunte solo nuove classi `man2-detail-v2__*` in `src/next/next-mappa-storico.css`, senza modificare le classi esistenti `man2-*` e `ms-*`;
+- verifiche eseguite:
+  - `npx eslint src/next/NextMappaStoricoPage.tsx src/next/NextManutenzioniPage.tsx src/next/next-mappa-storico.css` -> `OK` (warning noto: file CSS ignorato dalla config ESLint + `baseline-browser-mapping`)
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` al baseline globale invariato `582 / 567 / 15`, delta zero nel perimetro patch;
+- stato onesto del ramo:
+  - restyling spec `SPEC_DETTAGLIO_MANUTENZIONI_NEXT` -> `FATTO`
+  - verifica browser live dei controlli finali di UX/runtime -> `DA VERIFICARE`
+
 ## 0.0 Aggiornamento operativo 2026-04-23 Manutenzioni: fix PDF runtime + salto Dossier -> Dettaglio
 - execution completata nel solo perimetro `src/next/NextManutenzioniPage.tsx`, `src/next/NextDossierMezzoPage.tsx`, `src/next/nextStructuralPaths.ts`, piu aggiornamento contesto/documentazione, senza toccare domain, writer, barrier o `NextMappaStoricoPage`;
 - `/next/manutenzioni`:
@@ -6130,5 +6147,29 @@ Per ogni task futuro che tocca la NEXT bisogna aggiornare questo documento segna
 - Verifiche tecniche eseguite:
   - `npx eslint src/next/NextPreventivoManualeModal.tsx src/next/nextPreventivoManualeWriter.ts src/next/NextProcurementConvergedSection.tsx src/next/NextMaterialiDaOrdinarePage.tsx src/utils/cloneWriteBarrier.ts` -> `OK`
   - `npm run build` -> `OK`
+- Stato modulo:
+  - `NEXT Procurement` -> `PARZIALE`
+
+## 5.149 Aggiornamento 2026-04-23 - consumer IA preventivi NEXT nel tab Procurement
+- `/next/materiali-da-ordinare?tab=preventivi` espone ora il pulsante reale `CARICA PREVENTIVO IA` accanto a `PREVENTIVO MANUALE`; il vecchio placeholder clone-safe e stato rimosso.
+- `src/next/NextPreventivoIaModal.tsx` introduce il flusso consumer IA in due step:
+  - upload PDF o immagini (max 10) con chiamata HTTP a `http://127.0.0.1:4310/internal-ai-backend/documents/preventivo-extract`
+  - review/edit righe con validazione inline, match fornitore e confronto contro il listino corrente del clone.
+- `src/next/nextPreventivoIaClient.ts` gestisce la conversione file -> base64, il `POST` verso l'endpoint backend e la mappatura errori `validation_error / provider_not_configured / upstream_error / network_error` in messaggi UI.
+- `src/next/nextPreventivoIaHelpers.ts` replica nel perimetro NEXT i helper madre necessari (`normalizeDescrizione`, `normalizeUnita`, `normalizeArticoloCanonico`, `computeTrend`, `listinoKey`, `resolveFornitoreFromExtract`, `computeRowAnalysis`) e aggiunge la conversione dedicata `extractDateToInputValue(dd/mm/yyyy -> yyyy-mm-dd)` per l'`input type="date"`.
+- `src/next/nextPreventivoManualeWriter.ts` e stato esteso in modo additivo:
+  - supporta `pdfFile/pdfStoragePath/pdfUrl` e `imageStoragePrefix`
+  - valorizza `pdfStoragePath/pdfUrl` sul `Preventivo`
+  - puo propagare i campi PDF in `fonteAttuale` del listino quando richiesto dal flusso IA
+  - mantiene il manuale compilante senza modifiche a `NextPreventivoManualeModal.tsx`.
+- `src/utils/cloneWriteBarrier.ts` autorizza ora, nel solo scope `/next/materiali-da-ordinare`:
+  - `storage.uploadBytes` sotto `preventivi/ia/`
+  - `fetch.runtime` verso il solo endpoint `http://127.0.0.1:4310/internal-ai-backend/documents/preventivo-extract`
+  - restano invariati i permessi Firestore su `storage/@preventivi` e `storage/@listino_prezzi`.
+- `src/next/NextMaterialiDaOrdinarePage.tsx` non ha richiesto patch: il refresh snapshot post-save era gia pronto tramite `onPreventivoSaved`.
+- Verifiche tecniche eseguite:
+  - `npx eslint src/next/nextPreventivoIaHelpers.ts src/next/nextPreventivoIaClient.ts src/next/nextPreventivoManualeWriter.ts src/next/NextPreventivoIaModal.tsx src/next/NextProcurementConvergedSection.tsx src/utils/cloneWriteBarrier.ts` -> `OK`
+  - `npm run build` -> `OK`
+  - smoke test browser su `/next/materiali-da-ordinare?tab=preventivi`: pulsante IA visibile, modale IA apribile, modale manuale ancora apribile, backend locale `4310` raggiungibile con `400` su body invalido; estrazione reale con file e salvataggio end-to-end -> `DA VERIFICARE`
 - Stato modulo:
   - `NEXT Procurement` -> `PARZIALE`

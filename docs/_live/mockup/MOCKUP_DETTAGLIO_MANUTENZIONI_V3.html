@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Mockup v2 — Restyling tab Dettaglio Manutenzioni</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Inter", sans-serif;
+    background: #1a1a1a;
+    color: #f5f1e8;
+    padding: 24px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 8px; color: #f5f1e8; }
+  .sub { color: #a8a29e; font-size: 13px; margin-bottom: 20px; }
+
+  .note {
+    background: #2a2a2a;
+    border-left: 4px solid #c9a86a;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #e7e5e4;
+    margin-bottom: 20px;
+  }
+  .note strong { color: #c9a86a; }
+
+  /* HEADER */
+  .mezzo-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .mezzo-selector select,
+  .mezzo-selector input {
+    background: #f5f1e8;
+    color: #1a1a1a;
+    border: none;
+    border-radius: 999px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    outline: none;
+  }
+  .mezzo-strip {
+    background: #f5f1e8;
+    color: #1a1a1a;
+    border-radius: 14px;
+    padding: 16px 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 12px;
+  }
+  .mezzo-strip .field { display: flex; flex-direction: column; gap: 4px; }
+  .mezzo-strip .label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: #78716c;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .mezzo-strip .value { font-size: 15px; font-weight: 700; }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    padding: 0 4px;
+  }
+  .tabs button {
+    padding: 10px 20px;
+    border: none;
+    background: #2a2a2a;
+    color: #a8a29e;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .tabs button.active { background: #f5f1e8; color: #1a1a1a; }
+
+  /* SPLIT VIEW */
+  .split-view {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 16px;
+    background: #f5f1e8;
+    color: #1a1a1a;
+    border-radius: 16px;
+    padding: 16px;
+    min-height: 720px;
+  }
+
+  /* LISTA */
+  .list-panel {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #ede7d9;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .list-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #ede7d9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #faf7f0;
+  }
+  .list-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #1a1a1a;
+  }
+  .list-count {
+    font-size: 11px;
+    color: #78716c;
+    background: #f5f1e8;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .list-filters {
+    display: flex;
+    gap: 6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #ede7d9;
+    flex-wrap: wrap;
+  }
+  .filter-chip {
+    font-size: 11px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid #d6d3cd;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 600;
+    color: #57534e;
+  }
+  .filter-chip.active {
+    background: #1a1a1a;
+    color: #fff;
+    border-color: #1a1a1a;
+  }
+  .list-scroll {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 640px;
+  }
+  .list-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f5f1e8;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    gap: 10px;
+    align-items: center;
+  }
+  .list-item:hover { background: #faf7f0; }
+  .list-item.selected {
+    background: #faf3e1;
+    border-left: 3px solid #c9a86a;
+    padding-left: 13px;
+  }
+  .list-item-date {
+    font-size: 11px;
+    color: #78716c;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
+  }
+  .list-item-date strong {
+    display: block;
+    color: #1a1a1a;
+    font-size: 16px;
+    font-weight: 800;
+  }
+  .list-item-body { min-width: 0; }
+  .list-item-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a1a1a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+  .list-item-sub {
+    font-size: 11px;
+    color: #78716c;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .list-item-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #f5f1e8;
+    color: #7c4a00;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    border: 1px solid #e0dccf;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .pill.gomme { background: #fef3c7; color: #78350f; border-color: #fde68a; }
+  .pill.rimorchio { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+  .pill.compressore { background: #dcfce7; color: #14532d; border-color: #bbf7d0; }
+  .km-delta {
+    font-size: 10px;
+    color: #166534;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* DETTAGLIO */
+  .detail-panel {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #ede7d9;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .detail-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+    color: #78716c;
+  }
+  .detail-empty-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #f5f1e8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin-bottom: 16px;
+  }
+  .detail-empty h3 {
+    font-size: 16px;
+    color: #1a1a1a;
+    margin: 0 0 4px;
+  }
+  .detail-empty p { font-size: 13px; margin: 0; }
+
+  .detail-header {
+    padding: 18px 24px 14px;
+    border-bottom: 1px solid #ede7d9;
+    background: #faf7f0;
+  }
+  .detail-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .detail-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0;
+    flex: 1;
+    line-height: 1.25;
+  }
+  .detail-meta {
+    font-size: 12px;
+    color: #78716c;
+    font-weight: 600;
+  }
+  .detail-meta-sep { margin: 0 6px; color: #d6d3cd; }
+
+  .detail-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .btn-action {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid #d6d3cd;
+    background: #fff;
+    color: #1a1a1a;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .btn-action:hover {
+    background: #f5f1e8;
+    border-color: #c9a86a;
+  }
+  .btn-action.primary {
+    background: #1a1a1a;
+    color: #fff;
+    border-color: #1a1a1a;
+  }
+  .btn-action.primary:hover { background: #000; }
+  .btn-action.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .detail-body {
+    padding: 20px 24px;
+    flex: 1;
+    overflow-y: auto;
+    max-height: 680px;
+  }
+
+  /* KPI ROW importo */
+  .kpi-row {
+    background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
+    color: #fff;
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .kpi-item { display: flex; flex-direction: column; gap: 2px; }
+  .kpi-label {
+    font-size: 9px;
+    color: #c9a86a;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+  .kpi-value {
+    font-size: 18px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+  }
+  .kpi-value.delta-positive { color: #86efac; }
+  .kpi-value.small { font-size: 15px; }
+
+  /* GRID CAMPI */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 24px;
+    margin-bottom: 20px;
+  }
+  .detail-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .detail-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #78716c;
+  }
+  .detail-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  .detail-value.mono { font-variant-numeric: tabular-nums; }
+  .detail-value.muted { color: #a8a29e; font-style: italic; font-weight: 500; }
+
+  .detail-section {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px dashed #ede7d9;
+  }
+  .detail-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #78716c;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .detail-section-title .count {
+    background: #f5f1e8;
+    color: #7c4a00;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+  }
+  .detail-description {
+    background: #faf7f0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #1a1a1a;
+  }
+
+  /* MATERIALI (senza costo) */
+  .material-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #f5f1e8;
+    font-size: 13px;
+    align-items: center;
+  }
+  .material-row:last-child { border-bottom: none; }
+  .material-row .mname { color: #1a1a1a; font-weight: 600; }
+  .material-row .mqty {
+    color: #78716c;
+    font-variant-numeric: tabular-nums;
+    background: #faf7f0;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .empty-block {
+    color: #a8a29e;
+    font-size: 13px;
+    font-style: italic;
+    padding: 6px 0;
+  }
+
+  /* GOMME DETTAGLI (condizionale) */
+  .gomme-box {
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .gomme-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+  }
+  .gomme-row .g-label { color: #78350f; font-weight: 600; }
+  .gomme-row .g-val { color: #1a1a1a; font-weight: 700; }
+  .gomme-tag {
+    display: inline-block;
+    background: #fff;
+    border: 1px solid #fde68a;
+    color: #78350f;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-right: 4px;
+  }
+
+  /* DOC LINK */
+  .doc-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #7c4a00;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px 0;
+  }
+  .doc-link:hover { color: #5a3600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Mockup v3 — Restyling tab "Dettaglio" manutenzioni (DEFINITIVO)</h1>
+  <div class="sub">Tutti i campi del dominio esposti · Bottoni testuali · Materiali senza costo · Sezione gomme condizionale</div>
+
+  <div class="note">
+    <strong>Versione finale:</strong>
+    <br>• Bottoni in alto a destra del pannello dettaglio: <em>Modifica</em> (nero primario) · <em>Apri dossier</em> · <em>Apri documento</em> · <em>Scarica PDF</em>
+    <br>• "Apri documento" si disattiva se la manutenzione non ha documento collegato
+    <br>• KPI scura in alto con Km intervento + Δ km + Importo
+    <br>• Sezione gialla "Dettagli intervento gomme" SOLO per tipo gomme
+    <br>• Materiali senza costo unitario (non esiste nel dominio)
+    <br><br>
+    <strong>Come testarlo:</strong> clicca diverse voci a sinistra. m6 (gomme straordinaria) mostra la sezione gialla completa. m2/m4/m7 mostrano "Apri documento" disattivato (nessun documento collegato).
+  </div>
+
+  <!-- HEADER MEZZO -->
+  <div class="mezzo-selector">
+    <select><option>TI113417 - RENAULT T460</option></select>
+    <input placeholder="Cerca targa / modello / autista"/>
+  </div>
+
+  <div class="mezzo-strip">
+    <div class="field">
+      <span class="label">Targa</span>
+      <span class="value">TI113417</span>
+    </div>
+    <div class="field">
+      <span class="label">Modello</span>
+      <span class="value">RENAULT T460</span>
+    </div>
+    <div class="field">
+      <span class="label">Autista solito</span>
+      <span class="value">S. CALABRESE</span>
+    </div>
+    <div class="field">
+      <span class="label">Km attuali</span>
+      <span class="value">541.535</span>
+    </div>
+    <div class="field">
+      <span class="label">Ultima manutenzione</span>
+      <span class="value">06/02/2026</span>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button>Dashboard</button>
+    <button>Nuova / Modifica</button>
+    <button class="active">Dettaglio</button>
+    <button>Quadro manutenzioni PDF</button>
+  </div>
+
+  <!-- SPLIT VIEW -->
+  <div class="split-view">
+
+    <!-- LISTA -->
+    <div class="list-panel">
+      <div class="list-header">
+        <span class="list-title">Storico manutenzioni</span>
+        <span class="list-count">7</span>
+      </div>
+      <div class="list-filters">
+        <button class="filter-chip active">Tutte (7)</button>
+        <button class="filter-chip">Mezzo (4)</button>
+        <button class="filter-chip">Gomme (2)</button>
+        <button class="filter-chip">Rimorchio (1)</button>
+      </div>
+      <div class="list-scroll" id="list-scroll"></div>
+    </div>
+
+    <!-- DETTAGLIO -->
+    <div class="detail-panel" id="detail-panel"></div>
+
+  </div>
+
+</div>
+
+<script>
+  // Dataset fedele alla shape vera del dominio:
+  // id, data, km, ore, tipo, sottotipo, descrizione, fornitore, materiali (senza costo),
+  // importo, sourceDocumentId, sourceDocumentFileUrl, sourceDocumentCurrency,
+  // assiCoinvolti, gommePerAsse, gommeInterventoTipo, gommeStraordinario
+
+  const currentKm = 541535;
+
+  const manutenzioni = [
+    {
+      id: 'm1', data: '22/04/2026', km: 541535, ore: null,
+      tipo: 'mezzo', sottotipo: 'Climatizzazione',
+      titolo: 'Carico compressore aria condizionata',
+      descrizione: 'Carico gas refrigerante compressore A/C + aggiornamento software centralina. Test funzionalità completato. Nessun codice errore rilevato post-intervento.',
+      fornitore: 'DAF Italia',
+      importo: 245.00, sourceDocumentCurrency: 'EUR',
+      sourceDocumentId: 'DOC-2026-0412-DAF',
+      sourceDocumentFileUrl: 'https://...',
+      materiali: [
+        {label: 'Gas R134a refrigerante', quantita: 500, unita: 'g'},
+      ],
+      assiCoinvolti: null,
+      gommePerAsse: null, gommeInterventoTipo: null, gommeStraordinario: false,
+    },
+    {
+      id: 'm2', data: '18/04/2026', km: 540335, ore: null,
+      tipo: 'gomme', sottotipo: 'Manutenzione programmata',
+      titolo: 'Rotazione pneumatici stagionale',
+      descrizione: 'Rotazione pneumatici secondo schema incrociato. Verificata pressione e usura battistrada. Tutte le 6 gomme in buono stato.',
+      fornitore: 'Gomme Bianchi SRL',
+      importo: 60.00, sourceDocumentCurrency: 'EUR',
+      sourceDocumentId: null, sourceDocumentFileUrl: null,
+      materiali: [],
+      assiCoinvolti: ['Anteriore', 'Posteriore'],
+      gommePerAsse: null, gommeInterventoTipo: 'rotazione', gommeStraordinario: false,
+    },
+    {
+      id: 'm3', data: '08/04/2026', km: 538255, ore: null,
+      tipo: 'mezzo', sottotipo: 'Tagliando intermedio',
+      titolo: 'Sostituzione filtro gasolio',
+      descrizione: 'Sostituzione filtro gasolio primario e secondario. Controllo pressione iniezione e pulizia ugelli. Sistema OK.',
+      fornitore: 'Officina Rossi',
+      importo: 180.00, sourceDocumentCurrency: 'EUR',
+      sourceDocumentId: 'DOC-2026-0408-ROSSI',
+      sourceDocumentFileUrl: 'https://...',
+      materiali: [
+        {label: 'Filtro gasolio primario', quantita: 1, unita: 'pz'},
+        {label: 'Filtro gasolio secondario', quantita: 1, unita: 'pz'},
+      ],
+      assiCoinvolti: null,
+      gommePerAsse: null, gommeInterventoTipo: null, gommeStraordinario: false,
+    },
+    {
+      id: 'm4', data: '03/04/2026', km: null, ore: null,
+      tipo: 'rimorchio', sottotipo: 'Verifica sicurezza',
+      titolo: 'Controllo ganci e sistema di aggancio',
+      descrizione: 'Controllo periodico ganci e sistema aggancio rimorchio. Ingrassaggio perni. Nessuna anomalia riscontrata.',
+      fornitore: null,
+      importo: null, sourceDocumentCurrency: null,
+      sourceDocumentId: null, sourceDocumentFileUrl: null,
+      materiali: [],
+      assiCoinvolti: null,
+      gommePerAsse: null, gommeInterventoTipo: null, gommeStraordinario: false,
+    },
+    {
+      id: 'm5', data: '28/03/2026', km: 534985, ore: null,
+      tipo: 'mezzo', sottotipo: 'Tagliando ordinario',
+      titolo: 'Tagliando ordinario 535.000 km',
+      descrizione: 'Tagliando ordinario: olio motore 15W40, filtri aria e abitacolo, sostituzione olio cambio automatico, controllo impianto frenante. Registrato trip computer.',
+      fornitore: 'Officina Rossi',
+      importo: 620.00, sourceDocumentCurrency: 'EUR',
+      sourceDocumentId: 'DOC-2026-0328-ROSSI',
+      sourceDocumentFileUrl: 'https://...',
+      materiali: [
+        {label: 'Olio motore 15W40', quantita: 18, unita: 'L'},
+        {label: 'Filtro aria motore', quantita: 1, unita: 'pz'},
+        {label: 'Filtro abitacolo', quantita: 1, unita: 'pz'},
+        {label: 'Olio cambio automatico', quantita: 12, unita: 'L'},
+      ],
+      assiCoinvolti: null,
+      gommePerAsse: null, gommeInterventoTipo: null, gommeStraordinario: false,
+    },
+    {
+      id: 'm6', data: '15/03/2026', km: 532435, ore: null,
+      tipo: 'gomme', sottotipo: 'Sostituzione straordinaria',
+      titolo: 'Sostituzione pneumatico anteriore sx',
+      descrizione: 'Sostituzione pneumatico anteriore sinistro per usura irregolare. Montato Kumho 315/70 R22.5. Equilibratura e convergenza asse anteriore.',
+      fornitore: 'Gomme Bianchi SRL',
+      importo: 485.00, sourceDocumentCurrency: 'EUR',
+      sourceDocumentId: 'DOC-2026-0315-GB',
+      sourceDocumentFileUrl: 'https://...',
+      materiali: [
+        {label: 'Pneumatico Kumho 315/70 R22.5', quantita: 1, unita: 'pz'},
+      ],
+      assiCoinvolti: ['Anteriore'],
+      gommePerAsse: {'Anteriore': {marca: 'Kumho', misura: '315/70 R22.5', intervento: 'sostituzione'}},
+      gommeInterventoTipo: 'sostituzione',
+      gommeStraordinario: true,
+    },
+    {
+      id: 'm7', data: '02/03/2026', km: 529235, ore: null,
+      tipo: 'mezzo', sottotipo: 'Controllo periodico',
+      titolo: 'Controllo impianto frenante',
+      descrizione: 'Controllo impianto frenante: spessore pastiglie, stato dischi, liquido freni. Pastiglie anteriori al 40%, previsto cambio prossimo tagliando.',
+      fornitore: 'Officina Rossi',
+      importo: 95.00, sourceDocumentCurrency: 'EUR',
+      sourceDocumentId: null, sourceDocumentFileUrl: null,
+      materiali: [
+        {label: 'Liquido freni DOT 4', quantita: 500, unita: 'ml'},
+      ],
+      assiCoinvolti: null,
+      gommePerAsse: null, gommeInterventoTipo: null, gommeStraordinario: false,
+    },
+  ];
+
+  let selected = 'm6'; // parte su gomme straordinaria per mostrare sezione condizionale
+
+  function fmt(n) { return n ? n.toLocaleString('it-IT') : '—'; }
+  function fmtDelta(km) {
+    if (km == null) return '—';
+    const d = currentKm - km;
+    if (d === 0) return '0';
+    if (d > 0) return '+' + d.toLocaleString('it-IT');
+    return '—';
+  }
+  function fmtEur(n, currency) {
+    if (n == null) return '—';
+    const cur = currency || 'EUR';
+    try {
+      return n.toLocaleString('it-IT', { style: 'currency', currency: cur });
+    } catch {
+      return n.toLocaleString('it-IT') + ' ' + cur;
+    }
+  }
+  function fmtOre(h) { return h == null ? '—' : h + ' h'; }
+  function tipoShort(t) {
+    return { mezzo: 'Mezzo', gomme: 'Gomme', rimorchio: 'Rim.', compressore: 'Compr.' }[t] || t;
+  }
+  function deltaKmFromList(km) {
+    if (km == null) return null;
+    const d = currentKm - km;
+    return d > 0 ? d : null;
+  }
+
+  function renderList() {
+    const scroll = document.getElementById('list-scroll');
+    scroll.innerHTML = '';
+    manutenzioni.forEach(m => {
+      const el = document.createElement('div');
+      el.className = 'list-item' + (selected === m.id ? ' selected' : '');
+      el.onclick = () => { selected = selected === m.id ? null : m.id; render(); };
+      const [dd, mm, yy] = m.data.split('/');
+      const deltaText = deltaKmFromList(m.km);
+      el.innerHTML = `
+        <div class="list-item-date">
+          <strong>${dd}</strong>
+          ${mm}/${yy.substring(2)}
+        </div>
+        <div class="list-item-body">
+          <div class="list-item-title">${m.titolo}</div>
+          <div class="list-item-sub">${m.fornitore || '—'} · Km ${fmt(m.km)}</div>
+        </div>
+        <div class="list-item-right">
+          <span class="pill ${m.tipo}">${tipoShort(m.tipo)}</span>
+          ${deltaText ? `<span class="km-delta">+${fmt(deltaText)} km fa</span>` : ''}
+        </div>
+      `;
+      scroll.appendChild(el);
+    });
+  }
+
+  function renderDetail() {
+    const panel = document.getElementById('detail-panel');
+    if (!selected) {
+      panel.innerHTML = `
+        <div class="detail-empty">
+          <div class="detail-empty-icon">📋</div>
+          <h3>Seleziona una manutenzione</h3>
+          <p>Clicca una voce dalla lista a sinistra per vederne tutti i dettagli.</p>
+        </div>
+      `;
+      return;
+    }
+    const m = manutenzioni.find(x => x.id === selected);
+    const hasDoc = m.sourceDocumentId && m.sourceDocumentFileUrl;
+    const isGomme = m.tipo === 'gomme';
+    const delta = m.km != null ? currentKm - m.km : null;
+
+    const materiali = m.materiali.length
+      ? m.materiali.map(mat => `
+          <div class="material-row">
+            <span class="mname">${mat.label}</span>
+            <span class="mqty">${mat.quantita} ${mat.unita}</span>
+          </div>
+        `).join('')
+      : '<div class="empty-block">Nessun materiale registrato per questo intervento</div>';
+
+    let gommeBox = '';
+    if (isGomme && (m.assiCoinvolti || m.gommePerAsse || m.gommeInterventoTipo)) {
+      const assi = m.assiCoinvolti ? m.assiCoinvolti.map(a => `<span class="gomme-tag">${a}</span>`).join('') : '';
+      let perAsseRows = '';
+      if (m.gommePerAsse) {
+        perAsseRows = Object.entries(m.gommePerAsse).map(([asse, info]) => `
+          <div class="gomme-row">
+            <span class="g-label">${asse}</span>
+            <span class="g-val">${info.marca} · ${info.misura} · ${info.intervento}</span>
+          </div>
+        `).join('');
+      }
+      gommeBox = `
+        <div class="detail-section">
+          <div class="detail-section-title">
+            <span>Dettagli intervento gomme</span>
+            ${m.gommeStraordinario ? '<span class="count" style="background:#fee2e2; color:#991b1b;">STRAORDINARIO</span>' : ''}
+          </div>
+          <div class="gomme-box">
+            ${assi ? `
+              <div class="gomme-row">
+                <span class="g-label">Assi coinvolti</span>
+                <span class="g-val">${assi}</span>
+              </div>
+            ` : ''}
+            ${m.gommeInterventoTipo ? `
+              <div class="gomme-row">
+                <span class="g-label">Tipo intervento</span>
+                <span class="g-val">${m.gommeInterventoTipo}</span>
+              </div>
+            ` : ''}
+            ${perAsseRows}
+          </div>
+        </div>
+      `;
+    }
+
+    panel.innerHTML = `
+      <div class="detail-header">
+        <div class="detail-header-top">
+          <h2 class="detail-title">${m.titolo}</h2>
+          <div class="detail-actions">
+            <button class="btn-action primary" title="Modifica manutenzione">Modifica</button>
+            <button class="btn-action" title="Apri dossier mezzo">Apri dossier</button>
+            <button class="btn-action ${hasDoc ? '' : 'disabled'}" title="${hasDoc ? 'Apri documento collegato' : 'Nessun documento collegato'}">Apri documento</button>
+            <button class="btn-action" title="Scarica PDF singolo">Scarica PDF</button>
+          </div>
+        </div>
+        <div class="detail-meta">
+          ${m.data}<span class="detail-meta-sep">·</span>${m.sottotipo || '—'}<span class="detail-meta-sep">·</span>${m.fornitore || 'Fornitore non indicato'}
+        </div>
+      </div>
+
+      <div class="detail-body">
+
+        <!-- KPI SCURA top -->
+        <div class="kpi-row">
+          <div class="kpi-item">
+            <span class="kpi-label">Km intervento</span>
+            <span class="kpi-value small">${fmt(m.km)} km</span>
+          </div>
+          <div class="kpi-item">
+            <span class="kpi-label">Δ km da oggi</span>
+            <span class="kpi-value small ${delta > 0 ? 'delta-positive' : ''}">${fmtDelta(m.km)}</span>
+          </div>
+          <div class="kpi-item">
+            <span class="kpi-label">Importo</span>
+            <span class="kpi-value">${fmtEur(m.importo, m.sourceDocumentCurrency)}</span>
+          </div>
+        </div>
+
+        <!-- GRID CAMPI -->
+        <div class="detail-grid">
+          <div class="detail-field">
+            <span class="detail-label">Tipo intervento</span>
+            <span class="detail-value"><span class="pill ${m.tipo}">${tipoShort(m.tipo)}</span></span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Sottotipo</span>
+            <span class="detail-value ${m.sottotipo ? '' : 'muted'}">${m.sottotipo || 'Non specificato'}</span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Fornitore</span>
+            <span class="detail-value ${m.fornitore ? '' : 'muted'}">${m.fornitore || 'Non indicato'}</span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Ore di lavoro</span>
+            <span class="detail-value mono ${m.ore != null ? '' : 'muted'}">${m.ore != null ? fmtOre(m.ore) : 'Non registrate'}</span>
+          </div>
+        </div>
+
+        <!-- DESCRIZIONE -->
+        <div class="detail-section">
+          <div class="detail-section-title">Descrizione intervento</div>
+          <div class="detail-description">${m.descrizione}</div>
+        </div>
+
+        ${gommeBox}
+
+        <!-- MATERIALI -->
+        <div class="detail-section">
+          <div class="detail-section-title">
+            <span>Materiali / ricambi utilizzati</span>
+            ${m.materiali.length ? `<span class="count">${m.materiali.length}</span>` : ''}
+          </div>
+          ${materiali}
+        </div>
+
+        <!-- DOCUMENTO COLLEGATO -->
+        <div class="detail-section">
+          <div class="detail-section-title">Documento collegato</div>
+          ${hasDoc
+            ? `<a class="doc-link">📄 Apri documento originale (${m.sourceDocumentId})</a>`
+            : '<div class="empty-block">Nessun documento allegato a questa manutenzione</div>'
+          }
+        </div>
+
+      </div>
+    `;
+  }
+
+  function render() {
+    renderList();
+    renderDetail();
+  }
+
+  render();
+</script>
+</body>
+</html>

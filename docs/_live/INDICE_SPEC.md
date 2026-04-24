@@ -120,3 +120,9 @@ Numero spec: 16
    - Stato: IMPLEMENTATA
    - Ultima modifica: 2026-04-22
    - Cosa copre: Potenziamento tab "Quadro manutenzioni PDF" — lista manutenzioni in card con Δ km, targa cliccabile al dossier, modale 3 layout, PDF quadro generale sezioni-per-mezzo, PDF singolo mezzo hero mezzo-centrica, foto nei PDF.
+### SPEC_DETTAGLIO_MANUTENZIONI_NEXT
+   - Path: docs/_live/spec/SPEC_DETTAGLIO_MANUTENZIONI_NEXT.md
+   - Modulo: Manutenzioni
+   - Stato: IMPLEMENTATA
+   - Ultima modifica: 2026-04-23
+   - Cosa copre: Restyling tab "Dettaglio" di /next/manutenzioni a split view lista + pannello dettaglio. Rimuove schema tecnico, card dettaglio mezzo ridondante, bottoni fissi in fondo. Aggiunge filtri chip, KPI scura, sezione gomme condizionale, 4 bottoni contestuali testuali, esposizione campi dominio (ore, sottotipo, fornitore, importo, valuta).

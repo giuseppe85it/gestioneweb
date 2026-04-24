@@ -6,6 +6,7 @@ import {
   type NextInventarioReadOnlyItem,
 } from "./domain/nextInventarioDomain";
 import {
+  deleteNextManutenzioneBusinessRecord,
   readNextManutenzioniWorkspaceSnapshot,
   saveNextManutenzioneBusinessRecord,
   type NextManutenzioneGommeInterventoTipo,
@@ -337,6 +338,24 @@ function toPdfText(value: string, fontReady: boolean): string {
   return fontReady ? value : normalizePdfFallbackText(value);
 }
 
+function fitPdfSingleLineText(
+  doc: { getTextWidth(text: string): number },
+  value: string,
+  maxWidth: number,
+) {
+  const normalized = value.trim();
+  if (!normalized || maxWidth <= 0 || doc.getTextWidth(normalized) <= maxWidth) {
+    return normalized;
+  }
+
+  let candidate = normalized;
+  while (candidate.length > 1 && doc.getTextWidth(`${candidate}…`) > maxWidth) {
+    candidate = candidate.slice(0, -1).trimEnd();
+  }
+
+  return candidate.length < normalized.length ? `${candidate}…` : normalized;
+}
+
 async function ensurePdfUnicodeFont(doc: PdfDocWithPlugins): Promise<boolean> {
   if (doc.__nextUnicodeFontReady) {
     doc.setFont(PDF_UNICODE_FONT_FAMILY, "normal");
@@ -365,65 +384,14 @@ async function ensurePdfUnicodeFont(doc: PdfDocWithPlugins): Promise<boolean> {
 async function loadImageElement(source: string): Promise<HTMLImageElement | null> {
   return await new Promise((resolve) => {
     const image = new Image();
+    image.decoding = "async";
     image.onload = () => resolve(image);
     image.onerror = () => resolve(null);
     image.src = source;
   });
 }
 
-function readExifOrientation(buffer: ArrayBuffer): number {
-  const view = new DataView(buffer);
-  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) {
-    return 1;
-  }
-
-  let offset = 2;
-  while (offset + 4 <= view.byteLength) {
-    if (view.getUint8(offset) !== 0xff) break;
-    const marker = view.getUint8(offset + 1);
-    if (marker === 0xda || marker === 0xd9) break;
-    if (offset + 4 > view.byteLength) break;
-
-    const segmentLength = view.getUint16(offset + 2, false);
-    if (segmentLength < 2 || offset + 2 + segmentLength > view.byteLength) break;
-
-    if (marker === 0xe1 && segmentLength >= 10) {
-      const exifHeaderOffset = offset + 4;
-      if (view.getUint32(exifHeaderOffset, false) === 0x45786966) {
-        const tiffOffset = exifHeaderOffset + 6;
-        if (tiffOffset + 8 > view.byteLength) return 1;
-
-        const byteOrder = view.getUint16(tiffOffset, false);
-        const littleEndian = byteOrder === 0x4949;
-        const bigEndian = byteOrder === 0x4d4d;
-        if (!littleEndian && !bigEndian) return 1;
-
-        const ifdOffset = view.getUint32(tiffOffset + 4, littleEndian);
-        const directoryOffset = tiffOffset + ifdOffset;
-        if (directoryOffset + 2 > view.byteLength) return 1;
-
-        const entries = view.getUint16(directoryOffset, littleEndian);
-        for (let index = 0; index < entries; index += 1) {
-          const entryOffset = directoryOffset + 2 + index * 12;
-          if (entryOffset + 12 > view.byteLength) break;
-          if (view.getUint16(entryOffset, littleEndian) === 0x0112) {
-            return view.getUint16(entryOffset + 8, littleEndian);
-          }
-        }
-      }
-    }
-
-    offset += 2 + segmentLength;
-  }
-
-  return 1;
-}
-
-function drawImageWithExifOrientation(
-  image: HTMLImageElement,
-  orientation: number,
-  mimeType: string,
-): string | null {
+function renderImageElementToDataUrl(image: HTMLImageElement, mimeType: string): string | null {
   const width = image.naturalWidth || image.width || 0;
   const height = image.naturalHeight || image.height || 0;
   if (!width || !height) return null;
@@ -432,36 +400,8 @@ function drawImageWithExifOrientation(
   const context = canvas.getContext("2d");
   if (!context) return null;
 
-  const shouldSwap = [5, 6, 7, 8].includes(orientation);
-  canvas.width = shouldSwap ? height : width;
-  canvas.height = shouldSwap ? width : height;
-
-  switch (orientation) {
-    case 2:
-      context.transform(-1, 0, 0, 1, width, 0);
-      break;
-    case 3:
-      context.transform(-1, 0, 0, -1, width, height);
-      break;
-    case 4:
-      context.transform(1, 0, 0, -1, 0, height);
-      break;
-    case 5:
-      context.transform(0, 1, 1, 0, 0, 0);
-      break;
-    case 6:
-      context.transform(0, 1, -1, 0, height, 0);
-      break;
-    case 7:
-      context.transform(0, -1, -1, 0, height, width);
-      break;
-    case 8:
-      context.transform(0, -1, 1, 0, 0, width);
-      break;
-    default:
-      break;
-  }
-
+  canvas.width = width;
+  canvas.height = height;
   context.drawImage(image, 0, 0, width, height);
   const outputMimeType = mimeType.toLowerCase().includes("png") ? "image/png" : "image/jpeg";
   return canvas.toDataURL(outputMimeType, 0.92);
@@ -482,12 +422,10 @@ async function loadPdfImageData(url: string): Promise<PdfImageData | null> {
       const image = await loadImageElement(blobUrl);
       if (!image) return null;
 
-      const orientation = readExifOrientation(await blob.arrayBuffer());
-      const rotatedDataUrl =
-        orientation !== 1 ? drawImageWithExifOrientation(image, orientation, blob.type) : null;
-      if (rotatedDataUrl) {
+      const renderedDataUrl = renderImageElementToDataUrl(image, blob.type);
+      if (renderedDataUrl) {
         return {
-          dataUrl: rotatedDataUrl,
+          dataUrl: renderedDataUrl,
           format: getPdfImageFormat(blob.type),
         };
       }
@@ -1484,6 +1422,39 @@ export default function NextManutenzioniPage() {
     setNotice("Modifica caricata dal dataset reale.");
   }
 
+  async function handleDelete(record: Pick<NextManutenzioniLegacyDatasetRecord, "id">): Promise<void> {
+    const recordId = String(record.id ?? "").trim();
+    if (!recordId) {
+      setError("Eliminazione manutenzione non riuscita: record non valido.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Eliminare questa manutenzione?\n\n"
+      + "Questa operazione e' IRREVERSIBILE.\n"
+      + "I materiali scaricati torneranno in inventario e le consegne collegate verranno rimosse.",
+    );
+    if (!confirmed) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      setNotice(null);
+      const ok = await deleteNextManutenzioneBusinessRecord(recordId);
+      if (!ok) {
+        throw new Error("Delete manutenzione fallita.");
+      }
+      setSelectedDetailRecordId(null);
+      await refreshData();
+      setNotice("Manutenzione eliminata dal dataset reale.");
+    } catch (deleteError) {
+      console.error("Errore eliminazione manutenzione:", deleteError);
+      setError("Eliminazione manutenzione non riuscita.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleUiSubtypeChange(nextSubtype: InterventoUiSubtype) {
     setUiSubtype(nextSubtype);
     if (nextSubtype === "tagliando completo" && !descrizione.trim()) {
@@ -1687,6 +1658,7 @@ export default function NextManutenzioniPage() {
       const heroTop = y;
       const heroHeight = photoData ? 50 : 44;
       const heroWidth = pageWidth - margin * 2;
+      const heroRight = margin + heroWidth;
       doc.setFillColor(26, 26, 26);
       doc.roundedRect(margin, heroTop, heroWidth, heroHeight, 4, 4, "F");
       doc.setFillColor(201, 168, 106);
@@ -1701,23 +1673,40 @@ export default function NextManutenzioniPage() {
         titleStartX = margin + 56;
       }
 
+      const heroInnerRight = heroRight - 10;
+      const statsGap = 8;
+      const titleGap = 10;
+      const minStatsAreaWidth = photoData ? 112 : 120;
+      const availableHeroTextWidth = heroInnerRight - titleStartX;
+      const titleBlockWidth = Math.min(
+        92,
+        Math.max(72, availableHeroTextWidth - minStatsAreaWidth - titleGap),
+      );
+      const statsStartX = titleStartX + titleBlockWidth + titleGap;
+      const statsAreaWidth = Math.max(92, heroInnerRight - statsStartX);
+      const statWidth = Math.max(42, (statsAreaWidth - statsGap) / 2);
+
       doc.setFont("courier", "bold");
-      doc.setFontSize(28);
+      doc.setFontSize(24);
       doc.setTextColor(201, 168, 106);
-      doc.text(toPdfText(singleTarga, fontReady), titleStartX, heroTop + 18);
+      doc.text(
+        fitPdfSingleLineText(doc, toPdfText(singleTarga, fontReady), titleBlockWidth),
+        titleStartX,
+        heroTop + 18,
+      );
 
       setPdfFont("bold");
-      doc.setFontSize(15);
+      doc.setFontSize(13);
       doc.setTextColor(231, 229, 228);
       doc.text(
-        toPdfText(mezzoPdf?.marcaModello ?? mezzoPdf?.label ?? "DA VERIFICARE", fontReady),
+        fitPdfSingleLineText(
+          doc,
+          toPdfText(mezzoPdf?.marcaModello ?? mezzoPdf?.label ?? "DA VERIFICARE", fontReady),
+          titleBlockWidth,
+        ),
         titleStartX,
         heroTop + 28,
       );
-
-      const statStartX = photoData ? margin + 164 : margin + 156;
-      const statWidth = photoData ? 54 : 60;
-      const statGap = 18;
       const stats = [
         {
           label: metricInfo?.primaryLabel ?? (pdfSubjectType === "compressore" ? "Ore attuali" : "Km attuali"),
@@ -1732,7 +1721,7 @@ export default function NextManutenzioniPage() {
           value: group?.latest ? formatDateFull(group.latest.data) : "DA VERIFICARE",
         },
         {
-          label: "Tot. interventi nel periodo",
+          label: "Interventi periodo",
           value: String(group?.items.length ?? 0),
         },
       ];
@@ -1740,16 +1729,25 @@ export default function NextManutenzioniPage() {
       stats.forEach((stat, index) => {
         const columnIndex = index % 2;
         const rowIndex = Math.floor(index / 2);
-        const cellX = statStartX + columnIndex * (statWidth + statGap);
-        const cellY = heroTop + 12 + rowIndex * 16;
+        const cellX = statsStartX + columnIndex * (statWidth + statsGap);
+        const cellY = heroTop + 13 + rowIndex * 16;
         setPdfFont("bold");
-        doc.setFontSize(8);
+        doc.setFontSize(7.2);
         doc.setTextColor(201, 168, 106);
-        doc.text(toPdfText(stat.label.toUpperCase(), fontReady), cellX, cellY);
+        doc.text(
+          fitPdfSingleLineText(doc, toPdfText(stat.label.toUpperCase(), fontReady), statWidth),
+          cellX,
+          cellY,
+        );
         setPdfFont("bold");
-        doc.setFontSize(12);
+        doc.setFontSize(10.5);
         doc.setTextColor(255, 255, 255);
-        doc.text(toPdfText(stat.value, fontReady), cellX, cellY + 6, { maxWidth: statWidth + 10 });
+        doc.text(
+          fitPdfSingleLineText(doc, toPdfText(stat.value, fontReady), statWidth),
+          cellX,
+          cellY + 6,
+          { maxWidth: statWidth },
+        );
       });
 
       y = heroTop + heroHeight + 8;
@@ -2994,23 +2992,9 @@ export default function NextManutenzioniPage() {
         <NextMappaStoricoPage
           targa={activeTarga}
           embedded={true}
-          selectedMaintenance={
-            selectedDetailRecord
-              ? {
-                  id: selectedDetailRecord.id,
-                  data: selectedDetailRecord.data ?? null,
-                  descrizione: selectedDetailRecord.descrizione ?? null,
-                  assiCoinvolti: selectedDetailRecord.assiCoinvolti ?? [],
-                  km: selectedDetailRecord.km ?? null,
-                  tipo: selectedDetailRecord.tipo ?? null,
-                  materiali: selectedDetailRecord.materiali ?? [],
-                  importo: selectedDetailRecord.importo ?? null,
-                  sourceDocumentId: selectedDetailRecord.sourceDocumentId ?? null,
-                  sourceDocumentFileUrl: selectedDetailRecord.sourceDocumentFileUrl ?? null,
-                  fornitore: selectedDetailRecord.fornitore ?? null,
-                }
-              : null
-          }
+          selectedMaintenance={selectedDetailRecord ? { ...selectedDetailRecord } : null}
+          storicoManutenzioni={storicoMezzoOrdinato}
+          kmAttuali={kmUltimoByTarga[activeTarga] ?? null}
           mezzoInfo={{
             targa: mezzoPreviewSelezionato?.targa || activeTarga,
             mezzoLabel: mezzoPreviewSelezionato?.marcaModello ?? mezzoPreviewSelezionato?.label ?? "DA VERIFICARE",
@@ -3032,18 +3016,19 @@ export default function NextManutenzioniPage() {
               title: buildDescrizioneSnippet(item.descrizione, 78),
             })),
           }}
-          onOpenPdf={() => setView("pdf")}
           onOpenDossier={() => {
             if (mezzoPreviewSelezionato) navigate(buildNextDossierPath(mezzoPreviewSelezionato.targa));
           }}
+          onOpenDocument={(record) => {
+            if (!record.sourceDocumentFileUrl) return;
+            window.open(record.sourceDocumentFileUrl, "_blank", "noopener,noreferrer");
+          }}
+          onDownloadPdfSingle={(record) => void exportPdfForItems([record], `PDF dettaglio - ${record.targa}`)}
           onSelectMaintenance={(recordId) => setSelectedDetailRecordId(recordId)}
           onEditLatest={() => {
-            if (selectedDetailRecord) {
-              handleEdit(selectedDetailRecord);
-              return;
-            }
-            if (latestRecord) handleEdit(latestRecord);
+            if (selectedDetailRecord) handleEdit(selectedDetailRecord);
           }}
+          onDelete={handleDelete}
         />
       ) : (
         renderActiveSurface()

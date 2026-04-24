@@ -7,12 +7,7 @@ import {
   type ChangeEvent,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { MaterialeOrdine, Ordine, UnitaMisura } from "../types/ordini";
-import { collection, doc, getDoc } from "firebase/firestore";
-import { ref as storageRef, getDownloadURL } from "firebase/storage";
-import { db, storage } from "../firebase";
-import { setDoc } from "../utils/firestoreWriteOps";
-import { uploadBytes, deleteObject } from "../utils/storageWriteOps";
+import type { MaterialeOrdine, UnitaMisura } from "../types/ordini";
 import "../pages/MaterialiDaOrdinare.css";
 import "../pages/Acquisti.css";
 import "./next-procurement-route.css";
@@ -92,14 +87,11 @@ const TABS: ProcurementSurfaceTab[] = [
   "Listino Prezzi",
 ];
 
+const READ_ONLY_SAVE_MESSAGE =
+  "Clone read-only: conferma ordine non disponibile.";
 const PROCUREMENT_DRAFT_KEY = "next.procurement.materiali-da-ordinare.draft";
 
 const generaId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-const oggi = () => {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2, "0")} ${String(d.getMonth() + 1).padStart(2, "0")} ${d.getFullYear()}`;
-};
 
 const immaginiAutomatiche: { pattern: RegExp; url: string }[] = [
   { pattern: /cemento/i, url: "/materiali/cemento.png" },
@@ -476,7 +468,6 @@ export default function NextMaterialiDaOrdinarePage() {
   const [ordineNote, setOrdineNote] = useState("");
   const [newMaterialeNota, setNewMaterialeNota] = useState("");
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
-  const [savingOrdine, setSavingOrdine] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const [selectedListinoVoce, setSelectedListinoVoce] =
     useState<NextProcurementListinoItem | null>(null);
@@ -961,7 +952,7 @@ export default function NextMaterialiDaOrdinarePage() {
   const hasValidConversionFactorInput =
     Number.isFinite(parsedConversionFactorInput) && parsedConversionFactorInput > 0;
 
-  const aggiungiMateriale = async () => {
+  const aggiungiMateriale = () => {
     if (!descrizione.trim() || !quantita.trim()) return;
 
     if (!fornitoreAttivoNome) {
@@ -980,30 +971,14 @@ export default function NextMaterialiDaOrdinarePage() {
       conversionFactorInput,
     );
     const id = generaId();
-
-    let fotoUrl: string | null = fotoPreview;
-    let fotoStoragePath: string | null = null;
-
-    if (fotoFile) {
-      try {
-        const ext = fotoFile.name.split(".").pop() ?? "jpg";
-        const path = `materiali/${id}-${Date.now()}.${ext}`;
-        const snap = await uploadBytes(storageRef(storage, path), fotoFile);
-        fotoUrl = await getDownloadURL(snap.ref);
-        fotoStoragePath = path;
-      } catch (err) {
-        console.error("Errore upload foto materiale:", err);
-      }
-    }
-
     const nuovo: ProcurementDraftMaterial = {
       id,
       descrizione: normalizeDescrizione(descrizione),
       quantita: quantitaNumerica,
       unita,
       arrivato: false,
-      fotoUrl,
-      fotoStoragePath,
+      fotoUrl: fotoPreview,
+      fotoStoragePath: null,
       fornitoreScelto: fornitoreAttivoNome,
       fornitore: fornitoreAttivoNome,
       nomeFornitore: fornitoreAttivoNome,
@@ -1030,16 +1005,8 @@ export default function NextMaterialiDaOrdinarePage() {
     resetMateriale();
   };
 
-  const eliminaMateriale = async (id: string) => {
-    const item = materiali.find((m) => m.id === id);
-    if (item?.fotoStoragePath) {
-      try {
-        await deleteObject(storageRef(storage, item.fotoStoragePath));
-      } catch (err) {
-        console.error("Errore rimozione foto materiale:", err);
-      }
-    }
-    setMateriali((current) => current.filter((m) => m.id !== id));
+  const eliminaMateriale = (id: string) => {
+    setMateriali((current) => current.filter((item) => item.id !== id));
     setNoteByMaterialeId((current) => {
       const next = { ...current };
       delete next[id];
@@ -1096,7 +1063,7 @@ export default function NextMaterialiDaOrdinarePage() {
     openCanonicalProcurementView({ tab: "listino" });
   };
 
-  const salvaOrdine = async () => {
+  const salvaOrdine = () => {
     let nomeFinale = fornitoreNome.trim();
 
     if (isNuovoFornitore && nomeFornitorePersonalizzato.trim()) {
@@ -1109,43 +1076,8 @@ export default function NextMaterialiDaOrdinarePage() {
     }
 
     if (!materiali.length) return;
-
-    setSavingOrdine(true);
-    try {
-      const refDoc = doc(collection(db, "storage"), "@ordini");
-      const snap = await getDoc(refDoc);
-      const existing: Ordine[] = snap.exists()
-        ? ((snap.data()?.value as Ordine[]) || [])
-        : [];
-
-      const nuovoOrdine: Ordine = {
-        id: generaId(),
-        idFornitore: fornitoreId === "nuovo" ? generaId() : fornitoreId,
-        nomeFornitore: nomeFinale,
-        dataOrdine: oggi(),
-        materiali: materiali.map((m): MaterialeOrdine => ({
-          id: m.id,
-          descrizione: m.descrizione,
-          quantita: m.quantita,
-          unita: m.unita,
-          arrivato: false,
-          fotoUrl: m.fotoUrl ?? null,
-          fotoStoragePath: m.fotoStoragePath ?? null,
-        })),
-        arrivato: false,
-      };
-
-      const updated = [...existing, nuovoOrdine];
-      await setDoc(refDoc, { value: updated }, { merge: true });
-
-      clearProcurementDraftState();
-      await refreshProcurementSnapshot();
-    } catch (err) {
-      console.error("Errore salvataggio ordine:", err);
-      window.alert("Errore durante il salvataggio. Riprova.");
-    } finally {
-      setSavingOrdine(false);
-    }
+    window.alert(READ_ONLY_SAVE_MESSAGE);
+    clearProcurementDraftState();
   };
 
   const materialiFiltrati = useMemo(() => {
@@ -1286,7 +1218,6 @@ export default function NextMaterialiDaOrdinarePage() {
     quantita.trim().length > 0 &&
     fornitoreAttivoNome.trim().length > 0;
   const canSaveOrdine =
-    !savingOrdine &&
     materiali.length > 0 &&
     (Boolean(fornitoreNome) || Boolean(nomeFornitorePersonalizzato.trim()));
 
@@ -1471,7 +1402,7 @@ export default function NextMaterialiDaOrdinarePage() {
                             <button
                               type="button"
                               className="mdo-add-button om-entry-add-button"
-                              onClick={() => void aggiungiMateriale()}
+                              onClick={aggiungiMateriale}
                               disabled={!canAddMateriale}
                             >
                               AGGIUNGI
@@ -1832,7 +1763,7 @@ export default function NextMaterialiDaOrdinarePage() {
                                         type="button"
                                         className="acq-kebab-item acq-kebab-item--danger"
                                         onClick={() => {
-                                          void eliminaMateriale(materiale.id);
+                                          eliminaMateriale(materiale.id);
                                           setOpenMaterialMenuId(null);
                                           setOpenMaterialMenuPosition(null);
                                         }}
@@ -1907,10 +1838,10 @@ export default function NextMaterialiDaOrdinarePage() {
                 <button
                   type="button"
                   className="mdo-header-button"
-                  onClick={() => void salvaOrdine()}
+                  onClick={salvaOrdine}
                   disabled={!canSaveOrdine}
                 >
-                  {savingOrdine ? "Salvataggio..." : "CONFERMA ORDINE"}
+                  CONFERMA ORDINE
                 </button>
               </div>
               {totalsSummary.prezziMancanti > 0 || totalsSummary.udmDaVerificare > 0 ? (
@@ -1978,7 +1909,6 @@ export default function NextMaterialiDaOrdinarePage() {
                 onCloseOrder={(backTab) =>
                   openCanonicalProcurementView({ tab: backTab, from: backTab })
                 }
-                onOrderSaved={refreshProcurementSnapshot}
               />
             ) : (
               <section className="acq-content">

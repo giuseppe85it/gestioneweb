@@ -1,4 +1,4 @@
-# SPEC_ACQUISTI_PREVENTIVO_MANUALE_NEXT — v2
+# SPEC_ACQUISTI_PREVENTIVO_MANUALE_NEXT — v3
 
 > **Fonte primaria di verità** per l'implementazione della feature "Preventivo manuale" nel tab NEXT "Prezzi & Preventivi" del modulo Acquisti.
 >
@@ -6,7 +6,7 @@
 >
 > **Regola di precedenza:** il codice reale della madre prevale sempre su questa spec. Se l'implementatore trova divergenze tra questa spec e il codice, deve fermarsi e segnalare, non reinterpretare.
 >
-> **Versione:** v2 del 2026-04-22 (sostituisce integralmente la v1, che conteneva errori sulle normalizzazioni e sul flusso di import listino rilevati nel PROMPT 6).
+> **Versione:** v2 del 2026-04-22 (sostituisce integralmente la v1, che conteneva errori sulle normalizzazioni e sul flusso di import listino rilevati nel PROMPT 6). v3 del 2026-04-23 (aggiunte checkbox WhatsApp/Email opzionali, D8, §4.2 estesa, §5.2 aggiornata, §5.4 nuova, §6.2 estesa, §9.6 nuova, anti-pattern aggiornati).
 
 ---
 
@@ -32,6 +32,7 @@ Il preventivo manuale deve:
 | D5 | Scrittura listino al salvataggio | **Sì**, automatica. Scrittura diretta senza passare per il flusso di bozza della madre |
 | D6 | Valuta | Select **CHF / EUR** a livello preventivo. Default CHF |
 | D7 | Codice articolo | Campo **libero non obbligatorio** nel modale. Confluisce direttamente in `ListinoVoce.codiceArticolo`, NON in `PreventivoRiga.note` |
+| D8 | Canale ricezione preventivo | Due checkbox opzionali "Ricevuto via WhatsApp" e "Ricevuto via Email" nel modale, nella sezione "Canale ricezione" dopo il campo Valuta. Salvate come campi booleani opzionali sul Preventivo (`ricevutoDaWhatsapp?: boolean`, `ricevutoDaEmail?: boolean`), scritti solo se `true`. Badge "✓ WhatsApp" / "✓ Email" visibile nella colonna N. preventivo della lista preventivi espansa nel tab. Lista base non modificata strutturalmente. Madre ignora i campi extra. |
 
 ---
 
@@ -90,6 +91,13 @@ type Preventivo = {
   updatedAt: number;
 };
 ```
+
+**Campi opzionali aggiuntivi NEXT-only (v3):**
+```ts
+ricevutoDaWhatsapp?: boolean;
+ricevutoDaEmail?: boolean;
+```
+Scritti solo se `true` (spread condizionale, vedi §6.2). Non presenti nel tipo originale della madre (`Acquisti.tsx:48-61`). La madre ignora i campi extra presenti sui documenti Firestore condivisi `storage/@preventivi`.
 
 #### `ListinoVoce` — `Acquisti.tsx:65-98`
 ```ts
@@ -280,6 +288,11 @@ Questo path è **distinto** dal path IA della madre (`preventivi/ia/...`) e dal 
 - **Numero preventivo** (obbligatorio): input testo. Pre-compilato `ggmmaaaa` odierno. Editabile.
 - **Data preventivo** (obbligatorio): input date. Default odierna. Salvata in formato `YYYY-MM-DD`.
 - **Valuta** (obbligatorio): select CHF / EUR. Default CHF.
+- **Sezione "Canale ricezione"** (opzionale): due checkbox indipendenti, dopo il campo Valuta.
+  - "Ricevuto via WhatsApp" → stato `ricevutoDaWhatsapp`, default `false`
+  - "Ricevuto via Email" → stato `ricevutoDaEmail`, default `false`
+  - Entrambe NON obbligatorie. Non bloccano la validazione. Abilitate/disabilitate insieme agli altri controlli durante il salvataggio.
+  - Evidenza: `NextPreventivoManualeModal.tsx:395-425`
 
 **Sezione righe articoli (almeno 1, senza massimo):**
 Per ogni riga:
@@ -307,6 +320,20 @@ Impedire salvataggio se:
 - `dataPreventivo` vuoto
 - nessuna riga presente
 - almeno una riga ha: `descrizione` vuota post trim, oppure `unita` vuota post trim, oppure `prezzoUnitario` non finito/NaN/negativo/zero
+
+### 5.4 Badge nel tab preventivi
+
+Nell'area espansa del tab "Prezzi & Preventivi" (il gruppo fornitore deve essere aperto/espanso per vedere la tabella), la colonna "N. preventivo" della tabella `acq-prev-table` mostra il badge di canale ricezione.
+
+Funzione renderer: `renderPreventivoReceiptBadges(item)` — `NextProcurementConvergedSection.tsx:123-146`.
+
+- Se `ricevutoDaWhatsapp === true`: badge `✓ WhatsApp`.
+- Se `ricevutoDaEmail === true`: badge `✓ Email`.
+- Se entrambi `false` o `undefined`: il renderer restituisce `null` (nessun badge).
+
+Stile badge: `inline-flex`, colore `#2d7a3e` (testo e bordo), background `rgba(45, 122, 62, 0.08)`, `border-radius: 999px`. Nessun file CSS creato: stile inline.
+
+Posizionamento: dentro una `<div style={{ display: "grid", gap: 4 }}>` che contiene prima `<span>{item.numeroPreventivo}</span>` e poi il renderer — `NextProcurementConvergedSection.tsx:436`. La lista preventivi (struttura colonne, righe di testata, logica filtri) non è stata modificata.
 
 ---
 
@@ -350,6 +377,17 @@ const preventivo: Preventivo = {
   updatedAt: now,
 };
 ```
+
+**Campi opzionali canale ricezione (v3):**
+Se `ricevutoDaWhatsapp` è `true`, viene aggiunto al Preventivo via spread condizionale:
+```ts
+...(input.ricevutoDaWhatsapp ? { ricevutoDaWhatsapp: true } : {})
+```
+Idem per `ricevutoDaEmail`:
+```ts
+...(input.ricevutoDaEmail ? { ricevutoDaEmail: true } : {})
+```
+Se il valore è `false` o `undefined`, il campo **NON viene scritto** nel documento Firestore (serializzazione pulita, nessun campo booleano `false` persistito). Evidenza: `nextPreventivoManualeWriter.ts:275-276`.
 
 Per ogni riga del form, costruire `PreventivoRiga`:
 ```ts
@@ -603,6 +641,23 @@ Stessa classe CSS del pulsante "CARICA PREVENTIVO" esistente. Non creare CSS nuo
 Usare stato inline (colore input, messaggio sotto il campo). **Vietato** `window.alert` per validazione form.
 `window.alert` **consentito solo** per feedback di fallimento di scrittura Firestore/Storage in §6.1.
 
+### 9.6 Estensione dominio NEXT (v3)
+
+Il mapper `mapPreventivoRecord` in `src/next/domain/nextProcurementDomain.ts` propaga i due campi con pattern:
+```ts
+ricevutoDaWhatsapp: raw?.ricevutoDaWhatsapp === true ? true : undefined,
+ricevutoDaEmail: raw?.ricevutoDaEmail === true ? true : undefined,
+```
+Evidenza: `nextProcurementDomain.ts:743-744`.
+
+Il type `NextProcurementPreventivoItem` (letto da `nextProcurementDomain.ts:110-111`) include i due campi come opzionali:
+```ts
+ricevutoDaWhatsapp?: boolean;
+ricevutoDaEmail?: boolean;
+```
+
+Nessun altro mapper nel dominio (`mapListinoRecord`, ecc.) è stato toccato. La propagazione è limitata al solo record Preventivo.
+
 ---
 
 ## 10. CHECKLIST POST-IMPLEMENTAZIONE
@@ -650,7 +705,11 @@ Usare stato inline (colore input, messaggio sotto il campo). **Vietato** `window
 - ❌ Reinterpretare testi UI di §9.4
 - ❌ Modificare voci esistenti in registro/stato/context
 - ❌ Mirror `fonti-pronte` non byte-per-byte
+- ❌ Aggiungere i badge `✓ WhatsApp` / `✓ Email` nella lista preventivi base (struttura colonne — il badge va solo nel contenuto della cella N. preventivo nella vista espansa)
+- ❌ Rendere le checkbox "Ricevuto via WhatsApp" / "Ricevuto via Email" obbligatorie o bloccanti per la validazione
+- ❌ Scrivere `ricevutoDaWhatsapp: false` o `ricevutoDaEmail: false` nel documento Firestore (serializzazione pulita: scrivi solo se `true`)
+- ❌ Modificare il tipo `Preventivo` originale della madre (`Acquisti.tsx:48-61`) — i due campi sono opzionali in intersezione locale NEXT e la madre li ignora
 
 ---
 
-**Fine spec v2.** In caso di divergenze con il codice reale della madre: fermarsi e segnalare, non reinterpretare.
+**Fine spec v3.** In caso di divergenze con il codice reale della madre: fermarsi e segnalare, non reinterpretare.

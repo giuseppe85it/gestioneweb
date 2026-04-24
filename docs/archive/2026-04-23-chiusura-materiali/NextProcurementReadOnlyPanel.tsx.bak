@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, doc, getDoc } from "firebase/firestore";
-import { ref as storageRef, getDownloadURL } from "firebase/storage";
-import { db, storage } from "../firebase";
-import { setDoc } from "../utils/firestoreWriteOps";
-import { uploadBytes, deleteObject } from "../utils/storageWriteOps";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import { generateSmartPDFBlob } from "../utils/pdfEngine";
 import {
@@ -36,7 +31,6 @@ type NextProcurementReadOnlyPanelProps = {
   onTabChange: (tab: NextProcurementCloneTab) => void;
   onOpenOrder: (orderId: string, fromTab: NextProcurementListTab) => void;
   onCloseOrder: (backTab: NextProcurementListTab) => void;
-  onOrderSaved?: () => void | Promise<void>;
   iaPrefill?: {
     handoffId: string;
     fornitore: string | null;
@@ -216,9 +210,8 @@ function OrderListTable(props: {
   items: NextProcurementOrderItem[];
   fromTab: NextProcurementListTab;
   onOpenOrder: (orderId: string, fromTab: NextProcurementListTab) => void;
-  onOrderDeleted?: () => void | Promise<void>;
 }) {
-  const { title, subtitle, items, fromTab, onOpenOrder, onOrderDeleted } = props;
+  const { title, subtitle, items, fromTab, onOpenOrder } = props;
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [openMenuPosition, setOpenMenuPosition] =
     useState<FloatingMenuPosition | null>(null);
@@ -249,24 +242,12 @@ function OrderListTable(props: {
     };
   }, [openMenuId]);
 
-  const handleDeleteOrder = async (order: NextProcurementOrderItem) => {
+  const handleDeleteOrder = (order: NextProcurementOrderItem) => {
     if (order.arrivedRows > 0) {
       window.alert("Eliminazione bloccata: l'ordine contiene materiali arrivati.");
       return;
     }
-    try {
-      const refDoc = doc(collection(db, "storage"), "@ordini");
-      const snap = await getDoc(refDoc);
-      const existing: Array<Record<string, unknown>> = snap.exists()
-        ? ((snap.data()?.value as Array<Record<string, unknown>>) || [])
-        : [];
-      const filtered = existing.filter((entry) => entry.id !== order.id);
-      await setDoc(refDoc, { value: filtered }, { merge: true });
-      await onOrderDeleted?.();
-    } catch (err) {
-      console.error("Errore eliminazione ordine:", err);
-      window.alert("Errore durante l'eliminazione. Riprova.");
-    }
+    window.alert("Clone read-only: eliminazione ordine non disponibile.");
   };
 
   return (
@@ -385,7 +366,7 @@ function OrderListTable(props: {
                                 type="button"
                                 className="acq-kebab-item acq-kebab-item--danger"
                                 onClick={() => {
-                                  void handleDeleteOrder(order);
+                                  handleDeleteOrder(order);
                                   setOpenMenuId(null);
                                   setOpenMenuPosition(null);
                                 }}
@@ -456,9 +437,8 @@ function OrderDetailPanel(props: {
   order: NextProcurementOrderItem;
   backTab: NextProcurementListTab;
   onCloseOrder: (backTab: NextProcurementListTab) => void;
-  onOrderSaved?: () => void | Promise<void>;
 }) {
-  const { snapshot, order, backTab, onCloseOrder, onOrderSaved } = props;
+  const { snapshot, order, backTab, onCloseOrder } = props;
   const [workingOrder, setWorkingOrder] = useState<DetailWorkingOrder>(() =>
     buildWorkingOrder(snapshot, order),
   );
@@ -478,7 +458,6 @@ function OrderDetailPanel(props: {
   const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
   const [pdfPreviewFileName, setPdfPreviewFileName] = useState("ordine.pdf");
   const [pdfShareHint, setPdfShareHint] = useState<string | null>(null);
-  const [savingDetail, setSavingDetail] = useState(false);
 
   const sortedMaterials = useMemo(
     () =>
@@ -560,66 +539,21 @@ function OrderDetailPanel(props: {
     }));
   };
 
-  const persistWorkingOrder = async (updatedOrder: DetailWorkingOrder) => {
-    setSavingDetail(true);
-    try {
-      const refDoc = doc(collection(db, "storage"), "@ordini");
-      const snap = await getDoc(refDoc);
-      const existing: Array<Record<string, unknown>> = snap.exists()
-        ? ((snap.data()?.value as Array<Record<string, unknown>>) || [])
-        : [];
-
-      const ordineFirestore = {
-        id: updatedOrder.id,
-        idFornitore: updatedOrder.supplierId ?? updatedOrder.id,
-        nomeFornitore: updatedOrder.supplierName,
-        dataOrdine: updatedOrder.orderDateLabel ?? "",
-        materiali: updatedOrder.materials.map((m) => ({
-          id: m.id,
-          descrizione: m.descrizione,
-          quantita: m.quantita ?? 0,
-          unita: m.unita ?? "pz",
-          arrivato: m.arrived,
-          dataArrivo: m.arrivalDateLabel ?? null,
-          fotoUrl: m.photoUrl ?? null,
-          fotoStoragePath: m.photoStoragePath ?? null,
-          note: m.note ?? null,
-          prezzoUnitario: m.unitPrice ?? null,
-          valuta: m.currency ?? null,
-          unitaPrezzo: m.unitPriceUnit ?? null,
-        })),
-        arrivato: updatedOrder.materials.every((m) => m.arrived),
-        ordineNote: updatedOrder.orderNote ?? null,
-      };
-
-      const updatedArray = existing.map((entry) =>
-        entry.id === updatedOrder.id ? ordineFirestore : entry,
-      );
-      await setDoc(refDoc, { value: updatedArray }, { merge: true });
-      await onOrderSaved?.();
-      onCloseOrder(backTab);
-    } catch (err) {
-      console.error("Errore persistenza ordine:", err);
-      window.alert("Errore durante il salvataggio. Riprova.");
-    } finally {
-      setSavingDetail(false);
-    }
-  };
-
-  const toggleOrderArrived = async () => {
+  const toggleOrderArrived = () => {
     const nextArrived = workingOrder.materials.some((material) => !material.arrived);
-    const updatedMaterials = workingOrder.materials.map((material) => ({
-      ...material,
-      arrived: nextArrived,
-      arrivalDateLabel: nextArrived ? material.arrivalDateLabel || formatTodayLabel() : null,
+    setWorkingOrder((current) => ({
+      ...current,
+      materials: current.materials.map((material) => ({
+        ...material,
+        arrived: nextArrived,
+        arrivalDateLabel: nextArrived ? material.arrivalDateLabel || formatTodayLabel() : null,
+      })),
     }));
-    const updatedOrder: DetailWorkingOrder = { ...workingOrder, materials: updatedMaterials };
-    setWorkingOrder(updatedOrder);
-    await persistWorkingOrder(updatedOrder);
   };
 
-  const saveDetail = async () => {
-    await persistWorkingOrder(workingOrder);
+  const saveDetail = () => {
+    setEditing(false);
+    setAddingMaterial(false);
   };
 
   const onDetailDescChange = (value: string) => {
@@ -648,34 +582,19 @@ function OrderDetailPanel(props: {
     }));
   };
 
-  const uploadPhoto = async (materialId: string, event: ChangeEvent<HTMLInputElement>) => {
+  const uploadPhoto = (materialId: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setMaterial(materialId, (material) => ({
+      ...material,
+      photoUrl: preview,
+      photoStoragePath: null,
+    }));
     event.currentTarget.value = "";
-    const ext = file.name.split(".").pop() ?? "jpg";
-    const path = `materiali/${materialId}-${Date.now()}.${ext}`;
-    try {
-      const snap = await uploadBytes(storageRef(storage, path), file);
-      const url = await getDownloadURL(snap.ref);
-      setMaterial(materialId, (material) => ({
-        ...material,
-        photoUrl: url,
-        photoStoragePath: path,
-      }));
-    } catch (err) {
-      console.error("Errore upload foto dettaglio:", err);
-    }
   };
 
-  const removePhoto = async (materialId: string) => {
-    const mat = workingOrder.materials.find((m) => m.id === materialId);
-    if (mat?.photoStoragePath) {
-      try {
-        await deleteObject(storageRef(storage, mat.photoStoragePath));
-      } catch (err) {
-        console.error("Errore rimozione foto dettaglio:", err);
-      }
-    }
+  const removePhoto = (materialId: string) => {
     setMaterial(materialId, (material) => ({
       ...material,
       photoUrl: null,
@@ -864,13 +783,8 @@ function OrderDetailPanel(props: {
               Indietro
             </button>
             {!editing ? (
-              <button
-                type="button"
-                className="acq-btn"
-                onClick={() => void toggleOrderArrived()}
-                disabled={savingDetail}
-              >
-                {savingDetail ? "Salvataggio..." : localState.label === "ARRIVATO" ? "Segna NON Arrivato" : "Segna Arrivato"}
+              <button type="button" className="acq-btn" onClick={toggleOrderArrived}>
+                {localState.label === "ARRIVATO" ? "Segna NON Arrivato" : "Segna Arrivato"}
               </button>
             ) : null}
             {!editing ? (
@@ -878,13 +792,8 @@ function OrderDetailPanel(props: {
                 Modifica
               </button>
             ) : (
-              <button
-                type="button"
-                className="acq-btn acq-btn--primary"
-                onClick={() => void saveDetail()}
-                disabled={savingDetail}
-              >
-                {savingDetail ? "Salvataggio..." : "Salva"}
+              <button type="button" className="acq-btn acq-btn--primary" onClick={saveDetail}>
+                Salva
               </button>
             )}
           </div>
@@ -1058,14 +967,14 @@ function OrderDetailPanel(props: {
                                 type="file"
                                 accept="image/*"
                                 style={{ display: "none" }}
-                                onChange={(event) => void uploadPhoto(material.id, event)}
+                                onChange={(event) => uploadPhoto(material.id, event)}
                               />
                             </label>
                             {material.photoUrl ? (
                               <button
                                 type="button"
                                 className="acq-btn acq-btn--danger acq-btn--small"
-                                onClick={() => void removePhoto(material.id)}
+                                onClick={() => removePhoto(material.id)}
                               >
                                 Rimuovi
                               </button>
@@ -1251,7 +1160,6 @@ export default function NextProcurementReadOnlyPanel({
   onTabChange,
   onOpenOrder,
   onCloseOrder,
-  onOrderSaved,
   iaPrefill = null,
   searchQuery = "",
   embedded = false,
@@ -1313,7 +1221,6 @@ export default function NextProcurementReadOnlyPanel({
           order={activeOrder}
           backTab={detailBackTab}
           onCloseOrder={onCloseOrder}
-          onOrderSaved={onOrderSaved}
         />
       ) : requestedDetailMissing ? (
         <div className="acq-tab-panel acq-tab-panel--detail">
@@ -1335,7 +1242,6 @@ export default function NextProcurementReadOnlyPanel({
           items={visibleOrders}
           fromTab="ordini"
           onOpenOrder={onOpenOrder}
-          onOrderDeleted={onOrderSaved}
         />
       ) : activeTab === "arrivi" ? (
         <OrderListTable
@@ -1344,7 +1250,6 @@ export default function NextProcurementReadOnlyPanel({
           items={visibleOrders}
           fromTab="arrivi"
           onOpenOrder={onOpenOrder}
-          onOrderDeleted={onOrderSaved}
         />
       ) : activeTab === "ordine-materiali" ? (
         renderBlockedTab({

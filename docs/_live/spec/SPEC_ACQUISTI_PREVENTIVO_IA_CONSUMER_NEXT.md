@@ -1,14 +1,25 @@
-# SPEC_ACQUISTI_PREVENTIVO_IA_CONSUMER_NEXT — v1 (BOZZA DA VERIFICARE)
+# SPEC_ACQUISTI_PREVENTIVO_IA_CONSUMER_NEXT — v1.1 (BOZZA DA VERIFICARE)
 
 > **Stato:** BOZZA. Non implementare prima del prompt di verifica spec-vs-codice a Codex e della chiusura con divergenze = 0.
 >
 > **Fonte primaria di verità** per il consumer frontend NEXT della capability IA preventivi. Il backend è già implementato (endpoint `POST /internal-ai-backend/documents/preventivo-extract`, contratto `preventivo_price_extract_v1`, SPEC_ACQUISTI_PREVENTIVO_IA_NEXT v1.1 implementata nel PROMPT 19 e verificata nei PROMPT 20+21).
 >
-> Questo documento è redatto a partire dall'**audit Codex PROMPT 22 del 2026-04-23**. Ogni affermazione tecnica è ancorata a `path:riga` ed è verificabile. In caso di divergenza tra spec e codice reale, il codice reale prevale: l'implementatore deve fermarsi e segnalare, non reinterpretare.
+> Questo documento è redatto a partire dall'**audit Codex PROMPT 22 del 2026-04-23** e corretto dopo la verifica spec-vs-codice Codex del PROMPT 23 (6 divergenze) e gli estratti letterali del codice reale del PROMPT 24. Ogni affermazione tecnica è ancorata a `path:riga` ed è verificabile. In caso di divergenza tra spec e codice reale, il codice reale prevale: l'implementatore deve fermarsi e segnalare, non reinterpretare.
 >
 > **Perimetro di questa fase:** **CONSUMER FRONTEND + ESTENSIONE WRITER + ESTENSIONE BARRIER**. Il backend è chiuso e NON va toccato.
 >
-> **Versione:** v1 bozza del 2026-04-23.
+> **Versione:** v1.1 bozza del 2026-04-23.
+>
+> **Changelog v1 → v1.1 (correzioni post-verifica Codex PROMPT 23 + estratti PROMPT 24):**
+> - §2 D10: ancore linea pre-filtro righe madre corrette da `:3527` a `:3359-3366` e `:3389-3393`.
+> - §4.3: ancore `null` hardcoded nel writer corrette da `:221-222, :293, :343` a `:222-223, :293-294, :343-344`.
+> - §4.4: ancora di `formatExtractDateForInput` / `normalizeExtractCurrency` corretta da `:3381` a `:801-814`.
+> - §5.1 / §6: ancora caricamento fornitori in `NextPreventivoManualeModal.tsx` corretta da `:54, 141` a `:141-143`.
+> - §6 (riscritta integralmente): la firma reale di `SaveAndUpsertParams` è `{ testata, righe (con codiceArticolo?), valuta, foto }` top-level — NON `{ input, valuta, codiciArticoloPerRiga, fonteAttualePdfFields }`. I tipi `SaveNextPreventivoManualeInput` e `SaveAndUpsertParams` sono interni al modulo, NON esportati. Le estensioni del writer sono ridisegnate coerentemente con la firma reale.
+> - §7.3: esempio chiamata writer corretto secondo la firma reale.
+> - §9.2: path documentazione corretti da `docs/product/**` a `docs/_live/**`.
+> - §2 D4, §5.3 Annulla, §7.3 step 2: allineamento coerente — l'upload su Storage è responsabilità esclusiva del writer esteso (§6); il consumer passa solo `File` raw + prefisso + flag writeback. Rimossi i passaggi che descrivevano un upload pre-chiamata eseguito dal consumer.
+> - §4.4: la funzione madre `formatExtractDateForInput` NON va replicata letteralmente (la madre produce `gg mm aaaa`, incompatibile con `<input type="date">`). Il consumer NEXT implementa una funzione dedicata `dd/mm/yyyy` → `yyyy-mm-dd` coerente con il contratto backend `preventivo_price_extract_v1` e con il contratto HTML `<input type="date">`.
 
 ---
 
@@ -33,13 +44,13 @@ Il consumer è funzionalmente equivalente al flusso IA della madre che oggi usa 
 | D1 | Paradigma UI | **Modale popup** dedicata (coerente con `NextPreventivoManualeModal.tsx` e `ArchivistaPreventivoMagazzinoBridge.tsx`). NON form inline come la madre. |
 | D2 | Posizione pulsante | Sostituzione del placeholder **"CARICA PREVENTIVO"** oggi presente in `src/next/NextProcurementConvergedSection.tsx:404-406` (clone-safe con `alert`). Il nuovo pulsante diventa il trigger reale del consumer IA. |
 | D3 | Granularità atto | **Atto unico**: review → conferma → salvataggio preventivo + aggiornamento listino in una sola transazione UX. Nessun workflow "bozza listino + conferma import" separato come nella madre. |
-| D4 | Writer | **Estensione additiva** di `src/next/nextPreventivoManualeWriter.ts` (W1). Il manuale continua a funzionare invariato; il consumer IA passa parametri extra (`pdfStoragePath/pdfUrl/imageStoragePaths/imageUrls`) che il manuale oggi passa `null` hardcoded. |
+| D4 | Writer | **Estensione additiva** di `src/next/nextPreventivoManualeWriter.ts` (W1). Il manuale continua a funzionare invariato; il consumer IA passa al writer oggetti `File` raw (`pdfFile` o `foto[]`), il prefisso Storage `"preventivi/ia/"` e il flag `fonteAttualeUsesPreventivoPdf`. L'upload Storage resta responsabilità esclusiva del writer (come oggi per il manuale). Vedi §6. |
 | D5 | Endpoint backend | `POST http://127.0.0.1:4310/internal-ai-backend/documents/preventivo-extract` (stesso adapter locale già usato per Euromecc). |
 | D6 | Input supportati | PDF singolo **oppure** fino a 10 immagini. I due input sono mutuamente esclusivi, coerenti con la madre (`src/pages/Acquisti.tsx:3431-3446`) e col backend (SPEC backend §5.2). |
 | D7 | Upload path | `preventivi/ia/<preventivoId>.pdf` per il PDF; `preventivi/ia/<preventivoId>_<n>.<ext>` per le immagini. Stesso prefisso della madre (`src/pages/Acquisti.tsx:3458, 3487`), diverso da `preventivi/manuali/`. |
 | D8 | Matching fornitore | Come madre `resolveFornitoreFromExtract` (`src/pages/Acquisti.tsx:3219`): prima match esatto su `normalizeDescrizione(nome) === normalizedSupplier`, poi match `includes` bidirezionale. Nessuna creazione al volo. Nessun modale di scelta. Se match trovato → preseleziona; se non trovato → l'utente sceglie dalla select. |
 | D9 | Confronto con listino storico | In tabella di review mostrare lo stato per riga: `NUOVO`, `GIA ESISTE (codice)`, `GIA ESISTE (descrizione)`, + badge delta `+/-/=` e prezzo precedente, come madre `iaRowsAnalysis` (`src/pages/Acquisti.tsx:3238-3302`). |
-| D10 | Editabilità review | Righe editabili: `descrizione`, `unita`, `prezzoUnitario`, `codiceArticolo`, `note`. Possibilità di rimuovere righe. Possibilità di aggiungere riga manuale. Pre-filtro lato client come madre: solo righe con `description` non vuota e `unitPrice > 0` entrano in review (`src/pages/Acquisti.tsx:3527`). |
+| D10 | Editabilità review | Righe editabili: `descrizione`, `unita`, `prezzoUnitario`, `codiceArticolo`, `note`. Possibilità di rimuovere righe. Possibilità di aggiungere riga manuale. Pre-filtro lato client come madre: solo righe con `description` non vuota e `unitPrice > 0` entrano in review (madre: `mapExtractedRowsToPreventivo` a `src/pages/Acquisti.tsx:3359-3366`; stesso filtro per la bozza listino a `src/pages/Acquisti.tsx:3389-3393`). |
 | D11 | Salvataggio | Il click su "Salva preventivo e aggiorna listino" esegue in ordine: upload Storage → `saveAndUpsert` esteso → refresh snapshot. Se upload fallisce → nessuna scrittura Firestore. Se preventivo fallisce → nessun upsert listino. Se upsert listino fallisce **dopo** salvataggio preventivo → errore bloccante segnalato all'utente, ma il preventivo resta salvato (comportamento attuale di `saveAndUpsert` in `nextPreventivoManualeWriter.ts:357-375`). |
 | D12 | Valuta | Select **CHF / EUR**, prefillata dall'estrazione IA se la currency è tra le ammesse. Default `CHF` se nulla o fuori enum. |
 | D13 | Pre-compilazione | `numeroPreventivo` e `dataPreventivo` prefillati dall'estrazione IA quando presenti (stessa logica madre `src/pages/Acquisti.tsx:3523`). Campi editabili dall'utente. |
@@ -122,8 +133,8 @@ File: `src/next/nextPreventivoManualeWriter.ts`. Funzioni esportate (audit PROMP
 
 Limiti rilevati rispetto al flusso IA:
 - L'input accetta solo `foto: File[]`. Non gestisce PDF.
-- L'upload avviene solo in `preventivi/manuali/`. Hardcoded.
-- `pdfUrl` e `pdfStoragePath` sono scritti a `null` sia nel `Preventivo` sia nel `fonteAttuale` del listino (`src/next/nextPreventivoManualeWriter.ts:221-222, 293, 343`).
+- L'upload avviene solo in `preventivi/manuali/` (hardcoded in `src/next/nextPreventivoManualeWriter.ts:177-192`).
+- `pdfUrl` e `pdfStoragePath` sono scritti a `null` sia nel `Preventivo` costruito da `saveNextPreventivoManuale` (`src/next/nextPreventivoManualeWriter.ts:222-223`), sia in `fonteAttuale` del listino in entrambi i rami di upsert (`src/next/nextPreventivoManualeWriter.ts:293-294` e `src/next/nextPreventivoManualeWriter.ts:343-344`).
 
 ### 4.4 Funzioni madre da replicare nel consumer NEXT
 
@@ -137,7 +148,8 @@ Dall'audit PROMPT 22 §1.11, tutte locali al componente `Acquisti.tsx`, non espo
 - `resolveFornitoreFromExtract` (`src/pages/Acquisti.tsx:3219`) — **da replicare** nel componente IA (o in un helper condiviso del consumer).
 - `mapExtractedRowsToPreventivo` (`src/pages/Acquisti.tsx:3359`) — **da replicare**.
 - `iaRowsAnalysis` (`src/pages/Acquisti.tsx:3238`) — **da replicare** (logica confronto con listino).
-- `formatExtractDateForInput` (`src/pages/Acquisti.tsx:3381` e dintorni) e `normalizeExtractCurrency` (`src/pages/Acquisti.tsx:3381`) — **da replicare** o incorporare nella logica di prefill.
+- `normalizeExtractCurrency` (a `src/pages/Acquisti.tsx:801-814`) — **da replicare** nel perimetro NEXT.
+- `formatExtractDateForInput` madre (a `src/pages/Acquisti.tsx:801-808`) — **NON replicare letteralmente**: la madre produce `gg mm aaaa` (tre numeri separati da spazio), formato incompatibile con `<input type="date">`. Il consumer NEXT implementa una funzione dedicata (nome a scelta, es. `extractDateToInputValue`) che accetta `document.date` del contratto IA (formato `dd/mm/yyyy` come garantito dal backend in §4.1) e restituisce `yyyy-mm-dd` pronto per `<input type="date">`. Se `document.date` è `null` o non matcha `dd/mm/yyyy` valido: ritornare stringa vuota (campo rimane vuoto, utente compila manualmente).
 
 Le funzioni "già replicate" sono disponibili internamente a `nextPreventivoManualeWriter.ts` ma **non esportate**. La loro replica avviene o nel componente modale IA, o in un helper dedicato (vedi §6.1).
 
@@ -171,7 +183,7 @@ Label nuovo pulsante: **`CARICA PREVENTIVO IA`** (stesso styling di "PREVENTIVO 
 Titolo: `Estrazione preventivo con IA`.
 
 Contenuto:
-- Select **Fornitore** (opzionale in questo step; verrà eventualmente prefillata dopo estrazione dal match). Popolata da `readNextFornitoriSnapshot({ includeCloneOverlays: false })` — stesso meccanismo del manuale (`src/next/NextPreventivoManualeModal.tsx:54, 141`).
+- Select **Fornitore** (opzionale in questo step; verrà eventualmente prefillata dopo estrazione dal match). Popolata da `readNextFornitoriSnapshot({ includeCloneOverlays: false })` — stesso meccanismo del manuale (`src/next/NextPreventivoManualeModal.tsx:141-143`).
 - Radio button mutuamente esclusivi: **PDF** | **Immagini (max 10)**.
 - In base alla scelta, input file corrispondente:
   - `accept="application/pdf"` per PDF singolo.
@@ -197,7 +209,7 @@ Sezione righe estratte (tabella editabile):
 - Footer tabella: pulsante **`Aggiungi riga`** (aggiunge riga vuota manuale alla review).
 
 Pulsanti footer modale:
-- **`Annulla`** (chiude modale senza salvare; file già caricati su Storage restano come orfani — vedi §7.3).
+- **`Annulla`** (chiude modale senza salvare; nessun file è stato caricato su Storage, nessuna scrittura Firestore: zero sporcizia — coerente con §7.4).
 - **`Salva preventivo e aggiorna listino`** (esegue il flusso §7).
 
 ### 5.4 Stati di loading ed errore
@@ -230,55 +242,109 @@ Stile validazione: inline (colore bordo rosso + messaggio sotto il campo). **Vie
 
 Il writer manuale esistente (`src/next/nextPreventivoManualeWriter.ts`) va **esteso additivamente**. Ciò significa:
 
-- I tipi `SaveNextPreventivoManualeInput` e `SaveAndUpsertParams` ricevono nuovi campi **opzionali**.
+- I tipi interni `SaveNextPreventivoManualeInput` (`:67-81`) e `SaveAndUpsertParams` (`:83-99`) ricevono nuovi campi **opzionali**. Entrambi i tipi sono oggi interni al modulo (non `export`): restano tali.
 - La logica esistente continua a funzionare invariata se i nuovi campi sono assenti o `null`.
 - Il flusso IA passa i nuovi campi valorizzati.
+- Le tre funzioni esportate (`saveNextPreventivoManuale` a `:206`, `upsertListinoFromPreventivoManuale` a `:254`, `saveAndUpsert` a `:357`) restano esportate. Nessun nuovo export richiesto.
 
 **Il manuale non deve cambiare comportamento osservabile.** La checklist post-impl §10 include la verifica di non-regressione.
 
-### 6.2 Estensioni ai tipi
+### 6.2 Estensioni ai tipi (firma reale come riferimento)
 
-#### `SaveNextPreventivoManualeInput` (oggi in `src/next/nextPreventivoManualeWriter.ts`)
+#### `SaveNextPreventivoManualeInput` (oggi `src/next/nextPreventivoManualeWriter.ts:67-81`)
 
-Aggiungere campi opzionali:
+Firma attuale:
+```ts
+type SaveNextPreventivoManualeInput = {
+  testata: {
+    fornitoreId: string;
+    fornitoreNome: string;
+    numeroPreventivo: string;
+    dataPreventivo: string;
+  };
+  righe: Array<{
+    descrizione: string;
+    unita: string;
+    prezzoUnitario: number;
+    note?: string;
+  }>;
+  foto: File[];
+};
+```
+
+Aggiungere campi opzionali top-level:
 - `pdfFile?: File | null` — PDF da caricare, se presente.
-- `pdfStoragePath?: string | null` — path Storage già noto (se già caricato altrove, non ri-upload).
+- `pdfStoragePath?: string | null` — path Storage già noto (caso rarissimo: upload eseguito fuori dal writer).
 - `pdfUrl?: string | null` — URL pubblico, se già noto.
-- `imageStoragePrefix?: string | null` — prefisso Storage alternativo a `preventivi/manuali/`. Se popolato con `"preventivi/ia/"`, le `foto` vengono caricate lì invece che nel prefisso manuale.
+- `imageStoragePrefix?: string | null` — prefisso Storage alternativo a `preventivi/manuali/`. Se popolato con `"preventivi/ia/"`, sia il PDF sia le `foto` vengono caricati lì.
 
 Regole di coesistenza:
-- Se `pdfFile` popolato → upload in `{imageStoragePrefix ?? "preventivi/manuali/"}/<preventivoId>.pdf`. Il path è deciso dal prefisso; se il prefisso è `"preventivi/ia/"`, il PDF va in `preventivi/ia/<preventivoId>.pdf` coerentemente con la madre (`src/pages/Acquisti.tsx:3458`).
+- Se `pdfFile` popolato → upload in `<imageStoragePrefix ?? "preventivi/manuali/"><preventivoId>.pdf`. Nota: per il flusso IA il prefisso sarà `"preventivi/ia/"` coerentemente con la madre (`src/pages/Acquisti.tsx:3458`).
 - Se `pdfFile` assente ma `pdfStoragePath` popolato → il writer non fa upload, referenzia il path esistente.
 - Se `foto` popolato e `imageStoragePrefix` popolato → upload in `<imageStoragePrefix><preventivoId>_<n>.<ext>`.
 - Se `foto` popolato e `imageStoragePrefix` assente → comportamento invariato (prefisso `preventivi/manuali/`).
 
-#### `SaveAndUpsertParams`
+#### `SaveAndUpsertParams` (oggi `src/next/nextPreventivoManualeWriter.ts:83-99`)
 
-Aggiungere campo opzionale:
-- `fonteAttualePdfFields?: { pdfStoragePath: string | null; pdfUrl: string | null } | null`
+Firma attuale:
+```ts
+type SaveAndUpsertParams = {
+  testata: {
+    fornitoreId: string;
+    fornitoreNome: string;
+    numeroPreventivo: string;
+    dataPreventivo: string;
+  };
+  righe: Array<{
+    descrizione: string;
+    codiceArticolo?: string;
+    unita: string;
+    prezzoUnitario: number;
+    note?: string;
+  }>;
+  valuta: Valuta;
+  foto: File[];
+};
+```
 
-Se popolato, la funzione `upsertListinoFromPreventivoManuale` usa questi valori in `fonteAttuale.pdfStoragePath` e `fonteAttuale.pdfUrl` invece di `null` hardcoded (oggi `src/next/nextPreventivoManualeWriter.ts:293`).
+Aggiungere campi opzionali top-level:
+- `pdfFile?: File | null`
+- `pdfStoragePath?: string | null`
+- `pdfUrl?: string | null`
+- `imageStoragePrefix?: string | null`
+- `fonteAttualeUsesPreventivoPdf?: boolean | null` — quando `true`, l'upsert listino valorizza `fonteAttuale.pdfStoragePath` e `fonteAttuale.pdfUrl` con i valori effettivamente salvati sul `Preventivo` (quelli derivanti da `pdfFile`/`pdfStoragePath` appena caricati). Quando assente o `false`, comportamento invariato (valori a `null`, coerente con `:293-294` e `:343-344`).
 
-Se assente o `null`, comportamento invariato (valori a `null`).
+Nota su `codiceArticolo`: è **già presente** nel tipo esistente (`righe[].codiceArticolo?: string`). `saveAndUpsert` oggi lo estrae via `params.righe.map((riga) => riga.codiceArticolo)` a `src/next/nextPreventivoManualeWriter.ts:375` e lo passa a `upsertListinoFromPreventivoManuale`. Il consumer IA popolerà `codiceArticolo` per riga come fa il manuale: nessuna modifica richiesta a questo passaggio.
 
 ### 6.3 Estensioni alla logica interna
 
-#### `saveNextPreventivoManuale`
+#### `saveNextPreventivoManuale` (`:206-...`)
 
-- Se `pdfFile` popolato: upload via `uploadBytes` wrapper in `{imageStoragePrefix ?? "preventivi/manuali/"}<preventivoId>.pdf`. Ottenere `pdfStoragePath` e `pdfUrl` via `getDownloadURL`.
-- Se `pdfFile` assente ma `pdfStoragePath` fornito: usare quello, non fare upload del PDF.
-- Se `pdfStoragePath` esterno e `pdfUrl` assente: non provare a derivare l'URL; lasciare `pdfUrl: null`. (Caso raro, documentato come antipattern.)
-- Costruire `Preventivo.pdfStoragePath` e `Preventivo.pdfUrl` di conseguenza, invece di `null` hardcoded (oggi `src/next/nextPreventivoManualeWriter.ts:221-222`).
+Modifiche:
+- Prima dell'upload foto, se `input.pdfFile` popolato: upload via `uploadBytes` wrapper su `<input.imageStoragePrefix ?? "preventivi/manuali/"><preventivoId>.pdf`, poi `getDownloadURL` → ottenere `pdfStoragePath` e `pdfUrl` locali.
+- Se `input.pdfFile` assente ma `input.pdfStoragePath` fornito: usare quello direttamente; `pdfUrl` = `input.pdfUrl ?? null` (se assente, resta `null`: caso antipattern, documentato).
+- Se nessuno dei due: `pdfStoragePath = null`, `pdfUrl = null` (comportamento manuale invariato).
+- La funzione interna `uploadPreventivoManualeFoto` (oggi `:177-192`) usa hardcoded `preventivi/manuali/`. Estenderla per accettare un parametro `prefix` opzionale (default `"preventivi/manuali/"`) e usare `<prefix><preventivoId>_<index+1>.<ext>`.
+- Nel `Preventivo` costruito (oggi con `pdfUrl: null, pdfStoragePath: null` a `:222-223`), valorizzare i due campi con i valori calcolati sopra invece di `null` hardcoded.
 
-#### `upsertListinoFromPreventivoManuale`
+#### `upsertListinoFromPreventivoManuale` (`:254-...`)
 
-- Accettare parametro aggiuntivo `fonteAttualePdfFields`.
-- Se popolato: usare i valori forniti nei campi `fonteAttuale.pdfStoragePath` e `fonteAttuale.pdfUrl`.
-- Altrimenti: comportamento invariato.
+Modifiche:
+- Accettare un 4° parametro opzionale: `pdfFieldsForFonte?: { pdfStoragePath: string | null; pdfUrl: string | null } | null`.
+- Nei due rami di upsert (`:293-294` e `:343-344`) dove oggi `fonteAttuale.pdfStoragePath` e `fonteAttuale.pdfUrl` sono hardcoded a `null`: se `pdfFieldsForFonte` popolato, usare i valori forniti; altrimenti comportamento invariato (`null`).
 
-#### `saveAndUpsert`
+#### `saveAndUpsert` (`:357-379`)
 
-Orchestra invariato. Si limita a propagare `fonteAttualePdfFields` a `upsertListinoFromPreventivoManuale`.
+Modifiche:
+- Propagare i nuovi campi IA a `saveNextPreventivoManuale`:
+  - `pdfFile: params.pdfFile ?? null`
+  - `pdfStoragePath: params.pdfStoragePath ?? null`
+  - `pdfUrl: params.pdfUrl ?? null`
+  - `imageStoragePrefix: params.imageStoragePrefix ?? null`
+- Dopo il salvataggio, calcolare `pdfFieldsForFonte` per l'upsert:
+  - Se `params.fonteAttualeUsesPreventivoPdf === true`: leggere `preventivo.pdfStoragePath` e `preventivo.pdfUrl` dall'oggetto ritornato da `saveNextPreventivoManuale` e passarli come `{ pdfStoragePath, pdfUrl }`.
+  - Altrimenti: passare `null` (o non passare il parametro), mantenendo il comportamento attuale.
+- Il try/catch esterno resta invariato: un errore in `upsertListinoFromPreventivoManuale` rilancia `"Preventivo salvato, ma aggiornamento listino non riuscito."` come oggi a `:376-377`.
 
 ### 6.4 Barrier compatibility
 
@@ -304,7 +370,7 @@ Il writer manuale oggi autorizza upload solo su `preventivi/manuali/` (barrier `
 1. Il componente popola lo stato:
    - `supplierMatch = resolveFornitoreFromExtract(result.supplier.name)` → se match, pre-seleziona `fornitoreId`.
    - `numeroPreventivo = result.document.number ?? ""`.
-   - `dataPreventivo = formatExtractDateForInput(result.document.date)` — conversione `dd/mm/yyyy` → `yyyy-mm-dd`.
+   - `dataPreventivo = extractDateToInputValue(result.document.date)` — conversione `dd/mm/yyyy` → `yyyy-mm-dd` (funzione dedicata NEXT, vedi §4.4; NON è la `formatExtractDateForInput` madre).
    - `valuta = normalizeExtractCurrency(result.document.currency) ?? "CHF"`.
    - `rigeEditabili = result.items.filter(i => i.description && i.unitPrice > 0).map(mapExtractedRowToRigaEditabile)`.
 2. Per ogni riga, calcola `rowAnalysis` confrontando con `storage/@listino_prezzi` letto dallo snapshot corrente (stesso meccanismo madre).
@@ -319,29 +385,34 @@ Il writer manuale oggi autorizza upload solo su `preventivi/manuali/` (barrier `
 Al click su "Salva preventivo e aggiorna listino":
 
 1. **Validazione** (§5.5). Se KO → feedback inline, non procede.
-2. **Upload Storage** dei file originali:
-   - Se PDF: `uploadBytes` wrapper su `preventivi/ia/<preventivoId>.pdf`. Ottiene `pdfStoragePath` e `pdfUrl`.
-   - Se immagini: `uploadBytes` wrapper per ciascuna su `preventivi/ia/<preventivoId>_<n>.<ext>`. Ottiene `imageStoragePaths[]` e `imageUrls[]`.
-   - Se upload fallisce → `window.alert` con errore, nessuna scrittura Firestore, i file parzialmente caricati restano come orfani (accettabile, coerente con madre §1.10 audit).
-3. **Chiamata writer esteso**:
+2. **Nessun upload preliminare a carico del consumer.** Il consumer **non** esegue `uploadBytes` prima di chiamare il writer. I file selezionati dall'utente (il `File` del PDF oppure il `File[]` delle immagini) vengono passati direttamente come oggetti raw a `saveAndUpsert` tramite i campi `pdfFile` / `foto` + `imageStoragePrefix: "preventivi/ia/"`. L'intero orchestramento upload + scritture Firestore avviene dentro il writer esteso (§6.3). Se un upload interno al writer fallisce, il writer lancia errore prima di qualsiasi scrittura Firestore; la modale mostra `window.alert` con il messaggio dell'errore. I file parzialmente caricati prima del fallimento restano come orfani su Storage (stesso comportamento oggi del manuale, coerente con madre §1.10 audit).
+3. **Chiamata writer esteso** (firma coerente con `SaveAndUpsertParams` reale in `src/next/nextPreventivoManualeWriter.ts:83-99`, estesa additivamente in §6):
    ```ts
    await saveAndUpsert({
-     input: {
+     testata: {
        fornitoreId,
        fornitoreNome,
        numeroPreventivo,
        dataPreventivo,
-       foto: [],  // nessuna foto da uploadare, già caricato sopra
-       pdfStoragePath, pdfUrl,  // popolati dallo step 2
-       imageStoragePaths, imageUrls,  // popolati dallo step 2
-       imageStoragePrefix: "preventivi/ia/",  // per coerenza, anche se foto=[] significa no-op
-       righe,
      },
+     righe: righeReview.map((r) => ({
+       descrizione: r.descrizione,
+       codiceArticolo: r.codiceArticolo,  // già supportato dal tipo
+       unita: r.unita,
+       prezzoUnitario: r.prezzoUnitario,
+       note: r.note,
+     })),
      valuta,
-     codiciArticoloPerRiga,
-     fonteAttualePdfFields: { pdfStoragePath, pdfUrl },
+     foto: imagesToUpload,           // File[] delle immagini IA selezionate (vuoto se input era PDF)
+     pdfFile: pdfToUpload,           // File PDF IA selezionato (null se input era immagini)
+     imageStoragePrefix: "preventivi/ia/",
+     fonteAttualeUsesPreventivoPdf: true,  // la fonte del listino riflette il PDF del preventivo IA
    });
    ```
+   Note sulla semantica:
+   - `foto` e `pdfFile` sono alternativi: il flusso IA valorizza uno solo dei due in base alla scelta utente nello step 1.
+   - Il writer esteso (§6.3) fa l'upload reale su `preventivi/ia/*`. Il consumer **non** carica file su Storage prima della chiamata: l'intero upload è orchestrato dentro `saveAndUpsert` → `saveNextPreventivoManuale`, coerentemente con la strategia additiva.
+   - `pdfStoragePath` e `pdfUrl` espliciti al writer sono da usare solo nel caso raro in cui il file sia già su Storage (non è il caso del consumer IA standard: il consumer passa `pdfFile`).
 4. **Errori**:
    - Upload fallito: errore bloccante, nessuna scrittura Firestore.
    - Preventivo fallito: errore bloccante, nessun upsert listino.
@@ -406,8 +477,8 @@ La whitelist Firestore per `/next/materiali-da-ordinare` già autorizza `storage
 - `src/next/NextProcurementConvergedSection.tsx` — sostituzione placeholder "CARICA PREVENTIVO" + rendering modale IA + propagazione callback `onPreventivoSaved`.
 - `src/next/NextMaterialiDaOrdinarePage.tsx` — se serve estrarre loader snapshot come callable per refresh post-save (stesso pattern SPEC manuale v2 §9.2). Se già pronto, nessuna modifica.
 - `src/utils/cloneWriteBarrier.ts` — §8.1 + §8.2.
-- `docs/product/STATO_MIGRAZIONE_NEXT.md` — APPEND ONLY.
-- `docs/product/REGISTRO_MODIFICHE_CLONE.md` — APPEND ONLY.
+- `docs/_live/STATO_MIGRAZIONE_NEXT.md` — APPEND ONLY.
+- `docs/_live/REGISTRO_MODIFICHE_CLONE.md` — APPEND ONLY.
 - `CONTEXT_CLAUDE.md` — APPEND ONLY.
 
 ### 9.3 VIETATI
@@ -466,10 +537,11 @@ La whitelist Firestore per `/next/materiali-da-ordinare` già autorizza `storage
 
 24. [ ] Validazione senza fornitore → feedback inline, salva bloccato.
 25. [ ] Validazione riga con prezzo 0 → feedback inline.
-26. [ ] Salva con PDF:
+26. [ ] Salva con PDF (upload orchestrato dal writer):
       - `preventivi/ia/<id>.pdf` presente su Storage.
       - Documento in `storage/@preventivi` con `pdfStoragePath` e `pdfUrl` popolati.
-      - Listino aggiornato con `fonteAttuale.pdfStoragePath` e `pdfUrl` popolati (non più `null`).
+      - Listino aggiornato con `fonteAttuale.pdfStoragePath` e `fonteAttuale.pdfUrl` popolati (non più `null`).
+      - In caso di fallimento simulato dell'upload (spegnere momentaneamente la rete al momento del save): nessuna scrittura in `storage/@preventivi`, nessuna scrittura in `storage/@listino_prezzi`, messaggio di errore all'utente.
 27. [ ] Salva con 2 immagini:
       - `preventivi/ia/<id>_1.jpg`, `<id>_2.jpg` su Storage.
       - Documento in `storage/@preventivi` con `imageStoragePaths[]` e `imageUrls[]` popolati.

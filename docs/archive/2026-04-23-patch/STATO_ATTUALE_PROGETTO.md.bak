@@ -1,0 +1,71 @@
+# STATO ATTUALE DEL PROGETTO
+
+Ultimo aggiornamento: 2026-04-23
+Fonte: `docs/audit/AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`
+
+---
+
+## 1. Verdetto corrente
+
+> **NEXT NON pronta a sostituire la madre.**
+
+La NEXT copre ~34 dei 36 moduli madre (incluse versioni read-only), ma 7 moduli scriventi sono privi di write-authorization nel `cloneWriteBarrier`, 2 pagine madre non hanno alcun equivalente NEXT, l'autenticazione è basata su `signInAnonymously()` (nessun claim di ruolo reale) e `storage.rules` è deny-all — incompatibile con i path Storage già usati dal codice NEXT.
+
+Finché questi bloccanti restano aperti, la NEXT non può sostituire la madre in produzione senza rompere flussi operativi critici (gestione ordini, anagrafiche, flotta, cisterna) e senza esporre scritture business a utenti anonimi non autenticati.
+
+---
+
+## 2. Numeri chiave
+
+Fonte: §7 dell'audit.
+
+| Indicatore | Valore |
+|---|---|
+| Moduli madre coperti in NEXT (inclusi read-only) | ~34 su 36 |
+| Moduli NEXT con write authorization attiva nel barrier | 10 |
+| Moduli NEXT read-only dove la madre scrive | **7** |
+| Pagine madre senza alcun equivalente NEXT | **2** |
+| Bloccanti infrastrutturali | **2** (auth + storage.rules) |
+| Moduli con verifiche browser "DA VERIFICARE" | **10+** |
+
+---
+
+## 3. Fase attuale
+
+Il progetto è in **fase di promozione progressiva modulo per modulo**: i moduli con write authorization attiva (`Lavori`, `Manutenzioni`, `Magazzino`, `MaterialiDaOrdinare`, `Euromecc`, `Dossier`, `IA Libretto`, `IA Documenti`, `IA Archivista`) sono funzionalmente avanzati ma tutti marcati PARZIALE nell'audit perché le verifiche browser end-to-end non sono state completate su dati reali.
+
+I moduli read-only (`Acquisti`, `Colleghi`, `Fornitori`, `Mezzi`, `Ordini`, `AttrezzatureCantieri`, `Cisterna`) replicano la superficie visiva della madre ma non permettono creazione, modifica o eliminazione di dati — bloccando la sostituzione operativa.
+
+---
+
+## 4. Bloccanti aperti
+
+### 4a. Gap scriventi (7 moduli)
+
+| Priorità | Modulo | Gap |
+|---|---|---|
+| 🔴 ALTA | Mezzi | Nessuna write su `@mezzi_aziendali` |
+| 🔴 ALTA | Colleghi | Nessuna write su registro colleghi |
+| 🔴 ALTA | Fornitori | Nessuna write su registro fornitori |
+| 🔴 ALTA | Acquisti | Nessuna write su `@ordini`, `@inventario`, PDF upload, docs Firestore |
+| 🔴 ALTA | DettaglioOrdine | Nessuna write su `@inventario`/`@ordini` on arrivo |
+| 🟠 MEDIA | AttrezzatureCantieri | Nessuna write su `@attrezzature_cantieri` |
+| 🟠 MEDIA | Cisterna | Nessun `setDoc`/`updateDoc` documenti cisterna |
+
+### 4b. Pagine mancanti (2)
+
+- `Mezzo360` — nessuna route NEXT, nessun componente equivalente
+- `Autista360` — `NextDriverExperiencePage` è un placeholder non routed
+
+### 4c. Bloccanti infrastrutturali (2)
+
+- **Auth**: solo `signInAnonymously()`, nessun claim di ruolo reale; `NextRoleGuard` è frontend-only
+- **storage.rules**: deny-all incompatibile con i path già scritti dal codice NEXT
+
+---
+
+## 5. Dove leggere il dettaglio
+
+Il dettaglio completo con evidenze codice, tabella moduli, roadmap 13 step e lista DA VERIFICARE è in:
+
+`docs/audit/AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`

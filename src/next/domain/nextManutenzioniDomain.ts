@@ -374,6 +374,13 @@ function buildHistoryId(raw: RawRecord, index: number, mezzoTarga: string): stri
   return `manutenzione:${mezzoTarga}:${index}`;
 }
 
+/**
+ * Uniforma la targa usata negli id sintetici legacy per evitare mismatch read/update.
+ */
+function buildHistoryTargaKey(rawTarga: string): string {
+  return normalizeNextMezzoTarga(rawTarga) || normalizeText(rawTarga).toUpperCase();
+}
+
 function normalizeLegacyTipo(raw: RawRecord): TipoVoce {
   const tipo = normalizeLowerText(raw.tipo);
   if (tipo === "compressore") {
@@ -469,7 +476,7 @@ function toLegacyDatasetRecord(
   raw: RawRecord,
   index: number,
 ): NextManutenzioniLegacyDatasetRecord | null {
-  const targa = normalizeNextMezzoTarga(raw.targa) || normalizeText(raw.targa).toUpperCase();
+  const targa = buildHistoryTargaKey(normalizeText(raw.targa));
   const assiCoinvolti = sanitizeAssiCoinvolti(raw.assiCoinvolti);
   const tipo = normalizeLegacyTipo(raw);
   const materiali = sanitizeLegacyMateriali(raw.materiali);
@@ -558,7 +565,7 @@ function toHistoryItem(
   raw: RawRecord,
   index: number
 ): NextMaintenanceHistoryItem | null {
-  const mezzoTarga = normalizeNextMezzoTarga(raw.targa);
+  const mezzoTarga = buildHistoryTargaKey(normalizeText(raw.targa));
   if (!mezzoTarga) return null;
 
   const descrizione = normalizeOptionalText(raw.descrizione);
@@ -858,7 +865,7 @@ function matchLegacyRecordById(
   recordId: string,
 ): boolean {
   if (!raw || typeof raw !== "object") return false;
-  return buildHistoryId(raw as RawRecord, index, normalizeText((raw as RawRecord).targa)) === recordId;
+  return buildHistoryId(raw as RawRecord, index, buildHistoryTargaKey(normalizeText((raw as RawRecord).targa))) === recordId;
 }
 
 function findLegacyRecordIndex(

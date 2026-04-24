@@ -1,0 +1,43 @@
+# DIARIO DECISIONI STRATEGICHE
+
+Ultimo aggiornamento: 2026-04-23
+Responsabile: Giuseppe
+
+## Come funziona questo file
+
+Qui vivono le decisioni strategiche prese dal proprietario del progetto. Non sono stato tecnico (quello sta nel codice). Sono scelte di prodotto e perimetro.
+
+Regole:
+- ogni decisione ha una data
+- le decisioni non vengono mai corrette retroattivamente
+- se cambio idea, aggiungo una nuova entry sotto con la nuova decisione e il motivo
+- cosi si vede l'evoluzione del pensiero nel tempo
+- il file non va tenuto allineato al codice: e un registro storico, non una fotografia del presente
+
+## Entries
+
+### 2026-04-23 — Mezzo360 e Autista360: non portati nella NEXT
+Decisione: non porto `Mezzo360` e `Autista360` dalla madre alla NEXT.
+Motivo del momento: voglio sostituirli con capability IA + chat unificata invece di replicare due pagine custom.
+Status: scelta attiva ma non definitiva, Giuseppe ha dichiarato "non so quanto adesso sia conveniente".
+Conseguenza per gli audit: questi due moduli NON vanno trattati come gap tecnici di migrazione, ma come moduli a obsolescenza pianificata in valutazione.
+
+### 2026-04-23 — Dettaglio Ordine inglobato in Materiali da ordinare
+Decisione: `Dettaglio Ordine` non e piu un modulo separato.
+Motivo del momento: pulizia UX, tab unico piu chiaro, meno frammentazione.
+Status: gia fatto nel codice. `NextDettaglioOrdinePage` e solo un redirect, la logica vive in `NextMaterialiDaOrdinarePage` + `NextProcurementReadOnlyPanel`.
+Conseguenza per gli audit: negli audit futuri, `Dettaglio Ordine` NON va valutato come modulo autonomo.
+
+### 2026-04-23 — Materiali da ordinare non ancora sistemato
+Decisione: nessuna decisione di perimetro, solo presa d'atto.
+Stato reale: pensavo fosse sistemato, in realta la verifica del 2026-04-23 mostra che e ancora read-only. Il `CONFERMA ORDINE` blocca le scritture con alert e le foto stanno solo in locale.
+Conseguenza: resta nella lista dei gap scriventi da chiudere.
+
+## Convenzioni per future entries
+
+Template:
+### YYYY-MM-DD — Titolo corto della decisione
+Decisione: cosa decido
+Motivo del momento: perche lo decido oggi
+Status: scelta attiva / in valutazione / rivalutata
+Conseguenza: cosa cambia per il codice / per gli audit / per la roadmap

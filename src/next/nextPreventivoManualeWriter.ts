@@ -22,6 +22,8 @@ type Preventivo = {
   dataPreventivo: string;
   pdfUrl: string | null;
   pdfStoragePath: string | null;
+  ricevutoDaWhatsapp?: boolean;
+  ricevutoDaEmail?: boolean;
   imageStoragePaths?: string[];
   imageUrls?: string[];
   righe: PreventivoRiga[];
@@ -78,6 +80,12 @@ type SaveNextPreventivoManualeInput = {
     note?: string;
   }>;
   foto: File[];
+  ricevutoDaWhatsapp?: boolean;
+  ricevutoDaEmail?: boolean;
+  pdfFile?: File | null;
+  pdfStoragePath?: string | null;
+  pdfUrl?: string | null;
+  imageStoragePrefix?: string | null;
 };
 
 type SaveAndUpsertParams = {
@@ -96,11 +104,19 @@ type SaveAndUpsertParams = {
   }>;
   valuta: Valuta;
   foto: File[];
+  ricevutoDaWhatsapp?: boolean;
+  ricevutoDaEmail?: boolean;
+  pdfFile?: File | null;
+  pdfStoragePath?: string | null;
+  pdfUrl?: string | null;
+  imageStoragePrefix?: string | null;
+  fonteAttualeUsesPreventivoPdf?: boolean | null;
 };
 
 const STORAGE_COLLECTION = "storage";
 const PREVENTIVI_DOC_ID = "@preventivi";
 const LISTINO_DOC_ID = "@listino_prezzi";
+const DEFAULT_PREVENTIVO_STORAGE_PREFIX = "preventivi/manuali/";
 
 function normalizeDescrizione(v: string) {
   return String(v || "")
@@ -177,14 +193,17 @@ function readFileExtension(file: File): string {
 async function uploadPreventivoManualeFoto(args: {
   preventivoId: string;
   foto: File[];
+  prefix?: string | null;
+  strict?: boolean;
 }): Promise<{ imageStoragePaths: string[]; imageUrls: string[] }> {
   const imageStoragePaths: string[] = [];
   const imageUrls: string[] = [];
+  const normalizedPrefix = String(args.prefix || DEFAULT_PREVENTIVO_STORAGE_PREFIX).trim() || DEFAULT_PREVENTIVO_STORAGE_PREFIX;
 
   for (let index = 0; index < args.foto.length; index += 1) {
     const file = args.foto[index];
     const extension = readFileExtension(file);
-    const storagePath = `preventivi/manuali/${args.preventivoId}_${index + 1}.${extension}`;
+    const storagePath = `${normalizedPrefix}${args.preventivoId}_${index + 1}.${extension}`;
 
     try {
       const storageRef = ref(storage, storagePath);
@@ -197,6 +216,9 @@ async function uploadPreventivoManualeFoto(args: {
         storagePath,
         error,
       });
+      if (args.strict) {
+        throw new Error("Errore upload immagini preventivo.");
+      }
     }
   }
 
@@ -207,9 +229,38 @@ export async function saveNextPreventivoManuale(
   input: SaveNextPreventivoManualeInput,
 ): Promise<Preventivo> {
   const preventivoId = generaId();
+  const normalizedImageStoragePrefix =
+    String(input.imageStoragePrefix || DEFAULT_PREVENTIVO_STORAGE_PREFIX).trim() ||
+    DEFAULT_PREVENTIVO_STORAGE_PREFIX;
+  let pdfStoragePath: string | null = null;
+  let pdfUrl: string | null = null;
+
+  if (input.pdfFile) {
+    const storagePath = `${normalizedImageStoragePrefix}${preventivoId}.pdf`;
+    try {
+      const storageRef = ref(storage, storagePath);
+      await uploadBytes(storageRef, input.pdfFile);
+      pdfStoragePath = storagePath;
+      pdfUrl = await getDownloadURL(storageRef);
+    } catch (error) {
+      console.error("Errore upload PDF preventivo:", {
+        storagePath,
+        error,
+      });
+      throw new Error("Errore upload PDF preventivo.");
+    }
+  } else if (String(input.pdfStoragePath || "").trim()) {
+    pdfStoragePath = String(input.pdfStoragePath || "").trim();
+    pdfUrl = String(input.pdfUrl || "").trim() || null;
+  }
+
   const { imageStoragePaths, imageUrls } = await uploadPreventivoManualeFoto({
     preventivoId,
     foto: input.foto,
+    prefix: normalizedImageStoragePrefix,
+    strict:
+      normalizedImageStoragePrefix !== DEFAULT_PREVENTIVO_STORAGE_PREFIX ||
+      Boolean(input.pdfFile || input.pdfStoragePath || input.pdfUrl),
   });
 
   const now = Date.now();
@@ -219,8 +270,10 @@ export async function saveNextPreventivoManuale(
     fornitoreNome: input.testata.fornitoreNome,
     numeroPreventivo: input.testata.numeroPreventivo.trim(),
     dataPreventivo: input.testata.dataPreventivo,
-    pdfUrl: null,
-    pdfStoragePath: null,
+    pdfUrl,
+    pdfStoragePath,
+    ...(input.ricevutoDaWhatsapp ? { ricevutoDaWhatsapp: true } : {}),
+    ...(input.ricevutoDaEmail ? { ricevutoDaEmail: true } : {}),
     imageStoragePaths,
     imageUrls,
     righe: input.righe.map((riga) => ({
@@ -255,6 +308,7 @@ export async function upsertListinoFromPreventivoManuale(
   preventivo: Preventivo,
   valuta: Valuta,
   codiciArticoloPerRiga: (string | undefined)[],
+  pdfFieldsForFonte?: { pdfStoragePath: string | null; pdfUrl: string | null } | null,
 ): Promise<void> {
   const listinoRef = doc(collection(db, STORAGE_COLLECTION), LISTINO_DOC_ID);
   const listinoSnap = await getDoc(listinoRef);
@@ -290,8 +344,8 @@ export async function upsertListinoFromPreventivoManuale(
       numeroPreventivo: preventivo.numeroPreventivo,
       dataPreventivo: preventivo.dataPreventivo,
       note: riga.note || undefined,
-      pdfUrl: null,
-      pdfStoragePath: null,
+      pdfUrl: pdfFieldsForFonte?.pdfUrl ?? null,
+      pdfStoragePath: pdfFieldsForFonte?.pdfStoragePath ?? null,
       imageStoragePaths: sourceImageStoragePaths,
       imageUrls: sourceImageUrls,
     };
@@ -340,8 +394,8 @@ export async function upsertListinoFromPreventivoManuale(
         numeroPreventivo: preventivo.numeroPreventivo,
         dataPreventivo: preventivo.dataPreventivo,
         note: (riga.note || "").trim() || undefined,
-        pdfUrl: null,
-        pdfStoragePath: null,
+        pdfUrl: pdfFieldsForFonte?.pdfUrl ?? null,
+        pdfStoragePath: pdfFieldsForFonte?.pdfStoragePath ?? null,
         imageStoragePaths: sourceImageStoragePaths,
         imageUrls: sourceImageUrls,
       },
@@ -364,14 +418,33 @@ export async function saveAndUpsert(params: SaveAndUpsertParams): Promise<void> 
       note: riga.note,
     })),
     foto: params.foto,
+    ricevutoDaWhatsapp: params.ricevutoDaWhatsapp ?? false,
+    ricevutoDaEmail: params.ricevutoDaEmail ?? false,
+    pdfFile: params.pdfFile ?? null,
+    pdfStoragePath: params.pdfStoragePath ?? null,
+    pdfUrl: params.pdfUrl ?? null,
+    imageStoragePrefix: params.imageStoragePrefix ?? null,
   });
 
   try {
-    await upsertListinoFromPreventivoManuale(
-      preventivo,
-      params.valuta,
-      params.righe.map((riga) => riga.codiceArticolo),
-    );
+    const codiciArticolo = params.righe.map((riga) => riga.codiceArticolo);
+    if (params.fonteAttualeUsesPreventivoPdf === true) {
+      await upsertListinoFromPreventivoManuale(
+        preventivo,
+        params.valuta,
+        codiciArticolo,
+        {
+          pdfStoragePath: preventivo.pdfStoragePath,
+          pdfUrl: preventivo.pdfUrl,
+        },
+      );
+    } else {
+      await upsertListinoFromPreventivoManuale(
+        preventivo,
+        params.valuta,
+        codiciArticolo,
+      );
+    }
   } catch (error) {
     console.error("Errore aggiornamento listino da preventivo manuale:", error);
     throw new Error("Preventivo salvato, ma aggiornamento listino non riuscito.");

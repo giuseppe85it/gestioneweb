@@ -8,11 +8,8 @@ import {
   type NextMappaStoricoIntervento,
   type NextMappaStoricoSnapshot,
 } from "./domain/nextMappaStoricoDomain";
-import {
-  normalizeNextAssiCoinvolti,
-  resolveNextManutenzioneTechnicalView,
-} from "./domain/nextManutenzioniGommeDomain";
-import type { NextManutenzioniLegacyMaterialRecord } from "./domain/nextManutenzioniDomain";
+import { normalizeNextAssiCoinvolti } from "./domain/nextManutenzioniGommeDomain";
+import type { NextManutenzioniLegacyDatasetRecord } from "./domain/nextManutenzioniDomain";
 import {
   getNextMezzoHotspotAreaById,
   getNextMezzoHotspotTargetKindById,
@@ -21,46 +18,58 @@ import {
 } from "./mezziHotspotAreas";
 import "./next-mappa-storico.css";
 
+type ManutenzioneLegacy = NextManutenzioniLegacyDatasetRecord;
+type SelectedMaintenance = Partial<NextManutenzioniLegacyDatasetRecord> & { id: string };
+type MezzoInfo = {
+  targa: string;
+  mezzoLabel: string;
+  autistaNome: string | null;
+  categoria: string | null;
+  kmAttuali: number | null;
+  latestGommeKmCambio: number | null;
+  ultimaManutenzione: string | null;
+  ultimoInterventoMezzo: string | null;
+  ultimoInterventoCompressore: string | null;
+  ultimeManutenzioniMezzo: Array<{ id: string; data: string; title: string }>;
+  ultimeManutenzioniCompressore: Array<{ id: string; data: string; title: string }>;
+};
+type DetailFilterKey = "tutte" | "mezzo" | "gomme" | "rimorchio" | "compressore";
+type DetailCategory = Exclude<DetailFilterKey, "tutte">;
+
 type NextMappaStoricoPageProps = {
   targa: string;
   embedded?: boolean;
   photoManager?: boolean;
-  selectedMaintenance?: {
-    id: string;
-    data: string | null;
-    descrizione: string | null;
-    assiCoinvolti: string[];
-    km: number | null;
-    tipo: string | null;
-    materiali?: NextManutenzioniLegacyMaterialRecord[];
-    importo?: number | null;
-    sourceDocumentId?: string | null;
-    sourceDocumentFileUrl?: string | null;
-    fornitore?: string | null;
-  } | null;
-  mezzoInfo?: {
-    targa: string;
-    mezzoLabel: string;
-    autistaNome: string | null;
-    categoria: string | null;
-    kmAttuali: number | null;
-    latestGommeKmCambio: number | null;
-    ultimaManutenzione: string | null;
-    ultimoInterventoMezzo: string | null;
-    ultimoInterventoCompressore: string | null;
-    ultimeManutenzioniMezzo: Array<{ id: string; data: string; title: string }>;
-    ultimeManutenzioniCompressore: Array<{ id: string; data: string; title: string }>;
-  };
+  selectedMaintenance?: SelectedMaintenance | null;
+  mezzoInfo?: MezzoInfo;
+  storicoManutenzioni: ManutenzioneLegacy[];
+  kmAttuali?: number | null;
   onOpenPdf?: () => void;
   onOpenDossier?: () => void;
   onEditLatest?: () => void;
-  onSelectMaintenance?: (recordId: string) => void;
+  onDelete?: (record: SelectedMaintenance) => void;
+  onSelectMaintenance?: (recordId: string | null) => void;
+  onOpenDocument?: (record: ManutenzioneLegacy) => void;
+  onDownloadPdfSingle?: (record: ManutenzioneLegacy) => void;
 };
 
 type ModalKind = "ultimi" | "frequenti" | "perzona" | null;
 
 const VISTE: NextMappaStoricoVista[] = ["fronte", "sinistra", "destra", "retro"];
-const DETAIL_VISTE: NextMappaStoricoVista[] = ["sinistra", "destra"];
+const DETAIL_FILTER_ORDER: DetailFilterKey[] = [
+  "tutte",
+  "mezzo",
+  "gomme",
+  "rimorchio",
+  "compressore",
+];
+const DETAIL_FILTER_LABELS: Record<DetailFilterKey, string> = {
+  tutte: "Tutte",
+  mezzo: "Mezzo",
+  gomme: "Gomme",
+  rimorchio: "Rimorchio",
+  compressore: "Compressore",
+};
 
 function formatInterventoMeta(intervento: NextMappaStoricoIntervento): string {
   const chunks = [
@@ -80,14 +89,95 @@ function formatVistaLabel(vista: NextMappaStoricoVista): string {
   return vista.charAt(0).toUpperCase() + vista.slice(1);
 }
 
-function formatNumberIt(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "DA VERIFICARE";
+function formatNumberOptional(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("it-IT").format(value);
 }
 
-function isTyreMaintenanceRecord(record: NextMappaStoricoPageProps["selectedMaintenance"]): boolean {
+function parseLegacyDateParts(value: string | null | undefined): {
+  day: string;
+  monthYear: string;
+} {
+  const normalized = value?.trim() ?? "";
+  const match = normalized.match(/^(\d{1,2})[./\s-](\d{1,2})[./\s-](\d{2,4})$/);
+  if (!match) {
+    return { day: "—", monthYear: normalized || "—" };
+  }
+
+  const [, dayRaw, monthRaw, yearRaw] = match;
+  return {
+    day: dayRaw.padStart(2, "0"),
+    monthYear: `${monthRaw.padStart(2, "0")}/${yearRaw.slice(-2)}`,
+  };
+}
+
+function formatKmDeltaLabel(delta: number | null): string | null {
+  if (delta == null || !Number.isFinite(delta) || delta <= 0) return null;
+  return `+${new Intl.NumberFormat("it-IT").format(delta)} km fa`;
+}
+
+function formatMaintenanceMetricInline(record: SelectedMaintenance | ManutenzioneLegacy): string {
+  if (record.km != null) return `Km ${formatNumberOptional(record.km)}`;
+  if (record.ore != null) return `${formatNumberOptional(record.ore)} ore`;
+  return "—";
+}
+
+function formatMaintenanceTitle(record: SelectedMaintenance | ManutenzioneLegacy): string {
+  const sottotipo = record.sottotipo?.trim();
+  if (sottotipo) return sottotipo;
+
+  const descrizione = record.descrizione?.replace(/\s+/g, " ").trim() ?? "";
+  if (descrizione) {
+    const firstSentence = descrizione.split(".")[0]?.trim() ?? descrizione;
+    if (firstSentence.length <= 60) return firstSentence;
+    return `${firstSentence.slice(0, 57).trimEnd()}...`;
+  }
+
+  const tipo = record.tipo?.trim();
+  if (!tipo) return "Manutenzione";
+  return `${tipo.slice(0, 1).toUpperCase()}${tipo.slice(1)}`;
+}
+
+function formatAsseLabel(value: string): string {
+  switch (value) {
+    case "anteriore":
+      return "Anteriore";
+    case "posteriore":
+      return "Posteriore";
+    case "asse1":
+      return "Asse 1";
+    case "asse2":
+      return "Asse 2";
+    case "asse3":
+      return "Asse 3";
+    default:
+      return value;
+  }
+}
+
+function resolveDetailCategory(record: SelectedMaintenance | ManutenzioneLegacy): DetailCategory {
+  if (isTyreMaintenanceRecord(record)) return "gomme";
+  if (record.tipo === "compressore") return "compressore";
+  if (record.tipo === "attrezzature") return "rimorchio";
+  return "mezzo";
+}
+
+function formatMaintenanceImporto(
+  value: number | null | undefined,
+  currency: "EUR" | "CHF" | "UNKNOWN" | null | undefined,
+): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return value.toLocaleString("it-IT", {
+    style: "currency",
+    currency: currency === "CHF" ? "CHF" : "EUR",
+  });
+}
+
+function isTyreMaintenanceRecord(record: SelectedMaintenance | ManutenzioneLegacy | null | undefined): boolean {
   if (!record) return false;
   if ((record.assiCoinvolti?.length ?? 0) > 0) return true;
+  if ((record.gommePerAsse?.length ?? 0) > 0) return true;
+  if (record.gommeInterventoTipo) return true;
   const normalizedTipo = (record.tipo ?? "").trim().toLowerCase();
   if (normalizedTipo === "gomme") return true;
   const normalizedDescrizione = (record.descrizione ?? "").trim().toUpperCase();
@@ -107,10 +197,15 @@ export default function NextMappaStoricoPage({
   photoManager = false,
   selectedMaintenance = null,
   mezzoInfo,
+  storicoManutenzioni,
+  kmAttuali,
   onOpenPdf,
   onOpenDossier,
   onEditLatest,
+  onDelete,
   onSelectMaintenance,
+  onOpenDocument,
+  onDownloadPdfSingle,
 }: NextMappaStoricoPageProps) {
   const normalizedTarga = targa.trim().toUpperCase().replace(/\s+/g, "");
   const [snapshot, setSnapshot] = useState<NextMappaStoricoSnapshot | null>(null);
@@ -177,31 +272,70 @@ export default function NextMappaStoricoPage({
 
   const vistaSnapshot = snapshot?.viste[vistaAttiva] ?? null;
   const vistaLabel = formatVistaLabel(vistaAttiva);
-  const highlightedAssiNormalized = useMemo(
-    () => normalizeNextAssiCoinvolti(selectedMaintenance?.assiCoinvolti ?? []),
-    [selectedMaintenance],
+  const [activeFilter, setActiveFilter] = useState<DetailFilterKey>("tutte");
+  const selectedLegacyRecord = useMemo<ManutenzioneLegacy | null>(() => {
+    if (!selectedMaintenance) return null;
+    return storicoManutenzioni.find((item) => item.id === selectedMaintenance.id) ?? null;
+  }, [selectedMaintenance, storicoManutenzioni]);
+  const selectedRecord = selectedLegacyRecord ?? selectedMaintenance;
+  const selectedCategory = useMemo(
+    () => (selectedRecord ? resolveDetailCategory(selectedRecord) : null),
+    [selectedRecord],
   );
-  const selectedMaintenanceIsTyre = useMemo(
-    () => isTyreMaintenanceRecord(selectedMaintenance),
-    [selectedMaintenance],
+  const selectedAxesNormalized = useMemo(
+    () => normalizeNextAssiCoinvolti(selectedRecord?.assiCoinvolti ?? []),
+    [selectedRecord],
   );
-  const kmPercorsiDalCambio = useMemo(() => {
-    const kmAttuali = mezzoInfo?.kmAttuali ?? null;
-    if (kmAttuali == null) return null;
-    // Se il record selezionato è gomme, usa il suo km
-    if (selectedMaintenanceIsTyre) {
-      const kmCambio = selectedMaintenance?.km ?? null;
-      if (kmCambio == null) return null;
-      const delta = kmAttuali - kmCambio;
-      return delta >= 0 ? delta : null;
-    }
-    // Fallback: usa il km del cambio gomme più recente passato dal parent
-    const kmCambioLatest = mezzoInfo?.latestGommeKmCambio ?? null;
-    if (kmCambioLatest == null) return null;
-    const delta = kmAttuali - kmCambioLatest;
-    return delta >= 0 ? delta : null;
-  }, [mezzoInfo?.kmAttuali, mezzoInfo?.latestGommeKmCambio, selectedMaintenance, selectedMaintenanceIsTyre]);
+  const currentKmValue = kmAttuali ?? mezzoInfo?.kmAttuali ?? null;
+  const filterCounts = useMemo<Record<DetailFilterKey, number>>(() => {
+    const counts: Record<DetailFilterKey, number> = {
+      tutte: storicoManutenzioni.length,
+      mezzo: 0,
+      gomme: 0,
+      rimorchio: 0,
+      compressore: 0,
+    };
 
+    for (const item of storicoManutenzioni) {
+      counts[resolveDetailCategory(item)] += 1;
+    }
+
+    return counts;
+  }, [storicoManutenzioni]);
+  const activeFilters = useMemo(
+    () => DETAIL_FILTER_ORDER.filter((item) => item === "tutte" || filterCounts[item] > 0),
+    [filterCounts],
+  );
+  const filteredStorico = useMemo(() => {
+    if (activeFilter === "tutte") return storicoManutenzioni;
+    return storicoManutenzioni.filter((item) => resolveDetailCategory(item) === activeFilter);
+  }, [activeFilter, storicoManutenzioni]);
+  const selectedDeltaKm = useMemo(() => {
+    if (currentKmValue == null || selectedRecord?.km == null) return null;
+    const delta = currentKmValue - selectedRecord.km;
+    return delta >= 0 ? delta : null;
+  }, [currentKmValue, selectedRecord]);
+  const showTyreSection = useMemo(() => {
+    if (!selectedRecord || !isTyreMaintenanceRecord(selectedRecord)) return false;
+    return (
+      selectedAxesNormalized.length > 0 ||
+      (selectedRecord.gommePerAsse?.length ?? 0) > 0 ||
+      Boolean(selectedRecord.gommeInterventoTipo)
+    );
+  }, [selectedAxesNormalized, selectedRecord]);
+
+  useEffect(() => {
+    if (activeFilter !== "tutte" && filterCounts[activeFilter] === 0) {
+      setActiveFilter("tutte");
+    }
+  }, [activeFilter, filterCounts]);
+
+  useEffect(() => {
+    const selectedId = selectedMaintenance?.id;
+    if (!selectedId) return;
+    const row = document.getElementById(`man2-detail-v2-row-${selectedId}`);
+    row?.scrollIntoView({ block: "nearest" });
+  }, [activeFilter, selectedMaintenance?.id]);
 
   const tutteLeZone = useMemo(
     () =>
@@ -361,19 +495,6 @@ export default function NextMappaStoricoPage({
     ultimeManutenzioniCompressore: mezzoInfo?.ultimeManutenzioniCompressore ?? [],
   };
   const interventiInVista = zoneConStoricoNellaVista.reduce((sum, area) => sum + area.interventi.length, 0);
-  const selectedMaintenanceDescription = selectedMaintenance?.descrizione?.trim() || null;
-  const selectedMaintenanceType = selectedMaintenance?.tipo?.trim() || null;
-  const selectedMaintenanceAxesLabel = highlightedAssiNormalized.length > 0
-    ? highlightedAssiNormalized.join(", ")
-    : null;
-  const technicalView =
-    embedded &&
-    (vistaAttiva === "sinistra" || vistaAttiva === "destra") &&
-    (mezzoInfo?.categoria || snapshot?.categoriaLabel)
-      ? resolveNextManutenzioneTechnicalView(mezzoInfo?.categoria || snapshot?.categoriaLabel, vistaAttiva)
-      : null;
-  const viewerImageSrc = technicalView?.backgroundImage ?? vistaSnapshot?.foto?.downloadUrl ?? null;
-  const viewerSourceLabel = technicalView ? "Schema tecnico" : vistaSnapshot?.foto ? "Foto mezzo" : "Anteprima non disponibile";
 
   if (photoManager) {
     return (
@@ -428,234 +549,318 @@ export default function NextMappaStoricoPage({
   }
 
   if (embedded) {
+    const canOpenDocument = Boolean(
+      selectedLegacyRecord?.sourceDocumentId &&
+        selectedLegacyRecord.sourceDocumentFileUrl &&
+        onOpenDocument,
+    );
+    const canDownloadPdf = Boolean(selectedLegacyRecord && onDownloadPdfSingle);
+
     return (
-      <div className="man2-detail-shell">
+      <div className="man2-detail-v2__shell">
         {message ? <div className="man2-feedback man2-feedback--notice">{message}</div> : null}
 
-        <div className="man2-detail-layout">
-          <section className="man2-detail-card man2-detail-card--main">
-            <div className="man2-detail-toolbar">
-              <div className="man2-detail-pills">
-                <span className="man2-detail-pill">Vista {vistaLabel}</span>
-                <span className="man2-detail-pill">
-                  {selectedMaintenance?.data ? `Manutenzione ${selectedMaintenance.data}` : "Nessuna manutenzione selezionata"}
-                </span>
-              </div>
+        <div className="man2-detail-v2__split">
+          <section className="man2-detail-v2__list-panel">
+            <div className="man2-detail-v2__list-header">
+              <span className="man2-detail-v2__list-title">Storico manutenzioni</span>
+              <span className="man2-detail-v2__list-count">{filterCounts.tutte}</span>
             </div>
 
-            <div className="man2-viste-tabs">
-              {DETAIL_VISTE.map((vista) => (
+            <div className="man2-detail-v2__filters">
+              {activeFilters.map((filterKey) => (
                 <button
-                  key={vista}
+                  key={filterKey}
                   type="button"
-                  className={`man2-vista-btn${vistaAttiva === vista ? " active" : ""}`}
-                  onClick={() => {
-                    setVistaAttiva(vista);
-                    setPendingPos(null);
-                  }}
-                  title={`Mostra la vista tecnica ${formatVistaLabel(vista).toLowerCase()} del mezzo.`}
-                  aria-label={`Vista ${formatVistaLabel(vista)}`}
+                  className={`man2-detail-v2__filter-chip${activeFilter === filterKey ? " is-active" : ""}`}
+                  onClick={() => setActiveFilter(filterKey)}
                 >
-                  {formatVistaLabel(vista)}
+                  {DETAIL_FILTER_LABELS[filterKey]} ({filterCounts[filterKey]})
                 </button>
               ))}
             </div>
 
-            <section className="man2-detail-selected">
-              <div className="man2-section-title">Manutenzione selezionata</div>
-              {selectedMaintenance ? (
-                <div className="man2-detail-selected__grid">
-                  <div className="man2-detail-selected__item">
-                    <span>Data</span>
-                    <strong>{selectedMaintenance.data || "DA VERIFICARE"}</strong>
-                  </div>
-                  <div className="man2-detail-selected__item">
-                    <span>Tipo</span>
-                    <strong>{selectedMaintenanceType || "DA VERIFICARE"}</strong>
-                  </div>
-                  <div className="man2-detail-selected__item">
-                    <span>Assi coinvolti</span>
-                    <strong>{selectedMaintenanceAxesLabel || "Nessuno specificato"}</strong>
-                  </div>
-                  <div className="man2-detail-selected__item">
-                    <span>Km del record</span>
-                    <strong>{selectedMaintenance.km !== null ? formatNumberIt(selectedMaintenance.km) : "DA VERIFICARE"}</strong>
-                  </div>
-                  <div className="man2-detail-selected__item man2-detail-selected__item--full">
-                    <span>Dettaglio intervento</span>
-                    <strong>{selectedMaintenanceDescription || "Nessun dettaglio disponibile"}</strong>
-                  </div>
+            <div className="man2-detail-v2__list-scroll">
+              {filteredStorico.length === 0 ? (
+                <div className="man2-detail-v2__list-empty">
+                  {storicoManutenzioni.length === 0
+                    ? "Nessuna manutenzione per questo mezzo"
+                    : "Nessuna manutenzione per il filtro selezionato"}
                 </div>
               ) : (
-                <div className="man2-detail-selected__empty">
-                  Seleziona una manutenzione a destra.
-                </div>
-              )}
-            </section>
+                filteredStorico.map((item) => {
+                  const category = resolveDetailCategory(item);
+                  const dateParts = parseLegacyDateParts(item.data);
+                  const deltaLabel = formatKmDeltaLabel(
+                    currentKmValue != null && item.km != null ? currentKmValue - item.km : null,
+                  );
+                  const isSelected = selectedRecord?.id === item.id;
 
-            {selectedMaintenance?.materiali && selectedMaintenance.materiali.length > 0 ? (
-              <section className="man2-detail-selected">
-                <div className="man2-section-title">Materiali / ricambi</div>
-                <div className="man2-detail-history-list">
-                  {selectedMaintenance.materiali.map((materiale) => (
-                    <div
-                      key={materiale.id}
-                      className="man2-detail-history-item"
+                  return (
+                    <button
+                      key={item.id}
+                      id={`man2-detail-v2-row-${item.id}`}
+                      type="button"
+                      role="button"
+                      tabIndex={0}
+                      className={`man2-detail-v2__row${isSelected ? " is-selected" : ""}`}
+                      onClick={() => onSelectMaintenance?.(isSelected ? null : item.id)}
                     >
-                      <strong>{materiale.label}</strong>
-                      <span>
-                        {formatNumberIt(materiale.quantita)} {materiale.unita}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {viewerImageSrc ? (
-              <div className="man2-detail-surface man2-detail-surface--viewer">
-                <div className="ms-surface man2-detail-surface__static">
-                  <div className="ms-surface-header">
-                    <span className="ms-surface-tag">Vista {vistaLabel}</span>
-                    <span className="ms-surface-tag">{viewerSourceLabel}</span>
-                  </div>
-                  <img
-                    src={viewerImageSrc}
-                    alt={`Vista ${vistaAttiva} ${snapshot.targa}`}
-                    className="ms-photo man2-detail-viewer-image"
-                    title={viewerSourceLabel}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="man2-foto-placeholder">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M4 7h4l2-2h4l2 2h4v10H4V7Z" stroke="currentColor" strokeWidth="1.5" />
-                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
-                </svg>
-                <span>Nessuna foto caricata per la vista {vistaLabel}</span>
-              </div>
-            )}
-
-            <div className="man2-detail-kpis">
-              <div className="man2-detail-kpi">
-                <span>Vista attiva</span>
-                <strong>{vistaLabel}</strong>
-              </div>
-              <div className="man2-detail-kpi">
-                <span>Record selezionato</span>
-                <strong>{selectedMaintenance?.data || "Nessuno"}</strong>
-              </div>
-              <div className="man2-detail-kpi">
-                <span>Storico totale</span>
-                <strong>{snapshot.interventi.length}</strong>
-              </div>
+                      <div className="man2-detail-v2__row-date">
+                        <span>{dateParts.monthYear}</span>
+                        <strong>{dateParts.day}</strong>
+                      </div>
+                      <div className="man2-detail-v2__row-body">
+                        <div className="man2-detail-v2__row-title">{formatMaintenanceTitle(item)}</div>
+                        <div className="man2-detail-v2__row-sub">
+                          {(item.fornitore?.trim() || "—") + " · " + formatMaintenanceMetricInline(item)}
+                        </div>
+                      </div>
+                      <div className="man2-detail-v2__row-right">
+                        <span className={`man2-detail-v2__type-pill man2-detail-v2__type-pill--${category}`}>
+                          {DETAIL_FILTER_LABELS[category]}
+                        </span>
+                        {deltaLabel ? <span className="man2-detail-v2__row-delta">{deltaLabel}</span> : null}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
           </section>
 
-          <aside className="man2-detail-card man2-detail-card--side">
-            <div className="man2-detail-sidehead">
-              <div className="man2-panel-kicker">Dettaglio mezzo</div>
-              <h3>{mezzoCardInfo.targa}</h3>
-              <p>{mezzoCardInfo.mezzoLabel}</p>
-            </div>
-
-            <div className="man2-detail-info-list">
-              <div className="man2-detail-info">
-                <span>Autista solito</span>
-                <strong>{mezzoCardInfo.autistaNome || "DA VERIFICARE"}</strong>
+          <section className="man2-detail-v2__detail-panel">
+            {!selectedRecord ? (
+              <div className="man2-detail-v2__empty-state">
+                <div className="man2-detail-v2__empty-icon">📋</div>
+                <h3>Seleziona una manutenzione</h3>
+                <p>Clicca una voce dalla lista a sinistra per vederne tutti i dettagli.</p>
               </div>
-              <div className="man2-detail-info">
-                <span>Categoria</span>
-                <strong>{mezzoCardInfo.categoria || "DA VERIFICARE"}</strong>
-              </div>
-              <div className="man2-detail-info">
-                <span>Km attuali</span>
-                <strong>{mezzoCardInfo.kmAttuali || "DA VERIFICARE"}</strong>
-              </div>
-              {kmPercorsiDalCambio != null ? (
-                <div className="man2-detail-info">
-                  <span>Km dal cambio gomme</span>
-                  <strong>{formatNumberIt(kmPercorsiDalCambio)}</strong>
+            ) : (
+              <>
+                <div className="man2-detail-v2__detail-header">
+                  <div className="man2-detail-v2__detail-head-top">
+                    <h2 className="man2-detail-v2__detail-title">{formatMaintenanceTitle(selectedRecord)}</h2>
+                    <div className="man2-detail-v2__actions">
+                      <button
+                        type="button"
+                        className="man2-detail-v2__action man2-detail-v2__action--primary"
+                        onClick={() => onEditLatest?.()}
+                        aria-label="Modifica la manutenzione selezionata"
+                      >
+                        Modifica
+                      </button>
+                      <button
+                        type="button"
+                        className="man2-detail-v2__action"
+                        onClick={() => onOpenDossier?.()}
+                        aria-label="Apri il dossier del mezzo selezionato"
+                      >
+                        Apri dossier
+                      </button>
+                      <button
+                        type="button"
+                        className="man2-detail-v2__action"
+                        onClick={() => selectedLegacyRecord && onOpenDocument?.(selectedLegacyRecord)}
+                        disabled={!canOpenDocument}
+                        aria-disabled={!canOpenDocument}
+                        aria-label="Apri il documento collegato alla manutenzione"
+                      >
+                        Apri documento
+                      </button>
+                      <button
+                        type="button"
+                        className="man2-detail-v2__action"
+                        onClick={() => selectedLegacyRecord && onDownloadPdfSingle?.(selectedLegacyRecord)}
+                        disabled={!canDownloadPdf}
+                        aria-disabled={!canDownloadPdf}
+                        aria-label="Scarica il PDF della manutenzione selezionata"
+                      >
+                        Scarica PDF
+                      </button>
+                      <button
+                        type="button"
+                        className="man2-detail-v2__action man2-detail-v2__action--danger"
+                        onClick={() => {
+                          if (selectedMaintenance && onDelete) onDelete(selectedMaintenance);
+                        }}
+                        disabled={!selectedMaintenance || !onDelete}
+                        aria-disabled={!selectedMaintenance || !onDelete}
+                        aria-label="Elimina definitivamente la manutenzione selezionata"
+                      >
+                        Elimina
+                      </button>
+                    </div>
+                  </div>
+                  <div className="man2-detail-v2__detail-meta">
+                    {selectedRecord.data || "DA VERIFICARE"}
+                    <span className="man2-detail-v2__detail-meta-sep">·</span>
+                    {selectedRecord.sottotipo?.trim() || "—"}
+                    <span className="man2-detail-v2__detail-meta-sep">·</span>
+                    {selectedRecord.fornitore?.trim() || "Fornitore non indicato"}
+                  </div>
                 </div>
-              ) : null}
-              <div className="man2-detail-info">
-                <span>Ultima manutenzione</span>
-                <strong>{mezzoCardInfo.ultimaManutenzione || "Nessuna"}</strong>
-              </div>
-              <div className="man2-detail-info">
-                <span>Ultimo intervento mezzo</span>
-                <strong>{mezzoCardInfo.ultimoInterventoMezzo || "Nessuno"}</strong>
-              </div>
-              <div className="man2-detail-info">
-                <span>Ultimo intervento compressore</span>
-                <strong>{mezzoCardInfo.ultimoInterventoCompressore || "Nessuno"}</strong>
-              </div>
-            </div>
 
-            <div className="man2-detail-history-block">
-              <div className="man2-section-title">Ultime manutenzioni mezzo</div>
-              {mezzoCardInfo.ultimeManutenzioniMezzo.length > 0 ? (
-                <div className="man2-detail-history-list">
-                  {mezzoCardInfo.ultimeManutenzioniMezzo.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`man2-detail-history-item${selectedMaintenance?.id === item.id ? " is-active" : ""}`}
-                      onClick={() => onSelectMaintenance?.(item.id)}
-                    >
-                      <strong>{item.title}</strong>
-                      <span>{item.data}</span>
-                    </button>
-                  ))}
+                <div className="man2-detail-v2__detail-body">
+                  <div className="man2-detail-v2__kpi-strip">
+                    <div className="man2-detail-v2__kpi-item">
+                      <span className="man2-detail-v2__kpi-label">Km intervento</span>
+                      <strong className="man2-detail-v2__kpi-value">
+                        {selectedRecord.km != null ? `${formatNumberOptional(selectedRecord.km)} km` : "—"}
+                      </strong>
+                    </div>
+                    <div className="man2-detail-v2__kpi-item">
+                      <span className="man2-detail-v2__kpi-label">Δ km da oggi</span>
+                      <strong
+                        className={`man2-detail-v2__kpi-value man2-detail-v2__kpi-value--delta${
+                          selectedDeltaKm != null && selectedDeltaKm > 0 ? " is-positive" : ""
+                        }`}
+                      >
+                        {selectedDeltaKm == null ? "—" : selectedDeltaKm > 0 ? `+${formatNumberOptional(selectedDeltaKm)}` : "0"}
+                      </strong>
+                    </div>
+                    <div className="man2-detail-v2__kpi-item">
+                      <span className="man2-detail-v2__kpi-label">Importo</span>
+                      <strong className="man2-detail-v2__kpi-value">
+                        {formatMaintenanceImporto(
+                          selectedRecord.importo ?? null,
+                          selectedRecord.sourceDocumentCurrency ?? null,
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="man2-detail-v2__field-grid">
+                    <div className="man2-detail-v2__field">
+                      <span className="man2-detail-v2__field-label">Tipo intervento</span>
+                      <span className="man2-detail-v2__field-value">
+                        <span
+                          className={`man2-detail-v2__type-pill man2-detail-v2__type-pill--${
+                            selectedCategory ?? "mezzo"
+                          }`}
+                        >
+                          {DETAIL_FILTER_LABELS[selectedCategory ?? "mezzo"]}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="man2-detail-v2__field">
+                      <span className="man2-detail-v2__field-label">Sottotipo</span>
+                      <span className={`man2-detail-v2__field-value${selectedRecord.sottotipo ? "" : " is-muted"}`}>
+                        {selectedRecord.sottotipo?.trim() || "Non specificato"}
+                      </span>
+                    </div>
+                    <div className="man2-detail-v2__field">
+                      <span className="man2-detail-v2__field-label">Fornitore</span>
+                      <span className={`man2-detail-v2__field-value${selectedRecord.fornitore ? "" : " is-muted"}`}>
+                        {selectedRecord.fornitore?.trim() || "Non indicato"}
+                      </span>
+                    </div>
+                    <div className="man2-detail-v2__field">
+                      <span className="man2-detail-v2__field-label">Ore di lavoro</span>
+                      <span className={`man2-detail-v2__field-value${selectedRecord.ore != null ? "" : " is-muted"}`}>
+                        {selectedRecord.ore != null ? `${formatNumberOptional(selectedRecord.ore)} h` : "Non registrate"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <section className="man2-detail-v2__section">
+                    <div className="man2-detail-v2__section-title">Descrizione intervento</div>
+                    <div className="man2-detail-v2__description-box">
+                      {selectedRecord.descrizione?.trim() || "Nessuna descrizione inserita"}
+                    </div>
+                  </section>
+
+                  {showTyreSection ? (
+                    <section className="man2-detail-v2__section">
+                      <div className="man2-detail-v2__section-title">
+                        <span>Dettagli intervento gomme</span>
+                        {selectedRecord.gommeStraordinario ? (
+                          <span className="man2-detail-v2__section-badge man2-detail-v2__section-badge--danger">
+                            STRAORDINARIO
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="man2-detail-v2__gomme-box">
+                        {selectedAxesNormalized.length > 0 ? (
+                          <div className="man2-detail-v2__gomme-row">
+                            <span className="man2-detail-v2__gomme-label">Assi coinvolti</span>
+                            <div className="man2-detail-v2__gomme-tags">
+                              {selectedAxesNormalized.map((asse) => (
+                                <span key={asse} className="man2-detail-v2__gomme-tag">
+                                  {formatAsseLabel(asse)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {selectedRecord.gommeInterventoTipo ? (
+                          <div className="man2-detail-v2__gomme-row">
+                            <span className="man2-detail-v2__gomme-label">Tipo intervento</span>
+                            <span className="man2-detail-v2__gomme-value">
+                              {selectedRecord.gommeInterventoTipo}
+                            </span>
+                          </div>
+                        ) : null}
+                        {(selectedRecord.gommePerAsse ?? []).map((entry) => (
+                          <div key={`${entry.asseId}-${entry.dataCambio ?? "nodata"}`} className="man2-detail-v2__gomme-axis">
+                            <strong>{formatAsseLabel(entry.asseId)}</strong>
+                            <span>Data cambio: {entry.dataCambio || "—"}</span>
+                            <span>
+                              Km cambio: {entry.kmCambio != null ? formatNumberOptional(entry.kmCambio) : "—"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  <section className="man2-detail-v2__section">
+                    <div className="man2-detail-v2__section-title">
+                      <span>Materiali / ricambi utilizzati</span>
+                      {(selectedRecord.materiali?.length ?? 0) > 0 ? (
+                        <span className="man2-detail-v2__section-badge">
+                          {selectedRecord.materiali?.length ?? 0}
+                        </span>
+                      ) : null}
+                    </div>
+                    {(selectedRecord.materiali?.length ?? 0) > 0 ? (
+                      <div className="man2-detail-v2__materials">
+                        {(selectedRecord.materiali ?? []).map((materiale) => (
+                          <div key={materiale.id} className="man2-detail-v2__material-row">
+                            <span className="man2-detail-v2__material-name">{materiale.label}</span>
+                            <span className="man2-detail-v2__material-qty">
+                              {formatNumberOptional(materiale.quantita)} {materiale.unita}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="man2-detail-v2__empty-block">
+                        Nessun materiale registrato per questo intervento
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="man2-detail-v2__section">
+                    <div className="man2-detail-v2__section-title">Documento collegato</div>
+                    {canOpenDocument && selectedLegacyRecord ? (
+                      <button
+                        type="button"
+                        className="man2-detail-v2__document-link"
+                        onClick={() => onOpenDocument?.(selectedLegacyRecord)}
+                      >
+                        📄 Apri documento originale ({selectedLegacyRecord.sourceDocumentId})
+                      </button>
+                    ) : (
+                      <div className="man2-detail-v2__empty-block">
+                        Nessun documento allegato a questa manutenzione
+                      </div>
+                    )}
+                  </section>
                 </div>
-              ) : (
-                <div className="ms-empty">Nessuna manutenzione mezzo disponibile.</div>
-              )}
-            </div>
-
-            <div className="man2-detail-history-block">
-              <div className="man2-section-title">Ultime manutenzioni compressore</div>
-              {mezzoCardInfo.ultimeManutenzioniCompressore.length > 0 ? (
-                <div className="man2-detail-history-list">
-                  {mezzoCardInfo.ultimeManutenzioniCompressore.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`man2-detail-history-item${selectedMaintenance?.id === item.id ? " is-active" : ""}`}
-                      onClick={() => onSelectMaintenance?.(item.id)}
-                    >
-                      <strong>{item.title}</strong>
-                      <span>{item.data}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="ms-empty">Nessuna manutenzione compressore disponibile.</div>
-              )}
-            </div>
-
-            <div className="man2-detail-actions">
-              <button type="button" className="man2-btn" onClick={() => onOpenDossier?.()}>
-                Apri dossier mezzo
-              </button>
-              <button type="button" className="man2-btn" onClick={() => onOpenPdf?.()}>
-                Apri quadro PDF
-              </button>
-              {selectedMaintenance?.sourceDocumentId && selectedMaintenance.sourceDocumentFileUrl ? (
-                <button
-                  type="button"
-                  className="man2-btn"
-                  onClick={() => window.open(selectedMaintenance.sourceDocumentFileUrl ?? "", "_blank", "noopener,noreferrer")}
-                >
-                  Apri fattura
-                </button>
-              ) : null}
-              <button type="button" className="man2-btn man2-btn--secondary" onClick={() => onEditLatest?.()}>
-                Modifica manutenzione aperta
-              </button>
-            </div>
-          </aside>
+              </>
+            )}
+          </section>
         </div>
       </div>
     );
