@@ -448,8 +448,6 @@ export default function NextAttrezzatureCantieriWritePanel({
   };
 
   const handleDelete = async (record: NextAttrezzaturaMovimentoReadOnlyItem) => {
-    if (!window.confirm("Eliminare questo movimento?")) return;
-
     setError(null);
     try {
       await deleteMovimentoAttrezzatura({
