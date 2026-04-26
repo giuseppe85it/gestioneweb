@@ -12,7 +12,6 @@ export default function NextAttrezzatureCantieriPage() {
       description="Route NEXT autonoma per gestire stato e registro attrezzature senza riaprire il runtime madre."
       backTo="/next/gestione-operativa"
       backLabel="Gestione Operativa"
-      hideCloneReadOnlyBadge
       notice={
         <div style={{ display: "grid", gap: 12 }}>
           {loading ? <div className="next-clone-placeholder">Caricamento attrezzature cantieri...</div> : null}

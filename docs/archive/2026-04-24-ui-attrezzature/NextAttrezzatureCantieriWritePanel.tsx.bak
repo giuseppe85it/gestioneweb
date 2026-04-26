@@ -1,0 +1,15 @@
+/**
+ * SPEC: docs/product/SPEC_ATTREZZATURE_CANTIERI_NEXT.md
+ * Step E.1 scaffold: writer implementati, UI assente.
+ */
+
+export type NextAttrezzatureCantieriWritePanelProps = {
+  onAfterWrite?: () => void | Promise<void>;
+};
+
+export default function NextAttrezzatureCantieriWritePanel(
+  props: NextAttrezzatureCantieriWritePanelProps,
+) {
+  void props;
+  return null;
+}

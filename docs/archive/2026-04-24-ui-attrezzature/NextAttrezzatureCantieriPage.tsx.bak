@@ -1,5 +1,5 @@
+import NextAttrezzatureCantieriReadOnlyPanel from "./NextAttrezzatureCantieriReadOnlyPanel";
 import NextClonePageScaffold from "./NextClonePageScaffold";
-import NextAttrezzatureCantieriWritePanel from "./NextAttrezzatureCantieriWritePanel";
 import { useNextOperativitaSnapshot } from "./useNextOperativitaSnapshot";
 
 export default function NextAttrezzatureCantieriPage() {
@@ -9,10 +9,9 @@ export default function NextAttrezzatureCantieriPage() {
     <NextClonePageScaffold
       eyebrow="Gestione Operativa / Attrezzature"
       title="Attrezzature cantieri"
-      description="Route NEXT autonoma per gestire stato e registro attrezzature senza riaprire il runtime madre."
+      description="Route NEXT autonoma per consultare stato e registro attrezzature senza riaprire il runtime madre."
       backTo="/next/gestione-operativa"
       backLabel="Gestione Operativa"
-      hideCloneReadOnlyBadge
       notice={
         <div style={{ display: "grid", gap: 12 }}>
           {loading ? <div className="next-clone-placeholder">Caricamento attrezzature cantieri...</div> : null}
@@ -27,8 +26,9 @@ export default function NextAttrezzatureCantieriPage() {
       }
     >
       {snapshot ? (
-        <NextAttrezzatureCantieriWritePanel
+        <NextAttrezzatureCantieriReadOnlyPanel
           snapshot={snapshot.attrezzature}
+          blockedReason={snapshot.navigability.attrezzature.reason ?? "Clone read-only"}
         />
       ) : null}
     </NextClonePageScaffold>
