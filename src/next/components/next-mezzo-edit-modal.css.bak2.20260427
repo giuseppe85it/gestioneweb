@@ -1,0 +1,534 @@
+.mezmod-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.mezmod-modal {
+  width: min(1080px, 100%);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #eceae2;
+  border: 1px solid #777;
+  border-radius: 14px;
+  color: #2f2618;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+  animation: mezmod-fade-in 160ms ease-out;
+}
+
+.mezmod-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 18px;
+  background: #2f2618;
+  color: #fff8ee;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mezmod-modal-head__title {
+  min-width: 0;
+}
+
+.mezmod-modal-head__close {
+  min-height: 30px;
+  padding: 4px 14px;
+  border: 1px solid rgba(255, 248, 238, 0.7);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff8ee;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mezmod-modal-head__close:disabled,
+.mezmod-btn-save:disabled,
+.mezmod-btn-del:disabled,
+.mezmod-btn-cancel:disabled,
+.mezmod-confirm-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.mezmod-spread {
+  min-height: 660px;
+  display: grid;
+  grid-template-columns: 440px 1fr;
+  gap: 0;
+  overflow: auto;
+  background: #cfc9bc;
+  border-top: 1.5px solid #777;
+  border-bottom: 1.5px solid #777;
+}
+
+.mezmod-page {
+  min-height: 660px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: #eceae2;
+}
+
+.mezmod-page + .mezmod-page {
+  border-left: 1.5px solid #777;
+}
+
+.mezmod-row {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  min-height: 58px;
+  border-bottom: 1px solid #aaa;
+}
+
+.mezmod-row--full {
+  display: flex;
+  flex: 1 1 auto;
+  grid-template-columns: 1fr;
+}
+
+.mezmod-row--full > .mezmod-main,
+.mezmod-row--full .mezmod-field {
+  flex: 1 1 auto;
+}
+
+.mezmod-row--plate {
+  grid-template-columns: 56px 1fr 130px;
+}
+
+.mezmod-row--tech {
+  grid-template-columns: 56px 1fr;
+}
+
+.mezmod-row--collaudo {
+  background: #dedad0;
+}
+
+.mezmod-row--green {
+  background: #f0f6ee;
+}
+
+.mezmod-rail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 0;
+  border-right: 1px solid #aaa;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  background: #e7e2d8;
+}
+
+.mezmod-rail--green {
+  background: #d6e8d4;
+  color: #1e6e3c;
+}
+
+.mezmod-code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  padding: 6px 4px;
+  border-right: 1px solid #aaa;
+  background: #e7e2d8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.mezmod-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: stretch;
+}
+
+.mezmod-side {
+  min-width: 0;
+  border-left: 1px solid #aaa;
+  background: #eceae2;
+}
+
+.mezmod-split-h {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 100%;
+}
+
+.mezmod-split-h > .mezmod-field + .mezmod-field,
+.mezmod-split-v > .mezmod-field + .mezmod-field {
+  border-left: 1px solid #aaa;
+}
+
+.mezmod-split-v {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  min-height: 100%;
+}
+
+.mezmod-split-v > .mezmod-field + .mezmod-field {
+  border-top: 1px solid #aaa;
+  border-left: 0;
+}
+
+.mezmod-tech {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 162px;
+}
+
+.mezmod-tech-left {
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  border-right: 1px solid #aaa;
+}
+
+.mezmod-tech-right {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+
+.mezmod-tech-left > .mezmod-field + .mezmod-field,
+.mezmod-tech-right > .mezmod-field {
+  border-top: 1px solid #aaa;
+}
+
+.mezmod-tech-right > .mezmod-field:nth-child(-n + 2) {
+  border-top: 0;
+}
+
+.mezmod-tech-right > .mezmod-field:nth-child(2n) {
+  border-left: 1px solid #aaa;
+}
+
+.mezmod-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 10px;
+}
+
+.mezmod-field--hidden {
+  display: none;
+}
+
+.mezmod-label {
+  font-size: 9px;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.1;
+  color: #2f2618;
+}
+
+.mezmod-input,
+.mezmod-textarea,
+.mezmod-select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(119, 119, 119, 0.58);
+  border-radius: 4px;
+  background: #faf8f3;
+  color: #2f2618;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.mezmod-input,
+.mezmod-select {
+  min-height: 30px;
+  padding: 5px 7px;
+}
+
+.mezmod-input:disabled,
+.mezmod-textarea:disabled,
+.mezmod-select:disabled,
+.mezmod-input[readonly],
+.mezmod-textarea[readonly] {
+  background: rgba(250, 248, 243, 0.62);
+  color: rgba(47, 38, 24, 0.72);
+}
+
+.mezmod-input--mono {
+  font-family: "Courier New", monospace;
+}
+
+.mezmod-input--date {
+  min-height: 30px;
+}
+
+.mezmod-textarea {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 7px 8px;
+  resize: none;
+}
+
+.mezmod-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 34px;
+  border-bottom: 1px solid #aaa;
+  background: #cfc9bc;
+  font-size: 9px;
+  font-style: italic;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.mezmod-strip span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+}
+
+.mezmod-strip span + span {
+  border-left: 1px solid #aaa;
+}
+
+.mezmod-plate {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  min-height: 58px;
+  border: 1px solid #777;
+  background: #faf8f3;
+}
+
+.mezmod-plate__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: #1f3a6e;
+  color: #fff8ee;
+  font-weight: 700;
+}
+
+.mezmod-plate__star {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.mezmod-plate__country {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.mezmod-plate__input {
+  border: 0;
+  border-radius: 0;
+  background: #faf8f3;
+  font-family: "Courier New", monospace;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mezmod-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-end;
+  margin: auto 14px 14px 0;
+  padding: 7px 12px;
+  border: 1px solid rgba(45, 138, 78, 0.45);
+  border-radius: 999px;
+  background: #faf8f3;
+  color: #1e6e3c;
+  font-weight: 700;
+}
+
+.mezmod-banner-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #2d8a4e;
+}
+
+.mezmod-mp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #aaa;
+  background: #c9dfc6;
+}
+
+.mezmod-mp-head__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 700;
+  color: #1e6e3c;
+}
+
+.mezmod-mp-head__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e6e3c;
+}
+
+.mezmod-mp-head__badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #2d8a4e;
+  color: #fff8ee;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mezmod-modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  background: #faf8f3;
+}
+
+.mezmod-foot-spacer {
+  flex: 1;
+}
+
+.mezmod-btn-del,
+.mezmod-btn-cancel,
+.mezmod-btn-save,
+.mezmod-confirm-action {
+  min-height: 34px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mezmod-btn-del {
+  border: 1px solid #a32d2d;
+  background: #fff;
+  color: #a32d2d;
+  font-weight: 600;
+}
+
+.mezmod-btn-cancel {
+  border: 1px solid #777;
+  background: #fff;
+  color: #2f2618;
+}
+
+.mezmod-btn-save {
+  border: 1px solid #2d8a4e;
+  background: #2d8a4e;
+  color: #fff;
+  font-weight: 600;
+}
+
+.mezmod-error {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(163, 45, 45, 0.35);
+  background: rgba(163, 45, 45, 0.12);
+  color: #a32d2d;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mezmod-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(47, 38, 24, 0.45);
+}
+
+.mezmod-confirm-modal {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #777;
+  border-radius: 12px;
+  background: #faf8f3;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.25);
+}
+
+.mezmod-confirm-modal h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.mezmod-confirm-modal p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mezmod-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mezmod-confirm-action {
+  border: 1px solid #777;
+  background: #fff;
+  color: #2f2618;
+}
+
+.mezmod-confirm-action--danger {
+  border-color: #a32d2d;
+  background: #a32d2d;
+  color: #fff;
+  font-weight: 700;
+}
+
+@keyframes mezmod-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 980px) {
+  .mezmod-spread {
+    grid-template-columns: 1fr;
+  }
+
+  .mezmod-page + .mezmod-page {
+    border-left: 0;
+    border-top: 1.5px solid #777;
+  }
+}

@@ -69,17 +69,12 @@ const DOSSIER_ALLOWED_WRITE_PATH_PREFIXES = [
   "/next/dossier/",
   "/next/mezzi-dossier/",
 ] as const;
-const DOSSIER_MEZZO_EDIT_ALLOWED_WRITE_PATH_PREFIXES = [
-  "/next/dossier/",
-  "/next/dossiermezzi/",
-] as const;
 const DOSSIER_ALLOWED_FIRESTORE_DELETE_DOC_PATH_PREFIXES = [
   "@documenti_mezzi/",
   "@documenti_magazzino/",
   "@documenti_generici/",
 ] as const;
 const DOSSIER_ALLOWED_STORAGE_KEYS = new Set(["@costiMezzo"]);
-const DOSSIER_MEZZO_EDIT_ALLOWED_STORAGE_KEYS = new Set(["@mezzi_aziendali"]);
 const IA_DOCUMENTI_ALLOWED_WRITE_PATH = "/next/ia/documenti";
 const IA_DOCUMENTI_ALLOWED_FIRESTORE_UPDATE_DOC_PATH_PREFIXES = [
   "@documenti_mezzi/",
@@ -294,12 +289,6 @@ function isAllowedDossierCloneWritePath(pathname: string): boolean {
   );
 }
 
-function isAllowedDossierMezzoEditCloneWritePath(pathname: string): boolean {
-  return DOSSIER_MEZZO_EDIT_ALLOWED_WRITE_PATH_PREFIXES.some((prefix) =>
-    pathname.startsWith(prefix),
-  );
-}
-
 function isAllowedIaDocumentiCloneWritePath(pathname: string): boolean {
   return pathname === IA_DOCUMENTI_ALLOWED_WRITE_PATH;
 }
@@ -383,13 +372,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     if (kind === "storageSync.setItemSync") {
       return ARCHIVISTA_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
     }
-  }
-
-  if (isAllowedDossierMezzoEditCloneWritePath(pathname)) {
-    return (
-      kind === "storageSync.setItemSync" &&
-      DOSSIER_MEZZO_EDIT_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta))
-    );
   }
 
   if (isAllowedLavoriCloneWritePath(pathname)) {

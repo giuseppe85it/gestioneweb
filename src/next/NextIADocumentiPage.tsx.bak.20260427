@@ -32,16 +32,6 @@ type SupplierGroup = {
   total: number;
 };
 
-type ArchivistaPresetPayload = {
-  tipo: "fattura_ddt" | "preventivo" | "documento_mezzo";
-  contesto: "magazzino" | "manutenzione" | "documento_mezzo";
-  fileUrl?: string;
-  sourceDocId?: string;
-  sourceKey?: string;
-  tipoDocumento?: string;
-  targa?: string;
-};
-
 const FILTERS: Array<{ id: DocumentiCostiFilter; label: string }> = [
   { id: "tutti", label: "Tutti" },
   { id: "fatture", label: "Fatture" },
@@ -220,36 +210,16 @@ function buildReviewPath(item: NextIADocumentiArchiveItem) {
   return NEXT_IA_ARCHIVISTA_PATH;
 }
 
-function buildArchivistaPresetDocumentFields(
-  item: NextIADocumentiArchiveItem,
-): Pick<ArchivistaPresetPayload, "fileUrl" | "sourceDocId" | "sourceKey" | "tipoDocumento" | "targa"> {
-  const fileUrl = normalizeText(item.fileUrl);
-  const sourceDocId = normalizeText(item.sourceDocId);
-  const sourceKey = normalizeText(item.sourceKey);
-  const tipoDocumento = normalizeText(item.tipoDocumento);
-  const targa = normalizeText(item.targa);
-
-  return {
-    ...(fileUrl ? { fileUrl } : {}),
-    ...(sourceDocId ? { sourceDocId } : {}),
-    ...(sourceKey ? { sourceKey } : {}),
-    ...(tipoDocumento ? { tipoDocumento } : {}),
-    ...(targa ? { targa } : {}),
-  };
-}
-
-function buildArchivistaPreset(item: NextIADocumentiArchiveItem): ArchivistaPresetPayload {
-  const documentFields = buildArchivistaPresetDocumentFields(item);
-
+function buildArchivistaPreset(item: NextIADocumentiArchiveItem) {
   if (isLibretto(item)) {
-    return { tipo: "documento_mezzo", contesto: "documento_mezzo", ...documentFields };
+    return { tipo: "documento_mezzo", contesto: "documento_mezzo" };
   }
 
   if (isPreventivo(item)) {
-    return { tipo: "preventivo", contesto: "magazzino", ...documentFields };
+    return { tipo: "preventivo", contesto: "magazzino" };
   }
 
-  return { tipo: "fattura_ddt", contesto: "magazzino", ...documentFields };
+  return { tipo: "fattura_ddt", contesto: "magazzino" };
 }
 
 function buildAskAiPrompt(item: NextIADocumentiArchiveItem) {

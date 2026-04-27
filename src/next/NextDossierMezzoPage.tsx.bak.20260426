@@ -13,7 +13,6 @@ import {
 } from "../utils/pdfPreview";
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
-import NextMezzoEditModal from "./components/NextMezzoEditModal";
 import {
   buildNextDossierMezzoLegacyView,
   readNextDossierMezzoCompositeSnapshot,
@@ -158,7 +157,6 @@ export default function NextDossierMezzoPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletePending, setDeletePending] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const requestedSection = useMemo(
     () => location.hash.replace(/^#/, "").trim().toLowerCase(),
     [location.hash],
@@ -392,25 +390,6 @@ export default function NextDossierMezzoPage() {
     setModal(null);
     navigate(buildNextManutenzioniPath(item.targa, item.id));
   };
-  const reloadDossierSnapshot = async () => {
-    if (!targa) return;
-    const nextSnapshot = await readNextDossierMezzoCompositeSnapshot(targa);
-    if (!nextSnapshot) {
-      setLegacy(null);
-      setError("Mezzo non trovato nel clone.");
-      return;
-    }
-    setLegacy(buildNextDossierMezzoLegacyView(nextSnapshot));
-    setError(null);
-  };
-  const handleMezzoSaved = () => {
-    setShowEditModal(false);
-    void reloadDossierSnapshot();
-  };
-  const handleMezzoDeleted = () => {
-    setShowEditModal(false);
-    navigate(NEXT_DOSSIER_LISTA_PATH);
-  };
   const back = () => navigate(NEXT_DOSSIER_LISTA_PATH);
 
   if (loading) {
@@ -518,13 +497,6 @@ export default function NextDossierMezzoPage() {
           </div>
         </div>
       ) : null}
-      <NextMezzoEditModal
-        mezzoId={mezzo.id}
-        isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
-        onSaved={handleMezzoSaved}
-        onDeleted={handleMezzoDeleted}
-      />
 
       <div className="dossier-header-bar">
         <button className="dossier-button ghost" type="button" onClick={back}>Mezzi</button>
@@ -539,7 +511,7 @@ export default function NextDossierMezzoPage() {
       </div>
 
       <div className="dossier-grid">
-        <section className="dossier-card dossier-card-large"><div className="dossier-card-header"><h2>Dati tecnici</h2><button className="dossier-button" type="button" onClick={() => setShowEditModal(true)} disabled={!mezzo}>+ Modifica</button></div><div className="dossier-card-body dossier-tech-grid">
+        <section className="dossier-card dossier-card-large"><div className="dossier-card-header"><h2>Dati tecnici</h2></div><div className="dossier-card-body dossier-tech-grid">
           {[{ title: "Identificazione", rows: [["Proprietario", mezzo.proprietario], ["Targa", mezzo.targa], ["Autista abituale", mezzo.autistaNome], ["Telaio / VIN", mezzo.telaio], ["Assicurazione", mezzo.assicurazione]] }, { title: "Caratteristiche", rows: [["Marca", mezzo.marca], ["Modello", mezzo.modello], ["Categoria", mezzo.categoria], ["Colore", mezzo.colore]] }, { title: "Motore e massa", rows: [["Cilindrata", mezzo.cilindrata], ["Potenza", mezzo.potenza], ["Massa complessiva", mezzo.massaComplessiva], ["Anno", mezzo.anno]] }, { title: "Scadenze", rows: [["Immatricolazione", formatDateUI(parseDateFlexible(mezzo.dataImmatricolazione))], ["Revisione", formatDateUI(parseDateFlexible(mezzo.dataScadenzaRevisione))], ["Note", mezzo.note], ["Manutenzione programmata", mezzo.manutenzioneProgrammata ? "ATTIVA" : "NON ATTIVA"], ...(mezzo.manutenzioneProgrammata ? [["Contratto", mezzo.manutenzioneContratto], ["Periodo", `${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataInizio))} - ${formatDateUI(parseDateFlexible(mezzo.manutenzioneDataFine))}`], ["KM massimi", mezzo.manutenzioneKmMax]] : [])] }].map((block) => (
             <div key={block.title} className="dossier-tech-block"><h3>{block.title}</h3><ul>{block.rows.map(([label, value]) => <li key={label}><span>{label}</span><strong style={label === "Note" ? { whiteSpace: "pre-line" } : undefined}>{String(value || "-")}</strong></li>)}</ul></div>
           ))}

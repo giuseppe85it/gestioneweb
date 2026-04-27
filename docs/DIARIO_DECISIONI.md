@@ -81,3 +81,35 @@ Decisione: cosa decido
 Motivo del momento: perche lo decido oggi
 Status: scelta attiva / in valutazione / rivalutata
 Conseguenza: cosa cambia per il codice / per gli audit / per la roadmap
+
+### 2026-04-26 â€” Mezzi NEXT chiuso come modal nel Dossier Mezzo
+Decisione: Mezzi NEXT chiuso come modal di edit dentro Dossier Mezzo, non come pagina autonoma.
+Motivo del momento: Mezzi era duplicato di Dossier Lista. Le funzioni residue (modifica anagrafica + manutenzione programmata) hanno senso dentro Dossier del singolo mezzo. Path /next/mezzi diventa redirect a /next/dossiermezzi. Cancellati NextMezziPage.tsx e NextMezziDossierPage.tsx. Writer dedicato nextMezziWriter.ts. Prefisso CSS mezmod-.
+
+### 2026-04-26 â€” storageSync scrive su Firestore
+Decisione: Confermato che storageSync (src/utils/storageSync.ts) scrive su Firestore, non su localStorage del browser. Il nome e fuorviante.
+Motivo del momento: Audit AUDIT_PERSISTENZA_MEZZO_NEXT_2026-04-26.md ha dimostrato che setItemSync usa doc(db, "storage", key) e setDoc su Firestore. Pattern di scrittura corretto per writer NEXT e runWithCloneWriteScopedAllowance + storageSync.setItemSync. localStorage del browser non e la sorgente.
+
+### 2026-04-27 â€” Archivista NEXT persiste 17 campi libretto
+Decisione: Archivista NEXT espanso per persistere 17 campi libretto svizzero che prima venivano persi tra UI review e scrittura record mezzo.
+Motivo del momento: Audit AUDIT_ARCHIVISTA_PERSISTENZA_LIBRETTO_2026-04-26.md ha identificato che l'IA estrae 28 campi modificabili nella review, ma solo 12 venivano persistiti. I 17 campi aggiunti: nAvs, indirizzo, localita, statoOrigine, annotazioni, carrozzeria, numeroMatricola, approvazioneTipo, cilindrata, potenza, pesoVuoto, caricoUtileSella, pesoTotale, pesoTotaleRimorchio, caricoSulLetto, pesoRimorchiabile, luogoDataRilascio. Path toccati: handleArchive e applyArchivistaLibrettoVehicleUpdate in ArchivistaDocumentoMezzoBridge.tsx. Modal allineato per il campo annotazioni.
+
+### 2026-04-27 â€” Libretto aggiorna automaticamente anagrafica mezzo
+Decisione: Per il flusso libretto su mezzo esistente, l'aggiornamento dei 17 campi anagrafica e automatico, indipendente dal checkbox "Aggiorna anche i campi del mezzo dopo l'archiviazione".
+Motivo del momento: Audit runtime ha mostrato che la guardia escludeva il caso libretto. Per il libretto specifico la guardia accetta sia result.status="archived" sia "skipped_same". Per altri tipi documento (fattura, DDT, preventivo, assicurazione) resta opt-in via checkbox come prima. Il libretto e autoritativo sull'anagrafica del mezzo per definizione.
+
+### 2026-04-27 â€” Date modal Modifica Mezzo normalizzate ISO
+Decisione: Tutte le date nel modal Modifica Mezzo sono normalizzate in formato ISO yyyy-MM-dd per persistenza, con calendario nativo italiano a video.
+Motivo del momento: Funzione normalizeDateToIso converte all'apertura del modal i formati legacy "gg mm yyyy", "gg.mm.yyyy", "gg/mm/yyyy" in ISO. Input HTML5 type="date" gestisce automaticamente la visualizzazione localizzata. Permette ordinamento, confronto scadenze, coerenza tra punti dell'app.
+
+### 2026-04-27 â€” Categoria e Tipo come select con fallback
+Decisione: Categoria e Tipo nel modal Modifica Mezzo sono select dropdown con fallback per valori non standard, non input testo libero.
+Motivo del momento: Riuso della costante esistente nextAnagraficheFlottaDomain.ts per le 11 categorie canoniche. Tipo locale al modal con valori "motrice" e "cisterna". Se il record contiene un valore non in lista, viene preservato come opzione "(non standard) X" finche l'utente non sceglie un valore canonico. Evita perdita silenziosa di dati esistenti.
+
+### 2026-04-27 â€” Riapri review Archivista rimandato
+Decisione: Aperto cantiere refactor "Riapri review" Archivista, rimandato a sessione successiva.
+Motivo del momento: Oggi "Riapri review" da /next/ia/documenti porta su Archivista vuoto perche l'oggetto analysis completo non viene persistito. Va persistita l'analisi completa al primo archive + precaricata in apertura review. Audit AUDIT_RIAPRI_REVIEW_DIAGNOSI_2026-04-27.md prodotto. Cantiere copre tutti i flussi Archivista: libretto, magazzino, fatture, DDT, preventivi. Stima ~4 file per il libretto + repliche sugli altri bridge.
+
+### 2026-04-27 â€” Mezzi NEXT CHIUSO al 100%
+Decisione: Mezzi NEXT ufficialmente CHIUSO al 100%, verificato runtime su targa di test TI282780.
+Motivo del momento: Tutti i 10 punti checklist verificati: barriera con deroga, storage rules, writer dedicato, persistenza Firestore confermata via dump, modal funzionante (modifica + salvataggio + eliminazione), build green, lint baseline migliorato di 1 warning. Resta come ultimo modulo scrivente NEXT da chiudere: Cisterna.

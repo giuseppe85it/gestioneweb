@@ -2584,16 +2584,11 @@ export default function ArchivistaDocumentoMezzoBridge({
         setVehicles(toVehicleOptions(updatedVehicles as RawVehicle[]));
       }
 
-      // Per il libretto, l'aggiornamento dei 17 campi anagrafica e automatico anche
-      // quando l'archiviazione documento viene saltata perche identica a una esistente
-      // (skipped_same): il file e uguale ma i campi anagrafica vanno comunque applicati.
-      const isLibrettoSkippedSame =
-        selectedSubtype === "libretto" && result.status === "skipped_same";
-      const isStandardArchived = result.status === "archived";
-
+      // Per il libretto, l'aggiornamento dei 17 campi anagrafica e sempre automatico
+      // quando il mezzo esiste; per gli altri documenti resta opt-in via checkbox.
       if (
         mezzoMode === "esistente" &&
-        (isStandardArchived || isLibrettoSkippedSame) &&
+        result.status === "archived" &&
         (selectedSubtype === "libretto" || applyVehicleUpdateChoice)
       ) {
         const vehicleUpdate =

@@ -13,6 +13,7 @@ import {
 } from "../utils/pdfPreview";
 import "../pages/DossierMezzo.css";
 import "./next-shell.css";
+import { installDumpMezzoGlobal } from "./_debug/dumpMezzoRecord";
 import NextMezzoEditModal from "./components/NextMezzoEditModal";
 import {
   buildNextDossierMezzoLegacyView,
@@ -163,6 +164,11 @@ export default function NextDossierMezzoPage() {
     () => location.hash.replace(/^#/, "").trim().toLowerCase(),
     [location.hash],
   );
+
+  // DEBUG TEMPORANEO — rimuovere dopo dump TI282780 (prompt 13)
+  useEffect(() => {
+    installDumpMezzoGlobal();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

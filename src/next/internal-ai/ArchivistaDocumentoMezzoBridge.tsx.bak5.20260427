@@ -2584,18 +2584,25 @@ export default function ArchivistaDocumentoMezzoBridge({
         setVehicles(toVehicleOptions(updatedVehicles as RawVehicle[]));
       }
 
-      // Per il libretto, l'aggiornamento dei 17 campi anagrafica e automatico anche
-      // quando l'archiviazione documento viene saltata perche identica a una esistente
-      // (skipped_same): il file e uguale ma i campi anagrafica vanno comunque applicati.
-      const isLibrettoSkippedSame =
-        selectedSubtype === "libretto" && result.status === "skipped_same";
-      const isStandardArchived = result.status === "archived";
+      console.log("[DEBUG_PROMPT_25] pre-guardia ramo update", {
+        mezzoMode,
+        resultStatus: result.status,
+        selectedSubtype,
+        applyVehicleUpdateChoice,
+        willEnterUpdateBranch:
+          mezzoMode === "esistente" &&
+          result.status === "archived" &&
+          (selectedSubtype === "libretto" || applyVehicleUpdateChoice),
+      });
 
+      // Per il libretto, l'aggiornamento dei 17 campi anagrafica e sempre automatico
+      // quando il mezzo esiste; per gli altri documenti resta opt-in via checkbox.
       if (
         mezzoMode === "esistente" &&
-        (isStandardArchived || isLibrettoSkippedSame) &&
+        result.status === "archived" &&
         (selectedSubtype === "libretto" || applyVehicleUpdateChoice)
       ) {
+        console.log("[DEBUG_PROMPT_25] entrato nel ramo update", { selectedVehicleId });
         const vehicleUpdate =
           selectedSubtype === "libretto"
             ? await applyArchivistaLibrettoVehicleUpdate({
@@ -2609,6 +2616,18 @@ export default function ArchivistaDocumentoMezzoBridge({
                 subtype: selectedSubtype,
                 analysis: analysis as unknown as Record<string, unknown>,
               });
+        if (selectedSubtype === "libretto") {
+          console.log("[DEBUG_PROMPT_25] applyArchivistaLibrettoVehicleUpdate ritorno", {
+            appliedFieldsCount:
+              typeof vehicleUpdate === "object" &&
+              vehicleUpdate !== null &&
+              "appliedFields" in vehicleUpdate
+                ? (vehicleUpdate as { appliedFields?: unknown[] }).appliedFields?.length
+                : "no_appliedFields_in_return",
+            fullReturn: vehicleUpdate,
+          });
+          console.log("[DEBUG_PROMPT_25] ramo update completato senza errori");
+        }
         setVehicleUpdateMessage(
           vehicleUpdate.appliedFields.length
             ? `Campi mezzo aggiornati su conferma: ${vehicleUpdate.appliedFields

@@ -54,6 +54,7 @@ import NextDossierMezzoPage from "./next/NextDossierMezzoPage";
 import NextDossierGommePage from "./next/NextDossierGommePage";
 import NextDossierRifornimentiPage from "./next/NextDossierRifornimentiPage";
 import NextAnalisiEconomicaPage from "./next/NextAnalisiEconomicaPage";
+import NextMezziPage from "./next/NextMezziPage";
 import NextDossierListaPage from "./next/NextDossierListaPage";
 import NextRoleGuard from "./next/NextRoleGuard";
 import NextRoleLandingRedirect from "./next/NextRoleLandingRedirect";
@@ -426,7 +427,7 @@ function App() {
           path="mezzi"
           element={
             <NextRoleGuard areaId="mezzi-dossier">
-              <Navigate to="/next/dossiermezzi" replace />
+              <NextMezziPage />
             </NextRoleGuard>
           }
         />

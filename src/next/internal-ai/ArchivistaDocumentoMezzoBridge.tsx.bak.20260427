@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   applyArchivistaVehicleUpdate,
@@ -90,14 +90,6 @@ export type ArchivistaDocumentoMezzoSubtype =
 type ArchivistaLibrettoDestinationOption = {
   destination: string;
   label: string;
-};
-
-type ArchivistaDocumentoMezzoPreloadDocument = {
-  fileUrl: string;
-  sourceDocId?: string;
-  sourceKey?: string;
-  tipoDocumento?: string;
-  targa?: string;
 };
 
 type ArchivistaDocumentoMezzoAnalysis = {
@@ -298,43 +290,6 @@ function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }>
     };
     reader.readAsDataURL(file);
   });
-}
-
-function extractPreloadFileNameFromUrl(fileUrl: string) {
-  const rawName = fileUrl.split("?")[0].split("#")[0].split("/").pop() ?? "";
-  if (!rawName) {
-    return "";
-  }
-
-  try {
-    return decodeURIComponent(rawName).split("/").filter(Boolean).pop() ?? "";
-  } catch {
-    return rawName.split("/").filter(Boolean).pop() ?? "";
-  }
-}
-
-function getPreloadExtensionFromMimeType(mimeType: string) {
-  if (mimeType.includes("pdf")) return "pdf";
-  if (mimeType.includes("png")) return "png";
-  if (mimeType.includes("webp")) return "webp";
-  return "jpg";
-}
-
-function buildPreloadDocumentFileName(
-  preloadDocument: ArchivistaDocumentoMezzoPreloadDocument,
-  mimeType: string,
-) {
-  const fileNameFromUrl = extractPreloadFileNameFromUrl(preloadDocument.fileUrl);
-  if (fileNameFromUrl) {
-    return fileNameFromUrl;
-  }
-
-  const documentLabel =
-    normalizePlate(preloadDocument.targa ?? "") ||
-    normalizeText(preloadDocument.sourceDocId) ||
-    "documento";
-  const typeLabel = normalizeText(preloadDocument.tipoDocumento) || "libretto";
-  return `${typeLabel}-${documentLabel}.${getPreloadExtensionFromMimeType(mimeType)}`;
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -1148,74 +1103,6 @@ function buildEffectiveLibrettoAnalysis(
   });
 }
 
-const ARCHIVISTA_LIBRETTO_PERSISTED_FIELD_LABELS = {
-  nAvs: "N. AVS",
-  indirizzo: "Indirizzo",
-  localita: "Località",
-  statoOrigine: "Stato d'origine",
-  annotazioni: "Annotazioni",
-  carrozzeria: "Carrozzeria",
-  numeroMatricola: "Numero matricola",
-  approvazioneTipo: "Approvazione tipo",
-  cilindrata: "Cilindrata",
-  potenza: "Potenza",
-  pesoVuoto: "Peso a vuoto",
-  caricoUtileSella: "Carico utile / sella",
-  pesoTotale: "Peso totale",
-  pesoTotaleRimorchio: "Peso totale rimorchio",
-  caricoSulLetto: "Carico sul letto",
-  pesoRimorchiabile: "Peso rimorchiabile",
-  luogoDataRilascio: "Luogo / data rilascio",
-} as const;
-
-type ArchivistaLibrettoPersistedFieldKey = keyof typeof ARCHIVISTA_LIBRETTO_PERSISTED_FIELD_LABELS;
-
-const ARCHIVISTA_LIBRETTO_PERSISTED_FIELD_KEYS = Object.keys(
-  ARCHIVISTA_LIBRETTO_PERSISTED_FIELD_LABELS,
-) as ArchivistaLibrettoPersistedFieldKey[];
-
-function buildArchivistaPersistedLibrettoFields(
-  analysis: ArchivistaDocumentoMezzoAnalysis,
-): Record<ArchivistaLibrettoPersistedFieldKey, string> {
-  const source = analysis as Record<string, unknown>;
-
-  return {
-    nAvs:
-      normalizeText(source.nAvs) ||
-      normalizeText(analysis.detentoreAfsAvs) ||
-      normalizeText(analysis.numeroAvs),
-    indirizzo: normalizeText(source.indirizzo) || normalizeText(analysis.detentoreIndirizzo),
-    localita:
-      normalizeText(source.localita) ||
-      normalizeText(analysis.detentoreComune) ||
-      normalizeText(source.comune),
-    statoOrigine: normalizeText(source.statoOrigine) || normalizeText(analysis.detentoreStatoOrigine),
-    annotazioni:
-      normalizeText(analysis.annotazioni) || normalizeText(analysis.note) || normalizeText(analysis.testo),
-    carrozzeria: normalizeText(analysis.carrozzeria) || normalizeText(source.tipoCarrozzeria),
-    numeroMatricola:
-      normalizeText(analysis.numeroMatricola) ||
-      normalizeText(analysis.numeroMatricolaTipo) ||
-      normalizeText(source.matricolaTipo),
-    approvazioneTipo:
-      normalizeText(analysis.approvazioneTipo) || normalizeText(analysis.numeroApprovazioneTipo),
-    cilindrata: normalizeText(analysis.cilindrata) || normalizeText(analysis.cilindrica),
-    potenza: normalizeText(analysis.potenza),
-    pesoVuoto: normalizeText(analysis.pesoVuoto) || normalizeText(source.tara),
-    caricoUtileSella: normalizeText(source.caricoUtileSella) || normalizeText(analysis.caricoUtile),
-    pesoTotale: normalizeText(analysis.pesoTotale),
-    pesoTotaleRimorchio: normalizeText(analysis.pesoTotaleRimorchio) || normalizeText(source.pesoConvoglio),
-    caricoSulLetto: normalizeText(analysis.caricoSulLetto) || normalizeText(source.caricoTetto),
-    pesoRimorchiabile:
-      normalizeText(analysis.pesoRimorchiabile) || normalizeText(analysis.caricoRimorchiabile),
-    luogoDataRilascio:
-      normalizeText(source.luogoDataRilascio) ||
-      normalizeText(analysis.luogoRilascio) ||
-      normalizeText(analysis.luogoImmatricolazione) ||
-      normalizeText(analysis.luogoCollaudo),
-  };
-}
-
 function resolveValidVinFromAnalysis(analysis: ArchivistaDocumentoMezzoAnalysis | null) {
   if (!analysis) {
     return null;
@@ -1483,7 +1370,6 @@ function buildArchivistaNewVehicleRecord(args: {
   const dataImmatricolazione = normalizeLibrettoDateValue(
     (args.analysis as Record<string, unknown>).primaImmatricolazione || args.analysis.dataImmatricolazione,
   );
-  const persistedLibrettoFields = buildArchivistaPersistedLibrettoFields(args.analysis);
 
   return {
     id: nowId,
@@ -1494,23 +1380,8 @@ function buildArchivistaNewVehicleRecord(args: {
     modello,
     telaio: normalizeText(args.analysis.telaio),
     colore: normalizeText((args.analysis as Record<string, unknown>).colore),
-    nAvs: persistedLibrettoFields.nAvs,
-    indirizzo: persistedLibrettoFields.indirizzo,
-    localita: persistedLibrettoFields.localita,
-    statoOrigine: persistedLibrettoFields.statoOrigine,
-    annotazioni: persistedLibrettoFields.annotazioni,
-    carrozzeria: persistedLibrettoFields.carrozzeria,
-    numeroMatricola: persistedLibrettoFields.numeroMatricola,
-    approvazioneTipo: persistedLibrettoFields.approvazioneTipo,
-    cilindrata: persistedLibrettoFields.cilindrata,
-    potenza: persistedLibrettoFields.potenza,
-    pesoVuoto: persistedLibrettoFields.pesoVuoto,
-    caricoUtileSella: persistedLibrettoFields.caricoUtileSella,
-    pesoTotale: persistedLibrettoFields.pesoTotale,
-    pesoTotaleRimorchio: persistedLibrettoFields.pesoTotaleRimorchio,
-    caricoSulLetto: persistedLibrettoFields.caricoSulLetto,
-    pesoRimorchiabile: persistedLibrettoFields.pesoRimorchiabile,
-    luogoDataRilascio: persistedLibrettoFields.luogoDataRilascio,
+    cilindrata: normalizeText((args.analysis as Record<string, unknown>).cilindrata),
+    potenza: normalizeText((args.analysis as Record<string, unknown>).potenza),
     massaComplessiva: normalizeText((args.analysis as Record<string, unknown>).pesoTotale),
     proprietario:
       normalizeText((args.analysis as Record<string, unknown>).intestatario) ||
@@ -1581,7 +1452,6 @@ function buildArchivistaLibrettoVehicleUpdateFields(
       normalizeText(analysis.tipoVeicolo) ||
       normalizeText(analysis.categoria),
   };
-  const persistedLibrettoFields = buildArchivistaPersistedLibrettoFields(analysis);
 
   const candidates = [
     { key: "targa", label: "Targa", nextValue: normalizedAnalysis.targa },
@@ -1610,7 +1480,7 @@ function buildArchivistaLibrettoVehicleUpdateFields(
     { key: "genereVeicolo", label: "Genere veicolo", nextValue: normalizedAnalysis.genereVeicolo },
   ];
 
-  const coreCandidates = candidates.filter((field) => {
+  return candidates.filter((field) => {
     const nextValue = normalizeText(field.nextValue);
     if (!nextValue) {
       return false;
@@ -1618,14 +1488,6 @@ function buildArchivistaLibrettoVehicleUpdateFields(
     const currentValue = normalizeText(mezzo[field.key]);
     return currentValue !== nextValue;
   });
-
-  const librettoCandidates = ARCHIVISTA_LIBRETTO_PERSISTED_FIELD_KEYS.map((key) => ({
-    key,
-    label: ARCHIVISTA_LIBRETTO_PERSISTED_FIELD_LABELS[key],
-    nextValue: persistedLibrettoFields[key],
-  }));
-
-  return [...coreCandidates, ...librettoCandidates];
 }
 
 async function applyArchivistaLibrettoVehicleUpdate(args: {
@@ -1676,7 +1538,6 @@ type ArchivistaDocumentoMezzoBridgeProps = {
   destinationOptions?: ArchivistaLibrettoDestinationOption[];
   onSelectDestination?: (destination: string) => void;
   onSubtypeChange?: (subtype: ArchivistaDocumentoMezzoSubtype) => void;
-  preloadDocument?: ArchivistaDocumentoMezzoPreloadDocument | null;
   selectedSubtype?: ArchivistaDocumentoMezzoSubtype;
 };
 
@@ -1684,7 +1545,6 @@ export default function ArchivistaDocumentoMezzoBridge({
   destinationOptions = [],
   onSelectDestination,
   onSubtypeChange,
-  preloadDocument = null,
   selectedSubtype: selectedSubtypeProp = "libretto",
 }: ArchivistaDocumentoMezzoBridgeProps) {
   const navigate = useNavigate();
@@ -1692,7 +1552,6 @@ export default function ArchivistaDocumentoMezzoBridge({
   const [isLibrettoDestinationMenuOpen, setIsLibrettoDestinationMenuOpen] = useState(false);
   const [mezzoMode, setMezzoMode] = useState<ArchivistaNewVehicleMode>("esistente");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const preloadDocumentAttemptedRef = useRef(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [optimizeImageForExtraction, setOptimizeImageForExtraction] = useState(true);
   const [librettoDebugImages, setLibrettoDebugImages] = useState<ArchivistaLibrettoDebugImages>({
@@ -1796,104 +1655,6 @@ export default function ArchivistaDocumentoMezzoBridge({
         setVehicles([]);
       });
   }, []);
-
-  useEffect(() => {
-    const fileUrl = preloadDocument?.fileUrl;
-    if (!fileUrl || preloadDocumentAttemptedRef.current) {
-      return;
-    }
-
-    preloadDocumentAttemptedRef.current = true;
-    let cancelled = false;
-
-    const loadPreloadDocument = async () => {
-      try {
-        setErrorMessage(null);
-        const response = await fetch(fileUrl);
-        if (!response.ok) {
-          throw new Error(`Download documento non riuscito (${response.status}).`);
-        }
-
-        const blob = await response.blob();
-        if (cancelled) {
-          return;
-        }
-
-        const selectedFileFromPreload = new File(
-          [blob],
-          buildPreloadDocumentFileName(
-            {
-              fileUrl,
-              sourceDocId: preloadDocument?.sourceDocId,
-              sourceKey: preloadDocument?.sourceKey,
-              tipoDocumento: preloadDocument?.tipoDocumento,
-              targa: preloadDocument?.targa,
-            },
-            blob.type || "image/png",
-          ),
-          { type: blob.type || "image/png" },
-        );
-
-        setLibrettoCompletionMessage(null);
-        setSelectedFile(selectedFileFromPreload);
-        setMezzoMode("esistente");
-        setAnalysis(null);
-        setAnalysisStatus("idle");
-        setErrorMessage(null);
-        setArchiveResult(null);
-        setArchiveStatus("idle");
-        setArchiveError(null);
-        setDuplicateStatus("idle");
-        setDuplicateCandidates([]);
-        setDuplicateChoice(null);
-        setSelectedDuplicateId("");
-        setApplyVehicleUpdateChoice(false);
-        setVehicleUpdateMessage(null);
-        setSelectedVehicleId("");
-        setVinOptimizationUsed(false);
-        setLibrettoDebugImages({
-          finalUrl: null,
-          originalUrl: null,
-          preprocessUrl: null,
-          vinUrl: null,
-        });
-        setLibrettoDebugTrace({
-          rawUltimoCollaudo: "",
-          mappedDataUltimoCollaudo: "",
-          propDataUltimoCollaudo: "",
-          duplicatePlateKey: "",
-          duplicateCandidateCount: "",
-        });
-        setLibrettoBackendDebug({
-          originale: null,
-          preprocessata: null,
-          activeMode: "PREPROCESSATA",
-        });
-        setVehiclePhotoPreviewUrl(null);
-        setVehiclePhotoFileName("");
-        setVehiclePhotoDirty(false);
-        setLibrettoResetKey((current) => current + 1);
-      } catch {
-        if (!cancelled) {
-          setSelectedFile(null);
-          setAnalysisStatus("idle");
-          setErrorMessage("Riapertura documento fallita. Carica manualmente il file.");
-        }
-      }
-    };
-
-    void loadPreloadDocument();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    preloadDocument?.fileUrl,
-    preloadDocument?.sourceDocId,
-    preloadDocument?.sourceKey,
-    preloadDocument?.tipoDocumento,
-    preloadDocument?.targa,
-  ]);
 
   useEffect(() => {
     if (!selectedFile || !selectedFile.type.startsWith("image/")) {
@@ -2584,18 +2345,7 @@ export default function ArchivistaDocumentoMezzoBridge({
         setVehicles(toVehicleOptions(updatedVehicles as RawVehicle[]));
       }
 
-      // Per il libretto, l'aggiornamento dei 17 campi anagrafica e automatico anche
-      // quando l'archiviazione documento viene saltata perche identica a una esistente
-      // (skipped_same): il file e uguale ma i campi anagrafica vanno comunque applicati.
-      const isLibrettoSkippedSame =
-        selectedSubtype === "libretto" && result.status === "skipped_same";
-      const isStandardArchived = result.status === "archived";
-
-      if (
-        mezzoMode === "esistente" &&
-        (isStandardArchived || isLibrettoSkippedSame) &&
-        (selectedSubtype === "libretto" || applyVehicleUpdateChoice)
-      ) {
+      if (mezzoMode === "esistente" && applyVehicleUpdateChoice && result.status === "archived") {
         const vehicleUpdate =
           selectedSubtype === "libretto"
             ? await applyArchivistaLibrettoVehicleUpdate({

@@ -1,0 +1,977 @@
+import { useEffect, useMemo, useState } from "react";
+import { getItemSync } from "../../utils/storageSync";
+import {
+  readNextAnagraficheFlottaSnapshot,
+  type NextAnagraficheFlottaCollegaItem,
+} from "../nextAnagraficheFlottaDomain";
+import {
+  deleteNextMezzo,
+  updateNextMezzoAnagrafica,
+  type Mezzo,
+} from "../nextMezziWriter";
+import "./next-mezzo-edit-modal.css";
+
+const MEZZI_KEY = "@mezzi_aziendali";
+
+type MezzoFormData = Mezzo & Record<string, unknown>;
+type RawLibrettoFields = Record<string, string>;
+
+export interface NextMezzoEditModalProps {
+  mezzoId: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onSaved?: (mezzo: Mezzo) => void;
+  onDeleted?: (mezzoId: string) => void;
+}
+
+const EDITABLE_FIELDS = [
+  "tipo",
+  "categoria",
+  "targa",
+  "marca",
+  "modello",
+  "telaio",
+  "colore",
+  "cilindrata",
+  "potenza",
+  "massaComplessiva",
+  "proprietario",
+  "assicurazione",
+  "dataImmatricolazione",
+  "dataScadenzaRevisione",
+  "dataUltimoCollaudo",
+  "manutenzioneProgrammata",
+  "manutenzioneDataInizio",
+  "manutenzioneDataFine",
+  "manutenzioneKmMax",
+  "manutenzioneContratto",
+  "note",
+  "autistaId",
+  "autistaNome",
+] as const satisfies readonly (keyof Mezzo)[];
+
+const RAW_LIBRETTO_ALIASES: Record<string, readonly string[]> = {
+  numeroAvs: ["numeroAvs", "nAvs", "detentoreAfsAvs"],
+  statoOrigine: ["statoOrigine", "detentoreStatoOrigine"],
+  indirizzo: ["indirizzo"],
+  localita: ["localita"],
+  genereVeicolo: ["genereVeicolo", "tipoVeicolo"],
+  carrozzeria: ["carrozzeria", "tipoCarrozzeria"],
+  numeroMatricola: ["numeroMatricola", "numeroMatricolaTipo", "matricolaTipo"],
+  approvazioneTipo: ["approvazioneTipo", "numeroApprovazioneTipo"],
+  pesoVuoto: ["pesoVuoto", "tara"],
+  caricoUtileSella: ["caricoUtileSella", "caricoUtile"],
+  pesoTotale: ["pesoTotale"],
+  pesoTotaleRimorchio: ["pesoTotaleRimorchio", "pesoConvoglio"],
+  caricoSulLetto: ["caricoSulLetto"],
+  pesoRimorchiabile: ["pesoRimorchiabile"],
+  luogoDataRilascio: ["luogoDataRilascio", "luogoRilascio", "luogoImmatricolazione"],
+  annotazioniCantonali: ["annotazioniCantonali"],
+  decisioniAutorita: ["decisioniAutorita"],
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function unwrapArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (isRecord(raw) && Array.isArray(raw.value)) return raw.value;
+  if (isRecord(raw) && Array.isArray(raw.items)) return raw.items;
+  return [];
+}
+
+function toText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function normalizeNullableText(value: unknown): string | null {
+  const text = toText(value).trim();
+  return text ? text : null;
+}
+
+function normalizeTipo(value: unknown): Mezzo["tipo"] {
+  return value === "motrice" || value === "cisterna" ? value : undefined;
+}
+
+function normalizeMezzoRecord(record: Record<string, unknown>): MezzoFormData {
+  return {
+    ...record,
+    id: toText(record.id),
+    tipo: normalizeTipo(record.tipo),
+    categoria: toText(record.categoria),
+    targa: toText(record.targa),
+    marca: toText(record.marca),
+    modello: toText(record.modello),
+    telaio: toText(record.telaio),
+    colore: toText(record.colore),
+    cilindrata: toText(record.cilindrata),
+    potenza: toText(record.potenza),
+    massaComplessiva: toText(record.massaComplessiva),
+    proprietario: toText(record.proprietario),
+    assicurazione: toText(record.assicurazione),
+    dataImmatricolazione: toText(record.dataImmatricolazione),
+    dataScadenzaRevisione: toText(record.dataScadenzaRevisione),
+    dataUltimoCollaudo: toText(record.dataUltimoCollaudo),
+    manutenzioneProgrammata: Boolean(record.manutenzioneProgrammata),
+    manutenzioneDataInizio: toText(record.manutenzioneDataInizio),
+    manutenzioneDataFine: toText(record.manutenzioneDataFine),
+    manutenzioneKmMax: toText(record.manutenzioneKmMax),
+    manutenzioneContratto: toText(record.manutenzioneContratto),
+    note: toText(record.note),
+    autistaId: normalizeNullableText(record.autistaId),
+    autistaNome: normalizeNullableText(record.autistaNome),
+    marcaModello: toText(record.marcaModello),
+    fotoUrl: normalizeNullableText(record.fotoUrl),
+    fotoPath: normalizeNullableText(record.fotoPath),
+  };
+}
+
+function readRawField(record: Record<string, unknown>, key: string): string {
+  const aliases = RAW_LIBRETTO_ALIASES[key] ?? [key];
+  for (const alias of aliases) {
+    const value = toText(record[alias]).trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function buildRawLibrettoFields(record: Record<string, unknown>): RawLibrettoFields {
+  const fields: RawLibrettoFields = {};
+  Object.keys(RAW_LIBRETTO_ALIASES).forEach((key) => {
+    const value = readRawField(record, key);
+    if (value) {
+      fields[key] = value;
+    }
+  });
+  return fields;
+}
+
+function buildMarcaModello(mezzo: Pick<Mezzo, "marca" | "modello">): string {
+  return `${mezzo.marca.trim()} ${mezzo.modello.trim()}`.trim();
+}
+
+function hasField(fields: RawLibrettoFields, key: string): boolean {
+  return Boolean(fields[key]?.trim());
+}
+
+function buildPatch(current: MezzoFormData, original: MezzoFormData): Partial<Mezzo> {
+  const patch: Partial<Mezzo> = {};
+
+  EDITABLE_FIELDS.forEach((field) => {
+    if (current[field] !== original[field]) {
+      Object.assign(patch, { [field]: current[field] });
+    }
+  });
+
+  patch.marcaModello = buildMarcaModello(current);
+  return patch;
+}
+
+function isFormDirty(current: MezzoFormData | null, original: MezzoFormData | null): boolean {
+  if (!current || !original) return false;
+  return EDITABLE_FIELDS.some((field) => current[field] !== original[field]);
+}
+
+function findMezzo(records: unknown[], mezzoId: string): Record<string, unknown> | null {
+  const normalizedId = mezzoId.trim();
+  const found = records.find(
+    (record) => isRecord(record) && toText(record.id).trim() === normalizedId,
+  );
+  return isRecord(found) ? found : null;
+}
+
+function ReadOnlyField({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="mezmod-field">
+      <span className="mezmod-label">{label}</span>
+      <input
+        className={`mezmod-input${mono ? " mezmod-input--mono" : ""}`}
+        value={value}
+        readOnly
+      />
+    </div>
+  );
+}
+
+function EmptyReadonlySlot() {
+  return <div className="mezmod-field mezmod-field--hidden" />;
+}
+
+export default function NextMezzoEditModal({
+  mezzoId,
+  isOpen,
+  onClose,
+  onSaved,
+  onDeleted,
+}: NextMezzoEditModalProps) {
+  const [formData, setFormData] = useState<MezzoFormData | null>(null);
+  const [originalData, setOriginalData] = useState<MezzoFormData | null>(null);
+  const [rawLibrettoFields, setRawLibrettoFields] = useState<RawLibrettoFields>({});
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [autistaList, setAutistaList] = useState<NextAnagraficheFlottaCollegaItem[]>([]);
+  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState("");
+
+  const dirty = useMemo(() => isFormDirty(formData, originalData), [formData, originalData]);
+
+  useEffect(() => {
+    setIsDirty(dirty);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+
+    async function loadModalData() {
+      setIsSaving(false);
+      setErrorMessage("");
+      setDeleteErrorMessage("");
+      setShowDeleteConfirm(false);
+      setShowUnsavedConfirm(false);
+      setDeleteConfirmInput("");
+
+      try {
+        const rawMezzi = await getItemSync(MEZZI_KEY);
+        const records = unwrapArray(rawMezzi);
+        const record = findMezzo(records, mezzoId);
+        if (!record) {
+          throw new Error("Mezzo non trovato.");
+        }
+
+        const nextFormData = normalizeMezzoRecord(record);
+        const anagrafiche = await readNextAnagraficheFlottaSnapshot();
+
+        if (!cancelled) {
+          setFormData(nextFormData);
+          setOriginalData(nextFormData);
+          setRawLibrettoFields(buildRawLibrettoFields(record));
+          setAutistaList(anagrafiche.colleghi);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFormData(null);
+          setOriginalData(null);
+          setRawLibrettoFields({});
+          setAutistaList([]);
+          setErrorMessage(error instanceof Error ? error.message : "Errore caricamento mezzo.");
+        }
+      }
+    }
+
+    void loadModalData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mezzoId]);
+
+  function requestClose() {
+    if (isSaving) return;
+    if (isDirty) {
+      setShowUnsavedConfirm(true);
+      return;
+    }
+    onClose();
+  }
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      requestClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isDirty, isSaving]);
+
+  function updateField<K extends keyof Mezzo>(field: K, value: Mezzo[K]) {
+    setFormData((current) =>
+      current
+        ? ({
+            ...current,
+            [field]: value,
+          } as MezzoFormData)
+        : current,
+    );
+  }
+
+  function handleAutistaChange(autistaId: string) {
+    const autista = autistaList.find((item) => item.id === autistaId);
+    setFormData((current) =>
+      current
+        ? {
+            ...current,
+            autistaId: autistaId || null,
+            autistaNome: autista?.nomeCompleto ?? null,
+          }
+        : current,
+    );
+  }
+
+  function validateForm(data: MezzoFormData): string {
+    if (!data.targa.trim()) return "La targa è obbligatoria.";
+    if (!data.marca.trim()) return "La marca è obbligatoria.";
+    if (!data.modello.trim()) return "Il modello è obbligatorio.";
+    if (!data.dataImmatricolazione.trim()) return "La data di immatricolazione è obbligatoria.";
+    return "";
+  }
+
+  async function handleSave() {
+    if (!formData || !originalData || isSaving) return;
+
+    const validationError = validateForm(formData);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage("");
+
+    const nextData: MezzoFormData = {
+      ...formData,
+      marcaModello: buildMarcaModello(formData),
+    };
+
+    try {
+      await updateNextMezzoAnagrafica(mezzoId, buildPatch(nextData, originalData));
+      onSaved?.(nextData);
+      onClose();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Errore durante il salvataggio.");
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteConfirmed() {
+    if (!formData || isSaving || deleteConfirmInput !== formData.targa) return;
+
+    setIsSaving(true);
+    setDeleteErrorMessage("");
+
+    try {
+      await deleteNextMezzo(mezzoId);
+      onDeleted?.(mezzoId);
+      onClose();
+    } catch (error) {
+      setDeleteErrorMessage(
+        error instanceof Error ? error.message : "Errore durante l'eliminazione.",
+      );
+      setIsSaving(false);
+    }
+  }
+
+  function closeWithoutSaving() {
+    setShowUnsavedConfirm(false);
+    setShowDeleteConfirm(false);
+    onClose();
+  }
+
+  if (!isOpen) return null;
+
+  const showDomicilio = hasField(rawLibrettoFields, "indirizzo") || hasField(rawLibrettoFields, "localita");
+  const showDatiTitolare = hasField(rawLibrettoFields, "statoOrigine") || Boolean(formData);
+  const showGenereVeicolo = hasField(rawLibrettoFields, "genereVeicolo");
+  const showCarrozzeria = hasField(rawLibrettoFields, "carrozzeria");
+  const showLuogoDataRilascio = hasField(rawLibrettoFields, "luogoDataRilascio");
+  const deleteDisabled = !formData || deleteConfirmInput !== formData.targa || isSaving;
+
+  return (
+    <div className="mezmod-overlay">
+      <div className="mezmod-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="mezmod-modal-head">
+          <div className="mezmod-modal-head__title">
+            Modifica dati mezzo · libretto di circolazione
+          </div>
+          <button
+            className="mezmod-modal-head__close"
+            type="button"
+            onClick={requestClose}
+            disabled={isSaving}
+          >
+            Chiudi
+          </button>
+        </div>
+
+        {errorMessage ? <div className="mezmod-error">{errorMessage}</div> : null}
+
+        {formData ? (
+          <div className="mezmod-spread">
+            <div className="mezmod-page">
+              {hasField(rawLibrettoFields, "numeroAvs") ? (
+                <div className="mezmod-row">
+                  <div className="mezmod-rail">Detentore</div>
+                  <div className="mezmod-main">
+                    <ReadOnlyField label="N. AVS" value={rawLibrettoFields.numeroAvs} mono />
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mezmod-row">
+                <div className="mezmod-rail">Ragione sociale</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Proprietario</span>
+                    <input
+                      className="mezmod-input"
+                      value={formData.proprietario}
+                      onChange={(event) => updateField("proprietario", event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {showDomicilio ? (
+                <div className="mezmod-row">
+                  <div className="mezmod-rail">Domicilio</div>
+                  <div className="mezmod-main mezmod-split-v">
+                    {hasField(rawLibrettoFields, "indirizzo") ? (
+                      <ReadOnlyField label="Indirizzo" value={rawLibrettoFields.indirizzo} />
+                    ) : (
+                      <EmptyReadonlySlot />
+                    )}
+                    {hasField(rawLibrettoFields, "localita") ? (
+                      <ReadOnlyField label="Località" value={rawLibrettoFields.localita} />
+                    ) : (
+                      <EmptyReadonlySlot />
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {showDatiTitolare ? (
+                <div className="mezmod-row">
+                  <div className="mezmod-rail">Dati titolare</div>
+                  <div className="mezmod-main mezmod-split-h">
+                    {hasField(rawLibrettoFields, "statoOrigine") ? (
+                      <ReadOnlyField
+                        label="Stato d'origine"
+                        value={rawLibrettoFields.statoOrigine}
+                      />
+                    ) : (
+                      <EmptyReadonlySlot />
+                    )}
+                    <div className="mezmod-field">
+                      <span className="mezmod-label">Assicurazione</span>
+                      <input
+                        className="mezmod-input"
+                        value={formData.assicurazione}
+                        onChange={(event) => updateField("assicurazione", event.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mezmod-strip">
+                <span>Annotazioni cantonali</span>
+                <span>Decisioni autorità</span>
+                <span>Annotazioni</span>
+              </div>
+
+              <div className="mezmod-row mezmod-row--full">
+                <div className="mezmod-main">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Annotazioni</span>
+                    <textarea
+                      className="mezmod-textarea"
+                      value={formData.note}
+                      onChange={(event) => updateField("note", event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mezmod-row">
+                <div className="mezmod-rail">Autista</div>
+                <div className="mezmod-main mezmod-split-h">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Autista abituale</span>
+                    <select
+                      className="mezmod-select"
+                      value={formData.autistaId ?? ""}
+                      onChange={(event) => handleAutistaChange(event.target.value)}
+                    >
+                      <option value="">Nessun autista</option>
+                      {autistaList.map((autista) => (
+                        <option key={autista.id} value={autista.id}>
+                          {autista.nomeCompleto || autista.descrizione || autista.id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">ID autista</span>
+                    <input
+                      className="mezmod-input mezmod-input--mono"
+                      value={formData.autistaId ?? ""}
+                      disabled
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mezmod-row mezmod-row--green">
+                <div className="mezmod-rail mezmod-rail--green">Manut. programmata</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-mp-head">
+                    <span className="mezmod-mp-head__label">
+                      Contratto manutenzione programmata
+                    </span>
+                    <label className="mezmod-mp-head__check">
+                      <input
+                        type="checkbox"
+                        checked={formData.manutenzioneProgrammata}
+                        onChange={(event) =>
+                          updateField("manutenzioneProgrammata", event.target.checked)
+                        }
+                      />
+                      attivo
+                    </label>
+                    <span className="mezmod-mp-head__badge">RENAULT / DAF</span>
+                  </div>
+                  <div className="mezmod-split-h">
+                    <div className="mezmod-split-v">
+                      <div className="mezmod-field">
+                        <span className="mezmod-label">Inizio contratto</span>
+                        <input
+                          className="mezmod-input mezmod-input--date"
+                          type="date"
+                          value={formData.manutenzioneDataInizio ?? ""}
+                          disabled={!formData.manutenzioneProgrammata}
+                          onChange={(event) =>
+                            updateField("manutenzioneDataInizio", event.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="mezmod-field">
+                        <span className="mezmod-label">Km massimi</span>
+                        <input
+                          className="mezmod-input"
+                          value={formData.manutenzioneKmMax ?? ""}
+                          disabled={!formData.manutenzioneProgrammata}
+                          onChange={(event) =>
+                            updateField("manutenzioneKmMax", event.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="mezmod-split-v">
+                      <div className="mezmod-field">
+                        <span className="mezmod-label">Prossima scadenza</span>
+                        <input
+                          className="mezmod-input mezmod-input--date"
+                          type="date"
+                          value={formData.manutenzioneDataFine ?? ""}
+                          disabled={!formData.manutenzioneProgrammata}
+                          onChange={(event) =>
+                            updateField("manutenzioneDataFine", event.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="mezmod-field">
+                        <span className="mezmod-label">Note contratto</span>
+                        <input
+                          className="mezmod-input"
+                          value={formData.manutenzioneContratto ?? ""}
+                          disabled={!formData.manutenzioneProgrammata}
+                          onChange={(event) =>
+                            updateField("manutenzioneContratto", event.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mezmod-page">
+              <div className="mezmod-row mezmod-row--plate">
+                <div className="mezmod-code">A / 15</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Targa</span>
+                    <div className="mezmod-plate">
+                      <div className="mezmod-plate__side">
+                        <span className="mezmod-plate__star">*</span>
+                        <span className="mezmod-plate__country">CH</span>
+                      </div>
+                      <input
+                        className="mezmod-input mezmod-plate__input"
+                        value={formData.targa}
+                        onChange={(event) =>
+                          updateField("targa", event.target.value.toUpperCase())
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="mezmod-side">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Colore</span>
+                    <input
+                      className="mezmod-input"
+                      value={formData.colore}
+                      onChange={(event) => updateField("colore", event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {showGenereVeicolo ? (
+                <div className="mezmod-row mezmod-row--tech">
+                  <div className="mezmod-code">19</div>
+                  <div className="mezmod-main">
+                    <ReadOnlyField
+                      label="Genere veicolo"
+                      value={rawLibrettoFields.genereVeicolo}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mezmod-row mezmod-row--tech">
+                <div className="mezmod-code">D / 21</div>
+                <div className="mezmod-main mezmod-split-h">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Marca</span>
+                    <input
+                      className="mezmod-input"
+                      value={formData.marca}
+                      onChange={(event) => updateField("marca", event.target.value)}
+                    />
+                  </div>
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Modello</span>
+                    <input
+                      className="mezmod-input"
+                      value={formData.modello}
+                      onChange={(event) => updateField("modello", event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mezmod-row mezmod-row--tech">
+                <div className="mezmod-code">E / 23</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Telaio</span>
+                    <input
+                      className="mezmod-input mezmod-input--mono"
+                      value={formData.telaio}
+                      onChange={(event) => updateField("telaio", event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {showCarrozzeria ? (
+                <div className="mezmod-row mezmod-row--plate">
+                  <div className="mezmod-code">25</div>
+                  <div className="mezmod-main">
+                    <ReadOnlyField label="Carrozzeria" value={rawLibrettoFields.carrozzeria} />
+                  </div>
+                  <div className="mezmod-side">
+                    <div className="mezmod-field">
+                      <span className="mezmod-label">Colore</span>
+                      <input
+                        className="mezmod-input"
+                        value={formData.colore}
+                        onChange={(event) => updateField("colore", event.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mezmod-row mezmod-row--tech">
+                <div className="mezmod-code">Tech</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-tech">
+                    <div className="mezmod-tech-left">
+                      {hasField(rawLibrettoFields, "numeroMatricola") ? (
+                        <ReadOnlyField
+                          label="Numero matricola"
+                          value={rawLibrettoFields.numeroMatricola}
+                          mono
+                        />
+                      ) : (
+                        <EmptyReadonlySlot />
+                      )}
+                      {hasField(rawLibrettoFields, "approvazioneTipo") ? (
+                        <ReadOnlyField
+                          label="Approvazione tipo"
+                          value={rawLibrettoFields.approvazioneTipo}
+                          mono
+                        />
+                      ) : (
+                        <EmptyReadonlySlot />
+                      )}
+                      <div className="mezmod-field">
+                        <span className="mezmod-label">Cilindrata</span>
+                        <input
+                          className="mezmod-input"
+                          value={formData.cilindrata}
+                          onChange={(event) => updateField("cilindrata", event.target.value)}
+                        />
+                      </div>
+                      <div className="mezmod-field">
+                        <span className="mezmod-label">Potenza</span>
+                        <input
+                          className="mezmod-input"
+                          value={formData.potenza}
+                          onChange={(event) => updateField("potenza", event.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="mezmod-tech-right">
+                      {hasField(rawLibrettoFields, "pesoVuoto") ? (
+                        <ReadOnlyField label="Peso a vuoto" value={rawLibrettoFields.pesoVuoto} mono />
+                      ) : (
+                        <EmptyReadonlySlot />
+                      )}
+                      {hasField(rawLibrettoFields, "caricoUtileSella") ? (
+                        <ReadOnlyField
+                          label="Carico utile / sella"
+                          value={rawLibrettoFields.caricoUtileSella}
+                          mono
+                        />
+                      ) : (
+                        <EmptyReadonlySlot />
+                      )}
+                      {hasField(rawLibrettoFields, "pesoTotale") ? (
+                        <ReadOnlyField label="Peso totale" value={rawLibrettoFields.pesoTotale} mono />
+                      ) : (
+                        <div className="mezmod-field">
+                          <span className="mezmod-label">Peso totale</span>
+                          <input
+                            className="mezmod-input mezmod-input--mono"
+                            value={formData.massaComplessiva}
+                            onChange={(event) =>
+                              updateField("massaComplessiva", event.target.value)
+                            }
+                          />
+                        </div>
+                      )}
+                      {hasField(rawLibrettoFields, "pesoTotaleRimorchio") ? (
+                        <ReadOnlyField
+                          label="Peso totale rimorchio"
+                          value={rawLibrettoFields.pesoTotaleRimorchio}
+                          mono
+                        />
+                      ) : (
+                        <EmptyReadonlySlot />
+                      )}
+                      {hasField(rawLibrettoFields, "caricoSulLetto") ? (
+                        <ReadOnlyField
+                          label="Carico sul letto"
+                          value={rawLibrettoFields.caricoSulLetto}
+                          mono
+                        />
+                      ) : (
+                        <EmptyReadonlySlot />
+                      )}
+                      {hasField(rawLibrettoFields, "pesoRimorchiabile") ? (
+                        <ReadOnlyField
+                          label="Peso rimorchiabile"
+                          value={rawLibrettoFields.pesoRimorchiabile}
+                          mono
+                        />
+                      ) : (
+                        <EmptyReadonlySlot />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mezmod-row mezmod-row--plate">
+                <div className="mezmod-code">B / 36</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Prima immatricolazione</span>
+                    <input
+                      className="mezmod-input mezmod-input--date"
+                      type="date"
+                      value={formData.dataImmatricolazione}
+                      onChange={(event) =>
+                        updateField("dataImmatricolazione", event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="mezmod-side">
+                  {showLuogoDataRilascio ? (
+                    <ReadOnlyField
+                      label="Luogo / data rilascio"
+                      value={rawLibrettoFields.luogoDataRilascio}
+                    />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mezmod-row mezmod-row--collaudo mezmod-row--tech">
+                <div className="mezmod-code">38</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Ultimo collaudo</span>
+                    <input
+                      className="mezmod-input mezmod-input--date"
+                      type="date"
+                      value={formData.dataUltimoCollaudo}
+                      onChange={(event) =>
+                        updateField("dataUltimoCollaudo", event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mezmod-row mezmod-row--collaudo mezmod-row--tech">
+                <div className="mezmod-code">39</div>
+                <div className="mezmod-main">
+                  <div className="mezmod-field">
+                    <span className="mezmod-label">Prossimo collaudo / revisione</span>
+                    <input
+                      className="mezmod-input mezmod-input--date"
+                      type="date"
+                      value={formData.dataScadenzaRevisione}
+                      onChange={(event) =>
+                        updateField("dataScadenzaRevisione", event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mezmod-banner">
+                <span className="mezmod-banner-dot" />
+                <span>Registrato</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mezmod-spread">
+            <div className="mezmod-page">
+              <div className="mezmod-field">Caricamento dati mezzo...</div>
+            </div>
+            <div className="mezmod-page" />
+          </div>
+        )}
+
+        <div className="mezmod-modal-foot">
+          <button
+            className="mezmod-btn-del"
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={!formData || isSaving}
+          >
+            Elimina mezzo
+          </button>
+          <div className="mezmod-foot-spacer" />
+          <button
+            className="mezmod-btn-cancel"
+            type="button"
+            onClick={requestClose}
+            disabled={isSaving}
+          >
+            Annulla
+          </button>
+          <button
+            className="mezmod-btn-save"
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={!formData || isSaving}
+          >
+            {isSaving ? "Salvataggio..." : "Salva modifiche"}
+          </button>
+        </div>
+
+        {showDeleteConfirm && formData ? (
+          <div className="mezmod-confirm-overlay">
+            <div className="mezmod-confirm-modal">
+              <h3>Conferma eliminazione mezzo</h3>
+              <p>
+                Per confermare l'eliminazione, digita la targa esatta del mezzo:{" "}
+                <strong>{formData.targa}</strong>
+              </p>
+              {deleteErrorMessage ? <div className="mezmod-error">{deleteErrorMessage}</div> : null}
+              <input
+                className="mezmod-input mezmod-input--mono"
+                value={deleteConfirmInput}
+                onChange={(event) => setDeleteConfirmInput(event.target.value)}
+              />
+              <div className="mezmod-confirm-actions">
+                <button
+                  className="mezmod-confirm-action"
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDeleteConfirmInput("");
+                    setDeleteErrorMessage("");
+                  }}
+                  disabled={isSaving}
+                >
+                  Annulla
+                </button>
+                <button
+                  className="mezmod-confirm-action mezmod-confirm-action--danger"
+                  type="button"
+                  onClick={() => void handleDeleteConfirmed()}
+                  disabled={deleteDisabled}
+                >
+                  Elimina definitivamente
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {showUnsavedConfirm ? (
+          <div className="mezmod-confirm-overlay">
+            <div className="mezmod-confirm-modal">
+              <h3>Modifiche non salvate</h3>
+              <p>Hai modifiche non salvate. Vuoi davvero chiudere senza salvare?</p>
+              <div className="mezmod-confirm-actions">
+                <button
+                  className="mezmod-confirm-action"
+                  type="button"
+                  onClick={() => setShowUnsavedConfirm(false)}
+                >
+                  Annulla
+                </button>
+                <button
+                  className="mezmod-confirm-action mezmod-confirm-action--danger"
+                  type="button"
+                  onClick={closeWithoutSaving}
+                >
+                  Chiudi senza salvare
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}

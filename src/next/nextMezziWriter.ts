@@ -1,0 +1,172 @@
+import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
+import { getItemSync, setItemSync } from "../utils/storageSync";
+
+const MEZZI_KEY = "@mezzi_aziendali";
+const DOSSIER_MEZZO_WRITE_SCOPE = "internal_ai_magazzino_inline_magazzino";
+
+// Mirror locale del type Mezzo dichiarato in src/pages/Mezzi.tsx.
+export type Mezzo = {
+  id: string;
+  tipo?: "motrice" | "cisterna";
+  categoria?: string;
+  targa: string;
+  marca: string;
+  modello: string;
+  telaio: string;
+  colore: string;
+  cilindrata: string;
+  potenza: string;
+  massaComplessiva: string;
+  proprietario: string;
+  assicurazione: string;
+  dataImmatricolazione: string;
+  dataScadenzaRevisione: string;
+  dataUltimoCollaudo: string;
+  manutenzioneProgrammata: boolean;
+  manutenzioneDataInizio?: string;
+  manutenzioneDataFine?: string;
+  manutenzioneKmMax?: string;
+  manutenzioneContratto?: string;
+  note: string;
+  autistaId?: string | null;
+  autistaNome?: string | null;
+  marcaModello?: string;
+  fotoUrl?: string | null;
+  fotoPath?: string | null;
+};
+
+type MezzoRawRecord = Mezzo & Record<string, unknown>;
+type SetItemSyncOptions = {
+  allowRemovals?: boolean;
+  removedIds?: string[];
+};
+type PatchableMezzoField = keyof Mezzo | "anno";
+
+const PATCHABLE_MEZZO_FIELDS = [
+  "tipo",
+  "categoria",
+  "anno",
+  "targa",
+  "marca",
+  "modello",
+  "telaio",
+  "colore",
+  "cilindrata",
+  "potenza",
+  "massaComplessiva",
+  "proprietario",
+  "assicurazione",
+  "dataImmatricolazione",
+  "dataScadenzaRevisione",
+  "dataUltimoCollaudo",
+  "manutenzioneProgrammata",
+  "manutenzioneDataInizio",
+  "manutenzioneDataFine",
+  "manutenzioneKmMax",
+  "manutenzioneContratto",
+  "note",
+  "autistaId",
+  "autistaNome",
+] as const satisfies readonly PatchableMezzoField[];
+
+function assertMezzoId(mezzoId: string): string {
+  const normalized = String(mezzoId ?? "").trim();
+  if (!normalized) {
+    throw new Error("ID mezzo mancante.");
+  }
+  return normalized;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function unwrapMezziArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (isRecord(raw) && Array.isArray(raw.value)) return raw.value;
+  if (isRecord(raw) && Array.isArray(raw.items)) return raw.items;
+  throw new Error("Dataset mezzi non trovato o in formato non valido.");
+}
+
+async function readMezziRecords(): Promise<unknown[]> {
+  const raw = await getItemSync(MEZZI_KEY);
+  return unwrapMezziArray(raw);
+}
+
+function findMezzoIndex(records: unknown[], mezzoId: string): number {
+  return records.findIndex(
+    (record) => isRecord(record) && String(record.id ?? "").trim() === mezzoId,
+  );
+}
+
+function buildPatch(patch: Partial<Mezzo>): Partial<Mezzo> {
+  const patchRecord = patch as Partial<Record<PatchableMezzoField, unknown>>;
+  const nextPatch: Record<string, unknown> = {};
+
+  PATCHABLE_MEZZO_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(patchRecord, field)) {
+      nextPatch[field] = patchRecord[field];
+    }
+  });
+
+  return nextPatch as Partial<Mezzo>;
+}
+
+function buildMarcaModello(record: Pick<Mezzo, "marca" | "modello">): string {
+  return `${String(record.marca ?? "").trim()} ${String(record.modello ?? "").trim()}`.trim();
+}
+
+async function writeMezziRecords(records: unknown[], options?: SetItemSyncOptions) {
+  await runWithCloneWriteScopedAllowance(DOSSIER_MEZZO_WRITE_SCOPE, () =>
+    setItemSync(MEZZI_KEY, records, options),
+  );
+}
+
+export async function updateNextMezzoAnagrafica(
+  mezzoId: string,
+  patch: Partial<Mezzo>,
+): Promise<void> {
+  const normalizedMezzoId = assertMezzoId(mezzoId);
+  const records = await readMezziRecords();
+  const targetIndex = findMezzoIndex(records, normalizedMezzoId);
+
+  if (targetIndex < 0) {
+    throw new Error("Mezzo non trovato.");
+  }
+
+  const current = records[targetIndex];
+  if (!isRecord(current)) {
+    throw new Error("Record mezzo non valido.");
+  }
+
+  const updated: MezzoRawRecord = {
+    ...(current as MezzoRawRecord),
+    ...buildPatch(patch),
+    id: String(current.id ?? normalizedMezzoId),
+    fotoUrl: (current as MezzoRawRecord).fotoUrl,
+    fotoPath: (current as MezzoRawRecord).fotoPath,
+  };
+
+  updated.marcaModello = buildMarcaModello(updated);
+
+  const nextRecords = [...records];
+  nextRecords[targetIndex] = updated;
+  await writeMezziRecords(nextRecords);
+}
+
+export async function deleteNextMezzo(mezzoId: string): Promise<void> {
+  const normalizedMezzoId = assertMezzoId(mezzoId);
+  const records = await readMezziRecords();
+  const nextRecords = records.filter(
+    (record) => !isRecord(record) || String(record.id ?? "").trim() !== normalizedMezzoId,
+  );
+
+  if (nextRecords.length === records.length) {
+    throw new Error("Mezzo non trovato.");
+  }
+
+  await writeMezziRecords(nextRecords, {
+    allowRemovals: true,
+    removedIds: [normalizedMezzoId],
+  });
+}

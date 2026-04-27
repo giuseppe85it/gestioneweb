@@ -17,11 +17,6 @@ type ArchivistaAvailability = "active" | "coming_soon" | "out_of_scope" | "not_a
 type ArchivistaPreset = {
   tipo?: ArchivistaTipo;
   contesto?: ArchivistaContesto;
-  fileUrl?: string;
-  sourceDocId?: string;
-  sourceKey?: string;
-  tipoDocumento?: string;
-  targa?: string;
 };
 
 type ArchivistaNavigationState = {
@@ -142,25 +137,6 @@ function buildFlowKey(tipo: ArchivistaTipo, contesto: ArchivistaContesto) {
   return `${tipo}:${contesto}` as const;
 }
 
-function normalizePresetText(value: string | undefined) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function buildArchivistaPreloadDocument(preset: ArchivistaPreset | undefined) {
-  const fileUrl = normalizePresetText(preset?.fileUrl);
-  if (!fileUrl) {
-    return null;
-  }
-
-  return {
-    fileUrl,
-    sourceDocId: normalizePresetText(preset?.sourceDocId) || undefined,
-    sourceKey: normalizePresetText(preset?.sourceKey) || undefined,
-    tipoDocumento: normalizePresetText(preset?.tipoDocumento) || undefined,
-    targa: normalizePresetText(preset?.targa) || undefined,
-  };
-}
-
 function normalizePreset(
   preset: ArchivistaPreset | undefined,
 ): { tipo: ArchivistaTipo; contesto: ArchivistaContesto } {
@@ -221,10 +197,6 @@ export default function NextIAArchivistaPage() {
     () => normalizePreset(navigationState?.archivistaPreset),
     [navigationState],
   );
-  const archivistaPreloadDocument = useMemo(
-    () => buildArchivistaPreloadDocument(navigationState?.archivistaPreset),
-    [navigationState],
-  );
 
   const [tipo, setTipo] = useState<ArchivistaTipo>(normalizedPreset.tipo);
   const [contesto, setContesto] = useState<ArchivistaContesto>(normalizedPreset.contesto);
@@ -259,7 +231,6 @@ export default function NextIAArchivistaPage() {
             setContesto(nextDestination.contesto);
           }}
           onSubtypeChange={setDocumentoMezzoSubtype}
-          preloadDocument={archivistaPreloadDocument}
           selectedSubtype={documentoMezzoSubtype}
         />
       </section>
@@ -341,7 +312,6 @@ export default function NextIAArchivistaPage() {
                   setContesto(nextDestination.contesto);
                 }}
                 onSubtypeChange={setDocumentoMezzoSubtype}
-                preloadDocument={archivistaPreloadDocument}
                 selectedSubtype={documentoMezzoSubtype}
               />
           ) : activeFlow.availability === "active" &&

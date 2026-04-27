@@ -6,7 +6,7 @@ const STORAGE_COLLECTION = "storage";
 const MEZZI_DATASET_KEY = "@mezzi_aziendali";
 const COLLEGHI_DATASET_KEY = "@colleghi";
 
-export const NEXT_FLOTTA_CANONICAL_CATEGORIES = [
+const NEXT_FLOTTA_CANONICAL_CATEGORIES = [
   "motrice 2 assi",
   "motrice 3 assi",
   "motrice 4 assi",
