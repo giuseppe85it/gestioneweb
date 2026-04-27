@@ -171,6 +171,7 @@ import type {
   InternalAiReportPeriodInput,
   InternalAiReportPeriodPreset,
   InternalAiChatMessage,
+  MezzoDossierStructuredCard,
   InternalAiPreventiviPreview,
   InternalAiPreviewState,
   InternalAiReportType,
@@ -187,6 +188,7 @@ import type {
 } from "./internal-ai/internalAiUniversalTypes";
 import { formatDateTimeUI } from "./nextDateFormat";
 import NextEstrazioneLibretto from "./internal-ai/NextEstrazioneLibretto";
+import InternalAiMezzoCard from "./internal-ai/InternalAiMezzoCard";
 import "./next-shell.css";
 import "./internal-ai/internal-ai.css";
 
@@ -1486,6 +1488,7 @@ function createChatMessage(args: {
   attachments?: InternalAiChatAttachment[];
   outputMode?: InternalAiChatMessage["outputMode"];
   outputReason?: InternalAiChatMessage["outputReason"];
+  structuredCard?: MezzoDossierStructuredCard | null;
 }): InternalAiChatMessage {
   return {
     id: `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1498,6 +1501,7 @@ function createChatMessage(args: {
     attachments: args.attachments ?? [],
     outputMode: args.outputMode ?? null,
     outputReason: args.outputReason ?? null,
+    structuredCard: args.structuredCard ?? null,
   };
 }
 
@@ -7872,6 +7876,7 @@ function NextInternalAiPage({
           ]),
           outputMode: outputSelection.mode,
           outputReason: outputSelection.reason,
+          structuredCard: result.structuredCard ?? null,
         }),
       ]);
       setChatStatus("idle");
@@ -10303,7 +10308,7 @@ function NextInternalAiPage({
               <div className="internal-ai-chat__main">
                 {renderAutomaticDocumentProposalPanel()}
 
-                <div className="internal-ai-chat__messages">
+                <div className="internal-ai-chat__messages" data-primary-chat>
                   {chatMessages.length ? (
                     chatMessages.map((message) => (
                       <div
@@ -10343,7 +10348,11 @@ function NextInternalAiPage({
                                 {buildChatUseCaseLabel(message)}
                               </p>
                             ) : null}
-                            {renderChatMessageText(message.text)}
+                            {message.structuredCard?.kind === "mezzo_dossier" ? (
+                              <InternalAiMezzoCard data={message.structuredCard.data} />
+                            ) : (
+                              renderChatMessageText(message.text)
+                            )}
                           </>
                         ) : (
                           <p className="internal-ai-chat__message-text">{message.text}</p>

@@ -1,0 +1,211 @@
+.internal-ai-mezzo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(110, 85, 51, 0.14);
+  background: #fff;
+  overflow: hidden;
+}
+
+.internal-ai-mezzo-card__identity {
+  padding: 16px;
+  background: linear-gradient(180deg, #f8f2e8, #fff);
+  border-bottom: 1px solid rgba(110, 85, 51, 0.1);
+}
+
+.internal-ai-mezzo-card__identity-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.internal-ai-mezzo-card__identity-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.internal-ai-mezzo-card__targa {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #2e2213;
+}
+
+.internal-ai-mezzo-card__subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #6b5c45;
+}
+
+.internal-ai-mezzo-card__autista {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #5a4a30;
+}
+
+.internal-ai-mezzo-card__foto {
+  width: 72px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(110, 85, 51, 0.15);
+  flex-shrink: 0;
+}
+
+.internal-ai-mezzo-card__section {
+  border-top: 1px solid rgba(110, 85, 51, 0.08);
+}
+
+.internal-ai-mezzo-card__section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5a4a30;
+  text-align: left;
+}
+
+.internal-ai-mezzo-card__section-toggle:hover {
+  background: rgba(141, 114, 76, 0.05);
+}
+
+.internal-ai-mezzo-card__section-toggle--sub {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 0;
+  color: #7a6548;
+}
+
+.internal-ai-mezzo-card__section-icon {
+  font-size: 10px;
+  color: #a08060;
+}
+
+.internal-ai-mezzo-card__section-body {
+  padding: 4px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.internal-ai-mezzo-card__field-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.internal-ai-mezzo-card__field-label {
+  font-weight: 700;
+  color: #7a6548;
+  min-width: 140px;
+  flex-shrink: 0;
+}
+
+.internal-ai-mezzo-card__field-value {
+  color: #2e2213;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.internal-ai-mezzo-card__alert-list,
+.internal-ai-mezzo-card__sub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.internal-ai-mezzo-card__list-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #a08060;
+  margin-bottom: 2px;
+}
+
+.internal-ai-mezzo-card__alert-row,
+.internal-ai-mezzo-card__lavoro-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(248, 244, 236, 0.7);
+  font-size: 13px;
+}
+
+.internal-ai-mezzo-card__alert-title,
+.internal-ai-mezzo-card__lavoro-desc {
+  font-weight: 600;
+  color: #2e2213;
+}
+
+.internal-ai-mezzo-card__alert-detail {
+  color: #6b5c45;
+}
+
+.internal-ai-mezzo-card__alert-date,
+.internal-ai-mezzo-card__lavoro-date {
+  font-size: 12px;
+  color: #9a8060;
+  margin-left: auto;
+}
+
+.internal-ai-mezzo-card__counters {
+  font-size: 13px;
+  color: #5a4a30;
+  padding: 4px 0;
+}
+
+.internal-ai-mezzo-card__empty-note {
+  font-size: 13px;
+  color: #9a8060;
+  font-style: italic;
+}
+
+.internal-ai-mezzo-card__show-more {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(110, 85, 51, 0.2);
+  background: rgba(141, 114, 76, 0.06);
+  color: #6b5c45;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.internal-ai-mezzo-card__show-more:hover {
+  background: rgba(141, 114, 76, 0.12);
+}
+
+.internal-ai-mezzo-card__doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(141, 114, 76, 0.1);
+  color: #5a4a30;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.internal-ai-mezzo-card__doc-link:hover {
+  background: rgba(141, 114, 76, 0.18);
+}

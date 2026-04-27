@@ -17,6 +17,7 @@ import type {
   InternalAiChatMessageReference,
   InternalAiReportPeriodInput,
   InternalAiReportPreview,
+  MezzoDossierStructuredCard,
 } from "./internalAiTypes";
 
 export type InternalAiChatTurnResult = {
@@ -24,6 +25,7 @@ export type InternalAiChatTurnResult = {
   status: InternalAiChatExecutionStatus;
   assistantText: string;
   references: InternalAiChatMessageReference[];
+  structuredCard?: MezzoDossierStructuredCard | null;
   report:
     | {
         status: "ready";
@@ -1276,7 +1278,6 @@ async function buildRepoUnderstandingFallbackResponse(
         "docs/product/STATO_MIGRAZIONE_NEXT.md",
         "docs/flow-master/MAPPA_MAESTRA_FLUSSI_GESTIONALE.md",
         "src/next/domain/nextDossierMezzoDomain.ts",
-        "src/next/NextMezziDossierPage.tsx",
         "src/next/NextDossierMezzoPage.tsx",
         "src/next/NextDossierRifornimentiPage.tsx",
         "src/next/NextAnalisiEconomicaPage.tsx",
@@ -1284,7 +1285,6 @@ async function buildRepoUnderstandingFallbackResponse(
         "src/pages/DossierMezzo.tsx",
       ],
       uiFiles: [
-        "src/next/NextMezziDossierPage.tsx",
         "src/next/NextDossierMezzoPage.tsx",
         "src/next/NextDossierRifornimentiPage.tsx",
         "src/next/NextAnalisiEconomicaPage.tsx",
@@ -1795,9 +1795,69 @@ async function buildVehicleOperationalStatusResponse(
     "La capability `stato_operativo_mezzo` legge solo D01, D10 e D02; report targa, documenti, costi, rifornimenti e altri domini restano fuori da questo percorso canonico.",
   ].filter((entry): entry is string => Boolean(entry));
 
+  const structuredCard: MezzoDossierStructuredCard = {
+    kind: "mezzo_dossier",
+    data: {
+      targa: mezzo.targa,
+      categoria: mezzo.categoria,
+      marcaModello: mezzo.marcaModello,
+      anno: mezzo.anno,
+      tipo: mezzo.tipo,
+      autistaNome: mezzo.autistaNome,
+      fotoUrl: mezzo.fotoUrl,
+      dataScadenzaRevisione: mezzo.dataScadenzaRevisione,
+      dataScadenzaRevisioneTimestamp: mezzo.dataScadenzaRevisioneTimestamp,
+      revisioneUrgente: Boolean(revisioneItem),
+      manutenzioneProgrammata: mezzo.manutenzioneProgrammata,
+      manutenzioneDataFine: mezzo.manutenzioneDataFine,
+      manutenzioneDataFineTimestamp: mezzo.manutenzioneDataFineTimestamp,
+      manutenzioneKmMax: mezzo.manutenzioneKmMax,
+      alerts: alertItems.map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        title: entry.title,
+        detailText: entry.detailText,
+        severity: entry.severity,
+        dateLabel: entry.dateLabel,
+        targetRoute: entry.targetRoute,
+      })),
+      focusItems: focusItems.map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        title: entry.title,
+        detailText: entry.detailText,
+        severity: entry.severity,
+        dateLabel: entry.dateLabel,
+        targetRoute: entry.targetRoute,
+      })),
+      lavoriAperti: operativitaTecnica.lavoriAperti.map((entry) => ({
+        id: entry.id,
+        descrizione: entry.descrizione,
+        urgenza: entry.urgenza,
+        dataInserimento: entry.dataInserimento,
+      })),
+      lavoriChiusi: operativitaTecnica.lavoriChiusi.map((entry) => ({
+        id: entry.id,
+        descrizione: entry.descrizione,
+        urgenza: entry.urgenza,
+        dataInserimento: entry.dataInserimento,
+      })),
+      manutenzioniD02: operativitaTecnica.manutenzioni.map((entry) => ({
+        id: entry.id,
+        descrizione: entry.descrizione,
+        tipo: entry.tipo,
+        data: entry.data,
+        km: entry.km,
+      })),
+      counts: operativitaTecnica.counts,
+      librettoUrl: mezzo.librettoUrl,
+    },
+  };
+
   return {
     intent: "mezzo_dossier",
     status: d10Linked ? "completed" : "partial",
+    structuredCard,
     assistantText:
       "Identita mezzo:\n" +
       `- Targa: ${mezzo.targa}\n` +

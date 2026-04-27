@@ -728,6 +728,64 @@ export type InternalAiChatAttachment = {
   localObjectUrl?: string | null;
 };
 
+export type MezzoDossierCardAlert = {
+  id: string;
+  kind: string;
+  title: string;
+  detailText: string;
+  severity: "danger" | "warning" | "info";
+  dateLabel: string | null;
+  targetRoute: string | null;
+};
+
+export type MezzoDossierCardLavoro = {
+  id: string;
+  descrizione: string | null;
+  urgenza: "bassa" | "media" | "alta" | null;
+  dataInserimento: string | null;
+};
+
+export type MezzoDossierCardManutenzione = {
+  id: string;
+  descrizione: string | null;
+  tipo: string | null;
+  data: string | null;
+  km: number | null;
+};
+
+export type MezzoDossierCardData = {
+  targa: string;
+  categoria: string;
+  marcaModello: string;
+  anno: string;
+  tipo: "motrice" | "cisterna" | null;
+  autistaNome: string | null;
+  fotoUrl: string | null;
+  dataScadenzaRevisione: string;
+  dataScadenzaRevisioneTimestamp: number | null;
+  revisioneUrgente: boolean;
+  manutenzioneProgrammata: boolean;
+  manutenzioneDataFine: string;
+  manutenzioneDataFineTimestamp: number | null;
+  manutenzioneKmMax: string;
+  alerts: MezzoDossierCardAlert[];
+  focusItems: MezzoDossierCardAlert[];
+  lavoriAperti: MezzoDossierCardLavoro[];
+  lavoriChiusi: MezzoDossierCardLavoro[];
+  manutenzioniD02: MezzoDossierCardManutenzione[];
+  counts: {
+    lavoriAperti: number;
+    lavoriChiusi: number;
+    manutenzioni: number;
+  };
+  librettoUrl: string | null;
+};
+
+export type MezzoDossierStructuredCard = {
+  kind: "mezzo_dossier";
+  data: MezzoDossierCardData;
+};
+
 export type InternalAiChatMessage = {
   id: string;
   role: InternalAiChatMessageRole;
@@ -739,6 +797,7 @@ export type InternalAiChatMessage = {
   attachments: InternalAiChatAttachment[];
   outputMode: InternalAiOutputMode | null;
   outputReason: string | null;
+  structuredCard?: MezzoDossierStructuredCard | null;
 };
 
 export type InternalAiTrackingMode =
