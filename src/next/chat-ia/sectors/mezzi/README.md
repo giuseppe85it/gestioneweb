@@ -1,0 +1,1 @@
+settore mezzi - placeholder ossatura

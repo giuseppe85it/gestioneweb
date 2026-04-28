@@ -9,7 +9,6 @@ import {
   buildNextMagazzinoPath,
   buildNextAnalisiEconomicaPath,
   buildNextDettaglioOrdinePath,
-  NEXT_INTERNAL_AI_PATH,
   type NextMagazzinoTab,
 } from "./nextStructuralPaths";
 import {
@@ -1208,32 +1207,6 @@ function getMagazzinoKindLabel(item: MagazzinoDocumentUiItem): string {
   if (isMagazzinoDdt(item)) return "DDT";
   if (isMagazzinoFattura(item)) return "FATTURA";
   return normalizeText(item.tipoDocumento).toUpperCase() || "DOCUMENTO";
-}
-
-function buildMagazzinoAskAiPrompt(item: MagazzinoDocumentUiItem): string {
-  const parts = [
-    `Fammi un riepilogo del documento ${getMagazzinoKindLabel(item)}`,
-    normalizeText(item.dataDocumento)
-      ? `del ${normalizeText(item.dataDocumento)}`
-      : "con data non disponibile",
-    normalizeText(item.fornitore)
-      ? `di ${normalizeText(item.fornitore)}`
-      : "di fornitore non specificato",
-    normalizeText(item.numeroDocumento)
-      ? `numero ${normalizeText(item.numeroDocumento)}`
-      : "senza numero documento disponibile",
-  ];
-
-  if (normalizeText(item.targa)) {
-    parts.push(`per il mezzo ${normalizeText(item.targa)}`);
-  }
-
-  const parsedAmount = parseMagazzinoDocumentAmount(item.totaleDocumento);
-  if (parsedAmount !== null) {
-    parts.push(`per un importo di ${formatCurrencyAmount(parsedAmount, item.currency)}`);
-  }
-
-  return `${parts.join(" ")}.`;
 }
 
 function matchesMagazzinoDocumentSearch(item: MagazzinoDocumentUiItem, query: string): boolean {
@@ -4247,18 +4220,6 @@ export default function NextMagazzinoPage() {
                                         >
                                           PDF
                                         </button>
-                                        <button
-                                          type="button"
-                                          className="doc-costi-btn-ia"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            navigate(NEXT_INTERNAL_AI_PATH, {
-                                              state: { initialPrompt: buildMagazzinoAskAiPrompt(item) },
-                                            });
-                                          }}
-                                        >
-                                          Chiedi alla IA
-                                        </button>
                                       </div>
                                       {isReviewItem ? (
                                         <span className="doc-costi-row-flag">Da verificare</span>
@@ -5000,17 +4961,6 @@ export default function NextMagazzinoPage() {
                         {docModalItem.daVerificare || docLocalDaVerificareIds.has(docModalItem.id)
                           ? "Rimuovi da verificare"
                           : "Da verificare"}
-                      </button>
-                      <button
-                        type="button"
-                        className="doc-costi-modal-btn-ia"
-                        onClick={() =>
-                          navigate(NEXT_INTERNAL_AI_PATH, {
-                            state: { initialPrompt: buildMagazzinoAskAiPrompt(docModalItem) },
-                          })
-                        }
-                      >
-                        Chiedi alla IA →
                       </button>
                     </div>
                   </div>

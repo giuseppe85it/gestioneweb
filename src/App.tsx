@@ -7,7 +7,7 @@ import "./App.css";
 import NextHomePage from "./next/NextHomePage";
 import NextCentroControlloParityPage from "./next/NextCentroControlloParityPage";
 import NextIntelligenzaArtificialePage from "./next/NextIntelligenzaArtificialePage";
-import NextInternalAiPage from "./next/NextInternalAiPage";
+import ChatIaPage from "./next/chat-ia/ChatIaPage";
 import NextIAArchivistaPage from "./next/NextIAArchivistaPage";
 import NextIAApiKeyPage from "./next/NextIAApiKeyPage";
 import NextIALibrettoPage from "./next/NextIALibrettoPage";
@@ -503,10 +503,10 @@ function App() {
           }
         />
         <Route
-          path="ia/report"
+          path="chat"
           element={
             <NextRoleGuard areaId="ia">
-              <NextInternalAiPage />
+              <ChatIaPage />
             </NextRoleGuard>
           }
         />
@@ -515,46 +515,6 @@ function App() {
           element={
             <NextRoleGuard areaId="ia">
               <NextIAArchivistaPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="ia/interna"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextInternalAiPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="ia/interna/sessioni"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextInternalAiPage sectionId="sessions" />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="ia/interna/richieste"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextInternalAiPage sectionId="requests" />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="ia/interna/artifacts"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextInternalAiPage sectionId="artifacts" />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="ia/interna/audit"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextInternalAiPage sectionId="audit" />
             </NextRoleGuard>
           }
         />

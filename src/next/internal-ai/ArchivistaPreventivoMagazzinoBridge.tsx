@@ -5,12 +5,15 @@ import {
   formatValue,
   normalizeScalar,
   normalizeText,
+  updateArchivistaPreventivoRecordAnalysis,
   type ArchivistaArchiveResult,
   type ArchivistaDuplicateCandidate,
   type ArchivistaDuplicateChoice,
   type ArchivistaReviewRow,
 } from "./ArchivistaArchiveClient";
 import { getInternalAiServerAdapterBaseUrl } from "./internalAiServerRepoUnderstandingClient";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 
 const DOCUMENT_ANALYZE_PATH = "/internal-ai-backend/documents/preventivo-magazzino-analyze";
 
@@ -26,6 +29,19 @@ type ArchivistaPreventivoAnalysis = {
   avvisi?: string[];
   campiMancanti?: string[];
   voci?: ArchivistaReviewRow[];
+};
+
+type ArchivistaPreventivoMagazzinoPreloadDocument = {
+  fileUrl: string;
+  sourceDocId?: string;
+  sourceKey?: string;
+  tipoDocumento?: string;
+  targa?: string;
+  archivistaAnalysis?: ArchivistaPreventivoAnalysis | null;
+};
+
+type ArchivistaPreventivoMagazzinoBridgeProps = {
+  preloadDocument?: ArchivistaPreventivoMagazzinoPreloadDocument | null;
 };
 
 type ArchivistaPreventivoApiResponse = {
@@ -79,7 +95,169 @@ function getDocumentAnalyzeUrl(): string | null {
   return baseUrl ? `${baseUrl}${DOCUMENT_ANALYZE_PATH}` : null;
 }
 
-export default function ArchivistaPreventivoMagazzinoBridge() {
+function extractPreloadFileNameFromUrl(fileUrl: string) {
+  const rawName = fileUrl.split("?")[0].split("#")[0].split("/").pop() ?? "";
+  if (!rawName) {
+    return "";
+  }
+
+  try {
+    return decodeURIComponent(rawName).split("/").filter(Boolean).pop() ?? "";
+  } catch {
+    return rawName.split("/").filter(Boolean).pop() ?? "";
+  }
+}
+
+function getPreloadExtensionFromMimeType(mimeType: string) {
+  if (mimeType.includes("pdf")) return "pdf";
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  return "jpg";
+}
+
+function buildPreloadDocumentFileName(
+  preloadDocument: ArchivistaPreventivoMagazzinoPreloadDocument,
+  mimeType: string,
+) {
+  const fileNameFromUrl = extractPreloadFileNameFromUrl(preloadDocument.fileUrl);
+  if (fileNameFromUrl) {
+    return fileNameFromUrl;
+  }
+
+  const documentLabel =
+    normalizeText(preloadDocument.targa) ||
+    normalizeText(preloadDocument.sourceDocId) ||
+    "documento";
+  const typeLabel = normalizeText(preloadDocument.tipoDocumento) || "preventivo";
+  return `${typeLabel}-${documentLabel}.${getPreloadExtensionFromMimeType(mimeType)}`;
+}
+
+async function readArchivistaPreventivoArchiveRecord(
+  archiveId: string | undefined,
+): Promise<Record<string, unknown> | null> {
+  const normalizedArchiveId = normalizeText(archiveId);
+  if (!normalizedArchiveId) {
+    return null;
+  }
+
+  const snapshot = await getDoc(doc(db, "storage", "@preventivi"));
+  const raw = snapshot.exists() ? snapshot.data() : null;
+  const preventivi = Array.isArray(raw?.preventivi) ? raw.preventivi : [];
+  return (
+    preventivi.find(
+      (entry): entry is Record<string, unknown> =>
+        !!entry &&
+        typeof entry === "object" &&
+        normalizeText((entry as Record<string, unknown>).id) === normalizedArchiveId,
+    ) ?? null
+  );
+}
+
+function readArchivistaPreventivoRows(value: unknown): ArchivistaReviewRow[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is ArchivistaReviewRow => !!entry && typeof entry === "object")
+    : [];
+}
+
+function readArchivistaStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+}
+
+function buildPreventivoMagazzinoAnalysisFromArchive(
+  archiveRecord: Record<string, unknown>,
+): ArchivistaPreventivoAnalysis {
+  return {
+    stato: normalizeText(archiveRecord.stato) || "ricostruito_archivio",
+    tipoDocumento: normalizeText(archiveRecord.tipoDocumento) || "preventivo",
+    fornitore: normalizeText(archiveRecord.fornitoreNome) || normalizeText(archiveRecord.fornitore),
+    numeroDocumento:
+      normalizeText(archiveRecord.numeroPreventivo) || normalizeText(archiveRecord.numeroDocumento),
+    dataDocumento:
+      normalizeText(archiveRecord.dataPreventivo) || normalizeText(archiveRecord.dataDocumento),
+    totaleDocumento: archiveRecord.totaleDocumento as string | number | undefined,
+    testo: normalizeText(archiveRecord.testo),
+    riassuntoBreve: normalizeText(archiveRecord.riassuntoBreve),
+    avvisi: readArchivistaStringList(archiveRecord.avvisiArchivista || archiveRecord.avvisi),
+    campiMancanti: readArchivistaStringList(
+      archiveRecord.campiMancantiArchivista || archiveRecord.campiMancanti,
+    ),
+    voci: readArchivistaPreventivoRows(archiveRecord.righe || archiveRecord.voci),
+  };
+}
+
+function isCompletePreventivoMagazzinoArchiveAnalysis(
+  analysis: ArchivistaPreventivoAnalysis,
+): boolean {
+  return (
+    !!normalizeText(analysis.fornitore) &&
+    !!normalizeText(analysis.numeroDocumento) &&
+    !!normalizeText(analysis.dataDocumento) &&
+    Array.isArray(analysis.voci) &&
+    analysis.voci.length > 0
+  );
+}
+
+async function analyzePreventivoMagazzinoFile(file: File): Promise<ArchivistaPreventivoAnalysis> {
+  const { base64, mimeType } = await fileToBase64(file);
+  const endpoint = getDocumentAnalyzeUrl();
+  if (!endpoint) {
+    throw new Error(
+      "Backend IA OpenAI non disponibile in questo ambiente. Avvia il server IA separato per analizzare il preventivo.",
+    );
+  }
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fileName: file.name,
+      contentBase64: base64,
+      mimeType,
+    }),
+  });
+
+  const rawPayload = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const errorText =
+      rawPayload &&
+      typeof rawPayload === "object" &&
+      "message" in rawPayload &&
+      typeof (rawPayload as { message?: unknown }).message === "string"
+        ? (rawPayload as { message: string }).message
+        : "Errore durante l'analisi del preventivo.";
+    throw new Error(errorText);
+  }
+
+  const normalizedAnalysis = normalizeAnalysisPayload(rawPayload);
+  if (!normalizedAnalysis) {
+    throw new Error("Analisi non disponibile per il file selezionato.");
+  }
+
+  return normalizedAnalysis;
+}
+
+async function backfillPreventivoMagazzinoAnalysis(
+  archiveId: string | undefined,
+  analysis: ArchivistaPreventivoAnalysis,
+): Promise<void> {
+  const normalizedArchiveId = normalizeText(archiveId);
+  if (!normalizedArchiveId) {
+    return;
+  }
+
+  try {
+    await updateArchivistaPreventivoRecordAnalysis({
+      archiveId: normalizedArchiveId,
+      archivistaAnalysis: { ...analysis },
+    });
+  } catch {
+    return;
+  }
+}
+
+export default function ArchivistaPreventivoMagazzinoBridge({
+  preloadDocument = null,
+}: ArchivistaPreventivoMagazzinoBridgeProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
@@ -105,6 +283,118 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
       URL.revokeObjectURL(previewUrl);
     };
   }, [selectedFile]);
+
+  useEffect(() => {
+    const fileUrl = preloadDocument?.fileUrl;
+    if (!fileUrl) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPreloadDocument = async () => {
+      let activeAnalysis = preloadDocument?.archivistaAnalysis ?? null;
+      try {
+        setErrorMessage(null);
+        if (!activeAnalysis) {
+          const archiveRecord = await readArchivistaPreventivoArchiveRecord(preloadDocument?.sourceDocId);
+          if (cancelled) {
+            return;
+          }
+
+          if (archiveRecord) {
+            const reconstructedAnalysis = buildPreventivoMagazzinoAnalysisFromArchive(archiveRecord);
+            const complete = isCompletePreventivoMagazzinoArchiveAnalysis(reconstructedAnalysis);
+            if (complete) {
+              activeAnalysis = reconstructedAnalysis;
+              setAnalysis(activeAnalysis);
+              setAnalysisStatus("success");
+              void backfillPreventivoMagazzinoAnalysis(preloadDocument?.sourceDocId, activeAnalysis);
+            } else {
+              setAnalysisStatus("loading");
+            }
+          } else {
+            setAnalysisStatus("loading");
+          }
+        } else {
+          setAnalysis(activeAnalysis);
+          setAnalysisStatus("success");
+        }
+
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Download documento non riuscito (${response.status}).`);
+        }
+
+        const blob = await response.blob();
+        if (cancelled) {
+          return;
+        }
+
+        const mimeType = blob.type || "application/octet-stream";
+        const selectedFileFromPreload = new File(
+          [blob],
+          buildPreloadDocumentFileName(
+            {
+              fileUrl,
+              sourceDocId: preloadDocument?.sourceDocId,
+              sourceKey: preloadDocument?.sourceKey,
+              tipoDocumento: preloadDocument?.tipoDocumento,
+              targa: preloadDocument?.targa,
+            },
+            mimeType,
+          ),
+          { type: mimeType },
+        );
+
+        setSelectedFile(selectedFileFromPreload);
+        if (!activeAnalysis) {
+          try {
+            activeAnalysis = await analyzePreventivoMagazzinoFile(selectedFileFromPreload);
+            if (cancelled) {
+              return;
+            }
+            setAnalysis(activeAnalysis);
+            setAnalysisStatus("success");
+            void backfillPreventivoMagazzinoAnalysis(preloadDocument?.sourceDocId, activeAnalysis);
+          } catch {
+            if (!cancelled) {
+              setAnalysisStatus("idle");
+            }
+          }
+        }
+        setErrorMessage(null);
+        setDuplicateStatus("idle");
+        setDuplicateCandidates([]);
+        setSelectedDuplicateId("");
+        setDuplicateChoice(null);
+        setArchiveStatus("idle");
+        setArchiveError(null);
+        setArchiveResult(null);
+      } catch {
+        if (!cancelled) {
+          setSelectedFile(null);
+          if (!activeAnalysis) {
+            setAnalysisStatus("idle");
+          }
+          setErrorMessage("Riapertura documento fallita. Carica manualmente il file.");
+        }
+      }
+    };
+
+    void loadPreloadDocument();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    preloadDocument?.fileUrl,
+    preloadDocument?.sourceDocId,
+    preloadDocument?.sourceKey,
+    preloadDocument?.tipoDocumento,
+    preloadDocument?.targa,
+    preloadDocument?.archivistaAnalysis,
+  ]);
 
   const rows = analysis?.voci ?? [];
   const missingFields = useMemo(() => {
@@ -173,40 +463,7 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
       setDuplicateChoice(null);
       setArchiveStatus("idle");
 
-      const { base64, mimeType } = await fileToBase64(selectedFile);
-      const endpoint = getDocumentAnalyzeUrl();
-      if (!endpoint) {
-        throw new Error(
-          "Backend IA OpenAI non disponibile in questo ambiente. Avvia il server IA separato per analizzare il preventivo.",
-        );
-      }
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: selectedFile.name,
-          contentBase64: base64,
-          mimeType,
-        }),
-      });
-
-      const rawPayload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) {
-        const errorText =
-          rawPayload &&
-          typeof rawPayload === "object" &&
-          "message" in rawPayload &&
-          typeof (rawPayload as { message?: unknown }).message === "string"
-            ? (rawPayload as { message: string }).message
-            : "Errore durante l'analisi del preventivo.";
-        throw new Error(errorText);
-      }
-
-      const normalizedAnalysis = normalizeAnalysisPayload(rawPayload);
-      if (!normalizedAnalysis) {
-        throw new Error("Analisi non disponibile per il file selezionato.");
-      }
+      const normalizedAnalysis = await analyzePreventivoMagazzinoFile(selectedFile);
 
       setAnalysis(normalizedAnalysis);
       setAnalysisStatus("success");

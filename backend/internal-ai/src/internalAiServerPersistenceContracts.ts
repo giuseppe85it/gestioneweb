@@ -11,7 +11,7 @@ import type {
   InternalAiSession,
   InternalAiTrackingSummary,
 } from "../../../src/next/internal-ai/internalAiTypes";
-import type { InternalAiChatTurnResult } from "../../../src/next/internal-ai/internalAiChatOrchestrator";
+import type { InternalAiChatTurnResult } from "./internalAiBackendContracts";
 
 export type InternalAiServerPersistenceMode = "server_file_isolated";
 

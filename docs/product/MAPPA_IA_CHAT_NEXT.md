@@ -132,4 +132,94 @@ La madre resta intatta finche la NEXT non sara stata promossa a nuova madre. Sol
 4. Verifica spec con Codex: ogni affermazione tecnica deve corrispondere al codice reale, divergenze = 0.
 5. Implementazione settore per settore. Ogni settore una sessione, una checklist, una verifica. Niente big bang.
 
+## 13. Roadmap dopo settore Mezzi v1
+
+Versione: 2026-04-28.
+
+### Priorita 1 - Completamento settore Mezzi (parita Mezzo 360)
+
+1.1 Download libretti e PDF dalla chat (clic su documento -> scarica
+    o anteprima).
+1.2 Apertura modali esistenti su richiesta utente
+    (es: "apri Mezzo X" -> Dossier Mezzo NEXT).
+1.3 Fallback contestuale migliorato per prompt mezzo senza targa.
+
+### Priorita 2 - Settore Flotta/Analisi (NUOVO)
+
+2.1 Lista mezzi con filtri ("lista mezzi", "mezzi categoria cisterna",
+    "mezzi revisione scaduta").
+2.2 Calcoli rifornimenti ("rifornimenti aprile 2026",
+    "rifornimenti cisterna Caravate vs distributori",
+    "consumo medio TI282780 ultimi 6 mesi").
+2.3 Ricerca pattern nello storico ("questa segnalazione e gia
+    successa?", "quante volte rotto questo pezzo?").
+2.4 Trend e statistiche ("costi manutenzione 2026",
+    "mezzi piu problematici").
+
+### Priorita 3 - Settore Autisti
+
+3.1 Scheda autista (come Autista 360).
+3.2 Lista e ricerca autisti.
+3.3 Performance autisti (segnalazioni, consumi, ecc.).
+
+### Priorita 4 - Settore Manutenzioni e Scadenze
+
+4.1 Cruscotto scadenze (come Centro Controllo).
+4.2 Pianificazione manutenzioni e carico officina.
+
+### Priorita 5 - Settori secondari
+
+5.1 Materiali e magazzino.
+5.2 Costi e fatture.
+5.3 Cisterna AdBlue.
+
+### Priorita 6 - Funzioni trasversali aggiuntive
+
+6.1 Memoria di sessione intelligente: la chat ricorda l'ultimo
+    mezzo/autista citato nella sessione corrente, per follow-up
+    naturali ("rifornimenti?" dopo "TI282780"). Niente persistenza
+    tra sessioni.
+6.2 Suggerimenti proattivi: la chat inserisce note tipo
+    "questa segnalazione e gia successa 3 volte negli ultimi 6 mesi"
+    nelle risposte mezzo/autista.
+6.3 Multi-targa e comparazioni ("confronta TI282780 e TI313387").
+6.4 Esportazione dati raw (CSV/Excel) oltre al PDF.
+6.5 Voice input via Web Speech API per uso in officina.
+6.6 Notifiche/alert proattivi (lavoro a lungo termine, complessita
+    alta).
+
+### Stima tempi
+
+- Priorita 1: 1 settimana.
+- Priorita 2: 2-3 settimane.
+- Priorita 3: 1-2 settimane.
+- Priorita 4: 1 settimana.
+- Priorita 5: 1-2 settimane per settore.
+- Priorita 6: distribuita lungo il percorso.
+
+Totale realistico: 2-3 mesi di lavoro distribuito.
+
+### Pattern di lavoro per ogni settore
+
+Niente piu audit larghi. Ogni nuovo settore segue:
+
+1. Spec settore (1 prompt Codex).
+2. Verifica spec (1 prompt Codex, regola n.5 Giuseppe).
+3. Eventuali correzioni (1 prompt se servono).
+4. Implementazione settore con fasi (1 prompt Codex).
+
+Totale tipico per settore: 3-5 prompt Codex.
+
+### Cosa NON sara nella chat (decisioni gia prese)
+
+- Niente scrittura business diretta dalla chat IA.
+- Niente nuovi modali per inserire/modificare dati.
+- Niente integrazione Archivista.
+- Niente memoria persistente tra sessioni.
+- Niente foto/OCR in input (escluso da telaio).
+
+Ogni richiesta di "scrittura" dalla chat passa SEMPRE attraverso i
+modali esistenti del gestionale (Dossier, Mezzi modal, Archivista,
+ecc.). La chat IA puo aprirli ma non sostituirli.
+
 FINE CONTENUTO DEL FILE.

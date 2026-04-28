@@ -20,6 +20,7 @@ const DIRECT_DOCUMENT_SOURCE_KEYS = new Set<string>([
 ]);
 
 type RawRecord = Record<string, unknown>;
+type NextArchivistaPreventivoAmbito = "magazzino" | "manutenzione";
 
 type NextLegacyDatasetShape =
   | "preventivi"
@@ -384,6 +385,38 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function normalizeOptionalRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function normalizeArchivistaPreventivoAmbito(
+  value: unknown,
+): NextArchivistaPreventivoAmbito | null {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "magazzino" || normalized === "manutenzione" ? normalized : null;
+}
+
+function resolveFirstStringValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    return normalizeOptionalText(value);
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const normalized = normalizeOptionalText(entry);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return null;
 }
 
 function normalizeTarga(value: unknown): string {
@@ -1358,6 +1391,10 @@ export type NextIADocumentiArchiveItem = {
   sourceKey: string;
   sourceDocId: string;
   tipoDocumento: string;
+  archivistaAnalysis: Record<string, unknown> | null;
+  famigliaArchivista: string | null;
+  contestoArchivista: string | null;
+  ambitoPreventivo: NextArchivistaPreventivoAmbito | null;
   categoriaArchivio: string | null;
   targa: string | null;
   dataDocumento: string | null;
@@ -1428,6 +1465,10 @@ function mapIADocumentiArchiveRecord(args: {
     sourceKey: collectionKey,
     sourceDocId,
     tipoDocumento,
+    archivistaAnalysis: normalizeOptionalRecord(raw.archivistaAnalysis),
+    famigliaArchivista: normalizeOptionalText(raw.famigliaArchivista),
+    contestoArchivista: normalizeOptionalText(raw.contestoArchivista),
+    ambitoPreventivo: normalizeArchivistaPreventivoAmbito(raw.ambitoPreventivo),
     categoriaArchivio: normalizeOptionalText(raw.categoriaArchivio),
     targa: normalizeOptionalText(raw.targa ?? raw.mezzoTarga),
     dataDocumento: dateFields.dateLabel,
@@ -1442,6 +1483,50 @@ function mapIADocumentiArchiveRecord(args: {
     ivaImporto: normalizeOptionalText(raw.ivaImporto),
     importoPagamento: normalizeOptionalText(raw.importoPagamento),
     numeroDocumento: normalizeOptionalText(raw.numeroDocumento ?? raw.nomeFile),
+    daVerificare:
+      raw.daVerificare === true || Boolean(normalizeOptionalText(raw.motivoVerifica)),
+  };
+}
+
+function mapIADocumentiPreventivoArchiveRecord(args: {
+  raw: RawRecord;
+  index: number;
+}): NextIADocumentiArchiveItem {
+  const { raw, index } = args;
+  const sourceDocId = normalizeOptionalText(raw.id) ?? `preventivo-${index}`;
+  const dateFields = resolveDateFields({
+    primary: raw.dataPreventivo ?? raw.dataDocumento,
+    fallbacks: [raw.createdAt, raw.updatedAt],
+  });
+  const currency = resolveCurrencyFromRecord(raw);
+  const metadatiMezzo = normalizeOptionalRecord(raw.metadatiMezzo);
+
+  return {
+    id: `${PROCUREMENT_PREVENTIVI_DATASET_KEY}:${sourceDocId}`,
+    sourceKey: PROCUREMENT_PREVENTIVI_DATASET_KEY,
+    sourceDocId,
+    tipoDocumento: normalizeTipoDocumento(raw.tipoDocumento) || "PREVENTIVO",
+    archivistaAnalysis: normalizeOptionalRecord(raw.archivistaAnalysis),
+    famigliaArchivista: normalizeOptionalText(raw.famigliaArchivista),
+    contestoArchivista: normalizeOptionalText(raw.contestoArchivista),
+    ambitoPreventivo: normalizeArchivistaPreventivoAmbito(raw.ambitoPreventivo),
+    categoriaArchivio: normalizeOptionalText(raw.categoriaArchivio),
+    targa: normalizeOptionalText(raw.targa ?? raw.mezzoTarga ?? metadatiMezzo?.targa),
+    dataDocumento: dateFields.dateLabel,
+    sortTimestamp: dateFields.sortTimestamp,
+    totaleDocumento: resolveArchiveTotalValue(raw),
+    fornitore: normalizeOptionalText(raw.fornitoreNome ?? raw.fornitore),
+    fileUrl:
+      normalizeOptionalText(raw.pdfUrl) ??
+      resolveFirstStringValue(raw.imageUrls) ??
+      normalizeOptionalText(raw.fileUrl),
+    valuta: currency,
+    currency,
+    testo: normalizeOptionalText(raw.testo),
+    imponibile: normalizeOptionalText(raw.imponibile),
+    ivaImporto: normalizeOptionalText(raw.ivaImporto),
+    importoPagamento: normalizeOptionalText(raw.importoPagamento),
+    numeroDocumento: normalizeOptionalText(raw.numeroPreventivo ?? raw.numeroDocumento),
     daVerificare:
       raw.daVerificare === true || Boolean(normalizeOptionalText(raw.motivoVerifica)),
   };
@@ -1929,6 +2014,9 @@ export async function readNextIADocumentiArchiveSnapshot(
   const { documentSnapshots, cloneDocuments, readFailures } = await readDocumentiCostiSources({
     includeCloneDocuments,
   });
+  const preventiviResult = await getDoc(doc(db, STORAGE_COLLECTION, PROCUREMENT_PREVENTIVI_DATASET_KEY))
+    .then((snapshot) => ({ status: "fulfilled" as const, snapshot }))
+    .catch(() => ({ status: "rejected" as const }));
 
   const documentItems = documentSnapshots.flatMap((snapshot, index) => {
     if (!snapshot) return [];
@@ -1950,16 +2038,29 @@ export async function readNextIADocumentiArchiveSnapshot(
     }),
   );
 
+  const preventiviItems =
+    preventiviResult.status === "fulfilled"
+      ? unwrapStorageArrayWithPreferredKeys(
+          preventiviResult.snapshot.exists()
+            ? ((preventiviResult.snapshot.data() as Record<string, unknown>) ?? null)
+            : null,
+          ["preventivi"],
+        ).items
+          .filter((entry): entry is RawRecord => Boolean(entry) && typeof entry === "object")
+          .map((raw, index) => mapIADocumentiPreventivoArchiveRecord({ raw, index }))
+      : ((readFailures.push(`storage/${PROCUREMENT_PREVENTIVI_DATASET_KEY}`), []) as NextIADocumentiArchiveItem[]);
+
   const items = sortIADocumentiArchiveItems([
     ...documentItems,
     ...cloneDocumentItems,
+    ...preventiviItems,
   ]);
 
   return {
     domainCode: "D08-IA-DOCUMENTI",
     domainName: "Archivio documenti IA read-only",
-    logicalDatasets: DOCUMENTI_COLLECTION_KEYS,
-    activeReadOnlyDatasets: DOCUMENTI_COLLECTION_KEYS,
+    logicalDatasets: [...DOCUMENTI_COLLECTION_KEYS, PROCUREMENT_PREVENTIVI_DATASET_KEY],
+    activeReadOnlyDatasets: [...DOCUMENTI_COLLECTION_KEYS, PROCUREMENT_PREVENTIVI_DATASET_KEY],
     items,
     counts: {
       total: items.length,
@@ -1974,7 +2075,7 @@ export async function readNextIADocumentiArchiveSnapshot(
     limitations: [
       includeCloneDocuments
         ? "Il chiamante ha scelto di includere i documenti locali opzionali del clone nell'archivio IA."
-        : "L'archivio IA legge solo le collection reali `@documenti_mezzi`, `@documenti_magazzino` e `@documenti_generici`, senza overlay locali del clone.",
+        : "L'archivio IA legge le collection reali `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici` e i preventivi in `storage/@preventivi`, senza overlay locali del clone.",
       readFailures.length > 0
         ? `Lettura parziale: ${readFailures.join(", ")} non e disponibile in questo snapshot.`
         : null,

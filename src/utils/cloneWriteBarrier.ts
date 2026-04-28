@@ -91,7 +91,7 @@ const IA_DOCUMENTI_ALLOWED_FIRESTORE_DELETE_DOC_PATH_PREFIXES = [
 ] as const;
 const IA_DOCUMENTI_ALLOWED_STORAGE_KEYS = new Set(["@costiMezzo"]);
 const INTERNAL_AI_MAGAZZINO_INLINE_SCOPE = "internal_ai_magazzino_inline_magazzino";
-const INTERNAL_AI_DOCUMENTI_ALLOWED_PATHS = ["/next/ia/interna", "/next/ia/archivista"] as const;
+const INTERNAL_AI_DOCUMENTI_ALLOWED_PATHS = ["/next/ia/archivista"] as const;
 const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti";
 const IA_LIBRETTO_ALLOWED_WRITE_PATH = "/next/ia/libretto";
@@ -113,6 +113,9 @@ const ARCHIVISTA_ALLOWED_STORAGE_KEYS = new Set([
 ]);
 const ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES = ["documenti_pdf/", "preventivi/"] as const;
 const ARCHIVISTA_ALLOWED_IMAGE_STORAGE_PATH_PREFIXES = ["mezzi/"] as const;
+const CHAT_IA_ALLOWED_WRITE_PATH = "/next/chat";
+const CHAT_IA_REPORTS_COLLECTION = "chat_ia_reports";
+const CHAT_IA_REPORTS_STORAGE_PREFIX = "chat_ia_reports/";
 const cloneWriteScopedAllowances = new Map<string, number>();
 
 declare global {
@@ -304,6 +307,10 @@ function isAllowedIaDocumentiCloneWritePath(pathname: string): boolean {
   return pathname === IA_DOCUMENTI_ALLOWED_WRITE_PATH;
 }
 
+function isAllowedChatIaCloneWritePath(pathname: string): boolean {
+  return pathname === CHAT_IA_ALLOWED_WRITE_PATH;
+}
+
 function hasCloneWriteScopedAllowance(scope: string): boolean {
   return (cloneWriteScopedAllowances.get(scope) ?? 0) > 0;
 }
@@ -342,6 +349,22 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
       isAllowedMaterialiDaOrdinarePreventivoIaFetch(pathname, meta))
   ) {
     return true;
+  }
+
+  if (isAllowedChatIaCloneWritePath(pathname)) {
+    if (kind === "firestore.addDoc") {
+      return readMetaPath(meta) === CHAT_IA_REPORTS_COLLECTION;
+    }
+
+    if (kind === "firestore.setDoc" || kind === "firestore.updateDoc") {
+      return readMetaPath(meta).startsWith(`${CHAT_IA_REPORTS_COLLECTION}/`);
+    }
+
+    if (kind === "storage.uploadBytes") {
+      return readMetaPath(meta).startsWith(CHAT_IA_REPORTS_STORAGE_PREFIX);
+    }
+
+    return false;
   }
 
   if (isAllowedIaLibrettoCloneWritePath(pathname)) {

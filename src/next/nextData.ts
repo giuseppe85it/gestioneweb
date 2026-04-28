@@ -8,7 +8,6 @@ import {
   NEXT_DOSSIER_LISTA_PATH,
   NEXT_EUROMECC_PATH,
   NEXT_HOME_PATH,
-  NEXT_INTERNAL_AI_PATH,
   NEXT_MAGAZZINO_PATH,
   NEXT_IA_APIKEY_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
@@ -226,7 +225,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
         path: NEXT_IA_COPERTURA_LIBRETTI_PATH,
       },
       { id: "libretti-export", label: "Export libretti", path: NEXT_LIBRETTI_EXPORT_PATH },
-      { id: "ia-interna", label: "IA interna", path: NEXT_INTERNAL_AI_PATH },
     ],
   },
   {
@@ -413,7 +411,7 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     path: "/next/ia",
     label: "Intelligenza Artificiale",
     status: "ACTIVE_PARTIAL",
-    note: "Hub clone strutturalmente riallineato alla madre, con child route autonome per `apikey`, `libretto`, `documenti`, `copertura-libretti` e `Libretti Export`, piu subtree isolato `/next/ia/interna*` per il nuovo sottosistema IA interno in scaffolding stub-only; tutte le scritture restano neutralizzate.",
+    note: "Hub clone strutturalmente riallineato alla madre, con child route autonome per `apikey`, `libretto`, `documenti`, `copertura-libretti` e `Libretti Export`; tutte le scritture restano neutralizzate.",
   },
   {
     id: "libretti-export",
@@ -862,7 +860,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Ingressi mostrati nel clone",
         description:
-          "Il clone mostra le card reali del modulo madre, apre l'intera famiglia di child route strutturali e ospita anche un primo subtree IA interno isolato sotto `/next/ia/interna*`.",
+          "Il clone mostra le card reali del modulo madre e apre l'intera famiglia di child route strutturali.",
       },
       {
         title: "Perche i moduli figli restano bloccati",

@@ -5,10 +5,13 @@ import {
   formatValue,
   normalizeScalar,
   normalizeText,
+  updateArchivistaDocumentRecordAnalysis,
   type ArchivistaArchiveResult,
   type ArchivistaDuplicateCandidate,
   type ArchivistaDuplicateChoice,
 } from "./ArchivistaArchiveClient";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 
 const DOCUMENT_ANALYZE_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti";
@@ -37,6 +40,23 @@ type ArchivistaMagazzinoAnalysis = {
   targa?: string;
   testo?: string;
   voci?: ArchivistaMagazzinoVoce[];
+  valutaDocumento?: string;
+  riassuntoBreve?: string;
+  avvisi?: string[];
+  campiMancanti?: string[];
+};
+
+type ArchivistaMagazzinoPreloadDocument = {
+  fileUrl: string;
+  sourceDocId?: string;
+  sourceKey?: string;
+  tipoDocumento?: string;
+  targa?: string;
+  archivistaAnalysis?: ArchivistaMagazzinoAnalysis | null;
+};
+
+type ArchivistaMagazzinoBridgeProps = {
+  preloadDocument?: ArchivistaMagazzinoPreloadDocument | null;
 };
 
 type ArchivistaMagazzinoApiResponse = {
@@ -87,7 +107,152 @@ function normalizeAnalysisPayload(payload: unknown): ArchivistaMagazzinoAnalysis
   return payload as ArchivistaMagazzinoAnalysis;
 }
 
-export default function ArchivistaMagazzinoBridge() {
+function extractPreloadFileNameFromUrl(fileUrl: string) {
+  const rawName = fileUrl.split("?")[0].split("#")[0].split("/").pop() ?? "";
+  if (!rawName) {
+    return "";
+  }
+
+  try {
+    return decodeURIComponent(rawName).split("/").filter(Boolean).pop() ?? "";
+  } catch {
+    return rawName.split("/").filter(Boolean).pop() ?? "";
+  }
+}
+
+function getPreloadExtensionFromMimeType(mimeType: string) {
+  if (mimeType.includes("pdf")) return "pdf";
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  return "jpg";
+}
+
+function buildPreloadDocumentFileName(
+  preloadDocument: ArchivistaMagazzinoPreloadDocument,
+  mimeType: string,
+) {
+  const fileNameFromUrl = extractPreloadFileNameFromUrl(preloadDocument.fileUrl);
+  if (fileNameFromUrl) {
+    return fileNameFromUrl;
+  }
+
+  const documentLabel =
+    normalizeText(preloadDocument.targa) ||
+    normalizeText(preloadDocument.sourceDocId) ||
+    "documento";
+  const typeLabel = normalizeText(preloadDocument.tipoDocumento) || "fattura-ddt";
+  return `${typeLabel}-${documentLabel}.${getPreloadExtensionFromMimeType(mimeType)}`;
+}
+
+async function readArchivistaMagazzinoArchiveRecord(
+  archiveId: string | undefined,
+): Promise<Record<string, unknown> | null> {
+  const normalizedArchiveId = normalizeText(archiveId);
+  if (!normalizedArchiveId) {
+    return null;
+  }
+
+  const snapshot = await getDoc(doc(db, "@documenti_magazzino", normalizedArchiveId));
+  return snapshot.exists() ? (snapshot.data() as Record<string, unknown>) : null;
+}
+
+function readArchivistaMagazzinoRows(value: unknown): ArchivistaMagazzinoVoce[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is ArchivistaMagazzinoVoce => !!entry && typeof entry === "object")
+    : [];
+}
+
+function readArchivistaStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+}
+
+function buildMagazzinoAnalysisFromArchive(
+  archiveRecord: Record<string, unknown>,
+): ArchivistaMagazzinoAnalysis {
+  return {
+    tipoDocumento: normalizeText(archiveRecord.tipoDocumento) || "FATTURA/DDT",
+    fornitore: normalizeText(archiveRecord.fornitore),
+    numeroDocumento: normalizeText(archiveRecord.numeroDocumento),
+    dataDocumento: normalizeText(archiveRecord.dataDocumento),
+    imponibile: archiveRecord.imponibile as string | number | undefined,
+    ivaPercentuale: archiveRecord.ivaPercentuale as string | number | undefined,
+    ivaImporto: archiveRecord.ivaImporto as string | number | undefined,
+    totaleDocumento: archiveRecord.totaleDocumento as string | number | undefined,
+    targa: normalizeText(archiveRecord.targa),
+    testo: normalizeText(archiveRecord.testo),
+    voci: readArchivistaMagazzinoRows(archiveRecord.voci),
+    valutaDocumento: normalizeText(archiveRecord.valutaDocumento),
+    riassuntoBreve: normalizeText(archiveRecord.riassuntoBreve),
+    avvisi: readArchivistaStringList(archiveRecord.avvisi),
+    campiMancanti: readArchivistaStringList(archiveRecord.campiMancanti),
+  };
+}
+
+function isCompleteMagazzinoArchiveAnalysis(analysis: ArchivistaMagazzinoAnalysis): boolean {
+  return (
+    !!normalizeText(analysis.fornitore) &&
+    !!normalizeText(analysis.numeroDocumento) &&
+    !!normalizeText(analysis.dataDocumento) &&
+    !!normalizeScalar(analysis.totaleDocumento) &&
+    Array.isArray(analysis.voci) &&
+    analysis.voci.length > 0
+  );
+}
+
+async function analyzeMagazzinoFile(file: File): Promise<ArchivistaMagazzinoAnalysis> {
+  const { base64, mimeType } = await fileToBase64(file);
+  const response = await fetch(DOCUMENT_ANALYZE_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fileBase64: base64,
+      mimeType,
+    }),
+  });
+
+  const rawPayload = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const errorText =
+      rawPayload &&
+      typeof rawPayload === "object" &&
+      "error" in rawPayload &&
+      typeof (rawPayload as { error?: unknown }).error === "string"
+        ? (rawPayload as { error: string }).error
+        : "Errore durante l'analisi del documento.";
+    throw new Error(errorText);
+  }
+
+  const normalizedAnalysis = normalizeAnalysisPayload(rawPayload);
+  if (!normalizedAnalysis) {
+    throw new Error("Analisi non disponibile per il documento selezionato.");
+  }
+
+  return normalizedAnalysis;
+}
+
+async function backfillMagazzinoAnalysis(
+  archiveId: string | undefined,
+  analysis: ArchivistaMagazzinoAnalysis,
+): Promise<void> {
+  const normalizedArchiveId = normalizeText(archiveId);
+  if (!normalizedArchiveId) {
+    return;
+  }
+
+  try {
+    await updateArchivistaDocumentRecordAnalysis({
+      targetCollection: "@documenti_magazzino",
+      archiveId: normalizedArchiveId,
+      archivistaAnalysis: { ...analysis },
+    });
+  } catch {
+    return;
+  }
+}
+
+export default function ArchivistaMagazzinoBridge({
+  preloadDocument = null,
+}: ArchivistaMagazzinoBridgeProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [previewScale, setPreviewScale] = useState(1);
@@ -117,6 +282,120 @@ export default function ArchivistaMagazzinoBridge() {
       URL.revokeObjectURL(previewUrl);
     };
   }, [selectedFile]);
+
+  useEffect(() => {
+    const fileUrl = preloadDocument?.fileUrl;
+    if (!fileUrl) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPreloadDocument = async () => {
+      let activeAnalysis = preloadDocument?.archivistaAnalysis ?? null;
+      try {
+        setErrorMessage(null);
+        if (!activeAnalysis) {
+          const archiveRecord = await readArchivistaMagazzinoArchiveRecord(preloadDocument?.sourceDocId);
+          if (cancelled) {
+            return;
+          }
+
+          if (archiveRecord) {
+            const reconstructedAnalysis = buildMagazzinoAnalysisFromArchive(archiveRecord);
+            const complete = isCompleteMagazzinoArchiveAnalysis(reconstructedAnalysis);
+            if (complete) {
+              activeAnalysis = reconstructedAnalysis;
+              setAnalysis(activeAnalysis);
+              setAnalysisStatus("success");
+              void backfillMagazzinoAnalysis(preloadDocument?.sourceDocId, activeAnalysis);
+            } else {
+              setAnalysisStatus("loading");
+            }
+          } else {
+            setAnalysisStatus("loading");
+          }
+        } else {
+          setAnalysis(activeAnalysis);
+          setAnalysisStatus("success");
+        }
+
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Download documento non riuscito (${response.status}).`);
+        }
+
+        const blob = await response.blob();
+        if (cancelled) {
+          return;
+        }
+
+        const mimeType = blob.type || "application/octet-stream";
+        const selectedFileFromPreload = new File(
+          [blob],
+          buildPreloadDocumentFileName(
+            {
+              fileUrl,
+              sourceDocId: preloadDocument?.sourceDocId,
+              sourceKey: preloadDocument?.sourceKey,
+              tipoDocumento: preloadDocument?.tipoDocumento,
+              targa: preloadDocument?.targa,
+            },
+            mimeType,
+          ),
+          { type: mimeType },
+        );
+
+        setSelectedFile(selectedFileFromPreload);
+        setPreviewScale(1);
+        setPreviewRotation(0);
+        if (!activeAnalysis) {
+          try {
+            activeAnalysis = await analyzeMagazzinoFile(selectedFileFromPreload);
+            if (cancelled) {
+              return;
+            }
+            setAnalysis(activeAnalysis);
+            setAnalysisStatus("success");
+            void backfillMagazzinoAnalysis(preloadDocument?.sourceDocId, activeAnalysis);
+          } catch {
+            if (!cancelled) {
+              setAnalysisStatus("idle");
+            }
+          }
+        }
+        setErrorMessage(null);
+        setDuplicateStatus("idle");
+        setDuplicateCandidates([]);
+        setSelectedDuplicateId("");
+        setDuplicateChoice(null);
+        setArchiveStatus("idle");
+        setArchiveError(null);
+        setArchiveResult(null);
+      } catch {
+        if (!cancelled) {
+          setSelectedFile(null);
+          if (!activeAnalysis) {
+            setAnalysisStatus("idle");
+          }
+          setErrorMessage("Riapertura documento fallita. Carica manualmente il file.");
+        }
+      }
+    };
+
+    void loadPreloadDocument();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    preloadDocument?.fileUrl,
+    preloadDocument?.sourceDocId,
+    preloadDocument?.sourceKey,
+    preloadDocument?.tipoDocumento,
+    preloadDocument?.targa,
+    preloadDocument?.archivistaAnalysis,
+  ]);
 
   const rows = useMemo(() => analysis?.voci ?? [], [analysis?.voci]);
 
@@ -193,32 +472,7 @@ export default function ArchivistaMagazzinoBridge() {
       setDuplicateChoice(null);
       setArchiveStatus("idle");
 
-      const { base64, mimeType } = await fileToBase64(selectedFile);
-      const response = await fetch(DOCUMENT_ANALYZE_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileBase64: base64,
-          mimeType,
-        }),
-      });
-
-      const rawPayload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) {
-        const errorText =
-          rawPayload &&
-          typeof rawPayload === "object" &&
-          "error" in rawPayload &&
-          typeof (rawPayload as { error?: unknown }).error === "string"
-            ? (rawPayload as { error: string }).error
-            : "Errore durante l'analisi del documento.";
-        throw new Error(errorText);
-      }
-
-      const normalizedAnalysis = normalizeAnalysisPayload(rawPayload);
-      if (!normalizedAnalysis) {
-        throw new Error("Analisi non disponibile per il documento selezionato.");
-      }
+      const normalizedAnalysis = await analyzeMagazzinoFile(selectedFile);
 
       setAnalysis(normalizedAnalysis);
       setAnalysisStatus("success");

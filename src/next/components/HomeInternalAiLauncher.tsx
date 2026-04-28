@@ -14,7 +14,7 @@ type ArchivistaQuickAction = {
   contesto: ArchivistaContesto;
 };
 
-const NEXT_IA_REPORT_PATH = "/next/ia/report";
+const NEXT_IA_REPORT_PATH = "/next/chat";
 const NEXT_IA_ARCHIVISTA_PATH = "/next/ia/archivista";
 const NEXT_CISTERNA_IA_PATH = "/next/cisterna/ia";
 

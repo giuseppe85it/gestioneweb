@@ -1,0 +1,772 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  archiveArchivistaPreventivoRecord,
+  findArchivistaDuplicateCandidates,
+  formatValue,
+  normalizeScalar,
+  normalizeText,
+  type ArchivistaArchiveResult,
+  type ArchivistaDuplicateCandidate,
+  type ArchivistaDuplicateChoice,
+  type ArchivistaReviewRow,
+} from "./ArchivistaArchiveClient";
+import { getInternalAiServerAdapterBaseUrl } from "./internalAiServerRepoUnderstandingClient";
+
+const DOCUMENT_ANALYZE_PATH = "/internal-ai-backend/documents/preventivo-magazzino-analyze";
+
+type ArchivistaPreventivoAnalysis = {
+  stato?: string;
+  tipoDocumento?: string;
+  fornitore?: string;
+  numeroDocumento?: string;
+  dataDocumento?: string;
+  totaleDocumento?: string | number;
+  testo?: string;
+  riassuntoBreve?: string;
+  avvisi?: string[];
+  campiMancanti?: string[];
+  voci?: ArchivistaReviewRow[];
+};
+
+type ArchivistaPreventivoMagazzinoPreloadDocument = {
+  fileUrl: string;
+  sourceDocId?: string;
+  sourceKey?: string;
+  tipoDocumento?: string;
+  targa?: string;
+  archivistaAnalysis?: ArchivistaPreventivoAnalysis | null;
+};
+
+type ArchivistaPreventivoMagazzinoBridgeProps = {
+  preloadDocument?: ArchivistaPreventivoMagazzinoPreloadDocument | null;
+};
+
+type ArchivistaPreventivoApiResponse = {
+  ok?: boolean;
+  message?: string;
+  data?: {
+    analysis?: ArchivistaPreventivoAnalysis;
+  };
+  error?: string;
+};
+
+type AnalysisStatus = "idle" | "loading" | "success" | "error";
+type DuplicateStatus = "idle" | "checking" | "ready" | "duplicates_found" | "error";
+type ArchiveStatus = "idle" | "saving" | "success" | "error";
+
+function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Errore lettura file."));
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const parts = result.split(",");
+      if (parts.length !== 2) {
+        reject(new Error("Formato file non valido per l'analisi."));
+        return;
+      }
+      resolve({
+        base64: parts[1],
+        mimeType: file.type || "application/octet-stream",
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function normalizeAnalysisPayload(payload: unknown): ArchivistaPreventivoAnalysis | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const record = payload as ArchivistaPreventivoApiResponse;
+  if (record.data?.analysis && typeof record.data.analysis === "object") {
+    return record.data.analysis;
+  }
+
+  return payload as ArchivistaPreventivoAnalysis;
+}
+
+function getDocumentAnalyzeUrl(): string | null {
+  const baseUrl = getInternalAiServerAdapterBaseUrl();
+  return baseUrl ? `${baseUrl}${DOCUMENT_ANALYZE_PATH}` : null;
+}
+
+function extractPreloadFileNameFromUrl(fileUrl: string) {
+  const rawName = fileUrl.split("?")[0].split("#")[0].split("/").pop() ?? "";
+  if (!rawName) {
+    return "";
+  }
+
+  try {
+    return decodeURIComponent(rawName).split("/").filter(Boolean).pop() ?? "";
+  } catch {
+    return rawName.split("/").filter(Boolean).pop() ?? "";
+  }
+}
+
+function getPreloadExtensionFromMimeType(mimeType: string) {
+  if (mimeType.includes("pdf")) return "pdf";
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  return "jpg";
+}
+
+function buildPreloadDocumentFileName(
+  preloadDocument: ArchivistaPreventivoMagazzinoPreloadDocument,
+  mimeType: string,
+) {
+  const fileNameFromUrl = extractPreloadFileNameFromUrl(preloadDocument.fileUrl);
+  if (fileNameFromUrl) {
+    return fileNameFromUrl;
+  }
+
+  const documentLabel =
+    normalizeText(preloadDocument.targa) ||
+    normalizeText(preloadDocument.sourceDocId) ||
+    "documento";
+  const typeLabel = normalizeText(preloadDocument.tipoDocumento) || "preventivo";
+  return `${typeLabel}-${documentLabel}.${getPreloadExtensionFromMimeType(mimeType)}`;
+}
+
+export default function ArchivistaPreventivoMagazzinoBridge({
+  preloadDocument = null,
+}: ArchivistaPreventivoMagazzinoBridgeProps) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
+  const [analysis, setAnalysis] = useState<ArchivistaPreventivoAnalysis | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [duplicateStatus, setDuplicateStatus] = useState<DuplicateStatus>("idle");
+  const [duplicateCandidates, setDuplicateCandidates] = useState<ArchivistaDuplicateCandidate[]>([]);
+  const [selectedDuplicateId, setSelectedDuplicateId] = useState<string>("");
+  const [duplicateChoice, setDuplicateChoice] = useState<ArchivistaDuplicateChoice | null>(null);
+  const [archiveStatus, setArchiveStatus] = useState<ArchiveStatus>("idle");
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveResult, setArchiveResult] = useState<ArchivistaArchiveResult | null>(null);
+
+  useEffect(() => {
+    if (!selectedFile || !selectedFile.type.startsWith("image/")) {
+      setImagePreviewUrl(null);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(selectedFile);
+    setImagePreviewUrl(previewUrl);
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [selectedFile]);
+
+  useEffect(() => {
+    const fileUrl = preloadDocument?.fileUrl;
+    if (!fileUrl) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPreloadDocument = async () => {
+      try {
+        setErrorMessage(null);
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Download documento non riuscito (${response.status}).`);
+        }
+
+        const blob = await response.blob();
+        if (cancelled) {
+          return;
+        }
+
+        const mimeType = blob.type || "application/octet-stream";
+        const selectedFileFromPreload = new File(
+          [blob],
+          buildPreloadDocumentFileName(
+            {
+              fileUrl,
+              sourceDocId: preloadDocument?.sourceDocId,
+              sourceKey: preloadDocument?.sourceKey,
+              tipoDocumento: preloadDocument?.tipoDocumento,
+              targa: preloadDocument?.targa,
+            },
+            mimeType,
+          ),
+          { type: mimeType },
+        );
+
+        const preloadedAnalysis = preloadDocument?.archivistaAnalysis ?? null;
+        setSelectedFile(selectedFileFromPreload);
+        setAnalysis(preloadedAnalysis);
+        setAnalysisStatus(preloadedAnalysis ? "success" : "idle");
+        setErrorMessage(null);
+        setDuplicateStatus("idle");
+        setDuplicateCandidates([]);
+        setSelectedDuplicateId("");
+        setDuplicateChoice(null);
+        setArchiveStatus("idle");
+        setArchiveError(null);
+        setArchiveResult(null);
+      } catch {
+        if (!cancelled) {
+          setSelectedFile(null);
+          setAnalysisStatus("idle");
+          setErrorMessage("Riapertura documento fallita. Carica manualmente il file.");
+        }
+      }
+    };
+
+    void loadPreloadDocument();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    preloadDocument?.fileUrl,
+    preloadDocument?.sourceDocId,
+    preloadDocument?.sourceKey,
+    preloadDocument?.tipoDocumento,
+    preloadDocument?.targa,
+    preloadDocument?.archivistaAnalysis,
+  ]);
+
+  const rows = analysis?.voci ?? [];
+  const missingFields = useMemo(() => {
+    if (!analysis) return [];
+    if (Array.isArray(analysis.campiMancanti) && analysis.campiMancanti.length > 0) {
+      return analysis.campiMancanti.filter(Boolean);
+    }
+
+    const missing: string[] = [];
+    if (!normalizeText(analysis.fornitore)) missing.push("Fornitore");
+    if (!normalizeText(analysis.numeroDocumento)) missing.push("Numero preventivo");
+    if (!normalizeText(analysis.dataDocumento)) missing.push("Data preventivo");
+    return missing;
+  }, [analysis]);
+
+  const warnings = useMemo(() => {
+    if (!analysis) return [];
+    const nextWarnings = Array.isArray(analysis.avvisi) ? [...analysis.avvisi] : [];
+    if (!rows.length) {
+      nextWarnings.push("Nessuna riga materiale e stata letta in modo strutturato.");
+    }
+    return Array.from(new Set(nextWarnings.filter(Boolean)));
+  }, [analysis, rows.length]);
+
+  const summaryText = useMemo(() => {
+    if (!analysis) {
+      return "Carica il preventivo e avvia l'analisi. Archivista prepara una review pulita, poi controlla duplicati e chiede la conferma finale prima di archiviare.";
+    }
+
+    return (
+      normalizeText(analysis.riassuntoBreve) ||
+      "Preventivo magazzino analizzato. Puoi confermare l'archiviazione nel ramo corretto senza avviare alcun aggiornamento automatico del listino."
+    );
+  }, [analysis]);
+
+  const duplicateCandidateSelected =
+    duplicateCandidates.find((entry) => entry.id === selectedDuplicateId) ??
+    duplicateCandidates[0] ??
+    null;
+
+  const statusLabel =
+    analysisStatus === "loading"
+      ? "Analisi in corso"
+      : analysisStatus === "success"
+        ? "Analisi completata"
+        : analysisStatus === "error"
+          ? "Errore analisi"
+          : "Pronto per analizzare";
+
+  const handleAnalyze = async () => {
+    if (!selectedFile) {
+      setErrorMessage("Carica prima un file o una foto del preventivo.");
+      setAnalysisStatus("error");
+      return;
+    }
+
+    try {
+      setAnalysisStatus("loading");
+      setErrorMessage(null);
+      setArchiveError(null);
+      setArchiveResult(null);
+      setAnalysis(null);
+      setDuplicateStatus("idle");
+      setDuplicateCandidates([]);
+      setSelectedDuplicateId("");
+      setDuplicateChoice(null);
+      setArchiveStatus("idle");
+
+      const { base64, mimeType } = await fileToBase64(selectedFile);
+      const endpoint = getDocumentAnalyzeUrl();
+      if (!endpoint) {
+        throw new Error(
+          "Backend IA OpenAI non disponibile in questo ambiente. Avvia il server IA separato per analizzare il preventivo.",
+        );
+      }
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: selectedFile.name,
+          contentBase64: base64,
+          mimeType,
+        }),
+      });
+
+      const rawPayload = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) {
+        const errorText =
+          rawPayload &&
+          typeof rawPayload === "object" &&
+          "message" in rawPayload &&
+          typeof (rawPayload as { message?: unknown }).message === "string"
+            ? (rawPayload as { message: string }).message
+            : "Errore durante l'analisi del preventivo.";
+        throw new Error(errorText);
+      }
+
+      const normalizedAnalysis = normalizeAnalysisPayload(rawPayload);
+      if (!normalizedAnalysis) {
+        throw new Error("Analisi non disponibile per il file selezionato.");
+      }
+
+      setAnalysis(normalizedAnalysis);
+      setAnalysisStatus("success");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Errore durante l'analisi.");
+      setAnalysisStatus("error");
+    }
+  };
+
+  const handleCheckDuplicates = async () => {
+    if (!analysis) return;
+
+    try {
+      setDuplicateStatus("checking");
+      setArchiveError(null);
+      const matches = await findArchivistaDuplicateCandidates({
+        family: "preventivo_magazzino",
+        target: "@preventivi",
+        fornitore: analysis.fornitore,
+        numeroDocumento: analysis.numeroDocumento,
+        dataDocumento: analysis.dataDocumento,
+        totaleDocumento: analysis.totaleDocumento,
+      });
+
+      setDuplicateCandidates(matches);
+      setSelectedDuplicateId(matches[0]?.id ?? "");
+      setDuplicateChoice(null);
+      setDuplicateStatus(matches.length ? "duplicates_found" : "ready");
+    } catch (error) {
+      setArchiveError(
+        error instanceof Error ? error.message : "Controllo duplicati non completato per il preventivo.",
+      );
+      setDuplicateStatus("error");
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!selectedFile || !analysis) return;
+    if (duplicateStatus === "idle") {
+      setArchiveError("Controlla duplicati prima della conferma finale.");
+      return;
+    }
+    if (duplicateStatus === "duplicates_found" && !duplicateChoice) {
+      setArchiveError("Scegli prima come gestire il possibile duplicato trovato in archivio.");
+      return;
+    }
+
+    try {
+      setArchiveStatus("saving");
+      setArchiveError(null);
+      const result = await archiveArchivistaPreventivoRecord({
+        family: "preventivo_magazzino",
+        selectedFile,
+        fileName: selectedFile.name,
+        fornitore: analysis.fornitore || null,
+        numeroPreventivo: analysis.numeroDocumento || null,
+        dataPreventivo: analysis.dataDocumento || null,
+        totaleDocumento: analysis.totaleDocumento || null,
+        riassuntoBreve: analysis.riassuntoBreve || null,
+        righe: rows,
+        avvisi: warnings,
+        campiMancanti: missingFields,
+        ambitoPreventivo: "magazzino",
+        duplicateChoice,
+        duplicateCandidate: duplicateCandidateSelected,
+        archivistaAnalysis: analysis,
+      });
+      setArchiveResult(result);
+      setArchiveStatus("success");
+    } catch (error) {
+      setArchiveError(error instanceof Error ? error.message : "Archiviazione non completata.");
+      setArchiveStatus("error");
+    }
+  };
+
+  return (
+    <div className="ia-archivista-bridge">
+      <div className="ia-archivista-bridge__intro iai-card">
+        <div className="ia-archivista-bridge__intro-copy">
+          <p className="internal-ai-card__eyebrow iai-sec-label">Ramo attivo in questo step</p>
+          <h3>Preventivo + Magazzino</h3>
+          <p>{summaryText}</p>
+        </div>
+        <span className="ia-archivista__flow-badge is-active">Attivo ora</span>
+      </div>
+
+      <label className="ia-archivista__upload ia-archivista-bridge__upload iai-card">
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          onChange={(event) => {
+            const nextFile = event.target.files?.[0] ?? null;
+            setSelectedFile(nextFile);
+            setAnalysis(null);
+            setAnalysisStatus("idle");
+            setErrorMessage(null);
+            setArchiveError(null);
+            setArchiveResult(null);
+            setDuplicateStatus("idle");
+            setDuplicateCandidates([]);
+            setSelectedDuplicateId("");
+            setDuplicateChoice(null);
+          }}
+        />
+        <strong className="iai-upload-combo-label">Carica preventivo di magazzino</strong>
+        <span className="iai-upload-hint">
+          PDF, foto e scansioni. Il documento viene archiviato solo dopo la tua conferma.
+        </span>
+        <p className="internal-ai-card__meta">
+          {selectedFile ? selectedFile.name : "Nessun file selezionato"}
+        </p>
+      </label>
+
+      {selectedFile ? (
+        <div className="ia-archivista-bridge__file-meta">
+          <span className="ia-archivista__file-pill">{selectedFile.name}</span>
+          <span className="ia-archivista-bridge__file-hint">
+            {selectedFile.type === "application/pdf" ? "PDF pronto" : "Immagine pronta"}
+          </span>
+        </div>
+      ) : null}
+
+      <div className="ia-archivista-bridge__actions">
+        <button
+          type="button"
+          className="internal-ai-search__button ia-archivista__analyze-button iai-btn-analizza"
+          disabled={!selectedFile || analysisStatus === "loading"}
+          onClick={handleAnalyze}
+        >
+          {analysisStatus === "loading" ? "Analisi in corso..." : "Analizza documento"}
+        </button>
+        <p className="internal-ai-card__meta">
+          Nessun listino viene aggiornato automaticamente in questo step.
+        </p>
+      </div>
+
+      {errorMessage ? <div className="ia-archivista__notice iai-avvisi-banner">{errorMessage}</div> : null}
+      {archiveError ? <div className="ia-archivista__notice iai-avvisi-banner">{archiveError}</div> : null}
+
+      <div className="ia-archivista-bridge__review-grid iai-top-grid iai-top-grid--stacked-right">
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-doc-viewer">
+          <div className="ia-archivista-bridge__review-head">
+            <p className="internal-ai-card__eyebrow">Documento originale</p>
+            <strong>{selectedFile ? selectedFile.name : "In attesa del file"}</strong>
+          </div>
+
+          {imagePreviewUrl ? (
+            <img
+              src={imagePreviewUrl}
+              alt="Anteprima preventivo caricato"
+              className="ia-archivista-bridge__image-preview"
+            />
+          ) : (
+            <div className="ia-archivista-bridge__preview-placeholder">
+              {selectedFile
+                ? "Anteprima PDF disponibile dopo l'apertura del file originale."
+                : "Qui vedrai l'anteprima del documento caricato."}
+            </div>
+          )}
+
+          <div className="ia-archivista-bridge__status-box">
+            <p className="internal-ai-card__eyebrow">Stato analisi</p>
+            <strong>{statusLabel}</strong>
+            <p>
+              {analysisStatus === "success"
+                ? "Review preventivo pronta per la verifica utente."
+                : "Archivista analizza il preventivo ma non avvia workflow procurement o listino."}
+            </p>
+          </div>
+        </article>
+
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-fields-card">
+          <div className="ia-archivista-bridge__review-head">
+            <p className="internal-ai-card__eyebrow">Dati estratti principali</p>
+            <strong>Review Preventivo + Magazzino</strong>
+          </div>
+
+          <dl className="ia-archivista-bridge__facts">
+            <div className={!normalizeText(analysis?.tipoDocumento) ? "is-missing" : ""}>
+              <dt>Tipo documento</dt>
+              <dd>{formatValue(analysis?.tipoDocumento)}</dd>
+            </div>
+            <div className={!normalizeText(analysis?.fornitore) ? "is-missing" : ""}>
+              <dt>Fornitore</dt>
+              <dd>{formatValue(analysis?.fornitore)}</dd>
+            </div>
+            <div className={!normalizeText(analysis?.numeroDocumento) ? "is-missing" : ""}>
+              <dt>Numero preventivo</dt>
+              <dd>{formatValue(analysis?.numeroDocumento)}</dd>
+            </div>
+            <div className={!normalizeText(analysis?.dataDocumento) ? "is-missing" : ""}>
+              <dt>Data</dt>
+              <dd>{formatValue(analysis?.dataDocumento)}</dd>
+            </div>
+            <div className={!normalizeScalar(analysis?.totaleDocumento) ? "is-missing" : ""}>
+              <dt>Totale</dt>
+              <dd>{formatValue(analysis?.totaleDocumento)}</dd>
+            </div>
+            <div>
+              <dt>Righe lette</dt>
+              <dd>{rows.length}</dd>
+            </div>
+          </dl>
+
+          <div className="ia-archivista-bridge__summary">
+            <p className="internal-ai-card__eyebrow">Riassunto breve</p>
+            <p>{summaryText}</p>
+          </div>
+        </article>
+
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-card">
+          <div className="ia-archivista-bridge__review-head">
+            <p className="internal-ai-card__eyebrow">Esito proposto</p>
+            <strong>Review pronta, nessun listino automatico</strong>
+          </div>
+
+          <div className="ia-archivista-bridge__callout-stack">
+            <div className="ia-archivista-bridge__callout is-highlight">
+              <strong>{archiveResult ? "Documento archiviato" : "Documento analizzato"}</strong>
+              <p>
+                {archiveResult
+                  ? archiveResult.message
+                  : "La review e pronta. Il preventivo non viene archiviato finche non confermi."}
+              </p>
+            </div>
+            <div className="ia-archivista-bridge__callout">
+              <strong>{archiveResult ? "Originale disponibile" : "Non ancora archiviato"}</strong>
+              <p>
+                {archiveResult?.fileUrl
+                  ? "L'originale archiviato e disponibile nel link qui sotto."
+                  : "L'originale verra caricato solo dopo la conferma finale dell'utente."}
+              </p>
+            </div>
+            <div className="ia-archivista-bridge__callout is-warning">
+              <strong>Nessuna azione business dopo archivio</strong>
+              <p>Questo ramo non aggiorna listino e non apre workflow automatici dopo il salvataggio.</p>
+            </div>
+          </div>
+
+          <div className="ia-archivista-bridge__warnings">
+            <p className="internal-ai-card__eyebrow">Avvisi</p>
+            {warnings.length ? (
+              <ul className="ia-archivista-bridge__warning-list">
+                {warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="ia-archivista-bridge__warning-empty">
+                Nessun avviso forte rilevato in questa review.
+              </p>
+            )}
+          </div>
+
+          <div className="ia-archivista-bridge__list-box">
+            <p className="internal-ai-card__eyebrow">Campi mancanti</p>
+            {missingFields.length ? (
+              <ul className="ia-archivista-bridge__list">
+                {missingFields.map((field) => (
+                  <li key={field}>{field}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>Nessun campo mancante forte rilevato per questo preventivo.</p>
+            )}
+          </div>
+        </article>
+      </div>
+
+      <div className="ia-archivista-bridge__archive-grid iai-archive-grid">
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-card">
+          <div className="ia-archivista-bridge__review-head">
+            <p className="internal-ai-card__eyebrow">Righe lette</p>
+            <strong>{rows.length ? "Dettaglio materiali" : "In attesa del risultato"}</strong>
+          </div>
+
+          {rows.length ? (
+            <div className="ia-archivista-bridge__rows">
+              {rows.map((row, index) => (
+                <article key={`${row.descrizione ?? "voce"}-${index}`} className="ia-archivista-bridge__row">
+                  <strong>{normalizeText(row.descrizione) || `Voce ${index + 1}`}</strong>
+                  <div className="ia-archivista-bridge__row-meta">
+                    <span>Qta: {formatValue(row.quantita, "-")}</span>
+                    <span>Unita: {formatValue(row.unita, "-")}</span>
+                    <span>Prezzo: {formatValue(row.prezzoUnitario, "-")}</span>
+                    <span>Totale: {formatValue(row.importo ?? row.totale, "-")}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="ia-archivista-bridge__empty">
+              <p className="ia-archivista-bridge__empty-title">Nessuna riga disponibile</p>
+              <p className="ia-archivista-bridge__empty-copy">
+                Dopo l'analisi vedrai qui le righe lette dal preventivo.
+              </p>
+            </div>
+          )}
+        </article>
+
+        <article className="internal-ai-card ia-archivista-bridge__review-card iai-card">
+          <div className="ia-archivista-bridge__review-head">
+            <p className="internal-ai-card__eyebrow">Controllo duplicati</p>
+            <strong>Archivio Preventivi</strong>
+          </div>
+
+          <div className="ia-archivista-bridge__actions">
+            <button
+              type="button"
+              className="internal-ai-search__button ia-archivista__analyze-button iai-btn-analizza"
+              disabled={!analysis || duplicateStatus === "checking"}
+              onClick={handleCheckDuplicates}
+            >
+              {duplicateStatus === "checking" ? "Controllo in corso..." : "Controlla duplicati"}
+            </button>
+            <p className="internal-ai-card__meta">
+              Se il match e forte, Archivista ti chiede una scelta secca e non decide da solo.
+            </p>
+          </div>
+
+          {duplicateCandidates.length ? (
+            <div className="ia-archivista-bridge__rows">
+              {duplicateCandidates.map((candidate) => (
+                <article
+                  key={candidate.id}
+                  className={`ia-archivista-bridge__row ${selectedDuplicateId === candidate.id ? "is-selected" : ""}`}
+                >
+                  <div className="ia-archivista-bridge__row-head">
+                    <strong>{candidate.title}</strong>
+                    <button
+                      type="button"
+                      className="ia-archivista-bridge__ghost-button"
+                      onClick={() => setSelectedDuplicateId(candidate.id)}
+                    >
+                      {selectedDuplicateId === candidate.id ? "Selezionato" : "Usa questo"}
+                    </button>
+                  </div>
+                  <p className="ia-archivista-bridge__row-note">{candidate.subtitle || "Archivio esistente"}</p>
+                  <div className="ia-archivista-bridge__pill-row">
+                    {candidate.matchedFields.map((field) => (
+                      <span key={field} className="ia-archivista-bridge__mini-pill">
+                        {field}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : duplicateStatus === "ready" ? (
+            <div className="ia-archivista-bridge__callout is-highlight">
+              <strong>Nessun duplicato forte</strong>
+              <p>Puoi procedere con la conferma finale dell'archiviazione.</p>
+            </div>
+          ) : (
+            <div className="ia-archivista-bridge__empty">
+              <p className="ia-archivista-bridge__empty-title">Controllo non ancora eseguito</p>
+              <p className="ia-archivista-bridge__empty-copy">
+                Prima della conferma finale puoi controllare se esiste gia un preventivo molto simile in archivio.
+              </p>
+            </div>
+          )}
+
+          {duplicateCandidateSelected ? (
+            <div className="ia-archivista-bridge__choice-grid">
+              <button
+                type="button"
+                className={`ia-archivista-bridge__choice ${duplicateChoice === "stesso_documento" ? "is-active" : ""}`}
+                onClick={() => setDuplicateChoice("stesso_documento")}
+              >
+                Stesso documento
+              </button>
+              <button
+                type="button"
+                className={`ia-archivista-bridge__choice ${duplicateChoice === "versione_migliore" ? "is-active" : ""}`}
+                onClick={() => setDuplicateChoice("versione_migliore")}
+              >
+                Versione migliore
+              </button>
+              <button
+                type="button"
+                className={`ia-archivista-bridge__choice ${duplicateChoice === "documento_diverso" ? "is-active" : ""}`}
+                onClick={() => setDuplicateChoice("documento_diverso")}
+              >
+                Documento diverso
+              </button>
+            </div>
+          ) : null}
+        </article>
+      </div>
+
+      <article className="internal-ai-card ia-archivista-bridge__review-card iai-confirm-bar">
+        <div className="ia-archivista-bridge__review-head">
+          <p className="internal-ai-card__eyebrow">Conferma finale</p>
+          <strong>Archiviazione Preventivo + Magazzino</strong>
+        </div>
+
+        <div className="ia-archivista-bridge__actions">
+          <button
+            type="button"
+            className="internal-ai-search__button ia-archivista__analyze-button iai-btn-conferma"
+            disabled={
+              !analysis ||
+              !selectedFile ||
+              archiveStatus === "saving" ||
+              duplicateStatus === "idle" ||
+              duplicateStatus === "checking" ||
+              (duplicateStatus === "duplicates_found" && !duplicateChoice)
+            }
+            onClick={handleArchive}
+          >
+            {archiveStatus === "saving" ? "Archiviazione in corso..." : "Conferma e archivia"}
+          </button>
+          <p className="internal-ai-card__meta">
+            Conferma esplicita richiesta: il preventivo viene archiviato solo quando premi il pulsante.
+          </p>
+        </div>
+
+        {archiveResult ? (
+          <div className="ia-archivista-bridge__callout-stack">
+            <div className="ia-archivista-bridge__callout is-highlight">
+              <strong>Documento archiviato</strong>
+              <p>{archiveResult.message}</p>
+            </div>
+            {archiveResult.fileUrl ? (
+              <div className="ia-archivista-bridge__callout">
+                <strong>Originale archiviato</strong>
+                <p>
+                  <a href={archiveResult.fileUrl} target="_blank" rel="noreferrer">
+                    Apri originale archiviato
+                  </a>
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </article>
+    </div>
+  );
+}

@@ -7,46 +7,12 @@ import {
   type InternalAiBackendDocumentsPreviewRequestBody,
   type InternalAiBackendEconomicAnalysisPreviewRequestBody,
   type InternalAiBackendLibrettoPreviewRequestBody,
-  type InternalAiBackendOrchestratorChatResponseData,
   type InternalAiBackendPreventiviPreviewRequestBody,
   type InternalAiBackendVehicleReportPreviewRequestBody,
   type InternalAiBackendEndpointId,
   type InternalAiBackendHttpRequest,
   type InternalAiBackendHttpResponse,
-  type InternalAiBackendOrchestratorPreviewResponseData,
 } from "./internalAiBackendContracts";
-import {
-  readInternalAiDocumentsPreview,
-  type InternalAiDocumentsPreviewReadResult,
-} from "../../../src/next/internal-ai/internalAiDocumentsPreviewFacade";
-import {
-  readInternalAiCombinedReportPreview,
-  type InternalAiCombinedReportReadResult,
-} from "../../../src/next/internal-ai/internalAiCombinedReportFacade";
-import {
-  readInternalAiDriverReportPreview,
-  type InternalAiDriverReportReadResult,
-} from "../../../src/next/internal-ai/internalAiDriverReportFacade";
-import {
-  runInternalAiChatTurn,
-  type InternalAiChatTurnResult,
-} from "../../../src/next/internal-ai/internalAiChatOrchestrator";
-import {
-  readInternalAiEconomicAnalysisPreview,
-  type InternalAiEconomicAnalysisReadResult,
-} from "../../../src/next/internal-ai/internalAiEconomicAnalysisFacade";
-import {
-  readInternalAiLibrettoPreview,
-  type InternalAiLibrettoPreviewReadResult,
-} from "../../../src/next/internal-ai/internalAiLibrettoPreviewFacade";
-import {
-  readInternalAiPreventiviPreview,
-  type InternalAiPreventiviPreviewReadResult,
-} from "../../../src/next/internal-ai/internalAiPreventiviPreviewFacade";
-import {
-  readInternalAiVehicleReportPreview,
-  type InternalAiVehicleReportReadResult,
-} from "../../../src/next/internal-ai/internalAiVehicleReportFacade";
 
 type InternalAiBackendHandler = (
   request: InternalAiBackendHttpRequest,
@@ -254,244 +220,14 @@ function isCombinedReportPreviewRequestBody(
   );
 }
 
-async function buildChatOrchestratorResponse(
-  result: InternalAiChatTurnResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorChatResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.chat",
-      status: "ok",
-      message:
-        "Chat interna instradata dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "chat-orchestrator",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "L'orchestrazione conserva i guard rail clone-safe e resta reversibile verso il fallback locale.",
-          "Nessun backend legacy viene riusato come canale canonico della chat interna.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
-async function buildDocumentsPreviewResponse(
-  result: InternalAiDocumentsPreviewReadResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorPreviewResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.preview",
-      status: "ok",
-      message:
-        "Preview documenti servita dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "documents-preview",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "Nessun backend legacy riusato come canale canonico.",
-          "In caso di degrado il frontend puo tornare al facade clone-safe locale.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
-async function buildEconomicAnalysisPreviewResponse(
-  result: InternalAiEconomicAnalysisReadResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorPreviewResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.preview",
-      status: "ok",
-      message:
-        "Analisi economica preview servita dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "economic-analysis-preview",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "La preview economica riusa solo layer clone-safe e snapshot legacy gia leggibili.",
-          "In caso di degrado il frontend puo tornare al facade locale dell'analisi economica.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
-async function buildLibrettoPreviewResponse(
-  result: InternalAiLibrettoPreviewReadResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorPreviewResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.preview",
-      status: "ok",
-      message:
-        "Preview libretto servita dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "libretto-preview",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "La preview libretto riusa solo campi clone-safe del mezzo e copertura file gia leggibile.",
-          "In caso di degrado il frontend puo tornare al facade locale della preview libretto.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
-async function buildPreventiviPreviewResponse(
-  result: InternalAiPreventiviPreviewReadResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorPreviewResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.preview",
-      status: "ok",
-      message:
-        "Preview preventivi servita dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "preventivi-preview",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "La preview preventivi riusa solo layer clone-safe documenti/costi e supporti procurement separati.",
-          "In caso di degrado il frontend puo tornare al facade locale della preview preventivi.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
-async function buildVehicleReportPreviewResponse(
-  result: InternalAiVehicleReportReadResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorPreviewResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.preview",
-      status: "ok",
-      message:
-        "Report targa servito dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "vehicle-report-preview",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "Il report mezzo riusa solo layer clone-safe e mantiene il filtro periodo gia attivo nel clone.",
-          "In caso di degrado il frontend puo tornare al facade locale del report targa.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
-async function buildDriverReportPreviewResponse(
-  result: InternalAiDriverReportReadResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorPreviewResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.preview",
-      status: "ok",
-      message:
-        "Report autista servito dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "driver-report-preview",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "Il report autista riusa solo lookup e layer clone-safe gia attivi nel clone.",
-          "In caso di degrado il frontend puo tornare al facade locale del report autista.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
-async function buildCombinedReportPreviewResponse(
-  result: InternalAiCombinedReportReadResult,
-): Promise<InternalAiBackendHttpResponse<InternalAiBackendOrchestratorPreviewResponseData>> {
-  return {
-    statusCode: 200,
-    headers: { ...INTERNAL_AI_BACKEND_RESPONSE_HEADERS },
-    body: {
-      ok: true,
-      mode: "mock_safe",
-      endpointId: "orchestrator.preview",
-      status: "ok",
-      message:
-        "Report combinato servito dal backend IA separato in modalita mock-safe, senza provider reali o scritture business.",
-      data: {
-        capabilityId: "combined-report-preview",
-        transport: "backend_mock_safe",
-        fallbackAvailable: true,
-        result,
-        notes: [
-          "Bridge in-process sul contratto del backend separato.",
-          "Il report combinato riusa i facade clone-safe di mezzo, autista e periodo senza cambiare la logica dati.",
-          "In caso di degrado il frontend puo tornare al facade locale del report combinato.",
-        ],
-      },
-      guardRails: INTERNAL_AI_BACKEND_GUARD_RAILS,
-    },
-  };
-}
-
 async function handleOrchestratorChat(
   request: InternalAiBackendHttpRequest,
 ): Promise<InternalAiBackendHttpResponse<Record<string, unknown>>> {
   if (isChatOrchestratorRequestBody(request.body)) {
-    const result = await runInternalAiChatTurn(request.body.prompt, request.body.periodInput);
-    return buildChatOrchestratorResponse(result);
+    return buildNotEnabledResponse(
+      "orchestrator.chat",
+      "Orchestratore chat legacy rimosso: la chat NEXT usa il backend OpenAI controllato tramite adapter server reale.",
+    );
   }
 
   return buildNotEnabledResponse(
@@ -506,50 +242,52 @@ async function handleOrchestratorPreview(
   InternalAiBackendHttpResponse<Record<string, unknown>>
 > {
   if (isDocumentsPreviewRequestBody(request.body)) {
-    const result = await readInternalAiDocumentsPreview(request.body.rawTarga);
-    return buildDocumentsPreviewResponse(result);
+    return buildNotEnabledResponse(
+      "orchestrator.preview",
+      "Preview documenti legacy rimossa insieme alla vecchia chat IA NEXT.",
+    );
   }
 
   if (isEconomicAnalysisPreviewRequestBody(request.body)) {
-    const result = await readInternalAiEconomicAnalysisPreview(request.body.rawTarga);
-    return buildEconomicAnalysisPreviewResponse(result);
+    return buildNotEnabledResponse(
+      "orchestrator.preview",
+      "Preview analisi economica legacy rimossa insieme alla vecchia chat IA NEXT.",
+    );
   }
 
   if (isLibrettoPreviewRequestBody(request.body)) {
-    const result = await readInternalAiLibrettoPreview(request.body.rawTarga);
-    return buildLibrettoPreviewResponse(result);
+    return buildNotEnabledResponse(
+      "orchestrator.preview",
+      "Preview libretto legacy rimossa insieme alla vecchia chat IA NEXT.",
+    );
   }
 
   if (isPreventiviPreviewRequestBody(request.body)) {
-    const result = await readInternalAiPreventiviPreview(request.body.rawTarga);
-    return buildPreventiviPreviewResponse(result);
+    return buildNotEnabledResponse(
+      "orchestrator.preview",
+      "Preview preventivi legacy rimossa insieme alla vecchia chat IA NEXT.",
+    );
   }
 
   if (isVehicleReportPreviewRequestBody(request.body)) {
-    const result = await readInternalAiVehicleReportPreview(
-      request.body.rawTarga,
-      request.body.periodInput,
+    return buildNotEnabledResponse(
+      "orchestrator.preview",
+      "Preview report mezzo legacy rimossa insieme alla vecchia chat IA NEXT.",
     );
-    return buildVehicleReportPreviewResponse(result);
   }
 
   if (isDriverReportPreviewRequestBody(request.body)) {
-    const result = await readInternalAiDriverReportPreview(
-      request.body.driverCandidate,
-      request.body.rawDriverQuery,
-      request.body.periodInput,
+    return buildNotEnabledResponse(
+      "orchestrator.preview",
+      "Preview report autista legacy rimossa insieme alla vecchia chat IA NEXT.",
     );
-    return buildDriverReportPreviewResponse(result);
   }
 
   if (isCombinedReportPreviewRequestBody(request.body)) {
-    const result = await readInternalAiCombinedReportPreview({
-      driverCandidate: request.body.driverCandidate,
-      rawTarga: request.body.rawTarga,
-      rawDriverQuery: request.body.rawDriverQuery,
-      periodInput: request.body.periodInput,
-    });
-    return buildCombinedReportPreviewResponse(result);
+    return buildNotEnabledResponse(
+      "orchestrator.preview",
+      "Preview report combinato legacy rimossa insieme alla vecchia chat IA NEXT.",
+    );
   }
 
   return buildNotEnabledResponse(

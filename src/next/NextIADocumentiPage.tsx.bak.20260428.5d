@@ -1,0 +1,1008 @@
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import "./internal-ai/internal-ai.css";
+import { formatDateUI } from "./nextDateFormat";
+import {
+  buildNextDossierPath,
+  NEXT_INTERNAL_AI_PATH,
+} from "./nextStructuralPaths";
+import {
+  deleteNextDocumentoCosto,
+  readNextIADocumentiArchiveSnapshot,
+  type NextDocumentiCostiCurrency,
+  type NextDocumentiCostiLegacyViewItem,
+  type NextIADocumentiArchiveItem,
+  updateNextDocumentoCurrency,
+} from "./domain/nextDocumentiCostiDomain";
+import { runWithCloneWriteScopedAllowance } from "../utils/cloneWriteBarrier";
+
+const NEXT_IA_ARCHIVISTA_PATH = "/next/ia/archivista";
+
+type DocumentiCostiFilter =
+  | "tutti"
+  | "fatture"
+  | "ddt"
+  | "preventivi"
+  | "da_verificare"
+  | "libretti";
+
+type SupplierGroup = {
+  supplier: string;
+  items: NextIADocumentiArchiveItem[];
+  total: number;
+};
+
+type ArchivistaPresetPayload = {
+  tipo: "fattura_ddt" | "preventivo" | "documento_mezzo";
+  contesto: "magazzino" | "manutenzione" | "documento_mezzo";
+  fileUrl?: string;
+  sourceDocId?: string;
+  sourceKey?: string;
+  tipoDocumento?: string;
+  targa?: string;
+  archivistaAnalysis?: Record<string, unknown> | null;
+};
+
+const FILTERS: Array<{ id: DocumentiCostiFilter; label: string }> = [
+  { id: "tutti", label: "Tutti" },
+  { id: "fatture", label: "Fatture" },
+  { id: "ddt", label: "DDT" },
+  { id: "preventivi", label: "Preventivi" },
+  { id: "da_verificare", label: "Da verificare" },
+  { id: "libretti", label: "Libretti" },
+];
+
+function normalizeText(value: string | number | null | undefined) {
+  return String(value ?? "").trim();
+}
+
+function normalizeType(item: NextIADocumentiArchiveItem) {
+  return normalizeText(item.tipoDocumento).toUpperCase();
+}
+
+function parseAmount(value: string | number | null | undefined) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  const raw = normalizeText(value);
+  if (!raw) {
+    return null;
+  }
+
+  let normalized = raw.toUpperCase();
+  normalized = normalized.replace(/EUR|CHF|EURO/g, "");
+  normalized = normalized.replace(/[\s'\u00A0]/g, "");
+
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (normalized.includes(",")) {
+    normalized = normalized.replace(",", ".");
+  }
+
+  normalized = normalized.replace(/[^0-9.-]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatMoney(
+  value: string | number | null | undefined,
+  currency: NextIADocumentiArchiveItem["currency"] = "EUR",
+) {
+  const parsed = parseAmount(value);
+  if (parsed === null) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: currency === "CHF" ? "CHF" : "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(parsed);
+}
+
+function formatMoneyCompact(value: number) {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatDate(item: NextIADocumentiArchiveItem) {
+  if (typeof item.sortTimestamp === "number" && Number.isFinite(item.sortTimestamp)) {
+    return formatDateUI(item.sortTimestamp);
+  }
+
+  return normalizeText(item.dataDocumento) || "-";
+}
+
+function truncateText(value: string, maxLength: number) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function buildDescription(item: NextIADocumentiArchiveItem) {
+  const fromCategory = normalizeText(item.categoriaArchivio);
+  if (fromCategory) {
+    return truncateText(fromCategory, 70);
+  }
+
+  const fromText = normalizeText(item.testo).replace(/\s+/g, " ");
+  if (fromText) {
+    return truncateText(fromText, 70);
+  }
+
+  return "Documento senza descrizione";
+}
+
+function isPreventivo(item: NextIADocumentiArchiveItem) {
+  return normalizeType(item) === "PREVENTIVO";
+}
+
+function isDdt(item: NextIADocumentiArchiveItem) {
+  const type = normalizeType(item);
+  const archiveCategory = normalizeText(item.categoriaArchivio).toUpperCase();
+  const numeroDocumento = normalizeText(item.numeroDocumento).toUpperCase();
+  const testo = normalizeText(item.testo).toUpperCase();
+
+  return (
+    type === "DDT" ||
+    archiveCategory.includes("DDT") ||
+    numeroDocumento.includes("DDT") ||
+    testo.includes("DDT")
+  );
+}
+
+function isFattura(item: NextIADocumentiArchiveItem) {
+  const type = normalizeType(item);
+  return type === "FATTURA" || (item.sourceKey === "@documenti_magazzino" && !isPreventivo(item));
+}
+
+function isLibretto(item: NextIADocumentiArchiveItem) {
+  return normalizeType(item) === "LIBRETTO";
+}
+
+function getItemKindLabel(item: NextIADocumentiArchiveItem) {
+  if (isPreventivo(item)) return "PREVENTIVO";
+  if (isDdt(item)) return "DDT";
+  if (isFattura(item)) return "FATTURA";
+  return normalizeType(item) || "DOCUMENTO";
+}
+
+function getItemBadgeClass(item: NextIADocumentiArchiveItem) {
+  if (isPreventivo(item)) return "is-preventivo";
+  if (isDdt(item)) return "is-ddt";
+  return "is-fattura";
+}
+
+function buildSupplierLabel(item: NextIADocumentiArchiveItem) {
+  return normalizeText(item.fornitore) || "Fornitore non specificato";
+}
+
+function mapArchiveItemToLegacyDocument(item: NextIADocumentiArchiveItem): NextDocumentiCostiLegacyViewItem {
+  return {
+    id: item.id,
+    mezzoTarga: normalizeText(item.targa),
+    targa: normalizeText(item.targa),
+    tipo: isPreventivo(item) ? "PREVENTIVO" : "FATTURA",
+    data: normalizeText(item.dataDocumento),
+    timestamp: item.sortTimestamp,
+    descrizione: buildDescription(item),
+    importo: parseAmount(item.totaleDocumento) ?? undefined,
+    valuta: item.currency ?? item.valuta ?? "UNKNOWN",
+    currency: item.currency ?? item.valuta ?? "UNKNOWN",
+    fornitoreLabel: buildSupplierLabel(item),
+    fileUrl: item.fileUrl,
+    sourceKey: item.sourceKey,
+    sourceDocId: item.sourceDocId,
+    quality: "certo",
+    flags: [],
+    dedupGroup: null,
+  };
+}
+
+function buildReviewPath(item: NextIADocumentiArchiveItem) {
+  void item;
+  return NEXT_IA_ARCHIVISTA_PATH;
+}
+
+function buildArchivistaPresetDocumentFields(
+  item: NextIADocumentiArchiveItem,
+): Pick<
+  ArchivistaPresetPayload,
+  "fileUrl" | "sourceDocId" | "sourceKey" | "tipoDocumento" | "targa" | "archivistaAnalysis"
+> {
+  const fileUrl = normalizeText(item.fileUrl);
+  const sourceDocId = normalizeText(item.sourceDocId);
+  const sourceKey = normalizeText(item.sourceKey);
+  const tipoDocumento = normalizeText(item.tipoDocumento);
+  const targa = normalizeText(item.targa);
+
+  return {
+    ...(fileUrl ? { fileUrl } : {}),
+    ...(sourceDocId ? { sourceDocId } : {}),
+    ...(sourceKey ? { sourceKey } : {}),
+    ...(tipoDocumento ? { tipoDocumento } : {}),
+    ...(targa ? { targa } : {}),
+    ...(item.archivistaAnalysis ? { archivistaAnalysis: item.archivistaAnalysis } : {}),
+  };
+}
+
+function buildArchivistaPreset(item: NextIADocumentiArchiveItem): ArchivistaPresetPayload {
+  const documentFields = buildArchivistaPresetDocumentFields(item);
+  const famigliaArchivista = normalizeText(item.famigliaArchivista).toLowerCase();
+
+  if (isLibretto(item)) {
+    console.log("[DIAG-5B] preset", {
+      tipo: "documento_mezzo",
+      contesto: "documento_mezzo",
+      hasArchivistaAnalysisOnItem: !!item?.archivistaAnalysis,
+      archivistaAnalysisKeysOnItem: item?.archivistaAnalysis ? Object.keys(item.archivistaAnalysis as Record<string, unknown>) : null,
+    });
+    return { tipo: "documento_mezzo", contesto: "documento_mezzo", ...documentFields };
+  }
+
+  if (item.sourceKey === "@documenti_mezzi") {
+    return { tipo: "fattura_ddt", contesto: "manutenzione", ...documentFields };
+  }
+
+  if (
+    isPreventivo(item) &&
+    (item.ambitoPreventivo === "manutenzione" ||
+      famigliaArchivista === "preventivo_manutenzione")
+  ) {
+    return { tipo: "preventivo", contesto: "manutenzione", ...documentFields };
+  }
+
+  if (
+    isPreventivo(item) &&
+    (item.ambitoPreventivo === "magazzino" || famigliaArchivista === "preventivo_magazzino")
+  ) {
+    return { tipo: "preventivo", contesto: "magazzino", ...documentFields };
+  }
+
+  if (item.sourceKey === "@documenti_magazzino") {
+    return { tipo: "fattura_ddt", contesto: "magazzino", ...documentFields };
+  }
+
+  if (isPreventivo(item)) {
+    return { tipo: "preventivo", contesto: "magazzino", ...documentFields };
+  }
+
+  return { tipo: "fattura_ddt", contesto: "magazzino", ...documentFields };
+}
+
+function buildAskAiPrompt(item: NextIADocumentiArchiveItem) {
+  const parts = [
+    `Fammi un riepilogo del documento ${getItemKindLabel(item)}`,
+    normalizeText(item.dataDocumento) ? `del ${normalizeText(item.dataDocumento)}` : "con data non disponibile",
+    normalizeText(item.fornitore)
+      ? `di ${normalizeText(item.fornitore)}`
+      : "di fornitore non specificato",
+    normalizeText(item.numeroDocumento)
+      ? `numero ${normalizeText(item.numeroDocumento)}`
+      : "senza numero documento disponibile",
+  ];
+
+  if (normalizeText(item.targa)) {
+    parts.push(`per il mezzo ${normalizeText(item.targa)}`);
+  }
+
+  const parsedAmount = parseAmount(item.totaleDocumento);
+  if (parsedAmount !== null) {
+    parts.push(
+      `per un importo di ${formatMoney(parsedAmount, item.currency ?? item.valuta ?? "EUR")}`,
+    );
+  }
+
+  return `${parts.join(" ")}.`;
+}
+
+function matchesSearch(item: NextIADocumentiArchiveItem, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    buildSupplierLabel(item).toLowerCase().includes(normalizedQuery) ||
+    normalizeText(item.targa).toLowerCase().includes(normalizedQuery) ||
+    normalizeText(item.totaleDocumento).toLowerCase().includes(normalizedQuery)
+  );
+}
+
+function sortItems(items: NextIADocumentiArchiveItem[]) {
+  return [...items].sort((left, right) => {
+    const timestampDelta = (right.sortTimestamp ?? -1) - (left.sortTimestamp ?? -1);
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
+
+    const dateDelta = normalizeText(right.dataDocumento).localeCompare(
+      normalizeText(left.dataDocumento),
+      "it",
+      { sensitivity: "base" },
+    );
+    if (dateDelta !== 0) {
+      return dateDelta;
+    }
+
+    return normalizeText(left.numeroDocumento).localeCompare(
+      normalizeText(right.numeroDocumento),
+      "it",
+      { sensitivity: "base" },
+    );
+  });
+}
+
+export default function NextIADocumentiPage() {
+  const navigate = useNavigate();
+  const [items, setItems] = useState<NextIADocumentiArchiveItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [filtroAttivo, setFiltroAttivo] = useState<DocumentiCostiFilter>("tutti");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sezioniAperte, setSezioniAperte] = useState<Set<string>>(new Set());
+  const [modalItem, setModalItem] = useState<NextIADocumentiArchiveItem | null>(null);
+  const [localDaVerificareIds, setLocalDaVerificareIds] = useState<Set<string>>(new Set());
+  const [editingCurrencyId, setEditingCurrencyId] = useState<string | null>(null);
+  const [editingCurrencyValue, setEditingCurrencyValue] = useState<NextDocumentiCostiCurrency>("EUR");
+  const [savingCurrencyId, setSavingCurrencyId] = useState<string | null>(null);
+  const [currencyErrorMessage, setCurrencyErrorMessage] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadArchive = async () => {
+      setLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const snapshot = await readNextIADocumentiArchiveSnapshot({
+          includeCloneDocuments: false,
+        });
+        if (cancelled) {
+          return;
+        }
+
+        setItems(snapshot.items);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Errore durante il caricamento dei documenti.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadArchive();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!modalItem) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setModalItem(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalItem]);
+
+  const itemsFiltrati = useMemo(() => {
+    return items
+      .filter((item) => {
+        const isLocallyMarked = localDaVerificareIds.has(item.id);
+        const isReviewItem = item.daVerificare || isLocallyMarked;
+
+        if (filtroAttivo === "fatture") return isFattura(item) && !isDdt(item);
+        if (filtroAttivo === "ddt") return isDdt(item);
+        if (filtroAttivo === "preventivi") return isPreventivo(item);
+        if (filtroAttivo === "da_verificare") return isReviewItem;
+        if (filtroAttivo === "libretti") return isLibretto(item);
+        return true;
+      })
+      .filter((item) => matchesSearch(item, searchQuery));
+  }, [items, filtroAttivo, localDaVerificareIds, searchQuery]);
+
+  const perFornitore = useMemo<SupplierGroup[]>(() => {
+    const grouped = new Map<string, NextIADocumentiArchiveItem[]>();
+
+    for (const item of itemsFiltrati) {
+      const supplier = buildSupplierLabel(item);
+      const group = grouped.get(supplier) ?? [];
+      group.push(item);
+      grouped.set(supplier, group);
+    }
+
+    return Array.from(grouped.entries())
+      .map(([supplier, supplierItems]) => ({
+        supplier,
+        items: sortItems(supplierItems),
+        total: supplierItems.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
+      }))
+      .sort((left, right) => {
+        if (right.total !== left.total) {
+          return right.total - left.total;
+        }
+
+        return left.supplier.localeCompare(right.supplier, "it", {
+          sensitivity: "base",
+        });
+      });
+  }, [itemsFiltrati]);
+
+  useEffect(() => {
+    if (perFornitore.length === 0) {
+      return;
+    }
+
+    setSezioniAperte((prev) => {
+      const next = new Set(prev);
+      for (const group of perFornitore) {
+        next.add(group.supplier);
+      }
+      return next;
+    });
+  }, [perFornitore]);
+
+  const totaleGenerale = useMemo(
+    () => itemsFiltrati.reduce((sum, item) => sum + (parseAmount(item.totaleDocumento) ?? 0), 0),
+    [itemsFiltrati],
+  );
+
+  const modalIsMarkedDaVerificare = modalItem
+    ? modalItem.daVerificare || localDaVerificareIds.has(modalItem.id)
+    : false;
+
+  const toggleFornitore = (supplier: string) => {
+    setSezioniAperte((prev) => {
+      const next = new Set(prev);
+      if (next.has(supplier)) {
+        next.delete(supplier);
+      } else {
+        next.add(supplier);
+      }
+      return next;
+    });
+  };
+
+  const handleOpenPdf = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    if (!item.fileUrl) {
+      return;
+    }
+    window.open(item.fileUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleAskAi = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    setModalItem(null);
+    navigate(NEXT_INTERNAL_AI_PATH, {
+      state: {
+        initialPrompt: buildAskAiPrompt(item),
+      },
+    });
+  };
+
+  const handleReopenReview = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    navigate(buildReviewPath(item), {
+      state: {
+        archivistaPreset: buildArchivistaPreset(item),
+      },
+    });
+  };
+
+  const handleDeleteDocumento = async (
+    event: React.MouseEvent,
+    item: NextIADocumentiArchiveItem,
+  ) => {
+    event.stopPropagation();
+    try {
+      setDeletingDocumentId(item.id);
+      setDeleteErrorMessage(null);
+      await runWithCloneWriteScopedAllowance(
+        "internal_ai_magazzino_inline_magazzino",
+        async () => deleteNextDocumentoCosto(mapArchiveItemToLegacyDocument(item)),
+      );
+      setItems((current) => current.filter((entry) => entry.id !== item.id));
+      setDeleteConfirmId(null);
+    } catch (error) {
+      setDeleteErrorMessage(
+        error instanceof Error ? error.message : "Eliminazione documento non completata.",
+      );
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  };
+
+  const handleToggleLocalReview = () => {
+    if (!modalItem) {
+      return;
+    }
+
+    setLocalDaVerificareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(modalItem.id)) {
+        next.delete(modalItem.id);
+      } else {
+        next.add(modalItem.id);
+      }
+      return next;
+    });
+  };
+
+  const openCurrencyEditor = (
+    event: React.MouseEvent,
+    item: NextIADocumentiArchiveItem,
+    forcedCurrency?: NextDocumentiCostiCurrency,
+  ) => {
+    event.stopPropagation();
+    setCurrencyErrorMessage(null);
+    setEditingCurrencyId(item.id);
+    setEditingCurrencyValue(
+      forcedCurrency ?? (item.currency === "UNKNOWN" ? "EUR" : item.currency ?? item.valuta ?? "EUR"),
+    );
+  };
+
+  const cancelCurrencyEditor = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEditingCurrencyId(null);
+    setSavingCurrencyId(null);
+    setCurrencyErrorMessage(null);
+  };
+
+  const handleSaveCurrency = async (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
+    event.stopPropagation();
+    try {
+      setSavingCurrencyId(item.id);
+      setCurrencyErrorMessage(null);
+      await runWithCloneWriteScopedAllowance(
+        "internal_ai_magazzino_inline_magazzino",
+        async () => updateNextDocumentoCurrency(mapArchiveItemToLegacyDocument(item), editingCurrencyValue),
+      );
+      setItems((current) =>
+        current.map((entry) =>
+          entry.id === item.id
+            ? { ...entry, currency: editingCurrencyValue, valuta: editingCurrencyValue }
+            : entry,
+        ),
+      );
+      setEditingCurrencyId(null);
+    } catch (error) {
+      setCurrencyErrorMessage(
+        error instanceof Error ? error.message : "Aggiornamento valuta non completato.",
+      );
+    } finally {
+      setSavingCurrencyId(null);
+    }
+  };
+
+  return (
+    <section className="next-page doc-costi-page">
+      <header className="doc-costi-header">
+        <h1 className="doc-costi-title">Documenti e costi</h1>
+        <span className="doc-costi-stat">
+          <b>{itemsFiltrati.length}</b> doc
+        </span>
+        <span className="doc-costi-stat">
+          <b>{perFornitore.length}</b> fornitori
+        </span>
+        <span className="doc-costi-stat">
+          <b>{formatMoneyCompact(totaleGenerale)}</b>
+        </span>
+      </header>
+
+      <div className="doc-costi-filters">
+        {FILTERS.map((filter) => (
+          <button
+            key={filter.id}
+            type="button"
+            className={`doc-costi-filter ${filtroAttivo === filter.id ? "is-active" : ""}`}
+            onClick={() => setFiltroAttivo(filter.id)}
+          >
+            {filter.label}
+          </button>
+        ))}
+
+        <input
+          type="search"
+          className="doc-costi-search"
+          placeholder="Cerca fornitore, targa, importo"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+        />
+      </div>
+
+      {loading ? <div className="doc-costi-loading">Caricamento documenti...</div> : null}
+
+      {!loading && errorMessage ? <div className="doc-costi-empty">{errorMessage}</div> : null}
+
+      {!loading && !errorMessage && perFornitore.length === 0 ? (
+        <div className="doc-costi-empty">
+          {filtroAttivo === "tutti" && !searchQuery
+            ? "Nessun documento trovato"
+            : "Nessun documento corrisponde al filtro selezionato"}
+        </div>
+      ) : null}
+
+      {!loading &&
+        !errorMessage &&
+        perFornitore.map((group) => {
+          const isOpen = sezioniAperte.has(group.supplier);
+
+          return (
+            <section key={group.supplier} className="doc-costi-fornitore">
+              <button
+                type="button"
+                className="doc-costi-fornitore-header"
+                onClick={() => toggleFornitore(group.supplier)}
+              >
+                <span
+                  className={`doc-costi-fornitore-chevron ${isOpen ? "is-open" : ""}`}
+                  aria-hidden="true"
+                >
+                  &gt;
+                </span>
+                <span className="doc-costi-fornitore-name">{group.supplier}</span>
+                <span className="doc-costi-stat">
+                  <b>{group.items.length}</b> doc
+                </span>
+                <span className="doc-costi-fornitore-total">
+                  Totale {formatMoneyCompact(group.total)}
+                </span>
+              </button>
+
+              {isOpen ? (
+                <>
+                  <table className="doc-costi-table">
+                    <thead>
+                      <tr>
+                        <th>Tipo</th>
+                        <th>Data</th>
+                        <th>Numero</th>
+                        <th>Targa</th>
+                        <th>Descr.</th>
+                        <th className="is-right">EUR</th>
+                        <th>Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.items.map((item) => {
+                        const isMarkedDaVerificare =
+                          item.daVerificare || localDaVerificareIds.has(item.id);
+
+                        return (
+                          <tr key={item.id} onClick={() => setModalItem(item)}>
+                            <td>
+                              <span className={`doc-costi-badge ${getItemBadgeClass(item)}`}>
+                                {getItemKindLabel(item)}
+                              </span>
+                            </td>
+                            <td>{formatDate(item)}</td>
+                            <td>{normalizeText(item.numeroDocumento) || "-"}</td>
+                            <td>
+                              {normalizeText(item.targa) ? (
+                                <a
+                                  href={buildNextDossierPath(normalizeText(item.targa))}
+                                  className="doc-costi-targa"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    navigate(buildNextDossierPath(normalizeText(item.targa)));
+                                  }}
+                                >
+                                  {normalizeText(item.targa)}
+                                </a>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td>{buildDescription(item)}</td>
+                            <td className="doc-costi-importo">
+                              {formatMoney(item.totaleDocumento, item.currency)}
+                              {editingCurrencyId === item.id ? (
+                                <span
+                                  style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <select
+                                    value={editingCurrencyValue}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={(event) =>
+                                      setEditingCurrencyValue(
+                                        event.target.value as NextDocumentiCostiCurrency,
+                                      )
+                                    }
+                                  >
+                                    <option value="EUR">EUR</option>
+                                    <option value="CHF">CHF</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    onClick={(event) => void handleSaveCurrency(event, item)}
+                                    disabled={savingCurrencyId === item.id}
+                                  >
+                                    {savingCurrencyId === item.id ? "Salvataggio..." : "Salva"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    onClick={cancelCurrencyEditor}
+                                    disabled={savingCurrencyId === item.id}
+                                  >
+                                    Annulla
+                                  </button>
+                                </span>
+                              ) : normalizeText(item.currency) === "UNKNOWN" ? (
+                                <button
+                                  type="button"
+                                  className="doc-costi-row-flag"
+                                  style={{ marginLeft: 8 }}
+                                  onClick={(event) => openCurrencyEditor(event, item, "EUR")}
+                                >
+                                  Valuta da verificare
+                                </button>
+                              ) : (
+                                <>
+                                  {normalizeText(item.currency) &&
+                                  normalizeText(item.currency) !== "EUR" ? (
+                                    <span className="doc-costi-valuta">{item.currency}</span>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className="doc-costi-btn"
+                                    style={{ marginLeft: 8 }}
+                                    onClick={(event) => openCurrencyEditor(event, item)}
+                                  >
+                                    Modifica
+                                  </button>
+                                </>
+                              )}
+                            </td>
+                            <td>
+                              <div className="doc-costi-actions">
+                                <button
+                                  type="button"
+                                  className="doc-costi-btn"
+                                  onClick={(event) => handleOpenPdf(event, item)}
+                                  disabled={!item.fileUrl}
+                                >
+                                  PDF
+                                </button>
+                                <button
+                                  type="button"
+                                  className="doc-costi-btn"
+                                  onClick={(event) => handleReopenReview(event, item)}
+                                >
+                                  Riapri review
+                                </button>
+                                <button
+                                  type="button"
+                                  className="doc-costi-btn-ia"
+                                  onClick={(event) => handleAskAi(event, item)}
+                                >
+                                  Chiedi alla IA
+                                </button>
+                                {filtroAttivo === "libretti" ? (
+                                  deleteConfirmId === item.id ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="doc-costi-btn"
+                                        onClick={(event) => void handleDeleteDocumento(event, item)}
+                                        disabled={deletingDocumentId === item.id}
+                                      >
+                                        {deletingDocumentId === item.id ? "Elimino..." : "Conferma"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="doc-costi-btn"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setDeleteConfirmId(null);
+                                          setDeleteErrorMessage(null);
+                                        }}
+                                        disabled={deletingDocumentId === item.id}
+                                      >
+                                        Annulla
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="doc-costi-btn"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setDeleteErrorMessage(null);
+                                        setDeleteConfirmId(item.id);
+                                      }}
+                                    >
+                                      Elimina
+                                    </button>
+                                  )
+                                ) : null}
+                              </div>
+                              {filtroAttivo === "libretti" && deleteConfirmId === item.id ? (
+                                <span className="doc-costi-row-flag">Eliminare questo libretto?</span>
+                              ) : null}
+                              {isMarkedDaVerificare ? (
+                                <span className="doc-costi-row-flag">Da verificare</span>
+                              ) : null}
+                              {currencyErrorMessage && editingCurrencyId === item.id ? (
+                                <span className="doc-costi-row-flag">{currencyErrorMessage}</span>
+                              ) : null}
+                              {deleteErrorMessage && deleteConfirmId === item.id ? (
+                                <span className="doc-costi-row-flag">{deleteErrorMessage}</span>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  <div className="doc-costi-section-total">
+                    <span className="doc-costi-stat">
+                      Totale {group.supplier}: <b>{formatMoneyCompact(group.total)}</b>
+                    </span>
+                  </div>
+                </>
+              ) : null}
+            </section>
+          );
+        })}
+
+      <footer className="doc-costi-footer">
+        <span className="doc-costi-stat">Totale generale tutti i fornitori</span>
+        <span className="doc-costi-fornitore-total">{formatMoneyCompact(totaleGenerale)}</span>
+      </footer>
+
+      <div
+        className={`doc-costi-modal-overlay ${modalItem ? "is-open" : ""}`}
+        onClick={() => setModalItem(null)}
+      >
+        {modalItem ? (
+          <div className="doc-costi-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="doc-costi-modal-header">
+              <div className="doc-costi-modal-title">
+                [{getItemKindLabel(modalItem)}] {buildSupplierLabel(modalItem)} -{" "}
+                {normalizeText(modalItem.numeroDocumento) || "Numero non disponibile"}
+              </div>
+              <button
+                type="button"
+                className="doc-costi-modal-close"
+                onClick={() => setModalItem(null)}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div className="doc-costi-modal-body">
+              <div className="doc-costi-modal-fields">
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Fornitore</span>
+                  <span className="doc-costi-modal-field-val">{buildSupplierLabel(modalItem)}</span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Data</span>
+                  <span className="doc-costi-modal-field-val">{formatDate(modalItem)}</span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Numero</span>
+                  <span className="doc-costi-modal-field-val">
+                    {normalizeText(modalItem.numeroDocumento) || "-"}
+                  </span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Targa</span>
+                  <span className="doc-costi-modal-field-val">
+                    {normalizeText(modalItem.targa) || "-"}
+                  </span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Importo</span>
+                  <span className="doc-costi-modal-field-val">
+                    {formatMoney(modalItem.totaleDocumento, modalItem.currency)}
+                  </span>
+                </div>
+                <div className="doc-costi-modal-field">
+                  <span className="doc-costi-modal-field-label">Valuta</span>
+                  <span className="doc-costi-modal-field-val">
+                    {normalizeText(modalItem.currency) || "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="doc-costi-modal-actions">
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-primary"
+                  onClick={() => {
+                    if (!modalItem.fileUrl) {
+                      return;
+                    }
+                    window.open(modalItem.fileUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  disabled={!modalItem.fileUrl}
+                >
+                  Apri PDF originale
+                </button>
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-secondary"
+                  aria-pressed={modalIsMarkedDaVerificare}
+                  onClick={handleToggleLocalReview}
+                >
+                  Da verificare
+                </button>
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-secondary"
+                  onClick={() =>
+                    navigate(buildReviewPath(modalItem), {
+                      state: {
+                        archivistaPreset: buildArchivistaPreset(modalItem),
+                      },
+                    })
+                  }
+                >
+                  Riapri review
+                </button>
+                <button
+                  type="button"
+                  className="doc-costi-modal-btn-ia"
+                  onClick={() =>
+                    navigate(NEXT_INTERNAL_AI_PATH, {
+                      state: {
+                        initialPrompt: buildAskAiPrompt(modalItem),
+                      },
+                    })
+                  }
+                >
+                  Chiedi IA -&gt;
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}

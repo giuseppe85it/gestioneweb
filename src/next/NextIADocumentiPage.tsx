@@ -4,7 +4,6 @@ import "./internal-ai/internal-ai.css";
 import { formatDateUI } from "./nextDateFormat";
 import {
   buildNextDossierPath,
-  NEXT_INTERNAL_AI_PATH,
 } from "./nextStructuralPaths";
 import {
   deleteNextDocumentoCosto,
@@ -40,6 +39,7 @@ type ArchivistaPresetPayload = {
   sourceKey?: string;
   tipoDocumento?: string;
   targa?: string;
+  archivistaAnalysis?: Record<string, unknown> | null;
 };
 
 const FILTERS: Array<{ id: DocumentiCostiFilter; label: string }> = [
@@ -222,7 +222,10 @@ function buildReviewPath(item: NextIADocumentiArchiveItem) {
 
 function buildArchivistaPresetDocumentFields(
   item: NextIADocumentiArchiveItem,
-): Pick<ArchivistaPresetPayload, "fileUrl" | "sourceDocId" | "sourceKey" | "tipoDocumento" | "targa"> {
+): Pick<
+  ArchivistaPresetPayload,
+  "fileUrl" | "sourceDocId" | "sourceKey" | "tipoDocumento" | "targa" | "archivistaAnalysis"
+> {
   const fileUrl = normalizeText(item.fileUrl);
   const sourceDocId = normalizeText(item.sourceDocId);
   const sourceKey = normalizeText(item.sourceKey);
@@ -235,14 +238,39 @@ function buildArchivistaPresetDocumentFields(
     ...(sourceKey ? { sourceKey } : {}),
     ...(tipoDocumento ? { tipoDocumento } : {}),
     ...(targa ? { targa } : {}),
+    ...(item.archivistaAnalysis ? { archivistaAnalysis: item.archivistaAnalysis } : {}),
   };
 }
 
 function buildArchivistaPreset(item: NextIADocumentiArchiveItem): ArchivistaPresetPayload {
   const documentFields = buildArchivistaPresetDocumentFields(item);
+  const famigliaArchivista = normalizeText(item.famigliaArchivista).toLowerCase();
 
   if (isLibretto(item)) {
     return { tipo: "documento_mezzo", contesto: "documento_mezzo", ...documentFields };
+  }
+
+  if (item.sourceKey === "@documenti_mezzi") {
+    return { tipo: "fattura_ddt", contesto: "manutenzione", ...documentFields };
+  }
+
+  if (
+    isPreventivo(item) &&
+    (item.ambitoPreventivo === "manutenzione" ||
+      famigliaArchivista === "preventivo_manutenzione")
+  ) {
+    return { tipo: "preventivo", contesto: "manutenzione", ...documentFields };
+  }
+
+  if (
+    isPreventivo(item) &&
+    (item.ambitoPreventivo === "magazzino" || famigliaArchivista === "preventivo_magazzino")
+  ) {
+    return { tipo: "preventivo", contesto: "magazzino", ...documentFields };
+  }
+
+  if (item.sourceKey === "@documenti_magazzino") {
+    return { tipo: "fattura_ddt", contesto: "magazzino", ...documentFields };
   }
 
   if (isPreventivo(item)) {
@@ -250,32 +278,6 @@ function buildArchivistaPreset(item: NextIADocumentiArchiveItem): ArchivistaPres
   }
 
   return { tipo: "fattura_ddt", contesto: "magazzino", ...documentFields };
-}
-
-function buildAskAiPrompt(item: NextIADocumentiArchiveItem) {
-  const parts = [
-    `Fammi un riepilogo del documento ${getItemKindLabel(item)}`,
-    normalizeText(item.dataDocumento) ? `del ${normalizeText(item.dataDocumento)}` : "con data non disponibile",
-    normalizeText(item.fornitore)
-      ? `di ${normalizeText(item.fornitore)}`
-      : "di fornitore non specificato",
-    normalizeText(item.numeroDocumento)
-      ? `numero ${normalizeText(item.numeroDocumento)}`
-      : "senza numero documento disponibile",
-  ];
-
-  if (normalizeText(item.targa)) {
-    parts.push(`per il mezzo ${normalizeText(item.targa)}`);
-  }
-
-  const parsedAmount = parseAmount(item.totaleDocumento);
-  if (parsedAmount !== null) {
-    parts.push(
-      `per un importo di ${formatMoney(parsedAmount, item.currency ?? item.valuta ?? "EUR")}`,
-    );
-  }
-
-  return `${parts.join(" ")}.`;
 }
 
 function matchesSearch(item: NextIADocumentiArchiveItem, query: string) {
@@ -472,16 +474,6 @@ export default function NextIADocumentiPage() {
       return;
     }
     window.open(item.fileUrl, "_blank", "noopener,noreferrer");
-  };
-
-  const handleAskAi = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
-    event.stopPropagation();
-    setModalItem(null);
-    navigate(NEXT_INTERNAL_AI_PATH, {
-      state: {
-        initialPrompt: buildAskAiPrompt(item),
-      },
-    });
   };
 
   const handleReopenReview = (event: React.MouseEvent, item: NextIADocumentiArchiveItem) => {
@@ -778,13 +770,6 @@ export default function NextIADocumentiPage() {
                                 >
                                   Riapri review
                                 </button>
-                                <button
-                                  type="button"
-                                  className="doc-costi-btn-ia"
-                                  onClick={(event) => handleAskAi(event, item)}
-                                >
-                                  Chiedi alla IA
-                                </button>
                                 {filtroAttivo === "libretti" ? (
                                   deleteConfirmId === item.id ? (
                                     <>
@@ -949,19 +934,6 @@ export default function NextIADocumentiPage() {
                   }
                 >
                   Riapri review
-                </button>
-                <button
-                  type="button"
-                  className="doc-costi-modal-btn-ia"
-                  onClick={() =>
-                    navigate(NEXT_INTERNAL_AI_PATH, {
-                      state: {
-                        initialPrompt: buildAskAiPrompt(modalItem),
-                      },
-                    })
-                  }
-                >
-                  Chiedi IA -&gt;
                 </button>
               </div>
             </div>

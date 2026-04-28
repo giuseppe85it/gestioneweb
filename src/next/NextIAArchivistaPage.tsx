@@ -22,6 +22,7 @@ type ArchivistaPreset = {
   sourceKey?: string;
   tipoDocumento?: string;
   targa?: string;
+  archivistaAnalysis?: Record<string, unknown> | null;
 };
 
 type ArchivistaNavigationState = {
@@ -158,6 +159,7 @@ function buildArchivistaPreloadDocument(preset: ArchivistaPreset | undefined) {
     sourceKey: normalizePresetText(preset?.sourceKey) || undefined,
     tipoDocumento: normalizePresetText(preset?.tipoDocumento) || undefined,
     targa: normalizePresetText(preset?.targa) || undefined,
+    archivistaAnalysis: preset?.archivistaAnalysis ?? null,
   };
 }
 
@@ -322,11 +324,11 @@ export default function NextIAArchivistaPage() {
 
         <div className="ia-archivista__bridge-host">
           {activeFlow.availability === "active" && tipo === "fattura_ddt" && contesto === "magazzino" ? (
-            <ArchivistaMagazzinoBridge />
+            <ArchivistaMagazzinoBridge preloadDocument={archivistaPreloadDocument} />
           ) : activeFlow.availability === "active" &&
             tipo === "fattura_ddt" &&
             contesto === "manutenzione" ? (
-              <ArchivistaManutenzioneBridge />
+              <ArchivistaManutenzioneBridge preloadDocument={archivistaPreloadDocument} />
           ) : activeFlow.availability === "active" &&
             tipo === "documento_mezzo" &&
             contesto === "documento_mezzo" ? (
@@ -347,11 +349,11 @@ export default function NextIAArchivistaPage() {
           ) : activeFlow.availability === "active" &&
               tipo === "preventivo" &&
               contesto === "magazzino" ? (
-            <ArchivistaPreventivoMagazzinoBridge />
+            <ArchivistaPreventivoMagazzinoBridge preloadDocument={archivistaPreloadDocument} />
           ) : activeFlow.availability === "active" &&
             tipo === "preventivo" &&
             contesto === "manutenzione" ? (
-            <ArchivistaPreventivoManutenzioneBridge />
+            <ArchivistaPreventivoManutenzioneBridge preloadDocument={archivistaPreloadDocument} />
           ) : (
             <div className={`iai-card ia-archivista__inactive-shell ${getAvailabilityClass(activeFlow.availability)}`}>
               <div className="iai-righe-header">

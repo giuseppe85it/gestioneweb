@@ -761,7 +761,7 @@ Nota sicurezza:
 - Le write Firestore/Storage devono passare dai wrapper esistenti `firestoreWriteOps` e `storageWriteOps`.
 - I wrapper chiamano `assertCloneWriteAllowed` (`src/utils/firestoreWriteOps.ts:15-39`, `src/utils/storageWriteOps.ts:20-53`).
 - La barriera attuale non contiene ancora una deroga `/next/chat` per `chat_ia_reports` o `chat_ia_reports/`.
-- La deroga stretta e' gia' autorizzata, ma non ancora applicata nel codice `src/utils/cloneWriteBarrier.ts`; verra' applicata dalla patch implementativa. Il punto di controllo attuale e' `src/utils/cloneWriteBarrier.ts:547-549`.
+- La deroga stretta e' gia' autorizzata, ma non ancora applicata nel codice `src/utils/cloneWriteBarrier.ts`; verra' applicata dalla patch implementativa. Il punto di controllo attuale e' `src/utils/cloneWriteBarrier.ts:552-559`.
 
 ## 9. ESPORTAZIONE PDF
 
@@ -775,7 +775,7 @@ Motore esistente da riusare:
 - Per il fallback jsPDF diretto, lo stesso file costruisce un PDF e ritorna `blob`, `fileName` e `text` (`src/next/internal-ai/internalAiReportPdf.ts:271-397`).
 - Nome file esistente: `buildInternalAiReportPdfFileName` (`src/next/internal-ai/internalAiReportPdf.ts:118-119`).
 - Preview browser riutilizzabile: `openPreview` in `src/utils/pdfPreview.ts:46-70`.
-- Share PDF browser riutilizzabile: `sharePdfFile` in `src/utils/pdfPreview.ts:73-85`.
+- Share PDF browser riutilizzabile: `sharePdfFile` in `src/utils/pdfPreview.ts:73-103`.
 
 Contratto adapter:
 
@@ -840,7 +840,8 @@ Tipi/report:
 - `src/next/internal-ai/internalAiTypes.ts:784-787`: card mezzo Step Zero.
 - `src/next/internal-ai/internalAiReportPdf.ts:118-119`: filename PDF.
 - `src/next/internal-ai/internalAiReportPdf.ts:219-266`: generazione PDF report.
-- `src/utils/pdfPreview.ts:47-85`: anteprima e share PDF.
+- `openPreview`: `src/utils/pdfPreview.ts:46-70`.
+- `sharePdfFile`: `src/utils/pdfPreview.ts:73-103`.
 
 Reader clone-safe:
 
@@ -850,7 +851,7 @@ Reader clone-safe:
 - D04: `src/next/domain/nextRifornimentiDomain.ts:1291-1304`.
 - D05: `src/next/domain/nextInventarioDomain.ts:235-239`, `src/next/domain/nextMaterialiMovimentiDomain.ts:1125-1645`.
 - D06: `src/next/domain/nextProcurementDomain.ts:891-906`.
-- D07/D08: `src/next/domain/nextDocumentiCostiDomain.ts:1925-2218`.
+- D07/D08: `readNextIADocumentiArchiveSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2010`) e `readNextDocumentiCostiFleetSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2247`).
 - D09: `src/next/domain/nextCisternaDomain.ts:842-1240`.
 - D10: `src/next/domain/nextCentroControlloDomain.ts:1627-1657`.
 

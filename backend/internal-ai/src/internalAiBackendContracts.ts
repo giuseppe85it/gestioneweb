@@ -1,10 +1,60 @@
 import type {
+  InternalAiChatExecutionStatus,
+  InternalAiChatIntent,
+  InternalAiChatMessageReference,
   InternalAiDriverLookupCandidate,
   InternalAiReportPeriodInput,
+  InternalAiReportPreview,
 } from "../../../src/next/internal-ai/internalAiTypes";
-import type { InternalAiChatTurnResult } from "../../../src/next/internal-ai/internalAiChatOrchestrator";
 
 export type InternalAiBackendMode = "mock_safe";
+
+export type InternalAiChatTurnResult = {
+  intent: InternalAiChatIntent;
+  status: InternalAiChatExecutionStatus;
+  assistantText: string;
+  references: InternalAiChatMessageReference[];
+  report:
+    | {
+        status: "ready";
+        normalizedTarga: string;
+        message: string;
+        preview: InternalAiReportPreview;
+      }
+    | {
+        status: "invalid_query" | "not_found";
+        normalizedTarga: string | null;
+        message: string;
+        preview: null;
+      }
+    | {
+        status: "ready";
+        normalizedDriverQuery: string;
+        message: string;
+        preview: InternalAiReportPreview;
+      }
+    | {
+        status: "invalid_query" | "not_found";
+        normalizedDriverQuery: string | null;
+        message: string;
+        preview: null;
+      }
+    | {
+        status: "ready";
+        normalizedTarga: string;
+        normalizedDriverQuery: string;
+        message: string;
+        preview: InternalAiReportPreview;
+      }
+    | {
+        status: "invalid_query" | "not_found";
+        normalizedTarga: string | null;
+        normalizedDriverQuery: string | null;
+        message: string;
+        preview: null;
+      }
+    | null;
+};
 
 export type InternalAiBackendHttpMethod = "GET" | "POST";
 
