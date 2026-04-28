@@ -158,7 +158,7 @@ Ruoli:
 
 Cosa cambia rispetto all'attuale:
 
-- Oggi ci sono quattro surface chat in `src/next/NextInternalAiPage.tsx` (`src/next/NextInternalAiPage.tsx:9697`, `src/next/NextInternalAiPage.tsx:9974-10005`, `src/next/NextInternalAiPage.tsx:10315-10358`, `src/next/NextInternalAiPage.tsx:10875`). La nuova chat ne avra' una sola.
+- Oggi ci sono quattro surface chat in `src/next/NextInternalAiPage.tsx` (`src/next/NextInternalAiPage.tsx:9655`, `src/next/NextInternalAiPage.tsx:9974`, `src/next/NextInternalAiPage.tsx:10315`, `src/next/NextInternalAiPage.tsx:10815`). La nuova chat ne avra' una sola.
 - Oggi il submit passa da `handleChatSubmit` in `src/next/NextInternalAiPage.tsx:7605-7638`. La nuova chat avra' submit isolato in `ChatIaShell`.
 - Oggi il motore unificato puo' intercettare prima dello switch sugli intent (`src/next/internal-ai/internalAiChatOrchestrator.ts:2035-2039`). La nuova chat usera' un router unico e prevedibile.
 - Oggi il fallback generico elenca molte capacita' (`src/next/internal-ai/internalAiChatOrchestrator.ts:1648-1677`). La nuova chat usera' solo fallback contestuali di settore.
@@ -335,6 +335,7 @@ export type ChatIaFallbackResponse = {
 export type ChatIaRunnerResult = {
   status: "completed" | "partial" | "not_handled" | "failed";
   sector: ChatIaSectorId;
+  sources?: ChatIaSectorId[];
   text: string;
   outputKind: ChatIaOutputKind;
   entities: ChatIaEntityRef[];
@@ -475,7 +476,7 @@ Algoritmo:
 13. Se sector != null:
    - chiama il runner del settore.
 14. Se runner.status = not_handled:
-   - usa runner.fallbackContext(prompt, decision).
+   - usa runner.fallbackContext({ prompt, decision }).
 ```
 
 Fallback contestuale:
@@ -528,6 +529,7 @@ Metodi obbligatori:
 - `canHandle`: ritorna `true` solo se il settore e' davvero quello del runner.
 - `run`: legge dati, produce testo/card/table/report.
 - `fallbackContext`: spiega cosa puo' fare solo dentro quel settore.
+- `sources`: elenco opzionale dei `ChatIaSectorId` consultati dal runner oltre al settore primario.
 
 Output ammessi:
 
@@ -609,6 +611,7 @@ Payload verso backend:
 
 ```ts
 type ChatIaBackendRequest = {
+  operation: "run_controlled_chat";
   prompt: string;
   localTurn: {
     intent: "richiesta_generica";
@@ -623,9 +626,12 @@ type ChatIaBackendRequest = {
   };
   attachments: [];
   memoryHints: {
-    sessionOnly: true;
-    sector: ChatIaSectorId | null;
-    entities: ChatIaEntityRef[];
+    repoUiRequested: boolean;
+    memoryFreshness: "fresh" | "partial" | "stale" | "missing";
+    screenHint: string | null;
+    focusKind: "repo_ui" | "report" | "attachment" | "general";
+    attachmentsCount: number;
+    runtimeObserverObserved: boolean;
   };
 };
 ```
@@ -658,7 +664,7 @@ Gestione errori:
 Output:
 
 - Il backend puo' rifinire il testo naturale.
-- Il backend non puo' cambiare `sector`, `card`, `table`, `report`, `archiveEntry`.
+- Il backend non puo' cambiare `sector`, `card`, `table`, `report`, `archiveEntries`.
 - La verita' dati resta nel runner locale.
 
 ## 8. ARCHIVIO REPORT
@@ -671,9 +677,10 @@ Decisione vincolante:
 
 Riferimento attuale da sostituire:
 
-- Artifact repository server-file isolated esiste in `backend/internal-ai/src/internalAiServerPersistenceContracts.ts:50-56`.
+- Il literal `server_file_isolated` e' definito come `InternalAiServerPersistenceMode` in `backend/internal-ai/src/internalAiServerPersistenceContracts.ts:16`.
+- Lo state dell'artifact repository server-side e' in `backend/internal-ai/src/internalAiServerPersistenceContracts.ts:50-56`.
 - Runtime data root server-file isolated dichiarato in `backend/internal-ai/src/internalAiServerPersistenceContracts.ts:148-151`.
-- Endpoint artifact repository esistente e' `backend/internal-ai/server/internal-ai-adapter.js:2236-2318`.
+- Endpoint artifact repository esistente e' `backend/internal-ai/server/internal-ai-adapter.js:2236-2318`; la response usa `persistenceMode: "server_file_isolated"` a `backend/internal-ai/server/internal-ai-adapter.js:2261`.
 
 Nuovo storage scelto dalla spec:
 
@@ -754,7 +761,7 @@ Nota sicurezza:
 - Le write Firestore/Storage devono passare dai wrapper esistenti `firestoreWriteOps` e `storageWriteOps`.
 - I wrapper chiamano `assertCloneWriteAllowed` (`src/utils/firestoreWriteOps.ts:15-39`, `src/utils/storageWriteOps.ts:20-53`).
 - La barriera attuale non contiene ancora una deroga `/next/chat` per `chat_ia_reports` o `chat_ia_reports/`.
-- Prima della patch implementativa completa serve approvare una deroga stretta su `src/utils/cloneWriteBarrier.ts`, oggi punto di controllo in `src/utils/cloneWriteBarrier.ts:547-549`.
+- La deroga stretta e' gia' autorizzata, ma non ancora applicata nel codice `src/utils/cloneWriteBarrier.ts`; verra' applicata dalla patch implementativa. Il punto di controllo attuale e' `src/utils/cloneWriteBarrier.ts:547-549`.
 
 ## 9. ESPORTAZIONE PDF
 
@@ -765,9 +772,9 @@ File adapter nuovo:
 Motore esistente da riusare:
 
 - `generateInternalAiReportPdfBlob` esiste in `src/next/internal-ai/internalAiReportPdf.ts:219-266`.
-- Per il fallback jsPDF diretto, lo stesso file costruisce un PDF e ritorna `blob` + `fileName` (`src/next/internal-ai/internalAiReportPdf.ts:271-394`).
+- Per il fallback jsPDF diretto, lo stesso file costruisce un PDF e ritorna `blob`, `fileName` e `text` (`src/next/internal-ai/internalAiReportPdf.ts:271-397`).
 - Nome file esistente: `buildInternalAiReportPdfFileName` (`src/next/internal-ai/internalAiReportPdf.ts:118-119`).
-- Preview browser riutilizzabile: `createPdfPreviewUrl` in `src/utils/pdfPreview.ts:47-69`.
+- Preview browser riutilizzabile: `openPreview` in `src/utils/pdfPreview.ts:46-70`.
 - Share PDF browser riutilizzabile: `sharePdfFile` in `src/utils/pdfPreview.ts:73-85`.
 
 Contratto adapter:
@@ -857,7 +864,7 @@ Scritture archivio:
 Tassonomia:
 
 - 17 scope del motore unificato: `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts:483-515`.
-- 45 source descriptor: `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts:555-600`.
+- 44 source descriptor: `src/next/internal-ai/internalAiUnifiedIntelligenceEngine.ts:555-600`.
 
 Card mezzo:
 
@@ -881,8 +888,8 @@ Durante implementazione dell'ossatura non toccare:
 Nota sulla barriera:
 
 - `src/utils/cloneWriteBarrier.ts` non va toccato per runner settoriali o logiche di lettura.
-- Per salvare davvero report su Firestore + Storage, la patch implementativa dell'ossatura dovra' avere un'autorizzazione esplicita e stretta su `/next/chat`, collection `chat_ia_reports` e prefix Storage `chat_ia_reports/`.
-- Se Giuseppe non autorizza quella deroga, l'ossatura potra' mostrare report e generare PDF, ma non potra' completare il salvataggio persistente.
+- Per salvare davvero report su Firestore + Storage, la deroga stretta su `/next/chat`, collection `chat_ia_reports` e prefix Storage `chat_ia_reports/` e' gia' autorizzata, ma non ancora applicata nel codice `src/utils/cloneWriteBarrier.ts`; verra' applicata dalla patch implementativa.
+- Finche' la deroga non viene applicata, l'ossatura potra' mostrare report e generare PDF, ma non potra' completare il salvataggio persistente.
 
 ## 13. DEFINITION OF DONE OSSATURA
 
@@ -955,7 +962,7 @@ Decisione: confermati i nomi proposti dalla spec.
 
 ### D2. Deroga barriera per salvataggio report
 
-Decisione: deroga stretta autorizzata.
+Decisione: deroga stretta autorizzata, non ancora applicata nel codice `src/utils/cloneWriteBarrier.ts`.
 
 La patch implementativa dell'ossatura aggiungera in
 `src/utils/cloneWriteBarrier.ts` una deroga limitata a:

@@ -7,7 +7,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref } from "firebase/storage";
 import { db, storage } from "../../firebase";
-import { addDoc, setDoc, updateDoc } from "../../utils/firestoreWriteOps";
+import { addDoc, setDoc } from "../../utils/firestoreWriteOps";
 import { getItemSync, setItemSync } from "../../utils/storageSync";
 import { uploadBytes } from "../../utils/storageWriteOps";
 
@@ -76,7 +76,6 @@ type ArchivistaDocumentArchiveArgs = {
   selectedFile: File;
   fileName: string;
   basePayload: Record<string, unknown>;
-  archivistaAnalysis?: Record<string, unknown> | null;
   duplicateChoice?: ArchivistaDuplicateChoice | null;
   duplicateCandidate?: ArchivistaDuplicateCandidate | null;
 };
@@ -98,7 +97,6 @@ type ArchivistaPreventivoArchiveArgs = {
     targa: string;
     km?: string | number | null;
   } | null;
-  archivistaAnalysis?: Record<string, unknown> | null;
   duplicateChoice?: ArchivistaDuplicateChoice | null;
   duplicateCandidate?: ArchivistaDuplicateCandidate | null;
 };
@@ -484,9 +482,6 @@ export async function archiveArchivistaDocumentRecord(
 
   const payload = sanitizeValue({
     ...args.basePayload,
-    ...(args.archivistaAnalysis != null
-      ? { archivistaAnalysis: sanitizeValue(args.archivistaAnalysis) }
-      : {}),
     categoriaArchivio: args.categoriaArchivio,
     nomeFile: args.fileName,
     fileUrl,
@@ -589,9 +584,6 @@ export async function archiveArchivistaPreventivoRecord(
           km: args.metadatiMezzo.km ?? null,
         }
       : null,
-    ...(args.archivistaAnalysis != null
-      ? { archivistaAnalysis: args.archivistaAnalysis }
-      : {}),
     ...buildDuplicateMetadata(duplicateChoice, duplicateCandidate),
   });
 
@@ -612,36 +604,6 @@ export async function archiveArchivistaPreventivoRecord(
         ? "Preventivo archiviato come versione migliore, mantenendo intatto il record precedente."
         : "Preventivo archiviato correttamente.",
   };
-}
-
-export async function updateArchivistaDocumentRecordAnalysis(args: {
-  targetCollection: "@documenti_mezzi" | "@documenti_magazzino";
-  archiveId: string;
-  archivistaAnalysis: Record<string, unknown>;
-}): Promise<void> {
-  const refDoc = doc(db, args.targetCollection, args.archiveId);
-  await updateDoc(refDoc, {
-    archivistaAnalysis: sanitizeValue(args.archivistaAnalysis),
-  });
-}
-
-export async function updateArchivistaPreventivoRecordAnalysis(args: {
-  archiveId: string;
-  archivistaAnalysis: Record<string, unknown>;
-}): Promise<void> {
-  const refDoc = doc(db, "storage", "@preventivi");
-  const snapshot = await getDoc(refDoc);
-  const currentRaw = snapshot.exists() ? snapshot.data() : null;
-  const currentPreventivi = Array.isArray(currentRaw?.preventivi) ? currentRaw.preventivi : [];
-  const nextPreventivi = currentPreventivi.map((entry) =>
-    entry && typeof entry === "object" && normalizeText((entry as Record<string, unknown>).id) === args.archiveId
-      ? {
-          ...(entry as Record<string, unknown>),
-          archivistaAnalysis: sanitizeValue(args.archivistaAnalysis),
-        }
-      : entry,
-  );
-  await setDoc(refDoc, { preventivi: nextPreventivi }, { merge: true });
 }
 
 export async function readArchivistaVehicles(): Promise<ArchivistaVehicle[]> {

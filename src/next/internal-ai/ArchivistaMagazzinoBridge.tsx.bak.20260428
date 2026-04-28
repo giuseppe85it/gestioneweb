@@ -279,7 +279,6 @@ export default function ArchivistaMagazzinoBridge() {
         fileName: selectedFile.name,
         duplicateChoice,
         duplicateCandidate: duplicateCandidateSelected,
-        archivistaAnalysis: analysis,
         basePayload: {
           tipoDocumento: analysis.tipoDocumento,
           fornitore: analysis.fornitore || null,

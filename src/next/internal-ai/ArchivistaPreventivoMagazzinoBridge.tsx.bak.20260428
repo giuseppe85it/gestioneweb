@@ -272,7 +272,6 @@ export default function ArchivistaPreventivoMagazzinoBridge() {
         ambitoPreventivo: "magazzino",
         duplicateChoice,
         duplicateCandidate: duplicateCandidateSelected,
-        archivistaAnalysis: analysis,
       });
       setArchiveResult(result);
       setArchiveStatus("success");

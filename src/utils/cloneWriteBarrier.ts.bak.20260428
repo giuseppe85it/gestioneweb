@@ -380,11 +380,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
       return ARCHIVISTA_ALLOWED_FIRESTORE_DOC_PATHS.has(readMetaPath(meta));
     }
 
-    if (kind === "firestore.updateDoc") {
-      const path = readMetaPath(meta);
-      return path.startsWith("@documenti_mezzi/") || path.startsWith("@documenti_magazzino/");
-    }
-
     if (kind === "storageSync.setItemSync") {
       return ARCHIVISTA_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
     }

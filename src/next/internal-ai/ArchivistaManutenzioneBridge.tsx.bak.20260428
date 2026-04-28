@@ -775,7 +775,6 @@ export default function ArchivistaManutenzioneBridge() {
         fileName: archiveFile.name,
         duplicateChoice,
         duplicateCandidate: duplicateCandidateSelected,
-        archivistaAnalysis: analysis,
         basePayload: {
           tipoDocumento: analysis.tipoDocumento,
           fornitore: analysis.fornitore || null,

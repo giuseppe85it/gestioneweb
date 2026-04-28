@@ -2537,7 +2537,6 @@ export default function ArchivistaDocumentoMezzoBridge({
         duplicateChoice,
         duplicateCandidate: duplicateCandidateSelected,
         basePayload: {
-          archivistaAnalysis: normalizeArchivistaLibrettoAnalysisState(analysis) ?? analysis,
           tipoDocumento: analysis.tipoDocumento,
           sottotipoDocumentoMezzo: selectedSubtype,
           fornitore: analysis.fornitore || null,

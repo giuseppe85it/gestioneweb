@@ -644,7 +644,6 @@ export default function ArchivistaPreventivoManutenzioneBridge() {
         },
         duplicateChoice,
         duplicateCandidate: duplicateCandidateSelected,
-        archivistaAnalysis: analysis,
       });
       setArchiveResult(result);
       setArchiveStatus("success");
