@@ -26,8 +26,11 @@ export type ChatIaOutputKind =
   | "text"
   | "card"
   | "table"
+  | "chart"
   | "report_modal"
+  | "report"
   | "archive_list"
+  | "ui_action"
   | "fallback";
 
 export type ChatIaEntityRef =
@@ -111,6 +114,47 @@ export type ChatIaArchiveEntry = {
   };
 };
 
+export type ChatIaChartBlock = {
+  type: "bar" | "line" | "pie";
+  title: string;
+  data: Array<Record<string, string | number | null>>;
+  xKey?: string;
+  yKey?: string;
+};
+
+export type ChatIaUiActionBlock = {
+  label: string;
+  route?: string;
+  modal?: string;
+  params?: Record<string, string>;
+};
+
+export type ChatIaBlockText = { kind: "text"; text: string };
+export type ChatIaBlockCard = { kind: "card"; card: ChatIaStructuredCard };
+export type ChatIaBlockTable = { kind: "table"; table: ChatIaTable };
+export type ChatIaBlockChart = { kind: "chart"; chart: ChatIaChartBlock };
+export type ChatIaBlockReport = { kind: "report"; report: ChatIaReport };
+export type ChatIaBlockArchive = { kind: "archive_list"; entries: ChatIaArchiveEntry[] };
+export type ChatIaBlockUiAction = { kind: "ui_action"; action: ChatIaUiActionBlock };
+
+export type ChatIaOutputBlock =
+  | ChatIaBlockText
+  | ChatIaBlockCard
+  | ChatIaBlockTable
+  | ChatIaBlockChart
+  | ChatIaBlockReport
+  | ChatIaBlockArchive
+  | ChatIaBlockUiAction;
+
+export type ChatIaAssistantFinalMessage = {
+  text: string;
+  status: "completed" | "partial" | "failed";
+  blocks: ChatIaOutputBlock[];
+  entities: Array<{ kind: string; value: string }>;
+  sources: Array<{ label: string; toolName?: string; path?: string }>;
+  notices: string[];
+};
+
 export type ChatIaMessage = {
   id: string;
   role: ChatIaMessageRole;
@@ -124,6 +168,8 @@ export type ChatIaMessage = {
   table: ChatIaTable | null;
   report: ChatIaReport | null;
   archiveEntries: ChatIaArchiveEntry[];
+  blocks?: ChatIaOutputBlock[];
+  notices?: string[];
   error: string | null;
 };
 

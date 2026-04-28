@@ -41,54 +41,6 @@ const PREVENTIVO_PRICE_EXTRACT_WARNING_CODES = new Set([
   "LOW_CONFIDENCE",
 ]);
 const PREVENTIVO_PRICE_EXTRACT_WARNING_SEVERITIES = new Set(["info", "warn", "error"]);
-const CISTERNA_DOCUMENTI_PROMPT = `
-Analizza il documento allegato (FATTURA oppure BOLLETTINO/DAS carburante).
-Rispondi SOLO con JSON valido, senza testo extra, in questo formato:
-{
-  "tipoDocumento": "fattura" | "bollettino" | null,
-  "fornitore": string | null,
-  "destinatario": string | null,
-  "numeroDocumento": string | null,
-  "dataDocumento": string | null,
-  "litriTotali": number | null,
-  "totaleDocumento": number | null,
-  "valuta": "EUR" | "CHF" | null,
-  "prodotto": string | null,
-  "testo": string | null,
-  "daVerificare": boolean,
-  "motivoVerifica": string | null
-}
-
-Regole obbligatorie:
-- dataDocumento deve essere in formato gg/mm/aaaa quando leggibile.
-- Se un campo non e chiaramente leggibile: imposta null.
-- Se ci sono dubbi su almeno un campo chiave (tipoDocumento, dataDocumento, litriTotali, valuta):
-  daVerificare=true e motivoVerifica breve.
-- Valuta: usa EUR o CHF solo se certo, altrimenti null.
-- Litri fattura: somma solo righe pertinenti a gasolio con UM in litri (L), se non certo usa null.
-- Per bollettino/DAS totaleDocumento puo essere null.
-`;
-const CISTERNA_SCHEDE_CELLS_PROMPT = `
-Riceverai 3 immagini distinte nello stesso ordine:
-1) DATA
-2) TARGA
-3) LITRI
-
-Trascrivi SOLO cio che leggi. Non correggere, non normalizzare, non dedurre.
-Se non sei sicuro scrivi "INCERTO". Se la cella e vuota scrivi "".
-
-Rispondi SOLO JSON:
-{
-  "data_raw": "testo o INCERTO o vuoto",
-  "targa_raw": "testo o INCERTO o vuoto",
-  "litri_raw": "testo o INCERTO o vuoto"
-}
-
-Regole:
-- targa: se non vedi chiaramente "TI" e i numeri, usa INCERTO.
-- litri: numero intero tipico 1-999, altrimenti INCERTO.
-- Nessun testo extra fuori JSON.
-`;
 
 function normalizeText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -257,203 +209,6 @@ function normalizeDateToDDMMYYYY(value) {
   const month = String(parsed.getMonth() + 1).padStart(2, "0");
   const year = String(parsed.getFullYear());
   return `${day}/${month}/${year}`;
-}
-
-function normalizeCisternaDate(value) {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-
-  const it = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
-  if (it) {
-    const day = Number(it[1]);
-    const month = Number(it[2]);
-    let year = Number(it[3]);
-    if (it[3].length === 2) year += 2000;
-    const date = new Date(year, month - 1, day);
-    if (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    ) {
-      return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
-    }
-    return null;
-  }
-
-  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (iso) {
-    const year = Number(iso[1]);
-    const month = Number(iso[2]);
-    const day = Number(iso[3]);
-    const date = new Date(year, month - 1, day);
-    if (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    ) {
-      return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
-    }
-    return null;
-  }
-
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return `${String(parsed.getDate()).padStart(2, "0")}/${String(parsed.getMonth() + 1).padStart(2, "0")}/${parsed.getFullYear()}`;
-}
-
-function cisternaYearMonthFromDate(dataDocumento) {
-  if (!dataDocumento) return null;
-  const match = String(dataDocumento).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!match) return null;
-  return `${match[3]}-${match[2]}`;
-}
-
-function normalizeCisternaTipo(value, fileName) {
-  const text = `${String(value ?? "")} ${String(fileName ?? "")}`.toLowerCase();
-  if (!text.trim()) return null;
-  if (text.includes("fattur")) return "fattura";
-  if (
-    text.includes("bollett") ||
-    text.includes("bolla") ||
-    text.includes("das") ||
-    text.includes("ddt")
-  ) {
-    return "bollettino";
-  }
-  return null;
-}
-
-function normalizeCisternaValuta(value) {
-  const raw = String(value ?? "").toUpperCase().trim();
-  if (!raw) return null;
-  if (raw.includes("EUR") || raw.includes("\u20ac")) return "EUR";
-  if (raw.includes("CHF") || raw.includes("FR")) return "CHF";
-  return null;
-}
-
-function parseCisternaNumberOrNull(value) {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-  const text = String(value).trim();
-  if (!text) return null;
-  const normalized = text.replace(/\s/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function normalizeCisternaDocumentExtractResult(raw, fileName) {
-  const source = raw && typeof raw === "object" ? raw : {};
-  const tipoDocumento = normalizeCisternaTipo(source.tipoDocumento, fileName);
-  const dataDocumento = normalizeCisternaDate(source.dataDocumento);
-  const litriTotali = parseCisternaNumberOrNull(source.litriTotali);
-  const totaleDocumento = parseCisternaNumberOrNull(source.totaleDocumento);
-  const valuta = normalizeCisternaValuta(source.valuta);
-  const fornitore = toNullIfEmpty(source.fornitore);
-  const destinatario = toNullIfEmpty(source.destinatario);
-  const numeroDocumento = toNullIfEmpty(source.numeroDocumento);
-  const prodotto = toNullIfEmpty(source.prodotto);
-  const testo = toNullIfEmpty(source.testo);
-  const yearMonth = cisternaYearMonthFromDate(dataDocumento);
-  const forcedReview = Boolean(source.daVerificare);
-  const reasonFromModel = toNullIfEmpty(source.motivoVerifica);
-
-  const reasons = [];
-  if (!tipoDocumento) reasons.push("tipo_documento_non_chiaro");
-  if (!dataDocumento) reasons.push("data_non_leggibile");
-  if (litriTotali === null) reasons.push("litri_non_leggibili");
-  if (valuta === null) reasons.push("valuta_non_chiara");
-  if (tipoDocumento === "fattura" && totaleDocumento === null) {
-    reasons.push("totale_non_leggibile");
-  }
-  if (reasonFromModel) reasons.push(reasonFromModel);
-
-  const uniqueReasons = Array.from(new Set(reasons));
-  const daVerificare = forcedReview || uniqueReasons.length > 0;
-
-  return {
-    tipoDocumento,
-    fornitore,
-    destinatario,
-    numeroDocumento,
-    dataDocumento,
-    yearMonth,
-    litriTotali,
-    totaleDocumento,
-    valuta,
-    prodotto,
-    testo,
-    daVerificare,
-    motivoVerifica: uniqueReasons.length > 0 ? uniqueReasons.join(", ") : null,
-  };
-}
-
-function normalizeCisternaSchedaStatus(rawValue, kind) {
-  const raw = rawValue === undefined || rawValue === null ? "" : String(rawValue).trim();
-  if (!raw) {
-    return { value: "", status: "VUOTO" };
-  }
-
-  if (raw.toUpperCase() === "INCERTO") {
-    return { value: "INCERTO", status: "INCERTO" };
-  }
-
-  if (kind === "targa" && !/^TI\s*\d{6}$/i.test(raw)) {
-    return { value: raw, status: "INCERTO" };
-  }
-
-  if (kind === "litri") {
-    if (!/^\d{1,4}$/.test(raw)) {
-      return { value: raw, status: "INCERTO" };
-    }
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 999) {
-      return { value: raw, status: "INCERTO" };
-    }
-  }
-
-  return { value: raw, status: "OK" };
-}
-
-function normalizeCisternaSchedaCellRow(rawRow, rowIndex) {
-  const source = rawRow && typeof rawRow === "object" ? rawRow : {};
-  const dataEval = normalizeCisternaSchedaStatus(source.data_raw, "data");
-  const targaEval = normalizeCisternaSchedaStatus(source.targa_raw, "targa");
-  const litriEval = normalizeCisternaSchedaStatus(source.litri_raw, "litri");
-
-  return {
-    rowIndex,
-    data_raw: dataEval.value,
-    targa_raw: targaEval.value,
-    litri_raw: litriEval.value,
-    data_status: dataEval.status,
-    targa_status: targaEval.status,
-    litri_status: litriEval.status,
-  };
-}
-
-function buildCisternaSchedeCellsEnvelope(rows, rawText) {
-  const total = rows.length;
-  const reviewRows = rows.filter(
-    (row) =>
-      row.data_status !== "OK" ||
-      row.targa_status !== "OK" ||
-      row.litri_status !== "OK",
-  ).length;
-
-  return {
-    ok: true,
-    needsReview: reviewRows > 0,
-    rows,
-    stats: {
-      total,
-      okRows: total - reviewRows,
-      reviewRows,
-    },
-    rawText: typeof rawText === "string" ? rawText : "",
-  };
 }
 
 function isValidDDMMYYYYDate(value) {
@@ -2049,26 +1804,6 @@ function buildProviderSystemPrompt(profile = "magazzino", subtype = null) {
     );
   }
 
-  if (profile === "documento_cisterna") {
-    return (
-      "Sei il parser documentale OpenAI della nuova IA interna del gestionale. " +
-      "Leggi fatture e bollettini/DAS carburante della Cisterna Caravate. " +
-      "Rispondi solo con JSON valido. " +
-      "Non inventare mai dati: se un campo non e chiaramente leggibile usa null. " +
-      "Estrai solo i campi richiesti dal contratto documenti cisterna."
-    );
-  }
-
-  if (profile === "scheda_cisterna") {
-    return (
-      "Sei il parser OCR OpenAI della nuova IA interna del gestionale. " +
-      "Leggi celle ritagliate di schede carburante Cisterna Caravate. " +
-      "Rispondi solo con JSON valido. " +
-      "Trascrivi solo cio che vedi nelle tre immagini DATA, TARGA e LITRI. " +
-      "Non correggere, non normalizzare e non dedurre."
-    );
-  }
-
   return (
     "Sei il parser documentale della nuova IA interna del gestionale. " +
     "Leggi fatture, DDT, preventivi e documenti materiali di magazzino. " +
@@ -2318,22 +2053,6 @@ function buildProviderUserInstructions(args) {
     );
   }
 
-  if ((args.profile ?? "magazzino") === "documento_cisterna") {
-    return [
-      CISTERNA_DOCUMENTI_PROMPT.trim(),
-      `Nome file: ${args.fileName || "documento_cisterna"}.`,
-      `Input provider: documento allegato come ${args.sourceHint === "image_document" ? "input_image" : "input_file/input_text"}.`,
-    ].join("\n\n");
-  }
-
-  if ((args.profile ?? "magazzino") === "scheda_cisterna") {
-    return [
-      CISTERNA_SCHEDE_CELLS_PROMPT.trim(),
-      `Riga batch: ${Number.isFinite(args.rowIndex) ? args.rowIndex : "n/d"}.`,
-      "Input provider: tre immagini allegate come input_image nell'ordine DATA, TARGA, LITRI.",
-    ].join("\n\n");
-  }
-
   return JSON.stringify(
     {
       task: "Estrai dati documentali strutturati per review Magazzino.",
@@ -2505,60 +2224,6 @@ async function runProviderBinaryExtraction(args) {
   });
 
   return parseProviderJson(response.output_text);
-}
-
-async function runProviderCisternaSchedaCellExtraction(args) {
-  const content = [
-    {
-      type: "input_text",
-      text: buildProviderUserInstructions({
-        profile: "scheda_cisterna",
-        rowIndex: args.rowIndex,
-      }),
-    },
-    {
-      type: "input_image",
-      image_url: args.dataBase64.startsWith("data:")
-        ? args.dataBase64
-        : `data:image/jpeg;base64,${args.dataBase64}`,
-    },
-    {
-      type: "input_image",
-      image_url: args.targaBase64.startsWith("data:")
-        ? args.targaBase64
-        : `data:image/jpeg;base64,${args.targaBase64}`,
-    },
-    {
-      type: "input_image",
-      image_url: args.litriBase64.startsWith("data:")
-        ? args.litriBase64
-        : `data:image/jpeg;base64,${args.litriBase64}`,
-    },
-  ];
-
-  const response = await args.providerClient.responses.create({
-    model: args.providerTarget.model,
-    input: [
-      {
-        role: "system",
-        content: [
-          {
-            type: "input_text",
-            text: buildProviderSystemPrompt("scheda_cisterna"),
-          },
-        ],
-      },
-      {
-        role: "user",
-        content,
-      },
-    ],
-  });
-
-  return {
-    parsed: parseProviderJson(response.output_text),
-    rawText: response.output_text || "",
-  };
 }
 
 export async function extractPreventivoPriceFromDocument(args) {
@@ -2737,70 +2402,8 @@ export async function extractInternalAiDocumentAnalysis(args) {
   const effectiveContentBase64 = primaryPage?.contentBase64 ?? args.contentBase64;
   const effectiveMimeType = primaryPage?.mimeType ?? args.mimeType;
   const effectiveFileName = primaryPage?.fileName ?? args.fileName;
-  const profile = args.profile ?? "magazzino";
-
-  if (profile === "scheda_cisterna") {
-    const cells = Array.isArray(args.cells)
-      ? args.cells
-          .map((cell, index) => {
-            if (!cell || typeof cell !== "object") return null;
-            const rowIndex =
-              typeof cell.rowIndex === "number" && Number.isFinite(cell.rowIndex)
-                ? cell.rowIndex
-                : index;
-            const dataBase64 =
-              typeof cell.dataBase64 === "string" && cell.dataBase64.trim()
-                ? cell.dataBase64.trim()
-                : "";
-            const targaBase64 =
-              typeof cell.targaBase64 === "string" && cell.targaBase64.trim()
-                ? cell.targaBase64.trim()
-                : "";
-            const litriBase64 =
-              typeof cell.litriBase64 === "string" && cell.litriBase64.trim()
-                ? cell.litriBase64.trim()
-                : "";
-            return { rowIndex, dataBase64, targaBase64, litriBase64 };
-          })
-          .filter((cell) => Boolean(cell))
-      : [];
-
-    if (!args.providerClient) {
-      if (args.providerRequired) {
-        throw new Error("Provider OpenAI non configurato per l'analisi schede Cisterna.");
-      }
-      return buildCisternaSchedeCellsEnvelope([], "");
-    }
-
-    const rows = [];
-    const rawParts = [];
-    for (const cell of cells) {
-      if (!cell.dataBase64 || !cell.targaBase64 || !cell.litriBase64) {
-        rows.push(
-          normalizeCisternaSchedaCellRow(
-            { data_raw: "", targa_raw: "", litri_raw: "" },
-            cell.rowIndex,
-          ),
-        );
-        continue;
-      }
-
-      const providerResult = await runProviderCisternaSchedaCellExtraction({
-        providerClient: args.providerClient,
-        providerTarget: args.providerTarget,
-        rowIndex: cell.rowIndex,
-        dataBase64: cell.dataBase64,
-        targaBase64: cell.targaBase64,
-        litriBase64: cell.litriBase64,
-      });
-      rows.push(normalizeCisternaSchedaCellRow(providerResult.parsed, cell.rowIndex));
-      rawParts.push(providerResult.rawText);
-    }
-
-    return buildCisternaSchedeCellsEnvelope(rows, rawParts.filter(Boolean).join("\n"));
-  }
-
   const buffer = Buffer.from(effectiveContentBase64, "base64");
+  const profile = args.profile ?? "magazzino";
   let extractedText = null;
 
   if (
@@ -2824,55 +2427,6 @@ export async function extractInternalAiDocumentAnalysis(args) {
       ? "pdf_scan"
       : "image_document"
     : detectAttachmentSourceKind(effectiveFileName, effectiveMimeType, extractedText);
-
-  if (profile === "documento_cisterna") {
-    if (!args.providerClient) {
-      if (args.providerRequired) {
-        throw new Error("Provider OpenAI non configurato per l'analisi documentale Cisterna.");
-      }
-      return normalizeCisternaDocumentExtractResult({}, effectiveFileName);
-    }
-
-    const isEffectivePdf =
-      normalizeText(effectiveMimeType).toLowerCase() === "application/pdf" ||
-      normalizeText(effectiveFileName).toLowerCase().endsWith(".pdf") ||
-      pagesContainPdf;
-    const isEffectiveImage =
-      hasPages ||
-      normalizeText(effectiveMimeType).toLowerCase().startsWith("image/") ||
-      ["image_document", "pdf_scan"].includes(tipoSorgente);
-    let providerParsed = null;
-
-    if (isEffectivePdf || isEffectiveImage) {
-      providerParsed = await runProviderBinaryExtraction({
-        providerClient: args.providerClient,
-        providerTarget: args.providerTarget,
-        profile,
-        fileName: effectiveFileName,
-        mimeType: effectiveMimeType,
-        contentBase64: effectiveContentBase64,
-        pages: normalizedPages,
-        sourceHint: tipoSorgente,
-        isPdf: isEffectivePdf,
-      });
-    } else if (extractedText) {
-      providerParsed = await runProviderTextExtraction({
-        providerClient: args.providerClient,
-        providerTarget: args.providerTarget,
-        fileName: effectiveFileName,
-        sourceHint: tipoSorgente,
-        profile,
-        rawText: extractedText,
-      });
-    }
-
-    if (!providerParsed) {
-      throw new Error("Il provider OpenAI non ha restituito un JSON valido per documento_cisterna.");
-    }
-
-    return normalizeCisternaDocumentExtractResult(providerParsed, effectiveFileName);
-  }
-
   const heuristicAnalysis = buildHeuristicAnalysis({
     profilo: profile,
     text: extractedText,

@@ -100,6 +100,29 @@ function renderTimeline(message: ChatIaMessage) {
   return maybeMessage.timeline?.events ? <ChatIaMezzoTimeline events={maybeMessage.timeline.events} /> : null;
 }
 
+function renderToolUsePlaceholders(message: ChatIaMessage) {
+  const blocks = message.blocks ?? [];
+  const chartBlocks = blocks.filter((block) => block.kind === "chart");
+  const actionBlocks = blocks.filter((block) => block.kind === "ui_action");
+
+  return (
+    <>
+      {chartBlocks.map((block, index) => (
+        <section className="chat-ia-message-card" key={`chart-${block.chart.title}-${index}`}>
+          <h3>{block.chart.title}</h3>
+          <p>Grafico disponibile nella risposta tool use. Rendering dedicato in arrivo.</p>
+        </section>
+      ))}
+      {actionBlocks.map((block, index) => (
+        <section className="chat-ia-message-card" key={`action-${block.action.label}-${index}`}>
+          <h3>{block.action.label}</h3>
+          <p>Azione UI disponibile nella risposta tool use. Attivazione controllata in arrivo.</p>
+        </section>
+      ))}
+    </>
+  );
+}
+
 export default function ChatIaMessageItem({ message, onOpenReport }: ChatIaMessageItemProps) {
   return (
     <article className={`chat-ia-message chat-ia-message--${message.role}`}>
@@ -116,6 +139,7 @@ export default function ChatIaMessageItem({ message, onOpenReport }: ChatIaMessa
       {renderCard(message)}
       {renderTable(message)}
       {renderTimeline(message)}
+      {renderToolUsePlaceholders(message)}
       {message.report ? (
         <button
           className="chat-ia-secondary-button"

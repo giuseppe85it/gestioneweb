@@ -1,0 +1,102 @@
+import { collection, doc, serverTimestamp } from "firebase/firestore";
+import { getDownloadURL, ref } from "firebase/storage";
+import { db, storage } from "../firebase";
+import {
+  CISTERNA_DOCUMENTI_COLLECTION,
+  CISTERNA_PARAMETRI_COLLECTION,
+  CISTERNA_SCHEDE_COLLECTION,
+} from "../cisterna/collections";
+import { addDoc, setDoc, updateDoc } from "../utils/firestoreWriteOps";
+import { uploadBytes } from "../utils/storageWriteOps";
+
+export type NextCisternaIaDocumentPayload = Record<string, unknown>;
+export type NextCisternaSchedaPayload = Record<string, unknown>;
+
+export async function saveNextCisternaMonthlyExchange(args: {
+  monthKey: string;
+  cambioEurChf: number | null;
+}): Promise<void> {
+  await setDoc(
+    doc(db, CISTERNA_PARAMETRI_COLLECTION, args.monthKey),
+    {
+      mese: args.monthKey,
+      cambioEurChf: args.cambioEurChf,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function updateNextCisternaDuplicateChoice(args: {
+  groupKey: string;
+  chosenDocumentId: string;
+  documentIds: string[];
+}): Promise<void> {
+  await Promise.all(
+    args.documentIds.map((documentId) =>
+      updateDoc(doc(db, CISTERNA_DOCUMENTI_COLLECTION, documentId), {
+        dupGroupKey: args.groupKey,
+        dupChosen: documentId === args.chosenDocumentId,
+        dupIgnored: documentId !== args.chosenDocumentId,
+        updatedAt: serverTimestamp(),
+      }),
+    ),
+  );
+}
+
+export async function uploadNextCisternaDocumentFile(args: {
+  file: File;
+  storagePath: string;
+}): Promise<{ storagePath: string; fileUrl: string }> {
+  const storageReference = ref(storage, args.storagePath);
+
+  await uploadBytes(storageReference, args.file);
+  const fileUrl = await getDownloadURL(storageReference);
+
+  return {
+    storagePath: args.storagePath,
+    fileUrl,
+  };
+}
+
+export async function createNextCisternaIaDocumentRecord(args: {
+  payload: NextCisternaIaDocumentPayload;
+}): Promise<{ id: string }> {
+  const savedRef = await addDoc(collection(db, CISTERNA_DOCUMENTI_COLLECTION), args.payload);
+  return { id: savedRef.id };
+}
+
+export async function createNextCisternaSchedaRecord(args: {
+  payload: NextCisternaSchedaPayload;
+}): Promise<{ id: string }> {
+  const savedRef = await addDoc(collection(db, CISTERNA_SCHEDE_COLLECTION), {
+    ...args.payload,
+    createdAt: serverTimestamp(),
+  });
+  return { id: savedRef.id };
+}
+
+export async function updateNextCisternaSchedaRecord(args: {
+  schedaId: string;
+  payload: NextCisternaSchedaPayload;
+}): Promise<void> {
+  await updateDoc(doc(db, CISTERNA_SCHEDE_COLLECTION, args.schedaId), {
+    ...args.payload,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function uploadNextCisternaSchedaCropImage(args: {
+  blob: Blob;
+  storagePath: string;
+}): Promise<{ storagePath: string; fileUrl: string }> {
+  const storageReference = ref(storage, args.storagePath);
+
+  await uploadBytes(storageReference, args.blob, { contentType: "image/jpeg" });
+  const fileUrl = await getDownloadURL(storageReference);
+
+  return {
+    storagePath: args.storagePath,
+    fileUrl,
+  };
+}

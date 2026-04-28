@@ -39,20 +39,6 @@ const ATTREZZATURE_CANTIERI_ALLOWED_FIRESTORE_DOC_PATHS = new Set([
 const ATTREZZATURE_CANTIERI_ALLOWED_STORAGE_PATH_PREFIXES = [
   "attrezzature/",
 ] as const;
-const CISTERNA_ALLOWED_WRITE_PATH = "/next/cisterna";
-const CISTERNA_IA_ALLOWED_WRITE_PATH = "/next/cisterna/ia";
-const CISTERNA_SCHEDE_ALLOWED_WRITE_PATH = "/next/cisterna/schede-test";
-const CISTERNA_PARAMETRI_COLLECTION_PREFIX = "@cisterna_parametri_mensili/";
-const CISTERNA_DOCUMENTI_COLLECTION = "@documenti_cisterna";
-const CISTERNA_DOCUMENTI_COLLECTION_PREFIX = `${CISTERNA_DOCUMENTI_COLLECTION}/`;
-const CISTERNA_DOCUMENTI_STORAGE_PATH_PREFIX = "documenti_pdf/cisterna/";
-const CISTERNA_DOCUMENTI_ANALYZE_ENDPOINT_PATH =
-  "/internal-ai-backend/documents/documento-cisterna-analyze";
-const CISTERNA_SCHEDE_COLLECTION = "@cisterna_schede_ia";
-const CISTERNA_SCHEDE_COLLECTION_PREFIX = `${CISTERNA_SCHEDE_COLLECTION}/`;
-const CISTERNA_SCHEDE_STORAGE_PATH_PREFIX = "documenti_pdf/cisterna_schede/";
-const CISTERNA_SCHEDE_ANALYZE_ENDPOINT_PATH =
-  "/internal-ai-backend/documents/scheda-cisterna-analyze";
 const MATERIALI_DA_ORDINARE_ALLOWED_FETCH_ENDPOINT =
   "http://127.0.0.1:4310/internal-ai-backend/documents/preventivo-extract";
 const ANAGRAFICHE_ALLOWED_FIRESTORE_DOC_PATHS: ReadonlySet<string> = new Set([
@@ -73,9 +59,6 @@ const MUTATING_FETCH_URL_PATTERNS = [
   "cloudfunctions.net/ia_cisterna_extract",
   "cloudfunctions.net/estrazioneschedacisterna",
   "cloudfunctions.net/cisterna_documenti_extract",
-  "internal-ai-backend/documents/documento-cisterna-analyze",
-  "internal-ai-backend/documents/scheda-cisterna-analyze",
-  "internal-ai-backend/chat/tool-use",
   "estrazione-libretto-",
 ] as const;
 const SAME_ORIGIN_MUTATING_API_PREFIXES = ["/api/"] as const;
@@ -130,10 +113,9 @@ const ARCHIVISTA_ALLOWED_STORAGE_KEYS = new Set([
 ]);
 const ARCHIVISTA_ALLOWED_STORAGE_PATH_PREFIXES = ["documenti_pdf/", "preventivi/"] as const;
 const ARCHIVISTA_ALLOWED_IMAGE_STORAGE_PATH_PREFIXES = ["mezzi/"] as const;
-const CHAT_IA_ALLOWED_WRITE_PATHS = ["/next/chat", "/next/chat-tool"] as const;
+const CHAT_IA_ALLOWED_WRITE_PATH = "/next/chat";
 const CHAT_IA_REPORTS_COLLECTION = "chat_ia_reports";
 const CHAT_IA_REPORTS_STORAGE_PREFIX = "chat_ia_reports/";
-const CHAT_IA_TOOL_USE_ENDPOINT_PATH = "/internal-ai-backend/chat/tool-use";
 const cloneWriteScopedAllowances = new Map<string, number>();
 
 declare global {
@@ -208,18 +190,6 @@ function isAllowedAttrezzatureCantieriCloneWritePath(pathname: string): boolean 
   );
 }
 
-function isAllowedCisternaCloneWritePath(pathname: string): boolean {
-  return pathname === CISTERNA_ALLOWED_WRITE_PATH;
-}
-
-function isAllowedCisternaIaCloneWritePath(pathname: string): boolean {
-  return pathname === CISTERNA_IA_ALLOWED_WRITE_PATH;
-}
-
-function isAllowedCisternaSchedeCloneWritePath(pathname: string): boolean {
-  return pathname === CISTERNA_SCHEDE_ALLOWED_WRITE_PATH;
-}
-
 function isAllowedAnagraficheCloneWritePath(pathname: string): boolean {
   return ANAGRAFICHE_ALLOWED_ROUTES.has(pathname);
 }
@@ -237,30 +207,6 @@ function isAllowedMaterialiDaOrdinarePreventivoIaFetch(
     const normalizedAllowedEndpoint =
       MATERIALI_DA_ORDINARE_ALLOWED_FETCH_ENDPOINT.replace(/\/+$/, "");
     return normalizedRuntimeEndpoint === normalizedAllowedEndpoint;
-  } catch {
-    return false;
-  }
-}
-
-function isAllowedCisternaDocumentAnalyzeFetch(pathname: string, meta: unknown): boolean {
-  if (!isAllowedCisternaIaCloneWritePath(pathname)) return false;
-  if (readMetaMethod(meta) !== "POST") return false;
-
-  try {
-    const parsed = new URL(readMetaUrl(meta), window.location.origin);
-    return parsed.pathname === CISTERNA_DOCUMENTI_ANALYZE_ENDPOINT_PATH;
-  } catch {
-    return false;
-  }
-}
-
-function isAllowedCisternaSchedeAnalyzeFetch(pathname: string, meta: unknown): boolean {
-  if (!isAllowedCisternaSchedeCloneWritePath(pathname)) return false;
-  if (readMetaMethod(meta) !== "POST") return false;
-
-  try {
-    const parsed = new URL(readMetaUrl(meta), window.location.origin);
-    return parsed.pathname === CISTERNA_SCHEDE_ANALYZE_ENDPOINT_PATH;
   } catch {
     return false;
   }
@@ -362,18 +308,7 @@ function isAllowedIaDocumentiCloneWritePath(pathname: string): boolean {
 }
 
 function isAllowedChatIaCloneWritePath(pathname: string): boolean {
-  return CHAT_IA_ALLOWED_WRITE_PATHS.some((entry) => pathname === entry);
-}
-
-function isAllowedChatIaToolUseFetch(meta: unknown): boolean {
-  if (readMetaMethod(meta) !== "POST") return false;
-
-  try {
-    const parsed = new URL(readMetaUrl(meta), window.location.origin);
-    return parsed.pathname === CHAT_IA_TOOL_USE_ENDPOINT_PATH;
-  } catch {
-    return false;
-  }
+  return pathname === CHAT_IA_ALLOWED_WRITE_PATH;
 }
 
 function hasCloneWriteScopedAllowance(scope: string): boolean {
@@ -411,59 +346,9 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     kind === "fetch.runtime" &&
     (isAllowedInternalAiDocumentAnalyzeFetch(pathname, meta) ||
       isAllowedIaLibrettoAnalyzeFetch(pathname, meta) ||
-      isAllowedMaterialiDaOrdinarePreventivoIaFetch(pathname, meta) ||
-      isAllowedCisternaDocumentAnalyzeFetch(pathname, meta) ||
-      isAllowedCisternaSchedeAnalyzeFetch(pathname, meta))
+      isAllowedMaterialiDaOrdinarePreventivoIaFetch(pathname, meta))
   ) {
     return true;
-  }
-
-  if (isAllowedCisternaCloneWritePath(pathname)) {
-    if (kind === "firestore.setDoc") {
-      return readMetaPath(meta).startsWith(CISTERNA_PARAMETRI_COLLECTION_PREFIX);
-    }
-
-    if (kind === "firestore.updateDoc") {
-      return readMetaPath(meta).startsWith(CISTERNA_DOCUMENTI_COLLECTION_PREFIX);
-    }
-
-    return false;
-  }
-
-  if (isAllowedCisternaIaCloneWritePath(pathname)) {
-    if (kind === "storage.uploadBytes") {
-      return readMetaPath(meta).startsWith(CISTERNA_DOCUMENTI_STORAGE_PATH_PREFIX);
-    }
-
-    if (kind === "firestore.addDoc") {
-      return readMetaPath(meta) === CISTERNA_DOCUMENTI_COLLECTION;
-    }
-
-    if (kind === "fetch.runtime") {
-      return isAllowedCisternaDocumentAnalyzeFetch(pathname, meta);
-    }
-
-    return false;
-  }
-
-  if (isAllowedCisternaSchedeCloneWritePath(pathname)) {
-    if (kind === "firestore.addDoc") {
-      return readMetaPath(meta) === CISTERNA_SCHEDE_COLLECTION;
-    }
-
-    if (kind === "firestore.updateDoc") {
-      return readMetaPath(meta).startsWith(CISTERNA_SCHEDE_COLLECTION_PREFIX);
-    }
-
-    if (kind === "storage.uploadBytes") {
-      return readMetaPath(meta).startsWith(CISTERNA_SCHEDE_STORAGE_PATH_PREFIX);
-    }
-
-    if (kind === "fetch.runtime") {
-      return isAllowedCisternaSchedeAnalyzeFetch(pathname, meta);
-    }
-
-    return false;
   }
 
   if (isAllowedChatIaCloneWritePath(pathname)) {
@@ -477,10 +362,6 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
 
     if (kind === "storage.uploadBytes") {
       return readMetaPath(meta).startsWith(CHAT_IA_REPORTS_STORAGE_PREFIX);
-    }
-
-    if (kind === "fetch.runtime") {
-      return isAllowedChatIaToolUseFetch(meta);
     }
 
     return false;

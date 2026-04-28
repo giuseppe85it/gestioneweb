@@ -1,6 +1,6 @@
-# MAPPA IA CHAT NEXT — costituzione del rifacimento
+# MAPPA IA CHAT NEXT - costituzione del rifacimento
 
-Versione: 2026-04-27 (telaio completo)
+Versione: 2026-04-28 (telaio aggiornato per tool use)
 Stato: vincolante per il lavoro di rifacimento della chat IA NEXT.
 
 ---
@@ -10,85 +10,152 @@ Stato: vincolante per il lavoro di rifacimento della chat IA NEXT.
 Una chat unica dove scrivo una targa, un nome, una domanda libera, e ottengo:
 
 - dati precisi e strutturati come oggi mi danno Mezzo 360, Autista 360 e Centro Controllo
-- incroci tra dati di qualunque settore (mezzi, autisti, manutenzioni, materiali, fatture, libretti, cisterna, ecc.)
+- incroci tra dati di qualunque area (mezzi, autisti, manutenzioni, materiali, fatture, libretti, cisterna, ecc.)
 - report mensili o periodici, catalogati per targa o per autista, salvati in un archivio interno della chat
 - riapertura dei report dall'archivio quando mi servono
 - esportazione dei report come PDF, come faccio oggi nei moduli madre
 
-La chat deve leggere tutto Firestore e Storage e ricostruire qualsiasi dato io le chieda.
+La chat deve leggere i dati attraverso reader clone-safe e tool dichiarati. Non scrive dati business direttamente.
 
 ---
 
-## 2. Una sola chat
+## 2. PARADIGMA ARCHITETTURALE
+
+La chat IA NEXT usa il paradigma OpenAI function calling (tool use). L'utente scrive una domanda libera, OpenAI riceve la domanda + l'elenco dei tool disponibili (funzioni che leggono dati o producono output), decide quali tool chiamare e in che ordine, raccoglie i risultati, compone la risposta in italiano.
+
+I tool sono: reader clone-safe per leggere dati, generatori PDF, generatori grafici, formatter di output strutturati.
+
+I tool NON includono scritture business. La chat resta sola lettura.
+
+Vantaggi:
+
+- Domande naturali infinite senza prevedere ogni intent
+- Catene di azioni automatiche (es: trova mezzo + scheda + PDF)
+- Combinazione dati di settori diversi
+- Aggiunta nuovi tool e nuove capabilities a costo basso
+
+Limiti:
+
+- Costo API OpenAI piu alto (5-20 cent per domanda complessa)
+- Possibili scelte tool sbagliate da gestire con prompt di sistema
+- Debug piu complesso del pattern router+runner
+
+---
+
+## 3. Una sola chat
 
 Una sola interfaccia, una sola UI. Niente quattro surface come oggi. Accessibile da ovunque (Home, menu, link diretti) ma sempre la stessa pagina, lo stesso comportamento.
 
 ---
 
-## 3. Come deve essere la UI
+## 4. Come deve essere la UI
 
 - Solo un campo libero dove scrivo.
 - Niente bottoni di scorciatoia, niente menu a tendina, niente filtri precaricati. La chat deve restare una chat, non una console.
-- Indicatore visivo "sto leggendo i dati..." durante l'attesa, perche le risposte saranno piu lente dei moduli madre (3-5 secondi vs istantaneo).
+- Indicatore visivo "sto leggendo i dati..." durante l'attesa, perche le risposte saranno piu lente dei moduli madre.
 - Risposte strutturate dove serve (card, tabelle, modali) e in linguaggio naturale dove serve.
 - Report come modali strutturati, divisi e ordinati per la richiesta che ho fatto, esportabili come PDF.
 
 ---
 
-## 4. Quando la chat non capisce
+## 5. Quando la chat non capisce
 
-Quando un prompt non rientra in nessuna capability nota, la chat NON improvvisa, NON inventa dati e NON da elenchi generici di "cosa sa fare in totale".
+Quando OpenAI non capisce quali tool chiamare, o il risultato dei tool non basta per rispondere, la chat NON improvvisa, NON inventa dati e NON da elenchi generici di "cosa sa fare in totale".
 
-La chat risponde restando dentro il settore della mia richiesta. Se ho chiesto rifornimenti e non ha capito, mi dice cosa sa fare sui rifornimenti. Se ho chiesto manutenzioni e non ha capito, mi dice cosa sa fare sulle manutenzioni. Mai cose fuori contesto.
+La chat risponde restando dentro il contesto della richiesta. Se ho chiesto rifornimenti e non ha capito, mi dice cosa puo fare sui rifornimenti. Se ho chiesto manutenzioni e non ha capito, mi dice cosa puo fare sulle manutenzioni. Mai cose fuori contesto.
+
+Questo comportamento va imposto nel prompt di sistema e verificato nei test browser.
 
 ---
 
-## 5. Cosa NON deve avere
+## 6. Cosa NON deve avere
 
 - niente storico conversazioni: la memoria e solo nella sessione corrente
+- niente memoria persistente tra sessioni
 - niente allegati in input (oggi)
 - niente integrazione con Archivista: l'Archivista resta separato, intatto, perimetro chiuso
+- niente scrittura business diretta dalla chat IA
+- niente router prompt manuale: l'instradamento e gestito da OpenAI
+- niente runner settoriali fissi: tutto si esprime come tool
+
+Ogni richiesta di "scrittura" dalla chat passa SEMPRE attraverso i modali esistenti del gestionale (Dossier, Mezzi modal, Archivista, ecc.). La chat IA puo aprirli ma non sostituirli.
 
 ---
 
-## 6. Cosa salva e dove
+## 7. Cosa salva e dove
 
 I report mensili e i report puntuali (per targa o per autista) si salvano nello stesso archivio dove vivono i miei dati. Si accumulano in un archivio della chat, consultabile dalla chat stessa: storico, riapertura, esportazione PDF.
 
----
-
-## 7. Architettura del codice
-
-Il codice della chat IA NEXT non deve essere un file unico monolitico da migliaia di righe. Va diviso a settori, ognuno con cartella e file piccoli e indipendenti.
-
-Settori previsti:
-
-- Mezzi (lettura, incrocio, report mezzo)
-- Autisti (lettura, incrocio, report autista)
-- Manutenzioni e scadenze (cross-mezzo, cross-periodo)
-- Materiali e magazzino (lettura, incrocio)
-- Costi e fatture (lettura, incrocio)
-- Documenti (libretti, allegati)
-- Cisterna (lettura, incrocio)
-- Motore IA (smistamento prompt + LLM)
-- Motore report (generazione + archivio)
-
-Quando in futuro un settore non bastera, se ne aggiunge uno nuovo, senza toccare gli altri.
+L'archivio report resta Firestore + Storage come decisione vincolante gia presa. Questa persistenza riguarda report e output della chat, non scritture business sui dati gestionali.
 
 ---
 
-## 8. Cosa resta intatto
+## 8. Architettura ad alto livello
+
+Flusso attivo del nuovo paradigma:
+
+1. UI chat NEXT: l'utente scrive una domanda libera.
+2. Backend OpenAI function calling: il backend invia a OpenAI domanda, prompt di sistema e lista tool disponibili.
+3. Selezione tool: OpenAI decide quali tool chiamare e in che ordine.
+4. Esecuzione tool: il backend esegue tool locali controllati (reader clone-safe, generatori PDF, generatori grafici, formatter).
+5. Composizione risposta: OpenAI riceve i risultati dei tool e compone risposta italiana, card, tabelle o report.
+6. UI chat: mostra la risposta strutturata, eventuali grafici, PDF/report e azioni di apertura modali esistenti.
+
+Il codice non deve diventare un file unico monolitico. La divisione principale non e piu "settore con runner", ma "tool piccoli e dichiarati".
+
+Cartelle previste nel paradigma tool use:
+
+- `src/next/chat-ia/tools/` per i tool.
+- `src/next/chat-ia/toolRegistry` o equivalente per registrazione tool.
+- `src/next/chat-ia/components/` per rendering card, tabelle, grafici e report.
+- `src/next/chat-ia/backend/` o adapter esistente per il ponte con OpenAI function calling.
+- reader clone-safe esistenti nei domain NEXT o moduli dedicati.
+
+Tool candidati:
+
+- reader anagrafica flotta
+- reader dossier mezzo
+- reader documenti mezzo
+- reader rifornimenti
+- reader segnalazioni e controlli
+- reader cisterna
+- generatori PDF report
+- generatori grafici semplici
+- formatter tabelle/card
+- tool apertura modali esistenti
+
+---
+
+## 9. Cosa resta intatto
 
 - Madre completa: Mezzo 360, Autista 360, Centro Controllo continuano a vivere come oggi finche' la NEXT non diventa la nuova madre.
 - Archivista NEXT: sistema separato, funziona, perimetro chiuso, non si tocca.
 - Lavoro Mezzi modal NEXT (chiusura scrivente Mezzi).
 - Lavoro Archivista libretto NEXT (persistenza campi libretto).
+- Decisione sola lettura business della chat IA.
+- Archivio report della chat.
+- Nessuna memoria persistente tra sessioni.
 
 ---
 
-## 9. Cosa si spegne
+## 10. Piano di migrazione
 
-Quando la chat IA sara completa e affidabile, nella NEXT si spengono e cancellano (o archiviano):
+Il settore Mezzi attuale, basato su pattern router+runner, resta come rete di sicurezza durante la transizione. Non viene cancellato mentre i tool Mezzi sono in costruzione.
+
+La sostituzione avviene solo quando i tool Mezzi coprono le funzioni gia operative e sono testati in browser. Dopo quella verifica, il settore Mezzi router+runner puo essere rimosso o archiviato.
+
+Durante la migrazione:
+
+- non si rompono le funzioni gia disponibili
+- non si tocca Archivista
+- non si abilita scrittura business dalla chat
+- si aggiungono tool incrementali, verificabili uno per volta
+
+---
+
+## 11. Cosa si spegne
+
+Quando la chat IA sara completa e affidabile, nella NEXT si possono spegnere e cancellare (o archiviare) i moduli di sola consultazione che la chat sostituisce davvero:
 
 - Mezzo 360 NEXT
 - Autista 360 NEXT
@@ -98,117 +165,124 @@ La madre resta intatta finche la NEXT non sara stata promossa a nuova madre. Sol
 
 ---
 
-## 10. Decisioni prese
+## 12. Decisioni prese
 
 - 2026-04-27: confermato che la chat IA e la strada giusta, non un nuovo modulo unificato.
 - 2026-04-27: il motore unificato non si cancella, ma viene limitato alle richieste trasversali.
 - 2026-04-27: la card mezzo (Step Zero) e il primo test concreto. Funziona tecnicamente, ma il routing della chat e incasinato.
-- 2026-04-27: invece di continuare a fixare per fix mirati, si fa rifacimento integrale della chat IA NEXT con audit profondo, spec a settori, verifica spec, implementazione modulare.
-- 2026-04-27: telaio del rifacimento definito con Giuseppe in chat (questo file).
+- 2026-04-27: invece di continuare a fixare per fix mirati, si fa rifacimento integrale della chat IA NEXT.
+- 2026-04-27: telaio del rifacimento definito con Giuseppe in chat.
 - 2026-04-27: i report restano salvati in un archivio della chat, accessibili dalla chat stessa, esportabili come PDF.
 - 2026-04-27: una sola chat, una sola UI, niente bottoni / menu / scorciatoie. Solo campo libero.
-- 2026-04-27: quando non capisce, la chat risponde restando nel settore della richiesta.
-- 2026-04-27: codice diviso a settori, niente file monolitici.
+- 2026-04-27: quando non capisce, la chat risponde restando nel contesto della richiesta.
+- 2026-04-27: niente file monolitici.
+- 2026-04-28: paradigma aggiornato a OpenAI function calling (tool use).
+- 2026-04-28: il backend OpenAI deve essere esteso per supportare function calling.
+- 2026-04-28: il costo API OpenAI e accettabile per uso quotidiano.
+- 2026-04-28: il settore Mezzi attuale resta finche i tool Mezzi non lo sostituiscono.
 
 ---
 
-## 11. Glossario minimo
+## 13. Glossario minimo
 
+- Tool use / function calling: paradigma in cui OpenAI sceglie funzioni dichiarate dal backend, le chiama e usa i risultati per rispondere.
+- Tool: funzione piccola e controllata che legge dati o produce output. Non scrive dati business.
+- Reader clone-safe: funzione di lettura che usa fonti NEXT controllate e non apre scritture business.
 - Card / scheda strutturata: dati mostrati in tabella, riquadri o modale, non a parole.
-- Settore: ambito tematico (Mezzi, Autisti, ecc.) con cartella e file dedicati nel codice.
-- Motore IA: pezzo del sistema che capisce la richiesta e decide a quale settore mandarla.
-- Motore report: pezzo del sistema che genera report, li salva, li mostra, li esporta in PDF.
-- OpenAI: il modello esterno che riformula in italiano naturale i dati gia letti dal sistema. Non legge mai i dati da solo.
+- Generatore PDF: tool o helper che produce PDF da un report gia calcolato.
+- Generatore grafico: tool o helper che produce dati visualizzabili come barre, linee o tabelle grafiche.
+- Motore IA: backend OpenAI che riceve prompt, lista tool, risultati tool e compone risposta finale.
 - Archivio chat: deposito interno alla chat dove i report generati restano salvati e riapribili.
 - Madre / NEXT: madre = versione vecchia ancora viva e funzionante, NEXT = versione in costruzione che diventera la nuova madre.
 
 ---
 
-## 12. Prossimi passi pianificati
+## 14. Prossimi passi pianificati
 
-1. Audit profondo della chat IA NEXT esistente, mirato al telaio di questo file. Output in docs/audit/AUDIT_IA_CHAT_360_RIFACIMENTO_<data>.md.
-2. Lettura tua + mia dell'audit. Decisioni di alto livello: cosa salvare, cosa buttare, cosa rifare.
-3. Spec del rifacimento, divisa in piu file dentro docs/product/SPEC_IA_CHAT_RIFACIMENTO_NEXT/, uno per settore.
-4. Verifica spec con Codex: ogni affermazione tecnica deve corrispondere al codice reale, divergenze = 0.
-5. Implementazione settore per settore. Ogni settore una sessione, una checklist, una verifica. Niente big bang.
+1. Aggiornare l'ossatura backend OpenAI per function calling.
+2. Fare audit dati NEXT e censimento tool candidati.
+3. Scrivere SPEC architettura tool use: protocollo, modello OpenAI, prompt di sistema, schema tool, registry, error handling.
+4. Implementare base tool use con primi tool Mezzi.
+5. Migrare progressivamente le capability oggi coperte da router+runner verso tool dichiarati.
+6. Verificare in browser ogni tool nuovo.
 
-## 13. Roadmap dopo settore Mezzi v1
+---
+
+## 15. Roadmap tool use
 
 Versione: 2026-04-28.
 
-### Priorita 1 - Completamento settore Mezzi (parita Mezzo 360)
+### Priorita 1 - Estensione backend OpenAI per function calling
 
-1.1 Download libretti e PDF dalla chat (clic su documento -> scarica
-    o anteprima).
-1.2 Apertura modali esistenti su richiesta utente
-    (es: "apri Mezzo X" -> Dossier Mezzo NEXT).
-1.3 Fallback contestuale migliorato per prompt mezzo senza targa.
+Operazione obbligatoria di sblocco.
 
-### Priorita 2 - Settore Flotta/Analisi (NUOVO)
+Durata stimata: 3-5 giorni.
 
-2.1 Lista mezzi con filtri ("lista mezzi", "mezzi categoria cisterna",
-    "mezzi revisione scaduta").
-2.2 Calcoli rifornimenti ("rifornimenti aprile 2026",
-    "rifornimenti cisterna Caravate vs distributori",
-    "consumo medio TI282780 ultimi 6 mesi").
-2.3 Ricerca pattern nello storico ("questa segnalazione e gia
-    successa?", "quante volte rotto questo pezzo?").
-2.4 Trend e statistiche ("costi manutenzione 2026",
-    "mezzi piu problematici").
+Obiettivo: backend capace di inviare a OpenAI elenco tool, ricevere tool calls, eseguire tool locali, restituire risultati al modello e ricevere risposta finale.
 
-### Priorita 3 - Settore Autisti
+### Priorita 2 - Audit dati NEXT e censimento tool candidati
 
-3.1 Scheda autista (come Autista 360).
-3.2 Lista e ricerca autisti.
-3.3 Performance autisti (segnalazioni, consumi, ecc.).
+Durata stimata: 1-2 giorni di lettura repo.
 
-### Priorita 4 - Settore Manutenzioni e Scadenze
+Output: lista tool con nome, descrizione, input, output, reader usati, rischi e stato dati.
 
-4.1 Cruscotto scadenze (come Centro Controllo).
-4.2 Pianificazione manutenzioni e carico officina.
+### Priorita 3 - Spec architettura tool use
 
-### Priorita 5 - Settori secondari
+Durata stimata: 1-2 giorni.
 
-5.1 Materiali e magazzino.
-5.2 Costi e fatture.
-5.3 Cisterna AdBlue.
+Contenuto: protocollo, modello OpenAI, prompt di sistema, schema tool, registry tool, gestione errori, fallback, log, test browser.
 
-### Priorita 6 - Funzioni trasversali aggiuntive
+### Priorita 4 - Implementazione base + primi 5-8 tool
 
-6.1 Memoria di sessione intelligente: la chat ricorda l'ultimo
-    mezzo/autista citato nella sessione corrente, per follow-up
-    naturali ("rifornimenti?" dopo "TI282780"). Niente persistenza
-    tra sessioni.
-6.2 Suggerimenti proattivi: la chat inserisce note tipo
-    "questa segnalazione e gia successa 3 volte negli ultimi 6 mesi"
-    nelle risposte mezzo/autista.
-6.3 Multi-targa e comparazioni ("confronta TI282780 e TI313387").
-6.4 Esportazione dati raw (CSV/Excel) oltre al PDF.
-6.5 Voice input via Web Speech API per uso in officina.
-6.6 Notifiche/alert proattivi (lavoro a lungo termine, complessita
-    alta).
+Durata stimata: 1 settimana.
 
-### Stima tempi
+Obiettivo: setup chat che usa tool reali, primi tool per Mezzi e risposta strutturata.
 
-- Priorita 1: 1 settimana.
-- Priorita 2: 2-3 settimane.
-- Priorita 3: 1-2 settimane.
-- Priorita 4: 1 settimana.
-- Priorita 5: 1-2 settimane per settore.
-- Priorita 6: distribuita lungo il percorso.
+Primi tool candidati:
 
-Totale realistico: 2-3 mesi di lavoro distribuito.
+- trova mezzo per targa
+- leggi dossier mezzo
+- lista documenti mezzo
+- cerca segnalazioni/controlli mezzo
+- calcola riepilogo rifornimenti mezzo
+- genera card Mezzo
+- genera report PDF mezzo
+- apri Dossier Mezzo esistente
 
-### Pattern di lavoro per ogni settore
+### Priorita 5 - Aggiunta tool incrementale
 
-Niente piu audit larghi. Ogni nuovo settore segue:
+- Tool flotta (lista, ricerca, comparazioni)
+- Tool autisti (scheda, ricerca per badge/nome)
+- Tool rifornimenti aggregati (calcoli, medie, grafici)
+- Tool documenti (lettura, download libretti)
+- Tool segnalazioni/controlli (ricerca testuale)
+- Tool report (generazione PDF on-demand)
+- Tool apertura modali esistenti (es: apri Dossier Mezzo X)
+- Tool grafici (recharts wrapper come tool)
 
-1. Spec settore (1 prompt Codex).
-2. Verifica spec (1 prompt Codex, regola n.5 Giuseppe).
-3. Eventuali correzioni (1 prompt se servono).
-4. Implementazione settore con fasi (1 prompt Codex).
+### Priorita 6 - Funzioni trasversali
 
-Totale tipico per settore: 3-5 prompt Codex.
+- Memoria di sessione (contesto follow-up)
+- Suggerimenti proattivi (l'IA aggiunge note rilevanti)
+- Multi-targa, comparazioni
+- Esportazione CSV/Excel
+- Voice input
+
+### Stima tempi rivista
+
+- Priorita 1+2+3: 1-2 settimane (sblocco architetturale)
+- Priorita 4: 1 settimana (prima chat tool funzionante)
+- Priorita 5: 1-2 settimane per gruppo di tool
+- Totale per arrivare a uso quotidiano completo: 4-8 settimane
+
+### Pattern di lavoro per ogni nuovo tool
+
+1. Definizione tool (nome, descrizione, parametri input, shape output)
+2. Implementazione tool (singolo file in `src/next/chat-ia/tools/`)
+3. Registrazione nel tool registry
+4. Test in browser
+
+Niente piu spec settore + verifica + correzioni + implementazione per ogni capability. Un tool e una funzione singola con descrizione.
 
 ### Cosa NON sara nella chat (decisioni gia prese)
 
@@ -217,9 +291,18 @@ Totale tipico per settore: 3-5 prompt Codex.
 - Niente integrazione Archivista.
 - Niente memoria persistente tra sessioni.
 - Niente foto/OCR in input (escluso da telaio).
+- Niente router prompt manuale.
+- Niente runner settoriali fissi come architettura attiva.
 
-Ogni richiesta di "scrittura" dalla chat passa SEMPRE attraverso i
-modali esistenti del gestionale (Dossier, Mezzi modal, Archivista,
-ecc.). La chat IA puo aprirli ma non sostituirli.
+Ogni richiesta di "scrittura" dalla chat passa SEMPRE attraverso i modali esistenti del gestionale (Dossier, Mezzi modal, Archivista, ecc.). La chat IA puo aprirli ma non sostituirli.
+
+---
+
+## 16. DECISIONI ARCHITETTURALI 2026-04-28
+
+- Paradigma: OpenAI function calling (tool use)
+- Backend OpenAI: estendibile per function calling
+- Costo API: accettabile per uso quotidiano
+- Settore Mezzi attuale: resta finche tool Mezzi non sostituisce
 
 FINE CONTENUTO DEL FILE.

@@ -1,25 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import jsPDF from "jspdf";
-import autoTable, { type CellHookData } from "jspdf-autotable";
 import {
   readNextCisternaSnapshot,
   type NextCisternaDocumentItem,
   type NextCisternaDuplicateGroup,
   type NextCisternaSnapshot,
 } from "./domain/nextCisternaDomain";
-import {
-  saveNextCisternaMonthlyExchange,
-  updateNextCisternaDuplicateChoice,
-} from "./nextCisternaWriter";
 import "../pages/CisternaCaravate/CisternaCaravatePage.css";
 
 type TabKey = "archivio" | "report" | "targhe";
-type PdfWithAutoTable = jsPDF & {
-  lastAutoTable?: {
-    finalY?: number;
-  };
-};
 
 function money(value: number | null, currency: "EUR" | "CHF", empty = "N/D") {
   if (value == null || !Number.isFinite(value)) return empty;
@@ -39,28 +28,6 @@ function ratio(value: number | null, currency: "EUR" | "CHF") {
   }).format(value)} ${currency}/L`;
 }
 
-async function toDataUrlFromAsset(path: string): Promise<string | null> {
-  try {
-    const response = await fetch(path);
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return await new Promise<string | null>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
-function toNumberOrNull(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(String(value).replace(",", "."));
-  return Number.isFinite(n) ? n : null;
-}
-
 function liters(value: number | null) {
   if (value == null || !Number.isFinite(value)) return "-";
   return value.toFixed(2).replace(/\.?0+$/, "");
@@ -71,10 +38,6 @@ function companyClass(label: string) {
   if (raw.includes("import")) return "import";
   if (raw.includes("cement")) return "cementi";
   return "neutral";
-}
-
-function formatAziendaLabel(value: "cementi" | "import"): string {
-  return value === "import" ? "GHIELMIIMPORT" : "GHIELMICEMENTI";
 }
 
 function monthParam(search: string) {
@@ -113,19 +76,6 @@ function duplicateBadge(item: NextCisternaDocumentItem) {
     : { className: "ignored", label: "IGNORATO" };
 }
 
-function getLastAutoTableFinalY(pdf: jsPDF, fallback: number): number {
-  const finalY = (pdf as PdfWithAutoTable).lastAutoTable?.finalY;
-  return typeof finalY === "number" && Number.isFinite(finalY) ? finalY : fallback;
-}
-
-function toErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message;
-  }
-  return fallback;
-}
-
 export default function NextCisternaPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -144,31 +94,6 @@ export default function NextCisternaPage() {
   const [dupChoiceByGroup, setDupChoiceByGroup] = useState<Record<string, string>>({});
   const [dupStatusByGroup, setDupStatusByGroup] = useState<Record<string, string>>({});
   const monthPickerRef = useRef<HTMLDivElement | null>(null);
-
-  const applySnapshot = useCallback((nextSnapshot: NextCisternaSnapshot) => {
-    setSnapshot(nextSnapshot);
-    setSelectedMonth((previous) => (previous === nextSnapshot.monthKey ? previous : nextSnapshot.monthKey));
-    setCambioInput(nextSnapshot.report.cambioEurChf == null ? "" : String(nextSnapshot.report.cambioEurChf));
-    setCambioStatus("");
-    setDupChoiceByGroup(initialDuplicateChoices(nextSnapshot.archive.duplicateGroups));
-    setDupStatusByGroup({});
-  }, []);
-
-  const refreshSnapshot = useCallback(
-    async (monthKey: string | null | undefined) => {
-      const nextSnapshot = await readNextCisternaSnapshot(monthKey || undefined, {
-        includeCloneOverlays: false,
-      });
-      applySnapshot(nextSnapshot);
-      return nextSnapshot;
-    },
-    [applySnapshot],
-  );
-
-  const currentMonthKeyForActions = useCallback(
-    () => selectedMonth || snapshot?.monthKey || requestedMonth || "",
-    [requestedMonth, selectedMonth, snapshot?.monthKey],
-  );
 
   const monthNames = useMemo(
     () =>
@@ -217,7 +142,12 @@ export default function NextCisternaPage() {
         });
         if (cancelled) return;
 
-        applySnapshot(nextSnapshot);
+        setSnapshot(nextSnapshot);
+        setSelectedMonth((previous) => (previous === nextSnapshot.monthKey ? previous : nextSnapshot.monthKey));
+        setCambioInput(nextSnapshot.report.cambioEurChf == null ? "" : String(nextSnapshot.report.cambioEurChf));
+        setCambioStatus("");
+        setDupChoiceByGroup(initialDuplicateChoices(nextSnapshot.archive.duplicateGroups));
+        setDupStatusByGroup({});
       } catch (loadError) {
         if (cancelled) return;
         setSnapshot(null);
@@ -233,7 +163,7 @@ export default function NextCisternaPage() {
     return () => {
       cancelled = true;
     };
-  }, [applySnapshot, requestedMonth, selectedMonth]);
+  }, [requestedMonth, selectedMonth]);
 
   const displayedMonthLabel = snapshot?.monthLabel ?? monthLabelFromKey(selectedMonth || requestedMonth || "");
 
@@ -264,225 +194,27 @@ export default function NextCisternaPage() {
     ? "Scheda carburante"
     : "Autisti (nessuna scheda carburante nel mese)";
 
-  const handleSaveCambio = async () => {
-    const monthKey = currentMonthKeyForActions();
-    if (!monthKey) {
-      setCambioStatus("Errore salvataggio cambio EUR->CHF.");
+  const handleBlockedAction = (message: string) => {
+    setNotice(message);
+  };
+
+  const handleSaveCambio = () => {
+    const parsed = Number(String(cambioInput).replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setCambioStatus("Inserisci un cambio EUR/CHF valido prima di salvare.");
       return;
     }
 
-    setCambioStatus("");
-    setNotice("");
-
-    try {
-      await saveNextCisternaMonthlyExchange({
-        monthKey,
-        cambioEurChf: toNumberOrNull(cambioInput),
-      });
-      await refreshSnapshot(monthKey);
-      setCambioStatus("Cambio EUR->CHF salvato.");
-    } catch (saveError) {
-      setCambioStatus(toErrorMessage(saveError, "Errore salvataggio cambio EUR->CHF."));
-    }
+    setCambioStatus("Salvataggio cambio EUR->CHF bloccato: clone NEXT in sola lettura.");
+    setNotice("Il pulsante Salva resta visibile come nella madre, ma il clone NEXT non salva parametri mensili.");
   };
 
-  const handleConfirmDuplicateChoice = async (group: NextCisternaDuplicateGroup) => {
-    const chosenDocumentId = dupChoiceByGroup[group.key] ?? group.items[0]?.id ?? "";
-    if (!chosenDocumentId) return;
-
+  const handleConfirmDuplicateChoice = (group: NextCisternaDuplicateGroup) => {
     setDupStatusByGroup((previous) => ({
       ...previous,
-      [group.key]: "",
+      [group.key]: "Conferma scelta bloccata: il clone NEXT mostra solo la risoluzione read-only della madre.",
     }));
-    setNotice("");
-
-    try {
-      await updateNextCisternaDuplicateChoice({
-        groupKey: group.key,
-        chosenDocumentId,
-        documentIds: group.items.map((item) => item.id),
-      });
-      await refreshSnapshot(currentMonthKeyForActions());
-      setDupStatusByGroup((previous) => ({
-        ...previous,
-        [group.key]: "Scelta duplicato salvata.",
-      }));
-    } catch (saveError) {
-      setDupStatusByGroup((previous) => ({
-        ...previous,
-        [group.key]: toErrorMessage(saveError, "Errore durante il salvataggio della scelta."),
-      }));
-    }
-  };
-
-  const handleExportReportPdf = async () => {
-    if (!snapshot) return;
-
-    const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const marginX = 40;
-    let y = 44;
-
-    const logoDataUrl = await toDataUrlFromAsset("/logo.png");
-    if (logoDataUrl) {
-      pdf.addImage(logoDataUrl, "PNG", marginX, y - 14, 34, 34);
-    }
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(17);
-    pdf.text("Cisterna Caravate - Report Mensile", marginX + (logoDataUrl ? 44 : 0), y);
-    y += 22;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(11);
-    pdf.text(`Mese: ${snapshot.monthLabel}`, marginX + (logoDataUrl ? 44 : 0), y);
-    y += 22;
-
-    const summaryRows: Array<[string, string]> = [
-      ["Fonte litri", reportSourceLabel],
-      ["Litri totali mese", `${snapshot.report.litriTotaliMese.toFixed(2)} L`],
-      [
-        "Totale fatture (valuta)",
-        snapshot.report.costi.baseCurrency && snapshot.report.costi.totalFatturaValuta != null
-          ? money(snapshot.report.costi.totalFatturaValuta, snapshot.report.costi.baseCurrency)
-          : "N/D",
-      ],
-      [
-        "Cambio EUR->CHF",
-        snapshot.report.cambioEurChf != null && snapshot.report.cambioEurChf > 0
-          ? String(snapshot.report.cambioEurChf)
-          : "N/D",
-      ],
-      ["Totale convertito CHF", money(snapshot.report.costi.totalChfNormalized, "CHF")],
-      [
-        "Prezzo/lt (valuta)",
-        snapshot.report.costi.baseCurrency
-          ? ratio(snapshot.report.costi.costoPerLitroValuta, snapshot.report.costi.baseCurrency)
-          : "N/D",
-      ],
-      ["Prezzo/lt (CHF)", ratio(snapshot.report.costi.costoPerLitroChf, "CHF")],
-    ];
-
-    autoTable(pdf, {
-      startY: y,
-      margin: { left: marginX, right: marginX },
-      theme: "grid",
-      styles: {
-        font: "helvetica",
-        fontSize: 10,
-        cellPadding: 6,
-        lineColor: [220, 227, 238],
-      },
-      columnStyles: {
-        0: { fillColor: [247, 251, 255], fontStyle: "bold", cellWidth: 170 },
-        1: { cellWidth: "auto" },
-      },
-      body: summaryRows,
-    });
-
-    const afterSummaryY = getLastAutoTableFinalY(pdf, y + 104) + 16;
-    autoTable(pdf, {
-      startY: afterSummaryY,
-      margin: { left: marginX, right: marginX },
-      head: [["Ripartizione per azienda", "Litri", "Costo (valuta)", "Costo (CHF)"]],
-      body: [
-        [
-          formatAziendaLabel("cementi"),
-          `${snapshot.report.ripartizioneAzienda.cementi.litri.toFixed(2)} L`,
-          snapshot.report.costi.baseCurrency
-            ? money(
-                snapshot.report.ripartizioneAzienda.cementi.costoValuta,
-                snapshot.report.costi.baseCurrency,
-              )
-            : "N/D",
-          money(snapshot.report.ripartizioneAzienda.cementi.costoChf, "CHF"),
-        ],
-        [
-          formatAziendaLabel("import"),
-          `${snapshot.report.ripartizioneAzienda.import.litri.toFixed(2)} L`,
-          snapshot.report.costi.baseCurrency
-            ? money(
-                snapshot.report.ripartizioneAzienda.import.costoValuta,
-                snapshot.report.costi.baseCurrency,
-              )
-            : "N/D",
-          money(snapshot.report.ripartizioneAzienda.import.costoChf, "CHF"),
-        ],
-      ],
-      headStyles: { fillColor: [13, 93, 166], textColor: [255, 255, 255] },
-      styles: {
-        font: "helvetica",
-        fontSize: 10,
-        cellPadding: 6,
-        lineColor: [220, 227, 238],
-      },
-      alternateRowStyles: { fillColor: [250, 252, 255] },
-      didParseCell: (hookData: CellHookData) => {
-        if (hookData.section !== "body") return;
-        const rowIndex = hookData.row?.index;
-        if (rowIndex === 0) {
-          hookData.cell.styles.fillColor = [234, 247, 239];
-          hookData.cell.styles.textColor = [31, 95, 52];
-        } else if (rowIndex === 1) {
-          hookData.cell.styles.fillColor = [238, 244, 255];
-          hookData.cell.styles.textColor = [47, 79, 143];
-        }
-      },
-    });
-
-    const afterRipartizioneY = getLastAutoTableFinalY(pdf, afterSummaryY + 104) + 16;
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.text("Tabella targhe", marginX, afterRipartizioneY);
-
-    autoTable(pdf, {
-      startY: afterRipartizioneY + 8,
-      margin: { left: marginX, right: marginX },
-      head: [["Targa", "Azienda", "Litri", "Costo stimato (valuta)", "Costo stimato (CHF)"]],
-      body: snapshot.report.perTarga.map((row) => [
-        row.targa,
-        row.aziendaLabel,
-        `${row.litri.toFixed(2)} L`,
-        snapshot.report.costi.baseCurrency
-          ? money(row.costoStimatoValuta, snapshot.report.costi.baseCurrency)
-          : "N/D",
-        money(row.costoStimatoChf, "CHF"),
-      ]),
-      headStyles: { fillColor: [13, 93, 166], textColor: [255, 255, 255] },
-      styles: {
-        font: "helvetica",
-        fontSize: 10,
-        cellPadding: 6,
-        lineColor: [220, 227, 238],
-      },
-      alternateRowStyles: { fillColor: [250, 252, 255] },
-      didParseCell: (hookData: CellHookData) => {
-        if (hookData.section !== "body") return;
-        if (hookData.column?.index !== 1) return;
-        const label = String(hookData.cell?.raw ?? "");
-        const aziendaClass = companyClass(label);
-        if (aziendaClass === "cementi") {
-          hookData.cell.styles.fillColor = [234, 247, 239];
-          hookData.cell.styles.textColor = [31, 95, 52];
-        } else if (aziendaClass === "import") {
-          hookData.cell.styles.fillColor = [238, 244, 255];
-          hookData.cell.styles.textColor = [47, 79, 143];
-        } else {
-          hookData.cell.styles.fillColor = [243, 246, 251];
-          hookData.cell.styles.textColor = [79, 96, 117];
-        }
-      },
-    });
-
-    const footerY = pdf.internal.pageSize.getHeight() - 24;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.text(
-      costoSummaryLine.length > 140 ? `${costoSummaryLine.slice(0, 140)}...` : costoSummaryLine,
-      marginX,
-      footerY,
-      { maxWidth: pageWidth - marginX * 2 },
-    );
-    pdf.save(`cisterna-report-mensile-${snapshot.monthKey}.pdf`);
+    setNotice("Conferma duplicati bollettini bloccata: il clone NEXT non scrive scelte o ignorati.");
   };
 
   return (
@@ -505,7 +237,7 @@ export default function NextCisternaPage() {
             <button
               type="button"
               onClick={() =>
-                navigate(`/next/cisterna/ia?month=${encodeURIComponent(currentMonthKeyForActions())}`)
+                handleBlockedAction("Apri IA Cisterna resta visibile come nella madre, ma nel clone NEXT e bloccato in sola lettura.")
               }
             >
               Apri IA Cisterna
@@ -513,7 +245,7 @@ export default function NextCisternaPage() {
             <button
               type="button"
               onClick={() =>
-                navigate(`/next/cisterna/schede-test?month=${encodeURIComponent(currentMonthKeyForActions())}`)
+                handleBlockedAction("Scheda carburante resta visibile come nella madre, ma nel clone NEXT non apre la superficie operativa.")
               }
             >
               Scheda carburante
@@ -843,10 +575,8 @@ export default function NextCisternaPage() {
                           type="button"
                           className="cisterna-archivio-action"
                           onClick={() =>
-                            navigate(
-                              `/next/cisterna/schede-test?edit=${encodeURIComponent(item.id)}&month=${encodeURIComponent(
-                                currentMonthKeyForActions(),
-                              )}`,
+                            handleBlockedAction(
+                              "Apri/Modifica resta visibile come nella madre, ma il clone NEXT non apre la scheda operativa.",
                             )
                           }
                           title="Apri o modifica questa scheda"
@@ -869,7 +599,9 @@ export default function NextCisternaPage() {
               <button
                 type="button"
                 className="cisterna-report-export"
-                onClick={handleExportReportPdf}
+                onClick={() =>
+                  handleBlockedAction("Esporta PDF resta visibile come nella madre, ma il clone NEXT non esegue export locale o salvataggi.")
+                }
               >
                 Esporta PDF
               </button>

@@ -1,6 +1,19 @@
 import { runInternalAiServerControlledChat } from "../../internal-ai/internalAiServerChatClient";
+import { INTERNAL_AI_SERVER_ADAPTER_PORT } from "../../../../backend/internal-ai/src/internalAiServerPersistenceContracts";
 import type { InternalAiChatMessageReference } from "../../internal-ai/internalAiTypes";
-import type { ChatIaRunnerResult } from "../core/chatIaTypes";
+import { executeToolCall } from "../tools/chatIaToolExecutor";
+import { getAllToolDefinitions } from "../tools/chatIaToolRegistry";
+import type {
+  ChatIaAssistantFinalMessage,
+  ChatIaMessage,
+  ChatIaRunnerResult,
+} from "../core/chatIaTypes";
+import type {
+  ChatIaToolCall,
+  ChatIaToolResult,
+  ChatIaToolUseRequest,
+  ChatIaToolUseResponse,
+} from "../tools/chatIaToolTypes";
 
 type ChatIaBackendBridgeArgs = {
   prompt: string;
@@ -8,11 +21,30 @@ type ChatIaBackendBridgeArgs = {
   timeoutMs?: number;
 };
 
+type ChatIaToolUseSessionContext = {
+  sessionId?: string;
+  actorId?: string;
+  previousMessages?: ChatIaMessage[];
+  nowIso?: string;
+};
+
 export type ChatIaBackendBridgeResult = {
   text: string;
   usedBackend: boolean;
   notice: string | null;
 };
+
+type ChatIaToolUseEnvelope = {
+  ok: boolean;
+  endpointId: string;
+  status: string;
+  message: string;
+  data?: ChatIaToolUseResponse;
+};
+
+const CHAT_TOOL_USE_ENDPOINT = "/internal-ai-backend/chat/tool-use";
+const MAX_TOOL_ITERATIONS = 4;
+const BACKEND_TIMEOUT_MS = 20000;
 
 function mapLocalStatus(status: ChatIaRunnerResult["status"]): "completed" | "partial" {
   return status === "completed" ? "completed" : "partial";
@@ -55,6 +87,172 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | nul
       window.setTimeout(() => resolve(null), timeoutMs);
     }),
   ]);
+}
+
+function getConfiguredToolUseBaseUrl(): string | null {
+  const configured = import.meta.env.VITE_INTERNAL_AI_BACKEND_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/g, "");
+  }
+
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const { hostname } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return `http://127.0.0.1:${INTERNAL_AI_SERVER_ADAPTER_PORT}`;
+  }
+
+  return null;
+}
+
+function buildToolUseRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return `chat-tool-use-${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `chat-tool-use-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildToolUseSessionId(context?: ChatIaToolUseSessionContext): string {
+  if (context?.sessionId?.trim()) {
+    return context.sessionId.trim();
+  }
+
+  return `chat-tool-session-${Date.now().toString(36)}`;
+}
+
+function mapHistoryToToolUseMessages(previousMessages: ChatIaMessage[] = []) {
+  return previousMessages.slice(-8).map((message) => ({
+    role: message.role === "assistente" ? ("assistant" as const) : ("user" as const),
+    content: message.text,
+  }));
+}
+
+async function postChatToolUseTurn(
+  body: ChatIaToolUseRequest,
+): Promise<ChatIaToolUseEnvelope | null> {
+  const baseUrl = getConfiguredToolUseBaseUrl();
+  if (!baseUrl) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}${CHAT_TOOL_USE_ENDPOINT}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(body),
+    });
+    const rawJson = await response.json().catch(() => null);
+    return rawJson && typeof rawJson === "object" ? (rawJson as ChatIaToolUseEnvelope) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildToolUseFallbackMessage(text: string, status: "partial" | "failed"): ChatIaAssistantFinalMessage {
+  return {
+    text,
+    status,
+    blocks: [{ kind: "text", text }],
+    entities: [],
+    sources: [],
+    notices: [],
+  };
+}
+
+function appendToolResultsToMessages(
+  messages: ChatIaToolUseRequest["messages"],
+  results: ChatIaToolResult[],
+): ChatIaToolUseRequest["messages"] {
+  return [
+    ...messages,
+    ...results.map((result) => ({
+      role: "tool" as const,
+      name: result.name,
+      toolCallId: result.toolCallId,
+      content: JSON.stringify(result),
+    })),
+  ];
+}
+
+export async function runToolUseConversation(
+  prompt: string,
+  sessionContext: ChatIaToolUseSessionContext = {},
+): Promise<ChatIaAssistantFinalMessage> {
+  const trimmedPrompt = prompt.trim();
+  const tools = getAllToolDefinitions();
+  if (!trimmedPrompt) {
+    return buildToolUseFallbackMessage("Scrivi una domanda per la chat IA NEXT.", "partial");
+  }
+  if (tools.length === 0) {
+    return buildToolUseFallbackMessage(
+      "La chat tool use non ha ancora tool registrati. Usa /next/chat come rete di sicurezza.",
+      "partial",
+    );
+  }
+
+  const requestId = buildToolUseRequestId();
+  const sessionId = buildToolUseSessionId(sessionContext);
+  const nowIso = sessionContext.nowIso ?? new Date().toISOString();
+  let responseId: string | null = null;
+  let messages: ChatIaToolUseRequest["messages"] = [
+    ...mapHistoryToToolUseMessages(sessionContext.previousMessages),
+    { role: "user", content: trimmedPrompt },
+  ];
+  let toolResults: ChatIaToolResult[] = [];
+
+  for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
+    const backendResponse: ChatIaToolUseEnvelope | null = await withTimeout(
+      postChatToolUseTurn({
+        operation: "run_tool_use_turn",
+        requestId,
+        actorId: sessionContext.actorId ?? "next-chat-ia",
+        sessionId,
+        iteration,
+        prompt: trimmedPrompt,
+        messages,
+        tools,
+        toolResults,
+        responseId,
+      }),
+      BACKEND_TIMEOUT_MS,
+    );
+
+    if (!backendResponse) {
+      return buildToolUseFallbackMessage(
+        "La chat tool use non riesce a contattare il backend OpenAI. Usa /next/chat come rete di sicurezza.",
+        "partial",
+      );
+    }
+
+    if (!backendResponse.ok || !backendResponse.data) {
+      return buildToolUseFallbackMessage(
+        backendResponse.message || "La chat tool use non ha completato la risposta.",
+        backendResponse.status === "upstream_error" ? "failed" : "partial",
+      );
+    }
+
+    if (backendResponse.data.mode === "final") {
+      return backendResponse.data.finalMessage;
+    }
+
+    responseId = backendResponse.data.responseId;
+    toolResults = await Promise.all(
+      backendResponse.data.toolCalls.map((call: ChatIaToolCall) =>
+        executeToolCall(call, { requestId, sessionId, prompt: trimmedPrompt, nowIso }),
+      ),
+    );
+    messages = appendToolResultsToMessages(messages, toolResults);
+  }
+
+  return buildToolUseFallbackMessage(
+    "La chat tool use ha raggiunto il limite di iterazioni senza risposta finale.",
+    "partial",
+  );
 }
 
 export async function refineChatIaRunnerResult(

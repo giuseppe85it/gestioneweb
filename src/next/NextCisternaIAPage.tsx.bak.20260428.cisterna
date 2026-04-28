@@ -1,17 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { serverTimestamp } from "firebase/firestore";
 import { currentMonthKey } from "../cisterna/collections";
-import {
-  extractCisternaDocumentoFromImage,
-  extractCisternaDocumentoFromPdf,
-  type CisternaDocumentoExtractResult,
-} from "./nextCisternaIaClient";
-import {
-  createNextCisternaIaDocumentRecord,
-  uploadNextCisternaDocumentFile,
-} from "./nextCisternaWriter";
-import { readNextCisternaSnapshot } from "./domain/nextCisternaDomain";
 import { useInternalAiUniversalHandoffConsumer } from "./internal-ai/internalAiUniversalHandoffConsumer";
 import "../pages/CisternaCaravate/CisternaCaravateIA.css";
 
@@ -30,108 +19,7 @@ type DocumentoForm = {
   motivoVerifica: string;
 };
 
-const DATE_REGEX = /^(\d{2})\/(\d{2})\/(\d{4})$/;
 const YEAR_MONTH_REGEX = /^(\d{4})-(\d{2})$/;
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/[^\w.-]+/g, "_");
-}
-
-function toErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message;
-  }
-  return fallback;
-}
-
-function sanitizeForFirestore<T>(value: T, inArray = false): T {
-  if (value === undefined) {
-    return (inArray ? null : undefined) as T;
-  }
-  if (value === null) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeForFirestore(item, true)) as T;
-  }
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const next: Record<string, unknown> = {};
-    Object.entries(obj).forEach(([key, val]) => {
-      const cleaned = sanitizeForFirestore(val, false);
-      if (cleaned !== undefined) {
-        next[key] = cleaned;
-      }
-    });
-    return next as T;
-  }
-  return value;
-}
-
-function parseNumberOrNull(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const normalized = text
-    .replace(/\s/g, "")
-    .replace(/\.(?=\d{3}\b)/g, "")
-    .replace(",", ".");
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function normalizeDataDocumento(value: string): string | null {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-
-  const it = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
-  if (it) {
-    const day = Number(it[1]);
-    const month = Number(it[2]);
-    let year = Number(it[3]);
-    if (it[3].length === 2) year += 2000;
-    const date = new Date(year, month - 1, day);
-    if (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    ) {
-      return `${pad2(day)}/${pad2(month)}/${year}`;
-    }
-    return null;
-  }
-
-  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (iso) {
-    const year = Number(iso[1]);
-    const month = Number(iso[2]);
-    const day = Number(iso[3]);
-    const date = new Date(year, month - 1, day);
-    if (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    ) {
-      return `${pad2(day)}/${pad2(month)}/${year}`;
-    }
-    return null;
-  }
-
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return null;
-  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
-}
-
-function yearMonthFromDataDocumento(value: string | null): string | null {
-  if (!value) return null;
-  const match = value.match(DATE_REGEX);
-  if (!match) return null;
-  return `${match[3]}-${match[2]}`;
-}
 
 function isValidYearMonth(value: string): boolean {
   const match = String(value || "").match(YEAR_MONTH_REGEX);
@@ -155,29 +43,21 @@ function isImage(file: File): boolean {
   return String(file.type || "").toLowerCase().startsWith("image/");
 }
 
-function isPdf(file: File): boolean {
-  const mime = String(file.type || "").toLowerCase();
-  return mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-}
-
-function asInputString(value: number | null | undefined): string {
-  return value == null ? "" : String(value);
-}
-
-function buildFormFromExtract(data: CisternaDocumentoExtractResult): DocumentoForm {
+function buildBlockedPreviewForm(fileName: string): DocumentoForm {
+  const lower = fileName.toLowerCase();
   return {
-    tipoDocumento: data.tipoDocumento === "bollettino" ? "bollettino" : "fattura",
-    fornitore: String(data.fornitore ?? ""),
-    destinatario: String(data.destinatario ?? ""),
-    numeroDocumento: String(data.numeroDocumento ?? ""),
-    dataDocumento: String(data.dataDocumento ?? ""),
-    litriTotali: asInputString(data.litriTotali),
-    totaleDocumento: asInputString(data.totaleDocumento),
-    valuta: data.valuta ?? "",
-    prodotto: String(data.prodotto ?? ""),
-    testo: String(data.testo ?? ""),
-    daVerificare: Boolean(data.daVerificare),
-    motivoVerifica: String(data.motivoVerifica ?? ""),
+    tipoDocumento: lower.includes("boll") || lower.includes("ddt") ? "bollettino" : "fattura",
+    fornitore: "",
+    destinatario: "",
+    numeroDocumento: "",
+    dataDocumento: "",
+    litriTotali: "",
+    totaleDocumento: "",
+    valuta: "",
+    prodotto: "",
+    testo: "",
+    daVerificare: true,
+    motivoVerifica: "preview_read_only",
   };
 }
 
@@ -198,8 +78,6 @@ export default function NextCisternaIAPage() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
-  const [storageFileUrl, setStorageFileUrl] = useState<string>("");
-  const [storagePath, setStoragePath] = useState<string>("");
   const [form, setForm] = useState<DocumentoForm | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -240,8 +118,6 @@ export default function NextCisternaIAPage() {
       URL.revokeObjectURL(previewUrl);
     }
     setSelectedFile(file);
-    setStorageFileUrl("");
-    setStoragePath("");
     setForm(null);
     setSavedDocId("");
     setError("");
@@ -264,28 +140,11 @@ export default function NextCisternaIAPage() {
 
     setLoading(true);
     setError("");
-    setForm(null);
     setSavedDocId("");
 
     try {
-      const now = new Date();
-      const yyyy = String(now.getFullYear());
-      const mm = String(now.getMonth() + 1).padStart(2, "0");
-      const safeName = sanitizeFileName(selectedFile.name);
-      const path = `documenti_pdf/cisterna/${yyyy}/${mm}/${Date.now()}_${safeName}`;
-      const uploaded = await uploadNextCisternaDocumentFile({
-        file: selectedFile,
-        storagePath: path,
-      });
-      setStorageFileUrl(uploaded.fileUrl);
-      setStoragePath(uploaded.storagePath);
-
-      const extracted = isPdf(selectedFile)
-        ? await extractCisternaDocumentoFromPdf(selectedFile, selectedFile.name)
-        : await extractCisternaDocumentoFromImage(selectedFile, selectedFile.name);
-      setForm(buildFormFromExtract(extracted));
-    } catch (err: unknown) {
-      setError(toErrorMessage(err, "Errore durante l'analisi."));
+      setForm(buildBlockedPreviewForm(selectedFile.name));
+      setError("Nel clone l'upload e l'analisi IA non vengono eseguiti sulla madre.");
     } finally {
       setLoading(false);
     }
@@ -303,7 +162,7 @@ export default function NextCisternaIAPage() {
   };
 
   const handleSave = async () => {
-    if (!form || !storageFileUrl || !selectedFile) {
+    if (!form || !selectedFile) {
       setError("Analizza prima il documento.");
       return;
     }
@@ -312,62 +171,7 @@ export default function NextCisternaIAPage() {
     setError("");
 
     try {
-      const normalizedDataDocumento = normalizeDataDocumento(form.dataDocumento);
-      const yearMonth =
-        yearMonthFromDataDocumento(normalizedDataDocumento) ||
-        fallbackYearMonth ||
-        currentMonthKey();
-      const litriTotali = parseNumberOrNull(form.litriTotali);
-      const totaleDocumento = parseNumberOrNull(form.totaleDocumento);
-      const valuta = form.valuta || null;
-
-      const autoReasons: string[] = [];
-      if (!normalizedDataDocumento) autoReasons.push("data_non_valida");
-      if (litriTotali === null) autoReasons.push("litri_non_validi");
-      if (!valuta) autoReasons.push("valuta_non_definita");
-      if (form.tipoDocumento === "fattura" && totaleDocumento === null) {
-        autoReasons.push("totale_non_valido");
-      }
-
-      const manualReason = form.motivoVerifica.trim();
-      const reasonSet = new Set<string>();
-      autoReasons.forEach((reason) => reasonSet.add(reason));
-      if (manualReason) {
-        reasonSet.add(manualReason);
-      }
-      const reasons = Array.from(reasonSet);
-      const daVerificare = form.daVerificare || reasons.length > 0;
-
-      const payload = sanitizeForFirestore({
-        tipoDocumento: form.tipoDocumento,
-        fornitore: form.fornitore.trim() || null,
-        destinatario: form.destinatario.trim() || null,
-        numeroDocumento: form.numeroDocumento.trim() || null,
-        dataDocumento: normalizedDataDocumento,
-        yearMonth,
-        mese: yearMonth,
-        litriTotali,
-        litri15C: litriTotali,
-        totaleDocumento,
-        valuta,
-        currency: valuta,
-        prodotto: form.prodotto.trim() || null,
-        testo: form.testo.trim() || null,
-        daVerificare,
-        motivoVerifica: reasons.length > 0 ? reasons.join(", ") : null,
-        fileUrl: storageFileUrl,
-        storagePath: storagePath || null,
-        nomeFile: selectedFile.name || null,
-        fonte: "IA",
-        createdAt: serverTimestamp(),
-        iaEngine: "openai-responses",
-      });
-
-      const saved = await createNextCisternaIaDocumentRecord({ payload });
-      await readNextCisternaSnapshot(yearMonth, { includeCloneOverlays: false });
-      setSavedDocId(saved.id);
-    } catch (err: unknown) {
-      setError(toErrorMessage(err, "Errore durante il salvataggio."));
+      setError("Nel clone il salvataggio nell'archivio Cisterna resta bloccato.");
     } finally {
       setSaving(false);
     }
@@ -385,6 +189,10 @@ export default function NextCisternaIAPage() {
             <p>
               Upload, estrazione e salvataggio in
               <code> @documenti_cisterna</code>.
+            </p>
+            <p style={{ marginTop: 8, color: "#4a6078" }}>
+              Nel clone la pagina resta navigabile, ma upload, analisi IA e salvataggio
+              archivio vengono fermati dalla barriera no-write.
             </p>
           </div>
           <div className="cisterna-ia-actions">

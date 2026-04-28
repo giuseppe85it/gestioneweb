@@ -276,7 +276,7 @@ const QUICK_LINKS_NAV_ANAGRAFICHE = buildQuickLinks([
 ]);
 
 const QUICK_LINKS_NAV_CISTERNA = buildQuickLinks([
-  { to: "/next/cisterna", label: "Cisterna Caravate" },
+  { to: "/cisterna", label: "Cisterna Caravate" },
 ]);
 
 const QUICK_LINKS_NAV_AREA_CAPO = buildQuickLinks([
