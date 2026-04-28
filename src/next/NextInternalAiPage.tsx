@@ -9999,7 +9999,11 @@ function NextInternalAiPage({
                               </div>
                             ) : null}
                             {message.role === "assistente" ? (
-                              renderChatMessageText(message.text)
+                              message.structuredCard?.kind === "mezzo_dossier" ? (
+                                <InternalAiMezzoCard data={message.structuredCard.data} />
+                              ) : (
+                                renderChatMessageText(message.text)
+                              )
                             ) : (
                               <p className="internal-ai-chat__message-text">{message.text}</p>
                             )}

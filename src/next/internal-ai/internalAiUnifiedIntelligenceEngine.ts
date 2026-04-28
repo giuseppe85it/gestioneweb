@@ -1561,6 +1561,9 @@ function parseUnifiedQuery(
 export function isInternalAiUnifiedIntelligenceCandidate(prompt: string): boolean {
   const spec = parseUnifiedQuery(prompt);
   if (spec.normalizedTarga) {
+    if (spec.explicitScopes.length === 0 && !spec.asksFullOverview) {
+      return false;
+    }
     return true;
   }
 
