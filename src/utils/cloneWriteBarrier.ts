@@ -111,6 +111,9 @@ const INTERNAL_AI_MAGAZZINO_INLINE_SCOPE = "internal_ai_magazzino_inline_magazzi
 const INTERNAL_AI_DOCUMENTI_ALLOWED_PATHS = ["/next/ia/archivista"] as const;
 const INTERNAL_AI_DOCUMENTI_ANALYZE_ENDPOINT =
   "https://us-central1-gestionemanutenzione-934ef.cloudfunctions.net/estrazioneDocumenti";
+const SCADENZE_COLLAUDI_ALLOWED_WRITE_PATH = "/next/scadenze-collaudi";
+const SCADENZE_COLLAUDI_ALLOWED_STORAGE_KEYS = new Set<string>(["@mezzi_aziendali"]);
+const SCADENZE_COLLAUDI_WRITE_SCOPE = "scadenze_collaudi_write_scope";
 const IA_LIBRETTO_ALLOWED_WRITE_PATH = "/next/ia/libretto";
 const IA_LIBRETTO_ALLOWED_FETCH_PATHS = ["/next/ia/libretto", "/next/ia/archivista"] as const;
 const IA_LIBRETTO_ANALYZE_ENDPOINT =
@@ -325,6 +328,10 @@ function isAllowedIaLibrettoCloneWritePath(pathname: string): boolean {
   return pathname === IA_LIBRETTO_ALLOWED_WRITE_PATH;
 }
 
+function isAllowedScadenzeCollaudiCloneWritePath(pathname: string): boolean {
+  return pathname === SCADENZE_COLLAUDI_ALLOWED_WRITE_PATH;
+}
+
 function isAllowedIaLibrettoAnalyzeFetch(pathname: string, meta: unknown): boolean {
   if (!IA_LIBRETTO_ALLOWED_FETCH_PATHS.some((entry) => pathname === entry)) return false;
   if (readMetaMethod(meta) !== "POST") return false;
@@ -381,7 +388,7 @@ function hasCloneWriteScopedAllowance(scope: string): boolean {
 }
 
 export async function runWithCloneWriteScopedAllowance<T>(
-  scope: typeof INTERNAL_AI_MAGAZZINO_INLINE_SCOPE,
+  scope: typeof INTERNAL_AI_MAGAZZINO_INLINE_SCOPE | typeof SCADENZE_COLLAUDI_WRITE_SCOPE,
   action: () => Promise<T> | T,
 ): Promise<T> {
   cloneWriteScopedAllowances.set(scope, (cloneWriteScopedAllowances.get(scope) ?? 0) + 1);
@@ -497,6 +504,14 @@ function isAllowedCloneWriteException(kind: string, meta: unknown): boolean {
     if (kind === "storageSync.setItemSync") {
       return IA_LIBRETTO_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
     }
+  }
+
+  if (
+    isAllowedScadenzeCollaudiCloneWritePath(pathname) &&
+    hasCloneWriteScopedAllowance(SCADENZE_COLLAUDI_WRITE_SCOPE) &&
+    kind === "storageSync.setItemSync"
+  ) {
+    return SCADENZE_COLLAUDI_ALLOWED_STORAGE_KEYS.has(readMetaKey(meta));
   }
 
   if (isAllowedArchivistaCloneWritePath(pathname)) {

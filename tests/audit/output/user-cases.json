@@ -1,0 +1,252 @@
+{
+  "case1_rifornimenti_TI324633": {
+    "storage_rifornimenti_total": 248,
+    "storage_rifornimenti_autisti_tmp_total": 249,
+    "targa": "TI324633",
+    "rifornimenti_targa_total": 42,
+    "rifornimenti_targa_april2026": 15,
+    "rifornimenti_autisti_targa_total": 43,
+    "rifornimenti_autisti_targa_april2026": 0,
+    "union_april2026_naive": 15,
+    "sample_rifornimenti": [
+      {
+        "id": "a34620f9-1252-4173-b9e1-7d5dfe6dfd43",
+        "data": "02/04/2026",
+        "distributore": "caravate",
+        "litri": 100,
+        "km": 244449
+      },
+      {
+        "id": "303e297d-865e-40ca-b918-d50475e9c9b8",
+        "data": "03/04/2026",
+        "distributore": "caravate",
+        "litri": 140,
+        "km": 244545
+      },
+      {
+        "id": "466d1cf3-9edd-45a8-8d96-825ed4c23175",
+        "data": "09/04/2026",
+        "distributore": "caravate",
+        "litri": 100,
+        "km": 245079
+      }
+    ],
+    "sample_rifornimenti_autisti": [],
+    "cross_collection_duplicate_pairs": 0,
+    "cross_collection_duplicate_examples": []
+  },
+  "case2_manutenzioni_april": {
+    "total_manutenzioni": 50,
+    "april2026": 13,
+    "by_tipo": {
+      "mezzo": 11,
+      "attrezzature": 1,
+      "compressore": 1
+    },
+    "eseguite_count": 0,
+    "sample": [
+      {
+        "id": "1777475064105",
+        "targa": "TI233827",
+        "tipo": "mezzo",
+        "eseguito": null,
+        "data": "29 04 2026",
+        "descrizione": "-22.04.2026 + oggi 29.04.2026 km 299231\n\nControllo spia moto"
+      },
+      {
+        "id": "1777375942968",
+        "targa": "TI85688",
+        "tipo": "attrezzature",
+        "eseguito": null,
+        "data": "28 04 2026",
+        "descrizione": "SOSTITUZIONE VALVOLA DI NON RITORNO (dritta) + TUBO SPUNTO \n"
+      },
+      {
+        "id": "1776922563742",
+        "targa": "TI85688",
+        "tipo": "mezzo",
+        "eseguito": null,
+        "data": "17 04 2026",
+        "descrizione": "cambio 2 guarnizioni (anteriore e centrale) e rettifica cope"
+      },
+      {
+        "id": "1776922451467",
+        "targa": "TI282780",
+        "tipo": "mezzo",
+        "eseguito": null,
+        "data": "15 04 2026",
+        "descrizione": "aggiunta valvola di non ritorno"
+      },
+      {
+        "id": "1776922394876",
+        "targa": "TI285997",
+        "tipo": "mezzo",
+        "eseguito": null,
+        "data": "14 04 2026",
+        "descrizione": "cambio luce bianca ingombro"
+      }
+    ]
+  },
+  "case3_motrici": {
+    "total_mezzi": 37,
+    "by_categoria_contains_motrice": 4,
+    "by_tipo_contains_motrice": 19,
+    "by_categoria_contains_trattore": 12,
+    "diff_tipo_vs_categoria": {
+      "tipo_motrice_categoria_diversa": [
+        {
+          "targa": "TI324623",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI324633",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI279216",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI 334558",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI84822",
+          "tipo": "motrice",
+          "categoria": "semirimorchio asse sterzante"
+        },
+        {
+          "targa": "TI286621",
+          "tipo": "motrice",
+          "categoria": "vasca"
+        },
+        {
+          "targa": "TI286620",
+          "tipo": "motrice",
+          "categoria": "vasca"
+        },
+        {
+          "targa": "TI239045",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI229717",
+          "tipo": "motrice",
+          "categoria": "Trattore a sella"
+        },
+        {
+          "targa": "TI298409",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI136914",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI319450",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI113417",
+          "tipo": "motrice",
+          "categoria": "Trattore a sella"
+        },
+        {
+          "targa": "TI239279",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        },
+        {
+          "targa": "TI180147",
+          "tipo": "motrice",
+          "categoria": "trattore stradale"
+        }
+      ]
+    },
+    "categoria_distinct": [
+      "motrice 2 assi",
+      "motrice 3 assi",
+      "trattore stradale",
+      "semirimorchio asse sterzante",
+      "semirimorchio asse fisso",
+      "biga",
+      "vasca",
+      "Trattore a sella",
+      "centina",
+      "motrice 4 assi",
+      "porta silo container",
+      "pianale"
+    ],
+    "tipo_distinct": [
+      "motrice",
+      "cisterna"
+    ]
+  },
+  "case4_libretti": {
+    "total_documenti_mezzi_collection": 11,
+    "libretti_in_archivio": 6,
+    "targhe_con_libretto_in_archivio": [
+      "TI282780",
+      "TI136914",
+      "TI113417",
+      "TI229717"
+    ],
+    "mezzi_con_librettoUrl": 32,
+    "mezzi_senza_librettoUrl": 5,
+    "sovrapposizione": 4
+  },
+  "case5_normalizzazione_tipoDocumento": {
+    "libretto": {
+      "count": 6,
+      "raw_variants": [
+        "libretto"
+      ]
+    },
+    "preventivo": {
+      "count": 2,
+      "raw_variants": [
+        "PREVENTIVO"
+      ]
+    },
+    "fattura": {
+      "count": 3,
+      "raw_variants": [
+        "fattura",
+        "Fattura"
+      ]
+    }
+  },
+  "case6_lavori": {
+    "total": 13,
+    "eseguiti": 7,
+    "in_attesa": 6,
+    "urgenze": {
+      "media": 9,
+      "alta": 2,
+      "bassa": 2
+    }
+  },
+  "case7_euromecc": {
+    "pending": 4,
+    "done": 54,
+    "sample_done": [
+      {
+        "id": "2uRwx02MbJ4xUrgaV7Od"
+      },
+      {
+        "id": "30Ax0til3jjhgRiI7loB"
+      },
+      {
+        "id": "3XO7H9H5ye9gROLsHw4n"
+      }
+    ]
+  }
+}

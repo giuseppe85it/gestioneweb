@@ -113,3 +113,134 @@ Motivo del momento: Oggi "Riapri review" da /next/ia/documenti porta su Archivis
 ### 2026-04-27 â€” Mezzi NEXT CHIUSO al 100%
 Decisione: Mezzi NEXT ufficialmente CHIUSO al 100%, verificato runtime su targa di test TI282780.
 Motivo del momento: Tutti i 10 punti checklist verificati: barriera con deroga, storage rules, writer dedicato, persistenza Firestore confermata via dump, modal funzionante (modifica + salvataggio + eliminazione), build green, lint baseline migliorato di 1 warning. Resta come ultimo modulo scrivente NEXT da chiudere: Cisterna.
+
+### 2026-04-29 — Pulizia IA NEXT: hub vecchio e config Gemini rimossi
+Decisione 1: cancellate dal NEXT le pagine `NextIntelligenzaArtificialePage` (hub IA vecchio) e `NextIAApiKeyPage` (config API Key Gemini).
+Motivo: sostituite rispettivamente da `HomeInternalAiLauncher` + `NextInternalAiPage`, e il NEXT non usa piu Gemini ma backend OpenAI proprio.
+Decisione 2: tenute vive `NextIALibrettoPage` (archivio libretti + deeplink Dossier) e `NextIACoperturaLibrettiPage` (vista aggregata copertura flotta + probe URL rotte).
+Motivo: sono funzionalita uniche non coperte da Archivista.
+Decisione 3: rimossi i riferimenti orfani in App.tsx, nextStructuralPaths.ts, nextData.ts, nextCloneNavigation.ts, NextCentroControlloPage.tsx, NextIALibrettoPage.tsx (bottone API Key), NextLibrettiExportPage.tsx (retarget bottone hub IA -> /next), 2 file backend diagnostici, 1 script screenshot.
+Nota di principio: madre intoccata, file `.bak` non toccati (sono backup di filesystem, non runtime), doc storica/audit datata non toccata (cronologia, mai correzione retroattiva).
+Conseguenza: il perimetro IA NEXT runtime si riduce a `HomeInternalAiLauncher` + `NextInternalAiPage` + le due pagine libretto/copertura.
+
+### 2026-04-30 — Sidebar NEXT: cleanup totale e auto-close persistente
+Decisione: la sidebar NEXT viene normalizzata su 3 punti. (1) Auto-close al click su una voce di navigazione, sia mobile sia desktop. (2) Stato collassato/aperto persistito in `localStorage` con chiave `next.sidebar.collapsed`, default chiusa al primo accesso. (3) Rimozione di 5 voci: "Motrici e trattori" (duplicato di "Dossier mezzo"), "Rimorchi" (disabled mai attivata), "Impostazioni" (disabled mai attivata), "Unisci documenti" (modulo non più utilizzato), "Mezzi aziendali" (duplicato che redirige a "Dossier mezzo").
+Motivo: la sidebar accumulava voci morte, duplicati e modali che si aprivano da soli al refresh. La normalizzazione riduce attrito utente, elimina punti di confusione e rende la sidebar una mappa dei moduli realmente attivi.
+Conseguenza: sezioni vuote "Strumenti" e "Sistema" rimosse perché senza voci. Modulo "Unisci documenti" eliminato completamente (route + pagina + tool + helper PDF + store) — non era usato da nessun altro componente. Voce "Mezzi aziendali" rimossa solo dalla sidebar; la route `/next/mezzi` resta attiva come alias interno usato da chat IA, sync clone, Centro Controllo legacy mapping (non è più voce utente, è infrastruttura).
+
+### 2026-04-30 — Modulo "Scadenze Collaudi" NEXT scrivente reale
+Decisione: il flusso revisioni / prenotazioni collaudo / pre-collaudo del NEXT diventa un modulo pagina scrivente reale chiamato "Scadenze Collaudi" alla route `/next/scadenze-collaudi`. Sostituisce il modale `NextScadenzeModal` (read-only) e i 3 modali duplicati in `NextCentroControlloPage.tsx` (revisione, prenotazione, pre-collaudo, anch'essi read-only). Il writer dedicato `nextScadenzeCollaudiWriter.ts` espone 3 funzioni — `setPrenotazioneCollaudo`, `setPreCollaudo`, `markRevisioneCompletata` — che persistono su `@mezzi_aziendali` con shape 1:1 rispetto alla madre `src/pages/Home.tsx`. Scope barrier dedicato `scadenze_collaudi_write_scope` con deroga minima in `cloneWriteBarrier.ts` (una sola route, una sola storage key, no fetch endpoint, no delete).
+Motivo: il modale validava i form ma non scriveva (mostrava sempre "Clone NEXT in sola lettura"). Avere lo stesso flusso duplicato in 3 modali read-only di Centro Controllo accentuava il problema. Centralizzare le 4 azioni su una sola pagina scrivente elimina drift e doppia manutenzione, rende l'URL condivisibile, abilita scroll naturale e gerarchia visiva coerente con altri moduli NEXT chiusi.
+Conseguenza: ~480 righe di codice morto rimosse da `NextCentroControlloPage.tsx`. Card home reindirizzata alla nuova pagina (logica `buildHomeAlertBanner` invariata). Voce sidebar rinominata "Scadenze Collaudi" con path dedicato. UI rifatta su mockup approvato: card mezzo con bordo sinistro colorato per stato, pannelli operazione inline (no modale), autocomplete su anagrafica officine (`@officine` via `readNextOfficineSnapshot`), targa cliccabile verso dossier mezzo (`buildNextDossierPath`). Aggiunto nuovo campo opzionale `lavoriPrevisti` nel pre-collaudo (campo libero, persiste solo se valorizzato).
+
+### 2026-04-30 — Pattern riconfermato: voci/route duplicate sono debito, non scelte
+Decisione: in caso di voci sidebar duplicate, modali read-only che simulano scrittura, o route che esistono solo come redirect a un'altra route già esposta, il default è la rimozione, non la conservazione difensiva. Il barrier di scrittura (`cloneWriteBarrier.ts`) e la sidebar sono mappe vive del NEXT: ogni voce e ogni eccezione devono corrispondere a un modulo realmente attivo e necessario. Le route legacy possono restare attive come alias di infrastruttura SOLO se usate da componenti reali (chat IA, sync clone, redirect URL pubblici); se l'unico chiamante è la sidebar, la route va rimossa con la voce.
+Motivo: il debito UX cresce silenziosamente quando i duplicati restano "perché magari servono". L'audit di oggi ha confermato che 5 voci sidebar e 3 modali interi a Centro Controllo non erano più funzionali da tempo. Rimuoverli ha ridotto la superficie di codice e semplificato il modello mentale degli utenti.
+Conseguenza: il check su "voci doppie" e "modali read-only zombie" entra negli audit periodici dei moduli NEXT. La distinzione tra "voce utente" e "alias infrastruttura" è ora esplicita: la prima va in sidebar, la seconda no, anche se entrambe usano una route attiva.
+
+
+### 2026-05-04 — Chat IA NEXT: modalita Zero-Invenzioni IA
+Decisione: la Chat IA NEXT entra in modalita Zero-Invenzioni IA. L'LLM perde il permesso tecnico di scrivere dati business nell'output verso l'utente (targhe, nomi, date, importi, codici, relazioni, riassunti narrativi sui dati). L'LLM puo solo: capire la richiesta, classificare intent, scegliere vista, produrre `searchText`/`entityKind`/`periodPreset`, chiedere disambiguazione tramite flag, accompagnare con frasi parametriche da whitelist. L'LLM non produce `driverId`, `vehiclePlate`, `siteId`, date finali o `displayLabel`; questi vengono risolti e popolati dal backend in `resolvedFilters` o nei candidati certificati. Lo schema strict OpenAI viene riscritto eliminando il campo text libero; sostituito da accompaniment con kind enum e params. Il catalogo intent diventa file versionato (src/next/chat-ia/intent-catalog.json). I 59 tool del registry restano (vengono declassati a reader interni delle viste). Multi-agente specialisti smantellati. Fingerprint validator declassato a guardrail di regressione. Sequenza: Driver360 -> Vehicle360 -> Site360 -> Euromecc360 -> Ricerca360 -> smantellamento multi-agente -> PDF da template. Riferimento: docs/product/SPEC_CHAT_ZERO_INVENZIONI_NEXT.md.
+Motivo: il buco architetturale documentato dall'audit del 2026-04 e dal test tests/e2e/12-fingerprintIntegrity.spec.ts:97-130 mostra che lo schema strict attuale ammette text libero su dati e che il fingerprint validator non ispeziona text. La difesa attuale e' incentivante (system prompt) ma non strutturale. Il rischio di invenzione (es. caso Sandro -> TI313387 inventata) resta latente. La modalita Zero-Invenzioni sposta la difesa dal prompt allo schema strict + Catalog Validator + rendering certificato. La garanzia diventa imposta dall'architettura, non dal comportamento dell'LLM.
+Conseguenza: schema strict riscritto (internal-ai-adapter.js:675-819), system prompt riscritto (831-884), validator fingerprint declassato (lib/fingerprint-validator.js), rendering testo libero rimosso (ChatIaMessageItem.tsx:200-204), nuove cartelle src/next/chat-ia/views/ e src/next/chat-ia/relations/, catalogo intent versionato, viste certificate Driver360/Vehicle360/Site360/Euromecc360/Ricerca360 da implementare in fasi successive. PDF da template, mai dal LLM. `relationProof` obbligatorio per relazioni critiche e opzionale per relazioni informative. Multi-agente smantellati in fase 5.
+
+### 2026-05-04 — Regola esplorazione prima di asserzione
+Decisione: adottata come regola permanente la "Esplorazione prima di asserzione". Prima di dichiarare che un dato business non esiste, non e' disponibile, che un campo non e' presente, che una relazione non e' certificata o che un `relationProof` non e' producibile, l'agente deve eseguire una verifica esplorativa Firestore in sola lettura entro il boundary readonly autorizzato e riportarne l'esito. Se credenziali o boundary non permettono la verifica, l'agente non puo' confermare l'assenza del dato e deve dichiarare che la verifica non e' eseguita.
+Motivo: il caso Driver360 su Sandro Calabrese ha mostrato il rischio operativo. Era stato dichiarato che TI282780 non era disponibile/certificabile, ma il dato emerso dallo screenshot del modulo Dettaglio Sessione indica una sessione attiva per Sandro Calabrese, badge 530, con motrice TI180147 e rimorchio TI282780, ultimo update 23/04/2026 21:42. Questo dimostra che prima di asserire assenza o non certificabilita' bisogna esplorare Firestore entro il boundary readonly e distinguere tra dato assente e dato presente in fonte non ancora usata dal resolver.
+Conseguenza: la regola entra nel protocollo operativo del repo (`AGENTS.md`) con riferimento incrociato nel protocollo sicurezza modifiche. L'estensione del boundary readonly o l'aggiunta di nuove regole al Relation Resolver resta decisione del project owner, non dell'agente. Gli audit e le fasi future devono riportare cosa e' stato cercato, dove, con quali limiti, cosa e' stato trovato e cosa resta da verificare.
+
+### 2026-05-04 — Registro Collection Firestore come mappa unica
+Decisione: adottare `docs/product/REGISTRO_COLLECTION_FIRESTORE.md` come mappa unica del gestionale, includendo data dictionary, evidence graph e convenzioni di provenance.
+Motivo del momento: evitare hardcode caso-per-caso, rendere scalabili le viste future, allineare il sistema al principio Zero-Invenzioni e preparare il pannello laterale "Perche' vedo questo dato?".
+Conseguenza: viste, motore generico e pannello laterale leggeranno o si allineeranno al registro. Quando la struttura Firestore cambia, si aggiorna il registro invece di distribuire conoscenza implicita nel codice. Stato attuale: BOZZA v0.1, in attesa di validazione utente.
+
+### 2026-05-04 — Registro Collection Firestore v0.2 validato parzialmente
+Decisione: validazione parziale del `REGISTRO_COLLECTION_FIRESTORE.md`: 7 conferme, 3 conferme con riserva e 3 integrazioni di precisione. Le integrazioni fissano vincoli boundary read-only/field-filtered, distinzione campi strutturati vs campi liberi nelle collection TMP e obbligo del pannello "Perche' vedo questo dato?" per ogni relazione mostrata nelle viste certificate.
+Motivo del momento: chiusura della BOZZA v0.1 dopo audit Codex e revisione utente, con rifiniture suggerite da review GPT esterna.
+Conseguenza: il registro entra in v0.2 BOZZA, utilizzabile come riferimento per il motore generico ma con 3 voci marcate DA VERIFICARE RUNTIME: R2 categoria mezzo, R4 chiave materiale, R5 chiave fornitore. Prossimo passo: estensione boundary readonly per le 33 collection code-only (read-only + field-filtered), poi runtime check delle 3 riserve, poi v1.0 STABLE.
+
+### 2026-05-04 — Boundary readonly esteso a 38 collection
+Decisione: estensione boundary readonly a 33 collection code-only, con pattern read-only + field-filtered.
+Motivo del momento: portare il Registro Collection Firestore v0.2 in posizione operativa per il motore generico data-driven e preparare la chiusura delle 3 riserve R2/R4/R5 nel runtime check successivo.
+Conseguenza: il registro passa a v0.3 BOZZA. Le 33 collection sono leggibili dal backend Zero-Invenzioni con campi filtrati; i campi sensibili sono esclusi by design. Runtime check Firestore in prompt successivo.
+
+### 2026-05-04 — Runtime check Registro Collection Firestore v0.4
+Decisione: eseguito runtime check sulle 33 collection BOUNDARY OPEN del Registro Collection Firestore e chiuse le riserve R2/R4/R5 con dati reali.
+Motivo del momento: completare la validazione del registro prima di costruire il motore generico data-driven e il pannello "Perche' vedo questo dato?".
+Conseguenza: il registro passa a v0.4 BOZZA. Le discrepanze runtime restano da chiudere in prompt successivi mirati. R2, R4 e R5 risultano DA RIVEDERE: `categoria` mezzo ha anche campo `tipo`; la chiave materiale `codice + nome` non e' comune alle collection; la chiave fornitore `nome` non e' canonica unica rispetto agli id presenti in ordini/preventivi.
+
+### 2026-05-04 — Registro Collection Firestore v0.5: alias e boundary separati
+Decisione: chiusura discrepanze runtime + introduzione sezione "Alias e ricerca flessibile" nel registro + dichiarazione esplicita della separazione alias/boundary.
+Motivo del momento: rendere il registro v0.5 base operativa per il motore generico data-driven, con regole di match flessibili sui nomi di campo e rigide sui valori critici (Zero-Invenzioni). Mantenere la sicurezza separando mappa concettuale (alias) da accesso effettivo (allowedFields).
+Conseguenza: motore generico potra' leggere alias e regole match dal registro. Le riserve R2/R4/R5 restano PARZIALMENTE CHIUSE con regole di priorita', non chiuse definitivamente. Indebolire la separazione alias/boundary richiede nuova voce di diario.
+
+## 2026-05-04 — Decisioni post-audit copertura modali (PROMPT 20)
+
+### Decisioni operative
+
+1. **Root collection documentali sostituiscono `storage/@documenti_*`**
+   - `@documenti_mezzi`, `@documenti_magazzino`, `@documenti_generici` sono root collection nel codice reale.
+   - Il registro v0.5 le descrive erroneamente come documenti `storage/@documenti_*`.
+   - Decisione: aggiornare registro e boundary alla forma root collection, allinearsi al codice reale.
+   - Applicazione: prompt successivo dedicato (chat nuova).
+
+2. **Cisterna entra nel motore generico v1**
+   - `@documenti_cisterna`, `@cisterna_schede_ia`, `@cisterna_parametri_mensili` vanno aggiunte al registro.
+   - Sono modulo attivo del gestionale, non possono restare fuori scope.
+   - Solo campi strutturati e path tecnici. URL firmati esclusi by design.
+   - Applicazione: prompt successivo (chat nuova).
+
+3. **`chat_ia_reports` escluso formalmente dal motore generico**
+   - E' archivio tecnico dei report generati dalla chat IA.
+   - Non e' dato di business, non va letto dal motore.
+   - Va dichiarato come "escluso by design" nel registro.
+   - Applicazione: prompt successivo (chat nuova).
+
+4. **Foto come esistenza nel pannello prove**
+   - Il pannello "Perche' vedo questo dato?" deve poter dire "esiste foto X di questo mezzo".
+   - Path tecnici (`fotoStoragePath`, `fotoPath`, `photoStoragePath`) ammessi negli allowedFields.
+   - URL firmati (`fotoUrl`, `photoUrl`, `downloadUrl`) restano esclusi.
+   - Applicazione: prompt successivo (chat nuova).
+
+5. **`@analisi_economica_mezzi` escluso dal motore generico**
+   - La collection contiene narrativa IA salvata da `AnalisiEconomica.tsx`.
+   - Narrativa IA viola il principio Zero-Invenzioni se letta come fonte certificata.
+   - Va dichiarata "esclusa by design" nel registro, motivata.
+   - Applicazione: prompt successivo (chat nuova).
+
+6. **`stamped/*` (PDF timbrati Cloud Function) fuori scope motore v1**
+   - La Cloud Function `stamp_pdf` produce file timbrati senza referenza Firestore.
+   - E' funzione legacy, si valuta in fase successiva quando servira'.
+   - Va dichiarata "legacy, fuori scope motore generico v1" nel registro.
+   - Applicazione: prompt successivo (chat nuova).
+
+7. **Coordinate hotspot (`x`, `y`, `areaId`, `uploadedAt`) ammesse nel motore**
+   - Servono al pannello prove per spiegare dove e' la foto del mezzo.
+   - Sono dati strutturati non sensibili.
+   - Vanno aggiunti agli allowedFields di `@mezzi_foto_viste` e `@mezzi_hotspot_mapping`.
+   - Applicazione: prompt successivo (chat nuova).
+
+### Stato del progetto al 2026-05-04 fine giornata
+
+- Fase 1 Zero-Invenzioni: chiusa.
+- Fase 2 Driver360: implementata, fix Sandro pending.
+- Registro Firestore: v0.5 BOZZA con alias e separazione alias/boundary.
+- Boundary readonly: 38 collection field-filtered.
+- Runtime check 33 collection: completato, 22 discrepanze chiuse, 5 vuote, 5 non trovate.
+- Riserve R2/R4/R5: parzialmente chiuse con regole di priorita'.
+- Audit copertura modali: completato (PROMPT 20). 9 NON COPERTE, 25 PARZIALI, 8 OK.
+- Decisioni post-audit: 7 prese (vedi sopra), in attesa di patch nella chat nuova.
+
+### Roadmap residua
+
+1. Prompt patch lacune audit (chiude le 7 decisioni di sopra) — chat nuova
+2. Prompt motore generico data-driven (Resolver universale + vista generica + pannello "Perche' vedo questo dato?")
+3. Prompt fix caso Sandro end-to-end (motrice + rimorchio visibili)
+4. Prompt cleanup multi-agente residuo
+5. Prompt PDF report da template
+
+### 2026-05-04 — Patch `collection_root` assorbita nel motore generico v1
+Decisione: la patch del resolver runtime per consumare entry boundary con accessMode `collection_root` non viene fatta in isolamento. Viene assorbita nella spec del motore generico v1.
+Motivo del momento: l'audit PROMPT 24a ha dimostrato che `backend/internal-ai/server/lib/post-llm-resolver.js` e' un resolver Driver360-specifico, non generico. La shape `resolvedFilters` (`backend/internal-ai/server/lib/post-llm-resolver.js:147-155`) e' progettata per single-record (solo `driverId`). Il branch operativo (`:270-279`) ritorna `not_driver360` per qualsiasi vista diversa. Aggiungere `collection_root` qui significherebbe inventare una shape collettore multi-record che andrebbe poi rifatta quando arriva il motore generico. Si evita il doppio lavoro.
+Status: scelta attiva.
+Conseguenza: il prossimo passo e' la spec del motore generico v1 (`docs/product/SPEC_MOTORE_GENERICO_NEXT.md`, da scrivere), che dovra' definire: Resolver multi-vista, shape collettore multi-record, vista generica data-driven, pannello "Perche' vedo questo dato?", relazione con Driver360 esistente (assorbimento o coesistenza). L'attivazione delle 6 entry boundary root collection (`@documenti_*` x3, Cisterna x3) e il risveglio delle 6 entry Euromecc oggi dormienti diventano feature naturali del motore generico, non patch separate.

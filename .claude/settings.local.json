@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node tests/audit/auditUserCases.mjs)",
+      "Bash(ls backend/internal-ai/server/lib/)",
+      "Bash(cat backend/internal-ai/package.json)",
+      "Bash(find . -name \"SPEC_MOTORE_GENERICO_NEXT*\" -not -path \"./.git/*\" -not -path \"./node_modules/*\" -not -path \"./_handoff_*\")",
+      "Bash(find . -name \"SPEC_CHAT_ZERO_INVENZIONI_NEXT*\" -not -path \"./.git/*\" -not -path \"./node_modules/*\" -not -path \"./_handoff_*\")",
+      "Bash(find . -name \"REGISTRO_COLLECTION_FIRESTORE*\" -not -path \"./.git/*\" -not -path \"./node_modules/*\" -not -path \"./_handoff_*\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\giumi"
+    ]
+  }
+}

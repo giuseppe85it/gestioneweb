@@ -9,6 +9,70 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-04-30 Chat IA NEXT: fingerprint anti-allucinazione
+- execution completata nel perimetro Chat IA NEXT tool registry, backend tool-use, agenti, blocchi visualization e test E2E, senza toccare madre, reader, archivista, Firestore o ossatura registry/executor;
+- aggiunto `backend/internal-ai/server/lib/fingerprint-validator.js`: arricchisce i risultati tool con `_id`, valida gli `_id` usati nella risposta finale, blocca date non presenti nel record sorgente e produce fallback con soli dati raw verificati;
+- lo schema strict backend richiede ora `_id` nei blocchi record (`table`, `ranking_table`, `timeline`, `data_table_styled`, `nested_list`) e il prompt tool-use obbliga a preservare il fingerprint senza mostrarlo all'utente;
+- gli agenti e i blocchi React preservano `_id` e lo espongono nel DOM come `data-chat-ia-fingerprint`; i link entita usano l'id per route di dettaglio quando disponibili;
+- 27 tool registry record-based sono stati aggiornati direttamente con `_id`; il backend applica comunque enrichment sistemico su tutti i tool outputs;
+- verifiche: `npm run build` OK, `npx tsc --noEmit` OK, lint mirato OK, `node --check` backend OK, `tests/e2e/12-fingerprintIntegrity.spec.ts` 3/3 PASS;
+- verifica browser completa: `DA VERIFICARE`, per blocco ambiente `Firebase: Error (auth/too-many-requests)` prima del render di `/next/chat-tool`.
+
+## 0.0 Aggiornamento operativo 2026-04-30 Chat IA NEXT: coerenza aggregati e dettagli
+- execution completata nel perimetro Chat IA NEXT tool registry, analytics multi-agente, prompt backend e test E2E, senza toccare madre, reader, archivista, dossier o ossatura tool;
+- introdotto helper centrale `buildTruncationMeta()` / `truncationNotice()` per i tool con liste limitate;
+- i tool affetti restituiscono ora `total_count`, `shown`, `is_truncated` e `truncation_reason`, cosi la risposta distingue sempre totale reale e righe mostrate;
+- `get_refuelings_aggregated` espone `rankingConteggioRifornimenti` e `topPerNumeroRifornimenti`, calcolati dalla stessa fonte canonica del dettaglio `get_refuelings`;
+- verifica dati aprile 2026: `TI324633` ha 15 rifornimenti canonici, la flotta ne ha 70; il dettaglio puo mostrare 10 righe ma deve dichiarare 15 totali;
+- verifiche: `npm run build` OK, lint mirato OK, `node --check` backend OK, nuovo E2E `10-coerenzaAggregati` 2/2 PASS, suite completa 87 test con 1 flaky storico recuperato al retry.
+
+## 0.0 Aggiornamento operativo 2026-04-30 Chat IA NEXT: visualization arricchita, click e copia
+- execution completata nel perimetro Chat IA NEXT multi-agente, rendering blocchi, schema strict backend e test E2E, senza toccare madre, reader, archivista, dossier, pagine bersaglio o tool registry;
+- i risultati D1-D9 espongono ora piu campi business: descrizioni, referenti/esecutori, fornitori, importi, categorie, rifornimenti, costi, stati, documenti principali e note operative;
+- aggiunto blocco `nested_list` per elenchi secondari: D2 mostra effettivamente le manutenzioni analoghe invece di annunciarle soltanto;
+- i blocchi `ranking_table`, `timeline`, `data_table_styled`, `metric_card_grid`, `summary_card_big` e `comparison_split` supportano metadata e action link; `comparison_split` mostra un titolo esplicito come `Confronto: consumi tra autisti`;
+- aggiunta cliccabilita verso route NEXT esistenti: dossier mezzo, manutenzioni, dettagli lavori, anagrafiche/colleghi, documenti/dossier, attrezzature-cantieri;
+- aggiunto pulsante `Copia` su ogni messaggio assistente con feedback `Copiato`;
+- verifiche: `npm run build` OK, lint mirato OK, `node --check` backend OK, E2E mirati 15/15 PASS, suite completa `npm run test:e2e` 85 test PASS con 1 flaky storico recuperato al retry.
+
+## 0.0 Aggiornamento operativo 2026-04-30 Chat IA NEXT: multi-agente su flotta reale
+- execution completata nel perimetro `src/next/chat-ia/agents/*`, prompt backend e test E2E, senza toccare madre, reader, archivista, dossier o tool registry;
+- rimosse le scorciatoie multi-agente che limitavano le analisi consumi alle targhe usate dai test E2E e sostituite con analisi fleet-wide basate su `list_vehicles` e snapshot rifornimenti letti in modo read-only;
+- D1, D5 e D7 calcolano ora i consumi sulla flotta reale disponibile nel periodo, mentre D8 usa l'intero snapshot attrezzature/cantieri invece di un cantiere noto;
+- rimosso leakage tecnico da analytics, prompt specialisti e prompt backend: le risposte utente non devono menzionare test E2E, dati di esempio, mezzi principali disponibili, collection o ambiente di sviluppo;
+- aggiunti test E2E di coerenza flotta e anti-leakage in `tests/e2e/07-coerenzaFlotta.spec.ts`; estese le 9 domande argute con assertion anti-leakage;
+- verifiche: `npm run build` OK, lint mirato OK, `node --check` backend OK, E2E mirati 13/13 PASS, suite completa `npm run test:e2e` 79 test PASS con 1 flaky storico recuperato al retry.
+
+## 0.0 Aggiornamento operativo 2026-04-29 Chat IA NEXT: multi-agente e visualization
+- execution completata nel perimetro `src/next/chat-ia/agents/*`, `src/next/chat-ia/components/blocks/*`, bridge chat, tipi chat, schema strict backend e test E2E, senza toccare madre, reader, archivista, dossier o tool registry;
+- aggiunto percorso multi-agente per le 9 domande analitiche D1-D9: orchestratore, agenti specialisti Flotta/Operazioni/Documenti/Cisterna-Rifornimenti/Cantieri-Magazzino, analytics e agente visualization;
+- il bridge prova il multi-agente solo sulle domande argute riconosciute e lascia invariato il tool-use backend generale per tutti gli altri prompt, preservando i 62 test storici;
+- aggiunti 11 blocchi React strutturati (`summary_card_big`, `metric_card_grid`, `comparison_split`, `ranking_table`, `trend_chart_line`, `bar_chart_compare`, `pie_chart`, `timeline`, `data_table_styled`, `callout`, `mixed_layout`) e schema strict backend esteso;
+- verifiche: nuovi E2E 13/13 PASS, suite completa 75 test verde con 1 flaky recuperato e rilanciato singolarmente PASS, `npm run build` OK, `node --check` OK, lint mirato OK.
+
+## 0.0 Aggiornamento operativo 2026-04-29 Chat IA NEXT: structured output e date italiane
+- execution completata nel perimetro `backend/internal-ai/server/internal-ai-adapter.js`, `src/next/chat-ia/tools/chatIaToolDates.ts` e tool registry che espongono date, senza toccare madre, reader domain, barrier, componenti chat o ossatura tool;
+- l'endpoint `/internal-ai-backend/chat/tool-use` ora invia `text.format` con `json_schema` strict e schema finale `ChatIaAssistantFinalMessage`, mantenendo solo fallback di emergenza per risposte provider non conformi;
+- il system prompt tool-use e diventato dinamico e inietta data corrente, ISO, anno corrente e regole per mesi senza anno, mese scorso, quest'anno, anno scorso, prossimi mesi e date in output `DD/MM/YYYY`;
+- creato helper centrale `chatIaToolDates.ts` per parsing date ISO/timestamp/Firestore e formattazione italiana, usato dai tool che restituiscono scadenze, manutenzioni, lavori, fatture/documenti, eventi, materiali, rifornimenti, cisterna, archivio report, procurement ed Euromecc;
+- verifiche: `node --check` backend `OK`, lint mirato `OK`, `npm run build` `OK`, `npm run lint` globale `KO` sul baseline storico fuori perimetro `581/567/14`.
+
+## 0.0 Aggiornamento operativo 2026-04-29 IA NEXT: rimozione hub e API Key morte
+- execution completata nel perimetro IA NEXT runtime autorizzato, senza toccare madre `src/pages/IA/**`, CSS, backend, scripts o documentazione storica;
+- cancellate dal NEXT `NextIntelligenzaArtificialePage` e `NextIAApiKeyPage`;
+- rimossi import, route, sidebar, registry e redirect collegati a `/next/ia`, `/next/ia/apikey` e al redirect legacy `ia-gestionale`;
+- rimosso da `NextIALibrettoPage` il solo bottone API Key verso `/next/ia/apikey`;
+- retargettato in `NextLibrettiExportPage` il bottone di ritorno da hub IA a home NEXT `/next`;
+- restano vive le route IA NEXT figlie `libretto`, `documenti`, `copertura-libretti`, `libretti-export`, `interna`, `archivista` e `report`.
+
+## 0.0 Aggiornamento operativo 2026-04-29 Chat IA NEXT: fix tool Round 2
+- execution completata nel perimetro `src/next/chat-ia/tools/registry/*` e `backend/internal-ai/server/internal-ai-adapter.js`, senza toccare madre, reader domain, barrier, componenti chat o ossatura tool;
+- corretta la ricerca mezzo per telaio con normalizzazione robusta e match inclusivo bidirezionale;
+- corretto l'aggancio delle richieste su `manutenzioni effettuate`, `lavori fatti`, `lavori officina` e `interventi tecnici` estendendo description tool e prompt backend;
+- corretta la ricerca fatture manutenzione/officina per targa con normalizzazione targa/tipo e alias manutenzione/officina/intervento/lavoro/riparazione;
+- verifica live read-only: la fattura Sciurba Autotruck snc n. 81 per `TI113417` e in `@documenti_mezzi` doc `Y6CGW4WR9r4hKYy4ityP`;
+- verifiche: lint mirato `OK`, `node --check` backend `OK`, `npm run build` `OK`, `npm run lint` globale `KO` sul baseline storico fuori perimetro.
+
 ## 0.0 Aggiornamento operativo 2026-04-23 Manutenzioni: restyling tab Dettaglio embedded
 - execution completata nel solo perimetro `src/next/NextMappaStoricoPage.tsx` (solo ramo `embedded`), `src/next/NextManutenzioniPage.tsx`, `src/next/next-mappa-storico.css`, piu aggiornamento contesto/documentazione, senza toccare domain, barrier, writer o le altre tab di `/next/manutenzioni`;
 - `/next/manutenzioni` tab `Dettaglio`:

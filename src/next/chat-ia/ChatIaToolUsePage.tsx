@@ -6,11 +6,9 @@ import ChatIaMessageList from "./components/ChatIaMessageList";
 import ChatIaReportModal from "./components/ChatIaReportModal";
 import type {
   ChatIaArchiveEntry,
-  ChatIaAssistantFinalMessage,
-  ChatIaEntityRef,
   ChatIaMessage,
-  ChatIaOutputBlock,
   ChatIaReport,
+  ChatZeroInvenzioniMessage,
 } from "./core/chatIaTypes";
 import { initToolRegistry } from "./tools";
 import "./chatIa.css";
@@ -19,24 +17,6 @@ initToolRegistry();
 
 function createMessageId(): string {
   return `chat-tool-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function normalizeEntities(finalMessage: ChatIaAssistantFinalMessage): ChatIaEntityRef[] {
-  return finalMessage.entities.map((entity) => {
-    if (entity.kind === "targa") return { kind: "targa", value: entity.value };
-    if (entity.kind === "autista") return { kind: "autista", value: entity.value };
-    if (entity.kind === "fornitore") return { kind: "fornitore", value: entity.value };
-    if (entity.kind === "materiale") return { kind: "materiale", value: entity.value };
-    if (entity.kind === "cisterna") return { kind: "cisterna", value: entity.value };
-    return { kind: "unknown", value: entity.value };
-  });
-}
-
-function firstBlock<TKind extends ChatIaOutputBlock["kind"]>(
-  blocks: ChatIaOutputBlock[],
-  kind: TKind,
-): Extract<ChatIaOutputBlock, { kind: TKind }> | null {
-  return (blocks.find((block) => block.kind === kind) as Extract<ChatIaOutputBlock, { kind: TKind }> | undefined) ?? null;
 }
 
 function createUserMessage(text: string): ChatIaMessage {
@@ -59,45 +39,24 @@ function createUserMessage(text: string): ChatIaMessage {
   };
 }
 
-function createAssistantMessage(finalMessage: ChatIaAssistantFinalMessage): ChatIaMessage {
-  const cardBlock = firstBlock(finalMessage.blocks, "card");
-  const tableBlock = firstBlock(finalMessage.blocks, "table");
-  const reportBlock = firstBlock(finalMessage.blocks, "report");
-  const archiveBlock = firstBlock(finalMessage.blocks, "archive_list");
-  const chartBlock = firstBlock(finalMessage.blocks, "chart");
-  const actionBlock = firstBlock(finalMessage.blocks, "ui_action");
-  const outputKind = chartBlock
-    ? "chart"
-    : actionBlock
-      ? "ui_action"
-      : archiveBlock
-        ? "archive_list"
-        : reportBlock
-          ? "report"
-          : tableBlock
-            ? "table"
-            : cardBlock
-              ? "card"
-              : "text";
-
+function createAssistantMessage(finalMessage: ChatZeroInvenzioniMessage): ChatIaMessage {
   return {
     id: createMessageId(),
     role: "assistente",
     createdAt: new Date().toISOString(),
-    text: finalMessage.notices.length
-      ? `${finalMessage.text}\n\n${finalMessage.notices.join("\n")}`
-      : finalMessage.text,
-    status: finalMessage.status,
+    text: "",
+    status: finalMessage.action === "error" ? "failed" : "completed",
     sector: null,
-    outputKind,
-    entities: normalizeEntities(finalMessage),
-    card: cardBlock?.card ?? null,
-    table: tableBlock?.table ?? null,
-    report: reportBlock?.report ?? null,
-    archiveEntries: archiveBlock?.entries ?? [],
-    blocks: finalMessage.blocks,
-    notices: finalMessage.notices,
-    error: finalMessage.status === "failed" ? finalMessage.text : null,
+    outputKind: "text",
+    entities: [],
+    card: null,
+    table: null,
+    report: null,
+    archiveEntries: [],
+    blocks: [],
+    notices: [],
+    zeroMessage: finalMessage,
+    error: null,
   };
 }
 
@@ -129,7 +88,7 @@ export default function ChatIaToolUsePage() {
       });
       setMessages((current) => [...current, createAssistantMessage(finalMessage)]);
     } catch {
-      setErrorMessage("La chat tool use non e riuscita a preparare la risposta.");
+      setErrorMessage("La chat IA non e riuscita a preparare la risposta.");
     } finally {
       setStatus("idle");
     }
@@ -137,11 +96,11 @@ export default function ChatIaToolUsePage() {
 
   return (
     <main className="chat-ia-page">
-      <section className="chat-ia-shell" aria-label="Chat IA NEXT tool use">
+      <section className="chat-ia-shell" aria-label="Chat IA NEXT">
         <header className="chat-ia-header">
           <div>
             <p className="chat-ia-eyebrow">NEXT</p>
-            <h1>Chat IA NEXT Tool Use</h1>
+            <h1>Chat IA NEXT</h1>
           </div>
         </header>
 

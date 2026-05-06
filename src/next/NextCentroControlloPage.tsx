@@ -1,14 +1,14 @@
 import "../pages/Home.css";
 import "./next-shell.css";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import HomeAlertCard from "./components/HomeAlertCard";
 import HomeInternalAiLauncher from "./components/HomeInternalAiLauncher";
 import NextHomeAutistiEventoModal from "./components/NextHomeAutistiEventoModal";
 import QuickNavigationCard from "./components/QuickNavigationCard";
 import type { QuickNavigationSection } from "./components/QuickNavigationCard";
 import StatoOperativoCard from "./components/StatoOperativoCard";
-import { formatDateInput, formatDateUI } from "./nextDateFormat";
+import { formatDateUI } from "./nextDateFormat";
 import { generateTablePDF } from "../utils/pdfEngine";
 import AutistiImportantEventsModal from "../components/AutistiImportantEventsModal";
 import type { HomeEvent } from "../utils/homeEvents";
@@ -33,11 +33,9 @@ import {
   NEXT_CISTERNA_SCHEDE_TEST_PATH,
   NEXT_DOSSIER_LISTA_PATH,
   NEXT_GESTIONE_OPERATIVA_PATH,
-  NEXT_IA_APIKEY_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_IA_LIBRETTO_PATH,
-  NEXT_IA_PATH,
   NEXT_INVENTARIO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_LAVORI_DA_ESEGUIRE_PATH,
@@ -66,8 +64,6 @@ function resolveCloneSafeRoute(path: string): string | null {
   }
   if (path === "/autisti-admin") return NEXT_AUTISTI_ADMIN_PATH;
   if (path === "/autisti" || path.startsWith("/autisti/")) return `/next${path}`;
-  if (path === "/ia") return NEXT_IA_PATH;
-  if (path === "/ia/apikey") return NEXT_IA_APIKEY_PATH;
   if (path === "/ia/libretto") return NEXT_IA_LIBRETTO_PATH;
   if (path === "/ia/documenti") return NEXT_IA_DOCUMENTI_PATH;
   if (path === "/ia/copertura-libretti") return NEXT_IA_COPERTURA_LIBRETTI_PATH;
@@ -136,8 +132,6 @@ type MezzoRecord = {
 };
 type SegnalazioneRecord = Record<string, unknown>;
 type MissingMezzo = D10MissingMezzoItem;
-type PrenotazioneCollaudo = D10PrenotazioneCollaudo;
-type PreCollaudo = D10PreCollaudo;
 type AlertFilterId = "all" | D10AlertItem["kind"];
 type SegnalazioneLookupEntry = {
   record: SegnalazioneRecord;
@@ -538,10 +532,6 @@ function formatDateForDisplay(date: Date | null): string {
   return formatDateUI(date);
 }
 
-function formatDateForInput(date: Date | null): string {
-  return formatDateInput(date);
-}
-
 function normalizeFreeText(value: string | null | undefined): string {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -578,36 +568,12 @@ function formatGiorniLabel(giorni: number): string {
 
 function Home() {
   const navigate = useNavigate();
-  const datePickerRef = useRef<HTMLInputElement | null>(null);
-  const preCollaudoDatePickerRef = useRef<HTMLInputElement | null>(null);
-  const revisioneDatePickerRef = useRef<HTMLInputElement | null>(null);
   const [snapshot, setSnapshot] = useState<D10Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [rimorchioEdit, setRimorchioEdit] = useState<RimorchioEditState | null>(null);
   const [quickLinksStore, setQuickLinksStore] = useState<QuickLinksStore>(() =>
     readQuickLinksStore()
   );
-  const [prenotazioneModalOpen, setPrenotazioneModalOpen] = useState(false);
-  const [prenotazioneTargetTarga, setPrenotazioneTargetTarga] = useState<string | null>(null);
-  const [prenotazioneForm, setPrenotazioneForm] = useState({
-    data: "",
-    ora: "",
-    luogo: "",
-    note: "",
-  });
-  const [preCollaudoModalOpen, setPreCollaudoModalOpen] = useState(false);
-  const [preCollaudoTargetTarga, setPreCollaudoTargetTarga] = useState<string | null>(null);
-  const [preCollaudoForm, setPreCollaudoForm] = useState({
-    data: "",
-    officina: "",
-  });
-  const [revisioneModalOpen, setRevisioneModalOpen] = useState(false);
-  const [revisioneTargetTarga, setRevisioneTargetTarga] = useState<string | null>(null);
-  const [revisioneForm, setRevisioneForm] = useState({
-    data: "",
-    esito: "",
-    note: "",
-  });
   const [segnalazioniRecords, setSegnalazioniRecords] = useState<SegnalazioneRecord[]>([]);
   const [missingModalOpen, setMissingModalOpen] = useState(false);
   const [alertFilter, setAlertFilter] = useState<AlertFilterId>("all");
@@ -787,204 +753,9 @@ function Home() {
     );
   };
 
-  const closePrenotazioneModal = () => {
-    setPrenotazioneModalOpen(false);
-    setPrenotazioneTargetTarga(null);
-  };
-
-  const closePreCollaudoModal = () => {
-    setPreCollaudoModalOpen(false);
-    setPreCollaudoTargetTarga(null);
-  };
-
-  const closeRevisioneModal = () => {
-    setRevisioneModalOpen(false);
-    setRevisioneTargetTarga(null);
-  };
-
-  const openRevisioneModal = (targa: string, current?: PrenotazioneCollaudo | null) => {
-    const todayLabel = formatDateForDisplay(new Date());
-    const currentDateRaw = current?.completataIl ? String(current.completataIl).trim() : "";
-    const currentDate = currentDateRaw ? parseDateFlexible(currentDateRaw) : null;
-    setRevisioneTargetTarga(targa);
-    setRevisioneForm({
-      data: currentDate ? formatDateForDisplay(currentDate) : todayLabel,
-      esito: String(current?.esito ?? "").trim(),
-      note: String(current?.noteEsito ?? "").trim(),
-    });
-    setRevisioneModalOpen(true);
-  };
-
-  const openPreCollaudoModal = (targa: string, current?: PreCollaudo | null) => {
-    setPreCollaudoTargetTarga(targa);
-    setPreCollaudoForm({
-      data: String(current?.data ?? "").trim(),
-      officina: String(current?.officina ?? "").trim(),
-    });
-    setPreCollaudoModalOpen(true);
-  };
-
-  const openPrenotazioneModal = (
-    targa: string,
-    current?: PrenotazioneCollaudo | null
-  ) => {
-    setPrenotazioneTargetTarga(targa);
-    const luogoValue = current ? String(current?.luogo ?? "") : "Camorino";
-    setPrenotazioneForm({
-      data: String(current?.data ?? ""),
-      ora: String(current?.ora ?? ""),
-      luogo: luogoValue,
-      note: String(current?.note ?? ""),
-    });
-    setPrenotazioneModalOpen(true);
-  };
-
-  const handlePrenotazioneSave = () => {
-    if (!prenotazioneTargetTarga) return;
-    const data = prenotazioneForm.data.trim();
-    if (!data) {
-      window.alert("Inserisci la data della prenotazione collaudo.");
-      return;
-    }
-    if (!parseDateFlexible(data)) {
-      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
-      return;
-    }
-
-    const rawOra = prenotazioneForm.ora ?? "";
-    let ora = rawOra.replace(/\u00A0/g, " ").trim().replace(/\./g, ":");
-    if (ora.length >= 5) ora = ora.slice(0, 5);
-    if (/^[0-9]:[0-5]\d$/.test(ora)) {
-      ora = `0${ora}`;
-    }
-    if (ora && !/^([01]\d|2[0-3]):[0-5]\d$/.test(ora)) {
-      window.alert("Ora non valida. Usa formato HH:mm.");
-      return;
-    }
-
-    showReadOnlyActionBlocked(
-      "La prenotazione collaudo si puo registrare solo nella madre.",
-    );
-  };
-
-  const handlePreCollaudoSave = () => {
-    if (!preCollaudoTargetTarga) return;
-    const data = preCollaudoForm.data.trim();
-    if (!data) {
-      window.alert("Inserisci la data del pre-collaudo.");
-      return;
-    }
-    if (!parseDateFlexible(data)) {
-      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
-      return;
-    }
-
-    const officina = preCollaudoForm.officina.trim();
-    if (!officina) {
-      window.alert("Inserisci l'officina del pre-collaudo.");
-      return;
-    }
-
-    showReadOnlyActionBlocked(
-      "La programmazione del pre-collaudo si puo registrare solo nella madre.",
-    );
-  };
-
-  const handleRevisioneSave = () => {
-    if (!revisioneTargetTarga) return;
-    const dataRaw = revisioneForm.data.trim();
-    if (!dataRaw) {
-      window.alert("Inserisci la data della revisione.");
-      return;
-    }
-    const parsedDate = parseDateFlexible(dataRaw);
-    if (!parsedDate) {
-      window.alert("Data non valida. Usa formato gg mm aaaa oppure YYYY-MM-DD.");
-      return;
-    }
-    const esito = revisioneForm.esito.trim();
-    if (!esito) {
-      window.alert("Inserisci l'esito della revisione.");
-      return;
-    }
-
-    void parsedDate;
-    showReadOnlyActionBlocked(
-      "La chiusura della revisione si puo registrare solo nella madre.",
-    );
-  };
-
-  const openDatePicker = () => {
-    const input =
-      datePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
-    if (!input) return;
-    if (typeof input.showPicker === "function") {
-      input.showPicker();
-      return;
-    }
-    input.click();
-  };
-
-  const openPreCollaudoDatePicker = () => {
-    const input =
-      preCollaudoDatePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
-    if (!input) return;
-    if (typeof input.showPicker === "function") {
-      input.showPicker();
-      return;
-    }
-    input.click();
-  };
-
-  const openRevisioneDatePicker = () => {
-    const input =
-      revisioneDatePickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
-    if (!input) return;
-    if (typeof input.showPicker === "function") {
-      input.showPicker();
-      return;
-    }
-    input.click();
-  };
-
-  const handleDatePickerChange = (value: string) => {
-    if (!value) return;
-    const [year, month, day] = value.split("-");
-    const picked = buildDate(year, month, day);
-    if (!picked) return;
-    setPrenotazioneForm((prev) => ({ ...prev, data: formatDateForDisplay(picked) }));
-  };
-
-  const handlePreCollaudoDatePickerChange = (value: string) => {
-    if (!value) return;
-    const [year, month, day] = value.split("-");
-    const picked = buildDate(year, month, day);
-    if (!picked) return;
-    setPreCollaudoForm((prev) => ({ ...prev, data: formatDateForDisplay(picked) }));
-  };
-
-  const handleRevisioneDatePickerChange = (value: string) => {
-    if (!value) return;
-    const [year, month, day] = value.split("-");
-    const picked = buildDate(year, month, day);
-    if (!picked) return;
-    setRevisioneForm((prev) => ({ ...prev, data: formatDateForDisplay(picked) }));
-  };
-
-  const handlePrenotazioneDelete = (targa: string) => {
-    if (!window.confirm("Cancellare la prenotazione collaudo per questo mezzo?")) {
-      return;
-    }
-    void targa;
-    showReadOnlyActionBlocked(
-      "La cancellazione della prenotazione collaudo e disponibile solo nella madre.",
-    );
-  };
-
   const openAlertItem = (alert: D10AlertItem) => {
     if (alert.kind === "revisione") {
-      const mezzo = mezzoByTarga.get(fmtTarga(alert.mezzoTarga));
-      openRevisioneModal(alert.mezzoTarga || "", mezzo?.prenotazioneCollaudo ?? null);
+      navigate("/next/scadenze-collaudi?mode=urgenti");
       return;
     }
 
@@ -1092,16 +863,6 @@ function Home() {
       .join(" ");
   };
 
-  const prenotazioneDateValue = formatDateForInput(
-    parseDateFlexible(prenotazioneForm.data)
-  );
-  const preCollaudoDateValue = formatDateForInput(
-    parseDateFlexible(preCollaudoForm.data)
-  );
-  const revisioneDateValue = formatDateForInput(
-    parseDateFlexible(revisioneForm.data)
-  );
-
   const quickPinnedIds = quickLinksStore.pins.filter((id) =>
     QUICK_LINKS_BY_ID.has(id)
   );
@@ -1203,8 +964,8 @@ function Home() {
                     onOpenAlertItem={openAlertItem}
                     onOpenImportantEventsModal={() => setImportantEventsOpen(true)}
                     onOpenImportantEvent={(event) => setSelectedAlertEvent(event)}
-                    onOpenPreCollaudoModal={openPreCollaudoModal}
-                    onOpenRevisionModal={openRevisioneModal}
+                    onOpenPreCollaudoModal={() => navigate("/next/scadenze-collaudi")}
+                    onOpenRevisionModal={() => navigate("/next/scadenze-collaudi?mode=urgenti")}
                     importantAutistiItems={importantAutistiItems}
                     revisionByTarga={revisionByTarga}
                     visibleAlertItems={visibleAlertItems}
@@ -1290,8 +1051,8 @@ function Home() {
                   onOpenAlertItem={openAlertItem}
                   onOpenImportantEventsModal={() => setImportantEventsOpen(true)}
                   onOpenImportantEvent={(event) => setSelectedAlertEvent(event)}
-                  onOpenPreCollaudoModal={openPreCollaudoModal}
-                  onOpenRevisionModal={openRevisioneModal}
+                  onOpenPreCollaudoModal={() => navigate("/next/scadenze-collaudi")}
+                  onOpenRevisionModal={() => navigate("/next/scadenze-collaudi?mode=urgenti")}
                   importantAutistiItems={importantAutistiItems}
                   revisionByTarga={revisionByTarga}
                   visibleAlertItems={visibleAlertItems}
@@ -1482,7 +1243,7 @@ function Home() {
                                           className="booking-action primary"
                                           onClick={(event) => {
                                             event.stopPropagation();
-                                            openRevisioneModal(r.targa as string, prenotazione);
+                                            navigate("/next/scadenze-collaudi?mode=urgenti");
                                           }}
                                         >
                                           SEGNA REVISIONE FATTA
@@ -1495,7 +1256,7 @@ function Home() {
                                             className="booking-action"
                                             onClick={(event) => {
                                               event.stopPropagation();
-                                              openPrenotazioneModal(r.targa as string, prenotazione);
+                                              navigate("/next/scadenze-collaudi");
                                             }}
                                           >
                                             MODIFICA
@@ -1505,7 +1266,7 @@ function Home() {
                                             className="booking-action danger"
                                             onClick={(event) => {
                                               event.stopPropagation();
-                                              handlePrenotazioneDelete(r.targa as string);
+                                              navigate("/next/scadenze-collaudi");
                                             }}
                                           >
                                             CANCELLA
@@ -1517,7 +1278,7 @@ function Home() {
                                           className="booking-action"
                                           onClick={(event) => {
                                             event.stopPropagation();
-                                            openPrenotazioneModal(r.targa as string, null);
+                                            navigate("/next/scadenze-collaudi");
                                           }}
                                         >
                                           PRENOTA
@@ -1541,7 +1302,7 @@ function Home() {
                                           className="booking-action"
                                           onClick={(event) => {
                                             event.stopPropagation();
-                                            openPreCollaudoModal(r.targa as string, preCollaudo);
+                                            navigate("/next/scadenze-collaudi");
                                           }}
                                         >
                                           MODIFICA
@@ -1552,7 +1313,7 @@ function Home() {
                                           className="booking-action"
                                           onClick={(event) => {
                                             event.stopPropagation();
-                                            openPreCollaudoModal(r.targa as string, null);
+                                            navigate("/next/scadenze-collaudi");
                                           }}
                                         >
                                           PRE-COLLAUDO
@@ -1944,7 +1705,7 @@ function Home() {
                                       className="booking-action"
                                       onClick={(event) => {
                                         event.stopPropagation();
-                                        openPrenotazioneModal(r.targa as string, prenotazione);
+                                        navigate("/next/scadenze-collaudi");
                                       }}
                                     >
                                       MODIFICA
@@ -1954,7 +1715,7 @@ function Home() {
                                       className="booking-action danger"
                                       onClick={(event) => {
                                         event.stopPropagation();
-                                        handlePrenotazioneDelete(r.targa as string);
+                                        navigate("/next/scadenze-collaudi");
                                       }}
                                     >
                                       CANCELLA
@@ -1966,7 +1727,7 @@ function Home() {
                                     className="booking-action primary"
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      openPrenotazioneModal(r.targa as string, null);
+                                      navigate("/next/scadenze-collaudi");
                                     }}
                                   >
                                     PRENOTA
@@ -2004,303 +1765,6 @@ function Home() {
           </div>
         </div>
       </div>
-
-      {prenotazioneModalOpen ? (
-        <div
-          className="home-modal-backdrop"
-          onClick={closePrenotazioneModal}
-          role="presentation"
-        >
-          <div
-            className="home-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Prenotazione collaudo"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="home-modal-head">
-              <div className="home-modal-title">Prenotazione collaudo</div>
-              <div className="home-modal-subtitle">
-                Targa <span className="targa">{prenotazioneTargetTarga || "-"}</span>
-              </div>
-            </div>
-
-            <div className="home-modal-body">
-              <label className="home-modal-field">
-                <span className="home-modal-label">Data</span>
-                <div className="home-modal-date-row">
-                  <input
-                    className="home-modal-input"
-                    value={prenotazioneForm.data}
-                    onChange={(e) =>
-                      setPrenotazioneForm((prev) => ({ ...prev, data: e.target.value }))
-                    }
-                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
-                  />
-                  <button
-                    type="button"
-                    className="home-modal-date-btn"
-                    onClick={openDatePicker}
-                    aria-label="Apri calendario"
-                    title="Apri calendario"
-                  >
-                    CALENDARIO
-                  </button>
-                  <input
-                    ref={datePickerRef}
-                    className="home-modal-date-input"
-                    type="date"
-                    value={prenotazioneDateValue}
-                    onChange={(e) => handleDatePickerChange(e.target.value)}
-                    tabIndex={-1}
-                    aria-hidden="true"
-                  />
-                </div>
-              </label>
-
-              <label className="home-modal-field">
-                <span className="home-modal-label">Ora (opzionale)</span>
-                <input
-                  className="home-modal-input"
-                  type="time"
-                  value={prenotazioneForm.ora}
-                  onChange={(e) =>
-                    setPrenotazioneForm((prev) => ({ ...prev, ora: e.target.value }))
-                  }
-                />
-              </label>
-
-              <label className="home-modal-field">
-                <span className="home-modal-label">Luogo (opzionale)</span>
-                <input
-                  className="home-modal-input"
-                  value={prenotazioneForm.luogo}
-                  onChange={(e) =>
-                    setPrenotazioneForm((prev) => ({ ...prev, luogo: e.target.value }))
-                  }
-                  placeholder="Motorizzazione / officina / ..."
-                />
-              </label>
-
-              <label className="home-modal-field">
-                <span className="home-modal-label">Note (opzionale)</span>
-                <textarea
-                  className="home-modal-textarea"
-                  value={prenotazioneForm.note}
-                  onChange={(e) =>
-                    setPrenotazioneForm((prev) => ({ ...prev, note: e.target.value }))
-                  }
-                  placeholder="Note brevi..."
-                  rows={3}
-                />
-              </label>
-            </div>
-
-            <div className="home-modal-actions">
-              <button
-                type="button"
-                className="home-modal-btn"
-                onClick={closePrenotazioneModal}
-              >
-                ANNULLA
-              </button>
-              <button
-                type="button"
-                className="home-modal-btn primary"
-                onClick={handlePrenotazioneSave}
-              >
-                SALVA
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {preCollaudoModalOpen ? (
-        <div
-          className="home-modal-backdrop"
-          onClick={closePreCollaudoModal}
-          role="presentation"
-        >
-          <div
-            className="home-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Programmazione Pre-collaudo"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="home-modal-head">
-              <div className="home-modal-title">Programmazione Pre-collaudo</div>
-              <div className="home-modal-subtitle">
-                Targa <span className="targa">{preCollaudoTargetTarga || "-"}</span>
-              </div>
-            </div>
-
-            <div className="home-modal-body">
-              <label className="home-modal-field">
-                <span className="home-modal-label">Data</span>
-                <div className="home-modal-date-row">
-                  <input
-                    className="home-modal-input"
-                    value={preCollaudoForm.data}
-                    onChange={(e) =>
-                      setPreCollaudoForm((prev) => ({ ...prev, data: e.target.value }))
-                    }
-                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
-                  />
-                  <button
-                    type="button"
-                    className="home-modal-date-btn"
-                    onClick={openPreCollaudoDatePicker}
-                    aria-label="Apri calendario"
-                    title="Apri calendario"
-                  >
-                    CALENDARIO
-                  </button>
-                  <input
-                    ref={preCollaudoDatePickerRef}
-                    className="home-modal-date-input"
-                    type="date"
-                    value={preCollaudoDateValue}
-                    onChange={(e) => handlePreCollaudoDatePickerChange(e.target.value)}
-                    tabIndex={-1}
-                    aria-hidden="true"
-                  />
-                </div>
-              </label>
-
-              <label className="home-modal-field">
-                <span className="home-modal-label">Officina</span>
-                <input
-                  className="home-modal-input"
-                  value={preCollaudoForm.officina}
-                  onChange={(e) =>
-                    setPreCollaudoForm((prev) => ({ ...prev, officina: e.target.value }))
-                  }
-                  placeholder="Officina / luogo..."
-                />
-              </label>
-            </div>
-
-            <div className="home-modal-actions">
-              <button
-                type="button"
-                className="home-modal-btn"
-                onClick={closePreCollaudoModal}
-              >
-                ANNULLA
-              </button>
-              <button
-                type="button"
-                className="home-modal-btn primary"
-                onClick={handlePreCollaudoSave}
-              >
-                SALVA
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {revisioneModalOpen ? (
-        <div
-          className="home-modal-backdrop"
-          onClick={closeRevisioneModal}
-          role="presentation"
-        >
-          <div
-            className="home-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Segna revisione fatta"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="home-modal-head">
-              <div className="home-modal-title">Segna revisione fatta</div>
-              <div className="home-modal-subtitle">
-                Targa <span className="targa">{revisioneTargetTarga || "-"}</span>
-              </div>
-            </div>
-
-            <div className="home-modal-body">
-              <label className="home-modal-field">
-                <span className="home-modal-label">Data</span>
-                <div className="home-modal-date-row">
-                  <input
-                    className="home-modal-input"
-                    value={revisioneForm.data}
-                    onChange={(e) =>
-                      setRevisioneForm((prev) => ({ ...prev, data: e.target.value }))
-                    }
-                    placeholder="gg mm aaaa oppure YYYY-MM-DD"
-                  />
-                  <button
-                    type="button"
-                    className="home-modal-date-btn"
-                    onClick={openRevisioneDatePicker}
-                    aria-label="Apri calendario"
-                    title="Apri calendario"
-                  >
-                    CALENDARIO
-                  </button>
-                  <input
-                    ref={revisioneDatePickerRef}
-                    className="home-modal-date-input"
-                    type="date"
-                    value={revisioneDateValue}
-                    onChange={(e) => handleRevisioneDatePickerChange(e.target.value)}
-                    tabIndex={-1}
-                    aria-hidden="true"
-                  />
-                </div>
-              </label>
-
-              <label className="home-modal-field">
-                <span className="home-modal-label">Esito</span>
-                <input
-                  className="home-modal-input"
-                  value={revisioneForm.esito}
-                  onChange={(e) =>
-                    setRevisioneForm((prev) => ({ ...prev, esito: e.target.value }))
-                  }
-                  placeholder="Es. OK / Respinta / ..."
-                />
-              </label>
-
-              <label className="home-modal-field">
-                <span className="home-modal-label">Note (opzionale)</span>
-                <textarea
-                  className="home-modal-textarea"
-                  value={revisioneForm.note}
-                  onChange={(e) =>
-                    setRevisioneForm((prev) => ({ ...prev, note: e.target.value }))
-                  }
-                  placeholder="Note brevi..."
-                  rows={3}
-                />
-              </label>
-            </div>
-
-            <div className="home-modal-actions">
-              <button
-                type="button"
-                className="home-modal-btn"
-                onClick={closeRevisioneModal}
-              >
-                ANNULLA
-              </button>
-              <button
-                type="button"
-                className="home-modal-btn primary"
-                onClick={handleRevisioneSave}
-              >
-                SALVA
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <AutistiImportantEventsModal
         open={importantEventsOpen}
         items={importantAutistiItems as D10ImportantAutistiEventItem[]}

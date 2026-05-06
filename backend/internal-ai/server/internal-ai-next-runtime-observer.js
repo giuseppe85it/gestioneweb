@@ -136,31 +136,6 @@ export const INTERNAL_AI_NEXT_RUNTIME_OBSERVER_ROUTE_SPECS = [
     notes: ["Lista mezzi e porte di accesso verso dossier, gomme e rifornimenti."],
   },
   {
-    id: "next-ia-hub",
-    label: "Hub IA clone",
-    path: "/next/ia",
-    screenType: "documentale",
-    sourcePaths: ["src/next/NextIntelligenzaArtificialePage.tsx", "src/pages/IA/IAHome.tsx"],
-    notes: ["Hub clone-safe delle superfici IA legacy, distinto dalla nuova IA interna."],
-  },
-  {
-    id: "next-ia-apikey",
-    label: "IA - API key",
-    path: "/next/ia/apikey",
-    screenType: "documentale",
-    sourcePaths: ["src/next/NextIAApiKeyPage.tsx", "src/pages/IA/IAApiKey.tsx"],
-    safeStateProbes: [
-      {
-        id: "toggle-apikey",
-        label: "Mostra API key",
-        kind: "detail_state",
-        selector: '.ia-apikey-toggle:has-text("Mostra")',
-        successSelector: '.ia-apikey-toggle:has-text("Nascondi")',
-      },
-    ],
-    notes: ["Pagina configurazione visibile ma sempre nel perimetro clone-safe senza segreti reali lato client."],
-  },
-  {
     id: "next-ia-libretto-archive",
     label: "IA - Libretto (archivio)",
     path: "/next/ia/libretto?archive=1",
@@ -559,14 +534,6 @@ export const INTERNAL_AI_NEXT_RUNTIME_OBSERVER_ROUTE_SPECS = [
     notes: ["Redirect tecnico conservato per non lasciare rotto il path legacy mezzo-dossier."],
   },
   {
-    id: "next-ia-gestionale-redirect",
-    label: "IA Gestionale (redirect tecnico)",
-    path: "/next/ia-gestionale",
-    screenType: "documentale",
-    sourcePaths: ["src/next/NextLegacyIaRedirect.tsx", "src/next/NextIntelligenzaArtificialePage.tsx"],
-    notes: ["Redirect tecnico verso /next/ia per non perdere il vecchio path legacy."],
-  },
-  {
     id: "next-autisti-login",
     label: "Autisti - Login",
     path: "/next/autisti/login",
@@ -916,8 +883,8 @@ export const INTERNAL_AI_NEXT_UI_INTEGRATION_GUIDANCE = [
     domainType: "documentale",
     whenToUse:
       "Preview, confronto, lettura o download di documenti, libretti, preventivi o report strutturati.",
-    recommendedModuleLabel: "Dossier / IA interna / hub IA clone",
-    recommendedRoutePaths: ["/next/dossier/:targa", "/next/ia", "/next/ia/interna"],
+    recommendedModuleLabel: "Dossier / IA interna",
+    recommendedRoutePaths: ["/next/dossier/:targa", "/next/ia/interna"],
     recommendedSurfaceKinds: ["modal", "button", "card", "section"],
     primarySurfaceKind: "modal",
     alternativeSurfaceKinds: ["button", "card", "section"],
@@ -928,7 +895,7 @@ export const INTERNAL_AI_NEXT_UI_INTEGRATION_GUIDANCE = [
       "src/next/domain/nextDocumentiCostiDomain.ts",
     ],
     fileRoles: ["modal_component", "page_section", "toolbar_action", "domain_reader"],
-    impactedModules: ["Dossier Mezzo", "IA interna", "Hub IA clone", "Analisi Economica"],
+    impactedModules: ["Dossier Mezzo", "IA interna", "Analisi Economica"],
     avoidModules: ["/next/gestione-operativa"],
     evidenceRouteIds: [
       "next-ia-hub",

@@ -122,6 +122,175 @@ export type ChatIaChartBlock = {
   yKey?: string;
 };
 
+export type ChatIaVisualizationTone = "neutral" | "info" | "ok" | "warning" | "danger";
+
+export type ChatIaVisualizationMetric = {
+  label: string;
+  value: string | number;
+  unit?: string | null;
+  subtitle?: string | null;
+  tone?: ChatIaVisualizationTone;
+  icon?: string | null;
+  metadata?: ChatIaVisualizationMetadataItem[];
+  action?: ChatIaActionLink | null;
+};
+
+export type ChatIaVisualizationPoint = {
+  label: string;
+  value: number;
+  secondaryValue?: number | null;
+  group?: string | null;
+  tone?: ChatIaVisualizationTone;
+};
+
+export type ChatIaActionLink = {
+  label: string;
+  href: string | null;
+  entityKind?: string | null;
+  entityId?: string | null;
+};
+
+export type ChatIaVisualizationMetadataItem = {
+  label: string;
+  value: string | number;
+};
+
+export type ChatIaBlockSummaryCardBig = {
+  kind: "summary_card_big";
+  title: string;
+  value: string | number;
+  unit?: string | null;
+  subtitle?: string | null;
+  trendLabel?: string | null;
+  tone?: ChatIaVisualizationTone;
+  icon?: string | null;
+  action?: ChatIaActionLink | null;
+};
+
+export type ChatIaBlockMetricCardGrid = {
+  kind: "metric_card_grid";
+  title: string;
+  metrics: ChatIaVisualizationMetric[];
+};
+
+export type ChatIaBlockComparisonSplit = {
+  kind: "comparison_split";
+  title: string;
+  comparisonLabel?: string | null;
+  left: ChatIaVisualizationMetric;
+  right: ChatIaVisualizationMetric;
+  note?: string | null;
+};
+
+export type ChatIaRankingRow = {
+  _id: string;
+  rank: number;
+  label: string;
+  value: number;
+  unit?: string | null;
+  detail?: string | null;
+  barValue?: number | null;
+  tone?: ChatIaVisualizationTone;
+  metadata?: ChatIaVisualizationMetadataItem[];
+  action?: ChatIaActionLink | null;
+};
+
+export type ChatIaBlockRankingTable = {
+  kind: "ranking_table";
+  title: string;
+  valueLabel: string;
+  rows: ChatIaRankingRow[];
+};
+
+export type ChatIaBlockTrendChartLine = {
+  kind: "trend_chart_line";
+  title: string;
+  valueLabel: string;
+  data: ChatIaVisualizationPoint[];
+};
+
+export type ChatIaBlockBarChartCompare = {
+  kind: "bar_chart_compare";
+  title: string;
+  valueLabel: string;
+  data: ChatIaVisualizationPoint[];
+};
+
+export type ChatIaBlockPieChart = {
+  kind: "pie_chart";
+  title: string;
+  data: ChatIaVisualizationPoint[];
+};
+
+export type ChatIaTimelineItem = {
+  _id: string;
+  date: string;
+  title: string;
+  description?: string | null;
+  tone?: ChatIaVisualizationTone;
+  icon?: string | null;
+  metadata?: ChatIaVisualizationMetadataItem[];
+  action?: ChatIaActionLink | null;
+};
+
+export type ChatIaBlockTimeline = {
+  kind: "timeline";
+  title: string;
+  items: ChatIaTimelineItem[];
+};
+
+export type ChatIaStyledTable = {
+  title: string;
+  columns: Array<{ key: string; label: string; align?: "left" | "right" | "center" }>;
+  rows: Array<Record<string, string | number | null>>;
+  emptyText: string;
+  accentKey?: string | null;
+  rowActions?: Array<ChatIaActionLink | null>;
+};
+
+export type ChatIaBlockDataTableStyled = {
+  kind: "data_table_styled";
+  table: ChatIaStyledTable;
+};
+
+export type ChatIaBlockCallout = {
+  kind: "callout";
+  tone: Exclude<ChatIaVisualizationTone, "neutral">;
+  title: string;
+  text: string;
+};
+
+export type ChatIaBlockMixedLayout = {
+  kind: "mixed_layout";
+  title: string;
+  sections: Array<{
+    title: string;
+    text: string;
+    tone?: ChatIaVisualizationTone;
+  }>;
+};
+
+export type ChatIaNestedListItem = {
+  _id: string;
+  title: string;
+  subtitle?: string | null;
+  description?: string | null;
+  metadata?: ChatIaVisualizationMetadataItem[];
+  action?: ChatIaActionLink | null;
+};
+
+export type ChatIaNestedListGroup = {
+  title: string;
+  subtitle?: string | null;
+  items: ChatIaNestedListItem[];
+};
+
+export type ChatIaBlockNestedList = {
+  kind: "nested_list";
+  title: string;
+  groups: ChatIaNestedListGroup[];
+};
+
 export type ChatIaUiActionBlock = {
   label: string;
   route?: string;
@@ -144,7 +313,19 @@ export type ChatIaOutputBlock =
   | ChatIaBlockChart
   | ChatIaBlockReport
   | ChatIaBlockArchive
-  | ChatIaBlockUiAction;
+  | ChatIaBlockUiAction
+  | ChatIaBlockSummaryCardBig
+  | ChatIaBlockMetricCardGrid
+  | ChatIaBlockComparisonSplit
+  | ChatIaBlockRankingTable
+  | ChatIaBlockTrendChartLine
+  | ChatIaBlockBarChartCompare
+  | ChatIaBlockPieChart
+  | ChatIaBlockTimeline
+  | ChatIaBlockDataTableStyled
+  | ChatIaBlockCallout
+  | ChatIaBlockMixedLayout
+  | ChatIaBlockNestedList;
 
 export type ChatIaAssistantFinalMessage = {
   text: string;
@@ -153,6 +334,105 @@ export type ChatIaAssistantFinalMessage = {
   entities: Array<{ kind: string; value: string }>;
   sources: Array<{ label: string; toolName?: string; path?: string }>;
   notices: string[];
+};
+
+export type ActionEnum =
+  | "view_open"
+  | "disambiguation_request"
+  | "clarification_request"
+  | "error"
+  | "report_request";
+
+export type ViewEnum = "Driver360" | "Vehicle360" | "Site360" | "Euromecc360" | "Ricerca360";
+
+export type EntityKindEnum = "driver" | "vehicle" | "site" | "supplier" | "euromecc";
+
+export type PeriodPresetEnum =
+  | "all"
+  | "last_7d"
+  | "last_30d"
+  | "last_90d"
+  | "this_month"
+  | "this_year"
+  | "custom";
+
+export type FiltersShape = {
+  searchText: string | null;
+  entityKind: EntityKindEnum | null;
+  periodPreset: PeriodPresetEnum | null;
+};
+
+export type ResolvedFiltersShape = {
+  driverId?: string;
+  vehiclePlate?: string;
+  siteId?: string;
+  period?: { from: string; to: string } | null;
+} | null;
+
+export type ClarificationShape = {
+  kind: "missing_subject" | "missing_period" | "ambiguous_scope";
+  params: { fieldHint?: "period" | "subject" | "scope" } | null;
+};
+
+export type DisambiguationShape = {
+  disambiguation_required: true;
+  candidates?: Array<{
+    id?: string;
+    plate?: string;
+    displayLabel: string;
+    kind?: EntityKindEnum;
+  }>;
+};
+
+export type ReportRequestShape = {
+  template:
+    | "driver_monthly"
+    | "vehicle_monthly"
+    | "vehicle_costs"
+    | "site_activity"
+    | "euromecc_status";
+  subjectKind: "driver" | "vehicle" | "site" | "euromecc";
+  periodPreset: PeriodPresetEnum | null;
+};
+
+export type AccompanimentKindEnum =
+  | "view_opened"
+  | "no_results"
+  | "disambiguation_required"
+  | "clarify_too_many_results"
+  | "clarify_period_required"
+  | "error_intent_not_in_catalog"
+  | "error_view_unavailable";
+
+export type AccompanimentShape = {
+  kind: AccompanimentKindEnum;
+  params: { count?: number } | null;
+};
+
+export type ChatZeroInvenzioniMessage = {
+  action: ActionEnum;
+  view: ViewEnum | null;
+  filters: FiltersShape | null;
+  resolvedFilters?: ResolvedFiltersShape;
+  clarification: ClarificationShape | null;
+  disambiguation: DisambiguationShape | null;
+  report: ReportRequestShape | null;
+  accompaniment: AccompanimentShape;
+};
+
+export type RelationProof = {
+  relationKind: "driver_vehicle";
+  sourceCollection: string;
+  sourceRecordId: string;
+  sourceField: string;
+  rule: string;
+  certainty: "exact" | "explicit_assignment";
+};
+
+export type DriverVehicleCertifiedRelation = {
+  relationKind: "driver_vehicle";
+  vehiclePlate: string;
+  relationProof: RelationProof;
 };
 
 export type ChatIaMessage = {
@@ -170,6 +450,7 @@ export type ChatIaMessage = {
   archiveEntries: ChatIaArchiveEntry[];
   blocks?: ChatIaOutputBlock[];
   notices?: string[];
+  zeroMessage?: ChatZeroInvenzioniMessage | null;
   error: string | null;
 };
 

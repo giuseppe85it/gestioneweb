@@ -1,0 +1,7 @@
+{
+  "watch": ["backend/internal-ai/server/"],
+  "ext": "js,json",
+  "ignore": ["node_modules", "dist"],
+  "delay": 500,
+  "exec": "node backend/internal-ai/server/internal-ai-adapter.js"
+}

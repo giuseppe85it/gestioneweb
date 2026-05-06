@@ -18,11 +18,9 @@ import {
   NEXT_DOSSIER_LISTA_PATH,
   NEXT_GESTIONE_OPERATIVA_PATH,
   NEXT_HOME_PATH,
-  NEXT_IA_APIKEY_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_IA_LIBRETTO_PATH,
-  NEXT_IA_PATH,
   NEXT_INVENTARIO_PATH,
   NEXT_LIBRETTI_EXPORT_PATH,
   NEXT_LAVORI_DA_ESEGUIRE_PATH,
@@ -90,12 +88,9 @@ function rewriteLegacySameOriginPath(pathname: string, search: string): string |
   if (normalizedPath === "/lavori-eseguiti") return NEXT_LAVORI_ESEGUITI_PATH;
   if (normalizedPath === "/mezzi") return NEXT_MEZZI_PATH;
   if (normalizedPath === "/dossiermezzi") return NEXT_DOSSIER_LISTA_PATH;
-  if (normalizedPath === "/ia") return NEXT_IA_PATH;
-  if (normalizedPath === "/ia/apikey") return NEXT_IA_APIKEY_PATH;
   if (normalizedPath === "/ia/libretto") return NEXT_IA_LIBRETTO_PATH;
   if (normalizedPath === "/ia/documenti") return NEXT_IA_DOCUMENTI_PATH;
   if (normalizedPath === "/ia/copertura-libretti") return NEXT_IA_COPERTURA_LIBRETTI_PATH;
-  if (normalizedPath === "/ia-gestionale") return NEXT_IA_PATH;
   if (normalizedPath === "/libretti-export") return NEXT_LIBRETTI_EXPORT_PATH;
   if (normalizedPath === "/cisterna") return NEXT_CISTERNA_PATH;
   if (normalizedPath === "/cisterna/ia") return NEXT_CISTERNA_IA_PATH;

@@ -32,6 +32,19 @@ export type NextProcurementCloneTab =
 export type NextProcurementListTab = "ordini" | "arrivi";
 export type NextProcurementOrderState = "in_attesa" | "parziale" | "arrivato" | "vuoto";
 export type NextProcurementApprovalStatus = "pending" | "approved" | "rejected";
+export type NextProcurementMaterialDestinationType = "mezzo" | "cantiere" | "altro" | null;
+export type NextProcurementMaterialDestinationQuality =
+  | "certo"
+  | "da_verificare"
+  | "non_disponibile";
+
+export type NextProcurementMaterialDestination = {
+  tipo: NextProcurementMaterialDestinationType;
+  targa: string | null;
+  label: string | null;
+  rawField: string | null;
+  quality: NextProcurementMaterialDestinationQuality;
+};
 
 export const NEXT_PROCUREMENT_DOMAIN = {
   code: "D06",
@@ -56,6 +69,7 @@ export type NextProcurementMaterialItem = {
   currency: string | null;
   unitPriceUnit: string | null;
   lineTotal: number | null;
+  destination?: NextProcurementMaterialDestination;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof ORDINI_KEY;
   quality: NextReadQuality;
@@ -190,6 +204,9 @@ export type NextProcurementSnapshot = {
     preventiviRifiutati: number;
     listinoVoci: number;
     listinoConDocumento: number;
+    materialsWithDestination: number;
+    materialsWithVehicleDestination: number;
+    materialsWithoutDestination: number;
   };
   orders: NextProcurementOrderItem[];
   preventivi: NextProcurementPreventivoItem[];
@@ -226,6 +243,118 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+const DESTINATION_TARGA_FIELDS = [
+  "targa",
+  "mezzoTarga",
+  "targaMezzo",
+  "targaDestinazione",
+  "destinationTarga",
+  "vehiclePlate",
+  "plate",
+] as const;
+
+const DESTINATION_LABEL_FIELDS = [
+  "destinazione",
+  "destination",
+  "destinatario",
+  "target",
+  "mezzo",
+  "mezzoId",
+  "mezzo_id",
+  "cantiere",
+  "cantiereLabel",
+  "sede",
+  "reparto",
+] as const;
+
+function asGenericRecord(value: unknown): RawGenericRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as RawGenericRecord)
+    : null;
+}
+
+function normalizeDestinationTarga(value: unknown): string | null {
+  const normalized = normalizeOptionalText(value)?.toUpperCase().replace(/[^A-Z0-9]/g, "") ?? null;
+  if (!normalized) return null;
+  return /[A-Z]/.test(normalized) && /\d/.test(normalized) ? normalized : null;
+}
+
+function buildEmptyDestination(): NextProcurementMaterialDestination {
+  return {
+    tipo: null,
+    targa: null,
+    label: null,
+    rawField: null,
+    quality: "non_disponibile",
+  };
+}
+
+function resolveDestinationFromRecord(
+  raw: RawGenericRecord,
+  rawFieldPrefix = ""
+): NextProcurementMaterialDestination | null {
+  for (const field of DESTINATION_TARGA_FIELDS) {
+    const directTarga = normalizeDestinationTarga(raw[field]);
+    if (directTarga) {
+      return {
+        tipo: "mezzo",
+        targa: directTarga,
+        label: directTarga,
+        rawField: `${rawFieldPrefix}${field}`,
+        quality: "certo",
+      };
+    }
+
+    const nested = asGenericRecord(raw[field]);
+    if (!nested) continue;
+
+    for (const nestedField of DESTINATION_TARGA_FIELDS) {
+      const nestedTarga = normalizeDestinationTarga(nested[nestedField]);
+      if (nestedTarga) {
+        return {
+          tipo: "mezzo",
+          targa: nestedTarga,
+          label: normalizeOptionalText(nested.label) ?? nestedTarga,
+          rawField: `${rawFieldPrefix}${field}.${nestedField}`,
+          quality: "certo",
+        };
+      }
+    }
+  }
+
+  for (const field of DESTINATION_LABEL_FIELDS) {
+    const nested = asGenericRecord(raw[field]);
+    const label =
+      normalizeOptionalText(raw[field]) ??
+      normalizeOptionalText(nested?.label) ??
+      normalizeOptionalText(nested?.nome) ??
+      normalizeOptionalText(nested?.descrizione);
+
+    if (!label) continue;
+
+    return {
+      tipo: field.toLowerCase().includes("cantiere") ? "cantiere" : "altro",
+      targa: null,
+      label,
+      rawField: `${rawFieldPrefix}${field}`,
+      quality: "da_verificare",
+    };
+  }
+
+  return null;
+}
+
+function resolveMaterialDestination(
+  materialRaw: RawMaterialRecord,
+  orderRaw: RawOrderRecord
+): NextProcurementMaterialDestination {
+  return (
+    resolveDestinationFromRecord(materialRaw) ??
+    resolveDestinationFromRecord(orderRaw, "ordine.") ??
+    buildEmptyDestination()
+  );
 }
 
 function normalizeNumber(value: unknown): number | null {
@@ -449,7 +578,8 @@ function buildOrderReference(raw: RawOrderRecord, orderId: string, orderDateLabe
 function mapMaterialRecord(
   raw: RawMaterialRecord,
   noteByMaterialId: Record<string, string>,
-  index: number
+  index: number,
+  orderRaw: RawOrderRecord
 ): NextProcurementMaterialItem {
   const materialId = buildMaterialId(raw, index);
   const quantitaRaw = raw.quantita ?? raw.qta ?? raw.quantitaRichiesta;
@@ -475,6 +605,7 @@ function mapMaterialRecord(
     normalizeNumber(raw.costoUnitario);
   const currency =
     normalizeCurrency(raw.valuta) ?? normalizeCurrency(raw.currency) ?? normalizeCurrency(raw.moneta);
+  const destination = resolveMaterialDestination(raw, orderRaw);
   const flags: string[] = [];
 
   if (!normalizeOptionalText(raw.id)) flags.push("id_ricostruito");
@@ -484,6 +615,8 @@ function mapMaterialRecord(
     flags.push("data_arrivo_non_parseabile");
   }
   if (unitPrice !== null && !currency) flags.push("valuta_assente");
+  if (destination.quality === "non_disponibile") flags.push("destinazione_assente");
+  if (destination.quality === "da_verificare") flags.push("destinazione_da_verificare");
 
   return {
     id: materialId,
@@ -506,9 +639,13 @@ function mapMaterialRecord(
       normalizeOptionalText(raw.unita) ??
       normalizeOptionalText(raw.udm),
     lineTotal: quantita !== null && unitPrice !== null ? quantita * unitPrice : null,
+    destination,
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: ORDINI_KEY,
-    quality: deriveQuality(flags, !descrizioneRaw),
+    quality: deriveQuality(
+      flags.filter((flag) => !flag.startsWith("destinazione_")),
+      !descrizioneRaw
+    ),
     flags,
   };
 }
@@ -517,7 +654,7 @@ function mapOrderRecord(raw: RawOrderRecord, index: number): NextProcurementOrde
   const orderId = buildOrderId(raw, index);
   const notesByMaterialId = extractNoteByMaterialId(raw);
   const materials = extractMaterials(raw).map((entry, materialIndex) =>
-    mapMaterialRecord(entry, notesByMaterialId, materialIndex)
+    mapMaterialRecord(entry, notesByMaterialId, materialIndex, raw)
   );
   const arrivedRows = materials.filter((entry) => entry.arrived).length;
   const latestArrivalTimestamp = materials.reduce<number | null>((current, entry) => {
@@ -962,6 +1099,13 @@ export async function readNextProcurementSnapshot(
     ordini: orders.filter((entry) => entry.pendingRows > 0),
     arrivi: orders.filter((entry) => entry.arrivedRows > 0),
   };
+  const allMaterials = orders.flatMap((entry) => entry.materials);
+  const materialsWithDestination = allMaterials.filter(
+    (entry) => entry.destination?.quality !== undefined && entry.destination.quality !== "non_disponibile"
+  ).length;
+  const materialsWithVehicleDestination = allMaterials.filter(
+    (entry) => Boolean(entry.destination?.targa)
+  ).length;
 
   return {
     domainCode: NEXT_PROCUREMENT_DOMAIN.code,
@@ -996,6 +1140,9 @@ export async function readNextProcurementSnapshot(
       listinoConDocumento: listino.filter(
         (entry) => Boolean(entry.pdfUrl) || entry.imageUrls.length > 0
       ).length,
+      materialsWithDestination,
+      materialsWithVehicleDestination,
+      materialsWithoutDestination: Math.max(allMaterials.length - materialsWithDestination, 0),
     },
     orders,
     preventivi,
@@ -1051,6 +1198,12 @@ export async function readNextProcurementSnapshot(
         : null,
       listino.some((entry) => entry.flags.includes("prezzo_assente"))
         ? "Una parte del listino non espone un prezzo corrente leggibile e resta marcata con flag espliciti."
+        : null,
+      allMaterials.length > 0 && materialsWithDestination === 0
+        ? "ESTENSIONE E2 PARZIALE: il dataset @ordini letto oggi non espone una relazione targa/destinazione normalizzabile sulle righe materiali."
+        : null,
+      allMaterials.some((entry) => entry.destination?.quality === "da_verificare")
+        ? "Una parte delle righe materiali espone solo una destinazione testuale: il reader la conserva ma non la trasforma in targa mezzo."
         : null,
       includeCloneOverlays && dataset.cloneOrdersCount > 0
         ? `Il clone integra ${dataset.cloneOrdersCount} ordini confermati localmente senza scrivere su @ordini nella madre.`

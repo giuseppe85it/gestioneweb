@@ -9,7 +9,6 @@ import {
   NEXT_EUROMECC_PATH,
   NEXT_HOME_PATH,
   NEXT_MAGAZZINO_PATH,
-  NEXT_IA_APIKEY_PATH,
   NEXT_IA_COPERTURA_LIBRETTI_PATH,
   NEXT_IA_DOCUMENTI_PATH,
   NEXT_IA_LIBRETTO_PATH,
@@ -17,8 +16,6 @@ import {
   NEXT_LAVORI_DA_ESEGUIRE_PATH,
   NEXT_MANUTENZIONI_PATH,
   NEXT_MATERIALI_DA_ORDINARE_PATH,
-  NEXT_MEZZI_PATH,
-  NEXT_STRUMENTI_UNISCI_DOCUMENTI_PATH,
 } from "./nextStructuralPaths";
 
 export type NextAreaId =
@@ -40,8 +37,7 @@ export type NextRouteModuleId =
   | "autisti-inbox"
   | "autisti-admin"
   | "autista-separato"
-  | "autista-legacy-redirect"
-  | "ia-legacy-redirect";
+  | "autista-legacy-redirect";
 
 export type NextRouteModuleStatus =
   | "ACTIVE"
@@ -148,13 +144,10 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     id: "flotta",
     title: "FLOTTA",
     items: [
-      { id: "motrici", label: "Motrici e trattori", path: NEXT_DOSSIER_LISTA_PATH },
-      { id: "rimorchi", label: "Rimorchi", disabled: true },
       {
         id: "scadenze",
-        label: "Scadenze",
-        queryParamKey: "scadenze",
-        queryParamValue: "tutte",
+        label: "Scadenze Collaudi",
+        path: "/next/scadenze-collaudi",
       },
       { id: "dossier", label: "Dossier mezzo", path: NEXT_DOSSIER_LISTA_PATH },
     ],
@@ -190,22 +183,10 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     ],
   },
   {
-    id: "strumenti",
-    title: "STRUMENTI",
-    items: [
-      {
-        id: "unisci-documenti",
-        label: "Unisci documenti",
-        path: NEXT_STRUMENTI_UNISCI_DOCUMENTI_PATH,
-      },
-    ],
-  },
-  {
     id: "anagrafiche",
     title: "ANAGRAFICHE",
     items: [
       { id: "anagrafiche", label: "Anagrafiche", path: "/next/anagrafiche" },
-      { id: "mezzi-aziendali", label: "Mezzi aziendali", path: NEXT_MEZZI_PATH },
     ],
   },
   {
@@ -241,14 +222,6 @@ export const NEXT_SHELL_NAV_SECTIONS: readonly NextShellNavSection[] = [
     title: "GESTIONE",
     items: [{ id: "area-capo", label: "Area capo", path: "/next/capo/mezzi" }],
   },
-  {
-    id: "sistema",
-    title: "SISTEMA",
-    items: [
-      { id: "api-key", label: "API Key", path: NEXT_IA_APIKEY_PATH },
-      { id: "impostazioni", label: "Impostazioni", disabled: true },
-    ],
-  },
 ] as const;
 
 // Ingressi top-level della shell clone. Non coincidono con l'intero catalogo delle
@@ -283,12 +256,6 @@ export const NEXT_NAV_ITEMS = [
     path: "/next/dossiermezzi",
     label: "Dossier Mezzi",
     scope: "Ingresso dossier madre-like",
-  },
-  {
-    id: "ia",
-    path: "/next/ia",
-    label: "IA",
-    scope: "Hub madre + sotto-moduli clone-safe",
   },
   {
     id: "libretti-export",
@@ -407,13 +374,6 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     note: "Controparte reader-first del centro rettifica dati: tabs, filtri, foto e PDF in consultazione, senza rettifiche, `crea lavoro` o delete allegati.",
   },
   {
-    id: "ia",
-    path: "/next/ia",
-    label: "Intelligenza Artificiale",
-    status: "ACTIVE_PARTIAL",
-    note: "Hub clone strutturalmente riallineato alla madre, con child route autonome per `apikey`, `libretto`, `documenti`, `copertura-libretti` e `Libretti Export`; tutte le scritture restano neutralizzate.",
-  },
-  {
     id: "libretti-export",
     path: "/next/libretti-export",
     label: "Libretti (Export PDF)",
@@ -440,13 +400,6 @@ export const NEXT_ROUTE_MODULES: NextRouteModuleEntry[] = [
     label: "Redirect legacy area autista",
     status: "TECHNICAL_REDIRECT",
     note: "Redirect tecnico verso `/next/autisti` per non lasciare rotto il vecchio placeholder autista separato.",
-  },
-  {
-    id: "ia-legacy-redirect",
-    path: "/next/ia-gestionale",
-    label: "Redirect legacy IA",
-    status: "TECHNICAL_REDIRECT",
-    note: "Redirect tecnico verso /next/ia per non lasciare il vecchio path rotto.",
   },
 ];
 
@@ -817,42 +770,35 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
   },
   "ia": {
     id: "ia",
-    routePath: "/next/ia",
+    routePath: NEXT_IA_LIBRETTO_PATH,
     relatedPaths: [
-      "/next/ia/apikey",
-      "/next/ia/libretto",
-      "/next/ia/documenti",
-      "/next/ia/copertura-libretti",
-      "/next/libretti-export",
+      NEXT_IA_LIBRETTO_PATH,
+      NEXT_IA_DOCUMENTI_PATH,
+      NEXT_IA_COPERTURA_LIBRETTI_PATH,
+      NEXT_LIBRETTI_EXPORT_PATH,
     ],
     navLabel: "Intelligenza Artificiale",
     shortLabel: "IA",
     eyebrow: "Modulo IA",
     title: "Intelligenza Artificiale",
     description:
-      "Hub clone read-only del modulo madre, riallineato anche sulla famiglia di child route autonome.",
-    phase: "Hub + child route strutturali",
+      "Area logica delle pagine IA NEXT vive, senza hub legacy e senza pagina API Key NEXT.",
+    phase: "Child route vive",
     primaryGrammar: "Modulo IA",
     searchPlaceholder: "Strumento IA",
-    shellFocus: "Hub madre, blocchi unsafe e primo figlio clone-safe",
+    shellFocus: "Libretto, documenti, copertura libretti ed export",
     visibility: ["Account gestionale", "Super Admin"],
     cards: [
       {
-        label: "Modulo madre",
-        value: "Intelligenza Artificiale",
-        meta: "Il clone espone il vero hub della madre, senza residui semantici concettuali.",
-        tone: "accent",
-      },
-      {
-        label: "Perimetro clone",
-        value: "Hub + child route IA",
-        meta: "Le pagine figlie si aprono davvero; il clone neutralizza configurazione, upload, analisi e salvataggi.",
+        label: "Pagine vive",
+        value: "Libretto, documenti, copertura, export",
+        meta: "L'hub legacy e la pagina API Key NEXT sono stati rimossi dal runtime.",
         tone: "success",
       },
       {
         label: "Side effect",
         value: "0",
-        meta: "Nessuna API key, upload o chiamata IA viene eseguita dal clone.",
+        meta: "Nessuna pagina API Key NEXT viene esposta.",
         tone: "warning",
       },
     ],
@@ -860,26 +806,7 @@ export const NEXT_AREAS: Record<NextAreaId, NextAreaConfig> = {
       {
         title: "Ingressi mostrati nel clone",
         description:
-          "Il clone mostra le card reali del modulo madre e apre l'intera famiglia di child route strutturali.",
-      },
-      {
-        title: "Perche i moduli figli restano bloccati",
-        description:
-          "Le pagine figlie sono strutturalmente presenti, ma il clone continua a neutralizzare configurazione sensibile, upload, salvataggi Firestore/Storage, runtime esterni e il nuovo sottosistema IA interno resta confinato a chat controllata, preview e archivio locale isolato.",
-        tone: "accent",
-        items: [
-          "API key Gemini",
-          "Upload libretto e documenti",
-          "Scritture su dataset documentali e mezzi",
-          "Runtime IA esterni o funzioni writer-heavy",
-          "Chat/orchestratore locale controllato, retrieval read-only, archivio artifact IA e approval workflow solo mock",
-        ],
-      },
-      {
-        title: "Differenza minima dal madre",
-        description:
-          "Il clone mantiene il ruolo del hub e delle sue pagine figlie, ma lascia bloccate tutte le funzioni operative con side effect.",
-        tone: "warning",
+          "La sidebar IA espone solo le pagine figlie NEXT vive e l'export libretti.",
       },
     ],
   },

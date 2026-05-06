@@ -1,0 +1,142 @@
+.driver360 {
+  border: 1px solid #d6dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2933;
+  padding: 16px;
+}
+
+.driver360__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.driver360__eyebrow {
+  color: #5f6f82;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.driver360__header h2,
+.driver360__panel h3,
+.driver360__vehicle h4 {
+  margin: 0;
+}
+
+.driver360__header h2 {
+  font-size: 22px;
+}
+
+.driver360__grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 760px) {
+  .driver360__grid {
+    grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr);
+  }
+}
+
+.driver360__panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.driver360__panel h3 {
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.driver360__facts,
+.driver360__proof dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.driver360__facts div,
+.driver360__proof dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.driver360__facts dt,
+.driver360__proof dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.driver360__facts dd,
+.driver360__proof dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.driver360__vehicle-list,
+.driver360__candidate-list {
+  display: grid;
+  gap: 10px;
+}
+
+.driver360__vehicle {
+  border-left: 4px solid #2563eb;
+  padding-left: 10px;
+}
+
+.driver360__vehicle-plate {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+.driver360__proof {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-top: 8px;
+  padding: 10px;
+}
+
+.driver360__proof summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.driver360__proof[open] summary {
+  margin-bottom: 8px;
+}
+
+.driver360__candidate {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #1f2933;
+  cursor: pointer;
+  font: inherit;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.driver360__candidate:hover {
+  background: #eef6ff;
+  border-color: #2563eb;
+}
+
+.driver360__candidate:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.driver360__empty {
+  color: #526170;
+  margin: 0;
+}

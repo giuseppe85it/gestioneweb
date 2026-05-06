@@ -1,5 +1,6 @@
 export const NEXT_HOME_PATH = "/next";
 export const NEXT_CENTRO_CONTROLLO_PATH = "/next/centro-controllo";
+export const NEXT_SCADENZE_COLLAUDI_PATH = "/next/scadenze-collaudi";
 export const NEXT_GESTIONE_OPERATIVA_PATH = "/next/gestione-operativa";
 export const NEXT_OPERATIVITA_LEGACY_PATH = "/next/operativita-globale";
 export const NEXT_MAGAZZINO_PATH = "/next/magazzino";
@@ -24,8 +25,6 @@ export const NEXT_DOSSIER_LISTA_PATH = "/next/dossiermezzi";
 export const NEXT_DOSSIER_PREFIX = "/next/dossier";
 export const NEXT_MEZZI_DOSSIER_LEGACY_PATH = "/next/mezzi-dossier";
 export const NEXT_ANALISI_ECONOMICA_PREFIX = "/next/analisi-economica";
-export const NEXT_IA_PATH = "/next/ia";
-export const NEXT_IA_APIKEY_PATH = "/next/ia/apikey";
 export const NEXT_IA_LIBRETTO_PATH = "/next/ia/libretto";
 export const NEXT_IA_DOCUMENTI_PATH = "/next/ia/documenti";
 export const NEXT_IA_COPERTURA_LIBRETTI_PATH = "/next/ia/copertura-libretti";

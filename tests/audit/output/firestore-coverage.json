@@ -1,0 +1,5137 @@
+{
+  "date": "2026-04-30T13:28:00.160Z",
+  "project": "gestionemanutenzione-934ef",
+  "storage": [
+    {
+      "key": "@mezzi_aziendali",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 37,
+      "sample": {
+        "librettoUrl": "https://firebasestorage.googleapis.com/v0/b/gestionemanutenzione-934ef.firebases…",
+        "proprietario": "GHIELMI CEMENTI",
+        "manutenzioneDataInizio": "",
+        "manutenzioneProgrammata": false,
+        "dataScadenzaRevisione": "2026-10-11",
+        "manutenzioneKmMax": "",
+        "tipo": "motrice",
+        "autistaId": "1774554254137-3e60d7b87a6f4",
+        "modello": "D16.280",
+        "categoria": "motrice 2 assi",
+        "librettoStoragePath": "mezzi_aziendali/MEZZO-1764192368638/libretto.jpg",
+        "id": "MEZZO-1764192368638",
+        "dataUltimoCollaudo": "",
+        "manutenzioneContratto": "",
+        "manutenzioneDataFine": "",
+        "marcaModello": "RENAULT D16.280",
+        "telaio": "VF6 40J 895 FBO 016 18",
+        "potenza": "210 KW",
+        "cilindrata": "7698",
+        "targa": "TI313387",
+        "autistaNome": "MULETTO",
+        "anno": "2015",
+        "fotoPath": null,
+        "massaComplessiva": "16300  KG",
+        "note": "COLLAUDO OGNI 2 ANNI PERCHE IL MEZZO NON VA IN ITALIA"
+      },
+      "fieldFrequency": {
+        "manutenzioneProgrammata": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "tipo": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaId": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "modello": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "categoria": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "marcaModello": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targa": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaNome": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "dataImmatricolazione": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "colore": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "marca": {
+          "present": 37,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "proprietario": {
+          "present": 36,
+          "empty": 1,
+          "coverage": 0.973,
+          "types": [
+            "string"
+          ]
+        },
+        "massaComplessiva": {
+          "present": 35,
+          "empty": 2,
+          "coverage": 0.946,
+          "types": [
+            "string"
+          ]
+        },
+        "dataScadenzaRevisione": {
+          "present": 34,
+          "empty": 3,
+          "coverage": 0.919,
+          "types": [
+            "string"
+          ]
+        },
+        "telaio": {
+          "present": 34,
+          "empty": 3,
+          "coverage": 0.919,
+          "types": [
+            "string"
+          ]
+        },
+        "librettoUrl": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 0.865,
+          "types": [
+            "string"
+          ]
+        },
+        "librettoStoragePath": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 0.865,
+          "types": [
+            "string"
+          ]
+        },
+        "anno": {
+          "present": 31,
+          "empty": 0,
+          "coverage": 0.838,
+          "types": [
+            "string"
+          ]
+        },
+        "fotoUrl": {
+          "present": 31,
+          "empty": 6,
+          "coverage": 0.838,
+          "types": [
+            "string"
+          ]
+        },
+        "fotoPath": {
+          "present": 27,
+          "empty": 9,
+          "coverage": 0.73,
+          "types": [
+            "string"
+          ]
+        },
+        "dataUltimoCollaudo": {
+          "present": 25,
+          "empty": 12,
+          "coverage": 0.676,
+          "types": [
+            "string"
+          ]
+        },
+        "potenza": {
+          "present": 17,
+          "empty": 20,
+          "coverage": 0.459,
+          "types": [
+            "string"
+          ]
+        },
+        "note": {
+          "present": 17,
+          "empty": 20,
+          "coverage": 0.459,
+          "types": [
+            "string"
+          ]
+        },
+        "cilindrata": {
+          "present": 16,
+          "empty": 21,
+          "coverage": 0.432,
+          "types": [
+            "string"
+          ]
+        },
+        "assicurazione": {
+          "present": 13,
+          "empty": 24,
+          "coverage": 0.351,
+          "types": [
+            "string"
+          ]
+        },
+        "prenotazioneCollaudo": {
+          "present": 9,
+          "empty": 1,
+          "coverage": 0.243,
+          "types": [
+            "object"
+          ]
+        },
+        "manutenzioneDataInizio": {
+          "present": 6,
+          "empty": 31,
+          "coverage": 0.162,
+          "types": [
+            "string"
+          ]
+        },
+        "manutenzioneContratto": {
+          "present": 6,
+          "empty": 31,
+          "coverage": 0.162,
+          "types": [
+            "string"
+          ]
+        },
+        "manutenzioneDataFine": {
+          "present": 6,
+          "empty": 31,
+          "coverage": 0.162,
+          "types": [
+            "string"
+          ]
+        },
+        "manutenzioneKmMax": {
+          "present": 4,
+          "empty": 33,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "approvazioneTipo": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "nAvs": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "caricoUtileSella": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "localita": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "indirizzo": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "genereVeicolo": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "numeroMatricola": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "luogoDataRilascio": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "pesoVuoto": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "pesoTotale": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.108,
+          "types": [
+            "string"
+          ]
+        },
+        "preCollaudo": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 0.081,
+          "types": [
+            "object"
+          ]
+        },
+        "pesoTotaleRimorchio": {
+          "present": 3,
+          "empty": 1,
+          "coverage": 0.081,
+          "types": [
+            "string"
+          ]
+        },
+        "annotazioni": {
+          "present": 3,
+          "empty": 1,
+          "coverage": 0.081,
+          "types": [
+            "string"
+          ]
+        },
+        "carrozzeria": {
+          "present": 3,
+          "empty": 1,
+          "coverage": 0.081,
+          "types": [
+            "string"
+          ]
+        },
+        "primaImmatricolazione": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 0.054,
+          "types": [
+            "string"
+          ]
+        },
+        "statoOrigine": {
+          "present": 0,
+          "empty": 4,
+          "coverage": 0,
+          "types": []
+        },
+        "caricoSulLetto": {
+          "present": 0,
+          "empty": 4,
+          "coverage": 0,
+          "types": []
+        },
+        "pesoRimorchiabile": {
+          "present": 0,
+          "empty": 4,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "categoria": {
+          "distinct": 12,
+          "missing": 0,
+          "values": {
+            "trattore stradale": 10,
+            "semirimorchio asse sterzante": 8,
+            "pianale": 3,
+            "motrice 3 assi": 2,
+            "semirimorchio asse fisso": 2,
+            "biga": 2,
+            "vasca": 2,
+            "Trattore a sella": 2,
+            "centina": 2,
+            "porta silo container": 2,
+            "motrice 2 assi": 1,
+            "motrice 4 assi": 1
+          }
+        },
+        "stato": {
+          "distinct": 0,
+          "missing": 37,
+          "values": {}
+        },
+        "carrozzeria": {
+          "distinct": 2,
+          "missing": 34,
+          "values": {
+            "----": 2,
+            "Silo per cemento": 1
+          }
+        },
+        "genereVeicolo": {
+          "distinct": 2,
+          "missing": 33,
+          "values": {
+            "Trattore a sella": 3,
+            "Semirimorchio trasporto di cose": 1
+          }
+        },
+        "trazione": {
+          "distinct": 0,
+          "missing": 37,
+          "values": {}
+        },
+        "tipoMezzo": {
+          "distinct": 0,
+          "missing": 37,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@colleghi",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 12,
+      "sample": {
+        "telefonoPrivato": "+393400919663",
+        "pukSim": "",
+        "id": "1763891485405-c17f8ce4a4a02",
+        "badge": "517",
+        "codice": "1215",
+        "pinSim": "2571",
+        "telefono": "+41797015080",
+        "nome": "GIUSEPPE MILIO",
+        "schedeCarburante": "[array x2]",
+        "descrizione": ""
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "nome": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "badge": {
+          "present": 11,
+          "empty": 1,
+          "coverage": 0.917,
+          "types": [
+            "string"
+          ]
+        },
+        "telefono": {
+          "present": 11,
+          "empty": 1,
+          "coverage": 0.917,
+          "types": [
+            "string"
+          ]
+        },
+        "codice": {
+          "present": 10,
+          "empty": 2,
+          "coverage": 0.833,
+          "types": [
+            "string"
+          ]
+        },
+        "pinSim": {
+          "present": 2,
+          "empty": 10,
+          "coverage": 0.167,
+          "types": [
+            "string"
+          ]
+        },
+        "schedeCarburante": {
+          "present": 2,
+          "empty": 10,
+          "coverage": 0.167,
+          "types": [
+            "array"
+          ]
+        },
+        "telefonoPrivato": {
+          "present": 1,
+          "empty": 11,
+          "coverage": 0.083,
+          "types": [
+            "string"
+          ]
+        },
+        "pukSim": {
+          "present": 0,
+          "empty": 12,
+          "coverage": 0,
+          "types": []
+        },
+        "descrizione": {
+          "present": 0,
+          "empty": 12,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "ruolo": {
+          "distinct": 0,
+          "missing": 12,
+          "values": {}
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 12,
+          "values": {}
+        },
+        "stato": {
+          "distinct": 0,
+          "missing": 12,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@fornitori",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 4,
+      "sample": {
+        "telefono": "+393487973090",
+        "codice": "",
+        "badge": "",
+        "descrizione": "materiale scarico/cisterna",
+        "id": "1763892263173-07f07e6e6d13d8",
+        "nome": "MARIBA"
+      },
+      "fieldFrequency": {
+        "telefono": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "descrizione": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "nome": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "codice": {
+          "present": 0,
+          "empty": 4,
+          "coverage": 0,
+          "types": []
+        },
+        "badge": {
+          "present": 0,
+          "empty": 4,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "categoria": {
+          "distinct": 0,
+          "missing": 4,
+          "values": {}
+        },
+        "tipo": {
+          "distinct": 0,
+          "missing": 4,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@officine",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 1,
+      "sample": {
+        "nome": "SCIURBA IGNAZIO",
+        "id": "1777035174924-39cea2259eca58",
+        "telefoniAggiuntivi": "[array x0]",
+        "citta": "VIGGIU'",
+        "telefono": "3492301525"
+      },
+      "fieldFrequency": {
+        "nome": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "citta": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "telefono": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "telefoniAggiuntivi": {
+          "present": 0,
+          "empty": 1,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "citta": {
+          "distinct": 1,
+          "missing": 0,
+          "values": {
+            "VIGGIU'": 1
+          }
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@lavori",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 13,
+      "sample": {
+        "urgenza": "media",
+        "segnalatoDa": "ORLANDO BUTTI",
+        "id": "5dd4afde-4531-4560-9496-512e35c60167",
+        "eseguito": true,
+        "source": "{key,id,type}",
+        "descrizione": "Segnalazione: altro - Tubo 10 metri rotto altri tubi perdono dalle guarnizioni e…",
+        "gruppoId": "47f0a6b6-22bd-46e2-ba77-18d0f0d4899a",
+        "tipo": "targa",
+        "chiHaEseguito": "milio",
+        "targa": "TI239279",
+        "dataEsecuzione": "2026-04-01T18:08:31.199Z",
+        "sottoElementi": "[array x0]",
+        "dettagli": null,
+        "dataInserimento": "2026-03-30"
+      },
+      "fieldFrequency": {
+        "urgenza": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "segnalatoDa": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "eseguito": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "source": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "descrizione": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "gruppoId": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipo": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targa": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "dataInserimento": {
+          "present": 13,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "chiHaEseguito": {
+          "present": 7,
+          "empty": 0,
+          "coverage": 0.538,
+          "types": [
+            "string"
+          ]
+        },
+        "dataEsecuzione": {
+          "present": 7,
+          "empty": 0,
+          "coverage": 0.538,
+          "types": [
+            "string"
+          ]
+        },
+        "sottoElementi": {
+          "present": 0,
+          "empty": 13,
+          "coverage": 0,
+          "types": []
+        },
+        "dettagli": {
+          "present": 0,
+          "empty": 13,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "statoVista": {
+          "distinct": 0,
+          "missing": 13,
+          "values": {}
+        },
+        "stato": {
+          "distinct": 0,
+          "missing": 13,
+          "values": {}
+        },
+        "tipo": {
+          "distinct": 1,
+          "missing": 0,
+          "values": {
+            "targa": 13
+          }
+        },
+        "urgenza": {
+          "distinct": 3,
+          "missing": 0,
+          "values": {
+            "media": 9,
+            "alta": 2,
+            "bassa": 2
+          }
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 13,
+          "values": {}
+        }
+      },
+      "dates": {
+        "data": {
+          "count": 0,
+          "missing": 13,
+          "invalid": 0
+        },
+        "dataInserimento": {
+          "count": 13,
+          "missing": 0,
+          "invalid": 0,
+          "future": 0,
+          "ancient": 0,
+          "min": "2026-03-29",
+          "max": "2026-04-29"
+        },
+        "dataChiusura": {
+          "count": 0,
+          "missing": 13,
+          "invalid": 0
+        }
+      },
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@manutenzioni",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 50,
+      "sample": {
+        "materiali": "[array x0]",
+        "fornitore": "AUGUSTONI TRUCK",
+        "id": "1777475064105",
+        "targa": "TI233827",
+        "eseguito": null,
+        "sottotipo": null,
+        "tipo": "mezzo",
+        "descrizione": "-22.04.2026 + oggi 29.04.2026 km 299231\n\nControllo spia motore accesa, possibile…",
+        "data": "29 04 2026",
+        "importo": null,
+        "ore": null,
+        "km": 299231
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 50,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targa": {
+          "present": 50,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipo": {
+          "present": 50,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "descrizione": {
+          "present": 50,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 50,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitore": {
+          "present": 25,
+          "empty": 24,
+          "coverage": 0.5,
+          "types": [
+            "string"
+          ]
+        },
+        "km": {
+          "present": 24,
+          "empty": 26,
+          "coverage": 0.48,
+          "types": [
+            "number"
+          ]
+        },
+        "eseguito": {
+          "present": 22,
+          "empty": 28,
+          "coverage": 0.44,
+          "types": [
+            "string"
+          ]
+        },
+        "materiali": {
+          "present": 12,
+          "empty": 38,
+          "coverage": 0.24,
+          "types": [
+            "array"
+          ]
+        },
+        "sottotipo": {
+          "present": 10,
+          "empty": 40,
+          "coverage": 0.2,
+          "types": [
+            "string"
+          ]
+        },
+        "ore": {
+          "present": 9,
+          "empty": 41,
+          "coverage": 0.18,
+          "types": [
+            "number"
+          ]
+        },
+        "gommeInterventoTipo": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 0.06,
+          "types": [
+            "string"
+          ]
+        },
+        "importo": {
+          "present": 1,
+          "empty": 20,
+          "coverage": 0.02,
+          "types": [
+            "number"
+          ]
+        },
+        "gommePerAsse": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.02,
+          "types": [
+            "array"
+          ]
+        },
+        "assiCoinvolti": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.02,
+          "types": [
+            "array"
+          ]
+        },
+        "gommeStraordinario": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.02,
+          "types": [
+            "object"
+          ]
+        },
+        "sourceDocumentId": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.02,
+          "types": [
+            "string"
+          ]
+        }
+      },
+      "categoricals": {
+        "tipoIntervento": {
+          "distinct": 0,
+          "missing": 50,
+          "values": {}
+        },
+        "stato": {
+          "distinct": 0,
+          "missing": 50,
+          "values": {}
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 50,
+          "values": {}
+        },
+        "tipo": {
+          "distinct": 3,
+          "missing": 0,
+          "values": {
+            "mezzo": 39,
+            "compressore": 10,
+            "attrezzature": 1
+          }
+        }
+      },
+      "dates": {
+        "data": {
+          "count": 50,
+          "missing": 0,
+          "invalid": 0,
+          "future": 0,
+          "ancient": 0,
+          "min": "2024-07-02",
+          "max": "2026-04-28"
+        },
+        "dataDocumento": {
+          "count": 0,
+          "missing": 50,
+          "invalid": 0
+        }
+      },
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@inventario",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 17,
+      "sample": {
+        "stockKey": "ADBLUE BY BASF CONT 1000 IT ADBLUE THOMMEN FURLER AG LT",
+        "fornitoreLabel": "Thommen-Furler AG",
+        "quantita": 2000,
+        "prezzoUnitario": null,
+        "unita": "lt",
+        "fotoStoragePath": null,
+        "descrizione": "AdBlue® by BASF, Cont, 1000 It AdBlue",
+        "fotoUrl": null,
+        "quantitaTotale": 2000,
+        "nomeFornitore": "Thommen-Furler AG",
+        "id": "1776101370580_e565e48b9d30b8",
+        "fornitore": "Thommen-Furler AG",
+        "stockLoadKeys": "[array x0]"
+      },
+      "fieldFrequency": {
+        "stockKey": {
+          "present": 17,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "quantita": {
+          "present": 17,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "unita": {
+          "present": 17,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "descrizione": {
+          "present": 17,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "quantitaTotale": {
+          "present": 17,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "id": {
+          "present": 17,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitoreLabel": {
+          "present": 15,
+          "empty": 2,
+          "coverage": 0.882,
+          "types": [
+            "string"
+          ]
+        },
+        "nomeFornitore": {
+          "present": 15,
+          "empty": 2,
+          "coverage": 0.882,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitore": {
+          "present": 15,
+          "empty": 2,
+          "coverage": 0.882,
+          "types": [
+            "string"
+          ]
+        },
+        "stockLoadKeys": {
+          "present": 4,
+          "empty": 13,
+          "coverage": 0.235,
+          "types": [
+            "array"
+          ]
+        },
+        "prezzoUnitario": {
+          "present": 1,
+          "empty": 1,
+          "coverage": 0.059,
+          "types": [
+            "number"
+          ]
+        },
+        "sogliaMinima": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.059,
+          "types": [
+            "number"
+          ]
+        },
+        "fotoStoragePath": {
+          "present": 0,
+          "empty": 17,
+          "coverage": 0,
+          "types": []
+        },
+        "fotoUrl": {
+          "present": 0,
+          "empty": 17,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "categoria": {
+          "distinct": 0,
+          "missing": 17,
+          "values": {}
+        },
+        "fornitore": {
+          "distinct": 5,
+          "missing": 2,
+          "values": {
+            "MARIBA": 6,
+            "TRUCK SERVICE": 5,
+            "TURBO DIESEL": 2,
+            "Thommen-Furler AG": 1,
+            "MARIBA s.r.l.": 1
+          }
+        },
+        "stato": {
+          "distinct": 0,
+          "missing": 17,
+          "values": {}
+        },
+        "stockStatus": {
+          "distinct": 0,
+          "missing": 17,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@materialiconsegnati",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 33,
+      "sample": {
+        "motivo": "UTILIZZO MANUTENZIONE",
+        "stockKey": "OLIO EXXON PER COMPRESSORE TURBO DIESEL LT",
+        "fornitoreLabel": "TURBO DIESEL",
+        "unita": "lt",
+        "origine": "MAGAZZINO_NEXT",
+        "inventarioRefId": null,
+        "tipo": "OUT",
+        "materiale": "OLIO EXXON PER COMPRESSORE",
+        "quantita": 4,
+        "destinatario": "{type,refId,label}",
+        "descrizione": "OLIO EXXON PER COMPRESSORE",
+        "data": "26 11 2025",
+        "target": "TI313387",
+        "materialeLabel": "OLIO EXXON PER COMPRESSORE",
+        "direzione": "OUT",
+        "fornitore": "TURBO DIESEL",
+        "id": "1765665251934_CONS_1765665241387"
+      },
+      "fieldFrequency": {
+        "motivo": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "stockKey": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "unita": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "origine": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipo": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "materiale": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "quantita": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "destinatario": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "descrizione": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "materialeLabel": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "direzione": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 33,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "target": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 0.97,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitoreLabel": {
+          "present": 30,
+          "empty": 3,
+          "coverage": 0.909,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitore": {
+          "present": 30,
+          "empty": 3,
+          "coverage": 0.909,
+          "types": [
+            "string"
+          ]
+        },
+        "inventarioRefId": {
+          "present": 13,
+          "empty": 20,
+          "coverage": 0.394,
+          "types": [
+            "string"
+          ]
+        },
+        "mezzoTarga": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.121,
+          "types": [
+            "string"
+          ]
+        },
+        "targa": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.121,
+          "types": [
+            "string"
+          ]
+        },
+        "materialeId": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.121,
+          "types": [
+            "string"
+          ]
+        }
+      },
+      "categoricals": {
+        "destinatario": {
+          "distinct": 29,
+          "missing": 0,
+          "values": {
+            "{\"type\":\"MEZZO\",\"refId\":\"TI324633\",\"label\":\"TI324633\"}": 2,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI298409\",\"label\":\"TI298409\"}": 2,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI178456\",\"label\":\"TI178456\"}": 2,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI113417\",\"label\":\"TI113417\"}": 2,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI313387\",\"label\":\"TI313387\"}": 1,
+            "{\"label\":\"TI313387\",\"type\":\"MEZZO\",\"refId\":\"TI313387\"}": 1,
+            "{\"label\":\"TI298409\",\"refId\":\"TI298409\",\"type\":\"MEZZO\"}": 1,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI233827\",\"label\":\"TI233827\"}": 1,
+            "{\"label\":\"TI233827\",\"type\":\"MEZZO\",\"refId\":\"TI233827\"}": 1,
+            "{\"refId\":\"TI229717\",\"type\":\"MEZZO\",\"label\":\"TI229717\"}": 1,
+            "{\"label\":\"TI229717\",\"refId\":\"TI229717\",\"type\":\"MEZZO\"}": 1,
+            "{\"label\":\"TI239279\",\"refId\":\"TI239279\",\"type\":\"MEZZO\"}": 1,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI239279\",\"label\":\"TI239279\"}": 1,
+            "{\"refId\":\"TI279216\",\"type\":\"MEZZO\",\"label\":\"TI279216\"}": 1,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI279216\",\"label\":\"TI279216\"}": 1,
+            "{\"label\":\"ORLANDO BUTTI\",\"type\":\"COLLEGA\",\"refId\":\"1764416245505-2869f80f9632c8\"}": 1,
+            "{\"refId\":\"MEZZO-1765652531596\",\"type\":\"MEZZO\",\"label\":\"TI285195\"}": 1,
+            "{\"type\":\"COLLEGA\",\"refId\":\"1763891485405-c17f8ce4a4a02\",\"label\":\"GIUSEPPE MILIO\"}": 1,
+            "{\"refId\":\"1764416169167-5ba0d642365db\",\"type\":\"COLLEGA\",\"label\":\"ELTON SELIMI\"}": 1,
+            "{\"refId\":\"1764416116725-79d403497e1ea8\",\"type\":\"COLLEGA\",\"label\":\"SANDRO CALABRESE\"}": 1,
+            "{\"refId\":\"1764415947869-bfbfe88f320938\",\"type\":\"COLLEGA\",\"label\":\"DANIELE LIVI\"}": 1,
+            "{\"label\":\"IVAN ATTARDI\",\"refId\":\"1764416064511-e93d850937b37\",\"type\":\"COLLEGA\"}": 1,
+            "{\"label\":\"TI136914\",\"refId\":\"TI136914\",\"type\":\"MEZZO\"}": 1,
+            "{\"type\":\"MEZZO\",\"refId\":\"TI136914\",\"label\":\"TI136914\"}": 1,
+            "{\"type\":\"COLLEGA\",\"refId\":\"1764416321353-9e364f2d08e02\",\"label\":\"ANDREA SCALAMATO\"}": 1,
+            "{\"type\":\"COLLEGA\",\"refId\":\"1764416282741-03f2b1895e5b98\",\"label\":\"RICCARDO FENDERICO\"}": 1,
+            "{\"label\":\"ELTON SELIMI\",\"type\":\"COLLEGA\",\"refId\":\"1764416169167-5ba0d642365db\"}": 1,
+            "{\"label\":\"DANIELE LIVI\",\"type\":\"COLLEGA\",\"refId\":\"1764415947869-bfbfe88f320938\"}": 1,
+            "{\"refId\":\"TI282780\",\"type\":\"MEZZO\",\"label\":\"TI282780\"}": 1
+          }
+        },
+        "tipoDestinatario": {
+          "distinct": 0,
+          "missing": 33,
+          "values": {}
+        },
+        "tipoMateriale": {
+          "distinct": 0,
+          "missing": 33,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@rifornimenti",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "items"
+      ],
+      "count": 248,
+      "sample": {
+        "mezzoTarga": "TI233827",
+        "costo": null,
+        "litri": 196,
+        "id": "93c9f4da-97cf-46ad-bc96-fa11144979c4",
+        "data": "12/01/2026",
+        "distributore": "distributore svizzera piccadilly card"
+      },
+      "fieldFrequency": {
+        "mezzoTarga": {
+          "present": 248,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "litri": {
+          "present": 248,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "id": {
+          "present": 248,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 248,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "distributore": {
+          "present": 248,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "km": {
+          "present": 232,
+          "empty": 0,
+          "coverage": 0.935,
+          "types": [
+            "number"
+          ]
+        },
+        "note": {
+          "present": 10,
+          "empty": 222,
+          "coverage": 0.04,
+          "types": [
+            "string"
+          ]
+        },
+        "costo": {
+          "present": 0,
+          "empty": 248,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "fonte": {
+          "distinct": 0,
+          "missing": 248,
+          "values": {}
+        },
+        "fornitore": {
+          "distinct": 0,
+          "missing": 248,
+          "values": {}
+        },
+        "carburante": {
+          "distinct": 0,
+          "missing": 248,
+          "values": {}
+        },
+        "tipoRifornimento": {
+          "distinct": 0,
+          "missing": 248,
+          "values": {}
+        }
+      },
+      "dates": {
+        "data": {
+          "count": 248,
+          "missing": 0,
+          "invalid": 0,
+          "future": 0,
+          "ancient": 0,
+          "min": "2026-01-11",
+          "max": "2026-04-29"
+        },
+        "dataDisplay": {
+          "count": 0,
+          "missing": 248,
+          "invalid": 0
+        }
+      },
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@rifornimenti_autisti_tmp",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 249,
+      "sample": {
+        "importo": null,
+        "metodoPagamento": "piccadilly card",
+        "timestamp": 1768217340000,
+        "badgeAutista": "38",
+        "targaCamion": "TI233827",
+        "targaRimorchio": null,
+        "flagVerifica": false,
+        "autistaNome": "ELTON SELIMI",
+        "paese": "svizzera",
+        "tipo": "distributore",
+        "note": null,
+        "data": 1768217340000,
+        "autistaId": "1764416169167-5ba0d642365db",
+        "km": 286760,
+        "adminEdit": "{note,editedBy,edited,editedAt}",
+        "id": "93c9f4da-97cf-46ad-bc96-fa11144979c4",
+        "confermatoAutista": true,
+        "litri": 196
+      },
+      "fieldFrequency": {
+        "badgeAutista": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targaCamion": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "flagVerifica": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "autistaNome": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipo": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "autistaId": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "km": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "id": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "confermatoAutista": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "litri": {
+          "present": 249,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "targaRimorchio": {
+          "present": 168,
+          "empty": 81,
+          "coverage": 0.675,
+          "types": [
+            "string"
+          ]
+        },
+        "metodoPagamento": {
+          "present": 145,
+          "empty": 104,
+          "coverage": 0.582,
+          "types": [
+            "string"
+          ]
+        },
+        "paese": {
+          "present": 144,
+          "empty": 105,
+          "coverage": 0.578,
+          "types": [
+            "string"
+          ]
+        },
+        "timestamp": {
+          "present": 14,
+          "empty": 0,
+          "coverage": 0.056,
+          "types": [
+            "number"
+          ]
+        },
+        "adminEdit": {
+          "present": 14,
+          "empty": 0,
+          "coverage": 0.056,
+          "types": [
+            "object"
+          ]
+        },
+        "note": {
+          "present": 12,
+          "empty": 237,
+          "coverage": 0.048,
+          "types": [
+            "string"
+          ]
+        },
+        "motivoVerifica": {
+          "present": 1,
+          "empty": 3,
+          "coverage": 0.004,
+          "types": [
+            "string"
+          ]
+        },
+        "importo": {
+          "present": 0,
+          "empty": 249,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "fonte": {
+          "distinct": 0,
+          "missing": 249,
+          "values": {}
+        },
+        "carburante": {
+          "distinct": 0,
+          "missing": 249,
+          "values": {}
+        }
+      },
+      "dates": {
+        "data": {
+          "count": 249,
+          "missing": 0,
+          "invalid": 0,
+          "future": 0,
+          "ancient": 0,
+          "min": "2026-01-12",
+          "max": "2026-04-30"
+        },
+        "dataDisplay": {
+          "count": 0,
+          "missing": 249,
+          "invalid": 0
+        }
+      },
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@ordini",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 5,
+      "sample": {
+        "nomeFornitore": "MARIBA",
+        "id": "1763894564359-887c28324dde6",
+        "materiali": "[array x1]",
+        "dataOrdine": "23 11 2025",
+        "idFornitore": "1763892263173-07f07e6e6d13d8",
+        "arrivato": false
+      },
+      "fieldFrequency": {
+        "nomeFornitore": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "materiali": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "array"
+          ]
+        },
+        "dataOrdine": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "idFornitore": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "arrivato": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        }
+      },
+      "categoricals": {
+        "stato": {
+          "distinct": 0,
+          "missing": 5,
+          "values": {}
+        },
+        "fornitore": {
+          "distinct": 0,
+          "missing": 5,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@preventivi",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "preventivi"
+      ],
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {
+        "stato": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        },
+        "fornitore": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@preventivi_approvazioni",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 2,
+      "sample": {
+        "targa": "TI324623",
+        "updatedAt": "2026-01-22T14:03:27.330Z",
+        "id": "TI324623__@documenti_mezzi__POYUauyuvueLGkngM8P1",
+        "status": "rejected"
+      },
+      "fieldFrequency": {
+        "targa": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "updatedAt": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "status": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        }
+      },
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@listino_prezzi",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "voci"
+      ],
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@costiMezzo",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "items"
+      ],
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {
+        "tipo": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        }
+      },
+      "dates": {
+        "dataDocumento": {
+          "count": 0,
+          "missing": 0,
+          "invalid": 0
+        },
+        "data": {
+          "count": 0,
+          "missing": 0,
+          "invalid": 0
+        }
+      },
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@documenti_mezzi",
+      "kind": "storage",
+      "exists": false,
+      "count": 0
+    },
+    {
+      "key": "@documenti_magazzino",
+      "kind": "storage",
+      "exists": false,
+      "count": 0
+    },
+    {
+      "key": "@documenti_generici",
+      "kind": "storage",
+      "exists": false,
+      "count": 0
+    },
+    {
+      "key": "@attrezzature_cantieri",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 12,
+      "sample": {
+        "id": "1766942535735_944337f4d169",
+        "cantiereId": "",
+        "sourceCantiereId": null,
+        "data": "13/10/2025",
+        "descrizione": "tubo rigido completo",
+        "fotoUrl": null,
+        "sourceCantiereLabel": null,
+        "fotoStoragePath": null,
+        "unita": "m",
+        "tipo": "CONSEGNATO",
+        "note": "CONSEGNATO E MONTATO",
+        "quantita": 6,
+        "cantiereLabel": "BIROLINI",
+        "materialeCategoria": "TUBI"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "descrizione": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "unita": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipo": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "quantita": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "cantiereLabel": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "materialeCategoria": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "cantiereId": {
+          "present": 4,
+          "empty": 8,
+          "coverage": 0.333,
+          "types": [
+            "string"
+          ]
+        },
+        "note": {
+          "present": 3,
+          "empty": 9,
+          "coverage": 0.25,
+          "types": [
+            "string"
+          ]
+        },
+        "sourceCantiereId": {
+          "present": 0,
+          "empty": 12,
+          "coverage": 0,
+          "types": []
+        },
+        "fotoUrl": {
+          "present": 0,
+          "empty": 12,
+          "coverage": 0,
+          "types": []
+        },
+        "sourceCantiereLabel": {
+          "present": 0,
+          "empty": 12,
+          "coverage": 0,
+          "types": []
+        },
+        "fotoStoragePath": {
+          "present": 0,
+          "empty": 12,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "tipo": {
+          "distinct": 1,
+          "missing": 0,
+          "values": {
+            "CONSEGNATO": 12
+          }
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 12,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@cisterne_adblue",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 1,
+      "sample": {
+        "id": "1776805581927_fa5969f67202e",
+        "quantita": 1000,
+        "unita": "lt",
+        "quantitaLitri": 1000,
+        "inventarioRefId": "1776101370580_e565e48b9d30b8",
+        "materialeLabel": "AdBlue",
+        "note": null,
+        "litri": 1000,
+        "descrizione": "AdBlue",
+        "data": "20 04 2026",
+        "numeroCisterna": "1",
+        "stockKey": "ADBLUE BY BASF CONT 1000 IT ADBLUE THOMMEN FURLER AG LT"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "quantita": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "unita": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "quantitaLitri": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "inventarioRefId": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "materialeLabel": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "litri": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "descrizione": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "numeroCisterna": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "stockKey": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "note": {
+          "present": 0,
+          "empty": 1,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@alerts_state",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 1,
+      "sample": {
+        "items": "{segnalazione:116f7c43-3fa1-4471-bd98-434e7b5512b5,segnalazione:48a06dc7-d209-42de-b2b3-89885a398a17,segnalazione:9f55a179-67a0-4958-a2d3-ff518ae4e99a,segnalazione:20767535-cbd8-4e24-855c-2d7ab649cbc0}",
+        "version": 1
+      },
+      "fieldFrequency": {
+        "items": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "version": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        }
+      },
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@segnalazioni_autisti_tmp",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 32,
+      "sample": {
+        "stato": "nuova",
+        "flagVerifica": false,
+        "targa": "TI286621",
+        "autistaNome": "GIUSEPPE MILIO",
+        "motivoVerifica": null,
+        "letta": false,
+        "note": "Prova",
+        "mezzoId": "MEZZO-1765222024054",
+        "foto": "[array x0]",
+        "ambito": "rimorchio",
+        "badgeAutista": "517",
+        "targaCamion": "TI315407",
+        "targaRimorchio": "TI286621",
+        "id": "653a0e1d-2078-4486-b32a-c9219aab97f2",
+        "categoriaMezzo": "vasca",
+        "posizioneGomma": null,
+        "data": 1766332781130,
+        "descrizione": "Prova",
+        "autistaId": "1763891485405-c17f8ce4a4a02",
+        "problemaGomma": null,
+        "tipoProblema": "freni"
+      },
+      "fieldFrequency": {
+        "stato": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "flagVerifica": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "targa": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaNome": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "letta": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "mezzoId": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "ambito": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "badgeAutista": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targaCamion": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "categoriaMezzo": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "descrizione": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaId": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipoProblema": {
+          "present": 32,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "linkedLavoroId": {
+          "present": 27,
+          "empty": 0,
+          "coverage": 0.844,
+          "types": [
+            "string"
+          ]
+        },
+        "targaRimorchio": {
+          "present": 22,
+          "empty": 10,
+          "coverage": 0.688,
+          "types": [
+            "string"
+          ]
+        },
+        "fotoStoragePaths": {
+          "present": 5,
+          "empty": 25,
+          "coverage": 0.156,
+          "types": [
+            "array"
+          ]
+        },
+        "fotoUrls": {
+          "present": 5,
+          "empty": 25,
+          "coverage": 0.156,
+          "types": [
+            "array"
+          ]
+        },
+        "posizioneGomma": {
+          "present": 3,
+          "empty": 29,
+          "coverage": 0.094,
+          "types": [
+            "string"
+          ]
+        },
+        "problemaGomma": {
+          "present": 3,
+          "empty": 29,
+          "coverage": 0.094,
+          "types": [
+            "string"
+          ]
+        },
+        "timestamp": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 0.094,
+          "types": [
+            "number"
+          ]
+        },
+        "target": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 0.094,
+          "types": [
+            "string"
+          ]
+        },
+        "adminEdit": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 0.094,
+          "types": [
+            "object"
+          ]
+        },
+        "note": {
+          "present": 2,
+          "empty": 30,
+          "coverage": 0.063,
+          "types": [
+            "string"
+          ]
+        },
+        "motivoVerifica": {
+          "present": 0,
+          "empty": 32,
+          "coverage": 0,
+          "types": []
+        },
+        "foto": {
+          "present": 0,
+          "empty": 4,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "tipo": {
+          "distinct": 0,
+          "missing": 32,
+          "values": {}
+        },
+        "stato": {
+          "distinct": 2,
+          "missing": 0,
+          "values": {
+            "presa_in_carico": 27,
+            "nuova": 5
+          }
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@controlli_mezzo_autisti",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 330,
+      "sample": {
+        "obbligatorio": true,
+        "target": "entrambi",
+        "timestamp": 1766308614682,
+        "badgeAutista": "517",
+        "targaCamion": "TI279216",
+        "targaRimorchio": "TI286620",
+        "id": "204470be-ee0a-42a3-96d2-dc776a08ae61",
+        "autistaNome": "GIUSEPPE MILIO",
+        "check": "{luci,perdite,freni,gomme}",
+        "note": null
+      },
+      "fieldFrequency": {
+        "obbligatorio": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "target": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "timestamp": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "badgeAutista": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targaCamion": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaNome": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "check": {
+          "present": 330,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "targaRimorchio": {
+          "present": 162,
+          "empty": 168,
+          "coverage": 0.491,
+          "types": [
+            "string"
+          ]
+        },
+        "note": {
+          "present": 11,
+          "empty": 319,
+          "coverage": 0.033,
+          "types": [
+            "string"
+          ]
+        },
+        "letta": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 0.027,
+          "types": [
+            "boolean"
+          ]
+        },
+        "linkedLavoroId": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.018,
+          "types": [
+            "string"
+          ]
+        },
+        "adminEdit": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.012,
+          "types": [
+            "object"
+          ]
+        },
+        "data": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.012,
+          "types": [
+            "number"
+          ]
+        },
+        "linkedMultiple": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 0.009,
+          "types": [
+            "boolean"
+          ]
+        },
+        "linkedLavoroIds": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 0.009,
+          "types": [
+            "array"
+          ]
+        }
+      },
+      "categoricals": {
+        "tipo": {
+          "distinct": 0,
+          "missing": 330,
+          "values": {}
+        },
+        "esito": {
+          "distinct": 0,
+          "missing": 330,
+          "values": {}
+        }
+      },
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@storico_eventi_operativi",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 270,
+      "sample": {
+        "autista": "GIUSEPPE MILIO",
+        "autistaNome": "GIUSEPPE MILIO",
+        "statoCarico": null,
+        "tipo": "CAMBIO_ASSETTO",
+        "nomeAutista": "GIUSEPPE MILIO",
+        "prima": "{targaMotrice,motrice,targaRimorchio,rimorchio}",
+        "condizioni": null,
+        "timestamp": 1770784920405,
+        "badgeAutista": "517",
+        "luogo": null,
+        "dopo": "{motrice,targaRimorchio,rimorchio,targaMotrice}",
+        "id": "CAMBIO_ASSETTO-517-1770784920405-TI313387-",
+        "source": "setup_confirm"
+      },
+      "fieldFrequency": {
+        "tipo": {
+          "present": 270,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "timestamp": {
+          "present": 270,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "id": {
+          "present": 270,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "source": {
+          "present": 270,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaNome": {
+          "present": 268,
+          "empty": 0,
+          "coverage": 0.993,
+          "types": [
+            "string"
+          ]
+        },
+        "badgeAutista": {
+          "present": 268,
+          "empty": 0,
+          "coverage": 0.993,
+          "types": [
+            "string"
+          ]
+        },
+        "autista": {
+          "present": 267,
+          "empty": 0,
+          "coverage": 0.989,
+          "types": [
+            "string"
+          ]
+        },
+        "nomeAutista": {
+          "present": 267,
+          "empty": 0,
+          "coverage": 0.989,
+          "types": [
+            "string"
+          ]
+        },
+        "prima": {
+          "present": 240,
+          "empty": 0,
+          "coverage": 0.889,
+          "types": [
+            "object"
+          ]
+        },
+        "dopo": {
+          "present": 240,
+          "empty": 0,
+          "coverage": 0.889,
+          "types": [
+            "object"
+          ]
+        },
+        "luogo": {
+          "present": 74,
+          "empty": 166,
+          "coverage": 0.274,
+          "types": [
+            "string"
+          ]
+        },
+        "statoCarico": {
+          "present": 31,
+          "empty": 206,
+          "coverage": 0.115,
+          "types": [
+            "string"
+          ]
+        },
+        "condizioni": {
+          "present": 31,
+          "empty": 206,
+          "coverage": 0.115,
+          "types": [
+            "object"
+          ]
+        },
+        "adminEdit": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.004,
+          "types": [
+            "object"
+          ]
+        }
+      },
+      "categoricals": {
+        "tipo": {
+          "distinct": 4,
+          "missing": 0,
+          "values": {
+            "CAMBIO_ASSETTO": 192,
+            "INIZIO_ASSETTO": 48,
+            "LOGIN_AUTISTA": 20,
+            "LOGOUT_AUTISTA": 10
+          }
+        },
+        "fonte": {
+          "distinct": 0,
+          "missing": 270,
+          "values": {}
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 270,
+          "values": {}
+        }
+      },
+      "dates": {
+        "data": {
+          "count": 0,
+          "missing": 270,
+          "invalid": 0
+        },
+        "timestamp": {
+          "count": 270,
+          "missing": 0,
+          "invalid": 0,
+          "future": 0,
+          "ancient": 0,
+          "min": "2026-02-11",
+          "max": "2026-04-30"
+        },
+        "createdAt": {
+          "count": 0,
+          "missing": 270,
+          "invalid": 0
+        }
+      },
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@autisti_sessione_attive",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 9,
+      "sample": {
+        "targaMotrice": "TI324633",
+        "timestamp": 1770034092353,
+        "nomeAutista": "DANIELE LIVI",
+        "badgeAutista": "503",
+        "targaRimorchio": "TI85688"
+      },
+      "fieldFrequency": {
+        "targaMotrice": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "timestamp": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "nomeAutista": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "badgeAutista": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targaRimorchio": {
+          "present": 7,
+          "empty": 2,
+          "coverage": 0.778,
+          "types": [
+            "string"
+          ]
+        }
+      },
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@richieste_attrezzature_autisti_tmp",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 12,
+      "sample": {
+        "id": "1752a432-470e-4f63-ad7d-96b41f2b1d59",
+        "stato": "nuova",
+        "autistaNome": "GIUSEPPE MILIO",
+        "letta": false,
+        "testo": "Prova",
+        "timestamp": 1766332925825,
+        "badgeAutista": "517",
+        "fotoDataUrl": null,
+        "targaCamion": "TI315407",
+        "targaRimorchio": "TI286621"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "stato": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaNome": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "letta": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "testo": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "timestamp": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "badgeAutista": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targaCamion": {
+          "present": 12,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targaRimorchio": {
+          "present": 6,
+          "empty": 6,
+          "coverage": 0.5,
+          "types": [
+            "string"
+          ]
+        },
+        "fotoStoragePath": {
+          "present": 3,
+          "empty": 5,
+          "coverage": 0.25,
+          "types": [
+            "string"
+          ]
+        },
+        "fotoUrl": {
+          "present": 3,
+          "empty": 5,
+          "coverage": 0.25,
+          "types": [
+            "string"
+          ]
+        },
+        "adminEdit": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.083,
+          "types": [
+            "object"
+          ]
+        },
+        "fotoDataUrl": {
+          "present": 0,
+          "empty": 5,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@cambi_gomme_autisti_tmp",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 10,
+      "sample": {
+        "data": 1774948980000,
+        "asseLabel": "Posteriore",
+        "categoria": "trattore stradale",
+        "km": 543423,
+        "rotazioneText": null,
+        "rotazioneAssi": null,
+        "targetTarga": "TI239045",
+        "adminEdit": "{note,editedBy,edited,editedAt}",
+        "id": "47d777a1-3de8-4ad7-9260-487bc9425bf4",
+        "marca": null,
+        "asseId": "posteriore",
+        "rotazioneSchema": null,
+        "contesto": "{targaRimorchio,targaCamion}",
+        "targetType": "motrice",
+        "timestamp": 1774948980000,
+        "gommeIds": "[array x4]",
+        "autista": "{badge,nome,id}",
+        "stato": "importato",
+        "tipo": "sostituzione",
+        "letta": true,
+        "assiConCambioGomme": "[array x0]"
+      },
+      "fieldFrequency": {
+        "data": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "asseLabel": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "categoria": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "km": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "targetTarga": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "asseId": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "contesto": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "targetType": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "gommeIds": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "array"
+          ]
+        },
+        "autista": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "stato": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipo": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "letta": {
+          "present": 10,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "marca": {
+          "present": 4,
+          "empty": 2,
+          "coverage": 0.4,
+          "types": [
+            "string"
+          ]
+        },
+        "adminEdit": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 0.2,
+          "types": [
+            "object"
+          ]
+        },
+        "timestamp": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 0.2,
+          "types": [
+            "number"
+          ]
+        },
+        "rotazioneText": {
+          "present": 0,
+          "empty": 10,
+          "coverage": 0,
+          "types": []
+        },
+        "rotazioneAssi": {
+          "present": 0,
+          "empty": 5,
+          "coverage": 0,
+          "types": []
+        },
+        "rotazioneSchema": {
+          "present": 0,
+          "empty": 10,
+          "coverage": 0,
+          "types": []
+        },
+        "assiConCambioGomme": {
+          "present": 0,
+          "empty": 5,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@gomme_eventi",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 9,
+      "sample": {
+        "targetType": "motrice",
+        "contesto": "{targaRimorchio,targaCamion}",
+        "rotazioneSchema": null,
+        "gommeIds": "[array x4]",
+        "autista": "{id,nome,badge}",
+        "tipo": "sostituzione",
+        "data": 1766928293851,
+        "asseLabel": "1° asse",
+        "km": 3589999,
+        "categoria": "motrice 2 assi",
+        "marca": "kumo prova",
+        "id": "4b0dcad6-5981-487a-b5a1-7979bf392092",
+        "targetTarga": "TI313387",
+        "rotazioneText": null,
+        "asseId": "asse1"
+      },
+      "fieldFrequency": {
+        "targetType": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "contesto": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "gommeIds": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "array"
+          ]
+        },
+        "autista": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "object"
+          ]
+        },
+        "tipo": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "data": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "asseLabel": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "km": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "categoria": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "id": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targetTarga": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "asseId": {
+          "present": 9,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "marca": {
+          "present": 5,
+          "empty": 4,
+          "coverage": 0.556,
+          "types": [
+            "string"
+          ]
+        },
+        "timestamp": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 0.222,
+          "types": [
+            "number"
+          ]
+        },
+        "adminEdit": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 0.222,
+          "types": [
+            "object"
+          ]
+        },
+        "rotazioneSchema": {
+          "present": 0,
+          "empty": 9,
+          "coverage": 0,
+          "types": []
+        },
+        "rotazioneText": {
+          "present": 0,
+          "empty": 9,
+          "coverage": 0,
+          "types": []
+        },
+        "rotazioneAssi": {
+          "present": 0,
+          "empty": 8,
+          "coverage": 0,
+          "types": []
+        },
+        "assiConCambioGomme": {
+          "present": 0,
+          "empty": 8,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 3,
+        "examples": [
+          [
+            "4cc2fbf7-9395-4b99-b4d1-419199a63d1c",
+            2
+          ],
+          [
+            "47d777a1-3de8-4ad7-9260-487bc9425bf4",
+            3
+          ]
+        ]
+      }
+    },
+    {
+      "key": "@mezzi_foto_viste",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@mezzi_hotspot_mapping",
+      "kind": "storage",
+      "exists": true,
+      "docTopFields": [
+        "value"
+      ],
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {},
+      "dates": {},
+      "duplicates": {
+        "totalDuplicates": 0,
+        "examples": []
+      }
+    },
+    {
+      "key": "@analisi_economica_mezzi",
+      "kind": "storage",
+      "exists": false,
+      "count": 0
+    },
+    {
+      "key": "@impostazioni_app",
+      "kind": "storage",
+      "exists": false,
+      "count": 0
+    }
+  ],
+  "collections": [
+    {
+      "name": "euromecc_pending",
+      "kind": "collection",
+      "exists": true,
+      "count": 4,
+      "sample": {
+        "id": "GuJd9XBXktu4Bq13YhQa",
+        "subKey": "cartucce",
+        "title": "Sostituzione cartucce scaricatore telescopico treno",
+        "areaKey": "caricoRail",
+        "dueDate": "2026-07-08",
+        "createdAt": "{seconds,nanoseconds}",
+        "note": "",
+        "updatedAt": "{seconds,nanoseconds}",
+        "priority": "alta"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "subKey": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "title": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "areaKey": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "dueDate": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "createdAt": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "updatedAt": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "priority": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "note": {
+          "present": 0,
+          "empty": 4,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "euromecc_done",
+      "kind": "collection",
+      "exists": true,
+      "count": 54,
+      "sample": {
+        "id": "2uRwx02MbJ4xUrgaV7Od",
+        "note": "cartucce N.1 e N.4",
+        "updatedAt": "{seconds,nanoseconds}",
+        "doneDate": "2025-08-29",
+        "title": "Sostituzione cartucce filtri silos N.1 e N.4",
+        "subKey": "set",
+        "by": "Lembo Giuseppe",
+        "createdAt": "{seconds,nanoseconds}",
+        "nextDate": null,
+        "closedPending": false,
+        "areaKey": "filtriSilo"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "updatedAt": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "doneDate": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "title": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "subKey": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "by": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "createdAt": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "closedPending": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "boolean"
+          ]
+        },
+        "areaKey": {
+          "present": 54,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "note": {
+          "present": 9,
+          "empty": 45,
+          "coverage": 0.167,
+          "types": [
+            "string"
+          ]
+        },
+        "nextDate": {
+          "present": 0,
+          "empty": 54,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "euromecc_issues",
+      "kind": "collection",
+      "exists": true,
+      "count": 2,
+      "sample": {
+        "id": "vyz9S4Ty4u9MH5gxfcpR",
+        "closedDate": null,
+        "subKey": "valvoleScarico",
+        "title": "MANOMETRO REGOLATORE PRESSIONE SILO 7 DIFETTOSO (NON APRE E NON CHIUDE LA MANICH…",
+        "check": "SOSTITUZIONE",
+        "reportedAt": "2026-04-23",
+        "updatedAt": "{seconds,nanoseconds}",
+        "note": "",
+        "type": "anomalia",
+        "state": "aperta",
+        "areaKey": "scaricoFornitore",
+        "reportedBy": "MILIO",
+        "createdAt": "{seconds,nanoseconds}"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "subKey": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "title": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "check": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "reportedAt": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "updatedAt": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "type": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "state": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "areaKey": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "reportedBy": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "createdAt": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "closedDate": {
+          "present": 0,
+          "empty": 2,
+          "coverage": 0,
+          "types": []
+        },
+        "note": {
+          "present": 0,
+          "empty": 2,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "euromecc_area_meta",
+      "kind": "collection",
+      "exists": false,
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "euromecc_relazioni",
+      "kind": "collection",
+      "exists": true,
+      "count": 2,
+      "sample": {
+        "id": "6VLffcWHAG9SjbdYZEuY",
+        "fileName": "ricambi-ghielmi-29.08.2025.pdf",
+        "fileStoragePath": null,
+        "extraComponentsCount": 0,
+        "dataIntervento": "2025-08-29",
+        "fileUrl": null,
+        "tecnici": "[array x0]",
+        "ordineId": "1775746467405-e51405",
+        "createdAt": "{seconds,nanoseconds}",
+        "fileSize": null,
+        "fileType": "pdf",
+        "statoImportazione": "confermata",
+        "doneCount": 0,
+        "pendingCount": 0,
+        "ordineMateriali": 14,
+        "note": "Lista ricambi — GHIELMIMPORT - STABIO - SVIZZERA",
+        "updatedAt": "{seconds,nanoseconds}"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fileName": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "extraComponentsCount": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "dataIntervento": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "createdAt": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "fileType": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "statoImportazione": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "doneCount": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "pendingCount": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "updatedAt": {
+          "present": 2,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "tecnici": {
+          "present": 1,
+          "empty": 1,
+          "coverage": 0.5,
+          "types": [
+            "array"
+          ]
+        },
+        "ordineId": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.5,
+          "types": [
+            "string"
+          ]
+        },
+        "ordineMateriali": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.5,
+          "types": [
+            "number"
+          ]
+        },
+        "note": {
+          "present": 1,
+          "empty": 1,
+          "coverage": 0.5,
+          "types": [
+            "string"
+          ]
+        },
+        "fileStoragePath": {
+          "present": 0,
+          "empty": 1,
+          "coverage": 0,
+          "types": []
+        },
+        "fileUrl": {
+          "present": 0,
+          "empty": 1,
+          "coverage": 0,
+          "types": []
+        },
+        "fileSize": {
+          "present": 0,
+          "empty": 1,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "euromecc_extra_components",
+      "kind": "collection",
+      "exists": false,
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "autisti_eventi",
+      "kind": "collection",
+      "exists": true,
+      "count": 105,
+      "sample": {
+        "id": "05nI9BHhHpU5ovglztE0",
+        "autistaNome": "GIUSEPPE MILIO",
+        "targaMotrice": "TI229717",
+        "targaRimorchio": "TI285217",
+        "tipo": "AGGANCIO_RIMORCHIO",
+        "badgeAutista": "517",
+        "createdAt": "{seconds,nanoseconds}",
+        "timestamp": 1766175248131
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 105,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "autistaNome": {
+          "present": 105,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipo": {
+          "present": 105,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "badgeAutista": {
+          "present": 105,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "createdAt": {
+          "present": 105,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "timestamp": {
+          "present": 105,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number"
+          ]
+        },
+        "targaMotrice": {
+          "present": 101,
+          "empty": 0,
+          "coverage": 0.962,
+          "types": [
+            "string"
+          ]
+        },
+        "targaRimorchio": {
+          "present": 70,
+          "empty": 0,
+          "coverage": 0.667,
+          "types": [
+            "string"
+          ]
+        },
+        "condizioni": {
+          "present": 52,
+          "empty": 0,
+          "coverage": 0.495,
+          "types": [
+            "object"
+          ]
+        },
+        "luogo": {
+          "present": 52,
+          "empty": 0,
+          "coverage": 0.495,
+          "types": [
+            "string"
+          ]
+        },
+        "statoCarico": {
+          "present": 17,
+          "empty": 0,
+          "coverage": 0.162,
+          "types": [
+            "string"
+          ]
+        }
+      },
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "chat_ia_reports",
+      "kind": "collection",
+      "exists": false,
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {},
+      "dates": {}
+    },
+    {
+      "name": "@documenti_mezzi",
+      "kind": "collection",
+      "exists": true,
+      "count": 11,
+      "sample": {
+        "id": "Lv35PGrXfh9YkDD8VdEm",
+        "fonte": "IA_ARCHIVISTA_V1",
+        "createdAt": "{seconds,nanoseconds}",
+        "statoArchivio": "archiviato",
+        "mezzoId": "5dc13a08-c060-4496-888f-1064979d2183",
+        "telaio": "ZA9 S35 A48 BAH 028 00",
+        "campiMancanti": "[array x0]",
+        "targa": "TI282780",
+        "nomeFile": "libretto 282780.png",
+        "categoriaArchivio": "MEZZO",
+        "fileStoragePath": "documenti_pdf/1777313781644_libretto_282780.png",
+        "dataImmatricolazione": "01 08 2022",
+        "assicurazione": null,
+        "documentoMezzoAggiornamentoConfermato": false,
+        "archivedAsDifferentFromId": null,
+        "dataScadenza": "09 04 2027",
+        "marca": null,
+        "fornitore": null,
+        "numeroDocumento": null,
+        "duplicateTarget": "@documenti_mezzi",
+        "famigliaArchivista": "documento_mezzo",
+        "tipoDocumento": "libretto",
+        "proprietario": "GHIELMICEMENTI SA",
+        "avvisi": "[array x0]",
+        "contestoArchivista": "documento_mezzo"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fonte": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "createdAt": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "targa": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "nomeFile": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "categoriaArchivio": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "tipoDocumento": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "dataDocumento": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fileUrl": {
+          "present": 11,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "testo": {
+          "present": 9,
+          "empty": 2,
+          "coverage": 0.818,
+          "types": [
+            "string"
+          ]
+        },
+        "telaio": {
+          "present": 8,
+          "empty": 2,
+          "coverage": 0.727,
+          "types": [
+            "string"
+          ]
+        },
+        "statoArchivio": {
+          "present": 7,
+          "empty": 0,
+          "coverage": 0.636,
+          "types": [
+            "string"
+          ]
+        },
+        "fileStoragePath": {
+          "present": 7,
+          "empty": 0,
+          "coverage": 0.636,
+          "types": [
+            "string"
+          ]
+        },
+        "famigliaArchivista": {
+          "present": 7,
+          "empty": 0,
+          "coverage": 0.636,
+          "types": [
+            "string"
+          ]
+        },
+        "contestoArchivista": {
+          "present": 7,
+          "empty": 0,
+          "coverage": 0.636,
+          "types": [
+            "string"
+          ]
+        },
+        "riassuntoBreve": {
+          "present": 7,
+          "empty": 0,
+          "coverage": 0.636,
+          "types": [
+            "string"
+          ]
+        },
+        "mezzoId": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "string"
+          ]
+        },
+        "dataImmatricolazione": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "string"
+          ]
+        },
+        "documentoMezzoAggiornamentoConfermato": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "boolean"
+          ]
+        },
+        "dataScadenza": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "string"
+          ]
+        },
+        "proprietario": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "string"
+          ]
+        },
+        "dataScadenzaRevisione": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "string"
+          ]
+        },
+        "sottotipoDocumentoMezzo": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "string"
+          ]
+        },
+        "dataUltimoCollaudo": {
+          "present": 6,
+          "empty": 0,
+          "coverage": 0.545,
+          "types": [
+            "string"
+          ]
+        },
+        "marca": {
+          "present": 5,
+          "empty": 5,
+          "coverage": 0.455,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitore": {
+          "present": 5,
+          "empty": 6,
+          "coverage": 0.455,
+          "types": [
+            "string"
+          ]
+        },
+        "numeroDocumento": {
+          "present": 5,
+          "empty": 6,
+          "coverage": 0.455,
+          "types": [
+            "string"
+          ]
+        },
+        "totaleDocumento": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 0.455,
+          "types": [
+            "string",
+            "number"
+          ]
+        },
+        "voci": {
+          "present": 5,
+          "empty": 0,
+          "coverage": 0.455,
+          "types": [
+            "array"
+          ]
+        },
+        "assicurazione": {
+          "present": 4,
+          "empty": 2,
+          "coverage": 0.364,
+          "types": [
+            "string"
+          ]
+        },
+        "modello": {
+          "present": 4,
+          "empty": 6,
+          "coverage": 0.364,
+          "types": [
+            "string"
+          ]
+        },
+        "ivaImporto": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.364,
+          "types": [
+            "string"
+          ]
+        },
+        "imponibile": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.364,
+          "types": [
+            "string"
+          ]
+        },
+        "valuta": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.364,
+          "types": [
+            "string"
+          ]
+        },
+        "ivaPercentuale": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.364,
+          "types": [
+            "string"
+          ]
+        },
+        "km": {
+          "present": 4,
+          "empty": 1,
+          "coverage": 0.364,
+          "types": [
+            "string",
+            "number"
+          ]
+        },
+        "archivistaAnalysis": {
+          "present": 4,
+          "empty": 0,
+          "coverage": 0.364,
+          "types": [
+            "object"
+          ]
+        },
+        "duplicateTarget": {
+          "present": 3,
+          "empty": 4,
+          "coverage": 0.273,
+          "types": [
+            "string"
+          ]
+        },
+        "duplicateOfId": {
+          "present": 3,
+          "empty": 4,
+          "coverage": 0.273,
+          "types": [
+            "string"
+          ]
+        },
+        "duplicateChoice": {
+          "present": 3,
+          "empty": 4,
+          "coverage": 0.273,
+          "types": [
+            "string"
+          ]
+        },
+        "campiMancanti": {
+          "present": 1,
+          "empty": 6,
+          "coverage": 0.091,
+          "types": [
+            "array"
+          ]
+        },
+        "avvisi": {
+          "present": 1,
+          "empty": 6,
+          "coverage": 0.091,
+          "types": [
+            "array"
+          ]
+        },
+        "valutaDocumento": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.091,
+          "types": [
+            "string"
+          ]
+        },
+        "archivedAsDifferentFromId": {
+          "present": 0,
+          "empty": 7,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "tipo": {
+          "distinct": 0,
+          "missing": 11,
+          "values": {}
+        },
+        "kind": {
+          "distinct": 0,
+          "missing": 11,
+          "values": {}
+        },
+        "tipoDocumento": {
+          "distinct": 4,
+          "missing": 0,
+          "values": {
+            "libretto": 6,
+            "PREVENTIVO": 2,
+            "Fattura": 2,
+            "fattura": 1
+          }
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 11,
+          "values": {}
+        }
+      },
+      "dates": {
+        "dataDocumento": {
+          "count": 11,
+          "missing": 0,
+          "invalid": 0,
+          "future": 0,
+          "ancient": 0,
+          "min": "2017-10-16",
+          "max": "2026-04-02"
+        },
+        "data": {
+          "count": 0,
+          "missing": 11,
+          "invalid": 0
+        }
+      }
+    },
+    {
+      "name": "@documenti_magazzino",
+      "kind": "collection",
+      "exists": true,
+      "count": 3,
+      "sample": {
+        "id": "1QGRmX0E2uEtM3q7obeZ",
+        "dataDocumento": "21-11-2025",
+        "fileUrl": "https://firebasestorage.googleapis.com/v0/b/gestionemanutenzione-934ef.firebases…",
+        "valuta": "EUR",
+        "fornitore": "TURBO DIESEL",
+        "marca": null,
+        "numeroDocumento": "785",
+        "imponibile": 2504,
+        "voci": "[array x3]",
+        "nomeFile": "turbo_diesel.pdf",
+        "testo": "TURBO DIESEL L'ARIA DEL TUO FUTURO Allestimento e riparazione compressori, impia…",
+        "km": null,
+        "ivaPercentuale": null,
+        "categoriaArchivio": "MAGAZZINO",
+        "modello": null,
+        "ivaImporto": 0,
+        "totaleDocumento": 2504,
+        "telaio": null,
+        "targa": null,
+        "fonte": "IA",
+        "createdAt": "{seconds,nanoseconds}",
+        "tipoDocumento": "FATTURA"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "dataDocumento": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fileUrl": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "valuta": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitore": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "numeroDocumento": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "imponibile": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number",
+            "string"
+          ]
+        },
+        "voci": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "array"
+          ]
+        },
+        "nomeFile": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "testo": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "categoriaArchivio": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "totaleDocumento": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "number",
+            "string"
+          ]
+        },
+        "fonte": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "createdAt": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "tipoDocumento": {
+          "present": 3,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "ivaImporto": {
+          "present": 2,
+          "empty": 1,
+          "coverage": 0.667,
+          "types": [
+            "number",
+            "string"
+          ]
+        },
+        "ivaPercentuale": {
+          "present": 1,
+          "empty": 2,
+          "coverage": 0.333,
+          "types": [
+            "string"
+          ]
+        },
+        "archivistaAnalysis": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 0.333,
+          "types": [
+            "object"
+          ]
+        },
+        "marca": {
+          "present": 0,
+          "empty": 3,
+          "coverage": 0,
+          "types": []
+        },
+        "km": {
+          "present": 0,
+          "empty": 3,
+          "coverage": 0,
+          "types": []
+        },
+        "modello": {
+          "present": 0,
+          "empty": 3,
+          "coverage": 0,
+          "types": []
+        },
+        "telaio": {
+          "present": 0,
+          "empty": 3,
+          "coverage": 0,
+          "types": []
+        },
+        "targa": {
+          "present": 0,
+          "empty": 3,
+          "coverage": 0,
+          "types": []
+        }
+      },
+      "categoricals": {
+        "tipo": {
+          "distinct": 0,
+          "missing": 3,
+          "values": {}
+        },
+        "kind": {
+          "distinct": 0,
+          "missing": 3,
+          "values": {}
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 3,
+          "values": {}
+        }
+      },
+      "dates": {
+        "dataDocumento": {
+          "count": 3,
+          "missing": 0,
+          "invalid": 0,
+          "future": 0,
+          "ancient": 0,
+          "min": "2025-11-20",
+          "max": "2026-03-25"
+        },
+        "data": {
+          "count": 0,
+          "missing": 3,
+          "invalid": 0
+        }
+      }
+    },
+    {
+      "name": "@documenti_generici",
+      "kind": "collection",
+      "exists": false,
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {
+        "tipo": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        },
+        "kind": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        }
+      },
+      "dates": {
+        "dataDocumento": {
+          "count": 0,
+          "missing": 0,
+          "invalid": 0
+        },
+        "data": {
+          "count": 0,
+          "missing": 0,
+          "invalid": 0
+        }
+      }
+    },
+    {
+      "name": "@costiMezzo",
+      "kind": "collection",
+      "exists": false,
+      "count": 0,
+      "sample": null,
+      "fieldFrequency": {},
+      "categoricals": {
+        "tipo": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        },
+        "categoria": {
+          "distinct": 0,
+          "missing": 0,
+          "values": {}
+        }
+      },
+      "dates": {
+        "dataDocumento": {
+          "count": 0,
+          "missing": 0,
+          "invalid": 0
+        },
+        "data": {
+          "count": 0,
+          "missing": 0,
+          "invalid": 0
+        }
+      }
+    },
+    {
+      "name": "@analisi_economica_mezzi",
+      "kind": "collection",
+      "exists": true,
+      "count": 1,
+      "sample": {
+        "id": "TI324623",
+        "updatedAt": "{seconds,nanoseconds}",
+        "analisiCosti": "Il costo reale totale identificato dalle fatture ammonta a 320.00 CHF. Questo co…",
+        "anomalie": "Sono state riscontrate le seguenti anomalie:\n-   **Inconsistenza minore nell'imp…",
+        "targa": "TI324623",
+        "fornitoriNotevoli": "L'unico fornitore coinvolto nei documenti analizzati è Agustoni Trucks / Aguston…",
+        "riepilogoBreve": "È stata analizzata una fattura per un costo reale di 320.00 CHF. Questa fattura …"
+      },
+      "fieldFrequency": {
+        "id": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "updatedAt": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "Timestamp"
+          ]
+        },
+        "analisiCosti": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "anomalie": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "targa": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "fornitoriNotevoli": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        },
+        "riepilogoBreve": {
+          "present": 1,
+          "empty": 0,
+          "coverage": 1,
+          "types": [
+            "string"
+          ]
+        }
+      },
+      "categoricals": {},
+      "dates": {}
+    }
+  ]
+}

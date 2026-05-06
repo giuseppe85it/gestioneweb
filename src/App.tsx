@@ -2,15 +2,14 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { auth } from "./firebase";
 
-import { Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Outlet, Navigate } from "react-router-dom";
 import "./App.css";
 import NextHomePage from "./next/NextHomePage";
 import NextCentroControlloParityPage from "./next/NextCentroControlloParityPage";
-import NextIntelligenzaArtificialePage from "./next/NextIntelligenzaArtificialePage";
+import NextScadenzeCollaudiPage from "./next/NextScadenzeCollaudiPage";
 import ChatIaPage from "./next/chat-ia/ChatIaPage";
 import ChatIaToolUsePage from "./next/chat-ia/ChatIaToolUsePage";
 import NextIAArchivistaPage from "./next/NextIAArchivistaPage";
-import NextIAApiKeyPage from "./next/NextIAApiKeyPage";
 import NextIALibrettoPage from "./next/NextIALibrettoPage";
 import NextIADocumentiPage from "./next/NextIADocumentiPage";
 import NextIACoperturaLibrettiPage from "./next/NextIACoperturaLibrettiPage";
@@ -42,7 +41,6 @@ import NextLavoriDaEseguirePage from "./next/NextLavoriDaEseguirePage";
 import NextDettaglioLavoroPage from "./next/NextDettaglioLavoroPage";
 import NextGestioneOperativaPage from "./next/NextGestioneOperativaPage";
 import NextMagazzinoPage from "./next/NextMagazzinoPage";
-import NextStrumentiUnisciDocumentiPage from "./next/NextStrumentiUnisciDocumentiPage";
 import NextAttrezzatureCantieriPage from "./next/NextAttrezzatureCantieriPage";
 import NextManutenzioniPage from "./next/NextManutenzioniPage";
 import NextAcquistiPage from "./next/NextAcquistiPage";
@@ -141,20 +139,6 @@ import RichiestaAttrezzatureAll from "./autistiInbox/RichiestaAttrezzatureAll";
 import AutistiGommeAll from "./autistiInbox/AutistiGommeAll";
 import AutistiLogAccessiAll from "./autistiInbox/AutistiLogAccessiAll";
 
-function NextLegacyIaRedirect() {
-  const location = useLocation();
-
-  return (
-    <Navigate
-      replace
-      to={{
-        pathname: "/next/ia",
-        search: location.search,
-      }}
-    />
-  );
-}
-
 function NextAnagraficheAliasRedirect({
   to,
   legacyFallback,
@@ -218,6 +202,14 @@ function App() {
           }
         />
         <Route
+          path="scadenze-collaudi"
+          element={
+            <NextRoleGuard areaId="centro-controllo">
+              <NextScadenzeCollaudiPage />
+            </NextRoleGuard>
+          }
+        />
+        <Route
           path="gestione-operativa"
           element={
             <NextRoleGuard areaId="operativita-globale">
@@ -238,14 +230,6 @@ function App() {
           element={
             <NextRoleGuard areaId="operativita-globale">
               <NextMagazzinoPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
-          path="strumenti/unisci-documenti"
-          element={
-            <NextRoleGuard areaId="operativita-globale">
-              <NextStrumentiUnisciDocumentiPage />
             </NextRoleGuard>
           }
         />
@@ -496,14 +480,6 @@ function App() {
           }
         />
         <Route
-          path="ia"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextIntelligenzaArtificialePage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
           path="chat"
           element={
             <NextRoleGuard areaId="ia">
@@ -616,14 +592,6 @@ function App() {
           }
         />
         <Route
-          path="ia/apikey"
-          element={
-            <NextRoleGuard areaId="ia">
-              <NextIAApiKeyPage />
-            </NextRoleGuard>
-          }
-        />
-        <Route
           path="ia/libretto"
           element={
             <NextRoleGuard areaId="ia">
@@ -655,7 +623,6 @@ function App() {
             </NextRoleGuard>
           }
         />
-        <Route path="ia-gestionale" element={<NextLegacyIaRedirect />} />
         <Route path="*" element={<NextRoleLandingRedirect />} />
       </Route>
 

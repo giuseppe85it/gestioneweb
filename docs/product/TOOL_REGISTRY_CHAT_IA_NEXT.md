@@ -1,20 +1,36 @@
 # TOOL REGISTRY CHAT IA NEXT
 
-Versione: 2026-04-28  
+Versione: 2026-04-29  
 Autore: Codex  
 Stato: fonte operativa per implementazione tool chat IA NEXT  
 Ambito: tool registry OpenAI function calling per `/next/chat-tool`
 
 ## INTRODUZIONE
 
-Questo documento traduce l'audit `docs/audit/AUDIT_DATI_NEXT_TOOL_CANDIDATI_2026-04-28.md` in una specifica implementativa completa per i tool della chat IA NEXT.
+Questo documento traduce l'audit `docs/audit/AUDIT_DATI_NEXT_TOOL_CANDIDATI_2026-04-28.md` e l'audit gap `docs/audit/AUDIT_GAP_COPERTURA_TOOL_2026-04-28.md` in una specifica implementativa completa per i tool della chat IA NEXT.
+
+Aggiornamento Round 2:
+
+- Totale registry: 65 tool = 41 tool gia specificati + 24 tool nuovi emersi dall'audit gap.
+- Stato implementazione: 37 implementati nel codice reale, 4 BLOCCATO originali, 21 nuovi da implementare, 3 BLOCCATO GAP-D.
+- I 24 tool Round 2 derivano da `docs/audit/AUDIT_GAP_COPERTURA_TOOL_2026-04-28.md`, sezioni 11-14.
+- Le 6 estensioni reader prerequisito Round 2 sono documentate in sezione dedicata e non vanno confuse con tool gia operativi.
+- Archivista interno fuori perimetro: questo registry non analizza ne estende il sottosistema archivista.
 
 Riferimenti:
 
 - Audit tool candidati: `docs/audit/AUDIT_DATI_NEXT_TOOL_CANDIDATI_2026-04-28.md:316-689`.
+- Audit gap copertura tool: `docs/audit/AUDIT_GAP_COPERTURA_TOOL_2026-04-28.md:420-534`.
 - Architettura tool use: `docs/product/SPEC_ARCHITETTURA_TOOL_USE_CHAT_IA_NEXT.md:184-221`.
 - Tipi tool runtime: `src/next/chat-ia/tools/chatIaToolTypes.ts:24-42`.
 - Primo tool gia implementato: `src/next/chat-ia/tools/registry/toolGetVehicleByPlate.ts:12`.
+
+Bloccati originali nel set da 41:
+
+- BLOCCATO originale: `search_events` richiede reader flotta-wide dedicato.
+- BLOCCATO originale: `get_cisterna_levels` richiede campo livello/giacenza verificato.
+- BLOCCATO originale: `generate_chart` richiede wrapper UI chart.
+- BLOCCATO originale: `open_vehicle_edit_modal` richiede route-state/query param per apertura modal.
 
 Convenzioni:
 
@@ -849,6 +865,732 @@ type DeleteArchivedReportOutput = { deleted: true; id: string };
 - categoria_audit: K.
 - example_prompts: "elimina report 123"; "rimuovi report archiviato"; "cancella vecchio report chat".
 
+## TOOL NUOVI ROUND 2 (audit gap)
+
+Fonte: `docs/audit/AUDIT_GAP_COPERTURA_TOOL_2026-04-28.md`, sezioni 11, 12, 13, 14.
+
+I tool Round 2 sono aggiuntivi rispetto ai 41 tool gia specificati. Non riscrivono le specifiche precedenti.
+
+### Tool nuovi ALTA priorita
+
+### TOOL: search_vehicles_by_attribute
+
+- nome: `search_vehicles_by_attribute`
+- categoria: `lettura_mezzi`
+- description_per_openai: "Cerca mezzi per attributi diversi dalla targa, inclusi telaio, marca, modello, autista e campi libretto raw quando disponibili. Usa quando l'utente scrive un numero di telaio o chiede di trovare il mezzo da un dato anagrafico."
+- parameters:
+```json
+{"type":"object","properties":{"query":{"type":"string"},"field":{"type":"string","enum":["auto","targa","telaio","marca","modello","autista","libretto_raw"]},"includeRawLibretto":{"type":"boolean"}},"required":["query"],"additionalProperties":false}
+```
+- output_shape:
+```ts
+type SearchVehiclesByAttributeOutput = { query: string; field: string; matches: Array<{ mezzo: NextAnagraficheFlottaMezzoItem; matchedFields: string[]; score: number }>; total: number };
+```
+- implementation: `readNextAnagraficheFlottaSnapshot` (`src/next/nextAnagraficheFlottaDomain.ts:763`), campo `telaio` in `NextAnagraficheFlottaMezzoItem` (`src/next/nextAnagraficheFlottaDomain.ts:79`, `src/next/nextAnagraficheFlottaDomain.ts:88`); campi raw libretto dopo ESTENSIONE 1.
+- prerequisiti: `SUBITO` per targa/telaio/marca/modello/autista; `ESTENSIONE READER 1` per `libretto_raw`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolSearchVehiclesByAttribute.ts`
+- categoria_audit: A1
+- priorita: ALTA
+- example_prompts: "trova il mezzo con telaio X123"; "a quale targa corrisponde questo numero di telaio?"; "cerca mezzo guidato da Rossi".
+
+### TOOL: list_vehicles_without_driver
+
+- nome: `list_vehicles_without_driver`
+- categoria: `lettura_mezzi`
+- description_per_openai: "Elenca i mezzi senza autista assegnato. Usa quando l'utente chiede mezzi liberi, mezzi senza autista o assegnazioni mancanti."
+- parameters:
+```json
+{"type":"object","properties":{"categoria":{"type":"string"},"includeQualityFlags":{"type":"boolean"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type ListVehiclesWithoutDriverOutput = { items: NextAnagraficheFlottaMezzoItem[]; total: number; appliedFilters: { categoria?: string } };
+```
+- implementation: `readNextAnagraficheFlottaSnapshot` (`src/next/nextAnagraficheFlottaDomain.ts:763`), campi `autistaNome` e quality flags (`src/next/nextAnagraficheFlottaDomain.ts:110`, `src/next/nextAnagraficheFlottaDomain.ts:493`).
+- prerequisiti: `SUBITO`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolListVehiclesWithoutDriver.ts`
+- categoria_audit: A2
+- priorita: ALTA
+- example_prompts: "mezzi senza autista"; "quali mezzi non hanno assegnazione?"; "lista camion senza autista".
+
+### TOOL: get_site_equipment
+
+- nome: `get_site_equipment`
+- categoria: `lettura_attrezzature_cantieri`
+- description_per_openai: "Recupera attrezzature e movimenti assegnati a un cantiere. Usa quando l'utente chiede cosa c'e in un cantiere, cosa e stato consegnato, spostato o ritirato."
+- parameters:
+```json
+{"type":"object","properties":{"cantiere":{"type":"string"},"tipo":{"type":"string","enum":["consegna","spostamento","ritiro","tutti"]},"categoria":{"type":"string"},"soloAttuali":{"type":"boolean"}},"required":["cantiere"],"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetSiteEquipmentOutput = { cantiere: string; statoAttuale: unknown[]; movimenti: NextAttrezzaturaMovimentoReadOnlyItem[]; total: number; limitations: string[] };
+```
+- implementation: `readNextAttrezzatureCantieriSnapshot` (`src/next/domain/nextAttrezzatureCantieriDomain.ts:509`), tipo `NextAttrezzaturaMovimentoReadOnlyItem` (`src/next/domain/nextAttrezzatureCantieriDomain.ts:35`).
+- prerequisiti: `SUBITO`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetSiteEquipment.ts`
+- categoria_audit: A3
+- priorita: ALTA
+- example_prompts: "attrezzature al cantiere Via Roma"; "cosa e assegnato al cantiere X?"; "movimenti attrezzature per Caravate".
+
+### TOOL: list_inventory
+
+- nome: `list_inventory`
+- categoria: `lettura_magazzino`
+- description_per_openai: "Interroga l'inventario magazzino per testo, fornitore o stato stock. Usa quando l'utente chiede disponibilita, quantita o materiale presente in magazzino."
+- parameters:
+```json
+{"type":"object","properties":{"testo":{"type":"string"},"fornitore":{"type":"string"},"stockStatus":{"type":"string","enum":["ok","basso","zero","tutti"]},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type ListInventoryOutput = { items: NextInventarioReadOnlyItem[]; total: number; appliedFilters: Record<string, unknown> };
+```
+- implementation: `readNextInventarioSnapshot` (`src/next/domain/nextInventarioDomain.ts:235`), tipo `NextInventarioReadOnlyItem` (`src/next/domain/nextInventarioDomain.ts:29`).
+- prerequisiti: `SUBITO`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolListInventory.ts`
+- categoria_audit: A5
+- priorita: ALTA
+- example_prompts: "abbiamo cemento in magazzino?"; "inventario sotto scorta"; "quante fascette ci sono?".
+
+### TOOL: get_material_movements
+
+- nome: `get_material_movements`
+- categoria: `lettura_magazzino`
+- description_per_openai: "Recupera movimenti e consegne materiali per targa, destinatario, materiale o periodo. Usa quando l'utente chiede dove e stato consegnato un materiale o quali materiali ha ricevuto un mezzo."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"destinatario":{"type":"string"},"materiale":{"type":"string"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetMaterialMovementsOutput = { items: NextMaterialeMovimentoReadOnlyItem[]; total: number; appliedFilters: Record<string, unknown> };
+```
+- implementation: `readNextMaterialiMovimentiSnapshot` (`src/next/domain/nextMaterialiMovimentiDomain.ts:1125`), tipo `NextMaterialeMovimentoReadOnlyItem` (`src/next/domain/nextMaterialiMovimentiDomain.ts:117`), snapshot magazzino reale `readNextMagazzinoRealeSnapshot` (`src/next/domain/nextMaterialiMovimentiDomain.ts:1630`).
+- prerequisiti: `SUBITO`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetMaterialMovements.ts`
+- categoria_audit: A6
+- priorita: ALTA
+- example_prompts: "materiali consegnati a TI282780"; "che materiali ha preso Rossi?"; "movimenti cemento aprile".
+
+### TOOL: search_documents_and_invoices
+
+- nome: `search_documents_and_invoices`
+- categoria: `lettura_documenti`
+- description_per_openai: "Cerca documenti, fatture e costi per numero, fornitore, targa, importo, tipo o periodo. Usa quando l'utente identifica una fattura senza conoscere il mezzo o l'id."
+- parameters:
+```json
+{"type":"object","properties":{"numero":{"type":"string"},"fornitore":{"type":"string"},"targa":{"type":"string"},"tipo":{"type":"string"},"importo":{"type":"number"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type SearchDocumentsAndInvoicesOutput = { items: Array<NextIADocumentiArchiveItem | NextDocumentiCostiReadOnlyItem>; total: number; sources: string[]; warnings: string[] };
+```
+- implementation: `readNextIADocumentiArchiveSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2010`), `readNextDocumentiCostiFleetSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2247`).
+- prerequisiti: `SUBITO`; la normalizzazione match per numero/importo deve restare deterministica.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolSearchDocumentsAndInvoices.ts`
+- categoria_audit: A11
+- priorita: ALTA
+- example_prompts: "trova fattura 1234"; "fatture Rossi aprile 2026"; "documenti da 450 franchi".
+
+### TOOL: search_operational_events
+
+- nome: `search_operational_events`
+- categoria: `lettura_eventi_operativi`
+- description_per_openai: "Cerca eventi operativi, sessioni, segnalazioni, controlli e richieste per targa, autista, tipo, periodo o testo. Usa quando l'utente chiede anomalie o eventi operativi su flotta e autisti."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"autista":{"type":"string"},"badge":{"type":"string"},"tipo":{"type":"string"},"testo":{"type":"string"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type SearchOperationalEventsOutput = { items: unknown[]; total: number; sources: string[]; appliedFilters: Record<string, unknown> };
+```
+- implementation: `readNextAutistiReadOnlySnapshot` (`src/next/domain/nextAutistiDomain.ts:1176`), `readNextCentroControlloSnapshot` (`src/next/domain/nextCentroControlloDomain.ts:1627`).
+- prerequisiti: `SUBITO`; sostituisce il gap di ricerca globale senza usare matching semantico opaco.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolSearchOperationalEvents.ts`
+- categoria_audit: A12
+- priorita: ALTA
+- example_prompts: "segnalazioni su TI282780"; "eventi di Rossi questa settimana"; "controlli con esito KO".
+
+### TOOL: search_work_orders
+
+- nome: `search_work_orders`
+- categoria: `lettura_lavori`
+- description_per_openai: "Cerca lavori aperti, in attesa o eseguiti per targa, stato, urgenza o testo. Usa quando l'utente chiede lavori da fare, lavori chiusi o interventi pendenti."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"stato":{"type":"string","enum":["da_eseguire","in_attesa","eseguito","tutti"]},"urgenza":{"type":"string","enum":["bassa","media","alta"]},"testo":{"type":"string"},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type SearchWorkOrdersOutput = { items: NextLavoroReadOnlyItem[]; total: number; groups?: unknown[]; appliedFilters: Record<string, unknown> };
+```
+- implementation: `readNextLavoriInAttesaSnapshot` (`src/next/domain/nextLavoriDomain.ts:934`), `readNextLavoriEseguitiSnapshot` (`src/next/domain/nextLavoriDomain.ts:940`), `readNextLavoriLegacyDataset` (`src/next/domain/nextLavoriDomain.ts:1147`).
+- prerequisiti: `SUBITO`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolSearchWorkOrders.ts`
+- categoria_audit: A13
+- priorita: ALTA
+- example_prompts: "lavori aperti su TI282780"; "lavori urgenti"; "lavori eseguiti ieri".
+
+### TOOL: list_scheduled_maintenance_due
+
+- nome: `list_scheduled_maintenance_due`
+- categoria: `lettura_manutenzioni`
+- description_per_openai: "Elenca i mezzi con manutenzione programmata scaduta, in scadenza o valida, calcolando i giorni residui. Usa quando l'utente chiede manutenzioni programmate della flotta."
+- parameters:
+```json
+{"type":"object","properties":{"entroGiorni":{"type":"number"},"status":{"type":"string","enum":["scaduta","in_scadenza","valida","senza_data","tutti"]},"categoria":{"type":"string"},"includeHistory":{"type":"boolean"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type ListScheduledMaintenanceDueOutput = { items: Array<{ targa: string; categoria: string; manutenzioneDataFine: string | null; daysToDeadline: number | null; status: string; mezzo: NextAnagraficheFlottaMezzoItem }>; total: number };
+```
+- implementation: `readNextAnagraficheFlottaSnapshot` (`src/next/nextAnagraficheFlottaDomain.ts:763`), campi manutenzione (`src/next/nextAnagraficheFlottaDomain.ts:104`, `src/next/nextAnagraficheFlottaDomain.ts:105`), storico opzionale `readNextMezzoManutenzioniSnapshot` (`src/next/domain/nextManutenzioniDomain.ts:663`).
+- prerequisiti: `SUBITO`; helper data/status locale.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolListScheduledMaintenanceDue.ts`
+- categoria_audit: C1
+- priorita: ALTA
+- example_prompts: "mezzi con manutenzione in scadenza"; "manutenzioni programmate scadute"; "cosa scade nei prossimi 30 giorni?".
+
+### TOOL: get_vehicle_cost_summary
+
+- nome: `get_vehicle_cost_summary`
+- categoria: `lettura_costi`
+- description_per_openai: "Calcola un riepilogo costi robusto per mezzo e periodo, con subtotali e fonti. Usa quando l'utente chiede costi totali annuali o per categoria di una targa."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false},"includeProcurement":{"type":"boolean"},"groupBy":{"type":"string","enum":["categoria","mese","fornitore","nessuno"]}},"required":["targa"],"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetVehicleCostSummaryOutput = { targa: string; periodo?: { from?: string; to?: string }; totale: number; valuta?: string; subtotali: Array<{ key: string; totale: number; count: number }>; sources: string[]; warnings: string[] };
+```
+- implementation: `readNextMezzoDocumentiCostiSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2313`), `readNextMezzoDocumentiCostiPeriodView` (`src/next/domain/nextDocumentiCostiDomain.ts:2391`), procurement opzionale `readNextProcurementSnapshot` (`src/next/domain/nextProcurementDomain.ts:906`).
+- prerequisiti: `SUBITO`; dedup e conversioni valuta devono essere dichiarati nel risultato.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetVehicleCostSummary.ts`
+- categoria_audit: C2
+- priorita: ALTA
+- example_prompts: "costi totali TI282780 nel 2026"; "spese manutenzione TI282780"; "quanto e costato TI282780 quest'anno?".
+
+### Tool nuovi MEDIA priorita
+
+### TOOL: list_suppliers
+
+- nome: `list_suppliers`
+- categoria: `lettura_anagrafiche`
+- description_per_openai: "Elenca o cerca fornitori, con collegamento ai dati procurement quando richiesto. Usa quando l'utente chiede profilo, telefono o fornitore collegato ad acquisti."
+- parameters:
+```json
+{"type":"object","properties":{"testo":{"type":"string"},"id":{"type":"string"},"conAcquisti":{"type":"boolean"},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type ListSuppliersOutput = { items: NextFornitoreReadOnlyItem[]; total: number; procurementMatches?: unknown[] };
+```
+- implementation: `readNextFornitoriSnapshot` (`src/next/domain/nextFornitoriDomain.ts:204`), tipo `NextFornitoreReadOnlyItem` (`src/next/domain/nextFornitoriDomain.ts:29`), procurement opzionale `readNextProcurementSnapshot` (`src/next/domain/nextProcurementDomain.ts:906`).
+- prerequisiti: `SUBITO`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolListSuppliers.ts`
+- categoria_audit: A4
+- priorita: MEDIA
+- example_prompts: "lista fornitori"; "telefono fornitore Rossi"; "fornitori con preventivi".
+
+### TOOL: get_adblue_tank_events
+
+- nome: `get_adblue_tank_events`
+- categoria: `lettura_magazzino`
+- description_per_openai: "Recupera eventi e stock AdBlue disponibili nel magazzino NEXT. Usa quando l'utente chiede situazione AdBlue, carichi o movimenti cisterna AdBlue."
+- parameters:
+```json
+{"type":"object","properties":{"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false},"impianto":{"type":"string"},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetAdBlueTankEventsOutput = { snapshot: NextMagazzinoAdBlueSnapshot; items: unknown[]; total: number; warnings: string[] };
+```
+- implementation: `readNextMagazzinoAdBlueSnapshot` (`src/next/domain/nextMaterialiMovimentiDomain.ts:1582`), dataset `@cisterne_adblue` (`src/next/domain/nextMaterialiMovimentiDomain.ts:27`).
+- prerequisiti: `SUBITO`; `ESTENSIONE READER 5` solo se si vuole alias dedicato `readNextAdBlueSnapshot`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetAdBlueTankEvents.ts`
+- categoria_audit: A7
+- priorita: MEDIA
+- example_prompts: "stato AdBlue"; "carichi AdBlue aprile"; "eventi cisterna AdBlue".
+
+### TOOL: get_euromecc_snapshot
+
+- nome: `get_euromecc_snapshot`
+- categoria: `lettura_euromecc`
+- description_per_openai: "Recupera task, completati e problemi Euromecc. Usa quando l'utente chiede attivita aperte, issue o storico Euromecc."
+- parameters:
+```json
+{"type":"object","properties":{"area":{"type":"string"},"state":{"type":"string","enum":["pending","done","issue","all"]},"priority":{"type":"string"},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetEuromeccSnapshotOutput = { snapshot: EuromeccSnapshot; items: unknown[]; total: number; limitations: string[] };
+```
+- implementation: `readEuromeccSnapshot` (`src/next/domain/nextEuromeccDomain.ts:394`), collections `euromecc_pending`, `euromecc_done`, `euromecc_issues`, `euromecc_area_meta` (`src/next/domain/nextEuromeccDomain.ts:20`, `src/next/domain/nextEuromeccDomain.ts:23`).
+- prerequisiti: `SUBITO` per snapshot base; estensione futura per `euromecc_relazioni` e `euromecc_extra_components`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetEuromeccSnapshot.ts`
+- categoria_audit: A8
+- priorita: MEDIA
+- example_prompts: "task Euromecc aperti"; "problemi Euromecc area X"; "storico Euromecc completati".
+
+### TOOL: list_workshops
+
+- nome: `list_workshops`
+- categoria: `lettura_anagrafiche`
+- description_per_openai: "Elenca o cerca officine registrate in NEXT. Usa quando l'utente chiede officine, telefoni officina o anagrafiche officine."
+- parameters:
+```json
+{"type":"object","properties":{"testo":{"type":"string"},"citta":{"type":"string"},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type ListWorkshopsOutput = { items: NextOfficinaReadOnlyItem[]; total: number; appliedFilters: Record<string, unknown> };
+```
+- implementation: `readNextOfficineSnapshot` (`src/next/domain/nextOfficineDomain.ts:204`), tipo `NextOfficinaReadOnlyItem` (`src/next/domain/nextOfficineDomain.ts:29`), datasource `@officine` (`src/next/domain/nextOfficineDomain.ts:9`).
+- prerequisiti: `SUBITO`.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolListWorkshops.ts`
+- categoria_audit: A9
+- priorita: MEDIA
+- example_prompts: "lista officine"; "telefono officina di Bellinzona"; "cerca officina Rossi".
+
+### TOOL: get_saved_economic_analysis
+
+- nome: `get_saved_economic_analysis`
+- categoria: `lettura_costi`
+- description_per_openai: "Recupera analisi economiche IA salvate per una targa. Usa quando l'utente chiede l'ultima analisi economica salvata o confronti con costi documentali."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false}},"required":["targa"],"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetSavedEconomicAnalysisOutput = { targa: string; savedAnalysis: unknown | null; sourceCollection: "@analisi_economica_mezzi"; warnings: string[] };
+```
+- implementation: supporto analisi in `readNextDossierMezzoCompositeSnapshot` (`src/next/domain/nextDossierMezzoDomain.ts:747`), collection `@analisi_economica_mezzi` (`src/next/domain/nextDossierMezzoDomain.ts:50`), lettura documento (`src/next/domain/nextDossierMezzoDomain.ts:507`).
+- prerequisiti: `SUBITO` per targa; `ESTENSIONE READER 3` per indice fleet-wide dedicato.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetSavedEconomicAnalysis.ts`
+- categoria_audit: A10
+- priorita: MEDIA
+- example_prompts: "analisi economica salvata TI282780"; "ultima analisi IA del mezzo"; "recupera analisi economica".
+
+### TOOL: get_procurement_materials_by_destination
+
+- nome: `get_procurement_materials_by_destination`
+- categoria: `lettura_procurement`
+- description_per_openai: "Cerca materiali da ordinare o ordinati per destinazione, targa, stato o fornitore. Usa quando l'utente chiede materiali in attesa per un mezzo o una destinazione."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"destinazione":{"type":"string"},"stato":{"type":"string","enum":["in_attesa","arrivato","tutti"]},"fornitore":{"type":"string"},"limit":{"type":"number"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetProcurementMaterialsByDestinationOutput = { items: unknown[]; total: number; unresolvedDestinationRows: number; warnings: string[] };
+```
+- implementation: `readNextProcurementSnapshot` (`src/next/domain/nextProcurementDomain.ts:906`), scritture ordine/foto in `NextMaterialiDaOrdinarePage.tsx` (`src/next/NextMaterialiDaOrdinarePage.tsx:1140`, `src/next/NextMaterialiDaOrdinarePage.tsx:1164`).
+- prerequisiti: `ESTENSIONE READER 2`; senza relazione targa/destinazione normalizzata il tool deve restituire `DA VERIFICARE` sulle righe ambigue.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetProcurementMaterialsByDestination.ts`
+- categoria_audit: C3
+- priorita: MEDIA
+- example_prompts: "materiali da ordinare per TI282780"; "cosa manca per il mezzo X?"; "ordini in attesa per cantiere Y".
+
+### TOOL: reconcile_cisterna_month
+
+- nome: `reconcile_cisterna_month`
+- categoria: `lettura_cisterna`
+- description_per_openai: "Riconcilia un mese Cisterna tra documenti, schede, supporto autisti e parametri mensili. Usa quando l'utente chiede differenze, duplicati o spiegazione del report Cisterna."
+- parameters:
+```json
+{"type":"object","properties":{"monthKey":{"type":"string"},"includeRows":{"type":"boolean"},"focus":{"type":"string","enum":["duplicati","litri","costi","aziende","tutti"]}},"required":["monthKey"],"additionalProperties":false}
+```
+- output_shape:
+```ts
+type ReconcileCisternaMonthOutput = { monthKey: string; snapshot: NextCisternaSnapshot; reconciliation: { differences: unknown[]; duplicateGroups: unknown[]; notes: string[] } };
+```
+- implementation: `readNextCisternaSnapshot` (`src/next/domain/nextCisternaDomain.ts:1240`), dettaglio scheda `readNextCisternaSchedaDetail` (`src/next/domain/nextCisternaDomain.ts:842`).
+- prerequisiti: `SUBITO`; e' tool composito sopra reader Cisterna esistente.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolReconcileCisternaMonth.ts`
+- categoria_audit: C4
+- priorita: MEDIA
+- example_prompts: "riconcilia cisterna aprile 2026"; "spiegami differenze litri cisterna"; "duplicati bollettini aprile".
+
+### TOOL: get_vehicle_timeline_360
+
+- nome: `get_vehicle_timeline_360`
+- categoria: `lettura_mezzi`
+- description_per_openai: "Costruisce una timeline 360 del mezzo usando dossier, lavori, manutenzioni, rifornimenti, documenti e segnali operativi. Usa quando l'utente chiede storia completa di una targa."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false},"includeDocuments":{"type":"boolean"},"includeOperationalEvents":{"type":"boolean"}},"required":["targa"],"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetVehicleTimeline360Output = { targa: string; timeline: Array<{ timestamp: number | null; dateLabel: string | null; type: string; title: string; source: string; raw: unknown }>; sources: string[]; warnings: string[] };
+```
+- implementation: `readNextDossierMezzoCompositeSnapshot` (`src/next/domain/nextDossierMezzoDomain.ts:747`), lavori dossier `readNextMezzoLavoriSnapshot` (`src/next/domain/nextLavoriDomain.ts:1066`), rifornimenti `readNextMezzoRifornimentiSnapshot` (`src/next/domain/nextRifornimentiDomain.ts:1304`).
+- prerequisiti: `SUBITO`; ordinamento cronologico e sorgenti esplicite.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetVehicleTimeline360.ts`
+- categoria_audit: C6
+- priorita: MEDIA
+- example_prompts: "timeline completa TI282780"; "storia del mezzo TI282780"; "cosa e successo a TI282780 nel 2026?".
+
+### TOOL: get_driver_operational_profile
+
+- nome: `get_driver_operational_profile`
+- categoria: `lettura_autisti`
+- description_per_openai: "Crea un profilo operativo autista unendo anagrafica, sessioni, eventi, segnalazioni, controlli e mezzi collegati. Usa quando l'utente chiede quadro completo di un autista."
+- parameters:
+```json
+{"type":"object","properties":{"nome":{"type":"string"},"badge":{"type":"string"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetDriverOperationalProfileOutput = { driver: NextCollegaReadOnlyItem | null; activities: unknown[]; vehicles: string[]; warnings: string[] };
+```
+- implementation: `readNextColleghiSnapshot` (`src/next/domain/nextColleghiDomain.ts:266`), `readNextAutistiReadOnlySnapshot` (`src/next/domain/nextAutistiDomain.ts:1176`), stato operativo `readNextCentroControlloSnapshot` (`src/next/domain/nextCentroControlloDomain.ts:1627`).
+- prerequisiti: `SUBITO`; match per nome/badge deve essere spiegabile.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetDriverOperationalProfile.ts`
+- categoria_audit: C7
+- priorita: MEDIA
+- example_prompts: "profilo operativo Rossi"; "attivita completa badge 123"; "mezzi usati da Mario Rossi".
+
+### Tool nuovi BASSA priorita
+
+### TOOL: get_wheel_geometry_config
+
+- nome: `get_wheel_geometry_config`
+- categoria: `lettura_gomme`
+- description_per_openai: "Recupera configurazioni o override geometria gomme se il dato e disponibile. Usa quando l'utente chiede assetto, geometria o configurazione gomme."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"categoria":{"type":"string"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetWheelGeometryConfigOutput = { items: unknown[]; sourceKey: "@wheelGeom_override_v1"; warnings: string[] };
+```
+- implementation: datasource reale `@wheelGeom_override_v1` in `src/pages/ModalGomme.tsx:25` e `src/next/autisti/NextModalGomme.tsx:54`.
+- prerequisiti: `NUOVO_READER`; creare reader clone-safe prima della registrazione.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetWheelGeometryConfig.ts`
+- categoria_audit: A14
+- priorita: BASSA
+- example_prompts: "configurazione gomme TI282780"; "override geometria gomme"; "assetto gomme per categoria X".
+
+### TOOL: find_invoice_supplier
+
+- nome: `find_invoice_supplier`
+- categoria: `lettura_documenti`
+- description_per_openai: "Trova il fornitore di una fattura partendo da id, numero documento, targa, importo o periodo. Usa quando l'utente chiede a chi appartiene una fattura specifica."
+- parameters:
+```json
+{"type":"object","properties":{"id":{"type":"string"},"numero":{"type":"string"},"targa":{"type":"string"},"importo":{"type":"number"},"periodo":{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type FindInvoiceSupplierOutput = { matches: Array<{ supplier: string | null; invoice: unknown; confidence: "id" | "exact" | "partial" | "ambiguous" }>; total: number; warnings: string[] };
+```
+- implementation: `readNextIADocumentiArchiveSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2010`), `readNextDocumentiCostiFleetSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2247`).
+- prerequisiti: `SUBITO`; in caso di piu match deve restituire ambiguita invece di scegliere.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolFindInvoiceSupplier.ts`
+- categoria_audit: C5
+- priorita: BASSA
+- example_prompts: "fornitore della fattura 123"; "a chi appartiene questa fattura?"; "trova fornitore del documento da 450".
+
+### Tool BLOCCATI (3 GAP-D)
+
+### TOOL: list_driver_license_expirations
+
+- nome: `list_driver_license_expirations`
+- categoria: `lettura_autisti`
+- description_per_openai: "Elenca autisti con patente in scadenza solo quando il dato patente sara persistito. Oggi il tool e bloccato per assenza campo."
+- parameters:
+```json
+{"type":"object","properties":{"entroGiorni":{"type":"number"},"status":{"type":"string","enum":["scaduta","in_scadenza","valida","tutti"]}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type ListDriverLicenseExpirationsOutput = { blocked: true; reason: "campo patente non esiste nei dati attuali"; requiredFields: string[] };
+```
+- implementation: BLOCCATO; reader controllato `readNextColleghiSnapshot` (`src/next/domain/nextColleghiDomain.ts:266`), shape `NextCollegaReadOnlyItem` (`src/next/domain/nextColleghiDomain.ts:36`) senza campo patente.
+- prerequisiti: `BLOCCATO`; campo patente non esiste nei dati attuali.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolListDriverLicenseExpirations.ts`
+- categoria_audit: D1
+- priorita: BLOCCATI
+- example_prompts: "patenti in scadenza"; "autisti con patente scaduta"; "chi deve rinnovare la patente?".
+
+### TOOL: get_vehicle_engine_number
+
+- nome: `get_vehicle_engine_number`
+- categoria: `lettura_mezzi`
+- description_per_openai: "Restituisce numero motore solo quando esiste un campo strutturato o raw verificato. Oggi il tool e bloccato per assenza campo strutturato."
+- parameters:
+```json
+{"type":"object","properties":{"targa":{"type":"string"},"query":{"type":"string"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetVehicleEngineNumberOutput = { blocked: true; reason: "campo non strutturato"; checkedReaders: string[] };
+```
+- implementation: BLOCCATO; shape mezzo controllata in `NextAnagraficheFlottaMezzoItem` (`src/next/nextAnagraficheFlottaDomain.ts:79`), alias raw libretto in `src/next/components/NextMezzoEditModal.tsx:65` non espongono un campo `numeroMotore` strutturato.
+- prerequisiti: `BLOCCATO`; campo non strutturato.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetVehicleEngineNumber.ts`
+- categoria_audit: D2
+- priorita: BLOCCATI
+- example_prompts: "numero motore TI282780"; "trova mezzo per numero motore"; "dammi il numero motore del mezzo".
+
+### TOOL: get_cisterna_physical_level
+
+- nome: `get_cisterna_physical_level`
+- categoria: `lettura_cisterna`
+- description_per_openai: "Restituisce livello fisico o giacenza Cisterna solo quando il dato sara persistito. Oggi il tool e bloccato per dato non persistito."
+- parameters:
+```json
+{"type":"object","properties":{"monthKey":{"type":"string"},"date":{"type":"string"}},"additionalProperties":false}
+```
+- output_shape:
+```ts
+type GetCisternaPhysicalLevelOutput = { blocked: true; reason: "dato non persistito"; availableInstead: ["documenti", "schede", "litri_mese", "costi"] };
+```
+- implementation: BLOCCATO; reader disponibile `readNextCisternaSnapshot` (`src/next/domain/nextCisternaDomain.ts:1240`) espone documenti/schede/litri/costi, non livello fisico persistito nello shape `NextCisternaSnapshot` (`src/next/domain/nextCisternaDomain.ts:168`).
+- prerequisiti: `BLOCCATO`; dato non persistito.
+- file_da_creare: `src/next/chat-ia/tools/registry/toolGetCisternaPhysicalLevel.ts`
+- categoria_audit: D3
+- priorita: BLOCCATI
+- example_prompts: "livello fisico cisterna"; "quanta giacenza reale resta?"; "quanto gasolio fisico c'e in cisterna?".
+
+## ESTENSIONI READER PREREQUISITO ROUND 2
+
+### ESTENSIONE 1 - Libretto svizzero raw (B1)
+
+- stato: prerequisito per `search_vehicles_by_attribute` quando `field = libretto_raw`.
+- reader da estendere: `readNextAnagraficheFlottaSnapshot` (`src/next/nextAnagraficheFlottaDomain.ts:763`).
+- riferimento campi UI gia visibili: `RAW_LIBRETTO_ALIASES` (`src/next/components/NextMezzoEditModal.tsx:65`), uso alias (`src/next/components/NextMezzoEditModal.tsx:183`, `src/next/components/NextMezzoEditModal.tsx:193`).
+- campi da esporre in `libretto_raw`: `numeroAvs`, `statoOrigine`, `indirizzo`, `localita`, `genereVeicolo`, `carrozzeria`, `numeroMatricola`, `approvazioneTipo`, `pesoVuoto`, `caricoUtileSella`, `pesoTotale`, `pesoTotaleRimorchio`, `caricoSulLetto`, `pesoRimorchiabile`, `luogoDataRilascio`, `annotazioni`, `annotazioniCantonali`.
+- campo raw aggiuntivo visto nel modal: `decisioniAutorita` (`src/next/components/NextMezzoEditModal.tsx:83`); esporlo solo se confermato nel modello dati.
+- output: nuovo campo opzionale `libretto_raw?: Record<string, string | null>` nello shape `NextAnagraficheFlottaMezzoItem`.
+- tool usatori: `search_vehicles_by_attribute`; possibile uso futuro in `get_vehicle_engine_number` solo dopo dato strutturato.
+
+### ESTENSIONE 2 - Materiali da ordinare per destinazione (B2)
+
+- stato: prerequisito per `get_procurement_materials_by_destination`.
+- reader da estendere: `readNextProcurementSnapshot` (`src/next/domain/nextProcurementDomain.ts:906`).
+- cosa serve: relazione normalizzata `targa`, `mezzoTarga` o `destinazione` sulle righe materiale/ordine, senza inferenze deboli.
+- datasource reale collegato: `@ordini` aggiornato da `src/next/NextMaterialiDaOrdinarePage.tsx:1140` e salvato a `src/next/NextMaterialiDaOrdinarePage.tsx:1164`.
+- output atteso: campo opzionale `destination?: { tipo: "mezzo" | "cantiere" | "altro"; targa?: string; label?: string; quality: "certo" | "da_verificare" }`.
+- tool usatori: `get_procurement_materials_by_destination`.
+
+### ESTENSIONE 3 - Analisi economica salvate (B3)
+
+- stato: reader nuovo consigliato, ma datasource reale gia verificato.
+- reader nuovo: `readNextAnalisiEconomicaSavedSnapshot`.
+- path proposto: `src/next/domain/nextAnalisiEconomicaDomain.ts`.
+- datasource: `@analisi_economica_mezzi`, costante reale in `src/next/domain/nextDossierMezzoDomain.ts:50`, lettura per targa in `src/next/domain/nextDossierMezzoDomain.ts:507`.
+- cosa serve: indice per targa/periodo delle analisi salvate, separato da documenti/costi base.
+- tool usatori: `get_saved_economic_analysis`; supporto a `get_vehicle_cost_summary` come fonte separata, non costo base.
+
+### ESTENSIONE 4 - Alerts state (B4)
+
+- stato: reader nuovo consigliato se serve interrogazione diretta degli alert.
+- reader nuovo: `readNextAlertsStateSnapshot`.
+- path proposto: `src/next/domain/nextAlertsStateDomain.ts`.
+- datasource: `@alerts_state`, costante reale in `src/next/domain/nextCentroControlloDomain.ts:16`.
+- reader oggi collegato: `readNextCentroControlloSnapshot` (`src/next/domain/nextCentroControlloDomain.ts:1627`) e `readNextStatoOperativoSnapshot` (`src/next/domain/nextCentroControlloDomain.ts:1657`).
+- cosa serve: esposizione diretta alert/promemoria con stato, scadenza e relazione a targa/autista.
+- tool usatori: `search_operational_events`, `get_driver_operational_profile`, eventuale estensione di `get_vehicle_status`.
+
+### ESTENSIONE 5 - AdBlue cisterne (B5)
+
+- stato: il reader specifico richiesto puo essere alias dedicato; esiste gia un reader reale nel dominio magazzino.
+- reader nuovo/alias: `readNextAdBlueSnapshot`.
+- path proposto: `src/next/domain/nextAdBlueDomain.ts`.
+- reader reale gia presente: `readNextMagazzinoAdBlueSnapshot` (`src/next/domain/nextMaterialiMovimentiDomain.ts:1582`).
+- datasource: `@cisterne_adblue`, costante reale in `src/next/domain/nextMaterialiMovimentiDomain.ts:27`.
+- cosa serve: shape piu piccola per la chat IA, con eventi, totali, warnings e dati `DA VERIFICARE` quando litri non affidabili.
+- tool usatori: `get_adblue_tank_events`.
+
+### ESTENSIONE 6 - Mappa storico foto/hotspot (B6)
+
+- stato: il path proposto esiste gia nel repo; serve solo decidere se esporlo alla chat IA.
+- reader nuovo indicato dal prompt: `readNextMappaStoricoSnapshot`.
+- path reale: `src/next/domain/nextMappaStoricoDomain.ts`.
+- funzione reale: `readNextMappaStoricoSnapshot` (`src/next/domain/nextMappaStoricoDomain.ts:517`).
+- datasource: `@mezzi_foto_viste` e `@mezzi_hotspot_mapping` (`src/next/domain/nextMappaStoricoDomain.ts:15`, `src/next/domain/nextMappaStoricoDomain.ts:16`).
+- cosa serve: tool consumer dedicato prima di esporre foto/hotspot in chat.
+- tool usatori: nessuno dei 24 tool Round 2 richiesti in questo prompt; prerequisito del GAP B6 per un futuro `get_vehicle_visual_map`.
+
+## MATRICE DI VERIFICA ROUND 2
+
+Questa matrice non aggiunge tool al conteggio. Serve a verificare, durante l'implementazione, che ogni scheda Round 2 resti collegata a un gap e a un reader/datasource reale.
+
+#### `search_vehicles_by_attribute`
+
+- gap: A1.
+- reader/datasource reale: `readNextAnagraficheFlottaSnapshot` (`src/next/nextAnagraficheFlottaDomain.ts:763`).
+- prerequisito: `SUBITO` per `telaio`; `ESTENSIONE 1` per `libretto_raw`.
+- verifica minima: prompt con numero telaio deve restituire targa e campo matchato.
+
+#### `list_vehicles_without_driver`
+
+- gap: A2.
+- reader/datasource reale: `readNextAnagraficheFlottaSnapshot` (`src/next/nextAnagraficheFlottaDomain.ts:763`).
+- prerequisito: `SUBITO`.
+- verifica minima: output contiene solo mezzi con `autistaNome` assente o vuoto.
+
+#### `get_site_equipment`
+
+- gap: A3.
+- reader/datasource reale: `readNextAttrezzatureCantieriSnapshot` (`src/next/domain/nextAttrezzatureCantieriDomain.ts:509`).
+- prerequisito: `SUBITO`.
+- verifica minima: filtro cantiere deve restituire stato attuale e movimenti sorgente.
+
+#### `list_inventory`
+
+- gap: A5.
+- reader/datasource reale: `readNextInventarioSnapshot` (`src/next/domain/nextInventarioDomain.ts:235`).
+- prerequisito: `SUBITO`.
+- verifica minima: filtro testo deve riportare descrizione, quantita, unita e fornitore.
+
+#### `get_material_movements`
+
+- gap: A6.
+- reader/datasource reale: `readNextMaterialiMovimentiSnapshot` (`src/next/domain/nextMaterialiMovimentiDomain.ts:1125`).
+- prerequisito: `SUBITO`.
+- verifica minima: filtro targa o destinatario deve mantenere source e quality.
+
+#### `search_documents_and_invoices`
+
+- gap: A11.
+- reader/datasource reale: `readNextIADocumentiArchiveSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2010`) e `readNextDocumentiCostiFleetSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2247`).
+- prerequisito: `SUBITO`.
+- verifica minima: ricerca per numero fattura deve restituire fornitore, data, importo e fonte.
+
+#### `search_operational_events`
+
+- gap: A12.
+- reader/datasource reale: `readNextAutistiReadOnlySnapshot` (`src/next/domain/nextAutistiDomain.ts:1176`) e `readNextCentroControlloSnapshot` (`src/next/domain/nextCentroControlloDomain.ts:1627`).
+- prerequisito: `SUBITO`.
+- verifica minima: filtro targa/autista/tipo deve indicare dataset origine per ogni riga.
+
+#### `search_work_orders`
+
+- gap: A13.
+- reader/datasource reale: `readNextLavoriInAttesaSnapshot` (`src/next/domain/nextLavoriDomain.ts:934`), `readNextLavoriEseguitiSnapshot` (`src/next/domain/nextLavoriDomain.ts:940`).
+- prerequisito: `SUBITO`.
+- verifica minima: filtro stato deve distinguere `da_eseguire`, `in_attesa`, `eseguito`.
+
+#### `list_scheduled_maintenance_due`
+
+- gap: C1.
+- reader/datasource reale: `readNextAnagraficheFlottaSnapshot` (`src/next/nextAnagraficheFlottaDomain.ts:763`) e `readNextMezzoManutenzioniSnapshot` (`src/next/domain/nextManutenzioniDomain.ts:663`).
+- prerequisito: `SUBITO`.
+- verifica minima: output contiene `daysToDeadline` e status spiegabile.
+
+#### `get_vehicle_cost_summary`
+
+- gap: C2.
+- reader/datasource reale: `readNextMezzoDocumentiCostiSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2313`) e `readNextMezzoDocumentiCostiPeriodView` (`src/next/domain/nextDocumentiCostiDomain.ts:2391`).
+- prerequisito: `SUBITO`.
+- verifica minima: totale periodo e subtotali devono indicare fonti e dedup.
+
+#### `list_suppliers`
+
+- gap: A4.
+- reader/datasource reale: `readNextFornitoriSnapshot` (`src/next/domain/nextFornitoriDomain.ts:204`).
+- prerequisito: `SUBITO`.
+- verifica minima: filtro testo restituisce record fornitore senza inventare match.
+
+#### `get_adblue_tank_events`
+
+- gap: A7.
+- reader/datasource reale: `readNextMagazzinoAdBlueSnapshot` (`src/next/domain/nextMaterialiMovimentiDomain.ts:1582`).
+- prerequisito: `SUBITO`; `ESTENSIONE 5` se si crea alias dedicato.
+- verifica minima: output conserva warning quando litri o shape sono parziali.
+
+#### `get_euromecc_snapshot`
+
+- gap: A8.
+- reader/datasource reale: `readEuromeccSnapshot` (`src/next/domain/nextEuromeccDomain.ts:394`).
+- prerequisito: `SUBITO` per task/issue base.
+- verifica minima: filtro stato deve separare pending, done e issue.
+
+#### `list_workshops`
+
+- gap: A9.
+- reader/datasource reale: `readNextOfficineSnapshot` (`src/next/domain/nextOfficineDomain.ts:204`).
+- prerequisito: `SUBITO`.
+- verifica minima: output contiene officina, telefono/citta se presenti e source `@officine`.
+
+#### `get_saved_economic_analysis`
+
+- gap: A10.
+- reader/datasource reale: `readNextDossierMezzoCompositeSnapshot` (`src/next/domain/nextDossierMezzoDomain.ts:747`), collection `@analisi_economica_mezzi` (`src/next/domain/nextDossierMezzoDomain.ts:50`).
+- prerequisito: `SUBITO` per targa; `ESTENSIONE 3` per indice fleet.
+- verifica minima: se non esiste analisi salvata, restituisce null e nota esplicita.
+
+#### `get_procurement_materials_by_destination`
+
+- gap: C3.
+- reader/datasource reale: `readNextProcurementSnapshot` (`src/next/domain/nextProcurementDomain.ts:906`).
+- prerequisito: `ESTENSIONE 2`.
+- verifica minima: righe senza destinazione normalizzata devono essere marcate `DA VERIFICARE`.
+
+#### `reconcile_cisterna_month`
+
+- gap: C4.
+- reader/datasource reale: `readNextCisternaSnapshot` (`src/next/domain/nextCisternaDomain.ts:1240`).
+- prerequisito: `SUBITO`.
+- verifica minima: output distingue documenti, schede, supporto autisti e duplicati.
+
+#### `get_vehicle_timeline_360`
+
+- gap: C6.
+- reader/datasource reale: `readNextDossierMezzoCompositeSnapshot` (`src/next/domain/nextDossierMezzoDomain.ts:747`).
+- prerequisito: `SUBITO`.
+- verifica minima: ogni evento timeline ha data, tipo e source.
+
+#### `get_driver_operational_profile`
+
+- gap: C7.
+- reader/datasource reale: `readNextColleghiSnapshot` (`src/next/domain/nextColleghiDomain.ts:266`) e `readNextAutistiReadOnlySnapshot` (`src/next/domain/nextAutistiDomain.ts:1176`).
+- prerequisito: `SUBITO`.
+- verifica minima: match nome/badge deve dichiarare confidenza o ambiguita.
+
+#### `get_wheel_geometry_config`
+
+- gap: A14.
+- reader/datasource reale: `@wheelGeom_override_v1` in `src/pages/ModalGomme.tsx:25`.
+- prerequisito: `NUOVO_READER`.
+- verifica minima: non registrare il tool finche il reader clone-safe non esiste.
+
+#### `find_invoice_supplier`
+
+- gap: C5.
+- reader/datasource reale: `readNextIADocumentiArchiveSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2010`) e `readNextDocumentiCostiFleetSnapshot` (`src/next/domain/nextDocumentiCostiDomain.ts:2247`).
+- prerequisito: `SUBITO`.
+- verifica minima: piu fatture candidate devono restare ambigue, non risolte a forza.
+
+#### `list_driver_license_expirations`
+
+- gap: D1.
+- reader/datasource reale controllato: `readNextColleghiSnapshot` (`src/next/domain/nextColleghiDomain.ts:266`).
+- prerequisito: `BLOCCATO`.
+- verifica minima: sbloccare solo dopo introduzione campo patente/scadenza patente.
+
+#### `get_vehicle_engine_number`
+
+- gap: D2.
+- reader/datasource reale controllato: `NextAnagraficheFlottaMezzoItem` (`src/next/nextAnagraficheFlottaDomain.ts:79`) e alias raw libretto (`src/next/components/NextMezzoEditModal.tsx:65`).
+- prerequisito: `BLOCCATO`.
+- verifica minima: sbloccare solo dopo campo numero motore strutturato o raw esplicito verificato.
+
+#### `get_cisterna_physical_level`
+
+- gap: D3.
+- reader/datasource reale controllato: `readNextCisternaSnapshot` (`src/next/domain/nextCisternaDomain.ts:1240`).
+- prerequisito: `BLOCCATO`.
+- verifica minima: sbloccare solo dopo persistenza livello/giacenza fisica, distinta dai litri mensili.
+
 ## TOOL CON PREREQUISITI
 
 ### ESTENSIONE - 13 tool
@@ -880,55 +1622,56 @@ type DeleteArchivedReportOutput = { deleted: true; id: string };
 
 ## ORDINE DI IMPLEMENTAZIONE RACCOMANDATO
 
-### Priorita 1 - Tool fattibili subito (25)
+### Fase 0 - Stato attuale da preservare
 
-1. `get_vehicle_by_plate` - gia implementato.
-2. `list_vehicles`.
-3. `get_vehicle_status`.
-4. `get_vehicle_maintenance_history`.
-5. `get_vehicle_dossier_snapshot`.
-6. `list_drivers`.
-7. `get_driver_by_badge`.
-8. `get_refuelings`.
-9. `get_vehicle_documents`.
-10. `get_document_costs_by_vehicle`.
-11. `download_document_pdf`.
-12. `get_vehicle_events`.
-13. `get_costs`.
-14. `get_procurement_costs`.
-15. `get_capo_costs_by_vehicle`.
-16. `get_cisterna_snapshot`.
-17. `get_cisterna_refuelings`.
-18. `get_cisterna_documents`.
-19. `generate_report_pdf`.
-20. `save_report_to_archive`.
-21. `open_dossier_page`.
-22. `navigate_to`.
-23. `open_magazzino_section`.
-24. `list_archived_reports`.
-25. `retrieve_archived_report`.
-26. `delete_archived_report` solo dopo decisione esplicita.
+1. I 37 tool gia implementati restano invariati.
+2. I 4 tool originali BLOCCATO restano in coda finche non vengono risolti i prerequisiti: `search_events`, `get_cisterna_levels`, `generate_chart`, `open_vehicle_edit_modal`.
+3. Nessun tool Round 2 va registrato prima che il reader indicato nella sua scheda sia disponibile e testato.
 
-### Priorita 2 - Tool con estensione (13)
+### Fase 1 - Estensioni reader prerequisito Round 2 (6)
 
-1. `get_refuelings_aggregated`.
-2. `get_consumption_average`.
-3. `compare_refueling_sources`.
-4. `get_cost_aggregates`.
-5. `compute_average`.
-6. `compare_periods`.
-7. `find_outliers`.
-8. `generate_chart`.
-9. `get_driver_by_name`.
-10. `get_driver_activity`.
-11. `get_invoice_by_id`.
-12. `get_historical_operational_events`.
-13. `open_vehicle_edit_modal`.
+1. ESTENSIONE 1 - `libretto_raw` su `readNextAnagraficheFlottaSnapshot`.
+2. ESTENSIONE 2 - destinazione/targa su `readNextProcurementSnapshot`.
+3. ESTENSIONE 3 - `readNextAnalisiEconomicaSavedSnapshot`.
+4. ESTENSIONE 4 - `readNextAlertsStateSnapshot`.
+5. ESTENSIONE 5 - `readNextAdBlueSnapshot` o alias su `readNextMagazzinoAdBlueSnapshot`.
+6. ESTENSIONE 6 - consumer chat per `readNextMappaStoricoSnapshot`.
 
-### Priorita 3 - Tool con nuovo reader (2)
+### Fase 2 - Tool nuovi ALTA priorita (10)
 
-1. `search_events`.
-2. `get_cisterna_levels`.
+1. `search_vehicles_by_attribute`.
+2. `list_vehicles_without_driver`.
+3. `get_site_equipment`.
+4. `list_inventory`.
+5. `get_material_movements`.
+6. `search_documents_and_invoices`.
+7. `search_operational_events`.
+8. `search_work_orders`.
+9. `list_scheduled_maintenance_due`.
+10. `get_vehicle_cost_summary`.
+
+### Fase 3 - Tool nuovi MEDIA priorita (9)
+
+1. `list_suppliers`.
+2. `get_adblue_tank_events`.
+3. `get_euromecc_snapshot`.
+4. `list_workshops`.
+5. `get_saved_economic_analysis`.
+6. `get_procurement_materials_by_destination`.
+7. `reconcile_cisterna_month`.
+8. `get_vehicle_timeline_360`.
+9. `get_driver_operational_profile`.
+
+### Fase 4 - Tool nuovi BASSA priorita attivi (2)
+
+1. `get_wheel_geometry_config`.
+2. `find_invoice_supplier`.
+
+### Fase 5 - Tool BLOCCATI in coda (3 GAP-D)
+
+1. `list_driver_license_expirations` - BLOCCATO finche non esiste campo patente.
+2. `get_vehicle_engine_number` - BLOCCATO finche non esiste campo numero motore strutturato.
+3. `get_cisterna_physical_level` - BLOCCATO finche il livello fisico cisterna non e persistito.
 
 ## DEFINITION OF DONE PER OGNI TOOL
 
@@ -960,17 +1703,28 @@ type DeleteArchivedReportOutput = { deleted: true; id: string };
 | I | Generatori | 3 |
 | J | Azioni UI | 4 |
 | K | Archivio | 3 |
-| Totale |  | 41 |
+| Round 2 | ALTA priorita | 10 |
+| Round 2 | MEDIA priorita | 9 |
+| Round 2 | BASSA priorita attivi | 2 |
+| Round 2 | BLOCCATI GAP-D | 3 |
+| Totale |  | 65 |
 
-| Stato | Totale |
+| Stato registry | Totale |
 | --- | ---: |
-| SUBITO | 26 |
-| ESTENSIONE | 13 |
-| NUOVO_READER | 2 |
+| Implementati nel codice reale | 37 |
+| BLOCCATO originali nel set da 41 | 4 |
+| Nuovi Round 2 da implementare | 21 |
+| BLOCCATO Round 2 GAP-D | 3 |
+| Totale | 65 |
+
+| Prerequisiti Round 2 | Totale |
+| --- | ---: |
+| Estensioni reader Round 2 | 6 |
 
 ## APPENDICE: FILE LETTI
 
 - `docs/audit/AUDIT_DATI_NEXT_TOOL_CANDIDATI_2026-04-28.md`
+- `docs/audit/AUDIT_GAP_COPERTURA_TOOL_2026-04-28.md`
 - `docs/product/SPEC_ARCHITETTURA_TOOL_USE_CHAT_IA_NEXT.md`
 - `src/next/chat-ia/tools/chatIaToolTypes.ts`
 - `src/next/chat-ia/tools/chatIaToolRegistry.ts`
@@ -989,6 +1743,16 @@ type DeleteArchivedReportOutput = { deleted: true; id: string };
 - `src/next/domain/nextProcurementDomain.ts`
 - `src/next/domain/nextCapoDomain.ts`
 - `src/next/domain/nextCisternaDomain.ts`
+- `src/next/domain/nextAttrezzatureCantieriDomain.ts`
+- `src/next/domain/nextInventarioDomain.ts`
+- `src/next/domain/nextMaterialiMovimentiDomain.ts`
+- `src/next/domain/nextFornitoriDomain.ts`
+- `src/next/domain/nextOfficineDomain.ts`
+- `src/next/domain/nextLavoriDomain.ts`
+- `src/next/domain/nextEuromeccDomain.ts`
+- `src/next/domain/nextMappaStoricoDomain.ts`
+- `src/next/NextMaterialiDaOrdinarePage.tsx`
+- `src/next/NextMagazzinoPage.tsx`
 - `src/next/chat-ia/sectors/mezzi/chatIaMezziData.ts`
 - `src/next/chat-ia/sectors/mezzi/chatIaMezziTypes.ts`
 - `src/next/chat-ia/reports/chatIaReportPdf.ts`

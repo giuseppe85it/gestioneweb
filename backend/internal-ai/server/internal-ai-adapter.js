@@ -1,5 +1,6 @@
 import "dotenv/config";
 import bodyParser from "body-parser";
+import dotenv from "dotenv";
 import express from "express";
 import OpenAI from "openai";
 import fs from "node:fs/promises";
@@ -48,9 +49,25 @@ import {
 import { getNextRuntimeObserverDirPath } from "./internal-ai-next-runtime-observer.js";
 import { buildFirebaseReadinessSnapshot } from "./internal-ai-firebase-readiness.js";
 import { probeInternalAiFirebaseAdminRuntime } from "./internal-ai-firebase-admin.js";
+import {
+  buildCatalogErrorMessage,
+  validateChatZeroInvenzioniBackendMessage,
+  validateChatZeroInvenzioniMessage,
+} from "./lib/catalog-validator.js";
+import { buildChatZeroPreflightContext } from "./lib/chat-zero-preflight.js";
+import { resolvePostLlmMessage } from "./lib/post-llm-resolver.js";
+import { runShadowComparator } from "./lib/shadow-comparator.js";
+import { runUniversalResolverFaseA } from "./lib/universal-resolver.js";
+
+dotenv.config({
+  path: path.resolve(process.cwd(), "backend/internal-ai/.env"),
+  override: false,
+});
 
 const host = process.env.INTERNAL_AI_BACKEND_HOST || "127.0.0.1";
 const port = Number(process.env.INTERNAL_AI_BACKEND_PORT || "4310");
+const isChatIaShadowResolverEnabled = process.env.CHAT_IA_SHADOW_RESOLVER === "1";
+const isChatIaLegacyResolverEnabled = process.env.CHAT_IA_LEGACY_RESOLVER === "1";
 const app = express();
 
 app.use(bodyParser.json({ limit: "12mb" }));
@@ -391,25 +408,613 @@ const CHAT_TOOL_USE_LIMITS = Object.freeze({
   maxIterations: 4,
   maxToolCallsPerTurn: 8,
   maxOutputTokens: 1200,
+  maxFinalOutputTokens: 3000,
   temperature: 0.2,
 });
 
-const CHAT_TOOL_USE_SYSTEM_PROMPT = `Sei l'assistente IA del gestionale GestioneManutenzione nella nuova applicazione NEXT.
+function nullableStringSchema() {
+  return { anyOf: [{ type: "string" }, { type: "null" }] };
+}
 
-Rispondi sempre in italiano, con tono operativo, chiaro e prudente.
+function nullableNumberSchema() {
+  return { anyOf: [{ type: "number" }, { type: "null" }] };
+}
 
-Puoi usare solo i tool disponibili nella richiesta. I tool leggono dati clone-safe, producono report, grafici o azioni UI controllate.
+function stringNumberNullSchema() {
+  return { anyOf: [{ type: "string" }, { type: "number" }, { type: "null" }] };
+}
 
-Non puoi scrivere dati business. Non puoi modificare Firestore o Storage business. Non puoi inventare dati mancanti.
+function strictObjectSchema(properties) {
+  return {
+    type: "object",
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  };
+}
 
-Scegli i tool quando servono dati reali. Se la domanda richiede piu passaggi, chiama i tool nell'ordine necessario.
+function nullableSchema(schema) {
+  return { anyOf: [schema, { type: "null" }] };
+}
 
-Se non capisci la richiesta, non tentare una risposta approssimativa. Rispondi:
-"Non capisco questa richiesta sul gestionale. Posso aiutarti con mezzi, flotta, autisti, rifornimenti, documenti, costi, cisterna, segnalazioni, report PDF, grafici e apertura pagine NEXT."
+const CHAT_TOOL_USE_SUMMARY_CARD_SCHEMA = strictObjectSchema({
+  kind: { type: "string", enum: ["summary_card"] },
+  title: { type: "string" },
+  rows: {
+    type: "array",
+    items: strictObjectSchema({
+      label: { type: "string" },
+      value: { type: "string" },
+      tone: {
+        anyOf: [
+          { type: "string", enum: ["neutral", "ok", "warning", "danger"] },
+          { type: "null" },
+        ],
+      },
+    }),
+  },
+});
 
-Quando produci la risposta finale, restituisci un JSON valido conforme al contratto ChatIaAssistantFinalMessage. Il campo text contiene la risposta leggibile. Il campo blocks contiene eventuali card, tabelle, grafici, report, archivio o azioni UI. Restituisci SOLO il JSON, senza alcun testo prima o dopo. Non avvolgere il JSON in code block markdown tipo \`\`\`json ... \`\`\`. Non aggiungere commenti, spiegazioni o intestazioni. Il primo carattere della risposta deve essere { e l'ultimo deve essere }.
+const CHAT_TOOL_USE_TABLE_ROW_SCHEMA = strictObjectSchema({
+  _id: { type: "string" },
+  c1: stringNumberNullSchema(),
+  c2: stringNumberNullSchema(),
+  c3: stringNumberNullSchema(),
+  c4: stringNumberNullSchema(),
+  c5: stringNumberNullSchema(),
+  c6: stringNumberNullSchema(),
+  c7: stringNumberNullSchema(),
+  c8: stringNumberNullSchema(),
+});
 
-Se un tool fallisce, usa gli altri risultati disponibili e spiega il limite. Se tutti i tool falliscono, rispondi con fallback chiaro e non inventare.`;
+const CHAT_TOOL_USE_TABLE_SCHEMA = strictObjectSchema({
+  id: { type: "string" },
+  title: { type: "string" },
+  columns: {
+    type: "array",
+    items: strictObjectSchema({
+      key: { type: "string" },
+      label: { type: "string" },
+      align: {
+        anyOf: [
+          { type: "string", enum: ["left", "right", "center"] },
+          { type: "null" },
+        ],
+      },
+    }),
+  },
+  rows: {
+    type: "array",
+    items: CHAT_TOOL_USE_TABLE_ROW_SCHEMA,
+  },
+  emptyText: { type: "string" },
+});
+
+const CHAT_TOOL_USE_VISUALIZATION_TONE_SCHEMA = {
+  anyOf: [
+    { type: "string", enum: ["neutral", "info", "ok", "warning", "danger"] },
+    { type: "null" },
+  ],
+};
+
+const CHAT_TOOL_USE_ACTION_SCHEMA = {
+  anyOf: [
+    { type: "null" },
+    strictObjectSchema({
+      label: { type: "string" },
+      href: nullableStringSchema(),
+      entityKind: nullableStringSchema(),
+      entityId: nullableStringSchema(),
+    }),
+  ],
+};
+
+const CHAT_TOOL_USE_METADATA_ITEM_SCHEMA = strictObjectSchema({
+  label: { type: "string" },
+  value: stringNumberNullSchema(),
+});
+
+const CHAT_TOOL_USE_VISUALIZATION_METRIC_SCHEMA = strictObjectSchema({
+  label: { type: "string" },
+  value: stringNumberNullSchema(),
+  unit: nullableStringSchema(),
+  subtitle: nullableStringSchema(),
+  tone: CHAT_TOOL_USE_VISUALIZATION_TONE_SCHEMA,
+  icon: nullableStringSchema(),
+  metadata: { type: "array", items: CHAT_TOOL_USE_METADATA_ITEM_SCHEMA },
+  action: CHAT_TOOL_USE_ACTION_SCHEMA,
+});
+
+const CHAT_TOOL_USE_VISUALIZATION_POINT_SCHEMA = strictObjectSchema({
+  label: { type: "string" },
+  value: { type: "number" },
+  secondaryValue: nullableNumberSchema(),
+  group: nullableStringSchema(),
+  tone: CHAT_TOOL_USE_VISUALIZATION_TONE_SCHEMA,
+});
+
+const CHAT_TOOL_USE_RANKING_ROW_SCHEMA = strictObjectSchema({
+  _id: { type: "string" },
+  rank: { type: "number" },
+  label: { type: "string" },
+  value: { type: "number" },
+  unit: nullableStringSchema(),
+  detail: nullableStringSchema(),
+  barValue: nullableNumberSchema(),
+  tone: CHAT_TOOL_USE_VISUALIZATION_TONE_SCHEMA,
+  metadata: { type: "array", items: CHAT_TOOL_USE_METADATA_ITEM_SCHEMA },
+  action: CHAT_TOOL_USE_ACTION_SCHEMA,
+});
+
+const CHAT_TOOL_USE_TIMELINE_ITEM_SCHEMA = strictObjectSchema({
+  _id: { type: "string" },
+  date: { type: "string" },
+  title: { type: "string" },
+  description: nullableStringSchema(),
+  tone: CHAT_TOOL_USE_VISUALIZATION_TONE_SCHEMA,
+  icon: nullableStringSchema(),
+  metadata: { type: "array", items: CHAT_TOOL_USE_METADATA_ITEM_SCHEMA },
+  action: CHAT_TOOL_USE_ACTION_SCHEMA,
+});
+
+const CHAT_TOOL_USE_STYLED_TABLE_SCHEMA = strictObjectSchema({
+  title: { type: "string" },
+  columns: {
+    type: "array",
+    items: strictObjectSchema({
+      key: { type: "string" },
+      label: { type: "string" },
+      align: {
+        anyOf: [
+          { type: "string", enum: ["left", "right", "center"] },
+          { type: "null" },
+        ],
+      },
+    }),
+  },
+  rows: { type: "array", items: CHAT_TOOL_USE_TABLE_ROW_SCHEMA },
+  emptyText: { type: "string" },
+  accentKey: nullableStringSchema(),
+  rowActions: { type: "array", items: CHAT_TOOL_USE_ACTION_SCHEMA },
+});
+
+const CHAT_TOOL_USE_MIXED_SECTION_SCHEMA = strictObjectSchema({
+  title: { type: "string" },
+  text: { type: "string" },
+  tone: CHAT_TOOL_USE_VISUALIZATION_TONE_SCHEMA,
+});
+
+const CHAT_TOOL_USE_NESTED_LIST_ITEM_SCHEMA = strictObjectSchema({
+  _id: { type: "string" },
+  title: { type: "string" },
+  subtitle: nullableStringSchema(),
+  description: nullableStringSchema(),
+  metadata: { type: "array", items: CHAT_TOOL_USE_METADATA_ITEM_SCHEMA },
+  action: CHAT_TOOL_USE_ACTION_SCHEMA,
+});
+
+const CHAT_TOOL_USE_NESTED_LIST_GROUP_SCHEMA = strictObjectSchema({
+  title: { type: "string" },
+  subtitle: nullableStringSchema(),
+  items: { type: "array", items: CHAT_TOOL_USE_NESTED_LIST_ITEM_SCHEMA },
+});
+
+const CHAT_TOOL_USE_REPORT_SOURCE_SCHEMA = strictObjectSchema({
+  label: { type: "string" },
+  path: nullableStringSchema(),
+  domainCode: nullableStringSchema(),
+});
+
+const CHAT_TOOL_USE_REPORT_PERIOD_SCHEMA = {
+  anyOf: [
+    { type: "null" },
+    strictObjectSchema({
+      label: { type: "string" },
+      from: nullableStringSchema(),
+      to: nullableStringSchema(),
+    }),
+  ],
+};
+
+const CHAT_TOOL_USE_REPORT_SCHEMA = strictObjectSchema({
+  id: { type: "string" },
+  sector: {
+    type: "string",
+    enum: ["mezzi", "autisti", "manutenzioni_scadenze", "materiali", "costi_fatture", "documenti", "cisterna"],
+  },
+  type: { type: "string", enum: ["puntuale", "mensile", "periodico"] },
+  target: {
+    anyOf: [
+      strictObjectSchema({
+        kind: { type: "string", enum: ["targa"] },
+        value: { type: "string" },
+      }),
+      strictObjectSchema({
+        kind: { type: "string", enum: ["autista"] },
+        value: { type: "string" },
+        badge: nullableStringSchema(),
+      }),
+    ],
+  },
+  title: { type: "string" },
+  summary: { type: "string" },
+  generatedAt: { type: "string" },
+  period: CHAT_TOOL_USE_REPORT_PERIOD_SCHEMA,
+  preview: { type: "null" },
+  sections: {
+    type: "array",
+    items: strictObjectSchema({
+      id: { type: "string" },
+      title: { type: "string" },
+      summary: { type: "string" },
+      bullets: { type: "array", items: { type: "string" } },
+      status: { type: "string", enum: ["complete", "partial", "empty"] },
+    }),
+  },
+  sources: { type: "array", items: CHAT_TOOL_USE_REPORT_SOURCE_SCHEMA },
+  missingData: { type: "array", items: { type: "string" } },
+});
+
+const CHAT_TOOL_USE_ARCHIVE_ENTRY_SCHEMA = strictObjectSchema({
+  id: { type: "string" },
+  version: { type: "number", enum: [1] },
+  status: { type: "string", enum: ["active", "deleted"] },
+  sector: {
+    type: "string",
+    enum: ["mezzi", "autisti", "manutenzioni_scadenze", "materiali", "costi_fatture", "documenti", "cisterna"],
+  },
+  reportType: { type: "string", enum: ["puntuale", "mensile", "periodico"] },
+  targetKind: { type: "string", enum: ["targa", "autista"] },
+  targetValue: { type: "string" },
+  targetBadge: nullableStringSchema(),
+  title: { type: "string" },
+  summary: { type: "string" },
+  prompt: { type: "string" },
+  createdAt: { type: "string" },
+  updatedAt: { type: "string" },
+  deletedAt: nullableStringSchema(),
+  periodLabel: nullableStringSchema(),
+  periodFrom: nullableStringSchema(),
+  periodTo: nullableStringSchema(),
+  firestorePath: { type: "string" },
+  pdfStoragePath: nullableStringSchema(),
+  pdfUrl: nullableStringSchema(),
+  reportPayload: CHAT_TOOL_USE_REPORT_SCHEMA,
+  metadata: strictObjectSchema({
+    sourceCount: { type: "number" },
+    missingDataCount: { type: "number" },
+    appVersion: { type: "string", enum: ["next"] },
+    createdBy: { type: "string", enum: ["chat-ia"] },
+  }),
+});
+
+const CHAT_TOOL_USE_LEGACY_FINAL_MESSAGE_JSON_SCHEMA_UNUSED = strictObjectSchema({
+  text: { type: "string" },
+  status: { type: "string", enum: ["completed", "partial", "failed"] },
+  blocks: {
+    type: "array",
+    items: {
+      anyOf: [
+        strictObjectSchema({
+          kind: { type: "string", enum: ["text"] },
+          text: { type: "string" },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["card"] },
+          card: CHAT_TOOL_USE_SUMMARY_CARD_SCHEMA,
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["table"] },
+          table: CHAT_TOOL_USE_TABLE_SCHEMA,
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["chart"] },
+          chart: strictObjectSchema({
+            type: { type: "string", enum: ["bar", "line", "pie"] },
+            title: { type: "string" },
+            data: {
+              type: "array",
+              items: strictObjectSchema({
+                label: { type: "string" },
+                value: nullableNumberSchema(),
+                group: nullableStringSchema(),
+              }),
+            },
+            xKey: nullableStringSchema(),
+            yKey: nullableStringSchema(),
+          }),
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["report"] },
+          report: CHAT_TOOL_USE_REPORT_SCHEMA,
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["archive_list"] },
+          entries: { type: "array", items: CHAT_TOOL_USE_ARCHIVE_ENTRY_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["ui_action"] },
+          action: strictObjectSchema({
+            label: { type: "string" },
+            route: nullableStringSchema(),
+            modal: nullableStringSchema(),
+            params: strictObjectSchema({}),
+          }),
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["summary_card_big"] },
+          title: { type: "string" },
+          value: stringNumberNullSchema(),
+          unit: nullableStringSchema(),
+          subtitle: nullableStringSchema(),
+          trendLabel: nullableStringSchema(),
+          tone: CHAT_TOOL_USE_VISUALIZATION_TONE_SCHEMA,
+          icon: nullableStringSchema(),
+          action: CHAT_TOOL_USE_ACTION_SCHEMA,
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["metric_card_grid"] },
+          title: { type: "string" },
+          metrics: { type: "array", items: CHAT_TOOL_USE_VISUALIZATION_METRIC_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["comparison_split"] },
+          title: { type: "string" },
+          comparisonLabel: nullableStringSchema(),
+          left: CHAT_TOOL_USE_VISUALIZATION_METRIC_SCHEMA,
+          right: CHAT_TOOL_USE_VISUALIZATION_METRIC_SCHEMA,
+          note: nullableStringSchema(),
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["ranking_table"] },
+          title: { type: "string" },
+          valueLabel: { type: "string" },
+          rows: { type: "array", items: CHAT_TOOL_USE_RANKING_ROW_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["trend_chart_line"] },
+          title: { type: "string" },
+          valueLabel: { type: "string" },
+          data: { type: "array", items: CHAT_TOOL_USE_VISUALIZATION_POINT_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["bar_chart_compare"] },
+          title: { type: "string" },
+          valueLabel: { type: "string" },
+          data: { type: "array", items: CHAT_TOOL_USE_VISUALIZATION_POINT_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["pie_chart"] },
+          title: { type: "string" },
+          data: { type: "array", items: CHAT_TOOL_USE_VISUALIZATION_POINT_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["timeline"] },
+          title: { type: "string" },
+          items: { type: "array", items: CHAT_TOOL_USE_TIMELINE_ITEM_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["data_table_styled"] },
+          table: CHAT_TOOL_USE_STYLED_TABLE_SCHEMA,
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["callout"] },
+          tone: { type: "string", enum: ["info", "ok", "warning", "danger"] },
+          title: { type: "string" },
+          text: { type: "string" },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["mixed_layout"] },
+          title: { type: "string" },
+          sections: { type: "array", items: CHAT_TOOL_USE_MIXED_SECTION_SCHEMA },
+        }),
+        strictObjectSchema({
+          kind: { type: "string", enum: ["nested_list"] },
+          title: { type: "string" },
+          groups: { type: "array", items: CHAT_TOOL_USE_NESTED_LIST_GROUP_SCHEMA },
+        }),
+      ],
+    },
+  },
+  entities: {
+    type: "array",
+    items: strictObjectSchema({
+      kind: { type: "string" },
+      value: { type: "string" },
+    }),
+  },
+  sources: {
+    type: "array",
+    items: strictObjectSchema({
+      label: { type: "string" },
+      toolName: nullableStringSchema(),
+      path: nullableStringSchema(),
+    }),
+  },
+  notices: { type: "array", items: { type: "string" } },
+});
+
+const CHAT_ZERO_FILTERS_SCHEMA = strictObjectSchema({
+  searchText: nullableStringSchema(),
+  entityKind: nullableSchema({
+    type: "string",
+    enum: ["driver", "vehicle", "site", "supplier", "euromecc"],
+  }),
+  periodPreset: nullableSchema({
+    type: "string",
+    enum: ["all", "last_7d", "last_30d", "last_90d", "this_month", "this_year", "custom"],
+  }),
+});
+
+const CHAT_ZERO_CLARIFICATION_SCHEMA = strictObjectSchema({
+  kind: { type: "string", enum: ["missing_subject", "missing_period", "ambiguous_scope"] },
+  params: nullableSchema(
+    strictObjectSchema({
+      fieldHint: nullableSchema({
+        type: "string",
+        enum: ["period", "subject", "scope"],
+      }),
+    }),
+  ),
+});
+
+const CHAT_ZERO_DISAMBIGUATION_SCHEMA = strictObjectSchema({
+  disambiguation_required: { type: "boolean", enum: [true] },
+});
+
+const CHAT_ZERO_REPORT_SCHEMA = strictObjectSchema({
+  template: {
+    type: "string",
+    enum: [
+      "driver_monthly",
+      "vehicle_monthly",
+      "vehicle_costs",
+      "site_activity",
+      "euromecc_status",
+    ],
+  },
+  subjectKind: { type: "string", enum: ["driver", "vehicle", "site", "euromecc"] },
+  periodPreset: nullableSchema({
+    type: "string",
+    enum: ["all", "last_7d", "last_30d", "last_90d", "this_month", "this_year", "custom"],
+  }),
+});
+
+const CHAT_ZERO_ACCOMPANIMENT_SCHEMA = strictObjectSchema({
+  kind: {
+    type: "string",
+    enum: [
+      "view_opened",
+      "no_results",
+      "disambiguation_required",
+      "clarify_too_many_results",
+      "clarify_period_required",
+      "error_intent_not_in_catalog",
+      "error_view_unavailable",
+    ],
+  },
+  params: nullableSchema(
+    strictObjectSchema({
+      count: nullableNumberSchema(),
+    }),
+  ),
+});
+
+const CHAT_ZERO_INVENZIONI_MESSAGE_JSON_SCHEMA = strictObjectSchema({
+  action: {
+    type: "string",
+    enum: ["view_open", "disambiguation_request", "clarification_request", "error", "report_request"],
+  },
+  view: nullableSchema({
+    type: "string",
+    enum: ["Driver360", "Vehicle360", "Site360", "Euromecc360", "Ricerca360"],
+  }),
+  filters: nullableSchema(CHAT_ZERO_FILTERS_SCHEMA),
+  clarification: nullableSchema(CHAT_ZERO_CLARIFICATION_SCHEMA),
+  disambiguation: nullableSchema(CHAT_ZERO_DISAMBIGUATION_SCHEMA),
+  report: nullableSchema(CHAT_ZERO_REPORT_SCHEMA),
+  accompaniment: CHAT_ZERO_ACCOMPANIMENT_SCHEMA,
+});
+
+const CHAT_TOOL_USE_FINAL_MESSAGE_TEXT = Object.freeze({
+  format: {
+    type: "json_schema",
+    name: "chat_zero_invenzioni_message",
+    description: "Risposta finale Zero-Invenzioni della Chat IA NEXT senza testo libero.",
+    schema: CHAT_ZERO_INVENZIONI_MESSAGE_JSON_SCHEMA,
+    strict: true,
+  },
+});
+
+const CHAT_TOOL_USE_SYSTEM_PROMPT_BASE = `Sei l'Action Router Zero-Invenzioni della Chat IA NEXT.
+Rispondi sempre in italiano, ma non produrre mai testo libero per l'utente.
+
+## RUOLO
+Il tuo unico compito e classificare la richiesta dentro lo schema ChatZeroInvenzioniMessage.
+Non sei un renderer, non sei un tool reader, non sei una fonte dati.
+
+## DIVIETI ASSOLUTI
+- Non produrre dati business: nomi reali, targhe, id, date finali, importi, codici, relazioni, stati o descrizioni operative.
+- Non produrre campi narrativi: text, summary, narrative, description, comment, explanation, reasoning.
+- Non produrre blocks, entities, sources o notices.
+- Non produrre driverId, vehiclePlate, siteId, subjectId, displayLabel o period.from/to.
+- Non trasformare gli hint in dati certificati.
+
+## OUTPUT AMMESSO
+Puoi produrre solo questi campi top-level:
+action, view, filters, clarification, disambiguation, report, accompaniment.
+
+filters contiene solo:
+- searchText: eco normalizzata della richiesta utente, mai dato certificato;
+- entityKind: driver, vehicle, site, supplier, euromecc o null;
+- periodPreset: enum relativo o null.
+
+Il backend risolve id, targhe, candidatePool, label e date finali dopo la tua risposta.
+Se serve disambiguazione, produci solo disambiguation_required: true; la lista candidati viene popolata dal backend.
+Se non capisci o l'intent non e nel catalogo, usa action error o clarification_request.
+Per richieste di profilo/scheda/quadro autista, usa action view_open, view Driver360, filters.entityKind driver, filters.searchText con il soggetto richiesto e accompaniment view_opened.
+Per Vehicle360, Site360, Euromecc360 e Ricerca360 non inventare contenuti: usa error con accompaniment error_view_unavailable.
+
+## VISTE E AZIONI DISPONIBILI
+Viste: Driver360, Vehicle360, Site360, Euromecc360, Ricerca360.
+Azioni: view_open, disambiguation_request, clarification_request, error, report_request.
+In Fase 2 e disponibile solo Driver360. Le altre viste restano non disponibili. Tu instradi soltanto: i dati li risolve e li mostra il backend/frontend certificato.`;
+
+function isoDateLocal(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function rangeLabel(from, to) {
+  return `${isoDateLocal(from)} - ${isoDateLocal(to)}`;
+}
+
+function previousMonthRange(now) {
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const to = new Date(now.getFullYear(), now.getMonth(), 0);
+  return rangeLabel(from, to);
+}
+
+function previousWeekRange(now) {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const day = today.getDay();
+  const mondayDiff = day === 0 ? -6 : 1 - day;
+  const thisMonday = new Date(today);
+  thisMonday.setDate(thisMonday.getDate() + mondayDiff);
+  const from = new Date(thisMonday);
+  from.setDate(from.getDate() - 7);
+  const to = new Date(thisMonday);
+  to.setDate(to.getDate() - 1);
+  return rangeLabel(from, to);
+}
+
+function lastDaysRange(now, days) {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const from = new Date(today);
+  from.setDate(from.getDate() - (days - 1));
+  return rangeLabel(from, today);
+}
+
+function previousYearRange(now) {
+  const year = now.getFullYear() - 1;
+  return rangeLabel(new Date(year, 0, 1), new Date(year, 11, 31));
+}
+
+function buildChatToolUseSystemPrompt(preflightContext = null) {
+  const deterministicContext =
+    preflightContext?.systemContext ||
+    "CONTEXT PRE-LLM DETERMINISTICO NON CERTIFICATO\nNessun hint disponibile.";
+
+  return `${CHAT_TOOL_USE_SYSTEM_PROMPT_BASE}
+
+${deterministicContext}
+
+Ricorda: gli hint pre-LLM aiutano solo a scegliere action/view/filters. Non sono dati certificati e non devono essere mostrati all'utente.`;
+}
 
 const CONTROLLED_CHAT_DATA_BOUNDARY = Object.freeze({
   businessLiveRead: "closed",
@@ -508,6 +1113,167 @@ function stringifyToolUseFunctionOutput(toolResult) {
   }
 }
 
+function estimateToolUsePayloadBytes(value) {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function safeToolUseJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return JSON.stringify({
+      serializationError: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function toolUsePreview(value, maxLength = 200) {
+  const text = typeof value === "string" ? value : safeToolUseJson(value);
+  return text.slice(0, maxLength);
+}
+
+function logChatToolUse(event, payload = {}) {
+  console.log(
+    "[chat-tool-use]",
+    safeToolUseJson({
+      ts: new Date().toISOString(),
+      event,
+      ...payload,
+    }),
+  );
+}
+
+function logChatToolUseRaw(event, payload = {}) {
+  console.warn(
+    "[chat-tool-use-raw]",
+    safeToolUseJson({
+      ts: new Date().toISOString(),
+      event,
+      ...payload,
+    }),
+  );
+}
+
+const CHAT_IA_DRIVER360_ENTRY_CONFIG_KEY = "driver360.colleghi";
+
+function buildUniversalDriver360Input(message, options = {}) {
+  const filters = isPlainObject(message?.filters) ? message.filters : null;
+  if (message?.view !== "Driver360" || filters?.entityKind !== "driver") {
+    return {
+      applicable: false,
+      reason: "not_driver360",
+      input: null,
+    };
+  }
+
+  const searchText =
+    normalizeToolUseText(filters?.searchText) ||
+    normalizeToolUseText(options?.preflightContext?.searchText) ||
+    normalizeToolUseText(options?.prompt);
+  if (!searchText) {
+    return {
+      applicable: false,
+      reason: "missing_search_text",
+      input: null,
+    };
+  }
+
+  return {
+    applicable: true,
+    reason: null,
+    input: {
+      entryConfigKey: CHAT_IA_DRIVER360_ENTRY_CONFIG_KEY,
+      matchInput: { searchText },
+      query: {
+        action: message?.action ?? null,
+        view: message?.view ?? null,
+        entityKind: filters?.entityKind ?? null,
+        searchText,
+        periodPreset: filters?.periodPreset ?? null,
+      },
+    },
+  };
+}
+
+function readUniversalDriverId(candidateResult) {
+  const legacyDriverId = candidateResult?.legacyDriver360?.driverId;
+  if (typeof legacyDriverId === "string" && legacyDriverId.trim()) {
+    return legacyDriverId.trim();
+  }
+
+  const firstEntry = Array.isArray(candidateResult?.entries) ? candidateResult.entries[0] : null;
+  const firstRecord = Array.isArray(firstEntry?.records) ? firstEntry.records[0] : null;
+  const fieldDriverId = firstRecord?.fields?.id?.value;
+  return typeof fieldDriverId === "string" && fieldDriverId.trim() ? fieldDriverId.trim() : null;
+}
+
+function buildUniversalDriver360Message(message, driverId) {
+  return {
+    ...message,
+    action: "view_open",
+    resolvedFilters: {
+      ...(isPlainObject(message?.resolvedFilters) ? message.resolvedFilters : {}),
+      driverId,
+    },
+    disambiguation: null,
+    accompaniment: { kind: "view_opened", params: null },
+  };
+}
+
+function logFaseAFallback(options, reason) {
+  console.warn(
+    "[chat-tool-use]",
+    safeToolUseJson({
+      ts: new Date().toISOString(),
+      kind: "fase_a_fallback",
+      requestId: options?.requestId ?? null,
+      reason,
+    }),
+  );
+}
+
+async function resolveWithUniversalResolverFaseA(message, options = {}) {
+  const universalInput = buildUniversalDriver360Input(message, options);
+  if (!universalInput.applicable) {
+    logFaseAFallback(options, universalInput.reason);
+    return resolvePostLlmMessage(message, options);
+  }
+
+  try {
+    const candidateResult = await runUniversalResolverFaseA(universalInput.input);
+    const driverId = readUniversalDriverId(candidateResult);
+    if (!driverId) {
+      logFaseAFallback(options, candidateResult?.unresolvedReason ?? "missing_driver_id");
+      return resolvePostLlmMessage(message, options);
+    }
+
+    return {
+      finalMessage: buildUniversalDriver360Message(message, driverId),
+      resolutionApplied: true,
+      reason: "universal_fase_a_resolved",
+    };
+  } catch (error) {
+    logFaseAFallback(options, error instanceof Error ? error.name : "universal_resolver_error");
+    return resolvePostLlmMessage(message, options);
+  }
+}
+
+async function resolveChatIaPostLlmMessage(message, options = {}) {
+  if (isChatIaShadowResolverEnabled) {
+    return runShadowComparator(message, options);
+  }
+
+  if (isChatIaLegacyResolverEnabled) {
+    return resolvePostLlmMessage(message, options);
+  }
+
+  return resolveWithUniversalResolverFaseA(message, options);
+}
+
 function normalizeToolUseFunctionCallOutputs(toolResults) {
   if (!Array.isArray(toolResults) || toolResults.length === 0) {
     return [];
@@ -593,15 +1359,72 @@ function extractToolUseOutputText(response) {
   return "";
 }
 
-function buildFallbackToolUseFinalMessage(text, status = "partial", notices = []) {
+function extractToolUseRefusalText(response) {
+  const outputItems = Array.isArray(response?.output) ? response.output : [];
+  for (const item of outputItems) {
+    const contentItems = Array.isArray(item?.content) ? item.content : [];
+    for (const contentItem of contentItems) {
+      const refusal = normalizeToolUseText(contentItem?.refusal);
+      if (refusal) return refusal;
+    }
+  }
+
+  return "";
+}
+
+function extractToolUseStructuredFinalMessageWithDiagnostics(response) {
+  if (isPlainObject(response?.output_parsed)) {
+    return {
+      finalMessage: response.output_parsed,
+      finalText: safeToolUseJson(response.output_parsed),
+      parseMode: "structured",
+    };
+  }
+
+  const outputItems = Array.isArray(response?.output) ? response.output : [];
+  for (const item of outputItems) {
+    const contentItems = Array.isArray(item?.content) ? item.content : [];
+    for (const contentItem of contentItems) {
+      if (isPlainObject(contentItem?.parsed)) {
+        return {
+          finalMessage: contentItem.parsed,
+          finalText: safeToolUseJson(contentItem.parsed),
+          parseMode: "structured",
+        };
+      }
+    }
+  }
+
+  const refusal = extractToolUseRefusalText(response);
+  if (refusal) {
+    const finalMessage = buildCatalogErrorMessage();
+    return {
+      finalMessage,
+      finalText: safeToolUseJson(finalMessage),
+      parseMode: "refusal",
+    };
+  }
+
+  const finalText = extractToolUseOutputText(response);
+  const parsedResult = parseToolUseFinalMessageJsonWithMode(finalText);
+  if (isPlainObject(parsedResult.parsed)) {
+    return {
+      finalMessage: parsedResult.parsed,
+      finalText,
+      parseMode: parsedResult.parseMode,
+    };
+  }
+
+  const finalMessage = buildCatalogErrorMessage();
   return {
-    text,
-    status,
-    blocks: text ? [{ kind: "text", text }] : [],
-    entities: [],
-    sources: [],
-    notices,
+    finalMessage,
+    finalText: safeToolUseJson(finalMessage),
+    parseMode: "fallback_text",
   };
+}
+
+function extractToolUseStructuredFinalMessage(response) {
+  return extractToolUseStructuredFinalMessageWithDiagnostics(response).finalMessage;
 }
 
 function tryParseToolUseFinalMessageJson(value) {
@@ -618,60 +1441,58 @@ function parseToolUseFinalMessageJson(rawText) {
     return null;
   }
 
-  const directParsed = tryParseToolUseFinalMessageJson(text);
-  if (directParsed) {
-    return directParsed;
-  }
+  const candidates = [text];
 
-  const jsonCodeBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
-  if (jsonCodeBlockMatch?.[1]) {
-    const parsed = tryParseToolUseFinalMessageJson(jsonCodeBlockMatch[1].trim());
-    if (parsed) return parsed;
-  }
-
-  const genericCodeBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
-  if (genericCodeBlockMatch?.[1]) {
-    const parsed = tryParseToolUseFinalMessageJson(genericCodeBlockMatch[1].trim());
-    if (parsed) return parsed;
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  let codeBlockMatch = codeBlockRegex.exec(text);
+  while (codeBlockMatch) {
+    if (codeBlockMatch[1]) {
+      candidates.push(codeBlockMatch[1].trim());
+    }
+    codeBlockMatch = codeBlockRegex.exec(text);
   }
 
   const firstBrace = text.indexOf("{");
   const lastBrace = text.lastIndexOf("}");
   if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return tryParseToolUseFinalMessageJson(text.slice(firstBrace, lastBrace + 1));
+    candidates.push(text.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const candidate of candidates) {
+    const parsed = tryParseToolUseFinalMessageJson(candidate);
+    if (parsed) return parsed;
   }
 
   return null;
 }
 
-function normalizeToolUseFinalMessage(rawText) {
+function parseToolUseFinalMessageJsonWithMode(rawText) {
   const text = normalizeToolUseText(rawText);
   if (!text) {
-    return buildFallbackToolUseFinalMessage(
-      "Non capisco questa richiesta sul gestionale. Posso aiutarti con mezzi, flotta, autisti, rifornimenti, documenti, costi, cisterna, segnalazioni, report PDF, grafici e apertura pagine NEXT.",
-      "partial",
-      ["Il provider non ha restituito testo utile."],
-    );
+    return { parsed: null, parseMode: "fallback_text" };
   }
 
-  const parsed = parseToolUseFinalMessageJson(text);
-  if (isPlainObject(parsed) && typeof parsed.text === "string") {
-    return {
-      text: parsed.text,
-      status:
-        parsed.status === "completed" || parsed.status === "partial" || parsed.status === "failed"
-          ? parsed.status
-          : "partial",
-      blocks: Array.isArray(parsed.blocks) ? parsed.blocks : [{ kind: "text", text: parsed.text }],
-      entities: Array.isArray(parsed.entities) ? parsed.entities : [],
-      sources: Array.isArray(parsed.sources) ? parsed.sources : [],
-      notices: Array.isArray(parsed.notices) ? parsed.notices : [],
-    };
+  const direct = tryParseToolUseFinalMessageJson(text);
+  if (direct) return { parsed: direct, parseMode: "structured" };
+
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  let codeBlockMatch = codeBlockRegex.exec(text);
+  while (codeBlockMatch) {
+    if (codeBlockMatch[1]) {
+      const parsed = tryParseToolUseFinalMessageJson(codeBlockMatch[1].trim());
+      if (parsed) return { parsed, parseMode: "fallback_codeblock" };
+    }
+    codeBlockMatch = codeBlockRegex.exec(text);
   }
 
-  return buildFallbackToolUseFinalMessage(text, "partial", [
-    "Risposta provider incapsulata perche non era JSON strutturato.",
-  ]);
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const parsed = tryParseToolUseFinalMessageJson(text.slice(firstBrace, lastBrace + 1));
+    if (parsed) return { parsed, parseMode: "fallback_text" };
+  }
+
+  return { parsed: null, parseMode: "fallback_text" };
 }
 
 function normalizeToolUseUsage(usage) {
@@ -2709,17 +3530,24 @@ app.post("/internal-ai-backend/chat/tool-use", async (req, res) => {
   const providerClient = getProviderClient();
   const providerTarget = getToolUseProviderTarget();
   const tools = normalizeToolUseTools(req.body.tools);
+  const requestPayloadBytes = estimateToolUsePayloadBytes(req.body);
 
-  if (!providerClient || tools.length === 0) {
+  console.info("[chat-tool-use] request", {
+    requestId: req.body?.requestId,
+    iteration: req.body?.iteration,
+    toolsReceived: Array.isArray(req.body?.tools) ? req.body.tools.length : 0,
+    normalizedTools: tools.length,
+    toolResults: Array.isArray(req.body?.toolResults) ? req.body.toolResults.length : 0,
+    payloadBytes: requestPayloadBytes,
+  });
+
+  if (!providerClient) {
     sendEnvelope(res, {
-      httpStatus: tools.length === 0 ? 400 : 503,
+      httpStatus: 503,
       ok: false,
       endpointId: "chat.tool-use",
-      status: tools.length === 0 ? "validation_error" : "provider_not_configured",
-      message:
-        tools.length === 0
-          ? "Nessun tool valido ricevuto dal client NEXT."
-          : "Provider reale non configurato per la chat tool use.",
+      status: "provider_not_configured",
+      message: "Provider reale non configurato per la chat tool use.",
       data: {
         providerConfigured: Boolean(providerClient),
         providerTarget,
@@ -2729,51 +3557,147 @@ app.post("/internal-ai-backend/chat/tool-use", async (req, res) => {
   }
 
   try {
-    const functionCallOutputs = normalizeToolUseFunctionCallOutputs(req.body.toolResults);
-    const previousResponseId =
-      typeof req.body.responseId === "string" ? req.body.responseId.trim() : "";
-
-    if (functionCallOutputs.length > 0 && !previousResponseId) {
-      sendEnvelope(res, {
-        httpStatus: 400,
-        ok: false,
-        endpointId: "chat.tool-use",
-        status: "validation_error",
-        message:
-          "Risultati tool ricevuti senza responseId precedente. Il ciclo Responses API richiede previous_response_id per collegare i function_call_output.",
-        data: {
-          toolResultCount: functionCallOutputs.length,
-        },
-      });
-      return;
-    }
-
-    const input =
-      functionCallOutputs.length > 0
-        ? functionCallOutputs
-        : buildToolUseInitialInput(req.body);
+    const preflightContext = buildChatZeroPreflightContext(req.body.prompt);
+    const input = buildToolUseInitialInput(req.body);
+    const systemPromptText = buildChatToolUseSystemPrompt(preflightContext);
 
     const responseOptions = {
       model: providerTarget.model,
-      instructions: CHAT_TOOL_USE_SYSTEM_PROMPT,
+      instructions: systemPromptText,
       input,
-      tools,
-      tool_choice: "auto",
-      parallel_tool_calls: false,
+      tool_choice: "none",
       temperature: CHAT_TOOL_USE_LIMITS.temperature,
-      max_output_tokens: CHAT_TOOL_USE_LIMITS.maxOutputTokens,
+      text: CHAT_TOOL_USE_FINAL_MESSAGE_TEXT,
+      max_output_tokens: CHAT_TOOL_USE_LIMITS.maxFinalOutputTokens,
     };
 
-    if (previousResponseId) {
-      responseOptions.previous_response_id = previousResponseId;
+    logChatToolUse("iteration_request", {
+      requestId: req.body.requestId,
+      iter: req.body.iteration,
+      user_prompt: toolUsePreview(req.body.prompt ?? "", 100),
+      system_prompt_size: systemPromptText.length,
+      tools_count: responseOptions.tools?.length ?? 0,
+      tool_results_received: [],
+      chat_zero_preflight: preflightContext.hints,
+      response_format_strict: responseOptions.text?.format?.strict === true,
+    });
+
+    let response = await providerClient.responses.create(responseOptions);
+    let usage = normalizeToolUseUsage(response.usage);
+    let costEstimate = buildToolUseCostEstimate(usage);
+    let responseId = typeof response.id === "string" ? response.id : null;
+    const discardedToolCalls = extractToolUseCalls(response);
+    const toolCalls = [];
+    const mode = "final";
+    let finalDiagnostics = extractToolUseStructuredFinalMessageWithDiagnostics(response);
+    let finalMessageForClient = finalDiagnostics?.finalMessage ?? null;
+    let catalogValidation = validateChatZeroInvenzioniMessage(finalMessageForClient);
+
+    if (!catalogValidation.valid) {
+      finalMessageForClient = catalogValidation.finalMessage;
+      finalDiagnostics = {
+        finalMessage: finalMessageForClient,
+        finalText: safeToolUseJson(finalMessageForClient),
+        parseMode: "catalog_validator_fallback",
+      };
+      console.warn("[catalog-validator]", safeToolUseJson({
+        requestId: req.body.requestId,
+        iter: req.body.iteration,
+        errors: catalogValidation.errors,
+      }));
     }
 
-    const response = await providerClient.responses.create(responseOptions);
-    const usage = normalizeToolUseUsage(response.usage);
-    const costEstimate = buildToolUseCostEstimate(usage);
-    const responseId = typeof response.id === "string" ? response.id : null;
-    const toolCalls = extractToolUseCalls(response);
-    const mode = toolCalls.length > 0 ? "tool_calls" : "final";
+    const postLlmResolverInput = {
+      requestId: req.body.requestId,
+      prompt: req.body.prompt,
+      preflightContext,
+    };
+    const postLlmResolution = await resolveChatIaPostLlmMessage(
+      finalMessageForClient,
+      postLlmResolverInput,
+    );
+    finalMessageForClient = postLlmResolution.finalMessage;
+    finalDiagnostics = {
+      finalMessage: finalMessageForClient,
+      finalText: safeToolUseJson(finalMessageForClient),
+      parseMode: postLlmResolution.resolutionApplied
+        ? "post_llm_resolved"
+        : finalDiagnostics?.parseMode ?? "structured",
+    };
+    const backendCatalogValidation = validateChatZeroInvenzioniBackendMessage(finalMessageForClient);
+    if (!backendCatalogValidation.valid) {
+      finalMessageForClient = backendCatalogValidation.finalMessage;
+      finalDiagnostics = {
+        finalMessage: finalMessageForClient,
+        finalText: safeToolUseJson(finalMessageForClient),
+        parseMode: "backend_catalog_validator_fallback",
+      };
+      console.warn("[catalog-validator-backend]", safeToolUseJson({
+        requestId: req.body.requestId,
+        iter: req.body.iteration,
+        errors: backendCatalogValidation.errors,
+      }));
+    }
+
+    const responsePayloadBytes = estimateToolUsePayloadBytes(response);
+    logChatToolUse("iteration_response", {
+      requestId: req.body.requestId,
+      iter: req.body.iteration,
+      user_prompt: toolUsePreview(req.body.prompt ?? "", 100),
+      system_prompt_size: systemPromptText.length,
+      tools_count: responseOptions.tools?.length ?? 0,
+      tool_calls_requested: toolCalls.map((call) => ({
+        name: call.name,
+        args_size: safeToolUseJson(call.arguments).length,
+      })),
+      discarded_tool_calls: discardedToolCalls.map((call) => call.name),
+      final_response_size: finalDiagnostics?.finalText.length ?? null,
+      final_response_preview: finalDiagnostics ? toolUsePreview(finalDiagnostics.finalText, 200) : null,
+      response_format_strict: responseOptions.text?.format?.strict === true,
+      parse_mode: finalDiagnostics?.parseMode ?? null,
+      catalog_validation: catalogValidation
+        ? {
+            valid: catalogValidation.valid,
+            errors: catalogValidation.errors,
+          }
+        : null,
+      backend_catalog_validation: backendCatalogValidation
+        ? {
+            valid: backendCatalogValidation.valid,
+            errors: backendCatalogValidation.errors,
+          }
+        : null,
+      post_llm_resolution: postLlmResolution
+        ? {
+            applied: postLlmResolution.resolutionApplied,
+            reason: postLlmResolution.reason,
+          }
+        : null,
+      responseId,
+      payloadBytes: responsePayloadBytes,
+    });
+    const acceptedFinalParseModes = new Set([
+      "structured",
+      "post_llm_resolved",
+      "catalog_validator_fallback",
+      "backend_catalog_validator_fallback",
+    ]);
+    if (mode === "final" && !acceptedFinalParseModes.has(finalDiagnostics?.parseMode)) {
+      logChatToolUseRaw("non_structured_or_unparsed_final_response", {
+        requestId: req.body.requestId,
+        iter: req.body.iteration,
+        parse_mode: finalDiagnostics?.parseMode ?? "unknown",
+        raw_response: response,
+      });
+    }
+    console.info("[chat-tool-use] response", {
+      requestId: req.body.requestId,
+      iteration: req.body.iteration,
+      mode,
+      toolCalls: toolCalls.map((call) => call.name),
+      responseId,
+      payloadBytes: responsePayloadBytes,
+    });
     const traceEntry = await appendTraceabilityEntry(
       buildTraceabilityEntry({
         endpointId: "chat.tool-use",
@@ -2820,13 +3744,34 @@ app.post("/internal-ai-backend/chat/tool-use", async (req, res) => {
               mode,
               responseId,
               model: providerTarget.model,
-              finalMessage: normalizeToolUseFinalMessage(extractToolUseOutputText(response)),
+              finalMessage:
+                finalMessageForClient ??
+                finalDiagnostics?.finalMessage ??
+                extractToolUseStructuredFinalMessage(response),
               usage,
               costEstimate,
               traceEntryId: traceEntry.id,
             },
     });
   } catch (error) {
+    logChatToolUseRaw("provider_or_adapter_error", {
+      requestId: req.body?.requestId,
+      iter: req.body?.iteration,
+      raw_error: {
+        name: error instanceof Error ? error.name : null,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : null,
+        value: error,
+      },
+    });
+    console.error("[chat-tool-use] error", {
+      requestId: req.body?.requestId,
+      iteration: req.body?.iteration,
+      payloadBytes: requestPayloadBytes,
+      providerTarget,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+    });
     sendEnvelope(res, {
       httpStatus: 502,
       ok: false,

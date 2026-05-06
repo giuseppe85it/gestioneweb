@@ -347,15 +347,6 @@ export default function NextHomePage() {
   const [motriciExpanded, setMotriciExpanded] = useState(false);
   const [rimorchiExpanded, setRimorchiExpanded] = useState(false);
 
-  const openScadenzeModal = (mode: "tutte" | "urgenti") => {
-    const params = new URLSearchParams(location.search);
-    params.set("scadenze", mode);
-    navigate({
-      pathname: location.pathname,
-      search: params.toString() ? `?${params.toString()}` : "",
-    });
-  };
-
   useEffect(() => {
     let active = true;
 
@@ -620,7 +611,7 @@ export default function NextHomePage() {
             className={`next-home__alert-card next-home__alert-card--${alertBanner.tone} next-shell__scadenze-banner-trigger`}
             aria-label="Apri scadenze revisioni urgenti"
             aria-live="polite"
-            onClick={() => openScadenzeModal("urgenti")}
+            onClick={() => navigate("/next/scadenze-collaudi?mode=urgenti")}
           >
             <div className="next-home__alert-card-head">
               <div className="next-home__alert-card-title-wrap">

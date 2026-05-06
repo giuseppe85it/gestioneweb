@@ -16,7 +16,7 @@ import {
   type NextLibrettiExportItem,
   type NextLibrettiExportSnapshot,
 } from "./domain/nextLibrettiExportDomain";
-import { NEXT_IA_PATH } from "./nextStructuralPaths";
+import { NEXT_HOME_PATH } from "./nextStructuralPaths";
 
 const CATEGORY_ORDER = [
   "trattore stradale",
@@ -230,7 +230,7 @@ export default function NextLibrettiExportPage() {
           <button
             type="button"
             className="libretti-export-back"
-            onClick={() => navigate(NEXT_IA_PATH)}
+            onClick={() => navigate(NEXT_HOME_PATH)}
           >
             Torna a IA
           </button>

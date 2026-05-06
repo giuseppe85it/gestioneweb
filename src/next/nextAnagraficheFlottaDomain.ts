@@ -43,6 +43,27 @@ type NextMezzoQuality = "certo" | "parziale" | "da_verificare";
 
 type NextCollegaQuality = "certo" | "parziale" | "da_verificare";
 
+export type NextAnagraficheFlottaLibrettoRaw = {
+  numeroAvs?: string;
+  statoOrigine?: string;
+  indirizzo?: string;
+  localita?: string;
+  genereVeicolo?: string;
+  carrozzeria?: string;
+  numeroMatricola?: string;
+  approvazioneTipo?: string;
+  pesoVuoto?: string;
+  caricoUtileSella?: string;
+  pesoTotale?: string;
+  pesoTotaleRimorchio?: string;
+  caricoSulLetto?: string;
+  pesoRimorchiabile?: string;
+  luogoDataRilascio?: string;
+  annotazioni?: string;
+  annotazioniCantonali?: string;
+  decisioniAutorita?: string;
+};
+
 export const NEXT_ANAGRAFICHE_FLOTTA_DOMAIN = {
   code: "D01",
   name: "Anagrafiche flotta e persone",
@@ -113,6 +134,7 @@ export type NextAnagraficheFlottaMezzoItem = {
   fotoStoragePath: string | null;
   librettoUrl: string | null;
   librettoStoragePath: string | null;
+  libretto_raw?: NextAnagraficheFlottaLibrettoRaw;
   datasetShape: NextLegacyDatasetShape;
   sourceCollection: typeof STORAGE_COLLECTION;
   sourceKey: typeof MEZZI_DATASET_KEY;
@@ -337,6 +359,47 @@ function getFirstOptionalText(
   return null;
 }
 
+const RAW_LIBRETTO_FIELD_ALIASES: Record<
+  keyof NextAnagraficheFlottaLibrettoRaw,
+  string[]
+> = {
+  numeroAvs: ["numeroAvs", "nAvs", "detentoreAfsAvs"],
+  statoOrigine: ["statoOrigine", "detentoreStatoOrigine"],
+  indirizzo: ["indirizzo", "detentoreIndirizzo"],
+  localita: ["localita", "detentoreLocalita"],
+  genereVeicolo: ["genereVeicolo", "tipoVeicolo"],
+  carrozzeria: ["carrozzeria"],
+  numeroMatricola: ["numeroMatricola", "matricola"],
+  approvazioneTipo: ["approvazioneTipo"],
+  pesoVuoto: ["pesoVuoto"],
+  caricoUtileSella: ["caricoUtileSella"],
+  pesoTotale: ["pesoTotale"],
+  pesoTotaleRimorchio: ["pesoTotaleRimorchio", "pesoConvoglio"],
+  caricoSulLetto: ["caricoSulLetto"],
+  pesoRimorchiabile: ["pesoRimorchiabile"],
+  luogoDataRilascio: ["luogoDataRilascio", "luogoRilascio", "luogoImmatricolazione"],
+  annotazioni: ["annotazioni"],
+  annotazioniCantonali: ["annotazioniCantonali"],
+  decisioniAutorita: ["decisioniAutorita"],
+};
+
+function extractLibrettoRaw(
+  raw: NextAnagraficheFlottaRaw
+): NextAnagraficheFlottaLibrettoRaw | undefined {
+  const librettoRaw: NextAnagraficheFlottaLibrettoRaw = {};
+
+  (Object.keys(RAW_LIBRETTO_FIELD_ALIASES) as Array<
+    keyof NextAnagraficheFlottaLibrettoRaw
+  >).forEach((field) => {
+    const value = getFirstOptionalText(raw, RAW_LIBRETTO_FIELD_ALIASES[field]);
+    if (value) {
+      librettoRaw[field] = value;
+    }
+  });
+
+  return Object.keys(librettoRaw).length > 0 ? librettoRaw : undefined;
+}
+
 function buildFallbackId(raw: NextAnagraficheFlottaRaw, targa: string, index: number) {
   const directId = normalizeText(raw.id);
   if (directId) return directId;
@@ -549,6 +612,7 @@ function mapMezzoItem(args: {
     fotoStoragePath: normalizeOptionalText(raw.fotoStoragePath),
     librettoUrl: normalizeOptionalText(raw.librettoUrl),
     librettoStoragePath: normalizeOptionalText(raw.librettoStoragePath),
+    libretto_raw: extractLibrettoRaw(raw),
     datasetShape,
     sourceCollection: STORAGE_COLLECTION,
     sourceKey: MEZZI_DATASET_KEY,

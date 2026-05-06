@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import NextScadenzeModal from "./components/NextScadenzeModal";
+import { useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { NEXT_SHELL_NAV_SECTIONS, type NextShellNavItem } from "./nextData";
 import { useNextCloneNavigation } from "./nextCloneNavigation";
 import "./next-shell.css";
@@ -12,11 +11,25 @@ function buildInitialSectionsState() {
   }, {});
 }
 
-function isShellNavItemActive(pathname: string, search: string, item: NextShellNavItem) {
-  if (item.queryParamKey && item.queryParamValue) {
-    const params = new URLSearchParams(search);
-    return params.get(item.queryParamKey) === item.queryParamValue;
+const SIDEBAR_COLLAPSED_KEY = "next.sidebar.collapsed";
+
+function readSidebarOpen(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "false";
+  } catch {
+    return false;
   }
+}
+
+function writeSidebarOpen(open: boolean): void {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, open ? "false" : "true");
+  } catch {
+    // ignora errori di accesso a localStorage
+  }
+}
+
+function isShellNavItemActive(pathname: string, _search: string, item: NextShellNavItem) {
   if (!item.path) return false;
   if (item.exact) return pathname === item.path;
   return pathname === item.path || pathname.startsWith(`${item.path}/`);
@@ -24,13 +37,21 @@ function isShellNavItemActive(pathname: string, search: string, item: NextShellN
 
 function NextShell() {
   const location = useLocation();
-  const navigate = useNavigate();
   useNextCloneNavigation();
 
   const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>(
     buildInitialSectionsState,
   );
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen);
+
+  const toggleSidebar = (open: boolean) => {
+    setSidebarOpen(open);
+    writeSidebarOpen(open);
+  };
+
+  const handleNavItemClick = () => {
+    toggleSidebar(false);
+  };
 
   const shellClassName = [
     "app-shell",
@@ -39,32 +60,6 @@ function NextShell() {
   ]
     .filter(Boolean)
     .join(" ");
-
-  const scadenzeMode = useMemo(() => {
-    const value = new URLSearchParams(location.search).get("scadenze");
-    return value === "tutte" || value === "urgenti" ? value : null;
-  }, [location.search]);
-
-  const openShellQueryModal = (key: string, value: string) => {
-    const params = new URLSearchParams(location.search);
-    params.set(key, value);
-    navigate({
-      pathname: location.pathname,
-      search: params.toString() ? `?${params.toString()}` : "",
-    });
-  };
-
-  const closeScadenzeModal = () => {
-    const params = new URLSearchParams(location.search);
-    params.delete("scadenze");
-    navigate(
-      {
-        pathname: location.pathname,
-        search: params.toString() ? `?${params.toString()}` : "",
-      },
-      { replace: true },
-    );
-  };
 
   return (
     <div className={shellClassName}>
@@ -88,7 +83,7 @@ function NextShell() {
               className="next-shell__toggle next-shell__toggle--sidebar"
               aria-label="Chiudi menu principale"
               aria-expanded={sidebarOpen}
-              onClick={() => setSidebarOpen(false)}
+              onClick={() => toggleSidebar(false)}
             >
               <span className="next-shell__toggle-bars" aria-hidden="true">
                 <span />
@@ -133,28 +128,12 @@ function NextShell() {
                           .filter(Boolean)
                           .join(" ");
 
-                        if (item.disabled || (!item.path && !item.queryParamKey)) {
+                        if (item.disabled || !item.path) {
                           return (
                             <span key={item.id} className={itemClassName} aria-disabled="true">
                               <span className="next-shell__nav-icon" aria-hidden="true" />
                               <span>{item.label}</span>
                             </span>
-                          );
-                        }
-
-                        if (item.queryParamKey && item.queryParamValue) {
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className={`${itemClassName} next-shell__nav-item--button`}
-                              onClick={() =>
-                                openShellQueryModal(item.queryParamKey as string, item.queryParamValue as string)
-                              }
-                            >
-                              <span className="next-shell__nav-icon" aria-hidden="true" />
-                              <span>{item.label}</span>
-                            </button>
                           );
                         }
 
@@ -164,6 +143,7 @@ function NextShell() {
                             to={item.path as string}
                             end={item.exact}
                             className={itemClassName}
+                            onClick={handleNavItemClick}
                           >
                             <span className="next-shell__nav-icon" aria-hidden="true" />
                             <span>{item.label}</span>
@@ -188,7 +168,7 @@ function NextShell() {
             className="next-shell__reopen-toggle"
             aria-label="Apri menu principale"
             aria-expanded="false"
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => toggleSidebar(true)}
           >
             <span className="next-shell__toggle-bars" aria-hidden="true">
               <span />
@@ -202,10 +182,6 @@ function NextShell() {
           <Outlet />
         </main>
       </div>
-
-      {scadenzeMode ? (
-        <NextScadenzeModal mode={scadenzeMode} onClose={closeScadenzeModal} />
-      ) : null}
     </div>
   );
 }

@@ -218,11 +218,6 @@ const CURATED_SCREEN_RELATIONS = [
     summary: "La inbox autisti si estende in listati specializzati per segnalazioni, controlli, gomme e richieste attrezzature.",
   },
   {
-    from: "/next/ia",
-    to: "/next/ia/libretto",
-    summary: "L'hub IA clone-safe instrada verso strumenti documentali e viewer dedicati, non verso un'unica pagina monolitica.",
-  },
-  {
     from: "/next/cisterna",
     to: "/next/cisterna/ia",
     summary: "Il verticale cisterna apre un sottopercorso specialistico IA separato dal cockpit generale e dal dossier standard.",
@@ -310,11 +305,6 @@ const CURATED_ROUTES = [
     label: "Autisti Admin",
     path: "/next/autisti-admin",
     summary: "Centro rettifica reader-first con tab e filtri locali, senza write business.",
-  },
-  {
-    label: "IA API key",
-    path: "/next/ia/apikey",
-    summary: "Pagina legacy-clone osservabile con toggle locale, senza segreti reali lato client.",
   },
   {
     label: "IA Libretto archivio",

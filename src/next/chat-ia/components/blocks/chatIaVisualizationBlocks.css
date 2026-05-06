@@ -1,0 +1,378 @@
+.chat-ia-viz-block,
+.chat-ia-viz-card,
+.chat-ia-viz-callout {
+  margin-top: 12px;
+  animation: chatIaVizEnter 180ms ease-out;
+}
+
+.chat-ia-viz-block h3,
+.chat-ia-viz-card h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.chat-ia-viz-card,
+.chat-ia-viz-block,
+.chat-ia-viz-callout {
+  border: 1px solid #dbe3e8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.chat-ia-viz-card,
+.chat-ia-viz-block {
+  padding: 14px;
+}
+
+.chat-ia-viz-summary-card-big {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  border-left: 5px solid #1f6feb;
+}
+
+.chat-ia-viz-icon {
+  display: grid;
+  min-width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 8px;
+  background: #eaf2ff;
+  color: #1f4fb8;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.chat-ia-viz-big-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  color: #172026;
+}
+
+.chat-ia-viz-big-value span,
+.chat-ia-viz-metric small,
+.chat-ia-viz-comparison-side small {
+  font-size: 13px;
+  color: #63717a;
+}
+
+.chat-ia-viz-muted {
+  margin: 6px 0 0;
+  color: #63717a;
+  font-size: 13px;
+}
+
+.chat-ia-viz-trend {
+  margin: 6px 0 0;
+  color: #176b87;
+  font-weight: 700;
+}
+
+.chat-ia-viz-metric-grid,
+.chat-ia-viz-comparison-grid,
+.chat-ia-viz-mixed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.chat-ia-viz-metric,
+.chat-ia-viz-comparison-side,
+.chat-ia-viz-mixed-section {
+  padding: 12px;
+  border: 1px solid #e2e7ea;
+  border-radius: 8px;
+  background: #f8fafb;
+}
+
+.chat-ia-viz-metric-label,
+.chat-ia-viz-comparison-side span {
+  display: block;
+  margin-bottom: 4px;
+  color: #51616b;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.chat-ia-viz-metric strong,
+.chat-ia-viz-comparison-side strong {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.chat-ia-viz-comparison-split {
+  border-left: 5px solid #176b87;
+}
+
+.chat-ia-viz-ranking-list {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-ia-viz-ranking-row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e2e7ea;
+  border-radius: 8px;
+}
+
+.chat-ia-viz-rank {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: #172026;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.chat-ia-viz-ranking-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.chat-ia-viz-bar {
+  height: 7px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf1;
+}
+
+.chat-ia-viz-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f6feb, #176b87);
+}
+
+.chat-ia-viz-ranking-main small {
+  display: block;
+  margin-top: 4px;
+  color: #63717a;
+}
+
+.chat-ia-viz-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chat-ia-viz-meta-row span {
+  padding: 3px 7px;
+  border: 1px solid #dbe3e8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #51616b;
+  font-size: 12px;
+}
+
+.chat-ia-viz-action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 1px solid #bfd2df;
+  border-radius: 8px;
+  background: #f4f8fb;
+  color: #164e63;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.chat-ia-viz-action-link:hover {
+  border-color: #176b87;
+  background: #e9f5f8;
+}
+
+.chat-ia-viz-action-link--button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.chat-ia-viz-chart {
+  width: 100%;
+  height: 220px;
+}
+
+.chat-ia-viz-timeline ol {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-ia-viz-timeline-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 10px 10px 14px;
+  border-left: 4px solid #1f6feb;
+  background: #f8fafb;
+}
+
+.chat-ia-viz-timeline-item time {
+  color: #63717a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chat-ia-viz-timeline-item p,
+.chat-ia-viz-callout p,
+.chat-ia-viz-mixed-section p {
+  margin: 4px 0 0;
+  color: #51616b;
+}
+
+.chat-ia-viz-table-scroll {
+  overflow-x: auto;
+}
+
+.chat-ia-viz-data-table-styled table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.chat-ia-viz-data-table-styled th,
+.chat-ia-viz-data-table-styled td {
+  padding: 8px;
+  border-bottom: 1px solid #e2e7ea;
+}
+
+.chat-ia-viz-data-table-styled th {
+  color: #51616b;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.chat-ia-viz-align-right {
+  text-align: right;
+}
+
+.chat-ia-viz-align-center {
+  text-align: center;
+}
+
+.chat-ia-viz-cell-text {
+  display: inline-block;
+  max-width: 280px;
+  vertical-align: top;
+}
+
+.chat-ia-viz-cell-text--long {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-ia-viz-nested-groups,
+.chat-ia-viz-nested-items {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-ia-viz-nested-group {
+  padding: 12px;
+  border: 1px solid #e2e7ea;
+  border-radius: 8px;
+  background: #f8fafb;
+}
+
+.chat-ia-viz-nested-group header {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.chat-ia-viz-nested-group header span,
+.chat-ia-viz-nested-item span {
+  color: #63717a;
+  font-size: 12px;
+}
+
+.chat-ia-viz-nested-item {
+  padding: 10px;
+  border: 1px solid #dde6ec;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.chat-ia-viz-nested-item p {
+  margin: 6px 0 0;
+  color: #3d4c55;
+}
+
+.chat-ia-viz-callout {
+  padding: 12px 14px;
+  border-left: 5px solid #176b87;
+}
+
+.chat-ia-viz-callout--warning {
+  border-color: #d97706;
+  background: #fff8ed;
+}
+
+.chat-ia-viz-callout--danger {
+  border-color: #b91c1c;
+  background: #fff5f5;
+}
+
+.chat-ia-viz-callout--ok,
+.chat-ia-viz-card--ok {
+  border-color: #2f855a;
+}
+
+.chat-ia-viz-card--warning {
+  border-color: #d97706;
+}
+
+.chat-ia-viz-card--danger {
+  border-color: #b91c1c;
+}
+
+@keyframes chatIaVizEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 720px) {
+  .chat-ia-viz-summary-card-big,
+  .chat-ia-viz-ranking-row {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-ia-viz-big-value {
+    font-size: 28px;
+  }
+}

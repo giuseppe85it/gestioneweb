@@ -515,9 +515,6 @@ export default function NextIALibrettoPage() {
             <p className="ia-state-text">
               Prima di usare questa funzione devi inserire la tua chiave Gemini.
             </p>
-            <button className="ia-btn primary" onClick={() => navigate("/next/ia/apikey")}>
-              Vai a API Key IA
-            </button>
           </div>
         </div>
       </div>

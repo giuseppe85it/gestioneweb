@@ -1,6 +1,6 @@
 # CHECKLIST IA INTERNA
 
-Ultimo aggiornamento: 2026-04-22
+Ultimo aggiornamento: 2026-04-30
 Stato documento: CURRENT  
 Fonte operativa unica: questo file e la fonte di verita operativa del sottosistema IA interna.
 
@@ -14,6 +14,99 @@ Fonte operativa unica: questo file e la fonte di verita operativa del sottosiste
 - `IN CORSO`
 - `NON FATTO`
 - `BLOCCATO`
+
+## 2.0 Aggiornamento operativo 2026-04-30 - Chat IA NEXT fingerprint anti-allucinazione
+- Stato: `IN CORSO`
+- Note: introdotta architettura fingerprint per ridurre strutturalmente le allucinazioni nei record mostrati dalla Chat IA NEXT. I tool outputs vengono arricchiti con `_id`, lo schema strict richiede `_id` nei blocchi record, il backend valida gli ID e le date contro i dati ritornati dai tool e rigenera/fallbacka se la risposta contiene dati non verificabili.
+- File/documenti collegati:
+  - `backend/internal-ai/server/lib/fingerprint-validator.js`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `src/next/chat-ia/tools/chatIaToolTypes.ts`
+  - `src/next/chat-ia/tools/registry/*` tool record-based
+  - `src/next/chat-ia/agents/*`
+  - `src/next/chat-ia/components/blocks/*`
+  - `tests/e2e/11-antiAllucinazione.spec.ts`
+  - `tests/e2e/12-fingerprintIntegrity.spec.ts`
+  - `docs/_live/REPORT_FINGERPRINT_ARCHITECTURE_2026-04-30.md`
+- Verifiche: `npm run build` OK; `npx tsc --noEmit` OK; lint mirato OK; `node --check` backend OK; validator E2E 3/3 PASS. Suite browser completa `DA VERIFICARE` per blocco ambiente `Firebase: Error (auth/too-many-requests)` prima del render della chat.
+
+## 2.1 Aggiornamento operativo 2026-04-30 - Chat IA NEXT coerenza aggregati e dettagli
+- Stato: `FATTO`
+- Note: corretto il bug sistemico in cui conteggi aggregati e dettagli troncati potevano mostrare numeri incoerenti. I tool con liste limitate espongono ora `total_count`, `shown`, `is_truncated` e `truncation_reason`; l'aggregato rifornimenti usa un ranking canonico per numero rifornimenti e il prompt backend obbliga a dichiarare totale reale e righe mostrate.
+- File/documenti collegati:
+  - `src/next/chat-ia/tools/chatIaToolFilters.ts`
+  - `src/next/chat-ia/tools/registry/*` tool con output limitato
+  - `src/next/chat-ia/agents/analytics.ts`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `tests/e2e/10-coerenzaAggregati.spec.ts`
+  - `docs/_live/REPORT_FIX_COERENZA_AGGREGATI_2026-04-30.md`
+- Verifiche: conteggio Firestore aprile 2026 `TI324633` = 15 rifornimenti canonici, totale flotta = 70; `npm run build` OK; lint mirato OK; `node --check` backend OK; E2E mirato 2/2 PASS; suite completa 87 test con 1 flaky storico recuperato al retry.
+
+## 2.2 Aggiornamento operativo 2026-04-30 - Chat IA NEXT visualization arricchita e cliccabile
+- Stato: `FATTO`
+- Note: arricchito il layer multi-agente D1-D9 con metadati business e action link nei blocchi visualization; D2 mostra una `nested_list` di manutenzioni analoghe, `comparison_split` espone titoli chiari, le tabelle/timeline/ranking mostrano descrizioni e riferimenti, e ogni messaggio assistente ha pulsante copia con feedback.
+- File/documenti collegati:
+  - `src/next/chat-ia/agents/analytics.ts`
+  - `src/next/chat-ia/agents/visualization.ts`
+  - `src/next/chat-ia/agents/specialists/*`
+  - `src/next/chat-ia/core/chatIaTypes.ts`
+  - `src/next/chat-ia/components/ChatIaMessageItem.tsx`
+  - `src/next/chat-ia/components/blocks/*`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `tests/e2e/05-domandeArgute.spec.ts`
+  - `tests/e2e/08-cliccabilita.spec.ts`
+  - `tests/e2e/09-copia.spec.ts`
+  - `docs/_live/REPORT_ARRICCHIMENTO_VISUALIZATION_2026-04-30.md`
+- Verifiche: `npm run build` OK; lint mirato OK; `node --check` backend OK; E2E mirati 15/15 PASS; suite completa 85 test PASS con 1 flaky storico recuperato al retry.
+
+## 2.3 Aggiornamento operativo 2026-04-30 - Chat IA NEXT multi-agente su flotta reale
+- Stato: `FATTO`
+- Note: corretto il percorso multi-agente per impedire che D1/D5/D7/D8 usino solo le targhe o il cantiere noti dai test E2E. Le analisi consumi interrogano la flotta reale tramite lista mezzi e snapshot rifornimenti read-only; le analisi cantieri usano lo snapshot completo attrezzature/cantieri. Rimossi leakage tecnici da analytics, prompt agenti e prompt backend.
+- File/documenti collegati:
+  - `src/next/chat-ia/agents/orchestrator.ts`
+  - `src/next/chat-ia/agents/analytics.ts`
+  - `src/next/chat-ia/agents/specialists/*`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `tests/e2e/05-domandeArgute.spec.ts`
+  - `tests/e2e/07-coerenzaFlotta.spec.ts`
+  - `docs/_live/REPORT_FIX_MULTI_AGENTE_FLOTTA_REALE_2026-04-30.md`
+- Verifiche: `npm run build` OK; lint mirato OK; `node --check` backend OK; E2E mirati 13/13 PASS; suite completa 79 test PASS con 1 flaky storico recuperato al retry.
+
+## 2.4 Aggiornamento operativo 2026-04-29 - Chat IA NEXT multi-agente e visualization
+- Stato: `FATTO`
+- Note: la Chat IA NEXT tool-use ha ora un percorso multi-agente per le 9 domande analitiche D1-D9: orchestratore, 5 agenti specialisti, analytics e visualization. Il percorso usa i tool registry esistenti senza modificarli, genera blocchi strutturati React e mantiene il flusso backend tool-use come fallback per i prompt ordinari.
+- File/documenti collegati:
+  - `src/next/chat-ia/agents/*`
+  - `src/next/chat-ia/components/blocks/*`
+  - `src/next/chat-ia/backend/chatIaBackendBridge.ts`
+  - `src/next/chat-ia/components/ChatIaMessageItem.tsx`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `tests/e2e/05-domandeArgute.spec.ts`
+  - `tests/e2e/06-visualization.spec.ts`
+  - `docs/_live/REPORT_REFACTORING_MULTI_AGENTE_2026-04-29.md`
+- Verifiche: nuovi E2E 13/13 PASS; suite completa 75 test verde con 1 flaky recuperato al retry e poi rilanciato singolarmente PASS; `npm run build` OK; `node --check` backend OK; lint mirato OK.
+
+## 2.5 Aggiornamento operativo 2026-04-29 - Chat IA structured output e date italiane
+- Stato: `FATTO`
+- Note: l'endpoint chat tool-use usa Structured Outputs strict per il messaggio finale, inietta data corrente e regole di interpretazione periodi a ogni chiamata, e i tool che espongono date restituiscono campi formattati in italiano `DD/MM/YYYY` tramite helper centrale. Nessuna scrittura business, nessun reader, nessuna madre, nessun barrier e nessuna ossatura tool modificati.
+- File/documenti collegati:
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+  - `src/next/chat-ia/tools/chatIaToolDates.ts`
+  - `src/next/chat-ia/tools/registry/*` tool con output data
+- Verifiche: `node --check` backend `OK`; lint mirato `OK`; `npm run build` `OK`; `npm run lint` globale `KO` sul baseline storico fuori perimetro `581/567/14`.
+
+## 2.6 Aggiornamento operativo 2026-04-29 - Chat IA tool Round 2
+- Stato: `FATTO`
+- Note: chiusi i bug runtime dei tool chat IA su ricerca mezzo per telaio, aggancio richieste "manutenzioni effettuate" e ricerca fatture manutenzione/officina per targa. Il fix resta read-only: nessun writer business, nessun barrier e nessun reader modificato.
+- File/documenti collegati:
+  - `src/next/chat-ia/tools/registry/toolSearchVehiclesByAttribute.ts`
+  - `src/next/chat-ia/tools/registry/toolSearchDocumentsAndInvoices.ts`
+  - `src/next/chat-ia/tools/registry/toolGetDocumentCostsByVehicle.ts`
+  - `src/next/chat-ia/tools/registry/toolSearchWorkOrders.ts`
+  - `src/next/chat-ia/tools/registry/toolListScheduledMaintenanceDue.ts`
+  - `src/next/chat-ia/tools/registry/toolGetVehicleMaintenanceHistory.ts`
+  - `backend/internal-ai/server/internal-ai-adapter.js`
+- Verifiche: lint mirato `OK`; `npm run build` `OK`; `npm run lint` globale `KO` sul baseline storico fuori perimetro.
 
 ## 3. Macrofase 0 - Governance e base documentale
 Stato macrofase: `FATTO`

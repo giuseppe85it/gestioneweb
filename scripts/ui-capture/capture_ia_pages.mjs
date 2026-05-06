@@ -100,15 +100,6 @@ function isoNow() {
 
 const CAPTURES = [
   {
-    order: 1,
-    fileName: "01_next_ia_hub.png",
-    route: "/next/ia",
-    sourceFile: "src/next/NextIntelligenzaArtificialePage.tsx",
-    pageType: "IA hub",
-    state: "vista iniziale",
-    notes: "Hub NEXT con card strumenti e stato API key.",
-  },
-  {
     order: 2,
     fileName: "02_next_ia_interna_overview.png",
     route: "/next/ia/interna",
@@ -152,15 +143,6 @@ const CAPTURES = [
     pageType: "IA interna",
     state: "sezione audit",
     notes: "Stessa pagina sorgente con sectionId='audit'.",
-  },
-  {
-    order: 7,
-    fileName: "07_next_ia_apikey.png",
-    route: "/next/ia/apikey",
-    sourceFile: "src/next/NextIAApiKeyPage.tsx",
-    pageType: "altro - configurazione IA",
-    state: "vista iniziale",
-    notes: "Pagina API key Gemini in versione NEXT.",
   },
   {
     order: 8,
@@ -422,14 +404,7 @@ const CAPTURES = [
   },
 ];
 
-const EXTRA_ROUTE_NOTES = [
-  {
-    route: "/next/ia-gestionale",
-    sourceFile: "src/App.tsx -> NextLegacyIaRedirect",
-    state: "redirect tecnico",
-    notes: "Route reale ma senza schermata autonoma: reindirizza a /next/ia.",
-  },
-];
+const EXTRA_ROUTE_NOTES = [];
 
 async function captureEntry(page, entry) {
   const result = {

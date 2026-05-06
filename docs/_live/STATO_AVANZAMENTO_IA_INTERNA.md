@@ -1,7 +1,7 @@
 # STATO AVANZAMENTO IA INTERNA GESTIONALE
 
 Data audit: 2026-03-11
-Ultimo aggiornamento scaffolding: 2026-04-15
+Ultimo aggiornamento scaffolding: 2026-04-29
 Stato generale: USE CASE DOCUMENTALE UNIFICATO ATTIVO NEL CLONE, CAPABILITY PARZIALE
 Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema IA interno oggi attivo nel clone/NEXT, con ingresso unico documentale, riuso del motore reale `Documenti IA` e guard-rail ancora espliciti sui rami live non verificati end-to-end.
 
@@ -9,6 +9,31 @@ Scopo: fotografia tecnica dello stato attuale del repository e del sottosistema 
 - La fonte operativa unica dello stato IA interno e `docs/product/CHECKLIST_IA_INTERNA.md`.
 - Questo documento resta il quadro esteso di contesto, rischi, fasi e fatti verificati.
 - Ogni futuro task relativo alla IA interna deve aggiornare obbligatoriamente la checklist unica; se non lo fa, il task e incompleto.
+
+## 0.0 Aggiornamento operativo 2026-04-29 - Chat IA structured output e date italiane
+- esecuzione completata nel perimetro adapter backend e tool registry chat IA, senza toccare madre, reader domain, barrier, componenti chat o ossatura tool;
+- `chat.tool-use` ora chiede a OpenAI Responses API una risposta finale con `text.format` `json_schema` strict, schema `ChatIaAssistantFinalMessage`, `additionalProperties: false` sugli oggetti dello schema e fallback solo di emergenza;
+- il system prompt tool-use viene costruito dinamicamente a ogni chiamata con data corrente in italiano, ISO e anno corrente, e istruzioni esplicite per mesi senza anno, mese scorso, quest'anno, anno scorso, prossimi 3 mesi, recente e output date `DD/MM/YYYY`;
+- creato `src/next/chat-ia/tools/chatIaToolDates.ts` con parsing ISO/timestamp/Firestore e helper `formatItalianDate`, `formatItalianDateLong`, `daysBetween`, `isExpiringWithin`, `isExpired`;
+- i tool registry che espongono date in output aggiungono campi italiani su scadenze revisione, manutenzioni programmate/storico, lavori, documenti/fatture, eventi, rifornimenti, materiali, cisterna, archivio report, procurement ed Euromecc;
+- verifiche tecniche:
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> `OK`
+  - `npx eslint` mirato sui file runtime/backend toccati -> `OK`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` per baseline storico fuori perimetro `581/567/14`.
+
+## 0.0 Aggiornamento operativo 2026-04-29 - Chat IA tool Round 2
+- esecuzione completata nel perimetro tool chat IA e prompt backend, senza toccare madre, reader domain, barrier, componenti chat o ossatura tool;
+- `search_vehicles_by_attribute` normalizza input e campi con lowercase, trim, rimozione caratteri non alfanumerici e match inclusivo bidirezionale, cosi un input come `n zA9 s35 a48 bah 028 00` puo agganciare un telaio salvato come `ZA9 S35 A48 BAH 028 00`;
+- `search_work_orders` espone keyword operative su manutenzioni effettuate/lavori officina/interventi tecnici, legge anche lo storico `@manutenzioni` tramite reader esistente e accetta filtro periodo;
+- `list_scheduled_maintenance_due` e `get_vehicle_maintenance_history` hanno description estese per agganciare richieste su manutenzioni, lavori fatti, lavori officina e interventi tecnici;
+- `search_documents_and_invoices` e `get_document_costs_by_vehicle` normalizzano targa e tipo, e usano alias manutenzione/officina/intervento/lavoro/riparazione per non perdere fatture officina salvate come `fattura` con contesto manutenzione;
+- verifica live read-only: la fattura Sciurba Autotruck snc n. 81 per `TI113417`, totale `1641.28`, data `31/03/2026`, e in `@documenti_mezzi` doc `Y6CGW4WR9r4hKYy4ityP` ed e letta dai tool documentali corretti;
+- verifiche tecniche:
+  - `npx eslint` mirato sui file runtime/backend toccati -> `OK`
+  - `node --check backend/internal-ai/server/internal-ai-adapter.js` -> `OK`
+  - `npm run build` -> `OK`
+  - `npm run lint` -> `KO` per baseline storico fuori perimetro.
 
 ## 0.0 Aggiornamento operativo 2026-04-22 - Archivista `Preventivo` con distinzione esplicita magazzino/manutenzione
 - esecuzione completata nel solo perimetro `src/next/internal-ai/ArchivistaPreventivoManutenzioneBridge.tsx`, `src/next/internal-ai/ArchivistaPreventivoMagazzinoBridge.tsx` e `src/next/internal-ai/ArchivistaArchiveClient.ts`, senza toccare writer manutenzioni, barrier o dataset fuori da `@preventivi`;
