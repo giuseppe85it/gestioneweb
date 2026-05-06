@@ -62,7 +62,7 @@ export async function openChatToolUse(page: Page): Promise<void> {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     await page.goto("/next/chat-tool", { waitUntil: "domcontentloaded" });
     try {
-      await expect(page.getByRole("heading", { name: "Chat IA NEXT Tool Use" })).toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole("heading", { name: "Chat IA NEXT", exact: true })).toBeVisible({ timeout: 30000 });
       await expect(page.getByLabel("Messaggio Chat IA NEXT")).toBeVisible({ timeout: 30000 });
       return;
     } catch (error) {

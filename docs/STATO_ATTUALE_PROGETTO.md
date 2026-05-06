@@ -1,7 +1,7 @@
 # STATO ATTUALE DEL PROGETTO
 
-Ultimo aggiornamento: 2026-05-04
-Fonte: `docs/audit/AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`; `docs/product/SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`
+Ultimo aggiornamento: 2026-05-06
+Fonte: `docs/audit/AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`; `docs/product/SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`; `docs/product/PIANO_ESECUTIVO_CHAT_IA_NEXT.md`
 
 ---
 
@@ -39,6 +39,8 @@ I moduli read-only (`Colleghi`, `Fornitori`, `Mezzi`, `Ordini`, `AttrezzatureCan
 Aggiornamento 2026-05-04: la Chat IA NEXT ha implementato la Fase 1 Zero-Invenzioni. Il vecchio output narrativo old-shape non e piu il contratto operativo della chat tool-use; sono attivi schema strict Zero-Invenzioni, prompt Action Router, Catalog Validator backend, preflight backend dedicato e blocco del bypass multi-agente old-shape. Driver360, Ricerca360, Vehicle360, Site360, Euromecc360 e Relation Resolver restano fasi successive.
 
 Aggiornamento 2026-05-04: la Chat IA NEXT ha implementato la Fase 2 Driver360. Le credenziali Firebase Admin sono attive via `GOOGLE_APPLICATION_CREDENTIALS`, la whitelist readonly boundary include le 4 collection autisti necessarie, il post-LLM resolver backend popola `resolvedFilters.driverId`, Driver360 renderizza dati certificati e il Relation Resolver autista-mezzo mostra solo relazioni con `relationProof`. I 59 tool e gli agenti multi-agente non sono stati modificati; Ricerca360, Vehicle360, Site360 ed Euromecc360 restano fasi successive.
+
+Aggiornamento 2026-05-06: esecuzione `PIANO_ESECUTIVO_CHAT_IA_NEXT.md` in corso. I BLOCCHI 1-7 risultano PASS nei report `docs/audit/REPORT_BLOCCO_*_2026-05-06.md`; il BLOCCO 8 e' in validazione finale. Il motore generico v1 e il pannello prove restano in stato controllato finche' il BLOCCO 8 non chiude tutti i cancelli.
 
 ---
 

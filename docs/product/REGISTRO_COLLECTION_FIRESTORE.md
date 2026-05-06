@@ -4,6 +4,7 @@
 - Versione: 0.6 BOZZA — 2026-05-04 — applicazione decisioni post-audit PROMPT 20
 - Data: 2026-05-04
 - Autore: Codex (audit), Giuseppe (validazione attesa)
+- Annotazione 2026-05-06: durante BLOCCO 8 del piano Chat IA NEXT il registro resta BOZZA. La promozione a v1.0 e' sospesa finche' nel piano restano voci `DA VERIFICARE`.
 - Validazione utente: 7/10 domande confermate, 3/10 PARZIALMENTE CHIUSE con regole di priorita' (R2 categoria mezzo, R4 chiave materiale, R5 chiave fornitore). 3 integrazioni di precisione applicate (R8 vincoli boundary, R10 distinzione campi strutturati/liberi, R-EG obbligo pannello prove).
 - Runtime check eseguito su 33 collection BOUNDARY OPEN. R2/R4/R5: PARZIALMENTE CHIUSE con regole di priorita'.
 - AllowedFields aggiornati per 22 ex-discrepanze. Sezione 'Alias e ricerca flessibile' introdotta con vincolo di separazione alias/boundary. Riserve R2/R4/R5 PARZIALMENTE CHIUSE con regole di priorita'.

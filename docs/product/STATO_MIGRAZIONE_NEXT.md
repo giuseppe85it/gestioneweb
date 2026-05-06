@@ -1,7 +1,7 @@
 # STATO MIGRAZIONE NEXT
 
-Ultimo aggiornamento: 2026-05-04
-Fonte: `docs/audit/AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`; `docs/product/SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`
+Ultimo aggiornamento: 2026-05-06
+Fonte: `docs/audit/AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`; `docs/product/SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`; `docs/product/PIANO_ESECUTIVO_CHAT_IA_NEXT.md`
 
 ---
 
@@ -92,7 +92,7 @@ Legenda: ✅ OK scrivente verificato | 🟡 PARZIALE scrivente non verificato | 
 | LibrettiExport | NextLibrettiExportPage | `/next/libretti-export` | 🔵 | Read-only |
 | — | NextIAArchivistaPage | `/next/ia/archivista` | 🟡 | Verifica browser 5 rami attivi |
 | — | NextInternalAiPage | `/next/ia/interna` | 🟡 | Verifica browser allegati reali |
-| Chat IA NEXT tool-use | ChatIaToolUsePage | `/next/chat-tool` | 🟡 | Fase 2 Driver360 Zero-Invenzioni implementata 2026-05-04: resolver post-LLM backend, `resolvedFilters.driverId`, Driver360 certificato e relationProof autista-mezzo. Credenziali Firebase Admin attive via `GOOGLE_APPLICATION_CREDENTIALS`; whitelist readonly boundary estesa alle 4 collection autisti. Ricerca360, Vehicle360, Site360 ed Euromecc360 restano fasi successive. |
+| Chat IA NEXT tool-use | ChatIaToolUsePage | `/next/chat-tool` | 🟡 | Fase 2 Driver360 Zero-Invenzioni implementata 2026-05-04. Aggiornamento 2026-05-06: BLOCCHI 1-7 del piano Chat IA NEXT risultano PASS nei report di audit; il BLOCCO 8 e' in validazione finale. Driver360, Vehicle360, Site360, Euromecc360, Ricerca360, relation resolver generico e pannello prove restano soggetti ai cancelli finali del piano prima di promozione. |
 
 ### Cisterna
 
@@ -237,5 +237,6 @@ Per eventuali cambi o nuove decisioni, aggiornare sempre prima `docs/DIARIO_DECI
 
 | Data | Evento |
 |---|---|
+| 2026-05-06 | Esecuzione piano Chat IA NEXT: BLOCCHI 1-7 PASS, BLOCCO 8 in validazione finale. Nessuna promozione a CHIUSO prima dei cancelli finali. |
 | 2026-04-23 | Riscrittura integrale da zero in base ad `AUDIT_GAP_NEXT_VS_MADRE_2026-04-22.md`. Nessun contenuto del file precedente riutilizzato. Backup vecchia versione: `docs/archive/2026-04-23/STATO_MIGRAZIONE_NEXT.md.bak` (il file non preesisteva). |
 | 2026-04-23 | Patch fine giornata: chiusi Materiali da ordinare e Acquisti alias. Gap scriventi 7 → 5. Dettaglio test flusso IA preventivi pendente. |

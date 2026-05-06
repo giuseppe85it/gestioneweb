@@ -1,0 +1,14 @@
+.proof-panel {
+  margin-top: 0.75rem;
+}
+
+.proof-panel .driver360__proof {
+  margin-top: 0;
+}
+
+.driver360__proof-record,
+.driver360__proof-empty {
+  margin: 0.35rem 0 0;
+  color: #475569;
+  font-size: 0.82rem;
+}

@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "internal-ai-backend:start": "node backend/internal-ai/server/internal-ai-adapter.js",
-    "internal-ai:observe-next": "node scripts/internal-ai-observe-next-runtime.mjs"
+    "internal-ai:observe-next": "node scripts/internal-ai-observe-next-runtime.mjs",
+    "chat-ia:diagnostics": "node backend/internal-ai/server/lib/__diagnostics__/zero-invenzioni-tests.mjs"
   },
   "dependencies": {
     "body-parser": "^2.2.0",

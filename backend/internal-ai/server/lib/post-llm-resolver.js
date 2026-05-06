@@ -1,7 +1,15 @@
+/*
+ * @deprecated Sostituito dal motore generico v1; questo modulo verra' rimosso
+ * nella prossima major. Riferimento: BLOCCO 8
+ * PIANO_ESECUTIVO_CHAT_IA_NEXT.md.
+ */
+
 import { getInternalAiFirebaseAdminReadonlyContext } from "../internal-ai-firebase-admin.js";
 import { readInternalAiFirebaseReadonlyBoundary } from "../internal-ai-firebase-readonly-boundary.js";
 import { buildCatalogErrorMessage } from "./catalog-validator.js";
 
+const LEGACY_POST_LLM_RESOLVER_WARNING =
+  "[post-llm-resolver] DEPRECATED: percorso legacy Driver360 invocato; migrare al motore generico v1.";
 const DRIVER_DATASET_KEY = "@colleghi";
 const MAX_DRIVER_CANDIDATES = 20;
 const PLATE_TOKEN_PATTERN = /\b[A-Z]{2}\d{6}\b/gi;
@@ -261,6 +269,7 @@ async function resolveDriver360Message(message) {
 }
 
 export async function resolvePostLlmMessage(message, options = {}) {
+  console.warn(LEGACY_POST_LLM_RESOLVER_WARNING);
   const routedMessage = normalizeDriver360Routing(message, options);
   const finalMessage = {
     ...routedMessage,

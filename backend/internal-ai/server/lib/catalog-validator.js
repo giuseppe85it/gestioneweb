@@ -52,6 +52,44 @@ const REPORT_TEMPLATE_ENUM = new Set([
 ]);
 
 const REPORT_SUBJECT_KIND_ENUM = new Set(["driver", "vehicle", "site", "euromecc"]);
+const ACCESS_MODE_ENUM = new Set([
+  "exact_document",
+  "collection_root",
+  "exact_object_path_from_firestore_field",
+]);
+const RESOLVED_FILTERS_ENTRY_STATUS_ENUM = new Set(["ok", "empty", "error", "not_found"]);
+const UNSAFE_RESOLVED_FILTER_FIELD_NAMES = new Set([
+  "apikey",
+  "token",
+  "password",
+  "secret",
+  "telefono",
+  "telefonoprivato",
+  "telefoniaggiuntivi",
+  "email",
+  "indirizzo",
+  "pinsim",
+  "puksim",
+  "schedecarburante",
+  "downloadurl",
+  "fileurl",
+  "pdfurl",
+  "url",
+  "imageurls",
+  "fotourl",
+  "note",
+  "messaggio",
+  "commento",
+  "testo",
+  "dettaglio",
+  "rawtext",
+  "extractedtext",
+  "riepilogobreve",
+  "analisicosti",
+  "anomalie",
+  "fornitorinotevoli",
+]);
+const SIGNED_URL_PATTERN = /https?:\/\/|firebasestorage|googleapis\.com\/storage|alt=media|X-Goog-/i;
 
 const TOP_LEVEL_FIELDS = new Set([
   "action",
@@ -143,6 +181,39 @@ function validateNullableEnum(value, enumSet, path, errors) {
   }
   if (typeof value !== "string" || !enumSet.has(value)) {
     errors.push(`${path} deve essere null o un valore enum ammesso`);
+  }
+}
+
+function normalizeFieldName(value) {
+  return typeof value === "string" ? value.replace(/[^a-z0-9]/gi, "").toLowerCase() : "";
+}
+
+function isUnsafeResolvedFilterFieldName(value) {
+  return UNSAFE_RESOLVED_FILTER_FIELD_NAMES.has(normalizeFieldName(value));
+}
+
+function validateSafeResolvedFilterPayload(value, path, errors) {
+  if (typeof value === "string") {
+    if (SIGNED_URL_PATTERN.test(value)) {
+      errors.push(`${path} contiene URL o riferimento Storage non ammesso`);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => validateSafeResolvedFilterPayload(item, `${path}[${index}]`, errors));
+    return;
+  }
+
+  if (!isPlainObject(value)) {
+    return;
+  }
+
+  for (const [field, nestedValue] of Object.entries(value)) {
+    if (isUnsafeResolvedFilterFieldName(field)) {
+      errors.push(`${pathOf(path, field)} e' un campo non ammesso nei resolvedFilters certificati`);
+    }
+    validateSafeResolvedFilterPayload(nestedValue, pathOf(path, field), errors);
   }
 }
 
@@ -340,6 +411,11 @@ function validateResolvedFilters(value, errors) {
     return;
   }
 
+  if (value.version === "resolvedFilters.v2") {
+    validateResolvedFiltersV2(value, errors);
+    return;
+  }
+
   const allowed = new Set(["driverId", "vehiclePlate", "siteId", "period"]);
   hasOnlyFields(value, allowed, "resolvedFilters", errors);
 
@@ -370,6 +446,287 @@ function validateResolvedFilters(value, errors) {
       errors.push("resolvedFilters.period.from/to devono essere string");
     }
   }
+}
+
+function validateResolvedFiltersV2Query(value, errors) {
+  if (!isPlainObject(value)) {
+    errors.push("resolvedFilters.query deve essere oggetto");
+    return;
+  }
+
+  const allowed = new Set(["action", "view", "entityKind", "searchText", "periodPreset"]);
+  hasOnlyFields(value, allowed, "resolvedFilters.query", errors);
+  requireFields(value, allowed, "resolvedFilters.query", errors);
+  validateNullableEnum(value.action, ACTION_ENUM, "resolvedFilters.query.action", errors);
+  validateNullableEnum(value.view, VIEW_ENUM, "resolvedFilters.query.view", errors);
+  validateNullableEnum(value.entityKind, ENTITY_KIND_ENUM, "resolvedFilters.query.entityKind", errors);
+  validateNullableEnum(value.periodPreset, PERIOD_PRESET_ENUM, "resolvedFilters.query.periodPreset", errors);
+  if (value.searchText !== null && typeof value.searchText !== "string") {
+    errors.push("resolvedFilters.query.searchText deve essere string o null");
+  }
+}
+
+function validateResolvedFiltersV2LegacyDriver(value, errors) {
+  if (value === null) return;
+  if (!isPlainObject(value)) {
+    errors.push("resolvedFilters.legacyDriver360 deve essere null o oggetto");
+    return;
+  }
+
+  const allowed = new Set(["driverId"]);
+  hasOnlyFields(value, allowed, "resolvedFilters.legacyDriver360", errors);
+  if (
+    Object.prototype.hasOwnProperty.call(value, "driverId") &&
+    value.driverId !== null &&
+    value.driverId !== undefined &&
+    typeof value.driverId !== "string"
+  ) {
+    errors.push("resolvedFilters.legacyDriver360.driverId deve essere string o null");
+  }
+}
+
+function validateStringArray(value, path, errors) {
+  if (!Array.isArray(value)) {
+    errors.push(`${path} deve essere array`);
+    return;
+  }
+  value.forEach((item, index) => {
+    if (typeof item !== "string") {
+      errors.push(`${path}[${index}] deve essere string`);
+    }
+  });
+}
+
+function validateCertifiedField(value, path, fieldName, errors) {
+  if (isUnsafeResolvedFilterFieldName(fieldName)) {
+    errors.push(`${path} usa un campo non ammesso`);
+  }
+  if (!isPlainObject(value)) {
+    errors.push(`${path} deve essere oggetto`);
+    return;
+  }
+
+  const allowed = new Set(["value", "sourceField", "sourceValueType"]);
+  hasOnlyFields(value, allowed, path, errors);
+  requireFields(value, new Set(["value", "sourceField"]), path, errors);
+  if (typeof value.sourceField !== "string" || !value.sourceField.trim()) {
+    errors.push(`${path}.sourceField deve essere string non vuota`);
+  } else if (isUnsafeResolvedFilterFieldName(value.sourceField)) {
+    errors.push(`${path}.sourceField e' un campo non ammesso`);
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "sourceValueType") &&
+    value.sourceValueType !== undefined &&
+    value.sourceValueType !== null &&
+    typeof value.sourceValueType !== "string"
+  ) {
+    errors.push(`${path}.sourceValueType deve essere string o null`);
+  }
+  validateSafeResolvedFilterPayload(value.value, `${path}.value`, errors);
+}
+
+function validateCertifiedRecordProvenance(value, path, errors) {
+  if (!isPlainObject(value)) {
+    errors.push(`${path} deve essere oggetto`);
+    return;
+  }
+
+  const allowed = new Set([
+    "sourceCollection",
+    "sourceRecordId",
+    "sourceFields",
+    "accessModeUsed",
+    "boundaryEntryId",
+    "confidence",
+  ]);
+  hasOnlyFields(value, allowed, path, errors);
+  requireFields(value, new Set(["sourceCollection", "sourceRecordId", "sourceFields", "accessModeUsed", "boundaryEntryId"]), path, errors);
+
+  for (const field of ["sourceCollection", "sourceRecordId", "accessModeUsed", "boundaryEntryId"]) {
+    if (typeof value[field] !== "string" || !value[field].trim()) {
+      errors.push(`${path}.${field} deve essere string non vuota`);
+    }
+  }
+  if (typeof value.accessModeUsed === "string") {
+    validateNullableEnum(value.accessModeUsed, ACCESS_MODE_ENUM, `${path}.accessModeUsed`, errors);
+  }
+  validateStringArray(value.sourceFields, `${path}.sourceFields`, errors);
+  if (
+    Object.prototype.hasOwnProperty.call(value, "confidence") &&
+    value.confidence !== undefined &&
+    value.confidence !== null &&
+    typeof value.confidence !== "string"
+  ) {
+    errors.push(`${path}.confidence deve essere string o null`);
+  }
+  validateSafeResolvedFilterPayload(value, path, errors);
+}
+
+function validateCertifiedRelationProof(value, path, errors) {
+  if (!isPlainObject(value)) {
+    errors.push(`${path} deve essere oggetto`);
+    return;
+  }
+
+  const allowed = new Set(["relationKind", "sourceCollection", "sourceRecordId", "sourceField", "rule", "certainty"]);
+  hasOnlyFields(value, allowed, path, errors);
+  requireFields(value, allowed, path, errors);
+  for (const field of allowed) {
+    if (typeof value[field] !== "string" || !value[field].trim()) {
+      errors.push(`${path}.${field} deve essere string non vuota`);
+    }
+  }
+  if (typeof value.sourceField === "string" && isUnsafeResolvedFilterFieldName(value.sourceField)) {
+    errors.push(`${path}.sourceField e' un campo non ammesso`);
+  }
+  validateSafeResolvedFilterPayload(value, path, errors);
+}
+
+function validateCertifiedRelation(value, path, errors) {
+  if (!isPlainObject(value)) {
+    errors.push(`${path} deve essere oggetto`);
+    return;
+  }
+
+  const allowed = new Set(["relationKind", "targetLabel", "relationProof"]);
+  hasOnlyFields(value, allowed, path, errors);
+  requireFields(value, new Set(["relationKind", "relationProof"]), path, errors);
+  if (typeof value.relationKind !== "string" || !value.relationKind.trim()) {
+    errors.push(`${path}.relationKind deve essere string non vuota`);
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "targetLabel") &&
+    value.targetLabel !== undefined &&
+    value.targetLabel !== null &&
+    typeof value.targetLabel !== "string"
+  ) {
+    errors.push(`${path}.targetLabel deve essere string o null`);
+  }
+  validateCertifiedRelationProof(value.relationProof, `${path}.relationProof`, errors);
+}
+
+function validateCertifiedRecord(value, path, errors) {
+  if (!isPlainObject(value)) {
+    errors.push(`${path} deve essere oggetto`);
+    return;
+  }
+
+  const allowed = new Set(["sourceRecordId", "fields", "provenance", "relations"]);
+  hasOnlyFields(value, allowed, path, errors);
+  requireFields(value, new Set(["sourceRecordId", "fields", "provenance"]), path, errors);
+  if (typeof value.sourceRecordId !== "string" || !value.sourceRecordId.trim()) {
+    errors.push(`${path}.sourceRecordId deve essere string non vuota`);
+  }
+  if (!isPlainObject(value.fields)) {
+    errors.push(`${path}.fields deve essere oggetto`);
+  } else {
+    for (const [fieldName, fieldValue] of Object.entries(value.fields)) {
+      validateCertifiedField(fieldValue, `${path}.fields.${fieldName}`, fieldName, errors);
+    }
+  }
+  validateCertifiedRecordProvenance(value.provenance, `${path}.provenance`, errors);
+  if (Object.prototype.hasOwnProperty.call(value, "relations")) {
+    if (!Array.isArray(value.relations)) {
+      errors.push(`${path}.relations deve essere array`);
+    } else {
+      value.relations.forEach((relation, index) =>
+        validateCertifiedRelation(relation, `${path}.relations[${index}]`, errors),
+      );
+    }
+  }
+  validateSafeResolvedFilterPayload(value, path, errors);
+}
+
+function validateResolvedFiltersV2Entry(value, index, errors) {
+  const path = `resolvedFilters.entries[${index}]`;
+  if (!isPlainObject(value)) {
+    errors.push(`${path} deve essere oggetto`);
+    return;
+  }
+
+  const allowed = new Set(["boundaryEntryId", "sourceCollection", "accessModeUsed", "records", "status"]);
+  hasOnlyFields(value, allowed, path, errors);
+  requireFields(value, allowed, path, errors);
+  for (const field of ["boundaryEntryId", "sourceCollection", "accessModeUsed", "status"]) {
+    if (typeof value[field] !== "string" || !value[field].trim()) {
+      errors.push(`${path}.${field} deve essere string non vuota`);
+    }
+  }
+  if (typeof value.accessModeUsed === "string") {
+    validateNullableEnum(value.accessModeUsed, ACCESS_MODE_ENUM, `${path}.accessModeUsed`, errors);
+  }
+  if (typeof value.status === "string") {
+    validateNullableEnum(value.status, RESOLVED_FILTERS_ENTRY_STATUS_ENUM, `${path}.status`, errors);
+  }
+  if (!Array.isArray(value.records)) {
+    errors.push(`${path}.records deve essere array`);
+  } else {
+    value.records.forEach((record, recordIndex) =>
+      validateCertifiedRecord(record, `${path}.records[${recordIndex}]`, errors),
+    );
+  }
+}
+
+function validateResolvedFiltersV2Error(value, index, errors) {
+  const path = `resolvedFilters.errors[${index}]`;
+  if (!isPlainObject(value)) {
+    errors.push(`${path} deve essere oggetto`);
+    return;
+  }
+
+  const allowed = new Set([
+    "kind",
+    "boundaryEntryId",
+    "entryConfigKey",
+    "messageKey",
+    "detail",
+    "missingAllowedFields",
+  ]);
+  hasOnlyFields(value, allowed, path, errors);
+  for (const [field, fieldValue] of Object.entries(value)) {
+    if (field === "missingAllowedFields") {
+      validateStringArray(fieldValue, `${path}.${field}`, errors);
+    } else if (fieldValue !== null && fieldValue !== undefined && typeof fieldValue !== "string") {
+      errors.push(`${path}.${field} deve essere string o null`);
+    }
+  }
+}
+
+function validateResolvedFiltersV2(value, errors) {
+  const allowed = new Set([
+    "version",
+    "legacyDriver360",
+    "query",
+    "entries",
+    "disambiguation",
+    "errors",
+    "unresolvedReason",
+  ]);
+  hasOnlyFields(value, allowed, "resolvedFilters", errors);
+  requireFields(value, allowed, "resolvedFilters", errors);
+
+  if (value.version !== "resolvedFilters.v2") {
+    errors.push("resolvedFilters.version deve essere resolvedFilters.v2");
+  }
+  validateResolvedFiltersV2LegacyDriver(value.legacyDriver360, errors);
+  validateResolvedFiltersV2Query(value.query, errors);
+  if (!Array.isArray(value.entries)) {
+    errors.push("resolvedFilters.entries deve essere array");
+  } else {
+    value.entries.forEach((entry, index) => validateResolvedFiltersV2Entry(entry, index, errors));
+  }
+  if (value.disambiguation !== null && !isPlainObject(value.disambiguation)) {
+    errors.push("resolvedFilters.disambiguation deve essere null o oggetto");
+  }
+  if (!Array.isArray(value.errors)) {
+    errors.push("resolvedFilters.errors deve essere array");
+  } else {
+    value.errors.forEach((entry, index) => validateResolvedFiltersV2Error(entry, index, errors));
+  }
+  if (value.unresolvedReason !== null && typeof value.unresolvedReason !== "string") {
+    errors.push("resolvedFilters.unresolvedReason deve essere string o null");
+  }
+  validateSafeResolvedFilterPayload(value, "resolvedFilters", errors);
 }
 
 export function buildCatalogErrorMessage() {

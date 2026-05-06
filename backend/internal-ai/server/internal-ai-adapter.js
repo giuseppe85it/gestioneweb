@@ -56,6 +56,8 @@ import {
 } from "./lib/catalog-validator.js";
 import { buildChatZeroPreflightContext } from "./lib/chat-zero-preflight.js";
 import { resolvePostLlmMessage } from "./lib/post-llm-resolver.js";
+import { REGISTRY_CONFIG_FASE_A } from "./lib/registry.config.js";
+import { runQueryEngine } from "./lib/query-engine.js";
 import { runShadowComparator } from "./lib/shadow-comparator.js";
 import { runUniversalResolverFaseA } from "./lib/universal-resolver.js";
 
@@ -1224,6 +1226,278 @@ function buildUniversalDriver360Message(message, driverId) {
   };
 }
 
+function inferCertifiedViewFromPreflight(message, options = {}) {
+  const promptSearchText =
+    normalizeToolUseText(options?.preflightContext?.searchText) ||
+    normalizeToolUseText(options?.prompt);
+  const messageSearchText = normalizeToolUseText(message?.filters?.searchText);
+  const searchText = promptSearchText || messageSearchText;
+
+  if (/\beuromecc\b/i.test(searchText)) return "Euromecc360";
+  if (/\bschede?\s+cisterna\b/i.test(searchText) || /\bcisterna\b/i.test(searchText)) return "Site360";
+  if (/\bdocumenti?\s+mezzo\b/i.test(searchText)) return "Vehicle360";
+  if (/\brifornimenti?\b/i.test(searchText) && extractPlateToken(searchText)) return "Vehicle360";
+  if (/\bmanutenzioni?\b/i.test(searchText) && extractPlateToken(searchText)) return "Vehicle360";
+  if (/\bmezzo\b/i.test(searchText) && extractPlateToken(searchText)) return "Vehicle360";
+  if (/\b(ricerca|cerca|trova)\b/i.test(searchText)) return "Ricerca360";
+  if (/\b(profilo|scheda|quadro)\b/i.test(searchText) && !extractPlateToken(searchText)) return "Driver360";
+
+  const currentView = normalizeToolUseText(message?.view);
+  if (currentView && currentView !== "Driver360") {
+    return null;
+  }
+
+  const hintEntityKind = normalizeToolUseText(options?.preflightContext?.hints?.entityKind);
+  if (hintEntityKind === "vehicle") return "Vehicle360";
+  if (hintEntityKind === "site") return "Site360";
+  if (hintEntityKind === "euromecc") return "Euromecc360";
+
+  if (/\b(ricerca|cerca|trova)\b/i.test(searchText)) {
+    return "Ricerca360";
+  }
+
+  return null;
+}
+
+function normalizeOutOfCatalogFallbackResolution(resolution, options = {}) {
+  const message = resolution?.finalMessage;
+  if (
+    message?.action !== "error" ||
+    message?.view !== null ||
+    message?.accompaniment?.kind !== "error_view_unavailable"
+  ) {
+    return resolution;
+  }
+
+  if (inferCertifiedViewFromPreflight(message, options)) {
+    return resolution;
+  }
+
+  return {
+    ...resolution,
+    finalMessage: buildCatalogErrorMessage(),
+    resolutionApplied: true,
+    reason: `${resolution?.reason ?? "fallback"}_out_of_catalog`,
+  };
+}
+
+function entityKindForCertifiedView(view) {
+  if (view === "Driver360") return "driver";
+  if (view === "Vehicle360") return "vehicle";
+  if (view === "Site360") return "site";
+  if (view === "Euromecc360") return "euromecc";
+  return null;
+}
+
+function normalizeMessageForViewBinding(message, options = {}) {
+  const inferredView = inferCertifiedViewFromPreflight(message, options);
+  if (!inferredView) {
+    return message;
+  }
+
+  const filters = isPlainObject(message?.filters) ? message.filters : null;
+  const searchText =
+    normalizeToolUseText(filters?.searchText) ||
+    normalizeToolUseText(options?.preflightContext?.searchText) ||
+    normalizeToolUseText(options?.prompt);
+
+  return {
+    ...message,
+    action: "view_open",
+    view: inferredView,
+    filters: {
+      searchText: searchText || null,
+      entityKind: entityKindForCertifiedView(inferredView),
+      periodPreset: filters?.periodPreset ?? null,
+    },
+    clarification: null,
+    disambiguation: null,
+    report: null,
+    accompaniment: { kind: "view_opened", params: null },
+  };
+}
+
+function getViewBindingEntryKeys(view) {
+  return Object.entries(REGISTRY_CONFIG_FASE_A.entries)
+    .filter(([, entryConfig]) => Array.isArray(entryConfig.viewBindings) && entryConfig.viewBindings.includes(view))
+    .map(([entryConfigKey]) => entryConfigKey);
+}
+
+function normalizeCertifiedSearchValue(value) {
+  return normalizeToolUseText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+function extractPlateToken(value) {
+  const match = normalizeToolUseText(value).toUpperCase().match(/\b[A-Z]{2}\d{6}\b/);
+  return match ? match[0] : "";
+}
+
+function readCertifiedRecordValues(record) {
+  return Object.values(record?.fields ?? {})
+    .map((field) => field?.value)
+    .filter((value) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    .map((value) => String(value));
+}
+
+function certifiedRecordMatchesSearch(record, searchText) {
+  const normalizedSearch = normalizeCertifiedSearchValue(searchText);
+  if (!normalizedSearch) return true;
+
+  const values = readCertifiedRecordValues(record);
+  const normalizedValues = values.map((value) => normalizeCertifiedSearchValue(value)).filter(Boolean);
+  const plateToken = extractPlateToken(searchText);
+  if (plateToken) {
+    const normalizedPlate = normalizeCertifiedSearchValue(plateToken);
+    return normalizedValues.some((value) => value === normalizedPlate);
+  }
+
+  const tokens = normalizeToolUseText(searchText)
+    .split(/\s+/)
+    .map((token) => normalizeCertifiedSearchValue(token))
+    .filter((token) => token.length >= 3);
+  if (!tokens.length) return true;
+  return tokens.every((token) => normalizedValues.some((value) => value.includes(token)));
+}
+
+function filterResolvedFiltersBySearchText(resolved, searchText) {
+  if (!isPlainObject(resolved) || !Array.isArray(resolved.entries)) return resolved;
+  const nextEntries = resolved.entries.map((entry) => {
+    const records = Array.isArray(entry?.records) ? entry.records : [];
+    const filteredRecords = records.filter((record) => certifiedRecordMatchesSearch(record, searchText));
+    return {
+      ...entry,
+      records: filteredRecords,
+      status: filteredRecords.length ? entry.status : "empty",
+    };
+  });
+  const hasRecords = nextEntries.some((entry) => Array.isArray(entry.records) && entry.records.length > 0);
+  return {
+    ...resolved,
+    entries: nextEntries,
+    errors: hasRecords
+      ? []
+      : [
+          {
+            kind: "collection_empty",
+            boundaryEntryId: null,
+            messageKey: "no_results",
+          },
+        ],
+    unresolvedReason: hasRecords ? null : "collection_empty",
+  };
+}
+
+function mergeResolvedFiltersV2(results, message, searchText) {
+  const entries = [];
+  const errors = [];
+  for (const result of results) {
+    const filteredResult = filterResolvedFiltersBySearchText(result, searchText);
+    if (Array.isArray(filteredResult?.entries)) entries.push(...filteredResult.entries);
+    if (Array.isArray(filteredResult?.errors)) errors.push(...filteredResult.errors);
+  }
+  const recordCount = entries.reduce(
+    (count, entry) => count + (Array.isArray(entry.records) ? entry.records.length : 0),
+    0,
+  );
+  const firstError = errors.find((error) => error?.kind) ?? null;
+  return {
+    resolvedFilters: {
+      version: "resolvedFilters.v2",
+      legacyDriver360: null,
+      query: {
+        action: message?.action ?? null,
+        view: message?.view ?? null,
+        entityKind: message?.filters?.entityKind ?? null,
+        searchText: searchText || null,
+        periodPreset: message?.filters?.periodPreset ?? null,
+      },
+      entries,
+      disambiguation: null,
+      errors: recordCount ? [] : errors,
+      unresolvedReason: recordCount ? null : firstError?.kind ?? "collection_empty",
+    },
+    recordCount,
+  };
+}
+
+async function resolveByViewBinding(message, options = {}) {
+  const view = normalizeToolUseText(message?.view);
+  if (!view || view === "Driver360") {
+    return null;
+  }
+
+  const entryConfigKeys = getViewBindingEntryKeys(view);
+  if (!entryConfigKeys.length) {
+    return {
+      finalMessage: {
+        ...message,
+        action: "view_open",
+        resolvedFilters: {
+          version: "resolvedFilters.v2",
+          legacyDriver360: null,
+          query: {
+            action: message?.action ?? null,
+            view,
+            entityKind: message?.filters?.entityKind ?? null,
+            searchText: null,
+            periodPreset: message?.filters?.periodPreset ?? null,
+          },
+          entries: [],
+          disambiguation: null,
+          errors: [{ kind: "boundary_entry_not_found", messageKey: "error_view_unavailable" }],
+          unresolvedReason: "boundary_entry_not_found",
+        },
+        disambiguation: null,
+        accompaniment: { kind: "error_view_unavailable", params: null },
+      },
+      resolutionApplied: true,
+      reason: "view_binding_missing",
+    };
+  }
+
+  const filters = isPlainObject(message?.filters) ? message.filters : null;
+  const searchText =
+    normalizeToolUseText(filters?.searchText) ||
+    normalizeToolUseText(options?.preflightContext?.searchText) ||
+    normalizeToolUseText(options?.prompt);
+  const results = [];
+  for (const entryConfigKey of entryConfigKeys) {
+    results.push(
+      await runQueryEngine({
+        entryConfigKey,
+        matchInput: { searchText },
+        query: {
+          action: message?.action ?? null,
+          view,
+          entityKind: filters?.entityKind ?? null,
+          searchText,
+          periodPreset: filters?.periodPreset ?? null,
+        },
+      }),
+    );
+  }
+
+  const merged = mergeResolvedFiltersV2(results, message, searchText);
+  const resolvedFiltersForMessage = merged.recordCount ? merged.resolvedFilters : null;
+  return {
+    finalMessage: {
+      ...message,
+      action: "view_open",
+      resolvedFilters: resolvedFiltersForMessage,
+      disambiguation: null,
+      accompaniment: merged.recordCount
+        ? { kind: "view_opened", params: { count: merged.recordCount } }
+        : { kind: "no_results", params: { count: 0 } },
+    },
+    resolutionApplied: true,
+    reason: merged.recordCount ? "view_binding_resolved" : "view_binding_no_results",
+  };
+}
+
 function logFaseAFallback(options, reason) {
   console.warn(
     "[chat-tool-use]",
@@ -1271,7 +1545,14 @@ async function resolveChatIaPostLlmMessage(message, options = {}) {
     return resolvePostLlmMessage(message, options);
   }
 
-  return resolveWithUniversalResolverFaseA(message, options);
+  const normalizedMessage = normalizeMessageForViewBinding(message, options);
+  const viewBindingResolution = await resolveByViewBinding(normalizedMessage, options);
+  if (viewBindingResolution) {
+    return viewBindingResolution;
+  }
+
+  const fallbackResolution = await resolveWithUniversalResolverFaseA(normalizedMessage, options);
+  return normalizeOutOfCatalogFallbackResolution(fallbackResolution, options);
 }
 
 function normalizeToolUseFunctionCallOutputs(toolResults) {

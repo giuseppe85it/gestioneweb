@@ -1,3 +1,9 @@
+/*
+ * @deprecated Sostituito dal backend relation-resolver.js del motore generico v1.
+ * Questo modulo frontend legacy verra' rimosso nella prossima major.
+ * Riferimento: BLOCCO 8 PIANO_ESECUTIVO_CHAT_IA_NEXT.md.
+ */
+
 import {
   readNextAnagraficheFlottaSnapshot,
   type NextAnagraficheFlottaMezzoItem,
@@ -8,6 +14,9 @@ import {
 } from "../../domain/nextAutistiDomain";
 import type { NextCollegaReadOnlyItem } from "../../domain/nextColleghiDomain";
 import type { DriverVehicleCertifiedRelation, RelationProof } from "../core/chatIaTypes";
+
+const LEGACY_DRIVER_RELATION_RESOLVER_WARNING =
+  "[driverRelationResolver] DEPRECATED: resolver relazioni frontend legacy invocato; usare backend relation-resolver.js.";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -81,6 +90,7 @@ function addRelationIfCertified(
 export async function resolveDriverVehicleRelations(
   driver: NextCollegaReadOnlyItem,
 ): Promise<DriverVehicleCertifiedRelation[]> {
+  console.warn(LEGACY_DRIVER_RELATION_RESOLVER_WARNING);
   const driverId = normalizeId(driver.id);
   const driverBadge = normalizeBadge(driver.badge);
   const relations = new Map<string, DriverVehicleCertifiedRelation>();

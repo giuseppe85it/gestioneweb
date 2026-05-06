@@ -2,8 +2,8 @@ const PLATE_PATTERN = /\b[A-Z]{2}\d{6}\b/i;
 
 const ENTITY_KEYWORDS = [
   { kind: "vehicle", patterns: [/\bmezzo\b/i, /\bveicolo\b/i, /\btarga\b/i, /\bflotta\b/i] },
-  { kind: "driver", patterns: [/\bautista\b/i, /\bconducente\b/i, /\bdipendente\b/i] },
-  { kind: "site", patterns: [/\bcantiere\b/i, /\bsito\b/i, /\bcommessa\b/i] },
+  { kind: "driver", patterns: [/\bautista\b/i, /\bconducente\b/i, /\bdipendente\b/i, /\bprofilo\b/i] },
+  { kind: "site", patterns: [/\bcantiere\b/i, /\bsito\b/i, /\bcommessa\b/i, /\bcisterna\b/i] },
   { kind: "supplier", patterns: [/\bfornitore\b/i, /\bofficina\b/i, /\bpartner\b/i] },
   { kind: "euromecc", patterns: [/\beuromecc\b/i] },
 ];

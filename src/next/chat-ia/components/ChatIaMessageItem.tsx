@@ -7,6 +7,9 @@ import ChatIaMezzoMaterialsTable from "../sectors/mezzi/ChatIaMezzoMaterialsTabl
 import ChatIaMezzoTimeline from "../sectors/mezzi/ChatIaMezzoTimeline";
 import ChatIaVisualizationBlocks from "./blocks/ChatIaVisualizationBlocks";
 import Driver360 from "../views/Driver360";
+import CertifiedView from "../views/CertifiedView";
+import Vehicle360 from "../views/Vehicle360";
+import "../views/certifiedView.css";
 import type { NextMezzoDocumentiSnapshot } from "../../domain/nextDocumentiMezzoDomain";
 import type { NextMezzoMaterialiMovimentiSnapshot } from "../../domain/nextMaterialiMovimentiDomain";
 import type { ChatIaMezzoSnapshot, ChatIaMezzoTimelineEvent } from "../sectors/mezzi/chatIaMezziTypes";
@@ -176,11 +179,10 @@ function renderCertifiedView(message: ChatIaMessage) {
   }
 
   if (zeroMessage.action === "view_open" && zeroMessage.view) {
-    return (
-      <section className="chat-ia-message-card" data-chat-zero-view-unavailable>
-        <h3>Vista richiesta non ancora disponibile</h3>
-      </section>
-    );
+    if (zeroMessage.view === "Vehicle360") {
+      return <Vehicle360 message={zeroMessage} />;
+    }
+    return <CertifiedView message={zeroMessage} viewKind={zeroMessage.view} />;
   }
 
   return null;

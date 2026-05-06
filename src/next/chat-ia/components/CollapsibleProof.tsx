@@ -18,6 +18,9 @@ type CollapsibleProofProps = {
   provenance: ProvenanceItem[];
   relationProof?: RelationProofItem[];
   collapsedByDefault?: boolean;
+  groupByRecord?: boolean;
+  recordLabel?: string;
+  emptyText?: string;
   title?: string;
 };
 
@@ -37,16 +40,27 @@ export default function CollapsibleProof({
   provenance,
   relationProof = [],
   collapsedByDefault = true,
+  groupByRecord = false,
+  recordLabel,
+  emptyText,
   title = "Perche' vedo questo dato?",
 }: CollapsibleProofProps) {
   const safeProvenance = provenance.filter((item) => isAllowedFieldName(item.sourceField));
   const safeRelationProof = relationProof.filter((item) => isAllowedFieldName(item.field));
 
-  if (!safeProvenance.length && !safeRelationProof.length) return null;
+  if (!safeProvenance.length && !safeRelationProof.length) {
+    return emptyText ? <p className="driver360__proof-empty">{emptyText}</p> : null;
+  }
 
   return (
-    <details className="driver360__proof" data-relation-proof open={!collapsedByDefault}>
+    <details
+      className="driver360__proof"
+      data-group-by-record={groupByRecord ? "true" : "false"}
+      data-relation-proof
+      open={!collapsedByDefault}
+    >
       <summary>{title}</summary>
+      {recordLabel ? <p className="driver360__proof-record">{recordLabel}</p> : null}
       <dl>
         {safeProvenance.map((item, index) => (
           <div key={`provenance-${item.boundaryEntryId}-${item.sourceRecordId}-${item.sourceField}-${index}`}>

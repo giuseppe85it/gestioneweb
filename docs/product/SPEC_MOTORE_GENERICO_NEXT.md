@@ -5,6 +5,7 @@
 - **Versione**: v0.1 BOZZA
 - **Data**: 2026-05-04
 - **Autore**: Giuseppe (decisioni) + Codex (stesura)
+- **Annotazione 2026-05-06**: resta BOZZA durante BLOCCO 8 del piano Chat IA NEXT. Nessuna promozione a STABLE finche' nel piano restano voci `DA VERIFICARE`.
 - **Scopo**: definire il motore generico data-driven della Chat IA NEXT.
 - **Relazione con spec esistenti**: questo documento ESTENDE `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`. NON lo sostituisce. NON lo duplica.
 - **Documento di pari livello successivo**: `SPEC_PANNELLO_PROVE_NEXT.md` (da scrivere dopo questo).

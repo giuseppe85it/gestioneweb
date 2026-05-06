@@ -15,6 +15,7 @@
 
 import { getInternalAiFirebaseAdminReadonlyContext } from "../internal-ai-firebase-admin.js";
 import { readInternalAiFirebaseReadonlyBoundary } from "../internal-ai-firebase-readonly-boundary.js";
+import { runCollectionRootResolver } from "./universal-resolver-collection-root.js";
 import { REGISTRY_CONFIG_FASE_A } from "./registry.config.js";
 
 const DRIVER_QUERY_STOPWORDS = new Set([
@@ -238,9 +239,9 @@ function findBoundaryEntry(boundary, entryConfig) {
     (entry) =>
       entry.id === entryConfig.boundaryEntryId &&
       entry.service === "firestore" &&
-      entry.accessMode === "exact_document" &&
+      entry.accessMode === entryConfig.accessMode &&
       entry.collection === entryConfig.collection &&
-      entry.docId === entryConfig.docId,
+      (entryConfig.accessMode === "collection_root" || entry.docId === entryConfig.docId),
   ) ?? null;
 }
 
@@ -268,7 +269,7 @@ export async function runUniversalResolverFaseA(input = {}) {
     ]);
   }
 
-  if (entryConfig.accessMode !== "exact_document") {
+  if (entryConfig.accessMode !== "exact_document" && entryConfig.accessMode !== "collection_root") {
     return buildEmptyOutput(input, entryConfig, "error", [
       {
         kind: "shape_rejected",
@@ -300,6 +301,26 @@ export async function runUniversalResolverFaseA(input = {}) {
           missingAllowedFields: coverage.missingAllowedFields,
         },
       ]);
+    }
+
+    if (entryConfig.accessMode === "collection_root") {
+      const readonlyContext = await getInternalAiFirebaseAdminReadonlyContext();
+      if (readonlyContext.status !== "ready" || !readonlyContext.firestore) {
+        return buildEmptyOutput(input, entryConfig, "error", [
+          {
+            kind: "firestore_error",
+            boundaryEntryId: entryConfig.boundaryEntryId,
+            messageKey: "error_view_unavailable",
+          },
+        ]);
+      }
+
+      return runCollectionRootResolver({
+        input,
+        entryConfig,
+        boundaryEntry,
+        firestore: readonlyContext.firestore,
+      });
     }
 
     const readonlyContext = await getInternalAiFirebaseAdminReadonlyContext();

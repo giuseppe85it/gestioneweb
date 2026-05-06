@@ -19,6 +19,14 @@ La regola corrente da leggere insieme a questo registro e:
 - Ogni patch futura che modifica il clone deve aggiungere una nuova voce in questo registro.
 - Per "modifica del clone" si intende almeno una di queste condizioni:
 
+### Voce 2026-05-06 1612
+- DATA: 2026-05-06
+- TITOLO: Chat IA NEXT piano blocchi 5-8 in validazione
+- FILE TOCCATI: `backend/internal-ai/server/lib/post-llm-resolver.js`, `backend/internal-ai/server/lib/shadow-comparator.js`, `backend/internal-ai/server/lib/__diagnostics__/zero-invenzioni-tests.mjs`, `src/next/chat-ia/relations/driverRelationResolver.ts`, `package.json`, documenti di stato Chat IA NEXT
+- COSA: Aggiunte deprecazioni runtime sui resolver legacy, script diagnostico `chat-ia:diagnostics` e controllo che Registro Firestore/SPEC restino BOZZA se il piano contiene `DA VERIFICARE`.
+- ESITO: FATTO_CON_VERIFICA_MANCANTE
+- NOTE: BLOCCHI 1-7 PASS da report; BLOCCO 8 ancora soggetto a build, diagnostici e Playwright.
+
 ### Voce 2026-05-04 2359
 - DATA: 2026-05-04
 - TITOLO: Registro Firestore v0.5 alias e allowedFields

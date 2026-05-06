@@ -1,5 +1,9 @@
 /*
  * Shadow comparator temporaneo.
+ * @deprecated Sostituito dal motore generico v1; questo modulo verra' rimosso
+ * nella prossima major. Riferimento: BLOCCO 8
+ * PIANO_ESECUTIVO_CHAT_IA_NEXT.md.
+ *
  * Migrazione Fase A motore generico (SPEC_MOTORE_GENERICO_NEXT.md §8, §10.1).
  *
  * Decisione 2026-05-04: A + L2 + env flag CHAT_IA_SHADOW_RESOLVER.
@@ -11,6 +15,8 @@ import { resolvePostLlmMessage } from "./post-llm-resolver.js";
 import { runUniversalResolverFaseA } from "./universal-resolver.js";
 
 const ENTRY_CONFIG_KEY_DRIVER360_COLLEGHI = "driver360.colleghi";
+const LEGACY_SHADOW_COMPARATOR_WARNING =
+  "[shadow-comparator] DEPRECATED: percorso shadow legacy invocato; migrare al motore generico v1.";
 const MAX_DIVERGENCES_PER_CALL = 20;
 const FORBIDDEN_LOG_FIELD_PATTERN = /note|nota|descrizione|testo|telefono|contatto|url/i;
 
@@ -164,6 +170,9 @@ function compareDriver360(legacyResult, candidateResult) {
 }
 
 export async function runShadowComparator(message, options = {}) {
+  if (process.env.CHAT_IA_SHADOW_RESOLVER === "1") {
+    console.warn(LEGACY_SHADOW_COMPARATOR_WARNING);
+  }
   const legacyResult = await resolvePostLlmMessage(message, options);
   const universalInput = buildUniversalInput(legacyResult, message, options);
 
