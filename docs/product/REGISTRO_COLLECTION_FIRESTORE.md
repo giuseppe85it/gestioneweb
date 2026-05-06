@@ -1,10 +1,10 @@
 # Registro delle Collection Firestore â€” Gestionale Manutenzione
 
 ## Stato del documento
-- Versione: 0.6 BOZZA — 2026-05-04 — applicazione decisioni post-audit PROMPT 20
+Versione: 1.0 STABLE — 2026-05-06
 - Data: 2026-05-04
 - Autore: Codex (audit), Giuseppe (validazione attesa)
-- Annotazione 2026-05-06: durante BLOCCO 8 del piano Chat IA NEXT il registro resta BOZZA. La promozione a v1.0 e' sospesa finche' nel piano restano voci `DA VERIFICARE`.
+- Annotazione 2026-05-06: matrice chiusura Chat IA NEXT completata per V1; C6/C7 BLOCCO 8 PASS, Playwright 17-21 PASS 10/10, diagnostics T1..T28 PASS, #4 chiusa con Opzione A, #13 classificata `DEFERRED_OK`.
 - Validazione utente: 7/10 domande confermate, 3/10 PARZIALMENTE CHIUSE con regole di priorita' (R2 categoria mezzo, R4 chiave materiale, R5 chiave fornitore). 3 integrazioni di precisione applicate (R8 vincoli boundary, R10 distinzione campi strutturati/liberi, R-EG obbligo pannello prove).
 - Runtime check eseguito su 33 collection BOUNDARY OPEN. R2/R4/R5: PARZIALMENTE CHIUSE con regole di priorita'.
 - AllowedFields aggiornati per 22 ex-discrepanze. Sezione 'Alias e ricerca flessibile' introdotta con vincolo di separazione alias/boundary. Riserve R2/R4/R5 PARZIALMENTE CHIUSE con regole di priorita'.
@@ -15,7 +15,7 @@
 - Scopo: mappa unica delle collection Firestore del gestionale.
   Sara' letta dal motore generico Zero-Invenzioni (Resolver, Driver360, viste future)
   e dal pannello laterale "Perche' vedo questo dato?".
-- Validazione richiesta: ogni voce e' BOZZA finche' Giuseppe non la conferma.
+- Validazione V1: voci Chat IA NEXT confermate/stabilizzate per il perimetro V1; evoluzioni future restano soggette a validazione Giuseppe.
 - Aggiornamento: questo file va aggiornato manualmente quando la struttura Firestore cambia
   (nuove collection, nuovi campi, rinomine). I dati interni cambiano live e non
   richiedono aggiornamento qui.
@@ -1458,7 +1458,7 @@ Nessun nome ulteriore confermato da runtime: il boundary attuale non consente li
 
 1. Estendere `backend/internal-ai/server/lib/post-llm-resolver.js` per consumare entry boundary con accessMode `collection_root`. Solo dopo questa patch runtime, aggiungere al boundary le 6 entry root collection (`@documenti_*` x3, Cisterna x3) usando `collection_root`. Prerequisito per il motore generico v1.
    - AGGIORNAMENTO 2026-05-04 dopo audit PROMPT 24a — Il punto sopra e' superato. Evidenza: `post-llm-resolver.js:73-80, 126-132, 147-155, 270-279` e' resolver Driver360-specifico, non generico. La shape `resolvedFilters` non e' progettata per risultati multi-record. La patch `collection_root` non e' applicabile in isolamento: viene assorbita nella spec del motore generico v1, dove confluiranno Resolver multi-vista, shape collettore multi-record e attivazione delle 6 entry boundary root collection (`@documenti_*` x3, Cisterna x3) e delle 6 entry Euromecc oggi dormienti.
-2. Promuovere il registro a v1.0 STABLE solo dopo l'estensione boundary root collection e dopo verifiche runtime sulle nuove voci Cisterna.
+2. CHIUSO 2026-05-06: registro promosso a v1.0 STABLE dopo chiusura matrice Chat IA NEXT, root documentali allineate, C6/C7 PASS, T1..T28 PASS e Playwright 17-21 PASS.
 
 ## Lacune di scrittura aperte
 

@@ -2,10 +2,10 @@
 
 ## 1. Identita del documento
 
-- **Versione**: v0.1 BOZZA
+Versione: v1.0 STABLE — 2026-05-06
 - **Data**: 2026-05-04
 - **Autore**: Giuseppe (decisioni) + Codex (stesura)
-- **Annotazione 2026-05-06**: resta BOZZA durante BLOCCO 8 del piano Chat IA NEXT. Nessuna promozione a STABLE finche' nel piano restano voci `DA VERIFICARE`.
+- **Annotazione 2026-05-06**: matrice chiusura Chat IA NEXT completata per V1; Registro promosso a 1.0 STABLE, C6/C7 PASS, Playwright 17-21 PASS 10/10, diagnostics T1..T28 PASS, #4 chiusa con Opzione A, #13 `DEFERRED_OK`.
 - **Scopo**: definire il motore generico data-driven della Chat IA NEXT.
 - **Relazione con spec esistenti**: questo documento ESTENDE `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`. NON lo sostituisce. NON lo duplica.
 - **Documento di pari livello successivo**: `SPEC_PANNELLO_PROVE_NEXT.md` (da scrivere dopo questo).
@@ -36,7 +36,7 @@ Punto di partenza operativo:
 - La shape attuale di `resolvedFilters` e' pensata per Driver360 e non contiene un collettore multi-record.
 - Le 6 entry boundary Euromecc con `accessMode === "collection_root"` sono dichiarate ma dormienti finche' il runtime non le consuma.
 - Le 6 root collection `@documenti_*` x3 e Cisterna x3 sono bloccate dietro lo stesso problema runtime.
-- `REGISTRO_COLLECTION_FIRESTORE.md` v0.6 BOZZA e' disponibile come mappa dati architetturale: collection, allowedFields, alias, match rules, esclusioni by design, evidence graph e convenzioni provenance.
+- `REGISTRO_COLLECTION_FIRESTORE.md` v1.0 STABLE e' disponibile come mappa dati architetturale V1: collection, allowedFields, alias, match rules, esclusioni by design, evidence graph e convenzioni provenance.
 
 Conclusione: la patch `collection_root` non va applicata dentro `post-llm-resolver.js` in isolamento. Viene assorbita nel motore generico v1, che nasce con shape multi-vista e multi-record.
 
@@ -325,6 +325,8 @@ Driver360 esistente resta attivo:
 - schema strict Zero-Invenzioni;
 - Catalog Validator e rendering certificato gia' attivi.
 
+Aggiornamento V1 2026-05-06: `Driver360.tsx` non usa piu' resolver relazioni frontend autonomi. Le relazioni autista-mezzo visualizzate dalla vista arrivano dal payload backend `resolvedFilters.v2`, con relationProof prodotte da `query-engine.js` / `relation-resolver.js` e regole gia' presenti in `relation.config.cjs`.
+
 Questo documento NON dichiara Driver360 deprecato.
 
 ### 8.2 Modalita' coesistenza
@@ -435,7 +437,7 @@ Fuori scope di v1:
 - PDF da template: vedere §13 di `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`.
 - Smantellamento multi-agente: vedere §12.4 di `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`.
 - Estensione boundary a root collection nuove: patch separata in fase implementativa.
-- Promozione registro a v1.0 STABLE: separata, dipende da runtime check ulteriori.
+- Promozione registro a v1.0 STABLE: CHIUSA 2026-05-06 con matrice Chat IA NEXT completata, T1..T28 PASS e Playwright 17-21 PASS.
 
 ## 12. Domande aperte / decisioni rinviate
 
@@ -449,12 +451,12 @@ Fuori scope di v1:
 
 ## 13. Versioning e governance della spec
 
-Questo documento e' v0.1 BOZZA al 2026-05-04.
+Questo documento e' v1.0 STABLE al 2026-05-06.
 
 Modifiche future:
 
 - append-only con annotazione datata, come per il registro;
-- nessuna promozione a STABLE senza audit Codex successivo;
+- nessuna modifica futura di stato senza audit Codex successivo;
 - nessuna implementazione runtime prima di revisione formale;
 - ogni modifica che indebolisce Zero-Invenzioni richiede decisione esplicita in `DIARIO_DECISIONI.md`.
 

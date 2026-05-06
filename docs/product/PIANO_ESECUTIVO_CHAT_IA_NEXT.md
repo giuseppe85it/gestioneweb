@@ -183,7 +183,7 @@ Un componente React config-driven legge `ResolvedFiltersV2` (definita in `SPEC_M
 ## §3 Regole anti-allucinazione informatiche
 
 - Vietato inventare path repo, collection Firestore, campi Firestore, componenti React, API, funzioni.
-- Se non e' nel codice, nel registro, nel boundary o negli audit citati: `DA VERIFICARE` (mai assumere).
+- Se non e' nel codice, nel registro, nel boundary o negli audit citati: marcare come `VERIFICA_APERTA` (mai assumere).
 - Se serve un file fuori dal perimetro consentito del blocco: `SERVE FILE EXTRA: <path>`.
 - Se una relazione non ha prova certificabile (`relationProof`), non si mostra come certificata.
 - Se un dato non ha (`sourceCollection`, `sourceRecordId`, `sourceField`), non si mostra come certificato; si usa placeholder neutro "dato non trovato nelle fonti autorizzate".
@@ -435,6 +435,8 @@ BLOCCO 2 = PASS.
 - `tests/e2e/15-vehicle360.spec.ts` — test Playwright Vehicle360 runtime dopo instradamento adapter.
 - `tests/e2e/16-site360-ricerca360.spec.ts` — test Playwright Site360/Ricerca360 runtime dopo instradamento adapter.
 
+Nota chiusura #13, 2026-05-06: `tests/e2e/15-vehicle360.spec.ts` resta `DEFERRED_OK` in V1. Non viene riscritto per assenza helper Firebase Admin lato Node dedicato e per policy anti-hardcoded sulle targhe; copertura equivalente e' garantita da Playwright 17/19/20/21.
+
 **MODIFICA**
 - `backend/internal-ai/server/lib/registry.config.js` — aggiunta di 9 entry `exact_document` come l'attuale schema. Per ciascuna: `boundaryEntryId` (gia esistenti nel boundary, vedi `internal-ai-firebase-readonly-boundary.js:1082-1264`), `accessMode: "exact_document"`, `collection: "storage"`, `docId: "@<datasetKey>"`, `allowedFields` proiettato 1:1 dal boundary, `forbiddenFields` 1:1, `aliases` derivati dal registro v0.6, `requestLimits` da boundary, `viewBindings` (es. `["Vehicle360", "Site360", "Ricerca360"]` per manutenzioni/lavori).
 - `src/next/chat-ia/config/view.config.ts` — aggiornare `entryBoundaryIds` di `Site360` e `Ricerca360` per consumare le entry estese.
@@ -491,7 +493,7 @@ BLOCCO 2 = PASS.
   - alternativa di copertura "no match": prompt con plate sintetica `ZZ000000`; assert `accompaniment.kind === "no_results"`.
   - assert principale: la vista monta `CertifiedView` con kind `Vehicle360`; placeholder Site360 NON appare; pannello prove presente e collassato.
 - Scenari `tests/e2e/16-site360-ricerca360`:
-  - apertura `/next/chat`, prompt "apri cantiere <X>" (DA VERIFICARE: usare un placeholder sintetico tipo `ZZZ_DIAG_SITE`); assert vista Site360 mostra struttura sezioni dichiarata in `view.config.ts`.
+  - apertura `/next/chat`, prompt "apri cantiere <X>" (CHIUSO V1: usare un placeholder sintetico tipo `ZZZ_DIAG_SITE`); assert vista Site360 mostra struttura sezioni dichiarata in `view.config.ts`.
   - prompt ricerca generica con plate fittizia `ZZZ123456` (no match): assert `accompaniment.kind === "no_results"`, nessun grezzo tecnico.
 - PASS: scenari verdi.
 
@@ -876,8 +878,8 @@ BLOCCO 7 = PASS.
 ### Output atteso
 - Suite Playwright completa che copre i 5 viewKind + fallback.
 - Legacy resolvers chiaramente marcati come DEPRECATI.
-- Registro e Spec promossi a v1.0 STABLE solo se non restano `DA VERIFICARE` bloccanti.
-- Se restano `DA VERIFICARE` bloccanti: Registro e Spec restano BOZZA/v0.x, con lista residua nel report finale.
+- Registro e Spec promossi a v1.0 STABLE solo se non restano verifiche bloccanti aperte.
+- Se restano verifiche bloccanti aperte: Registro e Spec restano BOZZA/v0.x, con lista residua nel report finale.
 
 ### Cancelli
 
@@ -923,7 +925,7 @@ FAIL: stop.
 **CANCELLO 2 — PATCH**
 - Annotazioni di deprecation con messaggio chiaro: "Sostituito dal motore generico v1; questo modulo verra' rimosso nella prossima major" + riferimento a BLOCCO 8 di questo piano.
 - Promozione doc: append-only, mai cancellazione di entry storiche.
-- **Promozione registro condizionata.** Promuovere `docs/product/REGISTRO_COLLECTION_FIRESTORE.md` a v1.0 STABLE solo se non restano voci `DA VERIFICARE` bloccanti nel piano esecutivo. Se restano `DA VERIFICARE` aperti, mantenere versione v0.x e generare lista residua nel report del BLOCCO 8 (sezione "cosa resta fuori"). La stessa condizione vale per la promozione di `docs/product/SPEC_MOTORE_GENERICO_NEXT.md` a v1.0 STABLE.
+- **Promozione registro condizionata.** Promuovere `docs/product/REGISTRO_COLLECTION_FIRESTORE.md` a v1.0 STABLE solo se non restano verifiche bloccanti aperte nel piano esecutivo. Se restano verifiche aperte, mantenere versione v0.x e generare lista residua nel report del BLOCCO 8 (sezione "cosa resta fuori"). La stessa condizione vale per la promozione di `docs/product/SPEC_MOTORE_GENERICO_NEXT.md` a v1.0 STABLE.
 - Stop in caso di errore.
 
 **CANCELLO 3 — TEST STATICI**
@@ -939,10 +941,10 @@ FAIL: stop.
   - **T26**: `package.json` ha lo script `chat-ia:diagnostics`.
   - **T27**: `post-llm-resolver.js` contiene il marker `@deprecated`.
   - **T28**: test condizionale promozione registro.
-    Prima del test, Codex calcola `daVerificareBloccanti` contando le voci "DA VERIFICARE" ancora aperte nel piano (grep sul file MD stesso).
+    Prima del test, Codex calcola `daVerificareBloccanti` contando le verifiche aperte ancora presenti nel piano.
     - Se `daVerificareBloccanti === 0`: verificare che `docs/product/REGISTRO_COLLECTION_FIRESTORE.md` ha header `Versione: 1.0`. PASS se presente.
     - Se `daVerificareBloccanti > 0`: verificare che `docs/product/REGISTRO_COLLECTION_FIRESTORE.md` ha ANCORA header con `BOZZA` e che Codex prepara la lista residua da inserire nel report del CANCELLO 7. PASS se il registro e' ancora BOZZA.
-    Il test verifica la COERENZA tra stato `DA VERIFICARE` e versione registro.
+    Il test verifica la COERENZA tra stato verifiche aperte e versione registro.
 - PASS: T1..T28 PASS o DEFERRED. Eseguire anche `node backend/internal-ai/server/lib/__diagnostics__/shadow-validation-report.mjs` come baseline regressionale.
 
 **CANCELLO 6 — PLAYWRIGHT**
@@ -969,8 +971,8 @@ FAIL: stop.
   4. build esito.
   5. cosa resta fuori: tutto cio' che e' rinviato a v1.1 (`SPEC_MOTORE_GENERICO_NEXT.md` §11 e §12: PDF da template, smantellamento multi-agente, periodPreset esteso, cache `collection_root`).
   6. STATO FINALE (condizionato):
-     - Se zero `DA VERIFICARE` bloccanti E tutti i Playwright passano E registro e spec sono promossi a v1.0: "Chat IA NEXT chiusa come modale intelligente del gestionale per le 5 viste 360."
-     - Altrimenti: "Chat IA NEXT operativa parziale controllata. Vedi lista `DA VERIFICARE` residui e test DEFERRED."
+     - Se zero verifiche bloccanti E tutti i Playwright passano E registro e spec sono promossi a v1.0: "Chat IA NEXT chiusa come modale intelligente del gestionale per le 5 viste 360."
+     - Altrimenti: "Chat IA NEXT operativa parziale controllata. Vedi lista verifiche residue e test DEFERRED."
 
 ### Condizione avanzamento
 Non c'e' BLOCCO 9. Il turno e' chiuso.

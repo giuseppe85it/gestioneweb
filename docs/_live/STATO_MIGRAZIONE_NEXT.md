@@ -9,6 +9,16 @@
 - `src/utils/cloneWriteBarrier.ts` resta il punto di controllo esplicito per abilitare o negare le scritture.
 - Change report, continuity report e documenti di stato devono restare allineati ogni volta che un modulo NEXT apre o modifica il proprio perimetro di scrittura.
 
+## 0.0 Aggiornamento operativo 2026-05-06 Chat IA NEXT V1 100%
+- Chat IA NEXT chiusa V1 100% sulle 5 viste `Driver360`, `Vehicle360`, `Site360`, `Euromecc360`, `Ricerca360` e fallback parametrico fuori catalogo.
+- #4 chiusa con Opzione A: `Cantiere` resta entita derivata/aggregata, nessuna collection canonica `@cantieri`, nessun writer cantieri, nessuna nuova collection Firestore.
+- #6 chiusa: rimosse dal boundary readonly le entry deprecate `firestore-storage-documenti-generici-doc`, `firestore-storage-documenti-magazzino-doc`, `firestore-storage-documenti-mezzi-doc`; `view.config.ts` riallineato alle root documentali.
+- #10 chiusa: `Driver360.tsx` non usa piu relazioni autonome frontend; consuma relationProof backend da `resolvedFilters.v2`; `driverRelationResolver.ts` eliminato.
+- #13 resta `DEFERRED_OK`: `tests/e2e/15-vehicle360.spec.ts` non riscritto; copertura equivalente in 17/19/20/21.
+- Registro Collection Firestore: `Versione: 1.0 STABLE — 2026-05-06`; SPEC Motore Generico: `Versione: v1.0 STABLE — 2026-05-06`; SPEC Chat Zero-Invenzioni non promossa.
+- Verifiche finali: node --check boundary/adapter PASS, build PASS, diagnostics T1..T28 PASS, shadow validation PASS, Playwright 17-21 PASS 10/10.
+- Commit: baseline `28810394`, checkpoint doc `decb5cf9`, checkpoint A `86d657de`, checkpoint B `a9ee7c50`, finale documentale da commit finale.
+
 ## 0.0 Aggiornamento operativo 2026-04-30 Chat IA NEXT: fingerprint anti-allucinazione
 - execution completata nel perimetro Chat IA NEXT tool registry, backend tool-use, agenti, blocchi visualization e test E2E, senza toccare madre, reader, archivista, Firestore o ossatura registry/executor;
 - aggiunto `backend/internal-ai/server/lib/fingerprint-validator.js`: arricchisce i risultati tool con `_id`, valida gli `_id` usati nella risposta finale, blocca date non presenti nel record sorgente e produce fallback con soli dati raw verificati;

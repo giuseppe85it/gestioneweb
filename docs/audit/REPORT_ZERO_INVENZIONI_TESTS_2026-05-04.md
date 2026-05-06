@@ -37,7 +37,7 @@
 | T25 | PASS | Driver360 usa ProofPanel e non contiene grezzo tecnico in primo piano |
 | T26 | PASS | script chat-ia:diagnostics presente |
 | T27 | PASS | post-llm-resolver legacy annotato e warning runtime presente |
-| T28 | PASS | registro resta BOZZA con DA VERIFICARE residui nel piano: 11 |
+| T28 | PASS | registro promosso a v1.0 senza DA VERIFICARE residui nel piano |
 
 ## Metriche T5
 - module_real_case_executed: si

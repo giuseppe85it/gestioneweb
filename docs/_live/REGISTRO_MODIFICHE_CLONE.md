@@ -27,6 +27,14 @@ La regola corrente da leggere insieme a questo registro e:
 - ESITO: FATTO_CON_VERIFICA_MANCANTE
 - NOTE: BLOCCHI 1-7 PASS da report; BLOCCO 8 ancora soggetto a build, diagnostici e Playwright.
 
+### Voce 2026-05-06 2059
+- DATA: 2026-05-06
+- TITOLO: Chat IA NEXT chiusa V1 100
+- FILE TOCCATI: `backend/internal-ai/server/internal-ai-adapter.js`, `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js`, `src/next/chat-ia/views/Driver360.tsx`, `src/next/chat-ia/config/view.config.ts`, `tests/e2e/20-proof-panel.spec.ts`, `tests/e2e/21-chat-ia-smoke.spec.ts`, Registro/SPEC/report Chat IA NEXT
+- COSA: Chiuse le voci residue #6 e #10; Driver360 consuma relationProof backend; Registro Firestore e SPEC Motore promossi a STABLE; #13 marcata `DEFERRED_OK` senza riscrivere il test 15.
+- ESITO: FATTO
+- NOTE: Verifiche finali PASS: node --check boundary/adapter, build, diagnostics T1..T28, shadow validation, Playwright 17-21 10/10. Commit: `28810394`, `decb5cf9`, `86d657de`, `a9ee7c50`, finale documentale da commit finale.
+
 ### Voce 2026-05-04 2359
 - DATA: 2026-05-04
 - TITOLO: Registro Firestore v0.5 alias e allowedFields
