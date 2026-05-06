@@ -50,7 +50,7 @@ Prima di eseguire BLOCCO 1, Codex deve verificare la coerenza interna del piano.
 - Pagina chat operativa: `src/next/chat-ia/ChatIaToolUsePage.tsx` (chiama `runToolUseConversation`).
 - Wrapper route ufficiale: `src/next/chat-ia/ChatIaPage.tsx` (rende `ChatIaToolUsePage`).
 - Dispatcher rendering messaggi: `src/next/chat-ia/components/ChatIaMessageItem.tsx`.
-- Vista certificata operativa: `src/next/chat-ia/views/Driver360.tsx` + `src/next/chat-ia/views/driver360.css` (DA VERIFICARE: il file CSS e referenziato da `Driver360.tsx:10` ma non e stato letto in questo audit — confermare esistenza).
+- Vista certificata operativa: `src/next/chat-ia/views/Driver360.tsx` + `src/next/chat-ia/views/driver360.css` (CHIUSO 2026-05-06: il file CSS esiste nel repo ed e' importato da `Driver360.tsx`).
 - Pannello prove riusabile: `src/next/chat-ia/components/CollapsibleProof.tsx`.
 - Resolver relazioni autista-mezzo (frontend): `src/next/chat-ia/relations/driverRelationResolver.ts`.
 - Tipi pubblici chat: `src/next/chat-ia/core/chatIaTypes.ts` (`ChatZeroInvenzioniMessage`, `ViewEnum`, `RelationProof`, `DriverVehicleCertifiedRelation`).
@@ -167,7 +167,7 @@ Config-driven: il motore non hardcoda viste; legge `registry.config.js` + `view.
 ### 2.3 Vista generica certificata
 Un componente React config-driven legge `ResolvedFiltersV2` (definita in `SPEC_MOTORE_GENERICO_NEXT.md` §5.3) e renderizza secondo `view.config.ts`.
 
-`Vehicle360`, `Refueling360`, `Maintenance360`, `Search360` (DA VERIFICARE: `Refueling360`, `Maintenance360`, `Search360` non sono nella `ViewEnum` esistente, che contiene `Driver360 | Vehicle360 | Site360 | Euromecc360 | Ricerca360`. La frase nel prompt di pianificazione menziona viste che non esistono nei tipi attuali. Il piano si attiene ai 5 valori della `ViewEnum` reale e tratta `Refueling360 / Maintenance360 / Search360` come **alias progettuali da chiarire** in BLOCCO 2 §6, NON come componenti separati). Tutte le viste sono la stessa vista config-driven con config diverse. NIENTE 4 componenti separati.
+`Vehicle360`, `Refueling360`, `Maintenance360`, `Search360` (CHIUSO 2026-05-06: `Refueling360`, `Maintenance360`, `Search360` non sono viste separate da implementare in V1; le funzioni rifornimenti/manutenzioni vivono come sezioni config-driven di `Vehicle360`, la ricerca vive in `Ricerca360`, e la `ViewEnum` reale resta `Driver360 | Vehicle360 | Site360 | Euromecc360 | Ricerca360`). Tutte le viste sono la stessa vista config-driven con config diverse. NIENTE 4 componenti separati.
 
 ### 2.4 Pannello prove
 `CollapsibleProof.tsx` esiste e gia filtra `FORBIDDEN_FIELD_NAME_PATTERN`. Va esteso in BLOCCO 7 con: piu' livelli, raggruppamenti per record, fallback "dato non trovato".
@@ -176,7 +176,7 @@ Un componente React config-driven legge `ResolvedFiltersV2` (definita in `SPEC_M
 - Max record per vista lista: 50.
 - Paginazione default: 20.
 - Periodo default per viste con filtro periodo: 90 giorni.
-- Ordinamento default: `updatedAt desc` quando il campo esiste in `allowedFields` (DA VERIFICARE per ogni entry boundary se `updatedAt` o `timestamp` e ammesso).
+- Ordinamento default: `updatedAt desc` quando il campo esiste in `allowedFields`; fallback a `timestamp desc` o `createdAt desc` quando dichiarato nella stessa entry. Se nessuno dei tre campi e' ammesso, la vista usa il cap deterministico senza ordinamento aggiuntivo. Chiuso in Registro 2026-05-06.
 
 ---
 
@@ -345,7 +345,7 @@ BLOCCO 1 = PASS.
 **NON TOCCARE**
 - `backend/internal-ai/server/internal-ai-adapter.js`. L'adapter va modificato in un blocco successivo, dopo che `CertifiedView` e i test sono verdi. Il BLOCCO 2 prepara la vista ma NON la instrada runtime. L'aggancio adapter e' compito del BLOCCO 3.
 - `src/next/chat-ia/views/Driver360.tsx`.
-- `src/next/chat-ia/views/driver360.css` (DA VERIFICARE esistenza).
+- `src/next/chat-ia/views/driver360.css` (esistenza verificata e chiusa 2026-05-06).
 - `backend/internal-ai/server/lib/post-llm-resolver.js`.
 - `backend/internal-ai/server/lib/universal-resolver.js`.
 - `backend/internal-ai/server/lib/shadow-comparator.js`.
@@ -422,7 +422,7 @@ Stop su qualsiasi FAIL.
 ## §7 — BLOCCO 3: Estensione moduli storage/@ + instradamento runtime viste non-Driver360
 
 ### Obiettivo
-Estendere `REGISTRY_CONFIG_FASE_A` (rinominato implicitamente come "FASE_A_PIENA" tramite append; il versioning resta in `version: "registry.config.faseA.v0.1"` finche non si decide promozione) per coprire i 9 moduli `storage/@` mancanti tra quelli prioritari secondo `AUDIT_READINESS_CHAT_IA_NEXT_2026-05-04.md` §6: `storage/@manutenzioni`, `storage/@lavori`, `storage/@inventario`, `storage/@materialiconsegnati`, `storage/@ordini`, `storage/@preventivi`, `storage/@preventivi_approvazioni`, `storage/@fornitori`, `storage/@officine` (DA VERIFICARE: la priorita 9 esatta dell'audit non include `@officine` separatamente; il piano la include come modulo collegato al Vehicle360 per relazioni manutenzione).
+Estendere `REGISTRY_CONFIG_FASE_A` (rinominato implicitamente come "FASE_A_PIENA" tramite append; il versioning resta in `version: "registry.config.faseA.v0.1"` finche non si decide promozione) per coprire i 9 moduli `storage/@` mancanti tra quelli prioritari secondo `AUDIT_READINESS_CHAT_IA_NEXT_2026-05-04.md` §6: `storage/@manutenzioni`, `storage/@lavori`, `storage/@inventario`, `storage/@materialiconsegnati`, `storage/@ordini`, `storage/@preventivi`, `storage/@preventivi_approvazioni`, `storage/@fornitori`, `storage/@officine` (CHIUSO 2026-05-06: `@officine` e' mantenuta come entry collegata a `Vehicle360` per relazioni manutenzione/officina, gia' presente in boundary e registry).
 
 ### Agente
 Codex (backend).
@@ -451,7 +451,7 @@ BLOCCO 2 = PASS.
 - `registry.config.js` con 14 entry totali (5 esistenti + 9 nuove).
 - `view.config.ts` aggiornato per Site360 e Ricerca360.
 - Adapter instrada viste non-Driver360 al query engine.
-- Site360: vista preparata/parziale. **DA VERIFICARE: fonte canonica cantiere per Site360 non identificata nel boundary attuale.** Non esiste una collection `@cantieri` canonica nel boundary; le 9 entry aggiunte sono manutenzioni, lavori, inventario, materiali consegnati, ordini, preventivi, preventivi approvazioni, fornitori, officine. Site360 puo' mostrare dati da `work.lavori` e `materials.materialiConsegnati` se i `viewBindings` le includono, ma la fonte primaria "cantiere" non e' definita. Non dichiarare "Site360 mostra dati certificati per cantieri" finche' la fonte canonica non e' identificata.
+- Site360: vista aggregatrice certificata. CHIUSO 2026-05-06 con decisione prodotto Opzione A: `Cantiere` non diventa nuova collection canonica `@cantieri` in V1; e' entita derivata/aggregata da campi strutturati gia' presenti nei dati reali (`cantiere`, `cantiereId`, `cantiereLabel`, `sourceCantiereId`, `sourceCantiereLabel`) su fonti autorizzate esistenti. Non creare `@cantieri`, non introdurre writer cantieri, non aprire nuove collection Firestore.
 
 ### Cancelli
 
@@ -608,7 +608,7 @@ BLOCCO 4 = PASS.
 - nessuno (i test Playwright `tests/e2e/17-euromecc360.spec.ts` e `tests/e2e/18-documenti-cisterna.spec.ts` sono spostati alla whitelist CREA del BLOCCO 8 perche' richiedono intent runtime completo).
 
 **MODIFICA**
-- `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js` — aggiunta di 6 entry root collection con `accessMode: "collection_root"`. Allowed fields proiettati dai writer documentali esistenti (DA VERIFICARE: il piano richiede a Codex di leggere i writer reali prima di proporre `allowedFields` e forbidden — cf. lacune scrittura note in `AUDIT_READINESS_CHAT_IA_NEXT_2026-05-04.md` §6 nota documenti).
+- `backend/internal-ai/server/internal-ai-firebase-readonly-boundary.js` — aggiunta di 6 entry root collection con `accessMode: "collection_root"`. Allowed fields proiettati dai writer documentali esistenti; mapping writer -> `allowedFields` formalizzato nel Registro 2026-05-06. I campi non esposti dai boundary restano esclusi.
 - `backend/internal-ai/server/lib/registry.config.js` — aggiunta di 6 entry parallele con `viewBindings` appropriati.
 - `src/next/chat-ia/config/view.config.ts` — aggiornare `Site360.entryBoundaryIds` (cisterna, documenti) e `Ricerca360.entryBoundaryIds`.
 
@@ -626,7 +626,7 @@ BLOCCO 4 = PASS.
 
 **CANCELLO 1 — AUDIT**
 - Comandi:
-  - `Select-String -Path "src/**/*.ts*" -Pattern "@documenti_mezzi|@documenti_magazzino|@documenti_generici|@documenti_cisterna|@cisterna_schede_ia|@cisterna_parametri_mensili"` per identificare writer reali (DA VERIFICARE: `Select-String` PowerShell richiede iterazione dei file; in alternativa usare la Grep tool del tool stack agentico se disponibile a Codex).
+  - `rg -n "@documenti_mezzi|@documenti_magazzino|@documenti_generici|@documenti_cisterna|@cisterna_schede_ia|@cisterna_parametri_mensili" src backend` oppure, su PowerShell senza `rg`, `Get-ChildItem -Recurse -Include *.ts,*.tsx src | Select-String -Pattern "@documenti_mezzi|@documenti_magazzino|@documenti_generici|@documenti_cisterna|@cisterna_schede_ia|@cisterna_parametri_mensili"` per identificare writer reali.
   - per ciascuna root, identificare i campi scritti nei writer.
 - PASS: 6 root identificate, mappa campi scritti compilata in chat.
 - FAIL: stop. Riportare quali root non risultano scritte da nessun writer (potrebbero essere VUOTE).
@@ -686,7 +686,7 @@ BLOCCO 5 = PASS.
 **CREA**
 - `src/next/chat-ia/config/relation.config.ts` — dichiarativo: per ogni `RelationKindEnum`, sorgente, target, campi chiave, regola di certezza.
 - `backend/internal-ai/server/lib/relation-resolver.js` — applica `relation.config.ts` proiezione machine-readable. Lavora SOLO su `CertifiedRecord` provenienti dal Resolver Universale.
-- `backend/internal-ai/server/lib/relation.config.cjs` — proiezione CommonJS della config TS, generata manualmente (DA VERIFICARE: o tramite import dinamico di JSON/TS — Codex sceglie la modalita meno invasiva. In nessun caso il backend parsa il file `.ts`).
+- `backend/internal-ai/server/lib/relation.config.cjs` — proiezione CommonJS della config TS, generata manualmente. CHIUSO 2026-05-06: il backend consuma questa proiezione machine-readable tramite `relation-resolver.js` e non parsa il file `.ts`.
 - (nota: `tests/e2e/19-relazioni.spec.ts` e' spostato alla whitelist CREA del BLOCCO 8 perche' richiede intent runtime completo).
 
 **MODIFICA**
@@ -863,7 +863,7 @@ BLOCCO 7 = PASS.
 - `src/next/chat-ia/relations/driverRelationResolver.ts` — Aggiungere commento `@deprecated` nel header del file. Loggare warning SOLO se la funzione viene effettivamente chiamata, non all'import. Redirige al nuovo backend `relation-resolver.js` per coerenza (DA VERIFICARE: la deprecation richiede che tutte le chiamate frontend al vecchio file siano gia state spostate su `CertifiedView.tsx` in BLOCCO 6).
 - `docs/product/REGISTRO_COLLECTION_FIRESTORE.md` — promozione a v1.0 STABLE: aggiornare header, rimuovere "BOZZA", aggiungere annotazione di promozione 2026-05-XX (sostituire con la data reale di esecuzione).
 - `docs/product/SPEC_MOTORE_GENERICO_NEXT.md` — promozione a v1.0 STABLE.
-- `package.json` — eventuale script `chat-ia:diagnostics` se non esistente (DA VERIFICARE: oggi non esiste; aggiunta come `"chat-ia:diagnostics": "node backend/internal-ai/server/lib/__diagnostics__/zero-invenzioni-tests.mjs"`).
+- `package.json` — script `chat-ia:diagnostics` presente e funzionante: `"chat-ia:diagnostics": "node backend/internal-ai/server/lib/__diagnostics__/zero-invenzioni-tests.mjs"` (CHIUSO 2026-05-06).
 - `docs/STATO_ATTUALE_PROGETTO.md` — aggiornare con stato post-esecuzione piano (chat IA NEXT chiusa o parziale, viste operative, moduli coperti). Se il file non esiste al momento dell'esecuzione, Codex si ferma e dichiara `SERVE FILE EXTRA: docs/STATO_ATTUALE_PROGETTO.md`. Non creare documenti di stato ufficiali con contenuto minimo a caso.
 - `docs/product/STATO_MIGRAZIONE_NEXT.md` — aggiornare sezione chat IA con stato post-piano. Se il file non esiste al momento dell'esecuzione, Codex si ferma e dichiara `SERVE FILE EXTRA: docs/product/STATO_MIGRAZIONE_NEXT.md`. Non creare documenti di stato ufficiali con contenuto minimo a caso.
 - `docs/_live/REGISTRO_MODIFICHE_CLONE.md` — aggiungere entry datata con riepilogo modifiche piano esecutivo (append-only, mai riscrittura). Se il file non esiste al momento dell'esecuzione, Codex si ferma e dichiara `SERVE FILE EXTRA: docs/_live/REGISTRO_MODIFICHE_CLONE.md`. Non creare documenti di stato ufficiali con contenuto minimo a caso.

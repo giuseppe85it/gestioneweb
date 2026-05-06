@@ -77,7 +77,7 @@ Il flusso estende quello di §4.1 di `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`. Cambia
 
 - **LLM Action Router**: invariato. Classifica intent, azione, vista e filtri ammessi. Vedere §4 e §5 di `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`.
 - **Catalog Validator**: invariato. Valida shape, intent e fallback strutturato. Vedere §11 di `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`.
-- **Registry Reader (NUOVO)**: usa il registro v0.6 come fonte architetturale, esponendo alias, match rules, allowedFields ed esclusioni al Resolver Universale. In implementazione il registro potra' essere trasformato in configurazione machine-readable dedicata; il motore NON parsa il file Markdown a runtime.
+- **Registry Reader (NUOVO)**: usa il registro come fonte architetturale, esponendo alias, match rules, allowedFields ed esclusioni al Resolver Universale tramite configurazione machine-readable dedicata. In V1 la proiezione runtime e' `backend/internal-ai/server/lib/registry.config.js`; il motore NON parsa il file Markdown a runtime.
 - **Resolver Universale (NUOVO)**: affianca inizialmente `post-llm-resolver.js` Driver360-specifico e lo sostituisce solo dopo parita' verificata con test verdi. Consuma entry boundary `exact_document` e `collection_root`. Produce output multi-record.
 - **Vista Generica data-driven (NUOVO)**: la data-drivenness riguarda la logica dati. La UI puo' restare composta da componenti React dedicati per ciascuna vista, purche' leggano la stessa shape certificata del motore generico.
 - **Relation Resolver**: invariato come principio deterministico. Vedere §8 e §14 di `SPEC_CHAT_ZERO_INVENZIONI_NEXT.md`.
@@ -264,7 +264,9 @@ Queste esclusioni sono definite nella sezione "Esclusioni by design dal motore g
 
 La data-drivenness della vista generica riguarda la logica dati, non obbliga la UI.
 
-Le 5 viste 360 (`Driver360`, `Vehicle360`, `Site360`, `Euromecc360`, `Ricerca360`) leggeranno tutte la stessa shape certificata prodotta dal motore. La UI puo' restare composta da componenti React dedicati per ciascuna vista, oppure convergere su un componente generico parametrizzato. La decisione UI e' rinviata alla fase implementativa.
+Le 5 viste 360 (`Driver360`, `Vehicle360`, `Site360`, `Euromecc360`, `Ricerca360`) leggeranno tutte la stessa shape certificata prodotta dal motore. La UI puo' restare composta da componenti React dedicati per ciascuna vista, oppure convergere su un componente generico parametrizzato.
+
+Decisione prodotto 2026-05-06 per `Site360`: in V1 `Cantiere` e' entita derivata/aggregata da campi strutturati gia' presenti nelle fonti autorizzate, non una nuova collection canonica `@cantieri`. `Site360` puo' rappresentare aggregazioni certificate solo se la provenienza dei record e la relationProof disponibile restano visibili nel pannello prove. Nessun writer cantieri e nessuna nuova collection Firestore sono parte della V1.
 
 ### 7.2 Vista config
 
@@ -382,6 +384,10 @@ Il contratto minimo per relazione:
 - `certainty`.
 
 Niente piu' di questo viene specificato qui. Layout, interazioni e copy del pannello sono rinviati alla spec dedicata.
+
+### 9.2 Proiezione machine-readable relazioni
+
+La config sorgente frontend resta `src/next/chat-ia/config/relation.config.ts`. Il backend non importa e non parsa file `.ts`: consuma la proiezione CommonJS `backend/internal-ai/server/lib/relation.config.cjs`, mantenuta in modo esplicito insieme alla config TS. `relation-resolver.js` applica solo regole dichiarate in questa proiezione, su `CertifiedRecord` gia' filtrati da registry/boundary.
 
 ## 10. Piano di migrazione Driver360
 

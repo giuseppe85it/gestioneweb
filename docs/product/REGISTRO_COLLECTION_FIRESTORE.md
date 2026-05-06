@@ -209,6 +209,7 @@ Per ogni concetto del gestionale, lista chiusa di nomi di campo equivalenti che 
   - `storage/@manutenzioni`: `officinaId`, `officina`
 - **Note di validazione**:
   - Contatti telefonici esclusi dal boundary Zero-Invenzioni.
+  - Chiusura Chat IA NEXT 2026-05-06: `storage/@officine` resta entry collegata per manutenzioni/officine dentro `Vehicle360`; non introduce vista autonoma e non apre campi telefonici.
 
 ### cantiere
 - **Definizione**: sito/cantiere operativo collegato ad attrezzature, lavori o materiali.
@@ -224,6 +225,7 @@ Per ogni concetto del gestionale, lista chiusa di nomi di campo equivalenti che 
   - `storage/@materialiconsegnati`: `cantiere`, `cantiereId`
 - **Note di validazione**:
   - `cantiereLabel` e `sourceCantiereLabel` sono label operative, non chiavi forti.
+  - Decisione prodotto 2026-05-06, Opzione A: in V1 `cantiere` non diventa collection canonica `@cantieri`; `Site360` usa un'entita derivata/aggregata da campi strutturati gia' presenti in `storage/@attrezzature_cantieri`, `storage/@lavori` e `storage/@materialiconsegnati`.
 
 ### sessione attiva
 - **Definizione**: assetto corrente di un autista con motrice e rimorchio.
@@ -349,6 +351,34 @@ Aggiungere un alias o un nuovo concetto a questa sezione e' una decisione di cod
 Le regole di match sono regole architetturali Zero-Invenzioni: NON possono essere indebolite (es. introdurre fuzzy match) senza decisione esplicita registrata in `DIARIO_DECISIONI.md`.
 
 L'aggiunta di un alias in questa sezione NON apre automaticamente l'accesso al campo in runtime. Per leggere il campo serve `allowedFields` nel boundary (vedi "Separazione alias vs boundary").
+
+## Chiusure documentali Chat IA NEXT 2026-05-06
+
+### Ordinamento default per viste certificate
+
+L'ordinamento runtime usa solo campi presenti in `allowedFields`. La priorita' documentata per le viste certificate e':
+
+1. `updatedAt desc`, se ammesso dalla entry.
+2. `timestamp desc`, se `updatedAt` non e' ammesso e `timestamp` e' presente.
+3. `createdAt desc`, per root documentali che non espongono `updatedAt` ma espongono `createdAt`.
+4. Nessun ordinamento aggiuntivo se nessuno dei tre campi e' ammesso; resta valido il cap deterministico `requestLimits`.
+
+### Mapping writer root documentali -> allowedFields
+
+Le entry root documentali V1 sono proiezioni sicure dei writer reali. I campi liberi, URL-like e sensibili restano fuori boundary anche se il writer li salva.
+
+| Root collection | Writer/reader reale verificato nel repo | Boundary V1 | Nota |
+|---|---|---|---|
+| `@documenti_mezzi` | `src/next/internal-ai/ArchivistaDocumentoMezzoBridge.tsx`, `src/next/internal-ai/ArchivistaManutenzioneBridge.tsx`, `src/next/internal-ai/ArchivistaArchiveClient.ts`, `src/pages/IA/IADocumenti.tsx` | `FIRESTORE_ROOT_DOCUMENTI_MEZZI_ALLOWED_FIELDS` | metadati mezzo/documento, targa, importi, voci strutturate; esclusi testo libero e URL firmati |
+| `@documenti_magazzino` | `src/next/internal-ai/ArchivistaMagazzinoBridge.tsx`, `src/next/internal-ai/ArchivistaArchiveClient.ts`, `src/pages/IA/IADocumenti.tsx` | `FIRESTORE_ROOT_DOCUMENTI_MAGAZZINO_ALLOWED_FIELDS` | metadati documento, fornitore, righe materiali strutturate; esclusi testo libero e URL firmati |
+| `@documenti_generici` | `src/pages/IA/IADocumenti.tsx`, lettura `src/next/domain/nextDocumentiCostiDomain.ts` | `FIRESTORE_ROOT_DOCUMENTI_GENERICI_ALLOWED_FIELDS` | metadati generici minimi; nessuna relazione forte se mancano chiavi strutturate |
+| `@documenti_cisterna` | `src/pages/CisternaCaravate/CisternaCaravateIA.tsx`, `src/next/NextCisternaIAPage.tsx` | `FIRESTORE_DOCUMENTI_CISTERNA_ROOT_ALLOWED_FIELDS` | documenti cisterna con metadati strutturati, importi e stato; esclusi testo libero e URL firmati |
+| `@cisterna_schede_ia` | `src/next/NextCisternaIAPage.tsx` | `FIRESTORE_CISTERNA_SCHEDE_IA_ROOT_ALLOWED_FIELDS` | righe scheda carburante e periodo; esclusi testo libero e URL firmati |
+| `@cisterna_parametri_mensili` | `src/next/NextCisternaIAPage.tsx` | `FIRESTORE_CISTERNA_PARAMETRI_MENSILI_ROOT_ALLOWED_FIELDS` | mese e cambio EUR/CHF; nessun dato narrativo |
+
+### Site360 e cantiere
+
+`Site360` V1 e' vista aggregatrice certificata su fonti esistenti, non anagrafica autonoma di cantiere. Non esiste apertura di `@cantieri` in V1 e non esiste writer cantieri. Il pannello prove deve mostrare provenienza e relationProof quando il resolver produce una relazione certificata; in assenza di prova, la UI non deve promuovere il label cantiere a entita certificata autonoma.
 
 ## Inventario sintetico
 
